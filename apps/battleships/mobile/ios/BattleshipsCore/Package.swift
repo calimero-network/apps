@@ -16,10 +16,11 @@ let package = Package(
         .library(name: "BattleshipsCore", targets: ["BattleshipsCore", "LobbyGenerated", "GameGenerated"]),
     ],
     dependencies: [
-        // swift-sdk `main`, the merge commit of swift-sdk#84. Keep it identical to ../project.yml.
+        // swift-sdk#85 (feat/calimero-1.0, Calimero 1.0) head; moves to its merge commit once it lands.
+        // Keep it identical to ../project.yml.
         .package(
             url: "https://github.com/calimero-network/swift-sdk",
-            revision: "c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f"),
+            revision: "6c5f1167d1e586f556f59c326de5f51d034e80dd"),
     ],
     targets: [
         // `scripts/codegen.sh`: one module per service. Each generated file declares its own

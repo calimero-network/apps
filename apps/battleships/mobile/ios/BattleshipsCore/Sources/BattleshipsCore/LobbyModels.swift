@@ -2,7 +2,7 @@ import Foundation
 import LobbyGenerated
 import MeroKit
 
-/// The lobbies (namespaces running Battleships) this account is in, and founding a new one.
+/// The lobbies (Calimero orgs running Battleships) this account is in, and founding a new one.
 /// (Kotlin `LobbiesModel`; the web app's `LobbySelect` + `useNamespaceBootstrap`.)
 @MainActor
 public final class LobbiesModel: ObservableObject {
@@ -29,14 +29,12 @@ public final class LobbiesModel: ObservableObject {
         }
     }
 
-    /// Found a lobby: a namespace running the bundle, with the lobby service's context in its
-    /// root group (the web app's `createNamespaceWithLobby`). Match contexts are created beside it.
+    /// Found a lobby: an org for the package, with an org-wide app instance of the lobby service
+    /// (the web app's `createNamespaceWithLobby`). Match instances are created beside it.
     public func create(name raw: String) async throws -> AppNamespace {
         let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { throw BattleshipsError.invalid("Give the lobby a name.") }
-        guard backend.app.hasRelay else {
-            throw BattleshipsError.invalid("No relay serves your account yet. Join a lobby from an invitation first.")
-        }
+        guard backend.app.hasRelay else { throw BattleshipsError.invalid("Sign in to create a lobby.") }
         let founded = try await backend.app.foundNamespace(name: name)
         let listed = (try? await backend.app.listNamespaces()) ?? []
         let appId = listed.first { $0.id == founded.namespaceId }?.applicationId ?? applicationId ?? ""
@@ -174,7 +172,7 @@ public final class LobbyModel: ObservableObject {
                 }
             }
             guard let lobbyContextId else {
-                phase = .failed("This lobby hasn't synced to your relay yet. Pull to refresh in a moment.")
+                phase = .failed("This lobby isn't ready yet. Pull to refresh in a moment.")
                 return
             }
             if (try? await backend.app.isMember(contextId: lobbyContextId)) != true {
@@ -261,7 +259,7 @@ public final class LobbyModel: ObservableObject {
 
     /// The context in the namespace's root group that runs the lobby service. Match contexts sit
     /// in the same group, so "the first one" is wrong as soon as a match exists (the web app's
-    /// note in `useBattleshipsLobby`). A relay that does not say falls back to the first.
+    /// note in `useBattleshipsLobby`). When nothing names a service, the first.
     private func resolveLobbyContext() async throws -> String? {
         let ids = try await backend.app.listContexts(groupId: namespace.id)
         guard !ids.isEmpty else { return nil }
@@ -304,7 +302,7 @@ public final class InvitationModel: ObservableObject {
         return true
     }
 
-    /// Join. `backend` is read again after `didJoin`, which may hand the session the admitting relay.
+    /// Join (`POST /invites/{token}/redeem`). `backend` is read again after `didJoin`.
     public func accept(
         backend: @escaping @MainActor () -> (any MeroAppBackend)?,
         didJoin: @escaping @MainActor () async -> Void

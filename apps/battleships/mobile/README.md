@@ -6,19 +6,40 @@ icons (SF Symbols / Material Icons) and flows.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `c9ca1a0` (merge commit of swift-sdk#84 on `main`), in `ios/project.yml` and `ios/BattleshipsCore/Package.swift` |
+| iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `6c5f116` (head of swift-sdk#85, `feat/calimero-1.0`, Calimero 1.0; moves to its merge commit once it lands), in `ios/project.yml`, `ios/BattleshipsCore/Package.swift` and `Package.resolved` |
 | Android | `android/` | Jetpack Compose + Material3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `ea8ded7` (merge commit of kotlin-sdk#67 on `main`), composite build from `android/kotlin-sdk.ref` |
 
-## Delegated execution only
+## How the apps reach Calimero
 
-Neither app runs or logs into a node. `MeroAppSession` signs the person in with their Calimero
-account (the wallet certifies this device's key), the Cloud manager names the account's relay, and
-everything goes through it: reads are the relay's account-scoped query, writes are warrants the
-device key signs, namespaces and contexts are governance and context intents.
+**iOS runs on Calimero 1.0.** The app talks to a node of a Calimero Cloud cluster over the sealed
+channel (`calimero/sealed-http/v2`, after the node's TDX attestation is verified) and signs in with
+a passkey. `MeroAppSession` builds the SDK's `CloudAppBackend`; the words map one to one:
+
+| The app | `MeroAppBackend` | Calimero 1.0 |
+| --- | --- | --- |
+| lobby | namespace | organization (metadata `package = com.calimero.battleships`) |
+| lobby / match | context | app instance (`POST /apps {package, service, org}`) |
+| invitation | `OrgInvitation` | org invite token (`POST /orgs/{org}/invites`, redeemed at `/invites/{token}/redeem`) |
+
+Sign-in (`ios/Sources/App/CloudAccess.swift`):
+
+- **Calimero Cloud:** a node URL of your cluster (from cloud.calimero.network; `MeroNodeURL` in
+  `ios/project.yml` prefills it), then *Sign in with passkey* or *Create an account*. The device's
+  passkey belongs to the cluster's relying party: add the `webcredentials:<rp-id>` associated
+  domain to the app for a real cluster.
+- **Development node:** a `merod local` node (`MeroDevNodeURL`, `http://localhost:2501` by
+  default), mock attestation allowed (`allowMock`), with a software passkey the SDK keeps for it.
+- **Approvals** (account menu): node releases and app upgrades waiting for you, per lobby and for
+  your own apps. *Review* opens the node's consent page in the system browser, which returns to
+  `battleships://consent`. The app's own session cannot approve anything.
+
+**Android still runs on 0.x** (delegated execution through the account's relay, wallet sign-in);
+its port follows the kotlin-sdk's.
 
 ## Screens
 
-1. **Sign in**: what the game is, one button; an invitation that arrived first is named.
+1. **Sign in**: what the game is; on iOS a passkey (Calimero Cloud) or a development node; an
+   invitation that arrived first is named.
 2. **Lobbies**: every lobby (namespace) you are in; new lobby sheet; join with a pasted link;
    pull to refresh; sign out.
 3. **Lobby**: Matches / Players / Record tabs. Your matches (in play first), players you can
@@ -55,12 +76,11 @@ match is `create_match` in the lobby, a context of the `game` service with the m
 arguments, then `set_match_context_id`. The lobby context is found by its service name, never by
 being first.
 
-**SDK gap.** `MeroAppBackend.createContext` takes no service name, so it cannot create a context
-of one service of a multi-service bundle. Both apps go through the account admin the SDK's
-`DelegatedAppBackend` already exposes (`admin.createContext(CreateContextRequest(serviceName:))`,
-a delegated context intent, and `admin.getContext(id).serviceName`), wrapped as
-`BattleshipsBackend`. A `serviceName` parameter on `MeroAppBackend.createContext` (and the service
-in `listContexts`) would remove the wrapper.
+**Services on iOS (1.0).** An instance is created per service with
+`MeroAppBackend.createServiceContext` and tagged with its service in its metadata
+(`{"name", "service"}`), so the lobby is found by service, never by being first
+(`ServiceBattleshipsBackend`). Android still goes through the 0.x account admin
+(`admin.createContext(CreateContextRequest(serviceName:))`).
 
 ## The board never leaves the phone
 
@@ -89,10 +109,12 @@ refuses; it is read leniently.
 
 ## Invitations
 
-Links are the web app's: `https://links.calimero.network/com.calimero.battleships/join?invitation=<base58(deflate(json))>`,
-with the recursive `{"invitations": [{"groupId", "invitation", "groupAlias"}]}` payload the web
-reader takes, plus `__lobbyName` and `__inviterKey`. `calimero://com.calimero.battleships/join?…`
-and pasted links open the same join sheet.
+iOS links carry Calimero 1.0's org invite token in the SDK's shape (`OrgInvitation`):
+`https://links.calimero.network/com.calimero.battleships/join?invitation=<base58(deflate(json))>`
+with `{"invitation": "inv_…", "namespaceId", "name", "__lobbyName", "__inviterKey"}`. Pre-1.0
+signed invitations are not read (a 1.0 cluster cannot redeem them). Android and the web app still
+write the 0.x `{"invitations": [{"groupId", "invitation", "groupAlias"}]}` payload until their
+ports. `calimero://com.calimero.battleships/join?…` and pasted links open the same join sheet.
 
 ## Build and test
 
@@ -114,9 +136,10 @@ Regenerate the contract clients after an ABI change:
 CODEGEN=/path/to/mero-devtools-js/abi-codegen/dist/cli.js ./scripts/codegen.sh
 ```
 
-Sign-in callbacks default to `battleships://enrol`; the Cloud, wallet and registry URLs are
-overridable (`ios/project.yml` Info keys, `android/gradle.properties`), empty meaning the SDK's
-hosted defaults.
+iOS: the cluster is `MeroNodeURL` and the development node `MeroDevNodeURL` (`ios/project.yml`
+Info keys); the consent page returns to `battleships://consent`. Android: sign-in callbacks
+default to `battleships://enrol`, with the Cloud, wallet and registry URLs in
+`android/gradle.properties`.
 
 CI: `.github/workflows/battleships-ios.yml` (`swift test` on the core package, then a simulator
 build of the app) and `battleships-android.yml` (ktlint, detekt, unit tests, Android Lint,

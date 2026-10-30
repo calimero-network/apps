@@ -28,44 +28,50 @@ public enum BattleshipsError: Error, Equatable, LocalizedError {
 
 // MARK: - The backend
 
-/// What the screens need beyond ``MeroAppBackend``: the bundle has two services, and the SDK's
-/// `createContext` names none. The relay's admin does take a `serviceName` (as the web app's
-/// `admin.createContext({ serviceName })`), so ``AdminBattleshipsBackend`` goes through it.
-/// (Kotlin `BattleshipsBackend`.)
+/// What the screens need beyond ``MeroAppBackend``: the package has two services (lobby, game),
+/// and the lobby's app instance is found by the service it runs. (Kotlin `BattleshipsBackend`.)
 public protocol BattleshipsBackend: Sendable {
     var app: any MeroAppBackend { get }
-    /// Create a context running `service` of the bundle in `groupId`, with its `init` arguments.
+    /// Create an app instance running `service` of the package in `groupId`, with its `init` arguments.
     func createServiceContext(
         groupId: String, applicationId: String, service: String, name: String, initArgs: JSONValue
     ) async throws -> String
-    /// Which service a context runs (`Context.serviceName`), `nil` when the relay does not say.
+    /// Which service an app instance runs, `nil` when nothing says.
     func serviceName(contextId: String) async throws -> String?
 }
 
-/// ``BattleshipsBackend`` over the session's backend and the account's admin
-/// (`DelegatedAppBackend.admin`): a context is created as a delegated context intent carrying the
-/// service name, and read back through the relay's caller-scoped `GET /contexts/{id}`.
-public struct AdminBattleshipsBackend: BattleshipsBackend {
-    public let app: any MeroAppBackend
-    public let admin: any AdminSurface
+/// ``BattleshipsBackend`` over any ``MeroAppBackend``: an instance is created with
+/// `createServiceContext` (Calimero 1.0's `POST /apps {package, service}`), then tagged with
+/// its service in its metadata (`{"name", "service"}`) so every member can tell the lobby from
+/// the matches. Reading the service asks `readService` first (the node's app record), then the
+/// instance's metadata.
+public struct ServiceBattleshipsBackend: BattleshipsBackend {
+    public typealias TagService = @Sendable (_ contextId: String, _ name: String, _ service: String) async throws -> Void
+    public typealias ReadService = @Sendable (_ contextId: String) async throws -> String?
 
-    public init(app: any MeroAppBackend, admin: any AdminSurface) {
+    public let app: any MeroAppBackend
+    private let tagService: TagService?
+    private let readService: ReadService?
+
+    public init(app: any MeroAppBackend, tagService: TagService? = nil, readService: ReadService? = nil) {
         self.app = app
-        self.admin = admin
+        self.tagService = tagService
+        self.readService = readService
     }
 
     public func createServiceContext(
         groupId: String, applicationId: String, service: String, name: String, initArgs: JSONValue
     ) async throws -> String {
-        let created = try await admin.createContext(
-            CreateContextRequest(
-                applicationId: applicationId, groupId: groupId, serviceName: service,
-                initializationParams: CanonicalJSON.data(initArgs).map { Int($0) }, name: name))
-        return created.contextId
+        let id = try await app.createServiceContext(
+            groupId: groupId, applicationId: applicationId, service: service, name: name, initArgs: initArgs)
+        // Best effort: an untagged instance is still found by the node's record, or as the only one.
+        try? await tagService?(id, name, service)
+        return id
     }
 
     public func serviceName(contextId: String) async throws -> String? {
-        try await admin.getContext(contextId).serviceName
+        if let readService, let service = try await readService(contextId), !service.isEmpty { return service }
+        return try await app.contextMetadata(groupId: "", contextId: contextId)?.data["service"]
     }
 }
 
@@ -135,7 +141,7 @@ extension GameClient {
 
 // MARK: - Errors in words
 
-/// Errors as a person reads them: offline, no relay, or what the contract said, humanised as the
+/// Errors as a person reads them: offline, signed out, the cluster busy, or what the contract said, humanised as the
 /// web app's `friendlyContractMessage`. (Kotlin `ErrorText`.)
 public enum ErrorText {
     public static func describe(_ error: Error, fallback: String = "Something went wrong. Try again.") -> String {
@@ -147,8 +153,14 @@ public enum ErrorText {
             default: break
             }
         }
-        if let error = error as? AccountError, case .noRelay = error {
-            return "No relay serves your account yet. Join a lobby from an invitation first."
+        if error is SignedOutError { return "You're signed out. Sign in again." }
+        // Calimero 1.0's typed errors (`CalimeroError`).
+        if error is LoginRequired { return "Your session ended. Sign in again." }
+        if error is UnavailableError { return "The cluster is busy. Try again in a moment." }
+        if error is NotFound { return "That's no longer there, or you're not in it." }
+        if let error = error as? AppError {
+            let text = error.message.isEmpty ? error.appCode : error.message
+            return humanise(contractMessage(text) ?? text)
         }
         let raw = "\(error)"
         if let contract = contractMessage(raw) { return humanise(contract) }

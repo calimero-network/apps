@@ -2,11 +2,10 @@ import BattleshipsCore
 import MeroKitUI
 import SwiftUI
 
-/// The front door: what Battleships is, and one way in.
+/// The front door: what Battleships is, and the ways in (Calimero Cloud passkey, or a development node).
 struct SignInView: View {
     @EnvironmentObject private var session: MeroAppSession
     var invitedTo: String?
-    @State private var busy = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -38,30 +37,7 @@ struct SignInView: View {
             }
             .padding(.horizontal, 28)
             Spacer()
-            VStack(spacing: 12) {
-                if let error = session.client.errorMessage {
-                    Text(error).font(.system(size: 14)).foregroundStyle(Palette.danger).multilineTextAlignment(.center)
-                }
-                Button {
-                    Haptics.tap()
-                    busy = true
-                    Task {
-                        await session.signIn()
-                        busy = false
-                    }
-                } label: {
-                    if busy {
-                        ProgressView().tint(Palette.ink)
-                    } else {
-                        Label("Sign in with Calimero", systemImage: "person.crop.circle.badge.checkmark")
-                    }
-                }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(busy)
-                Text("You'll approve this device in your Calimero wallet.")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Palette.muted)
-            }
+            CloudSignInPanel(style: .app)
             .padding(.horizontal, 24)
             .padding(.bottom, 24)
         }
@@ -91,7 +67,7 @@ struct InvitationSheet: View {
             case .joining(let title):
                 ProgressView().tint(Palette.ink).controlSize(.large).padding(.top, 12)
                 Text("Joining “\(title)”…").font(Typeface.display(22)).foregroundStyle(Palette.ink)
-                Text("This can take up to a minute when no other player is online.")
+                Text("Redeeming your invitation on the cluster.")
                     .font(.system(size: 15)).foregroundStyle(Palette.muted).multilineTextAlignment(.center)
                 Spacer(minLength: 0)
             case .joined(let namespaceId, let title):

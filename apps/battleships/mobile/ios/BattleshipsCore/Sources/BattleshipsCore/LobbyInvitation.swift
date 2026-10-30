@@ -1,32 +1,32 @@
 import Foundation
 import MeroKit
 
-/// A lobby invitation in the web app's format (`app/src/utils/invitation.ts`), so a link minted
-/// on either side opens on the other. (Kotlin `LobbyInvitation`.)
+/// A lobby invitation: Calimero 1.0's org invite token in the SDK's link shape
+/// (``OrgInvitation``), plus the inviter's player key. (Kotlin `LobbyInvitation`.)
 ///
-/// - payload: the recursive shape the web reader takes,
-///   `{"invitations": [{"groupId": "<namespace hex>", "invitation": <SignedGroupOpenInvitation>,
-///   "groupAlias": "<lobby name>"}], "__lobbyName": "<lobby name>", "__inviterKey": "<player key>"}`;
-///   the single `{"invitation": {…}, "inviter_signature": …}` shape is read too
+/// - payload: `{"invitation": "inv_…", "namespaceId": "<org>", "name": "<lobby name>",
+///   "__lobbyName": "<lobby name>", "__inviterKey": "<player key>"}`; the SDK reads the first
+///   three and ignores the rest
 /// - token: `base58(deflate(payload))` (``InviteCodec``)
 /// - link: `https://links.calimero.network/com.calimero.battleships/join?invitation=<token>`
+///
+/// The token is a bearer secret the org's node minted (`POST /orgs/{org}/invites`); redeeming it
+/// (`POST /invites/{token}/redeem`) is what admits, so a wrapper naming another org cannot
+/// redirect a join: the node joins the org the token belongs to.
 public struct LobbyInvitation: Sendable {
-    public let invitation: SignedGroupOpenInvitation
+    public let invitation: OrgInvitation
     public let lobbyName: String?
     /// The inviter's player key, so the joiner has someone to challenge straight away.
     public let inviterKey: String?
 
-    public init(invitation: SignedGroupOpenInvitation, lobbyName: String? = nil, inviterKey: String? = nil) {
+    public init(invitation: OrgInvitation, lobbyName: String? = nil, inviterKey: String? = nil) {
         self.invitation = invitation
         self.lobbyName = lobbyName
         self.inviterKey = inviterKey
     }
 
-    /// The namespace it admits to: the hex of its SIGNED `group_id`, never a field beside it, so a
-    /// tampered wrapper cannot redirect a join.
-    public var namespaceId: String {
-        Hex.lower(invitation.invitation.groupId.map { UInt8(truncatingIfNeeded: $0) })
-    }
+    /// The org (lobby) it admits to.
+    public var namespaceId: String { invitation.namespaceId }
 
     public var title: String {
         if let lobbyName, !lobbyName.isEmpty { return lobbyName }
@@ -36,17 +36,14 @@ public struct LobbyInvitation: Sendable {
     // MARK: Encoding
 
     public func token() throws -> String {
-        var entry: [String: JSONValue] = [
-            "groupId": .string(namespaceId),
-            "invitation": try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(invitation)),
-        ]
-        var payload: [String: JSONValue] = [:]
-        if let lobbyName = lobbyName?.trimmingCharacters(in: .whitespaces), !lobbyName.isEmpty {
-            entry["groupAlias"] = .string(lobbyName)
-            payload[Self.lobbyNameKey] = .string(lobbyName)
-        }
+        let name = lobbyName?.trimmingCharacters(in: .whitespaces)
+        let base = OrgInvitation(
+            namespaceId: invitation.namespaceId, token: invitation.token, contextId: invitation.contextId,
+            name: name?.isEmpty == false ? name : nil)
+        guard case .object(var payload) = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(base))
+        else { return try base.encoded() }
+        if let name = base.name { payload[Self.lobbyNameKey] = .string(name) }
         if let inviterKey, Self.isKey(inviterKey) { payload[Self.inviterKeyKey] = .string(inviterKey) }
-        payload["invitations"] = .array([.object(entry)])
         return try InviteCodec.encode(JSONValue.object(payload))
     }
 
@@ -60,7 +57,8 @@ public struct LobbyInvitation: Sendable {
     static let inviterKeyKey = "__inviterKey"
 
     /// A link (https or `calimero://`), a bare token or raw JSON. `nil` when it holds no lobby
-    /// invitation, and for another app's link.
+    /// invitation, and for another app's link. Pre-1.0 signed invitations are not read: a 1.0
+    /// cluster cannot redeem them.
     public static func parse(_ input: String) -> LobbyInvitation? {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -73,38 +71,14 @@ public struct LobbyInvitation: Sendable {
 
     public static func parse(json: String) -> LobbyInvitation? {
         guard let root = try? JSONDecoder().decode(JSONValue.self, from: Data(json.utf8)),
-            case .object(let fields) = root
+            case .object(let fields) = root,
+            let base = try? JSONDecoder().decode(OrgInvitation.self, from: Data(json.utf8))
         else { return nil }
-        let name = fields[lobbyNameKey]?.stringValue?.trimmingCharacters(in: .whitespaces)
+        let name = [fields[lobbyNameKey]?.stringValue, base.name]
+            .compactMap { $0?.trimmingCharacters(in: .whitespaces) }
+            .first { !$0.isEmpty }
         let key = fields[inviterKeyKey]?.stringValue.flatMap { isKey($0) ? $0 : nil }
-        var signedValue: JSONValue?
-        var alias: String?
-        if case .array(let list)? = fields["invitations"], let first = list.first {
-            signedValue = first["invitation"]
-            alias = first["groupAlias"]?.stringValue
-        } else if isSignedEnvelope(root) {
-            signedValue = root
-            alias = fields["groupAlias"]?.stringValue
-        }
-        guard let signedValue, let signed = decodeSigned(signedValue) else { return nil }
-        let title = [name, alias].compactMap { $0 }.first { !$0.isEmpty }
-        return LobbyInvitation(invitation: signed, lobbyName: title, inviterKey: key)
-    }
-
-    private static func isSignedEnvelope(_ value: JSONValue) -> Bool {
-        guard case .object(let fields) = value, case .object? = fields["invitation"] else { return false }
-        return fields["inviter_signature"]?.stringValue != nil || fields["inviterSignature"]?.stringValue != nil
-    }
-
-    /// The envelope verbatim, with a camelCase signature key renamed to core's spelling.
-    private static func decodeSigned(_ value: JSONValue) -> SignedGroupOpenInvitation? {
-        guard isSignedEnvelope(value), case .object(var fields) = value else { return nil }
-        if fields["inviter_signature"] == nil, let camel = fields["inviterSignature"] {
-            fields["inviter_signature"] = camel
-            fields.removeValue(forKey: "inviterSignature")
-        }
-        guard let data = try? JSONEncoder().encode(JSONValue.object(fields)) else { return nil }
-        return try? JSONDecoder().decode(SignedGroupOpenInvitation.self, from: data)
+        return LobbyInvitation(invitation: base, lobbyName: name, inviterKey: key)
     }
 
     static func isKey(_ value: String) -> Bool {
