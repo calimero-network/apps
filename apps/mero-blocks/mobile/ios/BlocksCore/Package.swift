@@ -12,7 +12,7 @@ let package = Package(
     ],
     dependencies: [
         // The main merge commit of swift-sdk#84; keep it equal to the revision in ../project.yml.
-        .package(url: "https://github.com/calimero-network/swift-sdk", revision: "c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f"),
+        .package(url: "https://github.com/calimero-network/swift-sdk", revision: "6c5f1167d1e586f556f59c326de5f51d034e80dd"),
     ],
     targets: [
         // Generated/BlocksClient.swift comes from ../../../logic/res/abi.json

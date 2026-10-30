@@ -9,7 +9,7 @@ struct MeroBlocksApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var session = MeroAppSession(
         packageName: BlocksConstants.packageName, callback: AppConfig.callback, config: AppConfig.config,
-        walletURL: AppConfig.walletURL, keychainService: AppConfig.keychainService)
+        keychainService: AppConfig.keychainService)
     @StateObject private var settings = PlayerSettings()
 
     var body: some Scene {
@@ -42,7 +42,7 @@ struct RootView: View {
             } else if let backend = session.backend {
                 NavigationStack {
                     WorldsScreen(
-                        backend: backend, applicationId: session.applicationId, account: session.account ?? "",
+                        session: session, backend: backend, applicationId: session.applicationId, account: session.account ?? "",
                         settings: settings,
                         onOpen: { playing = $0 }, onJoin: { joining = $0 },
                         onSignOut: { Task { await session.signOut() } }
@@ -50,7 +50,7 @@ struct RootView: View {
                     .id(session.revision)
                 }
             } else {
-                Splash(text: "Connecting to your relay…") {
+                Splash(text: "Connecting to your cluster…") {
                     Button("Sign out") { Task { await session.signOut() } }
                         .buttonStyle(SecondaryButtonStyle(fullWidth: false))
                 }
@@ -66,7 +66,7 @@ struct RootView: View {
         .onChange(of: didRestore) { _ in pickUpInvitation() }
         .sheet(item: $joining) { invitation in
             JoinSheet(invitation: invitation) {
-                guard let backend = session.backend else { throw BlocksError.noRelay }
+                guard let backend = session.backend else { throw BlocksError.signedOut }
                 let worlds = WorldsModel(backend: backend, applicationId: session.applicationId)
                 let ref = try await worlds.join(invitation) { await session.didJoinNamespace() }
                 playing = ref
@@ -76,7 +76,8 @@ struct RootView: View {
             if let backend = session.backend {
                 GameScreen(
                     backend: backend, world: world,
-                    myId: client.delegatedSession?.keys.signPublicKey ?? "",
+                    // On Calimero 1.0 the executor is the account (no device keys).
+                    myId: session.account ?? "",
                     settings: settings
                 ) { playing = nil }
             }

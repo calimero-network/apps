@@ -1,5 +1,6 @@
 import BlocksCore
 import MeroKit
+import MeroKitUI
 import SwiftUI
 
 /// The worlds this account plays in, with who is playing in each.
@@ -10,6 +11,7 @@ struct WorldsScreen: View {
     let onJoin: (BlocksInvitation) -> Void
     let onSignOut: () -> Void
     @StateObject private var model: WorldsModel
+    @StateObject private var approvals: ApprovalsModel
     @State private var creating = false
     @State private var pasting = false
     @State private var share: SharedLink?
@@ -17,7 +19,7 @@ struct WorldsScreen: View {
     @State private var actionError: String?
 
     init(
-        backend: any MeroAppBackend, applicationId: String?, account: String, settings: PlayerSettings,
+        session: MeroAppSession, backend: any MeroAppBackend, applicationId: String?, account: String, settings: PlayerSettings,
         onOpen: @escaping (WorldRef) -> Void, onJoin: @escaping (BlocksInvitation) -> Void,
         onSignOut: @escaping () -> Void
     ) {
@@ -27,10 +29,12 @@ struct WorldsScreen: View {
         self.onJoin = onJoin
         self.onSignOut = onSignOut
         _model = StateObject(wrappedValue: WorldsModel(backend: backend, applicationId: applicationId))
+        _approvals = StateObject(wrappedValue: ApprovalsModel(session: session))
     }
 
     var body: some View {
         List {
+            ApprovalsSection(model: approvals)
             if let message = model.error ?? actionError {
                 ErrorBanner(message: message) {
                     model.dismissError()
@@ -45,13 +49,6 @@ struct WorldsScreen: View {
                 HStack { Spacer(); ProgressView().tint(Theme.ink); Spacer() }
                     .padding(.vertical, 48)
                     .plainRow()
-            } else if !model.hasRelay {
-                EmptyState(
-                    icon: "link", title: "Join your first world",
-                    text: "Your account has no relay yet. Open an invitation link a friend sent you, or paste it here.",
-                    action: "Join with a link"
-                ) { pasting = true }
-                .plainRow()
             } else if model.worlds.isEmpty {
                 EmptyState(
                     icon: nil, title: "No worlds yet",
@@ -110,8 +107,8 @@ struct WorldsScreen: View {
                 .accessibilityLabel("Create world")
             }
         }
-        .refreshable { await model.load() }
-        .task { await model.load() }
+        .refreshable { await loadAll() }
+        .task { await loadAll() }
         .sheet(isPresented: $creating) {
             NewWorldSheet { name, seed in
                 let ref = try await model.create(name: name, seed: seed)
@@ -195,6 +192,14 @@ private struct WorldRow: View {
 
 /// A small landscape for a world: sky, hills and ground in the game's own colours, shaped by
 /// the world's id so each row looks its own (the web app's world cards do the same).
+extension WorldsScreen {
+    /// The worlds, then what waits for approval in the account and in each world.
+    fileprivate func loadAll() async {
+        await model.load()
+        await approvals.refresh(orgs: model.worlds.map(\.ref.namespaceId))
+    }
+}
+
 struct WorldThumb: View {
     let seed: String
 

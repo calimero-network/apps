@@ -1,8 +1,8 @@
 import Foundation
 import MeroKit
 
-/// One open world: gets the account into its context, then serves the game page — answers its
-/// contract calls through ``BridgeRouter``, forwards the relay's events for the world, and tells it
+/// One open world: gets the account into its app instance, then serves the game page — answers its
+/// contract calls through ``BridgeRouter``, forwards the node's events for the world, and tells it
 /// to pause and resume. The view owns the WebView and hands this model the page's messages
 /// (``receive(_:)``) and a way to deliver messages back (``outbox``).
 @MainActor
@@ -134,8 +134,8 @@ public final class GameModel: ObservableObject {
         events = nil
     }
 
-    /// Every relay event for the world is a nudge to re-read it; the page also polls, which covers
-    /// a relay that cannot stream.
+    /// Every node event for the world is a nudge to re-read it; the page also polls, which covers
+    /// a node that cannot stream.
     private func startEvents() {
         guard events == nil, backend.canSubscribe else { return }
         let stream = backend.events(contextId: world.contextId)

@@ -1,4 +1,5 @@
 import Foundation
+import MeroKit
 
 /// The app's fixed values, shared with the web app and the contract's bundle.
 public enum BlocksConstants {
@@ -19,15 +20,15 @@ public enum BlocksConstants {
 }
 
 public enum BlocksError: Error, LocalizedError, Equatable {
-    case noRelay
+    case signedOut
     case noApplication
     case notAnInvitation
     case noWorldInInvitation
 
     public var errorDescription: String? {
         switch self {
-        case .noRelay: return "Your account has no relay yet. Join a world from an invitation to get one."
-        case .noApplication: return "Mero Blocks is not published for this account's relay yet."
+        case .signedOut: return "You're signed out. Sign in again to play."
+        case .noApplication: return "Mero Blocks is not published on this cluster yet."
         case .notAnInvitation: return "That doesn't look like a Mero Blocks invitation link."
         case .noWorldInInvitation: return "The invitation does not reference a world."
         }
@@ -38,9 +39,28 @@ public enum BlocksText {
     /// An error as one sentence. A contract refusal is already written for a player, so it is
     /// shown as it came.
     public static func error(_ error: Error) -> String {
+        switch error {
+        case let error as ReleaseDeadlineError:
+            let release = error.release.isEmpty ? "a node release" : "node release \(error.release)"
+            return "Your cluster takes no new work until \(release) is approved. Review it under Needs your approval."
+        case is NotFound:
+            return "This isn't shared with you, or it was deleted."
+        case is LoginRequired, is SignedOutError:
+            return "Your session ended. Sign in again."
+        case is WrongNode:
+            return "This node doesn't serve your world. Try another node of the cluster."
+        case let error as UnavailableError:
+            return "Your cluster is busy (\(error.reason)). Try again shortly."
+        case let error as AppError:
+            return error.message.isEmpty ? error.appCode : error.message
+        case let error as CalimeroError:
+            return error.message.isEmpty ? error.code : error.message
+        default:
+            break
+        }
         if let described = (error as? LocalizedError)?.errorDescription, !described.isEmpty { return described }
         let text = String(describing: error)
-        return text.isEmpty ? "Something went wrong talking to the relay." : text
+        return text.isEmpty ? "Something went wrong talking to your cluster." : text
     }
 
     /// A readable short form of an id nobody named.
