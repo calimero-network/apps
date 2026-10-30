@@ -42,7 +42,7 @@ final class TeamsModelTests: XCTestCase {
         XCTAssertNil(model.error)
     }
 
-    func testRelaylessAccountHasNoTeamsAndNoError() async {
+    func testDisconnectedAccountHasNoTeamsAndNoError() async {
         let fake = FakeTeam()
         fake.backend.hasRelay = false
         let model = TeamsModel(backend: fake.backend, applicationId: nil)
@@ -55,8 +55,7 @@ final class TeamsModelTests: XCTestCase {
     func testJoinRedeemsTheNamespaceAndOpensTheNamedTeam() async throws {
         let fake = FakeTeam()
         let ns = String(repeating: "cd", count: 32)
-        let invitation = StandupInvitation(
-            invitation: InMemoryAppBackend.invitation(namespaceId: ns), namespaceId: ns, contextId: "ctx-9")
+        let invitation = StandupInvitation(invitation: InMemoryAppBackend.invitation(namespaceId: ns), contextId: "ctx-9")
         let model = TeamsModel(backend: fake.backend, applicationId: "app")
         let joined = await model.join(invitation)
         let team = try XCTUnwrap(joined)
@@ -70,7 +69,7 @@ final class TeamsModelTests: XCTestCase {
         let model = TeamsModel(backend: fake.backend, applicationId: "app")
         let team = await model.create(name: "X")
         XCTAssertNil(team)
-        XCTAssertEqual(model.error?.hasPrefix("The relay can't be reached"), true)
+        XCTAssertEqual(model.error?.hasPrefix("Your cluster can't be reached"), true)
     }
 }
 

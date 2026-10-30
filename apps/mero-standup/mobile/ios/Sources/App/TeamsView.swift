@@ -5,7 +5,10 @@ import SwiftUI
 
 /// Signed in, no team open: your teams, starting one, joining one.
 struct TeamsView: View {
+    @EnvironmentObject private var session: MeroAppSession
     @StateObject private var model: TeamsModel
+    /// What waits for approval on the consent page; none in demo mode.
+    @State private var approvals: ApprovalsModel?
     let onOpen: (TeamSummary) -> Void
     let onSignOut: () -> Void
     @State private var starting = false
@@ -25,6 +28,7 @@ struct TeamsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     if let error = model.error { Card { ErrorLine(message: error) } }
+                    if let approvals { ApprovalsCard(model: approvals, orgs: orgs) }
                     if !model.hasLoaded {
                         ProgressView().frame(maxWidth: .infinity).padding(.vertical, 40)
                     } else if model.teams.isEmpty {
@@ -33,7 +37,7 @@ struct TeamsView: View {
                                 icon: "person.3", title: "No teams yet",
                                 message: model.hasRelay
                                     ? "Start one, or open an invitation link someone sent you."
-                                    : "Your account has no relay yet. Join a team with an invitation link first.")
+                                    : "You're not connected to your cluster. Sign in again, or join a team with an invitation link.")
                         }
                     } else {
                         ForEach(Array(model.teams.enumerated()), id: \.element.id) { index, team in
@@ -56,8 +60,26 @@ struct TeamsView: View {
             }
             .screenBackground()
             .navigationTitle("Teams")
-            .refreshable { await model.load() }
-            .task { await model.load() }
+            .refreshable {
+                await model.load()
+                await approvals?.load(orgs: orgs)
+            }
+            .task {
+                await model.load()
+                if approvals == nil, !DemoMode.isOn {
+                    approvals = ApprovalsModel(
+                        packageName: AppConfig.packageName, appName: "Mero Standup",
+                        fetch: { [weak session] org in
+                            guard let session else { throw CancellationError() }
+                            return try await session.pendingApprovals(org: org)
+                        },
+                        consent: { [weak session] request in
+                            guard let session else { return nil }
+                            return await session.client.requestConsent(request, callback: session.callback)
+                        })
+                }
+                await approvals?.load(orgs: orgs)
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
@@ -84,6 +106,11 @@ struct TeamsView: View {
             }
         }
     }
+}
+
+extension TeamsView {
+    /// The orgs the account's teams live in.
+    fileprivate var orgs: [String] { Array(Set(model.teams.map(\.namespaceId))).sorted() }
 }
 
 private struct TeamRow: View {
@@ -119,7 +146,7 @@ private struct StartTeamSheet: View {
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 16) {
-                Text("A team's standups and decisions live on its members' nodes and nowhere else.")
+                Text("A team's standups and decisions live on your Calimero cluster and nowhere else.")
                     .font(.subheadline).foregroundStyle(Palette.ink2)
                 TextField("Team name, e.g. Platform", text: $name)
                     .focused($focused)
@@ -240,7 +267,7 @@ struct InvitationSheet: View {
                 .frame(width: 56, height: 56).background(Palette.limeSoft, in: RoundedRectangle(cornerRadius: 14))
             Text("Join this team?").font(.title2.weight(.bold)).foregroundStyle(Palette.ink)
             Text(
-                "Joining makes your account a member of the namespace this team lives in, and the team's updates and decisions sync to you from the other members."
+                "Joining redeems the invitation: your account becomes a member of the organization this team lives in, and you see its updates and decisions."
             )
             .font(.subheadline).foregroundStyle(Palette.ink2)
             if invitation == nil { ErrorLine(message: StandupError.notAnInvitation.errorDescription ?? "") }

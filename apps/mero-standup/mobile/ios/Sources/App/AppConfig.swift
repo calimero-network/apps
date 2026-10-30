@@ -2,29 +2,35 @@ import Foundation
 import MeroKit
 import MeroKitUI
 
-/// Where the app signs in and which cloud it routes through, read from the
-/// Info.plist keys `project.yml` sets. Empty means the SDK's default (the
-/// hosted Calimero wallet, Cloud manager and registry).
+/// Which Calimero 1.0 cluster the app signs in to, read from the Info.plist
+/// keys `project.yml` sets. Empty means "ask on the sign-in screen".
 enum AppConfig {
     /// The registry package: what teams are founded with and links carry.
     static let packageName = "com.calimero.mero-standup"
 
-    /// The wallet callback: `mero-standup://enrol`, or a verified https host.
+    /// Where the node's consent page sends the person back
+    /// (`mero-standup://consent?request_id=…&result=…`), or a verified https host.
     static var callback: CloudCallback {
-        if let host = string("StandupCallbackHost") { return .https(host: host, path: string("StandupCallbackPath") ?? "/enrol") }
-        return .scheme(string("StandupCallbackScheme") ?? "mero-standup")
+        if let host = string("StandupCallbackHost") {
+            return .https(host: host, path: string("StandupCallbackPath") ?? "/consent")
+        }
+        return .scheme(string("StandupCallbackScheme") ?? "mero-standup", path: "consent")
     }
+
+    /// The Calimero Cloud cluster: a node URL from the console. Signing in
+    /// verifies the node's attestation (`CloudPolicy.production`).
+    static var clusterURL: String? { string("CalimeroClusterURL") }
+
+    /// The development cluster (`merod local`) the sign-in screen prefills.
+    static var devNodeURL: String { string("DefaultNodeURL") ?? "http://localhost:2501" }
 
     static var config: MeroProviderConfig {
-        var config = MeroProviderConfig()
-        if let cloud = string("MeroCloudBaseURL").flatMap(URL.init(string:)) { config.cloudBaseURL = cloud }
-        if let registry = string("MeroRegistryURL") { config.registryURL = registry }
-        return config
+        MeroProviderConfig(
+            nodeURL: clusterURL, policy: .production, packageName: packageName,
+            packageVersion: string("MeroPackageVersion"))
     }
 
-    static var walletURL: URL? { string("MeroWalletURL").flatMap(URL.init(string:)) }
-
-    /// The Keychain service the device key and the account session live under.
+    /// The Keychain service the session (and a development node's soft passkey) live under.
     static let keychainService = "network.calimero.standup"
 
     private static func string(_ key: String) -> String? {
