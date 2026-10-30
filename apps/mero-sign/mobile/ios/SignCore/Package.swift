@@ -20,7 +20,7 @@ let package = Package(
         // The head of swift-sdk's Calimero 1.0 branch (swift-sdk#85); moves to its merge commit once it lands.
         .package(
             url: "https://github.com/calimero-network/swift-sdk",
-            revision: "35148e4de782c065f777e80c592d9548acd645cd"),
+            revision: "6c5f1167d1e586f556f59c326de5f51d034e80dd"),
     ],
     targets: [
         .target(

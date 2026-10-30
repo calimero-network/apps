@@ -7,7 +7,7 @@ sent.** Uploading documents, placing fields and the semantic search stay on the 
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+, PDFKit | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `35148e4` (in `ios/project.yml`, `ios/SignCore/Package.swift` and `Package.resolved`). **Calimero 1.0.** |
+| iOS | `ios/` | SwiftUI, iOS 16+, PDFKit | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `6c5f116` (in `ios/project.yml`, `ios/SignCore/Package.swift` and `Package.resolved`). **Calimero 1.0.** |
 | Android | `android/` | Jetpack Compose + Material 3, minSdk 26, `PdfRenderer` + PdfBox-Android | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `ea8ded7` (`android/kotlin-sdk.ref`, composite build) |
 
 The iOS pin is the head of swift-sdk's Calimero 1.0 branch (`feat/calimero-1.0`, swift-sdk#85); it
