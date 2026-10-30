@@ -468,8 +468,8 @@ private struct AboutSheet: View {
                     }
                     .card()
                     DetailsDisclosure(rows: [
-                        ("Scene (context)", model.contextId),
-                        ("Studio (namespace)", model.studioId),
+                        ("Scene (app instance)", model.contextId),
+                        ("Studio (organization)", model.studioId),
                         ("Your account", model.account),
                     ])
                     .card()

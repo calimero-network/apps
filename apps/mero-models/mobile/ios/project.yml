@@ -11,8 +11,10 @@
 # The 3D viewport is ../viewer/dist/viewer.html, bundled as a resource: the web
 # studio's own three.js drawing code, built into one local file (no CDN).
 #
-# The swift-sdk is pinned to its `main` merge commit of PR #84; keep both pins
-# (here and ModelsCore/Package.swift) equal.
+# The swift-sdk is pinned to the head of its Calimero 1.0 branch
+# (calimero-network/swift-sdk#85, `feat/calimero-1.0`); the pin moves to that
+# PR's merge commit once it lands. Keep both pins (here and
+# ModelsCore/Package.swift) equal.
 name: MeroModels
 
 options:
@@ -24,7 +26,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f
+    revision: 6c5f1167d1e586f556f59c326de5f51d034e80dd
   ModelsCore:
     path: ModelsCore
 
@@ -45,20 +47,24 @@ targets:
           UIColorName: LaunchBackground
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         CFBundleURLTypes:
-          # The wallet returns here after Cloud sign-in (`mero-models://enrol#credential=…`).
-          - CFBundleURLName: network.calimero.models.enrol
+          # The node's consent page returns here (`mero-models://consent?request_id=…&result=…`).
+          - CFBundleURLName: network.calimero.models.consent
             CFBundleURLSchemes: [mero-models]
           # Invitations in the desktop launcher's form: `calimero://com.calimero.mero-models/join?invitation=…`.
           - CFBundleURLName: network.calimero.models.links
             CFBundleURLSchemes: [calimero]
-        # Where sign-in goes. Empty = the SDK's defaults (the hosted Calimero
-        # wallet and Cloud manager). See README.md.
+        # The Calimero 1.0 cluster. MeroNodeURL: a node from Calimero Cloud's
+        # console (empty = sign-in asks for one); MeroNodes: the cluster's other
+        # nodes, comma-separated, for failover; MeroAllowMock: YES only for a
+        # `merod local` cluster (mock attestation). See ../README.md.
+        MeroNodeURL: ""
+        MeroNodes: ""
+        MeroAllowMock: "NO"
+        MeroPackageVersion: ""
+        # Where the node's consent page returns to.
         MeroModelsCallbackScheme: mero-models
         MeroModelsCallbackHost: ""
-        MeroModelsCallbackPath: /enrol
-        MeroCloudBaseURL: ""
-        MeroWalletURL: ""
-        MeroRegistryURL: ""
+        MeroModelsCallbackPath: /consent
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: network.calimero.models

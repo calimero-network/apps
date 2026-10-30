@@ -67,7 +67,7 @@ public final class SceneModel: ObservableObject {
     private var refreshing = false
     private var dirty = false
 
-    /// How often to re-read when the relay cannot stream events (the web's poll).
+    /// How often to re-read when the node cannot stream events (the web's poll).
     public static let pollInterval: UInt64 = 5_000_000_000
 
     public init(
@@ -87,8 +87,8 @@ public final class SceneModel: ObservableObject {
     public var role: String? { info?.myRole }
     public var totalTriangles: Int { meshes.reduce(0) { $0 + Int($1.triangleCount) } }
 
-    /// Open the scene: join its context when this account is not in it yet (a
-    /// scene in an open subgroup), then read everything.
+    /// Open the scene: make sure this account reaches its app instance (open
+    /// teams' members inherit it), then read everything.
     public func open() async {
         phase = .loading
         if let member = try? await backend.isMember(contextId: contextId), !member {
@@ -123,7 +123,7 @@ public final class SceneModel: ObservableObject {
         } while dirty
     }
 
-    /// Follow the scene until the task is cancelled: the relay's events when it
+    /// Follow the scene until the task is cancelled: the node's events when it
     /// streams them, polling otherwise (and after a stream ends).
     public func live() async {
         if backend.canSubscribe {

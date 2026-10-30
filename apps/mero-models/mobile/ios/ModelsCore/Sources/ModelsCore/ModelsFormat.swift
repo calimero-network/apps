@@ -1,4 +1,5 @@
 import Foundation
+import MeroKit
 
 /// Copy, names and formatting shared by every screen. (Kotlin `ModelsFormat`.)
 public enum ModelsFormat {
@@ -97,13 +98,28 @@ public enum ModelsFormat {
         return s.hasSuffix(".0") ? String(s.dropLast(2)) : s
     }
 
-    /// Words a person can act on, from an error.
+    /// Words a person can act on, from an error (the node's typed 1.0 errors first).
     public static func errorText(_ error: Error) -> String {
-        let text = (error as? LocalizedError)?.errorDescription ?? String(describing: error)
-        let lower = text.lowercased()
-        if lower.contains("noRelay".lowercased()) || lower.contains("no relay") {
-            return "Your account has no relay yet. Join a studio from an invitation link, or try again shortly."
+        switch error {
+        case let error as ReleaseDeadlineError:
+            let release = error.release.isEmpty ? "a node release" : "node release \(error.release)"
+            return "Your cluster takes no new work until \(release) is approved. Review it under Needs your approval."
+        case is NotFound:
+            return "This isn't shared with you, or it was deleted."
+        case is LoginRequired, is SignedOutError:
+            return "Your session ended. Sign in again."
+        case is WrongNode:
+            return "This node doesn't serve your studio. Try another node of the cluster."
+        case let error as UnavailableError:
+            return "Your cluster is busy (\(error.reason)). Try again shortly."
+        case let error as AppError:
+            return error.message.isEmpty ? error.appCode : error.message
+        case let error as CalimeroError:
+            return error.message.isEmpty ? error.code : error.message
+        default:
+            break
         }
+        let text = (error as? LocalizedError)?.errorDescription ?? String(describing: error)
         if let url = error as? URLError, url.code == .notConnectedToInternet {
             return "You're offline. Check your connection and try again."
         }

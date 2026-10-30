@@ -15,8 +15,8 @@ let package = Package(
         .library(name: "ModelsCore", targets: ["ModelsCore"]),
     ],
     dependencies: [
-        // swift-sdk `main` merge commit of PR #84.
-        .package(url: "https://github.com/calimero-network/swift-sdk", revision: "c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f"),
+        // swift-sdk Calimero 1.0 branch head (PR #85); moves to its merge commit once it lands.
+        .package(url: "https://github.com/calimero-network/swift-sdk", revision: "6c5f1167d1e586f556f59c326de5f51d034e80dd"),
     ],
     targets: [
         .target(
