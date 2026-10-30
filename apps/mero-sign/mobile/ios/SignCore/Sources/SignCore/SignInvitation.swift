@@ -1,58 +1,68 @@
 import Foundation
 import MeroKit
 
-/// An invitation in the web app's format (`app/src/lib/inviteCodec.ts`,
-/// `inviteLink.ts`), so a link minted on either side opens on the other:
+/// An invitation link: swift-sdk's ``OrgInvitation`` (the payload every
+/// Calimero 1.0 app shares), plus the workspace's name to show:
 ///
-/// - payload: `{"invitation": <SignedGroupOpenInvitation>, "contextId"?, "contextName"?, "workspaceName"?}`
+/// - payload: `{"invitation": "inv_…", "namespaceId": "<workspace>", "contextId"?: "<agreement>", "name"?: "<agreement name>", "workspaceName"?: "…"}`
 /// - token: `base58(deflate(payload))`
 /// - link: `https://links.calimero.network/com.calimero.mero-sign/join?invitation=<token>`
 ///
-/// The signed invitation grants the WORKSPACE (namespace). `contextId` and
-/// `contextName` sit beside the signature: a hint for which agreement to open
-/// and what to call it while it syncs, never trusted over the workspace's own
-/// listing or the contract's `context_name`.
+/// The invite token admits to the WORKSPACE (a Calimero organization).
+/// `contextId` (the agreement's app instance) and `name` are a hint for
+/// which agreement to open and what to call it while it loads, never
+/// trusted over the workspace's own listing or the contract's `context_name`.
 public struct SignInvitation: Sendable {
-    public let invitation: SignedGroupOpenInvitation
-    public let contextId: String?
-    public let contextName: String?
+    public let invitation: OrgInvitation
     public let workspaceName: String?
 
-    public init(
-        invitation: SignedGroupOpenInvitation, contextId: String? = nil, contextName: String? = nil,
-        workspaceName: String? = nil
-    ) {
+    public init(invitation: OrgInvitation, workspaceName: String? = nil) {
         self.invitation = invitation
-        self.contextId = contextId
-        self.contextName = contextName
         self.workspaceName = workspaceName
     }
 
-    /// The namespace it admits to: the hex of its SIGNED `group_id`, never a
-    /// field beside it, so an edited wrapper cannot redirect a join.
-    public var namespaceId: String {
-        Hex.encode(invitation.invitation.groupId.map { UInt8(truncatingIfNeeded: $0) })
+    /// The invitation to `namespaceId` (``OrgInvitation/namespaceId``) with
+    /// Mero Sign's hints set on it.
+    public init(
+        invitation: OrgInvitation, contextId: String?, contextName: String? = nil, workspaceName: String? = nil
+    ) {
+        self.init(
+            invitation: OrgInvitation(
+                namespaceId: invitation.namespaceId, token: invitation.token, contextId: contextId?.signTrimmed,
+                name: contextName?.signTrimmed),
+            workspaceName: workspaceName?.signTrimmed)
     }
+
+    /// The workspace it admits to: the organization the node minted the token for.
+    public var namespaceId: String { invitation.namespaceId }
+    /// The agreement to open after joining, when the link names one.
+    public var contextId: String? { invitation.contextId?.signTrimmed }
+    /// The agreement's name, while it loads.
+    public var contextName: String? { invitation.name?.signTrimmed }
 
     /// What to call it in a prompt.
     public var title: String {
-        if let contextName = contextName?.signTrimmed { return contextName }
+        if let contextName { return contextName }
         if let workspaceName = workspaceName?.signTrimmed { return workspaceName }
         return "an agreement"
     }
 
     // MARK: Encoding
 
-    private struct Payload: Encodable {
-        let invitation: SignedGroupOpenInvitation
+    /// ``OrgInvitation``'s JSON with `workspaceName` beside it.
+    private struct Payload: Codable {
+        let invitation: String
+        let namespaceId: String
         let contextId: String?
-        let contextName: String?
+        let name: String?
         let workspaceName: String?
     }
 
     public func token() throws -> String {
         try InviteCodec.encode(
-            Payload(invitation: invitation, contextId: contextId, contextName: contextName, workspaceName: workspaceName))
+            Payload(
+                invitation: invitation.token, namespaceId: namespaceId, contextId: contextId, name: contextName,
+                workspaceName: workspaceName?.signTrimmed))
     }
 
     public func link() throws -> String {
@@ -73,53 +83,13 @@ public struct SignInvitation: Sendable {
         return parse(json: json)
     }
 
-    /// The decoded payload (the web's `parsePayload`): `data` envelopes are
-    /// unwrapped, and both spellings of each field are read.
+    /// The decoded payload. Only an ``OrgInvitation`` (an `inv_…` token and
+    /// its organization) is an invitation; a pre-1.0 signed group invitation is not.
     public static func parse(json: String) -> SignInvitation? {
-        guard let parsed = try? JSONDecoder().decode(JSONValue.self, from: Data(json.utf8)) else { return nil }
-        var inner = parsed
-        for _ in 0..<6 {
-            if isSignedInvitation(inner) { break }
-            guard let next = inner["data"] else { break }
-            inner = next
-        }
-        if let wrapped = inner["invitation"], let signed = unwrapSigned(wrapped) {
-            return SignInvitation(
-                invitation: signed,
-                contextId: (inner["contextId"]?.stringValue ?? inner["context_id"]?.stringValue)?.signTrimmed,
-                contextName: (inner["contextName"]?.stringValue ?? inner["context_name"]?.stringValue
-                    ?? inner["groupAlias"]?.stringValue ?? inner["groupName"]?.stringValue)?.signTrimmed,
-                workspaceName: (inner["workspaceName"]?.stringValue ?? inner["namespaceName"]?.stringValue)?.signTrimmed)
-        }
-        if isSignedInvitation(inner), let signed = decodeSigned(inner) {
-            return SignInvitation(invitation: signed)
-        }
-        return nil
-    }
-
-    private static func unwrapSigned(_ value: JSONValue) -> SignedGroupOpenInvitation? {
-        var current = value
-        for _ in 0..<6 {
-            if isSignedInvitation(current) { return decodeSigned(current) }
-            guard let next = current["data"] ?? current["invitation"] else { return nil }
-            current = next
-        }
-        return nil
-    }
-
-    private static func isSignedInvitation(_ value: JSONValue) -> Bool {
-        guard case .object(let fields) = value, case .object? = fields["invitation"] else { return false }
-        return fields["inviter_signature"]?.stringValue != nil || fields["inviterSignature"]?.stringValue != nil
-    }
-
-    private static func decodeSigned(_ value: JSONValue) -> SignedGroupOpenInvitation? {
-        guard case .object(var fields) = value else { return nil }
-        if fields["inviter_signature"] == nil, let camel = fields["inviterSignature"] {
-            fields["inviter_signature"] = camel
-            fields.removeValue(forKey: "inviterSignature")
-        }
-        guard let data = try? JSONEncoder().encode(JSONValue.object(fields)) else { return nil }
-        return try? JSONDecoder().decode(SignedGroupOpenInvitation.self, from: data)
+        let data = Data(json.utf8)
+        guard let invitation = try? JSONDecoder().decode(OrgInvitation.self, from: data) else { return nil }
+        let extra = try? JSONDecoder().decode(JSONValue.self, from: data)
+        return SignInvitation(invitation: invitation, workspaceName: extra?["workspaceName"]?.stringValue?.signTrimmed)
     }
 }
 
@@ -177,8 +147,8 @@ public final class InvitationModel: ObservableObject {
         return true
     }
 
-    /// Join. `directory` is read again after `didJoin`, which may hand the
-    /// session the admitting relay (and so a new backend).
+    /// Join: redeem the invite token on the node. `directory` is read again
+    /// after `didJoin`, which re-reads what the account sees.
     public func accept(
         directory: @escaping @MainActor () -> AgreementDirectory?,
         didJoin: @escaping @MainActor () async -> Void

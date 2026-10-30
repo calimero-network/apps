@@ -4,21 +4,29 @@ import SwiftUI
 /// Every document across your agreements: To sign, Waiting, Completed.
 struct InboxScreen: View {
     @ObservedObject var model: InboxModel
+    @ObservedObject var approvals: ApprovalsModel
+    let refreshApprovals: () async -> Void
     let openInvitation: (String) -> Void
     @State private var pasting = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                if !model.hasRelay { NoRelayBanner() }
+                ApprovalsCard(model: approvals)
                 BucketPicker(selection: $model.bucket, count: model.count)
                 content
             }
             .padding(16)
         }
         .background(Palette.ground.ignoresSafeArea())
-        .refreshable { await model.load() }
-        .task { await model.load() }
+        .refreshable {
+            await model.load()
+            await refreshApprovals()
+        }
+        .task {
+            await model.load()
+            await refreshApprovals()
+        }
         .signNavigation("Inbox")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {

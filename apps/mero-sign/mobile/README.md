@@ -7,21 +7,48 @@ sent.** Uploading documents, placing fields and the semantic search stay on the 
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+, PDFKit | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `c9ca1a0` (in `ios/project.yml` and `ios/SignCore/Package.swift`) |
+| iOS | `ios/` | SwiftUI, iOS 16+, PDFKit | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `35148e4` (in `ios/project.yml`, `ios/SignCore/Package.swift` and `Package.resolved`). **Calimero 1.0.** |
 | Android | `android/` | Jetpack Compose + Material 3, minSdk 26, `PdfRenderer` + PdfBox-Android | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `ea8ded7` (`android/kotlin-sdk.ref`, composite build) |
 
-The pins are the `main` merge commits of swift-sdk#84 and kotlin-sdk#67.
+The iOS pin is the head of swift-sdk's Calimero 1.0 branch (`feat/calimero-1.0`, swift-sdk#85); it
+moves to that PR's merge commit once it lands. The Android pin is the `main` merge commit of
+kotlin-sdk#67, and **the Android app still speaks the 0.x API** until kotlin-sdk is ported.
 
-## Delegated execution only
+## Through `MeroAppSession` / `MeroAppBackend`
 
-Neither app runs or logs into a node. The person signs in with their Calimero account (the wallet
-certifies the device key) and everything goes through the account's relay with the SDKs'
-`MeroAppSession` / `MeroAppBackend`: contract reads are relay queries, writes are signed warrants,
-blobs are read and written through the agreement's context.
+Neither app runs a node. Everything goes through the SDKs' `MeroAppSession` / `MeroAppBackend`.
+
+- **iOS (Calimero 1.0):** the person signs in with a **passkey** on the workspace's cluster (or
+  creates an account), over the sealed channel to an attested node. Contract reads are
+  `/apps/{app}/views`, writes `/apps/{app}/intents`, blobs `/apps/{app}/blobs`, all through
+  swift-sdk's `CalimeroAppBackend`; the private store's marker is written to the organization's
+  metadata with the signed-in `CalimeroClient`. A workspace is a Calimero **organization**, an
+  agreement a **team** with one **app instance**, and invitations are org invite tokens.
+- **Android (0.x):** the wallet certifies the device key and everything goes through the account's
+  relay: relay queries, signed warrants, blobs through the agreement's context.
+
+### Calimero 1.0 on iOS
+
+- **The cluster** is `MeroNodeURL` in `ios/project.yml` (a node from Calimero Cloud's console, plus
+  `MeroNodes` for failover). Left empty, the sign-in screen asks for one.
+- **Development**: "Choose your cluster" (or "Change") on the sign-in screen takes any node URL and
+  a "Development cluster" switch, which trusts mock attestation (`allowMock`) as `merod local`
+  serves it (`cargo run -p merod -- local`, nodes on `http://127.0.0.1:2501-2503`). The app keeps a
+  soft passkey for that node and creates its account on the first sign-in. Or set `MeroNodeURL`
+  and `MeroAllowMock: "YES"` in `project.yml`.
+- **Invitation links** keep their URL; the payload is swift-sdk's `OrgInvitation`,
+  `{"invitation": "inv_…", "namespaceId": "<workspace>", "contextId"?: "<agreement>", "name"?: "<agreement name>"}`,
+  plus Mero Sign's `workspaceName`. Android and the web still use the 0.x signed invitation until
+  they are ported, so links do not cross between them and iOS yet.
+- **Approvals**: when a node release or an app upgrade waits for the account (or a workspace it
+  owns), the Inbox shows it under "Needs your approval". "Review" opens the **node's consent page in
+  the system browser**; the page returns to `mero-sign://consent`. The app never approves by itself.
+- A real cluster's passkeys need the app to carry the `webcredentials:<rp-id>` Associated Domain of
+  that cluster; it is not set in `project.yml` yet.
 
 ## Screens
 
-1. **Sign in** — Cloud sign-in; says so when an invitation is waiting.
+1. **Sign in** — a passkey on iOS (Cloud sign-in on Android); says so when an invitation is waiting.
 2. **Inbox** (tab) — every document in every agreement you are in, in **To sign / Waiting /
    Completed**, with "New agreements" you can see but have not opened yet. Pull to refresh.
 3. **Agreements** (tab) — your workspaces and their agreements; opening one you have not entered
@@ -57,19 +84,22 @@ byte size)`.
 Exactly what the web does when a recipient opens an invitation (`joinWorkspaceFromInvitation` →
 `settleIntoAgreement`):
 
-1. Join the workspace (namespace) the signed invitation names.
+1. Join the workspace the invitation names (iOS: redeem the org invite token; Android: the 0.x
+   signed namespace invitation).
 2. Find the agreement (the one the link hints at if it is in the workspace, else the only one).
-3. Enter it (join its open subgroup), wait while it answers "Uninitialized".
+3. Enter it (join its open team / subgroup), wait while it answers "Uninitialized".
 4. `register_self_as_participant` ("Already registered" is fine).
 5. Settle the name (the contract's `context_name` wins).
 6. Ensure the **private context** and record the agreement there with
    `join_shared_context(context_id, shared_identity, name)`, which writes the `IdentityMapping`.
-   Through a relay the identity held in every context is the account itself, so the shared
-   identity is the account — as the web records it for an account session.
+   The identity held in every agreement is the account itself (on 1.0 there are no devices; on
+   0.x the relay runs every context as the account), so the shared identity is the account — as
+   the web records it for an account session.
 
 The private context is found and created like the web's `DefaultContextService` /
-`ensurePersonalWorkspace` / `createPersonalContext`: a namespace marked by its metadata record
-(`data.kind = "mero-sign:personal"`, never by name), a **restricted** "Private" subgroup, a context
+`ensurePersonalWorkspace` / `createPersonalContext`: a namespace (an organization on iOS) marked by
+its metadata record (`kind = "mero-sign:personal"`, never by name), a **restricted** "Private"
+subgroup (an invite-only team on iOS), a context (app instance)
 initialised `{is_private: true, context_name: "default"}`, confirmed with
 `is_default_private_context`. A phone and a browser on the same account share one library.
 
@@ -128,11 +158,12 @@ Both clients are generated from `../logic/res/abi.json` with `abi-codegen`, usin
 ABI_CODEGEN=/path/to/abi-codegen/dist/cli.js ./scripts/regenerate-client.sh
 ```
 
-## Sign-in callback
+## Callbacks
 
-Both apps default to `mero-sign://enrol` (`MeroSignCallbackScheme` in `ios/project.yml`,
-`meroEnrolCallback` in `android/gradle.properties`). The hosted wallet may only return to `https://`
-callbacks; production sign-in then needs a verified https callback (Associated Domains / App Links).
+iOS: the node's consent page returns to `mero-sign://consent` (`MeroSignCallbackScheme` in
+`ios/project.yml`). Android: sign-in returns to `mero-sign://enrol` (`meroEnrolCallback` in
+`android/gradle.properties`); the hosted wallet may only return to `https://` callbacks, so
+production sign-in then needs a verified https callback (App Links).
 
 ## CI
 

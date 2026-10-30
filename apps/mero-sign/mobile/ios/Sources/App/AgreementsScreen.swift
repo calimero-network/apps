@@ -12,7 +12,6 @@ struct AgreementsScreen: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                if !model.hasRelay { NoRelayBanner() }
                 content
             }
             .padding(16)

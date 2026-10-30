@@ -1,12 +1,12 @@
 import Foundation
 import MeroKit
 
-/// An agreement: a subgroup of a workspace (namespace) with one context.
+/// An agreement: a team of a workspace (a Calimero organization) with one app instance.
 /// (The web's `AgreementRow`.)
 public struct AgreementRef: Hashable, Identifiable, Sendable {
     public let namespaceId: String
     public let workspaceName: String
-    /// The subgroup id.
+    /// The team id.
     public let agreementId: String
     public let name: String
     public let contextId: String

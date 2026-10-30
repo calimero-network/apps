@@ -7,8 +7,9 @@
 # The logic (generated contract client, private store and identity mapping,
 # PDF stamping, signature ink, view models) lives in the local SignCore
 # package, which builds and tests on macOS with `swift test --package-path SignCore`.
-# The swift-sdk is pinned by revision to its main merge commit of swift-sdk#84.
-# Keep it identical to SignCore/Package.swift.
+# The swift-sdk is pinned by revision to the head of its Calimero 1.0 branch
+# (swift-sdk#85, `feat/calimero-1.0`); the pin moves to that PR's merge commit
+# once it lands. Keep it identical to SignCore/Package.swift (and Package.resolved).
 name: MeroSign
 
 options:
@@ -20,7 +21,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f
+    revision: 35148e4de782c065f777e80c592d9548acd645cd
   SignCore:
     path: SignCore
 
@@ -37,18 +38,22 @@ targets:
         UILaunchScreen: {}
         UIUserInterfaceStyle: Light
         CFBundleURLTypes:
-          # The wallet returns here after Cloud sign-in (`mero-sign://enrol#credential=…`).
-          - CFBundleURLName: network.calimero.sign.enrol
+          # The node's consent page returns here (`mero-sign://consent?request_id=…&result=…`).
+          - CFBundleURLName: network.calimero.sign.consent
             CFBundleURLSchemes: [mero-sign]
           # Invitation deep links: `calimero://com.calimero.mero-sign/join?invitation=…`.
           - CFBundleURLName: network.calimero.sign.invite
             CFBundleURLSchemes: [calimero]
-        # Where sign-in goes. Empty = the SDK's defaults (the hosted Calimero
-        # wallet and Cloud manager). See README.md.
+        # The Calimero 1.0 cluster. MeroNodeURL: a node from Calimero Cloud's
+        # console (empty = sign-in asks for one); MeroNodes: the cluster's other
+        # nodes, comma-separated, for failover; MeroAllowMock: YES only for a
+        # `merod local` cluster (mock attestation). See ../README.md.
+        MeroNodeURL: ""
+        MeroNodes: ""
+        MeroAllowMock: "NO"
+        MeroPackageVersion: ""
+        # Where the node's consent page returns to.
         MeroSignCallbackScheme: mero-sign
-        MeroCloudBaseURL: ""
-        MeroWalletURL: ""
-        MeroRegistryURL: ""
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: network.calimero.sign

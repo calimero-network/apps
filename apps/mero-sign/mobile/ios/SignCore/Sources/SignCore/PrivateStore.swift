@@ -68,9 +68,9 @@ public final class MemoryPrivateContextCache: PrivateContextCache, @unchecked Se
 /// Mirrors the web app's `DefaultContextService` + `ensurePersonalWorkspace` +
 /// `createPersonalContext`:
 ///
-/// - It lives in a namespace of its own, marked by its metadata record
-///   (`data.kind == "mero-sign:personal"`), never found by name.
-/// - Inside it, a RESTRICTED subgroup ("Private") holds one context whose
+/// - It lives in an organization of its own, marked by its metadata record
+///   (`kind == "mero-sign:personal"`), never found by name.
+/// - Inside it, an invite-only team ("Private") holds one app instance whose
 ///   contract was initialised `{is_private: true, context_name: "default"}`.
 /// - A candidate is confirmed with the contract's `is_default_private_context`.
 ///
@@ -199,9 +199,10 @@ public actor PrivateStore {
     /// account holds in it (`join_shared_context`, which also writes the
     /// `IdentityMapping`): the web's last step after entering an agreement.
     ///
-    /// Through a relay the identity is the account itself — the relay runs
-    /// every context as the account — so private and shared identity are the
-    /// same key, exactly as the web records them for an account session.
+    /// On Calimero 1.0 the identity is the account itself (there are no
+    /// devices: `env::account_id() == executor_id()`), so private and shared
+    /// identity are the same key, exactly as the web records them for an
+    /// account session.
     ///
     /// Best-effort, as on the web: "Already joined this context" is the normal
     /// answer the second time, and a failure must not keep anybody out of an
@@ -253,7 +254,7 @@ public actor PrivateStore {
         let store = try await ensure()
         let blobId = SignIds.blobHex(try await admin.uploadBlob(png, contextId: store))
         guard !blobId.isEmpty else {
-            throw SignModelError.message("Your relay returned a blob id this app can't use.")
+            throw SignModelError.message("Your cluster returned a blob id this app can't use.")
         }
         let id = try await client(store).createSignature(name: name, blobIdStr: blobId, dataSize: UInt64(png.count))
         return SavedSignature(

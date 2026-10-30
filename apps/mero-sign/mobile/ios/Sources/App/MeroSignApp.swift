@@ -3,18 +3,25 @@ import MeroKitUI
 import SignCore
 import SwiftUI
 
-/// Where sign-in goes, from Info.plist (empty = the SDK's defaults).
+/// Which Calimero 1.0 cluster the app talks to and where the node's consent
+/// page returns to, from Info.plist (empty = not set: sign-in asks for a node).
 enum AppConfig {
-    static var callback: CloudCallback { .scheme(string("MeroSignCallbackScheme") ?? "mero-sign") }
+    /// `mero-sign://consent?request_id=…&result=…`.
+    static var callback: CloudCallback { .scheme(string("MeroSignCallbackScheme") ?? "mero-sign", path: "consent") }
 
+    /// A node of the cluster (Calimero Cloud's console lists them), the rest of
+    /// the cluster for failover, and how far to trust it: production
+    /// attestation, or mock attestation for a `merod local` cluster.
     static var config: MeroProviderConfig {
-        MeroProviderConfig(
-            packageName: SignConstants.packageName,
-            registryURL: string("MeroRegistryURL"),
-            cloudBaseURL: string("MeroCloudBaseURL").flatMap(URL.init(string:)))
+        let allowMock = string("MeroAllowMock").map { ["1", "yes", "true"].contains($0.lowercased()) } ?? false
+        return MeroProviderConfig(
+            nodeURL: string("MeroNodeURL"),
+            nodes: (string("MeroNodes") ?? "").split(separator: ",").map {
+                $0.trimmingCharacters(in: .whitespaces)
+            }.filter { !$0.isEmpty },
+            policy: allowMock ? .development : .production, packageName: SignConstants.packageName,
+            packageVersion: string("MeroPackageVersion"))
     }
-
-    static var walletURL: URL? { string("MeroWalletURL").flatMap(URL.init(string:)) }
 
     private static func string(_ key: String) -> String? {
         let value = (Bundle.main.object(forInfoDictionaryKey: key) as? String)?.trimmingCharacters(in: .whitespaces)
@@ -26,7 +33,7 @@ enum AppConfig {
 struct MeroSignApp: App {
     @StateObject private var session = MeroAppSession(
         packageName: SignConstants.packageName, callback: AppConfig.callback, config: AppConfig.config,
-        walletURL: AppConfig.walletURL, keychainService: "network.calimero.sign")
+        keychainService: "network.calimero.sign")
 
     var body: some Scene {
         WindowGroup {
@@ -51,12 +58,13 @@ final class AppServices: ObservableObject {
     let inbox: InboxModel
     let agreements: AgreementsModel
     let signatures: SignaturesModel
-    let hasAdmin: Bool
+    let approvals: ApprovalsModel
 
-    init(backend: any MeroAppBackend, admin: (any AdminSurface)?, applicationId: String?) {
+    init(session: MeroAppSession, backend: any MeroAppBackend) {
         self.backend = backend
-        self.admin = BackendSignAdmin(backend: backend, admin: admin)
-        hasAdmin = admin != nil
+        self.admin = BackendSignAdmin(backend: backend, client: (backend as? CalimeroAppBackend)?.client)
+        let applicationId = session.applicationId
+        approvals = ApprovalsModel(session: session)
         store = PrivateStore(
             backend: backend, admin: self.admin, applicationId: applicationId, cache: DefaultsPrivateContextCache())
         directory = AgreementDirectory(backend: backend, store: store)
@@ -64,6 +72,12 @@ final class AppServices: ObservableObject {
         inbox = InboxModel(directory: directory)
         agreements = AgreementsModel(directory: directory)
         signatures = SignaturesModel(store: store)
+    }
+
+    /// What waits for approval in the account and in each of its workspaces.
+    func refreshApprovals() async {
+        let workspaces = (try? await backend.listNamespaces().map(\.id)) ?? []
+        await approvals.refresh(orgs: workspaces)
     }
 }
 
@@ -93,7 +107,10 @@ struct RootView: View {
             } else if let services {
                 TabView(selection: $tab) {
                     NavigationStack(path: $inboxPath) {
-                        InboxScreen(model: services.inbox, openInvitation: { invitation.open($0) })
+                        InboxScreen(
+                            model: services.inbox, approvals: services.approvals,
+                            refreshApprovals: { await services.refreshApprovals() },
+                            openInvitation: { invitation.open($0) })
                             .withSignDestinations(services)
                     }
                     .tabItem { Label("Inbox", systemImage: "tray.full") }
@@ -124,7 +141,6 @@ struct RootView: View {
             }
         }
         .task(id: session.revision) { rebuild() }
-        .onReceive(session.client.$admin) { _ in rebuild() }
         .onChange(of: session.pendingInvitation) { raw in
             guard let raw else { return }
             invitation.open(raw)
@@ -149,8 +165,8 @@ struct RootView: View {
             builtFor = nil
             return
         }
-        if let services, builtFor == session.revision, services.hasAdmin == (session.client.admin != nil) { return }
-        services = AppServices(backend: backend, admin: session.client.admin, applicationId: session.applicationId)
+        if services != nil, builtFor == session.revision { return }
+        services = AppServices(session: session, backend: backend)
         builtFor = session.revision
     }
 

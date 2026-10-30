@@ -167,7 +167,7 @@ public enum DocumentHash {
         guard !expected.isEmpty else { return nil }
         let actual = sha256Hex(bytes)
         guard actual != expected else { return nil }
-        return "The file your relay returned doesn't match the fingerprint recorded for this document "
+        return "The file your cluster returned doesn't match the fingerprint recorded for this document "
             + "(recorded \(expected.prefix(12))…, got \(actual.prefix(12))…). Don't rely on what's shown "
             + "without checking with the other parties."
     }
