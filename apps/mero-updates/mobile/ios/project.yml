@@ -6,8 +6,9 @@
 #
 # Everything that is not a view (the generated contract client, the helpers and
 # the view models) is the local Swift package in Core/, tested with
-# `swift test` on macOS. The swift-sdk is pinned by revision to its `main`
-# merge commit of PR #84. Keep it equal to
+# `swift test` on macOS. The swift-sdk is pinned by revision to the head of its
+# Calimero 1.0 port (swift-sdk#85, branch feat/calimero-1.0); it moves to the
+# merge commit once that lands. Keep it equal to
 # the revision in Core/Package.swift.
 name: MeroUpdates
 
@@ -20,7 +21,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f
+    revision: 6c5f1167d1e586f556f59c326de5f51d034e80dd
   UpdatesCore:
     path: Core
 
@@ -44,20 +45,29 @@ targets:
         UISupportedInterfaceOrientations~ipad:
           [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         CFBundleURLTypes:
-          # The wallet returns here after Cloud sign-in (`mero-updates://enrol#credential=…`).
-          - CFBundleURLName: network.calimero.updates.enrol
+          # The node's consent page returns here (`mero-updates://consent?request_id=…&result=…`).
+          - CFBundleURLName: network.calimero.updates.consent
             CFBundleURLSchemes: [mero-updates]
           # Invitation deep links: `calimero://com.calimero.mero-updates/join?invitation=…`.
           - CFBundleURLName: network.calimero.updates.invite
             CFBundleURLSchemes: [calimero]
-        # Where sign-in goes. Empty = the SDK's defaults (the hosted Calimero
-        # wallet, Cloud manager and registry). See README.md.
+        # Which cluster sign-in uses (Calimero 1.0). MeroNodeURL: a node of your
+        # Calimero Cloud cluster (from the cloud.calimero.network console); empty =
+        # the sign-in screen asks. MeroDevNodeURL: what the "Development node"
+        # field starts with (`merod local`, mock attestation allowed). See README.
         UpdatesCallbackScheme: mero-updates
         UpdatesCallbackHost: ""
-        UpdatesCallbackPath: /enrol
-        MeroCloudBaseURL: ""
-        MeroWalletURL: ""
-        MeroRegistryURL: ""
+        UpdatesCallbackPath: /consent
+        MeroNodeURL: ""
+        MeroDevNodeURL: "http://localhost:2501"
+        NSLocalNetworkUsageDescription: "Connect to a Calimero development node on your local network."
+        # http only to a node on the local network (localhost, *.local, an IP literal).
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    # A passkey on a real cluster belongs to its relying party (the node's --rp-id).
+    # To sign in with the device's passkey there, add an entitlements file with
+    # `com.apple.developer.associated-domains: [webcredentials:<rp-id>]`. A
+    # development node uses a software passkey and needs neither.
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: network.calimero.updates

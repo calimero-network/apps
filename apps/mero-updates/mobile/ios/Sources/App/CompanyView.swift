@@ -60,7 +60,7 @@ struct CompanyView: View {
                 } else if model.isSyncing {
                     HStack(spacing: 10) {
                         ProgressView()
-                        Text("Syncing this company's audiences. They appear as your relay catches up.")
+                        Text("Loading this company's audiences. They appear in a moment.")
                             .font(.subheadline).foregroundStyle(Palette.ink2)
                     }
                     .padding(.vertical, 8)
