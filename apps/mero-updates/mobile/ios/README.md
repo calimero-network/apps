@@ -26,7 +26,7 @@ open MeroUpdates.xcodeproj
 
 ## SDK pin
 
-`project.yml` and `Core/Package.swift` pin swift-sdk `35148e4`, the head of swift-sdk#85
+`project.yml` and `Core/Package.swift` pin swift-sdk `6c5f116`, the head of swift-sdk#85
 (`feat/calimero-1.0`, the Calimero 1.0 port); it moves to the merge commit once that lands. Move
 both together when bumping (to a newer commit or a release tag).
 
