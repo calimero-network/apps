@@ -85,7 +85,7 @@ public enum CrmError: LocalizedError, Equatable {
 public enum ErrorText {
     public static func describe(_ error: Error) -> String {
         switch error {
-        case AccountError.noRelay, AccountError.notSignedIn:
+        case is SignedOutError, AccountError.notSignedIn:
             return "You're signed out. Sign in again."
         case is LoginRequired:
             return "Your session ended. Sign in again."

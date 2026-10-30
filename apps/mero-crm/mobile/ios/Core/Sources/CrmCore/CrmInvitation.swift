@@ -2,16 +2,16 @@ import Foundation
 import MeroKit
 
 /// A workspace invitation: Calimero 1.0's org invite token in the SDK's link
-/// shape (`MeroKitUI.InvitationLinkPayload`), plus the workspace's name:
+/// shape (``OrgInvitation``), the workspace's name as its `name`:
 ///
-/// - payload: `{"invitation": {"orgId": "<org>", "token": "inv_…"}, "namespaceId": "<org>", "groupAlias": "<workspace>"}`
+/// - payload: `{"invitation": "inv_…", "namespaceId": "<org>", "name": "<workspace>"}`
 /// - token: `base58(deflate(payload))` (``InviteCodec``)
 /// - link: `https://links.calimero.network/com.calimero.mero-crm/join?invitation=<token>`
 ///
 /// The invite token is a bearer secret the org's node minted; redeeming it
 /// (`POST /invites/{token}/redeem`) joins the org it belongs to. Decoding also
-/// takes an optional `data` envelope and `groupName`. Another app's link is
-/// refused, and so is a pre-1.0 signed invitation (a 1.0 cluster cannot redeem it).
+/// takes an optional `data` envelope and `groupAlias` / `groupName`. Another app's
+/// link is refused, and so is a pre-1.0 signed invitation (a 1.0 cluster cannot redeem it).
 public struct CrmInvitation: Sendable {
     /// The registry package, which is also the links' slug (`APP_SLUG`).
     public static let packageName = "com.calimero.mero-crm"
@@ -20,7 +20,7 @@ public struct CrmInvitation: Sendable {
     public let workspaceName: String?
 
     /// The org (workspace) it admits to.
-    public var namespaceId: String { invitation.orgId }
+    public var namespaceId: String { invitation.namespaceId }
 
     public init(invitation: OrgInvitation, workspaceName: String?) {
         self.invitation = invitation
@@ -29,14 +29,11 @@ public struct CrmInvitation: Sendable {
 
     /// The shareable token.
     public func token() throws -> String {
-        var payload: [String: JSONValue] = [
-            "invitation": .object(["orgId": .string(invitation.orgId), "token": .string(invitation.token)]),
-            "namespaceId": .string(invitation.orgId),
-        ]
-        if let name = workspaceName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
-            payload["groupAlias"] = .string(name)
-        }
-        return try InviteCodec.encode(JSONValue.object(payload))
+        let name = workspaceName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return try OrgInvitation(
+            namespaceId: invitation.namespaceId, token: invitation.token, contextId: invitation.contextId,
+            name: name?.isEmpty == false ? name : nil
+        ).encoded()
     }
 
     /// The shareable link.
@@ -57,12 +54,12 @@ public struct CrmInvitation: Sendable {
     public static func parse(json: String) -> CrmInvitation? {
         guard let parsed = try? JSONDecoder().decode(JSONValue.self, from: Data(json.utf8)) else { return nil }
         let inner = parsed["data"] ?? parsed
-        guard let token = inner["invitation"]?["token"]?.stringValue, !token.isEmpty else { return nil }
-        let org = inner["invitation"]?["orgId"]?.stringValue ?? inner["namespaceId"]?.stringValue ?? ""
-        guard !org.isEmpty else { return nil }
-        let name = [inner["groupAlias"]?.stringValue, inner["groupName"]?.stringValue]
+        guard let data = try? JSONEncoder().encode(inner),
+            let base = try? JSONDecoder().decode(OrgInvitation.self, from: data)
+        else { return nil }
+        let name = [base.name, inner["groupAlias"]?.stringValue, inner["groupName"]?.stringValue]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first { !$0.isEmpty }
-        return CrmInvitation(invitation: OrgInvitation(orgId: org, token: token), workspaceName: name)
+        return CrmInvitation(invitation: base, workspaceName: name)
     }
 }

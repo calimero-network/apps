@@ -7,7 +7,7 @@ Material Symbols on Android).
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+; non-UI code in the local package `ios/Core` | swift-sdk `MeroKit` + `MeroKitUI` at `a1ec644` (head of swift-sdk#85, `feat/calimero-1.0`, Calimero 1.0; moves to its merge commit once it lands) |
+| iOS | `ios/` | SwiftUI, iOS 16+; non-UI code in the local package `ios/Core` | swift-sdk `MeroKit` + `MeroKitUI` at `6c5f116` (head of swift-sdk#85, `feat/calimero-1.0`, Calimero 1.0; moves to its merge commit once it lands) |
 | Android | `android/` | Compose + Material3, minSdk 26 | kotlin-sdk `mero-core` + `mero-compose` at `ea8ded7` (merge commit of PR #67 on `main`), composite build |
 
 **The SDK pins** are set in `ios/project.yml` and
@@ -94,7 +94,7 @@ Same: pipeline, deals, deal page with the assistant (the rules in `app/src/utils
 one for one in `Assistant`/`Insights` and tested against the same cases), people, to-dos,
 insights, stages, settings, workspaces, invitations
 (`links.calimero.network/com.calimero.mero-crm/join?invitation=…`). On iOS the payload is the
-SDK's 1.0 shape, `{"invitation": {"orgId", "token"}, "namespaceId", "groupAlias"}`; Android and the
+SDK's 1.0 `OrgInvitation` shape, `{"invitation": "inv_…", "namespaceId", "name"}`; Android and the
 web app still write the 0.x `{invitation, groupAlias, groupId, kind}` until their ports, so links
 cross between them again once those land. Pre-1.0 signed invitations are refused on iOS.
 

@@ -195,12 +195,12 @@ final class ModelTests: XCTestCase {
         let m = model(script, backend)
         await m.load()
         backend.recording.setRawHandler { call in
-            if call.path == .execute { throw AccountError.noRelay(method: call.method) }
+            if call.path == .execute { throw SignedOutError(method: call.method) }
             return try script.answer(call)
         }
         do { let r = await m.deleteDeal(deal("d1")); XCTAssertFalse(r) }
         XCTAssertEqual(m.notice?.isError, true)
-        XCTAssertEqual(m.notice?.text, ErrorText.describe(AccountError.noRelay(method: "delete_deal")))
+        XCTAssertEqual(m.notice?.text, ErrorText.describe(SignedOutError(method: "delete_deal")))
     }
 
     func testStagesReorderAndSettingsValidate() async throws {
