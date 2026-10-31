@@ -796,7 +796,10 @@ jobs:
       # it reads the committed ABI, which the `wasm` job proves is current.
       - name: Assert the generated clients are current
         run: |
-          pnpm -r $PNPM_FILTER codegen
+          # `--if-present`: a component app has no v1 codegen (its client is
+          # mero-js's CalimeroClient), and pnpm refuses a filtered run in which
+          # no selected package has the script.
+          pnpm -r $PNPM_FILTER --if-present run codegen
           # Same reason as the ABI gate: untracked generated output is invisible
           # to `git diff`, so a new app could pass with no client committed.
           git add --intent-to-add -- 'apps/*/app/src/generated' 2>/dev/null || true
