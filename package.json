@@ -13,7 +13,9 @@
     "codegen": "pnpm -r codegen",
     "check:metadata": "bash scripts/check-app-metadata.sh",
     "landing:generate": "node scripts/landing/generate.mjs",
-    "landing:check": "node scripts/landing/generate.mjs --check"
+    "landing:check": "node scripts/landing/generate.mjs --check",
+    "dev:local": "node packages/merod-local/src/cli.ts dev",
+    "merod-local": "node packages/merod-local/src/cli.ts"
   },
   "devDependencies": {
     "typescript": "catalog:"
@@ -21,7 +23,7 @@
   "pnpm": {
     "overrides": {
       "base-x@2.0.6": "3.0.11",
-      "@calimero-network/mero-js": "catalog:"
+      "@calimero-network/mero-react>@calimero-network/mero-js": "catalog:"
     }
   }
 }

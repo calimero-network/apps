@@ -215,6 +215,22 @@ catalog:
   "@types/node": ^22.10.0
   "@types/uuid": ^10.0.0
 
+# ── component apps (the 1.0 runtime) ─────────────────────────────────────────
+# A named catalog, `"catalog:component"`, because the default one above is the
+# v1 line: mero-js 27 and up is the Calimero 1.0 client only (`CalimeroClient`:
+# attested nodes, sealed requests, passkeys, apps on their own log) and has no
+# `MeroJs`, contexts or JSON-RPC, so a v1 app on it would not build. Each app's
+# port moves its frontend from the default catalog to this one. The root
+# `pnpm.overrides` entry is scoped to mero-react's own mero-js for the same
+# reason: unscoped, it pinned every mero-js in the tree to the v1 line.
+#
+# 28.0.0 (mero-js#320) answers passkey step-ups (412 CONFIRM_REQUIRED) on
+# credentials, memberships and invites, which core 1.0.0-rc.7 requires. It
+# moves with `component-core-tag` in the root Cargo.toml.
+catalogs:
+  component:
+    "@calimero-network/mero-js": 28.0.0
+
 # esbuild's postinstall needs approving explicitly under pnpm 10+; pnpm 11
 # renamed the key to `allowBuilds`, so this may need updating with the toolchain.
 onlyBuiltDependencies:
