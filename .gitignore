@@ -1,5 +1,9 @@
 # Rust
 /target/
+# Component apps and tools/component-bundle are standalone crates, each with
+# its own target dir unless CARGO_TARGET_DIR says otherwise.
+apps/*/logic/target/
+tools/*/target/
 **/*.rs.bk
 
 # `cargo mero build` writes the contract into the app's res/ alongside abi.json.
@@ -34,6 +38,11 @@ dist/*.mpk
 apps/*/logic/dist/
 # Bundle fixtures an app's build-multi-service-bundle.sh writes for its tests.
 apps/*/logic/res/*.mpk
+
+# `pnpm dev:local` / `pnpm merod-local`: merod local's state and log.
+/.merod-local/
+# merod local's default --dir when started by hand from the repo root.
+.merod-local/
 
 # Local env
 .env
