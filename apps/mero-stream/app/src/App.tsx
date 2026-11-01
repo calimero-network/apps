@@ -1,101 +1,104 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
-import { getContextId, clearActiveRoom } from "./lib/session";
+import { NotFound } from "@calimero-network/mero-js";
+import { targetKey } from "@calimero-apps/connect";
+import { useSessionApi } from "./session";
+import { bind, getContextId, clearActiveRoom } from "./lib/session";
+import { pendingInvite } from "./lib/streams";
 import InvitationPrompt from "./components/InvitationPrompt";
+import SignIn from "./components/SignIn";
 import LandingPage from "./pages/landing/LandingPage";
 import StreamsPage from "./pages/StreamsPage";
 import RoomsPage from "./pages/RoomsPage";
 import StreamPage from "./pages/StreamPage";
 import CallPage from "./pages/CallPage";
 
+/**
+ * Signed in, or the way in: the landing page, whose "connect" opens the
+ * passkey sign-in (v1: mero-react's login popup). An opened invitation link
+ * goes straight to the sign-in, which says what the person was invited to.
+ */
 function RequireAuth({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isLoading } = useMero();
-  if (isLoading) return null; // wait for the auth probe; avoids a flash
-  if (!isAuthenticated) return <LandingPage />;
-  return <>{children}</>;
+  const api = useSessionApi();
+  const { session } = api;
+  const [signingIn, setSigningIn] = useState(false);
+
+  // Bind the stored active room to this cluster and account before any page
+  // reads it.
+  const bound = useMemo(() => {
+    if (session.status !== "signed-in") return false;
+    bind(targetKey(session.target), session.accountId);
+    return true;
+  }, [session]);
+
+  if (session.status === "connecting") return null; // avoids a flash
+  if (session.status === "signed-in" && bound) return <>{children}</>;
+  const invite = pendingInvite();
+  if (signingIn || invite || session.status === "unconfigured") {
+    return <SignIn api={api} invite={invite} />;
+  }
+  return <LandingPage onConnect={() => setSigningIn(true)} />;
 }
 
-// Context ids already confirmed to exist on the node during this app load —
-// lets the picker ⇄ stream hops skip the admin round-trip.
-const verifiedStreams = new Set<string>();
+// Rooms already confirmed to exist during this app load.
+const verifiedRooms = new Set<string>();
 
-// A stream (Calimero context) is required for the capture page, and it must
-// still EXIST on the node. The session persists the last stream across reloads,
-// so after a node reset / deletion the restored context id points at nothing —
-// without this check the app boots into a dead capture page instead of the
-// picker. Mirrors mero-meet's RequireRoom.
+/**
+ * The active room must still exist: the stored one may have been deleted (or
+ * the account removed from its stream). Without this the app boots into a dead
+ * call instead of the picker.
+ */
 function RequireStream({ children }: { children: ReactNode }) {
-  // The session-aware admin: on an account the raw client's `getContexts` is
-  // the relay's node route, while `admin.getContexts()` answers caller-scoped
-  // (the account's own contexts) — which is exactly the question asked here.
-  const { admin } = useMero();
-  const ctx = getContextId();
+  const { session } = useSessionApi();
+  const client = session.status === "signed-in" ? session.client : null;
+  const room = getContextId();
   const [exists, setExists] = useState<boolean | null>(() =>
-    ctx && verifiedStreams.has(ctx) ? true : null,
+    room && verifiedRooms.has(room) ? true : null,
   );
 
   useEffect(() => {
-    if (!ctx || verifiedStreams.has(ctx) || !admin) return;
+    if (!room || verifiedRooms.has(room) || !client) return;
     let cancelled = false;
-    admin
-      .getContexts()
-      .then((resp) => {
-        const found = (resp.contexts ?? []).some((c) => c.id === ctx);
-        if (found) verifiedStreams.add(ctx);
-        else clearActiveRoom();
-        if (!cancelled) setExists(found);
-      })
-      .catch(() => {
-        // Couldn't reach the node to verify — let the page try rather than
-        // bouncing a live deep-link on one flaky request.
+    client
+      .getApp(room)
+      .then(() => {
+        verifiedRooms.add(room);
         if (!cancelled) setExists(true);
+      })
+      .catch((e: unknown) => {
+        // Only a definite "no such app" forgets the room; a flaky request
+        // lets the page try rather than bouncing a live link.
+        const gone = e instanceof NotFound;
+        if (gone) clearActiveRoom();
+        if (!cancelled) setExists(!gone);
       });
     return () => {
       cancelled = true;
     };
-  }, [ctx, admin]);
+  }, [room, client]);
 
-  if (!ctx) return <Navigate to="/streams" replace />;
-  if (exists === null) return null; // verifying — don't flash a dead page
+  if (!room) return <Navigate to="/streams" replace />;
+  if (exists === null) return null;
   if (!exists) return <Navigate to="/streams" replace />;
   return <>{children}</>;
 }
 
+/** `/`: into the app when signed in, else the landing page and the sign-in. */
+function Home() {
+  return (
+    <RequireAuth>
+      <Navigate to={getContextId() ? "/live" : "/streams"} replace />
+    </RequireAuth>
+  );
+}
+
 export default function App() {
-  // No APP_ENABLED short-circuit here any more.
-  //
-  // It used to be `if (!APP_ENABLED) return <LandingPage />`, which made the web
-  // a dead end: without a session in the URL hash the router never mounted, so
-  // `RequireAuth` never ran, so mero-react's login was unreachable. The page told
-  // visitors to install the desktop app because that was genuinely the only way
-  // in — there was no login to reach.
-  //
-  // Auth is now decided where it belongs: `RequireAuth` renders the landing page
-  // (which carries a real ConnectButton) when unauthenticated, and the app when
-  // authenticated. The desktop shell and the URL hash still work exactly as
-  // before — they just aren't the only options.
   return (
     <>
-      {/* App level, deliberately. An invitation link can land on ANY route —
-          someone with a stored context is redirected to /live on boot — so a
-          prompt that lived on the streams page simply never appeared for them.
-          Same shape as the bug where room links pointed at a route with no
-          redemption code: a handler on one route is a handler that misses. */}
+      {/* App level: an invitation link can land on any route. */}
       <InvitationPrompt />
       <Routes>
-        {/* Default to /live — the call. `/stream` (64x48, in-WASM toy codec) is
-          NOT product surface: it is the measured approach-3 baseline and a real
-          Task-3 result, so it stays reachable by URL and unreferenced by any nav
-          or switch. Both this and StreamsPage used to send you to /stream, so
-          every entry and every reload landed on the 64x48 route and 480p was
-          unreachable without hand-editing the URL. */}
-        <Route
-          path="/"
-          element={
-            <Navigate to={getContextId() ? "/live" : "/streams"} replace />
-          }
-        />
+        <Route path="/" element={<Home />} />
         <Route
           path="/streams"
           element={
@@ -104,10 +107,7 @@ export default function App() {
             </RequireAuth>
           }
         />
-        {/* Rooms inside one stream. A namespace holds many rooms and each room is
-          one call, so the room list needs its own route — the picker used to
-          create a namespace and a single context together and could never show a
-          second call in the same stream. */}
+        {/* Rooms inside one stream (an organization). */}
         <Route
           path="/streams/:namespaceId"
           element={
@@ -116,6 +116,8 @@ export default function App() {
             </RequireAuth>
           }
         />
+        {/* `/stream` (64x48, in-contract toy codec) is NOT product surface: it
+          is the measured approach-3 baseline, reachable by URL only. */}
         <Route
           path="/stream"
           element={
@@ -126,8 +128,7 @@ export default function App() {
             </RequireAuth>
           }
         />
-        {/* The call: 640x480 H.264 encoded in the browser, carried on ephemeral
-          presence. Same auth + stream requirements as /stream. */}
+        {/* The call: 640x480 H.264 encoded in the browser, carried on presence. */}
         <Route
           path="/live"
           element={
@@ -138,11 +139,6 @@ export default function App() {
             </RequireAuth>
           }
         />
-        {/* ⚠️ These two must be routed even though `/` is not the landing here.
-                    This app renders the landing from a guard rather than a route, so
-                    without them the catch-all below matches `/docs`, redirects to `/`,
-                    and a shared docs link silently shows the overview. Measured — it
-                    is how this was found. */}
         {["/docs", "/preview"].map((landingPath) => (
           <Route
             key={landingPath}

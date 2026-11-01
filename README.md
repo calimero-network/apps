@@ -104,7 +104,7 @@ Start here. These exist to be read, not shipped.
 
 | App | Live | What it is | Package |
 | --- | --- | --- | --- |
-| [mero-stream](apps/mero-stream) | [↗](https://mero-stream-neon.vercel.app) | Media capacity probe. `/stream` runs a toy integer codec inside the contract; `/live` stores opaque browser-encoded H.264. Deliberately the wrong way round, to find the node's ceiling with numbers. **Not shippable media, and web-only — it does not run in Calimero Desktop.** | `com.calimero.mero-stream` |
+| [mero-stream](apps/mero-stream) | [↗](https://mero-stream-neon.vercel.app) | Media capacity probe, on the component runtime. `/stream` runs a toy integer codec inside the contract; `/live` carries browser-encoded H.264 over the node's presence channel. Deliberately the wrong way round, to find the platform's ceiling with numbers. **Not shippable media, and web only.** | `com.calimero.mero-stream` |
 | [hyperfeed](apps/hyperfeed) | — | Prototype. One feed for your agent and your apps: every action an agent took on your behalf (with its warrant's intent hash and executor) beside every notification your other contexts emitted, with approvals, undo, per-app agent modes and "always ask" guards enforced by the contract. `/demo` runs with no node. | `com.calimero.hyperfeed` |
 
 ### Out of scope

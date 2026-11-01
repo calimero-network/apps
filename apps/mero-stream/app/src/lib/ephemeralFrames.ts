@@ -57,6 +57,16 @@
  */
 export const EPHEMERAL_MAX_BYTES = 16_384;
 
+/**
+ * Maximum bytes of one presence entry on a 1.0 node: core's
+ * `presence::MAX_STATE_BYTES` (`crates/node/src/presence.rs`), which mero-js's
+ * `publishPresence` documents as "at most 4 KiB". This is what the web app
+ * fragments to now. `EPHEMERAL_MAX_BYTES` (v1's slice) stays the default of
+ * the functions below because the native apps, still on v1 (see
+ * mobile/README.md), are checked against vectors generated with it.
+ */
+export const PRESENCE_MAX_BYTES = 4_096;
+
 /** `"MS"` — Mero Stream. Guards against decoding a slice we did not write. */
 const MAGIC_0 = 0x4d;
 const MAGIC_1 = 0x53;
@@ -162,8 +172,11 @@ export interface FrameFragment {
  * a longer codec string buys fewer payload bytes. Never negative: a codec long
  * enough to fill the slice on its own is rejected by `encodeFragments`.
  */
-export function maxPayloadBytes(codec: string): number {
-  return EPHEMERAL_MAX_BYTES - HEADER_FIXED_BYTES - codecBytes(codec).length;
+export function maxPayloadBytes(
+  codec: string,
+  sliceBytes: number = EPHEMERAL_MAX_BYTES,
+): number {
+  return sliceBytes - HEADER_FIXED_BYTES - codecBytes(codec).length;
 }
 
 /**
@@ -194,9 +207,12 @@ function codecBytes(codec: string): Uint8Array {
  * to optimize away: dropping it would publish nothing, the receiver would see no
  * event, and `msgSeq` would skip — which the probe reads as a lost frame.
  */
-export function encodeFragments(frame: LiveFrame): Uint8Array[] {
+export function encodeFragments(
+  frame: LiveFrame,
+  sliceBytes: number = EPHEMERAL_MAX_BYTES,
+): Uint8Array[] {
   const codec = codecBytes(frame.codec);
-  const capacity = EPHEMERAL_MAX_BYTES - HEADER_FIXED_BYTES - codec.length;
+  const capacity = sliceBytes - HEADER_FIXED_BYTES - codec.length;
   if (capacity <= 0) {
     throw new Error(
       `codec string leaves no room for payload: ${frame.codec.length} bytes`,
@@ -479,22 +495,3 @@ function concat(parts: readonly Uint8Array[]): Uint8Array {
 export function nextMsgSeq(current: number): number {
   return (current + 1) % MSG_SEQ_MODULUS;
 }
-
-/**
- * Codec for mero-js's ephemeral client: raw bytes, no JSON.
- *
- * The wire carries `state` as a JSON array of byte values, which mero-js's
- * default `jsonCodec` reaches by JSON-stringifying the value and then
- * byte-encoding THAT — two encodings for something that is already bytes, and
- * ~2x the wire for base64-ish text on top. The node never deserializes a slice
- * (it is encrypted under the group key and travels client-to-client), so the
- * encoding is ours to choose.
- */
-export const bytesCodec = {
-  encode(value: Uint8Array): number[] {
-    return Array.from(value);
-  },
-  decode(bytes: number[]): Uint8Array {
-    return new Uint8Array(bytes);
-  },
-};

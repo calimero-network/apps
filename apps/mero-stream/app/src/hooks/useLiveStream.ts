@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useMero } from "@calimero-network/mero-react";
-import { useMeroStream } from "./useMeroStream";
+import { useClient, useMeroStream } from "./useMeroStream";
+import { presencePublisher, subscribePresence } from "../lib/presence";
 import {
   createDecoder,
   createEncoder,
@@ -10,8 +10,8 @@ import {
   type ChunkPayload,
 } from "../lib/webcodecs";
 import {
-  bytesCodec,
   maxPayloadBytes,
+  PRESENCE_MAX_BYTES,
   decodeFragment,
   encodeFragments,
   FrameReassembler,
@@ -58,7 +58,7 @@ export const KEYFRAME_INTERVAL_MS = 2000;
 const DEFAULT_FPS = 25;
 
 /**
- * Consecutive `set_ephemeral` failures, with no success ever, that are reported
+ * Consecutive presence publish failures, with no success ever, that are reported
  * as "this node cannot do ephemeral presence" rather than as a dropped frame.
  *
  * Named `…_UNSUPPORTED_AFTER`, not `…_FALLBACK_AFTER`: there is no transport left
@@ -207,10 +207,10 @@ export interface LiveController {
  * presence, decode one stream per remote sender.
  *
  * SEND: getUserMedia(640x480) -> VideoEncoder -> EncodedVideoChunk -> framed
- * into <=16 KiB fragments -> `set_ephemeral`. No WASM run, no state delta,
- * nothing in the DAG.
+ * into <=4 KiB fragments -> `publishPresence` (the node's presence channel).
+ * No contract run, nothing in the app's log.
  *
- * RECEIVE: the `Ephemeral` event CARRIES the bytes -> reassemble -> VideoDecoder
+ * RECEIVE: the `presence` event CARRIES the bytes -> reassemble -> VideoDecoder
  * -> canvas. There is no cursor and no backlog, so a joiner's only way in is to
  * wait out each sender's next keyframe (bounded by KEYFRAME_INTERVAL_MS): a
  * decoder fed a delta frame with no reference throws rather than degrading.
@@ -227,12 +227,14 @@ export function useLiveStream(enabled: boolean): LiveController {
   const streamRef = useRef(stream);
   streamRef.current = stream;
 
-  // The MeroJs instance, for `mero.ephemeral`. mero-js only grew this surface in
-  // 13.x (against core rc.24); on an older node every call fails and the app says
-  // so outright — there is nothing to demote to. See EPHEMERAL_UNSUPPORTED_AFTER.
-  const { mero } = useMero();
-  const meroRef = useRef(mero);
-  meroRef.current = mero;
+  // The signed-in client, for the node's presence channel (`publishPresence`,
+  // `presenceStream`). See lib/presence.ts.
+  const { client } = useClient();
+  const clientRef = useRef(client);
+  clientRef.current = client;
+  const publishRef = useRef<{ app: string; send: (state: Uint8Array) => Promise<void> } | null>(
+    null,
+  );
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -332,6 +334,7 @@ export function useLiveStream(enabled: boolean): LiveController {
         keyframeIntervalMs: KEYFRAME_INTERVAL_MS,
         fragmentPayloadBytes: maxPayloadBytes(
           encoderRef.current?.codec ?? "avc1.42001f",
+          PRESENCE_MAX_BYTES,
         ),
       }),
     [effectiveFps, effectiveBitrate],
@@ -602,98 +605,77 @@ export function useLiveStream(enabled: boolean): LiveController {
     [publishPeers, recomputeSlots],
   );
 
-  // ── RECEIVE: the frame rides the Ephemeral event itself ─────────────────────
+  // ── RECEIVE: the frame rides the presence event itself ──────────────────────
   //
   // No cursors, no backlog, no read-back. A subscriber gets what is being
   // published now, which is why the keyframe gate in `renderChunk` is the only
   // way in and why a joiner waits out one KEYFRAME_INTERVAL_MS.
   //
-  // `mero.ephemeral.subscribe` is used directly rather than mero-react's
-  // `useEphemeral`, which is the wrong shape here: it maintains a
-  // `Map<author, latest>` of merged partials, i.e. a presence REGISTER. This path
-  // needs every delta as it arrives, because each one is a distinct frame — a
-  // register would silently coalesce two frames into whichever landed last.
+  // Every `presence` event is handled as it arrives, never through a
+  // `Map<author, latest>`: presence is a REGISTER per author, and each change
+  // here is a distinct frame fragment that a register would coalesce away.
   useEffect(() => {
     if (!enabled) return;
     const contextId = stream.contextId;
-    const ephemeral = mero?.ephemeral;
-    if (!contextId || !ephemeral) return;
+    if (!contextId || !client) return;
 
     const reassembler = new FrameReassembler();
     reassemblerRef.current = reassembler;
 
-    const off = ephemeral.subscribe<Uint8Array>(
-      contextId,
-      (entry) => {
-        // `myId`, not `executorId`: the author of a frame is what the contract
-        // and the node call this device — on an account that is the certified
-        // device key, while the executor is the account. See lib/identity.
-        const me = streamRef.current.myId;
+    const off = subscribePresence(client, contextId, (entry) => {
+      // The author is the ACCOUNT: what the contract records as a member and
+      // what the roster is keyed by. One broadcast per account: two devices of
+      // one account publishing at once would share a tile.
+      const author = entry.account;
+      const me = streamRef.current.myId;
 
-        // The node tells us a sender is gone — TTL sweep, disconnect, or an
-        // author-cap eviction. Worth acting on directly rather than waiting for
-        // PEER_TIMEOUT_MS, but NOT worth trusting as "that peer went offline":
-        // core is explicit that a removal only means this node stopped tracking
-        // them. Dropping the tile is right either way; they re-appear on their
-        // next frame.
-        if (entry.removed) {
-          reassembler.forget(entry.author);
-          const peer = peersRef.current.get(entry.author);
-          if (peer) {
-            peer.decoder?.close();
-            peersRef.current.delete(entry.author);
-            publishPeers();
-          }
-          return;
+      // The node says the author is gone (retracted, or swept 7 s after their
+      // last publish). Dropping the tile is right either way; they reappear on
+      // their next frame.
+      if (entry.state === null) {
+        reassembler.forget(author);
+        const peer = peersRef.current.get(author);
+        if (peer) {
+          peer.decoder?.close();
+          peersRef.current.delete(author);
+          publishPeers();
         }
+        return;
+      }
 
-        // `ageMs` present == a REPLAYED seed entry, not a live delta. On the
-        // presence channel that is the store's current slice being handed to a
-        // new subscriber (or to a reconnect), and for media it is by definition a
-        // stale frame — up to the 7 s TTL old. Feeding it to a decoder would
-        // paint a picture from seconds ago and, worse, could rewind the stream
-        // past frames already shown. Absent-vs-zero is the whole signal here, so
-        // this checks for absence and never for `> 0`.
-        if (entry.ageMs !== undefined) return;
-        if (!entry.state) return;
+      const fragment = decodeFragment(entry.state);
+      // Not ours: presence is one channel per app, shared with whatever else
+      // publishes there. Silently ignored — see decodeFragment.
+      if (!fragment) return;
+      if (fragment.track !== 0) return; // video only; audio would ride track 1
 
-        const fragment = decodeFragment(entry.state);
-        // Not ours: presence is one channel per context, shared with whatever
-        // else publishes there. Silently ignored — see decodeFragment.
-        if (!fragment) return;
-        if (fragment.track !== 0) return; // video only; audio would ride track 1
+      sendersSeenRef.current.add(author); // BEFORE the self-skip below
+      // Our own slices come back to us. The local preview already shows them.
+      if (me && author === me) return;
 
-        sendersSeenRef.current.add(entry.author); // BEFORE the self-skip below
-        // Our own slice is echoed back to us by the node. The local preview
-        // already shows it, and decoding it would double this machine's work for
-        // no picture.
-        if (me && entry.author === me) return;
+      const frame = reassembler.push(author, fragment);
+      if (!frame) return; // incomplete, duplicated, or already superseded
 
-        const frame = reassembler.push(entry.author, fragment);
-        if (!frame) return; // incomplete, duplicated, or already superseded
-
-        renderChunk({
-          from: entry.author,
-          seq: frame.msgSeq,
-          isKeyframe: frame.isKeyframe,
-          width: frame.width,
-          height: frame.height,
-          codec: frame.codec,
-          timestampUs: frame.timestampUs,
-          createdAt: frame.createdAtMs,
-          startedAtMs: frame.startedAtMs,
-          data: { bytes: frame.bytes },
-          encodedBytes: frame.bytes.length,
-        });
-      },
-      bytesCodec,
-    );
+      renderChunk({
+        from: author,
+        seq: frame.msgSeq,
+        isKeyframe: frame.isKeyframe,
+        width: frame.width,
+        height: frame.height,
+        codec: frame.codec,
+        timestampUs: frame.timestampUs,
+        createdAt: frame.createdAtMs,
+        startedAtMs: frame.startedAtMs,
+        data: { bytes: frame.bytes },
+        encodedBytes: frame.bytes.length,
+      });
+    });
 
     return () => {
       off();
       reassemblerRef.current = null;
     };
-  }, [enabled, mero, stream.contextId, renderChunk, publishPeers]);
+  }, [enabled, client, stream.contextId, renderChunk, publishPeers]);
 
   // ── SEND ────────────────────────────────────────────────────────────────────
   /**
@@ -721,10 +703,17 @@ export function useLiveStream(enabled: boolean): LiveController {
       timestampUs: number;
     }) => {
       const contextId = streamRef.current.contextId;
-      const ephemeral = meroRef.current?.ephemeral;
-      if (!contextId || !ephemeral) {
-        throw new Error("no node session for ephemeral presence");
+      const presenceClient = clientRef.current;
+      if (!contextId || !presenceClient) {
+        throw new Error("not signed in to a room");
       }
+      if (publishRef.current?.app !== contextId) {
+        publishRef.current = {
+          app: contextId,
+          send: presencePublisher(presenceClient, contextId),
+        };
+      }
+      const publish = publishRef.current.send;
 
       const msgSeq = (sendSeqRef.current = nextMsgSeq(sendSeqRef.current));
       const fragments = encodeFragments({
@@ -740,10 +729,10 @@ export function useLiveStream(enabled: boolean): LiveController {
         startedAtMs: startedAtRef.current ?? Date.now(),
         codec: encoderRef.current?.codec ?? "avc1.42001f",
         bytes: c.bytes,
-      });
+      }, PRESENCE_MAX_BYTES);
 
       for (const fragment of fragments) {
-        await ephemeral.set<Uint8Array>(contextId, fragment, bytesCodec);
+        await publish(fragment);
       }
     },
     [],
@@ -764,25 +753,24 @@ export function useLiveStream(enabled: boolean): LiveController {
         ephemeralFailsRef.current = 0;
         ok = true;
       } catch (e) {
-        const detail = e instanceof Error ? e.message : "set_ephemeral failed";
+        const detail = e instanceof Error ? e.message : "presence publish failed";
         // A failure because the session is not up yet says nothing about what
         // the node can do, so it must not accumulate toward the capability
         // verdict below — the user would be told to upgrade a node that is
         // perfectly capable.
-        const sessionReady = Boolean(meroRef.current);
+        const sessionReady = Boolean(clientRef.current);
         if (sessionReady) ephemeralFailsRef.current += 1;
-        // A node that predates rc.24 has no `set_ephemeral` at all, and the
-        // exact shape of its rejection is not something to guess at: a request
-        // naming an unknown method fails to deserialize server-side, so this
-        // reads the streak rather than a specific code. Only while NOTHING has
-        // ever succeeded — after a first success, a failure is a dropped frame.
+        // A cluster that refuses presence for this app refuses every publish,
+        // so this reads the streak rather than a specific code. Only while
+        // NOTHING has ever succeeded — after a first success, a failure is a
+        // dropped frame.
         if (
           sessionReady &&
           !ephemeralOkRef.current &&
           ephemeralFailsRef.current >= EPHEMERAL_UNSUPPORTED_AFTER
         ) {
           setError(
-            `This node cannot carry media on ephemeral presence (needs core 0.11.0-rc.24 or newer). Last error: ${detail}`,
+            `This cluster refuses media on presence (/apps/{app}/presence). Last error: ${detail}`,
           );
         } else {
           setError(detail);
@@ -792,17 +780,18 @@ export function useLiveStream(enabled: boolean): LiveController {
         probeRef.current.recordEncode({ startedAt, durationMs, ok });
 
         // Feed the send-side congestion controller. How long the publish takes —
-        // the frame's `set_ephemeral` fragments — is the only view
+        // the frame's presence fragments — is the only view
         // the browser has of whether the node can absorb what we are producing;
         // libp2p transport state (relayed vs direct) is not exposed to the app. In
         // the retro's failed call the sender kept encoding at a fixed 1.5 Mbps
         // into a pipe that had stopped moving.
         //
-        // `set_ephemeral` returns once the node has encrypted and queued the
-        // slice, so this is a much tighter signal than `post_chunk`'s WASM run
-        // plus storage commit ever was — but it is also the send loop's own
-        // budget: fragments are published serially, so 26.5 slices/s at 25 fps
-        // cannot outrun one publish RTT. See lib/capacity.ts.
+        // A presence publish returns once the node has taken the entry, so
+        // this is a much tighter signal than `postChunk`'s contract run plus
+        // log commit — but it is also the send loop's own budget: fragments
+        // are published serially, and at 4 KiB a slice a 1.5 Mbps stream is
+        // ~46 publishes a second, which cannot outrun one publish RTT. See
+        // lib/capacity.ts.
         const now = Date.now();
         const folded = recordPost(congestionRef.current, { durationMs, ok });
         const next = nextBitrate(folded, bitrateRef.current, now);

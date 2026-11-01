@@ -25,10 +25,9 @@ afterEach(cleanup);
  * rather than a conditional render — so it renders with no invitation minted
  * long before it renders with one.
  *
- * That is the state that took the page down: `shareableInvitation("")` THROWS
- * ("cannot build an invitation link for an empty code"), and it was being
- * called from a `useMemo` that ran on every render including the first. The
- * whole streams page went white on load, before anyone clicked Invite.
+ * In v1 that state took the page down: building the link from an empty code
+ * threw from a `useMemo` that ran on every render including the first, and
+ * the whole streams page went white on load, before anyone clicked Invite.
  *
  * The inline panel it replaced (since deleted) never hit this, because it was
  * only rendered `{invite && <panel …/>}` — the guard was in the caller, and
@@ -40,7 +39,7 @@ describe("InviteModal", () => {
       render(
         <InviteModal
           open={false}
-          code=""
+          link=""
           scope="Whole stream · Test"
           onClose={() => {}}
         />,
@@ -56,7 +55,7 @@ describe("InviteModal", () => {
       render(
         <InviteModal
           open
-          code=""
+          link=""
           scope="Whole stream · Test"
           onClose={() => {}}
         />,
@@ -70,7 +69,7 @@ describe("InviteModal", () => {
       render(
         <InviteModal
           open
-          code="   "
+          link="   "
           scope="Whole stream · Test"
           onClose={() => {}}
         />,
@@ -83,7 +82,7 @@ describe("InviteModal", () => {
     render(
       <InviteModal
         open
-        code="abc123"
+        link="https://stream.example/?invite=abc123&stream=org1"
         scope="Whole stream · Test"
         onClose={() => {}}
       />,
@@ -102,7 +101,7 @@ describe("InviteModal", () => {
     render(
       <InviteModal
         open
-        code="abc123"
+        link="https://stream.example/?invite=abc123&stream=org1"
         scope="Whole stream · Test"
         onClose={() => {}}
       />,
@@ -110,8 +109,8 @@ describe("InviteModal", () => {
     const modal = screen.getByTestId("invite-modal");
     expect(screen.queryByTestId("invite-more")).toBeNull();
     expect(modal.textContent).not.toContain("calimero://");
-    expect(screen.getByTestId("invite-link").getAttribute("title")).toMatch(
-      /^https:\/\/links\.calimero\.network\/com\.calimero\.mero-stream\/join\?invitation=abc123$/,
+    expect(screen.getByTestId("invite-link").getAttribute("title")).toBe(
+      "https://stream.example/?invite=abc123&stream=org1",
     );
   });
 });

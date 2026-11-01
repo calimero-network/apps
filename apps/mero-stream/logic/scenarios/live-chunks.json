@@ -1,0 +1,237 @@
+[
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "join",
+  "args": {
+   "username": "Alice",
+   "now": "1751955000"
+  },
+  "expect": {
+   "ok": {
+    "memberId": "@owner",
+    "username": "Alice",
+    "joinedAt": "1751955000",
+    "updatedAt": "1751955000"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "join",
+  "args": {
+   "username": "Bob",
+   "now": "1751955001"
+  },
+  "expect": {
+   "ok": {
+    "memberId": "@bob",
+    "username": "Bob",
+    "joinedAt": "1751955001",
+    "updatedAt": "1751955001"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "postChunk",
+  "args": {
+   "dataB64": "AAAAAWf//oA=",
+   "track": 0,
+   "isKeyframe": true,
+   "codec": "avc1.42001f",
+   "width": 640,
+   "height": 480,
+   "timestampUs": "0",
+   "now": "1751955010000"
+  },
+  "expect": {
+   "ok": "1"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "postChunk",
+  "args": {
+   "dataB64": "AAAAAUHAgA==",
+   "track": 0,
+   "isKeyframe": false,
+   "codec": "avc1.42001f",
+   "width": 640,
+   "height": 480,
+   "timestampUs": "33333",
+   "now": "1751955010033"
+  },
+  "expect": {
+   "ok": "2"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getChunks",
+  "args": {
+   "cursors": []
+  },
+  "expect": {
+   "ok": [
+    {
+     "seq": "1",
+     "from": "@owner",
+     "track": 0,
+     "isKeyframe": true,
+     "codec": "avc1.42001f",
+     "width": 640,
+     "height": 480,
+     "timestampUs": "0",
+     "dataB64": "AAAAAWf//oA=",
+     "createdAt": "1751955010000"
+    },
+    {
+     "seq": "2",
+     "from": "@owner",
+     "track": 0,
+     "isKeyframe": false,
+     "codec": "avc1.42001f",
+     "width": 640,
+     "height": 480,
+     "timestampUs": "33333",
+     "dataB64": "AAAAAUHAgA==",
+     "createdAt": "1751955010033"
+    }
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getChunks",
+  "args": {
+   "cursors": [
+    {
+     "from": "@owner",
+     "afterSeq": "1"
+    }
+   ]
+  },
+  "expect": {
+   "ok": [
+    {
+     "seq": "2",
+     "from": "@owner",
+     "track": 0,
+     "isKeyframe": false,
+     "codec": "avc1.42001f",
+     "width": 640,
+     "height": 480,
+     "timestampUs": "33333",
+     "dataB64": "AAAAAUHAgA==",
+     "createdAt": "1751955010033"
+    }
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "keyframeCursors",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "from": "@owner",
+     "afterSeq": "1"
+    }
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getLiveStats",
+  "args": {},
+  "expect": {
+   "ok": {
+    "liveChunks": 2,
+    "liveBytes": "15",
+    "prunedChunks": "0",
+    "senders": [
+     {
+      "from": "@owner",
+      "nextSeq": "2",
+      "oldestLive": "1",
+      "lastKeyframe": "1",
+      "newestAt": "1751955010033",
+      "pruned": "0",
+      "liveChunks": 2,
+      "liveBytes": "15"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "pruneChunks",
+  "args": {
+   "beforeSeq": "9999"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "keyframeCursors",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "from": "@owner",
+     "afterSeq": "1"
+    }
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "pruneChunks",
+  "args": {
+   "beforeSeq": "9999"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getLiveStats",
+  "args": {},
+  "expect": {
+   "ok": {
+    "liveChunks": 2,
+    "liveBytes": "15",
+    "prunedChunks": "0",
+    "senders": [
+     {
+      "from": "@owner",
+      "nextSeq": "2",
+      "oldestLive": "1",
+      "lastKeyframe": "1",
+      "newestAt": "1751955010033",
+      "pruned": "0",
+      "liveChunks": 2,
+      "liveBytes": "15"
+     }
+    ]
+   }
+  }
+ }
+]
