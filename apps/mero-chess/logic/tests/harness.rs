@@ -549,6 +549,29 @@ fn a_draw_offer_is_accepted_declined_or_expires_with_the_position() {
     assert_eq!(kinds.iter().filter(|k| *k == "DrawDeclined").count(), 1);
 }
 
+/// `Game::offers` is stored inside the game record, so it must not grow:
+/// repeating an offer in one position rewrites the one row, a refusal holds
+/// for the whole position (re-offering does not revive it, as in v1), and a
+/// move clears the list.
+#[test]
+fn repeated_offers_do_not_pile_up() {
+    let mut t = seated();
+    for i in 0..50 {
+        call(&mut t, "owner", "offerDraw", json!({ "now": at(10 + i) }));
+    }
+    assert_eq!(table(&mut t, "cy", 60)["drawOfferFrom"], "owner");
+    call(&mut t, "bob", "declineDraw", json!({ "now": at(61) }));
+    for i in 0..50 {
+        call(&mut t, "owner", "offerDraw", json!({ "now": at(62 + i) }));
+    }
+    assert_eq!(table(&mut t, "cy", 120)["drawOfferFrom"], "");
+    // A move starts a new position with an empty list.
+    let _ = play(&mut t, "owner", "e2e4", 121);
+    call(&mut t, "owner", "offerDraw", json!({ "now": at(122) }));
+    call(&mut t, "bob", "acceptDraw", json!({ "now": at(123) }));
+    assert_eq!(table(&mut t, "cy", 124)["reason"], "agreement");
+}
+
 #[test]
 fn you_cannot_accept_your_own_draw_offer() {
     let mut t = seated();

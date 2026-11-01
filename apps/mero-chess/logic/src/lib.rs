@@ -72,6 +72,10 @@ pub const PRESENCE_TTL_MS: u64 = 30_000;
 /// How many players `table` lists (one page of the roster).
 const MAX_LISTED_PLAYERS: u32 = 1_000;
 
+/// The most rows `Game::offers` holds: two seated accounts, each with at most
+/// one offer and one refusal in the current position.
+const MAX_OFFER_ROWS: usize = 4;
+
 /// The two seats, named after the colour they hold in the FIRST game.
 ///
 /// Colours swap every rematch, so the seat name is an identity, not a claim
@@ -128,7 +132,11 @@ struct Game {
     /// Who had White and Black, written when the game ended.
     white: String,
     black: String,
-    /// Offers and refusals at the current ply.
+    /// Offers and refusals at the current ply. Bounded at [`MAX_OFFER_ROWS`]:
+    /// only the two seated accounts may write one (`offerDraw`/`declineDraw`
+    /// check the caller is seated), `write_offer` keeps one row per account
+    /// and kind and drops every row from an earlier ply, and a move or an
+    /// ending clears the list. Not a growing list, so it stays in the record.
     offers: Vec<DrawOffer>,
 }
 
@@ -855,7 +863,8 @@ impl MeroChess {
     ) -> app::Result<()> {
         let mut game = cur.game.clone();
         let ply = game.plies;
-        // Only this position's rows matter; one per player and kind.
+        // Only this position's rows matter; one per player and kind. This is
+        // what keeps `Game::offers` within `MAX_OFFER_ROWS`.
         game.offers
             .retain(|o| o.ply == ply && !(o.by == by && o.declined == declined));
         game.offers.push(DrawOffer {
@@ -863,6 +872,7 @@ impl MeroChess {
             ply,
             declined,
         });
+        debug_assert!(game.offers.len() <= MAX_OFFER_ROWS);
         let _old = self.games.set(u64::from(cur.index), &game)?;
         let _new = self.acted.insert(&by.to_owned())?;
         self.touch(by, now)
