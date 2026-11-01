@@ -174,8 +174,8 @@ await client.call(app, "set", { key: "a", value: "1" });
 
 | env | local (dev server) | cloud (production build) |
 |---|---|---|
-| `VITE_CALIMERO_TARGET` | `local` (default under `vite`) | `cloud` (default under `vite build`) |
-| `VITE_CALIMERO_NODES` | written by `dev:local`; default `127.0.0.1:2501-2503` | — |
+| `VITE_CALIMERO_TARGET` | `local` (default under `vite`) | `cloud` (default under `vite build`), or `node` for an attested node reached by URL |
+| `VITE_CALIMERO_NODES` | written by `dev:local`; default `127.0.0.1:2501-2503` | `node` only, **required**: the node's `https` URLs |
 | `VITE_CALIMERO_BUNDLE` | written by `dev:local` | — (instances come from the package) |
 | `VITE_CALIMERO_CLUSTER` | — | **required**: the cluster's name in the cloud's node directory |
 | `VITE_CALIMERO_MIN_RELEASE` | — | **required**: the lowest mero-tee release a node may run |
@@ -185,6 +185,14 @@ await client.call(app, "set", { key: "a", value: "1" });
 - **Local**: `new CalimeroClient({ baseUrl, nodes, policy: { allowMock: true } })`,
   failing over across the three nodes. Mock quotes are trusted for a local
   target only.
+- **One target, set at start.** The build's environment fixes where the
+  service connects; there is no cloud/node picker, and the sign-in screen only
+  offers a passkey sign-in or sign-up. Old flows that asked the person for a
+  node URL or a "Cloud" tab are removed in every port.
+- **Node** (`VITE_CALIMERO_TARGET=node`): an attested node the operator runs,
+  reached by its `https` URLs with no directory, under the same release policy
+  as the cloud. It is a cloud target with `direct: true`, so app code needs no
+  case for it.
 - **Cloud**: `CalimeroClient.connect({ cluster, policy: { release: { minReleaseVersion } } })`:
   the node list comes from the cloud's node directory, every node is attested
   under that policy before anything is sent, and calls fail over between nodes
