@@ -1,15 +1,13 @@
-# Recipe: direct messages (2-person private subgroup)
+# Recipe: direct messages (an app instance for two accounts)
 
-A DM is just the **private-rooms** pattern with exactly two members and a marker
-so the UI can render it as a 1:1 chat instead of a room. Reuses the same room
-context/service — no new contract needed.
+A DM is a room reachable by exactly two accounts: an app instance in the
+organization whose access is `{ kind: 'accounts', accounts: [a, b] }` (the
+owner, who creates it, is one of them). No team and no new contract: it reuses
+the room's.
 
-- Create a **restricted** subgroup, add the other member, create the room
-  context inside it.
-- Mark it as a DM via group **metadata** (`data: { dm: '1', a, b }`) so DM
-  discovery can filter subgroups and resolve the "other" participant.
-- A DM between A and B is deterministic: sort the two identities so both sides
-  derive the same DM and you don't create duplicates.
+- Mark it as a DM in its **app metadata** (`{ dm: true, a, b }`) so the UI can
+  render it as a 1:1 chat and find "the other" participant.
+- Deterministic: sort the two account ids so both sides look for the same DM
+  and never create a duplicate.
 
-Depends on `../private-rooms`. `useDms.ts` is a drop-in hook: `openDm(other)` +
-`dms` list. Pair it with the base's `RoomView` to render the conversation.
+`useDms.ts` is a drop-in hook: `openDm(other)` + the `dms` list.
