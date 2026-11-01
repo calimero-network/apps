@@ -56,6 +56,8 @@ pub const MAX_DESCRIPTION_LEN: usize = 2_000;
 pub const MAX_GUEST_NAME_LEN: usize = 100;
 pub const MAX_GUEST_EMAIL_LEN: usize = 254;
 pub const MAX_GUEST_NOTE_LEN: usize = 2_000;
+/// The most weekly windows a link holds: eight a day.
+pub const MAX_WEEKLY_WINDOWS: usize = 7 * 8;
 /// The color a booked meeting is drawn in.
 const BOOKING_COLOR: &str = "rgb(121, 134, 203)";
 
@@ -114,6 +116,9 @@ pub struct BookingLinkState {
     pub title: String,
     pub description: String,
     pub duration_minutes: u32,
+    /// A short list kept inside the value: at most `MAX_WEEKLY_WINDOWS` (56),
+    /// enforced by `validate_link` before the only write that sets it
+    /// (`createBookingLink`).
     pub weekly_hours: Vec<WeeklyWindow>,
     pub utc_offset_minutes: i32,
     pub horizon_days: u32,
@@ -322,7 +327,7 @@ pub fn validate_link(link: &CreateBookingLink) -> Result<(), Invalid> {
     if link.weekly_hours.is_empty() {
         return Err("weeklyHours cannot be empty".to_owned());
     }
-    if link.weekly_hours.len() > 7 * 8 {
+    if link.weekly_hours.len() > MAX_WEEKLY_WINDOWS {
         return Err("weeklyHours has too many windows".to_owned());
     }
     for window in &link.weekly_hours {

@@ -166,7 +166,10 @@ pub struct Member {
 pub struct CalendarState {
     /// Shared events by id, looked up by owner.
     events: Table<SharedEvent>,
-    /// Each shared event's peers, in the order its owner named them.
+    /// Each shared event's peers, in the order its owner named them. A short
+    /// list kept inside the value: at most `MAX_PEERS` (100) accounts, which
+    /// `clean_peers` enforces on every write (`createEvent`, `updateEvent`,
+    /// `updatePrivateEvent`). Who is invited to what is the `invitations` set.
     event_peers: UnorderedMap<String, Vec<String>>,
     /// `(peer, eventId)` for every peer of every shared event: what an
     /// account is invited to, read by prefix.
