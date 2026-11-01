@@ -54,6 +54,34 @@ describe("resolveTarget", () => {
     );
   });
 
+  it("reaches an attested node directly by URL, with no directory and no picker", () => {
+    expect(
+      resolveTarget({
+        DEV: false,
+        VITE_CALIMERO_TARGET: "node",
+        VITE_CALIMERO_NODES: "https://node.example.com/, https://node-2.example.com",
+        VITE_CALIMERO_MIN_RELEASE: "2.3.109",
+      }),
+    ).toEqual({
+      kind: "cloud",
+      cluster: "node.example.com",
+      direct: true,
+      nodes: ["https://node.example.com", "https://node-2.example.com"],
+      minReleaseVersion: "2.3.109",
+    });
+  });
+
+  it("refuses a node target with no URL, a plain-http URL or no trust floor", () => {
+    const floor = { VITE_CALIMERO_MIN_RELEASE: "2.3.109" };
+    expect(() => resolveTarget({ VITE_CALIMERO_TARGET: "node", ...floor })).toThrow(/VITE_CALIMERO_NODES/);
+    expect(() =>
+      resolveTarget({ VITE_CALIMERO_TARGET: "node", VITE_CALIMERO_NODES: "http://node.example.com", ...floor }),
+    ).toThrow(/not https/);
+    expect(() =>
+      resolveTarget({ VITE_CALIMERO_TARGET: "node", VITE_CALIMERO_NODES: "https://node.example.com" }),
+    ).toThrow(/VITE_CALIMERO_MIN_RELEASE/);
+  });
+
   it("lets VITE_CALIMERO_TARGET override the mode either way", () => {
     expect(resolveTarget({ DEV: false, VITE_CALIMERO_TARGET: "local" }).kind).toBe("local");
     expect(resolveTarget({ DEV: true, VITE_CALIMERO_TARGET: "cloud", ...CLOUD }).kind).toBe("cloud");
@@ -67,6 +95,19 @@ describe("policyFor", () => {
     const cloud = policyFor(resolveTarget({ ...CLOUD }));
     expect(cloud).toEqual({ release: { minReleaseVersion: "2.3.109" } });
     expect(cloud.allowMock).toBeUndefined();
+  });
+});
+
+describe("targetKey", () => {
+  it("keeps sessions for a direct node apart from a cloud cluster", () => {
+    const node = resolveTarget({
+      VITE_CALIMERO_TARGET: "node",
+      VITE_CALIMERO_NODES: "https://node.example.com",
+      VITE_CALIMERO_MIN_RELEASE: "2.3.109",
+    });
+    expect(targetKey(node)).toBe("node:https://node.example.com");
+    expect(targetKey(resolveTarget({ ...CLOUD }))).toBe("cloud:eu-shared-1");
+    expect(policyFor(node)).toEqual({ release: { minReleaseVersion: "2.3.109" } });
   });
 });
 
