@@ -1,0 +1,388 @@
+[
+ {
+  "as": "@anonymous",
+  "op": "view",
+  "method": "vaultInfo",
+  "args": {},
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "call",
+  "method": "registerDevice",
+  "args": {
+   "fingerprint": "0909090909090909090909090909090909090909090909090909090909090909",
+   "publicKey": "pk",
+   "label": "l",
+   "kind": "browser"
+  },
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "view",
+  "method": "listSecrets",
+  "args": {},
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "call",
+  "method": "registerDevice",
+  "args": {
+   "fingerprint": "0909090909090909090909090909090909090909090909090909090909090909",
+   "publicKey": "pk",
+   "label": "l",
+   "kind": "browser"
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "registerDevice",
+  "args": {
+   "fingerprint": "0707070707070707070707070707070707070707070707070707070707070707",
+   "publicKey": "pk-7",
+   "label": "Laptop",
+   "kind": "browser"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "gus",
+  "op": "view",
+  "method": "vaultInfo",
+  "args": {},
+  "expect": {
+   "ok": {
+    "name": "",
+    "currentKey": "",
+    "defaultRole": "editor",
+    "myAccount": "@gus",
+    "myRole": "pending"
+   }
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "addSecret",
+  "args": {
+   "id": "secret_00000000000000000000000000000001",
+   "kind": "login",
+   "name": "n",
+   "tags": "t",
+   "fields": {}
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "registerDevice",
+  "args": {
+   "fingerprint": "0101010101010101010101010101010101010101010101010101010101010101",
+   "publicKey": "pk-1",
+   "label": "Laptop",
+   "kind": "browser"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "registerDevice",
+  "args": {
+   "fingerprint": "0202020202020202020202020202020202020202020202020202020202020202",
+   "publicKey": "pk-2",
+   "label": "Laptop",
+   "kind": "browser"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "registerDevice",
+  "args": {
+   "fingerprint": "0303030303030303030303030303030303030303030303030303030303030303",
+   "publicKey": "pk-3",
+   "label": "Laptop",
+   "kind": "browser"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "registerDevice",
+  "args": {
+   "fingerprint": "0505050505050505050505050505050505050505050505050505050505050505",
+   "publicKey": "pk-5",
+   "label": "mero-bot",
+   "kind": "agent"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setRole",
+  "args": {
+   "account": "@bob",
+   "role": "editor"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "setRole",
+  "args": {
+   "account": "@carol",
+   "role": "admin"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "setDefaultRole",
+  "args": {
+   "role": "viewer"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "removeMember",
+  "args": {
+   "account": "@bob"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "revokeDevice",
+  "args": {
+   "fingerprint": "0202020202020202020202020202020202020202020202020202020202020202"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "renameVault",
+  "args": {
+   "name": "x"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "addKeyWraps",
+  "args": {
+   "wraps": [
+    {
+     "keyId": "k1",
+     "recipient": "0303030303030303030303030303030303030303030303030303030303030303",
+     "wrapper": "0303030303030303030303030303030303030303030303030303030303030303",
+     "envelope": "garbage"
+    }
+   ]
+  },
+  "expect": {
+   "ok": 1
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "wrappedPairs",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "rotateKey",
+  "args": {
+   "keyId": "k1"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "purgeSecret",
+  "args": {
+   "id": "secret_00000000000000000000000000000001"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "addKeyWraps",
+  "args": {
+   "wraps": [
+    {
+     "keyId": "k1",
+     "recipient": "0505050505050505050505050505050505050505050505050505050505050505",
+     "wrapper": "0202020202020202020202020202020202020202020202020202020202020202",
+     "envelope": "to-agent"
+    }
+   ]
+  },
+  "expect": {
+   "ok": 0
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "addKeyWraps",
+  "args": {
+   "wraps": [
+    {
+     "keyId": "k1",
+     "recipient": "0101010101010101010101010101010101010101010101010101010101010101",
+     "wrapper": "0202020202020202020202020202020202020202020202020202020202020202",
+     "envelope": "to-owner"
+    }
+   ]
+  },
+  "expect": {
+   "ok": 1
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "wrappedPairs",
+  "args": {},
+  "expect": {
+   "ok": [
+    "k1:0101010101010101010101010101010101010101010101010101010101010101"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addKeyWraps",
+  "args": {
+   "wraps": [
+    {
+     "keyId": "k1",
+     "recipient": "0505050505050505050505050505050505050505050505050505050505050505",
+     "wrapper": "0101010101010101010101010101010101010101010101010101010101010101",
+     "envelope": "to-agent"
+    }
+   ]
+  },
+  "expect": {
+   "ok": 1
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "wrappedPairs",
+  "args": {},
+  "expect": {
+   "ok": [
+    "k1:0101010101010101010101010101010101010101010101010101010101010101",
+    "k1:0505050505050505050505050505050505050505050505050505050505050505"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "rotateKey",
+  "args": {
+   "keyId": "k1"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setRole",
+  "args": {
+   "account": "mallory-not-in-org",
+   "role": "viewer"
+  },
+  "expect": {
+   "error": "NotFound"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setRole",
+  "args": {
+   "account": "@owner",
+   "role": "editor"
+  },
+  "expect": {
+   "error": "Conflict"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "removeMember",
+  "args": {
+   "account": "@owner"
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ }
+]

@@ -1,0 +1,426 @@
+[
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "renameVault",
+  "args": {
+   "name": "Shared credentials"
+  },
+  "expect": {
+   "ok": null
+  },
+  "events": {
+   "bob": [
+    "VaultRenamed"
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "vaultName",
+  "args": {},
+  "expect": {
+   "ok": "Shared credentials"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "registerDevice",
+  "args": {
+   "fingerprint": "0202020202020202020202020202020202020202020202020202020202020202",
+   "publicKey": "pk-2",
+   "label": "Laptop",
+   "kind": "browser"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "registerDevice",
+  "args": {
+   "fingerprint": "0303030303030303030303030303030303030303030303030303030303030303",
+   "publicKey": "pk-3",
+   "label": "Recovery key",
+   "kind": "recovery"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "registerDevice",
+  "args": {
+   "fingerprint": "0404040404040404040404040404040404040404040404040404040404040404",
+   "publicKey": "pk",
+   "label": "Phone",
+   "kind": "phone"
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "renameVault",
+  "args": {
+   "name": "Hijacked"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "registerDevice",
+  "args": {
+   "fingerprint": "0101010101010101010101010101010101010101010101010101010101010101",
+   "publicKey": "pk-1",
+   "label": "Laptop",
+   "kind": "browser"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setRole",
+  "args": {
+   "account": "@bob",
+   "role": "editor"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addKeyWraps",
+  "args": {
+   "wraps": [
+    {
+     "keyId": "k1",
+     "recipient": "0101010101010101010101010101010101010101010101010101010101010101",
+     "wrapper": "0101010101010101010101010101010101010101010101010101010101010101",
+     "envelope": "wrap-to-alice"
+    },
+    {
+     "keyId": "k1",
+     "recipient": "0202020202020202020202020202020202020202020202020202020202020202",
+     "wrapper": "0101010101010101010101010101010101010101010101010101010101010101",
+     "envelope": "wrap-to-bob"
+    }
+   ]
+  },
+  "expect": {
+   "ok": 2
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "rotateKey",
+  "args": {
+   "keyId": "k1"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "keyWrapsFor",
+  "args": {
+   "recipient": "0202020202020202020202020202020202020202020202020202020202020202"
+  },
+  "expect": {
+   "ok": [
+    {
+     "keyId": "k1",
+     "recipient": "0202020202020202020202020202020202020202020202020202020202020202",
+     "wrapper": "0101010101010101010101010101010101010101010101010101010101010101",
+     "envelope": "wrap-to-bob",
+     "wrappedBy": "@owner"
+    }
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "vaultInfo",
+  "args": {},
+  "expect": {
+   "ok": {
+    "name": "Shared credentials",
+    "currentKey": "k1",
+    "defaultRole": "editor",
+    "myAccount": "@bob",
+    "myRole": "editor"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "wrappedPairs",
+  "args": {},
+  "expect": {
+   "ok": [
+    "k1:0101010101010101010101010101010101010101010101010101010101010101",
+    "k1:0202020202020202020202020202020202020202020202020202020202020202"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addSecret",
+  "args": {
+   "id": "secret_00000000000000000000000000000001",
+   "kind": "login",
+   "name": "NAME-ONE",
+   "tags": "TAGS-ONE",
+   "fields": {
+    "password": "PASSWORD-ONE",
+    "url": "URL-ONE"
+   }
+  },
+  "expect": {
+   "ok": "secret_00000000000000000000000000000001"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "updateSecret",
+  "args": {
+   "id": "secret_00000000000000000000000000000001",
+   "name": null,
+   "tags": null,
+   "fields": {
+    "password": "PASSWORD-TWO"
+   },
+   "rekey": false
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "updateSecret",
+  "args": {
+   "id": "secret_00000000000000000000000000000001",
+   "name": null,
+   "tags": null,
+   "fields": {
+    "url": "URL-TWO"
+   },
+   "rekey": false
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setRole",
+  "args": {
+   "account": "@bob",
+   "role": "viewer"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "trashSecret",
+  "args": {
+   "id": "secret_00000000000000000000000000000001"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "trashSecret",
+  "args": {
+   "id": "secret_00000000000000000000000000000001"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "restoreSecret",
+  "args": {
+   "id": "secret_00000000000000000000000000000001"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "purgeSecret",
+  "args": {
+   "id": "secret_00000000000000000000000000000001"
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "trashSecret",
+  "args": {
+   "id": "secret_00000000000000000000000000000001"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "purgeSecret",
+  "args": {
+   "id": "secret_00000000000000000000000000000001"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getSecret",
+  "args": {
+   "id": "secret_00000000000000000000000000000001"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listSecrets",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "secretHistory",
+  "args": {
+   "id": "secret_00000000000000000000000000000001"
+  },
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setDefaultRole",
+  "args": {
+   "role": "viewer"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "revokeDevice",
+  "args": {
+   "fingerprint": "0202020202020202020202020202020202020202020202020202020202020202"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "removeMember",
+  "args": {
+   "account": "@bob"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "vaultInfo",
+  "args": {},
+  "expect": {
+   "ok": {
+    "name": "Shared credentials",
+    "currentKey": "k1",
+    "defaultRole": "viewer",
+    "myAccount": "@bob",
+    "myRole": "pending"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listMembers",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "account": "@owner",
+     "role": "admin",
+     "devices": 1
+    }
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "addSecret",
+  "args": {
+   "id": "secret_00000000000000000000000000000001",
+   "kind": "login",
+   "name": "n",
+   "tags": "t",
+   "fields": {}
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ }
+]
