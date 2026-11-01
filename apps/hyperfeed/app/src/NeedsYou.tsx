@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { FeedItem, LensView } from "./generated/HyperfeedClient";
+import type { FeedItem, LensView } from "./hyperfeedTypes";
 import type { Feed } from "./useFeed";
 import type { Attention } from "./useAttention";
 import { appLook } from "./apps";

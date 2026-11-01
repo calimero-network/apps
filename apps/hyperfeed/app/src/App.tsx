@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
 import { FeedView } from "./FeedView";
 import { SettingsView, settingsSection } from "./SettingsView";
 import { ChatView } from "./ChatView";
@@ -12,8 +11,9 @@ import { useFeed, type Feed } from "./useFeed";
 import { useNodeFeed } from "./useNodeFeed";
 import { demoPreview, nodePreview, type Preview } from "./preview";
 import { useNewFeed, useOpenFeed } from "./newFeed";
+import { describeTarget, useSessionApi } from "./session";
 import { appHome, appLink, linkNamer } from "./links";
-import type { FeedItem } from "./generated/HyperfeedClient";
+import type { FeedItem } from "./hyperfeedTypes";
 import { AGENT_LIVE_MS, useTheme } from "./theme";
 import { useAttention } from "./useAttention";
 import { NeedsYou, opensAt, waitingCount } from "./NeedsYou";
@@ -22,13 +22,14 @@ import LandingPage from "./pages/landing/LandingPage";
 import DocsPage from "./pages/landing/DocsPage";
 import { BrandLockup } from "./brand";
 import { AppLauncher } from "./AppLauncher";
-import { nodeBasename } from "./servedByNode";
+import { nodeBasename } from "./served";
 
 /**
  * Two ways in, one set of screens.
  *
- * `/`, `/chat` and `/settings` run against your node: connect, open your
- * feed, and the collector starts watching your other contexts. The feed
+ * `/`, `/chat` and `/settings` run against your cluster (the local nodes in
+ * dev, Calimero Cloud in production): sign in with a passkey, open your feed,
+ * and the collector starts watching your other apps. The feed
  * opens on Brief; Lanes and Team are a click away. `/demo`,
  * `/demo/chat` and `/demo/settings` run the same screens against `DemoBackend`, the contract's rules kept in
  * memory, so the app can be tried with no node at all. Settings has a section
@@ -60,47 +61,54 @@ export function App() {
 type Page = "feed" | "chat" | "settings";
 
 function NodeApp({ page }: { page: Page }) {
-  const { isAuthenticated, isLoading, applicationId, contextId: sessionFeed, nodeUrl, logout } = useMero();
-  const contextId = useOpenFeed(sessionFeed);
+  const { session: current, signOut } = useSessionApi();
+  const feedId = useOpenFeed(current);
 
-  if (isLoading) {
+  if (current.status === "connecting") {
     return (
       <Shell base="" page={page} feed={null}>
         <div className="empty">Connecting…</div>
       </Shell>
     );
   }
-  // Signed out, the front door is the shared landing page; its Connect to
-  // node opens the login popup over it. The demo is linked from /docs.
-  if (!isAuthenticated) return <LandingPage />;
-  if (!contextId) {
+  if (current.status === "unconfigured") {
     return (
-      <Shell base="" page={page} feed={null} session={{ nodeUrl, logout }}>
-        <FeedPicker applicationId={applicationId} />
+      <Shell base="" page={page} feed={null}>
+        <pre className="err">{current.message}</pre>
+      </Shell>
+    );
+  }
+  // Signed out, the front door is the landing page; its "Open your feed"
+  // opens the passkey sign-in over it. The demo is linked from /docs.
+  if (current.status !== "signed-in") return <LandingPage />;
+  const session = { nodeUrl: describeTarget(current.target), logout: () => void signOut() };
+  if (!feedId) {
+    return (
+      <Shell base="" page={page} feed={null} session={session}>
+        <FeedPicker />
       </Shell>
     );
   }
   // Keyed by feed: switching starts the new feed's screens fresh.
-  return <NodeFeedApp key={contextId} page={page} contextId={contextId} applicationId={applicationId} session={{ nodeUrl, logout }} />;
+  return <NodeFeedApp key={feedId} page={page} contextId={feedId} session={session} />;
 }
 
 function NodeFeedApp({
   page,
   contextId,
-  applicationId,
   session,
 }: {
   page: Page;
+  /** The feed: its app instance id. */
   contextId: string;
-  applicationId: string | null;
   session: { nodeUrl: string | null; logout: () => void };
 }) {
   const node = useNodeFeed(contextId);
-  const newFeed = useNewFeed(applicationId);
+  const newFeed = useNewFeed();
   const base = useFeed(node.backend, node.nudge);
-  // Each chat a task touched, named from the chat ("#launch", "DM with Ronit"), read in its own context.
+  // Each chat a task touched, named from the chat ("#launch", "DM with Ronit"), read in its own app.
   const nameLink = useMemo(() => linkNamer(node.hostFor), [node.hostFor]);
-  // A person by name, read as a lens reads one: from namespace member metadata.
+  // A person by name, read as a lens reads one: from organization member metadata.
   const { hostFor } = node;
   const namePerson = useCallback(
     (identity: string) => hostFor(contextId)?.name(identity) ?? Promise.resolve(""),
@@ -108,20 +116,8 @@ function NodeFeedApp({
   );
   const feed = useMemo(() => ({ ...base, nameLink, namePerson }), [base, nameLink, namePerson]);
   const [query, setQuery] = useState("");
-  const { admin } = useMero();
-  // A row's app, at the row's context.
-  const openLink = useCallback(
-    async (item: FeedItem) => {
-      const groupId =
-        item.app === "design" && admin
-          ? ((await (admin as unknown as { getContextGroup(id: string): Promise<string | null> })
-              .getContextGroup(item.source_context)
-              .catch(() => null)) ?? undefined)
-          : undefined;
-      return appLink(item, { groupId });
-    },
-    [admin],
-  );
+  // A row's app, at the row's app instance.
+  const openLink = useCallback(async (item: FeedItem) => appLink(item, {}), []);
   const navigate = useNavigate();
   const launcher = (
     <AppLauncher
@@ -133,7 +129,7 @@ function NodeFeedApp({
   const watching =
     node.watchError != null
       ? `Not watching other apps: ${node.watchError}`
-      : `Watching ${node.watching.length} other context${node.watching.length === 1 ? "" : "s"}`;
+      : `Watching ${node.watching.length} other app${node.watching.length === 1 ? "" : "s"}`;
   return (
     <Shell
       base=""
@@ -144,7 +140,7 @@ function NodeFeedApp({
       query={query}
       onQuery={setQuery}
       launcher={launcher}
-      switcher={<FeedSwitcher applicationId={applicationId} current={contextId} />}
+      switcher={<FeedSwitcher current={contextId} />}
     >
       <Screen
         base=""

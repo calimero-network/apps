@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { FeedItem } from "./generated/HyperfeedClient";
+import type { FeedItem } from "./hyperfeedTypes";
 import type { Feed } from "./useFeed";
 import { appLook } from "./apps";
 import { laneOf, resolvable, timeLabel } from "./format";

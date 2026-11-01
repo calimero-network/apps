@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { WatchView } from "./generated/HyperfeedClient";
+import type { WatchView } from "./hyperfeedTypes";
 import type { Feed } from "./useFeed";
 import { timeLabel } from "./format";
 import { describeWatch, isActive, watchState } from "./watches";

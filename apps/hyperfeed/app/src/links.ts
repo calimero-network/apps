@@ -1,4 +1,4 @@
-import type { FeedItem, LinkView } from "./generated/HyperfeedClient";
+import type { FeedItem, LinkView } from "./hyperfeedTypes";
 import type { LensHost } from "./lens/lens";
 
 /**

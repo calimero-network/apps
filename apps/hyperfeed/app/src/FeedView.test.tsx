@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { FeedView, type NewFeed } from "./FeedView";
 import { DemoBackend } from "./demo";
 import { useFeed, type Feed } from "./useFeed";
-import type { FeedItem } from "./generated/HyperfeedClient";
+import type { FeedItem } from "./hyperfeedTypes";
 import { subjectKey } from "./subject";
 import { clearGithubCache } from "./github";
 import { fakeGitHub, greenRuns, openPr, prRoutes, PR_URL } from "./test/github";

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import type { FeedPage } from "./generated/HyperfeedClient";
+import type { FeedPage } from "./hyperfeedTypes";
 import { appLook } from "./apps";
 import { newAlerts, tabTitle, waitingKeys, type Alert } from "./attention";
-import { nodeBasename } from "./servedByNode";
+import { nodeBasename } from "./served";
 
 const ALERTS_KEY = "hyperfeed:alerts";
 const appName = (key: string) => appLook(key).name;

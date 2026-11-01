@@ -1,4 +1,4 @@
-import type { Attachment } from "./generated/HyperfeedClient";
+import type { Attachment } from "./hyperfeedTypes";
 
 /**
  * Images on a message to your agent: the contract's limits, checked here first

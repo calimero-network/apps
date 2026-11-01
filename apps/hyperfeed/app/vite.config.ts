@@ -1,30 +1,27 @@
+// `defineConfig` from `vitest/config`, not from `vite`: vite's own type has no
+// `test` key, so a `test` block under the vite import fails `tsc -b`.
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
-import { servedAssetsFallback } from "@calimero-apps/node-served/vite";
 
 export default defineConfig({
+  // Relative, so the same build runs at / and under the cluster's /{version}/,
+  // where it serves the bundle's frontend.
   base: "./",
   resolve: { dedupe: ["react", "react-dom"] },
-  plugins: [servedAssetsFallback(), react()],
+  plugins: [react()],
   server: {
-    // A port of this app's own, and a hard failure if it is taken: two apps on
-    // one origin share a localStorage, and with it a mero-react session.
-    port: Number(process.env.PW_PORT) || 5195,
+    // `pnpm dev:local hyperfeed` runs the dev server on exactly this port: a
+    // merod local cluster trusts passkey ceremonies from http://localhost:5173.
+    port: 5173,
     strictPort: true,
   },
   build: { outDir: "dist" },
   test: {
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
-    // src only: e2e/ and tests/ hold @playwright/test specs, which vitest must not run.
     include: ["src/**/*.test.{ts,tsx}"],
+    // `tsc -b` writes declarations under dist-types/; without this vitest also
+    // runs the compiled copies of the tests.
     exclude: ["**/node_modules/**", "**/dist/**", "**/dist-types/**"],
-    server: {
-      deps: {
-        // mero-platform's ESM entry has an extensionless directory import that
-        // Node's resolver refuses; inlining routes it through Vite's transform.
-        inline: ["@calimero-network/mero-platform"],
-      },
-    },
   },
 });

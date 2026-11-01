@@ -1,4 +1,4 @@
-import type { LensView } from "./generated/HyperfeedClient";
+import type { LensView } from "./hyperfeedTypes";
 import { parseLens, runLens, type LensHost, type Outcome } from "./lens/lens";
 import type { NodeFeed } from "./useNodeFeed";
 

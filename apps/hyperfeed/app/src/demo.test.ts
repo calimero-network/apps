@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { DemoBackend, NO_ASK } from "./demo";
 import { send } from "./useFeed";
 import { replySubject, subjectKey } from "./subject";
-import type { ActionInput, Ask, NotificationInput } from "./generated/HyperfeedClient";
+import type { ActionInput, Ask, NotificationInput } from "./hyperfeedTypes";
 
 // The demo stands in for the contract, so it is held to the cases
 // `logic/src/tests.rs` asserts.

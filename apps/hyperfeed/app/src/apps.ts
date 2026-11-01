@@ -1,4 +1,4 @@
-import { nodeBasename } from "./servedByNode";
+import { nodeBasename } from "./served";
 
 /**
  * How an app key looks on screen.

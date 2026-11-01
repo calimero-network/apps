@@ -5,11 +5,10 @@ import { DemoBackend } from "./demo";
 import { useFeed } from "./useFeed";
 import { FeedView } from "./FeedView";
 import { ChatView } from "./ChatView";
-import { nodeBackend, type AppRpc } from "./backend";
 import { clearGithubCache } from "./github";
 import { fakeGitHub } from "./test/github";
 import { describeWatch, newWatch } from "./watches";
-import type { HyperfeedClient, WatchInput } from "./generated/HyperfeedClient";
+import type { WatchInput } from "./hyperfeedTypes";
 
 const merge434 = (chain: string): WatchInput => ({
   chain,
@@ -35,14 +34,6 @@ describe("watches, in words", () => {
     expect(() => newWatch({ ...merge434("c"), pr: 0 }, "w", 0)).toThrow(/needs the pull request's number/);
     expect(() => newWatch({ ...merge434("c"), repo: "apps" }, "w", 0)).toThrow(/owner\/name/);
     expect(() => newWatch({ ...merge434("c"), action: "notify" }, "w", 0)).toThrow(/text must not be empty/);
-  });
-
-  it("reads a feed made before watches as having none", async () => {
-    const client = {
-      watches: () => Promise.reject(Object.assign(new Error("FunctionCallError"), { data: 'method "watches" not found' })),
-    } as unknown as HyperfeedClient;
-    const rpc: AppRpc = { execute: async () => undefined as never };
-    expect(await nodeBackend(client, rpc).watches!("c1")).toEqual([]);
   });
 });
 

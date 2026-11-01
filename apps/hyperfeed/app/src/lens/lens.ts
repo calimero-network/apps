@@ -1,4 +1,4 @@
-import type { Ask, NotificationInput } from "../generated/HyperfeedClient";
+import type { Ask, NotificationInput } from "../hyperfeedTypes";
 import { Deferred, evaluate, type Scope, type Value } from "./expr";
 
 /**

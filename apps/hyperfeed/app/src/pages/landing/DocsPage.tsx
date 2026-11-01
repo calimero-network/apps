@@ -41,7 +41,7 @@ const SECTIONS: Section[] = [
     heading: "Getting started",
     paragraphs: ["To look around first, open the demo: the same screens against a feed kept in your browser, with a pretend agent. No node needed."],
     steps: [
-      "Connect a node: press Open your feed and sign in on your node, or open Hyperfeed from the Calimero desktop app.",
+      "Sign in: press Open your feed and sign in with a passkey, or create an account; then create your feed.",
       "Create your feed: one button makes the context. Notifications from your other apps start arriving while the app is open.",
       "Set your rules: in Settings → Controls, choose what your agent may do in each app, and which guards always ask you.",
       "Start your agent: run mero-bot against the same node. It finds your feed, reports in every half minute, and the header turns to Agent live.",
@@ -85,7 +85,7 @@ const SECTIONS: Section[] = [
     id: "trouble",
     heading: "When something looks wrong",
     terms: [
-      { term: "No agent connected", def: "Nothing has reported in for 90 seconds. Start mero-bot against this node; if it stops with a 401, its sign-in expired: open the desktop app again or give it a username and password." },
+      { term: "No agent connected", def: "Nothing has reported in for 90 seconds. Start mero-bot against this feed; if it stops with a 401, its sign-in expired: sign it in again." },
       { term: "A notification never arrived", def: "Notifications are recorded while something watches: this app while it is open, or mero-bot while it runs. Check Settings → Lenses too: an app with no approved lens records nothing." },
       { term: "You approved and nothing happened", def: "Your agent carries decisions out. Check the header says Agent live; mero-bot picks up approvals it missed when it starts." },
       { term: "Your agent asked when it could have acted", def: "A guard is on for that kind of action, the app is set to ask first, or the agent is paused. Settings → Controls shows all three." },

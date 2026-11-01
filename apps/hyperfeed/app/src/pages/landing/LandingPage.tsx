@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import "./landing.css";
-import { DOWNLOAD, LandingShell, useConnect } from "./chrome";
+import { LandingShell, useConnect } from "./chrome";
 import { appLook } from "../../apps";
 import { BrandMark } from "../../brand";
 
@@ -740,11 +740,8 @@ function Questions() {
         <details className="hl-glass">
           <summary>Do I need to be technical?</summary>
           <p>
-            No. Install the{" "}
-            <a href={DOWNLOAD} target="_blank" rel="noreferrer">
-              Calimero desktop app
-            </a>
-            , open Hyperfeed and create your feed. The demo needs nothing at all.
+            No. Press Open your feed, sign in with a passkey (or create an account) and create your feed. The
+            demo needs nothing at all.
           </p>
         </details>
         <details className="hl-glass">

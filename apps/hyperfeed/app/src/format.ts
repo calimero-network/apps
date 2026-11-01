@@ -1,4 +1,5 @@
-import { HyperfeedClient, type FeedItem } from "./generated/HyperfeedClient";
+import type { FeedItem } from "./hyperfeedTypes";
+import { HyperfeedClient } from "./hyperfeed";
 
 const STATUS_LABELS: Record<string, string> = {
   pending: "Waiting for you",

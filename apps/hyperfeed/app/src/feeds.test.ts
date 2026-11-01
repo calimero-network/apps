@@ -6,55 +6,49 @@ import {
   feedLabel,
   nameProblem,
   orderFeeds,
+  createFeed,
+  listFeeds,
   readFeedNames,
   renameFeed,
   suggestName,
-  type FeedAdmin,
-  type NamesAdmin,
 } from "./feeds";
+import type { AppInfo } from "@calimero-network/mero-js";
 
-function admin(groups: Record<string, string>, inGroup: Record<string, string[]>) {
-  const calls: string[] = [];
-  const a: FeedAdmin = {
-    getContextGroup: async (id) => groups[id] ?? null,
-    deleteContext: async (id) => {
-      calls.push(`context ${id}`);
-      for (const g of Object.keys(inGroup)) inGroup[g] = inGroup[g]!.filter((c) => c !== id);
-    },
-    listGroupContexts: async (g) => (inGroup[g] ?? []).map((contextId) => ({ contextId })),
-    deleteNamespace: async (g) => void calls.push(`namespace ${g}`),
-  };
-  return { a, calls };
-}
-
-describe("deleteFeed", () => {
-  it("deletes the feed and the namespace it had to itself", async () => {
-    const { a, calls } = admin({ f1: "ns1" }, { ns1: ["f1"] });
-    expect(await deleteFeed(a, "f1")).toEqual({ namespace: true });
-    // The context first: the namespace delete only unregisters it, so its
-    // data would stay on the node.
-    expect(calls).toEqual(["context f1", "namespace ns1"]);
-  });
-
-  it("still deletes the namespace when the context delete is refused (an app token)", async () => {
-    const { a, calls } = admin({ f1: "ns1" }, { ns1: ["f1"] });
-    a.deleteContext = async () => {
-      throw Object.assign(new Error("HTTP 403 Forbidden"), { status: 403 });
+describe("feeds on the cluster", () => {
+  it("lists the dev bundle's instances, or the package's, by name", async () => {
+    const asked: unknown[] = [];
+    const client = {
+      listApps: async (filter: unknown) => {
+        asked.push(filter);
+        return [
+          { appId: "b", name: "Work" },
+          { appId: "a", name: "Home" },
+        ] as AppInfo[];
+      },
     };
-    expect(await deleteFeed(a, "f1")).toEqual({ namespace: true });
-    expect(calls).toEqual(["namespace ns1"]);
+    expect((await listFeeds(client, "bundle-1")).map((f) => f.appId)).toEqual(["a", "b"]);
+    await listFeeds(client, { package: "com.calimero.hyperfeed" });
+    expect(asked).toEqual([{ bundle: "bundle-1" }, { package: "com.calimero.hyperfeed" }]);
   });
 
-  it("leaves a namespace that still holds another context", async () => {
-    const { a, calls } = admin({ f1: "ns1" }, { ns1: ["f1", "other"] });
-    expect(await deleteFeed(a, "f1")).toEqual({ namespace: false });
-    expect(calls).toEqual(["context f1"]);
+  it("makes a feed in an organization of its own", async () => {
+    const calls: string[] = [];
+    const client = {
+      createOrg: async (name: string) => (calls.push(`org ${name}`), "org-1"),
+      createApp: async (name: string, source: unknown, options?: { org?: string }) => {
+        calls.push(`app ${name} ${JSON.stringify(source)} ${options?.org}`);
+        return "feed-1";
+      },
+    };
+    expect(await createFeed(client, "bundle-1", "  Work ")).toBe("feed-1");
+    expect(calls).toEqual(['org Work', 'app Work "bundle-1" org-1']);
+    await expect(createFeed(client, "bundle-1", " ")).rejects.toThrow("Give the feed a name.");
   });
 
-  it("still deletes the feed when its namespace can't be found", async () => {
-    const { a, calls } = admin({}, {});
-    expect(await deleteFeed(a, "f1")).toEqual({ namespace: false });
-    expect(calls).toEqual(["context f1"]);
+  it("deletes a feed's app instance", async () => {
+    const gone: string[] = [];
+    await deleteFeed({ deleteApp: async (id: string) => void gone.push(id) }, "feed-1");
+    expect(gone).toEqual(["feed-1"]);
   });
 });
 
@@ -101,34 +95,30 @@ describe("feed names", () => {
     expect(feedLabel("Work", "c8c2844e0000aaaa")).toBe("Work · c8c2844e");
   });
 
-  function names() {
-    const calls: string[] = [];
-    const a: NamesAdmin = {
-      getContextsForApplication: async () => ({ contexts: [{ id: "f1", groupId: "ns1" }, { id: "f2" }] }),
-      listNamespacesForApplication: async () => [{ namespaceId: "ns1", name: "Work" }, { namespaceId: "ns2" }],
-      getContextGroup: async (id) => (id === "f2" ? "ns2" : null),
-      getGroupMetadata: async () => ({ name: null, data: { keep: "ns" } }),
-      setGroupMetadata: async (g, r) => void calls.push(`namespace ${g} ${JSON.stringify(r)}`),
-      getContextMetadata: async () => null,
-      setContextMetadata: async (g, c, r) => void calls.push(`context ${g}/${c} ${JSON.stringify(r)}`),
+  function client(metadata: Record<string, Record<string, unknown> | null>) {
+    const set: string[] = [];
+    return {
+      set,
+      getApp: async (id: string) => ({ appId: id, metadata: metadata[id] ?? null }),
+      setAppMetadata: async (id: string, m: unknown) => void set.push(`${id} ${JSON.stringify(m)}`),
     };
-    return { a, calls };
   }
 
-  it("reads each feed's name from its namespace", async () => {
-    expect(await readFeedNames(names().a, "hf")).toEqual({
-      f1: { name: "Work", namespace: "ns1" },
-      f2: { name: null, namespace: "ns2" },
-    });
+  it("reads each feed's name: a rename in its metadata, else the one it was made with", async () => {
+    const c = client({ f1: { name: "Work" } });
+    expect(
+      await readFeedNames(c, [
+        { appId: "f1", name: "My feed" },
+        { appId: "f2", name: "Home" },
+        { appId: "f3", name: "" },
+      ]),
+    ).toEqual({ f1: "Work", f2: "Home", f3: null });
   });
 
-  it("renames the namespace and the context, keeping their data", async () => {
-    const { a, calls } = names();
-    await renameFeed(a, "f2", null, "  Home ");
-    expect(calls).toEqual([
-      'namespace ns2 {"name":"Home","data":{"keep":"ns"}}',
-      'context ns2/f2 {"name":"Home","data":{}}',
-    ]);
-    await expect(renameFeed(a, "f2", "ns2", "")).rejects.toThrow("Give the feed a name.");
+  it("renames a feed in its metadata, keeping the rest", async () => {
+    const c = client({ f2: { icon: "x" } });
+    await renameFeed(c, "f2", "  Home ");
+    expect(c.set).toEqual(['f2 {"icon":"x","name":"Home"}']);
+    await expect(renameFeed(c, "f2", "")).rejects.toThrow("Give the feed a name.");
   });
 });

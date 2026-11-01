@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { FeedItem } from "./generated/HyperfeedClient";
+import type { FeedItem } from "./hyperfeedTypes";
 import { headlineOfMessage, rowTitle } from "./format";
 import { headlineOf } from "./team";
 

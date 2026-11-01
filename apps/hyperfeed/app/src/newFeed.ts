@@ -1,29 +1,57 @@
-import { useState, useSyncExternalStore } from "react";
-import { setContextId, useCreateContext, useCreateNamespace, useMero } from "@calimero-network/mero-react";
-import { nameProblem, readFeedNames, suggestName, type FeedName, type NamesAdmin } from "./feeds";
+import { useCallback, useState, useSyncExternalStore } from "react";
+import { appSource, targetKey, type AppSource, type Target } from "@calimero-apps/connect";
+import { createFeed, listFeeds, readFeedNames, suggestName } from "./feeds";
+import { PACKAGE, useSessionApi, type Session } from "./session";
 
-/** rc.25 renamed `groupId` → `namespaceId`; read both. */
-function namespaceIdOf(ns: unknown): string | undefined {
-  const n = ns as { namespaceId?: string; groupId?: string; id?: string } | null;
-  return n?.namespaceId ?? n?.groupId ?? n?.id;
+/** Where feeds come from: the dev bundle `dev:local` uploaded, or the package in production. */
+export function feedSource(env: Parameters<typeof appSource>[0] = import.meta.env): AppSource {
+  return appSource(env, PACKAGE);
 }
 
-/** The feed you opened in this tab, once you switch; until then, the session's. */
-let opened: string | null = null;
+/** The signed-in session, or null. */
+export function signedIn(session: Session): Extract<Session, { status: "signed-in" }> | null {
+  return session.status === "signed-in" ? session : null;
+}
+
+/** Where the feed you last opened is remembered: per cluster and per account. */
+export function selectionKey(target: Target, accountId: string): string {
+  return `hyperfeed:feed:${targetKey(target)}:${accountId}`;
+}
+
+function remembered(key: string | null): string | null {
+  if (!key) return null;
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+/** The feed you opened in this tab, once you switch; until then, the remembered one. */
+let opened: { key: string; id: string } | null = null;
 const listeners = new Set<() => void>();
+let currentKey: string | null = null;
 
 /**
- * Open a feed, in place: stored for your next visit, and shown now without a
- * reload, so you stay signed in and switch in one click.
+ * Open a feed, in place: remembered for your next visit, and shown now without
+ * a reload, so you stay signed in and switch in one click.
  */
 export function openFeed(id: string) {
-  setContextId(id);
-  opened = id;
+  if (!currentKey) return;
+  try {
+    localStorage.setItem(currentKey, id);
+  } catch {
+    // Private mode: it holds for this visit.
+  }
+  opened = { key: currentKey, id };
   listeners.forEach((l) => l());
 }
 
-/** The feed to show: the one you last opened here, else the session's. */
-export function useOpenFeed(sessionFeed: string | null): string | null {
+/** The feed to show for this session: the one you last opened, or null to pick one. */
+export function useOpenFeed(session: Session): string | null {
+  const live = signedIn(session);
+  const key = live ? selectionKey(live.target, live.accountId) : null;
+  currentKey = key;
   const picked = useSyncExternalStore(
     (l) => {
       listeners.add(l);
@@ -31,56 +59,48 @@ export function useOpenFeed(sessionFeed: string | null): string | null {
     },
     () => opened,
   );
-  return picked ?? sessionFeed;
+  if (!key) return null;
+  return picked && picked.key === key ? picked.id : remembered(key);
 }
 
 /**
- * Make a feed with the Hyperfeed installed now, in a namespace of its own, and
- * open it. Also how a feed made by an earlier Hyperfeed is replaced: an old
- * feed keeps the code it was created with.
+ * Make a feed and open it: an app instance of Hyperfeed in an organization of
+ * its own. Also how a feed made by an earlier Hyperfeed is replaced.
  *
- * The name goes on the namespace and the context both, so admin tools show
- * it too. Without one, the feed gets the first free of "My feed", "My feed 2"…
+ * Without a name, it gets the first free of "My feed", "My feed 2"…
  */
-export function useNewFeed(applicationId: string | null) {
-  const { createNamespace } = useCreateNamespace();
-  const { createContext } = useCreateContext();
-  const { admin } = useMero();
+export function useNewFeed() {
+  const { session } = useSessionApi();
+  const live = signedIn(session);
+  const client = live?.client ?? null;
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
 
   /** True once the feed is made and open. */
-  async function create(name?: string): Promise<boolean> {
-    if (!applicationId) return false;
-    setBusy(true);
-    setFailed(null);
-    try {
-      const given = name?.trim() || (await defaultName(admin as unknown as NamesAdmin | null, applicationId));
-      const problem = nameProblem(given);
-      if (problem) throw new Error(problem);
-      const ns = await createNamespace({ applicationId, name: given });
-      const namespaceId = namespaceIdOf(ns);
-      if (!namespaceId) throw new Error("namespace created but no id came back");
-      // `init` takes no arguments.
-      const init = Array.from(new TextEncoder().encode("{}"));
-      const ctx = await createContext({ applicationId, groupId: namespaceId, initializationParams: init, name: given });
-      const id = (ctx as { contextId?: string } | null)?.contextId;
-      if (!id) throw new Error("context created but no contextId came back");
-      openFeed(id);
-      return true;
-    } catch (e) {
-      setFailed(e instanceof Error ? e.message : String(e));
-      return false;
-    } finally {
-      setBusy(false);
-    }
-  }
+  const create = useCallback(
+    async (name?: string): Promise<boolean> => {
+      if (!client) return false;
+      setBusy(true);
+      setFailed(null);
+      try {
+        const source = feedSource();
+        let given = name?.trim() ?? "";
+        if (!given) {
+          const feeds = await listFeeds(client, source).catch(() => []);
+          const names = await readFeedNames(client, feeds).catch(() => ({}));
+          given = suggestName(Object.values(names));
+        }
+        openFeed(await createFeed(client, source, given));
+        return true;
+      } catch (e) {
+        setFailed(e instanceof Error ? e.message : String(e));
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [client],
+  );
 
-  return { create, busy, failed, ready: Boolean(applicationId) };
-}
-
-/** The name a feed made without one gets: the first free of "My feed", "My feed 2"… */
-async function defaultName(admin: NamesAdmin | null, applicationId: string): Promise<string> {
-  const names = admin ? await readFeedNames(admin, applicationId).catch((): Record<string, FeedName> => ({})) : {};
-  return suggestName(Object.values(names).map((n) => n.name));
+  return { create, busy, failed, ready: Boolean(client) };
 }

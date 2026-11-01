@@ -14,15 +14,10 @@
 //! the proposal waits for you as before. Your stop always wins: a stopped
 //! default never fires, whichever device saw what first.
 
-use calimero_sdk::abi::AbiType;
-use calimero_sdk::app;
-use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
-use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::types::Error as AppError;
-use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::Mergeable;
+use calimero_app_sdk::prelude::*;
 
-use crate::lww;
+use crate::store::invalid;
+use serde::{Deserialize, Serialize};
 
 /// The card's headline: one line.
 pub const MAX_SITUATION_HEADLINE: usize = 140;
@@ -43,10 +38,7 @@ pub const MAX_AUTORUN_AHEAD_MS: u64 = 7 * 24 * 60 * 60 * 1000;
 
 /// One chain's situation, kept by chain id. A new one replaces it whole: last
 /// writer wins.
-#[app::mergeable(id = "hyperfeed::Situation")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Situation {
     pub headline: String,
     pub summary: String,
@@ -60,17 +52,8 @@ pub struct Situation {
     pub updated_at: u64,
 }
 
-impl Mergeable for Situation {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        let at = self.updated_at;
-        lww(self, at, other, other.updated_at);
-        Ok(())
-    }
-}
-
 /// What the agent writes: [`crate::Hyperfeed::set_situation`]'s `input`.
-#[derive(AbiType, Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SituationInput {
     /// The card's headline, as you would say it: "Launch date: the team
     /// settled on Thursday, and your calendar clashes".
@@ -94,8 +77,7 @@ pub struct SituationInput {
 }
 
 /// A chain's situation, as [`crate::Hyperfeed::situations`] returns it.
-#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SituationView {
     pub chain: String,
     pub headline: String,
@@ -114,13 +96,13 @@ pub struct SituationView {
 fn text(field: &str, value: &str, max: usize, one_line: bool) -> app::Result<String> {
     let value = value.trim();
     if value.len() > max {
-        return Err(AppError::msg(format!(
+        return Err(invalid(format!(
             "{field} is {} bytes, limit is {max}",
             value.len()
         )));
     }
     if one_line && value.contains(['\n', '\r']) {
-        return Err(AppError::msg(format!("{field} is one line")));
+        return Err(invalid(format!("{field} is one line")));
     }
     Ok(value.to_owned())
 }
@@ -132,18 +114,18 @@ impl Situation {
         let headline = text("headline", &input.headline, MAX_SITUATION_HEADLINE, true)?;
         let summary = text("summary", &input.summary, MAX_SITUATION_SUMMARY, false)?;
         if headline.is_empty() || summary.is_empty() {
-            return Err(AppError::msg(
+            return Err(invalid(
                 "a situation has a headline and says what is going on",
             ));
         }
         if input.score > MAX_SITUATION_SCORE {
-            return Err(AppError::msg(format!(
+            return Err(invalid(format!(
                 "score is {}, limit is {MAX_SITUATION_SCORE}",
                 input.score
             )));
         }
         if input.apps > input.sources {
-            return Err(AppError::msg("apps cannot be more than sources"));
+            return Err(invalid("apps cannot be more than sources"));
         }
         Ok(Situation {
             headline,
@@ -194,10 +176,7 @@ pub const AUTORUN_SETTLED: &str = "settled";
 /// One proposal's default, kept by the action's id. The time is last-writer-
 /// wins by when it was set; stopping and firing only ever turn on, and a stop
 /// outranks a fire, so a merge never makes a stopped default go ahead.
-#[app::mergeable(id = "hyperfeed::Autorun")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Autorun {
     pub chain: String,
     pub at: u64,
@@ -206,23 +185,8 @@ pub struct Autorun {
     pub fired_at: u64,
 }
 
-impl Mergeable for Autorun {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        let (stopped, fired) = (
-            self.stopped_at.max(other.stopped_at),
-            self.fired_at.max(other.fired_at),
-        );
-        let at = self.set_at;
-        lww(self, at, other, other.set_at);
-        self.stopped_at = stopped;
-        self.fired_at = fired;
-        Ok(())
-    }
-}
-
 /// A proposal's default, as [`crate::Hyperfeed::autoruns`] returns it.
-#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AutorunView {
     /// The proposal's action id.
     pub id: String,

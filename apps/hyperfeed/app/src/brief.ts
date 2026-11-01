@@ -1,4 +1,4 @@
-import type { ActionSetView, AutorunView, FeedItem, SettingsView, SituationView } from "./generated/HyperfeedClient";
+import type { ActionSetView, AutorunView, FeedItem, SettingsView, SituationView } from "./hyperfeedTypes";
 import { fieldsOf, GUARD_LABELS, laneOf, previewOf } from "./format";
 import { groupSets, modeOf } from "./actions/actions";
 import { digestSince, isNoise } from "./team";

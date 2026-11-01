@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
-import type { FeedItem, LinkView } from "./generated/HyperfeedClient";
+import type { FeedItem, LinkView } from "./hyperfeedTypes";
 import type { Feed } from "./useFeed";
 import { appLook } from "./apps";
-import { canOpen, chainLink, subjectFromLink, type NameLink } from "./links";
+import { canOpen, chainLink, subjectFromLink } from "./links";
 import { agentLive, notPickedUp } from "./theme";
 import {
   choicesFor,
@@ -35,7 +35,7 @@ import { RefCards, useMergeContext } from "./RefCards";
 import { findRefs } from "./github";
 import { AttachButton, PickedImages, useImagePicker } from "./ImagePicker";
 import type { CheckpointView } from "./checkpoint";
-import { isServedByNode } from "@calimero-apps/node-served";
+import { isServedByNode } from "./served";
 
 const appName = (key: string) => appLook(key).name;
 

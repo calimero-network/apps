@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import type { PrView, WatchView } from "./generated/HyperfeedClient";
+import type { PrView, WatchView } from "./hyperfeedTypes";
 import type { Feed } from "./useFeed";
 import { timeLabel } from "./format";
 import {

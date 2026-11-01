@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent } from "react";
-import type { Attachment } from "./generated/HyperfeedClient";
+import type { Attachment } from "./hyperfeedTypes";
 import { IMAGE_TYPES, MAX_ATTACHMENTS, refuseImage, uploadImage, type BlobStore } from "./attachments";
 
 /** An image picked for the next message, with its local preview. */

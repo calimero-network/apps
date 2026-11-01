@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { FeedItem } from "./generated/HyperfeedClient";
+import type { FeedItem } from "./hyperfeedTypes";
 import { alertOf, newAlerts, tabTitle, waitingKeys } from "./attention";
 
 function row(over: Partial<FeedItem>): FeedItem {

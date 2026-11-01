@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from "react";
-import type { FeedItem, TurnStep } from "./generated/HyperfeedClient";
+import type { FeedItem, TurnStep } from "./hyperfeedTypes";
 import { progressLine } from "./format";
 import "./WorkBlock.css";
 

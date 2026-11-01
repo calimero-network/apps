@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { AutorunView, FeedItem, LinkView, SituationView } from "./generated/HyperfeedClient";
+import type { AutorunView, FeedItem, LinkView, SituationView } from "./hyperfeedTypes";
 import type { Feed } from "./useFeed";
 import { appLook } from "./apps";
 import { choicesFor, flowOf, previewOf, progressLine, resolvable, timeLabel, type FlowStep } from "./format";

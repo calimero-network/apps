@@ -1,4 +1,4 @@
-import { isServedByNode } from "@calimero-apps/node-served";
+import { isServedByNode } from "./served";
 
 /**
  * What a chat card shows about a GitHub pull request or Actions run, read
