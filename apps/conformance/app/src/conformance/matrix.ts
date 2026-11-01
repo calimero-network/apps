@@ -159,10 +159,13 @@ export async function runMatrix(env: MatrixEnv): Promise<Row[]> {
     assert(s.accountId === need(A.account, "A's account"), `signed in as ${s.accountId}, not ${A.account}`);
     return s;
   }, (s) => s.accountId);
-  await row(A, ACC, "refresh (rotates the session)", OK, async () => {
-    const before = need(A.client.session, "A's session").sessionToken;
+  // The refresh token is single-use, so a refresh must hand back a new one
+  // (the session token itself may be re-issued unchanged within a second).
+  await row(A, ACC, "refresh (a new single-use refresh token)", OK, async () => {
+    const before = need(A.client.session, "A's session").refreshToken;
     const s = await A.client.refresh();
-    assert(s.sessionToken !== before, "the session token did not change");
+    assert(s.refreshToken !== before, "the refresh token did not change");
+    assert(s.accountId === A.account, `refreshed as ${short(s.accountId)}`);
     return s;
   }, (s) => ({ expiresAt: s.expiresAt }));
   await row(A, ACC, "attestation", OK, () => A.client.attestation(), (d) => ({ mock: (d as { mock?: unknown }).mock }));
@@ -170,7 +173,9 @@ export async function runMatrix(env: MatrixEnv): Promise<Row[]> {
   await row(A, ACC, "labelPasskey", OK, () =>
     A.client.labelPasskey(need(me?.passkeyId as string | undefined, "A's passkey id"), "conformance"));
   const device = env.passkey();
-  await row(A, ACC, "addPasskey (approved by the new passkey itself)", "FORBIDDEN", () => A.client.addPasskey(device, device));
+  // Approving with the passkey being added answers a challenge the node never
+  // issued to it: refused before anything is written.
+  await row(A, ACC, "addPasskey (approved by the new passkey itself)", "UNKNOWN_CHALLENGE", () => A.client.addPasskey(device, device));
   const cred = await row(A, ACC, "addPasskey (approved by the account's passkey)", OK, () => A.client.addPasskey(device, A.passkey), (c) => c);
   await row(A, ACC, "signIn (the added passkey)", OK, async () => {
     const s = await (await env.client(1)).signIn(device);
@@ -246,7 +251,8 @@ export async function runMatrix(env: MatrixEnv): Promise<Row[]> {
     A.client.post(`orgs/${orgId()}/invites`, { role: "member" }));
   const invite = await row(A, ORG, "invite (member)", OK, () => A.client.invite(orgId(), "member", A.passkey), () => "a token");
   await row(B, ORG, "redeemInvite", OK, () => B.client.redeemInvite(need(invite, "an invite")), (r) => r);
-  await row(B, ORG, "redeemInvite (again: one use)", "NOT_FOUND", () => B.client.redeemInvite(need(invite, "an invite")));
+  // A one-use invite is gone once redeemed: the system log rejects the redemption.
+  await row(B, ORG, "redeemInvite (again: one use)", "REJECTED", () => B.client.redeemInvite(need(invite, "an invite")));
   await row(B, ORG, "getOrg (second account)", OK, async () => {
     const o = await eventually(() => B.client.getOrg(orgId()), (o) => Object.hasOwn((o.members ?? {}) as object, need(B.account, "B's account")), "B listed as a member");
     return o;
@@ -549,37 +555,40 @@ export async function runMatrix(env: MatrixEnv): Promise<Row[]> {
   });
 
   // ── blobs ─────────────────────────────────────────────────────────────────
+  // At 1.0.0-rc.7 a node refuses blobs to a component app by name
+  // (`409 NOT_SUPPORTED`, "blobs are not available to it yet (R8)"); core
+  // #4815 adds them. The rows expect that refusal, so a core release that
+  // ships blobs fails them loudly: then BLOBS becomes `OK` and the rows below
+  // the upload run, checking the round trip.
   const BLOB = "Blobs";
+  const BLOBS = "NOT_SUPPORTED";
   const bytes = enc.encode(`blob-${tag}:${"conformance ".repeat(400)}`);
-  const up = await row(A, BLOB, "uploadBlob", OK, async () => {
+  const up = await row(A, BLOB, "uploadBlob (a component app)", BLOBS, async () => {
     const r = await A.client.uploadBlob(appId(), bytes);
     assert(r.size === bytes.length, `stored ${r.size} bytes of ${bytes.length}`);
     return r;
   }, (r) => ({ blobId: r.blobId, size: r.size }));
-  await row(A, BLOB, "blobInfo", OK, async () => {
-    const r = await A.client.blobInfo(appId(), need(up?.blobId, "a blob"));
-    assert(r.size === bytes.length && r.id === up?.id, `info: ${short(r)}`);
-    return r;
-  }, (r) => r);
-  await row(A, BLOB, "listBlobs", OK, async () => {
-    const r = await A.client.listBlobs(appId());
-    assert(r.some((x) => x.id === up?.id), "the blob is not listed");
-    return r;
-  }, (r) => `${r.length} blobs`);
-  await row(A, BLOB, "downloadBlob (by its hex id)", OK, async () => {
-    const got = await A.client.downloadBlob(appId(), need(up?.id, "a blob"));
-    assert(sameBytes(got, bytes), `read ${got.length} bytes that are not the ${bytes.length} uploaded`);
-    return got.length;
-  }, (n) => `${n} bytes`);
-  await row(B, BLOB, "downloadBlob (second account)", OK, async () => {
-    const got = await B.client.downloadBlob(appId(), need(up?.blobId, "a blob"));
-    assert(sameBytes(got, bytes), `read ${got.length} bytes that are not the ${bytes.length} uploaded`);
-    return got.length;
-  }, (n) => `${n} bytes`);
-  await row(A, BLOB, "downloadBlob (through another app)", "NOT_FOUND", () =>
-    A.client.downloadBlob(need(own, "another app"), need(up?.blobId, "a blob")));
-  await row(A, BLOB, "deleteBlob", OK, () => A.client.deleteBlob(appId(), need(up?.blobId, "a blob")));
-  await row(A, BLOB, "blobInfo (deleted)", "NOT_FOUND", () => A.client.blobInfo(appId(), need(up?.blobId, "a blob")));
+  await row(A, BLOB, "listBlobs (a component app)", BLOBS, () => A.client.listBlobs(appId()), (r) => `${r.length} blobs`);
+  if (up) {
+    await row(A, BLOB, "blobInfo", OK, async () => {
+      const r = await A.client.blobInfo(appId(), up.blobId);
+      assert(r.size === bytes.length && r.id === up.id, `info: ${short(r)}`);
+      return r;
+    }, (r) => r);
+    await row(A, BLOB, "downloadBlob (by its hex id)", OK, async () => {
+      const got = await A.client.downloadBlob(appId(), up.id);
+      assert(sameBytes(got, bytes), `read ${got.length} bytes that are not the ${bytes.length} uploaded`);
+      return got.length;
+    }, (n) => `${n} bytes`);
+    await row(B, BLOB, "downloadBlob (second account)", OK, async () => {
+      const got = await B.client.downloadBlob(appId(), up.blobId);
+      assert(sameBytes(got, bytes), `read ${got.length} bytes that are not the ${bytes.length} uploaded`);
+      return got.length;
+    }, (n) => `${n} bytes`);
+    await row(A, BLOB, "downloadBlob (through another app)", "NOT_FOUND", () => A.client.downloadBlob(need(own, "another app"), up.blobId));
+    await row(A, BLOB, "deleteBlob", OK, () => A.client.deleteBlob(appId(), up.blobId));
+    await row(A, BLOB, "blobInfo (deleted)", "NOT_FOUND", () => A.client.blobInfo(appId(), up.blobId));
+  }
 
   // ── upgrades, releases ────────────────────────────────────────────────────
   const UP = "Upgrades";
