@@ -1,0 +1,222 @@
+[
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setUsername",
+  "args": {
+   "username": "Alice"
+  },
+  "expect": {
+   "ok": null
+  },
+  "events": {
+   "owner": [
+    "MemberJoined"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getMembers",
+  "args": {}
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createEvent",
+  "args": {
+   "eventData": {
+    "title": "Team Standup",
+    "description": "",
+    "start": "2026-07-01T09:00:00",
+    "end": "2026-07-01T09:30:00",
+    "event_type": "event",
+    "color": "rgb(51, 182, 121)",
+    "peers": [
+     "@owner"
+    ]
+   }
+  },
+  "save": "standup",
+  "events": {
+   "owner": [
+    "MemberJoined",
+    "CalendarEventCreated"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getEvents",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "id": "$standup",
+     "title": "Team Standup",
+     "description": "",
+     "owner": "@owner",
+     "start": "2026-07-01T09:00:00",
+     "end": "2026-07-01T09:30:00",
+     "event_type": "event",
+     "color": "rgb(51, 182, 121)",
+     "peers": [
+      "@owner"
+     ],
+     "private": false
+    }
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "updateEvent",
+  "args": {
+   "eventId": "$standup",
+   "eventData": {
+    "title": "Renamed Standup"
+   }
+  },
+  "expect": {
+   "ok": "$standup"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getEvents",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "id": "$standup",
+     "title": "Renamed Standup",
+     "description": "",
+     "owner": "@owner",
+     "start": "2026-07-01T09:00:00",
+     "end": "2026-07-01T09:30:00",
+     "event_type": "event",
+     "color": "rgb(51, 182, 121)",
+     "peers": [
+      "@owner"
+     ],
+     "private": false
+    }
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createPrivateEvent",
+  "args": {
+   "eventData": {
+    "title": "Dentist",
+    "description": "",
+    "start": "2026-07-01T09:00:00",
+    "end": "2026-07-01T09:30:00",
+    "event_type": "event",
+    "color": "rgb(51, 182, 121)",
+    "peers": []
+   }
+  },
+  "save": "dentist"
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getPrivateEvents",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "id": "$dentist",
+     "title": "Dentist",
+     "description": "",
+     "owner": "@owner",
+     "start": "2026-07-01T09:00:00",
+     "end": "2026-07-01T09:30:00",
+     "event_type": "event",
+     "color": "rgb(51, 182, 121)",
+     "peers": [],
+     "private": true
+    }
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getEvents",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "id": "$standup",
+     "title": "Renamed Standup",
+     "description": "",
+     "owner": "@owner",
+     "start": "2026-07-01T09:00:00",
+     "end": "2026-07-01T09:30:00",
+     "event_type": "event",
+     "color": "rgb(51, 182, 121)",
+     "peers": [
+      "@owner"
+     ],
+     "private": false
+    }
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deleteEvent",
+  "args": {
+   "eventId": "$standup"
+  },
+  "expect": {
+   "ok": "$standup"
+  },
+  "events": {
+   "owner": [
+    "MemberJoined",
+    "CalendarEventCreated",
+    "CalendarEventEdited",
+    "CalendarEventDeleted"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getEvents",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deletePrivateEvent",
+  "args": {
+   "eventId": "$dentist"
+  },
+  "expect": {
+   "ok": "$dentist"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getPrivateEvents",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ }
+]

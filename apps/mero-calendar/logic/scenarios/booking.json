@@ -1,0 +1,320 @@
+[
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setUsername",
+  "args": {
+   "username": "Ada"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createBookingLink",
+  "args": {
+   "link": {
+    "tokenHash": "1da7e95ba163e2a04fb0079b15fcaebfeec45f916e108f2b799f5b8cead9e46c",
+    "grantId": "key-1",
+    "title": "Intro call",
+    "description": "Say hi",
+    "durationMinutes": 30,
+    "weeklyHours": [
+     {
+      "weekday": 0,
+      "startMinute": 540,
+      "endMinute": 660
+     }
+    ],
+    "utcOffsetMinutes": 0,
+    "horizonDays": 14
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createBookingLink",
+  "args": {
+   "link": {
+    "tokenHash": "1da7e95ba163e2a04fb0079b15fcaebfeec45f916e108f2b799f5b8cead9e46c",
+    "grantId": "key-1",
+    "title": "Intro call",
+    "description": "Say hi",
+    "durationMinutes": 30,
+    "weeklyHours": [
+     {
+      "weekday": 0,
+      "startMinute": 540,
+      "endMinute": 660
+     }
+    ],
+    "utcOffsetMinutes": 0,
+    "horizonDays": 14
+   }
+  },
+  "expect": {
+   "error": "LinkExists"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "listBookingLinks",
+  "args": {}
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getBookingPage",
+  "args": {
+   "token": "guest-token"
+  },
+  "expect": {
+   "ok": {
+    "title": "Intro call",
+    "description": "Say hi",
+    "ownerName": "Ada",
+    "durationMinutes": 30,
+    "status": "open",
+    "expiresAtMs": null,
+    "booking": null
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getBookingPage",
+  "args": {
+   "token": "unknown"
+  },
+  "expect": {
+   "error": "NotFound",
+   "fields": {
+    "id": "booking link"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getAvailableSlots",
+  "args": {
+   "token": "guest-token",
+   "fromMs": "0",
+   "toMs": "1"
+  },
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getAvailableSlots",
+  "args": {
+   "token": "guest-token",
+   "fromMs": "0",
+   "toMs": "18446744073709551615"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "cancelBooking",
+  "args": {
+   "token": "guest-token"
+  },
+  "expect": {
+   "error": "NotBooked"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "rescheduleBooking",
+  "args": {
+   "token": "guest-token",
+   "startMs": "0"
+  },
+  "expect": {
+   "error": "NotBooked"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "bookSlot",
+  "args": {
+   "token": "guest-token",
+   "startMs": "1",
+   "guest": {
+    "name": "Grace",
+    "email": "grace@example.com"
+   }
+  },
+  "expect": {
+   "error": "SlotUnavailable"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "bookSlot",
+  "args": {
+   "token": "guest-token",
+   "startMs": "1",
+   "guest": {
+    "name": "",
+    "email": "grace@example.com"
+   }
+  },
+  "expect": {
+   "error": "Invalid",
+   "fields": {
+    "message": "name cannot be empty"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getPrivateEvents",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getBookingPage",
+  "args": {
+   "token": "guest-token"
+  },
+  "expect": {
+   "error": "NotFound",
+   "fields": {
+    "id": "booking link"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listBookingLinks",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "deleteBookingLink",
+  "args": {
+   "linkId": "1da7e95ba163e2a04fb0079b15fcaebfeec45f916e108f2b799f5b8cead9e46c"
+  },
+  "expect": {
+   "error": "NotFound"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createBookingLink",
+  "args": {
+   "link": {
+    "tokenHash": "9bdf10a691a1cfda89d9ff66629d1609ab176cec9b6a3146a8929f28937a9fce",
+    "grantId": "key-1",
+    "title": "Intro call",
+    "description": "Say hi",
+    "durationMinutes": 30,
+    "weeklyHours": [
+     {
+      "weekday": 0,
+      "startMinute": 540,
+      "endMinute": 660
+     }
+    ],
+    "utcOffsetMinutes": 0,
+    "horizonDays": 14,
+    "expiresAtMs": "1"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getAvailableSlots",
+  "args": {
+   "token": "old-token",
+   "fromMs": "0",
+   "toMs": "18446744073709551615"
+  },
+  "expect": {
+   "error": "LinkExpired"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "bookSlot",
+  "args": {
+   "token": "old-token",
+   "startMs": "1",
+   "guest": {
+    "name": "Grace",
+    "email": "grace@example.com"
+   }
+  },
+  "expect": {
+   "error": "LinkExpired"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deleteBookingLink",
+  "args": {
+   "linkId": "1da7e95ba163e2a04fb0079b15fcaebfeec45f916e108f2b799f5b8cead9e46c"
+  },
+  "expect": {
+   "ok": "1da7e95ba163e2a04fb0079b15fcaebfeec45f916e108f2b799f5b8cead9e46c"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getBookingPage",
+  "args": {
+   "token": "guest-token"
+  },
+  "expect": {
+   "error": "NotFound",
+   "fields": {
+    "id": "booking link"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deleteBookingLink",
+  "args": {
+   "linkId": "9bdf10a691a1cfda89d9ff66629d1609ab176cec9b6a3146a8929f28937a9fce"
+  },
+  "expect": {
+   "ok": "9bdf10a691a1cfda89d9ff66629d1609ab176cec9b6a3146a8929f28937a9fce"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "listBookingLinks",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ }
+]

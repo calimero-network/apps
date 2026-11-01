@@ -1,0 +1,121 @@
+[
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setUsername",
+  "args": {
+   "username": "AliceNode1"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setUsername",
+  "args": {
+   "username": "BobNode2"
+  },
+  "expect": {
+   "ok": null
+  },
+  "events": {
+   "owner": [
+    "MemberJoined",
+    "MemberJoined"
+   ],
+   "bob": [
+    "MemberJoined",
+    "MemberJoined"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getMembers",
+  "args": {}
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getMembers",
+  "args": {}
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setUsername",
+  "args": {
+   "username": "Bob"
+  },
+  "expect": {
+   "ok": null
+  },
+  "events": {
+   "owner": [
+    "MemberJoined",
+    "MemberJoined",
+    "MemberUsernameUpdated"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setUsername",
+  "args": {
+   "username": ""
+  },
+  "expect": {
+   "error": "Invalid",
+   "fields": {
+    "message": "username cannot be empty"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createEvent",
+  "args": {
+   "eventData": {
+    "title": "Seeded",
+    "description": "",
+    "start": "2026-07-01T09:00:00",
+    "end": "2026-07-01T09:30:00",
+    "event_type": "event",
+    "color": "rgb(51, 182, 121)",
+    "peers": [
+     "@bob"
+    ]
+   }
+  },
+  "save": "seeded"
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getEvents",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "id": "$seeded",
+     "title": "Seeded",
+     "description": "",
+     "owner": "@owner",
+     "start": "2026-07-01T09:00:00",
+     "end": "2026-07-01T09:30:00",
+     "event_type": "event",
+     "color": "rgb(51, 182, 121)",
+     "peers": [
+      "@bob"
+     ],
+     "private": false
+    }
+   ]
+  }
+ }
+]

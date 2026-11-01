@@ -1,0 +1,280 @@
+[
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setUsername",
+  "args": {
+   "username": "alice"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setUsername",
+  "args": {
+   "username": "bob"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createPrivateEvent",
+  "args": {
+   "eventData": {
+    "title": "alice-private",
+    "description": "",
+    "start": "2026-07-01T09:00:00",
+    "end": "2026-07-01T09:30:00",
+    "event_type": "event",
+    "color": "rgb(51, 182, 121)",
+    "peers": []
+   }
+  },
+  "save": "a"
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "createPrivateEvent",
+  "args": {
+   "eventData": {
+    "title": "bob-private",
+    "description": "",
+    "start": "2026-07-01T09:00:00",
+    "end": "2026-07-01T09:30:00",
+    "event_type": "event",
+    "color": "rgb(51, 182, 121)",
+    "peers": []
+   }
+  },
+  "save": "b"
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getPrivateEvents",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "id": "$a",
+     "title": "alice-private",
+     "description": "",
+     "owner": "@owner",
+     "start": "2026-07-01T09:00:00",
+     "end": "2026-07-01T09:30:00",
+     "event_type": "event",
+     "color": "rgb(51, 182, 121)",
+     "peers": [],
+     "private": true
+    }
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getPrivateEvents",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "id": "$b",
+     "title": "bob-private",
+     "description": "",
+     "owner": "@bob",
+     "start": "2026-07-01T09:00:00",
+     "end": "2026-07-01T09:30:00",
+     "event_type": "event",
+     "color": "rgb(51, 182, 121)",
+     "peers": [],
+     "private": true
+    }
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getEvents",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getEvents",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "updatePrivateEvent",
+  "args": {
+   "eventId": "$a",
+   "eventData": {
+    "title": "alice-private-renamed"
+   }
+  },
+  "expect": {
+   "ok": "$a"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getPrivateEvents",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "id": "$a",
+     "title": "alice-private-renamed",
+     "description": "",
+     "owner": "@owner",
+     "start": "2026-07-01T09:00:00",
+     "end": "2026-07-01T09:30:00",
+     "event_type": "event",
+     "color": "rgb(51, 182, 121)",
+     "peers": [],
+     "private": true
+    }
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getPrivateEvents",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "id": "$b",
+     "title": "bob-private",
+     "description": "",
+     "owner": "@bob",
+     "start": "2026-07-01T09:00:00",
+     "end": "2026-07-01T09:30:00",
+     "event_type": "event",
+     "color": "rgb(51, 182, 121)",
+     "peers": [],
+     "private": true
+    }
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "updatePrivateEvent",
+  "args": {
+   "eventId": "ghost",
+   "eventData": {
+    "title": "x"
+   }
+  },
+  "expect": {
+   "error": "NotFound",
+   "fields": {
+    "id": "ghost"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "updatePrivateEvent",
+  "args": {
+   "eventId": "$a",
+   "eventData": {
+    "title": "x"
+   }
+  },
+  "expect": {
+   "error": "NotFound"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "deletePrivateEvent",
+  "args": {
+   "eventId": "$a"
+  },
+  "expect": {
+   "error": "NotFound"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deletePrivateEvent",
+  "args": {
+   "eventId": "$a"
+  },
+  "expect": {
+   "ok": "$a"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getPrivateEvents",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getPrivateEvents",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "id": "$b",
+     "title": "bob-private",
+     "description": "",
+     "owner": "@bob",
+     "start": "2026-07-01T09:00:00",
+     "end": "2026-07-01T09:30:00",
+     "event_type": "event",
+     "color": "rgb(51, 182, 121)",
+     "peers": [],
+     "private": true
+    }
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deletePrivateEvent",
+  "args": {
+   "eventId": "ghost"
+  },
+  "expect": {
+   "error": "NotFound",
+   "fields": {
+    "id": "ghost"
+   }
+  },
+  "events": {
+   "owner": [
+    "MemberJoined",
+    "MemberJoined"
+   ],
+   "bob": [
+    "MemberJoined",
+    "MemberJoined"
+   ]
+  }
+ }
+]
