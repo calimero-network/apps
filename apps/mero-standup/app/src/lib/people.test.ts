@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { MemberView, UpdateView } from "../generated/StandupClient";
+import type { MemberView, UpdateView } from "../standup";
 import { avatarHue, displayName, initials, notYetPosted, shortAccount } from "./people";
 
 const A = "a".repeat(64);
@@ -28,12 +28,6 @@ describe("people", () => {
     expect(displayName(A, "Ana")).toBe("Ana");
     expect(displayName(A, "   ")).toBe(shortAccount(A));
     expect(displayName(A, null)).toBe("aaaaaa…aaaa");
-  });
-
-  it("falls back to the namespace name before the id", () => {
-    expect(displayName(A, "", "Ana Lee")).toBe("Ana Lee");
-    expect(displayName(A, "Ana", "Ana Lee")).toBe("Ana");
-    expect(initials(A, "", "Ana Lee")).toBe("AL");
   });
 
   it("lists who has not posted, by name", () => {

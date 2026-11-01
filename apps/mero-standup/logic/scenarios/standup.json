@@ -1,0 +1,421 @@
+[
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "whoami",
+  "args": {},
+  "expect": {
+   "ok": "@owner"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setName",
+  "args": {
+   "name": "Alice"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "postUpdate",
+  "args": {
+   "day": "2026-10-13",
+   "done": "Wrote the onboarding guide",
+   "next": "Review the sync PR",
+   "blockers": ""
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getDay",
+  "args": {
+   "day": "2026-10-13"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getName",
+  "args": {
+   "account": "@owner"
+  },
+  "expect": {
+   "ok": "Alice"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "postUpdate",
+  "args": {
+   "day": "2026-10-13",
+   "done": "Fixed the flaky sync test",
+   "next": "Ship it",
+   "blockers": "Waiting on the design review"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "clearUpdate",
+  "args": {
+   "day": "2026-10-14"
+  },
+  "expect": {
+   "error": "NoUpdate",
+   "fields": {
+    "day": "2026-10-14"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "listDays",
+  "args": {
+   "before": null,
+   "limit": 10
+  },
+  "expect": {
+   "ok": {
+    "days": [
+     {
+      "day": "2026-10-13",
+      "updates": 2,
+      "blocked": 1
+     }
+    ],
+    "nextCursor": null
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "currentBlockers",
+  "args": {}
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "offerHelp",
+  "args": {
+   "day": "2026-10-13",
+   "author": "@bob",
+   "note": "I can review it"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "offerHelp",
+  "args": {
+   "day": "2026-10-13",
+   "author": "@owner",
+   "note": ""
+  },
+  "expect": {
+   "error": "NoBlocker",
+   "fields": {
+    "day": "2026-10-13",
+    "author": "@owner"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "offerHelp",
+  "args": {
+   "day": "2026-10-13",
+   "author": "@bob",
+   "note": ""
+  },
+  "expect": {
+   "error": "OwnBlocker",
+   "fields": {}
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "withdrawHelp",
+  "args": {
+   "day": "2026-10-13",
+   "author": "@bob"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "withdrawHelp",
+  "args": {
+   "day": "2026-10-13",
+   "author": "@bob"
+  },
+  "expect": {
+   "error": "NoHelp",
+   "fields": {
+    "day": "2026-10-13",
+    "author": "@bob"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getWeek",
+  "args": {
+   "start": "2026-10-12"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "clearUpdate",
+  "args": {
+   "day": "2026-10-13"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "listDays",
+  "args": {
+   "before": null,
+   "limit": 10
+  },
+  "expect": {
+   "ok": {
+    "days": [
+     {
+      "day": "2026-10-13",
+      "updates": 1,
+      "blocked": 0
+     }
+    ],
+    "nextCursor": null
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "members",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "account": "@owner",
+     "name": "Alice",
+     "lastDay": "2026-10-13"
+    }
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "logDecision",
+  "args": {
+   "title": "Release every two weeks",
+   "decision": "Cut a release every other Tuesday",
+   "rationale": "",
+   "supersedes": null,
+   "tags": [
+    "Release"
+   ],
+   "with": [],
+   "fromDay": "2026-10-13"
+  },
+  "save": "first"
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "logDecision",
+  "args": {
+   "title": "Release weekly again",
+   "decision": "Cut a release every Tuesday",
+   "rationale": "",
+   "supersedes": "$first",
+   "tags": [
+    "release",
+    "process"
+   ],
+   "with": [],
+   "fromDay": null
+  },
+  "save": "second"
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "logDecision",
+  "args": {
+   "title": "Release monthly",
+   "decision": "Cut a release every month",
+   "rationale": "",
+   "supersedes": "$first",
+   "tags": [],
+   "with": [],
+   "fromDay": null
+  },
+  "expect": {
+   "error": "AlreadySuperseded",
+   "fields": {
+    "id": "$first",
+    "by": "$second"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "logDecision",
+  "args": {
+   "title": "Ghost",
+   "decision": "Supersede nothing",
+   "rationale": "",
+   "supersedes": "no-such-id",
+   "tags": [],
+   "with": [],
+   "fromDay": null
+  },
+  "expect": {
+   "error": "NoSuchDecision",
+   "fields": {
+    "id": "no-such-id"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getDecision",
+  "args": {
+   "id": "$first"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "listDecisions",
+  "args": {
+   "search": null,
+   "tag": null,
+   "fromDay": null,
+   "standingOnly": true,
+   "cursor": null,
+   "limit": 20
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listDecisions",
+  "args": {
+   "search": "two weeks",
+   "tag": null,
+   "fromDay": null,
+   "standingOnly": false,
+   "cursor": null,
+   "limit": 20
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "tags",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "tag": "release",
+     "count": 2
+    },
+    {
+     "tag": "process",
+     "count": 1
+    }
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setTeamName",
+  "args": {
+   "name": "Platform"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "teamName",
+  "args": {},
+  "expect": {
+   "ok": "Platform"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setName",
+  "args": {
+   "name": "Bob"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getName",
+  "args": {
+   "account": "@bob"
+  },
+  "expect": {
+   "ok": "Bob"
+  },
+  "events": {
+   "carol": [
+    "ProfileSet",
+    "UpdatePosted",
+    "UpdatePosted",
+    "HelpOffered",
+    "HelpWithdrawn",
+    "UpdateCleared",
+    "DecisionLogged",
+    "DecisionLogged",
+    "TeamRenamed",
+    "ProfileSet"
+   ]
+  }
+ }
+]

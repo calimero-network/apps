@@ -1,4 +1,4 @@
-import type { UpdateView } from "../generated/StandupClient";
+import type { UpdateView } from "../standup";
 
 export interface Draft {
   done: string;

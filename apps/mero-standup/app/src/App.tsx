@@ -1,94 +1,115 @@
-import { useEffect, useRef, useState } from "react";
-import {
-  ConnectButton,
-  InvitationDialog,
-  InvitationGate,
-  clearContextId,
-  useContextGroup,
-  useMero,
-} from "@calimero-network/mero-react";
-import { nodeBasename } from "@calimero-apps/node-served";
-import { ContextPicker } from "./ContextPicker";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { CalimeroError, type AppInfo } from "@calimero-network/mero-js";
+import { appSource, describeError, type KeyValueStorage } from "@calimero-apps/connect";
 import { DecisionLog, type DecisionDraft } from "./DecisionLog";
 import { InviteCard } from "./InviteCard";
+import { PersonName } from "./names";
+import { defaultDeps, describeTarget, useSession, type SessionApi, type SessionDeps } from "./session";
 import { StandupBoard } from "./StandupBoard";
-import { WeekDigest } from "./WeekDigest";
+import { PACKAGE } from "./standup";
+import { TeamPicker } from "./TeamPicker";
+import { dropInvite, pendingInvite, selectionKey } from "./teams";
 import { Avatar, Icon, useTheme, type Theme } from "./ui";
-import { PersonName, TeamNamespace, useSpaceNames } from "./names";
-import { readInvitation, useJoinFromInvitation } from "./useJoinFromInvitation";
-import { useRead, useTeam, type Team } from "./useTeam";
+import { useRead, useTeam, type Team, type TeamTransport } from "./useTeam";
+import { WeekDigest } from "./WeekDigest";
 
 type Tab = "standup" | "week" | "decisions" | "invite";
 
-/** A team opened in this page, ahead of the one the provider read from storage. */
-interface OpenedTeam {
-  contextId: string;
-  namespaceId: string;
+/** The team open in this page: an app instance and the org it lives in. */
+type Opened = Pick<AppInfo, "appId" | "name" | "org">;
+
+function readSelection(storage: KeyValueStorage, key: string): Opened | null {
+  try {
+    const raw = storage.getItem(key);
+    const parsed: unknown = raw ? JSON.parse(raw) : null;
+    if (parsed && typeof parsed === "object" && typeof (parsed as Opened).appId === "string") {
+      return parsed as Opened;
+    }
+  } catch {
+    /* nothing usable stored */
+  }
+  return null;
 }
 
-export function App() {
-  const { isAuthenticated, isLoading, applicationId, contextId: stored, logout } =
-    useMero();
-  const [opened, setOpened] = useState<OpenedTeam | null>(null);
-  const contextId = opened?.contextId ?? stored;
-  // Mounted at the root, unconditionally: an invitation captured before login
-  // has to be redeemed as soon as the session exists. Joining opens the team in
-  // place, and the dialog holds "Syncing…" until its board has read the team's
-  // updates (`useJoinSync` in StandupBoard).
-  const invitation = useJoinFromInvitation({
-    onOpen: (contextId, namespaceId) => setOpened({ contextId, namespaceId }),
-  });
+/**
+ * Connects to the local nodes (dev) or the Cloud cluster (production), signs in
+ * with a passkey, redeems an invitation opened before signing in, and opens the
+ * team picked last time.
+ */
+export function App({
+  deps = defaultDeps,
+  storage = globalThis.localStorage,
+}: {
+  deps?: SessionDeps;
+  storage?: KeyValueStorage;
+}) {
+  // Memoised: a new object every render would reconnect every render.
+  const sessionDeps = useMemo(
+    () => (storage === deps.storage || !storage ? deps : { ...deps, storage }),
+    [deps, storage],
+  );
+  const api = useSession(sessionDeps);
+  const { session, store } = api;
+  const source = useMemo(() => appSource(deps.env, PACKAGE), [deps.env]);
+  const [opened, setOpened] = useState<Opened | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [pickerKey, setPickerKey] = useState(0);
   const [theme, setTheme] = useTheme();
 
-  return (
-    <>
-      {/* Logged out with a link opened: "you're invited" and the login, not the landing page. */}
-      <InvitationGate parse={readInvitation} noun="team" appName="Mero Standup" />
-      <InvitationDialog
-        redemption={invitation}
-        noun="team"
-        appName="Mero Standup"
-        // The grant is the namespace, not just the team the link names, and the
-        // person accepting should know that before they click.
-        detail="Joining makes this node a member of the namespace this team lives in, and the team's updates and decisions sync here from the other members."
-      />
-      <Screen
-        isLoading={isLoading}
-        isAuthenticated={isAuthenticated}
-        applicationId={applicationId}
-        contextId={contextId}
-        joinedNamespace={
-          opened && opened.contextId === contextId ? opened.namespaceId : null
-        }
-        theme={theme}
-        setTheme={setTheme}
-        logout={logout}
-      />
-    </>
-  );
-}
+  const client = session.status === "signed-in" ? session.client : null;
+  const key = session.status === "signed-in" ? selectionKey(session.target, session.accountId) : null;
+  const after = useCallback(() => {
+    if (client) store?.sync(client);
+  }, [client, store]);
 
-/** Whichever of the four states the session is in. */
-function Screen({
-  isLoading,
-  isAuthenticated,
-  applicationId,
-  contextId,
-  joinedNamespace,
-  theme,
-  setTheme,
-  logout,
-}: {
-  isLoading: boolean;
-  isAuthenticated: boolean;
-  applicationId: string | null;
-  contextId: string | null;
-  joinedNamespace: string | null;
-  theme: Theme;
-  setTheme: (t: Theme) => void;
-  logout: () => void;
-}) {
-  if (isLoading) {
+  // The team opened last time, on this target, by this account.
+  useEffect(() => {
+    setOpened(key ? readSelection(storage, key) : null);
+  }, [key, storage]);
+
+  const open = useCallback(
+    (app: Opened | null) => {
+      setOpened(app);
+      if (!key) return;
+      try {
+        if (app) storage.setItem(key, JSON.stringify({ appId: app.appId, name: app.name, org: app.org }));
+        else storage.removeItem(key);
+      } catch {
+        /* remembered for this page only */
+      }
+    },
+    [key, storage],
+  );
+
+  // An invitation link opened before signing in is redeemed once a session exists.
+  useEffect(() => {
+    if (!client) return;
+    const token = pendingInvite(storage);
+    if (!token) return;
+    let live = true;
+    client
+      .redeemInvite(token)
+      .then(() => {
+        dropInvite(storage);
+        if (live) {
+          setNotice("Invitation accepted: the team is in your list.");
+          setPickerKey((k) => k + 1);
+          open(null);
+        }
+      })
+      .catch((e: unknown) => {
+        // A refusal (used, expired, revoked) can never succeed: drop it. Anything
+        // else (the cluster unreachable) is kept and tried on the next load.
+        if (e instanceof CalimeroError && e.status < 500) dropInvite(storage);
+        if (live) setNotice(`The invitation could not be accepted: ${describeError(e)}`);
+      })
+      .finally(after);
+    return () => {
+      live = false;
+    };
+  }, [client, storage, after, open]);
+
+  if (session.status === "connecting") {
     return (
       <Shell>
         <div className="card">
@@ -98,69 +119,117 @@ function Screen({
     );
   }
 
-  if (!isAuthenticated) {
+  if (session.status === "unconfigured") {
     return (
       <Shell>
-        <section className="hero card">
-          <h1>Mero Standup</h1>
-          <p className="lede">
-            Async standups and a decision log for your team. Post what you did, what is
-            next and what is in your way; record what you decided and why.
-          </p>
-          <ul className="hero-points">
-            <li>Lives on your team&apos;s own nodes — no server, nobody else can read it.</li>
-            <li>Yesterday&apos;s plan becomes today&apos;s draft, so posting takes seconds.</li>
-            <li>Decisions are never edited, only superseded, so the why survives.</li>
-          </ul>
-          <ConnectButton />
-        </section>
+        <div className="card">
+          <h2>Cannot connect</h2>
+          <pre className="err">{session.message}</pre>
+        </div>
       </Shell>
     );
   }
 
-  if (!contextId) {
+  if (session.status === "signed-out") {
     return (
-      <Shell right={<Menu theme={theme} setTheme={setTheme} onLogout={logout} />}>
-        <ContextPicker applicationId={applicationId} />
+      <Shell>
+        <SignIn api={api} where={describeTarget(session.target)} />
+      </Shell>
+    );
+  }
+
+  const signOut = () => {
+    setOpened(null);
+    void api.signOut();
+  };
+
+  if (!opened) {
+    return (
+      <Shell right={<Menu theme={theme} setTheme={setTheme} onLogout={signOut} />}>
+        {notice && (
+          <div className="card">
+            <p className="empty">{notice}</p>
+          </div>
+        )}
+        <TeamPicker key={pickerKey} client={session.client} source={source} onOpen={open} after={after} />
         <div className="card">
           <h2>Join with an invitation</h2>
           <p className="empty">
-            Open an invitation link someone sent you. It opens this app and asks
-            before joining.
+            Open an invitation link someone sent you. You join their team&apos;s organization once you are
+            signed in.
           </p>
         </div>
+        <p className="empty footer-line">
+          {describeTarget(session.target)} · account <code className="mono">{session.accountId}</code>
+        </p>
       </Shell>
     );
   }
 
   return (
     // Keyed, so a team opened in place starts from nothing of the last one's.
-    <TeamNamespace key={contextId} contextId={contextId}>
-      <TeamView
-        contextId={contextId}
-        joinedNamespace={joinedNamespace}
-        theme={theme}
-        setTheme={setTheme}
-        onLogout={logout}
-      />
-    </TeamNamespace>
+    <TeamView
+      key={opened.appId}
+      transport={session.client}
+      opened={opened}
+      after={after}
+      inviteClient={session.client}
+      passkey={deps.passkey}
+      theme={theme}
+      setTheme={setTheme}
+      onSwitchTeam={() => open(null)}
+      onLogout={signOut}
+    />
   );
 }
 
-function Shell({
-  children,
-  left,
-  right,
-}: {
-  children: React.ReactNode;
-  left?: React.ReactNode;
-  right?: React.ReactNode;
-}) {
+/** Passkey sign-in, or a new account with a new passkey. */
+function SignIn({ api, where }: { api: SessionApi; where: string }) {
+  const [name, setName] = useState("");
+  return (
+    <section className="hero card">
+      <h1>Mero Standup</h1>
+      <p className="lede">
+        Async standups and a decision log for your team. Post what you did, what is next and what is in your
+        way; record what you decided and why.
+      </p>
+      <ul className="hero-points">
+        <li>Only your team&apos;s organization can read it.</li>
+        <li>Yesterday&apos;s plan becomes today&apos;s draft, so posting takes seconds.</li>
+        <li>Decisions are never edited, only superseded, so the why survives.</li>
+      </ul>
+      <p className="empty" style={{ marginBottom: 14 }}>
+        Connected to {where}. Accounts are passkeys: nothing to remember, nothing to leak.
+      </p>
+      <div className="row">
+        <button disabled={api.busy} onClick={() => void api.signIn()}>
+          Sign in with a passkey
+        </button>
+      </div>
+      <form
+        className="row"
+        style={{ marginTop: 14 }}
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (name.trim()) void api.signUp(name.trim());
+        }}
+      >
+        <input placeholder="your name" aria-label="name" value={name} onChange={(e) => setName(e.target.value)} />
+        <button className="ghost" type="submit" disabled={api.busy || !name.trim()}>
+          Create an account
+        </button>
+      </form>
+      {api.error && <pre className="err">{api.error}</pre>}
+    </section>
+  );
+}
+
+function Shell({ children, left, right }: { children: ReactNode; left?: ReactNode; right?: ReactNode }) {
   return (
     <div className="wrap">
       <header className="topbar">
         <div className="brand">
-          <img src={`${nodeBasename(new URL(window.location.href), "/")}favicon.svg`} alt="" width={26} height={26} />
+          <img src="./favicon.svg" alt="" width={26} height={26} />
           <span className="brand-name">Standup</span>
           {left}
         </div>
@@ -172,24 +241,27 @@ function Shell({
 }
 
 function TeamView({
-  contextId,
-  joinedNamespace,
+  transport,
+  opened,
+  after,
+  inviteClient,
+  passkey,
   theme,
   setTheme,
+  onSwitchTeam,
   onLogout,
 }: {
-  contextId: string;
-  /** The namespace, when the team was just joined in this page. */
-  joinedNamespace: string | null;
+  transport: TeamTransport;
+  opened: Opened;
+  after: () => void;
+  inviteClient: Parameters<typeof InviteCard>[0]["client"];
+  passkey: SessionDeps["passkey"];
   theme: Theme;
   setTheme: (t: Theme) => void;
+  onSwitchTeam: () => void;
   onLogout: () => void;
 }) {
-  const team = useTeam(contextId);
-  // This app's contexts live directly in the namespace (see ContextPicker), so
-  // the context's group is the namespace an invitation joined.
-  const { groupId } = useContextGroup(joinedNamespace ? null : contextId);
-  const namespaceId = joinedNamespace ?? groupId;
+  const team = useTeam(transport, opened.appId, after);
   const [tab, setTab] = useState<Tab>("standup");
   const [decisionDraft, setDecisionDraft] = useState<DecisionDraft | null>(null);
   // Read once from the contract: it is the same string every view's `author`
@@ -202,13 +274,6 @@ function TeamView({
     [me.data],
   );
 
-  function switchTeam() {
-    // The provider reads the stored context on mount, so a reload keeps the
-    // two in agreement.
-    clearContextId();
-    window.location.reload();
-  }
-
   return (
     <Shell
       left={<TeamName team={team} />}
@@ -219,13 +284,13 @@ function TeamView({
           team={team}
           theme={theme}
           setTheme={setTheme}
-          onSwitchTeam={switchTeam}
+          onSwitchTeam={onSwitchTeam}
           onLogout={onLogout}
         />
       }
     >
       {me.error && <pre className="err">{me.error}</pre>}
-      {me.data && myName.data === "" && <Welcome team={team} contextId={contextId} me={me.data} />}
+      {me.data && myName.data === "" && <Welcome team={team} appId={opened.appId} />}
 
       <nav className="tabs" role="tablist">
         {(
@@ -251,7 +316,6 @@ function TeamView({
       {tab === "standup" && (
         <StandupBoard
           team={team}
-          namespaceId={namespaceId}
           me={me.data}
           onLogDecision={(draft) => {
             setDecisionDraft(draft);
@@ -261,13 +325,9 @@ function TeamView({
       )}
       {tab === "week" && <WeekDigest team={team} />}
       {tab === "decisions" && (
-        <DecisionLog
-          team={team}
-          draft={decisionDraft}
-          onDraftUsed={() => setDecisionDraft(null)}
-        />
+        <DecisionLog team={team} draft={decisionDraft} onDraftUsed={() => setDecisionDraft(null)} />
       )}
-      {tab === "invite" && <InviteCard contextId={contextId} />}
+      {tab === "invite" && <InviteCard client={inviteClient} org={opened.org} passkey={passkey} after={after} />}
     </Shell>
   );
 }
@@ -325,8 +385,8 @@ function TeamName({ team }: { team: Team }) {
  * seeing `4845d7…c6b1` on your updates. Skippable, and the skip is
  * remembered per team on this browser.
  */
-function Welcome({ team, contextId, me }: { team: Team; contextId: string; me: string }) {
-  const key = `mero-standup:welcomed:${contextId}`;
+function Welcome({ team, appId }: { team: Team; appId: string }) {
+  const key = `mero-standup:welcomed:${appId}`;
   const [dismissed, setDismissed] = useState(() => {
     try {
       return window.localStorage.getItem(key) === "1";
@@ -337,12 +397,6 @@ function Welcome({ team, contextId, me }: { team: Team; contextId: string; me: s
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { nameOf, publish } = useSpaceNames();
-  // Offer the name already set for the namespace, so joining is one click.
-  const spaceName = nameOf(me);
-  useEffect(() => {
-    if (spaceName) setName((n) => n || spaceName);
-  }, [spaceName]);
   if (dismissed) return null;
 
   function dismiss() {
@@ -361,10 +415,9 @@ function Welcome({ team, contextId, me }: { team: Team; contextId: string; me: s
         e.preventDefault();
         setBusy(true);
         setError(null);
-        publish(me, name);
         team
           .act((c) => c.setName({ name }))
-          .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+          .catch((err: unknown) => setError(describeError(err)))
           .finally(() => setBusy(false));
       }}
     >
@@ -412,7 +465,6 @@ function Menu({
   const [open, setOpen] = useState(false);
   const [renaming, setRenaming] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
-  const { publish } = useSpaceNames();
 
   useEffect(() => {
     if (!open) return;
@@ -456,7 +508,6 @@ function Menu({
                   className="row"
                   onSubmit={(e) => {
                     e.preventDefault();
-                    publish(me, renaming);
                     void team.act((c) => c.setName({ name: renaming })).then(() => setRenaming(null));
                   }}
                 >

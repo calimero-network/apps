@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { DecisionView, MemberView } from "./generated/StandupClient";
+import type { DecisionView, MemberView } from "./standup";
 import { describeDay, relativeTime } from "./lib/days";
 import { PersonName } from "./names";
 import { parseTags } from "./lib/tags";

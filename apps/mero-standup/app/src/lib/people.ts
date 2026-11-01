@@ -1,31 +1,22 @@
-import type { MemberView, UpdateView } from "../generated/StandupClient";
+import type { MemberView, UpdateView } from "../standup";
 
-/** A 64-hex account id, shortened for a byline: `a1b2c3…7890`. */
+/** A long account id, shortened for a byline: `a1b2c3…7890`. */
 export function shortAccount(account: string): string {
   return account.length > 12 ? `${account.slice(0, 6)}…${account.slice(-4)}` : account;
 }
 
 /**
  * What to call someone. Their chosen name on this team if they set one, else
- * the name they set for the whole namespace (`spaceName`, shared by every app
- * on it), else a short id — never a blank byline, because posting before
- * naming yourself is normal.
+ * a short id — never a blank byline, because posting before naming yourself
+ * is normal.
  */
-export function displayName(
-  account: string,
-  name: string | null | undefined,
-  spaceName?: string | null,
-): string {
-  return name?.trim() || spaceName?.trim() || shortAccount(account);
+export function displayName(account: string, name: string | null | undefined): string {
+  return name?.trim() || shortAccount(account);
 }
 
 /** Up to two letters for an avatar: "Ana Lee" -> "AL", unnamed -> from the id. */
-export function initials(
-  account: string,
-  name: string | null | undefined,
-  spaceName?: string | null,
-): string {
-  const words = (name?.trim() || spaceName || "").trim().split(/\s+/).filter(Boolean);
+export function initials(account: string, name: string | null | undefined): string {
+  const words = (name ?? "").trim().split(/\s+/).filter(Boolean);
   if (words.length >= 2) return (words[0]![0]! + words[1]![0]!).toUpperCase();
   if (words.length === 1) return words[0]!.slice(0, 2).toUpperCase();
   return account.slice(0, 2).toUpperCase();
