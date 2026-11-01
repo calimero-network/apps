@@ -68,7 +68,8 @@ const MAX_DEVICE_LEN: usize = 64;
 /// The world's name when `init` is given none.
 const DEFAULT_WORLD_NAME: &str = "overworld";
 
-/// One page of a map read.
+/// The most rows one read answers (`getOverrides`, `getPlayers`), and the
+/// page the SDK reads at most.
 const PAGE: u32 = 1000;
 
 // ── Stored records ───────────────────────────────────────────────────────────
@@ -154,6 +155,22 @@ pub struct BlockEntry {
     pub b: u8,
 }
 
+/// One page of `getOverrides`: at most `limit` entries in key order, and the
+/// cursor of the next page (`null` after the last one).
+#[derive(Serialize, Clone, Debug)]
+pub struct OverridesPage {
+    pub items: Vec<BlockEntry>,
+    pub next: Option<String>,
+}
+
+/// One page of `getPlayers`: at most `limit` avatars in (account, device)
+/// order, and the cursor of the next page (`null` after the last one).
+#[derive(Serialize, Clone, Debug)]
+pub struct PlayersPage {
+    pub items: Vec<PlayerView>,
+    pub next: Option<String>,
+}
+
 /// A player as other players see them.
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -205,7 +222,14 @@ pub struct MeroBlocks {
     /// purpose: the world is collaborative.
     overrides: UnorderedMap<String, u8>,
     /// (account, device) -> avatar. The account is always the caller's own.
+    /// Rows are never removed, so this grows with everyone who ever played:
+    /// it is only ever read by key or a page at a time.
     players: UnorderedMap<(String, String), Player>,
+    /// (updatedAt, account, device) for every avatar row: the room clock's
+    /// index. Room time is one reverse read of it (the newest stamp at most
+    /// `MAX_CLOCK_SKEW_SECS` ahead of the caller), not a scan of `players`.
+    /// Kept in step with `players` by `put_player`, the only writer of either.
+    stamps: UnorderedMap<(u64, String, String), bool>,
 }
 
 #[app::logic]
@@ -314,24 +338,33 @@ impl MeroBlocks {
         Ok(applied)
     }
 
-    /// Every edited coordinate as `{"k": "x,y,z", "b": <block id>}`, in key
-    /// order.
+    /// One page of the edited coordinates, each `{"k": "x,y,z", "b": <block
+    /// id>}`, in key order, and the cursor of the next page.
     ///
     /// A key never disappears: a broken block stays listed with `b: 0`. Any
-    /// coordinate not listed holds generated terrain. Reads the whole map, one
-    /// page of 1,000 at a time, as v1 answered every entry.
+    /// coordinate not listed holds generated terrain. The map only grows (up
+    /// to 128 x 64 x 128 coordinates), so it is answered a page at a time:
+    /// call again with `cursor` set to `next` until `next` is `null`.
+    ///
+    /// # Arguments
+    /// * `cursor` - optional: the `next` of the previous page; from the start
+    ///   without it.
+    /// * `limit` - optional: entries per page, at most (and by default) 1,000.
     #[app::view]
-    pub fn get_overrides(&self) -> app::Result<Vec<BlockEntry>> {
-        let mut out = Vec::new();
-        let mut opts = FindOpts::default().limit(PAGE);
-        loop {
-            let page = self.overrides.page(opts.clone())?;
-            out.extend(page.items.into_iter().map(|(k, b)| BlockEntry { k, b }));
-            match page.next {
-                Some(next) => opts = opts.cursor(next),
-                None => return Ok(out),
-            }
-        }
+    pub fn get_overrides(
+        &self,
+        cursor: Option<String>,
+        limit: Option<u32>,
+    ) -> app::Result<OverridesPage> {
+        let page = self.overrides.page(page_opts(cursor, limit))?;
+        Ok(OverridesPage {
+            items: page
+                .items
+                .into_iter()
+                .map(|(k, b)| BlockEntry { k, b })
+                .collect(),
+            next: page.next,
+        })
     }
 
     /// How many distinct coordinates have ever been edited, breaks included (a
@@ -395,7 +428,12 @@ impl MeroBlocks {
             joined_at,
             updated_at,
         };
-        self.put_player(&account, &device, &player, existing.is_none())?;
+        self.put_player(
+            &account,
+            &device,
+            &player,
+            existing.as_ref().map(|p| p.updated_at),
+        )?;
         let id = player_id(&account, &device);
         env::emit(Event::PlayerJoined { id }, Audience::All)?;
         Ok(view_of(&account, &device, &player, true))
@@ -438,7 +476,12 @@ impl MeroBlocks {
             joined_at,
             updated_at,
         };
-        self.put_player(&account, &device, &player, existing.is_none())?;
+        self.put_player(
+            &account,
+            &device,
+            &player,
+            existing.as_ref().map(|p| p.updated_at),
+        )?;
         // back after a leave (or a first heartbeat without join): announce
         if was_left {
             let id = player_id(&account, &device);
@@ -460,33 +503,50 @@ impl MeroBlocks {
         let Some(mut p) = self.player(&account, &device)? else {
             return Ok(());
         };
+        let old_stamp = p.updated_at;
         p.left = true;
-        p.updated_at = stamp(self.room_now(now)?, p.updated_at);
-        self.put_player(&account, &device, &p, false)?;
+        p.updated_at = stamp(self.room_now(now)?, old_stamp);
+        self.put_player(&account, &device, &p, Some(old_stamp))?;
         let id = player_id(&account, &device);
         env::emit(Event::PlayerLeft { id }, Audience::All)?;
         Ok(())
     }
 
-    /// Every avatar row with an `online` flag, in (account, device) order.
+    /// One page of avatar rows with an `online` flag, in (account, device)
+    /// order, and the cursor of the next page.
     ///
     /// A player is online when they have not left and wrote within the last
     /// 10 s, measured on room time. A player who vanished without calling
     /// `leave` simply ages out here; nobody writes to another account's row.
+    /// Rows are kept for everyone who ever played, so they are answered a page
+    /// at a time: call again with `cursor` set to `next` until `next` is
+    /// `null`.
     ///
     /// # Arguments
     /// * `now` - the caller's unix seconds (a decimal string).
+    /// * `cursor` - optional: the `next` of the previous page.
+    /// * `limit` - optional: rows per page, at most (and by default) 1,000.
     #[app::view]
-    pub fn get_players(&self, now: u64) -> app::Result<Vec<PlayerView>> {
-        let rows = self.all_players()?;
-        let room_now = room_time(&rows, now);
-        Ok(rows
-            .iter()
-            .map(|((account, device), p)| {
-                let online = !p.left && room_now.saturating_sub(p.updated_at) <= PRESENCE_TTL_SECS;
-                view_of(account, device, p, online)
-            })
-            .collect())
+    pub fn get_players(
+        &self,
+        now: u64,
+        cursor: Option<String>,
+        limit: Option<u32>,
+    ) -> app::Result<PlayersPage> {
+        let room_now = self.room_now(now)?;
+        let page = self.players.page(page_opts(cursor, limit))?;
+        Ok(PlayersPage {
+            items: page
+                .items
+                .iter()
+                .map(|((account, device), p)| {
+                    let online =
+                        !p.left && room_now.saturating_sub(p.updated_at) <= PRESENCE_TTL_SECS;
+                    view_of(account, device, p, online)
+                })
+                .collect(),
+            next: page.next,
+        })
     }
 
     /// The caller's account, as `PlayerView.account` and the `id` of an avatar
@@ -498,58 +558,70 @@ impl MeroBlocks {
 
     // ── helpers (not methods: no `pub`) ──────────────────────────────────────
 
-    /// Every avatar row, `((account, device), row)`, every page.
-    fn all_players(&self) -> app::Result<Vec<((String, String), Player)>> {
-        let mut rows = Vec::new();
-        let mut opts = FindOpts::default().limit(PAGE);
-        loop {
-            let page = self.players.page(opts.clone())?;
-            rows.extend(page.items);
-            match page.next {
-                Some(next) => opts = opts.cursor(next),
-                None => return Ok(rows),
-            }
-        }
-    }
-
-    /// Normalize the caller's clock onto room time. ALL liveness math goes
-    /// through this; compute it once per call.
+    /// Normalize the caller's clock onto room time: the caller's clock, moved
+    /// up to the newest row stamp at most `MAX_CLOCK_SKEW_SECS` ahead of it.
+    /// One reverse read of the `stamps` index, however many rows there are.
+    /// ALL liveness math goes through this; compute it once per call.
     fn room_now(&self, caller_now: u64) -> app::Result<u64> {
-        Ok(room_time(&self.all_players()?, caller_now))
+        let ceiling = caller_now.saturating_add(MAX_CLOCK_SKEW_SECS);
+        let newest = self.stamps.page(
+            FindOpts::default()
+                .reverse()
+                .to(vec![KeyPart::Int(i128::from(ceiling) + 1)])
+                .limit(1),
+        )?;
+        Ok(newest
+            .items
+            .first()
+            .map_or(caller_now, |((ts, _, _), _)| caller_now.max(*ts)))
     }
 
     fn player(&self, account: &str, device: &str) -> app::Result<Option<Player>> {
         Ok(self.players.get(&(account.to_owned(), device.to_owned()))?)
     }
 
-    /// Upsert the caller's own row. A new row is refused past
-    /// `MAX_DEVICES_PER_ACCOUNT` avatars for the account.
+    /// Upsert the caller's own row, and its entry in the `stamps` index.
+    /// `old_stamp` is the stored row's `updatedAt`, `None` for a new row; a new
+    /// row is refused past `MAX_DEVICES_PER_ACCOUNT` avatars for the account,
+    /// which bounds the rows to (members of the org) x 8.
     fn put_player(
         &mut self,
         account: &str,
         device: &str,
         player: &Player,
-        new_row: bool,
+        old_stamp: Option<u64>,
     ) -> app::Result<()> {
-        if new_row {
-            let held = self
-                .players
-                .prefix(
-                    &[KeyPart::Str(account.to_owned())],
-                    FindOpts::default().limit(MAX_DEVICES_PER_ACCOUNT),
-                )?
-                .items
-                .len();
-            if held >= MAX_DEVICES_PER_ACCOUNT as usize {
-                return Err(Error::TooManyDevices {
-                    max: MAX_DEVICES_PER_ACCOUNT,
+        match old_stamp {
+            None => {
+                let held = self
+                    .players
+                    .prefix(
+                        &[KeyPart::Str(account.to_owned())],
+                        FindOpts::default().limit(MAX_DEVICES_PER_ACCOUNT),
+                    )?
+                    .items
+                    .len();
+                if held >= MAX_DEVICES_PER_ACCOUNT as usize {
+                    return Err(Error::TooManyDevices {
+                        max: MAX_DEVICES_PER_ACCOUNT,
+                    }
+                    .into());
                 }
-                .into());
             }
+            Some(old) if old != player.updated_at => {
+                let _removed = self
+                    .stamps
+                    .remove(&(old, account.to_owned(), device.to_owned()))?;
+            }
+            Some(_) => {}
         }
         let _previous = self
             .players
             .insert(&(account.to_owned(), device.to_owned()), player)?;
+        let _previous = self.stamps.insert(
+            &(player.updated_at, account.to_owned(), device.to_owned()),
+            &true,
+        )?;
         Ok(())
     }
 
@@ -557,8 +629,9 @@ impl MeroBlocks {
         let Some(mut p) = self.player(account, device)? else {
             return Ok(());
         };
-        p.updated_at = stamp(room_now, p.updated_at);
-        self.put_player(account, device, &p, false)
+        let old_stamp = p.updated_at;
+        p.updated_at = stamp(room_now, old_stamp);
+        self.put_player(account, device, &p, Some(old_stamp))
     }
 }
 
@@ -628,14 +701,14 @@ fn in_bounds(x: i32, y: i32, z: i32) -> bool {
     (0..WORLD_SX).contains(&x) && (0..WORLD_SY).contains(&y) && (0..WORLD_SZ).contains(&z)
 }
 
-/// Room time: the caller's clock, moved up to the newest row stamp that is at
-/// most `MAX_CLOCK_SKEW_SECS` ahead of it.
-fn room_time(rows: &[((String, String), Player)], caller_now: u64) -> u64 {
-    let ceiling = caller_now.saturating_add(MAX_CLOCK_SKEW_SECS);
-    rows.iter()
-        .map(|(_, p)| p.updated_at)
-        .filter(|ts| *ts <= ceiling)
-        .fold(caller_now, u64::max)
+/// Find options for one page of a read: from `cursor`, at most `limit` rows
+/// (1,000 by default and at most).
+fn page_opts(cursor: Option<String>, limit: Option<u32>) -> FindOpts {
+    let opts = FindOpts::default().limit(limit.unwrap_or(PAGE).min(PAGE));
+    match cursor {
+        Some(cursor) => opts.cursor(cursor),
+        None => opts,
+    }
 }
 
 /// Value to write into a row: room time, strictly past the stored stamp (a

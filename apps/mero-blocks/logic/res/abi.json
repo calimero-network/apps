@@ -30,9 +30,18 @@
       "allowSystem": false,
       "confirm": false,
       "kind": "view",
-      "params": [],
+      "params": [
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
+        ]
+      ],
       "public": false,
-      "returns": "list<BlockEntry>"
+      "returns": "OverridesPage"
     },
     "getPlayers": {
       "allowSystem": false,
@@ -42,10 +51,18 @@
         [
           "now",
           "u64"
+        ],
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
         ]
       ],
       "public": false,
-      "returns": "list<PlayerView>"
+      "returns": "PlayersPage"
     },
     "heartbeat": {
       "allowSystem": false,
@@ -185,7 +202,8 @@
     "fields": {
       "meta": "cell",
       "overrides": "unorderedMap",
-      "players": "unorderedMap"
+      "players": "unorderedMap",
+      "stamps": "unorderedMap"
     },
     "version": 1
   },

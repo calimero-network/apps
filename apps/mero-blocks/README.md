@@ -61,7 +61,10 @@ apps are built, run and tested in this repo.
   `overrides: UnorderedMap<"x,y,z", u8>` (public on purpose — anyone in the
   world may build anywhere), and `players: UnorderedMap<(account, device),
   Player>`, keyed by the caller's own account, so an account writes only its
-  own avatars.
+  own avatars, with `stamps: UnorderedMap<(updatedAt, account, device), bool>`
+  beside it so the room clock is one reverse read, not a scan. Both growing
+  collections are read a page at a time (`getOverrides`, `getPlayers` answer
+  `{ items, next }`).
 - **Engine** (`app/src/engine/`, pure TS — unit-testable without a GPU):
   deterministic terrain (value noise + trees + ores), culled chunk mesher with
   per-vertex baked light, Amanatides–Woo raycast, AABB physics, day/night.
@@ -100,8 +103,8 @@ right-click.
 
 | | what it covers | needs a node |
 |---|---|---|
-| `cargo test --manifest-path apps/mero-blocks/logic/Cargo.toml` | v1's `TestHost` tests method for method, v1's storage write rules as method checks tried as another account, devices, access and wire checks, and every `scenarios/*.json`, on core's wasmtime engine (32 harness tests + 3 scenarios) | no |
-| `pnpm -F mero-blocks test` | the engine (terrain, mesher, lighting, raycast, physics), sync batching/echo/reconcile, the contract wrapper against the committed ABI, session, worlds and invites, the event stream, the launcher's screens (mocked client) — 140 tests | no |
+| `cargo test --manifest-path apps/mero-blocks/logic/Cargo.toml` | v1's `TestHost` tests method for method, v1's storage write rules as method checks tried as another account, devices, access and wire checks, and every `scenarios/*.json`, on core's wasmtime engine (34 harness tests + 3 scenarios) | no |
+| `pnpm -F mero-blocks test` | the engine (terrain, mesher, lighting, raycast, physics), sync batching/echo/reconcile, the contract wrapper against the committed ABI, session, worlds and invites, the event stream, the launcher's screens (mocked client) — 142 tests | no |
 | `pnpm merod-local e2e mero-blocks` | every `scenarios/*.json` on `merod local`: real accounts with passkeys, an org per scenario, each account on a different node, event streams | yes |
 
 The scenarios: `world-lifecycle.json` is the merobox workflow
@@ -121,13 +124,13 @@ slot), typed errors, malformed arguments, v1's snake_case names unknown.
 | `init` | init | `name?`, `seed?`, `now?` | — | all optional: defaults `"overworld"`, a random seed in [0, 2^32), the leader's clock |
 | `worldMeta` | view | — | `{name, seed, createdAt}` | `seed`, `createdAt` decimal strings |
 | `setBlocks` | call | `edits: [{x,y,z,b}]`, `now`, `device?` | applied count (number) | ≤512 per call, out-of-bounds skipped; emits `BlocksChanged {id}` |
-| `getOverrides` | view | — | `[{k: "x,y,z", b}]` | every edit, breaks included, in key order |
+| `getOverrides` | view | `cursor?`, `limit?` | `{items: [{k: "x,y,z", b}], next}` | one page (≤1,000, `limit` smaller) of the edits, breaks included, in key order; `next` is `null` after the last page |
 | `overrideCount` | view | — | number | a stored count |
 | `worldStats` | view | — | `{overrides, players}` | new; decimal strings |
 | `join` | call | `name`, `now`, `device?` | `PlayerView` | emits `PlayerJoined {id}` |
 | `heartbeat` | call | `t: {name,x,y,z,yaw,pitch,sel}`, `now`, `device?` | `null` | `PlayerJoined` only for a new or returning avatar |
 | `leave` | call | `now`, `device?` | `null` | emits `PlayerLeft {id}`; no-op for an avatar that never joined |
-| `getPlayers` | view | `now` | `[PlayerView]` | `{id, account, device, name, x, y, z, yaw, pitch, sel, online}` |
+| `getPlayers` | view | `now`, `cursor?`, `limit?` | `{items: [PlayerView], next}` | one page (≤1,000) of `{id, account, device, name, x, y, z, yaw, pitch, sel, online}`, in (account, device) order |
 | `myAccount` | view | — | string | new: the caller's account, the frontend's "me" |
 
 Errors (`422 APP_ERROR`, `{ code, fields }`): `TooManyEdits { max, got }`,
@@ -152,7 +155,9 @@ event names. What a client sees differently:
 | two players editing one block | a per-override `updatedAt` stamp and an LWW merge with a `(clock, borsh)` tie-break | the leader's log orders them; the later call holds; the stamp is gone (`overrides` stores the block id only) | no CRDT merge under one log |
 | world meta | `Frozen<WorldMeta>`: storage refused any later write | a `Cell` written by `init`, which no method writes | v1's `Frozen` was a write-once cell; component `Frozen` is content-addressed storage, a different thing. The rule is now "no method writes it" (tested) |
 | avatars | storage refused another account's write to its `UserStorage` slot | rows keyed by the caller's account; no method takes an account | write rules are method checks (tested as another account) |
-| `getOverrides` | every entry | every entry, read one page of 1,000 at a time | multi-row reads are pages |
+| `getOverrides` answer | every entry, `[{k, b}]` | one page: `{ items: [{k, b}], next }`, at most 1,000 entries (`limit` asks for fewer); pass `next` back as `cursor` until it is `null` | the map only grows (up to 128×64×128 ≈ 1M coordinates); a view never reads a whole growing collection into one answer |
+| `getPlayers` answer | every row, `[PlayerView]` | one page: `{ items: [PlayerView], next }`, same `cursor` / `limit` | rows are kept for everyone who ever played |
+| room clock | a scan of every player row on every call | one reverse read of a `(updatedAt, account, device)` index (`stamps`), kept in step with each row write | bounded per call however many rows there are; the rows themselves are bounded by the org's members × 8 devices |
 | `overrideCount` | a scan | a stored count | lengths are counts |
 | reads | any method | `worldMeta`, `getOverrides`, `overrideCount`, `worldStats`, `getPlayers`, `myAccount` are views; calling a write as a view is `NotAView` | a view is answered without touching the log |
 | who may call | any member of the context | the org's owner, admins, members and guests; anonymous `401`, others `404`; System `Forbidden` | the org is the access boundary |

@@ -29,10 +29,13 @@
    "now": "1001"
   },
   "expect": {
-   "ok": [
-    "$laptop",
-    "$phone"
-   ]
+   "ok": {
+    "items": [
+     "$laptop",
+     "$phone"
+    ],
+    "next": null
+   }
   }
  },
  {

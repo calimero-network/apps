@@ -27,10 +27,10 @@ export const PARAMS: Record<(typeof CALLS)[number] | (typeof VIEWS)[number], rea
   heartbeat: ["t", "now", "device"],
   leave: ["now", "device"],
   worldMeta: [],
-  getOverrides: [],
+  getOverrides: ["cursor", "limit"],
   overrideCount: [],
   worldStats: [],
-  getPlayers: ["now"],
+  getPlayers: ["now", "cursor", "limit"],
   myAccount: [],
 };
 
@@ -69,6 +69,15 @@ export interface Blocks extends WorldApi {
 
 type Transport = Pick<CalimeroClient, "call" | "view">;
 
+/** One page of a paged view (`getOverrides`, `getPlayers`). */
+interface Page<T> {
+  items: T[];
+  next: string | null;
+}
+
+/** Pages a read follows at most: 1,000 rows each, so ~1M rows (a world full of edits). */
+const MAX_PAGES = 1100;
+
 const u64 = (n: number): string => String(Math.max(0, Math.floor(n)));
 
 /** `init` arguments for a new world: name, seed in [0, 2^32), the creator's clock. */
@@ -97,14 +106,30 @@ export function blocks(client: Transport, app: string, device: string, after: ()
       after();
     }
   };
+  /**
+   * Every row of a paged view: the contract answers at most 1,000 per call
+   * (its collections only grow), so follow `next` until it is `null`.
+   */
+  const allPages = async <T>(method: "getOverrides" | "getPlayers", args: Record<string, unknown>): Promise<T[]> => {
+    const rows: T[] = [];
+    let cursor: string | null = null;
+    for (let n = 0; n < MAX_PAGES; n++) {
+      const answer: { result: Page<T> } = await view<Page<T>>(method, cursor === null ? args : { ...args, cursor });
+      const result = answer.result;
+      rows.push(...(result?.items ?? []));
+      cursor = result?.next ?? null;
+      if (cursor === null) return rows;
+    }
+    throw new Error(`${method}: more than ${MAX_PAGES} pages`);
+  };
   return {
     setBlocks: (edits: Edit[], now: number) => call<number>("setBlocks", { edits, now: u64(now), device }),
     join: (name: string, now: number) => call("join", { name, now: u64(now), device }),
     heartbeat: (t: Transform, now: number) => call("heartbeat", { t, now: u64(now), device }),
     leave: (now: number) => call("leave", { now: u64(now), device }),
-    getOverrides: async () => (await view<BlockEntry[]>("getOverrides")).result ?? [],
+    getOverrides: () => allPages<BlockEntry>("getOverrides", {}),
     getPlayers: async (now: number): Promise<RemotePlayer[]> => {
-      const rows = (await view<PlayerView[]>("getPlayers", { now: u64(now) })).result ?? [];
+      const rows = await allPages<PlayerView>("getPlayers", { now: u64(now) });
       return rows.map(({ id, name, x, y, z, yaw, pitch, sel, online }) => ({ id, name, x, y, z, yaw, pitch, sel, online }));
     },
     worldMeta: async () => {

@@ -8,8 +8,9 @@ The contract never stores terrain.
 Every client generates identical terrain from the world's seed; the contract stores only the edits made on top of it.
 
 - `worldMeta` returns the world's `name`, `seed` and `createdAt` (unix seconds); `seed` and `createdAt` are decimal strings.
-- `getOverrides` returns every edited coordinate as `{"k": "x,y,z", "b": <block id>}`; `b: 0` means the block was broken.
-- `getPlayers` returns every player row with an `online` flag.
+- `getOverrides` returns the edited coordinates, a page at a time, as `{"items": [{"k": "x,y,z", "b": <block id>}], "next": <cursor or null>}`; `b: 0` means the block was broken.
+- `getPlayers` returns the player rows with an `online` flag, a page at a time, as `{"items": [...], "next": <cursor or null>}`.
+- A paged read answers at most 1,000 rows (pass `limit` for fewer). Call it again with `cursor` set to `next` until `next` is `null`.
 
 Method and argument names are camelCase. Every `u64` (`now`, `seed`, `createdAt`) is a decimal string on the wire: send `"now": "1727000000"`, not a number.
 
@@ -83,8 +84,8 @@ Split a larger build into several calls.
 
 ### Read the world's edits
 
-Call `getOverrides` with `{}`.
-Each entry is `{"k": "x,y,z", "b": <id>}`, and the list holds every coordinate ever edited, breaks included.
+Call `getOverrides` with `{}`, then again with `{"cursor": "<next>"}` while `next` is not `null`.
+Each entry in `items` is `{"k": "x,y,z", "b": <id>}`; together the pages hold every coordinate ever edited, breaks included.
 `overrideCount` with `{}` returns how many coordinates have been edited.
 
 ### See who is online
@@ -95,7 +96,7 @@ Call `getPlayers` with the current unix seconds:
 {"now": "1727000000"}
 ```
 
-A player is `online` when they have not left and wrote within the last 10 seconds.
+Follow `next` as for `getOverrides` (add `"cursor"` beside `"now"`). A player is `online` when they have not left and wrote within the last 10 seconds.
 
 ### Move a player
 

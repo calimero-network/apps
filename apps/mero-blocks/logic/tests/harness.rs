@@ -73,11 +73,25 @@ fn join(t: &mut TestApp, who: &str, name: &str, now: u64) -> Value {
     )
 }
 
+/// Every page of a paged view (`{ items, next }`), following `next`.
+fn all_pages(t: &mut TestApp, method: &str, args: Value) -> Vec<Value> {
+    let mut out = Vec::new();
+    let mut args = args;
+    loop {
+        let page = view(t, method, args.clone());
+        out.extend(page["items"].as_array().expect("items").iter().cloned());
+        match page["next"].as_str() {
+            Some(next) => args["cursor"] = json!(next),
+            None => {
+                assert_eq!(page["next"], Value::Null);
+                return out;
+            }
+        }
+    }
+}
+
 fn players(t: &mut TestApp, now: u64) -> Vec<Value> {
-    view(t, "getPlayers", json!({ "now": now.to_string() }))
-        .as_array()
-        .expect("an array")
-        .clone()
+    all_pages(t, "getPlayers", json!({ "now": now.to_string() }))
 }
 
 fn player<'a>(rows: &'a [Value], id: &str) -> &'a Value {
@@ -87,10 +101,7 @@ fn player<'a>(rows: &'a [Value], id: &str) -> &'a Value {
 }
 
 fn overrides(t: &mut TestApp) -> Vec<Value> {
-    view(t, "getOverrides", json!({}))
-        .as_array()
-        .expect("an array")
-        .clone()
+    all_pages(t, "getOverrides", json!({}))
 }
 
 /// The event names `who` has heard so far.
@@ -273,10 +284,11 @@ fn the_later_edit_wins_whatever_the_clocks_say() {
     assert_eq!(overrides(&mut t), [json!({ "k": "2,2,2", "b": 4 })]);
 }
 
-/// `getOverrides` reads every page: a world with more than 1,000 edits is not
-/// cut off (kv-store's `entries` answers one page; a world cannot).
+/// `getOverrides` answers a page at a time (the map only grows, up to ~1M
+/// coordinates): at most 1,000 entries by default and at most, a smaller
+/// `limit` on request, and a cursor that walks every entry exactly once.
 #[test]
-fn get_overrides_reads_past_one_page() {
+fn get_overrides_is_paged() {
     let mut t = world();
     let mut n = 0;
     for batch in 0..3 {
@@ -290,7 +302,92 @@ fn get_overrides_reads_past_one_page() {
         set_blocks(&mut t, "alice", edits, 1000);
     }
     assert_eq!(view(&mut t, "overrideCount", json!({})), json!(n));
-    assert_eq!(overrides(&mut t).len(), 1200);
+
+    let first = view(&mut t, "getOverrides", json!({}));
+    assert_eq!(first["items"].as_array().map(Vec::len), Some(1000));
+    let next = first["next"].as_str().expect("a next page").to_owned();
+    let second = view(&mut t, "getOverrides", json!({ "cursor": next }));
+    assert_eq!(second["items"].as_array().map(Vec::len), Some(200));
+    assert_eq!(second["next"], Value::Null);
+
+    // A limit past the cap is the cap; a small one pages finer.
+    let capped = view(&mut t, "getOverrides", json!({ "limit": 5000 }));
+    assert_eq!(capped["items"].as_array().map(Vec::len), Some(1000));
+    let small = all_pages(&mut t, "getOverrides", json!({ "limit": 7 }));
+    assert_eq!(small.len(), 1200);
+    let mut keys: Vec<&str> = small.iter().filter_map(|e| e["k"].as_str()).collect();
+    let in_order = keys.clone();
+    keys.sort_unstable();
+    keys.dedup();
+    assert_eq!(keys.len(), 1200, "every entry exactly once");
+    assert_eq!(in_order, keys, "in key order");
+
+    // Not a cursor this map handed out.
+    assert!(t
+        .as_("owner")
+        .view("getOverrides", json!({ "cursor": "bm90LWEtY3Vyc29y" }))
+        .is_err());
+}
+
+/// `getPlayers` is paged the same way, and every row on every page carries
+/// the same room clock.
+#[test]
+fn get_players_is_paged() {
+    let mut t = world();
+    for (who, now) in [("owner", 1000), ("alice", 1005), ("bob", 1012)] {
+        join(&mut t, who, who, now);
+    }
+    let first = view(&mut t, "getPlayers", json!({ "now": "1012", "limit": 2 }));
+    let rows = first["items"].as_array().expect("items");
+    assert_eq!(rows.len(), 2);
+    let next = first["next"].as_str().expect("a next page").to_owned();
+    let second = view(
+        &mut t,
+        "getPlayers",
+        json!({ "now": "1012", "limit": 2, "cursor": next }),
+    );
+    assert_eq!(second["next"], Value::Null);
+    let all: Vec<Value> = rows
+        .iter()
+        .chain(second["items"].as_array().expect("items"))
+        .cloned()
+        .collect();
+    let online: Vec<(&str, bool)> = all
+        .iter()
+        .map(|p| (p["id"].as_str().unwrap_or(""), p["online"] == true))
+        .collect();
+    assert_eq!(
+        online,
+        [("alice", true), ("bob", true), ("owner", false)],
+        "owner's 1000 is 12 s behind the room clock wherever its row falls"
+    );
+}
+
+/// Room time comes from the stamp index, one read however many rows there
+/// are: every move of a row's stamp replaces its index entry, so a stale stamp
+/// never lingers and a row's own older stamp never counts.
+#[test]
+fn the_room_clock_follows_every_stamp_move() {
+    let mut t = world();
+    join(&mut t, "alice", "Alice", 1000);
+    heartbeat(&mut t, "alice", tf("Alice", 1.0), 1020);
+    call(&mut t, "alice", "leave", json!({ "now": "1030" }));
+    set_blocks(&mut t, "alice", vec![edit(1, 1, 1, 1)], 1040);
+    assert_eq!(
+        view(&mut t, "worldStats", json!({})),
+        json!({ "overrides": "1", "players": "1" })
+    );
+    // Bob's clock is 40 s behind (within the skew window): room time is
+    // Alice's newest stamp (1040, from setBlocks), so Bob, stamped on it, is
+    // online, and Alice (left) is not.
+    let bob = join(&mut t, "bob", "Bob", 1000);
+    assert_eq!(bob["online"], true);
+    let rows = players(&mut t, 1000);
+    assert_eq!(player(&rows, "bob")["online"], true);
+    // 11 s past the room clock on Bob's side, Bob ages out too.
+    let rows = players(&mut t, 1051);
+    assert_eq!(player(&rows, "bob")["online"], false);
+    assert_eq!(player(&rows, "alice")["online"], false);
 }
 
 #[test]
