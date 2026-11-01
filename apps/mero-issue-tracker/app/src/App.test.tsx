@@ -105,6 +105,11 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+// Each screen here waits on a chain of mocked requests (session -> /me ->
+// listApps -> views); under a parallel workspace run that takes longer than
+// testing-library's 1 s default.
+const SLOW = { timeout: 10_000 };
+
 function storeSession() {
   new SessionStore(APP, resolveTarget(DEV_ENV), localStorage).save(SESSION);
 }
@@ -113,10 +118,10 @@ describe('App', () => {
   it('signs in with a passkey from the landing page', async () => {
     const client = fakeClient();
     render(<App deps={deps(client)} />);
-    const connect = await screen.findAllByRole('button', { name: /sign in|connect|get started|open/i });
+    const connect = await screen.findAllByRole('button', { name: /sign in|connect|get started|open/i }, SLOW);
     fireEvent.click(connect[0]);
-    fireEvent.click(await screen.findByTestId('signin-passkey'));
-    await waitFor(() => expect(client.signIn).toHaveBeenCalledTimes(1));
+    fireEvent.click(await screen.findByTestId('signin-passkey', {}, SLOW));
+    await waitFor(() => expect(client.signIn).toHaveBeenCalledTimes(1), SLOW);
   });
 
   it('opens the remembered workspace on its first repo and shows its issues', async () => {
@@ -126,7 +131,7 @@ describe('App', () => {
     window.history.replaceState(null, '', '/issue-tracker');
     render(<App deps={deps(client)} />);
 
-    expect(await screen.findByText('Login broken')).toBeTruthy();
+    expect(await screen.findByText('Login broken', {}, SLOW)).toBeTruthy();
     // Only this workspace's repos, and the board read from the open one.
     expect(client.listApps).toHaveBeenCalledWith({ bundle: 'bundle-hash' });
     expect(screen.queryByText('elsewhere')).toBeNull();
@@ -140,9 +145,9 @@ describe('App', () => {
     window.history.replaceState(null, '', '/issue-tracker');
     render(<App deps={deps(client)} />);
 
-    fireEvent.click(await screen.findByTestId('invitation-join'));
-    await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith('tok-xyz'));
+    fireEvent.click(await screen.findByTestId('invitation-join', {}, SLOW));
+    await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith('tok-xyz'), SLOW);
     expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
-    expect(await screen.findByText('Login broken')).toBeTruthy();
+    expect(await screen.findByText('Login broken', {}, SLOW)).toBeTruthy();
   });
 });

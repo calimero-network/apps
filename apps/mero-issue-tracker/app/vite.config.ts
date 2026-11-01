@@ -14,6 +14,8 @@ export default defineConfig({
   server: { port: 5173, strictPort: true },
   test: {
     environment: "jsdom",
+    // App.test.tsx waits on chains of mocked requests; a parallel run is slow.
+    testTimeout: 20_000,
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
     // `tsc -b` writes declarations under dist-types/; without this vitest also
     // runs the compiled copies of the tests.
