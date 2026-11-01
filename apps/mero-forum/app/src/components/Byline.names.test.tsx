@@ -5,13 +5,19 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 const HEX = "5926f2d2a4940fa2a62edd2cd7d833897c2c1596c697ea674dd0f49b89d11334";
-const admin = {
-  listGroupMembers: vi.fn().mockResolvedValue({ members: [{ identity: HEX, role: "Admin", name: "Sandi" }] }),
+const calimero = {
+  getOrg: vi.fn().mockResolvedValue({
+    name: "Space",
+    members: { [HEX]: "admin" },
+    memberMetadata: { [HEX]: { name: "Sandi" } },
+  }),
 };
-vi.mock("@calimero-network/mero-react", () => ({ useMero: () => ({ admin }) }));
+vi.mock("../sessionContext", () => ({
+  useMaybeSignedIn: () => ({ client: calimero, accountId: HEX, after: () => {} }),
+}));
 vi.mock("../lib/session", async (orig) => ({
   ...(await orig<typeof import("../lib/session")>()),
-  getActiveNamespaceId: () => "ns1",
+  getActiveNamespaceId: () => "org1",
 }));
 
 const { Byline } = await import("./PostCard");
@@ -20,7 +26,7 @@ describe("Byline – space names", () => {
   it("falls back to the name set for the space before the account id", async () => {
     render(<Byline account={HEX} authorName="" selfAccount={HEX} />);
     expect(await screen.findByText("Sandi")).toBeInTheDocument();
-    expect(admin.listGroupMembers).toHaveBeenCalledWith("ns1");
+    expect(calimero.getOrg).toHaveBeenCalledWith("org1");
   });
 
   it("keeps the forum nickname when there is one", () => {

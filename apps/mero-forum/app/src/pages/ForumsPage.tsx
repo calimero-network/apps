@@ -1,33 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
-import { useApplicationId } from "../hooks/useApplicationId";
+import { describeError } from "@calimero-apps/connect";
+
 import { useToast } from "../contexts/ToastContext";
+import { useSignedIn } from "../sessionContext";
 import { setActiveForum, setForumName } from "../lib/session";
-import { useSelfAccount } from "../lib/forum";
 import {
   createForum,
   deleteForum,
-  enterForumContext,
+  inviteLink,
+  inviteToken,
+  isSpaceAdmin,
   listForums,
-  mintNamespaceInvite,
-  mintForumInvite,
-  namespaceTeeMode,
-  selfIsGroupAdmin,
+  readMembers,
+  roleIn,
   type ForumRow,
-  type TeeMode,
-} from "../lib/groups";
+} from "../lib/spaces";
 import InviteModal from "../components/InviteModal";
-import { TeeBadge } from "../components/ui";
+import SessionMenu from "../components/SessionMenu";
 import { useDialogOpen } from "../hooks/useDialogOpen";
-import {
-  AccountChip,
-  Avatar,
-  NavItem,
-  Shell,
-  SideCard,
-  TechDetails,
-} from "../components/chrome";
+import { Avatar, NavItem, Shell, SideCard, TechDetails } from "../components/chrome";
 import {
   AlertIcon,
   CopyIcon,
@@ -49,69 +41,32 @@ function focusCreate() {
     el.focus();
   }
 }
-import {
-  JOIN_SYNC_MAX_MS,
-  JOIN_SYNC_POLL_MS,
-  JoinSyncBanner,
-  isNamespaceJustJoined,
-  useJoinSync,
-} from "@calimero-network/mero-react";
 
 /**
- * Forums inside one space (namespace). A forum is a SUBGROUP plus the context bound
- * to it, and that context is the board.
- *
- * The two things this page exists to make possible, both proven by suite S3/S4:
- *
- *   - A namespace can hold MORE THAN ONE forum. The old picker created a namespace
- *     and a single context together, so it could not.
- *   - A forum is joinable by someone who only holds the namespace, because it is
- *     created OPEN. Restricted is the default, and a restricted forum answers
- *     `join-via-inheritance` with 403 — invited members could see the space and
- *     never reach the forum.
+ * Forums inside one space (an organization). A forum is an instance of this
+ * app created in the org, so every member of the space reaches it, including
+ * forums made after they joined. v1 needed a subgroup plus a context per forum,
+ * an "open" subgroup so members could join it, and a join step (and a wait for
+ * the context to replicate) before a forum could be read; none of that exists
+ * any more: opening a forum is choosing it.
  *
  * Two invite scopes are offered, and the difference is DESTINATION, not grant:
- * both codes join the space (forum access is inherited from it, so there is no
- * narrower grant to hand out — see `mintForumInvite`), but a forum code drops the
- * joiner straight into that forum while a space code leaves them on this list. The
- * hints say so rather than implying the forum code is more restrictive.
+ * both links join the space, but a forum link drops the joiner straight into
+ * that forum while a space link leaves them on this list.
  */
 export default function ForumsPage() {
-  const navigate = useNavigate();
   const { namespaceId = "" } = useParams();
-  // `admin`, never `mero.admin`: see SpacesPage. On an account the relay
-  // client's node routes refuse every write (403); `admin` is the session's own.
-  const { admin, logout, nodeUrl, isDelegated } = useMero();
-  const nodeLabel = (() => {
-    if (!nodeUrl) return "";
-    try {
-      const u = new URL(nodeUrl);
-      return u.port ? `${u.hostname}:${u.port}` : u.hostname;
-    } catch {
-      return nodeUrl;
-    }
-  })();
+  const navigate = useNavigate();
   const { showToast } = useToast();
-  // Resolved from the NODE by package, not from the session — see lib/appId.
-  const { appId } = useApplicationId();
+  const { client, accountId, source, passkey, after } = useSignedIn();
 
   const [forums, setForums] = useState<ForumRow[]>([]);
-  // Who may delete a forum: a space Admin, or an Admin of the forum itself.
-  const selfAccount = useSelfAccount();
   const [spaceAdmin, setSpaceAdmin] = useState(false);
+  const [memberCount, setMemberCount] = useState<number | null>(null);
   /** The space whose forum list has come back at least once. */
   const [listedForNs, setListedForNs] = useState<string | null>(null);
-  /** Contract roster per forum context, kept for the member counts on each row. */
   const [listing, setListing] = useState(true);
   const [nsName, setNsName] = useState("");
-  /**
-   * The space's TEE node, if any, keyed by the namespace it was read for —
-   * shown beside its name, never as a member.
-   */
-  const [tee, setTee] = useState<{
-    id: string;
-    mode: TeeMode | null;
-  } | null>(null);
   const [name, setName] = useState("");
 
   const [pending, setPending] = useState<string | null>(null);
@@ -123,31 +78,27 @@ export default function ForumsPage() {
     scope: string;
     hint: React.ReactNode;
   } | null>(null);
-  // The forum pending deletion. Its posts and comments go with it, for
-  // everyone — a sentence `window.confirm` has no room for.
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [pendingDelete, setPendingDelete] = useState<ForumRow | null>(null);
   const deleteDialogRef = useRef<HTMLDialogElement | null>(null);
 
   const run = useCallback(
-    async (
-      key: string,
-      fn: (onStatus: (m: string) => void) => Promise<void>,
-    ) => {
+    async (key: string, fn: (onStatus: (m: string) => void) => Promise<void>) => {
       setPending(key);
       setError(null);
       setStatus(null);
       try {
         await fn(setStatus);
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+        setError(describeError(e));
       } finally {
         setPending(null);
         setStatus(null);
+        after();
       }
     },
-    [],
+    [after],
   );
 
   // Whether the last forum read failed, so the next good one clears its error
@@ -156,181 +107,92 @@ export default function ForumsPage() {
 
   const load = useCallback(
     async (showSpinner = true) => {
-      if (!admin || !namespaceId) return;
+      if (!namespaceId) return;
       if (showSpinner) setListing(true);
       try {
-        // The namespace's own name for the header, so the page says which space
-        // you are in rather than a truncated id.
-        const info = await admin
-          .getNamespace(namespaceId)
-          .catch(() => null);
-        setNsName(
-          (info?.name ?? "").trim() || `Space ${namespaceId.slice(0, 6)}`,
-        );
-        // Never throws: an unreadable member list reads as "no TEE".
-        void namespaceTeeMode(admin, namespaceId).then((mode) =>
-          setTee({ id: namespaceId, mode }),
-        );
-        void selfIsGroupAdmin(admin, namespaceId, selfAccount).then(
-          setSpaceAdmin,
-        );
-        setForums(await listForums(admin, namespaceId, selfAccount));
-        // A real answer. Whether an EMPTY one ends the sync gate is decided
-        // there, not here: see `settled` below.
+        // The space's own name for the header, and who is in it.
+        const members = await readMembers(client, namespaceId).catch(() => null);
+        setNsName((members?.name ?? "").trim() || `Space ${namespaceId.slice(0, 6)}`);
+        setMemberCount(members ? members.roles.size : null);
+        void roleIn(client, namespaceId)
+          .then((role) => setSpaceAdmin(isSpaceAdmin(role ?? undefined)))
+          .catch(() => setSpaceAdmin(false));
+        setForums(await listForums(client, source, namespaceId));
         setListedForNs(namespaceId);
         if (listFailed.current) setError(null);
         listFailed.current = false;
       } catch (e) {
         listFailed.current = true;
-        setError(e instanceof Error ? e.message : "Could not load forums.");
+        setError(describeError(e));
       } finally {
         setListing(false);
+        after();
       }
     },
-    [admin, namespaceId, selfAccount],
+    [client, source, namespaceId, after],
   );
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  // A space joined this session whose forums have not replicated yet. Without
-  // this the branch below tells a brand-new member "No forums yet. Create one
-  // above." about a space that may be full of them.
-  //
-  // So an EMPTY list settles only once the space is no longer just-joined:
-  // until then it is what a node that has not synced the space returns. The
-  // watchdog clears the flag, after which a space with no forums reads as empty.
-  const { isSyncing, dismiss: dismissSyncing } = useJoinSync({
-    namespaceId: namespaceId || null,
-    settled:
-      listedForNs === namespaceId &&
-      (forums.length > 0 || !isNamespaceJustJoined(namespaceId || null)),
-    // Still empty: let the gate wait up to its ceiling, not the base window.
-    active: forums.length === 0,
-  });
-
-  // Nothing else re-reads the list, so while the gate is up keep asking — and
-  // that covers a read that failed because the space had not synced yet. A
-  // forum can also be listed before its context arrives (the row says
-  // "Syncing to this node"), so keep asking while one is missing, for as long
-  // as the gate would wait at most.
-  const awaitingContext = forums.some((f) => !f.contextId);
-  useEffect(() => {
-    if (!isSyncing && !awaitingContext) return;
-    const since = Date.now();
-    const timer = setInterval(() => {
-      if (!isSyncing && Date.now() - since >= JOIN_SYNC_MAX_MS) {
-        clearInterval(timer);
-        return;
-      }
-      void load(false);
-    }, JOIN_SYNC_POLL_MS);
-    return () => clearInterval(timer);
-  }, [isSyncing, awaitingContext, load]);
+  const open = useCallback(
+    (forum: ForumRow) => {
+      setForumName(forum.forumId, forum.name);
+      setActiveForum(forum.forumId, namespaceId);
+      navigate("/f");
+    },
+    [navigate, namespaceId],
+  );
 
   const create = useCallback(() => {
     const forumName = name.trim();
-    if (!forumName || !admin) return;
-    if (!appId) {
-      setError(
-        isDelegated
-          ? "Still connecting. Try again in a moment."
-          : "Missing application id — reopen Mero Forum from the desktop app.",
-      );
-      return;
-    }
+    if (!forumName) return;
     void run("create", async (onStatus) => {
-      const { contextId, memberPublicKey } = await createForum(
-        admin,
-        { applicationId: appId, namespaceId, name: forumName },
-        onStatus,
-      );
-      setForumName(contextId, forumName);
+      onStatus("Creating the forum…");
+      const forumId = await createForum(client, source, namespaceId, forumName);
       setName("");
-      setActiveForum(contextId, memberPublicKey, namespaceId, nodeUrl);
-      // Into the forum: the creator is already a member, so there is nothing to wait
-      // for. 480p H.264 (/live), not the 64x48 in-WASM comparison route.
-      navigate("/f");
+      // Into the forum: there is nothing to join or wait for.
+      open({ forumId, contextId: forumId, name: forumName, owner: accountId });
     });
-  }, [name, admin, appId, isDelegated, namespaceId, run, navigate, nodeUrl]);
-
-  /** Enter a forum: join it if needed, wait for the identity, then open the forum. */
-  const enter = useCallback(
-    (forum: ForumRow) => {
-      if (!admin) return;
-      if (!forum.contextId) {
-        setError(
-          `“${forum.name}” has no forum context on this node yet. It may still be replicating — refresh in a moment.`,
-        );
-        return;
-      }
-      const contextId = forum.contextId;
-      void run(`enter:${forum.forumId}`, async (onStatus) => {
-        const identity = await enterForumContext(
-          admin,
-          { forumId: forum.forumId, contextId },
-          onStatus,
-        );
-        setForumName(contextId, forum.name);
-        setActiveForum(contextId, identity, namespaceId, nodeUrl);
-        navigate("/f");
-      });
-    },
-    [admin, run, navigate, namespaceId, nodeUrl],
-  );
+  }, [name, client, source, namespaceId, accountId, run, open]);
 
   const inviteToForum = useCallback(
     (forum: ForumRow) => {
-      if (!admin) return;
       void run(`invite:${forum.forumId}`, async (onStatus) => {
-        const code = await mintForumInvite(
-          admin,
-          {
-            namespaceId,
-            forumId: forum.forumId,
-            forumName: forum.name,
-            namespaceName: nsName,
-            contextId: forum.contextId,
-          },
-          onStatus,
-        );
+        onStatus("Approve the invitation with your passkey…");
+        const token = await inviteToken(client, namespaceId, passkey());
         setInvite({
           key: `forum:${forum.forumId}`,
-          code,
+          code: inviteLink(token, forum.forumId),
           scope: `Opens ${forum.name}`,
           hint: (
             <>
               Opening the link puts them straight into{" "}
               <strong>{forum.name}</strong>. Note what it grants: joining{" "}
               <strong>{nsName}</strong>, which is what makes any forum in it
-              reachable — forum access is inherited from the space, so this is{" "}
-              <em>not</em> narrower than the space link. It just lands them in
-              this forum instead of the forum list.
+              reachable, so this is <em>not</em> narrower than the space link.
+              It just lands them in this forum instead of the forum list.
             </>
           ),
         });
         showToast(`Invite ready for “${forum.name}”.`);
       });
     },
-    [admin, namespaceId, nsName, run, showToast],
+    [client, passkey, namespaceId, nsName, run, showToast],
   );
 
   const inviteToNamespace = useCallback(() => {
-    if (!admin) return;
     void run("invite:namespace", async (onStatus) => {
-      const code = await mintNamespaceInvite(
-        admin,
-        { namespaceId, namespaceName: nsName },
-        onStatus,
-      );
+      onStatus("Approve the invitation with your passkey…");
+      const token = await inviteToken(client, namespaceId, passkey());
       setInvite({
         key: "namespace",
-        code,
+        code: inviteLink(token),
         scope: `Whole space · ${nsName}`,
         hint: (
           <>
-            This code joins <strong>{nsName}</strong> and every forum in it,
+            This link joins <strong>{nsName}</strong> and every forum in it,
             including forums made later. It lands them on the forum list — to
             drop someone directly into one forum, use <strong>Invite</strong> on
             that forum.
@@ -339,7 +201,7 @@ export default function ForumsPage() {
       });
       showToast(`Invite ready for “${nsName}”.`);
     });
-  }, [admin, namespaceId, nsName, run, showToast]);
+  }, [client, passkey, namespaceId, nsName, run, showToast]);
 
   useDialogOpen(deleteDialogRef, !!pendingDelete);
 
@@ -354,26 +216,19 @@ export default function ForumsPage() {
 
   const removeForum = useCallback(
     (forum: ForumRow) => {
-      if (!admin) return;
       setPendingDelete(null);
       void run(`delete:${forum.forumId}`, async (onStatus) => {
-        await deleteForum(admin, { forumId: forum.forumId, contextId: forum.contextId }, onStatus);
+        onStatus("Deleting the forum…");
+        await deleteForum(client, forum.forumId);
         onStatus("Refreshing forums…");
         await load(false);
         showToast(`Deleted \u201c${forum.name}\u201d.`);
       });
     },
-    [admin, run, load, showToast],
+    [client, run, load, showToast],
   );
 
   const spaceName = nsName || "Space";
-  // The namespace's own member list says so; a forum born Open admitted the same
-  // node, so its rows say so too when the namespace read came back empty.
-  const teeMode =
-    (tee?.id === namespaceId ? tee.mode : null) ??
-    forums.find((f) => f.teeMode)?.teeMode ??
-    null;
-  const joinedCount = forums.filter((f) => f.joined).length;
 
   return (
     <>
@@ -388,9 +243,9 @@ export default function ForumsPage() {
             <NavItem icon={<HashIcon size={24} />} label="Forums" active />
             <NavItem
               icon={<UserPlusIcon size={24} />}
-              label={pending === "invite-ns" ? "Inviting…" : "Invite people"}
+              label={pending === "invite:namespace" ? "Inviting…" : "Invite people"}
               onClick={inviteToNamespace}
-              disabled={pending === "invite-ns"}
+              disabled={pending === "invite:namespace"}
               testId="invite-space"
             />
           </>
@@ -408,13 +263,7 @@ export default function ForumsPage() {
             <span className="x-ctaLabel">New forum</span>
           </button>
         }
-        account={
-          <AccountChip
-            host={nodeLabel || null}
-            hostTitle={nodeUrl ?? undefined}
-            onLogout={logout}
-          />
-        }
+        account={<SessionMenu />}
         header={
           <div className="x-headRow">
             <div className="x-headText">
@@ -422,7 +271,6 @@ export default function ForumsPage() {
               <span className="x-headSub">
                 <LayersIcon size={13} />
                 {spaceName}
-                <TeeBadge mode={teeMode} />
               </span>
             </div>
           </div>
@@ -446,9 +294,12 @@ export default function ForumsPage() {
                   <strong>{forums.length}</strong>
                   {forums.length === 1 ? "forum" : "forums"}
                 </span>
-                <span>
-                  <strong>{joinedCount}</strong>joined
-                </span>
+                {memberCount !== null && (
+                  <span>
+                    <strong>{memberCount}</strong>
+                    {memberCount === 1 ? "member" : "members"}
+                  </span>
+                )}
               </div>
               <TechDetails rows={[{ label: "Space ID", value: namespaceId }]} />
             </SideCard>
@@ -498,7 +349,7 @@ export default function ForumsPage() {
           <button
             className="ui-btn ui-btn-primary"
             onClick={create}
-            disabled={pending === "create" || !name.trim() || !appId}
+            disabled={pending === "create" || !name.trim()}
             data-testid="create-forum"
           >
             {pending === "create" && <span className="ui-spinner" />}
@@ -519,11 +370,7 @@ export default function ForumsPage() {
           </p>
         )}
 
-        {isSyncing ? (
-          <div style={{ padding: 16 }}>
-            <JoinSyncBanner show what="forums" onDismiss={dismissSyncing} />
-          </div>
-        ) : listing ? (
+        {listing ? (
           <div aria-label="Loading…">
             <div className={styles.skeletonRow} />
             <div className={styles.skeletonRow} />
@@ -579,8 +426,7 @@ export default function ForumsPage() {
                 <button
                   className={styles.rowMain}
                   data-testid="forum-row"
-                  disabled={!forum.contextId}
-                  onClick={() => enter(forum)}
+                  onClick={() => open(forum)}
                 >
                   <Avatar
                     label={forum.name}
@@ -592,40 +438,20 @@ export default function ForumsPage() {
                   <span className={styles.rowText}>
                     <span className={styles.rowName}>
                       {forum.name}
-                      {forum.contextId && forum.joined && (
-                        <span className="ui-badge ui-badge-accent">Joined</span>
+                      {forum.owner === accountId && (
+                        <span className="ui-badge ui-badge-accent">Yours</span>
                       )}
                     </span>
                     <span className={styles.rowMeta}>
-                      {forum.contextId ? (
-                        <span className={styles.metaItem}>
-                          <UsersIcon size={14} />
-                          {`${forum.memberCount} member${forum.memberCount === 1 ? "" : "s"}${forum.joined ? "" : " · not joined"}`}
-                        </span>
-                      ) : (
-                        <span className={styles.metaItem}>
-                          Syncing to this node — refresh in a moment
-                        </span>
-                      )}
+                      <span className={styles.metaItem}>
+                        <UsersIcon size={14} />
+                        {memberCount === null
+                          ? "Everyone in the space"
+                          : `${memberCount} member${memberCount === 1 ? "" : "s"}`}
+                      </span>
                     </span>
                   </span>
-                  {!forum.contextId ? (
-                    <span className={`${styles.pill} ${styles.pillMuted}`}>
-                      <span className="ui-spinner" />
-                      syncing…
-                    </span>
-                  ) : pending === `enter:${forum.forumId}` ? (
-                    <span className={`${styles.pill} ${styles.pillMuted}`}>
-                      <span className="ui-spinner" />
-                      Opening
-                    </span>
-                  ) : forum.joined ? (
-                    <span className={styles.pill}>Open</span>
-                  ) : (
-                    <span className={`${styles.pill} ${styles.pillOutline}`}>
-                      Join
-                    </span>
-                  )}
+                  <span className={styles.pill}>Open</span>
                 </button>
                 <div className={styles.menuCell}>
                   <button
@@ -659,23 +485,21 @@ export default function ForumsPage() {
                       <UserPlusIcon size={17} />
                       Invite
                     </button>
-                    {forum.contextId && (
-                      <button
-                        className="ui-menuItem"
-                        role="menuitem"
-                        onClick={() => {
-                          setMenuOpenId(null);
-                          void navigator.clipboard
-                            ?.writeText(forum.contextId ?? "")
-                            .then(() => showToast("Context ID copied."))
-                            .catch(() => undefined);
-                        }}
-                      >
-                        <CopyIcon size={17} />
-                        Copy context ID
-                      </button>
-                    )}
-                    {(spaceAdmin || forum.selfAdmin) && (
+                    <button
+                      className="ui-menuItem"
+                      role="menuitem"
+                      onClick={() => {
+                        setMenuOpenId(null);
+                        void navigator.clipboard
+                          ?.writeText(forum.forumId)
+                          .then(() => showToast("Forum ID copied."))
+                          .catch(() => undefined);
+                      }}
+                    >
+                      <CopyIcon size={17} />
+                      Copy forum ID
+                    </button>
+                    {(spaceAdmin || forum.owner === accountId) && (
                       <button
                         className="ui-menuItem"
                         role="menuitem"
@@ -706,8 +530,8 @@ export default function ForumsPage() {
         <h2 className={styles.confirmTitle}>Delete this forum?</h2>
         <p className={styles.confirmText}>
           <strong>{pendingDelete?.name}</strong> and every post and comment in
-          it will be deleted. This happens for everyone in the space, not just
-          on this node, and it cannot be undone.
+          it will be deleted. This happens for everyone in the space, and it
+          cannot be undone.
         </p>
         <div className={styles.confirmRow}>
           <button

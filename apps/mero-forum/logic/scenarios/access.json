@@ -1,0 +1,275 @@
+[
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "createPost",
+  "args": {
+   "title": "From a guest",
+   "body": "guests post too"
+  },
+  "save": "post"
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getPost",
+  "args": {
+   "postId": "$post"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "vote",
+  "args": {
+   "postId": "$post",
+   "value": 1
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "createComment",
+  "args": {
+   "postId": "$post",
+   "body": "welcome"
+  },
+  "save": "comment"
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "editPost",
+  "args": {
+   "postId": "$post",
+   "title": "t",
+   "body": "b"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the author can edit this post"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deletePost",
+  "args": {
+   "postId": "$post"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the author can delete this post"
+   }
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "deleteComment",
+  "args": {
+   "commentId": "$comment"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the author can delete this comment"
+   }
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "moderateComment",
+  "args": {
+   "commentId": "$comment"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only a moderator can do this"
+   }
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "setModerators",
+  "args": {
+   "accounts": [
+    "@gus"
+   ]
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only a moderator can do this"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setNickname",
+  "args": {
+   "name": "not gus",
+   "account": "@gus"
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "createComment",
+  "args": {
+   "postId": "$post",
+   "body": "x",
+   "user": "@gus"
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "view",
+  "method": "getPost",
+  "args": {
+   "postId": "$post"
+  },
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "call",
+  "method": "vote",
+  "args": {
+   "postId": "$post",
+   "value": -1
+  },
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "view",
+  "method": "listPosts",
+  "args": {
+   "sort": null,
+   "cursor": null,
+   "limit": 1
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "call",
+  "method": "createPost",
+  "args": {
+   "title": "t",
+   "body": "b"
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "call",
+  "method": "vote",
+  "args": {
+   "postId": "$post",
+   "value": -1
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "create_post",
+  "args": {
+   "title": "t",
+   "body": "b"
+  },
+  "expect": {
+   "error": "UnknownMethod"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "createPost",
+  "args": {
+   "title": "t",
+   "body": "b"
+  },
+  "expect": {
+   "error": "NotAView"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createPost",
+  "args": {
+   "title": " ",
+   "body": "b"
+  },
+  "expect": {
+   "error": "Invalid",
+   "fields": {
+    "message": "title must not be empty"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "listPosts",
+  "args": {
+   "sort": "hot",
+   "cursor": null,
+   "limit": 1
+  },
+  "expect": {
+   "error": "Invalid",
+   "fields": {
+    "message": "sort must be \"new\" or \"top\", not \"hot\""
+   }
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "deletePost",
+  "args": {
+   "postId": "$post"
+  },
+  "expect": {
+   "ok": null
+  },
+  "events": {
+   "gus": [
+    "PostCreated",
+    "Voted",
+    "CommentCreated",
+    "PostDeleted"
+   ]
+  }
+ }
+]

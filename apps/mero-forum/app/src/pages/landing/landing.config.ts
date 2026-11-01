@@ -11,43 +11,42 @@
 import { CloudX, MessageCircle, Refresh, Shield } from '@calimero-network/mero-icons';
 
 import Animation from './animation';
-import LoginPopup from './loginPopup';
 import type { LandingConfig } from './landingTypes';
 
 export const CONFIG: LandingConfig = {
   name: "Mero Forum",
   packageId: "com.calimero.mero-forum",
-  tagline: "A peer-to-peer discussion forum: threads and comments replicated across your own nodes, with no server in the middle.",
+  tagline: "A discussion forum: threads, comments, votes and moderation, shared by the members of your organization.",
   dir: "mero-forum",
   markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
-  availability: "web+desktop",
+  availability: "web",
   tint: "#fb923c",
-  trust: ["Invite-only threads", "No feed ranking", "Replicated peer-to-peer"],
+  trust: ["Invite-only threads", "No feed ranking", "No passwords"],
   explainer: [
-    "A discussion forum for a group that wants threads without a platform. Posts and comments live in a Calimero context shared by its members, replicated between their own nodes.",
-    "There is no operator to rank your feed, sell against it, or change the rules — the members of the namespace are the whole system. It is the shape a mailing list would have if it were designed now.",
+    "A discussion forum for a group that wants threads without a platform. Posts, comments and votes live in a Calimero app instance shared by the members of its space, and nobody else can read them.",
+    "There is no operator to rank your feed, sell against it, or change the rules — the members of the space are the whole audience. It is the shape a mailing list would have if it were designed now.",
   ],
   features: [
     {
       icon: MessageCircle,
       title: "Threads and comments",
-      body: "Post, reply, and follow a conversation, replicated across every member’s node.",
+      body: "Post, reply, vote and follow a conversation, every change ordered by one log.",
     },
     {
       icon: Shield,
-      title: "Members are the namespace",
+      title: "Members are the space",
       body: "Invite-only by construction. There is no public firehose and no lurking stranger.",
     },
     {
       icon: CloudX,
       title: "No platform in the middle",
-      body: "Nothing ranks your feed, nothing advertises against it, and no account is required.",
+      body: "Nothing ranks your feed, nothing advertises against it, and your account is a passkey.",
     },
     {
       icon: Refresh,
       title: "Real-time",
-      body: "New posts and replies appear as peers sync, without a refresh button.",
+      body: "New posts and replies appear as they are written, without a refresh button.",
     },
   ],
   animation: Animation,
@@ -56,63 +55,55 @@ export const CONFIG: LandingConfig = {
       id: "concepts",
       heading: "The words, and what they mean here",
       concepts: [
-        { term: "Namespace", def: "A forum. Invite-only: the members are the audience, and there is no wider public." },
-        { term: "Context", def: "The forum’s posts, comments and votes." },
-        { term: "Post", def: "A thread, stored in a map keyed by id." },
-        { term: "Comment", def: "A reply. Every comment lives in one flat map carrying its post id, rather than a nested collection per post — a nested structure created independently on two nodes needs deterministic re-keying to converge, and a flat map has no such hazard." },
-        { term: "Vote", def: "One row per voter per post, keyed by both. That keying is what makes a vote idempotent: voting twice cannot count twice." },
+        { term: "Space", def: "An organization. Invite-only: its members are the audience, and there is no wider public." },
+        { term: "Forum", def: "An app instance in the space: its posts, comments and votes. Every member of the space can open every forum in it." },
+        { term: "Post", def: "A thread, stored as a row keyed by a random id, with its author and its score." },
+        { term: "Comment", def: "A reply. Every comment is a row carrying its post id, so one post’s thread is one index read." },
+        { term: "Vote", def: "One entry per voter per post, keyed by both. That keying is what makes a vote idempotent: voting twice cannot count twice." },
       ],
     },
     {
       id: "start",
       heading: "Getting started",
       steps: [
-        { title: "Connect a node", body: "Press Connect to node and choose your node." },
-        { title: "Create a forum", body: "A namespace you own. Nothing in it is public." },
-        { title: "Post something", body: "Write a post; it replicates to members as their nodes sync." },
-        { title: "Invite people", body: "Share the link. Membership is the whole access model." },
+        { title: "Sign in", body: "Sign in with a passkey, or create an account with a new one. There is no password and no email." },
+        { title: "Create a space", body: "An organization you own. Nothing in it is public." },
+        { title: "Create a forum and post something", body: "Write a post; every member of the space sees it as soon as it is written." },
+        { title: "Invite people", body: "Share the link, approved with your passkey. Membership is the whole access model." },
       ],
     },
     {
       id: "sharing",
       heading: "Who can see it",
       paragraphs: [
-        "Only members. There is no ranking algorithm, no advertising and no anonymous readership, because there is no server hosting the forum for strangers to reach.",
-        "Authorship is enforced in the contract: only a comment’s author may edit or delete it, whatever the interface offers.",
+        "Only members of the space. There is no ranking algorithm, no advertising and no anonymous readership: a caller who is not in the space is refused before the forum runs.",
+        "Authorship is enforced in the contract: only a post’s or comment’s author may edit or delete it, and only a moderator may remove someone else’s, whatever the interface offers.",
       ],
     },
     {
       id: "storage",
       heading: "What is stored, and where",
       bullets: [
-        "Posts, keyed by id, with the author and body.",
-        "Comments, in one flat map, each carrying the id of the post it belongs to.",
-        "Votes, keyed by post and voter together, so a repeat vote replaces rather than accumulates.",
-      ],
-    },
-    {
-      id: "offline",
-      heading: "Offline, and what happens when you reconnect",
-      paragraphs: [
-        "Your node holds the whole state, so the app keeps working with no network — every change is written locally and queued.",
-        "When your node reaches a peer again, the two exchange changes and merge them. Merging is CRDT-based, not last-write-wins-by-clock, so two people editing different things at the same time both keep their work. Where two people genuinely changed the same single value, the later write wins on that one value and nothing else is lost.",
+        "Posts, keyed by id, with the author, the body and the score.",
+        "Comments, each carrying the id of the post it belongs to.",
+        "Votes, keyed by post (or comment) and voter together, so a repeat vote replaces rather than accumulates.",
+        "Each member’s display name, written only by that member, and the list of moderators.",
       ],
     },
     {
       id: "trouble",
       heading: "When something looks wrong",
       concepts: [
-        { term: "A new post is not showing", def: "Posts appear as peers sync. If a member’s node has been offline, it catches up on reconnect." },
-        { term: "You cannot edit a comment", def: "Only its author can. This is checked in the contract, not the UI." },
-        { term: "A vote count looks low", def: "One row per voter per post is the design — the count is voters, not clicks." },
+        { term: "You cannot edit a post or comment", def: "Only its author can. This is checked in the contract, not the UI." },
+        { term: "A vote count looks low", def: "One vote per member per post is the design — the count is voters, not clicks." },
+        { term: "The invite link does nothing", def: "An invitation is redeemed once, after you sign in. Ask for a fresh one rather than reusing an old link." },
       ],
     },
   ],
   previewSteps: [
-    { title: "A thread list", body: "Posts in a context only the forum’s members replicate." },
-    { title: "A post arrives", body: "A peer’s new thread appears as the nodes sync — nothing polled a server." },
-    { title: "A reply nests", body: "Comments live in one flat map carrying their post id, which is what lets them converge reliably." },
-    { title: "No ranking", body: "Order is time, not an algorithm. There is no operator to tune it." },
+    { title: "A thread list", body: "Posts in a forum only the members of its space can read." },
+    { title: "A post arrives", body: "A member’s new thread appears as soon as it is written — the feed follows the forum’s events." },
+    { title: "A reply lands", body: "Comments are rows carrying their post id, read a page at a time, oldest first." },
+    { title: "No ranking", body: "Order is time, or votes. There is no operator to tune it." },
   ],
-  loginPopup: LoginPopup,
 };

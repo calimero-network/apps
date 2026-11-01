@@ -25,10 +25,9 @@ afterEach(cleanup);
  * rather than a conditional render — so it renders with no invitation minted
  * long before it renders with one.
  *
- * That is the state that took the page down: `shareableInvitation("")` THROWS
- * ("cannot build an invitation link for an empty code"), and it was being
- * called from a `useMemo` that ran on every render including the first. The
- * whole spaces page went white on load, before anyone clicked Invite.
+ * That is the state that once took the page down (v1 built the link from the
+ * code and threw on an empty one, on every render including the first), so an
+ * empty code must still render nothing.
  *
  * The inline panel it replaced (since deleted) never hit this, because it was
  * only rendered `{invite && <panel …/>}` — the guard was in the caller, and
@@ -83,7 +82,7 @@ describe("InviteModal", () => {
     render(
       <InviteModal
         open
-        code="abc123"
+        code="http://localhost:5173/?invite=abc123"
         scope="Whole space · Test"
         onClose={() => {}}
       />,
@@ -97,12 +96,12 @@ describe("InviteModal", () => {
   });
 
   it("offers the link and nothing else to share", () => {
-    // An invitation reaches the app only by its link being opened, so there is
-    // no desktop link or raw code to hand out instead.
+    // An invitation reaches the app only by its link being opened (an org
+    // invite token in `?invite=`), so there is no raw code to hand out instead.
     render(
       <InviteModal
         open
-        code="abc123"
+        code="https://forum.example/?invite=abc123&forum=app1"
         scope="Whole space · Test"
         onClose={() => {}}
       />,
@@ -110,8 +109,8 @@ describe("InviteModal", () => {
     const modal = screen.getByTestId("invite-modal");
     expect(screen.queryByTestId("invite-more")).toBeNull();
     expect(modal.textContent).not.toContain("calimero://");
-    expect(screen.getByTestId("invite-link").getAttribute("title")).toMatch(
-      /^https:\/\/links\.calimero\.network\/com\.calimero\.mero-forum\/join\?invitation=abc123$/,
+    expect(screen.getByTestId("invite-link").getAttribute("title")).toBe(
+      "https://forum.example/?invite=abc123&forum=app1",
     );
   });
 });

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { nodeBasename } from "@calimero-apps/node-served";
 
-import type { PostView } from "../generated/ForumClient";
+import type { PostView } from "../lib/forumApi";
 import { fullDate, timeAgo } from "../lib/forum";
 import { authorLabel, shortAccount, useAuthorName } from "../lib/nickname";
 import { Avatar, Menu } from "./chrome";

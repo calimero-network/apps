@@ -23,12 +23,13 @@ import {
   MessageIcon,
   TrashIcon,
 } from "../components/icons";
-import type { PostView } from "../generated/ForumClient";
+import type { PostView } from "../lib/forumApi";
 import {
   fullDate,
   timeAgo,
   useComments,
   useForumClient,
+  useForumEvents,
   useSelfAccount,
 } from "../lib/forum";
 import { useNickname } from "../lib/nickname";
@@ -66,6 +67,7 @@ export default function PostPage() {
   const forumName = contextId ? getForumName(contextId) : "";
   const mine = !!selfAccount && !!post && post.author === selfAccount;
 
+  const [refreshed, setRefreshed] = useState(0);
   useEffect(() => {
     if (!client || !postId) return;
     let cancelled = false;
@@ -79,7 +81,14 @@ export default function PostPage() {
     return () => {
       cancelled = true;
     };
-  }, [client, postId]);
+  }, [client, postId, refreshed]);
+
+  // Someone else's reply, vote or edit: read the post and its thread again.
+  useForumEvents((kind) => {
+    if (kind === "ProfileSet") return;
+    setRefreshed((n) => n + 1);
+    reload();
+  });
 
   const vote = async (value: number) => {
     if (!client || !post) return;
@@ -179,14 +188,15 @@ export default function PostPage() {
       aside={
         <SideCard title="About this forum">
           <p className="x-sideText">
-            <strong>{forumName || "This forum"}</strong> lives on the members'
-            own nodes — replies replicate peer to peer, with no server in
+            <strong>{forumName || "This forum"}</strong> is reachable by the
+            members of its space and nobody else — replies are ordered by the
+            cluster&apos;s log, with no server of ours in
             between.
           </p>
           <TechDetails
             rows={[
               { label: "Post ID", value: post?.id },
-              { label: "Context ID", value: contextId },
+              { label: "Forum ID", value: contextId },
               { label: "Space ID", value: getActiveNamespaceId() },
             ]}
           />
@@ -329,7 +339,7 @@ export default function PostPage() {
                 selfAccount={selfAccount}
                 onVote={(v) => void voteComment(c.id, v)}
                 onEdit={async (body) => {
-                  if (!client) throw new Error("not connected to a node");
+                  if (!client) throw new Error("not signed in");
                   await client.editComment({ comment_id: c.id, body });
                   reload();
                 }}
