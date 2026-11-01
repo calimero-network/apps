@@ -3,7 +3,7 @@ import type { TxStats } from "./useArena";
 
 /**
  * The point of the app, on one card: every punch is a transaction, and here is
- * how many, how fast, and how long each took to come back from the node.
+ * how many, how fast, and how long each took to come back from the cluster.
  */
 export function ChainPanel({
   stats,
@@ -72,7 +72,7 @@ export function ChainPanel({
           ))}
         </ul>
       ) : (
-        <p className="hint">Throw a punch — each one is signed, executed by the contract on your node and gossiped to your opponent&apos;s.</p>
+        <p className="hint">Throw a punch — each one is a call the arena&apos;s log orders and the contract executes.</p>
       )}
 
       <details className="details">
@@ -89,11 +89,11 @@ export function ChainPanel({
             {stats.framesOut.toFixed(0)}/s · {stats.framesIn.toFixed(0)}/s
           </dd>
           <dt>Method</dt>
-          <dd className="mono">act(match_index, round, id, kind, hit, blocked, now)</dd>
+          <dd className="mono">act(matchIndex, round, id, kind, hit, blocked, now)</dd>
         </dl>
         <p className="hint">
-          Movement streams over ephemeral presence (no storage, no DAG). Every finished action — a punch, a
-          kick, a jump, a block — is one contract call. Health is derived by the contract from those calls.
+          Movement streams over ephemeral presence (never stored, never in the log). Every finished action — a
+          punch, a kick, a jump, a block — is one contract call. The contract keeps health from those calls.
         </p>
         {stats.recent.find((t) => !t.ok)?.error && (
           <pre className="err">{stats.recent.find((t) => !t.ok)?.error}</pre>

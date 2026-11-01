@@ -1,11 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useMero, useSubscription } from "@calimero-network/mero-react";
-import type { SubscriptionEventData } from "@calimero-network/mero-react";
-import {
-  MeroKombatClient,
-  type ArenaView,
-  type MatchSummary,
-} from "./generated/MeroKombatClient";
+import type { CalimeroClient } from "@calimero-network/mero-js";
+import { kombat, messageOf, type ArenaView, type Kombat, type MatchSummary } from "./kombat";
+import { presencePublisher, subscribePresence } from "./presence";
 import type { ArenaState, Slice } from "./game/controller";
 import type { MoveKind } from "./game/sim";
 import type { FighterId } from "./game/fighters";
@@ -31,26 +27,55 @@ function write(key: string, value: string) {
 export const storedFighter = (): FighterId => (read(FIGHTER_KEY) as FighterId) || "kinetic";
 export const rememberFighter = (id: FighterId) => write(FIGHTER_KEY, id);
 
-/** The generated client, bound to this session. */
-export function useKombatClient(contextId: string): MeroKombatClient | null {
-  const { mero } = useMero();
-  return useMemo(() => (mero ? new MeroKombatClient(mero, contextId) : null), [mero, contextId]);
+/** Where an arena lives: the signed-in client and the app instance. */
+export interface ArenaConn {
+  client: Pick<CalimeroClient, "call" | "view" | "events" | "publishPresence" | "presenceStream">;
+  appId: string;
+  /** Runs after every request (keeps the stored session current). */
+  after?: () => void;
+}
+
+/** The typed contract, bound to this arena. */
+export function useKombatClient(conn: ArenaConn): Kombat {
+  const { client, appId, after } = conn;
+  return useMemo(() => kombat(client, appId, after), [client, appId, after]);
+}
+
+/**
+ * Calls `onEvent` for each event the arena emits, from now on, until the
+ * returned stop. Every event is a nudge to read `arena` again.
+ */
+function subscribeEvents(
+  client: ArenaConn["client"],
+  appId: string,
+  from: number,
+  onEvent: () => void,
+): () => void {
+  const abort = new AbortController();
+  void (async () => {
+    try {
+      for await (const _event of client.events(appId, from, abort.signal)) onEvent();
+    } catch {
+      // Stream closed (sign-out, arena left, network): the poll still runs.
+    }
+  })();
+  return () => abort.abort();
 }
 
 /** The slice of the contract view the fight reads. */
 export function toArenaState(v: ArenaView): ArenaState {
   return {
     status: v.status,
-    match: v.match_index,
+    match: v.matchIndex,
     round: v.round,
-    results: v.round_results,
+    results: v.roundResults,
     winner: v.winner,
     flawless: v.flawless,
     names: [v.p1.name, v.p2.name],
     fighters: [v.p1.fighter, v.p2.fighter],
     online: [v.p1.online, v.p2.online],
     hp: [v.p1.hp, v.p2.hp],
-    rounds: [v.p1.rounds_won, v.p2.rounds_won],
+    rounds: [v.p1.roundsWon, v.p2.roundsWon],
     hits: v.hits.map((h) => `${h.by}:${h.id}`),
   };
 }
@@ -177,9 +202,9 @@ const POLL_MS = 3_000;
 /** Floor between two contract reads when events arrive in a burst. */
 const MIN_READ_GAP_MS = 160;
 
-export function useArena(contextId: string) {
-  const client = useKombatClient(contextId);
-  const { mero } = useMero();
+export function useArena(conn: ArenaConn) {
+  const client = useKombatClient(conn);
+  const { client: raw, appId } = conn;
   const [view, setView] = useState<ArenaView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -191,7 +216,6 @@ export function useArena(contextId: string) {
   const reading = useRef(false);
   const again = useRef(false);
   const refresh = useCallback(async () => {
-    if (!client) return;
     if (reading.current) {
       again.current = true;
       return;
@@ -201,7 +225,7 @@ export function useArena(contextId: string) {
       do {
         again.current = false;
         const started = performance.now();
-        const next = await client.arena({ now: Date.now() });
+        const next = await client.arena();
         setView(next);
         setError(null);
         // At most ~6 reads a second. The fight itself never waits on a read —
@@ -223,20 +247,16 @@ export function useArena(contextId: string) {
     return () => window.clearInterval(timer);
   }, [refresh]);
 
-  useSubscription(
-    useMemo(() => [contextId], [contextId]),
-    useCallback(
-      (event: SubscriptionEventData) => {
-        if ("contextId" in event && event.contextId !== contextId) return;
-        void refresh();
-      },
-      [contextId, refresh],
-    ),
-  );
+  // Live events from just after the first read: from index 0 the stream would
+  // replay every blow the arena has ever seen.
+  const loaded = view !== null;
+  useEffect(() => {
+    if (!loaded) return;
+    return subscribeEvents(raw, appId, client.index() + 1, () => void refresh());
+  }, [raw, appId, client, refresh, loaded]);
 
   const run = useCallback(
-    async (fn: (c: MeroKombatClient) => Promise<unknown>) => {
-      if (!client) return;
+    async (fn: (c: Kombat) => Promise<unknown>) => {
       setBusy(true);
       setError(null);
       try {
@@ -254,19 +274,10 @@ export function useArena(contextId: string) {
   /** One fight action → one transaction, timed. */
   const act = useCallback(
     async (a: { match: number; round: number; id: number; kind: MoveKind; hit: boolean; blocked: boolean }) => {
-      if (!client) throw new Error("not connected");
       const start = performance.now();
       meter.sent();
       try {
-        await client.act({
-          match_index: a.match,
-          round: a.round,
-          id: a.id,
-          kind: a.kind,
-          hit: a.hit,
-          blocked: a.blocked,
-          now: Date.now(),
-        });
+        await client.act(a);
         const ms = Math.round(performance.now() - start);
         meter.record({ ...a, ok: true, ms, at: Date.now() });
         return ms;
@@ -280,43 +291,18 @@ export function useArena(contextId: string) {
   );
 
   /** Fire-and-forget presence. The newest slice wins; one request at a time. */
-  const ephemeral = mero?.ephemeral;
-  const inFlight = useRef(false);
-  const queued = useRef<Slice | null>(null);
-  const publish = useCallback(
-    (slice: Slice) => {
-      if (!ephemeral) return;
-      if (inFlight.current) {
-        queued.current = slice;
-        return;
-      }
-      inFlight.current = true;
-      meter.frameOut();
-      ephemeral
-        .set(contextId, slice)
-        .catch(() => {
-          /* a dropped frame is replaced 66 ms later */
-        })
-        .finally(() => {
-          inFlight.current = false;
-          const next = queued.current;
-          queued.current = null;
-          if (next) publish(next);
-        });
-    },
-    [ephemeral, contextId, meter],
+  const publish = useMemo(
+    () => presencePublisher(raw, appId, meter.frameOut) as (slice: Slice) => void,
+    [raw, appId, meter],
   );
 
   const subscribe = useCallback(
-    (handler: (s: Slice) => void) => {
-      if (!ephemeral) return () => {};
-      return ephemeral.subscribe<Slice>(contextId, (entry) => {
-        if (entry.removed || !entry.state) return;
+    (handler: (s: Slice) => void) =>
+      subscribePresence<Slice>(raw, appId, (slice) => {
         meter.frameIn();
-        handler(entry.state);
-      });
-    },
-    [ephemeral, contextId, meter],
+        handler(slice);
+      }),
+    [raw, appId, meter],
   );
 
   return {
@@ -330,21 +316,19 @@ export function useArena(contextId: string) {
     publish,
     subscribe,
     sit: useCallback(
-      (seat: "p1" | "p2", name: string, fighter: FighterId) =>
-        run((c) => c.sit({ seat, name, fighter, now: Date.now() })),
+      (seat: "p1" | "p2", name: string, fighter: FighterId) => run((c) => c.sit(seat, name, fighter)),
       [run],
     ),
-    stand: useCallback(() => run((c) => c.stand({ now: Date.now() })), [run]),
-    pick: useCallback((fighter: FighterId) => run((c) => c.pick({ fighter, now: Date.now() })), [run]),
-    rematch: useCallback(() => run((c) => c.rematch({ now: Date.now() })), [run]),
+    stand: useCallback(() => run((c) => c.stand()), [run]),
+    pick: useCallback((fighter: FighterId) => run((c) => c.pick(fighter)), [run]),
+    rematch: useCallback(() => run((c) => c.rematch()), [run]),
   };
 }
 
-export function usePastMatches(contextId: string, signature: string): MatchSummary[] {
-  const client = useKombatClient(contextId);
+export function usePastMatches(conn: ArenaConn, signature: string): MatchSummary[] {
+  const client = useKombatClient(conn);
   const [matches, setMatches] = useState<MatchSummary[]>([]);
   useEffect(() => {
-    if (!client) return;
     let live = true;
     void client
       .history()
@@ -361,25 +345,20 @@ export function usePastMatches(contextId: string, signature: string): MatchSumma
   return matches;
 }
 
-/** Announce this node in the arena once, with a name and a fighter. */
-export function useAnnounce(contextId: string, name: string, fighter: FighterId) {
-  const client = useKombatClient(contextId);
+/** Announce this player in the arena once, with a name and a fighter. */
+export function useAnnounce(conn: ArenaConn, name: string, fighter: FighterId) {
+  const client = useKombatClient(conn);
   const done = useRef<string | null>(null);
   useEffect(() => {
-    if (!client) return;
-    const key = `${contextId}:${name}`;
+    const key = `${conn.appId}:${name}`;
     if (done.current === key) return;
     done.current = key;
-    void client.join({ name: name || "Fighter", fighter, now: Date.now() }).catch(() => {
+    void client.join(name || "Fighter", fighter).catch(() => {
       /* presence is a nicety */
     });
     // `fighter` deliberately not a dependency: picking one is its own call.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, contextId, name]);
+  }, [client, conn.appId, name]);
 }
 
-export function messageOf(e: unknown): string {
-  if (e instanceof Error) return e.message;
-  if (typeof e === "string") return e;
-  return "Something went wrong talking to the node.";
-}
+export { messageOf };

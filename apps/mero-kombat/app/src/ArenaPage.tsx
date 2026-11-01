@@ -1,9 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  clearContextId,
-  useContextGroup,
-  useJoinSync,
-} from "@calimero-network/mero-react";
+import type { CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
 import { ArrowLeft, Refresh, Target } from "@calimero-network/mero-icons";
 import { useNavigate } from "react-router-dom";
 import { ArenaCanvas } from "./ArenaCanvas";
@@ -15,7 +11,7 @@ import { TouchPad } from "./TouchPad";
 import type { Slice } from "./game/controller";
 import { fighterOf, type FighterId } from "./game/fighters";
 import type { Button } from "./game/input";
-import type { ArenaView, FighterView, MatchSummary } from "./generated/MeroKombatClient";
+import type { ArenaView, FighterView, MatchSummary } from "./kombat";
 import {
   rememberFighter,
   storedFighter,
@@ -23,35 +19,51 @@ import {
   useAnnounce,
   useArena,
   usePastMatches,
+  type ArenaConn,
 } from "./useArena";
 import { useCornerNames } from "./useCornerNames";
+
+/** The arena an `ArenaPage` shows: the instance, its name, and its organization. */
+export interface OpenArena {
+  appId: string;
+  name: string;
+  org: string | null;
+}
 
 /**
  * One arena: the cabinet, the two corners, the chain meter, and the link that
  * brings an opponent in.
  */
-export function ArenaPage({ contextId }: { contextId: string }) {
-  const arena = useArena(contextId);
+export function ArenaPage({
+  client,
+  arena: opened,
+  after,
+  passkey,
+  onLeave,
+}: {
+  client: CalimeroClient;
+  arena: OpenArena;
+  /** Runs after each request (keeps the stored session current). */
+  after: () => void;
+  passkey: () => PasskeyProvider;
+  /** Back to the lobby. */
+  onLeave: () => void;
+}) {
+  const conn = useMemo<ArenaConn>(() => ({ client, appId: opened.appId, after }), [client, opened.appId, after]);
+  const arena = useArena(conn);
   const navigate = useNavigate();
-  // Corners named from the namespace when the arena has no name for them.
-  const names = useCornerNames(contextId, arena.view);
+  // Corners named by the name given in the arena, else a short account id.
+  const names = useCornerNames(arena.view);
   const name = names.name;
   const [fighter, setFighter] = useState<FighterId>(storedFighter);
   const [press, setPress] = useState<((b: Button, down: boolean) => void) | null>(null);
-  useAnnounce(contextId, name, fighter);
+  useAnnounce(conn, name, fighter);
 
   const view = names.view;
 
-  // After a join, the invitation dialog waits on this: the first `arena()`
-  // read that comes back, an empty arena with nobody in either corner
-  // included, is the arena having arrived. A read that fails is retried by
-  // `useArena`'s own poll. Arenas live directly in their namespace (see
-  // `ContextPicker`), so the context's group is the namespace that was joined.
-  const { groupId: namespaceId } = useContextGroup(contextId);
-  useJoinSync({ namespaceId, settled: arena.view !== null });
-  const past = usePastMatches(contextId, `${view?.match_index ?? 0}:${view?.winner ?? ""}`);
+  const past = usePastMatches(conn, `${view?.matchIndex ?? 0}:${view?.winner ?? ""}`);
   const state = useMemo(() => (view ? toArenaState(view) : null), [view]);
-  const mySeat = view?.my_seat ?? "";
+  const mySeat = view?.mySeat ?? "";
   const local = mySeat === "p1" ? 0 : mySeat === "p2" ? 1 : null;
   const mode = local === null ? "spectate" : "net";
   const fighting = view?.status === "fighting" && local !== null;
@@ -82,11 +94,6 @@ export function ArenaPage({ contextId }: { contextId: string }) {
   const hooks = useMemo(() => ({ act: arena.act, publish: arena.publish }), [arena.act, arena.publish]);
   const onControls = useCallback((fn: (b: Button, down: boolean) => void) => setPress(() => fn), []);
 
-  function switchArena() {
-    clearContextId();
-    window.location.reload();
-  }
-
   function choose(id: FighterId) {
     setFighter(id);
     rememberFighter(id);
@@ -113,8 +120,8 @@ export function ArenaPage({ contextId }: { contextId: string }) {
 
       <div className="arena-head">
         <div className="arena-title">
-          <p className="eyebrow">Arena · Match {(view?.match_index ?? 0) + 1}</p>
-          <h1>{view?.title ?? "Arena"}</h1>
+          <p className="eyebrow">Arena · Match {(view?.matchIndex ?? 0) + 1}</p>
+          <h1>{opened.name || view?.title || "Arena"}</h1>
         </div>
         <div className="row">
           <StatusPill view={view} live={live} />
@@ -122,7 +129,7 @@ export function ArenaPage({ contextId }: { contextId: string }) {
           <button className="ghost small" onClick={() => navigate("/practice")}>
             <Target size={15} aria-hidden="true" /> Practice
           </button>
-          <button className="ghost small" onClick={switchArena}>
+          <button className="ghost small" onClick={onLeave}>
             <ArrowLeft size={15} aria-hidden="true" /> Arenas
           </button>
         </div>
@@ -162,8 +169,8 @@ export function ArenaPage({ contextId }: { contextId: string }) {
             <>
           <ChainPanel
             stats={arena.stats}
-            totalActions={Number(view?.total_actions ?? 0)}
-            matchActions={view?.match_actions ?? 0}
+            totalActions={Number(view?.totalActions ?? 0)}
+            matchActions={view?.matchActions ?? 0}
           />
           {view && (
             <CornersCard
@@ -174,10 +181,7 @@ export function ArenaPage({ contextId }: { contextId: string }) {
               busy={arena.busy}
               onName={names.changeName}
               onChoose={choose}
-              onSit={(seat) => {
-                names.publish(name);
-                void arena.sit(seat, name, fighter);
-              }}
+              onSit={(seat) => void arena.sit(seat, name, fighter)}
               onStand={() => void arena.stand()}
               onRematch={() => void arena.rematch()}
             />
@@ -194,22 +198,19 @@ export function ArenaPage({ contextId }: { contextId: string }) {
               busy={arena.busy}
               onName={names.changeName}
               onChoose={choose}
-              onSit={(seat) => {
-                names.publish(name);
-                void arena.sit(seat, name, fighter);
-              }}
+              onSit={(seat) => void arena.sit(seat, name, fighter)}
               onStand={() => void arena.stand()}
               onRematch={() => void arena.rematch()}
             />
           )}
           <ChainPanel
             stats={arena.stats}
-            totalActions={Number(view?.total_actions ?? 0)}
-            matchActions={view?.match_actions ?? 0}
+            totalActions={Number(view?.totalActions ?? 0)}
+            matchActions={view?.matchActions ?? 0}
           />
             </>
           )}
-          <InviteCard contextId={contextId} />
+          <InviteCard client={client} arena={opened} passkey={passkey} after={after} />
           <History past={past} view={view} />
         </aside>
       </div>
@@ -258,7 +259,7 @@ function CornersCard({
   onStand: () => void;
   onRematch: () => void;
 }) {
-  const seated = view.my_seat !== "";
+  const seated = view.mySeat !== "";
   const corner = (f: FighterView) => {
     const mine = f.member !== "" && f.member === view.me;
     const empty = f.member === "";
@@ -288,14 +289,14 @@ function CornersCard({
           </span>
         </span>
         <span className="corner-score" title="Matches won">
-          {f.matches_won}
+          {f.matchesWon}
         </span>
         {empty && !seated && (
           <button className="small" disabled={busy} onClick={() => onSit(f.seat as "p1" | "p2")} data-testid={`sit-${f.seat}`}>
             Fight here
           </button>
         )}
-        {mine && view.match_actions === 0 && view.match_index === 0 && (
+        {mine && view.matchActions === 0 && view.matchIndex === 0 && (
           <button className="ghost small" disabled={busy} onClick={onStand}>
             Leave
           </button>

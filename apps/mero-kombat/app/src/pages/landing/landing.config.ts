@@ -11,82 +11,81 @@
 import { CloudX, ExternalLink, LockCheck, Target, Zap } from '@calimero-network/mero-icons';
 
 import Animation from './animation';
-import LoginPopup from './loginPopup';
 import type { LandingConfig } from './landingTypes';
 
 export const CONFIG: LandingConfig = {
   name: "Mero Kombat",
   packageId: "com.calimero.mero-kombat",
-  tagline: "A one-on-one arcade fighting game with no game server. An arena is a Calimero context: every punch, kick and special is a transaction executed by the contract on both fighters' own nodes, and health, rounds and the winner are derived from them.",
+  tagline: "A one-on-one arcade fighting game with no game server. An arena is a Calimero app instance: every punch, kick and special is a transaction the cluster orders in one log, and health, rounds and the winner are worked out by the contract from them.",
   dir: "mero-kombat",
   markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
-  availability: "web+desktop",
+  availability: "web",
   tint: "#f43f5e",
   playableOffline: true,
-  trust: ["No game server", "Every blow is a transaction", "No accounts"],
+  trust: ["No game server", "Every blow is a transaction", "No passwords"],
   explainer: [
-    "A one-on-one arcade fighter in the old style: two corners, best of three rounds, uppercuts, sweeps and a special move each. An arena is a Calimero context, and it replicates between the two fighters’ own nodes — there is no game server anywhere.",
-    "Movement streams sixty times a second over ephemeral presence, which never touches storage. Every action you finish — a punch, a kick, a jump, a block — is one contract transaction on your node, gossiped to your opponent’s, and the health bars are what the contract derives from those transactions. The arena shows the count as you fight.",
+    "A one-on-one arcade fighter in the old style: two corners, best of three rounds, uppercuts, sweeps and a special move each. An arena is a Calimero app instance, and the cluster’s log orders everything that happens in it — there is no game server anywhere.",
+    "Movement streams fifteen times a second over ephemeral presence, which never touches storage. Every action you finish — a punch, a kick, a jump, a block — is one contract transaction, and the health bars are what the contract counts from those transactions. The arena shows the count as you fight.",
   ],
   features: [
     {
       icon: Zap,
       title: "Every blow is a transaction",
-      body: "A fight is hundreds of signed contract calls a minute between two machines, with the throughput and confirm time on screen.",
+      body: "A fight is hundreds of contract calls a minute, with the throughput and confirm time on screen.",
     },
     {
       icon: CloudX,
       title: "No game server",
-      body: "An arena is a context. Two nodes hold the same fight, and movement travels peer to peer over presence.",
+      body: "An arena is an app instance. Movement travels over presence; the fight is the log.",
     },
     {
       icon: Target,
-      title: "Health nobody writes down",
-      body: "The contract derives health, rounds and the winner from the blows themselves, so the score cannot disagree with the fight.",
+      title: "Health the contract keeps",
+      body: "The contract applies every blow, ends rounds and declares the winner, so the score cannot disagree with the fight.",
     },
     {
       icon: LockCheck,
-      title: "Blows are owned",
-      body: "Every action is stamped with its author by core, so a player can only ever land blows for themselves.",
+      title: "Blows are your own",
+      body: "Every action is written as the account that called it, so a player can only ever land blows for themselves.",
     },
     {
       icon: ExternalLink,
       title: "Invite by link",
-      body: "One link opens the arena. No sign-up, no account — whoever opens it can take the open corner or watch.",
+      body: "One link joins the arena’s organization and opens the arena. Whoever opens it can take the open corner or watch.",
     },
   ],
   overview: {
     headline: "A fighting game where every punch is a transaction.",
     comparison: {
-      heading: "Online fighting games, without the server in the middle",
+      heading: "Online fighting games, without the game server in the middle",
       sub: "Two fighters, three rounds, health bars that drain. The difference is who holds the fight, and who keeps the score.",
       themLabel: "A typical online fighting game",
       rows: [
-        { label: "Where the match lives", them: "On the publisher’s game server", us: "On your node and your opponent’s, nobody else’s" },
-        { label: "Who keeps the score", them: "The server", us: "The contract, deriving health from every blow on both nodes" },
-        { label: "Starting a match", them: "An account, then matchmaking", us: "One invite link. No sign-up, no email" },
-        { label: "What a punch is", them: "A packet the server may or may not keep", us: "A signed transaction, executed and stored" },
-        { label: "If the server goes away", them: "So does the game", us: "Your node still has every round" },
+        { label: "Where the match lives", them: "On the publisher’s game server", us: "In a Calimero app on attested nodes, ordered by one log" },
+        { label: "Who keeps the score", them: "The server", us: "The contract, applying every blow as it lands" },
+        { label: "Starting a match", them: "An account, then matchmaking", us: "A passkey and one invite link. No email, no password" },
+        { label: "What a punch is", them: "A packet the server may or may not keep", us: "A transaction, executed and stored" },
+        { label: "Reading the record", them: "Whatever the server shows you", us: "Every round and every blow, in the app’s own history" },
       ],
     },
-    closing: { title: "Step into the arena", body: "Connect a node, or install the desktop app that bundles one, then send your opponent the link. Or warm up against the CPU first." },
+    closing: { title: "Step into the arena", body: "Sign in with a passkey, open an arena and send your opponent the link. Or warm up against the CPU first." },
   },
   faq: [
     {
       q: "Is every punch really a transaction?",
-      a: "Yes. Each finished action — a punch, a kick, an uppercut, a jump, a block — is one call to the contract on your node, which executes it, stores it and gossips it to your opponent’s node. Walking is not: position streams over ephemeral presence, which is built for exactly that.",
+      a: "Yes. Each finished action — a punch, a kick, an uppercut, a jump, a block — is one call to the contract, which the cluster orders in the arena’s log and executes. Walking is not: position streams over ephemeral presence, which is built for exactly that.",
     },
     {
       q: "Who decides whether a blow connected?",
-      a: "The fighter who threw it — only their screen knows where their fist was. The contract bounds what a claim can be worth (fixed damage per move, chip damage when blocked) and stamps every row with its author, so you can only ever land blows for yourself.",
+      a: "The fighter who threw it — only their screen knows where their fist was. The contract bounds what a claim can be worth (fixed damage per move, chip damage when blocked) and records every action as the account that sent it, so you can only ever land blows for yourself.",
     },
     {
       q: "What if we both land the finishing blow at once?",
-      a: "It is a double knock-out. Both nodes count the same blows, so both reach the same verdict, and the round scores for nobody.",
+      a: "One of them is first. The log orders every blow, so the first finishing blow takes the round and the other is refused, for a round that is already over.",
     },
     {
-      q: "Can I play without a node?",
+      q: "Can I play without signing in?",
       a: "Practice mode runs entirely in your browser against a CPU opponent. Nothing in practice is a transaction — that needs an arena and an opponent.",
     },
   ],
@@ -96,12 +95,12 @@ export const CONFIG: LandingConfig = {
       id: "concepts",
       heading: "The words, and what they mean here",
       paragraphs: [
-        "An arena is a Calimero context. There is no game server: each fighter’s own node runs the contract, stores every blow thrown, and replicates them to the other. Health, rounds and the winner are derived by the contract from those blows, so both nodes reach the same verdict.",
+        "An arena is a Calimero app instance. There is no game server: the cluster’s log orders every blow thrown, and the contract applies each one to the score as it lands, so every screen reads the same verdict.",
       ],
       concepts: [
-        { term: "Namespace", def: "A dojo. You create one, invite the people you fight, and every arena inside it is open to them without another invitation." },
-        { term: "Context", def: "An arena. It holds the two corners and every action either fighter has taken, across as many matches as you like." },
-        { term: "Corner", def: "Left or right. The first person to claim a corner holds it, and once both fighters have acted against each other the corners lock." },
+        { term: "Organization", def: "A dojo. You create one with your first arena, invite the people you fight, and every arena inside it is open to them without another invitation." },
+        { term: "Arena", def: "One app instance. It holds the two corners and every action either fighter has taken, across as many matches as you like." },
+        { term: "Corner", def: "Left or right. The first person to take a corner holds it; once they have fought from it, it is theirs for good." },
         { term: "Action", def: "One finished move — a punch, kick, uppercut, sweep, flying kick, special, jump or block — and one contract transaction." },
         { term: "Presence", def: "Where your fighter stands, fifteen times a second, over the node’s ephemeral channel. Never stored, never a transaction." },
       ],
@@ -110,8 +109,8 @@ export const CONFIG: LandingConfig = {
       id: "start",
       heading: "Getting started",
       steps: [
-        { title: "Connect a node", body: "Press Connect to node. The Calimero desktop app bundles one; if you run your own, enter its URL in the same popup." },
-        { title: "Open an arena", body: "A new arena is a context in a namespace you own. Joining someone else’s means opening their invite link." },
+        { title: "Sign in", body: "Sign in with a passkey, or create an account with a new one. There is no password and no email." },
+        { title: "Open an arena", body: "New arena creates an organization and an arena in it. Joining someone else’s means opening their invite link." },
         { title: "Pick a fighter and a corner", body: "Choose Kinetic, Cryo, Inferno or Jinzo and take an open corner. The fight starts when both corners are taken and both fighters are in the arena." },
         { title: "Fight", body: "A and D move, W jumps, S crouches. J punches, K kicks, L blocks and I throws your special. Crouch with J for an uppercut, crouch with K for a sweep, and K in the air for a flying kick." },
       ],
@@ -120,18 +119,18 @@ export const CONFIG: LandingConfig = {
       id: "sharing",
       heading: "Fighting someone else",
       paragraphs: [
-        "Invitations are links. There is no account, no email address and no sign-up: opening the link and connecting a node is the whole of joining, and whoever opens it can take the open corner or watch.",
-        "The invitation admits someone to the namespace the arena lives in, so one link is enough for every arena in that namespace.",
+        "Invitations are links, approved with your passkey when you make one. Whoever opens it signs in (or creates an account), joins, and lands in the arena, where they can take the open corner or watch.",
+        "The invitation admits someone to the organization the arena lives in, so one link is enough for every arena in that organization.",
       ],
     },
     {
       id: "storage",
       heading: "What is stored, and where",
       bullets: [
-        "Every action, keyed by fighter, match and round: what it was, whether it connected, whether it was blocked, and the opponent its author saw.",
-        "The two corners, each recording who claimed it and when.",
-        "Rematch claims. A new match starts when a fighter in a corner calls one after the last match ended.",
-        "Never health. Health, round wins, the winner and a flawless victory are derived from the actions on every read, so nothing can write a score that disagrees with the fight.",
+        "Every action: what it was, who threw it, in which match and round, whether it connected, whether it was blocked, and who was in the other corner.",
+        "The two corners, each recording who holds it and since when.",
+        "Each match as it stands: the round, the damage each fighter has taken in it, the rounds decided and the winner.",
+        "Each player’s name, fighter and last sign of life. Movement never: that is presence.",
       ],
     },
     {
@@ -147,17 +146,16 @@ export const CONFIG: LandingConfig = {
       heading: "When something looks wrong",
       concepts: [
         { term: "A transaction is refused", def: "A blow written for a round that has already ended, or after the match is over, is refused by the contract. It shows in the chain panel and changes nothing." },
-        { term: "The other fighter looks away", def: "Their presence stream stopped for a few seconds. The fight waits for them; their blows count when their node reconnects." },
+        { term: "The other fighter looks away", def: "Their presence stream stopped for a few seconds. The fight waits for them; their blows count when they reconnect." },
         { term: "The health bars jump back", def: "A blow your screen saw over presence never reached the contract. The bars settle on what the contract counts." },
-        { term: "The invite link does nothing", def: "An invitation is tied to the namespace that minted it. Ask for a fresh one rather than reusing an old link." },
+        { term: "The invite link does nothing", def: "An invitation is redeemed once, after you sign in. Ask for a fresh one rather than reusing an old link." },
       ],
     },
   ],
   previewSteps: [
-    { title: "An arena that is a context", body: "Two corners and every blow thrown, replicated between the two fighters’ own nodes. Nothing in the middle, and nothing to host." },
-    { title: "Movement over presence", body: "Where each fighter stands streams fifteen times a second over ephemeral presence — fast, encrypted, and never stored." },
-    { title: "Blows are transactions", body: "Every finished punch, kick, jump and block is a signed contract call on your node, gossiped to your opponent’s." },
-    { title: "The score is derived", body: "Nobody writes down \"K.O.\": both nodes count the same blows and reach the same verdict, round after round." },
+    { title: "An arena that is an app", body: "Two corners and every blow thrown, ordered by one log on attested nodes. Nothing to host." },
+    { title: "Movement over presence", body: "Where each fighter stands streams fifteen times a second over ephemeral presence — fast, and never stored." },
+    { title: "Blows are transactions", body: "Every finished punch, kick, jump and block is a contract call, executed and stored." },
+    { title: "The contract keeps the score", body: "Nobody writes down \"K.O.\": the contract applies each blow and ends the round when a fighter has taken a hundred." },
   ],
-  loginPopup: LoginPopup,
 };
