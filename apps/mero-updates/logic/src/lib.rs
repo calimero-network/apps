@@ -110,7 +110,10 @@ pub struct Metric {
 }
 
 /// An update or a question, as stored. A plain value in a map (not a table
-/// record): it carries its sections and metrics, and a record cannot hold a list.
+/// record): it carries its sections and metrics, and a record cannot hold a
+/// list. Both lists are short and bounded (see each field); everything that
+/// grows with use (asks, offers, comments, reactions, reads) is its own table,
+/// indexed on the post id and read in pages.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Post {
     id: String,
@@ -120,7 +123,11 @@ struct Post {
     title: String,
     summary: String,
     category_id: String,
+    /// At most `MAX_SECTIONS` (20), enforced by `validate_update` on every
+    /// publish and edit (a question holds at most one).
     sections: Vec<Section>,
+    /// At most `MAX_METRICS` (30), enforced by `validate_update` (a question
+    /// holds none).
     metrics: Vec<Metric>,
     edited_at: u64,
     created_at: u64,
@@ -571,7 +578,8 @@ pub struct MeroUpdates {
     reactions: Table<Reaction>,
     reads: Table<Read>,
     profiles: Table<Profile>,
-    /// The categories each account muted.
+    /// The categories each account muted: at most `MAX_CATEGORIES` (50),
+    /// enforced by `set_muted_categories`, which replaces the whole set.
     mutes: PerUser<Vec<String>>,
     /// Drafts by `(author account, draft id)`.
     drafts: UnorderedMap<(String, String), Draft>,
