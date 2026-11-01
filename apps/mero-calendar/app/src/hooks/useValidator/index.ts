@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { IDataForCheck, IErrorsMessages, IRules, IValidationResponse } from './types';
 import { validationMethods } from '../../utils/validations';
 
-export const useValidator = <DefaultFields extends Object>() => {
+export const useValidator = <DefaultFields extends object>() => {
   const [errors, setErrors] = useState<IErrorsMessages<DefaultFields>>({});
 
   const validate = (fields: DefaultFields, rules: IRules = {}) => {

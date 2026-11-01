@@ -1,28 +1,22 @@
 import { useMemo } from "react";
-import { useMero } from "@calimero-network/mero-react";
-import { useMemberNames } from "@calimero-apps/names";
-import { getSession } from "../api/session";
+import { useTeamScope } from "../api/teamScope";
 import { useTypedSelector } from "./useTypedSelector";
 import { Member } from "../types/event";
 
-/** Short display for an unknown / unnamed public key: first 6 chars + ellipsis. */
+/** An account id, shortened for display. */
 export function shortPk(pk: string): string {
   if (!pk) return "";
   return pk.length > 8 ? `${pk.slice(0, 6)}…` : pk;
 }
 
 /**
- * FEATURE (missing names): expose team members + a pubkey→display-name resolver.
- * Owners and peers are stored as hex account ids; `displayName(pk)` returns
- * the member's username when known, then the name they set on the team
- * (shared by every app on it), falling back to a short pubkey.
+ * The calendar's members (who set a calendar username) and a name for any
+ * account: its calendar username, else the name it set on the team, else a
+ * short id.
  */
 export function useMembers() {
   const members = useTypedSelector(({ events }) => events.members) as Member[];
-  const { admin } = useMero();
-  // Names live on the namespace — the one group everyone is in — which the
-  // calendar page binds before the calendar renders.
-  const { nameOf } = useMemberNames(admin, getSession().namespaceId);
+  const { names } = useTeamScope();
 
   const byId = useMemo(() => {
     const map = new Map<string, Member>();
@@ -31,12 +25,13 @@ export function useMembers() {
   }, [members]);
 
   const displayName = useMemo(
-    () => (pk: string): string => {
-      const m = byId.get(pk);
-      if (m && m.username?.trim()) return m.username.trim();
-      return nameOf(pk) || shortPk(pk);
-    },
-    [byId, nameOf],
+    () =>
+      (pk: string): string => {
+        const m = byId.get(pk);
+        if (m && m.username?.trim()) return m.username.trim();
+        return names.get(pk) || shortPk(pk);
+      },
+    [byId, names],
   );
 
   return { members, byId, displayName };

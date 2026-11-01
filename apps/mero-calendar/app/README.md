@@ -1,44 +1,67 @@
 # Mero Calendar: web app
 
-The React frontend of Mero Calendar, built with Vite. It talks to your own Calimero node through
-`@calimero-network/mero-react`. What the app does, and how the frontend and the contract fit together, is in
+The React frontend of Mero Calendar, built with Vite. It talks to the cluster
+through mero-js's `CalimeroClient` via `@calimero-apps/connect`: the local nodes
+of `merod local` in development, a Calimero Cloud cluster in a production build.
+What the app does, and how the frontend and the contract fit together, is in
 [Mero Calendar's README](../README.md); this page covers working on the frontend.
 
 ## Scripts
 
-Run these from this directory (`apps/mero-calendar/app`):
+Run these from this directory (`apps/mero-calendar/app`), or `pnpm dev:local
+mero-calendar` from the repo root to start `merod local`, deploy the contract and
+run the dev server in one go.
 
-| Script                          | What it does                                          |
-| ------------------------------- | ----------------------------------------------------- |
-| `pnpm dev`                      | Vite dev server                                       |
-| `pnpm build`                    | Typecheck, then a production build into `dist/`       |
-| `pnpm preview`                  | Serve the production build                            |
-| `pnpm typecheck`                | `tsc -b`                                              |
-| `pnpm test` / `pnpm test:watch` | Vitest unit tests, once or watching                   |
-| `pnpm e2e` / `pnpm e2e:ui`      | Playwright browser tests against a mocked node        |
-| `pnpm e2e:integration`          | Playwright browser tests against a real node          |
-| `pnpm test:journey`             | Two-node journey: log in, create a team, invite, sync |
+| Script                          | What it does                                     |
+| ------------------------------- | ------------------------------------------------ |
+| `pnpm dev`                      | Vite dev server (http://localhost:5173)          |
+| `pnpm build`                    | Typecheck, then a production build into `dist/`  |
+| `pnpm preview`                  | Serve the production build                       |
+| `pnpm typecheck`                | `tsc -b`                                         |
+| `pnpm lint`                     | ESLint                                           |
+| `pnpm test` / `pnpm test:watch` | Vitest unit tests, once or watching              |
+
+`.env.example` lists the `VITE_CALIMERO_*` variables. A production build needs
+`VITE_CALIMERO_CLUSTER` and `VITE_CALIMERO_MIN_RELEASE`.
+
+## How it talks to the contract
+
+- `src/api/calendar.ts`: the contract, typed, and the one adapter that turns
+  its answers back into the shapes the screens use (camelCase methods, decimal
+  string u64s, typed errors). `calendar.test.ts` checks it against the committed
+  `logic/res/abi.json`.
+- `src/api/session.ts`, `src/api/sessionContext.tsx`: connecting, passkey
+  sign-in and sign-up, the stored session.
+- `src/api/teams.ts`: teams (orgs), their calendars (app instances), members and
+  invitations.
+- `src/api/booking.ts`: booking links (an API key plus a contract record) and the
+  guest's calls.
+- `src/api/dataSource/ClientApiDataSource.ts`: what the redux thunks call, bound
+  to the open calendar by the calendar page (`src/api/binding.ts`).
 
 ## Theme and Log out
 
-- **Light by default.** The sun/moon switch in every signed-in top bar, and in the landing page's footer, flips to
-  dark. The choice is saved in `localStorage` under `mc-theme` (`src/providers/ThemeProvider`). An inline script
-  in `index.html` applies it to `<html data-theme>` before the first paint, so a dark reload never flashes light.
-  Keep that script's key and colours in step with the provider.
-- **Log out** ends every signed-in top bar (`src/components/common/logout-button/LogoutButton.tsx`). It calls
-  mero-react's `logout()` and returns to the landing page. On a phone the label collapses to its icon; the
-  accessible name stays "Log out".
-- Tests: `e2e/theme.spec.ts` (default light, the switch, persistence across reloads) and
-  `LogoutButton.test.tsx`.
+- **Light by default.** The sun/moon switch in every signed-in top bar, and in
+  the landing page's footer, flips to dark. The choice is saved in
+  `localStorage` under `mc-theme` (`src/providers/ThemeProvider`). An inline
+  script in `index.html` applies it to `<html data-theme>` before the first
+  paint, so a dark reload never flashes light. Keep that script's key and
+  colours in step with the provider.
+- **Log out** ends every signed-in top bar
+  (`src/components/common/logout-button/LogoutButton.tsx`). It signs out on the
+  cluster and returns to the landing page. On a phone the label collapses to its
+  icon; the accessible name stays "Log out".
 
 ## Layout
 
 | Path                    | Contents                                                                                   |
 | ----------------------- | ------------------------------------------------------------------------------------------ |
+| `src/api`               | Session, the contract adapter, teams, booking links                                        |
 | `src/pages/landing`     | The public landing page, docs and preview (its config is generated, see `scripts/landing`) |
-| `src/pages/teams`       | Team list and a team's calendars                                                           |
+| `src/pages/teams`       | Team list, a team's calendars, its members                                                 |
 | `src/pages/calendar`    | The calendar itself                                                                        |
+| `src/pages/book`        | The page a booking link opens (no account)                                                 |
 | `src/providers`         | Theme provider                                                                             |
-| `src/components/common` | Shared header, dialogs, theme switch, Log out                                              |
+| `src/components/common` | Shared header, dialogs, sign-in, theme switch, Log out                                     |
 | `src/styles/theme.css`  | The light and dark colour tokens every surface reads                                       |
-| `e2e/`                  | Playwright specs: `integration/` runs against a node, `journey/` against two               |
+| `e2e/`                  | `marketing-landing.spec.ts`, generated by `scripts/landing` for every app                  |

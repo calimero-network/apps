@@ -42,7 +42,7 @@ const DateInput = forwardRef<HTMLInputElement, IDateInputProps>(({
     setIsTyping(true);
     setDateValue(dateValue);
 
-    if (!!newDate) {
+    if (newDate) {
       return selectDate(newDate);
     }
   }

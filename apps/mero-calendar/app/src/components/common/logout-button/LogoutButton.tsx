@@ -1,30 +1,22 @@
-import { useMero } from "@calimero-network/mero-react";
 import { useNavigate } from "react-router-dom";
+import { targetKey } from "@calimero-apps/connect";
 
+import { useSessionApi } from "../../../api/sessionContext";
 import { LogOutIcon } from "../icons/Icons";
 import { clearLastVisit } from "../../../utils/lastVisit";
 
 /**
- * The one Log out control, at the end of every signed-in top bar.
- *
- * mero-react's `logout()` drops the session's tokens; the route guards would
- * bounce the now-anonymous visitor anyway, but navigating to the landing page
- * here makes that the visible result of the click rather than a side effect.
- *
- * It also forgets the team and calendar open last (utils/lastVisit), so the
- * next sign-in starts at the teams list rather than resuming this session.
- *
- * The label collapses to the icon on a phone (see `.mc-logout` in
- * styles/theme.css); the accessible name stays "Log out" either way.
+ * Ends the session: signs out on the cluster, forgets the stored session, and
+ * returns to the landing page. It also forgets the team and calendar open last
+ * (utils/lastVisit), so the next person at this browser does not land in them.
  */
 export default function LogoutButton() {
-  const { logout, nodeUrl } = useMero();
+  const { api } = useSessionApi();
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    // Before `logout()`, which drops the node URL the entry is keyed by.
-    clearLastVisit(nodeUrl);
-    logout();
+  const handleLogout = async () => {
+    if (api.session.status === "signed-in") clearLastVisit(targetKey(api.session.target));
+    await api.signOut();
     navigate("/", { replace: true });
   };
 
@@ -32,7 +24,7 @@ export default function LogoutButton() {
     <button
       type="button"
       className="mc-logout"
-      onClick={handleLogout}
+      onClick={() => void handleLogout()}
       title="Log out"
       aria-label="Log out"
       data-testid="logout-btn"

@@ -1,21 +1,22 @@
 import { useCallback, useEffect, useState } from "react";
-import type { ExecuteTransport } from "@calimero-network/mero-js";
 
-import type { OwnerNode } from "../../../../api/accessGrants";
 import {
   createBookingLink,
   deleteBookingLink,
   formatWhen,
   listBookingLinks,
   type BookingLinkView,
+  type Owner,
   type WeeklyWindow,
 } from "../../../../api/booking";
+import { messageOf } from "../../../../api/calendar";
 import styles from "./booking-links-modal.module.scss";
 
 interface Props {
-  node: OwnerNode;
-  rpc: ExecuteTransport;
-  contextId: string;
+  /** The signed-in owner at the open calendar. */
+  owner: Owner;
+  /** Where `/book` lives: this frontend's base URL. */
+  base: string;
   onClose: () => void;
 }
 
@@ -28,17 +29,19 @@ function toMinutes(time: string): number {
 }
 
 function errorText(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
+  return messageOf(err);
 }
 
 /**
  * The owner's booking links: make one, copy its URL, see what was booked, and
- * delete it (which also revokes its access grant).
+ * delete it (which also revokes its API key). Making one asks for your passkey:
+ * the link's token is an API key of your account, limited to this calendar's
+ * five guest methods.
  *
  * A link's URL is shown once, right after it is made: the token in it is not
  * stored anywhere the owner can read it back, by design.
  */
-export default function BookingLinksModal({ node, rpc, contextId, onClose }: Props) {
+export default function BookingLinksModal({ owner, base, onClose }: Props) {
   const [links, setLinks] = useState<BookingLinkView[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -56,11 +59,11 @@ export default function BookingLinksModal({ node, rpc, contextId, onClose }: Pro
 
   const refresh = useCallback(async () => {
     try {
-      setLinks(await listBookingLinks(rpc, contextId));
+      setLinks(await listBookingLinks(owner));
     } catch (err) {
       setError(errorText(err));
     }
-  }, [rpc, contextId]);
+  }, [owner]);
 
   useEffect(() => {
     void refresh();
@@ -79,14 +82,14 @@ export default function BookingLinksModal({ node, rpc, contextId, onClose }: Pro
       const weeklyHours: WeeklyWindow[] = days.flatMap((on, weekday) =>
         on ? [{ weekday, startMinute, endMinute }] : [],
       );
-      const { url } = await createBookingLink(node, rpc, contextId, {
+      const { url } = await createBookingLink(owner, {
         title: title.trim(),
         description: description.trim(),
         durationMinutes: duration,
         weeklyHours,
         horizonDays,
         minNoticeMinutes: noticeHours * 60,
-      });
+      }, base);
       setCreated(url);
       await refresh();
     } catch (err) {
@@ -100,7 +103,7 @@ export default function BookingLinksModal({ node, rpc, contextId, onClose }: Pro
     setBusy(true);
     setError(null);
     try {
-      await deleteBookingLink(node, rpc, contextId, link);
+      await deleteBookingLink(owner, link);
       await refresh();
     } catch (err) {
       setError(errorText(err));
@@ -130,8 +133,7 @@ export default function BookingLinksModal({ node, rpc, contextId, onClose }: Pro
         </div>
         <p className={styles.sub}>
           A booking link lets one person book one meeting with you, then reschedule or cancel it
-          with the same link. They need no account. Your node must be reachable from their
-          browser.
+          with the same link. They need no account. Making a link asks for your passkey.
         </p>
 
         {created && (
