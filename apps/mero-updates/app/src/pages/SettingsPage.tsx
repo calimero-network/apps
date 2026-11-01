@@ -4,7 +4,7 @@ import { useAudience } from "../components/AudienceShell";
 import { Avatar, CategoryChip } from "../components/bits";
 import LogoutButton from "../components/LogoutButton";
 import { CheckIcon, MoonIcon, PlusIcon, SunIcon } from "../components/icons";
-import type { CategoryView } from "../generated/UpdatesClient";
+import type { CategoryView } from "../lib/updatesClient";
 import { CATEGORY_COLORS, usePersonLabel, useLive, useUpdatesClient } from "../lib/updates";
 import { useTheme } from "../theme";
 

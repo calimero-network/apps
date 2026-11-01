@@ -3,7 +3,7 @@ import type {
   MetricSeries,
   PostView,
   UpdateInput,
-} from "../generated/UpdatesClient";
+} from "./updatesClient";
 import { askKind, personLabel } from "./updates";
 
 /**

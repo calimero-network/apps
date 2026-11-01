@@ -14,7 +14,7 @@ export default function LogoutButton({ testId = "logout" }: { testId?: string })
       className="logoutPill"
       onClick={signOut}
       data-testid={testId}
-      title="Sign out of this node"
+      title="Sign out"
     >
       <LogOutIcon size={15} />
       Log out

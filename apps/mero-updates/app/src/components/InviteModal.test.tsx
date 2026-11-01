@@ -83,7 +83,7 @@ describe("InviteModal", () => {
     render(
       <InviteModal
         open
-        code="abc123"
+        code="http://localhost:5173/?invite=abc123"
         scope="Whole space · Test"
         onClose={() => {}}
       />,
@@ -102,7 +102,7 @@ describe("InviteModal", () => {
     render(
       <InviteModal
         open
-        code="abc123"
+        code="http://localhost:5173/?invite=abc123"
         scope="Whole space · Test"
         onClose={() => {}}
       />,
@@ -110,8 +110,8 @@ describe("InviteModal", () => {
     const modal = screen.getByTestId("invite-modal");
     expect(screen.queryByTestId("invite-more")).toBeNull();
     expect(modal.textContent).not.toContain("calimero://");
-    expect(screen.getByTestId("invite-link").getAttribute("title")).toMatch(
-      /^https:\/\/links\.calimero\.network\/com\.calimero\.mero-updates\/join\?invitation=abc123$/,
+    expect(screen.getByTestId("invite-link").getAttribute("title")).toBe(
+      "http://localhost:5173/?invite=abc123",
     );
   });
 });

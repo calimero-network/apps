@@ -140,23 +140,6 @@
   --overlay: rgba(0, 0, 0, 0.55);
 }
 
-/* mero-react's ConnectButton and login modal read --mero-*, which default to
-   the Calimero lime. `html:root` outranks the `:root` rule it injects at
-   runtime (after this stylesheet), so the connect flow wears glass too. */
-html:root {
-  --mero-bg: var(--glass-surface-solid);
-  --mero-bg-secondary: var(--glass-ground);
-  --mero-bg-tertiary: var(--glass-sunken);
-  --mero-text: var(--glass-ink);
-  --mero-text-secondary: var(--glass-muted);
-  --mero-accent: var(--glass-ink);
-  --mero-accent-hover: var(--glass-ink-2);
-  --mero-on-primary: var(--glass-on-ink);
-  --mero-error: var(--glass-bad-ink);
-  --mero-border: var(--glass-line-strong);
-  --mero-overlay: rgba(14, 18, 34, 0.32);
-  --mero-radius: 12px;
-}
 
 * {
   box-sizing: border-box;

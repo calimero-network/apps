@@ -7,7 +7,7 @@ import { Avatar, CategoryChip, DeltaIcon, Reactions } from "../components/bits";
 import { deltaDir } from "../components/delta";
 import { ChevronLeftIcon, EditIcon, EyeIcon, CheckCircleIcon, TrashIcon, HandIcon } from "../components/icons";
 import Comments from "../components/Comments";
-import type { MetricSeries, PostView } from "../generated/UpdatesClient";
+import type { MetricSeries, PostView } from "../lib/updatesClient";
 import {
   deltaLabel,
   formatDate,

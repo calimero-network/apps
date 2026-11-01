@@ -1,0 +1,186 @@
+[
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "askQuestion",
+  "args": {
+   "title": "A guest asks",
+   "body": "",
+   "categoryId": null
+  },
+  "save": "gq"
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "setProfile",
+  "args": {
+   "name": "Gus",
+   "firm": ""
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "gus",
+  "op": "view",
+  "method": "getMe",
+  "args": {},
+  "expect": {
+   "ok": {
+    "account": "@gus",
+    "name": "Gus",
+    "firm": "",
+    "isAdmin": false,
+    "isTeam": false,
+    "muted": []
+   }
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "view",
+  "method": "getMe",
+  "args": {},
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "call",
+  "method": "askQuestion",
+  "args": {
+   "title": "x",
+   "body": "",
+   "categoryId": null
+  },
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "view",
+  "method": "listPosts",
+  "args": {
+   "kind": null,
+   "categoryId": null,
+   "cursor": null,
+   "limit": 20
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "call",
+  "method": "setProfile",
+  "args": {
+   "name": "x",
+   "firm": ""
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addTeammate",
+  "args": {
+   "account": "@mallory"
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "getPost",
+  "args": {
+   "postId": "nope"
+  },
+  "expect": {
+   "error": "NotFound"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setSettings",
+  "args": {
+   "companyName": "x"
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setSettings",
+  "args": {
+   "companyName": "x",
+   "cadenceDays": 1,
+   "extra": true
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "listContributions",
+  "args": {
+   "since": 0
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "noSuchMethod",
+  "args": {},
+  "expect": {
+   "error": "UnknownMethod"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "setProfile",
+  "args": {
+   "name": "x",
+   "firm": ""
+  },
+  "expect": {
+   "error": "NotAView"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listDrafts",
+  "args": {},
+  "expect": {
+   "ok": []
+  },
+  "events": {
+   "bob": [
+    "QuestionAsked",
+    "ProfileSet"
+   ],
+   "gus": [
+    "QuestionAsked",
+    "ProfileSet"
+   ]
+  }
+ }
+]

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
-import type { AskView } from "../generated/UpdatesClient";
+import type { AskView } from "../lib/updatesClient";
 import { askKind, usePersonLabel, timeAgo, useUpdatesClient } from "../lib/updates";
 import { Avatar } from "./bits";
 import { AskKindIcon, CheckIcon, FileTextIcon, HandIcon } from "./icons";

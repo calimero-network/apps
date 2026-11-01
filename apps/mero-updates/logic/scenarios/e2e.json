@@ -1,0 +1,701 @@
+[
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getMe",
+  "args": {},
+  "expect": {
+   "ok": {
+    "account": "@owner",
+    "name": "",
+    "firm": "",
+    "isAdmin": true,
+    "isTeam": true,
+    "muted": []
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getMe",
+  "args": {},
+  "expect": {
+   "ok": {
+    "account": "@bob",
+    "name": "",
+    "firm": "",
+    "isAdmin": false,
+    "isTeam": false,
+    "muted": []
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "addTeammate",
+  "args": {
+   "account": "@bob"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setSettings",
+  "args": {
+   "companyName": "Hijacked",
+   "cadenceDays": 1
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addTeammate",
+  "args": {
+   "account": "@bob"
+  },
+  "expect": {
+   "ok": null
+  },
+  "events": {
+   "bob": [
+    "TeamChanged"
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getMe",
+  "args": {},
+  "expect": {
+   "ok": {
+    "account": "@bob",
+    "name": "",
+    "firm": "",
+    "isAdmin": false,
+    "isTeam": true,
+    "muted": []
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "removeTeammate",
+  "args": {
+   "account": "@bob"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getMe",
+  "args": {},
+  "expect": {
+   "ok": {
+    "account": "@bob",
+    "name": "",
+    "firm": "",
+    "isAdmin": false,
+    "isTeam": false,
+    "muted": []
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setProfile",
+  "args": {
+   "name": "Ana Founder",
+   "firm": "CEO"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setSettings",
+  "args": {
+   "companyName": "Acme",
+   "cadenceDays": 30
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createCategory",
+  "args": {
+   "name": "Monthly",
+   "emoji": "📅",
+   "color": "#2563eb"
+  },
+  "save": "monthly"
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "editCategory",
+  "args": {
+   "categoryId": "$monthly",
+   "name": "Monthly update",
+   "emoji": "📅",
+   "color": "#2563eb"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createCategory",
+  "args": {
+   "name": "Scratch",
+   "emoji": "",
+   "color": ""
+  },
+  "save": "scratch"
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "archiveCategory",
+  "args": {
+   "categoryId": "$scratch"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "saveDraft",
+  "args": {
+   "draftId": null,
+   "title": "July — draft",
+   "payload": "{\"title\":\"July\"}"
+  },
+  "save": "draft"
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "publishUpdate",
+  "args": {
+   "input": {
+    "title": "June 2026 update",
+    "summary": "First enterprise customer.",
+    "categoryId": "$monthly",
+    "sections": [
+     {
+      "kind": "highlights",
+      "title": "Highlights",
+      "body": "Closed Globex."
+     }
+    ],
+    "metrics": [
+     {
+      "name": "MRR",
+      "value": "$48k",
+      "unit": ""
+     }
+    ],
+    "asks": [
+     {
+      "id": null,
+      "kind": "intro",
+      "title": "Intro to a fintech CFO",
+      "detail": ""
+     }
+    ]
+   }
+  },
+  "save": "update"
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "publishUpdate",
+  "args": {
+   "input": {
+    "title": "Forged",
+    "summary": "First enterprise customer.",
+    "categoryId": "$monthly",
+    "sections": [
+     {
+      "kind": "highlights",
+      "title": "Highlights",
+      "body": "Closed Globex."
+     }
+    ],
+    "metrics": [
+     {
+      "name": "MRR",
+      "value": "$48k",
+      "unit": ""
+     }
+    ],
+    "asks": [
+     {
+      "id": null,
+      "kind": "intro",
+      "title": "Intro to a fintech CFO",
+      "detail": ""
+     }
+    ]
+   }
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "editUpdate",
+  "args": {
+   "postId": "$update",
+   "input": {
+    "title": "June 2026 update (fixed)",
+    "summary": "First enterprise customer.",
+    "categoryId": "$monthly",
+    "sections": [
+     {
+      "kind": "highlights",
+      "title": "Highlights",
+      "body": "Closed Globex."
+     }
+    ],
+    "metrics": [
+     {
+      "name": "MRR",
+      "value": "$48k",
+      "unit": ""
+     }
+    ],
+    "asks": [
+     {
+      "id": null,
+      "kind": "intro",
+      "title": "Intro to a fintech CFO",
+      "detail": ""
+     }
+    ]
+   }
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listPosts",
+  "args": {
+   "kind": "update",
+   "categoryId": null,
+   "cursor": null,
+   "limit": 20
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getOverview",
+  "args": {}
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listCategories",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "id": "$monthly",
+     "name": "Monthly update",
+     "emoji": "📅",
+     "color": "#2563eb",
+     "updateCount": "1",
+     "unreadCount": "1",
+     "muted": false
+    }
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getPost",
+  "args": {
+   "postId": "$update"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setProfile",
+  "args": {
+   "name": "Ben Investor",
+   "firm": "Seed Fund"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "markRead",
+  "args": {
+   "postId": "$update"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listCategories",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "id": "$monthly",
+     "name": "Monthly update",
+     "emoji": "📅",
+     "color": "#2563eb",
+     "updateCount": "1",
+     "unreadCount": "0",
+     "muted": false
+    }
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "react",
+  "args": {
+   "postId": "$update",
+   "emoji": "🎉",
+   "on": true
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "addComment",
+  "args": {
+   "postId": "$update",
+   "parentId": null,
+   "body": "Congrats! Who ran procurement?"
+  },
+  "save": "comment"
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "editComment",
+  "args": {
+   "commentId": "$comment",
+   "body": "Who ran procurement?"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "askQuestion",
+  "args": {
+   "title": "What is the runway after the hires?",
+   "body": "",
+   "categoryId": null
+  },
+  "save": "question"
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setMutedCategories",
+  "args": {
+   "categoryIds": [
+    "$monthly"
+   ]
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getMe",
+  "args": {},
+  "expect": {
+   "ok": {
+    "account": "@bob",
+    "name": "Ben Investor",
+    "firm": "Seed Fund",
+    "isAdmin": false,
+    "isTeam": false,
+    "muted": [
+     "$monthly"
+    ]
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listDrafts",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getEngagement",
+  "args": {},
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "listComments",
+  "args": {
+   "postId": "$update"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "listAsks",
+  "args": {
+   "status": "open"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "listPosts",
+  "args": {
+   "kind": "question",
+   "categoryId": null,
+   "cursor": null,
+   "limit": 20
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getEngagement",
+  "args": {}
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "listPeople",
+  "args": {}
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addComment",
+  "args": {
+   "postId": "$question",
+   "parentId": null,
+   "body": "19 months."
+  },
+  "save": "answer"
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setQuestionStatus",
+  "args": {
+   "postId": "$question",
+   "status": "answered"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "listContributions",
+  "args": {
+   "since": "0"
+  },
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "listMetrics",
+  "args": {}
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "listDrafts",
+  "args": {}
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deleteDraft",
+  "args": {
+   "draftId": "$draft"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "listDrafts",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deleteComment",
+  "args": {
+   "commentId": "$comment"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "editComment",
+  "args": {
+   "commentId": "$comment",
+   "body": "again"
+  },
+  "expect": {
+   "error": "NotFound"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getPost",
+  "args": {
+   "postId": "$question"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "deletePost",
+  "args": {
+   "postId": "$update"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deletePost",
+  "args": {
+   "postId": "$update"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listPosts",
+  "args": {
+   "kind": "update",
+   "categoryId": null,
+   "cursor": null,
+   "limit": 20
+  },
+  "expect": {
+   "ok": {
+    "items": [],
+    "nextCursor": null
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getPost",
+  "args": {
+   "postId": "$update"
+  },
+  "expect": {
+   "error": "NotFound"
+  },
+  "events": {
+   "bob": [
+    "TeamChanged",
+    "TeamChanged",
+    "ProfileSet",
+    "SettingsChanged",
+    "CategoryChanged",
+    "CategoryChanged",
+    "CategoryChanged",
+    "CategoryChanged",
+    "UpdatePublished",
+    "PostEdited",
+    "ProfileSet",
+    "Read",
+    "Reacted",
+    "Commented",
+    "Commented",
+    "QuestionAsked",
+    "ProfileSet",
+    "Commented",
+    "StatusChanged",
+    "Commented",
+    "PostDeleted"
+   ]
+  }
+ }
+]

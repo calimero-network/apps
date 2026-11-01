@@ -1,299 +1,135 @@
-// ── Session bootstrap ─────────────────────────────────────────────────────────
-//
-// tauri-app opens this app in a WebviewWindow with auth + routing context in
-// the URL hash (see tauri-app appUtils.ts `openAppFrontend`):
-//
-//   …#node_url=…&access_token=…&refresh_token=…
-//     &app-id=…&context_id=…&executor_public_key=…&expires_at=…&dev_mode=…
-//
-// A Mero Updates "space" == one Calimero context. When the desktop deep-links
-// into a specific space it passes `context_id` (+ our member identity
-// `executor_public_key`). When it just opens the app (no space chosen), those
-// are absent — then the user picks/creates a space in-app (CompaniesPage), and we
-// persist the choice per-app so a reload returns to the same space.
-//
-// `app-id` is the installed Mero Updates application id; we need it to create
-// namespaces/contexts (spaces) for this app.
-//
-// This mirrors mero-meet's session.ts exactly, only with a "mu-" storage-key
-// prefix so the two apps never collide in localStorage.
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { browserPasskey, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
+import {
+  SessionStore,
+  createClient,
+  describeError,
+  resolveTarget,
+  withServedNodes,
+  type ConnectEnv,
+  type KeyValueStorage,
+  type Target,
+} from "@calimero-apps/connect";
 
-let contextId: string | null = null;
-let executorPublicKey: string | null = null;
-let applicationId: string | null = null;
-let activeNamespaceId: string | null = null;
-// The node the active audience was opened on (`useMero().nodeUrl`). A context
-// id means nothing on another node, so an audience remembered on :2528 must not
-// be reopened after connecting to :2529. Null for audiences stored before this
-// was recorded: those are reopened only once this node lists them.
-let audienceNode: string | null = null;
-let devMode = false;
+import { APP_NAME } from "./config";
 
-// The desktop passes the session (app id, space context, identity, dev mode) in
-// the URL hash only on the FIRST open — MeroProvider then strips the hash. So a
-// plain refresh arrives with no hash and would lose all of it (blank app). We
-// persist the whole bootstrap under one STABLE key (not app-scoped — the app id
-// itself lives here) and restore it before any app-scoped storage key is computed.
-const SESSION_KEY = "mu-session";
+export type Session =
+  | { status: "connecting" }
+  | { status: "unconfigured"; message: string }
+  | { status: "signed-out"; client: CalimeroClient; target: Target }
+  | { status: "signed-in"; client: CalimeroClient; target: Target; accountId: string };
 
-function persistSession(): void {
-  try {
-    localStorage.setItem(
-      SESSION_KEY,
-      JSON.stringify({
-        applicationId,
-        contextId,
-        executorPublicKey,
-        activeNamespaceId,
-        audienceNode,
-        devMode,
-      }),
-    );
-  } catch {
-    /* ignore blocked storage */
-  }
+/** What the hook is built from: the real ones in the app, fakes in tests. */
+export interface SessionDeps {
+  env: ConnectEnv;
+  makeClient: (target: Target) => Promise<CalimeroClient>;
+  passkey: () => PasskeyProvider;
+  storage?: KeyValueStorage;
+  /** The cluster's node list when this page is served by it (production). */
+  servedNodes?: () => Promise<string[] | null>;
 }
 
-function restoreSession(): void {
-  try {
-    const raw = localStorage.getItem(SESSION_KEY);
-    if (!raw) return;
-    const s = JSON.parse(raw);
-    applicationId = s.applicationId ?? applicationId;
-    contextId = s.contextId ?? contextId;
-    executorPublicKey = s.executorPublicKey ?? executorPublicKey;
-    activeNamespaceId = s.activeNamespaceId ?? activeNamespaceId;
-    if (s.contextId) audienceNode = s.audienceNode ?? null;
-    if (typeof s.devMode === "boolean") devMode = s.devMode;
-  } catch {
-    /* ignore malformed/blocked storage */
-  }
+export const defaultDeps: SessionDeps = {
+  env: import.meta.env,
+  makeClient: (target) => createClient(target),
+  passkey: browserPasskey,
+};
+
+export interface SessionApi {
+  session: Session;
+  /** The sessions kept for this app on this target. */
+  store: SessionStore | null;
+  error: string | null;
+  busy: boolean;
+  signIn(): Promise<void>;
+  signUp(name: string): Promise<void>;
+  signOut(): Promise<void>;
 }
 
-function spaceStorageKey(): string {
-  return `mu-space:${applicationId ?? "default"}`;
-}
+/**
+ * Connects to the local nodes (dev) or the Cloud cluster (production), restores
+ * a stored session, and signs in or up with a passkey. Replaces mero-react's
+ * `MeroProvider` and node login.
+ */
+export function useSession(deps: SessionDeps = defaultDeps): SessionApi {
+  const [session, setSession] = useState<Session>({ status: "connecting" });
+  const [store, setStore] = useState<SessionStore | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-export function captureSessionFromHash(): void {
-  // Restore any persisted session first, so a refresh (no hash) keeps the app
-  // id / space / identity the desktop only forwards on the first open. Hash
-  // values (a fresh deep-link) still take precedence below.
-  restoreSession();
-
-  const hash = window.location.hash.slice(1);
-  if (hash) {
-    const p = new URLSearchParams(hash);
-    const handed = p.get("context_id") ?? p.get("contextId");
-    if (handed) {
-      contextId = handed;
-      // A desktop deep-link names its node beside the context.
-      audienceNode = p.get("node_url");
-    }
-    executorPublicKey =
-      p.get("executor_public_key") ??
-      p.get("executorPublicKey") ??
-      executorPublicKey;
-    applicationId =
-      p.get("app-id") ??
-      p.get("application_id") ??
-      p.get("applicationId") ??
-      applicationId;
-    // The desktop app forwards its developer-mode setting here.
-    if (p.has("dev_mode")) devMode = p.get("dev_mode") === "1";
-  }
-
-  // No space handed in or persisted? Restore the last space opened for this app.
-  if (!contextId) {
-    try {
-      const saved = localStorage.getItem(spaceStorageKey());
-      if (saved) {
-        const { ctx, executor, ns, node } = JSON.parse(saved);
-        if (ctx && executor) {
-          contextId = ctx;
-          executorPublicKey = executor;
-          audienceNode = typeof node === "string" ? node : null;
-          // Absent for audiences stored before this was recorded — the audience then
-          // simply offers no "back to audiences", rather than routing nowhere.
-          if (ns) activeNamespaceId = ns;
-        }
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      let target: Target;
+      try {
+        target = await withServedNodes(resolveTarget(deps.env), deps.servedNodes);
+      } catch (e) {
+        if (live) setSession({ status: "unconfigured", message: describeError(e) });
+        return;
       }
+      try {
+        const client = await deps.makeClient(target);
+        const sessions = new SessionStore(APP_NAME, target, deps.storage);
+        if (!live) return;
+        setStore(sessions);
+        if (sessions.restore(client) && client.session) {
+          setSession({ status: "signed-in", client, target, accountId: client.session.accountId });
+        } else {
+          setSession({ status: "signed-out", client, target });
+        }
+      } catch (e) {
+        if (live) setSession({ status: "unconfigured", message: describeError(e) });
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, [deps]);
+
+  const ceremony = useCallback(
+    async (run: (client: CalimeroClient) => Promise<{ accountId: string }>) => {
+      if (session.status !== "signed-out") return;
+      setBusy(true);
+      setError(null);
+      try {
+        const { accountId } = await run(session.client);
+        store?.sync(session.client);
+        setSession({ status: "signed-in", client: session.client, target: session.target, accountId });
+      } catch (e) {
+        setError(describeError(e));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [session, store],
+  );
+
+  const signIn = useCallback(() => ceremony((c) => c.signIn(deps.passkey())), [ceremony, deps]);
+  const signUp = useCallback(
+    (name: string) => ceremony((c) => c.signUp(deps.passkey(), name)),
+    [ceremony, deps],
+  );
+
+  const signOut = useCallback(async () => {
+    if (session.status !== "signed-in") return;
+    try {
+      await session.client.signOut();
     } catch {
-      /* ignore malformed/blocked storage */
+      // Already expired or unreachable: forgetting it here is what matters.
     }
-  }
+    store?.clear();
+    setSession({ status: "signed-out", client: session.client, target: session.target });
+  }, [session, store]);
 
-  // Re-persist so the app id + restored/updated space survive the next refresh.
-  persistSession();
+  return useMemo(
+    () => ({ session, store, error, busy, signIn, signUp, signOut }),
+    [session, store, error, busy, signIn, signUp, signOut],
+  );
 }
 
-/** Developer mode as set in the Calimero desktop app's settings. */
-export function isDeveloperMode(): boolean {
-  return devMode;
-}
-
-export function getContextId(): string | null {
-  return contextId;
-}
-
-export function getExecutorPublicKey(): string | null {
-  return executorPublicKey;
-}
-
-/**
- * The space (namespace) the active audience belongs to, when we know it.
- *
- * Null after a cold reload that restored an audience saved before this was stored,
- * so callers must treat "back to audiences" as an affordance that may be absent
- * rather than assuming a destination.
- */
-export function getActiveNamespaceId(): string | null {
-  return activeNamespaceId;
-}
-
-/** The node the active audience was opened on; null when not recorded. */
-export function getAudienceNode(): string | null {
-  return audienceNode;
-}
-
-// Audiences known to exist on a node during this app load: set by an explicit
-// open (create, join, pick) or by the node listing them. Spares the gate a
-// round-trip on every route hop, and trusts a just-joined context the node's
-// list may not show yet.
-const confirmedAudiences = new Set<string>();
-const confirmKey = (ctx: string, node: string | null) =>
-  `${node ?? ""}\n${ctx}`;
-
-export function markAudienceConfirmed(ctx: string, node: string | null): void {
-  confirmedAudiences.add(confirmKey(ctx, node));
-}
-
-export function isAudienceConfirmed(ctx: string, node: string | null): boolean {
-  return confirmedAudiences.has(confirmKey(ctx, node));
-}
-
-/** The installed Mero Updates application id (needed to create spaces). */
-export function getApplicationId(): string | null {
-  return applicationId;
-}
-
-/**
- * Make `ctx` the active space with member identity `executor`, and persist it so
- * a reload (or the next open of this app) returns here. Used after the user
- * creates or joins a space in the picker. `node` is the node it was opened
- * on (`useMero().nodeUrl`), so another node never reopens it.
- */
-export function setActiveAudience(
-  ctx: string,
-  executor: string,
-  namespaceId: string | undefined,
-  node: string | null,
-): void {
-  contextId = ctx;
-  executorPublicKey = executor;
-  audienceNode = node;
-  markAudienceConfirmed(ctx, node);
-  // Remembered so the audience can offer a way BACK to its audience list. A context
-  // knows nothing about the namespace that holds it, and there is no "parent
-  // of" read in the admin API, so the only cheap place to keep the link is
-  // here — at the moment we entered the audience and already knew it.
-  if (namespaceId) activeNamespaceId = namespaceId;
-  try {
-    localStorage.setItem(
-      spaceStorageKey(),
-      JSON.stringify({ ctx, executor, ns: activeNamespaceId, node }),
-    );
-  } catch {
-    /* ignore blocked storage */
-  }
-  // Also fold into the stable session blob so a refresh restores this space
-  // directly (the app-scoped key above needs applicationId, which only the
-  // session blob preserves across a hash-less reload).
-  persistSession();
-}
-
-/**
- * Forget the active space, in memory and in storage. Needed when the persisted
- * space's context no longer exists on the node (node reset, space deleted):
- * without this every boot restores the dead space and lands in a dead page
- * instead of the picker.
- */
-export function clearActiveAudience(): void {
-  contextId = null;
-  executorPublicKey = null;
-  activeNamespaceId = null;
-  audienceNode = null;
-  try {
-    localStorage.removeItem(spaceStorageKey());
-  } catch {
-    /* ignore blocked storage */
-  }
-  persistSession();
-}
-
-// ── Stream name cache ─────────────────────────────────────────────────────────
-// The space's human name lives in the contract (space_name) and in the
-// namespace alias, but neither is guaranteed to be synced when we render the
-// picker (especially right after joining). So we also cache the name locally
-// whenever we learn it — so the picker shows real names, never raw context ids.
-function audienceNameKey(ctx: string): string {
-  return `mu-audiencename:${applicationId ?? "default"}:${ctx}`;
-}
-
-export function setAudienceName(ctx: string, name: string): void {
-  if (!ctx || !name.trim()) return;
-  try {
-    localStorage.setItem(audienceNameKey(ctx), name.trim());
-  } catch {
-    /* ignore blocked storage */
-  }
-}
-
-export function getAudienceName(ctx: string): string {
-  try {
-    return localStorage.getItem(audienceNameKey(ctx)) ?? "";
-  } catch {
-    return "";
-  }
-}
-
-// ── Display name cache ──────────────────────────────────────────────────────
-// The name the user joined with is stored in the contract (member), but on a
-// hard refresh the round-trip hasn't happened yet. Cache it locally (per app) so
-// a reload restores it instantly.
-function usernameKey(): string {
-  return `mu-username:${applicationId ?? "default"}`;
-}
-
-export function getUsername(): string {
-  try {
-    return localStorage.getItem(usernameKey()) ?? "";
-  } catch {
-    return "";
-  }
-}
-
-export function setUsername(name: string): void {
-  if (!name.trim()) return;
-  try {
-    localStorage.setItem(usernameKey(), name.trim());
-  } catch {
-    /* ignore blocked storage */
-  }
-}
-
-/** Unix seconds — the clock the contract expects (WASM has no wall clock). */
-export function nowSecs(): number {
-  return Math.floor(Date.now() / 1000);
-}
-
-/**
- * Unix milliseconds — the clock `encode_frame` expects, and ONLY that method.
- *
- * Fragments carry millis while members carry seconds, because §4's headline
- * metric is end-to-end fragment latency (capture → peer render). That is
- * expected to land in the hundreds-of-ms-to-seconds band, which quantizes to
- * "0 or 1" at second resolution. See `Fragment::created_at` in logic/src/lib.rs.
- */
-export function nowMillis(): number {
-  return Date.now();
+/** "merod local (3 nodes)" / "Calimero Cloud eu-shared-1". */
+export function describeTarget(target: Target): string {
+  return target.kind === "local"
+    ? `merod local (${target.nodes.length} node${target.nodes.length === 1 ? "" : "s"})`
+    : `Calimero Cloud ${target.cluster}`;
 }

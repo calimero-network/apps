@@ -1,6 +1,5 @@
-import { type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
 
 import LandingPage from "./pages/landing/LandingPage";
 import CompaniesPage from "./pages/CompaniesPage";
@@ -15,8 +14,23 @@ import MetricsPage from "./pages/MetricsPage";
 import PeoplePage from "./pages/PeoplePage";
 import SettingsPage from "./pages/SettingsPage";
 import InvitationPrompt from "./components/InvitationPrompt";
+import SignInDialog from "./components/SignInDialog";
+import { pendingInvite } from "./lib/companies";
+import { useSessionApi } from "./lib/sessionContext";
 import { ToastProvider } from "./contexts/ToastContext";
 import { useStoredAudience } from "./lib/storedAudience";
+
+/**
+ * The session as the guards read it: still connecting (render nothing, so a
+ * stored session does not flash the landing page), signed in, or not.
+ */
+function useAuth(): { isAuthenticated: boolean; isLoading: boolean } {
+  const { session } = useSessionApi().api;
+  return {
+    isAuthenticated: session.status === "signed-in",
+    isLoading: session.status === "connecting",
+  };
+}
 
 /** Every path the shared landing page serves. See src/pages/landing. */
 const LANDING_PATHS = ["/", "/docs", "/preview"];
@@ -30,14 +44,14 @@ const LANDING_PATHS = ["/", "/docs", "/preview"];
  * throw. Nothing on the page explained it or offered a way out.
  *
  * Two conditions, in order, because they need different screens:
- *   not authenticated  -> /login  (connect a node)
+ *   not signed in  -> /  (the landing page, whose connect action signs in)
  *   authenticated, no audience -> the setup screen (create or join one)
  *
  * `isLoading` returns null rather than redirecting, so the auth probe does not
  * flash the login screen at someone who is already signed in.
  */
 function RequireAudience({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isLoading } = useMero();
+  const { isAuthenticated, isLoading } = useAuth();
   const location = useLocation();
   const audience = useStoredAudience();
 
@@ -50,9 +64,9 @@ function RequireAudience({ children }: { children: ReactNode }) {
   // because the app modelled "a namespace with one context inside it" and had
   // no way to express a second. Spaces and audiences are separate screens now.
   //
-  // And the stored audience must be one THIS node holds: it is remembered
-  // across reloads and node switches, so it can name a context deleted, left,
-  // or on another node. `checking` renders nothing until the node has answered.
+  // And the stored audience must be one this account can reach: it is
+  // remembered across reloads and sign-ins, so it can name an instance deleted
+  // or left. `checking` renders nothing until the node has answered.
   if (audience === "checking") return null;
   if (audience === "none") return <Navigate to="/companies" replace />;
   return <>{children}</>;
@@ -60,7 +74,7 @@ function RequireAudience({ children }: { children: ReactNode }) {
 
 /** Signed in, but not yet inside an audience: the picker screens. */
 function RequireAuth({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isLoading } = useMero();
+  const { isAuthenticated, isLoading } = useAuth();
   const location = useLocation();
   if (isLoading) return null;
   if (!isAuthenticated) {
@@ -72,20 +86,13 @@ function RequireAuth({ children }: { children: ReactNode }) {
 /**
  * An authenticated visitor has no business on the marketing page.
  *
- * ⚠️ THIS IS THE STEP THAT CARRIES YOU INTO THE APP. The SSO callback returns
- * to wherever login started — `connectToNode` uses `window.location.href` as
- * the callback URL — which for a visitor who pressed Connect on the landing
- * page is `/`. Without this guard the tokens land, `isAuthenticated` flips
- * true, and the router renders the landing page again: you log in successfully
- * and end up exactly where you started.
- *
- * The app used to get this from a `RedirectIfAuthed` wrapped around its
- * `/login` route. Deleting that page took the redirect with it; the landing
- * routes need the same guard, because they are now where login begins and ends.
+ * ⚠️ THIS IS THE STEP THAT CARRIES YOU INTO THE APP. Signing in happens in a
+ * dialog over the landing page at `/`; without this guard the session lands,
+ * `isAuthenticated` flips true, and the router renders the landing page again.
  */
 function RedirectIfAuthed({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isLoading } = useMero();
-  // Into the remembered audience only once this node has confirmed it holds it.
+  const { isAuthenticated, isLoading } = useAuth();
+  // Into the remembered audience only once the node has confirmed it is reachable.
   const audience = useStoredAudience();
   if (isLoading) return null; // the auth probe is still in flight
   if (isAuthenticated) {
@@ -93,6 +100,24 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
     return <Navigate to={audience === "open" ? "/a" : "/companies"} replace />;
   }
   return <>{children}</>;
+}
+
+/**
+ * The landing page with its connect action: the passkey sign-in dialog. It
+ * opens by itself when an invitation link was opened by someone signed out.
+ */
+function Landing() {
+  const { isAuthenticated } = useAuth();
+  const [open, setOpen] = useState(() => pendingInvite() !== null);
+  useEffect(() => {
+    if (isAuthenticated) setOpen(false);
+  }, [isAuthenticated]);
+  return (
+    <>
+      <LandingPage onConnect={() => setOpen(true)} />
+      <SignInDialog open={open} onClose={() => setOpen(false)} />
+    </>
+  );
 }
 
 export default function App() {
@@ -119,10 +144,10 @@ export default function App() {
             element={
               landingPath === "/" ? (
                 <RedirectIfAuthed>
-                  <LandingPage />
+                  <Landing />
                 </RedirectIfAuthed>
               ) : (
-                <LandingPage />
+                <Landing />
               )
             }
           />
@@ -132,11 +157,9 @@ export default function App() {
           already pressed to get there. The path stays as a redirect so a
           bookmark lands on the front door instead of a blank route. */}
         <Route path="/login" element={<Navigate to="/" replace />} />
-        {/* Spaces (namespaces) hold audiences; an audience is a subgroup plus the
-          context that IS the discussion. An invitation is a NAMESPACE
-          invitation, so with one namespace per audience every invite was to a
-          single thread — there was no "invite someone to the space once and
-          they can read every audience in it". */}
+        {/* Companies (organizations) hold audiences (app instances). An
+          invitation is to the company, so someone invited once can read every
+          audience in it. */}
         <Route
           path="/companies"
           element={

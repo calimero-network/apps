@@ -7,18 +7,17 @@ import {
   useRef,
   useState,
 } from "react";
-import { useMero, useNodeIdentity } from "@calimero-network/mero-react";
-import { publishMemberName, useMemberNames } from "@calimero-apps/names";
 
-import { getActiveNamespaceId, getContextId } from "./session";
-import { UpdatesClient } from "../generated/UpdatesClient";
+import { describeError } from "@calimero-apps/connect";
+
+import { getActiveNamespaceId, getContextId } from "./active";
+import { readCompany } from "./companies";
+import { useMaybeSignedIn } from "./sessionContext";
+import { UpdatesClient } from "./updatesClient";
 
 /**
- * The audience this node is in. One context == one audience.
- *
- * An explicit choice made on the companies/audiences pages and recorded in
- * `lib/session` — never "the first context on the node", which on a node
- * running several Calimero apps is somebody else's contract.
+ * The audience this browser has open: one app instance == one audience. An
+ * explicit choice made on the companies/audiences pages (`lib/active`).
  */
 export function useAudienceContextId(): string | null {
   const [contextId, setContextId] = useState<string | null>(getContextId);
@@ -26,47 +25,20 @@ export function useAudienceContextId(): string | null {
   return contextId;
 }
 
-/**
- * This node's ACCOUNT id — what the contract records as author, reader and
- * helper. Not the context identity: both are 64 hex characters, so mixing them
- * type-checks and then marks every one of your own posts as somebody else's.
- */
+/** The signed-in ACCOUNT: what the contract records as author, reader and helper. */
 export function useSelfAccount(): string | null {
-  const { identity } = useNodeIdentity();
-  return identity?.accountId ?? null;
+  return useMaybeSignedIn()?.accountId ?? null;
 }
 
+/** The open audience through the signed-in client, or null while there is neither. */
 export function useUpdatesClient(): UpdatesClient | null {
-  // `mero` carries the rpc transport the generated client writes through —
-  // identical on a node and on a relay. `admin` is the session-aware admin: on
-  // an account the raw client's `identities-owned` route is the relay's node
-  // route and answers `[]`, which left this hook with no executor and the app
-  // on a spinner forever.
-  const { mero, admin } = useMero();
+  const signedIn = useMaybeSignedIn();
   const contextId = useAudienceContextId();
-  const [executor, setExecutor] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!admin || !contextId) {
-      setExecutor(null);
-      return;
-    }
-    let cancelled = false;
-    admin
-      .getContextIdentitiesOwned(contextId)
-      .then(({ identities }) => {
-        if (!cancelled && identities.length > 0) setExecutor(identities[0]);
-      })
-      .catch(() => !cancelled && setExecutor(null));
-    return () => {
-      cancelled = true;
-    };
-  }, [admin, contextId]);
-
+  const client = signedIn?.client ?? null;
+  const after = signedIn?.after;
   return useMemo(
-    () =>
-      mero && contextId && executor ? new UpdatesClient(mero, contextId) : null,
-    [mero, contextId, executor],
+    () => (client && contextId ? new UpdatesClient(client, contextId, after) : null),
+    [client, contextId, after],
   );
 }
 
@@ -77,6 +49,46 @@ export function useUpdatesClient(): UpdatesClient | null {
 // Each data hook re-reads when it moves. Coarse on purpose: an investor-update
 // audience changes a few times a day, and "re-read what is on screen" is
 // simpler and harder to get wrong than patching lists from event payloads.
+
+/** How long to wait before reopening a dropped event stream. */
+const RECONNECT_MS = 2_000;
+
+/**
+ * Calls `onEvent` for every event of the audience `appId` (from now on), and
+ * once more after every reconnect of the stream: events missed while it was
+ * down are not replayed, so the screen re-reads instead. Replaces mero-react's
+ * `useSubscription` + `useStreamReconnect`.
+ */
+export function useAudienceEvents(appId: string | null, onEvent: () => void): void {
+  const signedIn = useMaybeSignedIn();
+  const client = signedIn?.client ?? null;
+  const after = signedIn?.after;
+  const handler = useRef(onEvent);
+  handler.current = onEvent;
+  useEffect(() => {
+    if (!client || !appId) return;
+    const abort = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const open = async (reconnect: boolean) => {
+      if (reconnect) handler.current();
+      try {
+        for await (const _event of client.events(appId, undefined, abort.signal)) {
+          handler.current();
+        }
+      } catch {
+        // Dropped (or refused): try again below, unless we are unmounting.
+      } finally {
+        after?.();
+      }
+      if (!abort.signal.aborted) timer = setTimeout(() => void open(true), RECONNECT_MS);
+    };
+    void open(false);
+    return () => {
+      abort.abort();
+      if (timer) clearTimeout(timer);
+    };
+  }, [client, appId, after]);
+}
 
 export const RevisionContext = createContext<{
   revision: number;
@@ -123,7 +135,7 @@ export function useLive<T>(
         setError(null);
       })
       .catch((e: unknown) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+        if (!cancelled) setError(describeError(e));
       })
       .finally(() => !cancelled && setLoading(false));
     return () => {
@@ -187,17 +199,49 @@ export function personLabel(name: string, account: string, spaceName?: string): 
   return name.trim() || (spaceName ?? "").trim() || shortAccount(account);
 }
 
+// The names members set for the whole company (org member metadata), read
+// once per company and shared by every component that labels a person.
+const companyNames = new Map<string, Map<string, string>>();
+const listeners = new Set<() => void>();
+const loading = new Set<string>();
+
+function useCompanyNames(): (account: string | null | undefined) => string | undefined {
+  const signedIn = useMaybeSignedIn();
+  const org = getActiveNamespaceId();
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const listener = () => setTick((n) => n + 1);
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
+  }, []);
+  const client = signedIn?.client ?? null;
+  useEffect(() => {
+    if (!client || !org || companyNames.has(org) || loading.has(org)) return;
+    loading.add(org);
+    readCompany(client, org)
+      .then((info) => companyNames.set(org, info.names))
+      .catch(() => companyNames.set(org, new Map()))
+      .finally(() => {
+        loading.delete(org);
+        listeners.forEach((l) => l());
+      });
+  }, [client, org]);
+  return useCallback(
+    (account: string | null | undefined) => (account && org ? companyNames.get(org)?.get(account) : undefined),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [org, companyNames.get(org ?? "")],
+  );
+}
+
 /**
- * {@link personLabel} with the company-wide name filled in.
- *
- * A profile name is per audience; the namespace member name is per person and
- * shared by every audience and app in the company. Someone who never set a
- * profile in this audience — but named themselves anywhere else — should not
- * byline as an account id. See `@calimero-apps/names`.
+ * {@link personLabel} with the company-wide name filled in: a profile name is
+ * per audience, the org member name is per person and shared by every audience
+ * in the company.
  */
 export function usePersonLabel(): (name: string, account: string) => string {
-  const { admin } = useMero();
-  const { nameOf } = useMemberNames(admin, getActiveNamespaceId());
+  const nameOf = useCompanyNames();
   return useCallback(
     (name: string, account: string) => personLabel(name, account, nameOf(account)),
     [nameOf],
@@ -205,28 +249,35 @@ export function usePersonLabel(): (name: string, account: string) => string {
 }
 
 /**
- * Publish a profile name company-wide too, so every audience and every other
- * app on the namespace shows it. Best-effort: the profile is what was asked
- * for, and a refusal here must not report it as failed.
+ * Publish a profile name company-wide too (org member metadata), so every
+ * audience shows it. Best-effort: the profile is what was asked for, and a
+ * refusal here must not report it as failed.
  */
 export function usePublishSpaceName(): (account: string, name: string) => void {
-  const { admin } = useMero();
+  const signedIn = useMaybeSignedIn();
+  const client = signedIn?.client ?? null;
   return useCallback(
     (account: string, name: string) => {
-      const namespaceId = getActiveNamespaceId();
+      const org = getActiveNamespaceId();
       const trimmed = name.trim();
-      if (!admin || !namespaceId || !account || !trimmed) return;
-      void publishMemberName(admin, namespaceId, account, trimmed).catch(() => {});
+      if (!client || !org || !account || !trimmed) return;
+      void client
+        .setMemberMetadata(org, account, { name: trimmed })
+        .then(() => {
+          const names = new Map(companyNames.get(org) ?? []);
+          names.set(account, trimmed);
+          companyNames.set(org, names);
+          listeners.forEach((l) => l());
+        })
+        .catch(() => {});
     },
-    [admin],
+    [client],
   );
 }
 
 /** The name `account` set for the whole company, or "" when none is known. */
 export function useSpaceName(account: string | null | undefined): string {
-  const { admin } = useMero();
-  const { nameOf } = useMemberNames(admin, getActiveNamespaceId());
-  return nameOf(account) ?? "";
+  return useCompanyNames()(account) ?? "";
 }
 
 // ── Metrics ──────────────────────────────────────────────────────────────────
