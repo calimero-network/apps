@@ -13,6 +13,46 @@ parts a green scenario cannot show you: what each failure looks like, how far yo
 before the missing piece bites, and that the account in the panel is one you minted
 yourself half a minute ago.
 
+## Status on Calimero 1.0: not ported, and why
+
+This app **stays on the v1 node and the v1 mero-js line** (`catalog:`, ^23 → 26.x).
+It was checked for the move to core's component runtime (`1.0.0-rc.7`, mero-js 28
+`CalimeroClient`, see [`docs/COMPONENT-APPS.md`](../../docs/COMPONENT-APPS.md)) and
+there is nothing to move it *onto*: it has no contract, and every step it drives is a
+v1 **node protocol** route that the 1.0 node does not serve, by design rather than
+pending. It needs none of the host features the porting checklist's stop rule names
+(blobs, search, xcall, actions, event handlers), so no core PR unblocks it.
+
+| step (v1) | v1 route / mero-js API | on 1.0 (core `1.0.0-rc.7`, mero-js 28) |
+| --- | --- | --- |
+| 1. Mint root + device key | `generateAccountRoot`, device certificate (mero-js ≤26) | **none.** Accounts are passkeys (`/auth/passkey/register/*`); there is no account root or device certificate |
+| 2. Find where you can go | cloud `GET /api/cloud/accounts/{id}/relays`, routing credential, namespace invitation + `POST /admin-api/namespaces/<id>/admit` | **different model.** The cluster comes from the cloud node directory (`CalimeroClient.connect({ cluster })`); joining is an org invite (`POST /orgs/{org}/invites`, `/invites/{token}/redeem`); there are no relays or admitters |
+| 3. Pin the node key | operator-entered `node_key` | **none needed.** The client attests every node against the signed release before sending (`policy.release`) |
+| 4. Session | `account_proof`: `GET /auth/challenge`, `POST /auth/token` | **none.** No device-key login; passkey login only (or an API key) |
+| 5. Create via creation warrant | `POST /admin-api/groups/<g>/context-intents` | **none.** An account creates its own instance: `POST /apps` (`createApp(..., { org })`) |
+| 6. Read | `POST /admin-api/contexts/<id>/query` | `POST /apps/{app}/views` (`client.view`) |
+| 7. Write through a relay, warrant sealed to its TEE | `POST /admin-api/contexts/<id>/intents` + warrant, `/sealed/v2`, `CAN_AUTHOR_ON_BEHALF` | **no relay, no warrant.** Calls go to any cluster node over the sealed channel and are applied by the app's leader as the caller (`POST /apps/{app}/intents`); sealing is the client's default, not a choice |
+| 8. Cloud account-root login / link | `POST /api/auth/account`, link grant | **none.** No account root exists to sign it |
+
+mero-js 27 and up exports only the 1.0 client (`CalimeroClient`, `sealed`, `agent-gate`):
+`DelegatedSession`, `RelayClient`, `CloudClient`, the account-root and device-key
+helpers and the warrant signers, which `lib/flow.ts` and `lib/identity.ts` are built
+on, are gone (`createSignedReleaseVerifier` remains, inside the client's attestation). A "port" that kept the UI behaviour is
+therefore not possible: every panel would be rewritten against a different protocol.
+
+**The closest 1.0 counterpart of "something that is not my passkey acts for my
+account, within limits" is a scoped API key**: `client.createApiKey({ apps, methods,
+readOnly, ttlSecs }, passkey)` is approved with a passkey step-up, the key is used by a
+second client (`useApiKey`), its calls are attributed to the account (`env::caller()`;
+`TestApp::api_key(id, account)` in the harness), the node refuses methods and writes
+outside its scope, and `revokeApiKey` ends it. Rewriting this demo around that, driving
+`apps/kv-store`'s component (`set`/`get`, as v1 drove scaffolding-e2e's), is a different
+app with a different README, so it waits for a decision rather than being done as a
+port. Until then this page keeps demonstrating the v1 protocol, against v1 nodes.
+
+There are no merobox workflows or scripts for this app to remove (it never had a
+`logic/`), and no mobile app.
+
 ## There is no `logic/` directory, deliberately
 
 Every other app here is a contract plus a frontend. This one is a **frontend only**: it
