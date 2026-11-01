@@ -386,6 +386,7 @@
       "names": "unorderedMap",
       "partials": "unorderedMap",
       "polls": "unorderedMap",
+      "sealed": "unorderedMap",
       "transportKeys": "unorderedMap"
     },
     "version": 1

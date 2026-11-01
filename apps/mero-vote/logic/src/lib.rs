@@ -51,7 +51,7 @@
 //! | --- | --- |
 //! | `FrozenStorage<PollDefinition>` | `Frozen<PollDefinition>`: the poll id is the SHA-256 of its CBOR |
 //! | `AuthoredMap<poll, LwwRegister<PollControl>>` | `UnorderedMap<poll, PollControl>`; only the definition's `creator` writes it |
-//! | `WriteOnce<SortedMap<"{poll}/{nonce}", Election>>` (+ `closures`) | `UnorderedMap<poll, Election>` (+ `closures`): one per poll, refused once written |
+//! | `WriteOnce<SortedMap<"{poll}/{nonce}", Election>>` (+ `closures`) | `UnorderedMap<poll, Election>` (+ `closures`): one per poll, refused once written; the seal's counted ballots are rows of `sealed: UnorderedMap<(poll, voter), CountedBallot>`, not a list in the seal |
 //! | `WriteOnce<SortedMap<"{poll}/{trustee}/{hash}", TransportKey>>` (+ `dealings`) | `UnorderedMap<(poll, trustee), …>`, written once by that trustee's own call |
 //! | `WriteOnce<SortedMap<"{poll}/{recipient}/{dealer}/{hash}", Complaint>>` | `UnorderedMap<(poll, recipient, dealer), Complaint>`, once per pair |
 //! | `WriteOnce<UnorderedMap<hash, StoredBallot>>` | `Frozen<StoredBallot>`: `voter` is the caller who cast it |
@@ -107,13 +107,19 @@ pub struct WireBranch {
 pub struct WireChoice {
     pub a: String,
     pub b: String,
+    /// Two branches (0 or 1); `castBallot` refuses any other proof.
     pub proof: Vec<WireBranch>,
 }
 
-/// An encrypted ballot exactly as the browser built it.
+/// An encrypted ballot exactly as the browser built it. Stored (a ballot
+/// body) only after `castBallot` verified it, so its lists have the poll's
+/// shape: one choice per option and one sum branch per allowed count, at most
+/// [`MAX_BALLOT_BRANCHES`] branches in all.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WireBallot {
+    /// One per option: at most 16.
     pub choices: Vec<WireChoice>,
+    /// One per allowed count, `maxChoices − minChoices + 1`: at most 17.
     pub sum_proof: Vec<WireBranch>,
 }
 
@@ -140,11 +146,12 @@ pub struct WireEncShare {
 /// A trustee's contribution to the distributed key.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WireDealing {
-    /// `t` Feldman commitments, constant term first.
+    /// `t` Feldman commitments, constant term first: at most
+    /// [`MAX_TRUSTEES`], checked by `publishDealing` (`verify_dealing`).
     pub commitments: Vec<String>,
     /// Proof of knowledge of the constant term.
     pub proof: WireBranch,
-    /// One per trustee, in the poll's trustee order.
+    /// One per trustee, in the poll's trustee order: at most [`MAX_TRUSTEES`].
     pub shares: Vec<WireEncShare>,
 }
 
@@ -171,15 +178,18 @@ pub struct Complaint {
 pub struct PollDefinition {
     pub title: String,
     pub description: String,
+    /// 2..=16, checked by `createPoll`.
     pub options: Vec<String>,
     pub min_choices: u32,
     pub max_choices: u32,
     /// Accounts that hold the decryption key between them, in index order
-    /// (trustee `i` in this list has Shamir index `i + 1`).
+    /// (trustee `i` in this list has Shamir index `i + 1`). At most
+    /// [`MAX_TRUSTEES`], checked by `createPoll`.
     pub trustees: Vec<String>,
     /// How many trustees it takes to decrypt. 1..=trustees.len().
     pub threshold: u32,
-    /// Accounts allowed to vote. Empty means any member of the app's org.
+    /// Accounts allowed to vote. Empty means any member of the app's org. At
+    /// most [`MAX_VOTERS`], checked by `createPoll`; the definition is frozen.
     pub voters: Vec<String>,
     pub creator: String,
     /// Milliseconds. Also makes two otherwise identical polls distinct.
@@ -210,12 +220,14 @@ pub struct QualifiedDealing {
 pub struct Election {
     pub key: String,
     pub threshold: u32,
-    /// Transport keys, in trustee order. Frozen because complaints are
-    /// adjudicated against them.
+    /// Transport keys, in trustee order (one per trustee: at most
+    /// [`MAX_TRUSTEES`]). Frozen because complaints are adjudicated against
+    /// them.
     pub transport: Vec<String>,
-    /// Dealings that make up the key, in trustee order.
+    /// Dealings that make up the key, in trustee order: at most [`MAX_TRUSTEES`].
     pub qualified: Vec<QualifiedDealing>,
-    /// Dealers left out because a complaint proved they cheated.
+    /// Dealers left out because a complaint proved they cheated: at most
+    /// [`MAX_TRUSTEES`].
     pub disqualified: Vec<String>,
     #[serde(with = "calimero_app_sdk::json::u64_auto")]
     pub opened_at: u64,
@@ -231,12 +243,27 @@ pub struct CountedBallot {
     pub frozen: String,
 }
 
+/// The seal as answered: the stored [`StoredClosure`] with its counted
+/// ballots, read from `sealed`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Closure {
+    /// In voter order.
     pub counted: Vec<CountedBallot>,
     /// Per option, the sum of the counted ballots' ciphertexts: what the
     /// trustees decrypt. Kept as ballots were cast (each verified then), and
     /// recomputed from the ballots by the browser's re-verification.
+    pub aggregate: Vec<WireCiphertext>,
+    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    pub closed_at: u64,
+}
+
+/// The seal as stored. The counted ballots grow with the electorate, so they
+/// are rows of `sealed`, not a list in here.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StoredClosure {
+    /// How many rows of `sealed` the seal wrote for the poll.
+    pub counted: u32,
+    /// One per option: at most 16 (`crypto::MAX_OPTIONS`, checked by `createPoll`).
     pub aggregate: Vec<WireCiphertext>,
     #[serde(with = "calimero_app_sdk::json::u64_auto")]
     pub closed_at: u64,
@@ -296,6 +323,7 @@ pub struct BallotPointer {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StoredPartials {
+    /// One per option (at most 16), checked by `publishPartial`.
     pub options: Vec<WirePartial>,
 }
 
@@ -459,7 +487,9 @@ pub struct MeroVote {
     /// The frozen election, one per poll, written once by `openVoting`.
     elections: UnorderedMap<String, Election>,
     /// The seal, one per poll, written once by `sealPoll`.
-    closures: UnorderedMap<String, Closure>,
+    closures: UnorderedMap<String, StoredClosure>,
+    /// `(poll, voter)`: the ballots the seal counts, written once by `sealPoll`.
+    sealed: UnorderedMap<(String, String), CountedBallot>,
     /// `(poll, trustee)`, written once by that trustee.
     transport_keys: UnorderedMap<(String, String), TransportKey>,
     /// `(poll, dealer)`, written once by that dealer.
@@ -473,6 +503,7 @@ pub struct MeroVote {
     /// Per poll, the per-option sum of every current ballot's ciphertexts,
     /// updated by each `castBallot`: so sealing and tallying never re-read
     /// every ballot's curve points (see `MAX_BALLOT_BRANCHES` on fuel).
+    /// One ciphertext per option: at most 16.
     aggregates: UnorderedMap<String, Vec<WireCiphertext>>,
     /// `(poll, trustee)`: the trustee's partial decryptions, by their own call.
     partials: UnorderedMap<(String, String), StoredPartials>,
@@ -636,11 +667,11 @@ impl MeroVote {
     pub fn list_polls(&self) -> app::Result<Vec<PollSummary>> {
         let mut out = Vec::new();
         for (poll_id, _) in read_all(&self.polls, &[])? {
-            let Some((def, state)) = self.try_load(&poll_id)? else {
+            let Some((def, state, sealed)) = self.load_with(&poll_id, false)? else {
                 continue;
             };
-            let ballots = match &state.closure {
-                Some(c) => c.counted.len() as u32,
+            let ballots = match sealed {
+                Some(n) => n,
                 None => read_all(&self.ballots, &[KeyPart::Str(poll_id.clone())])?.len() as u32,
             };
             out.push(PollSummary {
@@ -1035,14 +1066,17 @@ impl MeroVote {
             });
         }
         let n = counted.len() as u32;
+        for c in &counted {
+            self.sealed.insert(&(poll_id.clone(), c.voter.clone()), c)?;
+        }
         let aggregate = match self.aggregates.get(&poll_id)? {
             Some(stored) => stored,
             None => encode_cts(&vec![crypto::Ciphertext::zero(); def.options.len()]),
         };
         self.closures.insert(
             &poll_id,
-            &Closure {
-                counted,
+            &StoredClosure {
+                counted: n,
                 aggregate,
                 closed_at: env::time_now(),
             },
@@ -1652,6 +1686,19 @@ impl MeroVote {
     /// notice Closing, a seal Closed, and the election and seal are written
     /// once, so nothing can take a sealed poll back.
     fn try_load(&self, poll_id: &str) -> app::Result<Option<(PollDefinition, PollState)>> {
+        Ok(self
+            .load_with(poll_id, true)?
+            .map(|(def, state, _)| (def, state)))
+    }
+
+    /// [`Self::try_load`], plus the number of sealed ballots; with
+    /// `counted: false` the closure's `counted` list is left empty (not read).
+    #[allow(clippy::type_complexity)]
+    fn load_with(
+        &self,
+        poll_id: &str,
+        counted: bool,
+    ) -> app::Result<Option<(PollDefinition, PollState, Option<u32>)>> {
         let Some(control) = self.polls.get(&poll_id.to_owned())? else {
             return Ok(None);
         };
@@ -1659,8 +1706,24 @@ impl MeroVote {
             return Ok(None);
         };
         let election = self.elections.get(&poll_id.to_owned())?;
-        let closure = match election {
+        let stored = match election {
             Some(_) => self.closures.get(&poll_id.to_owned())?,
+            None => None,
+        };
+        let sealed = stored.as_ref().map(|c| c.counted);
+        let closure = match stored {
+            Some(c) => Some(Closure {
+                counted: if counted {
+                    read_all(&self.sealed, &[KeyPart::Str(poll_id.to_owned())])?
+                        .into_iter()
+                        .map(|(_, b)| b)
+                        .collect()
+                } else {
+                    Vec::new()
+                },
+                aggregate: c.aggregate,
+                closed_at: c.closed_at,
+            }),
             None => None,
         };
         let phase = match (&election, &closure, control.closing_at) {
@@ -1676,7 +1739,7 @@ impl MeroVote {
             closure,
             anchor: control.anchor,
         };
-        Ok(Some((def, state)))
+        Ok(Some((def, state, sealed)))
     }
 
     fn poll(&self, poll_id: &str) -> app::Result<(PollDefinition, PollState)> {
