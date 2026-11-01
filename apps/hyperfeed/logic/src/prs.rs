@@ -49,6 +49,7 @@ pub struct PrSeen {
     pub checks_total: u32,
     pub checks_passed: u32,
     pub checks_pending: u32,
+    /// At most [`MAX_FAILING`], checked in `recordPr`.
     pub failing: Vec<String>,
     pub stacked_on: u64,
     pub stacked_merged: bool,

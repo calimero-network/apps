@@ -602,7 +602,7 @@ component SDK. What a client sees differently:
 | Who may write | the owner's node identity (any device), agent accounts added | the owner (any device or API key), agent accounts added and invited into the feed's organization; org members and guests not added are `Forbidden`, outsiders `404`, anonymous `401` |
 | Time | `env::time_now()` in ns, divided | ms, the log entry's time |
 | Ids | random bytes from the host | `env::random_bytes`, seeded per logged run |
-| Storage | 42 `UnorderedMap`s of mergeable records with last-writer-wins merges | 42 `UnorderedMap<String, _>` of plain records (one leader orders every write, so the merge rules are gone); whole-map reads page through 1,000 rows at a time |
+| Storage | 42 `UnorderedMap`s of mergeable records with last-writer-wins merges | 42 `UnorderedMap<String, _>` of plain records (one leader orders every write, so the merge rules are gone); whole-map reads page through 1,000 rows at a time. Every list inside a stored record is bounded and checked where it is written; a row's history keeps its first step and its latest 63 (v1 trimmed it this way only when merging copies, so a history could grow without bound on one node) |
 | Images | node blobs per context | the feed app's blobs (`uploadBlob`/`downloadBlob`); the contract still stores only their ids |
 | A feed | a context in a namespace of its own | an app instance in an organization of its own (`createOrg`, `createApp`); renaming sets its metadata's `name` |
 | Notification keys | `<context>:<previous root>><root>:<index>` | `<app>:<event id>`, the id the cluster's log gave the event (stable across devices) |

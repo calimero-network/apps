@@ -63,7 +63,8 @@ pub struct Memo {
     pub fetched_at: u64,
     pub unchanged: u32,
     /// Per agent, each only ever growing: merged by max, so two agents never
-    /// lose each other's counts.
+    /// lose each other's counts. At most [`MAX_MEMO_AGENTS`] agents, checked in
+    /// `putMemos`.
     pub hits: Vec<MemoHits>,
     pub last_hit_at: u64,
     pub agent: String,

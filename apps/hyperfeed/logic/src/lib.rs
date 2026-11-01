@@ -332,6 +332,18 @@ pub struct Step {
     pub at: u64,
 }
 
+/// Appends `step` to a row's history, keeping it to [`MAX_HISTORY`] steps: the
+/// first (how the row started) and the most recent. A history is stored inside
+/// its row and rewritten whole with it, so it must not grow without bound (v1
+/// trimmed it the same way when it merged two copies).
+fn append_step(history: &mut Vec<Step>, step: Step) {
+    history.push(step);
+    if history.len() > MAX_HISTORY {
+        let excess = history.len() - MAX_HISTORY;
+        history.drain(1..=excess);
+    }
+}
+
 /// The current step: the last one. A history is never empty.
 fn current(history: &[Step]) -> &Step {
     history
@@ -346,7 +358,8 @@ pub struct Ask {
     pub kind: String,
     /// What the control says: "Reply in #launch", "Pick a slot", "Join the call".
     pub prompt: String,
-    /// `choose`: the options (2 to 8). `reply`: suggested quick replies (up to 8).
+    /// `choose`: the options (2 to 8). `reply`: suggested quick replies (up to
+    /// 8). At most [`MAX_OPTIONS`], checked wherever an ask is written.
     pub options: Vec<String>,
     /// `reply`: a draft to start from, e.g. the agent's proposed text.
     pub draft: String,
@@ -383,6 +396,8 @@ pub struct Action {
     pub breach: String,
     pub reviewed: bool,
     pub reviewed_at: u64,
+    /// Every step, oldest first: at most [`MAX_HISTORY`], the first and the
+    /// latest kept (`append_step`).
     pub history: Vec<Step>,
 }
 
@@ -405,7 +420,8 @@ pub struct Notification {
     pub seen: bool,
     pub seen_at: u64,
     /// `received`, then `answered` (your answer as the note), then
-    /// `delivered` or `failed` (the agent's note).
+    /// `delivered` or `failed` (the agent's note). At most [`MAX_HISTORY`]
+    /// steps, the first and the latest kept (`append_step`).
     pub history: Vec<Step>,
 }
 
@@ -464,6 +480,7 @@ pub struct Attachment {
 /// messages written before attachments existed keep their layout.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Attachments {
+    /// At most [`MAX_ATTACHMENTS`], checked when the message is written.
     pub items: Vec<Attachment>,
 }
 
@@ -499,6 +516,8 @@ pub struct Message {
     /// message nobody asked for.
     pub reply_to: String,
     pub created_at: u64,
+    /// Every step, oldest first: at most [`MAX_HISTORY`], the first and the
+    /// latest kept (`append_step`).
     pub history: Vec<Step>,
 }
 
@@ -624,6 +643,7 @@ pub struct Folder {
 /// its runtime's default.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Access {
+    /// At most [`MAX_FOLDERS`]; each `setAccess` replaces them all.
     pub folders: Vec<Folder>,
     pub shell: bool,
     pub web: bool,
@@ -648,6 +668,7 @@ pub struct ReachLine {
 /// What one agent reported it can reach, latest report wins.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Reach {
+    /// At most [`MAX_REACH`]; each report replaces them all.
     pub lines: Vec<ReachLine>,
     pub at: u64,
 }
@@ -707,6 +728,7 @@ pub struct TurnStep {
 /// whole by each report, so a long turn adds no rows.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Work {
+    /// At most [`MAX_HISTORY`]; each `agentWork` report replaces them all.
     pub steps: Vec<TurnStep>,
     /// The answer so far, while the agent writes it; `""` before it starts.
     pub draft: String,
@@ -2199,11 +2221,14 @@ impl Hyperfeed {
         note: String,
     ) -> app::Result<FeedItem> {
         let at = Self::next_at(&action.history);
-        action.history.push(Step {
-            status: status.to_owned(),
-            note,
-            at,
-        });
+        append_step(
+            &mut action.history,
+            Step {
+                status: status.to_owned(),
+                note,
+                at,
+            },
+        );
         let item = self.action_row(&action)?;
         self.actions.insert(action.id.clone(), action)?;
         emit(Ev::ActionChanged {
@@ -2226,11 +2251,14 @@ impl Hyperfeed {
         note: String,
     ) -> app::Result<FeedItem> {
         let at = Self::next_at(&n.history);
-        n.history.push(Step {
-            status: status.to_owned(),
-            note,
-            at,
-        });
+        append_step(
+            &mut n.history,
+            Step {
+                status: status.to_owned(),
+                note,
+                at,
+            },
+        );
         let item = self.notification_row(&n)?;
         self.notifications.insert(n.id.clone(), n)?;
         emit(Ev::NotificationChanged {
@@ -2281,11 +2309,14 @@ impl Hyperfeed {
         note: String,
     ) -> app::Result<FeedItem> {
         let at = Self::next_at(&m.history);
-        m.history.push(Step {
-            status: status.to_owned(),
-            note,
-            at,
-        });
+        append_step(
+            &mut m.history,
+            Step {
+                status: status.to_owned(),
+                note,
+                at,
+            },
+        );
         let item = self.message_row(&m)?;
         self.messages.insert(m.id.clone(), m)?;
         emit(Ev::MessageChanged {

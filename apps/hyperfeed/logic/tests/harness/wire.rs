@@ -102,3 +102,38 @@ fn the_node_checks_names_kinds_and_arguments_first() {
         "BadArgs"
     );
 }
+
+/// A history is stored inside its row and rewritten whole with it, so it is
+/// capped: the first step and the latest, 64 in all. A delivery that keeps
+/// failing and is answered again each time would otherwise grow it for ever.
+#[test]
+fn a_history_keeps_its_first_step_and_the_latest_sixty_three() {
+    let mut t = app();
+    let mut input = notification("vote:e>f:0", "vote", false);
+    input["ask"] = json!({ "kind": "reply", "prompt": "Answer", "options": [], "draft": "" });
+    let n = call(&mut t, "recordNotification", json!({ "input": input }));
+    let id = n["id"].clone();
+    for i in 0..40 {
+        t.advance(1);
+        call(
+            &mut t,
+            "answerNotification",
+            json!({ "id": id, "answer": format!("try {i}") }),
+        );
+        t.advance(1);
+        call(
+            &mut t,
+            "completeAnswer",
+            json!({ "id": id, "outcome": "failed", "note": format!("failed {i}") }),
+        );
+    }
+    let item = view(&mut t, "item", json!({ "id": id }));
+    let history = item["history"].as_array().expect("history");
+    assert_eq!(history.len(), 64, "1 + 80 steps, capped");
+    assert_eq!(history[0]["status"], "received", "the first step stays");
+    assert_eq!(history[63]["note"], "failed 39", "the latest step stays");
+    assert_eq!(
+        history[1]["note"], "failed 8",
+        "the oldest after the first go"
+    );
+}

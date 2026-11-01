@@ -28,6 +28,8 @@ pub const MAX_CHECKPOINT_AUTHOR: usize = 120;
 pub struct Checkpoint {
     pub done: String,
     pub next: String,
+    /// This and the three lists below: at most [`MAX_CHECKPOINT_ENTRIES`]
+    /// each, checked in `setCheckpoint`, which replaces the whole checkpoint.
     pub branches: Vec<String>,
     pub worktrees: Vec<String>,
     pub prs: Vec<String>,

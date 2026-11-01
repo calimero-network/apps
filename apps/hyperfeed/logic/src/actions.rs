@@ -55,6 +55,8 @@ pub struct ActionDef {
 pub struct ActionSet {
     pub app: String,
     pub application_id: String,
+    /// At most [`MAX_ACTIONS`], each covering at most [`MAX_ACTION_METHODS`]
+    /// methods, checked in `proposeActions`.
     pub actions: Vec<ActionDef>,
     /// One line for you: what changed, or what the set covers.
     pub summary: String,
