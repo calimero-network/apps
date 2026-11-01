@@ -76,7 +76,7 @@ Start here. These exist to be read, not shipped.
 | [mero-calendar](apps/mero-calendar) | [↗](https://mero-calendar.vercel.app) | Shared team calendars in replicated state, plus genuinely private events in node-local storage. | `com.calimero.mero-calendar` |
 | [mero-docs](apps/mero-docs) | [↗](https://mero-docs.vercel.app) | Namespace-scoped document workspace - a multi-service bundle pairing a registry with the docs themselves. | `com.calimero.mero-drive-docs` |
 | [mero-crm](apps/mero-crm) | — | Sales CRM — drag-and-drop pipeline, deals, people, activities, stage automations, insights, and a local deal assistant (health score, next best step, email draft). | `com.calimero.mero-crm` |
-| [mero-issue-tracker](apps/mero-issue-tracker) | [↗](https://mero-issue-tracker-app.vercel.app) | Issue board for a small engineering team whose backlog lives on their own nodes. | `com.calimero.mero-issue-tracker` |
+| [mero-issue-tracker](apps/mero-issue-tracker) | [↗](https://mero-issue-tracker-app.vercel.app) | Issue board for a small engineering team, with an MCP server for coding agents. A component app (Calimero 1.0): `calimero-app-sdk` tables, `merod local` in dev, mero-js `CalimeroClient` on Calimero Cloud. | `com.calimero.mero-issue-tracker` |
 | [mero-forum](apps/mero-forum) | [↗](https://mero-forum.vercel.app) | Threads and comments replicated across your own nodes, with no server in the middle. | `com.calimero.mero-forum` |
 | [mero-updates](apps/mero-updates) | — | Investor updates, two-way: categories, KPI deltas, asks answered in one click, investor Q&A and read receipts, between the company's and its investors' nodes. | `com.calimero.mero-updates` |
 | [mero-standup](apps/mero-standup) | — | Async standups and a decision log for a small team: each member's own update per day (started from yesterday's), help on blockers, a weekly digest, and tagged write-once decisions superseded rather than edited. Small on purpose — the second app to read after kv-store, and the worked example of migrating a live app's state (v1 → v2). | `com.calimero.mero-standup` |
@@ -129,6 +129,7 @@ development.
 
 ```bash
 pnpm dev:local kv-store        # merod local + build + deploy + the app's dev server on :5173
+pnpm dev:local mero-issue-tracker
 pnpm merod-local e2e kv-store  # the app's scenarios as real accounts on the cluster
 ```
 
