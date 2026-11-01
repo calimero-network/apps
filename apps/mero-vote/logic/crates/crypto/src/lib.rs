@@ -56,7 +56,7 @@ use core::fmt;
 use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT as G;
 use curve25519_dalek::ristretto::{CompressedRistretto, RistrettoPoint};
 use curve25519_dalek::scalar::Scalar;
-use curve25519_dalek::traits::Identity;
+use curve25519_dalek::traits::{Identity, VartimeMultiscalarMul};
 use sha2::{Digest, Sha256, Sha512};
 
 pub use curve25519_dalek::ristretto::RistrettoPoint as Point;
@@ -323,12 +323,19 @@ pub fn verify_membership(
     if values.is_empty() || proof.len() != values.len() {
         return false;
     }
+    // `z·G − c·A` and `z·pk − c·(B − v·G)`, in variable time: every input
+    // is public, and verification is what a node pays for per ballot.
     let commitments: Vec<_> = proof
         .iter()
         .zip(values)
         .map(|(br, v)| {
-            let shifted = ct.b - Scalar::from(*v) * G;
-            (br.z * G - br.c * ct.a, br.z * pk - br.c * shifted)
+            (
+                RistrettoPoint::vartime_double_scalar_mul_basepoint(&-br.c, &ct.a, &br.z),
+                RistrettoPoint::vartime_multiscalar_mul(
+                    [br.z, -br.c, br.c * Scalar::from(*v)],
+                    [*pk, ct.b, G],
+                ),
+            )
         })
         .collect();
     let sum: Scalar = proof.iter().map(|b| b.c).sum();
@@ -360,8 +367,8 @@ pub fn verify_dleq(
     pub_base: &RistrettoPoint,
     proof: &Branch,
 ) -> bool {
-    let t1 = proof.z * G - proof.c * pub_g;
-    let t2 = proof.z * base - proof.c * pub_base;
+    let t1 = RistrettoPoint::vartime_double_scalar_mul_basepoint(&-proof.c, pub_g, &proof.z);
+    let t2 = RistrettoPoint::vartime_multiscalar_mul([proof.z, -proof.c], [*base, *pub_base]);
     proof.c == dleq_challenge(domain, ctx, base, pub_g, pub_base, &t1, &t2)
 }
 
@@ -400,7 +407,7 @@ pub fn prove_knowledge(
 }
 
 pub fn verify_knowledge(domain: &str, ctx: &[&[u8]], h: &RistrettoPoint, proof: &Branch) -> bool {
-    let t = proof.z * G - proof.c * h;
+    let t = RistrettoPoint::vartime_double_scalar_mul_basepoint(&-proof.c, h, &proof.z);
     proof.c == knowledge_challenge(domain, ctx, h, &t)
 }
 
@@ -662,15 +669,19 @@ fn share_mask(
 }
 
 /// `Σₖ xᵏ·Cₖ` — the public image of `f(x)`.
+/// Public inputs only, so in variable time.
 pub fn eval_commitments(commitments: &[RistrettoPoint], x: u32) -> RistrettoPoint {
     let x = Scalar::from(x);
-    let mut acc = RistrettoPoint::identity();
     let mut pow = Scalar::ONE;
-    for c in commitments {
-        acc += pow * c;
-        pow *= x;
-    }
-    acc
+    let powers: Vec<Scalar> = commitments
+        .iter()
+        .map(|_| {
+            let p = pow;
+            pow *= x;
+            p
+        })
+        .collect();
+    RistrettoPoint::vartime_multiscalar_mul(powers, commitments)
 }
 
 /// Deal a fresh polynomial of degree `threshold − 1` to `recipients`
@@ -870,12 +881,34 @@ pub fn open_count(
     max: u64,
 ) -> Option<u64> {
     let set: Vec<u32> = partials.iter().map(|(i, _)| *i).collect();
-    let mask = partials
-        .iter()
-        .fold(RistrettoPoint::identity(), |acc, (i, d)| {
-            acc + lagrange_at_zero(*i, &set) * d
-        });
+    // Public inputs only, so in variable time.
+    let mask = RistrettoPoint::vartime_multiscalar_mul(
+        partials.iter().map(|(i, _)| lagrange_at_zero(*i, &set)),
+        partials.iter().map(|(_, d)| *d),
+    );
     small_dlog(&(aggregate.b - mask), max)
+}
+
+/// [`open_count`] for every option at once, over the same `threshold`
+/// partials `(index, [Dⱼ per option])`: the Lagrange coefficients are computed
+/// once, not once per option. `None` if any option does not open.
+pub fn open_counts(
+    aggregates: &[Ciphertext],
+    partials: &[(u32, Vec<RistrettoPoint>)],
+    max: u64,
+) -> Option<Vec<u64>> {
+    let set: Vec<u32> = partials.iter().map(|(i, _)| *i).collect();
+    let lambdas: Vec<Scalar> = set.iter().map(|i| lagrange_at_zero(*i, &set)).collect();
+    aggregates
+        .iter()
+        .enumerate()
+        .map(|(j, ct)| {
+            let ds: Option<Vec<RistrettoPoint>> =
+                partials.iter().map(|(_, ds)| ds.get(j).copied()).collect();
+            let mask = RistrettoPoint::vartime_multiscalar_mul(lambdas.iter(), ds?);
+            small_dlog(&(ct.b - mask), max)
+        })
+        .collect()
 }
 
 #[cfg(test)]
