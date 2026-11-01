@@ -109,6 +109,9 @@ struct Fragment {
     width: u16,
     height: u16,
     codec: u8,
+    /// Compressed bytes of this chunk of the frame: at most
+    /// [`MAX_CHUNK_BYTES`], enforced by `encodeFrame`, which splits the
+    /// encoded stream at that size (a frame is never more than 8 of these).
     #[serde(with = "calimero_app_sdk::json::bytes_auto")]
     data: Vec<u8>,
     /// The sender's capture clock, unix milliseconds.
@@ -124,6 +127,9 @@ struct MediaChunk {
     width: u16,
     height: u16,
     timestamp_us: u64,
+    /// The opaque access unit: at most [`MAX_MEDIA_CHUNK_BYTES`], enforced by
+    /// `postChunk` (`ChunkTooLarge`). The only list in a stored value; the ring
+    /// itself is the `chunks` map, one entry per chunk.
     #[serde(with = "calimero_app_sdk::json::bytes_auto")]
     data: Vec<u8>,
     created_at: u64,
