@@ -105,7 +105,8 @@ describe("App", () => {
     await screen.findByText("Choose a voting group");
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "alice");
     expect(new SessionStore(APP, LOCAL, storage).load()).toEqual(SESSION);
-    expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" });
+    // The picker lists groups in an effect, after its heading has rendered.
+    await waitFor(() => expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" }));
 
     fireEvent.change(screen.getByLabelText("Group name"), { target: { value: "Offsite" } });
     fireEvent.click(screen.getByText("Create voting group"));
