@@ -2,7 +2,7 @@
 // the letter on its tile, and whether a search matches it. Pure, so the list
 // and its tests agree without rendering anything.
 
-import { shortAccount } from '@calimero-apps/names';
+import { shortAccount } from './names';
 
 import { KINDS, type Kind } from './secretKinds';
 import type { Secret } from '@calimero-network/mero-pass';

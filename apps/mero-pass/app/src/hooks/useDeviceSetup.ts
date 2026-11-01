@@ -1,17 +1,18 @@
 import { useCallback, useMemo } from 'react';
-import { useMero } from '@calimero-network/mero-react';
 
-import { useApplicationId } from './useApplicationId';
+import { useCalimero } from '../calimero';
 import { deviceKeeper, deviceLabel } from '../lib/deviceKey';
 import { restoreFromRecoveryKey, setUpRecoveryKey } from '../lib/recoveryKey';
-import { type StatusFn, type VaultMero, migrateDevice } from '../lib/vaults';
+import { type Conn, type StatusFn, migrateDevice } from '../lib/vaults';
 
 /** The node and this browser's unlocked key, or an error to show. */
-function connected(vaultMero: VaultMero | null, appId: string) {
+type VaultConn = Pick<Conn, 'client' | 'source' | 'after'>;
+
+function connected(vaultMero: VaultConn | null) {
   const device = deviceKeeper.device;
   const fingerprint = deviceKeeper.fingerprint;
-  if (!vaultMero || !appId || !device || !fingerprint)
-    throw new Error('Still connecting to your node. Try again.');
+  if (!vaultMero || !device || !fingerprint)
+    throw new Error('Still connecting to Calimero. Try again.');
   return { conn: vaultMero, browser: { device, fingerprint } };
 }
 
@@ -19,20 +20,16 @@ function connected(vaultMero: VaultMero | null, appId: string) {
  * What protecting this browser and making its recovery key need from the
  * node, shared by the lock screen's first-run setup and the Security page.
  *
- * `ready` is false until the node session and this app's id have resolved:
- * re-sealing an existing key moves every vault key onto the new one, and that
- * walks every vault on the node.
+ * `ready` is false until the session is signed in: re-sealing an existing
+ * key moves every vault key onto the new one, and that walks every vault.
  */
 export function useDeviceSetup() {
-  // `admin` is the session-aware client; `mero.rpc` executes on each vault's
-  // contract. On an account they are two objects (see `lib/vaults` `VaultMero`).
-  const { mero, admin } = useMero();
-  const { appId } = useApplicationId();
-  const vaultMero = useMemo(
-    () => (mero && admin ? { admin, rpc: mero.rpc } : null),
-    [mero, admin],
+  const { client, source, after, isAuthenticated } = useCalimero();
+  const vaultMero = useMemo<VaultConn | null>(
+    () => (client && isAuthenticated ? { client, source, after } : null),
+    [client, source, after, isAuthenticated],
   );
-  const ready = !!vaultMero && !!appId;
+  const ready = !!vaultMero;
 
   /**
    * Seal this browser's key under a passphrase or a passkey. A browser with
@@ -56,11 +53,10 @@ export function useDeviceSetup() {
       ) => {
         // A browser's first key: there is nothing to move.
         if (!old || !oldFp) return;
-        if (!vaultMero || !appId)
-          throw new Error('Still connecting to your node. Try again.');
+        if (!vaultMero)
+          throw new Error('Still connecting to Calimero. Try again.');
         moved = await migrateDevice(
           vaultMero,
-          appId,
           { device: old, fingerprint: oldFp },
           { device: next, fingerprint: nextFp },
           deviceLabel(),
@@ -72,32 +68,31 @@ export function useDeviceSetup() {
       else await deviceKeeper.setPasskey(handOver);
       return moved;
     },
-    [vaultMero, appId],
+    [vaultMero],
   );
 
   /** A new recovery key for every vault this browser holds; the code, once. */
   const createRecovery = useCallback(
     async (onStatus?: StatusFn) => {
-      const { conn, browser } = connected(vaultMero, appId);
-      return setUpRecoveryKey(conn, appId, browser, deviceLabel(), onStatus);
+      const { conn, browser } = connected(vaultMero);
+      return setUpRecoveryKey(conn, browser, deviceLabel(), onStatus);
     },
-    [vaultMero, appId],
+    [vaultMero],
   );
 
   /** Use an existing recovery code: every vault it opens comes to this browser. */
   const restoreRecovery = useCallback(
     async (code: string, onStatus?: StatusFn) => {
-      const { conn, browser } = connected(vaultMero, appId);
+      const { conn, browser } = connected(vaultMero);
       return restoreFromRecoveryKey(
         conn,
-        appId,
         code,
         browser,
         deviceLabel(),
         onStatus,
       );
     },
-    [vaultMero, appId],
+    [vaultMero],
   );
 
   return { ready, protect, createRecovery, restoreRecovery };

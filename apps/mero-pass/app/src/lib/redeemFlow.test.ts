@@ -14,15 +14,6 @@ describe('destinationFor', () => {
     expect(destinationFor(landed)).toBe('/teams/ns-1');
   });
 
-  it('sends a joined vault to its context', () => {
-    const landed: Redeemed = {
-      kind: 'vault',
-      contextId: 'ctx-1',
-      identity: 'id-1',
-    };
-    expect(destinationFor(landed)).toBe('/vault/ctx-1');
-  });
-
   it('falls back to the teams list when the node cannot place it yet', () => {
     expect(destinationFor({ kind: 'joined' })).toBe('/teams');
   });

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useMero } from '@calimero-network/mero-react';
 
 import { useSignOut } from '../../auth/signOut';
+import { useCalimero } from '../../calimero';
 import AppShell from '../../components/AppShell';
 import LockGate from '../../components/LockGate';
 import { LogOutIcon } from '../../components/icons';
@@ -18,13 +18,13 @@ import {
 import { rememberedRecoveryKey } from '../../lib/recoveryKey';
 import { type ThemeMode, chooseTheme, useTheme } from '../../lib/theme';
 import shell from '../../styles/shell.module.css';
-import { describeError, rawReason } from '../../lib/errors';
+import { describeError } from '../../lib/errors';
 
-interface NodeDevice {
-  deviceId: string;
+/** One passkey of the signed-in account (`GET /me`). */
+interface Passkey {
+  id: string;
+  label: string | null;
   isSelf: boolean;
-  revoked: boolean;
-  namespaces: string[];
 }
 
 /**
@@ -36,12 +36,13 @@ interface NodeDevice {
  *     passkey puts it behind something you know or touch; auto-lock drops it
  *     from memory. A recovery key is one more holder of every vault key,
  *     kept on paper, that brings a browser with nothing back.
- *   * the ACCOUNT's node devices — each a machine that can sign as you in a
- *     team. Revoking one here withdraws it from every team it is bound in;
- *     an admin revocation also rotates that team's key.
+ *   * the ACCOUNT's passkeys: each a device that can sign in as you.
+ *     Removing one ends what it can do from then on (it is a passkey
+ *     step-up, approved with one you keep).
  */
 export default function SecurityPage() {
-  const { admin, isDelegated, nodeUrl } = useMero();
+  const { client, where, passkey, after } = useCalimero();
+  const nodeUrl = where;
   const signOut = useSignOut();
   const theme = useTheme();
   const {
@@ -58,33 +59,31 @@ export default function SecurityPage() {
   const [recovery, setRecovery] = useState(rememberedRecoveryKey);
   const [shownCode, setShownCode] = useState<string | null>(null);
   const [restoreCode, setRestoreCode] = useState('');
-  const [devices, setDevices] = useState<NodeDevice[]>([]);
-  // The node lists its account's devices only to a session with admin scope.
-  // A browser signed in for this app alone is refused with a 403; that is the
-  // node working as intended, so it reads as a note, not an error.
-  const [devicesHidden, setDevicesHidden] = useState(false);
+  const [devices, setDevices] = useState<Passkey[]>([]);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setProtection(await deviceKeeper.protection().catch(() => 'none' as const));
-    if (!admin) return;
-    // An account's devices are the wallet's to list, not a node's: the account
-    // admin refuses `listAccountDevices` by name (a node-only operation), so
-    // the list is not asked for and the section says where to look instead.
-    if (isDelegated) {
-      setDevices([]);
-      setDevicesHidden(true);
-      return;
-    }
+    if (!client) return;
     try {
-      setDevices((await admin.listAccountDevices()) as NodeDevice[]);
-      setDevicesHidden(false);
+      const me = (await client.me()) as {
+        passkeys?: Array<{ id: string; label?: string | null }>;
+        passkeyId?: string | null;
+      };
+      setDevices(
+        (me.passkeys ?? []).map((k) => ({
+          id: k.id,
+          label: k.label ?? null,
+          isSelf: k.id === me.passkeyId,
+        })),
+      );
     } catch (e) {
-      if (/403|forbidden/i.test(rawReason(e))) setDevicesHidden(true);
-      else setError(describeError(e));
+      setError(describeError(e));
+    } finally {
+      after();
     }
-  }, [admin, isDelegated]);
+  }, [client, after]);
 
   useEffect(() => {
     void load();
@@ -138,19 +137,17 @@ export default function SecurityPage() {
     }
   };
 
-  const revoke = async (d: NodeDevice) => {
-    if (!admin) return;
+  const revoke = async (d: Passkey) => {
+    if (!client) return;
     setError(null);
     try {
-      for (const ns of d.namespaces) {
-        await admin.revokeAccountDevice(ns, { deviceId: d.deviceId });
-      }
-      setStatus(
-        `Device ${d.deviceId.slice(0, 10)}… revoked in ${d.namespaces.length} team(s).`,
-      );
+      await client.removePasskey(d.id, passkey());
+      setStatus(`Passkey ${d.label ?? d.id.slice(0, 10) + '…'} removed.`);
       await load();
     } catch (e) {
       setError(describeError(e));
+    } finally {
+      after();
     }
   };
 
@@ -161,7 +158,7 @@ export default function SecurityPage() {
         <h1 className={shell.title}>Security</h1>
         <p className={shell.subtitle}>
           How this browser guards its key, how you get back in if you lose it,
-          and which machines can sign as you.
+          and which devices can sign in as you.
         </p>
         {error && <p className={shell.error}>{error}</p>}
         {status && <p className={shell.notice}>{status}</p>}
@@ -330,42 +327,33 @@ export default function SecurityPage() {
         </LockGate>
 
         <section className={shell.section}>
-          <h2 className={shell.sectionLabel}>Your node devices</h2>
+          <h2 className={shell.sectionLabel}>Your passkeys</h2>
           <p className={shell.sectionHint}>
-            Machines that sign as your account. Revoke one you lost; then open
-            each vault as an Admin, or ask one to, so its key rotates.
+            Devices that can sign in as your account. Remove one you lost
+            (confirm with a passkey you keep); then revoke its browser in each
+            vault's People tab, or ask an Admin to, so the vault key rotates.
           </p>
-          {devicesHidden && (
-            <p className={shell.empty} data-testid="devices-hidden">
-              {isDelegated
-                ? "You are signed in as an account, and an account's devices are managed in the wallet that issued this sign-in, not here."
-                : "This sign-in may use its vaults but not manage the node, so the node keeps its device list to itself. Revoke devices from the node's own admin dashboard."}
-            </p>
-          )}
-          {!devicesHidden && devices.length === 0 && (
-            <p className={shell.empty}>No devices reported.</p>
+          {devices.length === 0 && (
+            <p className={shell.empty}>No passkeys reported.</p>
           )}
           {devices.map((d) => (
-            <div key={d.deviceId} className={shell.row}>
+            <div key={d.id} className={shell.row}>
               <div className={shell.rowMain}>
                 <div className={shell.rowName}>
-                  <span className={shell.mono}>{d.deviceId.slice(0, 16)}…</span>
-                  {d.isSelf ? ' (this node)' : ''}{' '}
-                  {d.revoked && <span className={shell.badge}>revoked</span>}
-                </div>
-                <div className={shell.rowSub}>
-                  bound in {d.namespaces.length} team
-                  {d.namespaces.length === 1 ? '' : 's'}
+                  {d.label ?? (
+                    <span className={shell.mono}>{d.id.slice(0, 16)}…</span>
+                  )}
+                  {d.isSelf ? ' (this sign-in)' : ''}
                 </div>
               </div>
-              {!d.isSelf && !d.revoked && d.namespaces.length > 0 && (
+              {!d.isSelf && devices.length > 1 && (
                 <div className={shell.rowActions}>
                   <button
                     type="button"
                     className={shell.btnDanger}
                     onClick={() => void revoke(d)}
                   >
-                    Revoke
+                    Remove
                   </button>
                 </div>
               )}
@@ -377,11 +365,11 @@ export default function SecurityPage() {
           <h2 className={shell.sectionLabel}>Your account</h2>
           <p className={shell.sectionHint}>
             Signed in to{' '}
-            <span className={shell.mono}>{nodeUrl || 'this node'}</span>.
-            Logging out locks every vault key in this tab, clears a copied
-            password from the clipboard and ends the session. This browser's
-            device key stays on this device, locked, so its vaults open again
-            after you sign back in and unlock.
+            <span className={shell.mono}>{nodeUrl || 'Calimero'}</span>. Logging
+            out locks every vault key in this tab, clears a copied password from
+            the clipboard and ends the session. This browser's device key stays
+            on this device, locked, so its vaults open again after you sign back
+            in and unlock.
           </p>
           <button
             type="button"

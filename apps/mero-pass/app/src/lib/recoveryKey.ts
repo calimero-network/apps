@@ -208,7 +208,6 @@ type Mero = Parameters<typeof forEachJoinedVault>[0];
  */
 export async function setUpRecoveryKey(
   mero: Mero,
-  applicationId: string,
   browser: { device: DeviceKeyPair; fingerprint: string },
   label: string,
   onStatus?: StatusFn,
@@ -216,7 +215,6 @@ export async function setUpRecoveryKey(
   const key = await createRecoveryKey();
   const vaults = await forEachOpenVault(
     mero,
-    applicationId,
     browser,
     label,
     async (session) =>
@@ -234,7 +232,6 @@ export async function setUpRecoveryKey(
  */
 export async function restoreFromRecoveryKey(
   mero: Mero,
-  applicationId: string,
   code: string,
   browser: { device: DeviceKeyPair; fingerprint: string },
   label: string,
@@ -244,7 +241,6 @@ export async function restoreFromRecoveryKey(
   let found: RecoveryPublic | null = null;
   const restored = await forEachJoinedVault(
     mero,
-    applicationId,
     async (api) => {
       const pair = await recoveryPairFrom(
         code,
@@ -269,7 +265,7 @@ export async function restoreFromRecoveryKey(
   );
   if (!found)
     throw new RecoveryCodeError(
-      'That code does not match a recovery key in any vault on this node.',
+      'That code does not match a recovery key in any vault you reach.',
     );
   if (restored === 0)
     throw new RecoveryCodeError(

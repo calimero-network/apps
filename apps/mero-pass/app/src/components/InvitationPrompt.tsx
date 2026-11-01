@@ -1,121 +1,92 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  InvitationDialog,
-  InvitationGate,
-  useInviteRedemption,
-  useMero,
-  type ParsedInvitation,
-  type RedeemOutcome,
-} from '@calimero-network/mero-react';
-import {
-  decodeInvite,
-  groupIdOfInvite,
-  type PassInvitePayload,
-} from '../lib/inviteCodec';
+
+import { useCalimero } from '../calimero';
+import { describeError } from '../lib/errors';
+import { dropInvite, pendingInvite } from '../lib/inviteLink';
 import { destinationFor } from '../lib/redeemFlow';
-import { InviteRedeemError, redeemInvite } from '../lib/vaults';
+import { redeemInvite } from '../lib/vaults';
+import shell from '../styles/shell.module.css';
 
 /**
- * "Join X?" for an invitation that arrived as a link: mero-react's
- * `InvitationDialog`, which asks, joins, and stays up on "Syncing…" until the
- * team's data has reached this node.
+ * "Join this team?" for an invitation that arrived as a link.
  *
- * ── Why this is mounted at the APP level, not on a page ──────────────────────
- *
- * Because a link can land anywhere. Mero Pass has a marketing landing page on
- * `/`, a redirect on `/login`, a home page and a vault page, and the desktop
- * launcher can append `?invitation=…` to whichever of them it was given. A
- * prompt that lives on one route is a prompt that misses.
- *
- * ── Why it asks rather than joins ────────────────────────────────────────────
- *
- * Joining is a state change: it puts you in someone else's team and gives them
- * a peer that syncs their secrets. Doing that on page load makes a forwarded
- * link, or a background tab that refreshes, join silently. Decoding is pure and
- * local, so the scope can be shown first and the join needs a click.
- *
- * The join is this app's own (`redeemInvite`): a vault invitation also enters
- * the vault's context, and `destinationFor` picks where it lands. The syncing
- * stage ends when TeamPage's `useJoinSync` sees the team's vaults arrive.
+ * Mounted at the app level: a link can land on any path. It asks rather than
+ * joins (joining puts you in someone else's team), and it waits for a session:
+ * a person opening a link signs in or up first, and the token, captured off the
+ * address bar before React mounted (`captureInvite`), survives that.
  */
-interface PassInvitation extends ParsedInvitation {
-  payload: PassInvitePayload;
-}
-
 export default function InvitationPrompt() {
-  // `admin`, the session-aware client: on an account the raw client's admin
-  // is the node route, which a delegated session cannot use.
-  const { admin } = useMero();
+  const { client, isAuthenticated, after } = useCalimero();
   const navigate = useNavigate();
-  const [status, setStatus] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(() => pendingInvite());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const parse = useCallback((token: string): PassInvitation | null => {
-    const payload = decodeInvite(token);
-    if (!payload) return null;
-    return {
-      namespaceId: groupIdOfInvite(payload),
-      invitation: payload.invitation,
-      teamName: payload.vaultName ?? payload.groupAlias,
-      payload,
-    };
+  useEffect(() => {
+    if (isAuthenticated) setToken(pendingInvite());
+  }, [isAuthenticated]);
+
+  const join = useCallback(async () => {
+    if (!client || !token) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const landed = await redeemInvite({ client, after }, token);
+      dropInvite();
+      setToken(null);
+      navigate(destinationFor(landed));
+    } catch (e) {
+      setError(describeError(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [client, token, after, navigate]);
+
+  const dismiss = useCallback(() => {
+    dropInvite();
+    setToken(null);
   }, []);
 
-  const redeem = useCallback(
-    async ({ payload }: PassInvitation): Promise<RedeemOutcome> => {
-      if (!admin) {
-        return {
-          status: 'failed',
-          namespaceId: null,
-          message: 'No node connection yet. Reconnect and try again.',
-          reason: 'node-unreachable',
-          retryable: true,
-        };
-      }
-      try {
-        const landed = await redeemInvite(admin, payload, setStatus);
-        navigate(destinationFor(landed));
-        // The TEAM's namespace, which TeamPage's `useJoinSync` watches. For a
-        // vault invitation the signed group is the vault's subgroup, so the
-        // payload alone would name a flag nothing ever clears.
-        const namespaceId =
-          ('namespaceId' in landed && landed.namespaceId) || groupIdOfInvite(payload);
-        return {
-          status: 'joined',
-          namespaceId,
-          teamName: payload.vaultName ?? payload.groupAlias,
-        };
-      } catch (e) {
-        if (e instanceof InviteRedeemError) return e.outcome;
-        throw e;
-      } finally {
-        setStatus(null);
-      }
-    },
-    [admin, navigate],
-  );
-
-  const redemption = useInviteRedemption({ parse, redeem, enabled: !!admin });
-  const payload = redemption.parsed?.payload;
-
+  if (!token || !isAuthenticated) return null;
   return (
-    <>
-      {/* Logged out with a link opened: "you're invited" and the login, not the landing page. */}
-      <InvitationGate parse={parse} noun="team" appName="Mero Pass" />
-      <InvitationDialog
-        redemption={redemption}
-        noun="team"
-        appName="Mero Pass"
-        status={status}
-        // Deliberately explicit about the real grant. A vault invitation is a
-        // SPACE invitation underneath, because vault access is inherited, and the
-        // person being asked to accept is entitled to know that before they click.
-        detail={
-          payload?.vaultName
-            ? 'Joining gives you this vault and the rest of the team it belongs to.'
-            : 'Joining gives you access to the team and every vault in it.'
-        }
-      />
-    </>
+    <div
+      className={shell.panel}
+      role="dialog"
+      aria-label="Invitation"
+      data-testid="invitation-prompt"
+    >
+      <p className={shell.panelTitle}>You have been invited to a team</p>
+      <p className={shell.panelSub}>
+        Joining gives you access to the team and every vault in it that is not
+        invite-only, plus any invite-only vault the invitation names. Your
+        devices get each vault’s key once a member who holds it opens the vault.
+      </p>
+      {error && (
+        <p className={shell.error} data-testid="invitation-error">
+          {error}
+        </p>
+      )}
+      <div className={shell.createRow}>
+        <button
+          type="button"
+          className={shell.btn}
+          onClick={() => void join()}
+          disabled={busy}
+          data-testid="invitation-join"
+        >
+          {busy ? 'Joining…' : 'Join'}
+        </button>
+        <button
+          type="button"
+          className={shell.btnGhost}
+          onClick={dismiss}
+          disabled={busy}
+          data-testid="invitation-dismiss"
+        >
+          Not now
+        </button>
+      </div>
+    </div>
   );
 }

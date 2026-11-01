@@ -1,8 +1,7 @@
 # Rust / WASM
 logic/target/
-# NOT `logic/res/` — that hides res/abi.json and res/state-schema.json from git,
-# and ci.yml's ABI-staleness gate then has nothing to diff and passes while
-# checking nothing. The root .gitignore already covers the build output.
+# NOT `logic/res/`: that would hide res/abi.json from git, and CI's ABI check
+# would then have nothing to diff. The root .gitignore covers the build output.
 logic/res/*.mpk
 logic/res/bundle-temp/
 logic/dist/
@@ -10,18 +9,12 @@ logic/dist/
 # Frontend
 app/node_modules/
 app/dist/
-app/playwright-report/
-app/test-results/
-app/.playwright-data/
-
-# merobox runtime data (~400 MB of node state)
-logic/workflows/data/
-logic/workflows/**/.pids/
+app/dist-types/
+app/.env.development.local
 
 # misc
 .DS_Store
 *.log
-/data/
 
 # Publisher keypair — never commit real keys
 logic/calimero.json

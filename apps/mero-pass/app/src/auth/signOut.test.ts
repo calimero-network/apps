@@ -1,10 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const clearAppId = vi.hoisted(() => vi.fn());
-vi.mock('../hooks/useApplicationId', () => ({
-  clearApplicationIdCache: clearAppId,
-}));
-
 import { copySecret } from '../lib/clipboard';
 import { deviceKeeper } from '../lib/deviceKey';
 import { readLastVisit, rememberVault } from '../lib/lastVisit';
@@ -25,7 +20,6 @@ describe('signOut', () => {
         readText: vi.fn(async () => clipboard),
       },
     });
-    clearAppId.mockClear();
   });
 
   afterEach(() => {
@@ -33,16 +27,15 @@ describe('signOut', () => {
     localStorage.clear();
   });
 
-  it('locks the vault keys, forgets the app selection, then ends the session', () => {
+  it('locks the vault keys, then ends the session', () => {
     const order: string[] = [];
     vi.spyOn(deviceKeeper, 'lock').mockImplementation(() => {
       order.push('lock');
     });
-    clearAppId.mockImplementation(() => order.push('app-id'));
 
     signOut(() => order.push('logout'));
 
-    expect(order).toEqual(['lock', 'app-id', 'logout']);
+    expect(order).toEqual(['lock', 'logout']);
   });
 
   it('leaves nothing that opens a vault: the device key is locked by the time logout runs', () => {

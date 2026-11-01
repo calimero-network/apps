@@ -5,18 +5,25 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const session = { isAuthenticated: false, isLoading: false };
 
 // Only what the router and the pages reach for. Nothing here touches a node.
-vi.mock('@calimero-network/mero-react', async (importOriginal) => ({
+vi.mock('./calimero', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
-  useMero: () => ({
+  useCalimero: () => ({
     ...session,
-    mero: null,
-    admin: null,
-    isDelegated: false,
-    applicationId: null,
-    nodeUrl: 'http://localhost:2528',
-    logout: () => {},
+    status: session.isAuthenticated ? 'signed-in' : 'signed-out',
+    client: null,
+    target: null,
+    accountId: null,
+    source: 'bundle',
+    message: null,
+    error: null,
+    busy: false,
+    where: 'merod local (3 nodes)',
+    signIn: async () => {},
+    signUp: async () => {},
+    signOut: async () => {},
+    passkey: () => ({}),
+    after: () => {},
   }),
-  useNodeIdentity: () => ({ identity: null, loading: false }),
 }));
 
 // The landing page is 1100 lines of marketing template with its own animation
@@ -151,7 +158,7 @@ describe('every path the app can be opened at settles', () => {
     'while the session is restored, %s stays put and renders nothing',
     (path) => {
       // Bouncing here would throw a signed-in deep link onto the landing page
-      // before mero-react finished reading its stored session.
+      // before the session finished restoring.
       session.isLoading = true;
       const { container, unmount } = render(
         <MemoryRouter initialEntries={[path]}>
@@ -233,15 +240,6 @@ describe('a redeemed invitation lands on a route that exists', () => {
     const destination = destinationFor({ kind: 'team', namespaceId: 'ns-1' });
     expect(destination).toBe('/teams/ns-1');
     // The real assertion: the router does not move it.
-    expect(settleAt(destination)).toBe(destination);
-  });
-
-  it('a joined vault lands in the vault', () => {
-    const destination = destinationFor({
-      kind: 'vault',
-      contextId: 'ctx-1',
-      identity: 'id-1',
-    });
     expect(settleAt(destination)).toBe(destination);
   });
 

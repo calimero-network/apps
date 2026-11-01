@@ -13,7 +13,7 @@
 //
 // Needs Node 22.12+ (type stripping, `module.registerHooks`). No npm install:
 // the modules it imports use only WebCrypto, and the few app imports that
-// reach further (`./vaults`, `./servedByNode`) are stubbed below because the
+// reach further (`./vaults`, `./basename`) are stubbed below because the
 // functions used here never call them.
 //
 // Regenerate after any change to the crypto, and commit vectors.json.
@@ -35,7 +35,7 @@ const STUBS = {
   './vaults':
     'export const forEachJoinedVault = () => { throw new Error("stub"); };' +
     'export const forEachOpenVault = () => { throw new Error("stub"); };',
-  './servedByNode': 'export const nodeBasename = () => "/";',
+  './basename': 'export const basename = () => "/";',
 };
 
 registerHooks({

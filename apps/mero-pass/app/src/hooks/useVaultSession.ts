@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useMero, useSubscription } from '@calimero-network/mero-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+
+import { useCalimero } from '../calimero';
 
 import { deviceKeeper, deviceLabel } from '../lib/deviceKey';
 import { rememberedRecoveryKey } from '../lib/recoveryKey';
@@ -53,10 +54,9 @@ export function useVaultSession(
   contextId: string | null,
   team: { namespaceId: string; vaultId: string } | null,
 ): VaultSessionView {
-  // The session-aware admin: the audience read lists group members, which the
-  // raw client's admin refuses on an account (403), and a null audience here
-  // means no key is ever handed out. See `lib/vaults` `AdminLike`.
-  const { admin } = useMero();
+  // The audience read lists the org's (or the vault team's) members; a null
+  // audience means no key is ever handed out.
+  const { client: calimero, source } = useCalimero();
   const client = useVaultClient(contextId);
   const unlocked = useDeviceUnlocked();
   const [session, setSession] = useState<VaultSession | null>(null);
@@ -75,7 +75,10 @@ export function useVaultSession(
     busy.current = true;
     try {
       const s = await session.refreshKeys();
-      const allowed = admin && team ? await vaultAudience(admin, team) : null;
+      const allowed =
+        calimero && team
+          ? await vaultAudience({ client: calimero, source }, team)
+          : null;
       if (s === 'ready') {
         const recovery = rememberedRecoveryKey();
         if (recovery) await session.adoptRecoveryKey(recovery).catch(() => {});
@@ -98,7 +101,7 @@ export function useVaultSession(
     } finally {
       busy.current = false;
     }
-  }, [session, admin, team]);
+  }, [session, calimero, source, team]);
 
   // Open (or drop) the session as the lock and the client change.
   useEffect(() => {
@@ -158,12 +161,29 @@ export function useVaultSession(
     void reload();
   }, [reload]);
 
-  // Live: any contract event in this vault means something changed.
-  // Memoised: a fresh array each render would resubscribe every render.
-  const subscribed = useMemo(() => (contextId ? [contextId] : []), [contextId]);
-  useSubscription(subscribed, () => {
-    void reload();
-  });
+  // Live: any contract event in this vault means something changed. Events
+  // carry ids only, so each one is a cue to re-read through the session.
+  const reloadRef = useRef(reload);
+  reloadRef.current = reload;
+  useEffect(() => {
+    if (!calimero || !contextId || !session) return;
+    const abort = new AbortController();
+    void (async () => {
+      try {
+        for await (const _event of calimero.events(
+          contextId,
+          undefined,
+          abort.signal,
+        )) {
+          void reloadRef.current();
+        }
+      } catch {
+        // The stream ended (aborted, or the node went away): the polls and the
+        // next reload still bring changes in.
+      }
+    })();
+    return () => abort.abort();
+  }, [calimero, contextId, session]);
 
   // While waiting for the key, look again every few seconds.
   useEffect(() => {

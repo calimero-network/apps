@@ -1,73 +1,42 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useMero, useNodeIdentity } from '@calimero-network/mero-react';
 
-import { myCapabilities, repairCreatorAdmin } from '../lib/vaults';
+import { useCalimero } from '../calimero';
+import { myCapabilities } from '../lib/vaults';
 
 /**
- * This node's own ACCOUNT and its real capability mask in one team.
- *
- * ⚠️ `useNodeIdentity().identity.accountId`, never `publicKey` and never a
- * context executor identity. All three are 64 hex since rc.27, so a swap
- * type-checks, sends, returns 200 and asks about a principal that exists
- * nowhere — the mask comes back as if the caller had no permissions, or as a
- * silent `null`, and every gate in the UI closes for no visible reason.
- *
- * Returns the MASK, not a role string, because the mask is what the node
- * enforces. Every "may I?" in this app is asked of it — see `lib/roles`.
+ * This account and its capability mask in one team (an organization): every
+ * bit for an owner or admin, the org's default (or the member's own) mask for
+ * anyone else. Every "may I?" in this app is asked of the mask (`lib/roles`).
  */
 export function useTeamCapabilities(namespaceId: string | null): {
-  /** This node's account, 64 hex, or null before the identity has resolved. */
   accountId: string | null;
   capabilities: number | null;
   loading: boolean;
   refetch: () => Promise<void>;
 } {
-  // `admin`, never `mero.admin`: the session-aware client. On an account the
-  // raw client's admin is the relay's node route and answers 403; the account
-  // admin reads caller-scoped, and `useNodeIdentity` already asks it, so the
-  // account id and the mask come from the same place.
-  const { admin } = useMero();
-  const { identity } = useNodeIdentity();
-  const accountId = identity?.accountId ?? null;
+  const { client, accountId, after } = useCalimero();
   const [capabilities, setCapabilities] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
   const read = useCallback(async () => {
-    if (!admin || !namespaceId || !accountId) {
+    if (!client || !namespaceId || !accountId) {
       setCapabilities(null);
       setLoading(!!namespaceId);
       return;
     }
     setLoading(true);
-    const mask = await myCapabilities(admin, namespaceId, accountId);
-
-    // A team created before `createTeam` granted its creator anything leaves
-    // that creator holding the Member mask, and the only control that could
-    // raise it is itself behind an Admin gate — so the team is a dead end and
-    // there is nobody to ask. Try once, here, on the way past.
-    //
-    // ⚠️ This grants nothing on our own say-so: it is an ordinary
-    // `setMemberCapabilities`, and a caller who is not the owner is refused by
-    // the node. See `repairCreatorAdmin`.
-    const repaired = await repairCreatorAdmin(
-      admin,
-      namespaceId,
-      accountId,
-      mask,
-    );
-    setCapabilities(repaired ?? mask);
-    setLoading(false);
-  }, [admin, namespaceId, accountId]);
+    try {
+      setCapabilities(await myCapabilities({ client }, namespaceId, accountId));
+    } catch {
+      setCapabilities(null);
+    } finally {
+      after();
+      setLoading(false);
+    }
+  }, [client, namespaceId, accountId, after]);
 
   useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      if (cancelled) return;
-      await read();
-    })();
-    return () => {
-      cancelled = true;
-    };
+    void read();
   }, [read]);
 
   return { accountId, capabilities, loading, refetch: read };

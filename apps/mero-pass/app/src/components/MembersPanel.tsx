@@ -1,18 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
-import { useMero } from '@calimero-network/mero-react';
-import {
-  publishMemberName,
-  shortAccount,
-  useMemberNames,
-} from '@calimero-apps/names';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+
+import { useCalimero } from '../calimero';
+import { publishMemberName, shortAccount, useMemberNames } from '../lib/names';
 
 import {
   canCreateVault,
   canInvite,
   canManageMembers,
-  missingForRole,
   roleLabel,
-  satisfiesRole,
 } from '../lib/roles';
 import type { TeamRole } from '../lib/roles';
 import {
@@ -20,26 +15,13 @@ import {
   removeTeamMember,
   setMemberRole,
 } from '../lib/vaults';
-import type { TeamMember, TeeMember } from '../lib/vaults';
-import { ShieldIcon } from './icons';
+import type { TeamMember } from '../lib/vaults';
 import styles from '../styles/shell.module.css';
 import { describeError } from '../lib/errors';
 
 /**
- * Who is in a team, what they may do, and the controls to change it.
- *
- * ── The two things this panel refuses to conflate ────────────────────────────
- *
- * A row shows the ROLE the node recorded and, separately, whether the
- * CAPABILITIES behind it actually landed. They are set by different calls and
- * can disagree; when they do the row says so rather than rendering "Admin" over
- * somebody every admin endpoint refuses. A grant is published as an op and
- * PROJECTED a moment later, so "not applied yet" is a real, temporary state and
- * is reported as the list of missing bits rather than as a failure.
- *
- * Restyled onto the shared shell: rows on #e0e0e0 hairlines with the one button
- * system, instead of the mero-ui `Card` + `Badge` + `Alert` stack it was, which
- * brought three more button variants onto a screen that already had three.
+ * Who is in a team (an organization), their role, and the controls to change
+ * it. Role changes and removals are passkey step-ups on the node.
  */
 export default function MembersPanel({
   namespaceId,
@@ -56,13 +38,12 @@ export default function MembersPanel({
   /** Re-read the caller's own capabilities: demoting yourself is allowed. */
   onRolesChanged: () => void;
 }) {
-  // `admin`, never `mero.admin`: on an account the raw client's admin is the
-  // relay's node route and refuses every call here. See `lib/vaults`.
-  const { admin } = useMero();
+  const { client, passkey, source, after } = useCalimero();
+  const conn = useMemo(
+    () => (client ? { client, passkey, source, after } : null),
+    [client, passkey, source, after],
+  );
   const [members, setMembers] = useState<TeamMember[]>([]);
-  // TEE nodes admitted to the team. Not people, so never in `members`; they
-  // are what the "TEE enabled" indicator reports.
-  const [teeMembers, setTeeMembers] = useState<TeeMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -73,10 +54,8 @@ export default function MembersPanel({
 
   const iMayManage = canManageMembers(myCapabilities);
 
-  // The name each person set for the team (namespace member metadata), which
-  // every app on the team shares. Read through the shared directory so a name
-  // this session just published shows before the listing carries it.
-  const { nameOf } = useMemberNames(admin, namespaceId);
+  // The name each person set in the team (org member metadata).
+  const { nameOf, refresh: refreshNames } = useMemberNames(client, namespaceId);
   const nameFor = useCallback(
     (member: TeamMember) => nameOf(member.accountId) ?? member.name,
     [nameOf],
@@ -84,21 +63,17 @@ export default function MembersPanel({
   const myCurrentName = myAccountId ? nameOf(myAccountId) : undefined;
 
   const load = useCallback(async () => {
-    if (!admin) return;
+    if (!client) return;
     setLoading(true);
     try {
-      const roster = await listTeamMembers(admin, namespaceId, myAccountId);
-      setMembers(roster.members);
-      setTeeMembers(roster.teeMembers);
+      setMembers(await listTeamMembers({ client }, namespaceId, myAccountId));
       setError(null);
     } catch (e) {
-      // The indicator is informational: a failed read is "no TEE".
-      setTeeMembers([]);
       setError(describeError(e));
     } finally {
       setLoading(false);
     }
-  }, [admin, namespaceId, myAccountId]);
+  }, [client, namespaceId, myAccountId]);
 
   useEffect(() => {
     void load();
@@ -106,22 +81,18 @@ export default function MembersPanel({
 
   const change = useCallback(
     async (member: TeamMember, role: TeamRole) => {
-      if (!admin) return;
+      if (!conn) return;
       setError(null);
       setNotice(null);
       setConfirming(null);
+      setBusy('Confirm with your passkey…');
       try {
-        const result = await setMemberRole(
-          admin,
-          { namespaceId, accountId: member.accountId, role },
-          setBusy,
-        );
-        const name = nameFor(member);
-        setNotice(
-          result.effective
-            ? `${name} is now ${roleLabel(role)} — the node confirms the capabilities that go with it.`
-            : `${name}'s role is now ${roleLabel(role)}, but the node has not applied ${result.missing.join(', ')} yet. Re-check in a moment; if it persists, the change did not take.`,
-        );
+        await setMemberRole(conn, {
+          namespaceId,
+          accountId: member.accountId,
+          role,
+        });
+        setNotice(`${nameFor(member)} is now ${roleLabel(role)}.`);
         await load();
         onRolesChanged();
       } catch (e) {
@@ -130,19 +101,19 @@ export default function MembersPanel({
         setBusy(null);
       }
     },
-    [admin, namespaceId, load, onRolesChanged, nameFor],
+    [conn, namespaceId, load, onRolesChanged, nameFor],
   );
 
   const remove = useCallback(
     async (member: TeamMember) => {
-      if (!admin) return;
+      if (!conn) return;
       setError(null);
       setNotice(null);
       setRemoving(null);
       const name = nameFor(member);
-      setBusy(`Removing ${name}…`);
+      setBusy(`Removing ${name}: confirm with your passkey…`);
       try {
-        await removeTeamMember(admin, {
+        await removeTeamMember(conn, {
           namespaceId,
           accountId: member.accountId,
         });
@@ -156,18 +127,19 @@ export default function MembersPanel({
         setBusy(null);
       }
     },
-    [admin, namespaceId, teamName, load, nameFor],
+    [conn, namespaceId, teamName, load, nameFor],
   );
 
   /** Publish the name every app on this team shows for this account. */
   const saveMyName = useCallback(async () => {
     const trimmed = myName.trim();
-    if (!admin || !myAccountId || !trimmed) return;
+    if (!client || !myAccountId || !trimmed) return;
     setError(null);
     setNotice(null);
     setBusy('Saving your name…');
     try {
-      await publishMemberName(admin, namespaceId, myAccountId, trimmed);
+      await publishMemberName(client, namespaceId, myAccountId, trimmed);
+      refreshNames();
       setMyName('');
       setNotice(`Everyone in ${teamName} now sees you as ${trimmed}.`);
     } catch (e) {
@@ -175,32 +147,17 @@ export default function MembersPanel({
     } finally {
       setBusy(null);
     }
-  }, [admin, namespaceId, myAccountId, myName, teamName]);
-
-  const teeMode = teeMembers.some((m) => m.rawRole === 'RelayTee')
-    ? 'Relay'
-    : 'Replica';
+  }, [client, namespaceId, myAccountId, myName, teamName, refreshNames]);
 
   return (
     <section data-testid="members-panel">
-      {teeMembers.length > 0 && (
-        <p className={styles.sectionHint}>
-          <span
-            className={`${styles.chip} ${styles.chipGood}`}
-            title="A hardware-attested node keeps this workspace in sync and available when members are offline."
-            data-testid="tee-indicator"
-          >
-            <ShieldIcon size={14} />
-            TEE enabled · {teeMode}
-          </span>
-        </p>
-      )}
       <p className={styles.sectionHint}>
         An <strong>Admin</strong> can create vaults, invite people and change
         roles. A <strong>Member</strong> can open every open vault in {teamName}
         ; what they may do inside a vault — view or edit — is set on that
-        vault's People tab. Removing someone here also removes them from every
-        vault, and rotates each vault's key the next time its Admin opens it.
+        vault's People tab. Removing someone here ends their access to every
+        vault at once, and each vault's key is rotated the next time its Admin
+        opens it.
       </p>
 
       {error && (
@@ -254,7 +211,6 @@ export default function MembersPanel({
       ) : (
         <div data-testid="member-list">
           {members.map((member) => {
-            const mismatched = !satisfiesRole(member.capabilities, member.role);
             const target: TeamRole =
               member.role === 'admin' ? 'member' : 'admin';
             return (
@@ -289,16 +245,6 @@ export default function MembersPanel({
                       ? 'can change roles'
                       : 'cannot change roles'}
                   </div>
-                  {mismatched && (
-                    <div className={styles.rowSub} data-testid="role-mismatch">
-                      Recorded as {roleLabel(member.role)}, but the node has not
-                      applied{' '}
-                      {missingForRole(member.capabilities, member.role).join(
-                        ', ',
-                      )}{' '}
-                      — they cannot use it until it does.
-                    </div>
-                  )}
                 </div>
 
                 {iMayManage && (

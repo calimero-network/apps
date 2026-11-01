@@ -20,8 +20,6 @@ import type { Redeemed } from './vaults';
  */
 export function destinationFor(landed: Redeemed): string {
   switch (landed.kind) {
-    case 'vault':
-      return `/vault/${landed.contextId}`;
     case 'team':
       return `/teams/${landed.namespaceId}`;
     default:

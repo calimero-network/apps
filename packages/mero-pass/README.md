@@ -31,8 +31,9 @@ if ((await session.open()) === 'ready') {
 }
 ```
 
-`api` is a `VaultApi` over the vault's context (the app builds one from its
-generated client in `apps/mero-pass/app/src/lib/vaultApi.ts`). An agent
+`api` is a `VaultApi` over the vault's app instance (the app builds one over
+mero-js's `CalimeroClient` in `apps/mero-pass/app/src/lib/vaultApi.ts`, which
+converts the contract's camelCase answers to these records). An agent
 session never creates a vault key, never admits anyone and never hands a key
 on. `api_key` and `oauth2` secrets carry the field names in
 `apps/mero-pass/app/src/lib/secretKinds.ts`.

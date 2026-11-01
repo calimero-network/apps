@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useMero } from '@calimero-network/mero-react';
-import { useMemberNames } from '@calimero-apps/names';
 
-import type { MeroPassClient } from '../generated/MeroPassClient';
+import { useCalimero } from '../calimero';
+import type { MeroPass } from '../lib/meroPass';
+import { shortAccount, useMemberNames } from '../lib/names';
+import { toDevice, toMember } from '../lib/vaultApi';
 import { deviceKeeper } from '../lib/deviceKey';
 import type {
   DeviceRecord,
@@ -24,8 +25,8 @@ const ROLE_HELP: Record<string, string> = {
 /**
  * Who can open THIS vault, what they may do, and which devices hold its key.
  *
- * Roles here are the vault's own (Admin / Editor / Viewer), enforced by every
- * peer at merge — distinct from the team roles on the team page, which govern
+ * Roles here are the vault's own (Admin / Editor / Viewer), enforced by the contract's
+ * own checks — distinct from the team roles on the team page, which govern
  * creating vaults and inviting people.
  */
 export default function VaultPeople({
@@ -34,17 +35,24 @@ export default function VaultPeople({
   team,
   onChanged,
 }: {
-  client: MeroPassClient;
+  client: MeroPass;
   session: VaultSession;
   team: { namespaceId: string; vaultId: string } | null;
   onChanged: () => void;
 }) {
-  // The session-aware admin, for the audience reads below; the raw client's
-  // admin would answer 403 on an account and every rotation would run with no
-  // audience. See `lib/vaults` `AdminLike`.
-  const { admin } = useMero();
-  // People by the name they set for the team, not by account key.
-  const { displayName } = useMemberNames(admin, team?.namespaceId);
+  // The audience reads below: the org's members, or the vault team's.
+  const { client: calimero, source } = useCalimero();
+  const audience = useCallback(
+    async () =>
+      calimero && team
+        ? vaultAudience({ client: calimero, source }, team)
+        : null,
+    [calimero, source, team],
+  );
+  // People by the name they set in the team, not by account id.
+  const { nameOf } = useMemberNames(calimero, team?.namespaceId ?? null);
+  const displayName = (account: string) =>
+    nameOf(account) ?? shortAccount(account);
   const [members, setMembers] = useState<MemberRecord[]>([]);
   const [devices, setDevices] = useState<DeviceRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -61,10 +69,8 @@ export default function VaultPeople({
         client.listMembers(),
         client.listDevices(),
       ]);
-      setMembers(
-        m.map((x) => ({ ...x, role: x.role as MemberRecord['role'] })),
-      );
-      setDevices(d);
+      setMembers(m.map(toMember));
+      setDevices(d.map(toDevice));
       setError(null);
     } catch (e) {
       setError(describeError(e));
@@ -91,7 +97,7 @@ export default function VaultPeople({
 
   const rotate = () =>
     act('Rotating the vault key and re-encrypting…', async () => {
-      const allowed = admin && team ? await vaultAudience(admin, team) : null;
+      const allowed = await audience();
       const n = await session.rotate(allowed, (done, total) =>
         setStatus(`Re-encrypting ${done} of ${total}…`),
       );
@@ -100,11 +106,11 @@ export default function VaultPeople({
 
   const remove = (account: string) =>
     act('Removing and rotating…', async () => {
-      await client.removeMember({ account });
+      await client.removeMember(account);
       // `remove_member` already stripped their roles and revoked their devices,
       // so the rotation below skips them even when the team listing is
       // unavailable; the audience narrows it further when it is.
-      const allowed = admin && team ? await vaultAudience(admin, team) : null;
+      const allowed = await audience();
       allowed?.delete(account);
       await session.rotate(allowed);
     });
@@ -148,10 +154,7 @@ export default function VaultPeople({
                 }
                 onChange={(e) =>
                   void act('Changing role…', () =>
-                    client.setRole({
-                      account: m.account,
-                      role: e.target.value,
-                    }),
+                    client.setRole(m.account, e.target.value),
                   )
                 }
                 aria-label="Role"
@@ -215,12 +218,9 @@ export default function VaultPeople({
                   className={shell.btnGhost}
                   onClick={() =>
                     void act('Revoking…', async () => {
-                      await client.revokeDevice({ fingerprint: d.fingerprint });
+                      await client.revokeDevice(d.fingerprint);
                       if (isAdmin) {
-                        const allowed =
-                          admin && team
-                            ? await vaultAudience(admin, team)
-                            : null;
+                        const allowed = await audience();
                         await session.rotate(allowed);
                       }
                     })
@@ -248,7 +248,7 @@ export default function VaultPeople({
               onChange={(e) => {
                 const role = e.target.value;
                 setDefaultRole(role);
-                void act('Saving…', () => client.setDefaultRole({ role }));
+                void act('Saving…', () => client.setDefaultRole(role));
               }}
             >
               <option value="editor">Editor</option>
