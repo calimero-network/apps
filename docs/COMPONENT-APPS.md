@@ -269,6 +269,44 @@ nothing to merge, and a later write simply replaces an earlier one.
 - **Lengths are stored counts**, never a scan; `len()` returns `u64`.
 - Keys over 1 KiB are refused (`KeyTooLong`).
 
+### How state is stored: collections, not `Vec`
+
+The collections exist for storage, not for merging. Each one keeps its
+entries under their own keys in the node's store, so a call reads and writes
+only the entries it touches:
+
+| collection | keys | one call costs |
+|---|---|---|
+| `Vector<T>` | one per element, `(name, "e", position)`, plus a stored length | `push`/`get`/`set`/`pop`: one element; `page`: at most 1,000 |
+| `UnorderedMap<K, V>`, `Set<T>`, `PerUser<T>` | one per entry | the entries it reads or writes |
+| `Table<R>` | one per row, plus one per index entry | the row and its index entries |
+| `Text` / `RichText` | one per character (and mark) | edits and reads load every node: keep documents in their own instance |
+| `Cell<T>`, a map value, a table row | **one value**: `T` is CBOR-encoded whole | the whole value, on every read and write |
+
+So a `Vec` (or `HashMap`, or a nested struct) **inside** a stored value is
+read and rewritten in full every time that value is. That is fine for a short,
+**bounded** list, and wrong for anything that grows with use:
+
+- **Fine**: a few tags on a record, the 3 rounds of a match, the last
+  `RECENT_HITS` blows (capped and cleared), a value written once and never
+  changed.
+- **Not fine**: comments on an issue, messages in a channel, members of a
+  team, an append-only history, anything a user can add to without limit. Put
+  these in their own `Vector`, `Table` (with an index on the parent id) or
+  `UnorderedMap<(parent, child), V>`, and page them.
+- A `Table` record's fields are key parts, so a list can't be a field at all:
+  keep a short list in a map beside the record (`UnorderedMap<Id, Notes>`), a
+  long one in its own table.
+- `Vec` in a **view's or call's result** (`IssueDetail { comments: Vec<_> }`)
+  is not stored: it is built per request from a page. Say in the method's doc
+  comment that it returns at most a page.
+- State fields themselves can only be collections (`#[app::state]` accepts
+  types implementing `StateField`), so a top-level `Vec` field does not compile.
+
+When a stored value holds a list, write its bound in the field's doc comment
+(`/// at most RECENT_HITS, cleared each round`) and enforce it in the method
+that appends to it.
+
 ### Attributes and API
 
 | v1 | component SDK |
@@ -332,7 +370,10 @@ per app, branched off `main` once this groundwork has merged.
    app from the root `Cargo.lock`) and `cargo generate-lockfile` in the crate.
 4. Port `src/lib.rs` with the tables: the same method names (camelCase on the
    wire), arguments and events. Mark every read `#[app::view]`; return `u64`
-   for counts. Write down **every** change a client sees in the app's README
+   for counts. No unbounded `Vec` (or map) inside a `Cell`, map value or table
+   row: anything that grows goes in its own `Vector`, `Table` or map (see
+   [How state is stored](#how-state-is-stored-collections-not-vec)); a list
+   that stays inside a value states and enforces its bound. Write down **every** change a client sees in the app's README
    (kv-store's "What changed in the port" table is the format).
 5. Copy `tests/common/mod.rs` and `tests/scenarios.rs` from `apps/kv-store` as
    they are. Port the old `TestHost` tests into `tests/harness.rs` method for
