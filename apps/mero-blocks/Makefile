@@ -1,42 +1,43 @@
-.PHONY: setup build dev unit e2e test typecheck logic-build logic-test clean workflows bundle publish
+.PHONY: setup dev dev-local build unit test typecheck lint logic-build logic-test e2e bundle clean
 
-setup: ## install frontend deps
-	cd app && pnpm install
+ROOT := ../..
+MC := cargo run --release --manifest-path $(ROOT)/tools/component-bundle/Cargo.toml --
 
-dev: ## run the game locally (offline mode works with no node)
+setup: ## install frontend deps (the pnpm workspace)
+	cd $(ROOT) && pnpm install
+
+dev-local: ## merod local + build + deploy + the dev server on http://localhost:5173
+	cd $(ROOT) && pnpm dev:local mero-blocks
+
+dev: ## the dev server alone, against a cluster `pnpm merod-local deploy mero-blocks` set up
 	cd app && pnpm dev
 
-build: logic-build ## build wasm + frontend
+build: logic-build ## component + frontend
 	cd app && pnpm build
 
 unit: ## frontend unit tests (vitest)
 	cd app && pnpm test
 
-e2e: ## mocked end-to-end tests (playwright)
-	cd app && pnpm e2e
-
 typecheck:
 	cd app && pnpm typecheck
 
-logic-build: ## build the WASM contract -> logic/res/mero_blocks.wasm (+ res/abi.json)
-	cd logic && cargo mero build
+lint:
+	cd app && pnpm lint
 
-logic-test: ## contract unit tests on the native mock host
+logic-build: ## the component -> logic/res/mero_blocks.wasm (+ res/abi.json)
+	$(MC) build logic
+
+logic-test: ## the TestApp harness + scenarios on core's wasmtime engine
 	cd logic && cargo test
+
+e2e: ## every logic/scenarios/*.json on merod local (needs merod at component-core-tag)
+	cd $(ROOT) && pnpm merod-local e2e mero-blocks
 
 test: unit logic-test
 
+bundle: ## dev-signed .mpk (never publishable) -> logic/dist/
+	cd app && pnpm build
+	$(MC) bundle logic --dev
+
 clean:
-	rm -rf logic/res logic/target app/dist app/node_modules/.vite app/test-results
-
-workflows: logic-build ## 2-node merobox e2e (needs docker)
-	cd workflows && merobox bootstrap run e2e.yml; merobox stop --all || true
-
-bundle: ## dev-signed .mpk for local installs -> logic/dist/com.calimero.mero-blocks-<ver>.mpk
-	cd logic && cargo mero bundle --dev
-
-bundle-release: ## publishable .mpk signed with $$MERO_SIGN_KEY_FILE, version bumped off the registry
-	cd logic && cargo mero bundle --key "$$MERO_SIGN_KEY_FILE" --bump patch
-
-publish: ## push an already-built bundle to the Calimero App Registry (needs $$CALIMERO_API_KEY)
-	calimero-registry bundle push logic/dist/com.calimero.mero-blocks-*.mpk --remote
+	rm -rf logic/res/*.wasm logic/target logic/dist app/dist app/node_modules/.vite

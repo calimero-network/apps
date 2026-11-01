@@ -1,224 +1,112 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  captureSessionFromHash,
-  clearSession,
-  clearWorld,
-  getAccessToken,
-  getSession,
-  hasConnection,
-  isAuthenticated,
-  resetSession,
-  updateSession,
-} from "../src/net/session";
+import { describe, expect, it, vi } from "vitest";
+import type { CalimeroClient, CalimeroSession } from "@calimero-network/mero-js";
+import type { KeyValueStorage } from "@calimero-apps/connect";
 
-const served = vi.hoisted(() => ({ on: false }));
-vi.mock("@calimero-apps/node-served", () => ({ isServedByNode: () => served.on }));
+import { connect, describeTarget, deviceLabel, signIn, signOut, signUp, type SessionDeps } from "../src/net/session";
 
-const FULL_HASH =
-  "#node_url=http://localhost:2660&access_token=at-1&refresh_token=rt-1" +
-  "&app-id=app-1&context_id=ctx-1&executor_public_key=pk-1&expires_at=999&dev_mode=1";
-
-/** Build a JWT-shaped access token whose `exp` claim sits at `expMs`. */
-function jwt(expMs: number): string {
-  const payload = btoa(JSON.stringify({ exp: Math.floor(expMs / 1000) }))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_");
-  return `header.${payload}.signature`;
+function memory(): KeyValueStorage & { data: Map<string, string> } {
+  const data = new Map<string, string>();
+  return {
+    data,
+    getItem: (k) => data.get(k) ?? null,
+    setItem: (k, v) => void data.set(k, v),
+    removeItem: (k) => void data.delete(k),
+  };
 }
 
-beforeEach(() => {
-  served.on = false;
-  localStorage.clear();
-  resetSession();
-  window.history.replaceState({}, "", "/");
-  window.location.hash = "";
-});
+const SESSION: CalimeroSession = { accountId: "acc-1", sessionToken: "s", refreshToken: "r", expiresAt: 9e12 };
 
-describe("desktop SSO capture", () => {
-  it("captures the full desktop hash, strips it, and reports full", () => {
-    window.location.hash = FULL_HASH;
-    expect(captureSessionFromHash()).toBe("full");
-    const s = getSession();
-    expect(s.nodeUrl).toBe("http://localhost:2660");
-    expect(s.contextId).toBe("ctx-1");
-    expect(s.applicationId).toBe("app-1");
-    expect(s.executorPublicKey).toBe("pk-1");
-    expect(s.devMode).toBe(true);
-    expect(getAccessToken()).toBe("at-1");
-    expect(window.location.hash).toBe("");
-    expect(hasConnection()).toBe(true);
+function fakeClient() {
+  let session: CalimeroSession | undefined;
+  return {
+    get session() {
+      return session;
+    },
+    useSession: vi.fn((s: CalimeroSession) => {
+      session = s;
+    }),
+    signIn: vi.fn(async () => {
+      session = SESSION;
+      return SESSION;
+    }),
+    signUp: vi.fn(async (_p: unknown, _name: string) => {
+      session = { ...SESSION, accountId: "acc-new" };
+      return session;
+    }),
+    signOut: vi.fn(async () => {
+      session = undefined;
+    }),
+  };
+}
+
+function deps(env: SessionDeps["env"], storage = memory(), client = fakeClient()): SessionDeps & { client: ReturnType<typeof fakeClient> } {
+  return {
+    env,
+    storage,
+    client,
+    makeClient: vi.fn(async () => client as unknown as CalimeroClient),
+    passkey: () => ({}) as never,
+  };
+}
+
+const LOCAL = { DEV: true, VITE_CALIMERO_TARGET: "local" };
+
+describe("connect", () => {
+  it("is unconfigured for a production build without its cluster", async () => {
+    const phase = await connect(deps({ DEV: false }));
+    expect(phase.status).toBe("unconfigured");
   });
 
-  it("keeps the page's own origin as the node when a node serves the page", () => {
-    served.on = true;
-    window.location.hash = FULL_HASH;
-    captureSessionFromHash();
-    expect(getSession().nodeUrl).toBe(window.location.origin);
+  it("is signed out on the local nodes with nothing stored", async () => {
+    const phase = await connect(deps(LOCAL));
+    expect(phase.status).toBe("signed-out");
+    if (phase.status !== "signed-out") return;
+    expect(phase.target.kind).toBe("local");
+    expect(describeTarget(phase.target)).toBe("merod local (3 nodes)");
   });
 
-  it("tolerates the application_id spelling too", () => {
-    window.location.hash =
-      "#node_url=http://n&access_token=a&refresh_token=r&application_id=app-2&context_id=c";
-    captureSessionFromHash();
-    expect(getSession().applicationId).toBe("app-2");
+  it("restores a stored session for this app and target", async () => {
+    const storage = memory();
+    const first = deps(LOCAL, storage);
+    const out = await connect(first);
+    if (out.status !== "signed-out") throw new Error(out.status);
+    const inn = await signIn(out, first);
+    expect(inn.accountId).toBe("acc-1");
+    const keys = [...storage.data.keys()];
+    expect(keys).toHaveLength(1);
+    expect(keys[0]).toMatch(/^calimero-session:mero-blocks:local/);
+
+    const again = await connect(deps(LOCAL, storage));
+    expect(again.status).toBe("signed-in");
+    if (again.status === "signed-in") expect(again.accountId).toBe("acc-1");
   });
 
-  it("ignores a hash without credentials", () => {
-    window.location.hash = "#context_id=ctx-9";
-    expect(captureSessionFromHash()).toBe("none");
-    expect(hasConnection()).toBe(false);
-  });
-
-  it("stores tokens in the shared mero-tokens format", () => {
-    window.location.hash = FULL_HASH;
-    captureSessionFromHash();
-    const tokens = JSON.parse(localStorage.getItem("mero-tokens")!);
-    expect(tokens.access_token).toBe("at-1");
-    expect(tokens.refresh_token).toBe("rt-1");
-  });
-
-  it("persists the session for hash-less refreshes", () => {
-    window.location.hash = FULL_HASH;
-    captureSessionFromHash();
-    resetSession();
-    window.location.hash = "";
-    expect(captureSessionFromHash()).toBe("none"); // no hash, but restored…
-    expect(getSession().contextId).toBe("ctx-1"); // …from storage
-    expect(hasConnection()).toBe(true);
-  });
-});
-
-describe("web auth callback capture", () => {
-  it("uses the pending node url when the callback omits node_url", () => {
-    localStorage.setItem("mb-pending-node", "http://mynode:2428");
-    window.location.hash = "#access_token=at-2&refresh_token=rt-2&context_identity=id-2";
-    expect(captureSessionFromHash()).toBe("partial"); // no context yet → picker
-    const s = getSession();
-    expect(s.nodeUrl).toBe("http://mynode:2428");
-    expect(s.executorPublicKey).toBe("id-2"); // context_identity alias
-    expect(localStorage.getItem("mb-pending-node")).toBeNull(); // consumed
-    expect(isAuthenticated()).toBe(true);
-    expect(hasConnection()).toBe(false);
-  });
-
-  it("reports full when the callback carries a context", () => {
-    localStorage.setItem("mb-pending-node", "http://mynode:2428");
-    window.location.hash = "#access_token=at&refresh_token=rt&context_id=ctx-w";
-    expect(captureSessionFromHash()).toBe("full");
-    expect(hasConnection()).toBe(true);
-  });
-
-  it("rejects a token hash when no node url is known at all", () => {
-    window.location.hash = "#access_token=at-3&refresh_token=rt";
-    expect(captureSessionFromHash()).toBe("none");
-    expect(isAuthenticated()).toBe(false);
+  it("signs up with the account name, and signs out forgetting the session", async () => {
+    const storage = memory();
+    const d = deps(LOCAL, storage);
+    const out = await connect(d);
+    if (out.status !== "signed-out") throw new Error(out.status);
+    const inn = await signUp(out, "alice", d);
+    expect(d.client.signUp).toHaveBeenCalledWith(expect.anything(), "alice");
+    expect(inn.accountId).toBe("acc-new");
+    const back = await signOut(inn);
+    expect(back.status).toBe("signed-out");
+    expect(storage.data.size).toBe(0);
   });
 });
 
-describe("single-use refresh — SSO hash never clobbers a rotated bundle (core#3083)", () => {
-  it("keeps a rotated stored bundle when the desktop re-opens with an older hash (same node)", () => {
-    const future = Date.now() + 3_600_000;
-    // this browser already rotated its refresh token past the desktop's bundle
-    localStorage.setItem(
-      "mb-session",
-      JSON.stringify({ nodeUrl: "http://localhost:2660", contextId: "ctx-1" }),
-    );
-    localStorage.setItem(
-      "mero-tokens",
-      JSON.stringify({ access_token: jwt(future), refresh_token: "rotated-rt", expires_at: future }),
-    );
-
-    // desktop re-opens with its original (older/opaque) bundle
-    window.location.hash = FULL_HASH;
-    captureSessionFromHash();
-
-    const tokens = JSON.parse(localStorage.getItem("mero-tokens")!);
-    expect(tokens.refresh_token).toBe("rotated-rt"); // NOT clobbered by rt-1
-    expect(getAccessToken()).toBe(jwt(future));
+describe("deviceLabel", () => {
+  it("is a stable, contract-valid label per browser", () => {
+    const storage = memory();
+    const a = deviceLabel(storage);
+    expect(a).toMatch(/^[A-Za-z0-9_-]{1,64}$/);
+    expect(deviceLabel(storage)).toBe(a);
+    expect(deviceLabel(memory())).not.toBe(a);
   });
 
-  it("adopts the hash bundle when the node changed (foreign token family)", () => {
-    const future = Date.now() + 3_600_000;
-    localStorage.setItem("mb-session", JSON.stringify({ nodeUrl: "http://oldnode:2428" }));
-    localStorage.setItem(
-      "mero-tokens",
-      JSON.stringify({ access_token: jwt(future), refresh_token: "foreign-rt", expires_at: future }),
-    );
-
-    window.location.hash = FULL_HASH; // node_url=http://localhost:2660 → different node
-    captureSessionFromHash();
-
-    expect(JSON.parse(localStorage.getItem("mero-tokens")!).refresh_token).toBe("rt-1");
-  });
-
-  it("adopts the hash bundle when it is genuinely newer (a fresh login)", () => {
-    const stale = Date.now() + 60_000;
-    const fresh = Date.now() + 3_600_000;
-    localStorage.setItem("mb-session", JSON.stringify({ nodeUrl: "http://localhost:2660" }));
-    localStorage.setItem(
-      "mero-tokens",
-      JSON.stringify({ access_token: jwt(stale), refresh_token: "old-rt", expires_at: stale }),
-    );
-
-    window.location.hash =
-      `#node_url=http://localhost:2660&access_token=${jwt(fresh)}&refresh_token=new-rt&context_id=ctx-1`;
-    captureSessionFromHash();
-
-    expect(JSON.parse(localStorage.getItem("mero-tokens")!).refresh_token).toBe("new-rt");
-  });
-});
-
-describe("session lifecycle", () => {
-  it("updateSession merges and persists", () => {
-    window.location.hash = FULL_HASH;
-    captureSessionFromHash();
-    updateSession({ contextId: "ctx-other" });
-    expect(getSession().contextId).toBe("ctx-other");
-    expect(JSON.parse(localStorage.getItem("mb-session")!).contextId).toBe("ctx-other");
-  });
-
-  it("clearSession wipes state and tokens", () => {
-    window.location.hash = FULL_HASH;
-    captureSessionFromHash();
-    clearSession();
-    expect(hasConnection()).toBe(false);
-    expect(isAuthenticated()).toBe(false);
-    expect(localStorage.getItem("mb-session")).toBeNull();
-    expect(localStorage.getItem("mero-tokens")).toBeNull();
-  });
-});
-
-describe("clearWorld (stale-world recovery)", () => {
-  it("drops the world coordinates but keeps the login", () => {
-    window.location.hash = FULL_HASH;
-    captureSessionFromHash();
-    updateSession({ namespaceId: "ns-1", groupId: "grp-1", worldName: "Overworld" });
-    expect(hasConnection()).toBe(true);
-
-    clearWorld();
-
-    const s = getSession();
-    // Gone: everything that names a world this node may not be a member of.
-    expect(s.contextId).toBeNull();
-    expect(s.executorPublicKey).toBeNull();
-    expect(s.namespaceId).toBeNull();
-    expect(s.groupId).toBeNull();
-    expect(s.worldName).toBeNull();
-    // Kept: the login. The player picks another world, they do not log in again.
-    expect(s.nodeUrl).toBe("http://localhost:2660");
-    expect(getAccessToken()).toBe("at-1");
-    expect(isAuthenticated()).toBe(true);
-    // ...and `hasConnection()` is false, which is what routes boot() to the picker.
-    expect(hasConnection()).toBe(false);
-  });
-
-  it("survives a reload — the cleared world is not still in storage", () => {
-    window.location.hash = FULL_HASH;
-    captureSessionFromHash();
-    clearWorld();
-    resetSession();
-    window.location.hash = "";
-    captureSessionFromHash(); // restores from localStorage
-    expect(getSession().contextId).toBeNull();
+  it("replaces a stored value the contract would refuse", () => {
+    const storage = memory();
+    storage.setItem("mero-blocks:device", "no/slash");
+    expect(deviceLabel(storage)).toMatch(/^[a-z0-9]+$/);
   });
 });

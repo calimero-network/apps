@@ -8,11 +8,8 @@ target/
 # already ignores the build output, `apps/*/logic/res/*.wasm`.
 res/*.mpk
 res/bundle-temp/
-test-results/
-playwright-report/
 *.log
 .DS_Store
 .env*
 !.env.example
 .vercel/
-workflows/data/

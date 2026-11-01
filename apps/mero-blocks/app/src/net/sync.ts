@@ -5,7 +5,6 @@
 // "heartbeats never fired" lesson).
 
 import { blockKey, WorldStore, Edit } from "../engine/world";
-import { GameEvent } from "./events";
 
 export const FLUSH_MS = 150;
 // 500 ms while moving so the live map tracks everyone in near-real-time; the
@@ -30,7 +29,44 @@ export interface RemotePlayer extends Transform {
   online: boolean;
 }
 
-export type ExecFn = <T = unknown>(method: string, args: Record<string, unknown>) => Promise<T>;
+export interface BlockEntry {
+  /** "x,y,z" */
+  k: string;
+  b: number;
+}
+
+/**
+ * The contract, as the game uses it. The web build's is `net/blocks.ts`
+ * (mero-js `CalimeroClient` on the component runtime); the mobile game page
+ * supplies its own over the native bridge (`mobile/game/src/v1World.ts`).
+ * `now` is the caller's unix seconds; each implementation puts it on its wire.
+ */
+export interface WorldApi {
+  setBlocks(edits: Edit[], now: number): Promise<unknown>;
+  getOverrides(): Promise<BlockEntry[]>;
+  getPlayers(now: number): Promise<RemotePlayer[]>;
+  join(name: string, now: number): Promise<unknown>;
+  heartbeat(t: Transform, now: number): Promise<unknown>;
+  leave(now: number): Promise<unknown>;
+}
+
+/** An event from the world's stream: its name and payload. */
+export interface GameEvent {
+  kind: string;
+  value: unknown;
+}
+
+/**
+ * Who an event is about. The component contract sends `{ id }`; the v1
+ * contract (still spoken by the mobile shells) sent the id itself.
+ */
+export function eventSubject(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object" && typeof (value as { id?: unknown }).id === "string") {
+    return (value as { id: string }).id;
+  }
+  return "";
+}
 
 export interface SyncCallbacks {
   onRemoteEdits?: (applied: number) => void;
@@ -49,9 +85,12 @@ export class SyncEngine {
   private playersClock = 0;
   private overridesClock = 0;
   private flushing = false;
+  /** A pull in flight, and whether another was asked for meanwhile (coalesced). */
+  private pulling: Promise<number> | null = null;
+  private pullAgain = false;
 
   constructor(
-    private exec: ExecFn,
+    private api: WorldApi,
     private world: WorldStore,
     private myId: () => string | null,
     private cb: SyncCallbacks = {},
@@ -70,7 +109,7 @@ export class SyncEngine {
     this.pending.clear();
     this.flushing = true;
     try {
-      await this.exec("set_blocks", { edits: batch, now: nowSecs() });
+      await this.api.setBlocks(batch, nowSecs());
     } catch (err) {
       // requeue, but never clobber an edit the player made while in flight
       for (let i = 0; i < batch.length; i++) {
@@ -87,19 +126,19 @@ export class SyncEngine {
   handleEvent(ev: GameEvent): void {
     switch (ev.kind) {
       case "BlocksChanged": {
-        const by = typeof ev.value === "string" ? ev.value : "";
+        const by = eventSubject(ev.value);
         if (by && by === this.myId()) return; // our own echo
         void this.pullOverrides();
         break;
       }
       case "PlayerJoined": {
-        const id = typeof ev.value === "string" ? ev.value : "";
+        const id = eventSubject(ev.value);
         if (id !== this.myId()) this.cb.onToast?.("A player joined");
         void this.pullPlayers();
         break;
       }
       case "PlayerLeft": {
-        const id = typeof ev.value === "string" ? ev.value : "";
+        const id = eventSubject(ev.value);
         if (id !== this.myId()) this.cb.onToast?.("A player left");
         void this.pullPlayers();
         break;
@@ -109,19 +148,39 @@ export class SyncEngine {
     }
   }
 
-  /** pull the authoritative override set and apply the diff locally */
+  /**
+   * Pull the authoritative override set and apply the diff locally. Pulls are
+   * coalesced: asked for while one is in flight (a burst of `BlocksChanged`, or
+   * the events replayed after a reconnect), it runs once more afterwards
+   * instead of once per event.
+   */
   async pullOverrides(): Promise<number> {
+    if (this.pulling) {
+      this.pullAgain = true;
+      return this.pulling;
+    }
+    this.pulling = (async () => {
+      let applied = 0;
+      do {
+        this.pullAgain = false;
+        try {
+          applied += await this.readOverrides();
+        } catch (err) {
+          this.cb.onError?.(err);
+        }
+      } while (this.pullAgain);
+      return applied;
+    })();
     try {
-      return await this.readOverrides();
-    } catch (err) {
-      this.cb.onError?.(err);
-      return 0;
+      return await this.pulling;
+    } finally {
+      this.pulling = null;
     }
   }
 
   /** `pullOverrides` that throws, for callers that must know the read happened. */
   private async readOverrides(): Promise<number> {
-    const entries = await this.exec<{ k: string; b: number }[]>("get_overrides", {});
+    const entries = await this.api.getOverrides();
     let applied = 0;
     for (const { k, b } of entries ?? []) {
       if (this.pending.has(k)) continue; // our unsent edit is newer locally
@@ -134,7 +193,7 @@ export class SyncEngine {
 
   async pullPlayers(): Promise<void> {
     try {
-      const players = await this.exec<RemotePlayer[]>("get_players", { now: nowSecs() });
+      const players = await this.api.getPlayers(nowSecs());
       const me = this.myId();
       this.cb.onPlayers?.((players ?? []).filter((p) => p.id !== me && p.online));
     } catch (err) {
@@ -145,24 +204,23 @@ export class SyncEngine {
   // ---- session -------------------------------------------------------
 
   async join(name: string): Promise<void> {
-    await this.exec("join", { name, now: nowSecs() });
+    await this.api.join(name, nowSecs());
   }
 
   async leave(): Promise<void> {
     try {
-      await this.exec("leave", { now: nowSecs() });
+      await this.api.leave(nowSecs());
     } catch {
       /* leaving best-effort — we age out of the presence TTL anyway */
     }
   }
 
-  /** initial reconcile: pull world + roster, then push anything pending */
   /**
    * Join the world and read its edits, retrying until the node answers both.
    *
    * Right after an invitation is accepted the node may not hold the world's
-   * state yet, and the contract answers `Uninitialized` until it has synced
-   * from a peer. Giving up on the first refusal left a joined world unloaded
+   * state yet, and the contract answered `Uninitialized` until it had synced
+   * from a peer (v1; the mobile shells still speak it). Giving up on the first refusal left a joined world unloaded
    * for good (and the invitation dialog on "Syncing…"). Resolves true once the
    * world is joined and read, or false if `isCurrent` says it was left first.
    */
@@ -203,7 +261,7 @@ export class SyncEngine {
     const hbInterval = moving ? HEARTBEAT_MOVING_MS : HEARTBEAT_IDLE_MS;
     if (transform && this.heartbeatClock >= hbInterval) {
       this.heartbeatClock = 0;
-      void this.exec("heartbeat", { t: quantize(transform), now: nowSecs() }).catch((err) =>
+      void this.api.heartbeat(quantize(transform), nowSecs()).catch((err) =>
         this.cb.onError?.(err),
       );
     }

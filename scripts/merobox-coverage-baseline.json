@@ -4,10 +4,6 @@
     "get_history",
     "get_players"
   ],
-  "mero-blocks": [
-    "heartbeat",
-    "leave"
-  ],
   "mero-chat": [
     "delete_draft",
     "delete_message",

@@ -1,39 +1,23 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from "vite";
-import { servedAssetsFallback } from "@calimero-apps/node-served/vite";
 
 export default defineConfig({
+  // Relative, so the same build runs at / and under the path the cluster
+  // serves the bundle's frontend from.
   base: "./",
-  plugins: [servedAssetsFallback()],
   server: {
-    port: Number(process.env.PW_PORT ?? process.env.PORT ?? 5183),
-  },
-  resolve: {
-    // One mero-js for the whole page. The app and mero-react both import it,
-    // and the dev optimizer otherwise picks whichever copy it meets first —
-    // which can be mero-react's older one, missing the account layer this app
-    // imports (`does not provide an export named …` at boot). Resolved from
-    // this package, so the app's own dependency is the one that runs.
-    dedupe: ["@calimero-network/mero-js"],
+    // `pnpm dev:local mero-blocks` passes `--port 5173 --strictPort`: the one
+    // origin `merod local` trusts passkey ceremonies from.
+    port: Number(process.env.PORT ?? 5173),
   },
   test: {
     environment: "jsdom",
     // The lighting flood-fill and chunk mesher suites do real voxel compute —
     // ~17s for both files locally, and slower under CI's `pnpm -r` contention
-    // across every app's tests at once. vitest's 5s default per-test timeout
-    // tips over there (never in isolation), reddening the workspace-wide
-    // Frontend job on unrelated PRs. These tests are correct, just heavy.
+    // across every app's tests at once. These tests are correct, just heavy.
     testTimeout: 30000,
     hookTimeout: 30000,
     include: ["tests/**/*.test.ts"],
-    exclude: ["**/node_modules/**", "**/e2e/**"],
-    server: {
-      deps: {
-        // The platform SDK ships extensionless directory imports (e.g.
-        // `export … from "./bridge"`) that Vite resolves but Node's raw ESM
-        // loader rejects. Inline it so vitest transforms it through Vite.
-        inline: [/@calimero-network\/mero-platform/],
-      },
-    },
+    exclude: ["**/node_modules/**", "**/dist/**"],
   },
 });

@@ -12,10 +12,11 @@
  *   - it has already been shown this session — returning to play should not
  *     pay for the pitch twice.
  */
-import { peekInvitation } from '@calimero-network/mero-react';
 import { createRoot } from 'react-dom/client';
 
 import { nodeBasename } from '@calimero-apps/node-served';
+
+import { pendingInvite } from '../../net/worlds';
 
 import LandingPage from './LandingPage';
 
@@ -29,9 +30,8 @@ const SEEN = 'cal-lp-seen';
  * pressing Connect leaves the launcher parked on `/docs`, so a reload (or the
  * desktop app reopening the window) lands on a route the game does not serve.
  *
- * The search and hash are carried over untouched: `?invitation=` is how a join
- * link arrives, and the hash is where desktop SSO puts its tokens. Dropping
- * either would break a flow that has nothing to do with which page was read.
+ * The search and hash are carried over untouched: dropping either would break
+ * a flow that has nothing to do with which page was read.
  */
 function resetPath(): void {
   const home = nodeBasename(new URL(window.location.href), '/');
@@ -77,9 +77,9 @@ function mount(): Promise<void> {
  */
 export function showLandingOnce(): Promise<boolean> {
   const url = new URL(window.location.href);
-  // The capture strips `?invitation=` from the address bar the moment it reads
-  // it (main.ts primes it first thing), so ask the capture as well.
-  if (url.searchParams.has('invitation') || peekInvitation()) return Promise.resolve(false);
+  // main.ts moves `?invite=` into storage the moment the page loads, so ask
+  // the store as well.
+  if (url.searchParams.has('invite') || pendingInvite()) return Promise.resolve(false);
   try {
     if (sessionStorage.getItem(SEEN) === '1') return Promise.resolve(false);
   } catch {
