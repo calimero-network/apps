@@ -49,8 +49,8 @@ case "${1:-}" in
     # A path under apps/ that maps to no crate is one of two very different
     # things, and calling both a warning trained people to ignore it.
     #
-    #   * No logic/ at all  — a FRONTEND-ONLY app (apps/delegated-execution is
-    #     the first). It has no contract to compile, no .mpk to install and no
+    #   * No logic/ at all  — a FRONTEND-ONLY app (apps/conformance is
+    #     one). It has no contract to compile, no .mpk to install and no
     #     merod to boot, so the wasm/browser/e2e matrices have nothing to run
     #     for it and skipping it is correct. It is still covered: the `frontend`
     #     job takes its dirs from scripts/ci-scope.py (`frontend_dirs`), not

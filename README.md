@@ -63,7 +63,6 @@ Start here. These exist to be read, not shipped.
 | --- | --- | --- | --- |
 | [kv-store](apps/kv-store) | [↗](https://mero-kv-store.vercel.app) | The first component app (Calimero 1.0): a string key-value store on `calimero-app-sdk`, developed on `merod local`, its frontend on mero-js `CalimeroClient` (Cloud in production). | `com.calimero.kv-store` |
 | [scaffolding-e2e](apps/scaffolding-e2e) | [↗](https://scaffolding-e2e-application.vercel.app/) | Full-stack scaffold — KV, CRDTs, blobs, private storage and namespace management behind an interactive test suite that exercises every SDK surface. | `com.calimero.scaffolding-e2e` |
-| [delegated-execution](apps/delegated-execution) | — | Delegated execution with buttons on it: mint an account in the tab, take a session on a node you do not own, read, and write through a relay — no password in the flow. Frontend only; drives the scaffolding-e2e contract. | *(no bundle)* |
 
 ### Collaboration & productivity
 

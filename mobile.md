@@ -64,7 +64,7 @@ very little use; people want to **look**, **comment** and **share** from a phone
 | --- | --- |
 | **mero-stream** | A capacity probe for A/V over the contract; the README already says the real answer is WebRTC ("Mero Meet"). A native Meet app is its own project |
 | **kv-store** | Reference app; it belongs in the SDK sample apps (swift-sdk `Examples/`, kotlin-sdk sample), not as a product |
-| conformance, delegated-execution, scaffolding-e2e | Test and scaffolding, not user-facing |
+| conformance, scaffolding-e2e | Test and scaffolding, not user-facing |
 
 ## Shared prerequisites (in the SDKs, before Tier 2 and beyond)
 
