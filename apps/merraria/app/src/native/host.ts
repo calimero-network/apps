@@ -213,12 +213,16 @@ export class NativeGameClient {
   exec: Exec = async <T = unknown>(method: MethodName, args: Record<string, unknown>): Promise<T> => {
     if (method === "createWorld") throw new Error("rpc createWorld: the app creates worlds itself");
     const v1 = V1_METHOD[method];
+    // v1's `get_overrides` takes no arguments and answers every override as
+    // one array: sent bare, and handed back as the component's single last page.
+    const sent = method === "getOverrides" ? {} : args;
     let out: unknown;
     try {
-      out = VIEW_METHODS.has(v1) ? await this.bridge.query(v1, args) : await this.bridge.execute(v1, args);
+      out = VIEW_METHODS.has(v1) ? await this.bridge.query(v1, sent) : await this.bridge.execute(v1, sent);
     } catch (err) {
       throw new Error(`rpc ${v1}: ${err instanceof Error ? err.message : String(err)}`);
     }
+    if (method === "getOverrides") return { items: Array.isArray(out) ? out : [], next: null } as T;
     if (method === "join" && out && typeof (out as { id?: unknown }).id === "string") {
       this.identity = (out as { id: string }).id;
     }

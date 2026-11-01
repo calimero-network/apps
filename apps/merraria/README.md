@@ -135,8 +135,9 @@ a client sees:
 | who may write an avatar | `UserStorage`: every node refuses another account's write | no method takes a row id: each call writes only the caller's own row (an extra `id` argument is `BadArgs`) | the same rule, as a method check |
 | tile writes | per-tile `{t, updatedAt}`, merged last-writer-wins by stamp | `"x,y"` → tile id; the leader's log orders writes, and the later one holds whatever the clocks say | no CRDT merge under one log |
 | `setTiles` with > 512 edits | `"too many edits in one batch"` | `422 APP_ERROR` `{ code: "TooManyEdits", fields: { max: 512 } }` | `#[app::error]`'s wire shape |
-| `getPlayers` order | map order | join order (then account) | a stable roster, and portable scenarios |
-| `getOverrides` | every override | every override, read page by page (at most one per in-bounds tile: 80,000) | multi-row reads are pages of at most 1,000 |
+| `getPlayers` order | map order | join order (then account); the whole roster, at most 1,000 | a stable roster, and portable scenarios |
+| `getOverrides` | `get_overrides()`: every override, one array | `getOverrides({ cursor?, limit? })`: **one page**, `{ items: [{k, t}], next }`, at most `limit` (default and largest 1,000) from `cursor`; read pages until `next` is `null` (`readAllOverrides` in `src/net/merraria.ts` does, so the game code is unchanged) | a view answers one page, never a whole collection: a full world (80,000 tiles) would be one answer of over a megabyte on every load |
+| how many players a world keeps | unbounded | at most 1,000 avatars (one per account that ever joined): a new account past that gets `WorldFull { max: 1000 }`, while accounts already in the world keep playing | every call reads the whole roster to find room time, so it must stay one page |
 | events | `TilesChanged(id)`, `PlayerJoined(id)`, `PlayerLeft(id)`, `Initialized()`; data a bare string | the same names; data `{ "0": "<account>" }` (`Initialized` has none, and is emitted by `createWorld`) | tuple fields are keyed `"0"` on the wire |
 | reads | any method | `worldMeta`, `getOverrides`, `getPlayers` are views (`#[app::view]`); a write called as a view is `NotAView` | a view is answered without touching the log |
 | transport | JSON-RPC `execute` on your own node (or warrants through an account's relay), a context id | `POST /apps/{app}/intents` (calls) and `/views` (reads) on any node of the cluster, an app id | one app per replicated log; any node serves any request |
@@ -207,7 +208,7 @@ cargo run --release --manifest-path tools/component-bundle/Cargo.toml -- \
 | `createWorld` | call (owner, once) | `name: string, seed: u32, now: u32` | `null` |
 | `worldMeta` | view | — | `{ name, seed, createdAt }` |
 | `setTiles` | call | `edits: [{x, y, t}] (≤ 512), now: u32` | applied count |
-| `getOverrides` | view | — | `[{ k: "x,y", t }]` |
+| `getOverrides` | view | `cursor?: string, limit?: u32` (≤ 1,000) | `{ items: [{ k: "x,y", t }], next: string \| null }`: one page |
 | `join` | call | `name: string, now: u32` | the caller's `PlayerView` |
 | `heartbeat` | call | `t: {name, x, y, dir, sel, action?}, now: u32` | `null` |
 | `leave` | call | `now: u32` | `null` |

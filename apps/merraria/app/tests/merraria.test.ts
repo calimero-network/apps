@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import abiJson from "../../logic/res/abi.json";
-import { CALLS, VIEWS, bindExec, merraria, toSeed } from "../src/net/merraria";
+import { CALLS, VIEWS, bindExec, merraria, readAllOverrides, toSeed } from "../src/net/merraria";
 
 /** The committed ABI of the contract (`mero-component build`; CI asserts it is current). */
 const abi = abiJson as unknown as {
@@ -32,7 +32,7 @@ describe("the client covers the contract", () => {
       m.createWorld("w", 1),
       m.worldMeta(),
       m.setTiles([{ x: 1, y: 1, t: 1 }]),
-      m.getOverrides(),
+      m.getOverrides("cursor-1", 10),
       m.join("A"),
       m.heartbeat({ name: "A", x: 1, y: 1, dir: 1, sel: 0, action: "idle" }),
       m.leave(),
@@ -86,5 +86,26 @@ describe("toSeed", () => {
     expect(toSeed("abc", 1337)).toBe(1337);
     expect(toSeed("0", 1337)).toBe(1337);
     expect(toSeed(2 ** 32 + 5, 1)).toBe(5);
+  });
+});
+
+describe("readAllOverrides", () => {
+  it("reads page after page until `next` is null, sending each cursor back", async () => {
+    const pages: Record<string, { items: { k: string; t: number }[]; next: string | null }> = {
+      first: { items: [{ k: "0,0", t: 1 }, { k: "1,0", t: 2 }], next: "c1" },
+      c1: { items: [{ k: "2,0", t: 3 }], next: "c2" },
+      c2: { items: [], next: null },
+    };
+    const sent: unknown[] = [];
+    const exec = vi.fn(async (_method: string, args: Record<string, unknown>) => {
+      sent.push(args);
+      return pages[(args.cursor as string | undefined) ?? "first"];
+    });
+    expect(await readAllOverrides(exec as never)).toEqual([
+      { k: "0,0", t: 1 },
+      { k: "1,0", t: 2 },
+      { k: "2,0", t: 3 },
+    ]);
+    expect(sent).toEqual([{}, { cursor: "c1" }, { cursor: "c2" }]);
   });
 });

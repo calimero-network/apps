@@ -17,7 +17,7 @@ describe("native host bridge", () => {
   it("sends views as query and writes as execute, by their v1 names, and resolves the app's answer", async () => {
     const { bridge, sent } = bridgeWithLog();
     const client = new NativeGameClient(bridge, "ctx");
-    const read = client.exec("getOverrides", {});
+    const read = client.exec("getOverrides", { cursor: "c", limit: 5 });
     const write = client.exec("setTiles", { edits: [{ x: 1, y: 2, t: 0 }], now: 5 });
     expect(sent).toEqual([
       { type: "request", id: 1, op: "query", method: "get_overrides", args: {} },
@@ -25,7 +25,7 @@ describe("native host bridge", () => {
     ]);
     bridge.receive(JSON.stringify({ type: "response", id: 2, ok: true, value: 1 }));
     bridge.receive({ type: "response", id: 1, ok: true, value: [{ k: "1,2", t: 0 }] });
-    await expect(read).resolves.toEqual([{ k: "1,2", t: 0 }]);
+    await expect(read).resolves.toEqual({ items: [{ k: "1,2", t: 0 }], next: null });
     await expect(write).resolves.toBe(1);
   });
 

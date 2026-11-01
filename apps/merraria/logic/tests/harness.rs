@@ -57,18 +57,23 @@ fn set_tiles(t: &mut TestApp, who: &str, edits: Vec<Value>, now: u32) -> Value {
     call(t, who, "setTiles", json!({ "edits": edits, "now": now }))
 }
 
+/// Every override, page after page, as a client reads them.
 fn overrides(t: &mut TestApp) -> Vec<(String, u64)> {
-    view(t, "getOverrides", json!({}))
-        .as_array()
-        .expect("an array")
-        .iter()
-        .map(|e| {
-            (
+    let mut out = Vec::new();
+    let mut args = json!({});
+    loop {
+        let page = view(t, "getOverrides", args);
+        for e in page["items"].as_array().expect("items") {
+            out.push((
                 e["k"].as_str().expect("k").to_owned(),
                 e["t"].as_u64().expect("t"),
-            )
-        })
-        .collect()
+            ));
+        }
+        match page["next"].as_str() {
+            Some(next) => args = json!({ "cursor": next }),
+            None => return out,
+        }
+    }
 }
 
 fn players(t: &mut TestApp, now: u32) -> Vec<Value> {
@@ -112,7 +117,7 @@ fn set_tiles_roundtrips_and_digging_stores_air() {
     );
     assert_eq!(
         view(&mut t, "getOverrides", json!({})),
-        json!([{ "k": "5,60", "t": 7 }, { "k": "6,61", "t": 0 }])
+        json!({ "items": [{ "k": "5,60", "t": 7 }, { "k": "6,61", "t": 0 }], "next": null })
     );
 }
 
@@ -533,17 +538,87 @@ fn a_far_future_stamp_does_not_hijack_room_time() {
     assert_eq!(player(&mut t, "alice", 1011)["online"], json!(false));
 }
 
-/// The world diff is read page by page, so it is not cut at one page.
+/// One answer is one page: 1,000 by default and at most, fewer with `limit`,
+/// the next one from `cursor`, and the pages together are the whole diff.
 #[test]
-fn get_overrides_reads_every_page() {
+fn get_overrides_is_paged() {
     let mut t = world();
     for row in 0..5 {
         let edits: Vec<Value> = (0..400).map(|x| edit(x, row, 2)).collect();
         set_tiles(&mut t, "alice", edits, 1000);
     }
+    let first = view(&mut t, "getOverrides", json!({}));
+    assert_eq!(first["items"].as_array().map(Vec::len), Some(1000));
+    assert_eq!(first["items"][0]["k"], json!("0,0"));
+    assert!(first["next"].is_string());
+    // `limit` past 1,000 is 1,000.
+    let capped = view(&mut t, "getOverrides", json!({ "limit": 5000 }));
+    assert_eq!(capped["items"].as_array().map(Vec::len), Some(1000));
+    // A small page, then the one after it, continuing in key order.
+    let small = view(&mut t, "getOverrides", json!({ "limit": 3 }));
+    assert_eq!(small["items"].as_array().map(Vec::len), Some(3));
+    let after = view(
+        &mut t,
+        "getOverrides",
+        json!({ "cursor": small["next"], "limit": 3 }),
+    );
+    assert_eq!(after["items"][0], first["items"][3]);
+    // Every page together: the whole diff, each tile once.
     let all = overrides(&mut t);
     assert_eq!(all.len(), 2000);
-    assert_eq!(all.first().map(|(k, _)| k.as_str()), Some("0,0"));
+    let keys: std::collections::BTreeSet<&String> = all.iter().map(|(k, _)| k).collect();
+    assert_eq!(keys.len(), 2000);
+}
+
+/// A cursor that is not one the app handed out reads nothing.
+#[test]
+fn a_forged_cursor_is_refused() {
+    let mut t = world();
+    set_tiles(&mut t, "alice", vec![edit(1, 1, 1)], 1000);
+    assert!(t
+        .as_("owner")
+        .view("getOverrides", json!({ "cursor": "not-a-cursor" }))
+        .is_err());
+}
+
+/// Every call reads the whole roster to find room time, so a world keeps at
+/// most 1,000 avatars: one page. A new account past that is `WorldFull`; an
+/// account already in the world still plays.
+#[test]
+fn a_world_keeps_at_most_a_thousand_avatars() {
+    let names: Vec<String> = (0..1001).map(|i| format!("p{i:04}")).collect();
+    let mut t = common::app(Org::new().members(names.clone()));
+    call(
+        &mut t,
+        "owner",
+        "createWorld",
+        json!({ "name": "busy", "seed": 1, "now": 1000 }),
+    );
+    for name in &names[..1000] {
+        call(
+            &mut t,
+            name,
+            "heartbeat",
+            json!({ "t": tr(name, 1.0), "now": 1000 }),
+        );
+    }
+    for (method, args) in [
+        ("join", json!({ "name": "late", "now": 1001 })),
+        ("heartbeat", json!({ "t": tr("late", 1.0), "now": 1001 })),
+    ] {
+        assert_eq!(
+            t.as_("p1000").call(method, args),
+            Err(app_error("WorldFull", json!({ "max": 1000 }))),
+            "{method}"
+        );
+    }
+    call(
+        &mut t,
+        "p0000",
+        "join",
+        json!({ "name": "back", "now": 1002 }),
+    );
+    assert_eq!(players(&mut t, 1003).len(), 1000);
 }
 
 // ── v1's storage write rules, as method checks ───────────────────────────────
@@ -600,7 +675,10 @@ fn nothing_is_written_before_the_world_exists() {
             "{method}"
         );
     }
-    assert_eq!(view(&mut t, "getOverrides", json!({})), json!([]));
+    assert_eq!(
+        view(&mut t, "getOverrides", json!({})),
+        json!({ "items": [], "next": null })
+    );
     assert_eq!(view(&mut t, "getPlayers", json!({ "now": 1 })), json!([]));
 }
 

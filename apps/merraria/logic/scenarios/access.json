@@ -304,12 +304,15 @@
   "method": "getOverrides",
   "args": {},
   "expect": {
-   "ok": [
-    {
-     "k": "7,7",
-     "t": 1
-    }
-   ]
+   "ok": {
+    "items": [
+     {
+      "k": "7,7",
+      "t": 1
+     }
+    ],
+    "next": null
+   }
   },
   "events": {
    "ada": [

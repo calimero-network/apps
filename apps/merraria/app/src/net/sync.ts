@@ -3,7 +3,7 @@
 
 import { Edit, TileStore, tileKey } from "../engine/world";
 import { GameEvent } from "./events";
-import type { MethodName } from "./merraria";
+import { readAllOverrides, type MethodName } from "./merraria";
 
 export const FLUSH_MS = 150;
 /** active players save their location every 500ms so the map tracks them live */
@@ -112,7 +112,7 @@ export class SyncEngine {
 
   /** `pullOverrides` that throws, for callers that must know the read happened. */
   private async readOverrides(): Promise<number> {
-    const entries = await this.exec<{ k: string; t: number }[]>("getOverrides", {});
+    const entries = await readAllOverrides(this.exec);
     let applied = 0;
     for (const { k, t } of entries ?? []) {
       if (this.pending.has(k)) continue;

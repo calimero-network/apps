@@ -44,6 +44,32 @@ export interface TileEntry {
   t: number;
 }
 
+/** One page of `getOverrides`: `next` is null on the last page. */
+export interface OverridesPage {
+  items: TileEntry[];
+  next: string | null;
+}
+
+/** The most overrides one `getOverrides` answers (its default and largest `limit`). */
+export const OVERRIDES_PAGE = 1000;
+
+/**
+ * Every override, page after page until `next` is null. The contract answers
+ * one page per call (at most 1,000), so a full world is many small reads, not
+ * one answer of over a megabyte.
+ */
+export async function readAllOverrides(exec: Exec): Promise<TileEntry[]> {
+  const all: TileEntry[] = [];
+  let cursor: string | null = null;
+  do {
+    const args: Record<string, unknown> = cursor === null ? {} : { cursor };
+    const page: OverridesPage = await exec<OverridesPage>("getOverrides", args);
+    all.push(...(page?.items ?? []));
+    cursor = page?.next ?? null;
+  } while (cursor !== null);
+  return all;
+}
+
 export interface PlayerView {
   /** the player's account */
   id: string;
@@ -91,7 +117,8 @@ export interface Merraria {
   createWorld(name: string, seed: number, now?: number): Promise<null>;
   worldMeta(): Promise<WorldMeta>;
   setTiles(edits: Edit[], now?: number): Promise<number>;
-  getOverrides(): Promise<TileEntry[]>;
+  /** One page: from `cursor` (absent for the first), at most `limit` (default and largest 1,000). */
+  getOverrides(cursor?: string, limit?: number): Promise<OverridesPage>;
   join(name: string, now?: number): Promise<PlayerView>;
   heartbeat(t: Omit<PlayerView, "id" | "online">, now?: number): Promise<null>;
   leave(now?: number): Promise<null>;
@@ -103,7 +130,11 @@ export function merraria(exec: Exec): Merraria {
     createWorld: (name, seed, now = nowSecs()) => exec("createWorld", { name, seed, now }),
     worldMeta: () => exec("worldMeta", {}),
     setTiles: (edits, now = nowSecs()) => exec("setTiles", { edits, now }),
-    getOverrides: () => exec("getOverrides", {}),
+    getOverrides: (cursor, limit) =>
+      exec("getOverrides", {
+        ...(cursor === undefined ? {} : { cursor }),
+        ...(limit === undefined ? {} : { limit }),
+      }),
     join: (name, now = nowSecs()) => exec("join", { name, now }),
     heartbeat: (t, now = nowSecs()) => exec("heartbeat", { t, now }),
     leave: (now = nowSecs()) => exec("leave", { now }),

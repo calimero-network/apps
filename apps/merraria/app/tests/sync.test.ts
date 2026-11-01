@@ -65,14 +65,14 @@ describe("SyncEngine (merraria)", () => {
   });
 
   it("applies a peer's overrides on TilesChanged", async () => {
-    const { sync, world, exec } = makeSync({ getOverrides: [{ k: "1,2", t: STONE }] });
+    const { sync, world, exec } = makeSync({ getOverrides: { items: [{ k: "1,2", t: STONE }], next: null } });
     sync.handleEvent({ kind: "TilesChanged", value: "peer" });
     await vi.waitFor(() => expect(exec).toHaveBeenCalled());
     await vi.waitFor(() => expect(world.getTile(1, 2)).toBe(STONE));
   });
 
   it("keeps locally-pending edits over remote state", async () => {
-    const { sync, world } = makeSync({ getOverrides: [{ k: "1,2", t: 4 }] });
+    const { sync, world } = makeSync({ getOverrides: { items: [{ k: "1,2", t: 4 }], next: null } });
     sync.queueEdit(1, 2, 9);
     world.setTile(1, 2, 9);
     await sync.pullOverrides();
@@ -132,7 +132,7 @@ describe("SyncEngine.connect (a world not founded yet)", () => {
       const { sync, exec } = makeSync();
       exec.mockImplementation(async (method: string) => {
         if (method === "join" && ++joins < 3) throw uninitialized();
-        return method === "getOverrides" || method === "getPlayers" ? [] : null;
+        return method === "getOverrides" ? { items: [], next: null } : method === "getPlayers" ? [] : null;
       });
 
       let connected: boolean | undefined;
@@ -154,7 +154,7 @@ describe("SyncEngine.connect (a world not founded yet)", () => {
       const { sync, exec } = makeSync();
       exec.mockImplementation(async (method: string) => {
         if (method === "getOverrides" && ++reads === 1) throw uninitialized();
-        return method === "getOverrides" || method === "getPlayers" ? [] : null;
+        return method === "getOverrides" ? { items: [], next: null } : method === "getPlayers" ? [] : null;
       });
 
       let connected: boolean | undefined;

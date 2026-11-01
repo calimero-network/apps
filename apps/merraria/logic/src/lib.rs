@@ -43,8 +43,12 @@ const PRESENCE_TTL_SECS: u64 = 10;
 /// still move room time (see mero-blocks): an honest fast laptop is followed,
 /// a far-future stamp is ignored instead of freezing presence.
 const MAX_CLOCK_SKEW_SECS: u64 = 900;
-/// The page size the multi-page reads walk storage in.
+/// The most rows one read answers: `getOverrides`' default and largest
+/// `limit`, and one page of the players map.
 const PAGE: u32 = 1000;
+/// The most avatars a world keeps, one per account that ever joined it. Every
+/// call reads them all to find room time, so they must fit one page.
+const MAX_PLAYERS: u64 = PAGE as u64;
 
 // ── Records ──────────────────────────────────────────────────────────────────
 
@@ -87,6 +91,14 @@ pub struct Transform {
 pub struct TileEntry {
     pub k: String,
     pub t: u8,
+}
+
+/// One page of overrides: `next` is the cursor of the following page, `null`
+/// on the last one.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct OverridesPage {
+    pub items: Vec<TileEntry>,
+    pub next: Option<String>,
 }
 
 /// A roster row: `id` is the player's account.
@@ -144,7 +156,7 @@ pub struct Merraria {
     /// per in-bounds tile, so at most 80,000.
     overrides: UnorderedMap<String, u8>,
     /// account -> that account's avatar; written only under the caller's own
-    /// account.
+    /// account. At most `MAX_PLAYERS` rows (one page), enforced on join.
     players: UnorderedMap<String, Player>,
 }
 
@@ -218,31 +230,43 @@ impl Merraria {
         Ok(applied)
     }
 
-    /// Every override, in key order (`"x,y"` as strings sort). Read page by
-    /// page; bounded by the world's 80,000 tiles.
+    /// One page of overrides, in key order (`"x,y"` as strings sort): at most
+    /// `limit` (default and largest 1,000), from `cursor` (a previous page's
+    /// `next`; absent for the first page). Read pages until `next` is `null`.
     #[app::view]
-    pub fn get_overrides(&self) -> app::Result<Vec<TileEntry>> {
-        let mut out = Vec::new();
-        let mut opts = FindOpts::default().limit(PAGE);
-        loop {
-            let page = self.overrides.page(opts.clone())?;
-            out.extend(page.items.into_iter().map(|(k, t)| TileEntry { k, t }));
-            match page.next {
-                Some(next) => opts = opts.cursor(next),
-                None => return Ok(out),
-            }
+    pub fn get_overrides(
+        &self,
+        cursor: Option<String>,
+        limit: Option<u32>,
+    ) -> app::Result<OverridesPage> {
+        let mut opts = FindOpts::default().limit(limit.unwrap_or(PAGE).min(PAGE));
+        if let Some(cursor) = cursor {
+            opts = opts.cursor(cursor);
         }
+        let page = self.overrides.page(opts)?;
+        Ok(OverridesPage {
+            items: page
+                .items
+                .into_iter()
+                .map(|(k, t)| TileEntry { k, t })
+                .collect(),
+            next: page.next,
+        })
     }
 
     // ── Players ───────────────────────────────────────────────────────────
 
     /// Joins (or rejoins) as `name`. A rejoin keeps the first `joinedAt` and the
     /// last position; facing, slot and action reset. Answers the caller's
-    /// roster row and emits `PlayerJoined(account)`.
+    /// roster row and emits `PlayerJoined(account)`. `WorldFull` for a new
+    /// account once the world keeps 1,000 avatars.
     pub fn join(&mut self, name: String, now: u32) -> app::Result<PlayerView> {
         let account = Self::account()?;
         self.require_world()?;
         let existing = self.players.get(&account)?;
+        if existing.is_none() {
+            self.require_room()?;
+        }
         let now = u64::from(now);
         let joined_at = existing.as_ref().map_or(now, |p| p.joined_at);
         let stored = existing.as_ref().map_or(0, |p| p.updated_at);
@@ -266,10 +290,14 @@ impl Merraria {
 
     /// The caller's presence and transform. Silent (no event) unless the caller
     /// had no row or had left, which emits `PlayerJoined(account)`.
+    /// `WorldFull` for a new account once the world keeps 1,000 avatars.
     pub fn heartbeat(&mut self, t: Transform, now: u32) -> app::Result<()> {
         let account = Self::account()?;
         self.require_world()?;
         let existing = self.players.get(&account)?;
+        if existing.is_none() {
+            self.require_room()?;
+        }
         let now = u64::from(now);
         let joined_at = existing.as_ref().map_or(now, |p| p.joined_at);
         let stored = existing.as_ref().map_or(0, |p| p.updated_at);
@@ -313,7 +341,8 @@ impl Merraria {
     }
 
     /// The roster with liveness at room time (`now` is the caller's clock), in
-    /// join order (then by account). A player who vanished without `leave`
+    /// join order (then by account): every avatar the world keeps, at most
+    /// 1,000 (one page). A player who vanished without `leave`
     /// ages out of the 10-second TTL here.
     #[app::view]
     pub fn get_players(&self, now: u32) -> app::Result<Vec<PlayerView>> {
@@ -347,18 +376,19 @@ impl Merraria {
         }
     }
 
-    /// Every avatar row, `(account, row)`, read page by page.
+    /// Every avatar row, `(account, row)`: one page, which holds them all
+    /// because a world keeps at most `MAX_PLAYERS` (`require_room`).
     fn all_players(&self) -> app::Result<Vec<(String, Player)>> {
-        let mut rows = Vec::new();
-        let mut opts = FindOpts::default().limit(PAGE);
-        loop {
-            let page = self.players.page(opts.clone())?;
-            rows.extend(page.items);
-            match page.next {
-                Some(next) => opts = opts.cursor(next),
-                None => return Ok(rows),
-            }
+        Ok(self.players.page(FindOpts::default().limit(PAGE))?.items)
+    }
+
+    /// `WorldFull` when a new account would take the world past `MAX_PLAYERS`
+    /// rows (a stored count, not a scan). Accounts already in it always may.
+    fn require_room(&self) -> app::Result<()> {
+        if self.players.len()? >= MAX_PLAYERS {
+            return Err(Error::WorldFull { max: PAGE }.into());
         }
+        Ok(())
     }
 
     fn room_now(&self, caller_now: u32) -> app::Result<u64> {
@@ -398,6 +428,8 @@ pub enum Error {
     WorldExists,
     /// One `setTiles` call carried more than `max` edits.
     TooManyEdits { max: u32 },
+    /// The world already keeps avatars for `max` accounts: a new one cannot join.
+    WorldFull { max: u32 },
 }
 
 /// What changed, emitted to everyone the app reaches after the write. Clients

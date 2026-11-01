@@ -5,7 +5,10 @@
     "TooManyEdits": {
       "max": "u32"
     },
-    "WorldExists": {}
+    "WorldExists": {},
+    "WorldFull": {
+      "max": "u32"
+    }
   },
   "events": {
     "Initialized": {},
@@ -45,9 +48,18 @@
       "allowSystem": false,
       "confirm": false,
       "kind": "view",
-      "params": [],
+      "params": [
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
+        ]
+      ],
       "public": false,
-      "returns": "list<TileEntry>"
+      "returns": "OverridesPage"
     },
     "getPlayers": {
       "allowSystem": false,
