@@ -262,7 +262,6 @@ export const APPS = {
     // Keeps its own sign-in — a sidebar, or the game launcher — so the
     // landing gets an onConnect callback and never mounts the shared popup.
     ownConnect: true,
-    e2eDir: 'e2e',
     availability: 'web+desktop',
     playableOffline: true,
     trust: ['No game server', 'Deterministic world', 'Plays offline'],

@@ -1,50 +1,30 @@
 import { describe, expect, it } from "vitest";
-import { decodeSseEvents } from "../src/net/events";
+import { indexOf, toGameEvent } from "../src/net/events";
 
-const bytes = (v: unknown) => Array.from(new TextEncoder().encode(JSON.stringify(v)));
-
-describe("decodeSseEvents", () => {
-  it("decodes the StateMutation shape (events with byte payloads)", () => {
-    const data = {
-      newRoot: "abc",
-      events: [
-        { kind: "BlocksChanged", data: bytes("peer-id"), handler: null },
-        { kind: "PlayerJoined", data: bytes("peer-id") },
-      ],
-    };
-    expect(decodeSseEvents(data)).toEqual([
-      { kind: "BlocksChanged", value: "peer-id" },
-      { kind: "PlayerJoined", value: "peer-id" },
-    ]);
+describe("toGameEvent", () => {
+  it("reads the account a tuple variant names", () => {
+    expect(toGameEvent({ kind: "TilesChanged", data: { "0": "acct-1" } })).toEqual({
+      kind: "TilesChanged",
+      value: "acct-1",
+    });
+    expect(toGameEvent({ kind: "PlayerLeft", data: { "0": "acct-2" } })).toEqual({
+      kind: "PlayerLeft",
+      value: "acct-2",
+    });
   });
 
-  it("decodes the tagged-enum shape {Variant: payload}", () => {
-    expect(decodeSseEvents({ BlocksChanged: "peer-id" })).toEqual([
-      { kind: "BlocksChanged", value: "peer-id" },
-    ]);
+  it("gives null for an event that names nobody, or garbage", () => {
+    expect(toGameEvent({ kind: "Initialized", data: null })).toEqual({ kind: "Initialized", value: null });
+    expect(toGameEvent({ kind: "Initialized", data: {} })).toEqual({ kind: "Initialized", value: null });
+    expect(toGameEvent({ kind: "X", data: { "0": 7 } })).toEqual({ kind: "X", value: null });
+    expect(toGameEvent({ kind: "X", data: "str" })).toEqual({ kind: "X", value: null });
   });
+});
 
-  it("passes through non-byte event data untouched", () => {
-    const data = { events: [{ kind: "PlayerLeft", data: "already-a-string" }] };
-    expect(decodeSseEvents(data)).toEqual([{ kind: "PlayerLeft", value: "already-a-string" }]);
-  });
-
-  it("handles empty byte payloads", () => {
-    expect(decodeSseEvents({ events: [{ kind: "Initialized", data: [] }] })).toEqual([
-      { kind: "Initialized", value: null },
-    ]);
-  });
-
-  it("returns [] for garbage", () => {
-    expect(decodeSseEvents(null)).toEqual([]);
-    expect(decodeSseEvents("nope")).toEqual([]);
-    expect(decodeSseEvents({ lowercase: 1 })).toEqual([]);
-    expect(decodeSseEvents({ A: 1, B: 2 })).toEqual([]);
-    expect(decodeSseEvents({ events: "not-an-array" })).toEqual([]);
-  });
-
-  it("skips malformed entries inside an events array", () => {
-    const data = { events: [{ nokind: true }, { kind: "PlayerJoined", data: bytes("x") }] };
-    expect(decodeSseEvents(data)).toEqual([{ kind: "PlayerJoined", value: "x" }]);
+describe("indexOf", () => {
+  it("reads the log index an event id starts with", () => {
+    expect(indexOf("42:0")).toBe(42);
+    expect(indexOf("7")).toBe(7);
+    expect(indexOf("nope")).toBeNull();
   });
 });

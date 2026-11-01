@@ -26,10 +26,29 @@
 //                {type:"pause"}                               backgrounded / menu open
 //                {type:"leave"}                               save and leave the world
 
-import type { GameEvent } from "../net/events";
-import type { Exec } from "../net/rpc";
+//
+// ⚠️ The apps are still v1 clients: they sign in with swift-sdk / kotlin-sdk,
+// reach v1 contexts and answer the bridge with clients generated from the v1
+// contract's ABI (snake_case names), because neither SDK has a client for the
+// component runtime yet (see apps/merraria/README.md). So the bridge keeps
+// speaking v1 method names: `V1_METHOD` maps the engine's component names onto
+// them, and a rebuilt game bundle still works in the shipped apps.
 
-/** The contract's views: everything else is a write (see logic/res/abi.json). */
+import type { GameEvent } from "../net/events";
+import type { Exec, MethodName } from "../net/merraria";
+
+/** The v1 contract's name for each of the engine's methods: what the apps' generated clients answer. */
+export const V1_METHOD: Readonly<Record<Exclude<MethodName, "createWorld">, string>> = {
+  setTiles: "set_tiles",
+  getOverrides: "get_overrides",
+  getPlayers: "get_players",
+  worldMeta: "world_meta",
+  join: "join",
+  heartbeat: "heartbeat",
+  leave: "leave",
+};
+
+/** The contract's views (by their v1 names): everything else is a write. */
 export const VIEW_METHODS: ReadonlySet<string> = new Set(["get_overrides", "get_players", "world_meta"]);
 
 export interface NativeConfig {
@@ -191,14 +210,14 @@ export class NativeGameClient {
     readonly contextId: string,
   ) {}
 
-  exec: Exec = async <T = unknown>(method: string, args: Record<string, unknown>): Promise<T> => {
+  exec: Exec = async <T = unknown>(method: MethodName, args: Record<string, unknown>): Promise<T> => {
+    if (method === "createWorld") throw new Error("rpc createWorld: the app creates worlds itself");
+    const v1 = V1_METHOD[method];
     let out: unknown;
     try {
-      out = VIEW_METHODS.has(method)
-        ? await this.bridge.query(method, args)
-        : await this.bridge.execute(method, args);
+      out = VIEW_METHODS.has(v1) ? await this.bridge.query(v1, args) : await this.bridge.execute(v1, args);
     } catch (err) {
-      throw new Error(`rpc ${method}: ${err instanceof Error ? err.message : String(err)}`);
+      throw new Error(`rpc ${v1}: ${err instanceof Error ? err.message : String(err)}`);
     }
     if (method === "join" && out && typeof (out as { id?: unknown }).id === "string") {
       this.identity = (out as { id: string }).id;
@@ -211,7 +230,7 @@ export class NativeGameClient {
   }
 
   async fetchWorldMeta(): Promise<{ name: string; seed: number; createdAt: number }> {
-    return this.exec("world_meta", {});
+    return this.exec("worldMeta", {});
   }
 
   /** Relay events are nudges with no payload: each one re-reads the tiles. */

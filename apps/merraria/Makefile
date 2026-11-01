@@ -1,42 +1,40 @@
-.PHONY: setup build dev unit e2e test typecheck logic-build logic-test clean workflows bundle bundle-release publish
+.PHONY: setup dev build unit typecheck lint logic-build logic-test test bundle e2e clean
 
-setup: ## install frontend deps
-	cd app && pnpm install
+ROOT := ../..
+M    := $(ROOT)/tools/component-bundle/Cargo.toml
 
-dev: ## run the game locally (offline mode works with no node)
-	cd app && pnpm dev
+setup: ## pnpm install at the repo root + the wasm target
+	cd $(ROOT) && pnpm install
+	rustup target add wasm32-wasip2
 
-build: logic-build ## build wasm + frontend
+dev: ## merod local + build + deploy + the game on http://localhost:5173/
+	cd $(ROOT) && pnpm dev:local merraria
+
+build: logic-build ## the component + the frontend
 	cd app && pnpm build
 
 unit: ## frontend unit tests (vitest)
 	cd app && pnpm test
 
-e2e: ## mocked end-to-end tests (playwright)
-	cd app && pnpm e2e
-
 typecheck:
 	cd app && pnpm typecheck
 
-logic-build: ## build the WASM contract -> logic/res/merraria.wasm (+ res/abi.json)
-	cd logic && cargo mero build
+lint:
+	cd app && pnpm lint
 
-logic-test: ## contract unit tests on the native mock host
-	cd logic && cargo test
+logic-build: ## the component -> logic/res/merraria.wasm (+ res/abi.json)
+	cargo run --release --manifest-path $(M) -- build logic
+
+logic-test: ## the component on core's wasmtime engine (TestApp) + scenarios/*.json
+	cargo test --manifest-path logic/Cargo.toml
 
 test: unit logic-test
 
+e2e: ## every scenarios/*.json on merod local (needs merod; starts a fresh cluster if none runs)
+	cd $(ROOT) && pnpm merod-local e2e merraria
+
+bundle: ## dev-signed .mpk for merod local -> dist/com.calimero.merraria-<ver>.mpk
+	cargo run --release --manifest-path $(M) -- bundle logic --dev
+
 clean:
-	rm -rf logic/res logic/target app/dist app/node_modules/.vite app/test-results
-
-workflows: logic-build ## 2-node merobox e2e (needs docker)
-	cd workflows && merobox bootstrap run e2e.yml; merobox stop --all || true
-
-bundle: ## dev-signed .mpk for local installs -> logic/dist/com.calimero.merraria-<ver>.mpk
-	cd logic && cargo mero bundle --dev
-
-bundle-release: ## publishable .mpk signed with $$MERO_SIGN_KEY_FILE, version bumped off the registry
-	cd logic && cargo mero bundle --key "$$MERO_SIGN_KEY_FILE" --bump patch
-
-publish: ## push an already-built bundle to the Calimero App Registry (needs $$CALIMERO_API_KEY)
-	calimero-registry bundle push logic/dist/com.calimero.merraria-*.mpk --remote
+	rm -rf logic/res/*.wasm logic/target app/dist app/node_modules/.vite

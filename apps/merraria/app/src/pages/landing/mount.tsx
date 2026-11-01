@@ -12,11 +12,11 @@
  *   - it has already been shown this session — returning to play should not
  *     pay for the pitch twice.
  */
-import { peekInvitation } from '@calimero-network/mero-react';
 import { createRoot } from 'react-dom/client';
 
 import { nodeBasename } from '@calimero-apps/node-served';
 
+import { pendingInvite } from '../../net/worlds';
 import LandingPage from './LandingPage';
 
 const SEEN = 'cal-lp-seen';
@@ -77,9 +77,9 @@ function mount(): Promise<void> {
  */
 export function showLandingOnce(): Promise<boolean> {
   const url = new URL(window.location.href);
-  // The capture strips `?invitation=` from the address bar the moment it reads
-  // it (main.ts primes it first thing), so ask the capture as well.
-  if (url.searchParams.has('invitation') || peekInvitation()) return Promise.resolve(false);
+  // An invitation link goes straight to the launcher. main.ts takes `?invite=`
+  // off the address bar first thing, so ask the stored capture as well.
+  if (url.searchParams.has('invite') || pendingInvite()) return Promise.resolve(false);
   try {
     if (sessionStorage.getItem(SEEN) === '1') return Promise.resolve(false);
   } catch {

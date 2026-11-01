@@ -16,7 +16,7 @@ import type { LandingConfig } from './landingTypes';
 export const CONFIG: LandingConfig = {
   name: "Merraria",
   packageId: "com.calimero.merraria",
-  tagline: "Terraria-style P2P mining sandbox. The world is a Calimero context: seed + tile-edit diff + player presence, no game server.",
+  tagline: "Terraria-style multiplayer mining sandbox. A world is an app instance: seed + tile-edit diff + player presence, no game server.",
   dir: "merraria",
   markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',

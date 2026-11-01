@@ -6,34 +6,32 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "e2e": "playwright test --project=mocked",
-    "typecheck": "tsc --noEmit",
-    "test:journey": "playwright test -c playwright.journey.config.ts"
+    "lint": "eslint ."
   },
   "dependencies": {
+    "@calimero-apps/connect": "workspace:*",
     "@calimero-apps/glass": "workspace:*",
     "@calimero-apps/node-served": "workspace:*",
     "@calimero-network/mero-icons": "catalog:",
-    "@calimero-network/mero-js": "catalog:",
-    "@calimero-network/mero-platform": "catalog:",
-    "@calimero-network/mero-react": "catalog:",
-    "bs58": "catalog:",
-    "fflate": "catalog:",
+    "@calimero-network/mero-js": "catalog:component",
     "react": "catalog:",
     "react-dom": "catalog:"
   },
   "devDependencies": {
-    "@calimero-apps/e2e-node": "workspace:*",
-    "@playwright/test": "catalog:",
-    "@types/node": "^24.13.3",
+    "@eslint/js": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
+    "eslint": "catalog:",
+    "eslint-plugin-react-hooks": "catalog:",
+    "globals": "catalog:",
     "jsdom": "^28.1.0",
     "typescript": "catalog:",
+    "typescript-eslint": "catalog:",
     "vite": "catalog:",
     "vitest": "catalog:"
   }

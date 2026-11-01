@@ -1,0 +1,14 @@
+{
+ "admins": [
+  "ada"
+ ],
+ "members": [
+  "bob"
+ ],
+ "guests": [
+  "gus"
+ ],
+ "outsiders": [
+  "mallory"
+ ]
+}

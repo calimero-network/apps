@@ -102,9 +102,6 @@
     "prune_frames",
     "rename_stream"
   ],
-  "merraria": [
-    "leave"
-  ],
   "scaffolding-e2e": [
     "get_counter",
     "increment_counter"
