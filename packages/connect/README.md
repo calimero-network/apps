@@ -17,12 +17,19 @@ sessions.sync(client);
 const app = await client.createApp("my-app", appSource(import.meta.env, "com.calimero.my-app"));
 ```
 
-| | local | cloud |
-|---|---|---|
-| chosen when | `vite` (`DEV`), or `VITE_CALIMERO_TARGET=local` | `vite build`, or `VITE_CALIMERO_TARGET=cloud` |
-| nodes | `VITE_CALIMERO_NODES`, default `127.0.0.1:2501-2503` | `VITE_CALIMERO_CLUSTER` (required) via the node directory; `VITE_CALIMERO_ZONE`, `VITE_CALIMERO_DIRECTORY` |
-| trust | mock quotes (`allowMock`) | signed mero-tee release `>= VITE_CALIMERO_MIN_RELEASE` (required) |
-| instances from | `VITE_CALIMERO_BUNDLE` (written by `pnpm dev:local`) | the package (`VITE_CALIMERO_PACKAGE`, `VITE_CALIMERO_VERSION`) |
+| | local | cloud | node |
+|---|---|---|---|
+| chosen when | `vite` (`DEV`), or `VITE_CALIMERO_TARGET=local` | `vite build`, or `VITE_CALIMERO_TARGET=cloud` | `VITE_CALIMERO_TARGET=node` |
+| nodes | `VITE_CALIMERO_NODES`, default `127.0.0.1:2501-2503` | `VITE_CALIMERO_CLUSTER` (required) via the node directory; `VITE_CALIMERO_ZONE`, `VITE_CALIMERO_DIRECTORY` | `VITE_CALIMERO_NODES` (required, `https`), no directory |
+| trust | mock quotes (`allowMock`) | signed mero-tee release `>= VITE_CALIMERO_MIN_RELEASE` (required) | the same as cloud |
+| instances from | `VITE_CALIMERO_BUNDLE` (written by `pnpm dev:local`) | the package (`VITE_CALIMERO_PACKAGE`, `VITE_CALIMERO_VERSION`) | the same as cloud |
+
+The target is fixed when the service starts, from its build's environment. The
+person using the app never chooses a cloud, a cluster or a node: they sign in
+or up with a passkey on the one target the service was built for. A `node`
+target is a `cloud` target with `direct: true`, its `nodes` set and `cluster`
+naming the first node's host, so code that handles `local` and `cloud` handles
+it unchanged.
 
 On a page the cluster serves from the app's bundle (the production frontend:
 the only origin a Cloud node trusts for an app's passkey ceremonies besides its
