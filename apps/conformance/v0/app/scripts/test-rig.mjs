@@ -50,7 +50,7 @@ if (target) process.exit(runExternal(resolve(process.cwd(), target)));
 
 if (!process.env.SKIP_RIG_UP) {
   if (run('sh', [resolve(rig, 'up.sh')]) !== 0) {
-    console.error('test:rig: the rig did not come up; see apps/conformance/rig/.state/run/logs');
+    console.error('test:rig: the rig did not come up; see apps/conformance/v0/rig/.state/run/logs');
     run('sh', [resolve(rig, 'down.sh')]);
     process.exit(1);
   }

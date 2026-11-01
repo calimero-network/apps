@@ -1,128 +1,70 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppMode, ConnectButton, MeroProvider, useMero, type AdminApiClient } from '@calimero-network/mero-react';
-import { PHASES, type Session } from './conformance/matrix';
-import { sleep } from './conformance/check';
-import type { Streams } from './conformance/listen';
-import type { ConformanceApi, Mode, Row } from './conformance/types';
-import { readConfig } from './config';
+import { useCallback, useEffect, useState } from "react";
+import { describeError, resolveTarget, withServedNodes, type Target } from "@calimero-apps/connect";
 
-const config = readConfig();
+import { clientAt, softPasskey } from "./conformance/env";
+import type { Row } from "./conformance/types";
+import { defaultDeps, type AppDeps } from "./deps";
+
+/** A picked file's bytes (FileReader: what every browser, and jsdom, has). */
+function readBytes(file: Blob): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer));
+    reader.onerror = () => reject(reader.error ?? new Error("could not read the file"));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+type State =
+  | { status: "connecting" }
+  | { status: "unconfigured"; message: string }
+  | { status: "ready"; target: Target };
 
 /**
- * The node a desktop hand-over names in the URL fragment (`#node_url=…`), read
- * once before the provider mounts. Passing it as `allowedNodeUrls` is what lets
- * MeroProvider accept that handed-over session instead of default-denying a node
- * it has never seen; see the apps repo's `scripts/check-desktop-sso.py`. Trust
- * is compared by origin, so only the origin is kept.
+ * The matrix, run from the page: every call a component app's client makes,
+ * as accounts this page signs up with software passkeys, on the cluster the
+ * build targets (`merod local` under `pnpm dev:local conformance`). The
+ * component it deploys is the one you pick (`logic/res/conformance.wasm`,
+ * which `dev:local` builds). CI runs the same matrix from Node
+ * (`pnpm test:cluster`).
  */
-function hashNodeUrl(): string | undefined {
-  try {
-    const p = new URLSearchParams(window.location.hash.slice(1));
-    const raw = (p.get('node_url') ?? p.get('nodeUrl') ?? '').trim();
-    return raw ? new URL(raw).origin : undefined;
-  } catch {
-    return undefined;
-  }
-}
-const trustedNodeUrl = hashNodeUrl();
-
-export function App() {
-  return (
-    <MeroProvider
-      mode={AppMode.MultiContext}
-      packageName={config.packageName}
-      packageVersion={config.packageVersion}
-      {...(config.registryUrl ? { registryUrl: config.registryUrl } : {})}
-      {...(config.cloudBaseUrl ? { cloudBaseUrl: config.cloudBaseUrl } : {})}
-      allowedNodeUrls={trustedNodeUrl ? [trustedNodeUrl] : undefined}
-    >
-      <Shell />
-    </MeroProvider>
-  );
-}
-
-function Shell() {
-  const mero = useMero();
+export function App({ deps = defaultDeps }: { deps?: AppDeps }) {
+  const [state, setState] = useState<State>({ status: "connecting" });
+  const [wasm, setWasm] = useState<Uint8Array | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
-  const [running, setRunning] = useState<string | null>(null);
-  // Every row reads the CURRENT connection: an account's join replaces its
-  // admin and client mid-run, and a row must not call through the old one.
-  const live = useRef(mero);
-  live.current = mero;
-  const rowsRef = useRef<Row[]>([]);
-
-  const mode: Mode | null = mero.isAuthenticated ? (mero.isDelegated ? 'account' : 'node') : null;
-  const ready = Boolean(mero.isAuthenticated && mero.admin && !mero.isLoading);
-
-  const record = useCallback((row: Row) => {
-    rowsRef.current = [...rowsRef.current, row];
-    setRows(rowsRef.current);
-  }, []);
-
-  const session = useMemo<Session | null>(() => {
-    if (!mode) return null;
-    return {
-      run: config.run ?? mode,
-      mode,
-      session: config.session,
-      record,
-      admin: () => {
-        const a = live.current.admin;
-        if (!a) throw new Error('not connected: no admin');
-        return a;
-      },
-      execute: async (contextId, method, args) => {
-        const client = live.current.mero;
-        if (!client) throw new Error('not connected: no client to execute through');
-        return client.rpc.execute({ contextId, method, argsJson: args ?? {} });
-      },
-      streams: () => {
-        const client = live.current.mero;
-        if (!client) throw new Error('not connected: no client to listen through');
-        // What `useSubscription` and `useEphemeral` read. Cast: mero-js's `MeroJs`
-        // type predates `ephemeral`, which both clients have at runtime.
-        const c = client as unknown as Streams & { ephemeral: Streams['presence'] };
-        return {
-          get events() {
-            return c.events;
-          },
-          get presence() {
-            return c.ephemeral;
-          },
-        };
-      },
-      settle: async (previous: AdminApiClient | null) => {
-        const deadline = Date.now() + 60_000;
-        for (;;) {
-          const m = live.current;
-          if (m.isAuthenticated && m.admin && m.admin !== previous && !m.isLoading && m.mero) return;
-          if (Date.now() > deadline) throw new Error('the session did not reconnect within 60 s of the call');
-          await sleep(250);
-        }
-      },
-    };
-    // `mode` is stable for a session; the getters read `live`.
-  }, [mode, record]);
-  const sessionRef = useRef(session);
-  sessionRef.current = session;
-
-  const run = useCallback(async (phase: string, input?: unknown) => {
-    const s = sessionRef.current;
-    const fn = PHASES[phase];
-    if (!s) throw new Error('not connected');
-    if (!fn) throw new Error(`no phase ${phase}`);
-    setRunning(phase);
-    try {
-      return await fn(s, input as never);
-    } finally {
-      setRunning(null);
-    }
-  }, []);
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const api: ConformanceApi = { ready, mode, rows, run };
-    window.__conformance = api;
-  }, [ready, mode, rows, run]);
+    let live = true;
+    Promise.resolve()
+      .then(() => withServedNodes(resolveTarget(deps.env), deps.servedNodes))
+      .then((target) => live && setState({ status: "ready", target }))
+      .catch((e: unknown) => live && setState({ status: "unconfigured", message: describeError(e) }));
+    return () => {
+      live = false;
+    };
+  }, [deps]);
+
+  const run = useCallback(async () => {
+    if (state.status !== "ready" || !wasm) return;
+    setRows([]);
+    setError(null);
+    setRunning(true);
+    try {
+      const target = state.target;
+      await deps.run({
+        client: (i) => clientAt(target, i),
+        passkey: () => softPasskey(deps.origin),
+        wasm,
+        onRow: (row) => setRows((r) => [...r, row]),
+      });
+    } catch (e) {
+      setError(describeError(e));
+    } finally {
+      setRunning(false);
+    }
+  }, [deps, state, wasm]);
 
   const passed = rows.filter((r) => r.pass).length;
   return (
@@ -130,20 +72,39 @@ function Shell() {
       <header>
         <h1>Conformance</h1>
         <p className="lede">
-          Every admin and RPC call an app makes, under the connection this tab holds. A row passes only when what
-          happened is what this mode expects: <code>ok</code>, or a refusal mero-react names.
+          Every call a component app&apos;s client makes, on a Calimero 1.0 cluster, as two accounts. A row passes only
+          when what happened is what it expects: <code>ok</code>, or a refusal the node names.
         </p>
-        <div className="bar">
-          <ConnectButton cloud />
-          <span className="pill" data-testid="mode">{mode ?? 'not connected'}</span>
-          <span className="pill">{config.session}</span>
-          {running && <span className="pill busy">running {running}</span>}
-          {rows.length > 0 && (
-            <span className={`pill ${passed === rows.length ? 'ok' : 'bad'}`} data-testid="summary">
-              {passed}/{rows.length} pass
+        {state.status === "connecting" && <p className="empty">Connecting…</p>}
+        {state.status === "unconfigured" && <p className="empty" role="alert">{state.message}</p>}
+        {state.status === "ready" && (
+          <div className="bar">
+            <span className="pill" data-testid="target">
+              {state.target.kind === "local" ? `local: ${state.target.nodes.length} nodes` : `cloud: ${state.target.cluster}`}
             </span>
-          )}
-        </div>
+            <label className="pill">
+              component{" "}
+              <input
+                type="file"
+                accept=".wasm,application/wasm"
+                aria-label="component"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void readBytes(file).then(setWasm, (err: unknown) => setError(describeError(err)));
+                }}
+              />
+            </label>
+            <button type="button" disabled={!wasm || running} onClick={() => void run()}>
+              {running ? "running…" : "Run the matrix"}
+            </button>
+            {rows.length > 0 && (
+              <span className={`pill ${passed === rows.length ? "ok" : "bad"}`} data-testid="summary">
+                {passed}/{rows.length} pass
+              </span>
+            )}
+          </div>
+        )}
+        {error && <p className="empty" role="alert">{error}</p>}
       </header>
       <section>
         <div className="scroll">
@@ -151,7 +112,7 @@ function Shell() {
             <thead>
               <tr>
                 <th>check</th>
-                <th>mode</th>
+                <th>who</th>
                 <th>expected</th>
                 <th>actual</th>
                 <th>ms</th>
@@ -160,19 +121,24 @@ function Shell() {
             </thead>
             <tbody>
               {rows.map((r, i) => (
-                <tr key={i} className={r.pass ? 'pass' : 'fail'}>
+                <tr key={i} className={r.pass ? "pass" : "fail"}>
                   <td>{r.name}</td>
-                  <td>{r.mode}</td>
+                  <td>{r.who}</td>
                   <td>{r.expected}</td>
                   <td>{r.actual}</td>
                   <td className="num">{r.ms}</td>
-                  <td className="err">{r.error ?? r.detail ?? ''}</td>
+                  <td className="err">{r.error ?? r.detail ?? ""}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        {rows.length === 0 && <p className="empty">No rows yet. The runner drives this page; see the README.</p>}
+        {rows.length === 0 && (
+          <p className="empty">
+            No rows yet. Pick the built component (<code>apps/conformance/logic/res/conformance.wasm</code>) and run the
+            matrix; see the README.
+          </p>
+        )}
       </section>
     </main>
   );

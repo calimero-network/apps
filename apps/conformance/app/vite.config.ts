@@ -1,27 +1,19 @@
-import { resolve } from 'node:path';
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
-
-/**
- * `MERO_JS_PATH=<a mero-js checkout, built>` runs the matrix against that
- * mero-js instead of the installed one — for a paired run against a mero-js
- * change, or a fix not released yet. mero-react is deduped onto the same
- * copy, so there is one signer on the page.
- */
-const meroJs = process.env['MERO_JS_PATH'];
+// `defineConfig` from `vitest/config`, not from `vite`: vite's own type has no
+// `test` key, so a `test` block under the vite import fails `tsc -b`.
+import { defineConfig } from "vitest/config";
+import react from "@vitejs/plugin-react";
 
 export default defineConfig({
+  // Relative, so the same build runs at / and under the node's /{version}/,
+  // where the cluster serves the bundle's frontend.
+  base: "./",
   plugins: [react()],
-  // With MERO_JS_PATH set, mero-react's own import of mero-js must land on the
-  // same copy: two copies are two signers, possibly at two schemas.
-  resolve: {
-    dedupe: ['react', 'react-dom', '@calimero-network/mero-js'],
-    alias: meroJs
-      ? [{ find: /^@calimero-network\/mero-js$/, replacement: resolve(meroJs, 'dist/index.browser.mjs') }]
-      : [],
+  test: {
+    environment: "jsdom",
+    setupFiles: ["./src/test/setup.ts"],
+    // `tsc -b` writes declarations under dist-types/; without this vitest also
+    // runs the compiled copies of the tests. `cluster/` needs a running
+    // cluster: `pnpm test:cluster` (vitest.cluster.config.ts) runs it.
+    exclude: ["**/node_modules/**", "**/dist/**", "**/dist-types/**", "cluster/**"],
   },
-  // Loopback only, on the rig's own port: the rig is local, and other rigs on
-  // this machine hold the usual dev ports.
-  server: { host: '127.0.0.1', port: 5190, strictPort: true },
-  preview: { host: '127.0.0.1', port: 5190, strictPort: true },
 });

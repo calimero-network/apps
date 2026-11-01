@@ -1,18 +1,19 @@
 /**
  * Running one row: call it, classify what happened, compare with what the row
- * expects in this mode.
+ * expects.
  *
- * Classification is by error NAME for the two refusals mero-react names, and
- * nothing else is forgiven: a bare 403, a refused intent, a timeout and a wrong
- * value read back all fail, whatever the mode.
+ * Classification is by what mero-js reports: an `AppError`'s app code, a
+ * `TrapError`, or a `CalimeroError`'s API code (the node's refusal, by name).
+ * Nothing else is forgiven: a wrong value read back, a timeout or an error with
+ * no code fails, whatever the row expects.
  */
-import type { Expected, Mode, Outcome, Row } from './types';
+import type { Outcome, Row, Who } from "./types";
 
 /** Thrown by a row whose call resolved but whose result was wrong. */
 export class Mismatch extends Error {
   constructor(message: string) {
     super(message);
-    this.name = 'Mismatch';
+    this.name = "Mismatch";
   }
 }
 
@@ -20,7 +21,7 @@ export class Mismatch extends Error {
 export class Blocked extends Error {
   constructor(message: string) {
     super(message);
-    this.name = 'Blocked';
+    this.name = "Blocked";
   }
 }
 
@@ -30,75 +31,60 @@ export function assert(cond: unknown, message: string): asserts cond {
 
 /** A precondition: the value an earlier row produced, or this row is blocked. */
 export function need<T>(value: T | null | undefined, what: string): T {
-  if (value === null || value === undefined || value === '') throw new Blocked(`needs ${what}, which an earlier row did not produce`);
+  if (value === null || value === undefined || value === "") {
+    throw new Blocked(`needs ${what}, which an earlier row did not produce`);
+  }
   return value;
 }
 
-export interface Expectation {
-  readonly node: Expected;
-  readonly account: Expected;
-}
+export const OK = "ok";
+/** An app's own refusal, by its `#[app::error]` code. */
+export const appError = (code: string): Outcome => `APP_ERROR:${code}`;
 
-export const OK: Expectation = { node: 'ok', account: 'ok' };
-/** A call with no account form: mero-react refuses it by name. */
-export const NODE_ONLY: Expectation = { node: 'ok', account: 'NotForAccountError' };
-/** Core refuses this to node and account alike: the member only inherits. */
-export const NOT_DIRECT_MEMBER: Expectation = { node: 'NotDirectMember', account: 'NotDirectMember' };
-/**
- * Core admits the route only for a node's `admin`, so an app's token is refused
- * on a node; an account is refused by name. Pair with {@link adminOnly}.
- */
-export const ADMIN_ONLY: Expectation = { node: 'AdminOnly', account: 'NotForAccountError' };
-
-/** A 403 from `fn` is the admin-only refusal this row expects; anything else is as thrown. */
-export async function adminOnly<T>(fn: () => Promise<T>): Promise<T> {
-  try {
-    return await fn();
-  } catch (e) {
-    if ((e as { status?: number }).status === 403) {
-      throw Object.assign(new Error(`admin only: ${(e as Error).message}`), { name: 'AdminOnly' });
-    }
-    throw e;
-  }
-}
-
-function classify(e: unknown): { actual: Outcome; error: string } {
-  const err = e as { name?: string; message?: string; status?: number; body?: unknown; type?: string; data?: unknown; step?: string };
-  const name = err?.name ?? 'Error';
-  if (name === 'NotForAccountError' || name === 'NoRelayError') return { actual: name, error: `${name}: ${err.message}` };
-  if (name === 'Mismatch') return { actual: 'mismatch', error: String(err.message) };
-  if (name === 'Blocked') return { actual: 'blocked', error: String(err.message) };
-  if (name === 'AdminOnly') return { actual: 'AdminOnly', error: String(err.message) };
-  // core's LeaveGroupNotDirectMember: "member is not a direct member of group …;
-  // leave the parent group where the membership anchor lives"
-  if (/is not a direct member of group/.test(String(err?.message))) {
-    return { actual: 'NotDirectMember', error: `${name}: ${err.message}` };
-  }
+/** What `e` is, as a row compares it. */
+export function classify(e: unknown): { actual: Outcome; error: string } {
+  const err = e as {
+    name?: string;
+    message?: string;
+    status?: number;
+    code?: string;
+    appCode?: string;
+    fields?: unknown;
+    kind?: string;
+  };
+  const name = err?.name ?? "Error";
+  if (name === "Mismatch") return { actual: "mismatch", error: String(err.message) };
+  if (name === "Blocked") return { actual: "blocked", error: String(err.message) };
   const parts = [`${name}: ${err?.message ?? String(e)}`];
   if (err?.status !== undefined) parts.push(`status ${err.status}`);
-  if (err?.step !== undefined) parts.push(`step ${err.step}`);
-  if (err?.type !== undefined) parts.push(`type ${err.type}`);
-  if (err?.data !== undefined) parts.push(`data ${short(err.data, 300)}`);
-  if (err?.body !== undefined) parts.push(`body ${short(err.body, 300)}`);
-  return { actual: 'error', error: parts.join(' | ') };
+  if (err?.code) parts.push(`code ${err.code}`);
+  if (err?.appCode) parts.push(`appCode ${err.appCode} ${short(err.fields, 200)}`);
+  if (err?.kind) parts.push(`kind ${err.kind}`);
+  const error = parts.join(" | ");
+  if (err?.code === "APP_ERROR" && err.appCode) return { actual: appError(err.appCode), error };
+  if (err?.code === "TRAP" || name === "TrapError") return { actual: "TRAP", error };
+  if (typeof err?.code === "string" && /^[A-Z][A-Z0-9_]+$/.test(err.code)) return { actual: err.code, error };
+  return { actual: "error", error };
 }
 
 export function short(v: unknown, max = 160): string {
-  let s: string;
+  let s: string | undefined;
   try {
-    s = typeof v === 'string' ? v : JSON.stringify(v, (_k, x) => (typeof x === 'bigint' ? x.toString() : x));
+    s =
+      typeof v === "string"
+        ? v
+        : JSON.stringify(v, (_k, x: unknown) =>
+            typeof x === "bigint" ? x.toString() : x instanceof Uint8Array ? `<${x.length} bytes>` : x,
+          );
   } catch {
     s = String(v);
   }
-  if (s === undefined) s = 'undefined';
+  if (s === undefined) s = "undefined";
   return s.length > max ? `${s.slice(0, max)}…` : s;
 }
 
-export interface RowContext {
-  readonly run: Mode;
-  readonly mode: Mode;
-  readonly session: 'primary' | 'second';
-  readonly record: (row: Row) => void;
+export interface Recorder {
+  record(row: Row): void;
 }
 
 /**
@@ -107,16 +93,16 @@ export interface RowContext {
  * stop the matrix — the rows that needed its value report themselves blocked.
  */
 export async function check<T>(
-  rc: RowContext,
+  rec: Recorder,
+  who: Who,
   area: string,
   name: string,
-  expect: Expectation,
+  expected: Outcome,
   fn: () => Promise<T>,
   show?: (value: T) => unknown,
 ): Promise<T | undefined> {
-  const expected = expect[rc.mode];
   const t0 = performance.now();
-  let actual: Outcome = 'ok';
+  let actual: Outcome = OK;
   let error: string | undefined;
   let detail: string | undefined;
   let value: T | undefined;
@@ -125,38 +111,33 @@ export async function check<T>(
     if (show) detail = short(show(value));
   } catch (e) {
     ({ actual, error } = classify(e));
-    // Kept for the console too: the report carries text, the console the object.
-    console.warn(`[conformance] ${area} / ${name} (${rc.mode}):`, e);
   }
-  const ms = Math.round(performance.now() - t0);
-  rc.record({
+  rec.record({
     name: `${area} / ${name}`,
     area,
-    run: rc.run,
-    mode: rc.mode,
-    session: rc.session,
+    who,
     expected,
     actual,
     pass: actual === expected,
     ...(error !== undefined ? { error } : {}),
     ...(detail !== undefined ? { detail } : {}),
-    ms,
+    ms: Math.round(performance.now() - t0),
   });
-  return actual === 'ok' ? value : undefined;
+  return actual === OK ? value : undefined;
 }
 
-export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /**
- * Poll `fn` until `ok(value)` or `timeoutMs`. For reads of something another
- * node wrote: the write landed where it was made, and the reader's node gets it
- * by sync, which takes a moment. The last error or value is what fails.
+ * Poll `fn` until `ok(value)` or `timeoutMs`: for what lands a moment after the
+ * call that caused it (a membership change reaching every node, an upgrade run
+ * finishing). The last error or value is what fails.
  */
 export async function eventually<T>(
   fn: () => Promise<T>,
   ok: (v: T) => boolean,
   what: string,
-  timeoutMs = 30_000,
+  timeoutMs = 20_000,
 ): Promise<T> {
   const deadline = Date.now() + timeoutMs;
   let last: unknown;
@@ -174,6 +155,21 @@ export async function eventually<T>(
       if (lastErr) throw lastErr;
       throw new Mismatch(`${what}: still ${short(last)} after ${timeoutMs} ms`);
     }
-    await sleep(1000);
+    await sleep(250);
+  }
+}
+
+
+/**
+ * Poll `fn` until it is refused, then throw that refusal for the row to
+ * classify: for an access change that reaches every node a moment after it is
+ * made. Still allowed after `timeoutMs` is a `Mismatch`.
+ */
+export async function untilRefused(fn: () => Promise<unknown>, what: string, timeoutMs = 20_000): Promise<never> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    await fn();
+    if (Date.now() > deadline) throw new Mismatch(`${what}: still allowed after ${timeoutMs} ms`);
+    await sleep(250);
   }
 }
