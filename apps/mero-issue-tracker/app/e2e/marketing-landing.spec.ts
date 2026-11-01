@@ -184,11 +184,6 @@ test.describe('Mero Issue Tracker landing page', () => {
     await expect(page).toHaveURL(before);
   });
 
-  test('and the landing page stays put underneath it', async ({ page }) => {
-    await page.locator('button').filter({ hasText: /^Connect to node$/ }).first().click();
-    await expect(page.locator('.cal-lp-root')).toHaveAttribute('data-cal-lp-view', 'overview');
-  });
-
 
   test('offers the desktop download', async ({ page }) => {
     await expect(

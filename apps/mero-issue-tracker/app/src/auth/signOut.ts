@@ -1,30 +1,24 @@
 import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useMero } from '@calimero-network/mero-react';
+
+import { useSessionApi } from '../sessionContext';
 import { clearPersistedWorkspace } from '../hooks/workspacePersistence';
 
 /**
- * Log out: forget which workspace and repository this browser had open (and
- * the "already asked for your name" markers that go with them), then
- * let mero-react drop the session (its token store, the `mero:*` keys and any
- * delegated account), exactly as Chat and Sheets do.
- *
- * The workspace selection goes too because the next person to sign in on this
- * browser may not be a member of it. The light/dark choice stays: it belongs
- * to the browser, not the account.
+ * Forget the workspace selection, then end the session. In that order, so
+ * nothing re-enters the old workspace on the way out.
  */
 export function signOut(logout: () => void): void {
   clearPersistedWorkspace();
   logout();
 }
 
-/** `signOut`, then back to the front door. App.tsx's RequireAuth would bounce
- *  there anyway once the session is gone; going explicitly keeps the URL clean. */
+/** Sign out (the node revokes the session) and land on the front door. */
 export function useSignOut(): () => void {
-  const { logout } = useMero();
+  const { api } = useSessionApi();
   const navigate = useNavigate();
   return useCallback(() => {
-    signOut(logout);
+    signOut(() => void api.signOut());
     navigate('/', { replace: true });
-  }, [logout, navigate]);
+  }, [api, navigate]);
 }

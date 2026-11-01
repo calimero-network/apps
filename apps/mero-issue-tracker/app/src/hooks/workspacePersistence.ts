@@ -55,3 +55,12 @@ export function clearPersistedWorkspace(): void {
     }
   } catch { /* storage unavailable */ }
 }
+
+/** Fired when an invitation was redeemed into `org`: the workspace hook opens it. */
+export const JOINED_EVENT = 'issue-tracker:joined';
+
+/** Remember `org` as the active workspace and tell a mounted workspace hook. */
+export function announceJoined(org: string): void {
+  writeActiveNs(org);
+  window.dispatchEvent(new CustomEvent<string>(JOINED_EVENT, { detail: org }));
+}

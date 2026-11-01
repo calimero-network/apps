@@ -11,7 +11,6 @@
 import { FileCheck, Package, Refresh, Shield, Zap } from '@calimero-network/mero-icons';
 
 import Animation from './animation';
-import LoginPopup from './loginPopup';
 import type { LandingConfig } from './landingTypes';
 
 export const CONFIG: LandingConfig = {
@@ -125,5 +124,4 @@ export const CONFIG: LandingConfig = {
     { title: "A teammate drags one back", body: "Concurrent triage converges: the later status wins, and every other field is untouched." },
     { title: "An agent reads it", body: "The same issue is available over MCP, so a coding agent gets the repro steps as written." },
   ],
-  loginPopup: LoginPopup,
 };

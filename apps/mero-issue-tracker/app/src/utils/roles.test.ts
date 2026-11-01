@@ -37,14 +37,14 @@ import {
 
 describe('role spelling', () => {
   it('recognises an admin whatever case the node or another app wrote', () => {
-    for (const spelling of ['Admin', 'admin', 'ADMIN', '  Admin  ']) {
+    for (const spelling of ['Admin', 'admin', 'ADMIN', '  Admin  ', 'owner']) {
       expect(isAdminRole(spelling)).toBe(true);
       expect(normaliseRole(spelling)).toBe(ROLE_ADMIN);
     }
   });
 
   it('treats everything else, including absent, as an ordinary member', () => {
-    for (const spelling of ['Member', 'member', '', null, undefined, 'owner']) {
+    for (const spelling of ['Member', 'member', 'guest', '', null, undefined, 'Owner of nothing']) {
       expect(isAdminRole(spelling)).toBe(false);
       expect(normaliseRole(spelling)).toBe(ROLE_MEMBER);
     }
@@ -151,7 +151,7 @@ describe('describeCapabilities', () => {
 
   it('is empty for a mask that permits nothing this app exposes', () => {
     expect(describeCapabilities(0)).toEqual([]);
-    expect(describeCapabilities(CAP.CAN_JOIN_OPEN_SUBGROUPS)).toEqual([]);
+    expect(describeCapabilities(CAP.JOIN_OPEN_TEAMS)).toEqual([]);
   });
 });
 

@@ -7,11 +7,11 @@ import React, {
 } from "react";
 import { Outlet, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
-import { useMero } from "@calimero-network/mero-react";
 import { useToast } from "@calimero-network/mero-ui";
 import { tokens as t } from "../../theme";
 import { useWorkspace } from "../../hooks/useWorkspace";
 import { useIssues } from "../../hooks/useItems";
+import { useSignedIn } from "../../sessionContext";
 import { makeAliases } from "../../hooks/useAliases";
 import { describeError } from "../../utils/errors";
 import Shell from "../../components/Shell";
@@ -39,25 +39,16 @@ const EMPTY_FILTERS: Filters = {
  * with no name -> blocking alias gate.
  */
 export default function AppPage(): React.ReactElement | null {
-  const { contextIdentity } = useMero();
+  const { client, after } = useSignedIn();
   const ws = useWorkspace();
   const toast = useToast();
   const [searchParams] = useSearchParams();
 
-  // Two different ids, and they are NOT interchangeable since core rc.21.
-  //
-  // `currentUser` is who authorship is attributed to: the contract reports
-  // created_by/author as the ACCOUNT on the entry's owner stamp (one person,
-  // any device) and every node enforces edit/delete against it, so every
-  // "is this mine" gate must compare against the account, never the executor key.
-  const currentUser = ws.selfIdentity ?? contextIdentity ?? "";
-  // `selfMember` is the namespace-member id, which is an ACCOUNT. Member
-  // metadata - the display names behind `aliases` - is stored and keyed by it,
-  // so every name lookup must use this one. It used to be safe to resolve a
-  // name from the executor key because the two coincided; rc.21 rekeyed group
-  // members from a signing PublicKey to an AccountId and they no longer do, so
-  // resolving the executor key just returns a truncated key forever.
-  const selfMember = ws.selfIdentity ?? "";
+  // The signed-in ACCOUNT: what the contract records as `createdBy` and
+  // `author`, what member names are keyed by, and what every "is this mine"
+  // gate compares against.
+  const currentUser = ws.selfIdentity;
+  const selfMember = ws.selfIdentity;
   const myIssues = searchParams.get("assignee") === "me";
 
   const aliases = useMemo(
@@ -102,19 +93,16 @@ export default function AppPage(): React.ReactElement | null {
   );
 
   const data = useIssues({
-    contextId: ws.contextId,
-    executorPublicKey: ws.executorPublicKey,
+    client,
+    appId: ws.activeRepo,
     filters: hookFilters,
+    after,
   });
 
   // One toast per distinct problem, not one per failed read.
   //
-  // `data.error` is a fresh Error object on every failure, so this effect used
-  // to fire on each one — a burst of sync events during a join produced a burst
-  // of identical toasts. `useIssues` now withholds the transient
-  // "context not initialized yet" case entirely (see utils/contextReadiness), so
-  // that burst no longer reaches here at all; this dedupe is the second line of
-  // defence, and it also stops a genuinely repeating failure from stacking up.
+  // `data.error` is a fresh Error object on every failure; this dedupe stops a
+  // repeating failure (a burst of events, each refetch failing) from stacking up.
   //
   // Keyed on the MESSAGE rather than the object: identical text is the same
   // problem as far as anyone reading it is concerned. Cleared when the error
@@ -216,7 +204,6 @@ export default function AppPage(): React.ReactElement | null {
   const sidebar = {
     totalIssues,
     membersCount,
-    teeMode: ws.teeMode,
     currentUser,
     currentUserLabel: selfMember ? aliases.resolve(selfMember) : "",
     currentUserHasAlias: selfMember ? aliases.hasAlias(selfMember) : false,
@@ -225,8 +212,6 @@ export default function AppPage(): React.ReactElement | null {
     onSelectNamespace: ws.selectNamespace,
     onNewNamespace: () => setShowCreateNs(true),
     repos: ws.repos,
-    reposSyncing: ws.isSyncing,
-    onDismissReposSyncing: ws.dismissSyncing,
     activeRepo: ws.activeRepo,
     onSelectRepo: ws.selectRepo,
     onAddRepo: () => setShowAddRepo(true),
@@ -252,19 +237,9 @@ export default function AppPage(): React.ReactElement | null {
     </>
   );
 
-  // Still resolving something that decides WHICH workspaces exist: hold off
-  // (mirrors App.tsx's isLoading guard) rather than flash the picker.
-  //  - `resolvingCallback`: an SSO callback context whose namespace is being
-  //    looked up, right before the desktop handoff lands;
-  //  - `resolvingApplicationId`: the node has not yet said which installed
-  //    application this app is, and the namespace list is scoped by it;
-  //  - `namespacesPending`: that list has not answered yet (on an account, the
-  //    id it is scoped by may not have landed either).
-  if (
-    !ws.activeNs &&
-    (ws.resolvingCallback || ws.resolvingApplicationId || ws.namespacesPending)
-  )
-    return null;
+  // The workspace list has not answered yet: hold off rather than flash the
+  // picker.
+  if (!ws.activeNs && ws.namespacesPending) return null;
 
   // No active namespace (none yet, or a stale/invalid prior choice): never
   // silently enter one, and never fall through to the Shell either - that

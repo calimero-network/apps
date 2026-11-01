@@ -4,34 +4,25 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { tokens as t } from '../theme';
 import { APP_ROUTE, PRODUCT_NAME } from '../config';
 import AvatarGlyph from './AvatarGlyph';
-import TeeBadge from './TeeBadge';
 import { SelectMenu } from './Dropdown';
-import type { RepoEntry } from '../hooks/useWorkspace';
-import type { TeeMode } from '../utils/tee';
-import type { Namespace } from '@calimero-network/mero-react';
+import type { RepoEntry, Workspace } from '../workspaces';
 import {
   IconAllIssues, IconMyIssues, IconBoard, IconMembers, IconLogout, IconPlus, IconRepo,
 } from './icons';
 import { useSignOut } from '../auth/signOut';
-import { JoinSyncBanner } from '@calimero-network/mero-react';
 import { nodeBasename } from '@calimero-apps/node-served';
 
 export interface SidebarProps {
   totalIssues: number;
   membersCount: number;
-  /** Relay / Replica when a TEE node backs the workspace; shown as a shield. */
-  teeMode?: TeeMode | null;
   currentUser: string;
   currentUserLabel: string;
   currentUserHasAlias: boolean;
-  namespaces: Namespace[];
+  namespaces: Workspace[];
   activeNs: string | null;
   onSelectNamespace: (id: string) => void;
   onNewNamespace: () => void;
   repos: RepoEntry[];
-  /** A workspace joined this session whose repos have not arrived yet. */
-  reposSyncing?: boolean;
-  onDismissReposSyncing?: () => void;
   activeRepo: string | null;
   onSelectRepo: (id: string) => void;
   onAddRepo: () => void;
@@ -55,7 +46,6 @@ export interface SidebarProps {
 export default function Sidebar({
   totalIssues,
   membersCount,
-  teeMode = null,
   currentUser,
   currentUserLabel,
   currentUserHasAlias,
@@ -64,8 +54,6 @@ export default function Sidebar({
   onSelectNamespace,
   onNewNamespace,
   repos,
-  reposSyncing,
-  onDismissReposSyncing,
   activeRepo,
   onSelectRepo,
   onAddRepo,
@@ -139,14 +127,7 @@ export default function Sidebar({
             ><IconPlus size={12} /></button>
           </div>
           <div className="repos-list">
-            {reposSyncing ? (
-              <JoinSyncBanner
-                show
-                what="repos"
-                onDismiss={onDismissReposSyncing}
-                style={{ margin: '4px 4px 8px', fontSize: 12 }}
-              />
-            ) : repos.length === 0 ? (
+            {repos.length === 0 ? (
               <span className="repos-empty">No repos yet</span>
             ) : (
               repos.map((r) => (
@@ -170,7 +151,6 @@ export default function Sidebar({
         <div className="peer-sync">
           <span className="pulse-dot" aria-hidden="true" />
           <span>{membersCount} {membersCount === 1 ? 'peer' : 'peers'} <span className="mid">·</span> synced</span>
-          <TeeBadge mode={teeMode} compact />
         </div>
         <div className="me-row">
           <AvatarGlyph

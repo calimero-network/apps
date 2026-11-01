@@ -646,6 +646,9 @@ export const APPS = {
   },
 
   'mero-issue-tracker': {
+    // A component app (Calimero 1.0): sign-in is the app's own passkey modal,
+    // handed to the landing page as `onConnect`; there is no mero-react popup.
+    ownConnect: true,
     e2eDir: 'e2e',
     // Same light/dark key as the app shell (src/theme.ts), so the landing
     // choice carries through sign-in instead of resetting.

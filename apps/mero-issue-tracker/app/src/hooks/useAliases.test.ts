@@ -46,22 +46,13 @@ describe('resolveFromMap (the actual resolve() logic)', () => {
   });
 });
 
-// The admin API lists members in hex; the contract stamps `created_by` and
-// comment `author` with the same account in base58. Comparing raw strings
-// left every author as a key glyph and `711j…k4eX` beside a named member.
-describe('account spellings', () => {
-  const HEX = '5926f2d2a4940fa2a62edd2cd7d833897c2c1596c697ea674dd0f49b89d11334';
-  const B58 = '711jRM5BkBNcexvBDoEHuEd2ffTynNCBzRGNjfC4k4eX';
-
-  it('names a base58-stamped author from the hex member name', () => {
-    const map = buildAliasMap([{ name: 'Sandi', value: HEX }]);
-    expect(resolveFromMap(map, B58)).toBe('Sandi');
-  });
-
-  it('hasAlias matches either spelling, so the avatar uses the name', () => {
-    const aliases = makeAliases(buildAliasMap([{ name: 'Sandi', value: HEX }]), async () => {}, async () => {}, false, true);
-    expect(aliases.hasAlias(B58)).toBe(true);
-    expect(aliases.hasAlias(HEX.toUpperCase())).toBe(true);
-    expect(aliases.resolve(B58)).toBe('Sandi');
+// One spelling on Calimero 1.0: the org's member list and the contract's
+// `createdBy`/`author` (`env::caller()`) name the same account id.
+describe('account ids', () => {
+  it('names an author from the member name keyed by the same account id', () => {
+    const aliases = makeAliases(buildAliasMap([{ name: 'Sandi', value: 'acct-1' }]), async () => {}, async () => {}, false, true);
+    expect(aliases.hasAlias('acct-1')).toBe(true);
+    expect(aliases.resolve('acct-1')).toBe('Sandi');
+    expect(aliases.hasAlias('acct-2')).toBe(false);
   });
 });

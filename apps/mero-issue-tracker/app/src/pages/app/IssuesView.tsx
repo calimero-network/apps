@@ -25,7 +25,6 @@ export default function IssuesView(): React.ReactElement {
         issues={issues}
         aliases={aliases}
         query={searchQuery}
-        warmingUp={data.warmingUp}
         onOpen={(id) => navigate(`${APP_ROUTE}/issues/${id}`)}
       />
     </Page>
