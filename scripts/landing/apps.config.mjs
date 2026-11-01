@@ -60,55 +60,57 @@ import { DOCS } from './docs.config.mjs';
 export const APPS = {
 
   'mero-chess': {
-    e2eDir: 'e2e',
-    availability: 'web+desktop',
+    // A component app (calimero-app-sdk, merod local, CalimeroClient): no
+    // Playwright, so no generated landing spec. docs/COMPONENT-APPS.md.
+    e2eDir: null,
+    availability: 'web',
     overview: {
-      headline: 'Chess between two nodes. No server in the middle.',
+      headline: 'Chess with the referee in the contract. No game server.',
       comparison: {
         heading: 'Online chess, without the site in the middle',
         sub: 'The board you expect from a chess app. The difference is who holds the game, and who referees it.',
         themLabel: 'A typical online chess site',
         rows: [
-          { label: 'Where the game lives', them: 'In the site’s database', us: 'On your node and your opponent’s, nobody else’s' },
-          { label: 'Who enforces the rules', them: 'The site’s server', us: 'The contract, on both players’ nodes' },
-          { label: 'Starting a game', them: 'An account, then matchmaking', us: 'One invite link. No sign-up, no email' },
-          { label: 'Your game history', them: 'Kept as long as the site keeps it', us: 'Every game at the table, on your own node' },
-          { label: 'If the site goes away', them: 'Your games may go with it', us: 'Your node still has every move' },
+          { label: 'Where the game lives', them: 'In the site’s database', us: 'In a Calimero app on attested nodes, ordered by one log' },
+          { label: 'Who enforces the rules', them: 'The site’s server', us: 'The contract, on every move' },
+          { label: 'Starting a game', them: 'An account, then matchmaking', us: 'A passkey and one invite link. No email, no password' },
+          { label: 'Your game history', them: 'Kept as long as the site keeps it', us: 'Every game at the table, in the app’s own history' },
+          { label: 'Who can change a move', them: 'Whoever runs the database', us: 'Nobody: a move, once played, is in the log' },
         ],
       },
       closing: {
         title: 'Set up a board',
-        body: 'Connect a node, or install the desktop app that bundles one, then send your opponent the link.',
+        body: 'Sign in with a passkey, open a table and send your opponent the link.',
       },
     },
-    trust: ['No game server', 'Rules run in the contract', 'No accounts'],
+    trust: ['No game server', 'Rules run in the contract', 'No passwords'],
     explainer: [
-      'Two-player chess where the board is not hosted anywhere. A table is a Calimero context holding two seats and a list of moves, and it replicates between the two players\u2019 own nodes — so a game is a thing the two of you have, not a row in somebody else\u2019s database.',
-      'The rules live in the contract rather than in either client: legal moves, check, mate, castling, en passant, promotion, and every one of the draws. Your client asks the contract what it may play and gets a list back, which is why the board never offers a move the node would refuse — and why a modified client cannot cheat.',
+      'Two-player chess where the board is not hosted by a game server. A table is a Calimero app instance holding two seats and a list of moves, and the cluster’s log orders every move played at it.',
+      'The rules live in the contract rather than in either client: legal moves, check, mate, castling, en passant, promotion, and every one of the draws. Your client asks the contract what it may play and gets a list back, which is why the board never offers a move the contract would refuse — and why a modified client cannot cheat.',
     ],
     features: [
-      { icon: 'CloudX', title: 'No game server', body: 'A table is a context. Two nodes hold the same move list and nobody hosts a game.' },
-      { icon: 'LockCheck', title: 'The contract is the referee', body: 'Every rule is enforced inside the WASM contract, on both players\u2019 nodes. A client that asks for an illegal move is simply told no.' },
-      { icon: 'Target', title: 'Moves, never a board', body: 'State is the move list keyed by ply. Two people moving at once resolve to one move — the same one on every node.' },
-      { icon: 'ArrowUpRight', title: 'Results nobody writes down', body: 'Checkmate, stalemate and the repetition rules are derived from the moves, so the result cannot disagree with the game.' },
-      { icon: 'ExternalLink', title: 'Invite by link', body: 'One link opens the table. No sign-up, no account, no email address — and whoever opens it can play or watch.' },
+      { icon: 'CloudX', title: 'No game server', body: 'A table is an app instance. The cluster’s log holds the move list and nobody hosts a game.' },
+      { icon: 'LockCheck', title: 'The contract is the referee', body: 'Every rule is enforced inside the contract. A client that asks for an illegal move, or a move out of turn, is simply told no.' },
+      { icon: 'Target', title: 'One log, one game', body: 'Every move is a transaction the log orders, so two people moving at once cannot both take the same turn.' },
+      { icon: 'ArrowUpRight', title: 'Results the rules decide', body: 'Checkmate, stalemate and the repetition rules are worked out by the contract from the moves, so the result cannot disagree with the game.' },
+      { icon: 'ExternalLink', title: 'Invite by link', body: 'One link joins the table’s organization and opens the table. Whoever opens it can play or watch.' },
     ],
     faq: [
       {
         q: 'Can my opponent cheat with a modified client?',
-        a: 'No. Nothing about the game is decided in the browser: every move is validated by the contract running on your node as well as theirs, and a move your node rejects never becomes part of the game.',
+        a: 'No. Nothing about the game is decided in the browser: every move is validated by the contract, and a move it refuses never becomes part of the game.',
       },
       {
         q: 'What happens if we both move at the same time?',
-        a: 'Only one of you can take that ply. Moves are keyed by ply number and merge to a single winner by a rule every node applies identically, so the two boards agree — the move that lost simply never happened.',
+        a: 'Only one of you can be the side to move. The log orders the two calls, the first one plays, and the second is refused because it is no longer that player’s turn.',
       },
       {
         q: 'Is there a clock?',
-        a: 'No. Games here are correspondence-paced: the table keeps the move list and the players\u2019 presence, and there is no time control to run out of while your laptop is shut.',
+        a: 'No. Games here are correspondence-paced: the table keeps the move list and the players’ presence, and there is no time control to run out of while your laptop is shut.',
       },
       {
         q: 'Can other people watch?',
-        a: 'Yes. Anyone in the namespace can open the table; the two seats are taken but the board and the moves are visible to everyone, which is what a game of complete information should be.',
+        a: 'Yes. Anyone in the table’s organization can open it; the two seats are taken but the board and the moves are visible to everyone, which is what a game of complete information should be.',
       },
     ],
   },

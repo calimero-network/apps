@@ -97,7 +97,7 @@ Start here. These exist to be read, not shipped.
 | [mero-blocks](apps/mero-blocks) | [↗](https://mero-blocks.vercel.app/) | Minecraft-style multiplayer voxel sandbox. No game server — the world is a context: seed + block-edit diff + player presence. | `com.calimero.mero-blocks` |
 | [merraria](apps/merraria) | [↗](https://merraria.vercel.app/) | Terraria-style 2D mining sandbox — seed-generated terrain, CRDT tile diff, player presence. | `com.calimero.merraria` |
 | [battleships](apps/battleships) | [↗](https://battleships-fawn.vercel.app) | Two-player Battleships — a lobby service for matchmaking and one game service per match, with commit-reveal ship placement. | `com.calimero.battleships` |
-| [mero-chess](apps/mero-chess) | [↗](https://mero-chess.vercel.app) | Two-player chess. A table is a context: the move list replicates as CRDT state and the rules — legal moves, check, mate, the draws — run inside the contract. | `com.calimero.mero-chess` |
+| [mero-chess](apps/mero-chess) | [↗](https://mero-chess.vercel.app) | Two-player chess, a component app (Calimero 1.0). A table is an app instance: every move is a transaction ordered by its log, and the rules — legal moves, check, mate, the draws — run inside the contract. | `com.calimero.mero-chess` |
 | [mero-kombat](apps/mero-kombat) | [↗](https://mero-kombat.vercel.app) | One-on-one arcade fighter. An arena is a context: movement streams over ephemeral presence, every punch and kick is a contract transaction, and health, rounds and the winner are derived from them. | `com.calimero.mero-kombat` |
 
 ### Experiments

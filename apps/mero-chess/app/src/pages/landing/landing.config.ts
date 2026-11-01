@@ -11,74 +11,73 @@
 import { ArrowUpRight, CloudX, ExternalLink, LockCheck, Target } from '@calimero-network/mero-icons';
 
 import Animation from './animation';
-import LoginPopup from './loginPopup';
 import type { LandingConfig } from './landingTypes';
 
 export const CONFIG: LandingConfig = {
   name: "Mero Chess",
   packageId: "com.calimero.mero-chess",
-  tagline: "Two-player chess with no game server. A table is a Calimero context: the move list replicates as CRDT state and the rules — legal moves, check, mate, the draws — run inside the contract on both players' own nodes.",
+  tagline: "Two-player chess with no game server. A table is a Calimero app instance: every move is a transaction the cluster orders in one log, and the rules — legal moves, check, mate, the draws — run inside the contract.",
   dir: "mero-chess",
   markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
-  availability: "web+desktop",
+  availability: "web",
   tint: "#a78bfa",
-  trust: ["No game server", "Rules run in the contract", "No accounts"],
+  trust: ["No game server", "Rules run in the contract", "No passwords"],
   explainer: [
-    "Two-player chess where the board is not hosted anywhere. A table is a Calimero context holding two seats and a list of moves, and it replicates between the two players’ own nodes — so a game is a thing the two of you have, not a row in somebody else’s database.",
-    "The rules live in the contract rather than in either client: legal moves, check, mate, castling, en passant, promotion, and every one of the draws. Your client asks the contract what it may play and gets a list back, which is why the board never offers a move the node would refuse — and why a modified client cannot cheat.",
+    "Two-player chess where the board is not hosted by a game server. A table is a Calimero app instance holding two seats and a list of moves, and the cluster’s log orders every move played at it.",
+    "The rules live in the contract rather than in either client: legal moves, check, mate, castling, en passant, promotion, and every one of the draws. Your client asks the contract what it may play and gets a list back, which is why the board never offers a move the contract would refuse — and why a modified client cannot cheat.",
   ],
   features: [
     {
       icon: CloudX,
       title: "No game server",
-      body: "A table is a context. Two nodes hold the same move list and nobody hosts a game.",
+      body: "A table is an app instance. The cluster’s log holds the move list and nobody hosts a game.",
     },
     {
       icon: LockCheck,
       title: "The contract is the referee",
-      body: "Every rule is enforced inside the WASM contract, on both players’ nodes. A client that asks for an illegal move is simply told no.",
+      body: "Every rule is enforced inside the contract. A client that asks for an illegal move, or a move out of turn, is simply told no.",
     },
     {
       icon: Target,
-      title: "Moves, never a board",
-      body: "State is the move list keyed by ply. Two people moving at once resolve to one move — the same one on every node.",
+      title: "One log, one game",
+      body: "Every move is a transaction the log orders, so two people moving at once cannot both take the same turn.",
     },
     {
       icon: ArrowUpRight,
-      title: "Results nobody writes down",
-      body: "Checkmate, stalemate and the repetition rules are derived from the moves, so the result cannot disagree with the game.",
+      title: "Results the rules decide",
+      body: "Checkmate, stalemate and the repetition rules are worked out by the contract from the moves, so the result cannot disagree with the game.",
     },
     {
       icon: ExternalLink,
       title: "Invite by link",
-      body: "One link opens the table. No sign-up, no account, no email address — and whoever opens it can play or watch.",
+      body: "One link joins the table’s organization and opens the table. Whoever opens it can play or watch.",
     },
   ],
   overview: {
-    headline: "Chess between two nodes. No server in the middle.",
+    headline: "Chess with the referee in the contract. No game server.",
     comparison: {
       heading: "Online chess, without the site in the middle",
       sub: "The board you expect from a chess app. The difference is who holds the game, and who referees it.",
       themLabel: "A typical online chess site",
       rows: [
-        { label: "Where the game lives", them: "In the site’s database", us: "On your node and your opponent’s, nobody else’s" },
-        { label: "Who enforces the rules", them: "The site’s server", us: "The contract, on both players’ nodes" },
-        { label: "Starting a game", them: "An account, then matchmaking", us: "One invite link. No sign-up, no email" },
-        { label: "Your game history", them: "Kept as long as the site keeps it", us: "Every game at the table, on your own node" },
-        { label: "If the site goes away", them: "Your games may go with it", us: "Your node still has every move" },
+        { label: "Where the game lives", them: "In the site’s database", us: "In a Calimero app on attested nodes, ordered by one log" },
+        { label: "Who enforces the rules", them: "The site’s server", us: "The contract, on every move" },
+        { label: "Starting a game", them: "An account, then matchmaking", us: "A passkey and one invite link. No email, no password" },
+        { label: "Your game history", them: "Kept as long as the site keeps it", us: "Every game at the table, in the app’s own history" },
+        { label: "Who can change a move", them: "Whoever runs the database", us: "Nobody: a move, once played, is in the log" },
       ],
     },
-    closing: { title: "Set up a board", body: "Connect a node, or install the desktop app that bundles one, then send your opponent the link." },
+    closing: { title: "Set up a board", body: "Sign in with a passkey, open a table and send your opponent the link." },
   },
   faq: [
     {
       q: "Can my opponent cheat with a modified client?",
-      a: "No. Nothing about the game is decided in the browser: every move is validated by the contract running on your node as well as theirs, and a move your node rejects never becomes part of the game.",
+      a: "No. Nothing about the game is decided in the browser: every move is validated by the contract, and a move it refuses never becomes part of the game.",
     },
     {
       q: "What happens if we both move at the same time?",
-      a: "Only one of you can take that ply. Moves are keyed by ply number and merge to a single winner by a rule every node applies identically, so the two boards agree — the move that lost simply never happened.",
+      a: "Only one of you can be the side to move. The log orders the two calls, the first one plays, and the second is refused because it is no longer that player’s turn.",
     },
     {
       q: "Is there a clock?",
@@ -86,7 +85,7 @@ export const CONFIG: LandingConfig = {
     },
     {
       q: "Can other people watch?",
-      a: "Yes. Anyone in the namespace can open the table; the two seats are taken but the board and the moves are visible to everyone, which is what a game of complete information should be.",
+      a: "Yes. Anyone in the table’s organization can open it; the two seats are taken but the board and the moves are visible to everyone, which is what a game of complete information should be.",
     },
   ],
   animation: Animation,
@@ -95,31 +94,31 @@ export const CONFIG: LandingConfig = {
       id: "concepts",
       heading: "The words, and what they mean here",
       paragraphs: [
-        "A game of chess is a Calimero context. There is no server keeping the board: each player’s own node runs the contract, holds the move list, and replicates it to the other. The rules — legal moves, check, mate, the draws — are inside that contract, so the node you are talking to is the referee, and so is theirs.",
+        "A game of chess is a Calimero app instance. There is no game server keeping the board: the cluster’s log orders every move, and the rules — legal moves, check, mate, the draws — are inside the contract that runs each one, so the contract is the referee.",
       ],
       concepts: [
-        { term: "Namespace", def: "A club. You create one, invite the people you play with, and every table inside it is open to them without another invitation." },
-        { term: "Context", def: "A table. It holds the seats, the move list and the record of every game played at it — one board, as many games as you like." },
-        { term: "Seat", def: "White or black. The first person to claim a chair holds it; the colours swap on every rematch, the way they do across a real board." },
-        { term: "The move list", def: "The whole of the game state. Nothing stores a board: every reader replays the moves from the starting array, which is why two nodes cannot disagree about the position." },
+        { term: "Organization", def: "A club. You create one with your first table, invite the people you play with, and every table inside it is open to them without another invitation." },
+        { term: "Table", def: "One app instance. It holds the seats, the move list and the record of every game played at it — one board, as many games as you like." },
+        { term: "Seat", def: "White or black. The first person to take a chair holds it; once they have played from it, it is theirs for good. The colours swap on every rematch, the way they do across a real board." },
+        { term: "The move list", def: "Every move of every game, in order. The position is replayed from it, which is how the contract knows about repetitions." },
       ],
     },
     {
       id: "start",
       heading: "Getting started",
       steps: [
-        { title: "Connect a node", body: "Press Connect to node. The Calimero desktop app bundles one; if you run your own, enter its URL in the same popup." },
-        { title: "Open a table", body: "A new table is a context in a namespace you own. Joining someone else’s means opening their invite link." },
+        { title: "Sign in", body: "Sign in with a passkey, or create an account with a new one. There is no password and no email." },
+        { title: "Open a table", body: "New table creates an organization and a table in it. Joining someone else’s means opening their invite link." },
         { title: "Take a seat", body: "Claim white or black and give yourself a name. The game begins when both chairs are taken." },
-        { title: "Play", body: "Click a piece and then a square. The squares offered are the legal moves the contract handed your client, so the board never shows a move the node would refuse." },
+        { title: "Play", body: "Click a piece and then a square. The squares offered are the legal moves the contract handed your client, so the board never shows a move the contract would refuse." },
       ],
     },
     {
       id: "sharing",
       heading: "Playing with someone else",
       paragraphs: [
-        "Invitations are links. There is no account, no email address and no sign-up: opening the link and connecting a node is the whole of joining, and whoever opens it can take the free seat or watch.",
-        "The invitation admits someone to the namespace the table lives in, so one link is enough for every table in that namespace — a club rather than a single game.",
+        "Invitations are links, approved with your passkey when you make one. Whoever opens it signs in (or creates an account), joins, and lands at the table, where they can take the free seat or watch.",
+        "The invitation admits someone to the organization the table lives in, so one link is enough for every table in that organization — a club rather than a single game.",
       ],
     },
     {
@@ -127,35 +126,26 @@ export const CONFIG: LandingConfig = {
       heading: "What is stored, and where",
       bullets: [
         "The move list, keyed by game and ply. Each entry holds the move in UCI, its notation, who played it and when.",
-        "The two seats, each recording who claimed it and at what moment. First claim wins, and every node resolves that the same way.",
-        "Endings that a PERSON caused: a resignation, an agreed draw, a claimed one. Checkmate, stalemate, a dead position and the repetition rules are derived from the moves instead, so nothing writes them down and nothing can disagree with the board.",
+        "The two seats, each recording who holds it and since when.",
+        "Each game as it stands: how many moves, the result and how it ended, and the draw offers standing in the current position.",
         "Nothing is private here. Chess is a game of complete information, so everything in the state is meant to be seen by both players.",
-      ],
-    },
-    {
-      id: "offline",
-      heading: "Offline, and what happens when you reconnect",
-      paragraphs: [
-        "Your node holds the whole state, so the app keeps working with no network — every change is written locally and queued.",
-        "When your node reaches a peer again, the two exchange changes and merge them. Merging is CRDT-based, not last-write-wins-by-clock, so two people editing different things at the same time both keep their work. Where two people genuinely changed the same single value, the later write wins on that one value and nothing else is lost.",
       ],
     },
     {
       id: "trouble",
       heading: "When something looks wrong",
       concepts: [
-        { term: "Your move is refused", def: "The contract refuses a move that is not legal, is out of turn, or arrives in a finished game — and it says which. If the board offered the square, your client is reading a position the node has already moved past; it re-reads after every call." },
-        { term: "The other player looks offline", def: "Presence expires after thirty seconds without a call from their node. It means \"not heard from\", not \"gone\": their moves still arrive when their node reconnects." },
-        { term: "You both moved at once", def: "Only one of the two can take the ply, and every node picks the same one. The move that lost is simply not in the game — play it again if it is still legal." },
-        { term: "The invite link does nothing", def: "An invitation is tied to the namespace that minted it. Ask for a fresh one rather than reusing an old link." },
+        { term: "Your move is refused", def: "The contract refuses a move that is not legal, is out of turn, or arrives in a finished game — and it says which. If the board offered the square, your client is reading a position the table has already moved past; it re-reads after every call." },
+        { term: "The other player looks offline", def: "Presence expires after thirty seconds without a call from them. It means \"not heard from\", not \"gone\": the table waits for their move." },
+        { term: "You both moved at once", def: "Only the side to move can play, and the log orders the two calls: the first one plays and the second is refused." },
+        { term: "The invite link does nothing", def: "An invitation is redeemed once, after you sign in. Ask for a fresh one rather than reusing an old link." },
       ],
     },
   ],
   previewSteps: [
-    { title: "A board that is a context", body: "Two seats and a move list, replicated between the two players’ own nodes. Nothing in the middle, and nothing to host." },
-    { title: "The contract knows the rules", body: "Your client asks for the legal moves rather than working them out, so the squares it offers are the squares the node will accept." },
-    { title: "A move replicates", body: "Moves are keyed by ply. Two players moving in the same instant resolve to one move, the same one on both nodes." },
-    { title: "The result is derived", body: "Nobody writes down \"checkmate\": both nodes replay the same moves and reach the same verdict, which is what makes it trustworthy without a referee." },
+    { title: "A board that is an app", body: "Two seats and a move list, ordered by one log on attested nodes. Nothing to host." },
+    { title: "The contract knows the rules", body: "Your client asks for the legal moves rather than working them out, so the squares it offers are the squares the contract will accept." },
+    { title: "A move is a transaction", body: "Every move is a call the log orders. Two players cannot both take the same turn." },
+    { title: "The rules decide the result", body: "Nobody types in \"checkmate\": the contract sees it on the board the moment the mating move is played." },
   ],
-  loginPopup: LoginPopup,
 };

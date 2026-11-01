@@ -13,10 +13,12 @@
 //! construction.
 //!
 //! Depths are chosen to keep the whole file under a few seconds in a debug
-//! build, because `cargo test --workspace` runs it unoptimised in CI.
+//! build, because `cargo test` runs it unoptimised in CI. It is a unit test
+//! module of the crate (`#[cfg(test)]` in `lib.rs`): the crate is a `cdylib`
+//! only, so an integration test under `tests/` could not link these modules.
 
-use mero_chess::board::Position;
-use mero_chess::movegen::legal_moves;
+use crate::board::Position;
+use crate::movegen::legal_moves;
 
 fn perft(pos: &Position, depth: u32) -> u64 {
     if depth == 0 {

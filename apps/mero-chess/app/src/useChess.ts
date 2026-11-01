@@ -1,11 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useMero, useSubscription } from "@calimero-network/mero-react";
-import type { SubscriptionEventData } from "@calimero-network/mero-react";
-import {
-  MeroChessClient,
-  type GameSummary,
-  type TableView,
-} from "./generated/MeroChessClient";
+import type { CalimeroClient } from "@calimero-network/mero-js";
+import { chess, messageOf, type Chess, type GameSummary, type TableView } from "./chess";
 
 /** Where a player's chosen display name lives between visits. */
 const NAME_KEY = "mero-chess:name";
@@ -28,24 +23,24 @@ export function rememberName(name: string): void {
   }
 }
 
+/** Where a table lives: the signed-in client and the app instance. */
+export interface TableConn {
+  client: Pick<CalimeroClient, "call" | "view" | "events">;
+  appId: string;
+  /** Runs after every request (keeps the stored session current). */
+  after?: () => void;
+}
+
 /**
- * The generated client, bound to this session.
+ * The typed contract, bound to this table.
  *
- * Everything the UI calls goes through `MeroChessClient`, which is generated
- * from `logic/res/abi.json` and regenerated + diffed in CI: a method the
- * contract does not export is a name that does not exist on this object, and
- * `tsc -b` says so rather than the node returning a 500 at play time.
+ * Everything the UI calls goes through `chess()` (chess.ts), whose method list
+ * `chess.test.ts` checks against the committed `logic/res/abi.json`, and which
+ * converts the answers back to the shapes the screens were written against.
  */
-export function useChessClient(contextId: string): MeroChessClient | null {
-  const { mero } = useMero();
-  return useMemo(() => {
-    if (!mero) return null;
-    // No executor key is passed: the node derives the caller from the bearer
-    // token, and the generated client no longer takes one. The UI never tells
-    // the contract who it is — it reads back who the contract says it is, in
-    // `TableView.me`.
-    return new MeroChessClient(mero, contextId);
-  }, [mero, contextId]);
+export function useChessClient(conn: TableConn): Chess {
+  const { client, appId, after } = conn;
+  return useMemo(() => chess(client, appId, after), [client, appId, after]);
 }
 
 export interface ChessTable {
@@ -72,40 +67,73 @@ export interface ChessTable {
 /**
  * How often to re-read the table even when nothing arrived.
  *
- * Events are the fast path — a move shows up in well under a second — but a
- * poll is still needed for two things an event cannot carry: presence, which
- * EXPIRES (nobody emits "I went away"), and a delta that arrived while the SSE
- * stream was reconnecting. Six seconds is frequent enough that the online dots
- * are honest against the contract's thirty-second TTL and rare enough to be
- * invisible next to a chess clock.
+ * Events are the fast path, but a poll is still needed for presence, which
+ * EXPIRES (nobody emits "I went away"), and for an event stream that was
+ * reconnecting. Six seconds keeps the online dots honest against the
+ * contract's thirty-second TTL.
  */
 const POLL_MS = 6_000;
 
 /**
+ * Calls `onEvent` for each event the table emits from log index `from` on,
+ * until the returned stop. Every event is a nudge to read `table` again.
+ */
+function subscribeEvents(
+  client: TableConn["client"],
+  appId: string,
+  from: number,
+  onEvent: () => void,
+): () => void {
+  const abort = new AbortController();
+  void (async () => {
+    try {
+      for await (const _event of client.events(appId, from, abort.signal)) onEvent();
+    } catch {
+      // Stream closed (sign-out, table left, network): the poll still runs.
+    }
+  })();
+  return () => abort.abort();
+}
+
+/**
  * One table, kept current.
  *
- * Reads go through `table()` and nothing else: every field the UI shows is
- * derived by the contract from one replay of the move list, so asking for the
- * pieces and the status separately could paint a board from one moment beside a
- * result from another.
+ * Reads go through `table()` and nothing else: every field the UI shows comes
+ * from one replay of the move list, so asking for the pieces and the status
+ * separately could paint a board from one moment beside a result from another.
  */
-export function useChessTable(contextId: string): ChessTable {
-  const client = useChessClient(contextId);
+export function useChessTable(conn: TableConn): ChessTable {
+  const client = useChessClient(conn);
+  const { client: raw, appId } = conn;
   const [view, setView] = useState<TableView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // A read that is already in flight when an event arrives must not be
-  // duplicated — a burst of events (a move plus the ending it caused) would
-  // otherwise fire a read per event.
+  // Coalesced reads: at most one in flight, and one more queued behind it, so
+  // a burst of events (a move plus the ending it caused) is two reads at most.
   const reading = useRef(false);
+  const again = useRef(false);
+  // Whether the error on screen came from a read. A read that succeeds clears
+  // only that one: the refusal of a call the player made stays until they
+  // dismiss it, although every call is followed by a read.
+  const readFailed = useRef(false);
 
   const refresh = useCallback(async () => {
-    if (!client || reading.current) return;
+    if (reading.current) {
+      again.current = true;
+      return;
+    }
     reading.current = true;
     try {
-      setView(await client.table({ now: Date.now() }));
-      setError(null);
+      do {
+        again.current = false;
+        setView(await client.table());
+        if (readFailed.current) {
+          readFailed.current = false;
+          setError(null);
+        }
+      } while (again.current);
     } catch (e) {
+      readFailed.current = true;
       setError(messageOf(e));
     } finally {
       reading.current = false;
@@ -118,56 +146,38 @@ export function useChessTable(contextId: string): ChessTable {
     return () => window.clearInterval(timer);
   }, [refresh]);
 
-  // An event is a NUDGE, not the truth: the contract's own doc comment says so,
-  // and this hook takes it at its word. Nothing is read out of the payload —
-  // the arrival of anything for this context means "re-read the table", which
-  // cannot be stale in the way a payload can.
-  useSubscription(
-    useMemo(() => [contextId], [contextId]),
-    useCallback(
-      (event: SubscriptionEventData) => {
-        if ("contextId" in event && event.contextId !== contextId) return;
-        void refresh();
-      },
-      [contextId, refresh],
-    ),
-  );
+  // Live events from just after the first read: from index 0 the stream would
+  // replay every event the table has ever emitted. An event is a NUDGE, not
+  // the truth: nothing is read out of the payload.
+  const loaded = view !== null;
+  useEffect(() => {
+    if (!loaded) return;
+    return subscribeEvents(raw, appId, client.index() + 1, () => void refresh());
+  }, [raw, appId, client, refresh, loaded]);
 
   /**
    * Run one contract call, then re-read.
    *
    * There is no optimistic update anywhere in this app. A move is only a move
-   * once the contract has taken it, and showing it before then is how a board
-   * ends up displaying a position the other player never sees — on the one
-   * screen where that is least acceptable.
+   * once the contract has taken it.
    */
   const run = useCallback(
-    async (fn: () => Promise<unknown>) => {
+    async (fn: (c: Chess) => Promise<unknown>) => {
       setBusy(true);
       setError(null);
+      readFailed.current = false;
       try {
-        await fn();
+        await fn(client);
       } catch (e) {
         setError(messageOf(e));
       } finally {
         setBusy(false);
-        // Deliberately outside the catch: a refused call still moves the
-        // player's picture of the table forward (it is not your turn *because*
-        // someone else moved), so the refresh has to happen either way.
-        reading.current = false;
+        // Outside the catch: a refused call still moves the player's picture
+        // of the table forward (it is not your turn *because* someone moved).
         await refresh();
       }
     },
-    [refresh],
-  );
-
-  const call = useCallback(
-    <T,>(fn: (client: MeroChessClient) => Promise<T>) =>
-      run(async () => {
-        if (!client) throw new Error("not connected to a node");
-        return fn(client);
-      }),
-    [client, run],
+    [client, refresh],
   );
 
   return {
@@ -177,20 +187,20 @@ export function useChessTable(contextId: string): ChessTable {
     refresh,
     dismissError: useCallback(() => setError(null), []),
     sit: useCallback(
-      (seat, name) => {
+      (seat: "white" | "black", name: string) => {
         rememberName(name);
-        return call((c) => c.sit({ seat, name, now: Date.now() }));
+        return run((c) => c.sit(seat, name));
       },
-      [call],
+      [run],
     ),
-    stand: useCallback(() => call((c) => c.stand({ now: Date.now() })), [call]),
-    play: useCallback((uci: string) => call((c) => c.play({ uci, now: Date.now() })), [call]),
-    resign: useCallback(() => call((c) => c.resign({ now: Date.now() })), [call]),
-    offerDraw: useCallback(() => call((c) => c.offerDraw({ now: Date.now() })), [call]),
-    acceptDraw: useCallback(() => call((c) => c.acceptDraw({ now: Date.now() })), [call]),
-    declineDraw: useCallback(() => call((c) => c.declineDraw({ now: Date.now() })), [call]),
-    claimDraw: useCallback(() => call((c) => c.claimDraw({ now: Date.now() })), [call]),
-    rematch: useCallback(() => call((c) => c.rematch({ now: Date.now() })), [call]),
+    stand: useCallback(() => run((c) => c.stand()), [run]),
+    play: useCallback((uci: string) => run((c) => c.play(uci)), [run]),
+    resign: useCallback(() => run((c) => c.resign()), [run]),
+    offerDraw: useCallback(() => run((c) => c.offerDraw()), [run]),
+    acceptDraw: useCallback(() => run((c) => c.acceptDraw()), [run]),
+    declineDraw: useCallback(() => run((c) => c.declineDraw()), [run]),
+    claimDraw: useCallback(() => run((c) => c.claimDraw()), [run]),
+    rematch: useCallback(() => run((c) => c.rematch()), [run]),
   };
 }
 
@@ -198,17 +208,13 @@ export function useChessTable(contextId: string): ChessTable {
  * Every game this table has played.
  *
  * Read separately from `table()`, and only when the table says the answer could
- * have changed — a finished game or a new one. The move list a player is
- * watching updates every few seconds; the record of finished games changes a
- * handful of times an evening, and polling it at the same rate would double
- * this app's RPC traffic to re-read a list that almost never moves.
+ * have changed: a finished game or a new one.
  */
-export function usePastGames(contextId: string, signature: string): GameSummary[] {
-  const client = useChessClient(contextId);
+export function usePastGames(conn: TableConn, signature: string): GameSummary[] {
+  const client = useChessClient(conn);
   const [games, setGames] = useState<GameSummary[]>([]);
 
   useEffect(() => {
-    if (!client) return;
     let live = true;
     void client
       .history()
@@ -216,47 +222,31 @@ export function usePastGames(contextId: string, signature: string): GameSummary[
         if (live) setGames(rows);
       })
       .catch(() => {
-        // The record is a nicety next to the board. A node that cannot answer
-        // this still plays chess, and the error that matters — the one from the
-        // player's own call — is already on screen.
+        // The record is a nicety next to the board.
       });
     return () => {
       live = false;
     };
-    // `signature` is the point: it is what the caller derived from the table,
-    // so this re-reads when a game ENDS or a rematch starts and at no other
-    // time.
+    // `signature` is the point: it re-reads when a game ENDS or a rematch
+    // starts and at no other time.
   }, [client, signature]);
 
   return games;
 }
 
 /**
- * Announce this node at the table, so a spectator is visible and a player's
+ * Announce this player at the table, so a spectator is visible and a player's
  * presence dot is honest before they have done anything.
- *
- * Separate from `useChessTable` because it is a WRITE, and a hook that writes
- * on mount has to be mounted exactly where that is wanted — once, on the table
- * page — rather than wherever the table happens to be read.
  */
-export function useAnnounce(contextId: string, name: string): void {
-  const client = useChessClient(contextId);
+export function useAnnounce(conn: TableConn, name: string): void {
+  const client = useChessClient(conn);
   const announced = useRef<string | null>(null);
   useEffect(() => {
-    if (!client) return;
-    const key = `${contextId}:${name}`;
+    const key = `${conn.appId}:${name}`;
     if (announced.current === key) return;
     announced.current = key;
-    void client.join({ name: name || "Guest", now: Date.now() }).catch(() => {
-      // Presence is a nicety. A node that refuses this — no identity in the
-      // context yet, say — still plays chess perfectly well.
+    void client.join(name || "Guest").catch(() => {
+      // Presence is a nicety: a table that refuses it still plays chess.
     });
-  }, [client, contextId, name]);
-}
-
-/** A contract refusal is a sentence; anything else gets one. */
-function messageOf(e: unknown): string {
-  if (e instanceof Error) return e.message;
-  if (typeof e === "string") return e;
-  return "Something went wrong talking to the node.";
+  }, [client, conn.appId, name]);
 }

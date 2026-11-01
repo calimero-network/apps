@@ -9,9 +9,8 @@
     "index-check. Editing the generated copy is not an option: `pnpm landing:check`",
     "fails CI the moment it drifts.",
     "",
-    "The code this app actually owns keeps the check: src/utils and src/generated",
-    "are also compiled by tsconfig.test.json, which inherits the flag from",
-    "tsconfig.base.json."
+    "The test project (tsconfig.test.json) compiles the app code too, with the",
+    "same exception, since App.test.tsx renders the whole app."
   ],
   "extends": "../../../tsconfig.base.json",
   "compilerOptions": {

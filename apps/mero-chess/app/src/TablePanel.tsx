@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { GameSummary, TableView } from "./generated/MeroChessClient";
+import type { GameSummary, TableView } from "./chess";
 import { Piece } from "./pieces";
 import { claimLabel, movePairs, shortId, statusLine, type PieceColor } from "./utils/board";
 

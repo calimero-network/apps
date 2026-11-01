@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   BrowserRouter,
   Navigate,
@@ -7,87 +7,189 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
-import {
-  ConnectButton,
-  InvitationDialog,
-  InvitationGate,
-  useMero,
-} from "@calimero-network/mero-react";
-import { ContextPicker } from "./ContextPicker";
-import { TablePage } from "./TablePage";
-import { readInvitation, useJoinFromInvitation } from "./useJoinFromInvitation";
-import LandingPage from "./pages/landing/LandingPage";
+import { CalimeroError } from "@calimero-network/mero-js";
+import { appSource, type KeyValueStorage } from "@calimero-apps/connect";
 import { nodeBasename } from "@calimero-apps/node-served";
+
+import { PACKAGE, messageOf } from "./chess";
+import { Lobby } from "./Lobby";
+import LandingPage from "./pages/landing/LandingPage";
+import { SessionProvider } from "./SessionProvider";
+import {
+  defaultDeps,
+  describeTarget,
+  useSessionApi,
+  type SessionApi,
+  type SessionDeps,
+} from "./session";
+import { TablePage, type OpenTable } from "./TablePage";
+import { dropInvite, pendingInvite, selectionKey } from "./tables";
+import { shortAccount } from "./useSeatNames";
 
 const basename = () => nodeBasename(new URL(window.location.href), "/");
 
 /** Every path the shared landing page serves. See src/pages/landing. */
 const LANDING_PATHS = ["/", "/docs", "/preview"];
 
-/**
- * The landing page, told who is looking at it.
- *
- * ⚠️ `useMero()` lives HERE, not in `LandingPage`. That component is generated
- * from a template shared by the whole fleet, and some apps render it with no
- * `MeroProvider` above them — the hook would throw for those. So the app, which
- * knows it has a provider, reads the session and hands the answer down.
- */
+/** The landing page, told who is looking at it. */
 function AppLandingPage() {
-  const { isAuthenticated } = useMero();
+  const { session } = useSessionApi();
   const navigate = useNavigate();
   return (
     <LandingPage
-      isAuthenticated={isAuthenticated}
+      isAuthenticated={session.status === "signed-in"}
       onOpenApp={() => navigate("/play")}
+      // Sign-in is a passkey on the play page: there is no login popup.
+      onConnect={() => navigate("/play")}
     />
   );
 }
 
 /**
- * An authenticated visitor has no business on the marketing page.
- *
- * ⚠️ THIS IS THE STEP THAT CARRIES YOU INTO THE APP. The SSO callback returns
- * to wherever login started — `connectToNode` uses `window.location.href` as
- * the callback URL — which for a visitor who pressed Connect on the landing
- * page is `/`. Without this guard the tokens land, `isAuthenticated` flips
- * true, and the router renders the landing page again: you log in successfully
- * and end up exactly where you started.
+ * A signed-in visitor has no business on the marketing page: `/` sends them
+ * into the app. Asking for the landing page ON PURPOSE (the logo, which sets
+ * router state `fromApp`) is let through.
  */
 function RedirectIfAuthed({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isLoading } = useMero();
+  const { session } = useSessionApi();
   const location = useLocation();
-  // Asking for the landing page ON PURPOSE — the in-app link back to it — is
-  // not the case this guard exists for, so it is let through.
-  //
-  // ⚠️ ROUTER STATE, deliberately, not a query parameter. State lives in the
-  // history entry and never survives a fresh document load, so the SSO callback
-  // — which arrives as a cold navigation to `/` — cannot carry it even if the
-  // URL it returns to was captured from a page that had it.
-  const deliberate =
-    (location.state as { fromApp?: boolean } | null)?.fromApp === true;
-  if (isLoading) return null; // the auth probe is still in flight
-  if (isAuthenticated && !deliberate) return <Navigate to="/play" replace />;
+  const deliberate = (location.state as { fromApp?: boolean } | null)?.fromApp === true;
+  if (session.status === "connecting") return null;
+  if (session.status === "signed-in" && !deliberate) return <Navigate to="/play" replace />;
   return <>{children}</>;
 }
 
-/**
- * The app proper: connect, pick a table, play.
- *
- * The three states are exactly the three things that can be missing — a
- * session, a context, and then nothing.
- */
-function PlayPage({ joinedContextId }: { joinedContextId: string | null }) {
-  const {
-    isAuthenticated,
-    isLoading,
-    applicationId,
-    contextId: storedContextId,
-  } = useMero();
-  // A table an invitation just joined wins over the stored one: it is opened
-  // in place (see `AppRoutes`), and is the stored one too from the next load.
-  const contextId = joinedContextId ?? storedContextId;
+function readSelection(storage: KeyValueStorage, key: string): OpenTable | null {
+  try {
+    const raw = storage.getItem(key);
+    const parsed: unknown = raw ? JSON.parse(raw) : null;
+    if (parsed && typeof parsed === "object" && typeof (parsed as OpenTable).appId === "string") {
+      return parsed as OpenTable;
+    }
+  } catch {
+    /* nothing usable stored */
+  }
+  return null;
+}
 
-  if (isLoading) {
+/** Passkey sign-in, or a new account with a new passkey. */
+function ConnectCard({ api, where }: { api: SessionApi; where: string }) {
+  const [name, setName] = useState("");
+  return (
+    <section className="connect">
+      <div className="connect-card">
+        <img className="connect-mark" src={`${basename()}favicon.svg`} alt="" />
+        <h1>Sign in to play</h1>
+        <p className="lede">
+          Mero Chess plays through a Calimero cluster ({where}): every move is a transaction its
+          log orders, refereed by the contract. Accounts are passkeys: nothing to remember, nothing
+          to leak.
+        </p>
+        <div className="row center">
+          <button disabled={api.busy} onClick={() => void api.signIn()}>
+            Sign in with a passkey
+          </button>
+        </div>
+        <form
+          className="row center"
+          style={{ marginTop: 14 }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (name.trim()) void api.signUp(name.trim());
+          }}
+        >
+          <input placeholder="your name" aria-label="name" value={name} onChange={(e) => setName(e.target.value)} />
+          <button className="ghost" type="submit" disabled={api.busy || !name.trim()}>
+            Create an account
+          </button>
+        </form>
+        {api.error && <pre className="err">{api.error}</pre>}
+        <ul className="connect-points">
+          <li>No game server</li>
+          <li>Rules run in the contract</li>
+          <li>No passwords</li>
+        </ul>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * The app proper: sign in, pick a table, play.
+ *
+ * The states are exactly the things that can be missing: a cluster, a
+ * session, a table, and then nothing.
+ */
+function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDeps }) {
+  const api = useSessionApi();
+  const { session, store } = api;
+  const source = useMemo(() => appSource(deps.env, PACKAGE), [deps.env]);
+  const [opened, setOpened] = useState<OpenTable | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [lobbyKey, setLobbyKey] = useState(0);
+
+  const client = session.status === "signed-in" ? session.client : null;
+  const key = session.status === "signed-in" ? selectionKey(session.target, session.accountId) : null;
+  const after = useCallback(() => {
+    if (client) store?.sync(client);
+  }, [client, store]);
+
+  // The table opened last time, on this target, by this account.
+  useEffect(() => {
+    setOpened(key ? readSelection(storage, key) : null);
+  }, [key, storage]);
+
+  const open = useCallback(
+    (table: OpenTable | null) => {
+      setOpened(table);
+      if (!key) return;
+      try {
+        if (table) storage.setItem(key, JSON.stringify(table));
+        else storage.removeItem(key);
+      } catch {
+        /* remembered for this page only */
+      }
+    },
+    [key, storage],
+  );
+
+  // An invitation link opened before signing in is redeemed once a session
+  // exists, and the table it names is opened.
+  useEffect(() => {
+    if (!client) return;
+    const invite = pendingInvite(storage);
+    if (!invite) return;
+    let live = true;
+    client
+      .redeemInvite(invite.token)
+      .then(async () => {
+        dropInvite(storage);
+        if (!live) return;
+        setLobbyKey((k) => k + 1);
+        const table = invite.table
+          ? (await client.listApps({}).catch(() => [])).find((a) => a.appId === invite.table)
+          : undefined;
+        if (!live) return;
+        if (table) {
+          open({ appId: table.appId, name: table.name, org: table.org });
+          setNotice(null);
+        } else {
+          setNotice("Invitation accepted: the table is in your list.");
+        }
+      })
+      .catch((e: unknown) => {
+        // A refusal (used, expired, revoked) can never succeed: drop it.
+        // Anything else (the cluster unreachable) is kept for the next load.
+        if (e instanceof CalimeroError && e.status < 500) dropInvite(storage);
+        if (live) setNotice(`The invitation could not be accepted: ${messageOf(e)}`);
+      })
+      .finally(after);
+    return () => {
+      live = false;
+    };
+  }, [client, storage, after, open]);
+
+  if (session.status === "connecting") {
     return (
       <div className="loading-state">
         <span className="spinner" aria-hidden="true" />
@@ -96,53 +198,50 @@ function PlayPage({ joinedContextId }: { joinedContextId: string | null }) {
     );
   }
 
-  if (!isAuthenticated) {
+  if (session.status === "unconfigured") {
     return (
       <section className="connect">
         <div className="connect-card">
-          <img className="connect-mark" src={`${basename()}favicon.svg`} alt="" />
-          <h1>Connect a node</h1>
-          <p className="lede">
-            Mero Chess plays through your own Calimero node. The login modal
-            finds one on the usual local ports, and accepts a URL directly.
-          </p>
-          <ConnectButton />
-          <ul className="connect-points">
-            <li>No game server</li>
-            <li>Rules run in the contract</li>
-            <li>No accounts</li>
-          </ul>
+          <h1>Cannot connect</h1>
+          <pre className="err">{session.message}</pre>
         </div>
       </section>
     );
   }
 
-  if (!contextId) {
-    return (
-      <ContextPicker applicationId={applicationId}>
-        {/* An invitation reaches this app only by its link being opened, so
-            there is nothing to paste: this says where one comes from, and the
-            invitation dialog asks once a link has been opened. */}
-        <div className="card join-card">
-          <div className="card-head">
-            <h2>Join with an invitation</h2>
-          </div>
-          <p className="hint">
-            Open an invitation link someone sent you. It opens this app and asks
-            before joining.
-          </p>
-        </div>
-      </ContextPicker>
-    );
+  if (session.status === "signed-out") {
+    return <ConnectCard api={api} where={describeTarget(session.target)} />;
   }
 
-  // Keyed, so joining another table starts from a fresh read rather than
-  // counting the previous table's view as the joined one's.
-  return <TablePage key={contextId} contextId={contextId} />;
+  return (
+    <>
+      {notice && (
+        <div className="card alert" role="status">
+          <p className="empty">{notice}</p>
+          <button className="ghost small" onClick={() => setNotice(null)}>
+            Dismiss
+          </button>
+        </div>
+      )}
+      {opened ? (
+        // Keyed, so opening another table starts from a fresh read.
+        <TablePage
+          key={opened.appId}
+          client={session.client}
+          table={opened}
+          after={after}
+          passkey={deps.passkey}
+          onLeave={() => open(null)}
+        />
+      ) : (
+        <Lobby key={lobbyKey} client={session.client} source={source} onOpen={open} after={after} />
+      )}
+    </>
+  );
 }
 
-function AppShell({ joinedContextId }: { joinedContextId: string | null }) {
-  const { isAuthenticated, nodeUrl, logout } = useMero();
+function AppShell({ children }: { children: ReactNode }) {
+  const { session, signOut } = useSessionApi();
   const navigate = useNavigate();
   return (
     <div className="shell">
@@ -152,114 +251,77 @@ function AppShell({ joinedContextId }: { joinedContextId: string | null }) {
             type="button"
             className="brand"
             // `state.fromApp` is what lets the logo reach the marketing page
-            // without `RedirectIfAuthed` bouncing a signed-in player straight
-            // back. See the guard for why this is router state and not a query.
+            // without `RedirectIfAuthed` bouncing a signed-in player back.
             onClick={() => navigate("/", { state: { fromApp: true } })}
           >
             <img src={`${basename()}favicon.svg`} alt="" width={28} height={28} />
             <span>Mero Chess</span>
           </button>
-          {isAuthenticated && (
+          {session.status === "signed-in" && (
             <div className="session">
-              <span className="node-pill" title={nodeUrl ?? ""}>
+              <span className="node-pill" title={`${describeTarget(session.target)} · ${session.accountId}`}>
                 <span className="presence online" aria-hidden="true" />
-                <span className="mono">{nodeUrl ?? ""}</span>
+                <span className="mono">
+                  {describeTarget(session.target)} · {shortAccount(session.accountId)}
+                </span>
               </span>
-              <button className="ghost small" onClick={logout}>
+              <button className="ghost small" onClick={() => void signOut()}>
                 Log out
               </button>
             </div>
           )}
         </div>
       </header>
-      <main className="wrap">
-        <PlayPage joinedContextId={joinedContextId} />
-      </main>
+      <main className="wrap">{children}</main>
     </div>
   );
 }
 
-/** `head…tail`, so two ids can be told apart without the full 44 characters. */
-function shortId(id: string) {
-  return id.length > 16 ? `${id.slice(0, 8)}…${id.slice(-6)}` : id;
-}
-
-export function App() {
-  return (
-    <BrowserRouter basename={basename()}>
-      <AppRoutes />
-    </BrowserRouter>
+export function App({
+  deps = defaultDeps,
+  storage = globalThis.localStorage,
+}: {
+  deps?: SessionDeps;
+  storage?: KeyValueStorage;
+}) {
+  // Memoised: a new object every render would reconnect every render.
+  const sessionDeps = useMemo(
+    () => (storage === deps.storage || !storage ? deps : { ...deps, storage }),
+    [deps, storage],
   );
-}
-
-function AppRoutes() {
-  // Above the routes, unconditionally: an invitation captured before login has
-  // to be offered as soon as the session exists, and a link can be opened on
-  // any page — the landing page, the docs, or mid-game.
-  //
-  // The joined table is opened in place, not by storing it and reloading as
-  // the picker does: a reload would take the invitation dialog down while it
-  // is still waiting for the table to arrive.
-  const [joinedContextId, setJoinedContextId] = useState<string | null>(null);
-  const join = useJoinFromInvitation(setJoinedContextId);
-  const invited = join.parsed;
-  const navigate = useNavigate();
-  const { pathname } = useLocation();
-  // A join lands on the play page, so an invitation that surfaces anywhere
-  // else takes the player there, where the table fills in behind the dialog.
-  const pending = join.state.stage !== "idle";
-  useEffect(() => {
-    if (pending && pathname !== "/play") navigate("/play");
-  }, [pending, pathname, navigate]);
-
   return (
-    <>
-      {/* Logged out with a link opened: "you're invited" and the login, not the landing page. */}
-      <InvitationGate parse={readInvitation} noun="table" appName="Mero Chess" />
-      {/* Above the routes, so a link opened mid-game is asked about too. It
-          stays on "Syncing…" until `TablePage` has read the joined table. The
-          ids are shown because following a link must not act on the player's
-          behalf: joining binds their identity to a namespace someone else
-          chose and switches the table they are at. */}
-      <InvitationDialog
-        redemption={join}
-        noun="table"
-        appName="Mero Chess"
-        detail={
-          invited
-            ? `Joining adds this node to namespace ${shortId(invited.namespaceId)} and opens its table ${shortId(invited.contextId)}.`
-            : undefined
-        }
-      />
-      <Routes>
-        {/* The landing page is three pages: `/`, `/docs` and `/preview`. They
-              are real URLs so they can be shared and opened cold, which needs a
-              route here — otherwise the catch-all below swallows the deep link
-              before the page ever renders. */}
-        {LANDING_PATHS.map((path) => (
-          <Route
-            key={path}
-            path={path}
-            // ⚠️ Only `/` bounces a signed-in visitor into the app. `/docs` and
-            // `/preview` are reference pages, and somebody already signed in is
-            // exactly the person most likely to want to read them.
-            element={
-              path === "/" ? (
-                <RedirectIfAuthed>
+    <SessionProvider deps={sessionDeps}>
+      <BrowserRouter basename={basename()}>
+        <Routes>
+          {/* The landing page is three pages: `/`, `/docs` and `/preview`. They
+              are real URLs so they can be shared and opened cold. */}
+          {LANDING_PATHS.map((path) => (
+            <Route
+              key={path}
+              path={path}
+              // Only `/` bounces a signed-in visitor into the app.
+              element={
+                path === "/" ? (
+                  <RedirectIfAuthed>
+                    <AppLandingPage />
+                  </RedirectIfAuthed>
+                ) : (
                   <AppLandingPage />
-                </RedirectIfAuthed>
-              ) : (
-                <AppLandingPage />
-              )
+                )
+              }
+            />
+          ))}
+          <Route
+            path="/play"
+            element={
+              <AppShell>
+                <PlayPage storage={storage} deps={sessionDeps} />
+              </AppShell>
             }
           />
-        ))}
-        <Route
-          path="/play"
-          element={<AppShell joinedContextId={joinedContextId} />}
-        />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </SessionProvider>
   );
 }
