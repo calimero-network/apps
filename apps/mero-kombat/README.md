@@ -27,7 +27,7 @@ apps/mero-kombat/
 │   ├── src/kombat.ts        the contract's methods, typed (tested against res/abi.json)
 │   ├── src/presence.ts      movement over the node's presence channel
 │   └── scripts/             icon generator
-└── mobile/                  native iOS / Android shells around the same engine (still v1: see below)
+└── mobile/                  native iOS / Android shells around the same engine (moved in #701: see below)
 ```
 
 See [docs/COMPONENT-APPS.md](../../docs/COMPONENT-APPS.md) for how component
@@ -156,14 +156,13 @@ such record yet). The game engine (`src/game`) is unchanged.
 
 ## Mobile
 
-`mobile/web` (the game page the native apps load) is the web engine and is
-unchanged; it still builds. The native **iOS and Android** apps are **not
-ported**: they reach the contract through the v1 Swift and Kotlin SDKs
-(`MeroKit`, `mero-core`: relay sessions, device-signed warrants, contexts and
-namespace invitations) and a client generated from the v1 ABI. Neither SDK
-speaks the 1.0 API (passkeys, app instances, orgs, presence) yet, so they keep
-working against a v1 deployment of the app until those SDKs do; then they move
-the way the web frontend did (method and field names from the table above).
+The native **iOS and Android** apps (`mobile/`, the same engine in a WebView)
+move to Calimero 1.0 in their own PR, #701, which depends on this one and
+merges right after it. They call this contract's component ABI: the same
+methods, camelCase argument and result names, `u64`s as decimal strings and
+the typed error codes in the table above. Until #701 lands, `mobile/` is
+unchanged here; `mobile/web` (the game page) builds against the unchanged
+engine.
 
 ## Production
 
