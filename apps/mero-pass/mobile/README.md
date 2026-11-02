@@ -8,19 +8,19 @@ byte-compatible with the web's crypto.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen; logic in the local `PassCore` package | swift-sdk `6c5f116` (head of swift-sdk#85, `feat/calimero-1.0`, Calimero 1.0; moves to its merge commit once it lands) |
-| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | kotlin-sdk `ea8ded7` (`main` merge commit of kotlin-sdk#67), composite build |
+| iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen; logic in the local `PassCore` package | swift-sdk `37c09f3` (head of swift-sdk#85, `feat/calimero-1.0`) |
+| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | kotlin-sdk `61b65e9` (head of kotlin-sdk#68, `feat/calimero-1.0`), composite build |
 
-The SDK pins are the `main` merge commits of those app-session PRs. To bump them, change
-`revision:` in `ios/project.yml` and `ios/PassCore/Package.swift` (keep the two identical), and
-`android/kotlin-sdk.ref`.
+Both pins are the heads of the SDKs' Calimero 1.0 PRs and **move to their merge commits once those
+land**. To bump them, change `revision:` in `ios/project.yml`, `ios/PassCore/Package.swift` and
+`ios/PassCore/Package.resolved` (keep them identical), and `android/kotlin-sdk.ref`.
 
 ## How the apps reach Calimero
 
-**iOS runs on Calimero 1.0.** The app talks to a node of a Calimero Cloud cluster over the sealed
-channel (`calimero/sealed-http/v2`, after the node's TDX attestation is verified) and signs in with
-a passkey; it runs no node. `MeroAppSession` builds the SDK's `CloudAppBackend`, and the view
-models keep their `MeroAppBackend` calls, each of which maps one to one:
+**Both apps run on Calimero 1.0.** They talk to a node of a Calimero Cloud cluster over the sealed
+channel (`calimero/sealed-http/v2`, after the node's TDX attestation is verified) and sign in with a
+passkey; they run no node. The session builds the SDK's `CalimeroAppBackend`, and the view models
+keep their `MeroAppBackend` calls, each of which maps one to one:
 
 | The app | `MeroAppBackend` | Calimero 1.0 |
 | --- | --- | --- |
@@ -29,22 +29,25 @@ models keep their `MeroAppBackend` calls, each of which maps one to one:
 | vault's contract | context | app instance (`/apps/{app}/views`, `/intents`, `/events`) |
 | invitation | `OrgInvitation` | org invite token, redeemed at `/invites/{token}/redeem` |
 
-Sign-in (`ios/Sources/App/CloudAccess.swift`, the same file in every ported app):
+Sign-in (`ios/Sources/App/CloudAccess.swift`, `android/.../ui/CloudAccess.kt`, the same screens):
 
-- **Calimero Cloud:** a node URL of your cluster (from cloud.calimero.network; `MeroNodeURL` in
-  `ios/project.yml` prefills it), then *Sign in with passkey* or *Create an account*. The device's
-  passkey belongs to the cluster's relying party: add the `webcredentials:<rp-id>` associated
-  domain to the app for a real cluster.
-- **Development node:** a `merod local` node (`MeroDevNodeURL`, `http://localhost:2501` by
-  default), mock attestation allowed (`allowMock`), with a software passkey the SDK keeps for it.
-- **Approvals** (Security → Account): node releases and app upgrades waiting for you, per org and
-  for your own apps. *Review* opens the node's consent page in the system browser, which returns
-  to `mero-pass://consent`. The app's own session cannot approve anything.
+- **Calimero Cloud:** your cluster by name (`eu-shared-1`, its nodes read from the Calimero Cloud
+  directory) or by a node's URL (`MeroNodeURL` on iOS, `-PmeroNodeUrl` on Android prefills it),
+  then *Sign in with passkey* or *Create an account*. The device's passkey belongs to the
+  cluster's relying party: a real cluster needs the `webcredentials:<rp-id>` associated domain on
+  iOS and the RP's Digital Asset Links on Android.
+- **Development node:** a `merod local` node (`http://localhost:2501` on iOS,
+  `http://10.0.2.2:2501` from the Android emulator), mock attestation allowed, with a software
+  passkey kept on the device for it.
+- **Approvals** (Security → Account): node releases and app upgrades waiting for you, per team and
+  for your own apps. *Review* shows the node's confirmation code first, then opens the node's
+  consent page in the system browser (a Custom Tab on Android), which returns to
+  `mero-pass://consent`. The app's own session cannot approve anything.
+- Member changes and invites are passkey step-ups: iOS hands the session's passkey to the backend;
+  Android sets `MeroAppSession.passkey` from the Activity on screen.
 
-**Android still runs on 0.x** (delegated execution through the account's relay, wallet sign-in);
-its port follows the kotlin-sdk's.
-
-A vault's app instance is created with `init(name)`, as on the web. Live updates come from
+A vault's app instance is created with no init arguments and named with `renameVault` right
+after, as on the web. Live updates come from
 `MeroAppBackend.events(contextId)`, with a 5-second poll when the stream is not available and
 while the phone waits for a vault key. Device approvals and key rotation inside a vault are the
 vault contract's own calls, not the node's consent page, so they work the same on both platforms.
@@ -145,9 +148,10 @@ all 8 kinds (list, filter by kind and tag, search, detail, reveal, copy, TOTP, s
 edit with field-level updates, previous values and restore, trash, restore, delete forever),
 share links, password health (weak, reused, old), activity, members and roles, the default role,
 invitation links (`https://links.calimero.network/com.calimero.mero-pass/join?invitation=…` and
-`calimero://…`). On iOS the payload is the SDK's 1.0 `OrgInvitation` JSON (`{"invitation": "inv_…",
-"namespaceId", "name"?, "contextId"?}`) plus `kind`, `vaultId` and `vaultName`; a pre-1.0 signed
-invitation is refused. Android and the web app still write the 0.x payload until their ports.
+`calimero://…`). The payload is the SDK's 1.0 `OrgInvitation` JSON (`{"invitation": "inv_…",
+"namespaceId", "name"?, "contextId"?}`) plus `kind`, `vaultId` and `vaultName`; the web app's
+`…?invite=inv_…` links (and a bare `inv_…` token) open too, as a team invite whose team the node
+names. A pre-1.0 signed invitation is refused.
 
 Left out, and why:
 
@@ -184,25 +188,30 @@ AutoFill is the biggest win for a phone and is deliberately not in this PR. What
   domain / package; `Dataset`s built from logins whose host matches, unlocked through an
   authentication `IntentSender` that runs `BiometricPrompt`; Digital Asset Links checks for apps;
   and `SaveInfo` to offer saving a new login into a chosen vault.
-- **Both**: a background-safe way to read vaults without the UI (the relay session and device
+- **Both**: a background-safe way to read vaults without the UI (the session and device
   key must be reachable from the extension/service), a decision on what may be cached at rest
   for speed (only the encrypted records plus a sealed index), and tests for domain matching.
 
-## Generated contract client
+## Contract client
 
-The contract calls are generated, never hand-written:
 `ios/PassCore/Sources/PassGenerated/PassClient.swift` and
-`android/app/src/main/kotlin/network/calimero/pass/generated/PassClient.kt`, from
-`../logic/res/abi.json` with mero-devtools-js's abi-codegen. Regenerate both after a contract
-change:
+`android/app/src/main/kotlin/network/calimero/pass/generated/PassClient.kt` are kept by hand
+against the component ABI (`../logic/res/abi.json`), in step with the web app's
+`app/src/lib/meroPass.ts` and `vaultApi.ts`:
 
-```sh
-ABI_CODEGEN=/path/to/abi-codegen/dist/cli.js ./scripts/regenerate-client.sh
-```
+- methods, arguments and answer fields are camelCase (`addSecret`, `publicKey`, `createdAt`);
+- every u64 in an answer (`addedAt`, `createdAt`, `updatedAt`, `trashedAt`, `replacedAt`,
+  `timestamp`) is a decimal string, read back into a number (`PassWireDecoding`);
+- `updateSecret`'s `name`/`tags` go out as explicit `null` when unchanged; `getSecret` answers
+  `null` for an unknown id; `init` takes no arguments;
+- a refusal is `422 APP_ERROR {code: Forbidden|NotFound|Invalid|Conflict, fields: {message}}`;
+  `PassErrorText` rewords it (and the node's own errors) in plain words.
 
-Each generated file declares its own `ContextContractCalling`; `PassTransport` (both platforms)
-adapts the SDK's `contract.bound(contextId)` to it. On iOS the generated client is its own module
-(`PassGenerated`) so its protocol does not shadow MeroKit's.
+`WireTests` (Swift) / `WireTest` (Kotlin) pin the names and the wire shapes. The v1 abi-codegen does
+not read the component ABI, so `scripts/regenerate-client.sh` refuses to run. Each client declares
+its own `ContextContractCalling`; `PassTransport` (both platforms) adapts the SDK's
+`contract.bound(contextId)` to it. On iOS the client is its own module (`PassGenerated`) so its
+protocol does not shadow MeroKit's.
 
 ## Build and test
 
@@ -227,11 +236,13 @@ in-memory vault, and mirror each other test for test.
 
 ## Configuration
 
-- **iOS (1.0)**: `MeroNodeURL` (a node of your Cloud cluster; empty: the sign-in screen asks) and
-  `MeroDevNodeURL` (the development node it offers) in `project.yml`; the node's consent page
-  returns to `mero-pass://consent` (`MeroPassCallbackScheme`).
-- **Android (0.x)**: sign-in returns to `mero-pass://enrol` (`meroEnrolCallback` in
-  `gradle.properties`); `-PmeroCloudUrl=… -PmeroWalletUrl=… -PmeroRegistryUrl=…`.
+- **iOS**: `MeroNodeURL` (your Cloud cluster by name or a node's URL; empty: the sign-in screen
+  asks) and `MeroDevNodeURL` (the development node it offers) in `project.yml`; the node's consent
+  page returns to `mero-pass://consent` (`MeroPassCallbackScheme`).
+- **Android**: `-PmeroNodeUrl=…` (the same), `-PmeroDevNodeUrl=…` (default
+  `http://10.0.2.2:2501`; debug builds allow cleartext to localhost and 10.0.2.2 only) and
+  `meroConsentCallback` (default `mero-pass://consent`, also the manifest's intent filter) in
+  `gradle.properties`.
 - **Share links** point at `https://mero-pass.vercel.app/share`.
 - **Font**: the web app ships no display face of its own, so headings use the system face,
   semibold.

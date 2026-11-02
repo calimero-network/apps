@@ -46,8 +46,24 @@ public enum PassErrorText {
         if let model = error as? PassModelError { return model.errorDescription ?? "Something went wrong." }
         if let session = error as? VaultSessionError { return session.errorDescription ?? "Something went wrong." }
         if error is SignedOutError { return "You're signed out. Sign in again." }
+        if error is ConfirmCancelled || error is PasskeyCancelled {
+            return "You cancelled the passkey prompt, so nothing changed."
+        }
+        if let app = error as? AppError { return describe(app: app) }
         if error is LoginRequired { return "Your session ended. Sign in again." }
-        if let busy = error as? UnavailableError { return "The cluster is busy (\(busy.reason)). Try again in a moment." }
+        if error is WrongNode || error is NotLeader {
+            return "This node can't serve your account right now. Try again in a moment."
+        }
+        if let busy = error as? UnavailableError {
+            return "Your cluster is unavailable (\(busy.reason)). Try again in a moment."
+        }
+        if let deadline = error as? ReleaseDeadlineError {
+            let release = deadline.release.isEmpty ? "A node release" : "Node release \(deadline.release)"
+            return "\(release) is waiting for your approval. Open Security, then Approvals."
+        }
+        if error is ConsentStale { return "That approval was already decided or has expired. Refresh and try again." }
+        if error is NotFound { return "This vault isn't on your cluster, or you're no longer a member." }
+        if let trust = error as? TeeTrustError { return "The node could not be verified: \(trust.message)" }
         if let url = error as? URLError {
             switch url.code {
             case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed:
@@ -66,6 +82,28 @@ public enum PassErrorText {
             return words
         }
         return text.isEmpty ? "Something went wrong. Try again." : text
+    }
+
+    /// The contract's refusals (`APP_ERROR {code, fields: {message}}`). Its messages are v1's
+    /// texts, so the known ones are reworded as before; the code is the fallback.
+    public static func describe(app: AppError) -> String {
+        let detail = app.fields["message"]?.stringValue ?? ""
+        let lower = detail.lowercased()
+        for (needles, words) in reworded where needles.contains(where: { lower.contains($0) }) { return words }
+        switch app.appCode {
+        case "Forbidden": return detail.isEmpty ? "Your role in this vault can't do that." : sentence(detail)
+        case "NotFound": return detail.isEmpty ? "That item or member isn't in this vault." : sentence(detail)
+        case "Conflict": return detail.isEmpty ? "Someone changed this at the same time. Refresh and try again." : sentence(detail)
+        case "BadArgs": return "This app is out of step with the vault. Update the app and try again."
+        default: return detail.isEmpty ? "The vault refused that (\(app.appCode))." : sentence(detail)
+        }
+    }
+
+    /// `text` with a capital first letter and a full stop.
+    static func sentence(_ text: String) -> String {
+        guard let first = text.first else { return text }
+        let capped = first.uppercased() + text.dropFirst()
+        return capped.hasSuffix(".") || capped.hasSuffix("!") || capped.hasSuffix("?") ? capped : capped + "."
     }
 
     /// The web's `TRANSIENT`: refusals that clear on their own while a vault

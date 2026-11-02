@@ -41,6 +41,7 @@ import network.calimero.pass.PassViewModel
 import network.calimero.pass.core.DeviceKeyPair
 import network.calimero.pass.core.InvitationDestination
 import network.calimero.pass.core.InvitationModel
+import network.calimero.pass.core.PassConstants
 import network.calimero.pass.core.TeamModel
 import network.calimero.pass.core.TeamRow
 import network.calimero.pass.core.TeamsModel
@@ -110,7 +111,7 @@ class Navigator(
 
     fun team(route: Route.Team): TeamModel =
         models.getOrPut(route) {
-            TeamModel(backend, route.team.id, route.team.name, vm.session.applicationId.orEmpty())
+            TeamModel(backend, route.team.id, route.team.name, PassConstants.PACKAGE_NAME)
         } as TeamModel
 
     /** One model per open vault, shared by its item, people, health, trash and activity screens. */
@@ -125,31 +126,21 @@ class Navigator(
 fun PassApp(
     vm: PassViewModel,
     activity: FragmentActivity,
-    onSignIn: () -> Unit,
 ) {
     PassTheme {
         CompositionLocalProvider(LocalServices provides vm.services) {
-            val backend by vm.session.backend.collectAsState()
-            val revision by vm.session.revision.collectAsState()
-            val restoring by vm.session.isRestoring.collectAsState()
+            val backend by vm.backend.collectAsState()
+            val revision by vm.revision.collectAsState()
+            val restoring = vm.restoring
             val device by vm.keeper.device.collectAsState()
             val generation by vm.keeper.generation.collectAsState()
             val stage by vm.invitation.stage.collectAsState()
-            val pending by vm.session.pendingInvitation.collectAsState()
-
-            LaunchedEffect(pending) {
-                pending?.let {
-                    vm.invitation.open(it)
-                    vm.session.dismissPendingInvitation()
-                }
-            }
-
             val current = backend
             val unlocked = device
             Box(Modifier.fillMaxSize().background(Palette.Ground)) {
                 when {
                     restoring && current == null -> CenteredProgress()
-                    current == null -> SignInScreen(vm, invitedTo = (stage as? InvitationModel.Stage.Confirm)?.title, onSignIn = onSignIn)
+                    current == null -> SignInScreen(vm, invitedTo = (stage as? InvitationModel.Stage.Confirm)?.title, activity = activity)
                     unlocked == null -> LockScreen(vm.keeper, activity)
                     else ->
                         key(revision, generation) {

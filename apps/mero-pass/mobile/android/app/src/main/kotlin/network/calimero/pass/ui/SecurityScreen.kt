@@ -23,6 +23,7 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Password
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.UnfoldMore
+import androidx.compose.material.icons.outlined.Verified
 import androidx.compose.material.icons.outlined.VerifiedUser
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.DropdownMenu
@@ -78,6 +79,7 @@ fun SecurityScreen(
     var confirmSignOut by remember { mutableStateOf(false) }
     var confirmReplace by remember { mutableStateOf(false) }
     var lockMenu by remember { mutableStateOf(false) }
+    var approvals by remember { mutableStateOf(false) }
     val directory = remember(backend) { VaultDirectory(backend) }
 
     fun createRecovery() {
@@ -195,15 +197,18 @@ fun SecurityScreen(
                 }
             }
             item {
-                PassSection(header = "Account") {
+                PassSection(header = "Account", footer = "Node releases and app updates waiting for you are approved on your cluster's consent page.") {
+                    RowAction("Approvals", Icons.Outlined.Verified, { approvals = true })
+                    RowDivider()
                     RowAction("Sign out", Icons.AutoMirrored.Outlined.Logout, { confirmSignOut = true }, destructive = true)
                     RowDivider()
-                    DetailsDisclosure(listOf("Account" to backend.account, "Relay" to if (backend.hasRelay) "Connected" else "None yet"))
+                    DetailsDisclosure(listOf("Account" to backend.account, "Cluster" to vm.target))
                 }
             }
         }
     }
 
+    if (approvals && activity != null) ApprovalsSheet(vm, activity) { approvals = false }
     if (confirmReplace) {
         ConfirmDialog("Replace your recovery key?", "The old code stops opening your vaults.", "Replace in every vault", dismiss = { confirmReplace = false }) {
             createRecovery()
@@ -218,11 +223,11 @@ fun SecurityScreen(
             other =
                 "Sign out" to {
                     vm.keeper.lock()
-                    scope.launch { vm.session.signOut() }
+                    vm.signOut()
                 },
         ) {
             runCatching { vm.keeper.reset() }
-            scope.launch { vm.session.signOut(forgetDevice = true) }
+            vm.signOut()
         }
     }
 }

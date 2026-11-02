@@ -69,7 +69,10 @@ class ModelTest {
             val vault = team.create("Bank logins")
             assertEquals("Bank logins", vault.vaultName)
             assertTrue(vault.vaultId in backend.publicSubgroups)
-            assertEquals(buildJsonObject { put("name", JsonPrimitive("Bank logins")) }, backend.initArgs[vault.contextId])
+            assertEquals(buildJsonObject { }, backend.initArgs[vault.contextId])
+            val rename = backend.recording.calls("renameVault").single()
+            assertEquals(vault.contextId, rename.contextId)
+            assertEquals(JsonPrimitive("Bank logins"), (rename.args as kotlinx.serialization.json.JsonObject)["name"])
             team.load()
             assertEquals(listOf("Bank logins"), team.vaults.value.map { it.name })
             assertEquals(

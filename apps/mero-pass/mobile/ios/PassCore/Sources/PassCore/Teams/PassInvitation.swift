@@ -9,6 +9,9 @@ import MeroKit
 /// - token: `base58(deflate(payload))` (``InviteCodec``)
 /// - link: `https://links.calimero.network/com.calimero.mero-pass/join?invitation=<token>`
 ///
+/// The web app's links carry the token alone (`…?invite=inv_…`); they read as a team invite
+/// whose team the node names when it is redeemed.
+///
 /// The token always grants the TEAM (an org; redeemed with
 /// `POST /invites/{token}/redeem`); a vault invite only says which vault to open
 /// afterwards. No vault secret travels in it, but the token itself is a bearer
@@ -78,6 +81,7 @@ public struct PassInvitation: Sendable {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         if trimmed.hasPrefix("{") { return parse(json: trimmed) }
+        if let token = webToken(trimmed) { return PassInvitation(invitation: OrgInvitation(namespaceId: "", token: token)) }
         let token: String?
         if trimmed.range(of: "^[A-Za-z0-9]+$", options: .regularExpression) != nil {
             token = trimmed
@@ -86,6 +90,19 @@ public struct PassInvitation: Sendable {
         }
         guard let token, let json = InviteCodec.decode(token: token) else { return nil }
         return parse(json: json)
+    }
+
+    /// The query parameter the web app's links carry the token in.
+    public static let webParam = "invite"
+
+    /// The web app's `?invite=inv_…` (an http(s) link), or a bare `inv_…` token.
+    static func webToken(_ raw: String) -> String? {
+        if raw.hasPrefix("inv_"), !raw.contains(where: { $0.isWhitespace || $0 == "/" || $0 == "?" }) { return raw }
+        guard let url = URLComponents(string: raw), let scheme = url.scheme?.lowercased(),
+            scheme == "https" || scheme == "http",
+            let token = url.queryItems?.first(where: { $0.name == webParam })?.value, !token.isEmpty
+        else { return nil }
+        return token
     }
 
     /// The payload, under an optional `data` envelope, including the web's older `room*` names.

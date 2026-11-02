@@ -1,16 +1,19 @@
 import MeroKit
 import MeroKitUI
 import SwiftUI
+import PassCore
 
-// Calimero 1.0 sign-in and approvals, shared by the native apps (the same file in each; only
-// `CloudStyle.app`, in Theme.swift, differs).
+// Calimero 1.0 sign-in and approvals (the Android app's `CloudAccess.kt` is the same screens).
+// Colours come from `CloudStyle.app`, in Theme.swift; errors read through PassCore's `PassErrorText`.
 //
-// - Cloud: a node URL of the person's cluster (from the cloud.calimero.network console; prefilled
-//   from `MeroNodeURL`), then the device's passkey: sign in, or create an account.
+// - Cloud: the person's cluster, by name (`eu-shared-1`, its nodes read from the Calimero Cloud
+//   directory) or by a node's URL (prefilled from `MeroNodeURL`), then the device's passkey: sign
+//   in, or create an account.
 // - Development: a `merod local` node (`MeroDevNodeURL`, `http://localhost:2501` by default) with
 //   mock attestation allowed (`allowMock`) and a software passkey the SDK keeps for that node.
 // - Approvals: releases and upgrades waiting for the person's decision, approved on the node's
 //   own consent page in the system browser (an app's session cannot approve anything itself).
+//   The page's confirmation code is shown here first, so the person can match it there.
 
 /// The colours the shared sign-in and approvals views use, set per app in Theme.swift.
 struct CloudStyle {
@@ -25,8 +28,11 @@ struct CloudStyle {
 
 /// How the app reaches its cluster, from Info.plist.
 enum CloudSettings {
-    /// A node of the person's Calimero Cloud cluster (`MeroNodeURL`); empty: they enter one.
+    /// The person's Calimero Cloud cluster, by name or a node's URL (`MeroNodeURL`); empty: they enter it.
     static var clusterURL: String? { string("MeroNodeURL") }
+
+    /// Whether `value` names a node by URL rather than a cluster by name.
+    static func isNodeURL(_ value: String) -> Bool { value.contains("://") || value.contains(".") || value.contains(":") }
     /// The development node the "Development node" field starts with (`MeroDevNodeURL`).
     static var devNodeURL: String { string("MeroDevNodeURL") ?? "http://localhost:2501" }
 
@@ -54,7 +60,7 @@ struct CloudSignInPanel: View {
                     .accessibilityIdentifier("signIn.error")
             }
             if CloudSettings.clusterURL == nil {
-                field("Cluster URL", text: $clusterURL, placeholder: "https://node.your-cluster.calimero.network")
+                field("Cluster", text: $clusterURL, placeholder: "Cluster name or node URL")
                     .keyboardType(.URL)
                     .accessibilityIdentifier("signIn.cluster")
             }
@@ -75,13 +81,13 @@ struct CloudSignInPanel: View {
                 .accessibilityIdentifier("signIn.connect")
             } else if creating {
                 primary(title: "Create account", symbol: "person.badge.key", enabled: canUseCluster && !trimmed(name).isEmpty) {
-                    connectCluster()
+                    guard await connectCluster() else { return }
                     await session.signUp(name: trimmed(name))
                 }
                 .accessibilityIdentifier("signIn.create")
             } else {
                 primary(title: "Sign in with passkey", symbol: "person.badge.key", enabled: canUseCluster) {
-                    connectCluster()
+                    guard await connectCluster() else { return }
                     await session.signIn()
                 }
                 .accessibilityIdentifier("signIn.passkey")
@@ -106,10 +112,19 @@ struct CloudSignInPanel: View {
             : "Your passkey stays on this device. Calimero verifies the node before anything is sent."
     }
 
-    private var canUseCluster: Bool { !trimmed(clusterURL).isEmpty }
+    private var canUseCluster: Bool { !trimmed(CloudSettings.clusterURL ?? clusterURL).isEmpty }
 
-    private func connectCluster() {
-        session.connect(nodeURL: trimmed(clusterURL), allowMock: false)
+    /// A node URL directly; a cluster name through the Calimero Cloud directory. `false` (the
+    /// reason in the client's error) when the directory does not know the cluster.
+    private func connectCluster() async -> Bool {
+        let value = trimmed(CloudSettings.clusterURL ?? clusterURL)
+        if CloudSettings.isNodeURL(value) {
+            session.connect(nodeURL: value, allowMock: false)
+            return true
+        }
+        let connected = await session.client.connect(cluster: value)
+        session.rebuild()
+        return connected
     }
 
     private func trimmed(_ value: String) -> String { value.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -176,6 +191,14 @@ struct ApprovalsSheet: View {
     @State private var loading = true
     @State private var error: String?
     @State private var deciding: String?
+    /// The node's confirmation code, shown before its consent page opens.
+    @State private var pendingCode: PendingCode?
+
+    struct PendingCode: Identifiable {
+        let id = UUID()
+        let code: String
+        let answer: CheckedContinuation<Bool, Never>
+    }
 
     struct Section: Identifiable {
         let id: String
@@ -227,6 +250,15 @@ struct ApprovalsSheet: View {
                     }
                 }
             }
+            .alert(
+                "Confirmation code", isPresented: Binding(get: { pendingCode != nil }, set: { _ in }),
+                presenting: pendingCode
+            ) { pending in
+                Button("Continue") { answer(pending, true) }
+                Button("Cancel", role: .cancel) { answer(pending, false) }
+            } message: { pending in
+                Text("Check that your cluster's approval page shows \(pending.code) before you approve.")
+            }
             .navigationTitle("Approvals")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
@@ -256,9 +288,11 @@ struct ApprovalsSheet: View {
                         deciding = key
                         Task {
                             do {
-                                _ = try await session.requestConsent(request(session.callback.url))
+                                _ = try await session.requestConsent(request(session.callback.url)) { started in
+                                    await confirm(started)
+                                }
                             } catch {
-                                self.error = MeroClient.describe(error)
+                                self.error = PassErrorText.describe(error)
                             }
                             deciding = nil
                             await load()
@@ -270,6 +304,19 @@ struct ApprovalsSheet: View {
                 }
             }
         }
+    }
+
+    /// Show the node's code (when it gave one) and wait for the person to continue.
+    private func confirm(_ started: ConsentStarted) async -> Bool {
+        guard let code = started.code, !code.isEmpty else { return true }
+        return await withCheckedContinuation { continuation in
+            pendingCode = PendingCode(code: code, answer: continuation)
+        }
+    }
+
+    private func answer(_ pending: PendingCode, _ go: Bool) {
+        pendingCode = nil
+        pending.answer.resume(returning: go)
     }
 
     private func load() async {
@@ -291,7 +338,7 @@ struct ApprovalsSheet: View {
             sections = next
             error = nil
         } catch {
-            self.error = MeroClient.describe(error)
+            self.error = PassErrorText.describe(error)
         }
     }
 }

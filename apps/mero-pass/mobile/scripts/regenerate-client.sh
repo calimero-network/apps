@@ -1,17 +1,12 @@
 #!/usr/bin/env bash
-# Regenerate the typed contract client for both apps from the contract's ABI
-# (apps/mero-pass/logic/res/abi.json), with mero-devtools-js's abi-codegen.
+# The contract's ABI (apps/mero-pass/logic/res/abi.json) is a Calimero 1.0 component ABI, which
+# the v1 abi-codegen does not read. The two clients are kept by hand against it, in step with the
+# web app's app/src/lib/meroPass.ts and vaultApi.ts:
 #
-#   ABI_CODEGEN=/path/to/abi-codegen/dist/cli.js ./scripts/regenerate-client.sh
+#   ios/PassCore/Sources/PassGenerated/PassClient.swift
+#   android/app/src/main/kotlin/network/calimero/pass/generated/PassClient.kt
 #
-# Commit the two generated files. Never edit them by hand.
+# WireTests (Swift) and WireTest (Kotlin) pin their method names and wire shapes.
 set -euo pipefail
-
-here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cli="${ABI_CODEGEN:?set ABI_CODEGEN to the abi-codegen dist/cli.js}"
-abi="$here/../logic/res/abi.json"
-
-node "$cli" -i "$abi" -o "$here/ios/PassCore/Sources/PassGenerated" \
-  --target swift --client-name PassClient
-node "$cli" -i "$abi" -o "$here/android/app/src/main/kotlin/network/calimero/pass/generated" \
-  --target kotlin --package network.calimero.pass.generated --client-name PassClient
+echo "regenerate-client.sh: the mobile clients are kept by hand against the component ABI; see ../README.md (Contract client)." >&2
+exit 1
