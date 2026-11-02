@@ -1,127 +1,17 @@
 import "@calimero-apps/glass/glass.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter } from "react-router-dom";
-import { isServedByNode } from "@calimero-apps/node-served";
-import { nodeBasename } from "./utils/servedByNode";
-import {
-  MeroProvider,
-  AppMode as MeroAppMode,
-  primeInvitationCapture,
-  setApplicationId,
-} from "@calimero-network/mero-react";
-import "@calimero-network/mero-ui/styles.css";
 import App from "./App";
-import { APP_SLUG } from "./utils/invitation";
+import { captureInvite } from "./utils/inviteLink";
 import "./index.css";
 
-// ── Inbound invitation links ──────────────────────────────────────────────────
-//
-// Must run before React mounts: the launcher opens this app by appending
-// `?invitation=…` to its own frontend URL, and React Router replaces the URL on
-// the first navigation — child effects fire before parent effects, so there is
-// no component early enough to read it reliably. Capture is durable, so an
-// invitation that arrives before login survives the auth round-trip. A running
-// desktop hands a link over as a `deep-link` event instead, and a link
-// addressed to another app is dropped, not offered (`slug`).
-// `components/InvitationPrompt` asks before joining.
-primeInvitationCapture("mero-design", { slug: APP_SLUG });
-
-// ── Tauri desktop SSO ─────────────────────────────────────────────────────────
-//
-// tauri-app opens this app in a window with auth + project context in the hash:
-//   …#node_url=…&access_token=…&refresh_token=…
-//     &application_id=…&context_id=…&expires_at=…
-// (older builds use `app-id` instead of `application_id` — both tolerated).
-//
-// The tokens themselves are MeroProvider's business, NOT ours. It runs
-// `parseAuthCallback` on first render and decides whether to adopt the hash
-// bundle via `resolveTokenAdoption` (mero-react ≥4.3.4), which is strictly
-// better than doing it here: it compares `iat` — the actual rotation order —
-// where a hand-rolled version only has `exp` to go on, and it merges rather than
-// replaces so an access-only hash cannot strip a live refresh token.
-//
-// This matters because refresh tokens are single-use (core#3083). The desktop
-// hands us the bundle it minted at *its* login, which is routinely OLDER than
-// the one mero-js has since rotated into storage. Adopting the stale one
-// re-presents a consumed refresh token on the next 401 → `token_reuse` → the
-// whole token family is revoked and every holder is hard-logged-out. This file
-// used to seed the store itself and then strip the hash, which meant
-// MeroProvider never saw the callback and its better check never ran.
-//
-// So: read only what is ours (the application id and the project to open), and
-// leave the hash in place for MeroProvider.
-const IS_TAURI = "__TAURI_INTERNALS__" in window;
-
-/** The node the desktop handed us in this open, or null on the plain web. */
-function hashNodeUrl(): string | null {
-  if (!IS_TAURI) return null;
-  const raw = new URLSearchParams(window.location.hash.slice(1))
-    .get("node_url")
-    ?.trim();
-  return raw ? raw : null;
-}
-
-function readTauriHashContext(): void {
-  const hash = window.location.hash;
-  if (!hash) return;
-
-  const p = new URLSearchParams(hash.slice(1));
-  const applicationId = (
-    p.get("application_id") ??
-    p.get("app-id") ??
-    ""
-  ).trim();
-  const contextId = p.get("context_id");
-
-  if (applicationId) setApplicationId(applicationId);
-
-  // Deep-link into the board the desktop said to open. The desktop knows the
-  // context, never its team, so this lands on `/boards/:id`, which looks the
-  // team up (pages/BoardResolver). It used to write `/teams/t/projects/:id`
-  // with a placeholder team, which left everything team-shaped around the
-  // board pointing nowhere. With no board named, `/teams` resumes the team and
-  // board open last.
-  //
-  // Always land on the app's own route — the desktop opens this window at `/`,
-  // and without this the user sits on the landing route.
-  //
-  // The hash is APPENDED, not dropped: MeroProvider has not read it yet and it
-  // is the only copy of the auth callback. It strips the hash itself once it has
-  // consumed it, which is what leaves the address bar clean.
-  const target = contextId ? `/boards/${encodeURIComponent(contextId)}` : "/teams";
-  window.history.replaceState({}, "", `${target}${hash}`);
-}
-
-if (IS_TAURI) readTauriHashContext();
-
-// mero-react ≥4.1 REJECTS an SSO callback whose node_url is not explicitly
-// trusted (`allowedNodeUrls`), dropping the tokens with only a console error.
-// Our node_url legitimately varies per user (everyone runs their own node), so
-// the only workable trust anchor is the node the desktop handed us in THIS
-// open's hash. Read before MeroProvider strips it. Mirrors mero-stream.
-const trustedNodeUrl = hashNodeUrl();
+// Before React mounts: a person opening an invitation link is usually not
+// signed in yet, and the token has to survive the passkey sign-up
+// (`components/InvitationPrompt` asks before joining).
+captureInvite();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <MeroProvider
-      mode={MeroAppMode.MultiContext}
-      // ⚠️ `?.trim() ||`, never `??`. Vercel inlines a defined-but-EMPTY env
-      // var as `""`, which `??` happily keeps — and an empty packageName makes
-      // `buildAuthLoginUrl` drop the `package-name` param entirely. Without it
-      // auth-frontend cannot look the app up in the registry to authorize the
-      // callback origin, so a hosted login dies on "Login callback destination
-      // is not allowed". That is exactly what shipped on mero-design.
-      packageName={
-        import.meta.env.VITE_APPLICATION_PACKAGE?.trim() || "com.calimero.mero-design"
-      }
-      registryUrl="https://apps.calimero.network"
-      allowedNodeUrls={trustedNodeUrl ? [trustedNodeUrl] : undefined}
-      servedByNode={isServedByNode(new URL(window.location.href))}
-    >
-      <BrowserRouter basename={nodeBasename()}>
-        <App />
-      </BrowserRouter>
-    </MeroProvider>
+    <App />
   </StrictMode>,
 );

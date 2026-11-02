@@ -42,7 +42,9 @@ members  = [
 # nothing here globs over `tools/`, so it needs no entry.
 #
 # See docs/COMPONENT-APPS.md.
-exclude = []
+exclude = [
+  "apps/mero-design/logic",
+]
 
 [workspace.package]
 edition    = "2021"

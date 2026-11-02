@@ -1,16 +1,13 @@
 import { useEffect, useState } from "react";
-import { useMero, useRemoveGroupMembers } from "@calimero-network/mero-react";
-import { useMemberNames, useMyName } from "@calimero-apps/names";
-import { ShieldCheck } from "@calimero-network/mero-icons";
-import { getNodeIdentity, listGroupMembers, rpcCall, updateMemberRole, type GroupMemberInfo } from "../api/rpc";
-import { listTeamContexts } from "../api/teamContexts";
+import { useMemberNames, useMyName } from "../api/names";
+import { getNodeIdentity, listGroupMembers, removeTeamMember, rpcCall, updateMemberRole } from "../api/rpc";
+import { APP_PACKAGE } from "../config";
 import { useToast } from "../contexts/ToastContext";
 import { extractErrorMessage } from "../utils/errorMessage";
 import { truncateMiddle } from "../utils/format";
 import { canRemoveMember, keepsAnAdmin } from "../utils/memberGuards";
 import ConfirmDialog from "./ConfirmDialog";
 import {
-  adminsMissingCanvasAccess,
   indexBoardMembers,
   type CanvasMemberRow as CanvasMember,
   type ContractRoleRow as ContractRole,
@@ -22,6 +19,8 @@ type MemberRole = "Admin" | "Member" | string;
 interface MemberEntry {
   identity: string;
   role: MemberRole;
+  /** The team's owner: never demoted or removed from here. */
+  owner?: boolean;
   name?: string;
 }
 
@@ -54,15 +53,11 @@ interface Props {
  * the team, and the member list with the controls this account may use on it.
  */
 export default function SettingsSection({ type, id, groupId, name, namespaceId }: Props) {
-  const { applicationId, admin } = useMero();
-  const { removeGroupMembers } = useRemoveGroupMembers();
   const teamNamespace = namespaceId ?? (type === "team" ? id : undefined);
-  const { nameOf } = useMemberNames(admin, teamNamespace);
+  const { nameOf } = useMemberNames(teamNamespace);
   const { showToast } = useToast();
   const membersGroupId = groupId || id;
   const [members, setMembers] = useState<MemberEntry[]>([]);
-  // TEE nodes admitted to the group: not people, so never in `members`.
-  const [teeMembers, setTeeMembers] = useState<GroupMemberInfo[]>([]);
   const [selfIdentity, setSelfIdentity] = useState("");
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
@@ -100,8 +95,8 @@ export default function SettingsSection({ type, id, groupId, name, namespaceId }
     return () => { cancelled = true; };
   }, [type, id]);
 
-  // The board owner/admin (contract) may grant/revoke the editor role. The grant
-  // is admin-gated at merge, so a non-admin's forged grant is rejected by peers.
+  // The board owner/admin (contract) may grant/revoke the editor role; the
+  // contract refuses anyone else's grant.
   //
   // `identity` is an ACCOUNT id — the only id this screen has, and exactly what
   // the contract's member ids and grants are keyed by.
@@ -142,13 +137,11 @@ export default function SettingsSection({ type, id, groupId, name, namespaceId }
     listGroupMembers(membersGroupId)
       .then((res) => {
         if (cancelled) return;
-        setMembers(res.members.map((m): MemberEntry => ({ identity: m.identity, role: m.role, name: m.name })));
-        setTeeMembers(res.teeMembers);
+        setMembers(res.members.map((m): MemberEntry => ({ identity: m.identity, role: m.role, owner: m.owner, name: m.name })));
       })
       .catch(() => {
         if (cancelled) return;
         setMembers([]);
-        setTeeMembers([]);
       })
       .finally(() => {
         if (!cancelled) setLoadingMembers(false);
@@ -161,74 +154,13 @@ export default function SettingsSection({ type, id, groupId, name, namespaceId }
   const selfIsAdmin =
     !!selfIdentity && members.some((m) => m.identity === selfIdentity && m.role === "Admin");
 
-  // ── Team Admin implies canvas edit ──────────────────────────────────────────
-  //
-  // The two role systems are independent: the contract cannot see namespace
-  // roles, so a promotion to Admin grants nothing on the board, and the member
-  // reads as "Admin" while still being refused every edit. The board is the
-  // only place that can close the gap, so whoever opens settings holding board
-  // admin reconciles it.
-  //
-  // Runs only when there is something to fix and only for admins the board has
-  // already seen — so the common case issues no calls, and a grant is never
-  // sent for an account the contract would refuse anyway.
-  useEffect(() => {
-    if (type !== "project" || myContractRole !== "admin") return;
-    const needed = adminsMissingCanvasAccess(members, contractRoles);
-    if (needed.length === 0) return;
-
-    let cancelled = false;
-    (async () => {
-      for (const identity of needed) {
-        try {
-          await rpcCall(id, "grant_editor", { member: identity });
-          if (cancelled) return;
-          setContractRoles((prev) => ({ ...prev, [identity]: "editor" }));
-        } catch {
-          // Non-fatal and deliberately quiet: the row keeps showing the real
-          // canvas role, and the explicit button is still there as a fallback.
-        }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [type, id, members, contractRoles, myContractRole]);
+  // Team Admin implies canvas edit: the contract reads org roles itself, so
+  // nothing here has to grant or revoke it board by board (v1 did).
 
   async function copyText(text: string, key: string) {
     await navigator.clipboard.writeText(text);
     setCopied(key);
     setTimeout(() => setCopied(null), 2000);
-  }
-
-  /**
-   * Carry a governance change onto every board in the team.
-   *
-   * Admin implies canvas edit, so the two directions are not symmetric in
-   * importance: a promotion that fails to grant just leaves someone needing a
-   * manual grant, but a demotion that fails to revoke leaves a former admin
-   * still able to edit — which is the one that matters.
-   *
-   * Runs per board because canvas access is per contract. A board where this
-   * caller is not the board admin refuses the call; that is counted and
-   * reported rather than swallowed, because silence there would read as
-   * "revoked everywhere" when it was not.
-   */
-  async function cascadeCanvasRole(
-    identity: string,
-    role: "Admin" | "Member",
-  ): Promise<{ changed: number; failed: number }> {
-    const contexts = await listTeamContexts(membersGroupId);
-    const method = role === "Admin" ? "grant_editor" : "revoke_editor";
-    let changed = 0;
-    let failed = 0;
-    for (const contextId of contexts) {
-      try {
-        await rpcCall(contextId, method, { member: identity });
-        changed += 1;
-      } catch {
-        failed += 1;
-      }
-    }
-    return { changed, failed };
   }
 
   // Promote (→ Admin) / demote (→ Member). Only namespace (team) members carry
@@ -245,22 +177,13 @@ export default function SettingsSection({ type, id, groupId, name, namespaceId }
     try {
       await updateMemberRole(membersGroupId, identity, role);
       setMembers((prev) => prev.map((m) => (m.identity === identity ? { ...m, role } : m)));
-
-      const { changed, failed } = await cascadeCanvasRole(identity, role);
-      const base =
-        role === "Admin" ? "Member promoted to admin." : "Admin demoted to member.";
-      const canvas =
+      // Canvas edit follows the team role on every board by itself.
+      showToast(
         role === "Admin"
-          ? `Canvas edit granted on ${changed} board${changed === 1 ? "" : "s"}.`
-          : `Canvas edit revoked on ${changed} board${changed === 1 ? "" : "s"}.`;
-      if (failed > 0) {
-        // Named explicitly: those boards still have the OLD canvas access.
-        showToast(
-          `${base} ${canvas} ${failed} board${failed === 1 ? "" : "s"} could not be updated — open its settings as board admin.`,
-        );
-      } else {
-        showToast(changed > 0 ? `${base} ${canvas}` : base, "success");
-      }
+          ? "Member promoted to admin: they can now edit every board."
+          : "Admin demoted to member.",
+        "success",
+      );
     } catch (err) {
       showToast(extractErrorMessage(err, "Could not update role."));
     } finally {
@@ -282,7 +205,7 @@ export default function SettingsSection({ type, id, groupId, name, namespaceId }
     }
     setPendingRemove(member.identity);
     try {
-      await removeGroupMembers(membersGroupId, { members: [member.identity] });
+      await removeTeamMember(membersGroupId, member.identity);
       setMembers((prev) => prev.filter((m) => m.identity !== member.identity));
       showToast("Member removed from the team.", "success");
     } catch (err) {
@@ -296,7 +219,7 @@ export default function SettingsSection({ type, id, groupId, name, namespaceId }
     <div className={styles.section} data-testid={`settings-section-${type}`} aria-label={`${name} settings`}>
 
         <div className={styles.row}>
-          <span className={styles.label}>{type === "project" ? "Board (context) ID" : "Team ID"}</span>
+          <span className={styles.label}>{type === "project" ? "Board ID" : "Team ID"}</span>
           <div className={styles.copyRow}>
             <code className={styles.code}>{id}</code>
             <button className={styles.copyBtn} onClick={() => copyText(id, "id")}>
@@ -307,14 +230,12 @@ export default function SettingsSection({ type, id, groupId, name, namespaceId }
 
         {type === "project" && (
           <div className={styles.row}>
-            <span className={styles.label}>Application ID</span>
+            <span className={styles.label}>Package</span>
             <div className={styles.copyRow}>
-              <code className={styles.code}>{applicationId || "—"}</code>
-              {applicationId && (
-                <button className={styles.copyBtn} onClick={() => copyText(applicationId, "appId")}>
-                  {copied === "appId" ? "Copied!" : "Copy"}
-                </button>
-              )}
+              <code className={styles.code}>{APP_PACKAGE}</code>
+              <button className={styles.copyBtn} onClick={() => copyText(APP_PACKAGE, "appId")}>
+                {copied === "appId" ? "Copied!" : "Copy"}
+              </button>
             </div>
           </div>
         )}
@@ -335,15 +256,6 @@ export default function SettingsSection({ type, id, groupId, name, namespaceId }
             <span className={styles.label}>
               Members{members.length > 0 ? ` (${members.length})` : ""}
             </span>
-            {teeMembers.length > 0 && (
-              <span
-                className={styles.teeBadge}
-                title="A hardware-attested node keeps this workspace in sync and available when members are offline."
-              >
-                <ShieldCheck size={12} aria-hidden />
-                TEE enabled · {teeMembers.some((m) => m.role === "RelayTee") ? "Relay" : "Replica"}
-              </span>
-            )}
           </div>
           {loadingMembers ? (
             <span className={styles.muted}>Loading…</span>
@@ -361,7 +273,7 @@ export default function SettingsSection({ type, id, groupId, name, namespaceId }
                 const canvasName = canvasNames[m.identity];
                 const shownName = nameOf(m.identity) || canvasName || m.name;
                 const initial = (shownName?.[0] ?? m.identity[0] ?? "?").toUpperCase();
-                const canModerate = type === "team" && selfIsAdmin && !isSelf;
+                const canModerate = type === "team" && selfIsAdmin && !isSelf && !m.owner;
                 const busy = pendingRole === m.identity;
                 const demoteGuard = keepsAnAdmin(members, m.identity);
                 const removeGuard = canRemoveMember(members, selfIdentity, m.identity);
@@ -428,7 +340,7 @@ export default function SettingsSection({ type, id, groupId, name, namespaceId }
                     {type === "project" && contractRole && (
                       <span
                         className={`${styles.roleBadge} ${isCanvasEditor ? styles.roleAdmin : styles.roleMember}`}
-                        title="Canvas access (merge-enforced)"
+                        title="Canvas access (checked by the board)"
                       >
                         {isCanvasAdmin ? "Owner" : isCanvasEditor ? "Editor" : "Viewer"}
                       </span>
@@ -470,9 +382,8 @@ export default function SettingsSection({ type, id, groupId, name, namespaceId }
  * on the team shows it, and boards you are on pick a rename up when opened.
  */
 function YourName({ namespaceId, selfAccount }: { namespaceId: string; selfAccount: string }) {
-  const { admin } = useMero();
   const { showToast } = useToast();
-  const me = useMyName(admin, namespaceId, selfAccount);
+  const me = useMyName(namespaceId, selfAccount);
   const [saving, setSaving] = useState(false);
 
   // What you typed, or `null` while the field just shows your name as it

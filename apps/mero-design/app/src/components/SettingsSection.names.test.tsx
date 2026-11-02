@@ -13,16 +13,16 @@ vi.mock("../api/rpc", () => ({
   listGroupMembers: vi.fn().mockResolvedValue({ members: [{ identity: ana, role: "Member" }], teeMembers: [] }),
   rpcCall: vi.fn().mockResolvedValue([]),
   updateMemberRole: vi.fn(),
+  removeTeamMember: vi.fn(),
+  // The team's record: the names people set for the whole team.
+  readTeam: (...a: unknown[]) => admin.listGroupMembers(...a),
+  setTeamName: (...a: unknown[]) => admin.setMemberMetadata?.(...a),
 }));
-vi.mock("../api/teamContexts", () => ({ listTeamContexts: vi.fn().mockResolvedValue([]) }));
-// The namespace listing, read through the session admin.
-const admin: { listGroupMembers: ReturnType<typeof vi.fn>; setMemberMetadata?: ReturnType<typeof vi.fn> } = {
-  listGroupMembers: vi.fn().mockResolvedValue({ members: [{ identity: ana, role: "Member", name: "Ana" }] }),
+vi.mock("../api/client", () => ({ peekApi: () => ({}) }));
+const admin: { listGroupMembers: (...a: unknown[]) => unknown; setMemberMetadata?: (...a: unknown[]) => unknown } = {
+  listGroupMembers: (...a: unknown[]) => listTeam(...a),
 };
-vi.mock("@calimero-network/mero-react", () => ({
-  useMero: () => ({ applicationId: "app-1", admin }),
-  useRemoveGroupMembers: () => ({ removeGroupMembers: vi.fn() }),
-}));
+const listTeam = vi.fn().mockResolvedValue({ name: "", roles: new Map(), names: new Map([[ana, "Ana"]]) });
 vi.mock("../contexts/ToastContext", () => ({ useToast: () => ({ showToast: vi.fn() }) }));
 
 const SettingsSection = (await import("./SettingsSection")).default;
@@ -33,20 +33,21 @@ describe("SettingsSection – member names", () => {
       <SettingsSection type="project" id="ctx1" groupId={"1".repeat(64)} namespaceId="ns1" name="Board" />,
     );
     expect(await screen.findByText("Ana")).toBeInTheDocument();
-    expect(admin.listGroupMembers).toHaveBeenCalledWith("ns1");
+    expect(listTeam).toHaveBeenCalledWith("ns1");
   });
 });
 
 describe("SettingsSection – your name", () => {
   it("renames you for the whole team, not for one board", async () => {
     const { fireEvent } = await import("@testing-library/react");
-    admin.setMemberMetadata = vi.fn().mockResolvedValue(undefined);
+    const setMemberMetadata = vi.fn().mockResolvedValue(undefined);
+    admin.setMemberMetadata = setMemberMetadata;
     render(<SettingsSection type="team" id="ns1" name="Team" />);
     const input = await screen.findByTestId("your-name-input");
     fireEvent.change(input, { target: { value: "Sandi" } });
     fireEvent.click(screen.getByTestId("your-name-save"));
     await vi.waitFor(() =>
-      expect(admin.setMemberMetadata).toHaveBeenCalledWith("ns1", "f".repeat(64), { name: "Sandi" }),
+      expect(setMemberMetadata).toHaveBeenCalledWith("ns1", "f".repeat(64), "Sandi"),
     );
   });
 });

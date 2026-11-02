@@ -1,25 +1,25 @@
 import { useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
-import { listTeamContexts } from "../api/teamContexts";
+import { useAuth } from "../sessionContext";
+import { teamOfBoard } from "../api/rpc";
 import { useShell } from "../components/shell/shellContext";
 import { pickTeam, readLastVisit } from "../utils/lastVisit";
 import styles from "./TeamHome.module.css";
 
 /**
- * `/boards/:projectId` — a link that names a board but not its team. The
- * desktop app opens a board this way: it knows the context, never the team.
+ * `/boards/:projectId` — a link that names a board (its app instance) but not
+ * its team.
  *
  * It used to open `/teams/t/projects/<id>`, with `t` as a placeholder team, so
  * the board loaded but everything team-shaped around it (names, the boards
  * list, Back) pointed at a team that does not exist. This finds the real one:
  * the team this browser last opened the board in, if the node still lists it,
- * else the team whose boards include it.
+ * else the board's own organization.
  */
 export default function BoardResolver() {
   const { projectId } = useParams<{ projectId: string }>();
   const { teams } = useShell();
-  const { nodeUrl } = useMero();
+  const { nodeUrl } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -34,12 +34,10 @@ export default function BoardResolver() {
     (async () => {
       const hinted = last.boardTeams?.[projectId];
       if (hinted && ids.includes(hinted)) return go(hinted);
-      for (const id of ids) {
-        if (cancelled) return;
-        if ((await listTeamContexts(id)).includes(projectId)) return go(id);
-      }
-      // Not found (still syncing, or listing failed): open it anyway under the
-      // likeliest team — the board itself only needs its context id.
+      const team = await teamOfBoard(projectId).catch(() => null);
+      if (team) return go(team);
+      // Not found (or the listing failed): open it anyway under the likeliest
+      // team: the board itself only needs its id.
       go(pickTeam(ids, last.team) ?? "unknown");
     })();
     return () => { cancelled = true; };

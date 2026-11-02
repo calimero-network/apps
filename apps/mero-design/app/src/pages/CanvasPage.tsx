@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { v4 as uuid } from "uuid";
-import { rpcCall, getBlob, getContextIdentitiesOwned, getNodeIdentity, joinContext, uploadBlob } from "../api/rpc";
+import { rpcCall, getBlob, getNodeIdentity, uploadBlob } from "../api/rpc";
 import { useSse } from "../hooks/useSse";
 import { getElementsByIds } from "../api/elementBatch";
 import { collectBoardChanges } from "../utils/boardEvents";
 import { useGroupActions } from "../hooks/useGroupActions";
-import { JoinSyncBanner, useMero } from "@calimero-network/mero-react";
-import { useMemberNames, useMyName } from "@calimero-apps/names";
+import { useMemberNames, useMyName } from "../api/names";
 import { decideBoardName } from "../utils/boardName";
 import { countRender } from "../utils/renderCount";
 import { useShallow } from "zustand/react/shallow";
@@ -36,9 +35,8 @@ function normalizeCursor(c: CursorState): CursorState {
 export default function CanvasPage() {
   countRender("CanvasPage");
   const { teamId, projectId } = useParams<{ teamId: string; projectId: string }>();
-  const { admin } = useMero();
   // The name each person set once for the whole team, shared by every app on it.
-  const teamNames = useMemberNames(admin, teamId);
+  const teamNames = useMemberNames(teamId);
   // Selector, not the bare store. `useCanvasStore()` subscribes to every field,
   // so selecting a shape — which touches nothing this page renders — used to
   // re-render CanvasPage and, through it, the canvas, the toolbar and the whole
@@ -77,11 +75,12 @@ export default function CanvasPage() {
   // `get_members` has answered (or when it could not).
   const [boardName, setBoardName] = useState<string | null>(null);
   const [addingComment, setAddingComment] = useState(false);
+  // What this session's pointer is keyed by on the board: the account (v1:
+  // the device's context key).
   const [myIdentity, setMyIdentity] = useState("");
-  // Who this node's user IS: the account. The board keys members, comment
+  // Who the signed-in user IS: the account. The board keys members, comment
   // authors and element creators by account, so every "is this me / mine"
-  // check compares against this. `myIdentity` is the device key, which is only
-  // what a cursor is keyed by.
+  // check compares against this.
   const [myAccount, setMyAccount] = useState("");
   // Effective canvas permission for this identity (admin/editor → true, viewer → false).
   // The contract enforces this at merge; this flag is for read-only UX.
@@ -94,53 +93,21 @@ export default function CanvasPage() {
   const { groupSelection, ungroupSelection } = useGroupActions(projectId ?? "", !canEdit);
   const cursorThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // "loading" = first attempt; "syncing" = context not yet available on this node, retrying
+  // "loading" = first attempt; "syncing" = the board could not be read yet, retrying
   const [syncStatus, setSyncStatus] = useState<"loading" | "syncing" | "ready">("loading");
   const [syncError, setSyncError] = useState<string | null>(null);
   const [syncTrigger, setSyncTrigger] = useState(0);
   const syncRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const syncRetryCountRef = useRef(0);
-  const joinAttemptedRef = useRef(false);
 
-  // Fetch the identity this session holds in the context (the key WASM knows as
-  // member_id) — on an account session the account admin answers with the
-  // account. Persists the last known identity in localStorage so refresh keeps
-  // it when the API is temporarily unavailable. Re-run after we join a context
-  // (the key only exists once we're a member).
-  // `shouldApply` guards setMyIdentity so a slow response from a previous project
-  // can't clobber the identity after the user has switched canvases. Callers pass
-  // their own !cancelled check; the localStorage write is per-project (keyed by id)
-  // so it's safe to run regardless of which canvas is now active.
+  // The pointer is keyed by account now: one per person, whatever the device.
   const refreshIdentity = useCallback((shouldApply: () => boolean = () => true) => {
     if (!projectId) return;
-    const storageKey = `md-identity-${projectId}`;
-    getContextIdentitiesOwned(projectId)
-      .then((arr) => {
-        if (arr.length > 0) {
-          localStorage.setItem(storageKey, arr[0]);
-          if (shouldApply()) setMyIdentity(arr[0]);
-          return;
-        }
-        throw new Error("no owned identity yet");
+    getNodeIdentity()
+      .then((me) => {
+        if (me.accountId && shouldApply()) setMyIdentity(me.accountId);
       })
-      .catch(() => {
-        // identities-owned 404s (or is empty) when this session hasn't joined the
-        // context yet (e.g. a project created on a peer). Fall back to the cached
-        // key for THIS project — the member id is per-context, so never keep the
-        // previous canvas's identity. Last resort: who the session IS (the
-        // account), which is what the member id resolves to once we join; never
-        // an invented id, which the contract would key nothing by.
-        const stored = localStorage.getItem(storageKey);
-        if (stored) {
-          if (shouldApply()) setMyIdentity(stored);
-          return;
-        }
-        getNodeIdentity()
-          .then((me) => {
-            if (me.accountId && shouldApply()) setMyIdentity(me.accountId);
-          })
-          .catch(() => {});
-      });
+      .catch(() => {});
   }, [projectId]);
 
   useEffect(() => {
@@ -240,10 +207,9 @@ export default function CanvasPage() {
     setCanEdit(false);
     setIsAdmin(false);
     syncRetryCountRef.current = 0;
-    joinAttemptedRef.current = false;
-    // Guard all async work against project navigation: a slow joinContext / identity
-    // refresh from a previous project must not mutate state, join the wrong context,
-    // or schedule a retry for a canvas the user has already left.
+    // Guard all async work against project navigation: a slow read from a
+    // previous project must not mutate state or schedule a retry for a canvas
+    // the user has already left.
     let cancelled = false;
 
     function tryLoad() {
@@ -261,36 +227,12 @@ export default function CanvasPage() {
             .then((cs) => { if (!cancelled) setCursors(Array.isArray(cs) ? cs.map(normalizeCursor) : []); })
             .catch(() => {});
         })
-        .catch(async (err) => {
+        .catch((err) => {
           if (cancelled) return;
           const msg: string = err?.message ?? String(err);
-          // First failure → this node likely hasn't joined the context yet (it was
-          // created on a peer; we're only entitled via the team). The node reports
-          // this as "No owned identity found for this context" or "Context not found".
-          // Join once (idempotent — returns our existing key if already a member),
-          // then sync proceeds normally. Done unconditionally on the first failure
-          // rather than string-matching the error, which varies by node version.
-          if (!joinAttemptedRef.current) {
-            joinAttemptedRef.current = true;
-            console.warn(`[MeroDesign] get_elements failed ("${msg}") — joining context…`);
-            setSyncStatus("syncing");
-            try {
-              await joinContext(projectId!);
-              if (cancelled) return;
-              refreshIdentity(() => !cancelled); // now a member — fetch our real context key
-            } catch (joinErr) {
-              if (cancelled) return;
-              // Pull the node's own words (where entitlement rejections live)
-              // rather than the generic HTTP message.
-              const jmsg = extractErrorMessage(joinErr, "join failed");
-              console.error("[MeroDesign] auto-join failed:", jmsg);
-              // Surface it — otherwise the canvas shows an endless "syncing" hint and
-              // the user never learns the join was rejected (e.g. not entitled).
-              setSyncError(`Couldn't join this project: ${jmsg}`);
-            }
-            if (!cancelled) syncRetryRef.current = setTimeout(tryLoad, 1500);
-            return;
-          }
+          // Every member of the team reaches its boards at once: there is no
+          // context to join and nothing to sync first (v1 joined here). A
+          // failure is the cluster or the board itself; retry, and say why.
           syncRetryCountRef.current += 1;
           console.error(`[MeroDesign] get_elements failed (attempt ${syncRetryCountRef.current}):`, msg);
           // After ~30s of retries surface the actual error so the user knows what's wrong
@@ -319,9 +261,7 @@ export default function CanvasPage() {
         fetchingBlobsRef.current.add(el.id);
         const kind = el.data.kind;
         const elId = el.id;
-        // Pass projectId (the context id) so the node can P2P-fetch blobs that
-        // were uploaded on a peer node — without it the receiver only checks
-        // local storage and 404s. See getBlob.
+        // A blob of this board's app instance. See getBlob.
         getBlob(blobId, projectId!)
           .then((buf) => {
             const mime = kind === "svg" ? "image/svg+xml" : "image/png";
@@ -367,12 +307,11 @@ export default function CanvasPage() {
   // is asked for once there and every board is joined under it silently. The
   // board roster still gets the name (`join`), because the contract's own
   // views read it; it is just never the thing that decides whether to ask.
-  const myName = useMyName(admin, teamId, myAccount);
+  const myName = useMyName(teamId, myAccount);
 
   async function joinBoardAs(username: string) {
     if (!projectId || !myIdentity) return;
-    // The member id is derived server-side from the real signer
-    // (env::executor_id); we no longer pass a spoofable member_id.
+    // The member id is the caller's account, set by the contract.
     await rpcCall(projectId, "join", {
       username,
       avatar: null,
@@ -611,7 +550,7 @@ export default function CanvasPage() {
     const scale = naturalWidth > maxW ? maxW / naturalWidth : 1;
     const id = uuid();
 
-    // Upload blob to node so it propagates across the context
+    // Upload the image as a blob of this board, so every member can read it.
     let blobId = "";
     try {
       const buf = await file.arrayBuffer();
@@ -619,6 +558,7 @@ export default function CanvasPage() {
       blobId = result?.blobId ?? "";
     } catch (err) {
       console.error("[MeroDesign] blob upload failed — image will only be visible this session:", err);
+      showToast(extractErrorMessage(err, "The image could not be uploaded; it is visible only in this session."));
     }
 
     const el: Element = {
@@ -646,28 +586,30 @@ export default function CanvasPage() {
   }
 
   // Not readable yet. The first read is usually quick, so "loading" shows an
-  // empty sheet rather than flashing a message; "syncing" (the board was made
-  // on another node and this one is joining it) says so over the shell, with
-  // the rest of the app — the rail, the switcher — still in reach.
+  // empty sheet rather than flashing a message; "syncing" (a read failed and is
+  // being retried) says so over the shell, with the rest of the app — the
+  // rail, the switcher — still in reach.
   if (syncStatus !== "ready") {
     return (
       <div className={styles.root}>
         <div className={styles.workspace}>
           <div className={styles.canvasWrap} data-testid="board-pending" aria-busy="true">
             <div className={styles.syncWrap}>
-              <JoinSyncBanner show={syncStatus === "syncing" || !!syncError} what="this board">
-                {syncError ? (
-                  <span className={styles.syncError} role="alert">{syncError}</span>
-                ) : (
-                  <>
-                    Syncing this board from peers&hellip;{" "}
-                    <span className={styles.syncHint}>It was created on another node; this one is joining it.</span>
-                  </>
-                )}{" "}
-                <button className={styles.syncRetry} onClick={() => setSyncTrigger((n) => n + 1)}>
-                  Retry now
-                </button>
-              </JoinSyncBanner>
+              {(syncStatus === "syncing" || !!syncError) && (
+                <div role="status">
+                  {syncError ? (
+                    <span className={styles.syncError} role="alert">{syncError}</span>
+                  ) : (
+                    <>
+                      Opening this board&hellip;{" "}
+                      <span className={styles.syncHint}>The first read did not answer; trying again.</span>
+                    </>
+                  )}{" "}
+                  <button className={styles.syncRetry} onClick={() => setSyncTrigger((n) => n + 1)}>
+                    Retry now
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

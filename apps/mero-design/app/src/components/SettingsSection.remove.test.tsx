@@ -1,6 +1,6 @@
 // Removing someone from a team: next to the role control, asked once, and
 // sent with the member's ACCOUNT — the id the member listing returns and
-// `useRemoveGroupMembers` takes. The team's last admin is never offered.
+// `removeTeamMember` takes. The team's last admin is never offered.
 
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -17,12 +17,11 @@ vi.mock("../api/rpc", () => ({
   listGroupMembers: (...a: unknown[]) => listGroupMembers(...a),
   rpcCall: vi.fn().mockResolvedValue([]),
   updateMemberRole: vi.fn(),
+  removeTeamMember: (...a: unknown[]) => removeGroupMembers(...a),
+  readTeam: vi.fn().mockResolvedValue({ name: "", roles: new Map(), names: new Map() }),
+  setTeamName: vi.fn(),
 }));
-vi.mock("../api/teamContexts", () => ({ listTeamContexts: vi.fn().mockResolvedValue([]) }));
-vi.mock("@calimero-network/mero-react", () => ({
-  useMero: () => ({ applicationId: "app-1", admin: null }),
-  useRemoveGroupMembers: () => ({ removeGroupMembers }),
-}));
+vi.mock("../api/client", () => ({ peekApi: () => ({}) }));
 vi.mock("../contexts/ToastContext", () => ({ useToast: () => ({ showToast }) }));
 
 const SettingsSection = (await import("./SettingsSection")).default;
@@ -52,7 +51,7 @@ describe("SettingsSection – remove member", () => {
     expect(removeGroupMembers).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByTestId("confirm-ok"));
-    await waitFor(() => expect(removeGroupMembers).toHaveBeenCalledWith("ns1", { members: [BEN] }));
+    await waitFor(() => expect(removeGroupMembers).toHaveBeenCalledWith("ns1", BEN));
     await waitFor(() => expect(screen.queryByTestId(`remove-member-${BEN}`)).toBeNull());
     expect(showToast).toHaveBeenCalledWith("Member removed from the team.", "success");
   });
