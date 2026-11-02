@@ -8,8 +8,8 @@ node), its organizations as workspaces, their teams as folders.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `37c09f3` (head of swift-sdk#85, Calimero 1.0; moves to its merge commit once it lands) |
-| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `61b65e9` (head of kotlin-sdk#68, Calimero 1.0; moves to its merge commit once it lands), composite build from `android/kotlin-sdk.ref` |
+| iOS | `ios/` | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `v0.5.0` |
+| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `v0.2.0` (not on Maven Central), composite build from `android/kotlin-sdk.ref` |
 
 **To bump a pin**, change it in every place it is set. On iOS that means
 `ios/project.yml` and `ios/DocsCore/Package.swift`; on Android, `android/kotlin-sdk.ref`.

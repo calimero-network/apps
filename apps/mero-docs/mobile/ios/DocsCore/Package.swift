@@ -14,9 +14,9 @@ let package = Package(
         .library(name: "DocsCore", targets: ["DocsCore"]),
     ],
     dependencies: [
-        // swift-sdk#85 (feat/calimero-1.0, Calimero 1.0) head; moves to its merge commit once it lands.
+        // swift-sdk release v0.5.0 (Calimero 1.0).
         // Keep it equal to ../project.yml.
-        .package(url: "https://github.com/calimero-network/swift-sdk", revision: "37c09f3f96e7d98440f6618eef8a0e83ddee8ebd"),
+        .package(url: "https://github.com/calimero-network/swift-sdk", exact: "0.5.0"),
     ],
     targets: [
         .target(
