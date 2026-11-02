@@ -27,17 +27,17 @@
 //                {type:"leave"}                               save and leave the world
 
 //
-// ⚠️ The apps are still v1 clients: they sign in with swift-sdk / kotlin-sdk,
-// reach v1 contexts and answer the bridge with clients generated from the v1
-// contract's ABI (snake_case names), because neither SDK has a client for the
-// component runtime yet (see apps/merraria/README.md). So the bridge keeps
-// speaking v1 method names: `V1_METHOD` maps the engine's component names onto
-// them, and a rebuilt game bundle still works in the shipped apps.
+// The bridge speaks the v1 method names (`get_overrides`, `set_tiles`, …):
+// `V1_METHOD` maps the engine's component names onto them, so a game bundle
+// built before or after the component port runs in the same apps. The apps
+// translate on their side (`BridgeDispatcher` in the iOS/Android `GameBridge`)
+// onto the component ABI, and answer `get_overrides` with every override as one
+// array, which `exec` hands back as a single last page.
 
 import type { GameEvent } from "../net/events";
 import type { Exec, MethodName } from "../net/merraria";
 
-/** The v1 contract's name for each of the engine's methods: what the apps' generated clients answer. */
+/** The bridge's (v1) name for each of the engine's methods: what the apps' bridge dispatchers answer. */
 export const V1_METHOD: Readonly<Record<Exclude<MethodName, "createWorld">, string>> = {
   setTiles: "set_tiles",
   getOverrides: "get_overrides",

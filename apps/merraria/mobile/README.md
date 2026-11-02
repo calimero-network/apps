@@ -1,14 +1,5 @@
 # Merraria — native mobile apps
 
-> ⚠️ **Still v1.** The web game and the contract have moved to the component
-> runtime (`calimero-app-sdk`, `CalimeroClient`; see [../README.md](../README.md)).
-> These shells have not: they sign in and call the **v1** contract through
-> swift-sdk / kotlin-sdk, which have no component-runtime client yet. The
-> committed `game/www` is the last v1 build; the web game's native-host mode
-> keeps speaking v1 method names over the bridge (`V1_METHOD` in
-> `../app/src/native/host.ts`), so a rebuilt bundle still works here. Moving
-> them waits on a component-runtime client in both SDKs.
-
 Native iOS and Android apps for Merraria, next to the web frontend (`../app`) and the contract
 (`../logic`, package `com.calimero.merraria`). Both apps have the same screens, copy, icons (SF
 Symbols ↔ Material Symbols), controls and flows, and both are landscape-only.

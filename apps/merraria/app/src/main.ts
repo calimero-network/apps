@@ -46,13 +46,14 @@ const WORLD_READY_MS = 60_000;
 
 /**
  * Whether the world is not readable YET: founded right after the instance was
- * created, a world answers `NoWorld` until its `createWorld` lands (the mobile
- * apps' v1 worlds answer `Uninitialized` until the node has synced).
+ * created, a world answers `NoWorld` until its `createWorld` lands. Through the
+ * mobile bridge an error arrives as text, so the text is checked too (and for
+ * v1's `Uninitialized`, which an app built before #702 still reports).
  */
 function notReadyYet(err: unknown): boolean {
   if (err instanceof AppError) return err.appCode === "NoWorld";
   const text = err instanceof Error ? err.message : String(err);
-  return /"type"\s*:\s*"(Uninitialized|GroupKeyPending)"/i.test(text);
+  return /\bNoWorld\b|"type"\s*:\s*"(Uninitialized|GroupKeyPending)"/i.test(text);
 }
 
 async function fetchWorldMetaWhenReady(client: Pick<GameClient, "fetchWorldMeta">): Promise<WorldMeta> {

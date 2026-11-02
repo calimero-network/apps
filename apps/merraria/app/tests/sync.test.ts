@@ -120,8 +120,8 @@ describe("SyncEngine (merraria)", () => {
 
 describe("SyncEngine.connect (a world not founded yet)", () => {
   // Right after a world's instance is created its `createWorld` may not have
-  // landed yet, and the contract answers `NoWorld` (the mobile apps' v1 worlds
-  // answer `Uninitialized` until synced). Giving up on the first refusal left
+  // landed yet, and the contract answers `NoWorld` (an app built before #702
+  // reports v1's `Uninitialized`). Giving up on the first refusal left
   // the world unloaded for good.
   const uninitialized = () => new Error("NoWorld");
 

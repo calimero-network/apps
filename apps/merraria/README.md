@@ -24,7 +24,7 @@ apps/merraria/
 │   ├── scenarios/           world, access (+ .org.json): harness AND merod local
 │   └── res/abi.json         the component's ABI (committed, diffed in CI)
 ├── app/                     the game: Vite + vanilla TS (+ the React marketing page)
-└── mobile/                  native iOS/Android shells — still v1, see below
+└── mobile/                  native iOS/Android shells (moved to 1.0 in #702, see below)
 ```
 
 ---
@@ -160,17 +160,15 @@ method list a test checks against `logic/res/abi.json`. The event stream
 resumes from the last log index it saw, so a dropped stream misses nothing.
 The game itself (engine, renderer, HUD, menu, sync engine) is unchanged.
 
-### Mobile (not ported yet)
+### Mobile
 
-`mobile/` (native iOS and Android shells around the bundled web game) still
-signs in and calls the **v1** contract through swift-sdk / kotlin-sdk (v1
-contexts, relays, clients generated from the v1 ABI). Neither SDK has a client
-for the component runtime yet, so they cannot be moved in this PR and are left
-as they are: the committed `mobile/game/www` is the last v1 build and keeps
-working with them. The web game's native-host mode (`src/native/host.ts`)
-keeps speaking v1 method names over the bridge (`V1_METHOD`), so rebuilding
-that bundle (`mobile/scripts/build-game.sh`) does not break the shipped apps.
-Moving them needs a component-runtime client in both SDKs.
+The native iOS and Android apps (`mobile/`) move to Calimero 1.0 and this
+component ABI in their own PR, #702, which depends on this one and is not
+part of it: nothing under `mobile/` changes here. Their contract clients call
+the same methods, arguments and answers as `logic/res/abi.json`. The game page
+they host keeps speaking v1 method names over the bridge
+(`src/native/host.ts`, `V1_METHOD`), which the apps map onto the component
+ABI, so a game bundle built from this frontend runs in them unchanged.
 
 ## Production
 
