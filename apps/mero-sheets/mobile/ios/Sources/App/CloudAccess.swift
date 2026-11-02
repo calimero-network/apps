@@ -5,12 +5,14 @@ import SwiftUI
 // Calimero 1.0 sign-in and approvals, shared by the native apps (the same file in each; only
 // `CloudStyle.app`, in Theme.swift, differs).
 //
-// - Cloud: a node URL of the person's cluster (from the cloud.calimero.network console; prefilled
-//   from `MeroNodeURL`), then the device's passkey: sign in, or create an account.
+// - Cloud: the person's cluster, by name (`eu-shared-1`, its nodes read from the node directory)
+//   or by a node URL (from the cloud.calimero.network console; prefilled from `MeroNodeURL`), then
+//   the device's passkey: sign in, or create an account.
 // - Development: a `merod local` node (`MeroDevNodeURL`, `http://localhost:2501` by default) with
 //   mock attestation allowed (`allowMock`) and a software passkey the SDK keeps for that node.
 // - Approvals: releases and upgrades waiting for the person's decision, approved on the node's
 //   own consent page in the system browser (an app's session cannot approve anything itself).
+//   The app shows the request's confirmation code first; the page shows the same code.
 
 /// The colours the shared sign-in and approvals views use, set per app in Theme.swift.
 struct CloudStyle {
@@ -25,10 +27,16 @@ struct CloudStyle {
 
 /// How the app reaches its cluster, from Info.plist.
 enum CloudSettings {
-    /// A node of the person's Calimero Cloud cluster (`MeroNodeURL`); empty: they enter one.
+    /// The person's Calimero Cloud cluster (`MeroNodeURL`): a cluster name or a node URL; empty:
+    /// they enter one.
     static var clusterURL: String? { string("MeroNodeURL") }
     /// The development node the "Development node" field starts with (`MeroDevNodeURL`).
     static var devNodeURL: String { string("MeroDevNodeURL") ?? "http://localhost:2501" }
+
+    /// Whether `value` names a node (`https://…`, a host with a dot) rather than a cluster (`eu-shared-1`).
+    static func isNodeURL(_ value: String) -> Bool {
+        value.contains("://") || value.contains(".") || value.contains(":")
+    }
 
     static func string(_ key: String) -> String? {
         let value = (Bundle.main.object(forInfoDictionaryKey: key) as? String)?.trimmingCharacters(in: .whitespaces)
@@ -54,7 +62,7 @@ struct CloudSignInPanel: View {
                     .accessibilityIdentifier("signIn.error")
             }
             if CloudSettings.clusterURL == nil {
-                field("Cluster URL", text: $clusterURL, placeholder: "https://node.your-cluster.calimero.network")
+                field("Cluster", text: $clusterURL, placeholder: "Cluster name or node URL")
                     .keyboardType(.URL)
                     .accessibilityIdentifier("signIn.cluster")
             }
@@ -75,13 +83,13 @@ struct CloudSignInPanel: View {
                 .accessibilityIdentifier("signIn.connect")
             } else if creating {
                 primary(title: "Create account", symbol: "person.badge.key", enabled: canUseCluster && !trimmed(name).isEmpty) {
-                    connectCluster()
+                    guard await connectCluster() else { return }
                     await session.signUp(name: trimmed(name))
                 }
                 .accessibilityIdentifier("signIn.create")
             } else {
                 primary(title: "Sign in with passkey", symbol: "person.badge.key", enabled: canUseCluster) {
-                    connectCluster()
+                    guard await connectCluster() else { return }
                     await session.signIn()
                 }
                 .accessibilityIdentifier("signIn.passkey")
@@ -108,8 +116,16 @@ struct CloudSignInPanel: View {
 
     private var canUseCluster: Bool { !trimmed(clusterURL).isEmpty }
 
-    private func connectCluster() {
-        session.connect(nodeURL: trimmed(clusterURL), allowMock: false)
+    /// Connect to the cluster: a node URL as it is, a bare name through the node directory.
+    private func connectCluster() async -> Bool {
+        let target = trimmed(clusterURL)
+        if CloudSettings.isNodeURL(target) {
+            session.connect(nodeURL: target, allowMock: false)
+            return true
+        }
+        let found = await session.client.connect(cluster: target)
+        session.rebuild()
+        return found
     }
 
     private func trimmed(_ value: String) -> String { value.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -164,7 +180,8 @@ struct CloudSignInPanel: View {
 }
 
 /// Releases and upgrades waiting for the person, per org (and their own apps), each approved on
-/// the node's consent page in the system browser.
+/// the node's consent page in the system browser. Before the page opens, the app shows the
+/// request's confirmation code; the page shows the same one.
 struct ApprovalsSheet: View {
     @EnvironmentObject private var session: MeroAppSession
     @Environment(\.dismiss) private var dismiss
@@ -176,6 +193,7 @@ struct ApprovalsSheet: View {
     @State private var loading = true
     @State private var error: String?
     @State private var deciding: String?
+    @State private var codePrompt: CodePrompt?
 
     struct Section: Identifiable {
         let id: String
@@ -184,13 +202,24 @@ struct ApprovalsSheet: View {
         let approvals: PendingApprovals
     }
 
+    /// The confirmation code of a consent request, waiting for the person to continue or cancel.
+    struct CodePrompt: Identifiable {
+        let id = UUID()
+        let code: String
+        let answer: (Bool) -> Void
+    }
+
     var body: some View {
         NavigationStack {
             List {
                 if loading {
                     ProgressView().frame(maxWidth: .infinity).listRowBackground(Color.clear)
                 } else if let error {
-                    Text(error).foregroundStyle(style.danger)
+                    Label {
+                        Text(error).foregroundStyle(style.danger)
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle").foregroundStyle(style.danger)
+                    }
                 } else if sections.allSatisfy({ $0.approvals.releases.isEmpty && $0.approvals.upgrades.isEmpty }) {
                     VStack(spacing: 10) {
                         Image(systemName: "checkmark.seal").font(.system(size: 28)).foregroundStyle(style.ink)
@@ -216,7 +245,7 @@ struct ApprovalsSheet: View {
                                 ForEach(section.approvals.upgrades, id: \.app) { upgrade in
                                     row(
                                         symbol: "arrow.up.circle", title: "Update \(upgrade.name ?? upgrade.package)",
-                                        detail: "\(upgrade.from) → \(upgrade.to)", actionable: upgrade.actionable,
+                                        detail: "\(upgrade.from) to \(upgrade.to)", actionable: upgrade.actionable,
                                         key: "\(section.id)/u/\(upgrade.app)"
                                     ) { returnTo in
                                         upgradeConsent(app: upgrade.app, toVersion: upgrade.to, returnTo: returnTo)
@@ -226,14 +255,45 @@ struct ApprovalsSheet: View {
                         }
                     }
                 }
+                if let result = session.consentResult, result.status != .pending {
+                    Label(
+                        result.status == .approved ? "Approved. It takes effect on the cluster shortly." : "Not approved.",
+                        systemImage: result.status == .approved ? "checkmark.circle" : "xmark.circle"
+                    )
+                    .foregroundStyle(style.muted)
+                }
             }
             .navigationTitle("Approvals")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .task { await load() }
             .refreshable { await load() }
+            .alert(
+                "Check the code",
+                isPresented: Binding(get: { codePrompt != nil }, set: { if !$0 { answer(false) } }),
+                presenting: codePrompt
+            ) { _ in
+                Button("Cancel", role: .cancel) { answer(false) }
+                Button("Continue") { answer(true) }
+            } message: { prompt in
+                Text("Your node\u{2019}s approval page will show the code \(prompt.code). Continue only if it matches.")
+            }
         }
         .tint(style.ink)
+    }
+
+    private func answer(_ proceed: Bool) {
+        let prompt = codePrompt
+        codePrompt = nil
+        prompt?.answer(proceed)
+    }
+
+    /// Ask the person to check the code before the page opens; a node that sends no code goes straight on.
+    private func confirmCode(_ started: ConsentStarted) async -> Bool {
+        guard let code = started.code, !code.isEmpty else { return true }
+        return await withCheckedContinuation { continuation in
+            codePrompt = CodePrompt(code: code) { continuation.resume(returning: $0) }
+        }
     }
 
     private func row(
@@ -256,9 +316,10 @@ struct ApprovalsSheet: View {
                         deciding = key
                         Task {
                             do {
-                                _ = try await session.requestConsent(request(session.callback.url))
+                                _ = try await session.requestConsent(
+                                    request(session.callback.url), confirm: { await confirmCode($0) })
                             } catch {
-                                self.error = MeroClient.describe(error)
+                                self.error = CloudErrorText.describe(error)
                             }
                             deciding = nil
                             await load()
@@ -291,7 +352,32 @@ struct ApprovalsSheet: View {
             sections = next
             error = nil
         } catch {
-            self.error = MeroClient.describe(error)
+            self.error = CloudErrorText.describe(error)
+        }
+    }
+}
+
+/// Calimero 1.0's errors in plain words, for sign-in and approvals.
+enum CloudErrorText {
+    static func describe(_ error: Error) -> String {
+        switch error {
+        case is PasskeyCancelled, is ConfirmCancelled: return "You cancelled the passkey prompt, so nothing changed."
+        case is LoginRequired: return "Your session ended. Sign in again."
+        case is WrongNode: return "This node can't serve your account right now. Try again."
+        case let error as UnavailableError: return "The cluster is busy (\(error.reason)). Try again in a moment."
+        case let error as ReleaseDeadlineError:
+            return error.release.isEmpty
+                ? "A node release needs your approval first."
+                : "Node release \(error.release) needs your approval first."
+        case is ConsentStale: return "That approval expired. Start it again."
+        case let error as AppError:
+            if let message = error.fields["message"]?.stringValue, !message.isEmpty { return message }
+            return error.appCode.isEmpty ? error.message : error.appCode
+        case let error as TeeTrustError: return "The node could not be verified: \(error.message)"
+        case let error as URLError where error.code == .notConnectedToInternet || error.code == .networkConnectionLost:
+            return "You are offline. Check your connection and try again."
+        case is URLError: return "Can't reach the cluster. Check the address and try again."
+        default: return MeroClient.describe(error)
         }
     }
 }

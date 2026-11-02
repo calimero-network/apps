@@ -62,57 +62,57 @@ final class FakeSheets: @unchecked Sendable {
         return try lock.withLock { () throws -> Data? in
             let enc = JSONEncoder()
             switch call.method {
-            case "list_sheets": return try enc.encode(sheets[ctx] ?? [])
-            case "get_all_cells": return try enc.encode(cells[ctx] ?? [])
-            case "get_layouts": return try enc.encode(layouts[ctx] ?? [])
-            case "get_sheet_views": return try enc.encode(views[ctx] ?? [])
-            case "get_styles": return try enc.encode(styles[ctx] ?? [])
-            case "get_charts": return try enc.encode(charts[ctx] ?? [])
-            case "get_comments": return try enc.encode(comments[ctx] ?? [])
-            case "get_members": return try enc.encode(members[ctx] ?? [])
-            case "get_protections": return try enc.encode(protections[ctx] ?? [])
-            case "get_project": return try enc.encode(Project(id: "p-\(ctx)", name: projects[ctx] ?? "", createdAt: 1))
+            case "listSheets": return try enc.encode(sheets[ctx] ?? [])
+            case "getAllCells": return try enc.encode(cells[ctx] ?? [])
+            case "getLayouts": return try enc.encode(layouts[ctx] ?? [])
+            case "getSheetViews": return try enc.encode(views[ctx] ?? [])
+            case "getStyles": return try enc.encode(styles[ctx] ?? [])
+            case "getCharts": return try enc.encode(charts[ctx] ?? [])
+            case "getComments": return try enc.encode(comments[ctx] ?? [])
+            case "getMembers": return try enc.encode(members[ctx] ?? [])
+            case "getProtections": return try enc.encode(protections[ctx] ?? [])
+            case "getProject": return try enc.encode(Project(id: "p-\(ctx)", name: projects[ctx] ?? "", createdAt: 1))
             case "whoami": return try enc.encode(account)
-            case "init_project":
+            case "initProject":
                 projects[ctx] = s("name")
                 return try enc.encode("p-\(ctx)")
-            case "create_sheet":
+            case "createSheet":
                 next += 1
                 let id = "sheet-\(next)"
                 sheets[ctx, default: []].append(
                     Sheet(id: id, name: s("name"), position: UInt32(sheets[ctx]?.count ?? 0), createdAt: 1, linkedFrom: ""))
                 return try enc.encode(id)
-            case "set_cell":
-                cells[ctx, default: []].removeAll { $0.sheetId == s("sheet_id") && $0.rowId == s("row_id") && $0.colId == s("col_id") }
+            case "setCell":
+                cells[ctx, default: []].removeAll { $0.sheetId == s("sheetId") && $0.rowId == s("rowId") && $0.colId == s("colId") }
                 cells[ctx, default: []].append(
                     Cell(
-                        id: "\(s("sheet_id"))|\(s("row_id"))|\(s("col_id"))", sheetId: s("sheet_id"), rowId: s("row_id"),
-                        colId: s("col_id"), rawValue: s("raw_value"), computedValue: s("raw_value"), format: "", updatedAt: 2,
+                        id: "\(s("sheetId"))|\(s("rowId"))|\(s("colId"))", sheetId: s("sheetId"), rowId: s("rowId"),
+                        colId: s("colId"), rawValue: s("rawValue"), computedValue: s("rawValue"), format: "", updatedAt: 2,
                         lastEditor: account, lastEditedAt: 2))
                 return try enc.encode("ok")
-            case "clear_cell":
-                cells[ctx, default: []].removeAll { $0.sheetId == s("sheet_id") && $0.rowId == s("row_id") && $0.colId == s("col_id") }
-            case "add_comment":
+            case "clearCell":
+                cells[ctx, default: []].removeAll { $0.sheetId == s("sheetId") && $0.rowId == s("rowId") && $0.colId == s("colId") }
+            case "addComment":
                 next += 1
                 let id = "comment-\(next)"
                 comments[ctx, default: []].append(
                     Comment(
-                        id: id, sheetId: s("sheet_id"), rowId: s("row_id"), colId: s("col_id"), author: account, text: s("text"),
+                        id: id, sheetId: s("sheetId"), rowId: s("rowId"), colId: s("colId"), author: account, text: s("text"),
                         mentions: [], parent: s("parent"), resolved: false, createdAt: UInt64(next), updatedAt: UInt64(next)))
                 return try enc.encode(id)
-            case "set_comment_resolved":
+            case "setCommentResolved":
                 comments[ctx] = comments[ctx]?.map {
                     var c = $0
                     if c.id == s("id") { c.resolved = args["resolved"] as? Bool ?? false }
                     return c
                 }
-            case "edit_comment":
+            case "editComment":
                 comments[ctx] = comments[ctx]?.map {
                     var c = $0
                     if c.id == s("id") { c.text = s("text") }
                     return c
                 }
-            case "delete_comment": comments[ctx]?.removeAll { $0.id == s("id") || $0.parent == s("id") }
+            case "deleteComment": comments[ctx]?.removeAll { $0.id == s("id") || $0.parent == s("id") }
             default: break
             }
             return Data("null".utf8)

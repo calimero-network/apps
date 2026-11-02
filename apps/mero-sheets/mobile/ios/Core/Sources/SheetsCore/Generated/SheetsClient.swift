@@ -20,7 +20,7 @@ public struct SheetsClient: Sendable {
     @discardableResult
     public func addAttachment(sheetId: String, rowId: String, colId: String, blobId: String, name: String, size: UInt64, mime: String) async throws -> String {
         let args = try JSONEncoder().encode(AddAttachmentArgs(sheetId: sheetId, rowId: rowId, colId: colId, blobId: blobId, name: name, size: size, mime: mime))
-        let response = try await transport.execute(method: "add_attachment", argsJSON: args)
+        let response = try await transport.execute(method: "addAttachment", argsJSON: args)
         return try JSONDecoder().decode(String.self, from: response)
     }
 
@@ -32,7 +32,7 @@ public struct SheetsClient: Sendable {
     @discardableResult
     public func addChart(chart: ChartInput) async throws -> String {
         let args = try JSONEncoder().encode(AddChartArgs(chart: chart))
-        let response = try await transport.execute(method: "add_chart", argsJSON: args)
+        let response = try await transport.execute(method: "addChart", argsJSON: args)
         return try JSONDecoder().decode(String.self, from: response)
     }
 
@@ -46,7 +46,7 @@ public struct SheetsClient: Sendable {
     @discardableResult
     public func addComment(sheetId: String, rowId: String, colId: String, text: String, parent: String) async throws -> String {
         let args = try JSONEncoder().encode(AddCommentArgs(sheetId: sheetId, rowId: rowId, colId: colId, text: text, parent: parent))
-        let response = try await transport.execute(method: "add_comment", argsJSON: args)
+        let response = try await transport.execute(method: "addComment", argsJSON: args)
         return try JSONDecoder().decode(String.self, from: response)
     }
 
@@ -58,7 +58,7 @@ public struct SheetsClient: Sendable {
     @discardableResult
     public func addRule(rule: RuleInput) async throws -> String {
         let args = try JSONEncoder().encode(AddRuleArgs(rule: rule))
-        let response = try await transport.execute(method: "add_rule", argsJSON: args)
+        let response = try await transport.execute(method: "addRule", argsJSON: args)
         return try JSONDecoder().decode(String.self, from: response)
     }
 
@@ -75,7 +75,7 @@ public struct SheetsClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func applyAxisOps(sheetId: String, ops: [AxisOp]) async throws {
         let args = try JSONEncoder().encode(ApplyAxisOpsArgs(sheetId: sheetId, ops: ops))
-        _ = try await transport.execute(method: "apply_axis_ops", argsJSON: args)
+        _ = try await transport.execute(method: "applyAxisOps", argsJSON: args)
     }
 
     /// apply_cell_ops
@@ -91,7 +91,7 @@ public struct SheetsClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func applyCellOps(sheetId: String, ops: [CellOp]) async throws {
         let args = try JSONEncoder().encode(ApplyCellOpsArgs(sheetId: sheetId, ops: ops))
-        _ = try await transport.execute(method: "apply_cell_ops", argsJSON: args)
+        _ = try await transport.execute(method: "applyCellOps", argsJSON: args)
     }
 
     /// apply_private_cell_ops
@@ -101,7 +101,7 @@ public struct SheetsClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func applyPrivateCellOps(sheetId: String, ops: [CellOp]) async throws {
         let args = try JSONEncoder().encode(ApplyPrivateCellOpsArgs(sheetId: sheetId, ops: ops))
-        _ = try await transport.execute(method: "apply_private_cell_ops", argsJSON: args)
+        _ = try await transport.execute(method: "applyPrivateCellOps", argsJSON: args)
     }
 
     /// apply_style_ops
@@ -113,7 +113,7 @@ public struct SheetsClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func applyStyleOps(sheetId: String, ops: [StyleOp]) async throws {
         let args = try JSONEncoder().encode(ApplyStyleOpsArgs(sheetId: sheetId, ops: ops))
-        _ = try await transport.execute(method: "apply_style_ops", argsJSON: args)
+        _ = try await transport.execute(method: "applyStyleOps", argsJSON: args)
     }
 
     /// clear_cell
@@ -121,7 +121,7 @@ public struct SheetsClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func clearCell(sheetId: String, rowId: String, colId: String) async throws {
         let args = try JSONEncoder().encode(ClearCellArgs(sheetId: sheetId, rowId: rowId, colId: colId))
-        _ = try await transport.execute(method: "clear_cell", argsJSON: args)
+        _ = try await transport.execute(method: "clearCell", argsJSON: args)
     }
 
     /// create_private_sheet
@@ -132,7 +132,7 @@ public struct SheetsClient: Sendable {
     @discardableResult
     public func createPrivateSheet(name: String) async throws -> String {
         let args = try JSONEncoder().encode(CreatePrivateSheetArgs(name: name))
-        let response = try await transport.execute(method: "create_private_sheet", argsJSON: args)
+        let response = try await transport.execute(method: "createPrivateSheet", argsJSON: args)
         return try JSONDecoder().decode(String.self, from: response)
     }
 
@@ -142,7 +142,7 @@ public struct SheetsClient: Sendable {
     @discardableResult
     public func createSheet(name: String) async throws -> String {
         let args = try JSONEncoder().encode(CreateSheetArgs(name: name))
-        let response = try await transport.execute(method: "create_sheet", argsJSON: args)
+        let response = try await transport.execute(method: "createSheet", argsJSON: args)
         return try JSONDecoder().decode(String.self, from: response)
     }
 
@@ -154,7 +154,7 @@ public struct SheetsClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func deleteComment(id: String) async throws {
         let args = try JSONEncoder().encode(DeleteCommentArgs(id: id))
-        _ = try await transport.execute(method: "delete_comment", argsJSON: args)
+        _ = try await transport.execute(method: "deleteComment", argsJSON: args)
     }
 
     /// delete_named_range
@@ -162,7 +162,7 @@ public struct SheetsClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func deleteNamedRange(name: String) async throws {
         let args = try JSONEncoder().encode(DeleteNamedRangeArgs(name: name))
-        _ = try await transport.execute(method: "delete_named_range", argsJSON: args)
+        _ = try await transport.execute(method: "deleteNamedRange", argsJSON: args)
     }
 
     /// delete_private_sheet
@@ -172,7 +172,7 @@ public struct SheetsClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func deletePrivateSheet(sheetId: String) async throws {
         let args = try JSONEncoder().encode(DeletePrivateSheetArgs(sheetId: sheetId))
-        _ = try await transport.execute(method: "delete_private_sheet", argsJSON: args)
+        _ = try await transport.execute(method: "deletePrivateSheet", argsJSON: args)
     }
 
     /// delete_sheet
@@ -180,7 +180,7 @@ public struct SheetsClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func deleteSheet(sheetId: String) async throws {
         let args = try JSONEncoder().encode(DeleteSheetArgs(sheetId: sheetId))
-        _ = try await transport.execute(method: "delete_sheet", argsJSON: args)
+        _ = try await transport.execute(method: "deleteSheet", argsJSON: args)
     }
 
     /// drop_link
@@ -191,7 +191,7 @@ public struct SheetsClient: Sendable {
     /// Cross-context entry point: callers must run the same application id.
     public func dropLink(fromContext: ContractBytes, publicationId: String) async throws {
         let args = try JSONEncoder().encode(DropLinkArgs(fromContext: fromContext, publicationId: publicationId))
-        _ = try await transport.execute(method: "drop_link", argsJSON: args)
+        _ = try await transport.execute(method: "dropLink", argsJSON: args)
     }
 
     /// edit_comment
@@ -202,7 +202,7 @@ public struct SheetsClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func editComment(id: String, text: String) async throws {
         let args = try JSONEncoder().encode(EditCommentArgs(id: id, text: text))
-        _ = try await transport.execute(method: "edit_comment", argsJSON: args)
+        _ = try await transport.execute(method: "editComment", argsJSON: args)
     }
 
     /// edit_note
@@ -216,7 +216,7 @@ public struct SheetsClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func editNote(sheetId: String, rowId: String, colId: String, ops: [NoteChange]) async throws {
         let args = try JSONEncoder().encode(EditNoteArgs(sheetId: sheetId, rowId: rowId, colId: colId, ops: ops))
-        _ = try await transport.execute(method: "edit_note", argsJSON: args)
+        _ = try await transport.execute(method: "editNote", argsJSON: args)
     }
 
     /// export_all
@@ -226,7 +226,7 @@ public struct SheetsClient: Sendable {
     ///
     /// View (`read_only`): sent with `query`.
     public func exportAll() async throws -> [Sheet] {
-        let response = try await transport.query(method: "export_all", argsJSON: Data("{}".utf8))
+        let response = try await transport.query(method: "exportAll", argsJSON: Data("{}".utf8))
         return try JSONDecoder().decode([Sheet].self, from: response)
     }
 
@@ -239,7 +239,7 @@ public struct SheetsClient: Sendable {
     /// View (`read_only`): sent with `query`.
     public func getActivity(since: UInt64, limit: UInt32) async throws -> [ActivityEntry] {
         let args = try JSONEncoder().encode(GetActivityArgs(since: since, limit: limit))
-        let response = try await transport.query(method: "get_activity", argsJSON: args)
+        let response = try await transport.query(method: "getActivity", argsJSON: args)
         return try JSONDecoder().decode([ActivityEntry].self, from: response)
     }
 
@@ -250,7 +250,7 @@ public struct SheetsClient: Sendable {
     ///
     /// View (`read_only`): sent with `query`.
     public func getAllCells() async throws -> [Cell] {
-        let response = try await transport.query(method: "get_all_cells", argsJSON: Data("{}".utf8))
+        let response = try await transport.query(method: "getAllCells", argsJSON: Data("{}".utf8))
         return try JSONDecoder().decode([Cell].self, from: response)
     }
 
@@ -260,7 +260,7 @@ public struct SheetsClient: Sendable {
     ///
     /// View (`read_only`): sent with `query`.
     public func getAttachments() async throws -> [Attachment] {
-        let response = try await transport.query(method: "get_attachments", argsJSON: Data("{}".utf8))
+        let response = try await transport.query(method: "getAttachments", argsJSON: Data("{}".utf8))
         return try JSONDecoder().decode([Attachment].self, from: response)
     }
 
@@ -273,7 +273,7 @@ public struct SheetsClient: Sendable {
     /// View (`read_only`): sent with `query`.
     public func getCells(sheetId: String) async throws -> [Cell] {
         let args = try JSONEncoder().encode(GetCellsArgs(sheetId: sheetId))
-        let response = try await transport.query(method: "get_cells", argsJSON: args)
+        let response = try await transport.query(method: "getCells", argsJSON: args)
         return try JSONDecoder().decode([Cell].self, from: response)
     }
 
@@ -283,7 +283,7 @@ public struct SheetsClient: Sendable {
     ///
     /// View (`read_only`): sent with `query`.
     public func getCharts() async throws -> [Chart] {
-        let response = try await transport.query(method: "get_charts", argsJSON: Data("{}".utf8))
+        let response = try await transport.query(method: "getCharts", argsJSON: Data("{}".utf8))
         return try JSONDecoder().decode([Chart].self, from: response)
     }
 
@@ -293,7 +293,7 @@ public struct SheetsClient: Sendable {
     ///
     /// View (`read_only`): sent with `query`.
     public func getComments() async throws -> [Comment] {
-        let response = try await transport.query(method: "get_comments", argsJSON: Data("{}".utf8))
+        let response = try await transport.query(method: "getComments", argsJSON: Data("{}".utf8))
         return try JSONDecoder().decode([Comment].self, from: response)
     }
 
@@ -303,7 +303,7 @@ public struct SheetsClient: Sendable {
     ///
     /// View (`read_only`): sent with `query`.
     public func getFunctions() async throws -> [FunctionDef] {
-        let response = try await transport.query(method: "get_functions", argsJSON: Data("{}".utf8))
+        let response = try await transport.query(method: "getFunctions", argsJSON: Data("{}".utf8))
         return try JSONDecoder().decode([FunctionDef].self, from: response)
     }
 
@@ -313,7 +313,7 @@ public struct SheetsClient: Sendable {
     ///
     /// View (`read_only`): sent with `query`.
     public func getLayouts() async throws -> [SheetLayout] {
-        let response = try await transport.query(method: "get_layouts", argsJSON: Data("{}".utf8))
+        let response = try await transport.query(method: "getLayouts", argsJSON: Data("{}".utf8))
         return try JSONDecoder().decode([SheetLayout].self, from: response)
     }
 
@@ -323,7 +323,7 @@ public struct SheetsClient: Sendable {
     ///
     /// View (`read_only`): sent with `query`.
     public func getLinks() async throws -> [Link] {
-        let response = try await transport.query(method: "get_links", argsJSON: Data("{}".utf8))
+        let response = try await transport.query(method: "getLinks", argsJSON: Data("{}".utf8))
         return try JSONDecoder().decode([Link].self, from: response)
     }
 
@@ -336,7 +336,7 @@ public struct SheetsClient: Sendable {
     ///
     /// View (`read_only`): sent with `query`.
     public func getMembers() async throws -> [Member] {
-        let response = try await transport.query(method: "get_members", argsJSON: Data("{}".utf8))
+        let response = try await transport.query(method: "getMembers", argsJSON: Data("{}".utf8))
         return try JSONDecoder().decode([Member].self, from: response)
     }
 
@@ -346,7 +346,7 @@ public struct SheetsClient: Sendable {
     ///
     /// View (`read_only`): sent with `query`.
     public func getNamedRanges() async throws -> [NamedRange] {
-        let response = try await transport.query(method: "get_named_ranges", argsJSON: Data("{}".utf8))
+        let response = try await transport.query(method: "getNamedRanges", argsJSON: Data("{}".utf8))
         return try JSONDecoder().decode([NamedRange].self, from: response)
     }
 
@@ -357,7 +357,7 @@ public struct SheetsClient: Sendable {
     /// View (`read_only`): sent with `query`.
     public func getNote(sheetId: String, rowId: String, colId: String) async throws -> [Span] {
         let args = try JSONEncoder().encode(GetNoteArgs(sheetId: sheetId, rowId: rowId, colId: colId))
-        let response = try await transport.query(method: "get_note", argsJSON: args)
+        let response = try await transport.query(method: "getNote", argsJSON: args)
         return try JSONDecoder().decode([Span].self, from: response)
     }
 
@@ -367,7 +367,7 @@ public struct SheetsClient: Sendable {
     ///
     /// View (`read_only`): sent with `query`.
     public func getNotedCells() async throws -> [NotedCell] {
-        let response = try await transport.query(method: "get_noted_cells", argsJSON: Data("{}".utf8))
+        let response = try await transport.query(method: "getNotedCells", argsJSON: Data("{}".utf8))
         return try JSONDecoder().decode([NotedCell].self, from: response)
     }
 
@@ -378,7 +378,7 @@ public struct SheetsClient: Sendable {
     ///
     /// View (`read_only`): sent with `query`.
     public func getPrivateCells() async throws -> [Cell] {
-        let response = try await transport.query(method: "get_private_cells", argsJSON: Data("{}".utf8))
+        let response = try await transport.query(method: "getPrivateCells", argsJSON: Data("{}".utf8))
         return try JSONDecoder().decode([Cell].self, from: response)
     }
 
@@ -388,7 +388,7 @@ public struct SheetsClient: Sendable {
     ///
     /// View (`read_only`): sent with `query`.
     public func getPrivateSheets() async throws -> [Sheet] {
-        let response = try await transport.query(method: "get_private_sheets", argsJSON: Data("{}".utf8))
+        let response = try await transport.query(method: "getPrivateSheets", argsJSON: Data("{}".utf8))
         return try JSONDecoder().decode([Sheet].self, from: response)
     }
 
@@ -407,7 +407,7 @@ public struct SheetsClient: Sendable {
     ///
     /// View (`read_only`): sent with `query`.
     public func getProject() async throws -> Project {
-        let response = try await transport.query(method: "get_project", argsJSON: Data("{}".utf8))
+        let response = try await transport.query(method: "getProject", argsJSON: Data("{}".utf8))
         return try JSONDecoder().decode(Project.self, from: response)
     }
 
@@ -417,7 +417,7 @@ public struct SheetsClient: Sendable {
     ///
     /// View (`read_only`): sent with `query`.
     public func getProtections() async throws -> [Protection] {
-        let response = try await transport.query(method: "get_protections", argsJSON: Data("{}".utf8))
+        let response = try await transport.query(method: "getProtections", argsJSON: Data("{}".utf8))
         return try JSONDecoder().decode([Protection].self, from: response)
     }
 
@@ -427,7 +427,7 @@ public struct SheetsClient: Sendable {
     ///
     /// View (`read_only`): sent with `query`.
     public func getPublications() async throws -> [Publication] {
-        let response = try await transport.query(method: "get_publications", argsJSON: Data("{}".utf8))
+        let response = try await transport.query(method: "getPublications", argsJSON: Data("{}".utf8))
         return try JSONDecoder().decode([Publication].self, from: response)
     }
 
@@ -437,7 +437,7 @@ public struct SheetsClient: Sendable {
     ///
     /// View (`read_only`): sent with `query`.
     public func getRules() async throws -> [Rule] {
-        let response = try await transport.query(method: "get_rules", argsJSON: Data("{}".utf8))
+        let response = try await transport.query(method: "getRules", argsJSON: Data("{}".utf8))
         return try JSONDecoder().decode([Rule].self, from: response)
     }
 
@@ -448,7 +448,7 @@ public struct SheetsClient: Sendable {
     ///
     /// View (`read_only`): sent with `query`.
     public func getSheetViews() async throws -> [SheetView] {
-        let response = try await transport.query(method: "get_sheet_views", argsJSON: Data("{}".utf8))
+        let response = try await transport.query(method: "getSheetViews", argsJSON: Data("{}".utf8))
         return try JSONDecoder().decode([SheetView].self, from: response)
     }
 
@@ -458,7 +458,7 @@ public struct SheetsClient: Sendable {
     ///
     /// View (`read_only`): sent with `query`.
     public func getStyles() async throws -> [CellStyle] {
-        let response = try await transport.query(method: "get_styles", argsJSON: Data("{}".utf8))
+        let response = try await transport.query(method: "getStyles", argsJSON: Data("{}".utf8))
         return try JSONDecoder().decode([CellStyle].self, from: response)
     }
 
@@ -478,7 +478,7 @@ public struct SheetsClient: Sendable {
     @discardableResult
     public func initProject(name: String) async throws -> String {
         let args = try JSONEncoder().encode(InitProjectArgs(name: name))
-        let response = try await transport.execute(method: "init_project", argsJSON: args)
+        let response = try await transport.execute(method: "initProject", argsJSON: args)
         return try JSONDecoder().decode(String.self, from: response)
     }
 
@@ -502,7 +502,7 @@ public struct SheetsClient: Sendable {
     ///
     /// View (`read_only`): sent with `query`.
     public func listSheets() async throws -> [Sheet] {
-        let response = try await transport.query(method: "list_sheets", argsJSON: Data("{}".utf8))
+        let response = try await transport.query(method: "listSheets", argsJSON: Data("{}".utf8))
         return try JSONDecoder().decode([Sheet].self, from: response)
     }
 
@@ -516,7 +516,7 @@ public struct SheetsClient: Sendable {
     @discardableResult
     public func protectRange(sheetId: String, topRowId: String, leftColId: String, bottomRowId: String, rightColId: String, description: String, editors: [String]) async throws -> String {
         let args = try JSONEncoder().encode(ProtectRangeArgs(sheetId: sheetId, topRowId: topRowId, leftColId: leftColId, bottomRowId: bottomRowId, rightColId: rightColId, description: description, editors: editors))
-        let response = try await transport.execute(method: "protect_range", argsJSON: args)
+        let response = try await transport.execute(method: "protectRange", argsJSON: args)
         return try JSONDecoder().decode(String.self, from: response)
     }
 
@@ -529,18 +529,21 @@ public struct SheetsClient: Sendable {
     @discardableResult
     public func publishRange(sheetId: String, topRowId: String, leftColId: String, bottomRowId: String, rightColId: String, targetContext: String, name: String) async throws -> String {
         let args = try JSONEncoder().encode(PublishRangeArgs(sheetId: sheetId, topRowId: topRowId, leftColId: leftColId, bottomRowId: bottomRowId, rightColId: rightColId, targetContext: targetContext, name: name))
-        let response = try await transport.execute(method: "publish_range", argsJSON: args)
+        let response = try await transport.execute(method: "publishRange", argsJSON: args)
         return try JSONDecoder().decode(String.self, from: response)
     }
 
     /// push_publication
     ///
-    /// Push a link's values again now.
+    /// The values a link delivers now (`LinkPush`, as raw JSON). On the component
+    /// runtime the client relays them to the target workbook (`receiveLink`); this
+    /// app does not relay links.
     ///
-    /// Write (`mutating`): sent with `execute`.
-    public func pushPublication(id: String) async throws {
+    /// View: sent with `query`.
+    @discardableResult
+    public func pushPublication(id: String) async throws -> Data {
         let args = try JSONEncoder().encode(PushPublicationArgs(id: id))
-        _ = try await transport.execute(method: "push_publication", argsJSON: args)
+        return try await transport.query(method: "pushPublication", argsJSON: args)
     }
 
     /// receive_link
@@ -553,7 +556,7 @@ public struct SheetsClient: Sendable {
     /// Cross-context entry point: callers must run the same application id.
     public func receiveLink(fromContext: ContractBytes, publicationId: String, name: String, sourceName: String, rows: UInt32, cols: UInt32, values: [String]) async throws {
         let args = try JSONEncoder().encode(ReceiveLinkArgs(fromContext: fromContext, publicationId: publicationId, name: name, sourceName: sourceName, rows: rows, cols: cols, values: values))
-        _ = try await transport.execute(method: "receive_link", argsJSON: args)
+        _ = try await transport.execute(method: "receiveLink", argsJSON: args)
     }
 
     /// remove_attachment
@@ -564,7 +567,7 @@ public struct SheetsClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func removeAttachment(id: String) async throws {
         let args = try JSONEncoder().encode(RemoveAttachmentArgs(id: id))
-        _ = try await transport.execute(method: "remove_attachment", argsJSON: args)
+        _ = try await transport.execute(method: "removeAttachment", argsJSON: args)
     }
 
     /// remove_chart
@@ -572,7 +575,7 @@ public struct SheetsClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func removeChart(id: String) async throws {
         let args = try JSONEncoder().encode(RemoveChartArgs(id: id))
-        _ = try await transport.execute(method: "remove_chart", argsJSON: args)
+        _ = try await transport.execute(method: "removeChart", argsJSON: args)
     }
 
     /// remove_protection
@@ -582,7 +585,7 @@ public struct SheetsClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func removeProtection(id: String) async throws {
         let args = try JSONEncoder().encode(RemoveProtectionArgs(id: id))
-        _ = try await transport.execute(method: "remove_protection", argsJSON: args)
+        _ = try await transport.execute(method: "removeProtection", argsJSON: args)
     }
 
     /// remove_rule
@@ -590,7 +593,7 @@ public struct SheetsClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func removeRule(id: String) async throws {
         let args = try JSONEncoder().encode(RemoveRuleArgs(id: id))
-        _ = try await transport.execute(method: "remove_rule", argsJSON: args)
+        _ = try await transport.execute(method: "removeRule", argsJSON: args)
     }
 
     /// rename_private_sheet
@@ -598,7 +601,7 @@ public struct SheetsClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func renamePrivateSheet(sheetId: String, name: String) async throws {
         let args = try JSONEncoder().encode(RenamePrivateSheetArgs(sheetId: sheetId, name: name))
-        _ = try await transport.execute(method: "rename_private_sheet", argsJSON: args)
+        _ = try await transport.execute(method: "renamePrivateSheet", argsJSON: args)
     }
 
     /// rename_sheet
@@ -606,7 +609,7 @@ public struct SheetsClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func renameSheet(sheetId: String, newName: String) async throws {
         let args = try JSONEncoder().encode(RenameSheetArgs(sheetId: sheetId, newName: newName))
-        _ = try await transport.execute(method: "rename_sheet", argsJSON: args)
+        _ = try await transport.execute(method: "renameSheet", argsJSON: args)
     }
 
     /// search_functions
@@ -614,7 +617,7 @@ public struct SheetsClient: Sendable {
     /// View (`read_only`): sent with `query`.
     public func searchFunctions(prefix: String) async throws -> [FunctionDef] {
         let args = try JSONEncoder().encode(SearchFunctionsArgs(prefix: prefix))
-        let response = try await transport.query(method: "search_functions", argsJSON: args)
+        let response = try await transport.query(method: "searchFunctions", argsJSON: args)
         return try JSONDecoder().decode([FunctionDef].self, from: response)
     }
 
@@ -624,7 +627,7 @@ public struct SheetsClient: Sendable {
     @discardableResult
     public func setCell(sheetId: String, rowId: String, colId: String, rawValue: String) async throws -> String {
         let args = try JSONEncoder().encode(SetCellArgs(sheetId: sheetId, rowId: rowId, colId: colId, rawValue: rawValue))
-        let response = try await transport.execute(method: "set_cell", argsJSON: args)
+        let response = try await transport.execute(method: "setCell", argsJSON: args)
         return try JSONDecoder().decode(String.self, from: response)
     }
 
@@ -637,7 +640,7 @@ public struct SheetsClient: Sendable {
     @discardableResult
     public func setCellFormat(sheetId: String, rowId: String, colId: String, format: String) async throws -> String {
         let args = try JSONEncoder().encode(SetCellFormatArgs(sheetId: sheetId, rowId: rowId, colId: colId, format: format))
-        let response = try await transport.execute(method: "set_cell_format", argsJSON: args)
+        let response = try await transport.execute(method: "setCellFormat", argsJSON: args)
         return try JSONDecoder().decode(String.self, from: response)
     }
 
@@ -648,7 +651,7 @@ public struct SheetsClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func setCommentResolved(id: String, resolved: Bool) async throws {
         let args = try JSONEncoder().encode(SetCommentResolvedArgs(id: id, resolved: resolved))
-        _ = try await transport.execute(method: "set_comment_resolved", argsJSON: args)
+        _ = try await transport.execute(method: "setCommentResolved", argsJSON: args)
     }
 
     /// set_frozen
@@ -658,7 +661,7 @@ public struct SheetsClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func setFrozen(sheetId: String, rows: UInt32, cols: UInt32) async throws {
         let args = try JSONEncoder().encode(SetFrozenArgs(sheetId: sheetId, rows: rows, cols: cols))
-        _ = try await transport.execute(method: "set_frozen", argsJSON: args)
+        _ = try await transport.execute(method: "setFrozen", argsJSON: args)
     }
 
     /// set_named_range
@@ -668,7 +671,7 @@ public struct SheetsClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func setNamedRange(name: String, target: String) async throws {
         let args = try JSONEncoder().encode(SetNamedRangeArgs(name: name, target: target))
-        _ = try await transport.execute(method: "set_named_range", argsJSON: args)
+        _ = try await transport.execute(method: "setNamedRange", argsJSON: args)
     }
 
     /// set_role
@@ -679,7 +682,7 @@ public struct SheetsClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func setRole(memberId: String, role: String) async throws {
         let args = try JSONEncoder().encode(SetRoleArgs(memberId: memberId, role: role))
-        _ = try await transport.execute(method: "set_role", argsJSON: args)
+        _ = try await transport.execute(method: "setRole", argsJSON: args)
     }
 
     /// set_sizes
@@ -689,7 +692,7 @@ public struct SheetsClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func setSizes(sheetId: String, sizes: [AxisSize]) async throws {
         let args = try JSONEncoder().encode(SetSizesArgs(sheetId: sheetId, sizes: sizes))
-        _ = try await transport.execute(method: "set_sizes", argsJSON: args)
+        _ = try await transport.execute(method: "setSizes", argsJSON: args)
     }
 
     /// unlink
@@ -720,7 +723,7 @@ public struct SheetsClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func updateChart(id: String, chart: ChartInput) async throws {
         let args = try JSONEncoder().encode(UpdateChartArgs(id: id, chart: chart))
-        _ = try await transport.execute(method: "update_chart", argsJSON: args)
+        _ = try await transport.execute(method: "updateChart", argsJSON: args)
     }
 
     /// update_protection
@@ -730,7 +733,7 @@ public struct SheetsClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func updateProtection(id: String, description: String, editors: [String]) async throws {
         let args = try JSONEncoder().encode(UpdateProtectionArgs(id: id, description: description, editors: editors))
-        _ = try await transport.execute(method: "update_protection", argsJSON: args)
+        _ = try await transport.execute(method: "updateProtection", argsJSON: args)
     }
 
     /// update_rule
@@ -740,7 +743,7 @@ public struct SheetsClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func updateRule(id: String, rule: RuleInput) async throws {
         let args = try JSONEncoder().encode(UpdateRuleArgs(id: id, rule: rule))
-        _ = try await transport.execute(method: "update_rule", argsJSON: args)
+        _ = try await transport.execute(method: "updateRule", argsJSON: args)
     }
 
     /// whoami
@@ -769,16 +772,6 @@ public struct SheetsClient: Sendable {
         let name: String
         let size: UInt64
         let mime: String
-
-        enum CodingKeys: String, CodingKey {
-            case sheetId = "sheet_id"
-            case rowId = "row_id"
-            case colId = "col_id"
-            case blobId = "blob_id"
-            case name
-            case size
-            case mime
-        }
     }
 
     private struct AddChartArgs: Encodable {
@@ -791,14 +784,6 @@ public struct SheetsClient: Sendable {
         let colId: String
         let text: String
         let parent: String
-
-        enum CodingKeys: String, CodingKey {
-            case sheetId = "sheet_id"
-            case rowId = "row_id"
-            case colId = "col_id"
-            case text
-            case parent
-        }
     }
 
     private struct AddRuleArgs: Encodable {
@@ -808,53 +793,27 @@ public struct SheetsClient: Sendable {
     private struct ApplyAxisOpsArgs: Encodable {
         let sheetId: String
         let ops: [AxisOp]
-
-        enum CodingKeys: String, CodingKey {
-            case sheetId = "sheet_id"
-            case ops
-        }
     }
 
     private struct ApplyCellOpsArgs: Encodable {
         let sheetId: String
         let ops: [CellOp]
-
-        enum CodingKeys: String, CodingKey {
-            case sheetId = "sheet_id"
-            case ops
-        }
     }
 
     private struct ApplyPrivateCellOpsArgs: Encodable {
         let sheetId: String
         let ops: [CellOp]
-
-        enum CodingKeys: String, CodingKey {
-            case sheetId = "sheet_id"
-            case ops
-        }
     }
 
     private struct ApplyStyleOpsArgs: Encodable {
         let sheetId: String
         let ops: [StyleOp]
-
-        enum CodingKeys: String, CodingKey {
-            case sheetId = "sheet_id"
-            case ops
-        }
     }
 
     private struct ClearCellArgs: Encodable {
         let sheetId: String
         let rowId: String
         let colId: String
-
-        enum CodingKeys: String, CodingKey {
-            case sheetId = "sheet_id"
-            case rowId = "row_id"
-            case colId = "col_id"
-        }
     }
 
     private struct CreatePrivateSheetArgs: Encodable {
@@ -875,28 +834,15 @@ public struct SheetsClient: Sendable {
 
     private struct DeletePrivateSheetArgs: Encodable {
         let sheetId: String
-
-        enum CodingKeys: String, CodingKey {
-            case sheetId = "sheet_id"
-        }
     }
 
     private struct DeleteSheetArgs: Encodable {
         let sheetId: String
-
-        enum CodingKeys: String, CodingKey {
-            case sheetId = "sheet_id"
-        }
     }
 
     private struct DropLinkArgs: Encodable {
         let fromContext: ContractBytes
         let publicationId: String
-
-        enum CodingKeys: String, CodingKey {
-            case fromContext = "from_context"
-            case publicationId = "publication_id"
-        }
     }
 
     private struct EditCommentArgs: Encodable {
@@ -909,13 +855,6 @@ public struct SheetsClient: Sendable {
         let rowId: String
         let colId: String
         let ops: [NoteChange]
-
-        enum CodingKeys: String, CodingKey {
-            case sheetId = "sheet_id"
-            case rowId = "row_id"
-            case colId = "col_id"
-            case ops
-        }
     }
 
     private struct GetActivityArgs: Encodable {
@@ -925,22 +864,12 @@ public struct SheetsClient: Sendable {
 
     private struct GetCellsArgs: Encodable {
         let sheetId: String
-
-        enum CodingKeys: String, CodingKey {
-            case sheetId = "sheet_id"
-        }
     }
 
     private struct GetNoteArgs: Encodable {
         let sheetId: String
         let rowId: String
         let colId: String
-
-        enum CodingKeys: String, CodingKey {
-            case sheetId = "sheet_id"
-            case rowId = "row_id"
-            case colId = "col_id"
-        }
     }
 
     private struct InitProjectArgs: Encodable {
@@ -959,16 +888,6 @@ public struct SheetsClient: Sendable {
         let rightColId: String
         let description: String
         let editors: [String]
-
-        enum CodingKeys: String, CodingKey {
-            case sheetId = "sheet_id"
-            case topRowId = "top_row_id"
-            case leftColId = "left_col_id"
-            case bottomRowId = "bottom_row_id"
-            case rightColId = "right_col_id"
-            case description
-            case editors
-        }
     }
 
     private struct PublishRangeArgs: Encodable {
@@ -979,16 +898,6 @@ public struct SheetsClient: Sendable {
         let rightColId: String
         let targetContext: String
         let name: String
-
-        enum CodingKeys: String, CodingKey {
-            case sheetId = "sheet_id"
-            case topRowId = "top_row_id"
-            case leftColId = "left_col_id"
-            case bottomRowId = "bottom_row_id"
-            case rightColId = "right_col_id"
-            case targetContext = "target_context"
-            case name
-        }
     }
 
     private struct PushPublicationArgs: Encodable {
@@ -1003,16 +912,6 @@ public struct SheetsClient: Sendable {
         let rows: UInt32
         let cols: UInt32
         let values: [String]
-
-        enum CodingKeys: String, CodingKey {
-            case fromContext = "from_context"
-            case publicationId = "publication_id"
-            case name
-            case sourceName = "source_name"
-            case rows
-            case cols
-            case values
-        }
     }
 
     private struct RemoveAttachmentArgs: Encodable {
@@ -1034,21 +933,11 @@ public struct SheetsClient: Sendable {
     private struct RenamePrivateSheetArgs: Encodable {
         let sheetId: String
         let name: String
-
-        enum CodingKeys: String, CodingKey {
-            case sheetId = "sheet_id"
-            case name
-        }
     }
 
     private struct RenameSheetArgs: Encodable {
         let sheetId: String
         let newName: String
-
-        enum CodingKeys: String, CodingKey {
-            case sheetId = "sheet_id"
-            case newName = "new_name"
-        }
     }
 
     private struct SearchFunctionsArgs: Encodable {
@@ -1060,13 +949,6 @@ public struct SheetsClient: Sendable {
         let rowId: String
         let colId: String
         let rawValue: String
-
-        enum CodingKeys: String, CodingKey {
-            case sheetId = "sheet_id"
-            case rowId = "row_id"
-            case colId = "col_id"
-            case rawValue = "raw_value"
-        }
     }
 
     private struct SetCellFormatArgs: Encodable {
@@ -1074,13 +956,6 @@ public struct SheetsClient: Sendable {
         let rowId: String
         let colId: String
         let format: String
-
-        enum CodingKeys: String, CodingKey {
-            case sheetId = "sheet_id"
-            case rowId = "row_id"
-            case colId = "col_id"
-            case format
-        }
     }
 
     private struct SetCommentResolvedArgs: Encodable {
@@ -1092,12 +967,6 @@ public struct SheetsClient: Sendable {
         let sheetId: String
         let rows: UInt32
         let cols: UInt32
-
-        enum CodingKeys: String, CodingKey {
-            case sheetId = "sheet_id"
-            case rows
-            case cols
-        }
     }
 
     private struct SetNamedRangeArgs: Encodable {
@@ -1108,21 +977,11 @@ public struct SheetsClient: Sendable {
     private struct SetRoleArgs: Encodable {
         let memberId: String
         let role: String
-
-        enum CodingKeys: String, CodingKey {
-            case memberId = "member_id"
-            case role
-        }
     }
 
     private struct SetSizesArgs: Encodable {
         let sheetId: String
         let sizes: [AxisSize]
-
-        enum CodingKeys: String, CodingKey {
-            case sheetId = "sheet_id"
-            case sizes
-        }
     }
 
     private struct UnlinkArgs: Encodable {

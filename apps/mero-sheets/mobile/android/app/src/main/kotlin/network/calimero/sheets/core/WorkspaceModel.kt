@@ -228,9 +228,9 @@ class WorkspaceModel(
     /** Mint an invitation link to the active workspace; [spreadsheet] (the one open) is opened for whoever joins. */
     suspend fun inviteLink(spreadsheet: SpreadsheetItem? = null): String {
         val ns = _state.value.activeWorkspace ?: throw SheetsException("Open a workspace first.")
-        val signed = backend.createInvitation(ns.id)
+        val minted = backend.createInvitation(ns.id)
         return SheetsInvitation(
-            signed,
+            minted,
             displayName(ns),
             spreadsheet?.id,
             spreadsheet?.takeIf { !it.unnamed }?.name,

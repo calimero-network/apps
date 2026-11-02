@@ -98,53 +98,53 @@ class FakeSheets(
         val ctx = call.contextId
         if (call.path == RecordedContractCall.Path.EXECUTE) failWrites?.let { throw it }
 
-        fun same(c: Cell) = c.sheetId == s("sheet_id") && c.rowId == s("row_id") && c.colId == s("col_id")
+        fun same(c: Cell) = c.sheetId == s("sheetId") && c.rowId == s("rowId") && c.colId == s("colId")
         when (call.method) {
-            "list_sheets" -> return json.encodeToJsonElement(sheets[ctx].orEmpty())
-            "get_all_cells" -> return json.encodeToJsonElement(cells[ctx].orEmpty())
-            "get_layouts" -> return json.encodeToJsonElement(layouts[ctx].orEmpty())
-            "get_sheet_views" -> return json.encodeToJsonElement(views[ctx].orEmpty())
-            "get_styles" -> return json.encodeToJsonElement(styles[ctx].orEmpty())
-            "get_charts" -> return json.encodeToJsonElement(charts[ctx].orEmpty())
-            "get_comments" -> return json.encodeToJsonElement(comments[ctx].orEmpty())
-            "get_members" -> return json.encodeToJsonElement(members[ctx].orEmpty())
-            "get_protections" -> return json.encodeToJsonElement(protections[ctx].orEmpty())
-            "get_project" -> return json.encodeToJsonElement(Project("p-$ctx", projects[ctx].orEmpty(), 1uL))
+            "listSheets" -> return json.encodeToJsonElement(sheets[ctx].orEmpty())
+            "getAllCells" -> return json.encodeToJsonElement(cells[ctx].orEmpty())
+            "getLayouts" -> return json.encodeToJsonElement(layouts[ctx].orEmpty())
+            "getSheetViews" -> return json.encodeToJsonElement(views[ctx].orEmpty())
+            "getStyles" -> return json.encodeToJsonElement(styles[ctx].orEmpty())
+            "getCharts" -> return json.encodeToJsonElement(charts[ctx].orEmpty())
+            "getComments" -> return json.encodeToJsonElement(comments[ctx].orEmpty())
+            "getMembers" -> return json.encodeToJsonElement(members[ctx].orEmpty())
+            "getProtections" -> return json.encodeToJsonElement(protections[ctx].orEmpty())
+            "getProject" -> return json.encodeToJsonElement(Project("p-$ctx", projects[ctx].orEmpty(), 1uL))
             "whoami" -> return JsonPrimitive(account)
-            "init_project" -> {
+            "initProject" -> {
                 projects[ctx] = s("name")
                 return JsonPrimitive("p-$ctx")
             }
-            "create_sheet" -> {
+            "createSheet" -> {
                 next += 1
                 val list = sheets.getOrPut(ctx) { mutableListOf() }
                 list += Sheet("sheet-$next", s("name"), list.size.toUInt(), 1uL, "")
                 return JsonPrimitive("sheet-$next")
             }
-            "set_cell" -> {
+            "setCell" -> {
                 val list = cells.getOrPut(ctx) { mutableListOf() }
                 list.removeAll(::same)
                 list +=
                     Cell(
-                        "${s("sheet_id")}|${s("row_id")}|${s("col_id")}", s("sheet_id"), s("row_id"), s("col_id"),
-                        s("raw_value"), s("raw_value"), "", 2uL, account, 2uL,
+                        "${s("sheetId")}|${s("rowId")}|${s("colId")}", s("sheetId"), s("rowId"), s("colId"),
+                        s("rawValue"), s("rawValue"), "", 2uL, account, 2uL,
                     )
                 return JsonPrimitive("ok")
             }
-            "clear_cell" -> cells[ctx]?.removeAll(::same)
-            "add_comment" -> {
+            "clearCell" -> cells[ctx]?.removeAll(::same)
+            "addComment" -> {
                 next += 1
                 val id = "comment-$next"
                 comments.getOrPut(ctx) { mutableListOf() } +=
-                    Comment(id, s("sheet_id"), s("row_id"), s("col_id"), account, s("text"), emptyList(), s("parent"), false, next.toULong(), next.toULong())
+                    Comment(id, s("sheetId"), s("rowId"), s("colId"), account, s("text"), emptyList(), s("parent"), false, next.toULong(), next.toULong())
                 return JsonPrimitive(id)
             }
-            "set_comment_resolved" ->
+            "setCommentResolved" ->
                 comments[ctx]?.replaceAll {
                     if (it.id == s("id")) it.copy(resolved = (args["resolved"] as? JsonPrimitive)?.booleanOrNull == true) else it
                 }
-            "edit_comment" -> comments[ctx]?.replaceAll { if (it.id == s("id")) it.copy(text = s("text")) else it }
-            "delete_comment" -> comments[ctx]?.removeAll { it.id == s("id") || it.parent == s("id") }
+            "editComment" -> comments[ctx]?.replaceAll { if (it.id == s("id")) it.copy(text = s("text")) else it }
+            "deleteComment" -> comments[ctx]?.removeAll { it.id == s("id") || it.parent == s("id") }
         }
         return JsonNull
     }

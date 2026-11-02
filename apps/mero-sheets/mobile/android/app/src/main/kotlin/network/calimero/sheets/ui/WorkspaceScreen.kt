@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.TableChart
+import androidx.compose.material.icons.outlined.Verified
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -57,6 +58,7 @@ fun WorkspaceScreen(
     ws: WorkspaceState,
     openSheet: (AppSheet) -> Unit,
     signOut: () -> Unit,
+    approvals: () -> Unit,
     open: (String) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -136,6 +138,8 @@ fun WorkspaceScreen(
                     Text(SheetsFormat.truncateKey(workspace.account), fontFamily = FontFamily.Monospace, fontSize = 13.sp, color = Palette.text2)
                 }
                 HorizontalDivider(color = Palette.line)
+                ActionRow(Icons.Outlined.Verified, "Approvals", onClick = approvals)
+                HorizontalDivider(color = Palette.line)
                 ActionRow(Icons.AutoMirrored.Outlined.Logout, "Sign out", tint = Palette.danger) { confirmSignOut = true }
             }
         }
@@ -143,8 +147,8 @@ fun WorkspaceScreen(
             val rows =
                 buildList {
                     add("Account" to workspace.account)
-                    add("Relay" to if (workspace.hasRelay) "Connected" else "None yet")
-                    ws.activeWorkspaceId?.let { add("Workspace (namespace)" to it) }
+                    add("Node" to if (workspace.hasRelay) "Connected" else "Not connected")
+                    ws.activeWorkspaceId?.let { add("Workspace (org)" to it) }
                 }
             Box(Modifier.padding(top = 12.dp)) { DetailsDisclosure(rows) }
         }

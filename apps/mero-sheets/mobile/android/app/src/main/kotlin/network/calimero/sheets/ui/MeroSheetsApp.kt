@@ -80,26 +80,25 @@ import network.calimero.sheets.core.SpreadsheetItem
 import network.calimero.sheets.core.WorkspaceModel
 import network.calimero.sheets.core.WorkspaceState
 
-enum class AppSheet { NEW_WORKSPACE, NEW_SPREADSHEET, INVITE }
+enum class AppSheet { NEW_WORKSPACE, NEW_SPREADSHEET, INVITE, APPROVALS }
 
 /** Signed out → sign-in; signed in → the app, rebuilt when the session's backend is. */
 @Composable
 fun MeroSheetsApp(
     vm: SheetsAppViewModel,
-    onSignIn: () -> Unit,
     onShare: (String) -> Unit,
 ) {
-    val backend by vm.session.backend.collectAsStateWithLifecycle()
-    val restoring by vm.session.isRestoring.collectAsStateWithLifecycle()
-    val revision by vm.session.revision.collectAsStateWithLifecycle()
-    val pending by vm.session.pendingInvitation.collectAsStateWithLifecycle()
+    val backend by vm.backend.collectAsStateWithLifecycle()
+    val restoring by vm.restoring.collectAsStateWithLifecycle()
+    val revision by vm.revision.collectAsStateWithLifecycle()
+    val pending by vm.pendingInvitation.collectAsStateWithLifecycle()
     SheetsTheme {
         Surface(Modifier.fillMaxSize(), color = Palette.ground) {
             val current = backend
             when {
                 current != null -> key(revision) { SignedInScreen(current, vm, onShare) }
                 restoring -> CenteredProgress()
-                else -> SignInScreen(vm, onSignIn)
+                else -> SignInScreen(vm)
             }
             val link = pending
             if (link != null && current != null) {
@@ -110,13 +109,7 @@ fun MeroSheetsApp(
 }
 
 @Composable
-fun SignInScreen(
-    vm: SheetsAppViewModel,
-    onSignIn: () -> Unit,
-) {
-    val state by vm.session.client.state
-        .collectAsStateWithLifecycle()
-    val haptics = LocalHapticFeedback.current
+fun SignInScreen(vm: SheetsAppViewModel) {
     Column(
         Modifier
             .fillMaxSize()
@@ -133,29 +126,17 @@ fun SignInScreen(
         Text("Mero Sheets", fontSize = 28.sp, fontWeight = FontWeight.SemiBold, color = Palette.ink)
         Spacer(Modifier.height(18.dp))
         Text(
-            "Collaborative spreadsheets, peer to peer. Open your team’s sheets, read the numbers and charts, and update a value on the go.",
+            "Collaborative spreadsheets for your team. Open your team’s sheets, read the numbers and charts, and update a value on the go.",
             fontSize = 16.sp,
             color = Palette.text2,
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(horizontal = 8.dp),
         )
         Spacer(Modifier.weight(1f))
-        val error = state.error
-        if (error != null && !state.isLoading) {
-            Text(error, fontSize = 14.sp, color = Palette.danger, textAlign = TextAlign.Center)
-            Spacer(Modifier.height(12.dp))
-        }
-        PrimaryButton(
-            if (state.isLoading) "Waiting for the wallet…" else "Sign in with Calimero",
-            onClick = {
-                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                onSignIn()
-            },
-            busy = state.isLoading,
-        )
+        CloudSignInPanel(vm)
         Spacer(Modifier.height(12.dp))
         Text(
-            "Your spreadsheets live with your team, not on a server. Sign-in approves this phone with your Calimero account.",
+            "Your spreadsheets live with your team on its Calimero cluster, not on a vendor's server.",
             fontSize = 13.sp,
             color = Palette.text3,
             textAlign = TextAlign.Center,
@@ -174,7 +155,7 @@ fun SignedInScreen(
     vm: SheetsAppViewModel,
     onShare: (String) -> Unit,
 ) {
-    val workspace = remember(backend) { WorkspaceModel(backend, vm.session.applicationId, vm.store) }
+    val workspace = remember(backend) { WorkspaceModel(backend, MeroSheets.PACKAGE_NAME, vm.store) }
     val ws by workspace.state.collectAsStateWithLifecycle()
     val justJoined by vm.justJoined.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableStateOf(0) }
@@ -272,7 +253,7 @@ fun SignedInScreen(
                     WorkspaceScreen(workspace, ws, {
                         inviteFor = null
                         sheet = it
-                    }, vm::signOut) {
+                    }, vm::signOut, { sheet = AppSheet.APPROVALS }) {
                         open = it
                         tab = 0
                     }
@@ -308,6 +289,7 @@ fun SignedInScreen(
                 open = id
             }
         AppSheet.INVITE -> InviteSheet(workspace, inviteFor, onShare) { sheet = null }
+        AppSheet.APPROVALS -> ApprovalsSheet(vm, ws.workspaces.map { it.id to WorkspaceModel.displayName(it) }) { sheet = null }
         null -> Unit
     }
 
