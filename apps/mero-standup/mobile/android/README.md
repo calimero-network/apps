@@ -37,8 +37,8 @@ intent filter). Plain http is allowed only to `10.0.2.2` and `localhost`.
 
 ## SDK pin
 
-`kotlin-sdk.ref` pins kotlin-sdk `61b65e9c0c87db8fbb2d3b2ce827603b0c84d5f9`, the head of
-calimero-network/kotlin-sdk#68 (Calimero 1.0); it moves to the merge commit once that lands.
+`kotlin-sdk.ref` pins kotlin-sdk `v0.2.0` (Calimero 1.0) by its tag commit; for a new release, set it
+to that tag's commit.
 `settings.gradle.kts` includes the checkout as a composite build.
 
 ## Layout
