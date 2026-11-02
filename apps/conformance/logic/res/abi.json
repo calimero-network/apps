@@ -441,6 +441,15 @@
       "user": "perUser",
       "writers": "set"
     },
+    "search": {
+      "authored": [],
+      "authoredVec": [],
+      "frozen": [],
+      "items": [],
+      "shared": [],
+      "user": [],
+      "writers": []
+    },
     "version": 1
   },
   "world": "calimero:app@0.5.0"

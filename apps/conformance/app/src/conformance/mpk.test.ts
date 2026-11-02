@@ -32,7 +32,7 @@ describe("the package signer", () => {
     const wasm = new Uint8Array([0, 0x61, 0x73, 0x6d, 13, 0, 1, 0, 9, 9]);
     const key = await publisher();
     expect(key.signerId).toMatch(/^did:key:z6Mk/);
-    const files = untar(new Uint8Array(gunzipSync(await signedMpk("com.example.x", "1.2.3", wasm, key, "1.0.0-rc.7"))));
+    const files = untar(new Uint8Array(gunzipSync(await signedMpk("com.example.x", "1.2.3", wasm, key, "1.0.0-rc.8"))));
     expect([...files.keys()]).toEqual(["manifest.json", "app.wasm"]);
     expect(files.get("app.wasm")).toEqual(wasm);
     const manifest = JSON.parse(new TextDecoder().decode(files.get("manifest.json"))) as Record<string, unknown> & {
@@ -43,7 +43,7 @@ describe("the package signer", () => {
       package: "com.example.x",
       appVersion: "1.2.3",
       signerId: key.signerId,
-      minRuntimeVersion: "1.0.0-rc.7",
+      minRuntimeVersion: "1.0.0-rc.8",
       wasm: { path: "app.wasm", size: wasm.length },
     });
     const { signature, ...unsigned } = manifest;

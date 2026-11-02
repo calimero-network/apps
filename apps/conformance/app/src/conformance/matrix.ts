@@ -190,7 +190,7 @@ export async function runMatrix(env: MatrixEnv): Promise<Row[]> {
   const PKG = "Packages";
   const bundle = await row(A, PKG, "uploadBundle (the component, raw)", OK, () => A.client.uploadBundle(env.wasm), (h) => h);
   const key = await publisher();
-  const floor = env.minRuntimeVersion ?? "1.0.0-rc.7";
+  const floor = env.minRuntimeVersion ?? "1.0.0-rc.8";
   await row(A, PKG, "uploadPackage (not a package)", "BAD_PACKAGE", () => A.client.uploadPackage(new Uint8Array([1, 2, 3])));
   for (const version of ["0.0.0", "0.0.1"]) {
     await row(A, PKG, `uploadPackage (${version})`, OK, async () => {
@@ -555,20 +555,23 @@ export async function runMatrix(env: MatrixEnv): Promise<Row[]> {
   });
 
   // ── blobs ─────────────────────────────────────────────────────────────────
-  // At 1.0.0-rc.7 a node refuses blobs to a component app by name
-  // (`409 NOT_SUPPORTED`, "blobs are not available to it yet (R8)"); core
-  // #4815 adds them. The rows expect that refusal, so a core release that
-  // ships blobs fails them loudly: then BLOBS becomes `OK` and the rows below
-  // the upload run, checking the round trip.
+  // A component app's blobs are its own host records since core 1.0.0-rc.8
+  // (R8, core #4815); rc.7 refused them by name (`409 NOT_SUPPORTED`). Set
+  // BLOBS back to that code to check a node without them: the round trip below
+  // runs only once an upload succeeds.
   const BLOB = "Blobs";
-  const BLOBS = "NOT_SUPPORTED";
+  const BLOBS = OK;
   const bytes = enc.encode(`blob-${tag}:${"conformance ".repeat(400)}`);
   const up = await row(A, BLOB, "uploadBlob (a component app)", BLOBS, async () => {
     const r = await A.client.uploadBlob(appId(), bytes);
     assert(r.size === bytes.length, `stored ${r.size} bytes of ${bytes.length}`);
     return r;
   }, (r) => ({ blobId: r.blobId, size: r.size }));
-  await row(A, BLOB, "listBlobs (a component app)", BLOBS, () => A.client.listBlobs(appId()), (r) => `${r.length} blobs`);
+  await row(A, BLOB, "listBlobs (a component app)", BLOBS, async () => {
+    const r = await A.client.listBlobs(appId());
+    if (up) assert(r.some((x) => x.id === up.id), "the uploaded blob is not listed");
+    return r;
+  }, (r) => `${r.length} blobs`);
   if (up) {
     await row(A, BLOB, "blobInfo", OK, async () => {
       const r = await A.client.blobInfo(appId(), up.blobId);

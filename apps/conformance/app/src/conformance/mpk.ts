@@ -143,7 +143,7 @@ export async function signedMpk(
   version: string,
   wasm: Uint8Array,
   key: Publisher,
-  minRuntimeVersion = "1.0.0-rc.7",
+  minRuntimeVersion = "1.0.0-rc.8",
 ): Promise<Uint8Array> {
   const manifest = await manifestFor(pkg, version, wasm, key.signerId, minRuntimeVersion);
   const payload = await signedPayload(manifest);
