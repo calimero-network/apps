@@ -8,12 +8,12 @@ byte-compatible with the web's crypto.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen; logic in the local `PassCore` package | swift-sdk `37c09f3` (head of swift-sdk#85, `feat/calimero-1.0`) |
-| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | kotlin-sdk `61b65e9` (head of kotlin-sdk#68, `feat/calimero-1.0`), composite build |
+| iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen; logic in the local `PassCore` package | swift-sdk `v0.5.0` |
+| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | kotlin-sdk `v0.2.0`, composite build |
 
-Both pins are the heads of the SDKs' Calimero 1.0 PRs and **move to their merge commits once those
-land**. To bump them, change `revision:` in `ios/project.yml`, `ios/PassCore/Package.swift` and
-`ios/PassCore/Package.resolved` (keep them identical), and `android/kotlin-sdk.ref`.
+Both pins are SDK releases. To bump them, change `exactVersion:` in `ios/project.yml` and `exact:` in
+`ios/PassCore/Package.swift` to the new release (and refresh `ios/PassCore/Package.resolved`), and set
+`android/kotlin-sdk.ref` to the new kotlin-sdk tag's commit.
 
 ## How the apps reach Calimero
 
