@@ -112,7 +112,7 @@ dependencies = [
 [[package]]
 name = "calimero-app-build"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.7#b249544645656985a5821158a22255ee38edb460"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.8#70e4b7a1b0f0f9185e03f74349b5b731ea5f21d2"
 dependencies = [
  "eyre",
  "fs4",
@@ -124,7 +124,7 @@ dependencies = [
 [[package]]
 name = "calimero-bundle"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.7#b249544645656985a5821158a22255ee38edb460"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.8#70e4b7a1b0f0f9185e03f74349b5b731ea5f21d2"
 dependencies = [
  "base64 0.23.1",
  "bs58",
@@ -145,7 +145,7 @@ dependencies = [
 [[package]]
 name = "calimero-utils-fs"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.7#b249544645656985a5821158a22255ee38edb460"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.8#70e4b7a1b0f0f9185e03f74349b5b731ea5f21d2"
 dependencies = [
  "windows-sys 0.61.2",
 ]
@@ -541,7 +541,7 @@ dependencies = [
 [[package]]
 name = "mero-sign"
 version = "0.1.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.7#b249544645656985a5821158a22255ee38edb460"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.8#70e4b7a1b0f0f9185e03f74349b5b731ea5f21d2"
 dependencies = [
  "base64 0.23.1",
  "calimero-bundle",

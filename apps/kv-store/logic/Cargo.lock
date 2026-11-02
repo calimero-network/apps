@@ -94,7 +94,7 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 [[package]]
 name = "calimero-app-build"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.7#b249544645656985a5821158a22255ee38edb460"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.8#70e4b7a1b0f0f9185e03f74349b5b731ea5f21d2"
 dependencies = [
  "eyre",
  "fs4",
@@ -106,7 +106,7 @@ dependencies = [
 [[package]]
 name = "calimero-app-engine-wasmtime"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.7#b249544645656985a5821158a22255ee38edb460"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.8#70e4b7a1b0f0f9185e03f74349b5b731ea5f21d2"
 dependencies = [
  "async-trait",
  "bytes",
@@ -128,19 +128,20 @@ dependencies = [
 [[package]]
 name = "calimero-app-host"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.7#b249544645656985a5821158a22255ee38edb460"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.8#70e4b7a1b0f0f9185e03f74349b5b731ea5f21d2"
 dependencies = [
  "ciborium",
  "rand",
  "rand_chacha",
  "serde_json",
+ "sha2 0.11.1",
  "thiserror",
 ]
 
 [[package]]
 name = "calimero-app-sdk"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.7#b249544645656985a5821158a22255ee38edb460"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.8#70e4b7a1b0f0f9185e03f74349b5b731ea5f21d2"
 dependencies = [
  "base64",
  "calimero-app-engine-wasmtime",
@@ -160,7 +161,7 @@ dependencies = [
 [[package]]
 name = "calimero-app-sdk-macros"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.7#b249544645656985a5821158a22255ee38edb460"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.8#70e4b7a1b0f0f9185e03f74349b5b731ea5f21d2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -171,7 +172,7 @@ dependencies = [
 [[package]]
 name = "calimero-app-wit"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.7#b249544645656985a5821158a22255ee38edb460"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.8#70e4b7a1b0f0f9185e03f74349b5b731ea5f21d2"
 
 [[package]]
 name = "cc"
