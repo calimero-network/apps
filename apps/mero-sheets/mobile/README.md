@@ -8,10 +8,10 @@ change a single cell's value.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | [`ios/`](ios/README.md) | SwiftUI + Swift Charts, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `37c09f3` (head of swift-sdk#85, Calimero 1.0; moves to its merge commit once it lands) |
-| Android | [`android/`](android/README.md) | Compose + Material3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `61b65e9` (head of kotlin-sdk#68, Calimero 1.0; moves to its merge commit once it lands) |
+| iOS | [`ios/`](ios/README.md) | SwiftUI + Swift Charts, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `v0.5.0` (Calimero 1.0) |
+| Android | [`android/`](android/README.md) | Compose + Material3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `v0.2.0` (Calimero 1.0) |
 
-The pins are the SDK PRs' heads; bump them together in
+The pins are SDK releases; bump them together in
 `ios/project.yml` + `ios/Core/Package.swift` and `android/kotlin-sdk.ref`.
 
 ## How the apps reach Calimero
