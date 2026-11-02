@@ -4,11 +4,10 @@
 #   xcodegen generate          # writes MeroChess.xcodeproj (not committed)
 #   open MeroChess.xcodeproj
 #
-# The non-UI layer (typed contract client, board helpers, view models) is the local SwiftPM
-# package in ChessCore/, tested on macOS with `swift test --package-path ChessCore` (no simulator).
-# The swift-sdk is pinned by revision to the head of its Calimero 1.0 port (swift-sdk#85, branch
-# feat/calimero-1.0); it moves to the merge commit once that lands. Keep it equal to the revision
-# in ChessCore/Package.swift.
+# The non-UI layer (typed contract client, board helpers, view models) is the local SwiftPM package
+# in ChessCore/, tested on macOS with `swift test --package-path ChessCore` (no simulator). The
+# swift-sdk is pinned to its v0.5.0 release. Keep it equal to the version in
+# ChessCore/Package.swift.
 #
 # Sign-in (Calimero 1.0): the cluster's node URL and a passkey, over the sealed channel after the
 # node's attestation is verified; or a development node (`merod local`) with mock attestation and
@@ -26,7 +25,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: 37c09f3f96e7d98440f6618eef8a0e83ddee8ebd
+    exactVersion: 0.5.0
   ChessCore:
     path: ChessCore
 

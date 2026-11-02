@@ -6,11 +6,11 @@ Symbols ↔ Material Symbols) and flows.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `37c09f3` (head of swift-sdk#85, the Calimero 1.0 port), in `ios/project.yml` and `ios/ChessCore/Package.swift` |
-| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `61b65e9` (head of kotlin-sdk#68, the Calimero 1.0 port), composite build at the SHA in `android/kotlin-sdk.ref` |
+| iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `v0.5.0`, in `ios/project.yml` and `ios/ChessCore/Package.swift` |
+| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `v0.2.0` (not on Maven Central), composite build at the SHA in `android/kotlin-sdk.ref` |
 
-The pins move to the SDK PRs' merge commits once they land. Bumping is one line per platform (iOS:
-both `revision:` values; Android: `kotlin-sdk.ref`).
+The pins are SDK releases. Bumping is one line per platform (iOS: both `exactVersion` / `exact:`
+values; Android: `kotlin-sdk.ref`, the new tag's commit).
 
 ## Calimero 1.0
 

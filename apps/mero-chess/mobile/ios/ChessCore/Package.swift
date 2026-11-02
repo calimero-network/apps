@@ -11,9 +11,8 @@ let package = Package(
         .library(name: "ChessCore", targets: ["ChessCore"]),
     ],
     dependencies: [
-        // swift-sdk's Calimero 1.0 port (swift-sdk#85) at 37c09f3; moves to its merge commit once
-        // that lands. Keep it equal to the revision in ../project.yml.
-        .package(url: "https://github.com/calimero-network/swift-sdk", revision: "37c09f3f96e7d98440f6618eef8a0e83ddee8ebd"),
+        // swift-sdk release v0.5.0 (Calimero 1.0); keep it equal to ../project.yml.
+        .package(url: "https://github.com/calimero-network/swift-sdk", exact: "0.5.0"),
     ],
     targets: [
         .target(
