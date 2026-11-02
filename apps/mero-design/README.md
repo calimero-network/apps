@@ -171,13 +171,18 @@ being shown.
 
 | v1 (`calimero-storage`) | component SDK |
 |---|---|
-| `PermissionedStorage<IndexedMap<ElementId, Element>>`, `#[index] layer_index`, whole-record LWW by `updatedAt` | `elements: UnorderedMap<id, Element>` + `layers: Set<(layerIndex, id)>`, the paint order kept in step with every write; the later write wins |
+| `PermissionedStorage<IndexedMap<ElementId, Element>>`, `#[index] layer_index`, whole-record LWW by `updatedAt` | `elements: Table<Element>`: one row per element keyed by its id, the paint order its stored `layerIndex`, read through the table's `paint` index; `elementCount: Counter` beside it; the later write wins |
 | `UserStorage<Member>` with a dedicated merge clock | `members: UnorderedMap<account, Member>`, written only for the caller |
-| `PermissionedStorage<UnorderedMap<CommentId, Comment>>` | `comments: UnorderedMap<id, Comment>` |
-| `PermissionedStorage<SortedMap<"{comment}/{created_at:020}/{reply}", CommentReply>>` | `replies: UnorderedMap<(comment, createdAt, reply), CommentReply>` |
+| `PermissionedStorage<UnorderedMap<CommentId, Comment>>` | `comments: UnorderedMap<id, StoredComment>` (the comment without its thread) |
+| `PermissionedStorage<SortedMap<"{comment}/{created_at:020}/{reply}", CommentReply>>` | `replies: UnorderedMap<(comment, createdAt, reply), CommentReply>`, one row per reply; `replyCounts: UnorderedMap<comment, u64>` bounds a thread at 200 |
 | `Authored<UnorderedMap<device, CursorState>>` | `cursors: UnorderedMap<account, CursorState>` |
 | `Ownable<LwwRegister<String>>` name and description, `Frozen` init values | `name`, `description`, `owner: Cell<String>` |
 | `AccessControl` (admin tier + the `editor` role), projected onto the writer sets | `admins`, `editors: Set<account>`, checked in each method |
+| an image's `blobId: String`, `blob_announce_to_context` | `blobId: Option<BlobRef>`: the node keeps the blob while an element refers to it |
+
+No stored value holds a list that grows: every element, comment, reply and
+pointer is its own row, and every read of a collection is a page or a bounded
+walk of an index.
 
 The write rules v1 enforced at merge on every node are checks in each method
 against `env::caller()`: only an editor (or admin) changes the canvas and
@@ -193,18 +198,22 @@ the same calls made as another account (`tests/harness.rs`,
 | method names | `add_element`, `get_elements`, … | the same 37 methods, camelCase: `addElement`, `getElements`, … |
 | argument names | snake_case (`updated_at`, `stroke_width`, `comment_id`, `new_owner`) | camelCase (`updatedAt`, `strokeWidth`, `commentId`, `newOwner`) |
 | 64-bit arguments (`timestamp`, `updatedAt`, `createdAt`, and `x`/`y` of `updateElement`, `addComment`, `updateCursor`) | JSON numbers | **decimal strings** (`"1727000010000"`) |
-| answers (`Element`, `Member`, `Comment`, `CursorState`, `BoardInfo`, `MemberRole`) | v1's JSON | **unchanged**, numbers included: they are plain serde types, which the SDK does not rewrite. `ElementPatch` and `LabelUpdate` inside the batch calls keep v1's snake_case fields too |
+| an `Element` (in `addElement(s)` and in every answer) | v1's JSON | v1's JSON except its 64-bit fields `x`, `y`, `createdAt`, `updatedAt`, which are **decimal strings** (it is a table record, D20); `cornerRadius` is `null` rather than absent when unset; `blobId` is absent, never `""`, while an image has no blob |
+| other answers (`Member`, `Comment`, `CursorState`, `BoardInfo`, `MemberRole`) | v1's JSON | **unchanged**, numbers included: they are plain serde types, which the SDK does not rewrite. `ElementPatch` and `LabelUpdate` inside the batch calls keep v1's snake_case fields too |
 | `init` | `{ name, description }` | no arguments; the board's name is the app instance's, and the creator sets it on the board with `updateBoard` right after creating it |
 | `getBoard.name` | the init name until the owner renamed it | `""` until the owner set one (the client then shows the instance's name) |
-| `getElements` | the whole board | at most 1,000 elements; new `getElementsPage(cursor, limit)` reads a larger board page by page (the web client does) |
-| `getMembers`, `listRoles`, `getComments`, `getCursors` | everything | at most 1,000 each (a comment's replies too) |
+| `getElements` | the whole board, a list | **one page**: `getElements(cursor, limit)` answers `{ items, next }` in paint order, `limit` 500 by default and at most 1,000; the web client follows `next` |
+| `getComments` | every comment, a list | **one page**: `getComments(cursor, limit)` answers `{ items, next }`, at most 100 comments, each with its whole thread |
+| `addReply` | any number of replies | at most 200 per thread (`Invalid`); deleting one makes room |
+| `clearElements`, `clearComments` | everything in one call, `null` | at most 1,000 rows per call; answers how many are left (`"0"` when done). The web client calls until `"0"` |
+| `getMembers`, `listRoles`, `getCursors` | everything | at most 1,000 each (bounded by the team's size) |
 | `getElementsByIds` | any number of ids | at most 1,000 (`Invalid`) |
 | who edits | board admins and explicit editors | the same, plus every **owner and admin of the team's org** (v1's web client granted that board by board on promotion and revoked it on demotion; the contract reads org roles now) |
 | `grantEditor`, `transferOwnership` | any 64-hex account id | an account of the board's org, or the app's owner (`Invalid` otherwise) |
 | `getRole` | an id that is not 64 hex is a viewer | anything that names nobody with a grant is a viewer |
 | ownership | the board's creator | the app instance's owner at `init`; `transferOwnership` moves the board's owner and admin role, not the instance (its creator, or a team admin, still deletes it) |
 | pointers | one per device; `identity` the device key | one per account; `identity` = `account` |
-| blobs | `addElement` announced an image's blob to the context | the element stores the blob id as given (see [Images](#images-and-svgs)) |
+| blobs | `addElement` announced any blob id to the context | the element holds a `BlobRef`; a blob this board does not hold is refused, the whole call with it (see [Images](#images-and-svgs)) |
 | concurrent edits | merged per record by `updatedAt`, the larger wins | one log orders every write; the later one wins whatever its `updatedAt` |
 | errors | `FunctionCallError` with a message string | `422 APP_ERROR`: `Forbidden { message }`, `Invalid { message }` (the messages are v1's) |
 | events | tuple payloads (`ElementAdded("id")`, `ElementsAdded(["a","b"])`, `LayerReordered()`) | the same event names with named fields: `{ id }`, `{ ids }`, `{ member }`, `{ identity }`, `{}` |
@@ -213,20 +222,30 @@ the same calls made as another account (`tests/harness.rs`,
 
 ### Images and SVGs
 
-Core's component blobs (#4815: `BlobRef`, blobs a run can reference, a grant to
-download) landed on core `master` **after** the `1.0.0-rc.7` tag this repo pins,
-and a `1.0.0-rc.7` node answers every blob route of a component app with "blobs
-are not available to it yet (R8)". So, until `component-core-tag` moves to a
-release that has them:
+An image or SVG is a blob of the board's app instance, and the element holds it
+as a `BlobRef` (core 1.0.0-rc.8, core#4815):
 
-- the frontend uploads an image to the board's app instance
-  (`client.uploadBlob`) and reads it back with `client.downloadBlob`; the element
-  keeps the blob's hex id in `blobId`, and the contract stores it as a string;
-- on a `1.0.0-rc.7` cluster the upload is refused, so an added image is shown
-  only in the session that added it, and the app says so.
+- the frontend uploads the bytes to the board's instance (`client.uploadBlob`,
+  `POST /apps/{app}/blobs`) and sends the blob's id (its SHA-256, 64 hex) as
+  `blobId`; members read it with `client.downloadBlob`;
+- the node keeps a blob while an element refers to it, and forgets it once
+  nothing does (deleting the last image of it, or clearing the board);
+- a `blobId` the board does not hold is refused by the node (the run traps
+  `HostDenied` and nothing is written). So when an element brings a blob from
+  elsewhere (a paste from another board, a `.merodesign` project file), the web
+  client uploads this browser's copy of the bytes first (the same bytes give the
+  same id). One it has no copy of is added without its blob and shows the
+  "unavailable" placeholder, rather than the whole batch failing.
 
-When the pin moves: make `blobId` a `BlobRef` (its JSON is the same 64-hex id),
-because a release with #4815 forgets a blob nothing references after an hour.
+No outbound host or secret is needed: the app makes no HTTP requests, cross-app
+calls or actions (v1 had none to port).
+
+### Not ported, and why
+
+Nothing the v1 app did is missing. v1 had no event handlers, TEE methods,
+private storage or migrations; its CRDT types (`LwwRegister`, the per-record
+LWW merge, `Mergeable` on `Member`) became plain rows, because one log orders
+every write.
 
 ### Frontend
 
@@ -239,8 +258,11 @@ because a release with #4815 forgets a blob nothing references after an hour.
   through `src/api/client.ts`, as it reached v1's.
 - `src/api/meroDesign.ts` is the **one adapter**: the screens still call
   `rpcCall(board, "update_element", { …, updated_at })` with v1's names, and it
-  renames methods and arguments and turns 64-bit arguments into strings.
-  `meroDesign.test.ts` checks it against the committed `logic/res/abi.json`.
+  renames methods and arguments, turns 64-bit arguments into strings, and
+  converts an element's 64-bit fields both ways. `rpc.ts` follows the paged
+  reads' `next`, runs the chunked clears to `"0"`, and uploads a pasted
+  image's blob to the board first. `meroDesign.test.ts` checks the adapter
+  against the committed `logic/res/abi.json`.
 - `src/api/rpc.ts` maps teams to orgs (`/me`, `createOrg` + member defaults,
   `deleteOrg`, `removeMember`, `setMember`, `invite` / `redeemInvite`, all but
   `/me` and `redeemInvite` passkey step-ups), boards to instances (`listApps` by

@@ -48,13 +48,13 @@ fn element(id: &str, layer: u32) -> Value {
     json!({
         "id": id,
         "data": { "kind": "rect" },
-        "x": 0, "y": 0, "width": 10, "height": 10, "rotation": 0,
+        "x": "0", "y": "0", "width": 10, "height": 10, "rotation": 0,
         "fill": "#fff", "stroke": "#000", "strokeWidth": 1, "opacity": 100,
         "layerIndex": layer,
         "createdBy": "creator",
-        "createdAt": 1, "updatedAt": 1,
+        "createdAt": "1", "updatedAt": "1",
         "shadowColor": null, "shadowOffsetX": null, "shadowOffsetY": null, "shadowBlur": null,
-        "label": null
+        "label": null, "cornerRadius": null
     })
 }
 
@@ -73,11 +73,37 @@ fn seed(t: &mut TestApp, ids: &[&str]) {
     }
 }
 
+/// The whole canvas in paint order, following `getElements`' pages.
 fn elements(t: &mut TestApp) -> Vec<Value> {
-    view(t, "owner", "getElements", json!({}))
-        .as_array()
-        .expect("a list")
-        .clone()
+    let mut out = Vec::new();
+    let mut cursor = Value::Null;
+    loop {
+        let page = view(
+            t,
+            "owner",
+            "getElements",
+            json!({ "cursor": cursor, "limit": null }),
+        );
+        out.extend(page["items"].as_array().expect("a page").iter().cloned());
+        if page["next"].is_null() {
+            return out;
+        }
+        cursor = page["next"].clone();
+    }
+}
+
+/// Every comment, following `getComments`' pages.
+fn comments(t: &mut TestApp, who: &str) -> Value {
+    let mut out = Vec::new();
+    let mut cursor = Value::Null;
+    loop {
+        let page = view(t, who, "getComments", json!({ "cursor": cursor }));
+        out.extend(page["items"].as_array().expect("a page").iter().cloned());
+        if page["next"].is_null() {
+            return Value::Array(out);
+        }
+        cursor = page["next"].clone();
+    }
 }
 
 /// `(id, layerIndex)` in the order `getElements` answers: paint order.
@@ -363,10 +389,13 @@ fn a_rename_is_the_callers_own() {
 
 // ── elements ─────────────────────────────────────────────────────────────────
 
-/// v1's element JSON exactly, numbers included: every kind round-trips.
+/// v1's element JSON, its 64-bit fields as decimal strings: every kind
+/// round-trips, an image's blob as its id.
 #[test]
 fn every_element_kind_round_trips() {
     let mut t = app();
+    let png = t.upload_blob(b"\x89PNG fake", "image/png");
+    let svg = t.upload_blob(b"<svg/>", "image/svg+xml");
     let kinds = [
         json!({ "kind": "rect" }),
         json!({ "kind": "circle" }),
@@ -376,15 +405,16 @@ fn every_element_kind_round_trips() {
         json!({ "kind": "path", "points": "M 0 0 L 40 40 Z" }),
         json!({ "kind": "text", "content": "Hi", "fontSize": 24, "fontFamily": "sans-serif", "bold": true, "italic": false, "text_align": "center", "vertical_align": "top" }),
         json!({ "kind": "text", "content": "", "fontSize": 12, "fontFamily": "serif", "bold": false, "italic": true }),
-        json!({ "kind": "image", "naturalWidth": 800, "naturalHeight": 600, "blobId": "ab".repeat(32) }),
-        json!({ "kind": "svg", "naturalWidth": 10, "naturalHeight": 20, "blobId": "cd".repeat(32) }),
+        json!({ "kind": "image", "naturalWidth": 800, "naturalHeight": 600, "blobId": png }),
+        json!({ "kind": "svg", "naturalWidth": 10, "naturalHeight": 20, "blobId": svg }),
+        json!({ "kind": "image", "naturalWidth": 1, "naturalHeight": 1 }),
     ];
     for (i, data) in kinds.iter().enumerate() {
         let mut el = element(&format!("e{i}"), i as u32);
         el["data"] = data.clone();
-        el["x"] = json!(-40);
-        el["createdAt"] = json!(1_727_000_000_000_u64);
-        el["updatedAt"] = json!(1_727_000_000_000_u64);
+        el["x"] = json!("-40");
+        el["createdAt"] = json!("1727000000000");
+        el["updatedAt"] = json!("1727000000000");
         el["label"] = json!("topbar/logo\u{1f}b=sticky");
         el["shadowColor"] = json!("rgba(0,0,0,0.3)");
         el["shadowOffsetY"] = json!(4);
@@ -416,8 +446,56 @@ fn created_by_is_the_caller_and_survives_a_replace() {
     let a = view(&mut t, "cy", "getElement", json!({ "id": "a" }));
     assert_eq!(a["createdBy"], json!("bob"));
     assert_eq!(a["layerIndex"], json!(3));
-    // A replace leaves one paint-order entry, not two.
+    // A replace leaves one paint-order entry, not two, and counts once.
     assert_eq!(order(&mut t), [("a".to_owned(), 3)]);
+    assert_eq!(
+        view(&mut t, "cy", "getBoard", json!({}))["elementCount"],
+        json!(1)
+    );
+}
+
+/// An image is a `BlobRef`: the node keeps its blob while an element refers to
+/// it, and refuses an id this app does not hold (v1 announced any id it was given).
+#[test]
+fn an_image_holds_its_blob_and_an_unknown_blob_is_refused() {
+    let mut t = app();
+    let png = t.upload_blob(b"\x89PNG fake", "image/png");
+    let mut el = element("img", 0);
+    el["data"] = json!({ "kind": "image", "naturalWidth": 2, "naturalHeight": 2, "blobId": png });
+    call(&mut t, "owner", "addElement", json!({ "element": el }));
+    assert_eq!(t.blob_refs(&png), 1);
+    assert_eq!(
+        view(&mut t, "bob", "getElement", json!({ "id": "img" }))["data"]["blobId"],
+        json!(png)
+    );
+    call(&mut t, "owner", "deleteElement", json!({ "id": "img" }));
+    assert_eq!(t.blob_refs(&png), 0);
+
+    // A well-formed id of a blob the app does not hold: the run is refused whole.
+    let mut ghost = element("ghost", 0);
+    ghost["data"] =
+        json!({ "kind": "svg", "naturalWidth": 1, "naturalHeight": 1, "blobId": "ab".repeat(32) });
+    assert!(matches!(
+        t.as_("owner")
+            .call("addElement", json!({ "element": ghost })),
+        Err(Failure::Trap(_))
+    ));
+    // Not a blob id at all.
+    let mut junk = element("junk", 0);
+    junk["data"] =
+        json!({ "kind": "image", "naturalWidth": 1, "naturalHeight": 1, "blobId": "not-a-blob" });
+    assert_eq!(
+        code(
+            t.as_("owner")
+                .call("addElement", json!({ "element": junk }))
+        ),
+        "BadArgs"
+    );
+    assert!(elements(&mut t).is_empty());
+    assert_eq!(
+        view(&mut t, "owner", "getBoard", json!({}))["elementCount"],
+        json!(0)
+    );
 }
 
 #[test]
@@ -437,11 +515,11 @@ fn update_element_patches_only_what_it_is_given() {
     let a = view(&mut t, "owner", "getElement", json!({ "id": "a" }));
     assert_eq!(
         (&a["x"], &a["y"], &a["height"], &a["width"]),
-        (&json!(300), &json!(0), &json!(50), &json!(10))
+        (&json!("300"), &json!("0"), &json!(50), &json!(10))
     );
     assert_eq!(a["fill"], json!("#22c55e"));
     assert_eq!(a["cornerRadius"], json!(8));
-    assert_eq!(a["updatedAt"], json!(99));
+    assert_eq!(a["updatedAt"], json!("99"));
     // Zero is a real corner radius, not "unset".
     call(
         &mut t,
@@ -505,7 +583,7 @@ fn text_style_shadow_and_label_updates() {
         (&json!("#000"), &json!(1), &json!(3))
     );
     assert_eq!(got["label"], json!("screen/01 Sign in"));
-    assert_eq!(got["updatedAt"], json!(7));
+    assert_eq!(got["updatedAt"], json!("7"));
     // All four null removes the shadow; a null label clears it.
     call(
         &mut t,
@@ -650,23 +728,25 @@ fn the_largest_batch_and_a_full_page_fit_within_fuel() {
             .collect();
         call(&mut t, "owner", "addElements", json!({ "elements": batch }));
     }
-    let page = view(&mut t, "owner", "getElements", json!({}));
-    assert_eq!(page.as_array().map(Vec::len), Some(1000));
-    let first = view(
+    let page = view(
         &mut t,
         "owner",
-        "getElementsPage",
-        json!({ "cursor": null, "limit": 0 }),
+        "getElements",
+        json!({ "cursor": null, "limit": 1000 }),
     );
+    assert_eq!(page["items"].as_array().map(Vec::len), Some(1000));
+    assert_eq!(page["next"], Value::Null);
+    let first = view(&mut t, "owner", "getElements", json!({}));
     assert_eq!(first["items"].as_array().map(Vec::len), Some(500));
     let second = view(
         &mut t,
         "owner",
-        "getElementsPage",
-        json!({ "cursor": first["nextCursor"], "limit": 500 }),
+        "getElements",
+        json!({ "cursor": first["next"], "limit": 5000 }),
     );
     assert_eq!(second["items"][0]["id"], json!("id0500"));
-    assert_eq!(second["nextCursor"], Value::Null);
+    assert_eq!(second["items"].as_array().map(Vec::len), Some(500));
+    assert_eq!(second["next"], Value::Null);
     // Moving one layer on a 1,000-element board reads the order and writes two.
     call(
         &mut t,
@@ -679,6 +759,65 @@ fn the_largest_batch_and_a_full_page_fit_within_fuel() {
     assert_eq!(
         view(&mut t, "owner", "getBoard", json!({}))["elementCount"],
         json!(800)
+    );
+    assert_eq!(
+        call(&mut t, "owner", "clearElements", json!({})),
+        json!("0")
+    );
+    assert!(elements(&mut t).is_empty());
+    assert_eq!(
+        view(&mut t, "owner", "getBoard", json!({}))["elementCount"],
+        json!(0)
+    );
+}
+
+/// A board well past one page: every per-call read is a page or an index walk,
+/// and a layer move, a front/back and a clear still fit one call.
+#[test]
+fn a_3000_element_board_reads_in_pages_and_moves_and_clears_in_one_call() {
+    let mut t = app();
+    for chunk in 0..15 {
+        let batch: Vec<Value> = (0..200)
+            .map(|i| {
+                let n = chunk * 200 + i;
+                element(&format!("id{n:04}"), n as u32)
+            })
+            .collect();
+        call(&mut t, "owner", "addElements", json!({ "elements": batch }));
+    }
+    assert_eq!(elements(&mut t).len(), 3000);
+    call(
+        &mut t,
+        "owner",
+        "setLayerIndex",
+        json!({ "id": "id0000", "index": 2999, "updatedAt": "2" }),
+    );
+    call(&mut t, "owner", "sendToBack", json!({ "id": "id2999" }));
+    call(&mut t, "owner", "bringToFront", json!({ "id": "id1500" }));
+    let got = ids(&mut t);
+    assert_eq!(got.first().map(String::as_str), Some("id2999"));
+    assert_eq!(got.last().map(String::as_str), Some("id1500"));
+    assert_eq!(got.len(), 3000);
+    // A clear takes 1,000 a call and says how many are left.
+    for left in ["2000", "1000", "0"] {
+        assert_eq!(
+            call(&mut t, "owner", "clearElements", json!({})),
+            json!(left)
+        );
+    }
+    let before = t.events_for("bob").len();
+    assert_eq!(
+        call(&mut t, "owner", "clearElements", json!({})),
+        json!("0")
+    );
+    assert_eq!(
+        t.events_for("bob").len(),
+        before,
+        "nothing deleted, no event"
+    );
+    assert_eq!(
+        view(&mut t, "owner", "getBoard", json!({}))["elementCount"],
+        json!(0)
     );
 }
 
@@ -702,7 +841,7 @@ fn set_layer_index_moves_one_step_without_duplicates() {
     assert_eq!(layers.len(), 3, "no two elements share an index");
     assert_eq!(
         view(&mut t, "owner", "getElement", json!({ "id": "b" }))["updatedAt"],
-        json!(99)
+        json!("99")
     );
 }
 
@@ -793,7 +932,10 @@ fn deleting_and_clearing_keep_the_paint_order_in_step() {
         code(t.as_("ada").call("clearElements", json!({}))),
         "Forbidden"
     );
-    call(&mut t, "owner", "clearElements", json!({}));
+    assert_eq!(
+        call(&mut t, "owner", "clearElements", json!({})),
+        json!("0")
+    );
     assert!(elements(&mut t).is_empty());
     add(&mut t, "owner", "z", 0);
     assert_eq!(ids(&mut t), ["z"]);
@@ -841,7 +983,7 @@ fn a_comment_and_its_thread() {
     reply(&mut t, "bob", "c1", "r1", 50);
     reply(&mut t, "bob", "missing", "r3", 70);
     assert_eq!(
-        view(&mut t, "cy", "getComments", json!({})),
+        comments(&mut t, "cy"),
         json!([{
             "id": "c1", "x": 120, "y": -90, "content": "Bigger logo?", "author": "bob", "createdAt": 40,
             "replies": [
@@ -865,23 +1007,20 @@ fn a_comment_and_its_thread() {
     );
     assert_eq!(t.events_for("cy").len(), before);
     assert_eq!(
-        view(&mut t, "cy", "getComments", json!({}))[0]["replies"],
+        comments(&mut t, "cy")[0]["replies"],
         json!([{ "id": "r2", "content": "r2", "author": "owner", "createdAt": 60 }])
     );
     // Replacing a comment keeps its thread; deleting it takes the thread too.
     comment(&mut t, "owner", "c1");
     assert_eq!(
-        view(&mut t, "cy", "getComments", json!({}))[0]["replies"]
+        comments(&mut t, "cy")[0]["replies"]
             .as_array()
             .map(Vec::len),
         Some(1)
     );
     call(&mut t, "owner", "deleteComment", json!({ "id": "c1" }));
     comment(&mut t, "owner", "c1");
-    assert_eq!(
-        view(&mut t, "cy", "getComments", json!({}))[0]["replies"],
-        json!([])
-    );
+    assert_eq!(comments(&mut t, "cy")[0]["replies"], json!([]));
     assert_eq!(
         names(&t, "cy"),
         [
@@ -921,8 +1060,74 @@ fn viewers_cannot_comment_and_only_an_admin_clears() {
             "{method}"
         );
     }
-    call(&mut t, "owner", "clearComments", json!({}));
-    assert_eq!(view(&mut t, "bob", "getComments", json!({})), json!([]));
+    assert_eq!(
+        call(&mut t, "owner", "clearComments", json!({})),
+        json!("0")
+    );
+    assert_eq!(comments(&mut t, "bob"), json!([]));
+}
+
+/// Comments are read a page (100) at a time, each with its thread; a thread
+/// holds at most 200 replies, so one page's reads stay bounded.
+#[test]
+fn comments_come_in_pages_and_a_thread_is_capped() {
+    let mut t = app();
+    for i in 0..150 {
+        comment(&mut t, "owner", &format!("c{i:03}"));
+    }
+    let first = view(&mut t, "bob", "getComments", json!({}));
+    assert_eq!(first["items"].as_array().map(Vec::len), Some(100));
+    let second = view(
+        &mut t,
+        "bob",
+        "getComments",
+        json!({ "cursor": first["next"], "limit": 1000 }),
+    );
+    assert_eq!(second["items"].as_array().map(Vec::len), Some(50));
+    assert_eq!(second["items"][0]["id"], json!("c100"));
+    assert_eq!(second["next"], Value::Null);
+
+    for i in 0..200 {
+        reply(&mut t, "owner", "c000", &format!("r{i:03}"), 100 + i);
+    }
+    assert_eq!(
+        code(t.as_("owner").call(
+            "addReply",
+            json!({ "commentId": "c000", "replyId": "one-more", "content": "x", "createdAt": "9999" })
+        )),
+        "Invalid"
+    );
+    // Deleting a reply makes room again.
+    call(
+        &mut t,
+        "owner",
+        "deleteReply",
+        json!({ "commentId": "c000", "replyId": "r000" }),
+    );
+    reply(&mut t, "owner", "c000", "one-more", 9999);
+    let thread = &view(&mut t, "bob", "getComments", json!({ "limit": 1 }))["items"][0]["replies"];
+    assert_eq!(thread.as_array().map(Vec::len), Some(200));
+    assert_eq!(thread[199]["id"], json!("one-more"));
+
+    // 150 comments and 200 replies; then enough threads to need a second clear.
+    for c in 1..5 {
+        for i in 0..200 {
+            reply(&mut t, "owner", &format!("c{c:03}"), &format!("r{i:03}"), i);
+        }
+    }
+    // 150 + 1,000 replies: 1,150 rows, 1,000 a call.
+    assert_eq!(
+        call(&mut t, "owner", "clearComments", json!({})),
+        json!("150")
+    );
+    assert_eq!(
+        call(&mut t, "owner", "clearComments", json!({})),
+        json!("0")
+    );
+    assert_eq!(comments(&mut t, "bob"), json!([]));
+    // The caps start over: a fresh thread takes replies again.
+    comment(&mut t, "owner", "c000");
+    reply(&mut t, "owner", "c000", "again", 1);
 }
 
 // ── pointers ─────────────────────────────────────────────────────────────────
@@ -973,7 +1178,7 @@ fn who_reaches_the_board() {
     seed(&mut t, &["a"]);
     assert_eq!(elements(&mut t).len(), 1);
     assert_eq!(
-        view(&mut t, "gus", "getElements", json!({}))
+        view(&mut t, "gus", "getElements", json!({}))["items"]
             .as_array()
             .map(Vec::len),
         Some(1)

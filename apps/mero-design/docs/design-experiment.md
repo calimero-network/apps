@@ -1,5 +1,10 @@
 # Can a full web app be designed in Mero Design?
 
+> **Historical.** This write-up predates the move to the component SDK. Its
+> probe scripts mocked a v1 node (`/jsonrpc`, `/admin-api`) and the fix plan it
+> links was generated from a task tracker; both were removed with the port, so
+> the "Reproducing" steps below no longer run. The measurements stand as written.
+
 **Yes — but not until one two-line bug is fixed.** This is the write-up of an attempt to design a
 complete application screen in Mero Design the way you would in Figma, and of the blocker it turned up:
 a dependency-semantics change that silently moves **every shape on the canvas by half its own size**.
@@ -66,7 +71,7 @@ branch of `buildFabricObject`. With that patch applied, the same probes return:
 | "Pending" chip | `712,742 76x22` | `712,742` | **0, 0** |
 
 and the dashboard renders as designed. The patch was reverted after measuring — it belongs in a PR
-with tests, as `PR 1` in [`fix-plan.md`](./fix-plan.md).
+with tests, as `PR 1` of the (since removed) fix plan.
 
 ### Why this outranks everything in `IMPORTANT.md`
 

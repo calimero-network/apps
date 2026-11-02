@@ -6,8 +6,9 @@ MeroDesign is a collaborative, Figma-style design canvas.
 A board holds elements (shapes, lines, paths, text, images, SVGs), members, comments and live pointers.
 
 - `getBoard()` returns the board's `name`, `description`, `elementCount`, `memberCount` and `owner`.
-- `getElements()` returns every element in paint order (lowest `layerIndex` first).
-- `getMembers()`, `listRoles()`, `getComments()` and `getCursors()` return the rest of the board.
+- `getElements({"cursor": null})` returns a page of elements in paint order (lowest `layerIndex` first) as `{"items": [..], "next": ..}`; pass `next` as `cursor` until it is `null`.
+- `getComments({"cursor": null})` pages comments the same way, each with its replies.
+- `getMembers()`, `listRoles()` and `getCursors()` return the rest of the board.
 
 Coordinates are canvas pixels: `x` and `y` are an element's top-left corner, and `rotation` is in degrees.
 Colours are CSS colours (`"#ef4444"`, `"transparent"`, `"rgba(0,0,0,0.3)"`).
@@ -16,7 +17,9 @@ Timestamps (`timestamp`, `createdAt`, `updatedAt`) are the caller's clock in uni
 Element, comment and reply ids are chosen by the caller; use a fresh UUID for each.
 Method names and method arguments are camelCase (`updateElement`, `updatedAt`, `commentId`).
 A 64-bit integer ARGUMENT (`timestamp`, `createdAt`, `updatedAt`, and `x`/`y` of `updateElement`, `addComment` and `updateCursor`) is a decimal string: `"updatedAt": "1727000010000"`.
-Inside an element, a patch or an answer, numbers are JSON numbers, and an element's keys are camelCase (`strokeWidth`, `layerIndex`, `updatedAt`); the fields of an `updateElements` patch are snake_case (`stroke_width`, `corner_radius`).
+An element's own 64-bit fields (`x`, `y`, `createdAt`, `updatedAt`) are decimal strings too, both in `addElement` and in what `getElement(s)` answers (`"x": "40"`); its other numbers are JSON numbers.
+Elsewhere (a patch, a comment, a member, a pointer) numbers are JSON numbers.
+An element's keys are camelCase (`strokeWidth`, `layerIndex`, `updatedAt`); the fields of an `updateElements` patch are snake_case (`stroke_width`, `corner_radius`).
 Errors are `Forbidden` or `Invalid`, each with a `message`.
 
 An element's `data` says what it is, tagged by `kind`:
@@ -27,7 +30,7 @@ An element's `data` says what it is, tagged by `kind`:
 | `line`, `arrow` | `points`: `"x1,y1 x2,y2"` in pixels from the element's `x`, `y`; an arrow's head is at the second point |
 | `path` | `points`: SVG path data, e.g. `"M 0 0 L 40 40"` |
 | `text` | `content`, `fontSize`, `fontFamily`, `bold`, `italic`, optional `text_align` (`left`, `center`, `right`) and `vertical_align` (`top`, `middle`, `bottom`) |
-| `image`, `svg` | `naturalWidth`, `naturalHeight`, `blobId` (a blob uploaded to the node) |
+| `image`, `svg` | `naturalWidth`, `naturalHeight`, `blobId` (the 64-hex id of a blob uploaded to this board; omit it while there is none) |
 
 A plain `text` element is coloured by its `fill`.
 
@@ -96,7 +99,7 @@ A new member is a viewer until an admin grants the editor role (see "Share editi
 As an editor, call `addElement`:
 
 ```json
-{"element": {"id": "5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90", "data": {"kind": "rect"}, "x": 40, "y": 60, "width": 120, "height": 80, "rotation": 0, "fill": "#ef4444", "stroke": "transparent", "strokeWidth": 0, "opacity": 100, "layerIndex": 0, "createdBy": "", "createdAt": 1727000000000, "updatedAt": 1727000000000}}
+{"element": {"id": "5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90", "data": {"kind": "rect"}, "x": "40", "y": "60", "width": 120, "height": 80, "rotation": 0, "fill": "#ef4444", "stroke": "transparent", "strokeWidth": 0, "opacity": 100, "layerIndex": 0, "createdBy": "", "createdAt": "1727000000000", "updatedAt": "1727000000000"}}
 ```
 
 Give each new element a `layerIndex` one above the highest in `getElements` so it paints on top.
@@ -106,7 +109,7 @@ For a triangle, diamond, star or cloud, add a `path` whose `points` outline the 
 ### Add text or a sticky note
 
 ```json
-{"element": {"id": "0d6f3a52-1b7e-4c9a-8e2d-5a4b3c2d1e0f", "data": {"kind": "text", "content": "Hello", "fontSize": 24, "fontFamily": "sans-serif", "bold": false, "italic": false}, "x": 40, "y": 200, "width": 200, "height": 36, "rotation": 0, "fill": "#111111", "stroke": "transparent", "strokeWidth": 0, "opacity": 100, "layerIndex": 1, "createdBy": "", "createdAt": 1727000000000, "updatedAt": 1727000000000}}
+{"element": {"id": "0d6f3a52-1b7e-4c9a-8e2d-5a4b3c2d1e0f", "data": {"kind": "text", "content": "Hello", "fontSize": 24, "fontFamily": "sans-serif", "bold": false, "italic": false}, "x": "40", "y": "200", "width": 200, "height": 36, "rotation": 0, "fill": "#111111", "stroke": "transparent", "strokeWidth": 0, "opacity": 100, "layerIndex": 1, "createdBy": "", "createdAt": "1727000000000", "updatedAt": "1727000000000"}}
 ```
 
 A sticky note is a 200 x 200 `text` element with `text_align` `left`, `vertical_align` `top`, a `fill` such as `#FFE27A` and `label` `"\u001fb=sticky"`.
@@ -120,8 +123,8 @@ Change text later with `updateTextStyle`; `null` leaves a field unchanged:
 ### Add an image
 
 Upload the image bytes as a blob of this board's app instance (`POST /apps/{app}/blobs`), then `addElement` with `data` `{"kind": "image", "naturalWidth": 800, "naturalHeight": 600, "blobId": "<the blob's hex id>"}` (`svg` works the same).
-The contract stores `blobId` as given; members read the blob from the same instance.
-On a `1.0.0-rc.7` cluster the node refuses blobs for component apps, so the upload fails there.
+The element holds the blob (a `BlobRef`): the node keeps it while an element refers to it, and members read it from the same instance.
+A `blobId` this board does not hold is refused, and the whole call with it: upload the bytes to this board first (the same bytes give the same id).
 
 ### Move, resize or restyle an element
 
@@ -209,13 +212,15 @@ This only changes the board's own roles; the app instance and the team are uncha
 - `updateBoard` and `transferOwnership` are owner-only.
 - `grantEditor`, `revokeEditor`, `clearElements` and `clearComments` are admin-only.
 - `clearElements`, `clearComments`, `deleteElement`, `deleteElements`, `deleteComment` and `deleteReply` delete for every member and cannot be undone.
+- `clearElements` and `clearComments` delete at most 1,000 rows per call and answer how many are left (`"0"` when done); call again until then.
 - Deleting the board's app instance (its creator, or an admin of the organization) deletes the whole board for the team, as the web app's Delete board does, and cannot be undone.
 - Every write is applied in order; the later write to an element wins.
 - `addElement` or `addComment` with an existing id replaces that element or comment, so a retried add is safe.
 - An unknown element id is not an error, and `addReply` to an unknown comment silently does nothing.
 - Check `getElement` before updating or reordering an element you did not just add.
 - A batch call holds at most 200 items; over that the whole call is refused and nothing changes.
-- `getElements` answers at most 1,000 elements; read a larger board with `getElementsPage` (`{"cursor": null, "limit": 1000}`, then each answer's `nextCursor`).
-- `getMembers`, `listRoles`, `getComments`, `getCursors` and `getElementsByIds` answer at most 1,000 each.
+- `getElements` answers a page: `limit` defaults to 500 and is capped at 1,000; `getComments` defaults to and is capped at 100 comments per page.
+- A comment's thread holds at most 200 replies; `addReply` past that is `Invalid`.
+- `getMembers`, `listRoles`, `getCursors` and `getElementsByIds` answer at most 1,000 each.
 - `/` is reserved inside a layer name: it separates groups.
 - An empty board name in `updateBoard` shows the instance's name.

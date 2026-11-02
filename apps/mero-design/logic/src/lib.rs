@@ -11,13 +11,14 @@
 //!
 //! | v1 (`calimero-storage`) | here |
 //! |---|---|
-//! | `PermissionedStorage<IndexedMap<ElementId, Element>>`, `#[index] layer_index` | `elements: UnorderedMap<id, Element>` + `layers: Set<(layerIndex, id)>`, the paint order as an ordered set kept in step with every write |
+//! | `PermissionedStorage<IndexedMap<ElementId, Element>>`, `#[index] layer_index` | `elements: Table<Element>`: one row per element keyed by its id, the paint order its stored `layerIndex`, read through the table's `paint` index; `elementCount: Counter` beside it |
 //! | `UserStorage<Member>` | `members: UnorderedMap<account, Member>`, written only for the caller (a map, not `PerUser`, because the roster is listed) |
-//! | `PermissionedStorage<UnorderedMap<CommentId, Comment>>` | `comments: UnorderedMap<id, Comment>` (`replies` always stored empty) |
+//! | `PermissionedStorage<UnorderedMap<CommentId, Comment>>` | `comments: UnorderedMap<id, StoredComment>` (a comment without its thread) |
 //! | `PermissionedStorage<SortedMap<"{comment}/{createdAt:020}/{reply}", CommentReply>>` | `replies: UnorderedMap<(comment, createdAt, reply), CommentReply>`: one thread is a key prefix, in order |
 //! | `Authored<UnorderedMap<device, CursorState>>` | `cursors: UnorderedMap<account, CursorState>`: one pointer per account |
 //! | `Ownable<LwwRegister<String>>` name / description + `Frozen` init values | `name`, `description: Cell<String>` and `owner: Cell<String>` |
 //! | `AccessControl` (admin tier + the `editor` role) | `admins`, `editors: Set<account>` |
+//! | an image's `blobId: String` + `blob_announce_to_context` | `blobId: BlobRef`: the node keeps the blob while an element refers to it |
 //!
 //! # Who may do what
 //!
@@ -44,13 +45,18 @@ use serde::{Deserialize, Serialize};
 
 /// Largest batch any `*Elements` method accepts.
 pub const MAX_BATCH: usize = 200;
-/// Largest page `getElementsPage` returns, and what `getElements` and the other
-/// list views return at most.
+/// Largest page `getElements` returns, and what the other list views return at most.
 pub const MAX_PAGE: u32 = 1000;
-/// Page size `getElementsPage` uses when asked for 0.
+/// Page size `getElements` uses when no limit is given.
 pub const DEFAULT_PAGE: u32 = 500;
+/// Largest page `getComments` returns: each comment brings its whole thread.
+pub const MAX_COMMENT_PAGE: u32 = 100;
+/// Most replies one comment's thread holds; `addReply` refuses the next.
+pub const MAX_REPLIES: u64 = 200;
 /// Rows read per batch when a method walks a collection.
 const BATCH: u32 = 1000;
+/// Rows `clearElements` and `clearComments` delete in one call.
+const CLEAR_BATCH: u32 = 1000;
 
 const ROLE_ADMIN: &str = "admin";
 const ROLE_EDITOR: &str = "editor";
@@ -58,17 +64,20 @@ const ROLE_VIEWER: &str = "viewer";
 
 // ── Element data ─────────────────────────────────────────────────────────────
 //
-// The element types are plain serde, exactly v1's JSON: camelCase element
-// fields, `kind`-tagged `data`, and 64-bit fields (`createdAt`, `updatedAt`,
-// `x`, `y`) as JSON numbers. The SDK writes 64-bit integers as decimal strings
-// only where its macros see them (method parameters and results, records,
-// events); a plain serde struct is opaque to them, which keeps every saved
-// project file, the web client's element code and the agent guide's examples
-// valid. Unix milliseconds and canvas pixels are far inside 2^53.
+// An element is a table record (`#[derive(Record)]`): camelCase fields, the
+// `kind`-tagged `data` exactly as in v1, and its 64-bit fields (`x`, `y`,
+// `createdAt`, `updatedAt`) as decimal strings in JSON (D20), integers in
+// storage. The web client converts them in its one adapter
+// (`app/src/api/meroDesign.ts`), so project files and screens keep v1's numbers.
+// The other answer types (members, comments, pointers, patches) are plain serde
+// and keep v1's JSON numbers.
 
 /// What an element is, as a JSON object tagged by `kind`: `rect`, `circle`, `line`,
 /// `arrow`, `path`, `text`, `image` or `svg`, plus that kind's own fields.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+// Deserialized through `RawData` (below), not serde's internally tagged form:
+// that form buffers the value first, and a stored `BlobRef` (a CBOR tag) cannot
+// come back out of that buffer.
+#[derive(Serialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "lowercase")]
 #[serde(tag = "kind")]
 pub enum ElementData {
@@ -122,10 +131,11 @@ pub enum ElementData {
         /// The image's own height in pixels.
         #[serde(rename = "naturalHeight")]
         natural_height: u32,
-        /// Id of the blob holding the image, uploaded to this app
-        /// (`POST /apps/{app}/blobs`). Stored as given: the contract does not read it.
-        #[serde(rename = "blobId", default, skip_serializing_if = "String::is_empty")]
-        blob_id: String,
+        /// The blob holding the image, uploaded to this app (`POST /apps/{app}/blobs`), as
+        /// its 64-hex id. The node keeps the blob while an element refers to it; an id
+        /// the app does not hold is refused. Omitted while the upload has not finished.
+        #[serde(rename = "blobId", default, skip_serializing_if = "Option::is_none")]
+        blob_id: Option<BlobRef>,
     },
     /// An SVG image stored as one of this app's blobs.
     Svg {
@@ -135,15 +145,111 @@ pub enum ElementData {
         /// The SVG's own height in pixels.
         #[serde(rename = "naturalHeight")]
         natural_height: u32,
-        /// Id of the blob holding the SVG markup, as for an image.
-        #[serde(rename = "blobId", default, skip_serializing_if = "String::is_empty")]
-        blob_id: String,
+        /// The blob holding the SVG markup, as for an image.
+        #[serde(rename = "blobId", default, skip_serializing_if = "Option::is_none")]
+        blob_id: Option<BlobRef>,
     },
 }
 
-/// One element on the canvas.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-#[serde(rename_all = "camelCase")]
+/// Every field any kind of `ElementData` has, flat: what `kind` names picks the
+/// variant, and a field that variant requires must be present.
+#[derive(Deserialize)]
+struct RawData {
+    kind: String,
+    #[serde(default)]
+    points: Option<String>,
+    #[serde(default)]
+    content: Option<String>,
+    #[serde(default, rename = "fontSize")]
+    font_size: Option<u32>,
+    #[serde(default, rename = "fontFamily")]
+    font_family: Option<String>,
+    #[serde(default)]
+    bold: Option<bool>,
+    #[serde(default)]
+    italic: Option<bool>,
+    #[serde(default)]
+    text_align: Option<String>,
+    #[serde(default)]
+    vertical_align: Option<String>,
+    #[serde(default, rename = "naturalWidth")]
+    natural_width: Option<u32>,
+    #[serde(default, rename = "naturalHeight")]
+    natural_height: Option<u32>,
+    #[serde(default, rename = "blobId")]
+    blob_id: Option<BlobRef>,
+}
+
+impl<'de> Deserialize<'de> for ElementData {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        use serde::de::Error as _;
+        let raw = RawData::deserialize(d)?;
+        let need = |field: &'static str| D::Error::missing_field(field);
+        Ok(match raw.kind.as_str() {
+            "rect" => Self::Rect,
+            "circle" => Self::Circle,
+            "line" => Self::Line {
+                points: raw.points.unwrap_or_default(),
+            },
+            "arrow" => Self::Arrow {
+                points: raw.points.unwrap_or_default(),
+            },
+            "path" => Self::Path {
+                points: raw.points.ok_or_else(|| need("points"))?,
+            },
+            "text" => Self::Text {
+                content: raw.content.ok_or_else(|| need("content"))?,
+                font_size: raw.font_size.ok_or_else(|| need("fontSize"))?,
+                font_family: raw.font_family.ok_or_else(|| need("fontFamily"))?,
+                bold: raw.bold.ok_or_else(|| need("bold"))?,
+                italic: raw.italic.ok_or_else(|| need("italic"))?,
+                text_align: raw.text_align,
+                vertical_align: raw.vertical_align,
+            },
+            "image" => Self::Image {
+                natural_width: raw.natural_width.ok_or_else(|| need("naturalWidth"))?,
+                natural_height: raw.natural_height.ok_or_else(|| need("naturalHeight"))?,
+                blob_id: raw.blob_id,
+            },
+            "svg" => Self::Svg {
+                natural_width: raw.natural_width.ok_or_else(|| need("naturalWidth"))?,
+                natural_height: raw.natural_height.ok_or_else(|| need("naturalHeight"))?,
+                blob_id: raw.blob_id,
+            },
+            other => {
+                return Err(D::Error::unknown_variant(
+                    other,
+                    &[
+                        "rect", "circle", "line", "arrow", "path", "text", "image", "svg",
+                    ],
+                ))
+            }
+        })
+    }
+}
+
+/// `#[derive(Record)]` needs every field to have a key form; `data` is in no key or
+/// index, so this one is only its `kind`.
+impl ToKeyPart for ElementData {
+    fn to_key_part(&self) -> KeyPart {
+        let kind = match self {
+            Self::Rect => "rect",
+            Self::Circle => "circle",
+            Self::Line { .. } => "line",
+            Self::Arrow { .. } => "arrow",
+            Self::Path { .. } => "path",
+            Self::Text { .. } => "text",
+            Self::Image { .. } => "image",
+            Self::Svg { .. } => "svg",
+        };
+        KeyPart::Str(kind.to_owned())
+    }
+}
+
+/// One element on the canvas: one row of `elements`, keyed by `id`, found in paint
+/// order through the `paint` index on `layerIndex`.
+#[derive(Record, Clone, Debug, PartialEq)]
+#[table(key = "id", index(paint = "layer_index"))]
 pub struct Element {
     /// Chosen by the caller; use a fresh UUID. Writing an existing id replaces that element.
     pub id: String,
@@ -186,8 +292,7 @@ pub struct Element {
     /// Layer name, a `/`-separated path: the groups, then the name. May carry client
     /// extras after a U+001F character; keep them when renaming.
     pub label: Option<String>,
-    /// Corner radius in pixels for a `rect`; 0 or omitted means square corners.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Corner radius in pixels for a `rect`; 0 or `null` means square corners.
     pub corner_radius: Option<u32>,
 }
 
@@ -266,10 +371,36 @@ pub struct Comment {
     pub author: String,
     /// Unix milliseconds.
     pub created_at: u64,
-    /// The thread, oldest first: at most a page (1,000). Always stored empty and
-    /// filled on read from `replies`, where each reply is its own entry.
+    /// The thread, oldest first: at most 200 (`addReply` refuses more). Filled on
+    /// read from `replies`, where each reply is its own entry.
     #[serde(default)]
     pub replies: Vec<CommentReply>,
+}
+
+/// A comment as stored: everything but its thread, which lives in `replies`.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct StoredComment {
+    pub id: String,
+    pub x: i64,
+    pub y: i64,
+    pub content: String,
+    pub author: String,
+    pub created_at: u64,
+}
+
+impl StoredComment {
+    fn with_replies(self, replies: Vec<CommentReply>) -> Comment {
+        Comment {
+            id: self.id,
+            x: self.x,
+            y: self.y,
+            content: self.content,
+            author: self.author,
+            created_at: self.created_at,
+            replies,
+        }
+    }
 }
 
 /// A pointer's last reported position.
@@ -327,11 +458,17 @@ pub struct LabelUpdate {
 }
 
 /// One page of the canvas in paint order, and the cursor of the next (`null` at the end).
-#[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(rename_all = "camelCase")]
+#[derive(Serialize, Clone, Debug)]
 pub struct ElementPage {
     pub items: Vec<Element>,
-    pub next_cursor: Option<String>,
+    pub next: Option<String>,
+}
+
+/// One page of comments by id, each with its thread, and the cursor of the next.
+#[derive(Serialize, Clone, Debug)]
+pub struct CommentPage {
+    pub items: Vec<Comment>,
+    pub next: Option<String>,
 }
 
 // ── state ────────────────────────────────────────────────────────────────────
@@ -349,17 +486,18 @@ pub struct MeroDesign {
     admins: Set<String>,
     /// Accounts granted the editor role.
     editors: Set<String>,
-    /// The canvas, by element id.
-    elements: UnorderedMap<String, Element>,
-    /// `(layerIndex, id)` for every element: the paint order, kept in step with
-    /// every write to `elements`.
-    layers: Set<(u32, String)>,
+    /// The canvas: one row per element, by id; the `paint` index orders it.
+    elements: Table<Element>,
+    /// How many rows `elements` holds, kept in step with every insert and remove.
+    element_count: Counter,
     /// Everyone who joined, by account; each entry written only by its account.
     members: UnorderedMap<String, Member>,
-    /// Comments by id; their `replies` are always stored empty.
-    comments: UnorderedMap<String, Comment>,
+    /// Comments by id, without their threads.
+    comments: UnorderedMap<String, StoredComment>,
     /// `(comment, createdAt, reply)` → the reply: one comment's thread is a prefix, in order.
     replies: UnorderedMap<(String, u64, String), CommentReply>,
+    /// How many replies each comment's thread holds (at most `MAX_REPLIES`).
+    reply_counts: UnorderedMap<String, u64>,
     /// One pointer per account, written only by that account.
     cursors: UnorderedMap<String, CursorState>,
 }
@@ -387,7 +525,7 @@ impl MeroDesign {
         Ok(BoardInfo {
             name: self.name.get()?.unwrap_or_default(),
             description: self.description.get()?.unwrap_or_default(),
-            element_count: count(self.elements.len()?),
+            element_count: count(self.element_count.get()?),
             member_count: count(self.members.len()?),
             owner: self.owner.get()?,
         })
@@ -715,7 +853,7 @@ impl MeroDesign {
             }
         }
         el.updated_at = updated_at;
-        let _ = self.elements.insert(&id, &el)?;
+        self.elements.upsert(el)?;
         env::emit(Event::ElementUpdated { id }, Audience::All)?;
         Ok(())
     }
@@ -741,28 +879,53 @@ impl MeroDesign {
         el.shadow_offset_y = shadow_offset_y;
         el.shadow_blur = shadow_blur;
         el.updated_at = updated_at;
-        let _ = self.elements.insert(&id, &el)?;
+        self.elements.upsert(el)?;
         env::emit(Event::ElementUpdated { id }, Audience::All)?;
         Ok(())
     }
 
-    /// Delete every element, for every member. Board admin only (`Forbidden`).
-    /// Emits `LayerReordered`.
-    pub fn clear_elements(&mut self) -> app::Result<()> {
+    /// Delete the elements, for every member, at most 1,000 per call (a whole
+    /// large board does not fit one call's fuel). Board admin only (`Forbidden`).
+    /// Answers how many are left, a decimal string: call again until `"0"`.
+    /// Emits `LayerReordered` when it deleted any. Changed: v1 cleared the whole
+    /// board in one call and answered `null`.
+    pub fn clear_elements(&mut self) -> app::Result<u64> {
         self.require_admin()?;
-        let _ = self.elements.clear()?;
-        let _ = self.layers.clear()?;
-        env::emit(Event::LayerReordered {}, Audience::All)?;
-        Ok(())
+        let page = self.elements.scan(FindOpts::default().limit(CLEAR_BATCH))?;
+        let mut removed: i64 = 0;
+        for el in &page.items {
+            if self.elements.remove(&el.id)? {
+                removed += 1;
+            }
+        }
+        if removed > 0 {
+            self.element_count.add(-removed)?;
+            env::emit(Event::LayerReordered {}, Audience::All)?;
+        }
+        Ok(self.element_count.get()?)
     }
 
-    /// Delete every comment and reply, for every member. Board admin only
-    /// (`Forbidden`). Emits no event, as in v1.
-    pub fn clear_comments(&mut self) -> app::Result<()> {
+    /// Delete the comments and replies, for every member, at most 1,000 rows per
+    /// call: replies first, then comments. Board admin only (`Forbidden`).
+    /// Answers how many comments and replies are left, a decimal string: call
+    /// again until `"0"`. Emits no event, as in v1. Changed: v1 cleared them all
+    /// in one call and answered `null`.
+    pub fn clear_comments(&mut self) -> app::Result<u64> {
         self.require_admin()?;
-        let _ = self.comments.clear()?;
-        let _ = self.replies.clear()?;
-        Ok(())
+        let mut budget = CLEAR_BATCH;
+        let replies = self.replies.page(FindOpts::default().limit(budget))?;
+        budget -= u32::try_from(replies.items.len()).unwrap_or(budget);
+        for (key, _) in replies.items {
+            let _ = self.replies.remove(&key)?;
+        }
+        if budget > 0 {
+            let comments = self.comments.page(FindOpts::default().limit(budget))?;
+            for (id, _) in comments.items {
+                let _ = self.comments.remove(&id)?;
+                let _ = self.reply_counts.remove(&id)?;
+            }
+        }
+        Ok(self.comments.len()? + self.replies.len()?)
     }
 
     /// Delete an element. Editors only. An unknown id is not an error, and still
@@ -789,26 +952,17 @@ impl MeroDesign {
         Ok(())
     }
 
-    /// The canvas in paint order, lowest `layerIndex` first: at most a page
-    /// (1,000 elements). `getElementsPage` reads a larger board page by page.
+    /// One page of the canvas in paint order, lowest `layerIndex` first (ties by
+    /// id). `cursor` is the previous page's `next` (`null` for the first page);
+    /// `limit` defaults to 500 and is capped at 1,000. Answers `{ items, next }`,
+    /// `next` `null` on the last page. Changed: v1 returned the whole board as one list.
     #[app::view]
-    pub fn get_elements(&self) -> app::Result<Vec<Element>> {
-        Ok(self.element_page(None, MAX_PAGE)?.items)
-    }
-
-    /// One page of the canvas in paint order. `cursor` is the previous page's
-    /// `nextCursor` (`null` for the first page); `limit` 0 means 500, more than
-    /// 1,000 means 1,000. New: v1 returned the whole board from `getElements`.
-    #[app::view]
-    pub fn get_elements_page(
+    pub fn get_elements(
         &self,
         cursor: Option<String>,
-        limit: u32,
+        limit: Option<u32>,
     ) -> app::Result<ElementPage> {
-        let limit = match limit {
-            0 => DEFAULT_PAGE,
-            n => n.min(MAX_PAGE),
-        };
+        let limit = limit.unwrap_or(DEFAULT_PAGE).min(MAX_PAGE);
         self.element_page(cursor, limit)
     }
 
@@ -864,7 +1018,12 @@ impl MeroDesign {
         if !self.elements.contains(&id)? {
             return Ok(());
         }
-        let top = self.layers.last()?.map_or(0, |(layer, _)| layer);
+        let top = self
+            .elements
+            .find("paint", &[], FindOpts::default().limit(1).reverse())?
+            .items
+            .first()
+            .map_or(0, |el| el.layer_index);
         self.move_layer(&id, top.saturating_add(1), None)?;
         env::emit(Event::LayerReordered {}, Audience::All)?;
         Ok(())
@@ -898,14 +1057,13 @@ impl MeroDesign {
         created_at: u64,
     ) -> app::Result<()> {
         let author = self.require_editor()?;
-        let comment = Comment {
+        let comment = StoredComment {
             id: id.clone(),
             x,
             y,
             content,
             author,
             created_at,
-            replies: Vec::new(),
         };
         let _ = self.comments.insert(&id, &comment)?;
         env::emit(Event::CommentAdded { id }, Audience::All)?;
@@ -925,15 +1083,24 @@ impl MeroDesign {
         if !self.comments.contains(&comment_id)? {
             return Ok(());
         }
+        let in_thread = self.reply_counts.get(&comment_id)?.unwrap_or(0);
+        if in_thread >= MAX_REPLIES {
+            return Err(invalid(format!(
+                "a thread holds at most {MAX_REPLIES} replies"
+            )));
+        }
         let reply = CommentReply {
             id: reply_id.clone(),
             content,
             author,
             created_at,
         };
-        let _ = self
+        let replaced = self
             .replies
             .insert(&(comment_id.clone(), created_at, reply_id), &reply)?;
+        if replaced.is_none() {
+            let _ = self.reply_counts.insert(&comment_id, &(in_thread + 1))?;
+        }
         env::emit(Event::CommentUpdated { id: comment_id }, Audience::All)?;
         Ok(())
     }
@@ -950,8 +1117,21 @@ impl MeroDesign {
         if keys.is_empty() {
             return Ok(());
         }
+        let mut removed = 0;
         for key in keys {
-            let _ = self.replies.remove(&key)?;
+            if self.replies.remove(&key)?.is_some() {
+                removed += 1;
+            }
+        }
+        let left = self
+            .reply_counts
+            .get(&comment_id)?
+            .unwrap_or(0)
+            .saturating_sub(removed);
+        if left == 0 {
+            let _ = self.reply_counts.remove(&comment_id)?;
+        } else {
+            let _ = self.reply_counts.insert(&comment_id, &left)?;
         }
         env::emit(Event::CommentUpdated { id: comment_id }, Audience::All)?;
         Ok(())
@@ -962,6 +1142,7 @@ impl MeroDesign {
     pub fn delete_comment(&mut self, id: String) -> app::Result<()> {
         self.require_editor()?;
         let _ = self.comments.remove(&id)?;
+        let _ = self.reply_counts.remove(&id)?;
         loop {
             let keys = self.thread_keys(&id)?;
             if keys.is_empty() {
@@ -975,24 +1156,41 @@ impl MeroDesign {
         Ok(())
     }
 
-    /// The comments, each with its replies oldest first: at most a page of
-    /// comments (1,000), each with at most a page of replies.
+    /// One page of comments by id, each with its whole thread (at most 200
+    /// replies), oldest reply first. `cursor` is the previous page's `next`
+    /// (`null` for the first); `limit` defaults to and is capped at 100. Answers
+    /// `{ items, next }`, `next` `null` on the last page. Changed: v1 returned
+    /// every comment in one list.
     #[app::view]
-    pub fn get_comments(&self) -> app::Result<Vec<Comment>> {
-        let page = self.comments.page(FindOpts::default().limit(MAX_PAGE))?;
-        page.items
-            .into_iter()
-            .map(|(id, mut c)| {
-                c.replies = self
-                    .replies
-                    .prefix(&[KeyPart::Str(id)], FindOpts::default().limit(MAX_PAGE))?
-                    .items
-                    .into_iter()
-                    .map(|(_, r)| r)
-                    .collect();
-                Ok(c)
-            })
-            .collect()
+    pub fn get_comments(
+        &self,
+        cursor: Option<String>,
+        limit: Option<u32>,
+    ) -> app::Result<CommentPage> {
+        let limit = limit.unwrap_or(MAX_COMMENT_PAGE).min(MAX_COMMENT_PAGE);
+        let mut opts = FindOpts::default().limit(limit);
+        if let Some(c) = cursor {
+            opts = opts.cursor(c);
+        }
+        let page = self.comments.page(opts)?;
+        let mut items = Vec::with_capacity(page.items.len());
+        for (id, c) in page.items {
+            let replies = self
+                .replies
+                .prefix(
+                    &[KeyPart::Str(id)],
+                    FindOpts::default().limit(MAX_REPLIES as u32),
+                )?
+                .items
+                .into_iter()
+                .map(|(_, r)| r)
+                .collect();
+            items.push(c.with_replies(replies));
+        }
+        Ok(CommentPage {
+            items,
+            next: page.next,
+        })
     }
 
     // ── pointers ─────────────────────────────────────────────────────────────
@@ -1028,28 +1226,29 @@ impl MeroDesign {
 
     // ── internal ─────────────────────────────────────────────────────────────
 
-    /// Stores one element and keeps `layers` in step. `createdBy` is the caller,
-    /// or, when the id is already on the board, whoever created it first.
+    /// Stores one element (its `paint` index follows) and keeps `elementCount` in
+    /// step. `createdBy` is the caller, or, when the id is already on the board,
+    /// whoever created it first. An image's blob must be one this app holds: the
+    /// node refuses the write otherwise.
     fn insert_element(&mut self, mut element: Element) -> app::Result<String> {
         let id = element.id.clone();
         if id.is_empty() {
             return Err(invalid("an element needs an id"));
         }
         element.created_by = match self.elements.get(&id)? {
-            Some(existing) => {
-                let _ = self.layers.remove(&(existing.layer_index, id.clone()))?;
-                existing.created_by
+            Some(existing) => existing.created_by,
+            None => {
+                self.element_count.add(1)?;
+                caller()?
             }
-            None => caller()?,
         };
-        let _ = self.layers.insert(&(element.layer_index, id.clone()))?;
-        let _ = self.elements.insert(&id, &element)?;
+        self.elements.upsert(element)?;
         Ok(id)
     }
 
     fn remove_element(&mut self, id: &str) -> app::Result<()> {
-        if let Some(old) = self.elements.remove(&id.to_owned())? {
-            let _ = self.layers.remove(&(old.layer_index, id.to_owned()))?;
+        if self.elements.remove(&id.to_owned())? {
+            self.element_count.add(-1)?;
         }
         Ok(())
     }
@@ -1095,7 +1294,7 @@ impl MeroDesign {
             el.corner_radius = Some(v);
         }
         el.updated_at = updated_at;
-        let _ = self.elements.insert(&patch.id, &el)?;
+        self.elements.upsert(el)?;
         Ok(Some(patch.id))
     }
 
@@ -1106,28 +1305,26 @@ impl MeroDesign {
         };
         el.label = label;
         el.updated_at = updated_at;
-        let _ = self.elements.insert(&id, &el)?;
+        self.elements.upsert(el)?;
         Ok(true)
     }
 
-    /// Moves `id` to `layer`, in the element and in `layers`; `stamp` sets `updatedAt`.
+    /// Moves `id` to `layer` (the `paint` index follows); `stamp` sets `updatedAt`.
     fn move_layer(&mut self, id: &str, layer: u32, stamp: Option<u64>) -> app::Result<()> {
         let id = id.to_owned();
         let Some(mut el) = self.elements.get(&id)? else {
             return Ok(());
         };
-        let _ = self.layers.remove(&(el.layer_index, id.clone()))?;
         el.layer_index = layer;
         if let Some(t) = stamp {
             el.updated_at = t;
         }
-        let _ = self.layers.insert(&(layer, id.clone()))?;
-        let _ = self.elements.insert(&id, &el)?;
+        self.elements.upsert(el)?;
         Ok(())
     }
 
-    /// The whole paint order, bottom first, as `(id, layerIndex)`: keys only, read
-    /// a page at a time.
+    /// The whole paint order, bottom first, as `(id, layerIndex)`, read a page at a
+    /// time through the `paint` index.
     fn layer_order(&self) -> app::Result<Vec<(String, u32)>> {
         let mut out = Vec::new();
         let mut cursor: Option<String> = None;
@@ -1136,8 +1333,8 @@ impl MeroDesign {
             if let Some(c) = cursor.take() {
                 opts = opts.cursor(c);
             }
-            let page = self.layers.page(opts)?;
-            out.extend(page.items.into_iter().map(|(layer, id)| (id, layer)));
+            let page = self.elements.find("paint", &[], opts)?;
+            out.extend(page.items.into_iter().map(|el| (el.id, el.layer_index)));
             match page.next {
                 Some(next) => cursor = Some(next),
                 None => return Ok(out),
@@ -1150,16 +1347,10 @@ impl MeroDesign {
         if let Some(c) = cursor {
             opts = opts.cursor(c);
         }
-        let page = self.layers.page(opts)?;
-        let mut items = Vec::with_capacity(page.items.len());
-        for (_, id) in page.items {
-            if let Some(el) = self.elements.get(&id)? {
-                items.push(el);
-            }
-        }
+        let page = self.elements.find("paint", &[], opts)?;
         Ok(ElementPage {
-            items,
-            next_cursor: page.next,
+            items: page.items,
+            next: page.next,
         })
     }
 

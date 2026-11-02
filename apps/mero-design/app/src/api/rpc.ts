@@ -1,7 +1,7 @@
 import { AppError, ORG_CAPABILITIES, TrapError, type AppInfo, type CalimeroClient } from "@calimero-network/mero-js";
 import type { AppSource } from "@calimero-apps/connect";
 import { getApi } from "./client";
-import { toWire } from "./meroDesign";
+import { elementFromContract, elementToContract, toWire, type Page } from "./meroDesign";
 import { getCachedBlob, setCachedBlob } from "../utils/blobCache";
 import { fromWire, metaOf, packLabel, toWire as elementToWire } from "../utils/elementMeta";
 import { useCanvasStore } from "../store/canvasStore";
@@ -35,10 +35,10 @@ import type { Element } from "../types";
  */
 export function packArgs(method: string, args: Record<string, unknown>): Record<string, unknown> {
   if (method === "add_element" && args.element && typeof args.element === "object") {
-    return { ...args, element: elementToWire(args.element as Element) };
+    return { ...args, element: elementToContract(elementToWire(args.element as Element)) };
   }
   if (method === "add_elements" && Array.isArray(args.elements)) {
-    return { ...args, elements: (args.elements as Element[]).map(elementToWire) };
+    return { ...args, elements: (args.elements as Element[]).map((el) => elementToContract(elementToWire(el))) };
   }
   if (method === "update_element_label") {
     const { __element, ...rest } = args as { __element?: Element } & Record<string, unknown>;
@@ -63,10 +63,10 @@ export function packArgs(method: string, args: Record<string, unknown>): Record<
 /** Unpack every element a read returns: the inverse of `packArgs`. */
 export function unpackResult<T>(method: string, value: T): T {
   if ((method === "get_elements" || method === "get_elements_by_ids") && Array.isArray(value)) {
-    return value.map((el) => fromWire(el as Element)) as T;
+    return value.map((el) => fromWire(elementFromContract(el as Element))) as T;
   }
   if (method === "get_element" && value && typeof value === "object") {
-    return fromWire(value as unknown as Element) as T;
+    return fromWire(elementFromContract(value as unknown as Element)) as T;
   }
   return value;
 }
@@ -85,7 +85,7 @@ export function callFailure(err: unknown): Error {
   return err instanceof Error ? err : new Error(String(err));
 }
 
-/** Pages `getElementsPage` reads at a time when `get_elements` wants the whole board. */
+/** Elements per `getElements` page when `get_elements` wants the whole board. */
 const ELEMENT_PAGE = 1000;
 
 type Contract = Pick<CalimeroClient, "call" | "view">;
@@ -99,21 +99,45 @@ async function send(client: Contract, app: string, method: string, args: Record<
 }
 
 /**
- * Every element on the board in paint order. The component contract answers
- * `getElements` with at most a page (1,000), so a larger board is read page
- * by page through `getElementsPage`, as v1's single read returned it whole.
+ * Every row of a paged read (`getElements`, `getComments`: `{ items, next }`),
+ * following `next`, as v1's single read returned the collection whole. The
+ * screens hold the whole board, so the client gathers it; the contract never
+ * answers more than a page per call.
  */
-async function allElements(client: Contract, app: string): Promise<Element[]> {
-  const out: Element[] = [];
+async function allPages<T>(client: Contract, app: string, method: string, limit: number): Promise<T[]> {
+  const out: T[] = [];
   let cursor: string | null = null;
   for (;;) {
-    const page = (await send(client, app, "get_elements_page", { cursor, limit: ELEMENT_PAGE })) as {
-      items?: Element[];
-      nextCursor?: string | null;
-    };
-    out.push(...(page.items ?? []));
-    if (!page.nextCursor) return out;
-    cursor = page.nextCursor;
+    const page = (await send(client, app, method, { cursor, limit })) as Partial<Page<T>> | null;
+    out.push(...(page?.items ?? []));
+    if (!page?.next) return out;
+    cursor = page.next;
+  }
+}
+
+/**
+ * Run a chunked clear (`clearElements`, `clearComments`) to the end: each call
+ * deletes a bounded batch and answers how many are left, as a decimal string.
+ */
+async function clearAll(client: Contract, app: string, method: string): Promise<null> {
+  for (let calls = 0; calls < 10_000; calls++) {
+    const left = await send(client, app, method, {});
+    if (left === null || left === undefined || String(left) === "0") return null;
+  }
+  throw new Error(`${method} did not finish`);
+}
+
+async function dispatch(client: Contract, app: string, method: string, args: Record<string, unknown>): Promise<unknown> {
+  switch (method) {
+    case "get_elements":
+      return allPages<Element>(client, app, method, ELEMENT_PAGE);
+    case "get_comments":
+      return allPages<unknown>(client, app, method, 100);
+    case "clear_elements":
+    case "clear_comments":
+      return clearAll(client, app, method);
+    default:
+      return send(client, app, method, args);
   }
 }
 
@@ -129,7 +153,9 @@ export async function rpcCall<T>(
   const { client, after } = getApi();
   try {
     const packed = packArgs(method, args);
-    const out = method === "get_elements" ? await allElements(client, app) : await send(client, app, method, packed);
+    await carryBlobs(app, method, packed);
+    const out = await dispatch(client, app, method, packed);
+    rememberBlobs(app, method, out);
     return unpackResult(method, out as T);
   } catch (err) {
     throw callFailure(err);
@@ -427,7 +453,81 @@ export async function boardName(app: string): Promise<string> {
 // ── Blobs ────────────────────────────────────────────────────────────────────
 //
 // An image or SVG is a blob of the board's app instance: uploaded to it, read
-// back by any member who reaches it. The element stores the blob's hex id.
+// back by any member who reaches it. The element stores the blob's id (its
+// SHA-256, hex) as a `BlobRef`: the node keeps the blob while an element refers
+// to it, and refuses a write that names a blob the board does not hold. So an
+// element that brings a blob from elsewhere (a paste from another board, a
+// project file) has its bytes uploaded to this board first; uploading the same
+// bytes gives the same id. One whose bytes this browser cannot find is written
+// without its blob and shows the "unavailable" placeholder, instead of the
+// whole batch being refused.
+
+/** Blob ids each board is known to hold: uploaded to it, read from it, or named by its elements. */
+const heldBlobs = new Map<string, Set<string>>();
+
+function heldBy(app: string): Set<string> {
+  let set = heldBlobs.get(app);
+  if (!set) {
+    set = new Set();
+    heldBlobs.set(app, set);
+  }
+  return set;
+}
+
+function blobIdOf(el: unknown): string | null {
+  const data = (el as { data?: { kind?: string; blobId?: unknown } } | null)?.data;
+  if (!data || (data.kind !== "image" && data.kind !== "svg")) return null;
+  return typeof data.blobId === "string" && data.blobId ? data.blobId : null;
+}
+
+/** Note the blobs a read shows this board holds. */
+export function rememberBlobs(app: string, method: string, out: unknown): void {
+  if (method !== "get_elements" && method !== "get_elements_by_ids" && method !== "get_element") return;
+  const list = Array.isArray(out) ? out : out ? [out] : [];
+  for (const el of list) {
+    const id = blobIdOf(el);
+    if (id) heldBy(app).add(id);
+  }
+}
+
+/** Whether `app` holds blob `id`, uploading this browser's copy of it when it does not yet. */
+async function ensureBlob(app: string, id: string): Promise<boolean> {
+  const held = heldBy(app);
+  if (held.has(id)) return true;
+  try {
+    const cached = await getCachedBlob(id);
+    if (cached) {
+      const { blobId } = await uploadBlob(cached, app);
+      return blobId === id;
+    }
+    await getBlob(id, app); // the board may hold it already: reading it proves so
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Before `add_element(s)`: every blob the elements name is one the board holds,
+ * or the element goes without it (see above). Rewrites `packed` in place; the
+ * element objects in it are the adapter's copies, never the store's.
+ */
+export async function carryBlobs(app: string, method: string, packed: Record<string, unknown>): Promise<void> {
+  const fix = async (el: Record<string, unknown>): Promise<Record<string, unknown>> => {
+    const id = blobIdOf(el);
+    if (!id || (await ensureBlob(app, id))) return el;
+    console.warn(`[MeroDesign] blob ${id} is not on this board and no copy was found; the image is added without it`);
+    const { blobId: _gone, ...data } = el.data as Record<string, unknown>;
+    return { ...el, data };
+  };
+  if (method === "add_element" && packed.element && typeof packed.element === "object") {
+    packed.element = await fix(packed.element as Record<string, unknown>);
+  } else if (method === "add_elements" && Array.isArray(packed.elements)) {
+    const out: Record<string, unknown>[] = [];
+    for (const el of packed.elements as Record<string, unknown>[]) out.push(await fix(el));
+    packed.elements = out;
+  }
+}
 
 export async function uploadBlob(data: ArrayBuffer | Uint8Array, app: string): Promise<{ blobId: string }> {
   if (!app) throw new Error("uploadBlob needs the board's id");
@@ -435,7 +535,9 @@ export async function uploadBlob(data: ArrayBuffer | Uint8Array, app: string): P
   try {
     const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
     const res = await client.uploadBlob(app, bytes);
-    return { blobId: res?.id || res?.blobId || "" };
+    const blobId = res?.id || res?.blobId || "";
+    if (blobId) heldBy(app).add(blobId);
+    return { blobId };
   } finally {
     after();
   }
@@ -448,6 +550,7 @@ export async function getBlob(blobId: string, app: string): Promise<ArrayBuffer>
   const { client, after } = getApi();
   try {
     const bytes = await client.downloadBlob(app, blobId);
+    heldBy(app).add(blobId);
     const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
     setCachedBlob(blobId, buf); // fire-and-forget, non-blocking
     return buf;

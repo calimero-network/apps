@@ -162,7 +162,7 @@
       "kind": "call",
       "params": [],
       "public": false,
-      "returns": null
+      "returns": "u64"
     },
     "clearElements": {
       "allowSystem": false,
@@ -170,7 +170,7 @@
       "kind": "call",
       "params": [],
       "public": false,
-      "returns": null
+      "returns": "u64"
     },
     "deleteComment": {
       "allowSystem": false,
@@ -240,9 +240,18 @@
       "allowSystem": false,
       "confirm": false,
       "kind": "view",
-      "params": [],
+      "params": [
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
+        ]
+      ],
       "public": false,
-      "returns": "list<Comment>"
+      "returns": "CommentPage"
     },
     "getCursors": {
       "allowSystem": false,
@@ -269,9 +278,18 @@
       "allowSystem": false,
       "confirm": false,
       "kind": "view",
-      "params": [],
+      "params": [
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
+        ]
+      ],
       "public": false,
-      "returns": "list<Element>"
+      "returns": "ElementPage"
     },
     "getElementsByIds": {
       "allowSystem": false,
@@ -285,23 +303,6 @@
       ],
       "public": false,
       "returns": "list<Element>"
-    },
-    "getElementsPage": {
-      "allowSystem": false,
-      "confirm": false,
-      "kind": "view",
-      "params": [
-        [
-          "cursor",
-          "option<string>"
-        ],
-        [
-          "limit",
-          "u32"
-        ]
-      ],
-      "public": false,
-      "returns": "ElementPage"
     },
     "getMembers": {
       "allowSystem": false,
@@ -695,12 +696,27 @@
       "cursors": "unorderedMap",
       "description": "cell",
       "editors": "set",
-      "elements": "unorderedMap",
-      "layers": "set",
+      "elementCount": "counter",
+      "elements": "table",
       "members": "unorderedMap",
       "name": "cell",
       "owner": "cell",
-      "replies": "unorderedMap"
+      "replies": "unorderedMap",
+      "replyCounts": "unorderedMap"
+    },
+    "search": {
+      "admins": [],
+      "comments": [],
+      "cursors": [],
+      "description": [],
+      "editors": [],
+      "elementCount": [],
+      "elements": [],
+      "members": [],
+      "name": [],
+      "owner": [],
+      "replies": [],
+      "replyCounts": []
     },
     "version": 1
   },

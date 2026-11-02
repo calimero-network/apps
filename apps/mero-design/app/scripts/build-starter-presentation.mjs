@@ -226,7 +226,7 @@ function slide(index, name, { col, row, height = H, kicker, page }) {
   const tools = [
     ["cargo mero build", "one command → a signed .mpk bundle"],
     ["mero-js · mero-react", "typed client + hooks for the frontend"],
-    ["merobox", "real nodes in CI, not mocks"],
+    ["merod local", "real nodes in CI, not mocks"],
   ];
   tools.forEach(([head, sub], i) => {
     const y = oy + 350 + i * 190;

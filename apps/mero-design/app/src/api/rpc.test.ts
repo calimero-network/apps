@@ -48,13 +48,48 @@ describe("rpcCall", () => {
     const el = (id: string) => ({ id, data: { kind: "rect" }, label: null });
     const view = vi
       .fn()
-      .mockResolvedValueOnce({ index: 1, result: { items: [el("a"), el("b")], nextCursor: "c1" } })
-      .mockResolvedValueOnce({ index: 1, result: { items: [el("c")], nextCursor: null } });
+      .mockResolvedValueOnce({ index: 1, result: { items: [el("a"), el("b")], next: "c1" } })
+      .mockResolvedValueOnce({ index: 1, result: { items: [{ ...el("c"), x: "-5", updatedAt: "9" }], next: null } });
     bind({ view });
-    const els = await rpcCall<Array<{ id: string }>>("board-1", "get_elements", {});
+    const els = await rpcCall<Array<{ id: string; x?: number; updatedAt?: number }>>("board-1", "get_elements", {});
     expect(els.map((e) => e.id)).toEqual(["a", "b", "c"]);
-    expect(view).toHaveBeenNthCalledWith(1, "board-1", "getElementsPage", { cursor: null, limit: 1000 });
-    expect(view).toHaveBeenNthCalledWith(2, "board-1", "getElementsPage", { cursor: "c1", limit: 1000 });
+    expect(els[2]).toMatchObject({ x: -5, updatedAt: 9 });
+    expect(view).toHaveBeenNthCalledWith(1, "board-1", "getElements", { cursor: null, limit: 1000 });
+    expect(view).toHaveBeenNthCalledWith(2, "board-1", "getElements", { cursor: "c1", limit: 1000 });
+  });
+
+  it("reads every comment page", async () => {
+    const view = vi
+      .fn()
+      .mockResolvedValueOnce({ index: 1, result: { items: [{ id: "c1", replies: [] }], next: "n" } })
+      .mockResolvedValueOnce({ index: 1, result: { items: [{ id: "c2", replies: [] }], next: null } });
+    bind({ view });
+    const comments = await rpcCall<Array<{ id: string }>>("board-1", "get_comments", {});
+    expect(comments.map((c) => c.id)).toEqual(["c1", "c2"]);
+    expect(view).toHaveBeenNthCalledWith(2, "board-1", "getComments", { cursor: "n", limit: 100 });
+  });
+
+  it("runs a chunked clear until nothing is left", async () => {
+    const call = vi
+      .fn()
+      .mockResolvedValueOnce({ index: 1, result: "1200", events: [] })
+      .mockResolvedValueOnce({ index: 2, result: "200", events: [] })
+      .mockResolvedValueOnce({ index: 3, result: "0", events: [] });
+    bind({ call });
+    expect(await rpcCall("board-1", "clear_elements", {})).toBeNull();
+    expect(call).toHaveBeenCalledTimes(3);
+    expect(call).toHaveBeenCalledWith("board-1", "clearElements", {});
+  });
+
+  it("sends an element's 64-bit fields as strings", async () => {
+    const call = vi.fn().mockResolvedValue({ index: 1, result: "e1", events: [] });
+    bind({ call });
+    await rpcCall("board-1", "add_element", {
+      element: { id: "e1", data: { kind: "rect" }, x: 3, y: -4, createdAt: 5, updatedAt: 6, label: null },
+    });
+    expect(call.mock.calls[0]![2]).toEqual({
+      element: { id: "e1", data: { kind: "rect" }, x: "3", y: "-4", createdAt: "5", updatedAt: "6", label: null },
+    });
   });
 
   it("throws the contract's own message", async () => {
@@ -126,6 +161,42 @@ describe("teams and boards", () => {
 });
 
 describe("blobs", () => {
+  const image = (blobId: string) => ({
+    id: "img", data: { kind: "image", naturalWidth: 1, naturalHeight: 1, blobId },
+    x: 0, y: 0, createdAt: 1, updatedAt: 1, label: null,
+  });
+
+  it("an image whose blob the board holds is added as it is", async () => {
+    const call = vi.fn().mockResolvedValue({ index: 1, result: "img", events: [] });
+    const upload = vi.fn().mockResolvedValue({ id: "11".repeat(32) });
+    bind({ call, uploadBlob: upload });
+    await uploadBlob(new Uint8Array([1]), "board-h");
+    await rpcCall("board-h", "add_element", { element: image("11".repeat(32)) });
+    expect((call.mock.calls[0]![2] as { element: { data: { blobId?: string } } }).element.data.blobId)
+      .toBe("11".repeat(32));
+  });
+
+  it("an image from elsewhere whose bytes cannot be found is added without its blob", async () => {
+    const call = vi.fn().mockResolvedValue({ index: 1, result: "img", events: [] });
+    const download = vi.fn().mockRejectedValue(new Error("not found"));
+    bind({ call, downloadBlob: download });
+    const element = image("22".repeat(32));
+    await rpcCall("board-x", "add_elements", { elements: [element] });
+    const sent = (call.mock.calls[0]![2] as { elements: Array<{ data: Record<string, unknown> }> }).elements;
+    expect(sent[0]!.data).not.toHaveProperty("blobId");
+    expect(element.data.blobId).toBe("22".repeat(32)); // the caller's element is untouched
+  });
+
+  it("an image the board already holds, though unseen, keeps its blob", async () => {
+    const call = vi.fn().mockResolvedValue({ index: 1, result: "img", events: [] });
+    const download = vi.fn().mockResolvedValue(new Uint8Array([3]));
+    bind({ call, downloadBlob: download });
+    await rpcCall("board-y", "add_element", { element: image("33".repeat(32)) });
+    expect(download).toHaveBeenCalledWith("board-y", "33".repeat(32));
+    expect((call.mock.calls[0]![2] as { element: { data: { blobId?: string } } }).element.data.blobId)
+      .toBe("33".repeat(32));
+  });
+
   it("uploads to the board's instance and keeps the hex id", async () => {
     const upload = vi.fn().mockResolvedValue({ blobId: "base58", id: "ab".repeat(32), size: 3 });
     bind({ uploadBlob: upload });

@@ -8,8 +8,7 @@
  * sizes and four variants, colour swatches, and form controls.
  *
  * Only kinds the app renders today are used (rect / circle / text). Anywhere a
- * missing feature forced a workaround it is marked WORKAROUND, and each one is
- * tracked in docs/fix-plan.md.
+ * missing feature forced a workaround it is marked WORKAROUND.
  */
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -81,7 +80,7 @@ const text = (x, y, content, size, fill, o = {}) =>
       vertical_align: 'top',
     },
   });
-// WORKAROUND: a 1px line renders invisible today (fix-plan PR 3), so every rule
+// WORKAROUND: a 1px line renders invisible, so every rule
 // and gridline in this file is a 1px-tall rect.
 const rule = (x, y, w, fill = C.border) => rect(x, y, w, 1, fill, { label: 'rule' });
 

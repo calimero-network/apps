@@ -80,8 +80,8 @@
     "data": {
      "kind": "rect"
     },
-    "x": 10,
-    "y": 20,
+    "x": "10",
+    "y": "20",
     "width": 100,
     "height": 50,
     "rotation": 0,
@@ -91,8 +91,8 @@
     "opacity": 100,
     "layerIndex": 0,
     "createdBy": "",
-    "createdAt": 1727000000000,
-    "updatedAt": 1727000000000,
+    "createdAt": "1727000000000",
+    "updatedAt": "1727000000000",
     "shadowColor": null,
     "shadowOffsetX": null,
     "shadowOffsetY": null,
@@ -117,8 +117,8 @@
     "data": {
      "kind": "rect"
     },
-    "x": 10,
-    "y": 20,
+    "x": "10",
+    "y": "20",
     "width": 100,
     "height": 50,
     "rotation": 0,
@@ -128,8 +128,8 @@
     "opacity": 100,
     "layerIndex": 0,
     "createdBy": "",
-    "createdAt": 1727000000000,
-    "updatedAt": 1727000000000,
+    "createdAt": "1727000000000",
+    "updatedAt": "1727000000000",
     "shadowColor": null,
     "shadowOffsetX": null,
     "shadowOffsetY": null,
@@ -151,8 +151,8 @@
     "data": {
      "kind": "circle"
     },
-    "x": 10,
-    "y": 20,
+    "x": "10",
+    "y": "20",
     "width": 100,
     "height": 50,
     "rotation": 0,
@@ -162,8 +162,8 @@
     "opacity": 100,
     "layerIndex": 1,
     "createdBy": "",
-    "createdAt": 1727000000000,
-    "updatedAt": 1727000000000,
+    "createdAt": "1727000000000",
+    "updatedAt": "1727000000000",
     "shadowColor": null,
     "shadowOffsetX": null,
     "shadowOffsetY": null,
@@ -190,8 +190,8 @@
      "bold": false,
      "italic": false
     },
-    "x": 10,
-    "y": 20,
+    "x": "10",
+    "y": "20",
     "width": 100,
     "height": 50,
     "rotation": 0,
@@ -201,8 +201,8 @@
     "opacity": 100,
     "layerIndex": 2,
     "createdBy": "",
-    "createdAt": 1727000000000,
-    "updatedAt": 1727000000000,
+    "createdAt": "1727000000000",
+    "updatedAt": "1727000000000",
     "shadowColor": null,
     "shadowOffsetX": null,
     "shadowOffsetY": null,
@@ -220,85 +220,91 @@
   "method": "getElements",
   "args": {},
   "expect": {
-   "ok": [
-    {
-     "id": "rect-1",
-     "data": {
-      "kind": "rect"
+   "ok": {
+    "items": [
+     {
+      "id": "rect-1",
+      "data": {
+       "kind": "rect"
+      },
+      "x": "10",
+      "y": "20",
+      "width": 100,
+      "height": 50,
+      "rotation": 0,
+      "fill": "#ff0000",
+      "stroke": "#000000",
+      "strokeWidth": 1,
+      "opacity": 100,
+      "layerIndex": 0,
+      "createdBy": "@owner",
+      "createdAt": "1727000000000",
+      "updatedAt": "1727000000000",
+      "shadowColor": null,
+      "shadowOffsetX": null,
+      "shadowOffsetY": null,
+      "shadowBlur": null,
+      "label": null,
+      "cornerRadius": null
      },
-     "x": 10,
-     "y": 20,
-     "width": 100,
-     "height": 50,
-     "rotation": 0,
-     "fill": "#ff0000",
-     "stroke": "#000000",
-     "strokeWidth": 1,
-     "opacity": 100,
-     "layerIndex": 0,
-     "createdBy": "@owner",
-     "createdAt": 1727000000000,
-     "updatedAt": 1727000000000,
-     "shadowColor": null,
-     "shadowOffsetX": null,
-     "shadowOffsetY": null,
-     "shadowBlur": null,
-     "label": null
-    },
-    {
-     "id": "circle-1",
-     "data": {
-      "kind": "circle"
+     {
+      "id": "circle-1",
+      "data": {
+       "kind": "circle"
+      },
+      "x": "10",
+      "y": "20",
+      "width": 100,
+      "height": 50,
+      "rotation": 0,
+      "fill": "#0000ff",
+      "stroke": "#000000",
+      "strokeWidth": 1,
+      "opacity": 100,
+      "layerIndex": 1,
+      "createdBy": "@owner",
+      "createdAt": "1727000000000",
+      "updatedAt": "1727000000000",
+      "shadowColor": null,
+      "shadowOffsetX": null,
+      "shadowOffsetY": null,
+      "shadowBlur": null,
+      "label": null,
+      "cornerRadius": null
      },
-     "x": 10,
-     "y": 20,
-     "width": 100,
-     "height": 50,
-     "rotation": 0,
-     "fill": "#0000ff",
-     "stroke": "#000000",
-     "strokeWidth": 1,
-     "opacity": 100,
-     "layerIndex": 1,
-     "createdBy": "@owner",
-     "createdAt": 1727000000000,
-     "updatedAt": 1727000000000,
-     "shadowColor": null,
-     "shadowOffsetX": null,
-     "shadowOffsetY": null,
-     "shadowBlur": null,
-     "label": null
-    },
-    {
-     "id": "text-1",
-     "data": {
-      "kind": "text",
-      "content": "Hello MeroDesign",
-      "fontSize": 24,
-      "fontFamily": "sans-serif",
-      "bold": false,
-      "italic": false
-     },
-     "x": 10,
-     "y": 20,
-     "width": 100,
-     "height": 50,
-     "rotation": 0,
-     "fill": "#ff0000",
-     "stroke": "#000000",
-     "strokeWidth": 1,
-     "opacity": 100,
-     "layerIndex": 2,
-     "createdBy": "@owner",
-     "createdAt": 1727000000000,
-     "updatedAt": 1727000000000,
-     "shadowColor": null,
-     "shadowOffsetX": null,
-     "shadowOffsetY": null,
-     "shadowBlur": null,
-     "label": null
-    }
-   ]
+     {
+      "id": "text-1",
+      "data": {
+       "kind": "text",
+       "content": "Hello MeroDesign",
+       "fontSize": 24,
+       "fontFamily": "sans-serif",
+       "bold": false,
+       "italic": false
+      },
+      "x": "10",
+      "y": "20",
+      "width": 100,
+      "height": 50,
+      "rotation": 0,
+      "fill": "#ff0000",
+      "stroke": "#000000",
+      "strokeWidth": 1,
+      "opacity": 100,
+      "layerIndex": 2,
+      "createdBy": "@owner",
+      "createdAt": "1727000000000",
+      "updatedAt": "1727000000000",
+      "shadowColor": null,
+      "shadowOffsetX": null,
+      "shadowOffsetY": null,
+      "shadowBlur": null,
+      "label": null,
+      "cornerRadius": null
+     }
+    ],
+    "next": null
+   }
   }
  },
  {
@@ -314,8 +320,8 @@
     "data": {
      "kind": "rect"
     },
-    "x": 10,
-    "y": 20,
+    "x": "10",
+    "y": "20",
     "width": 100,
     "height": 50,
     "rotation": 0,
@@ -325,13 +331,14 @@
     "opacity": 100,
     "layerIndex": 0,
     "createdBy": "@owner",
-    "createdAt": 1727000000000,
-    "updatedAt": 1727000000000,
+    "createdAt": "1727000000000",
+    "updatedAt": "1727000000000",
     "shadowColor": null,
     "shadowOffsetX": null,
     "shadowOffsetY": null,
     "shadowBlur": null,
-    "label": null
+    "label": null,
+    "cornerRadius": null
    }
   }
  },
@@ -370,8 +377,8 @@
     "data": {
      "kind": "rect"
     },
-    "x": 200,
-    "y": 20,
+    "x": "200",
+    "y": "20",
     "width": 100,
     "height": 50,
     "rotation": 0,
@@ -381,13 +388,14 @@
     "opacity": 100,
     "layerIndex": 0,
     "createdBy": "@owner",
-    "createdAt": 1727000000000,
-    "updatedAt": 1727000010000,
+    "createdAt": "1727000000000",
+    "updatedAt": "1727000010000",
     "shadowColor": null,
     "shadowOffsetX": null,
     "shadowOffsetY": null,
     "shadowBlur": null,
-    "label": null
+    "label": null,
+    "cornerRadius": null
    }
   }
  },
@@ -428,8 +436,8 @@
      "bold": true,
      "italic": false
     },
-    "x": 10,
-    "y": 20,
+    "x": "10",
+    "y": "20",
     "width": 100,
     "height": 50,
     "rotation": 0,
@@ -439,13 +447,14 @@
     "opacity": 100,
     "layerIndex": 2,
     "createdBy": "@owner",
-    "createdAt": 1727000000000,
-    "updatedAt": 1727000020000,
+    "createdAt": "1727000000000",
+    "updatedAt": "1727000020000",
     "shadowColor": null,
     "shadowOffsetX": null,
     "shadowOffsetY": null,
     "shadowBlur": null,
-    "label": null
+    "label": null,
+    "cornerRadius": null
    }
   }
  },
@@ -502,8 +511,8 @@
      "data": {
       "kind": "rect"
      },
-     "x": 10,
-     "y": 20,
+     "x": "10",
+     "y": "20",
      "width": 100,
      "height": 50,
      "rotation": 0,
@@ -513,8 +522,8 @@
      "opacity": 100,
      "layerIndex": 10,
      "createdBy": "",
-     "createdAt": 1727000000000,
-     "updatedAt": 1727000000000,
+     "createdAt": "1727000000000",
+     "updatedAt": "1727000000000",
      "shadowColor": null,
      "shadowOffsetX": null,
      "shadowOffsetY": null,
@@ -526,8 +535,8 @@
      "data": {
       "kind": "rect"
      },
-     "x": 10,
-     "y": 20,
+     "x": "10",
+     "y": "20",
      "width": 100,
      "height": 50,
      "rotation": 0,
@@ -537,8 +546,8 @@
      "opacity": 100,
      "layerIndex": 11,
      "createdBy": "",
-     "createdAt": 1727000000000,
-     "updatedAt": 1727000000000,
+     "createdAt": "1727000000000",
+     "updatedAt": "1727000000000",
      "shadowColor": null,
      "shadowOffsetX": null,
      "shadowOffsetY": null,
@@ -711,24 +720,27 @@
   "method": "getComments",
   "args": {},
   "expect": {
-   "ok": [
-    {
-     "id": "c1",
-     "x": 120,
-     "y": 90,
-     "content": "Bigger logo?",
-     "author": "@bob",
-     "createdAt": 1727000040000,
-     "replies": [
-      {
-       "id": "r1",
-       "content": "Agreed",
-       "author": "@owner",
-       "createdAt": 1727000050000
-      }
-     ]
-    }
-   ]
+   "ok": {
+    "items": [
+     {
+      "id": "c1",
+      "x": 120,
+      "y": 90,
+      "content": "Bigger logo?",
+      "author": "@bob",
+      "createdAt": 1727000040000,
+      "replies": [
+       {
+        "id": "r1",
+        "content": "Agreed",
+        "author": "@owner",
+        "createdAt": 1727000050000
+       }
+      ]
+     }
+    ],
+    "next": null
+   }
   }
  },
  {

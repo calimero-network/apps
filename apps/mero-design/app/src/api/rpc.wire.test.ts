@@ -40,7 +40,8 @@ describe("the RPC wire packs and unpacks element extras", () => {
 
   it("get_elements and get_element come back unpacked", () => {
     const wire = { ...el, strokeStyle: undefined, label: `grp/Box${META_SEPARATOR}s=dotted&b=box` };
-    const [one] = unpackResult("get_elements", [wire]) as Element[];
+    const [one] = unpackResult("get_elements", [{ ...wire, x: "7", updatedAt: "8" }]) as unknown as Element[];
+    expect(one).toMatchObject({ x: 7, updatedAt: 8 });
     expect(one).toMatchObject({ label: "grp/Box", strokeStyle: "dotted", box: "box" });
     expect(unpackResult("get_element", wire)).toMatchObject({ label: "grp/Box", box: "box" });
     expect(unpackResult("get_comments", [wire])).toEqual([wire]);

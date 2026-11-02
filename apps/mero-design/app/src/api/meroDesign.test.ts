@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import abiText from "../../../logic/res/abi.json?raw";
-import { METHODS, toWire } from "./meroDesign";
+import { METHODS, elementFromContract, elementToContract, toWire } from "./meroDesign";
 
 /** The committed ABI of the contract (`mero-component build`; CI asserts it is current). */
 const abi = JSON.parse(abiText) as {
@@ -65,12 +65,36 @@ describe("toWire", () => {
       y: "4",
       updatedAt: "5",
     });
-    expect(toWire("get_elements", {})).toEqual({ name: "getElements", kind: "view", args: {} });
+    expect(toWire("get_elements", {})).toEqual({
+      name: "getElements",
+      kind: "view",
+      args: { cursor: null, limit: null },
+    });
   });
 
-  it("passes element records as they are: their fields stay v1's JSON", () => {
-    const element = { id: "e", createdAt: 1, layerIndex: 2 };
+  it("passes element records as they are; rpc.ts converts them first", () => {
+    const element = { id: "e", createdAt: "1", layerIndex: 2 };
     expect(toWire("add_element", { element }).args).toEqual({ element });
+  });
+});
+
+describe("elements on the contract", () => {
+  const app = {
+    id: "e", data: { kind: "image", naturalWidth: 4, naturalHeight: 2, blobId: "ab".repeat(32) },
+    x: -12, y: 40, layerIndex: 3, createdAt: 1727000000000, updatedAt: 1727000000001,
+  };
+  const wire = { ...app, x: "-12", y: "40", createdAt: "1727000000000", updatedAt: "1727000000001" };
+
+  it("sends the 64-bit fields as decimal strings and reads them back as numbers", () => {
+    expect(elementToContract(app)).toEqual(wire);
+    expect(elementFromContract(wire)).toEqual(app);
+    expect(elementFromContract(null)).toBeNull();
+  });
+
+  it("sends no blobId while an image has none, never an empty one", () => {
+    const pending = { ...app, data: { ...app.data, blobId: "" } };
+    expect((elementToContract(pending).data as Record<string, unknown>)).not.toHaveProperty("blobId");
+    expect(pending.data.blobId).toBe("");
   });
 
   it("refuses an argument the method does not take, and a method it does not have", () => {

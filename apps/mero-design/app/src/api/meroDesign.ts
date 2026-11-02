@@ -6,9 +6,12 @@
  * with v1's argument names (`rpcCall(board, "update_element", { stroke_width,
  * updated_at })`). The component contract takes camelCase method and argument
  * names, and 64-bit integer ARGUMENTS as decimal strings (`"updatedAt":
- * "1727000010000"`). Its answers are v1's shapes unchanged: the element,
- * member, comment and cursor types are plain serde structs, whose 64-bit
- * fields stay JSON numbers. So only the request is translated, here.
+ * "1727000010000"`). An element is a table record, so its own 64-bit fields
+ * (`x`, `y`, `createdAt`, `updatedAt`) are decimal strings both ways;
+ * `elementToContract` / `elementFromContract` convert them, and the screens keep
+ * v1's numbers. Members, comments and pointers are plain serde structs whose
+ * 64-bit fields stay JSON numbers. The paged reads (`getElements`,
+ * `getComments`) answer `{ items, next }`; `rpc.ts` follows `next`.
  *
  * `meroDesign.test.ts` asserts the table below is exactly the committed
  * `logic/res/abi.json`: every method, its kind, and its parameter names.
@@ -115,8 +118,7 @@ export const METHODS: Record<string, MethodSpec> = {
   clear_comments: { name: "clearComments", kind: "call", params: {} },
   delete_element: { name: "deleteElement", kind: "call", params: { id: p("id") } },
   delete_elements: { name: "deleteElements", kind: "call", params: { ids: p("ids") } },
-  get_elements: { name: "getElements", kind: "view", params: {} },
-  get_elements_page: { name: "getElementsPage", kind: "view", params: { cursor: p("cursor"), limit: p("limit") } },
+  get_elements: { name: "getElements", kind: "view", params: { cursor: p("cursor"), limit: p("limit") } },
   get_element: { name: "getElement", kind: "view", params: { id: p("id") } },
   get_elements_by_ids: { name: "getElementsByIds", kind: "view", params: { ids: p("ids") } },
   set_layer_index: {
@@ -153,7 +155,7 @@ export const METHODS: Record<string, MethodSpec> = {
     params: { comment_id: p("commentId"), reply_id: p("replyId") },
   },
   delete_comment: { name: "deleteComment", kind: "call", params: { id: p("id") } },
-  get_comments: { name: "getComments", kind: "view", params: {} },
+  get_comments: { name: "getComments", kind: "view", params: { cursor: p("cursor"), limit: p("limit") } },
   update_cursor: {
     name: "updateCursor",
     kind: "call",
@@ -195,4 +197,44 @@ export function toWire(method: string, args: Record<string, unknown>): WireReque
     out[name] = wire === "int64" ? int64(value, method, v1) : (value ?? null);
   }
   return { name: spec.name, kind: spec.kind, args: out };
+}
+
+// ── Elements ─────────────────────────────────────────────────────────────────
+
+/** An element's 64-bit fields: decimal strings on the contract, numbers in the app. */
+const ELEMENT_INT64 = ["x", "y", "createdAt", "updatedAt"] as const;
+
+/**
+ * An element as `addElement(s)` takes it: its 64-bit fields as decimal strings,
+ * and no `blobId` key while an image has no blob yet (the contract takes a
+ * blob id or nothing, never `""`).
+ */
+export function elementToContract<T extends object>(el: T): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...(el as Record<string, unknown>) };
+  for (const key of ELEMENT_INT64) {
+    if (key in out) out[key] = int64(out[key], "element", key);
+  }
+  const data = out.data as Record<string, unknown> | undefined;
+  if (data && typeof data === "object" && "blobId" in data && !data.blobId) {
+    const { blobId: _empty, ...rest } = data;
+    out.data = rest;
+  }
+  return out;
+}
+
+/** An element as the contract answers it → the app's: 64-bit fields back to numbers. */
+export function elementFromContract<T>(el: T): T {
+  if (!el || typeof el !== "object") return el;
+  const out: Record<string, unknown> = { ...(el as Record<string, unknown>) };
+  for (const key of ELEMENT_INT64) {
+    const v = out[key];
+    if (typeof v === "string" && /^-?\d+$/.test(v)) out[key] = Number(v);
+  }
+  return out as T;
+}
+
+/** One page of a paged read. */
+export interface Page<T> {
+  items: T[];
+  next: string | null;
 }
