@@ -1,5 +1,16 @@
 # Battleships — native mobile apps
 
+> **Status: on the v1 contract, not ported to the component runtime.** The web app and the
+> contract (`../logic`) moved to Calimero 1.0 (core's component SDK, `CalimeroClient`, passkey
+> accounts, orgs), and the lobby and game services became one contract in one app instance. These
+> clients still speak the two v1 services through the v1 relay (`MeroAppSession`, namespaces,
+> contexts, warrants, snake_case methods) with clients generated from the v1 ABIs, which
+> `../logic/res/abi.json` no longer is. Porting them needs native clients for the 1.0 node API
+> (passkey sign-in, `/apps/{app}` calls and views, org invites, the event stream), which the
+> pinned swift-sdk and kotlin-sdk do not have. Until they do, the apps keep their committed
+> generated clients and are left unchanged. The board commitment (`SHA256(borsh(board) || salt)`)
+> is unchanged, so a board placed by these apps hashes the same as the web app's.
+
 Native iOS and Android clients for Battleships, next to the web frontend (`../app`) and the two
 services (`../logic`: lobby, `../logic/crates/game`: game). Both apps have the same screens, copy,
 icons (SF Symbols / Material Icons) and flows.

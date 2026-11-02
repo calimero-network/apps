@@ -1,0 +1,1267 @@
+[
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "registerPlayer",
+  "args": {},
+  "expect": {
+   "ok": "@owner"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "registerPlayer",
+  "args": {},
+  "expect": {
+   "ok": "@bob"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createMatch",
+  "args": {
+   "player2": "@owner"
+  },
+  "expect": {
+   "error": "Invalid",
+   "fields": {
+    "message": "cannot create match against self"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createMatch",
+  "args": {
+   "player2": "@carol"
+  },
+  "expect": {
+   "error": "Invalid",
+   "fields": {
+    "message": "that player has not opened the lobby yet"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createMatch",
+  "args": {
+   "player2": "@bob"
+  },
+  "save": "match",
+  "events": {
+   "carol": [
+    "PlayersUpdated",
+    "PlayersUpdated",
+    "MatchCreated",
+    "MatchListUpdated"
+   ]
+  }
+ },
+ {
+  "as": "carol",
+  "op": "view",
+  "method": "getCurrentTurn",
+  "args": {
+   "matchId": "$match"
+  },
+  "expect": {
+   "ok": "@owner"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getActiveMatchId",
+  "args": {},
+  "expect": {
+   "ok": "$match"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "commitBoard",
+  "args": {
+   "matchId": "$match",
+   "commitment": "37188894d025229c47a83365463dbc5e15d7a267aa13ef63f4d963b0d03def4f"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "commitBoard",
+  "args": {
+   "matchId": "$match",
+   "commitment": "37188894d025229c47a83365463dbc5e15d7a267aa13ef63f4d963b0d03def4f"
+  },
+  "expect": {
+   "error": "AlreadyCommitted"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 8,
+   "y": 0
+  },
+  "expect": {
+   "error": "Invalid",
+   "fields": {
+    "message": "both players must place ships first"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "commitBoard",
+  "args": {
+   "matchId": "$match",
+   "commitment": "26bef74fa786817254265b38266ee37fb36983cd1339628617ee4f7669527a5c"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getMatchState",
+  "args": {
+   "matchId": "$match"
+  },
+  "expect": {
+   "ok": {
+    "standing": "playing",
+    "committed": [
+     "@owner",
+     "@bob"
+    ],
+    "pending_shot": null,
+    "ended_by": null,
+    "loser": null,
+    "revealed": [],
+    "audit_failed": [],
+    "winner": null
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 0,
+   "y": 0
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "not your turn"
+   }
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 0,
+   "y": 0
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "not a player"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 8,
+   "y": 0
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getMatchState",
+  "args": {
+   "matchId": "$match"
+  },
+  "expect": {
+   "ok": {
+    "standing": "playing",
+    "committed": [
+     "@owner",
+     "@bob"
+    ],
+    "pending_shot": {
+     "shot_id": 0,
+     "x": 8,
+     "y": 0,
+     "target": "@bob"
+    },
+    "ended_by": null,
+    "loser": null,
+    "revealed": [],
+    "audit_failed": [],
+    "winner": null
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "acknowledgeShot",
+  "args": {
+   "matchId": "$match",
+   "shotId": 0,
+   "hit": true
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "not the target"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "acknowledgeShot",
+  "args": {
+   "matchId": "$match",
+   "shotId": 0,
+   "hit": true
+  },
+  "expect": {
+   "ok": "hit"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 5,
+   "y": 1
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "acknowledgeShot",
+  "args": {
+   "matchId": "$match",
+   "shotId": 1,
+   "hit": false
+  },
+  "expect": {
+   "ok": "miss"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 9,
+   "y": 0
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "acknowledgeShot",
+  "args": {
+   "matchId": "$match",
+   "shotId": 2,
+   "hit": true
+  },
+  "expect": {
+   "ok": "hit"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 6,
+   "y": 1
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "acknowledgeShot",
+  "args": {
+   "matchId": "$match",
+   "shotId": 3,
+   "hit": false
+  },
+  "expect": {
+   "ok": "miss"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 7,
+   "y": 2
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "acknowledgeShot",
+  "args": {
+   "matchId": "$match",
+   "shotId": 4,
+   "hit": true
+  },
+  "expect": {
+   "ok": "hit"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 7,
+   "y": 1
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "acknowledgeShot",
+  "args": {
+   "matchId": "$match",
+   "shotId": 5,
+   "hit": false
+  },
+  "expect": {
+   "ok": "miss"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 8,
+   "y": 2
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "acknowledgeShot",
+  "args": {
+   "matchId": "$match",
+   "shotId": 6,
+   "hit": true
+  },
+  "expect": {
+   "ok": "hit"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 8,
+   "y": 1
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "acknowledgeShot",
+  "args": {
+   "matchId": "$match",
+   "shotId": 7,
+   "hit": false
+  },
+  "expect": {
+   "ok": "miss"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 9,
+   "y": 2
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "acknowledgeShot",
+  "args": {
+   "matchId": "$match",
+   "shotId": 8,
+   "hit": true
+  },
+  "expect": {
+   "ok": "hit"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 9,
+   "y": 1
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "acknowledgeShot",
+  "args": {
+   "matchId": "$match",
+   "shotId": 9,
+   "hit": false
+  },
+  "expect": {
+   "ok": "miss"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 7,
+   "y": 4
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "acknowledgeShot",
+  "args": {
+   "matchId": "$match",
+   "shotId": 10,
+   "hit": true
+  },
+  "expect": {
+   "ok": "hit"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 5,
+   "y": 3
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "acknowledgeShot",
+  "args": {
+   "matchId": "$match",
+   "shotId": 11,
+   "hit": false
+  },
+  "expect": {
+   "ok": "miss"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 8,
+   "y": 4
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "acknowledgeShot",
+  "args": {
+   "matchId": "$match",
+   "shotId": 12,
+   "hit": true
+  },
+  "expect": {
+   "ok": "hit"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 6,
+   "y": 3
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "acknowledgeShot",
+  "args": {
+   "matchId": "$match",
+   "shotId": 13,
+   "hit": false
+  },
+  "expect": {
+   "ok": "miss"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 9,
+   "y": 4
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "acknowledgeShot",
+  "args": {
+   "matchId": "$match",
+   "shotId": 14,
+   "hit": true
+  },
+  "expect": {
+   "ok": "hit"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 7,
+   "y": 3
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "acknowledgeShot",
+  "args": {
+   "matchId": "$match",
+   "shotId": 15,
+   "hit": false
+  },
+  "expect": {
+   "ok": "miss"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 6,
+   "y": 6
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "acknowledgeShot",
+  "args": {
+   "matchId": "$match",
+   "shotId": 16,
+   "hit": true
+  },
+  "expect": {
+   "ok": "hit"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 8,
+   "y": 3
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "acknowledgeShot",
+  "args": {
+   "matchId": "$match",
+   "shotId": 17,
+   "hit": false
+  },
+  "expect": {
+   "ok": "miss"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 7,
+   "y": 6
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "acknowledgeShot",
+  "args": {
+   "matchId": "$match",
+   "shotId": 18,
+   "hit": true
+  },
+  "expect": {
+   "ok": "hit"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 9,
+   "y": 3
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "acknowledgeShot",
+  "args": {
+   "matchId": "$match",
+   "shotId": 19,
+   "hit": false
+  },
+  "expect": {
+   "ok": "miss"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 8,
+   "y": 6
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "acknowledgeShot",
+  "args": {
+   "matchId": "$match",
+   "shotId": 20,
+   "hit": true
+  },
+  "expect": {
+   "ok": "hit"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 5,
+   "y": 5
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "acknowledgeShot",
+  "args": {
+   "matchId": "$match",
+   "shotId": 21,
+   "hit": false
+  },
+  "expect": {
+   "ok": "miss"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 9,
+   "y": 6
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "acknowledgeShot",
+  "args": {
+   "matchId": "$match",
+   "shotId": 22,
+   "hit": true
+  },
+  "expect": {
+   "ok": "hit"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 6,
+   "y": 5
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "acknowledgeShot",
+  "args": {
+   "matchId": "$match",
+   "shotId": 23,
+   "hit": false
+  },
+  "expect": {
+   "ok": "miss"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 5,
+   "y": 8
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "acknowledgeShot",
+  "args": {
+   "matchId": "$match",
+   "shotId": 24,
+   "hit": true
+  },
+  "expect": {
+   "ok": "hit"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 7,
+   "y": 5
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "acknowledgeShot",
+  "args": {
+   "matchId": "$match",
+   "shotId": 25,
+   "hit": false
+  },
+  "expect": {
+   "ok": "miss"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 6,
+   "y": 8
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "acknowledgeShot",
+  "args": {
+   "matchId": "$match",
+   "shotId": 26,
+   "hit": true
+  },
+  "expect": {
+   "ok": "hit"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 8,
+   "y": 5
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "acknowledgeShot",
+  "args": {
+   "matchId": "$match",
+   "shotId": 27,
+   "hit": false
+  },
+  "expect": {
+   "ok": "miss"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 7,
+   "y": 8
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "acknowledgeShot",
+  "args": {
+   "matchId": "$match",
+   "shotId": 28,
+   "hit": true
+  },
+  "expect": {
+   "ok": "hit"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 9,
+   "y": 5
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "acknowledgeShot",
+  "args": {
+   "matchId": "$match",
+   "shotId": 29,
+   "hit": false
+  },
+  "expect": {
+   "ok": "miss"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 8,
+   "y": 8
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "acknowledgeShot",
+  "args": {
+   "matchId": "$match",
+   "shotId": 30,
+   "hit": true
+  },
+  "expect": {
+   "ok": "hit"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 5,
+   "y": 7
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "acknowledgeShot",
+  "args": {
+   "matchId": "$match",
+   "shotId": 31,
+   "hit": false
+  },
+  "expect": {
+   "ok": "miss"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 9,
+   "y": 8
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "acknowledgeShot",
+  "args": {
+   "matchId": "$match",
+   "shotId": 32,
+   "hit": true
+  },
+  "expect": {
+   "ok": "hit"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getMatchState",
+  "args": {
+   "matchId": "$match"
+  },
+  "expect": {
+   "ok": {
+    "standing": "awaiting_reveal",
+    "committed": [
+     "@owner",
+     "@bob"
+    ],
+    "pending_shot": null,
+    "ended_by": "sunk",
+    "loser": "@bob",
+    "revealed": [],
+    "audit_failed": [],
+    "winner": null
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 9,
+   "y": 9
+  },
+  "expect": {
+   "error": "Finished"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "revealBoard",
+  "args": {
+   "matchId": "$match",
+   "boardBytes": "ZAAAAAEBAAAAAAAAAAAAAAAAAAAAAAAAAQEBAAAAAAAAAAAAAAAAAAAAAAABAQEAAAAAAAAAAAAAAAAAAAAAAAEBAQEAAAAAAAAAAAAAAAAAAAAAAQEBAQEAAAAAAAAAAAAAAAAAAAA",
+   "salt": "AAAAAAAAAAAAAAAAAAAAAA"
+  },
+  "expect": {
+   "error": "CommitmentMismatch"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "revealBoard",
+  "args": {
+   "matchId": "$match",
+   "boardBytes": "ZAAAAAAAAAAAAAAAAQEAAAAAAAAAAAAAAAAAAAAAAAEBAQAAAAAAAAAAAAAAAAAAAAAAAQEBAAAAAAAAAAAAAAAAAAAAAAEBAQEAAAAAAAAAAAAAAAAAAAABAQEBAQAAAAAAAAAAAAA",
+   "salt": "tbW1tbW1tbW1tbW1tbW1tQ"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "carol",
+  "op": "view",
+  "method": "getWinner",
+  "args": {
+   "matchId": "$match"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "revealBoard",
+  "args": {
+   "matchId": "$match",
+   "boardBytes": "ZAAAAAEBAAAAAAAAAAAAAAAAAAAAAAAAAQEBAAAAAAAAAAAAAAAAAAAAAAABAQEAAAAAAAAAAAAAAAAAAAAAAAEBAQEAAAAAAAAAAAAAAAAAAAAAAQEBAQEAAAAAAAAAAAAAAAAAAAA",
+   "salt": "paWlpaWlpaWlpaWlpaWlpQ"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getMatchState",
+  "args": {
+   "matchId": "$match"
+  },
+  "expect": {
+   "ok": {
+    "standing": "won",
+    "committed": [
+     "@owner",
+     "@bob"
+    ],
+    "pending_shot": null,
+    "ended_by": "sunk",
+    "loser": "@bob",
+    "revealed": [
+     "@owner",
+     "@bob"
+    ],
+    "audit_failed": [],
+    "winner": "@owner"
+   }
+  }
+ },
+ {
+  "as": "carol",
+  "op": "view",
+  "method": "getWinner",
+  "args": {
+   "matchId": "$match"
+  },
+  "expect": {
+   "ok": "@owner"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "view",
+  "method": "getPlayerStats",
+  "args": {
+   "player": "@owner"
+  },
+  "expect": {
+   "ok": {
+    "wins": "1",
+    "losses": "0",
+    "games_played": "1"
+   }
+  }
+ },
+ {
+  "as": "carol",
+  "op": "view",
+  "method": "getPlayerStats",
+  "args": {
+   "player": "@bob"
+  },
+  "expect": {
+   "ok": {
+    "wins": "0",
+    "losses": "1",
+    "games_played": "1"
+   }
+  }
+ },
+ {
+  "as": "carol",
+  "op": "view",
+  "method": "getPlayerStats",
+  "args": {
+   "player": "@carol"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getActiveMatchId",
+  "args": {},
+  "expect": {
+   "ok": null
+  }
+ }
+]

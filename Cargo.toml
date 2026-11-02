@@ -44,6 +44,10 @@ members  = [
 # See docs/COMPONENT-APPS.md.
 exclude = [
   "apps/kv-store/logic",
+  "apps/battleships/logic",
+  # The contract's own rules crate is a member of ITS workspace; the
+  # `apps/*/logic/crates/*` glob above would claim it too.
+  "apps/battleships/logic/crates/rules",
 ]
 
 [workspace.package]
