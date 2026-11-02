@@ -21,7 +21,7 @@ final class IssuesModelTests: XCTestCase {
         XCTAssertEqual(m.sections.map(\.status), ["Open", "Done"])
         XCTAssertEqual(m.sections[0].issues.map(\.id), ["i3", "i1"])
         XCTAssertEqual(m.column("In progress"), [])
-        XCTAssertEqual(fake.backend.recording.calls("list_issues").first?.path, .query)
+        XCTAssertEqual(fake.backend.recording.calls("listIssues").first?.path, .query)
     }
 
     func testFiltersAndSearch() async {
@@ -52,7 +52,7 @@ final class IssuesModelTests: XCTestCase {
         await m.move("i1", to: "Blocked")
         XCTAssertEqual(m.column("Blocked").map(\.id), ["i1"])
         XCTAssertEqual(fake.issue("i1", in: ctx)?.status, "Blocked")
-        XCTAssertEqual(fake.backend.recording.calls("set_status").first?.path, .execute)
+        XCTAssertEqual(fake.backend.recording.calls("setStatus").first?.path, .execute)
     }
 
     func testMoveIsPutBackWhenTheWriteFails() async {

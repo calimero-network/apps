@@ -157,9 +157,41 @@ public enum TrackerFormat {
             return "A newer node release needs approval before anything can change. Review it under Workspace."
         case is ConsentStale: return "That approval request is out of date. Try again."
         case is NotFound: return "This isn't available to you (yet)."
+        case is WrongNode: return "That node can't serve this workspace. Sign in again to reach your cluster."
         case let error as UnavailableError:
             return "Your cluster is unavailable right now (\(error.reason)). Try again shortly."
-        default: return nil
+        case let error as AppError: return appErrorText(code: error.appCode, fields: error.fields)
+        default:
+            // MeroKitUI's step-up guard (no passkey to approve a member or invite change).
+            if String(describing: type(of: error)) == "PasskeyRequired" {
+                return "This needs your passkey. Sign in again on this device and retry."
+            }
+            return nil
         }
+    }
+
+    /// The contract's refusals (`422 APP_ERROR`): `NotFound { id }`,
+    /// `Invalid { message }`, `Forbidden { message }` (see `logic/res/abi.json`).
+    public static func appErrorText(code: String, fields: [String: JSONValue]) -> String {
+        let message = fields["message"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        switch code {
+        case "NotFound":
+            let id = fields["id"]?.stringValue ?? ""
+            if id.hasPrefix("comment-") { return "That comment no longer exists." }
+            return "That issue no longer exists. It may have been deleted."
+        case "Forbidden":
+            return message.isEmpty ? "You aren't allowed to do that here." : sentence(message)
+        case "Invalid":
+            return message.isEmpty ? "Check what you entered and try again." : sentence(message)
+        default:
+            return message.isEmpty ? "The tracker refused that (\(code))." : sentence(message)
+        }
+    }
+
+    /// `text` with a capital first letter and a full stop.
+    static func sentence(_ text: String) -> String {
+        var s = text.prefix(1).uppercased() + text.dropFirst()
+        if !s.hasSuffix(".") { s += "." }
+        return s
     }
 }

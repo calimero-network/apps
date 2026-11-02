@@ -56,52 +56,52 @@ final class FakeTracker: @unchecked Sendable {
         return try lock.withLock { () throws -> Data? in
             let enc = JSONEncoder()
             switch call.method {
-            case "list_issues":
+            case "listIssues":
                 return try enc.encode(Array((issues[ctx] ?? [:]).values).sorted { $0.createdAt < $1.createdAt })
-            case "get_issue":
-                guard let issue = issues[ctx]?[s("issue_id")] else { throw TrackerError.message("issue not found") }
+            case "getIssue":
+                guard let issue = issues[ctx]?[s("issueId")] else { throw TrackerError.message("issue not found") }
                 let thread = (comments[ctx] ?? []).filter { $0.issueId == issue.id }
                 return try enc.encode(IssueDetail(issue: issue, comments: thread))
-            case "get_repo_info":
+            case "getRepoInfo":
                 return try enc.encode(RepoInfo(repoUrl: repoURLs[ctx] ?? ""))
-            case "set_repo_url":
+            case "setRepoUrl":
                 repoURLs[ctx] = s("url")
-            case "create_issue":
+            case "createIssue":
                 next += 1
                 let id = "issue-17000000000\(next)-abcdef\(next)"
                 issues[ctx, default: [:]][id] = IssueView(
                     id: id, title: s("title"), summary: s("summary"), impact: s("impact"), repro: s("repro"),
-                    resolutionCriteria: s("resolution_criteria"), status: "Open", priority: s("priority"),
+                    resolutionCriteria: s("resolutionCriteria"), status: "Open", priority: s("priority"),
                     assignee: nil, labels: (args["labels"] as? [String] ?? []).sorted(), createdBy: account,
                     createdAt: 1_700_000_000_000 + UInt64(next))
                 return try enc.encode(id)
-            case "set_status": update(ctx, s("issue_id")) { $0.status = s("status") }
-            case "set_priority": update(ctx, s("issue_id")) { $0.priority = s("priority") }
-            case "set_assignee": update(ctx, s("issue_id")) { $0.assignee = args["assignee"] as? String }
-            case "set_summary": update(ctx, s("issue_id")) { $0.summary = s("summary") }
-            case "set_impact": update(ctx, s("issue_id")) { $0.impact = s("impact") }
-            case "set_repro": update(ctx, s("issue_id")) { $0.repro = s("repro") }
-            case "set_resolution_criteria":
-                update(ctx, s("issue_id")) { $0.resolutionCriteria = s("resolution_criteria") }
-            case "add_label":
-                update(ctx, s("issue_id")) { if !$0.labels.contains(s("label")) { $0.labels = ($0.labels + [s("label")]).sorted() } }
-            case "remove_label": update(ctx, s("issue_id")) { $0.labels.removeAll { $0 == s("label") } }
-            case "delete_issue":
-                guard issues[ctx]?[s("issue_id")]?.createdBy == account else { throw TrackerError.message("only the author") }
-                issues[ctx]?[s("issue_id")] = nil
-            case "add_comment":
+            case "setStatus": update(ctx, s("issueId")) { $0.status = s("status") }
+            case "setPriority": update(ctx, s("issueId")) { $0.priority = s("priority") }
+            case "setAssignee": update(ctx, s("issueId")) { $0.assignee = args["assignee"] as? String }
+            case "setSummary": update(ctx, s("issueId")) { $0.summary = s("summary") }
+            case "setImpact": update(ctx, s("issueId")) { $0.impact = s("impact") }
+            case "setRepro": update(ctx, s("issueId")) { $0.repro = s("repro") }
+            case "setResolutionCriteria":
+                update(ctx, s("issueId")) { $0.resolutionCriteria = s("resolutionCriteria") }
+            case "addLabel":
+                update(ctx, s("issueId")) { if !$0.labels.contains(s("label")) { $0.labels = ($0.labels + [s("label")]).sorted() } }
+            case "removeLabel": update(ctx, s("issueId")) { $0.labels.removeAll { $0 == s("label") } }
+            case "deleteIssue":
+                guard issues[ctx]?[s("issueId")]?.createdBy == account else { throw TrackerError.message("only the author") }
+                issues[ctx]?[s("issueId")] = nil
+            case "addComment":
                 next += 1
                 let id = "comment-\(next)"
                 comments[ctx, default: []].append(
-                    CommentView(id: id, issueId: s("issue_id"), author: account, body: s("body"), createdAt: UInt64(next)))
+                    CommentView(id: id, issueId: s("issueId"), author: account, body: s("body"), createdAt: UInt64(next)))
                 return try enc.encode(id)
-            case "edit_comment":
+            case "editComment":
                 comments[ctx] = comments[ctx]?.map {
                     var c = $0
-                    if c.id == s("comment_id") { c.body = s("new_body"); c.editedAt = 1 }
+                    if c.id == s("commentId") { c.body = s("newBody"); c.editedAt = 1 }
                     return c
                 }
-            case "delete_comment": comments[ctx]?.removeAll { $0.id == s("comment_id") }
+            case "deleteComment": comments[ctx]?.removeAll { $0.id == s("commentId") }
             default: break
             }
             return Data("null".utf8)

@@ -3,7 +3,8 @@ import SwiftUI
 
 /// Signed out: what the app is, then sign-in to a Calimero 1.0 cluster.
 ///
-/// - Calimero Cloud: the cluster's node URL (from the console, or baked in
+/// - Calimero Cloud: the cluster's name (its nodes come from the Calimero
+///   node directory) or one of its node URLs (from the console, or baked in
 ///   as `CalimeroClusterURL`), then the device's passkey. "Create an account"
 ///   registers a new passkey under a name.
 /// - Development: a `merod local` node URL with mock attestation allowed; the
@@ -70,7 +71,7 @@ private struct SignInForm: View {
                     .font(.system(size: 13)).foregroundStyle(Theme.text3)
             } else {
                 label("Cluster")
-                urlField("https://node.your-cluster.calimero.network", text: $clusterURL)
+                urlField("Cluster name or node URL", text: $clusterURL)
                 if mode == .create {
                     label("Your name")
                     field(TextField("e.g. Ada Lovelace", text: $name).textInputAutocapitalization(.words))
@@ -142,6 +143,25 @@ private struct SignInForm: View {
         }
     }
 
+    /// Connect to the cluster the person named: a node URL as given, a bare
+    /// name through the node directory. `false` (with the reason in the
+    /// client's `errorMessage`) when the directory knows no such cluster.
+    private func connectCloud() async -> Bool {
+        let input = clusterURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if Self.isNodeURL(input) {
+            session.connect(nodeURL: input, allowMock: false)
+            return true
+        }
+        guard await client.connect(cluster: input) else { return false }
+        session.rebuild()
+        return true
+    }
+
+    /// A node URL (`https://…`, or a host with a dot) rather than a cluster name.
+    static func isNodeURL(_ input: String) -> Bool {
+        input.contains("://") || input.contains(".") || input.contains(":")
+    }
+
     private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     private var canSubmit: Bool {
@@ -158,11 +178,9 @@ private struct SignInForm: View {
         Task {
             switch mode {
             case .signIn:
-                session.connect(nodeURL: clusterURL, allowMock: false)
-                await session.signIn()
+                if await connectCloud() { await session.signIn() }
             case .create:
-                session.connect(nodeURL: clusterURL, allowMock: false)
-                await session.signUp(name: trimmedName)
+                if await connectCloud() { await session.signUp(name: trimmedName) }
             case .development:
                 session.connect(nodeURL: devNodeURL, allowMock: true)
                 _ = await client.signInOrSignUp(name: trimmedName.isEmpty ? nil : trimmedName)

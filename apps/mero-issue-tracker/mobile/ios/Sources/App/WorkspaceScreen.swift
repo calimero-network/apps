@@ -115,10 +115,22 @@ struct WorkspaceScreen: View {
             .confirmationDialog("Sign out of Mero Issue Tracker?", isPresented: $confirmSignOut, titleVisibility: .visible) {
                 Button("Sign out", role: .destructive, action: signOut)
             }
+            .alert("Confirmation code", isPresented: showingCode, presenting: approvals.confirmationCode) { _ in
+                Button("Open approval page") { approvals.answerConfirmation(true) }
+                Button("Cancel", role: .cancel) { approvals.answerConfirmation(false) }
+            } message: { code in
+                Text("Your node's approval page will show \(code). Approve only if it shows the same code.")
+            }
         }
     }
 
     private var orgIds: [String] { workspace.workspaces.map(\.id) }
+
+    private var showingCode: Binding<Bool> {
+        Binding(
+            get: { approvals.confirmationCode != nil },
+            set: { if !$0 && approvals.confirmationCode != nil { approvals.answerConfirmation(false) } })
+    }
 
     private var detailRows: [(String, String)] {
         var rows = [("Account", workspace.account), ("Cluster", workspace.hasRelay ? "Connected" : "Not connected")]

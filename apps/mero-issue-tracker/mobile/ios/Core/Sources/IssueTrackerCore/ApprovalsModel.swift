@@ -12,7 +12,9 @@ import Combine
 /// approve anything.
 ///
 /// The app hands it `MeroAppSession.pendingApprovals(org:)` and
-/// `MeroClient.requestConsent(_:callback:)`; tests hand it fakes.
+/// `MeroClient.requestConsent(_:callback:confirm:)`; tests hand it fakes.
+/// Before the page opens, the node's confirmation code is shown
+/// (``confirmationCode``) so the person can check the page shows the same.
 @MainActor
 public final class ApprovalsModel: ObservableObject {
     /// One thing to approve.
@@ -47,12 +49,21 @@ public final class ApprovalsModel: ObservableObject {
     }
 
     public typealias Fetch = @MainActor (_ org: String?) async throws -> PendingApprovals
-    public typealias Consent = @MainActor (_ request: @escaping (String) -> ConsentRequest) async -> ConsentResult?
+    /// Where the app asks the node to approve: `confirm` runs with the node's
+    /// answer before the page opens (`false`: don't open it).
+    public typealias Consent = @MainActor (
+        _ request: @escaping (String) -> ConsentRequest,
+        _ confirm: @escaping @MainActor (ConsentStarted) async -> Bool
+    ) async -> ConsentResult?
 
     @Published public private(set) var items: [Item] = []
     /// The item whose consent page is open.
     @Published public private(set) var approving: String?
     @Published public var error: String?
+    /// The confirmation code to show before the consent page opens; answer
+    /// with ``answerConfirmation(_:)``.
+    @Published public private(set) var confirmationCode: String?
+    private var confirmation: CheckedContinuation<Bool, Never>?
 
     private let packageName: String
     private let appName: String
@@ -84,12 +95,37 @@ public final class ApprovalsModel: ObservableObject {
         approving = item.id
         defer { approving = nil }
         error = nil
-        guard let result = await consent({ item.request(returnTo: $0) }) else {
+        var declined = false
+        let result = await consent({ item.request(returnTo: $0) }) { [weak self] started in
+            guard let self else { return false }
+            let go = await self.askToConfirm(started.code ?? MeroKit.confirmationCode(started.requestId))
+            declined = !go
+            return go
+        }
+        if declined { return false }
+        guard let result else {
             error = "Couldn't open the approval page. Try again."
             return false
         }
         await load(orgs: orgs)
         return result.status == .approved
+    }
+
+    /// Show `code` and wait for ``answerConfirmation(_:)``.
+    func askToConfirm(_ code: String) async -> Bool {
+        confirmation?.resume(returning: false)
+        return await withCheckedContinuation { continuation in
+            confirmation = continuation
+            confirmationCode = code
+        }
+    }
+
+    /// The person read the code: `true` opens the consent page, `false` drops the request.
+    public func answerConfirmation(_ proceed: Bool) {
+        confirmationCode = nil
+        let waiting = confirmation
+        confirmation = nil
+        waiting?.resume(returning: proceed)
     }
 
     /// The actionable items in one scope's pending list: upgrades of this
