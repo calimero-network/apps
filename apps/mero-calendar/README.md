@@ -33,7 +33,7 @@ apps/mero-calendar/
 │   ├── scenarios/           logic, members, private-events, private-routing, booking, access
 │   └── res/abi.json         the component's ABI (committed, diffed in CI)
 ├── app/                     Vite + React; @calimero-apps/connect + mero-js CalimeroClient
-└── mobile/                  native iOS / Android apps, still on the v1 contract (see mobile/README.md)
+└── mobile/                  native iOS / Android apps; their move to Calimero 1.0 is #682, which follows this port
 ```
 
 See [docs/COMPONENT-APPS.md](../../docs/COMPONENT-APPS.md) for how component
