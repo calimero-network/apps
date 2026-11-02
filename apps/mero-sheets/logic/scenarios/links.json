@@ -1,0 +1,208 @@
+[
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "initProject",
+  "args": {
+   "name": "Plan"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createSheet",
+  "args": {
+   "name": "Model"
+  },
+  "save": "sid"
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setCell",
+  "args": {
+   "sheetId": "$sid",
+   "rowId": "0",
+   "colId": "0",
+   "rawValue": "=2*3"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "publishRange",
+  "args": {
+   "sheetId": "$sid",
+   "topRowId": "0",
+   "leftColId": "0",
+   "bottomRowId": "0",
+   "rightColId": "0",
+   "targetContext": "summary-app",
+   "name": "Out"
+  },
+  "save": "pub"
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "pushPublication",
+  "args": {
+   "id": "$pub"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setCell",
+  "args": {
+   "sheetId": "$sid",
+   "rowId": "0",
+   "colId": "0",
+   "rawValue": "=2*4"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "publishRange",
+  "args": {
+   "sheetId": "$sid",
+   "topRowId": "0",
+   "leftColId": "0",
+   "bottomRowId": "0",
+   "rightColId": "0",
+   "targetContext": "not an id",
+   "name": "Out"
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "receiveLink",
+  "args": {
+   "fromContext": "finance-app",
+   "publicationId": "pub-1",
+   "name": "Rates",
+   "sourceName": "Finance",
+   "rows": 1,
+   "cols": 2,
+   "values": [
+    "Rate",
+    "=1.5"
+   ]
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only another workbook can push a link"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "receiveLink",
+  "args": {
+   "fromContext": "finance-app",
+   "publicationId": "pub-1",
+   "name": "Rates",
+   "sourceName": "Finance",
+   "rows": 1,
+   "cols": 2,
+   "values": [
+    "Rate",
+    "=1.5"
+   ]
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "dropLink",
+  "args": {
+   "fromContext": "finance-app",
+   "publicationId": "pub-1"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getLinks",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "listSheets",
+  "args": {},
+  "save": "sheets"
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "unlink",
+  "args": {
+   "id": "link-financeapp-pub-1"
+  },
+  "expect": {
+   "error": "NotFound"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "unpublish",
+  "args": {
+   "id": "$pub"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "unpublish",
+  "args": {
+   "id": "$pub"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getPublications",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "pushPublication",
+  "args": {
+   "id": "$pub"
+  },
+  "expect": {
+   "error": "NotFound"
+  }
+ }
+]

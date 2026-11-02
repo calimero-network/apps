@@ -44,6 +44,12 @@ members  = [
 # See docs/COMPONENT-APPS.md.
 exclude = [
   "apps/kv-store/logic",
+  "apps/mero-sheets/logic",
+  # The contract's formula engine, types and browser engine are members of ITS
+  # workspace; the `apps/*/logic/crates/*` glob above would claim them too.
+  "apps/mero-sheets/logic/crates/recalc",
+  "apps/mero-sheets/logic/crates/recalc-wasm",
+  "apps/mero-sheets/logic/crates/types",
 ]
 
 [workspace.package]

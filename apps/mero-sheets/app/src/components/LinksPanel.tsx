@@ -69,7 +69,7 @@ export default function LinksPanel({
                     onChange={(e) => setName(e.target.value)} data-testid="field-link-name" />
                 </div>
                 <button type="button" disabled={!selection || !name.trim() || !target || busy} data-testid="action-publish"
-                  onClick={() => void run(async () => { await onPublish(target, name.trim()); setName(''); }, 'Linked. It appears there once that workbook is open on this node.')}>
+                  onClick={() => void run(async () => { await onPublish(target, name.trim()); setName(''); }, 'Linked. It appears in that workbook now, and follows this range as you edit it.')}>
                   Link
                 </button>
               </>

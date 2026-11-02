@@ -1,0 +1,423 @@
+[
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "listSheets",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getNamedRanges",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "initProject",
+  "args": {
+   "name": "Q3 Budget"
+  },
+  "save": "project"
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "initProject",
+  "args": {
+   "name": "Again"
+  },
+  "expect": {
+   "error": "Invalid",
+   "fields": {
+    "message": "project already initialised"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "initProject",
+  "args": {
+   "name": "Mine"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "join",
+  "args": {
+   "nickname": "Ada"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "whoami",
+  "args": {},
+  "expect": {
+   "ok": "@owner"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createSheet",
+  "args": {
+   "name": "Revenue"
+  },
+  "save": "sid"
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "join",
+  "args": {
+   "nickname": "Bob"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "whoami",
+  "args": {},
+  "expect": {
+   "ok": "@bob"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setCell",
+  "args": {
+   "sheetId": "$sid",
+   "rowId": "0",
+   "colId": "0",
+   "rawValue": "10"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setCell",
+  "args": {
+   "sheetId": "$sid",
+   "rowId": "1",
+   "colId": "0",
+   "rawValue": "32"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setCell",
+  "args": {
+   "sheetId": "$sid",
+   "rowId": "2",
+   "colId": "0",
+   "rawValue": "=SUM(A1:A2)"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "publishRange",
+  "args": {
+   "sheetId": "$sid",
+   "topRowId": "0",
+   "leftColId": "0",
+   "bottomRowId": "2",
+   "rightColId": "0",
+   "targetContext": "target-workbook",
+   "name": "Totals"
+  },
+  "save": "pub"
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "pushPublication",
+  "args": {
+   "id": "$pub"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setCell",
+  "args": {
+   "sheetId": "$sid",
+   "rowId": "0",
+   "colId": "0",
+   "rawValue": "20"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "pushPublication",
+  "args": {
+   "id": "$pub"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setNamedRange",
+  "args": {
+   "name": "Rev",
+   "target": "A1:A2"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getNamedRanges",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "name": "Rev",
+     "target": "A1:A2"
+    }
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "applyStyleOps",
+  "args": {
+   "sheetId": "$sid",
+   "ops": [
+    {
+     "row_id": "2",
+     "col_id": "0",
+     "field": "bold",
+     "value": "1"
+    }
+   ]
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getStyles",
+  "args": {},
+  "expect": {
+   "ok": {
+    "items": [
+     {
+      "sheet_id": "$sid",
+      "row_id": "2",
+      "col_id": "0",
+      "style": {
+       "bold": "1"
+      }
+     }
+    ],
+    "next": null
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "editNote",
+  "args": {
+   "sheetId": "$sid",
+   "rowId": "2",
+   "colId": "0",
+   "ops": [
+    {
+     "insert": "Q3 "
+    },
+    {
+     "insert": "total",
+     "attributes": {
+      "italic": "true"
+     }
+    }
+   ]
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getNote",
+  "args": {
+   "sheetId": "$sid",
+   "rowId": "2",
+   "colId": "0"
+  },
+  "expect": {
+   "ok": [
+    {
+     "text": "Q3 "
+    },
+    {
+     "text": "total",
+     "attributes": {
+      "italic": "true"
+     }
+    }
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getNotedCells",
+  "args": {},
+  "expect": {
+   "ok": {
+    "items": [
+     {
+      "sheet_id": "$sid",
+      "row_id": "2",
+      "col_id": "0",
+      "preview": "Q3 total"
+     }
+    ],
+    "next": null
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setRole",
+  "args": {
+   "memberId": "@bob",
+   "role": "viewer"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setCell",
+  "args": {
+   "sheetId": "$sid",
+   "rowId": "3",
+   "colId": "0",
+   "rawValue": "nope"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "you are a viewer in this workbook"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "addComment",
+  "args": {
+   "sheetId": "$sid",
+   "rowId": "0",
+   "colId": "0",
+   "text": "hi",
+   "parent": ""
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setRole",
+  "args": {
+   "memberId": "@bob",
+   "role": "commenter"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "addComment",
+  "args": {
+   "sheetId": "$sid",
+   "rowId": "0",
+   "colId": "0",
+   "text": "hi @Ada",
+   "parent": ""
+  },
+  "save": "comment"
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setCommentResolved",
+  "args": {
+   "id": "$comment",
+   "resolved": true
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setRole",
+  "args": {
+   "memberId": "@owner",
+   "role": "editor"
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deleteSheet",
+  "args": {
+   "sheetId": "nope"
+  },
+  "expect": {
+   "error": "NotFound",
+   "fields": {
+    "message": "nope"
+   }
+  }
+ }
+]

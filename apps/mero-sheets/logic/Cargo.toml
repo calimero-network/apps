@@ -1,62 +1,68 @@
 [package]
-# The SPREADSHEET service crate, promoted to logic/ and renamed: `apps/*/logic`
-# must be a PACKAGE (a members-glob match cannot be a nested `[workspace]`), and
-# the directory / cargo package / npm package must be one value. The SERVICE name
-# stays `spreadsheet` — it is what createContext passes.
-name        = "mero-sheets"
-version     = "0.1.0"
-edition.workspace    = true
-authors.workspace    = true
-license.workspace    = true
-repository.workspace = true
+name = "mero-sheets"
+description = "Collaborative spreadsheet: sheets, formulas, comments, notes, roles and protected ranges, on the component SDK"
+# NOT the release version: the release workflow takes the next appVersion from
+# the registry and passes it to `mero-component bundle --app-version`. Cargo
+# requires the field; bundling locally without --app-version uses it.
+version = "0.1.0"
+edition = "2021"
+authors = ["Calimero Limited <info@calimero.network>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/calimero-network/apps"
+publish = false
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+# A `calimero:app` component. No `rlib`: the tests run the BUILT component on
+# core's engine (tests/common/mod.rs), not the crate linked natively.
+crate-type = ["cdylib"]
 
-# Moved from `[workspace.metadata.calimero]` on the deleted nested workspace.
-# cargo-mero REPLACES an app's package table with the workspace one when both
-# exist, which in a many-app workspace masks every other app — so nothing
-# calimero-owned may live at workspace level in this repo.
-#
-# The package id is UNCHANGED and already conforms: com.calimero.mero-sheets. The
-# registry has nothing published under it, so this remains a first publish.
+# Core at `component-core-tag` (root Cargo.toml), the same tag for every core
+# crate; scripts/check-component-pins.py asserts it. A standalone crate cannot
+# inherit `[workspace.dependencies]`.
+[dependencies]
+calimero-app-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8" }
+mero-sheets-types = { path = "crates/types" }
+mero-sheets-recalc = { path = "crates/recalc" }
+serde = { version = "1", features = ["derive"] }
+
+# The harness (`TestApp`, `run_scenario`) and the builder the tests build this
+# crate with, for `cargo test` on the host only.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+calimero-app-sdk   = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8", features = ["testing"] }
+calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8" }
+serde_json = "1"
+
+# Read by `mero-component bundle` (tools/component-bundle), with the keys
+# `cargo mero bundle` reads for a v1 app. The package id is unchanged.
 [package.metadata.calimero]
 package     = "com.calimero.mero-sheets"
 name        = "P2P Sheets"
-description = "Collaborative peer-to-peer spreadsheet with live cursors, multiple sheet tabs, formula autocomplete, a built-in function help section, and download support"
+description = "Collaborative spreadsheet with live cursors, multiple sheet tabs, formula autocomplete, a built-in function help section, and download support"
 author      = "Calimero"
 slug        = "com.calimero.mero-sheets"
 icon        = "../app/public/icon-512.png"
-category = "productivity"
+category    = "productivity"
 tags        = ["productivity", "spreadsheet", "collaboration"]
 github      = "https://github.com/calimero-network/apps"
-# ⚠️ The contract was pinned to core 0.11.0-rc.8 — EIGHTEEN releases back. This
-# value is the claim that an rc.28 node can run the bundle, and it is only true
-# once the port in the PR body is done.
-min-runtime-version = "0.12.0-rc.3"
+# `component-min-runtime-version` in the root Cargo.toml: a node compares it
+# with its own release.
+min-runtime-version = "1.0.0-rc.8"
+# The listing's link. NOT where the production frontend runs: a Cloud node
+# trusts passkey ceremonies only from frontends it serves from a bundle, so
+# the production frontend is the one packed below (docs/COMPONENT-APPS.md).
 frontend    = "https://mero-sheets.vercel.app"
-# The built frontend `cargo mero bundle` packs, so the node serves it from the app's own origin.
+# The built frontend the bundle carries. Build it first: `pnpm -F mero-sheets build`.
 frontend-dir = "../app/dist"
 
-[[package.metadata.calimero.services]]
-name  = "spreadsheet"
-crate = "mero-sheets"
+# Standalone: excluded from the root workspace (root Cargo.toml), its own
+# Cargo.lock. The formula engine and the shared types are members, built for
+# the host (tests) and wasm32-wasip2 (the component) with the contract.
+# `recalc-wasm` (the browser's copy of the engine, built by
+# `build-recalc-wasm.sh`) is a member but not a default one.
+[workspace]
+members = ["crates/types", "crates/recalc", "crates/recalc-wasm"]
+default-members = [".", "crates/types", "crates/recalc"]
 
-[dependencies]
-mero-sheets-types        = { path = "crates/types" }
-mero-sheets-recalc       = { path = "crates/recalc" }
-calimero-sdk            = { workspace = true }
-calimero-storage        = { workspace = true }
-calimero-storage-macros = { workspace = true }
-hex                     = { workspace = true }
-
-[dev-dependencies]
-calimero-storage = { workspace = true, features = ["testing"] }
-serial_test      = "3"
-
-# NOTE: build.rs and its calimero-wasm-abi [build-dependencies] are GONE. Core
-# deleted all 60 per-app ABI build scripts (#3319) and derives the ABI from the
-# type system (#3364); `cargo mero build` is the emitter, and calimero-wasm-abi is
-# not resolvable as an app dependency at the workspace tag.
-#
-# NOTE: no [profile.*] — cargo ignores profiles in a workspace member.
+[profile.release]
+codegen-units = 1
+lto = true

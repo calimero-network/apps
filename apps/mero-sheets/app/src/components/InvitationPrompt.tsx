@@ -1,147 +1,90 @@
-import { useCallback, useRef, useState } from 'react';
-import {
-  InvitationDialog,
-  InvitationGate,
-  useInviteRedemption,
-  useMero,
-  type ParsedInvitation,
-  type RedeemOutcome,
-} from '@calimero-network/mero-react';
-import { APP_DISPLAY_NAME } from '../config';
-import {
-  decodeInvite,
-  namespaceIdOfInvite,
-  type SheetsInvitePayload,
-} from '../lib/inviteCodec';
-import { acceptInvite, InviteRedeemError, type AcceptedInvite } from '../lib/workspaces';
-
 /**
- * "Join X?" for an invitation that arrived as a link: mero-react's
- * `InvitationDialog`, which asks, joins, and stays up on "Syncing…" until the
- * workspace's spreadsheet list has reached this node.
+ * "Join this workspace?" for an invitation that arrived as a link (`?invite=`,
+ * taken into storage before the first render: see `captureInvite`).
  *
- * ── Why this is mounted at the APP level, not on a page ──────────────────────
+ * Mounted at the APP level because a link can land on any route, and it asks
+ * rather than joins: joining puts you in someone's organization, and a
+ * forwarded link or a refreshing background tab should not do that silently.
  *
- * Because a link can land anywhere. mero-sheets bounces an authenticated visitor
- * from `/` straight to `/mero-sheets`, and an unauthenticated one through the
- * whole login redirect, so an effect that read `location.href` on one route
- * would miss the invitation in both of the two cases that actually happen. The
- * platform store buffers the intent until something asks for it, and this is
- * mounted where it always will.
- *
- * ── Why it asks rather than joins ────────────────────────────────────────────
- *
- * Joining is a state change: it puts you in someone else's workspace. Doing that
- * on page load makes a forwarded link, or a background tab that refreshes, join
- * silently. Decoding is pure and local, so the scope can be shown first and the
- * join needs a click.
- *
- * The join is this app's own (`acceptInvite`, which walks a chain if the code
- * carries one). The syncing stage ends when `useWorkspace`'s `useJoinSync` sees
- * the joined workspace's spreadsheets come back from the node, or its watchdog
- * decides an empty workspace really is empty.
+ * Signed out, it offers the sign-in first; the token survives the sign-up.
+ * Signed in, Join redeems the org invite and reports what to open: the
+ * spreadsheet the link names, or the workspace's list. There is no
+ * "Syncing…" stage any more: nothing has to replicate before a new member can
+ * read.
  */
-interface SheetsInvitation extends ParsedInvitation {
-  payload: SheetsInvitePayload;
-}
+import { useCallback, useState } from 'react';
+import { CalimeroError } from '@calimero-network/mero-js';
+import { APP_DISPLAY_NAME } from '../config';
+import { describeError } from '../utils/errors';
+import { useMaybeSignedIn, useSessionApi } from '../sessionContext';
+import { dropInvite, joinedOrg, pendingInvite, type AcceptedInvite, type PendingInvite } from '../lib/workspaces';
+import SignInModal, { Dialog, Err, Hint, Overlay, Primary, Secondary } from './SignInModal';
 
-export default function InvitationPrompt({
-  onJoined,
-  enabled,
-}: {
-  /**
-   * Called once a join lands, with whatever the code asked us to open. The
-   * workspace state lives in `useWorkspace` on the app page, so the prompt
-   * reports rather than navigates.
-   */
-  onJoined: (landed: Pick<AcceptedInvite, 'namespaceId' | 'contextId'>) => void;
-  /** Whether there is a session to join with; the invitation waits until there is. */
-  enabled: boolean;
-}) {
-  // `admin`, not `mero.admin`: on an account the relay refuses the node's join
-  // route (403); the account admin joins as the account.
-  const { admin } = useMero();
-  const [status, setStatus] = useState<string | null>(null);
-  /** What the last join landed in, for `reportJoined`. */
-  const landedRef = useRef<Pick<AcceptedInvite, 'namespaceId' | 'contextId'> | null>(null);
+export default function InvitationPrompt({ onJoined }: { onJoined: (landed: AcceptedInvite) => void }) {
+  const { api } = useSessionApi();
+  const signedIn = useMaybeSignedIn();
+  const [invite, setInvite] = useState<PendingInvite | null>(() => pendingInvite());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [signingIn, setSigningIn] = useState(false);
+  const ready = api.session.status === 'signed-out' || api.session.status === 'signed-in';
 
-  const parse = useCallback((token: string): SheetsInvitation | null => {
-    const payload = decodeInvite(token);
-    if (!payload) return null;
-    return {
-      namespaceId: namespaceIdOfInvite(payload),
-      invitation: payload.invitation,
-      teamName: payload.groupAlias,
-      payload,
-    };
+  const dismiss = useCallback(() => {
+    dropInvite();
+    setInvite(null);
+    setError(null);
   }, []);
 
-  const redeem = useCallback(
-    async ({ payload }: SheetsInvitation): Promise<RedeemOutcome> => {
-      if (!admin) {
-        return {
-          status: 'failed',
-          namespaceId: null,
-          message: 'No node connection yet. Reconnect and try again.',
-          reason: 'node-unreachable',
-          retryable: true,
-        };
-      }
-      try {
-        const landed = await acceptInvite(admin, payload, setStatus);
-        // The workspace `useWorkspace` will show and watch: it prefers the one
-        // just joined, so its `useJoinSync` clears the flag this dialog waits on.
-        const namespaceId = landed.namespaceId ?? namespaceIdOfInvite(payload);
-        // Reported from `onJoined` below, not here: the redemption marks the
-        // namespace just-joined only after this returns. A workspace the page
-        // already shows settles at once, and a mark after that settle was never
-        // cleared, leaving the dialog on "Syncing…".
-        landedRef.current = { namespaceId, contextId: landed.contextId };
-        return { status: 'joined', namespaceId, teamName: payload.groupAlias };
-      } catch (e) {
-        // A refused or unanswered join already says whether to keep the
-        // invitation; anything else is read as unknown and kept for a retry.
-        if (e instanceof InviteRedeemError) return e.outcome;
-        throw e;
-      } finally {
-        setStatus(null);
-      }
-    },
-    [admin],
-  );
+  const join = useCallback(async () => {
+    if (!signedIn || !invite) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const org = joinedOrg(await signedIn.client.redeemInvite(invite.token));
+      dropInvite();
+      setInvite(null);
+      onJoined({ namespaceId: org, contextId: invite.sheet });
+    } catch (e) {
+      // A refusal (used, expired, revoked) can never succeed: drop it. Anything
+      // else (the cluster unreachable) is kept for another try.
+      if (e instanceof CalimeroError && e.status < 500) dropInvite();
+      setError(`The invitation could not be accepted: ${describeError(e)}`);
+    } finally {
+      setBusy(false);
+      signedIn.after();
+    }
+  }, [signedIn, invite, onJoined]);
 
-  const reportJoined = useCallback(
-    (namespaceId: string) => {
-      const landed = landedRef.current;
-      landedRef.current = null;
-      onJoined(landed?.namespaceId === namespaceId ? landed : { namespaceId, contextId: null });
-    },
-    [onJoined],
-  );
-
-  const redemption = useInviteRedemption({
-    parse,
-    redeem,
-    onJoined: reportJoined,
-    enabled: enabled && !!admin,
-  });
-  const payload = redemption.parsed?.payload;
+  if (!invite || !ready) return null;
+  if (signingIn && !signedIn) return <SignInModal open onClose={() => setSigningIn(false)} />;
 
   return (
-    <>
-      {/* Logged out with a link opened: "you're invited" and the login, not the landing page. */}
-      <InvitationGate parse={parse} noun="workspace" appName={APP_DISPLAY_NAME} />
-      <InvitationDialog
-        redemption={redemption}
-        noun="workspace"
-        appName={APP_DISPLAY_NAME}
-        status={status}
-        detail={
-          payload?.projectName
-            ? `Joining opens “${payload.projectName}” and every other spreadsheet in it.`
-            : 'Joining gives you every spreadsheet in this workspace.'
-        }
-      />
-    </>
+    <Overlay>
+      <Dialog role="dialog" aria-modal="true" aria-labelledby="invitation-title" data-testid="invitation-dialog">
+        <h3 id="invitation-title">You&apos;re invited to {APP_DISPLAY_NAME}</h3>
+        <Hint>
+          {invite.sheet
+            ? 'Joining gives you the workspace and takes you straight into the spreadsheet you were invited to.'
+            : 'Joining gives you the workspace and every spreadsheet in it.'}
+        </Hint>
+        {error && (
+          <Err role="alert" data-testid="invitation-error">
+            {error}
+          </Err>
+        )}
+        {signedIn ? (
+          <Primary type="button" onClick={() => void join()} disabled={busy} data-testid="invitation-join">
+            {busy ? 'Joining…' : 'Join'}
+          </Primary>
+        ) : (
+          <Primary type="button" onClick={() => setSigningIn(true)} data-testid="invitation-signin">
+            Sign in to join
+          </Primary>
+        )}
+        <Secondary type="button" onClick={dismiss} disabled={busy} data-testid="invitation-dismiss">
+          Not now
+        </Secondary>
+      </Dialog>
+    </Overlay>
   );
 }

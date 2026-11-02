@@ -7,25 +7,16 @@ import '@calimero-network/mero-ui/styles.css';
 import './index.css';
 import App from './App';
 import { THEME } from './config';
-import { primeInvitationCapture } from '@calimero-network/mero-react';
-import { bootstrapSso } from './auth/ssoBootstrap';
-import { APP_SLUG } from './lib/inviteLink';
+import { captureInvite } from './lib/workspaces';
 import { applyTheme, getStoredTheme } from './theme';
 
 // Apply the saved light/dark theme before first paint (avoids a flash).
 applyTheme(getStoredTheme());
 
-// Desktop auth-skip. MUST run before React mounts so MeroProvider reads an
-// already-authenticated desktop session on first render (skipping the manual
-// connect step when opened from the desktop app).
-bootstrapSso();
-
-// An invitation reaches this app only as an opened link: the links page (or a
-// cold desktop start) appends `?invitation=…` to this URL, and a running
-// desktop sends a `deep-link` event. Captured before the router redirects `/`
-// away and before a signed-out visitor goes to log in; a link addressed to
-// another app is dropped, not offered. `InvitationPrompt` asks before joining.
-primeInvitationCapture('mero-sheets', { slug: APP_SLUG });
+// Before React mounts: a person opening an invitation link (`?invite=`) is
+// usually not signed in yet, and the token has to survive the passkey sign-up.
+// `InvitationPrompt` asks before joining.
+captureInvite();
 
 // Inject theme tokens as CSS vars so components can read them via
 // `var(--color-primary)` / `var(--color-accent)` regardless of selector scope.
