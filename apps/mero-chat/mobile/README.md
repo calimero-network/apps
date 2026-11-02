@@ -5,10 +5,11 @@ contract (`../logic`, package `com.calimero.chat`).
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | [`ios/`](ios/README.md) | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `37c09f3` (head of swift-sdk#85), by SPM revision in `ios/project.yml` |
-| Android | [`android/`](android/README.md) | Jetpack Compose + Material3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `61b65e9` (head of kotlin-sdk#68), composite build at the SHA in `android/kotlin-sdk.ref` |
+| iOS | [`ios/`](ios/README.md) | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `v0.5.0`, by SPM version in `ios/project.yml` |
+| Android | [`android/`](android/README.md) | Jetpack Compose + Material3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `v0.2.0` (not on Maven Central), composite build at the SHA in `android/kotlin-sdk.ref` |
 
-Both pins move to the SDK PRs' merge commits once they land.
+Both pins are SDK releases (kotlin-sdk is not on Maven Central, so Android builds it from source).
+To bump: iOS, the `exactVersion` / `exact:` values; Android, `kotlin-sdk.ref` (the new tag's commit).
 
 ## On Calimero 1.0
 

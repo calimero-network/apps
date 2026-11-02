@@ -145,19 +145,17 @@ in Xcode (Signing & Capabilities).
 
 ### The SDK pin
 
-`project.yml` pins the package by revision to
-`37c09f3f96e7d98440f6618eef8a0e83ddee8ebd`, the head of the swift-sdk's
-Calimero 1.0 port (calimero-network/swift-sdk#85, branch `feat/calimero-1.0`).
-It moves to that PR's merge commit (and then a release) once it lands.
+`project.yml` pins the package to the swift-sdk's `v0.5.0` release (its
+Calimero 1.0 client).
 
 ```yaml
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: 37c09f3f96e7d98440f6618eef8a0e83ddee8ebd
+    exactVersion: 0.5.0
 ```
 
-To bump it, change `revision`, run `xcodegen generate`, and let Xcode
+To bump it, change `exactVersion`, run `xcodegen generate`, and let Xcode
 re-resolve packages (File → Packages → Reset Package Caches if it holds on to
 the old one).
 
