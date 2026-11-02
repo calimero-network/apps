@@ -13,8 +13,7 @@ const h = vi.hoisted(() => ({
   resolveCurrentMemberIdentity: vi.fn(),
   createGroup: vi.fn(),
   createChannel: vi.fn(),
-  useMero: vi.fn(),
-  nodeUrl: "http://localhost:2428" as string | null,
+  sessionKey: "account:me" as string | null,
 }));
 
 vi.mock("../../utils/installedApps", async (importOriginal) => ({
@@ -46,19 +45,12 @@ vi.mock("@calimero-network/mero-ui", () => ({
   ),
 }));
 
-vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  getNodeUrl: () => h.nodeUrl,
-  useMero: h.useMero,
+vi.mock("../../hooks/useSessionKey", () => ({
+  useSessionKey: () => h.sessionKey,
 }));
 
 vi.mock("../../api/meroJsClient", () => ({
-  getMeroJs: () => ({
-    admin: { listNamespaces: vi.fn() },
-    isDelegated: false,
-    applicationId: null,
-  }),
-  isDelegatedSession: () => false,
+  isDelegatedSession: () => true,
 }));
 
 vi.mock("../../contexts/ToastContext", () => ({
@@ -79,8 +71,7 @@ vi.mock("../../api/dataSource/groupApiDataSource", () => ({
 
 beforeEach(() => {
   localStorage.clear();
-  h.nodeUrl = "http://localhost:2428";
-  h.useMero.mockReset().mockReturnValue(NODE);
+  h.sessionKey = "account:me";
   sessionStorage.clear();
   h.listGroups.mockReset().mockResolvedValue({
     data: [{ groupId: "ns0", alias: "Mine" }],
@@ -97,8 +88,6 @@ beforeEach(() => {
     .mockResolvedValue({ contextId: "ctx-general", memberKey: "key" });
 });
 
-const NODE = { admin: {}, isDelegated: false, applicationId: null };
-
 function open() {
   render(
     <NamespaceEntryPopup isAuthenticated isConfigSet onLogout={() => {}} />,
@@ -106,54 +95,17 @@ function open() {
 }
 
 describe("NamespaceEntryPopup", () => {
-  it("an account waits for its admin and application id, then lists", async () => {
-    // An account signs in through a relay and stores no node URL. It used to
-    // bail on that and sit on "Connecting to node…" forever; and listing before
-    // the registry id lands filters the account's namespaces by the node
-    // fallback id and finds none.
-    h.nodeUrl = null;
-    h.useMero.mockReturnValue({ admin: null, isDelegated: true, applicationId: null });
+  it("waits for a signed-in session before it lists", async () => {
+    h.sessionKey = null;
     const view = render(
       <NamespaceEntryPopup isAuthenticated isConfigSet onLogout={() => {}} />,
     );
-    expect(screen.getByText("Connecting to node…")).toBeInTheDocument();
-
-    h.useMero.mockReturnValue({ admin: {}, isDelegated: true, applicationId: null });
-    view.rerender(<NamespaceEntryPopup isAuthenticated isConfigSet onLogout={() => {}} />);
     expect(h.listGroups).not.toHaveBeenCalled();
 
-    h.useMero.mockReturnValue({ admin: {}, isDelegated: true, applicationId: "app1" });
+    h.sessionKey = "account:me";
     view.rerender(<NamespaceEntryPopup isAuthenticated isConfigSet onLogout={() => {}} />);
     expect(await screen.findByText("Select workspace")).toBeInTheDocument();
     expect(h.listGroups).toHaveBeenCalledTimes(1);
-  });
-
-  it("a load for a session that has since changed does not overwrite the newer list", async () => {
-    // A leftover node URL keys a node load; the account session then lands and
-    // keys its own. The node load answers last, with nothing.
-    let answerNode: (v: unknown) => void = () => {};
-    h.listGroups
-      .mockReset()
-      .mockImplementationOnce(() => new Promise((r) => { answerNode = r; }))
-      .mockResolvedValueOnce({ data: [{ groupId: "ns-acct", alias: "Account ws" }], error: null });
-    const view = render(<NamespaceEntryPopup isAuthenticated isConfigSet onLogout={() => {}} />);
-
-    h.useMero.mockReturnValue({ admin: {}, isDelegated: true, applicationId: "app1" });
-    view.rerender(<NamespaceEntryPopup isAuthenticated isConfigSet onLogout={() => {}} />);
-    expect(await screen.findByText("Select workspace")).toBeInTheDocument();
-
-    answerNode({ data: [], error: null });
-    await new Promise((r) => setTimeout(r, 0));
-    expect(screen.queryByText("Welcome to MeroChat")).not.toBeInTheDocument();
-    expect(screen.getByText("Select workspace")).toBeInTheDocument();
-    expect(h.listGroups).toHaveBeenCalledTimes(2);
-  });
-
-  it("a node login with no node URL does not list", () => {
-    h.nodeUrl = null;
-    open();
-    expect(screen.getByText("Connecting to node…")).toBeInTheDocument();
-    expect(h.listGroups).not.toHaveBeenCalled();
   });
 
   it("opens on the name step of a workspace an invitation just joined", async () => {

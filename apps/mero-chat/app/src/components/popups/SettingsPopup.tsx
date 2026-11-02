@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect, useRef } from "react";
 import { styled, keyframes } from "styled-components";
 import { useNavigate } from "react-router-dom";
 import BaseModal from "../common/popups/BaseModal";
-import { useMero, getContextIdentity as getExecutorPublicKey, getContextId } from "@calimero-network/mero-react";
+import { useCalimero as useMero, getContextIdentity as getExecutorPublicKey, getContextId } from "../../api/calimero";
 import {
   clearStoredSession,
   clearNamespaceReady,
@@ -16,7 +16,7 @@ import { useCurrentGroupPermissions } from "../../hooks/useCurrentGroupPermissio
 import { useWorkspaceName } from "../../hooks/useWorkspaceName";
 import { GroupApiDataSource, uploadBlobDirect } from "../../api/dataSource/groupApiDataSource";
 import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
-import { downloadBlob, getMeroJs, isDelegatedSession } from "../../api/meroJsClient";
+import { downloadBlob, isDelegatedSession } from "../../api/meroJsClient";
 import { useToast } from "../../contexts/ToastContext";
 import { invalidateAvatarCache } from "../../hooks/useAvatarUrl";
 import { useTheme, type Theme } from "../../theme/theme";
@@ -590,7 +590,7 @@ export default function SettingsPopup({
         }
         const uploadRes = await uploadBlobDirect(file, uploadContextId);
         if (!uploadRes.data?.blobId) {
-          addToast({ title: "Avatar", message: "Upload failed", type: "channel", duration: 3000 });
+          addToast({ title: "Avatar", message: uploadRes.error?.message || "Upload failed", type: "channel", duration: 3000 });
           return;
         }
         const blobId = uploadRes.data.blobId;
@@ -614,24 +614,26 @@ export default function SettingsPopup({
           }
         }
 
-        // Best-effort: propagate to every other context in the group.
-        const contextsRes = await new GroupApiDataSource().listGroupContexts(groupId);
-        for (const ctx of contextsRes.data ?? []) {
-          if (ctx.contextId === currentContextId) continue; // already done above
+        // Best-effort: propagate to every other conversation in the workspace.
+        // A blob belongs to one app instance, so the same bytes are stored in
+        // each (same content, same id) before its profile names them.
+        const conversations = await new GroupApiDataSource().listSubgroups(groupId);
+        for (const sg of conversations.data ?? []) {
+          const ctxId = sg.groupId;
+          if (ctxId === currentContextId || !currentIdentity) continue; // already done above
           try {
-            const owned = await getMeroJs().admin.getContextIdentitiesOwned(ctx.contextId);
-            const executorKey = owned.identities?.[0];
-            if (!executorKey) continue;
-            const profilesRes = await clientDs.getProfiles(ctx.contextId, executorKey);
-            const myProfile = profilesRes.data?.find((p) => p.identity === executorKey);
+            const stored = await uploadBlobDirect(file, ctxId);
+            if (!stored.data?.blobId) continue;
+            const profilesRes = await clientDs.getProfiles(ctxId, currentIdentity);
+            const myProfile = profilesRes.data?.find((p) => p.identity === currentIdentity);
             await clientDs.updateProfile(
-              ctx.contextId,
-              executorKey,
+              ctxId,
+              currentIdentity,
               myProfile?.username || username,
-              blobId,
+              stored.data.blobId,
             );
           } catch {
-            // best-effort per context
+            // best-effort per conversation
           }
         }
 

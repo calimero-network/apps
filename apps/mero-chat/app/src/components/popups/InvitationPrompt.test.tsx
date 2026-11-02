@@ -1,261 +1,79 @@
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  JOIN_SYNC_WATCHDOG_MS,
-  peekInvitation,
-  primeInvitationCapture,
-  resetInvitationCaptureForTests,
-} from "@calimero-network/mero-react";
-import {
-  encodeInvitationPayload,
-  serializeGroupInvitationPayload,
-  APP_SLUG,
-} from "../../utils/invitation";
-import type { SignedGroupOpenInvitation } from "../../api/groupApi";
-import InvitationPrompt from "./InvitationPrompt";
-
-// ── An opened invitation link: asked about, joined, synced, then entered ────
-//
-// Drives the real shared capture (a cold open of `/?invitation=…`) and the real
-// redemption and dialog against a fake node, so what is pinned is the app's own
-// part: it asks before joining, holds "Syncing…" until the workspace's channels
-// have been read, and only then goes into what was joined.
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
   joinGroup: vi.fn(),
-  listNamespaces: vi.fn(),
-  resolveCurrentMemberIdentity: vi.fn(),
-  listSubgroups: vi.fn(),
+  getGroupMetadata: vi.fn(),
   enterWorkspace: vi.fn(),
   enterJoinedWorkspaceForName: vi.fn(),
-}));
-
-vi.mock("../../api/meroJsClient", () => ({
-  getMeroJs: () => ({ admin: { listNamespaces: h.listNamespaces } }),
+  name: "Alice",
 }));
 
 vi.mock("../../api/dataSource/groupApiDataSource", () => ({
   GroupApiDataSource: class {
     joinGroup = h.joinGroup;
-    resolveCurrentMemberIdentity = h.resolveCurrentMemberIdentity;
-    listSubgroups = h.listSubgroups;
-    setGroupMetadata = () => Promise.resolve({ data: null, error: null });
-    syncGroup = () => Promise.resolve({ data: null, error: null });
+    getGroupMetadata = h.getGroupMetadata;
   },
 }));
-
-// Entering reloads the page; what matters is where to.
 vi.mock("../../utils/enterWorkspace", () => ({
   enterWorkspace: h.enterWorkspace,
   enterJoinedWorkspaceForName: h.enterJoinedWorkspaceForName,
 }));
+vi.mock("../../utils/messengerName", () => ({
+  getMessengerDisplayName: () => h.name,
+}));
 
-const failure = (code: number, message: string) =>
-  Promise.resolve({ data: null, error: { code, message } });
-
-const TOKEN = encodeInvitationPayload(
-  serializeGroupInvitationPayload({
-    invitation: {
-      invitation: { group_id: "ns1" },
-      inviter_signature: "sig",
-    } as unknown as SignedGroupOpenInvitation,
-    groupAlias: "Team",
-  }),
-);
-
-/** A cold open of the link, as the links page hands it to the app. */
-function openLink(enabled = true) {
-  window.history.replaceState(null, "", `/?invitation=${TOKEN}`);
-  primeInvitationCapture("mero-chat", { slug: APP_SLUG });
-  return render(<InvitationPrompt enabled={enabled} />);
-}
-
-/** Entering waits for the dialog: synced, then "You're in" for a beat. */
-const ENTERED = { timeout: 4_000 };
+import InvitationPrompt from "./InvitationPrompt";
+import { INVITATION_STORAGE_KEY } from "../../utils/invitation";
 
 beforeEach(() => {
-  resetInvitationCaptureForTests();
   localStorage.clear();
-  sessionStorage.clear();
-  // Every workspace has #general.
-  h.listSubgroups
-    .mockReset()
-    .mockResolvedValue({ data: [{ groupId: "sg-general", alias: "general" }], error: null });
-  h.joinGroup.mockReset().mockResolvedValue({
-    data: { groupId: "ns1", memberIdentity: "me" },
-  });
-  h.listNamespaces.mockReset().mockResolvedValue([{ namespaceId: "ns1" }]);
-  h.resolveCurrentMemberIdentity
-    .mockReset()
-    .mockResolvedValue({ data: { memberIdentity: "me", members: [] } });
-  h.enterWorkspace.mockReset();
-  h.enterJoinedWorkspaceForName.mockReset();
-});
-
-afterEach(() => {
-  resetInvitationCaptureForTests();
-  window.history.replaceState(null, "", "/");
+  vi.clearAllMocks();
+  h.name = "Alice";
+  h.joinGroup.mockResolvedValue({ data: { groupId: "org-1", memberIdentity: "acct-me" }, error: null });
+  h.getGroupMetadata.mockResolvedValue({ data: { name: "Team" }, error: null });
 });
 
 describe("InvitationPrompt", () => {
-  it("asks, naming the workspace, and does not join until Join is clicked", async () => {
-    openLink();
-    expect(
-      await screen.findByRole("dialog", { name: "Join “Team”?" }),
-    ).toBeInTheDocument();
-    expect(screen.getByTestId("invite-decline")).toBeInTheDocument();
-    expect(h.joinGroup).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByTestId("invite-accept"));
-    await waitFor(() => expect(h.joinGroup).toHaveBeenCalledTimes(1));
+  it("offers nothing without a pending invitation, or before sign-in", () => {
+    const { rerender } = render(<InvitationPrompt enabled />);
+    expect(screen.queryByText(/invited/i)).not.toBeInTheDocument();
+    localStorage.setItem(INVITATION_STORAGE_KEY, "tok");
+    rerender(<InvitationPrompt enabled={false} />);
+    expect(screen.queryByText(/invited/i)).not.toBeInTheDocument();
   });
 
-  it("joins nothing when declined", async () => {
-    openLink();
-    fireEvent.click(await screen.findByTestId("invite-decline"));
-    await waitFor(() =>
-      expect(screen.queryByTestId("invite-prompt")).not.toBeInTheDocument(),
-    );
-    expect(peekInvitation()).toBeNull();
-    expect(h.joinGroup).not.toHaveBeenCalled();
+  it("redeems the token on Join and enters the workspace under the stored name", async () => {
+    localStorage.setItem(INVITATION_STORAGE_KEY, "tok");
+    render(<InvitationPrompt enabled />);
+    fireEvent.click(await screen.findByRole("button", { name: /join workspace/i }));
+    await waitFor(() => expect(h.enterWorkspace).toHaveBeenCalled());
+    expect(h.joinGroup).toHaveBeenCalledWith({ invitation: "tok" });
+    expect(h.enterWorkspace).toHaveBeenCalledWith(expect.anything(), "org-1", "Alice", "acct-me");
+    expect(localStorage.getItem(INVITATION_STORAGE_KEY)).toBeNull();
   });
 
-  it("holds the invitation until the session can join", async () => {
-    const view = openLink(false);
-    await act(async () => {});
-    expect(screen.queryByTestId("invite-accept")).not.toBeInTheDocument();
-
-    view.rerender(<InvitationPrompt enabled />);
-    expect(await screen.findByTestId("invite-accept")).toBeInTheDocument();
+  it("asks for a name first when there is none", async () => {
+    h.name = "";
+    localStorage.setItem(INVITATION_STORAGE_KEY, "tok");
+    render(<InvitationPrompt enabled />);
+    fireEvent.click(await screen.findByRole("button", { name: /join workspace/i }));
+    await waitFor(() => expect(h.enterJoinedWorkspaceForName).toHaveBeenCalledWith("org-1"));
   });
 
-  it("goes straight into the joined workspace when a display name is chosen", async () => {
-    localStorage.setItem("chat-username", "Bob");
-    openLink();
-    fireEvent.click(await screen.findByTestId("invite-accept"));
-    await waitFor(
-      () =>
-        expect(h.enterWorkspace).toHaveBeenCalledWith(
-          expect.anything(),
-          "ns1",
-          "Bob",
-          "me",
-        ),
-      ENTERED,
-    );
-    expect(h.listSubgroups).toHaveBeenCalledWith("ns1");
-    expect(h.enterJoinedWorkspaceForName).not.toHaveBeenCalled();
+  it("says why a token could not be redeemed, and keeps it", async () => {
+    h.joinGroup.mockResolvedValue({ data: null, error: { code: 404, message: "invite expired" } });
+    localStorage.setItem(INVITATION_STORAGE_KEY, "tok");
+    render(<InvitationPrompt enabled />);
+    fireEvent.click(await screen.findByRole("button", { name: /join workspace/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("invite expired");
+    expect(localStorage.getItem(INVITATION_STORAGE_KEY)).toBe("tok");
   });
 
-  it("hands the joined workspace to the name step when no name is chosen yet", async () => {
-    openLink();
-    fireEvent.click(await screen.findByTestId("invite-accept"));
-    await waitFor(
-      () => expect(h.enterJoinedWorkspaceForName).toHaveBeenCalledWith("ns1"),
-      ENTERED,
-    );
-    expect(h.enterWorkspace).not.toHaveBeenCalled();
-  });
-
-  it("looks the identity up when the join never answered but landed", async () => {
-    h.joinGroup.mockReturnValue(failure(500, "The request was aborted"));
-    openLink();
-    fireEvent.click(await screen.findByTestId("invite-accept"));
-    // Settled against the namespace list, so the node already held it: the
-    // dialog says so and goes in on "Done".
-    fireEvent.click(await screen.findByTestId("invite-done"));
-    await waitFor(() =>
-      expect(h.enterJoinedWorkspaceForName).toHaveBeenCalledWith("ns1"),
-    );
-    expect(h.resolveCurrentMemberIdentity.mock.calls[0]?.[0]).toBe("ns1");
-  });
-
-  it("stays on syncing, and does not go in, until the channels have been read", async () => {
-    localStorage.setItem("chat-username", "Bob");
-    h.listSubgroups.mockResolvedValue({
-      data: null,
-      error: { code: 503, message: "not synced yet" },
-    });
-    openLink();
-    fireEvent.click(await screen.findByTestId("invite-accept"));
-    await waitFor(() =>
-      expect(screen.getByTestId("invite-prompt")).toHaveAttribute(
-        "data-stage",
-        "syncing",
-      ),
-    );
-    expect(peekInvitation()).toBeNull();
-    await waitFor(() => expect(h.listSubgroups).toHaveBeenCalled());
-    expect(h.enterWorkspace).not.toHaveBeenCalled();
-  });
-
-  // Every workspace starts with #general, so an empty channel list right
-  // after the join is the node not having synced yet, not an empty
-  // workspace. Taking it as an answer closed the dialog on "You're in" and
-  // went into a workspace with nothing in it.
-  it("stays on syncing while the channel list comes back empty", async () => {
-    localStorage.setItem("chat-username", "Bob");
-    h.listSubgroups.mockResolvedValue({ data: [], error: null });
-    openLink();
-    fireEvent.click(await screen.findByTestId("invite-accept"));
-    await waitFor(() => expect(h.listSubgroups).toHaveBeenCalled());
-    await act(async () => {});
-    expect(screen.getByTestId("invite-prompt")).toHaveAttribute("data-stage", "syncing");
-    expect(h.enterWorkspace).not.toHaveBeenCalled();
-  });
-
-  // "Continue in background" takes the dialog down while the channels are
-  // still on their way. The read went on, and when it finished, up to a minute
-  // later, the page was reloaded into the workspace wherever the person had
-  // gone meanwhile. Carrying on means staying where you are.
-  it("does not go in later once the person carried on before the channels arrived", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    try {
-      localStorage.setItem("chat-username", "Bob");
-      h.listSubgroups.mockResolvedValue({ data: [], error: null });
-      openLink();
-      fireEvent.click(await screen.findByTestId("invite-accept"));
-      await waitFor(() =>
-        expect(screen.getByTestId("invite-prompt")).toHaveAttribute("data-stage", "syncing"),
-      );
-      // A sync slow enough to offer carrying on.
-      await act(() => vi.advanceTimersByTimeAsync(JOIN_SYNC_WATCHDOG_MS));
-      fireEvent.click(await screen.findByTestId("invite-continue"));
-      await waitFor(() =>
-        expect(screen.queryByTestId("invite-prompt")).not.toBeInTheDocument(),
-      );
-
-      // The channels land afterwards.
-      h.listSubgroups.mockResolvedValue({
-        data: [{ groupId: "sg-general", alias: "general" }],
-        error: null,
-      });
-      await act(() => vi.advanceTimersByTimeAsync(5_000));
-      expect(h.listSubgroups.mock.calls.length).toBeGreaterThan(1);
-      expect(h.enterWorkspace).not.toHaveBeenCalled();
-      expect(h.enterJoinedWorkspaceForName).not.toHaveBeenCalled();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("says why a refused invitation did not join, and goes nowhere", async () => {
-    h.joinGroup.mockReturnValue(failure(409, "member was removed"));
-    h.listNamespaces.mockResolvedValue([]);
-    openLink();
-    fireEvent.click(await screen.findByTestId("invite-accept"));
-    expect(await screen.findByTestId("invite-error")).toHaveTextContent(
-      "You can't join this workspace with this invitation. Ask an admin to invite you again.",
-    );
-    expect(peekInvitation()).toBeNull();
-    expect(screen.queryByTestId("invite-retry")).not.toBeInTheDocument();
-    expect(h.enterWorkspace).not.toHaveBeenCalled();
-    expect(h.enterJoinedWorkspaceForName).not.toHaveBeenCalled();
+  it("Not now drops the invitation", async () => {
+    localStorage.setItem(INVITATION_STORAGE_KEY, "tok");
+    render(<InvitationPrompt enabled />);
+    fireEvent.click(await screen.findByRole("button", { name: /not now/i }));
+    expect(localStorage.getItem(INVITATION_STORAGE_KEY)).toBeNull();
   });
 });

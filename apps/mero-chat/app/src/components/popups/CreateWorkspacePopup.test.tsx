@@ -67,24 +67,16 @@ vi.mock("@calimero-network/mero-ui", () => ({
   ),
 }));
 
-vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  getNodeUrl: () => "http://localhost:2428",
+vi.mock("../../api/meroJsClient", () => ({
+  isDelegatedSession: () => session.isDelegated,
 }));
 
-// The session admin, as `MeroJsBridge` hands it out: the "is chat installed"
-// listing and the install both go through it, never a raw node route.
-vi.mock("../../api/meroJsClient", () => ({
-  getMeroJs: () => ({
-    isDelegated: session.isDelegated,
-    applicationId: session.applicationId,
-    admin: {
-      listApplications: mockListApplications,
-      getRegistryVersions: mockGetRegistryVersions,
-      installApplication: mockInstallApplication,
-    },
-  }),
-  isDelegatedSession: () => session.isDelegated,
+// Calimero 1.0 has nothing to look up or install: channels come from chat's
+// package. The workspace is founded under whatever the resolver answers.
+vi.mock("../../utils/installedApps", () => ({
+  AppNotInstalledError: class AppNotInstalledError extends Error {},
+  resolveInstalledAppId: async (preferred: string) => preferred,
+  installConfiguredApp: async () => "app-1",
 }));
 
 vi.mock("../../api/dataSource/groupApiDataSource", () => ({
@@ -346,106 +338,6 @@ describe("CreateWorkspacePopup", () => {
     await waitFor(() => {
       expect(onSuccess).toHaveBeenCalledWith("group-1");
     });
-  });
-
-  it("offers to install instead of falling back to another installed app", async () => {
-    // Node has a different app installed. The old code returned appIds[0]
-    // here and created the workspace against mero-meet et al.
-    mockListApplications.mockResolvedValue({ apps: [{ id: "some-other-app" }] });
-
-    render(<CreateWorkspacePopup onSuccess={vi.fn()} onCancel={vi.fn()} />);
-    fireEvent.change(screen.getByRole("textbox", { name: /namespace name/i }), {
-      target: { value: "Team Space" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /^install$/i })).toBeInTheDocument();
-    });
-    expect(mockCreateGroup).not.toHaveBeenCalled();
-  });
-
-  it("installs the configured app and then creates the workspace", async () => {
-    mockListApplications
-      .mockResolvedValueOnce({ apps: [] })
-      .mockResolvedValue({ apps: [{ id: "app-1" }] });
-    mockGetRegistryVersions.mockResolvedValue(["3.1.2", "3.1.1"]);
-    mockInstallApplication.mockResolvedValue({ applicationId: "app-1" });
-
-    const onSuccess = vi.fn();
-    render(<CreateWorkspacePopup onSuccess={onSuccess} onCancel={vi.fn()} />);
-    fireEvent.change(screen.getByRole("textbox", { name: /namespace name/i }), {
-      target: { value: "Team Space" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /^install$/i })).toBeInTheDocument();
-    });
-    fireEvent.click(screen.getByRole("button", { name: /^install$/i }));
-
-    await waitFor(() => {
-      // By registry coordinates — the newest published version. The node
-      // refuses the old `{ url, metadata }` body (deny_unknown_fields).
-      expect(mockInstallApplication).toHaveBeenCalledWith({
-        package: "com.calimero.chat",
-        version: "3.1.2",
-      });
-    });
-    await waitFor(() => {
-      expect(onSuccess).toHaveBeenCalledWith("group-1");
-    });
-  });
-
-  it("reports a mismatch when the installed app id is not the configured one", async () => {
-    mockListApplications.mockResolvedValue({ apps: [] });
-    mockGetRegistryVersions.mockResolvedValue(["3.1.2"]);
-    mockInstallApplication.mockResolvedValue({ applicationId: "different-app" });
-
-    render(<CreateWorkspacePopup onSuccess={vi.fn()} onCancel={vi.fn()} />);
-    fireEvent.change(screen.getByRole("textbox", { name: /namespace name/i }), {
-      target: { value: "Team Space" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /^install$/i })).toBeInTheDocument();
-    });
-    fireEvent.click(screen.getByRole("button", { name: /^install$/i }));
-
-    await waitFor(() => {
-      expect(screen.getByText(/expects app-1/i)).toBeInTheDocument();
-    });
-    expect(mockCreateGroup).not.toHaveBeenCalled();
-  });
-
-  it("on an account, founds under the registry id without listing the node's applications", async () => {
-    // An account has no "installed" set: a relay's `/admin-api/applications`
-    // is not its to read (403) and its contexts are created under the id the
-    // registry derives for chat's package, which mero-react resolved.
-    session.isDelegated = true;
-    session.applicationId = "registry-app-id";
-    mockListApplications.mockRejectedValue(new Error("HTTP 403"));
-
-    const onSuccess = vi.fn();
-    render(<CreateWorkspacePopup onSuccess={onSuccess} onCancel={vi.fn()} />);
-    fireEvent.change(screen.getByRole("textbox", { name: /namespace name/i }), {
-      target: { value: "Team Space" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
-
-    await waitFor(() => {
-      expect(mockCreateGroup).toHaveBeenCalledWith({
-        applicationId: "registry-app-id",
-        name: "Team Space",
-      });
-    });
-    expect(mockListApplications).not.toHaveBeenCalled();
-    expect(screen.queryByRole("button", { name: /^install$/i })).not.toBeInTheDocument();
-    await waitFor(() => {
-      expect(onSuccess).toHaveBeenCalledWith("group-1");
-    });
-    expect(mockAddToast).not.toHaveBeenCalled();
   });
 
   it("on an account, says so when the cloud refused to host the new workspace", async () => {

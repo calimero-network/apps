@@ -12,14 +12,13 @@ export default defineConfig({
     globals: true,
     setupFiles: "./src/test/setup.ts",
     exclude: ["**/node_modules/**", "**/e2e/**"],
-    server: {
-      deps: {
-        // The platform SDK ships extensionless directory imports (e.g.
-        // `export … from "./bridge"`) that Vite resolves but Node's raw ESM
-        // loader rejects. Inline it so vitest transforms it through Vite.
-        inline: [/@calimero-network\/mero-platform/],
-      },
-    },
+  },
+  server: {
+    // 5173 exactly: the origin `merod local` trusts passkey ceremonies from
+    // (`pnpm dev:local mero-chat` passes it too). `strictPort` so a busy port
+    // fails instead of silently moving to an origin no passkey works on.
+    port: 5173,
+    strictPort: true,
   },
   plugins: [
     servedAssetsFallback(),
@@ -32,7 +31,7 @@ export default defineConfig({
         name: "Calimero Chat",
         short_name: "Calimero",
         description:
-          "Calimero Chat is a P2P chat application built on top of the Calimero Network.",
+          "Calimero Chat: team chat with channels, threads and DMs on Calimero.",
         theme_color: "#f6f7fb",
         background_color: "#f6f7fb",
         display: "standalone",

@@ -16,9 +16,8 @@ app/playwright-report/
 app/test-results/
 app/blob-report/
 
-# merobox runtime data (~400 MB of node state)
-logic/workflows/data/
-logic/workflows/**/.pids/
+# component builds (mero-component build / bundle)
+logic/dist/
 
 # misc
 .DS_Store

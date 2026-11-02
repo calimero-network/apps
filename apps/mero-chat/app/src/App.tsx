@@ -1,9 +1,8 @@
 import { Routes, Route, Navigate } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
+import { useCalimero as useMero } from "./api/calimero";
 import { useEffect, useState, lazy, Suspense } from "react";
 import { LoadingSpinner } from "./components/LoadingSpinner";
 import { isNamespaceReady } from "./utils/session";
-import { hasLiveSession } from "./utils/authTokens";
 import { ToastProvider, useToast } from "./contexts/ToastContext";
 import { ToastManager } from "./components/common/ToastManager";
 import InvitationPrompt from "./components/popups/InvitationPrompt";
@@ -40,22 +39,15 @@ function App() {
   // the background overnight — is normal use, not a reason to destroy someone's
   // session. Staying signed in costs nothing extra in exposure either, since the
   // refresh token sits in the same localStorage the access token already does.
-  // Token lifetime is handled underneath us: core's access tokens last an hour,
-  // and mero-js silently refreshes them on the first 401.
+  // Token lifetime is handled underneath us: mero-js swaps the single-use
+  // refresh token on a 401, and the stored session is kept current after it.
 
   // canEnterApp requires both a valid auth session AND a workspace the user
   // entered (`isNamespaceReady`: the id last entered, still the current group).
   // It survives reloads so a returning user lands back in their workspace, but
   // logout and a fresh Connect clear it, so a fresh login still picks one
   // rather than jumping straight to Home on stale localStorage values.
-  //
-  // `isAuthenticated` is reactive from mero-react but lags `false` for a beat
-  // right after a fresh connect (its `/auth/validate` can cold-start 503). The
-  // client-side navigate that workspace entry does would then bounce back to the
-  // picker (fixed only by a manual reload). Treat a stored, non-expired token as
-  // a valid session so entry doesn't flap — namespace selection is still required.
-  const canEnterApp =
-    (isAuthenticated || hasLiveSession()) && isNamespaceReady();
+  const canEnterApp = isAuthenticated && isNamespaceReady();
 
   const loading = isLoading && !providerTimedOut;
 
@@ -66,7 +58,7 @@ function App() {
           workspace picker after login, or inside a workspace — and the prompt
           is never torn down mid-join. It waits until the session can join. */}
       <InvitationPrompt
-        enabled={!loading && (isAuthenticated || hasLiveSession())}
+        enabled={!loading && isAuthenticated}
       />
       {loading ? (
         <LoadingSpinner />

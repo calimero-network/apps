@@ -19,7 +19,6 @@ on:
     paths:
       - apps/mero-chat/mobile/android/**
       - apps/mero-chat/mobile/e2e/**
-      - apps/mero-chat/logic/**
       - .github/workflows/mero-chat-android-live.yml
       - .github/actions/build-merod-mock-tee/**
   push:
@@ -27,7 +26,6 @@ on:
     paths:
       - apps/mero-chat/mobile/android/**
       - apps/mero-chat/mobile/e2e/**
-      - apps/mero-chat/logic/**
       - .github/workflows/mero-chat-android-live.yml
       - .github/actions/build-merod-mock-tee/**
   workflow_dispatch:

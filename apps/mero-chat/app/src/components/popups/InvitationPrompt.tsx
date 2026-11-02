@@ -1,198 +1,136 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  InvitationDialog,
-  InvitationGate,
-  useInviteRedemption,
-} from "@calimero-network/mero-react";
+import { styled } from "styled-components";
+
+import BaseModal from "../common/popups/BaseModal";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
-import { getMeroJs } from "../../api/meroJsClient";
-import {
-  getGroupMemberIdentity,
-  setGroupMemberIdentity,
-  setStoredGroupAlias,
-} from "../../constants/config";
+import { setStoredGroupAlias } from "../../constants/config";
 import { getMessengerDisplayName } from "../../utils/messengerName";
-import {
-  groupInvitationRedeemer,
-  parseInvitationToken,
-} from "../../utils/redeemInvitation";
-import {
-  enterJoinedWorkspaceForName,
-  enterWorkspace,
-} from "../../utils/enterWorkspace";
+import { dropInvite, pendingInvite } from "../../utils/invitation";
+import { enterJoinedWorkspaceForName, enterWorkspace } from "../../utils/enterWorkspace";
 import { log } from "../../utils/logger";
-import { DM_CONTEXT_ALIAS_PREFIX } from "../../utils/dmContext";
 
-// ── An invitation link, opened ───────────────────────────────────────────────
-//
-// An invitation reaches this app one way: its link is opened. The links page
-// (or a cold desktop start) appends `?invitation=…` to this app's URL, and a
-// running desktop sends a `deep-link` event; `main.tsx` primes the shared
-// capture for both before React mounts.
-//
-// This prompt is mounted above the routes, so it answers on any page: on the
-// workspace picker after login, and inside a workspace when the desktop hands
-// over a link while the chat is open. It is mero-react's `InvitationDialog`:
-// it asks first — joining gives someone else's workspace a new peer — and only
-// joins on "Join".
-//
-// After the join it enters what was joined: straight into the chat when the
-// user already has a display name, else into the picker's name step. Entering
-// is a full page load (see `enterWorkspace`), which would take the dialog down
-// mid-sync, so it waits for the dialog to close: once the workspace's channel
-// list has been read here (`synced`). A person who carries on ("Continue in
-// background") before that stays where they are: going in once the read
-// finishes, up to a minute later, would reload the page under them.
+/**
+ * Offers an opened invitation link once the person is signed in: "Join" redeems
+ * the org invite token and enters the workspace (asking for a name first if
+ * they have none). The token was taken off the address bar before React
+ * mounted (`captureInvite` in `main.tsx`), so it survives the passkey sign-up.
+ *
+ * v1 used mero-react's `InvitationDialog` over a signed namespace invitation;
+ * the steps are the same, the dialog is this app's own.
+ */
 
-/** How long to keep asking for the joined workspace's channels. */
-const CHANNELS_READ_MS = 60_000;
-const CHANNELS_RETRY_MS = 2_000;
+const Container = styled.div`
+  padding: 0.125rem 0;
+  min-width: 280px;
+`;
+
+const Title = styled.div`
+  color: var(--glass-ink);
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+`;
+
+const Message = styled.div`
+  color: color-mix(in srgb, var(--glass-ink) 60%, transparent);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  margin-bottom: 1.25rem;
+`;
+
+const ErrorText = styled.div`
+  color: var(--glass-bad-ink);
+  font-size: 0.8rem;
+  margin-bottom: 1rem;
+`;
+
+const Actions = styled.div`
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+`;
+
+const Button = styled.button<{ $primary?: boolean }>`
+  padding: 0.5rem 1.1rem;
+  border-radius: 10px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid
+    ${({ $primary }) => ($primary ? "transparent" : "color-mix(in srgb, var(--glass-ink) 10%, transparent)")};
+  background: ${({ $primary }) =>
+    $primary ? "var(--glass-ink)" : "color-mix(in srgb, var(--glass-ink) 6%, transparent)"};
+  color: ${({ $primary }) => ($primary ? "var(--glass-on-ink)" : "var(--glass-ink)")};
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
 
 interface Props {
-  /** The session can join: a node and tokens. The invitation waits until then. */
   enabled: boolean;
 }
 
 export default function InvitationPrompt({ enabled }: Props) {
   const api = useRef(new GroupApiDataSource());
-  /** What the join answered with; empty for `already-member`. */
-  const joinedAs = useRef("");
-  /** The namespace whose channel list has come back from the node. */
-  const [readFor, setReadFor] = useState<string | null>(null);
-  /** Going in, held until the dialog has closed. */
-  const [pendingEnter, setPendingEnter] = useState<(() => void) | null>(null);
-  /** The namespace the dialog is waiting on, and whether it was left early. */
-  const waitingFor = useRef<string | null>(null);
-  const carriedOn = useRef<string | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
 
-  const redemption = useInviteRedemption({
-    enabled,
-    parse: (token) => parseInvitationToken(token),
-    redeemer: groupInvitationRedeemer(
-      {
-        joinGroup: (request) => api.current.joinGroup(request),
-        listNamespaces: () => getMeroJs().admin.listNamespaces(),
-      },
-      (memberIdentity) => {
-        joinedAs.current = memberIdentity;
-      },
-    ),
-    onJoined: (namespaceId, teamName) => {
-      setReadFor(null);
-      setPendingEnter(null);
-      carriedOn.current = null;
-      void prepareJoined(api.current, namespaceId, teamName, joinedAs.current, () =>
-        setReadFor(namespaceId),
-      ).then((go) => {
-        if (carriedOn.current === namespaceId) return;
-        setPendingEnter(() => go);
-      });
-    },
-  });
-
-  const { state } = redemption;
-  // The dialog closing on a join whose channels have not been read is the
-  // person carrying on: remember it, so the read finishing does not go in.
   useEffect(() => {
-    if (state.stage === "joined") {
-      waitingFor.current = readFor === state.namespaceId ? null : state.namespaceId;
-    } else if (state.stage === "idle" && waitingFor.current && !pendingEnter) {
-      carriedOn.current = waitingFor.current;
-      waitingFor.current = null;
-    }
-  }, [state, readFor, pendingEnter]);
-  useEffect(() => {
-    if (state.stage !== "idle" || !pendingEnter) return;
-    setPendingEnter(null);
-    pendingEnter();
-  }, [state.stage, pendingEnter]);
+    setToken(enabled ? pendingInvite() : null);
+  }, [enabled]);
 
-  return (
-    <>
-      {/* Logged out with a link opened: "you're invited" and the login, not
-          the landing page. Only while the session cannot join: a stored live
-          token counts as signed in here before `isAuthenticated` catches up. */}
-      {!enabled && (
-        <InvitationGate parse={parseInvitationToken} noun="workspace" appName="Mero Chat" />
-      )}
-      <InvitationDialog
-        redemption={redemption}
-        noun="workspace"
-        appName="Mero Chat"
-        synced={state.stage === "joined" && readFor === state.namespaceId}
-      />
-    </>
-  );
-}
+  if (!token) return null;
 
-/**
- * The join landed (or the node already held it): record what the workspace is
- * called and who we are in it, let it sync and read its channels, then hand
- * back how to go in.
- */
-async function prepareJoined(
-  api: GroupApiDataSource,
-  namespaceId: string,
-  teamName: string | undefined,
-  joinedAs: string,
-  onChannelsRead: () => void,
-): Promise<() => void> {
-  let memberIdentity = joinedAs;
-  try {
-    if (!memberIdentity) {
-      const res = await api.resolveCurrentMemberIdentity(
-        namespaceId,
-        getGroupMemberIdentity(namespaceId),
-      );
-      memberIdentity = res.data?.memberIdentity ?? "";
-    }
-    setGroupMemberIdentity(namespaceId, memberIdentity);
-    const alias = teamName?.trim();
-    if (alias) {
-      setStoredGroupAlias(namespaceId, alias);
-      // Also publish it, so the name is the workspace's rather than this
-      // browser's. Best-effort: a joiner usually lacks CAN_MANAGE_METADATA
-      // and the node refuses, which is fine — the local alias still shows,
-      // and whoever can write it will.
-      void api.setGroupMetadata(namespaceId, alias).catch(() => {});
-    }
-    await api.syncGroup(namespaceId).catch(() => {});
-  } catch (err) {
-    // The join itself stands; entering only lacks a cached identity, which
-    // the picker resolves again.
-    log.warn("InvitationPrompt", "post-join bookkeeping failed", err);
-  }
+  const dismiss = () => {
+    dropInvite();
+    setToken(null);
+    setError("");
+  };
 
-  // The workspace's own data: its channels, as the sidebar reads them. Every
-  // workspace starts with #general, so an empty list is the node not having
-  // synced yet, not an empty workspace: keep asking until a channel is there.
-  // A workspace from before #general can have none; after the deadline it
-  // goes in anyway.
-  const deadline = Date.now() + CHANNELS_READ_MS;
-  for (;;) {
-    const res = await api.listSubgroups(namespaceId).catch(() => null);
-    const channels = (res && !res.error ? res.data ?? [] : []).filter(
-      (sg) => !(sg.alias ?? "").startsWith(DM_CONTEXT_ALIAS_PREFIX),
-    );
-    if (channels.length > 0) {
-      onChannelsRead();
-      break;
-    }
-    if (Date.now() > deadline) {
-      log.warn("InvitationPrompt", "channels of the joined workspace never read");
-      break;
-    }
-    await new Promise((resolve) => setTimeout(resolve, CHANNELS_RETRY_MS));
-  }
-
-  return () => {
-    // One display name serves every workspace: if it is chosen, go straight
-    // in, as joining always did.
-    const existingName = getMessengerDisplayName();
-    if (existingName) {
-      enterWorkspace(api, namespaceId, existingName, memberIdentity);
+  const join = async () => {
+    setBusy(true);
+    setError("");
+    const res = await api.current.joinGroup({ invitation: token });
+    if (res.error || !res.data) {
+      setBusy(false);
+      setError(res.error?.message || "This invitation could not be redeemed.");
       return;
     }
-    enterJoinedWorkspaceForName(namespaceId);
+    const { groupId, memberIdentity } = res.data;
+    dropInvite();
+    const meta = await api.current.getGroupMetadata(groupId).catch(() => null);
+    const alias = meta?.data?.name?.trim();
+    if (alias) setStoredGroupAlias(groupId, alias);
+    log.info("InvitationPrompt", `joined workspace ${groupId}`);
+    const name = getMessengerDisplayName();
+    if (name) enterWorkspace(api.current, groupId, name, memberIdentity);
+    else enterJoinedWorkspaceForName(groupId);
   };
+
+  return (
+    <BaseModal
+      toggle={<span />}
+      open
+      onOpenChange={(open) => {
+        if (!open && !busy) dismiss();
+      }}
+      content={
+        <Container>
+          <Title>You're invited to a workspace</Title>
+          <Message>Join it to see its channels and message its members in Mero Chat.</Message>
+          {error && <ErrorText role="alert">{error}</ErrorText>}
+          <Actions>
+            <Button onClick={dismiss} disabled={busy}>
+              Not now
+            </Button>
+            <Button $primary onClick={() => void join()} disabled={busy}>
+              {busy ? "Joining…" : "Join workspace"}
+            </Button>
+          </Actions>
+        </Container>
+      }
+    />
+  );
 }

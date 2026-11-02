@@ -39,20 +39,6 @@ export interface CreateGroupResponse {
   haError?: string;
 }
 
-export interface GroupInvitationFromAdmin {
-  inviter_identity: string;
-  group_id: string;
-  expiration_height: number;
-  secret_salt: number[];
-  protocol: string;
-  network: string;
-  contract_id: string;
-}
-
-export interface SignedGroupOpenInvitation {
-  invitation: GroupInvitationFromAdmin;
-  inviter_signature: string;
-}
 
 export interface GroupInfo {
   groupId: string;
@@ -110,12 +96,14 @@ export interface CreateInvitationRequest {
 }
 
 export interface CreateInvitationResponse {
-  invitation: SignedGroupOpenInvitation;
+  /** An org invite token (Calimero 1.0); v1 sent a signed namespace invitation. */
+  invitation: string;
   groupAlias?: string;
 }
 
 export interface JoinGroupRequest {
-  invitation: SignedGroupOpenInvitation;
+  /** The invite token. */
+  invitation: string;
   groupAlias?: string;
 }
 

@@ -6,49 +6,9 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { useSubscription } from "@calimero-network/mero-react";
-import type {
-  GroupMembershipEventData,
-  GroupMigrationEventData,
-  SubscriptionEventData,
-} from "@calimero-network/mero-react";
-import type {
-  WebSocketEvent,
-  StateMutationData,
-} from "../types/WebSocketTypes";
+import type { WebSocketEvent } from "../types/WebSocketTypes";
+import { useAppEvents, type AppEvent } from "../api/events";
 import { log } from "../utils/logger";
-
-// Both group-keyed families carry `groupId`, so presence of that field alone
-// no longer separates them: mero-react 6 widened SubscriptionEventData to
-// include GroupMigrationEventData. Narrow on the type tag instead, or a
-// migration event would be handled as a membership change.
-const MEMBERSHIP_KINDS = ["MemberJoined", "MemberAdded", "MemberRemoved"] as const;
-const MIGRATION_KINDS = [
-  "MigrationStarted",
-  "MigrationProgress",
-  "CascadeProgress",
-  "MigrationCompleted",
-] as const;
-
-function isGroupMembershipEvent(
-  event: SubscriptionEventData,
-): event is GroupMembershipEventData {
-  const e = event as GroupMembershipEventData;
-  return (
-    typeof e.groupId === "string" &&
-    (MEMBERSHIP_KINDS as readonly string[]).includes(e.type)
-  );
-}
-
-function isGroupMigrationEvent(
-  event: SubscriptionEventData,
-): event is GroupMigrationEventData {
-  const e = event as GroupMigrationEventData;
-  return (
-    typeof e.groupId === "string" &&
-    (MIGRATION_KINDS as readonly string[]).includes(e.type)
-  );
-}
 
 interface WebSocketContextValue {
   subscribeToContexts: (contextIds: string[]) => void;
@@ -76,46 +36,18 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
   const subscribedContextIdsRef = useRef<string[]>([]);
   subscribedContextIdsRef.current = subscribedContextIds;
 
-  const [subscribedGroupIds, setSubscribedGroupIds] = useState<string[]>([]);
-
   const eventListenersRef = useRef<Set<WebSocketEventListener>>(new Set());
 
-  const eventCallbackFn = useCallback((event: SubscriptionEventData) => {
-    // Group-membership events are a separate id-space: keyed by `groupId`,
-    // no `contextId`, no `data.events`. Coercing everything to
-    // "StateMutation" (as this did) made them indistinguishable from a
-    // context event with no execution events, so every listener dropped them.
-    // Migration events are group-keyed too but carry none of the membership or
-    // state-mutation payload. Coercing them into StateMutation is the same bug
-    // the membership branch above exists to fix, so drop them explicitly until
-    // a consumer needs them.
-    if (isGroupMigrationEvent(event)) {
-      log.info(
-        "WebSocketContext",
-        `[SSE] ignoring migration event ${event.type} on groupId=${event.groupId}`,
-      );
-      return;
-    }
+  const eventCallbackFn = useCallback((event: AppEvent) => {
+    // One event of one app instance, in v1's StateMutation shape: the hooks
+    // that refresh on `MessageSent`, `ReactionUpdated`, ... read it unchanged.
+    const wsEvent: WebSocketEvent = {
+      contextId: event.app,
+      type: "StateMutation",
+      data: { events: [{ kind: event.kind, data: event.data }] },
+    };
 
-    const wsEvent: WebSocketEvent = isGroupMembershipEvent(event)
-      ? {
-          contextId: "",
-          type: "GroupMembership",
-          groupId: event.groupId,
-          membershipKind: event.type,
-          membership: event.data,
-        }
-      : {
-          contextId: event.contextId,
-          type: "StateMutation",
-          data: event.data as StateMutationData,
-        };
-
-    log.info(
-      "WebSocketContext",
-      `[SSE] ${wsEvent.type} received ${wsEvent.groupId ? `groupId=${wsEvent.groupId}` : `contextId=${wsEvent.contextId}`}`,
-      wsEvent.membership ?? wsEvent.data,
-    );
+    log.info("WebSocketContext", `[SSE] ${event.kind} received contextId=${event.app}`);
 
     eventListenersRef.current.forEach((listener) => {
       try {
@@ -126,13 +58,7 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
     });
   }, []);
 
-  // Object form so group ids ride along; core routes the two id-spaces
-  // independently and drops a membership event unless its group is subscribed.
-  const subscriptionInput = useMemo(
-    () => ({ contextIds: subscribedContextIds, groupIds: subscribedGroupIds }),
-    [subscribedContextIds, subscribedGroupIds],
-  );
-  useSubscription(subscriptionInput, eventCallbackFn);
+  useAppEvents(subscribedContextIds, eventCallbackFn);
 
   const subscribeToContexts = useCallback((contextIds: string[]) => {
     const valid = contextIds.filter(Boolean);
@@ -147,12 +73,9 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
     );
   }, []);
 
-  const subscribeToGroup = useCallback((groupId: string) => {
-    if (!groupId) return;
-    setSubscribedGroupIds((prev) =>
-      prev.includes(groupId) ? prev : [...prev, groupId],
-    );
-  }, []);
+  // v1 streamed namespace membership changes; an org has no event stream on
+  // Calimero 1.0, so member lists refresh when they are opened instead.
+  const subscribeToGroup = useCallback((_groupId: string) => {}, []);
 
   const unsubscribeFromContext = useCallback((contextId: string) => {
     setSubscribedContextIds((prev) => prev.filter((id) => id !== contextId));

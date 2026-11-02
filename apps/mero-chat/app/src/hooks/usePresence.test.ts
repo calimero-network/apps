@@ -21,7 +21,7 @@ const mockSetPresence = vi.fn();
 let mockPeers = new Map<string, Record<string, never>>();
 const mockUseEphemeral = vi.fn();
 
-vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+vi.mock("../api/presence", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useEphemeral: (contextId: string | null) => {
     mockUseEphemeral(contextId);

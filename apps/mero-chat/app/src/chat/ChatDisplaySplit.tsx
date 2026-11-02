@@ -15,10 +15,7 @@ import {
   type CurbMessage,
 } from "../components/virtualized-chat";
 import type { ChannelInfo } from "../api/clientApi";
-import {
-  getContextId as getGlobalContextId,
-  getContextIdentity as getExecutorPublicKey,
-} from "@calimero-network/mero-react";
+import { getContextId as getGlobalContextId, getContextIdentity as getExecutorPublicKey } from "../api/calimero";
 import EmojiSelectorPopup from "../emojiSelector/EmojiSelectorPopup";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 import { scrollbarStyles } from "../styles/scrollbar";

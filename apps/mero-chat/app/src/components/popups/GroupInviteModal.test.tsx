@@ -2,9 +2,8 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import GroupInviteModal from "./GroupInviteModal";
 
-const { mockCreateInvitation, mockSerializeGroupInvitationPayload } = vi.hoisted(() => ({
+const { mockCreateInvitation } = vi.hoisted(() => ({
   mockCreateInvitation: vi.fn(),
-  mockSerializeGroupInvitationPayload: vi.fn(),
 }));
 
 vi.mock("@calimero-network/mero-ui", () => ({
@@ -24,14 +23,12 @@ vi.mock("../../api/dataSource/groupApiDataSource", () => ({
 }));
 
 vi.mock("../../utils/invitation", () => ({
-  generateInvitationUrl: (payload: string) => `https://example.com/${payload}`,
-  serializeGroupInvitationPayload: mockSerializeGroupInvitationPayload,
+  generateInvitationUrl: (token: string) => `https://example.com/?invite=${token}`,
 }));
 
 describe("GroupInviteModal", () => {
   beforeEach(() => {
     mockCreateInvitation.mockReset();
-    mockSerializeGroupInvitationPayload.mockReset();
   });
 
   it("renders the modal title and the single invite-link button", () => {
@@ -50,53 +47,17 @@ describe("GroupInviteModal", () => {
     expect(screen.queryByText(/copy desktop link/i)).not.toBeInTheDocument();
   });
 
-  it("serializes the wrapped invitation payload when it loads an invite", async () => {
+  it("mints an org invite token when it opens and links to it", async () => {
     mockCreateInvitation.mockResolvedValue({
-      data: {
-        invitation: {
-          invitation: {
-            inviter_identity: "admin",
-            group_id: "group-1",
-            expiration_height: 42,
-            secret_salt: [1, 2, 3],
-            protocol: "near",
-            network: "testnet",
-            contract_id: "contract.testnet",
-          },
-          inviter_signature: "signature",
-        },
-        groupAlias: "Team Space",
-      },
+      data: { invitation: "tok-123", groupAlias: "Team Space" },
       error: null,
     });
-    mockSerializeGroupInvitationPayload.mockReturnValue("wrapped-payload");
 
-    render(
-      <GroupInviteModal
-        groupId="group-1"
-        isOpen={true}
-        onClose={vi.fn()}
-      />,
-    );
+    render(<GroupInviteModal groupId="org-1" isOpen={true} onClose={vi.fn()} />);
 
     await waitFor(() => {
-      expect(mockCreateInvitation).toHaveBeenCalledWith("group-1");
+      expect(mockCreateInvitation).toHaveBeenCalledWith("org-1");
     });
-
-    expect(mockSerializeGroupInvitationPayload).toHaveBeenCalledWith({
-      invitation: {
-        invitation: {
-          inviter_identity: "admin",
-          group_id: "group-1",
-          expiration_height: 42,
-          secret_salt: [1, 2, 3],
-          protocol: "near",
-          network: "testnet",
-          contract_id: "contract.testnet",
-        },
-        inviter_signature: "signature",
-      },
-      groupAlias: "Team Space",
-    });
+    expect(await screen.findByText(/copy invite link/i)).toBeInTheDocument();
   });
 });

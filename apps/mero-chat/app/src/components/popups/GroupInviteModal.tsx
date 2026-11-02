@@ -1,10 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { styled, keyframes } from "styled-components";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
-import {
-  generateInvitationUrl,
-  serializeGroupInvitationPayload,
-} from "../../utils/invitation";
+import { generateInvitationUrl } from "../../utils/invitation";
 
 const spin = keyframes`to { transform: rotate(360deg); }`;
 const fadeUp = keyframes`
@@ -233,12 +230,8 @@ export default function GroupInviteModal({
         return;
       }
 
-      setInvitationPayload(
-        serializeGroupInvitationPayload({
-          invitation: response.data.invitation,
-          groupAlias: response.data.groupAlias,
-        }),
-      );
+      // An org invite token (minted with the inviter's passkey).
+      setInvitationPayload(response.data.invitation);
       setLoading(false);
     };
 

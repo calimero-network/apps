@@ -4,23 +4,24 @@ import { render, renderHook, act } from "@testing-library/react";
 import { WebSocketProvider, useWebSocket, useWebSocketEvents } from "./WebSocketContext";
 import type { WebSocketEvent } from "../types/WebSocketTypes";
 
-// Capture the event-callback passed to useSubscription so tests can fire events directly.
-let capturedEventCallback: ((event: WebSocketEvent) => void) | null = null;
-// Capture the ids argument so tests can assert group subscriptions ride along.
-let capturedSubscriptionInput: unknown = null;
+import type { AppEvent } from "../api/events";
 
-vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  useSubscription: vi.fn((input: unknown, callback: unknown) => {
-    capturedSubscriptionInput = input;
-    capturedEventCallback = callback as (event: WebSocketEvent) => void;
+// Capture the callback and app list handed to useAppEvents, so tests can fire
+// events directly and see which apps are streamed.
+let capturedEventCallback: ((event: AppEvent) => void) | null = null;
+let capturedApps: string[] = [];
+
+vi.mock("../api/events", () => ({
+  useAppEvents: vi.fn((apps: string[], callback: (event: AppEvent) => void) => {
+    capturedApps = apps;
+    capturedEventCallback = callback;
   }),
 }));
 
 beforeEach(() => {
   vi.clearAllMocks();
   capturedEventCallback = null;
-  capturedSubscriptionInput = null;
+  capturedApps = [];
 });
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -39,7 +40,8 @@ function makeEvent(contextId = "ctx-1"): WebSocketEvent {
 
 async function fireEvent(event: WebSocketEvent) {
   if (!capturedEventCallback) throw new Error("eventCallback not captured");
-  await act(() => capturedEventCallback!(event));
+  const kind = event.data?.events?.[0]?.kind ?? event.type;
+  await act(() => capturedEventCallback!({ app: event.contextId, kind }));
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -149,57 +151,10 @@ describe("useWebSocketEvents", () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
-  it("passes group ids to useSubscription so membership events are routed", () => {
+  it("streams the apps it is subscribed to", () => {
     const { result } = renderHook(() => useWebSocket(), { wrapper });
-
-    act(() => result.current.subscribeToGroup("group-1"));
-
-    // core drops a GroupMembership event unless its group id was subscribed
-    expect(capturedSubscriptionInput).toEqual(
-      expect.objectContaining({ groupIds: ["group-1"] }),
-    );
-  });
-
-  it("delivers group-membership events as GroupMembership, not StateMutation", async () => {
-    const listener = vi.fn();
-    renderHook(() => useWebSocketEvents(listener), { wrapper });
-
-    // Shape of core's untagged NodeEvent group variant: no contextId, no
-    // data.events. Previously coerced to StateMutation and silently dropped.
-    await fireEvent({
-      groupId: "group-1",
-      type: "MemberJoined",
-      data: { memberAccount: "a".repeat(64), role: "Member" },
-    } as unknown as WebSocketEvent);
-
-    expect(listener).toHaveBeenCalledTimes(1);
-    expect(listener).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "GroupMembership",
-        groupId: "group-1",
-        membershipKind: "MemberJoined",
-      }),
-    );
-  });
-
-  it("drops group-migration events instead of treating them as membership or state mutations", async () => {
-    const listener = vi.fn();
-    renderHook(() => useWebSocketEvents(listener), { wrapper });
-
-    // Migration events are group-keyed like membership events, so a guard that
-    // only checks for `groupId` would misclassify them.
-    await fireEvent({
-      groupId: "group-1",
-      type: "MigrationStarted",
-      data: {
-        fromVersion: "1.0.0",
-        toVersion: "2.0.0",
-        toStateVersion: 2,
-        localContextsTotal: 3,
-      },
-    } as unknown as WebSocketEvent);
-
-    expect(listener).not.toHaveBeenCalled();
+    act(() => result.current.subscribeToContexts(["app-1", "", "app-2"]));
+    expect(capturedApps).toEqual(["app-1", "app-2"]);
   });
 
   it("uses the latest listener reference when callback prop changes", async () => {

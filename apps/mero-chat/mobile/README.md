@@ -1,5 +1,14 @@
 # Mero Chat — native mobile apps
 
+> **Status: still v1.** The contract and the web frontend moved to the 1.0 runtime (component SDK,
+> app instances, orgs, passkeys; see [`../README.md`](../README.md#mobile)). These native apps still
+> go through the v1 Swift and Kotlin SDKs (relay, contexts, namespace invitations, the v1 contract's
+> snake_case methods), and their pinned SDKs have no 1.0 client to replace that with. Until they do,
+> the apps work only against a v1 deployment of the app. The live suites (`e2e/run-relay.sh`, the
+> `Mero Chat Android live` / `iOS live` workflows) bundle `../logic` with cargo-mero for a v1 relay,
+> which the component crate no longer is: they no longer run on changes to `../logic`, and running
+> them needs the v1 contract from before the port (`git show c0f46f285:apps/mero-chat/logic`).
+
 Native iOS and Android clients for Mero Chat, next to the web frontend (`../app`) and the
 contract (`../logic`, package `com.calimero.chat`).
 

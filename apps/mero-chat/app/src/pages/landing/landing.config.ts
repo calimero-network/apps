@@ -11,22 +11,21 @@
 import { CloudUpload, Heart, Lock, MessageBubble, ShieldCheck, Zap } from '@calimero-network/mero-icons';
 
 import Animation from './animation';
-import LoginPopup from './loginPopup';
 import type { LandingConfig } from './landingTypes';
 
 export const CONFIG: LandingConfig = {
   name: "Mero Chat",
   packageId: "com.calimero.chat",
-  tagline: "Private team chat on your own nodes: channels, threads and direct messages with no central server.",
+  tagline: "Private team chat for your organization: channels, threads and direct messages.",
   dir: "mero-chat",
   markSrc: "/icons/icon-192x192.png",
   iconSrc: "/icons/icon-512x512.png",
-  availability: "web+desktop",
+  availability: "web",
   tint: "#ffc93c",
-  trust: ["Channels, threads and DMs", "No central server", "Messages on your nodes"],
+  trust: ["Channels, threads and DMs", "No passwords", "Only members can read it"],
   explainer: [
-    "Team chat in the shape you already know — a workspace with public and private channels, threads, reactions and direct messages. The difference is where it lives: every channel is a Calimero context on your own nodes and the nodes of the people you invite, not on a vendor’s servers.",
-    "Nobody in the middle can read, mine or lose your conversations. There is no seat to pay for when someone joins, and nothing to export if you ever leave, because the history is already yours.",
+    "Team chat in the shape you already know — a workspace with public and private channels, threads, reactions and direct messages. The difference is who can read it: every channel is a Calimero app instance that only the members it names can reach, on attested nodes.",
+    "Nobody in the middle can read or mine your conversations. Your account is a passkey, a workspace is an organization you own, and an invitation is a link only you can mint.",
   ],
   features: [
     {
@@ -37,7 +36,7 @@ export const CONFIG: LandingConfig = {
     {
       icon: Lock,
       title: "Private by construction",
-      body: "A private channel is its own restricted group. Only its members’ nodes hold the messages, and there is no server copy to leak.",
+      body: "A private channel reaches only the people added to it. Everyone else is refused before the app runs, and is not even told it exists.",
     },
     {
       icon: Heart,
@@ -47,21 +46,21 @@ export const CONFIG: LandingConfig = {
     {
       icon: CloudUpload,
       title: "Files and images",
-      body: "Attach files and images to any message. They are stored as blobs on the nodes in the channel, not on a CDN.",
+      body: "Attach files and images to any message. They are stored as blobs of the channel itself, readable only by its members.",
     },
     {
       icon: Zap,
-      title: "Live, peer to peer",
-      body: "See who is typing and watch messages arrive as they are sent, synced node to node with no server deciding the order.",
+      title: "Live",
+      body: "See who is typing and watch messages arrive as they are sent, every change ordered by the channel’s own log.",
     },
     {
       icon: ShieldCheck,
       title: "Real moderation",
-      body: "Admin, moderator, member and banned roles, enforced when changes merge — not just hidden in the interface.",
+      body: "Admin, moderator, member and banned roles, enforced by the channel’s own code on every call — not just hidden in the interface.",
     },
   ],
   overview: {
-    headline: "Team chat that lives on your nodes, not someone else’s servers.",
+    headline: "Team chat only its members can read.",
     showcase: {
       heading: "A launch, planned in one channel",
       sub: "Recorded from the real app — the composer, the thread panel and the reactions are the ones you get.",
@@ -70,10 +69,10 @@ export const CONFIG: LandingConfig = {
         poster: "/landing/demo-poster.jpg",
         chapters: [
           { at: 0, title: "Open a channel", body: "The team’s launch channel, with mentions, reactions and a busy thread." },
-          { at: 3, title: "Send a message", body: "Type and press Enter. It is written to your node and sent to everyone in the channel." },
+          { at: 3, title: "Send a message", body: "Type and press Enter. It is written to the channel and reaches everyone in it." },
           { at: 8, title: "Reply in a thread", body: "Open the thread and answer there, so the channel stays readable." },
-          { at: 14, title: "React", body: "A thumbs-up says it faster. Reactions sync like everything else." },
-          { at: 18, title: "Direct messages", body: "Switch to a DM and see Theo typing, live, from his own node." },
+          { at: 14, title: "React", body: "A thumbs-up says it faster. Reactions arrive live like everything else." },
+          { at: 18, title: "Direct messages", body: "Switch to a DM and see Theo typing, live." },
         ],
       },
     },
@@ -82,21 +81,21 @@ export const CONFIG: LandingConfig = {
       sub: "Everything you expect from a team chat. The difference is who holds the conversation.",
       themLabel: "A typical cloud team chat",
       rows: [
-        { label: "Where messages live", them: "On the vendor’s servers", us: "On your node, and the nodes of the people in the channel" },
+        { label: "Where messages live", them: "On the vendor’s servers", us: "In the channel’s app instance, sealed on attested nodes" },
         { label: "Who can read them", them: "The vendor, and whoever it grants access", us: "Only the members of that channel" },
         { label: "Adding a teammate", them: "Another seat on the monthly bill", us: "An invite. The app is open source and free" },
-        { label: "Message history", them: "Limited or paywalled on cheaper plans", us: "All of it, kept on your node" },
-        { label: "If the vendor goes away", them: "Your history may go with it", us: "Your node still has every channel" },
+        { label: "Message history", them: "Limited or paywalled on cheaper plans", us: "All of it, paged as you scroll" },
+        { label: "Signing in", them: "A password, and a reset link when it leaks", us: "A passkey on your device" },
       ],
     },
     collaboration: {
-      heading: "How a channel stays in sync",
-      sub: "Each channel is its own context, replicated across the nodes of its members. Messages, threads and reactions merge without a server deciding the order.",
+      heading: "How a channel works",
+      sub: "Each channel is its own app instance with its own log. Messages, threads and reactions are applied in one order, so every member sees the same channel.",
       points: [
-        { title: "Every channel is its own context", body: "Channels and DMs are separate, so a busy channel never slows a quiet one, and a private channel is only on its members’ nodes." },
+        { title: "Every channel is its own instance", body: "Channels and DMs are separate, so a busy channel never slows a quiet one, and a private channel reaches only its members." },
         { title: "Threads are kept apart", body: "Replies live beside the message they answer, so a long thread never crowds the channel." },
         { title: "Typing stays out of history", body: "“Is typing” travels as presence, so it shows live and never ends up in the record." },
-        { title: "Drafts never leave your node", body: "An unsent message is kept locally and is never synced to anyone." },
+        { title: "Drafts are yours alone", body: "An unsent message is kept for you only: no call of anyone else’s reads it." },
       ],
       roles: [
         { name: "Admin", can: "Grants and revokes roles, deletes any message and edits the channel info." },
@@ -104,14 +103,14 @@ export const CONFIG: LandingConfig = {
         { name: "Member", can: "Reads and writes, and edits or deletes their own messages." },
         { name: "Banned", can: "Can no longer post in the channel." },
       ],
-      rolesNote: "Roles are checked when changes merge, not only hidden in the interface — a delete from someone without the right is refused, wherever it came from.",
+      rolesNote: "Roles are checked by the channel’s code on every call, not only hidden in the interface — a delete from someone without the right is refused.",
     },
     audiences: {
       heading: "Made for conversations that are nobody else’s business",
       items: [
-        { label: "Startups & product teams", title: "Plan the roadmap without handing it to a vendor", body: "Launch plans, hiring and customer feedback stay on your team’s own nodes.", uses: ["Private channels", "Threads", "File sharing"] },
+        { label: "Startups & product teams", title: "Plan the roadmap without handing it to a vendor", body: "Launch plans, hiring and customer feedback stay with the people in the channel.", uses: ["Private channels", "Threads", "File sharing"] },
         { label: "Communities & DAOs", title: "A place to talk that the community owns", body: "No platform that can change the rules, read the members or shut the server down.", uses: ["Invite links", "Moderator roles", "Open source"] },
-        { label: "Regulated & public sector", title: "Real-time chat on infrastructure you control", body: "For finance, health and government teams whose conversations cannot sit on a third party’s cloud.", uses: ["Self-hosted nodes", "Roles enforced at merge", "Works offline"] },
+        { label: "Regulated & public sector", title: "Real-time chat on infrastructure you control", body: "For finance, health and government teams whose conversations cannot sit on a third party’s cloud.", uses: ["Attested nodes", "Roles enforced on every call", "Passkey sign-in"] },
         { label: "Friends & families", title: "Group chat without an advertiser in the room", body: "Share photos and plans in a space where nobody is mining the conversation.", uses: ["Direct messages", "Images", "Reactions"] },
       ],
     },
@@ -121,12 +120,11 @@ export const CONFIG: LandingConfig = {
         "# fork calimero-network/apps on GitHub, then",
         "git clone https://github.com/<you>/apps",
         "cd apps && pnpm install",
-        "cargo mero build -p mero-chat",
-        "pnpm -F mero-chat dev   # app on :5173",
+        "pnpm dev:local mero-chat   # merod local + the app on :5173",
       ],
     },
     alwaysOn: true,
-    closing: { title: "Start your first workspace", body: "Connect a node, or install the desktop app that bundles one, then invite the people you talk to." },
+    closing: { title: "Start your first workspace", body: "Sign in with a passkey, create a workspace, then invite the people you talk to." },
   },
   animation: Animation,
   docs: [
@@ -137,10 +135,9 @@ export const CONFIG: LandingConfig = {
         "Mero Chat maps the platform’s nouns onto the ones a chat app already has. Knowing which is which explains who can see what.",
       ],
       concepts: [
-        { term: "Namespace", def: "A workspace — the team you invite people into. Joining it is what makes you a member." },
-        { term: "Subgroup", def: "A channel’s membership. A public channel’s subgroup is open, so any workspace member can join; a private one is restricted to the people added to it." },
-        { term: "Context", def: "One channel or one direct message: its messages, threads, reactions, profiles and roles, replicated only to its members’ nodes." },
-        { term: "Account", def: "Who you are across your devices. A message’s sender and a reaction are stamped with your account, which is how your name is shown next to them." },
+        { term: "Organization", def: "A workspace — the team you invite people into. Joining it is what makes you a member." },
+        { term: "App instance", def: "One channel or one direct message: its messages, threads, reactions, profiles and roles. A public channel reaches every member of the workspace; a private one only the people added to it." },
+        { term: "Account", def: "Who you are, held by a passkey on your devices. A message’s sender and a reaction are your account, which is how your name is shown next to them." },
         { term: "Presence", def: "Who is here and who is typing. Ephemeral — it is never written into the channel’s history." },
       ],
     },
@@ -148,10 +145,10 @@ export const CONFIG: LandingConfig = {
       id: "start",
       heading: "Getting started",
       steps: [
-        { title: "Connect a node", body: "Press Connect to node and choose your node in the popup, or open the app from the Calimero desktop." },
+        { title: "Sign in", body: "Press Connect and sign in with a passkey, or create an account with a new one." },
         { title: "Create a workspace", body: "Name it and pick the name people will see you by. You are its admin." },
         { title: "Create channels", body: "Press + next to Channels. Choose Public for anyone in the workspace, or Private for only the people you add." },
-        { title: "Invite your team", body: "Share an invite link. Whoever opens it joins the workspace from their own node." },
+        { title: "Invite your team", body: "Share an invite link. Whoever opens it signs in and joins the workspace." },
       ],
     },
     {
@@ -159,7 +156,7 @@ export const CONFIG: LandingConfig = {
       heading: "Working together",
       paragraphs: [
         "Everyone in a channel can post, react, reply in threads and edit or delete their own messages. Admins and moderators can delete any message and ban a member; only admins grant roles.",
-        "Roles are checked by the contract when changes merge, so a message deleted by someone without the right is refused on every node — not just hidden in one interface.",
+        "Roles are checked by the channel’s code on every call, so a delete from someone without the right is refused — not just hidden in one interface.",
       ],
     },
     {
@@ -170,8 +167,8 @@ export const CONFIG: LandingConfig = {
         "Thread replies, kept beside the message they answer.",
         "Reactions: for each message and emoji, the set of accounts that reacted.",
         "Profiles (display name, avatar), roles and per-member read positions.",
-        "Files and images as blobs on the channel members’ nodes, referenced from the message.",
-        "NOT stored: drafts, which stay on your node and are never synced, and typing, which is presence.",
+        "Files and images as blobs of the channel, referenced from the message.",
+        "Drafts, readable by you alone. NOT stored: typing, which is presence.",
       ],
     },
     {
@@ -186,18 +183,17 @@ export const CONFIG: LandingConfig = {
       id: "trouble",
       heading: "When something looks wrong",
       concepts: [
-        { term: "A message you sent is not on their screen yet", def: "Their node has not synced with a peer since you sent it. It arrives when it does; nothing is lost." },
+        { term: "A message you sent is not on their screen yet", def: "Their live connection dropped. It reconnects and re-reads the channel; nothing is lost." },
         { term: "You cannot see a channel", def: "It is private and you have not been added. Ask a member of it to add you." },
-        { term: "Your delete was undone", def: "You deleted someone else’s message without being an admin or moderator. The contract refused it when it merged." },
-        { term: "Creating a channel or workspace fails", def: "The node may be on an older runtime than the app expects. Update the node, then try again." },
+        { term: "Your delete was refused", def: "You tried to delete someone else’s message without being an admin or moderator." },
+        { term: "Attaching a file fails", def: "The cluster runs a Calimero release without blobs for this kind of app yet. Messages still work." },
       ],
     },
   ],
   previewSteps: [
     { title: "Pick a channel", body: "Click between #general, #design and the private #leadership — each keeps its own conversation." },
     { title: "Send a message", body: "Type in the box and press Enter. It lands in the channel straight away." },
-    { title: "A teammate answers", body: "Ada is typing — a moment later her reply arrives from her own node." },
+    { title: "A teammate answers", body: "Ada is typing — a moment later her reply arrives." },
     { title: "React", body: "Click a reaction under any message to add yours, and again to take it back." },
   ],
-  loginPopup: LoginPopup,
 };

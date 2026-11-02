@@ -1,66 +1,49 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const h = vi.hoisted(() => ({
+  createChatApp: vi.fn(),
+  getAppRecord: vi.fn(),
+  listChatApps: vi.fn(),
+}));
+
+vi.mock("../calimero", () => ({ getAccountId: () => "acct-me" }));
+vi.mock("../platform", () => ({
+  createChatApp: h.createChatApp,
+  getAppRecord: h.getAppRecord,
+  listChatApps: h.listChatApps,
+  invalidate: () => {},
+  run: vi.fn(),
+}));
+
 import { ContextApiDataSource } from "./nodeApiDataSource";
 
-const { mockCreateContext } = vi.hoisted(() => ({ mockCreateContext: vi.fn() }));
+beforeEach(() => {
+  for (const fn of Object.values(h)) fn.mockReset();
+});
 
-vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  getNodeUrl: () => "http://localhost:2428",
-}));
-
-vi.mock("../../constants/config", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../constants/config")>()),
-  getApplicationId: () => "app-1",
-}));
-
-vi.mock("../meroJsClient", () => ({
-  getMeroJs: () => ({
-    admin: { createContext: mockCreateContext },
-    isDelegated: false,
-    applicationId: null,
-  }),
-}));
-
-// core's CreateContextRequest, which is `deny_unknown_fields`: ANY other key is
-// a 400 and no context is created. This is the list core's refusal names.
-const CREATE_CONTEXT_KEYS = new Set([
-  "applicationId",
-  "serviceName",
-  "contextSeed",
-  "initializationParams",
-  "groupId",
-  "identitySecret",
-  "name",
-]);
-
-function sentKeys(): string[] {
-  return Object.keys(mockCreateContext.mock.calls[0][0]);
-}
-
-describe("context create sends only the keys core accepts", () => {
-  beforeEach(() => {
-    mockCreateContext.mockReset();
-    mockCreateContext.mockResolvedValue({ contextId: "ctx-1", memberPublicKey: "pk" });
-  });
-
-  it("a channel context — `protocol` and `alias` refused every public AND private channel", async () => {
-    // Asserted as a key SET: `objectContaining` passes with a fatal key beside
-    // the ones it names, which is how `protocol: "near"` stayed green.
+describe("ContextApiDataSource", () => {
+  it("creates a channel's instance from the pending channel with v1's init params", async () => {
+    h.createChatApp.mockResolvedValue("app-1");
     const res = await new ContextApiDataSource().createGroupContext({
-      applicationId: "app-1",
-      groupId: "sg-1",
+      applicationId: "ignored",
+      groupId: "pending:1",
       name: "general",
       initializationParams: { name: "general", context_type: "Channel" },
     });
-
-    expect(res.error).toBeNull();
-    expect(sentKeys().filter((k) => !CREATE_CONTEXT_KEYS.has(k))).toEqual([]);
-    expect(sentKeys().sort()).toEqual(["applicationId", "groupId", "initializationParams", "name"]);
+    expect(h.createChatApp).toHaveBeenCalledWith("pending:1", "general", { name: "general", context_type: "Channel" });
+    expect(res.data).toEqual({ contextId: "app-1", memberPublicKey: "acct-me" });
   });
 
-  it("the legacy createContext path", async () => {
-    await new ContextApiDataSource().createContext({ user: "alice", groupId: "sg-1" });
+  it("answers the account as the identity: there is no key to mint", async () => {
+    await expect(new ContextApiDataSource().createIdentity()).resolves.toEqual({
+      data: { publicKey: "acct-me" },
+      error: null,
+    });
+  });
 
-    expect(sentKeys().filter((k) => !CREATE_CONTEXT_KEYS.has(k))).toEqual([]);
+  it("lists the chat instances the account reaches", async () => {
+    h.listChatApps.mockResolvedValue([{ appId: "app-1", package: "com.calimero.chat", bundle: "b" }]);
+    const res = await new ContextApiDataSource().listContexts();
+    expect(res.data).toEqual([{ contextId: "app-1", applicationId: "com.calimero.chat", lastUpdate: 0, rootHash: "" }]);
   });
 });

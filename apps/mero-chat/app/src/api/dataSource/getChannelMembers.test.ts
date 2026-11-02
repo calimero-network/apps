@@ -14,11 +14,10 @@ vi.mock("../../repositories/names/useNames", () => ({
   nameRepository: { resolve: (id: string) => resolve(id) },
 }));
 
-vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
+vi.mock("../calimero", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   getContextId: () => "ctx-1",
   getContextIdentity: () => "device-key",
-  getNodeUrl: () => "http://localhost:2428",
 }));
 
 import { ClientApiDataSource } from "./clientApiDataSource";
