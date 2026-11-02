@@ -27,7 +27,7 @@ apps/mero-chess/
 ├── app/                     Vite + React; @calimero-apps/connect + mero-js CalimeroClient
 │   └── src/chess.ts         the contract's methods, typed (tested against res/abi.json)
 ├── docs/trust-model.md      the v1 trust model, kept as a worked example (see below)
-└── mobile/                  native iOS / Android apps (still v1: see below)
+└── mobile/                  native iOS / Android apps (moved to 1.0 in #686: see below)
 ```
 
 See [docs/COMPONENT-APPS.md](../../docs/COMPONENT-APPS.md) for how component
@@ -191,14 +191,10 @@ table's state does not carry over: a component table starts empty.
 
 ## Mobile
 
-The native **iOS and Android** apps (`mobile/`) are **not ported**: they reach
-the contract through the v1 Swift and Kotlin SDKs (`MeroKit`, `mero-core`:
-relay sessions, device-signed warrants, contexts and namespace invitations) and
-a client generated from the v1 ABI. Neither SDK speaks the 1.0 API (passkeys,
-app instances, orgs) yet, so they keep working against a v1 deployment of the
-app until those SDKs do; then they move the way the web frontend did (method
-and field names from the table above). Their CI (`mero-chess-ios.yml`,
-`mero-chess-android.yml`) builds and tests them unchanged.
+The native **iOS and Android** apps (`mobile/`) move to Calimero 1.0 in their
+own PR, #686, which depends on this one and merges right after it. They call
+this component ABI: the same method names, parameters and camelCase answers as
+the web frontend (the table above). This PR leaves `mobile/` as it is on `main`.
 
 ## Production
 

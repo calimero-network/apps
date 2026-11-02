@@ -1,12 +1,5 @@
 # Mero Chess — native mobile apps
 
-> **Status: still v1.** The contract and the web frontend moved to the 1.0 runtime (component SDK,
-> app instances, orgs, passkeys; see [`../README.md`](../README.md#mobile)). These native apps still
-> go through the v1 Swift and Kotlin SDKs (relay, contexts, namespace invitations) and a client
-> generated from the v1 ABI, which neither SDK can replace until it speaks the 1.0 API. Until then
-> they work only against a v1 deployment of the app. Do not run `scripts/regenerate.sh` until then:
-> `../logic/res/abi.json` is now the component ABI, which the committed v1 clients do not match.
-
 Native iOS and Android clients for Mero Chess, next to the web frontend (`../app`) and the contract
 (`../logic`, package `com.calimero.mero-chess`). Both apps have the same screens, copy, icons (SF
 Symbols ↔ Material Symbols) and flows.
