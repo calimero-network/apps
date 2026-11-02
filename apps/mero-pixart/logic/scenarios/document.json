@@ -1,0 +1,417 @@
+[
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "join",
+  "args": {
+   "username": "Owner",
+   "avatar": null,
+   "timestamp": "1"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "join",
+  "args": {
+   "username": "Bob",
+   "avatar": null,
+   "timestamp": "2"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "myRole",
+  "args": {},
+  "expect": {
+   "ok": "viewer"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "addLayer",
+  "args": {
+   "layer": {
+    "id": "fg",
+    "name": "Layer",
+    "kind": "fill",
+    "layerIndex": 1,
+    "visible": true,
+    "locked": false,
+    "opacity": 100,
+    "blendMode": "normal",
+    "x": 0,
+    "y": 0,
+    "width": 100,
+    "height": 100,
+    "rotation": 0,
+    "scaleX": 100,
+    "scaleY": 100,
+    "adjustments": {
+     "brightness": 0,
+     "contrast": 0,
+     "saturation": 0,
+     "hue": 0,
+     "exposure": 0,
+     "blur": 0,
+     "invert": false
+    },
+    "createdBy": "x",
+    "createdAt": 1,
+    "updatedAt": 1,
+    "fill": "#ff0000"
+   }
+  },
+  "expect": {
+   "error": "ViewOnly"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addLayer",
+  "args": {
+   "layer": {
+    "id": "bg",
+    "name": "Layer",
+    "kind": "raster",
+    "layerIndex": 0,
+    "visible": true,
+    "locked": false,
+    "opacity": 100,
+    "blendMode": "normal",
+    "x": 0,
+    "y": 0,
+    "width": 100,
+    "height": 100,
+    "rotation": 0,
+    "scaleX": 100,
+    "scaleY": 100,
+    "adjustments": {
+     "brightness": 0,
+     "contrast": 0,
+     "saturation": 0,
+     "hue": 0,
+     "exposure": 0,
+     "blur": 0,
+     "invert": false
+    },
+    "createdBy": "x",
+    "createdAt": 1,
+    "updatedAt": 1,
+    "blobId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   }
+  },
+  "expect": {
+   "ok": "bg"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "grantEditor",
+  "args": {
+   "member": "@bob"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "myRole",
+  "args": {},
+  "expect": {
+   "ok": "editor"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "addLayer",
+  "args": {
+   "layer": {
+    "id": "fg",
+    "name": "Layer",
+    "kind": "fill",
+    "layerIndex": 1,
+    "visible": true,
+    "locked": false,
+    "opacity": 100,
+    "blendMode": "normal",
+    "x": 0,
+    "y": 0,
+    "width": 100,
+    "height": 100,
+    "rotation": 0,
+    "scaleX": 100,
+    "scaleY": 100,
+    "adjustments": {
+     "brightness": 0,
+     "contrast": 0,
+     "saturation": 0,
+     "hue": 0,
+     "exposure": 0,
+     "blur": 0,
+     "invert": false
+    },
+    "createdBy": "x",
+    "createdAt": 1,
+    "updatedAt": 1,
+    "fill": "#ff0000"
+   }
+  },
+  "expect": {
+   "ok": "fg"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "updateLayer",
+  "args": {
+   "id": "fg",
+   "opacity": 50,
+   "x": "-10",
+   "updatedAt": "3"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "updateLayerContent",
+  "args": {
+   "id": "bg",
+   "blobId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "width": 200,
+   "height": 150,
+   "updatedAt": "4"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getLayers",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "id": "bg",
+     "name": "Layer",
+     "kind": "raster",
+     "layerIndex": 0,
+     "visible": true,
+     "locked": false,
+     "opacity": 100,
+     "blendMode": "normal",
+     "x": 0,
+     "y": 0,
+     "width": 200,
+     "height": 150,
+     "rotation": 0,
+     "scaleX": 100,
+     "scaleY": 100,
+     "adjustments": {
+      "brightness": 0,
+      "contrast": 0,
+      "saturation": 0,
+      "hue": 0,
+      "exposure": 0,
+      "blur": 0,
+      "invert": false
+     },
+     "createdBy": "@owner",
+     "createdAt": 1,
+     "updatedAt": 4,
+     "blobId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+     "skewX": 0,
+     "skewY": 0,
+     "flipH": false,
+     "flipV": false
+    },
+    {
+     "id": "fg",
+     "name": "Layer",
+     "kind": "fill",
+     "layerIndex": 1,
+     "visible": true,
+     "locked": false,
+     "opacity": 50,
+     "blendMode": "normal",
+     "x": -10,
+     "y": 0,
+     "width": 100,
+     "height": 100,
+     "rotation": 0,
+     "scaleX": 100,
+     "scaleY": 100,
+     "adjustments": {
+      "brightness": 0,
+      "contrast": 0,
+      "saturation": 0,
+      "hue": 0,
+      "exposure": 0,
+      "blur": 0,
+      "invert": false
+     },
+     "createdBy": "@bob",
+     "createdAt": 1,
+     "updatedAt": 3,
+     "fill": "#ff0000",
+     "skewX": 0,
+     "skewY": 0,
+     "flipH": false,
+     "flipV": false
+    }
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "updateDocument",
+  "args": {
+   "name": "Poster",
+   "width": 800
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "updateDocument",
+  "args": {
+   "name": "mine"
+  },
+  "expect": {
+   "error": "OwnerOnly"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getDocument",
+  "args": {},
+  "expect": {
+   "ok": {
+    "name": "Poster",
+    "description": "",
+    "width": 800,
+    "height": 720,
+    "background": "#00000000",
+    "layerCount": 2,
+    "memberCount": 2,
+    "owner": "@owner"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "deleteLayer",
+  "args": {
+   "id": "bg"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "revokeEditor",
+  "args": {
+   "member": "@bob"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "deleteLayer",
+  "args": {
+   "id": "fg"
+  },
+  "expect": {
+   "error": "ViewOnly"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "transferOwnership",
+  "args": {
+   "newOwner": "@bob"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "myRole",
+  "args": {},
+  "expect": {
+   "ok": "admin"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "myRole",
+  "args": {},
+  "expect": {
+   "ok": "editor"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "updateCursor",
+  "args": {
+   "x": "5",
+   "y": "6",
+   "updatedAt": "9"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getCursors",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "identity": "@bob",
+     "account": "@bob",
+     "x": 5,
+     "y": 6,
+     "updatedAt": 9
+    }
+   ]
+  }
+ }
+]

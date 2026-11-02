@@ -1,73 +1,58 @@
 import { useEffect, useState } from "react";
-import { useMero } from "@calimero-network/mero-react";
-import { ShieldCheck } from "@calimero-network/mero-icons";
-import { useMemberNames } from "@calimero-apps/names";
-import { MembersPanel } from "@calimero-apps/members";
+import { RemoveMemberButton, canChangeRole, canRemoveMember } from "@calimero-apps/members";
 import "@calimero-apps/members/members.css";
 import { useApi } from "../api/useApi";
-import { listTeamContexts } from "../api/teamContexts";
+import { messageOf } from "../api/pixart";
+import { useSignedIn } from "../api/sessionContext";
+import { isAdmin } from "../api/teams";
+import { useTeam } from "../api/useTeam";
 import { useToast } from "../contexts/ToastContext";
-import { extractErrorMessage } from "../utils/errorMessage";
-import {
-  adminsMissingDocumentAccess,
-  effectiveDocumentRole,
-} from "../utils/documentRoles";
+import { effectiveDocumentRole } from "../utils/documentRoles";
 import { truncateMiddle } from "../utils/format";
-import { splitTeeMembers } from "../utils/teeMembers";
 import { useEditorStore } from "../store/editorStore";
 import type { DocumentInfo, MemberRole as ContractMemberRole } from "../types";
 import styles from "./SettingsModal.module.css";
 
-type GovRole = "Admin" | "Member" | string;
-
-interface MemberEntry {
-  identity: string;
-  role: GovRole;
-  name?: string;
-}
-
-// No `selfIdentity` on the member listing: rc.23 removed it (#3522). The
-// caller's own account comes from `getNodeIdentity()` instead.
-
 interface Props {
   type: "team" | "project";
-  /** The id shown in the header row — namespace id (team) or context id (project). */
+  /** The id shown in the header row: the team (org) id, or the project (app instance) id. */
   id: string;
-  /**
-   * The group id (hex 32 bytes) to query members/roles against. For a team this
-   * is the namespace id (same as `id`). For a project this is the subgroup id —
-   * NOT the base58 context id, which the /groups/{id}/members endpoint rejects
-   * with "Invalid group id format: expected hex-encoded 32 bytes".
-   */
-  groupId?: string;
-  /**
-   * The team (namespace) this belongs to. People's names live on the namespace
-   * — the one group everyone is in — so a project's member rows read them from
-   * here. Defaults to `id` for a team.
-   */
+  /** The team (org) whose people are listed. Defaults to `id` for a team. */
   namespaceId?: string;
   name: string;
   onClose: () => void;
 }
 
-export default function SettingsModal({ type, id, groupId, name, namespaceId, onClose }: Props) {
-  const { applicationId } = useMero();
-  // Session-aware: contract calls over the session's transport, governance
-  // through `useMero().admin` (the account admin on a delegated session).
-  const api = useApi();
-  const { admin } = api;
-  const rpcCall = api.call;
-  const { showToast } = useToast();
-  const { nameOf } = useMemberNames(admin, namespaceId ?? (type === "team" ? id : undefined));
-  const membersGroupId = groupId || id;
-  const [members, setMembers] = useState<MemberEntry[]>([]);
-  // TEE nodes admitted to the group: not people, so never in `members`.
-  const [teeMembers, setTeeMembers] = useState<MemberEntry[]>([]);
-  const [selfIdentity, setSelfIdentity] = useState("");
-  const [loadingMembers, setLoadingMembers] = useState(false);
-  const [copied, setCopied] = useState<string | null>(null);
+const TEAM_ROLE_LABEL: Record<string, string> = {
+  owner: "Owner",
+  admin: "Admin",
+  member: "Member",
+  guest: "Guest",
+};
 
-  // Contract-level (merge-enforced) editor roles, project documents only.
+/**
+ * A team's or a project's settings.
+ *
+ * Team: its people (org members) with their roles; the team's owner and admins
+ * promote, demote and remove them (each a passkey step-up).
+ *
+ * Project: the document's name and size (its owner), and the team's people with
+ * their document role beside their team role; the document's owner makes them
+ * editors, viewers or the new owner. The team's owner and admins always edit,
+ * so v1's "promote cascades to every document" step is gone: the contract
+ * reads the team role itself.
+ */
+export default function SettingsModal({ type, id, name, namespaceId, onClose }: Props) {
+  const api = useApi();
+  const rpcCall = api.call;
+  const { client, accountId: selfIdentity, passkey, after } = useSignedIn();
+  const { showToast } = useToast();
+  const teamId = namespaceId ?? (type === "team" ? id : undefined);
+  const team = useTeam(teamId);
+  const [copied, setCopied] = useState<string | null>(null);
+  const [busyMember, setBusyMember] = useState<string | null>(null);
+
+  // Document roles (project only).
   const [contractRoles, setContractRoles] = useState<Record<string, string>>({});
   const [myContractRole, setMyContractRole] = useState<string>("");
   const [pendingEditor, setPendingEditor] = useState<string | null>(null);
@@ -103,8 +88,7 @@ export default function SettingsModal({ type, id, groupId, name, namespaceId, on
     return () => { cancelled = true; };
   }, [type, id, rpcCall]);
 
-  // The document owner/admin (contract) may grant/revoke the editor role. The
-  // grant is admin-gated at merge, so a non-admin's forged grant is rejected by peers.
+  // The document owner grants or revokes the editor role.
   async function setEditor(identity: string, makeEditor: boolean) {
     setPendingEditor(identity);
     try {
@@ -112,7 +96,7 @@ export default function SettingsModal({ type, id, groupId, name, namespaceId, on
       setContractRoles((prev) => ({ ...prev, [identity]: makeEditor ? "editor" : "viewer" }));
       showToast(makeEditor ? "Member can now edit the document." : "Member set to view-only.", "success");
     } catch (err) {
-      showToast(extractErrorMessage(err, "Could not update editor role."));
+      showToast(`Could not update editor role: ${messageOf(err)}`);
     } finally {
       setPendingEditor(null);
     }
@@ -123,11 +107,11 @@ export default function SettingsModal({ type, id, groupId, name, namespaceId, on
     setPendingTransfer(identity);
     try {
       await rpcCall(id, "transfer_ownership", { new_owner: identity });
-      setContractRoles((prev) => ({ ...prev, [identity]: "admin" }));
+      setContractRoles((prev) => ({ ...prev, [identity]: "admin", [selfIdentity]: "editor" }));
       setMyContractRole("editor");
       showToast("Ownership transferred.", "success");
     } catch (err) {
-      showToast(extractErrorMessage(err, "Could not transfer ownership."));
+      showToast(`Could not transfer ownership: ${messageOf(err)}`);
     } finally {
       setPendingTransfer(null);
     }
@@ -145,165 +129,79 @@ export default function SettingsModal({ type, id, groupId, name, namespaceId, on
     try {
       await rpcCall(id, "update_document", { name: docName.trim(), width: w, height: h });
       setDoc((prev) => (prev ? { ...prev, name: docName.trim(), width: w, height: h } : prev));
-      // Reflect the new size in the live editor immediately (don't wait for an
-      // SSE refetch, which may not fire locally) and drop any stale selection
-      // marquee left over at the old canvas bounds.
+      // Reflect the new size in the live editor immediately and drop any stale
+      // selection marquee left over at the old canvas bounds.
       const cur = useEditorStore.getState().doc;
       if (cur) useEditorStore.getState().setDoc({ ...cur, name: docName.trim(), width: w, height: h });
       useEditorStore.getState().setSelection(null);
       showToast("Document updated.", "success");
     } catch (err) {
-      showToast(extractErrorMessage(err, "Could not update document."));
+      showToast(`Could not update document: ${messageOf(err)}`);
     } finally {
       setSavingDoc(false);
     }
   }
 
-  // Who this node is, asked node-level. Not tied to `membersGroupId`: one
-  // account serves every namespace, so this is fetched once per modal.
-  useEffect(() => {
-    let cancelled = false;
-    api.getNodeIdentity()
-      .then((me) => {
-        if (!cancelled) setSelfIdentity(me.accountId ?? "");
-      })
-      .catch(() => {
-        // A node that cannot say who it is leaves moderation disabled rather
-        // than guessing an identity and offering controls that would 403.
-        if (!cancelled) setSelfIdentity("");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [api]);
+  // ── Team roles (team settings) ──────────────────────────────────────────────
 
-  useEffect(() => {
-    let cancelled = false;
-    // The members endpoint only accepts a hex-encoded 32-byte group id; a base58
-    // context id (the fallback when no group id is resolved) is rejected with a
-    // 400 and would surface as an empty list. Skip the doomed request instead.
-    //
-    // A team's roster is the shared MembersPanel's, which reads it itself.
-    if (type === "team" || !/^[0-9a-fA-F]{64}$/.test(membersGroupId)) {
-      setMembers([]);
-      setTeeMembers([]);
-      setLoadingMembers(false);
+  const members = [...team.roles]
+    .map(([identity, role]) => ({ identity, role }))
+    .sort((a, b) =>
+      a.identity === selfIdentity ? -1 : b.identity === selfIdentity ? 1 : a.identity.localeCompare(b.identity),
+    );
+  const myTeamRole = team.roles.get(selfIdentity);
+  const canManage = isAdmin(myTeamRole);
+  const adminCount = members.filter((m) => isAdmin(m.role)).length;
+
+  async function changeTeamRole(identity: string, current: string, next: "admin" | "member") {
+    if (current === next) return;
+    const verdict = canChangeRole({
+      canManage,
+      isSelf: identity === selfIdentity,
+      currentRole: current === "admin" ? "Admin" : "Member",
+      nextRole: next === "admin" ? "Admin" : "Member",
+      adminCount,
+    });
+    if (!verdict.allowed) {
+      showToast(verdict.reason ?? "That change is not allowed.");
       return;
     }
-    setLoadingMembers(true);
-    admin.listGroupMembers(membersGroupId)
-      .then((raw) => {
-        if (cancelled) return;
-        const arr: MemberEntry[] = Array.isArray(raw?.members) ? raw.members : [];
-        const split = splitTeeMembers(
-          arr
-            .map((m) => ({
-              identity: m.identity ?? (m as { memberId?: string }).memberId ?? (m as { id?: string }).id ?? "",
-              role: (m.role as GovRole) ?? "Member",
-              name: m.name?.trim() || undefined,
-            }))
-            .filter((m) => m.identity),
-        );
-        setMembers(split.members);
-        setTeeMembers(split.teeMembers);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setMembers([]);
-        setTeeMembers([]);
-      })
-      .finally(() => { if (!cancelled) setLoadingMembers(false); });
-    return () => { cancelled = true; };
-  }, [type, membersGroupId, admin]);
+    setBusyMember(identity);
+    try {
+      await client.setMember(teamId!, identity, next, passkey());
+      showToast(
+        next === "admin"
+          ? "Member promoted to admin: they manage the team and edit every document."
+          : "Admin demoted to member.",
+        "success",
+      );
+    } catch (err) {
+      showToast(`Could not change that role: ${messageOf(err)}`);
+    } finally {
+      after();
+      team.reload();
+      setBusyMember(null);
+    }
+  }
 
-  // ── Team Admin implies document edit ────────────────────────────────────────
-  //
-  // The two role systems are independent: the contract cannot see team roles, so
-  // a promotion grants nothing on the document and the member reads as "Admin"
-  // while still being refused every edit. Promote/demote cascades from team
-  // settings, but an admin promoted before this existed — or on a document that
-  // refused the call then — is only reachable from the document itself, so
-  // whoever opens settings holding document admin reconciles it.
-  //
-  // Runs only when there is something to fix, so the common case issues no calls.
-  useEffect(() => {
-    if (type !== "project" || myContractRole !== "admin") return;
-    const needed = adminsMissingDocumentAccess(members, contractRoles);
-    if (needed.length === 0) return;
-
-    let cancelled = false;
-    (async () => {
-      for (const identity of needed) {
-        try {
-          await rpcCall(id, "grant_editor", { member: identity });
-          if (cancelled) return;
-          setContractRoles((prev) => ({ ...prev, [identity]: "editor" }));
-        } catch {
-          // Non-fatal and deliberately quiet: the row keeps showing the real
-          // document role, and the explicit button is still there as a fallback.
-        }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [type, id, members, contractRoles, myContractRole, rpcCall]);
+  async function removeMember(identity: string) {
+    setBusyMember(identity);
+    try {
+      await client.removeMember(teamId!, identity, passkey());
+      showToast("Member removed from the team.", "success");
+    } catch (err) {
+      showToast(`Could not remove that member: ${messageOf(err)}`);
+    } finally {
+      after();
+      team.reload();
+      setBusyMember(null);
+    }
+  }
 
   async function copyText(text: string, key: string) {
     await navigator.clipboard.writeText(text);
     setCopied(key);
     setTimeout(() => setCopied(null), 2000);
-  }
-
-  /**
-   * Carry a governance change onto every document in the team.
-   *
-   * Admin implies document edit, so the two directions are not symmetric in
-   * importance: a promotion that fails to grant just leaves someone needing a
-   * manual grant, but a demotion that fails to revoke leaves a former admin
-   * still able to edit — which is the one that matters.
-   *
-   * Runs per document because access is per contract. A document where this
-   * caller is not the admin refuses the call; that is counted and reported
-   * rather than swallowed, because silence there would read as "revoked
-   * everywhere" when it was not.
-   */
-  async function cascadeDocumentRole(
-    identity: string,
-    role: "Admin" | "Member",
-  ): Promise<{ changed: number; failed: number }> {
-    const contexts = await listTeamContexts(admin, membersGroupId);
-    const method = role === "Admin" ? "grant_editor" : "revoke_editor";
-    let changed = 0;
-    let failed = 0;
-    for (const contextId of contexts) {
-      try {
-        await rpcCall(contextId, method, { member: identity });
-        changed += 1;
-      } catch {
-        failed += 1;
-      }
-    }
-    return { changed, failed };
-  }
-
-  // After the shared panel promoted (→ Admin) or demoted (→ Member) someone:
-  // carry the change onto every document. The role itself has already moved,
-  // so a failure here is reported, not thrown back as "nothing happened".
-  async function afterRoleChange(identity: string, role: "Admin" | "Member") {
-    const { changed, failed } = await cascadeDocumentRole(identity, role);
-    const base =
-      role === "Admin" ? "Member promoted to admin." : "Admin demoted to member.";
-    const docs =
-      role === "Admin"
-        ? `Edit access granted on ${changed} document${changed === 1 ? "" : "s"}.`
-        : `Edit access revoked on ${changed} document${changed === 1 ? "" : "s"}.`;
-    if (failed > 0) {
-      // Named explicitly: those documents still have the OLD access.
-      showToast(
-        `${base} ${docs} ${failed} document${failed === 1 ? "" : "s"} could not be updated — open its settings as document admin.`,
-      );
-      return;
-    }
-    showToast(changed > 0 ? `${base} ${docs}` : base, "success");
   }
 
   return (
@@ -324,7 +222,7 @@ export default function SettingsModal({ type, id, groupId, name, namespaceId, on
                 value={docName}
                 onChange={(e) => setDocName(e.target.value)}
                 placeholder="Document name"
-                disabled={myContractRole === "viewer"}
+                disabled={myContractRole !== "admin"}
                 data-testid="doc-name"
               />
               <div className={styles.dimRow}>
@@ -333,7 +231,7 @@ export default function SettingsModal({ type, id, groupId, name, namespaceId, on
                   type="number" min={1} max={8192}
                   value={docW}
                   onChange={(e) => setDocW(e.target.value)}
-                  disabled={myContractRole === "viewer"}
+                  disabled={myContractRole !== "admin"}
                   data-testid="doc-width"
                 />
                 <span className={styles.dimTimes}>×</span>
@@ -342,14 +240,14 @@ export default function SettingsModal({ type, id, groupId, name, namespaceId, on
                   type="number" min={1} max={8192}
                   value={docH}
                   onChange={(e) => setDocH(e.target.value)}
-                  disabled={myContractRole === "viewer"}
+                  disabled={myContractRole !== "admin"}
                   data-testid="doc-height"
                 />
                 <span className={styles.dimUnit}>px</span>
                 <button
                   className="mp-btn mp-btn--primary"
                   onClick={saveDocument}
-                  disabled={savingDoc || myContractRole === "viewer"}
+                  disabled={savingDoc || myContractRole !== "admin"}
                   data-testid="save-doc"
                 >
                   {savingDoc ? "Saving…" : "Save"}
@@ -361,7 +259,7 @@ export default function SettingsModal({ type, id, groupId, name, namespaceId, on
         )}
 
         <div className={styles.row}>
-          <span className="mp-label">{type === "project" ? "Context ID" : "Group ID"}</span>
+          <span className="mp-label">{type === "project" ? "Project ID" : "Team ID"}</span>
           <div className={styles.copyRow}>
             <code className={styles.code}>{id}</code>
             <button className={styles.copyBtn} onClick={() => copyText(id, "id")}>
@@ -370,84 +268,41 @@ export default function SettingsModal({ type, id, groupId, name, namespaceId, on
           </div>
         </div>
 
-        {type === "project" && (
-          <div className={styles.row}>
-            <span className="mp-label">Application ID</span>
-            <div className={styles.copyRow}>
-              <code className={styles.code}>{applicationId || "—"}</code>
-              {applicationId && (
-                <button className={styles.copyBtn} onClick={() => copyText(applicationId, "appId")}>
-                  {copied === "appId" ? "Copied!" : "Copy"}
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
         <div className={styles.divider} />
 
-        {type === "team" ? (
-          <MembersPanel
-            admin={admin}
-            groupId={membersGroupId}
-            namespaceId={namespaceId ?? id}
-            selfAccount={selfIdentity}
-            onRoleChanged={afterRoleChange}
-          />
-        ) : (
         <div className={styles.row}>
           <div className={styles.labelRow}>
             <span className="mp-label">
               Members{members.length > 0 ? ` (${members.length})` : ""}
             </span>
-            {teeMembers.length > 0 && (
-              <span
-                className={styles.teeBadge}
-                title="A hardware-attested node keeps this workspace in sync and available when members are offline."
-              >
-                <ShieldCheck size={12} aria-hidden />
-                TEE enabled · {teeMembers.some((m) => m.role === "RelayTee") ? "Relay" : "Replica"}
-              </span>
-            )}
           </div>
-          {loadingMembers ? (
+          {!team.ready ? (
             <span className={styles.muted}>Loading…</span>
           ) : members.length === 0 ? (
             <span className={styles.muted}>No members found</span>
           ) : (
-            <div className={styles.memberList}>
+            <div className={styles.memberList} data-testid="member-list">
               {members.map((m) => {
-                const isAdmin = m.role === "Admin";
                 const isSelf = m.identity === selfIdentity;
-                // The listing's name, then the one the person set on the team,
-                // which every app shares. The id row below stays for copying.
-                // The team name first: one name per person across every project.
-                const shownName = nameOf(m.identity) || m.name;
+                const shownName = team.nameOf(m.identity);
                 const initial = (shownName?.[0] ?? m.identity[0] ?? "?").toUpperCase();
-                // Document role. `list_roles` only enumerates members who have
-                // opened the document, so an absent entry means plain viewer —
-                // which is exactly what the contract's own `get_role` answers
-                // for an account it has never seen.
-                const documentRole = effectiveDocumentRole(contractRoles, m.identity);
+                const documentRole = effectiveDocumentRole(contractRoles, m.identity, m.role);
                 const isEditor = documentRole !== "viewer";
                 const isOwner = documentRole === "admin";
-                // No "has this member opened it yet" gate. That guarded the
-                // rc.20 model, where the contract had to learn a member's
-                // device→account pairing from their own writes before a grant
-                // could name them. A member id IS an account here, so
-                // `require_account` is a parse and a grant works before the
-                // invitee has ever opened the document — see the contract test
-                // `a_member_can_be_granted_before_they_ever_open_the_document`.
-                // Keeping the gate hid the control from precisely the members
-                // who needed it.
+                // Team owners and admins edit whatever the document says, so
+                // there is nothing to grant them.
                 const canSetEditor =
-                  type === "project" && myContractRole === "admin" && !isSelf && !isOwner;
+                  type === "project" && myContractRole === "admin" && !isSelf && !isOwner && !isAdmin(m.role);
                 const canTransfer =
                   type === "project" && myContractRole === "admin" && !isSelf && !isOwner;
-                const editorBusy = pendingEditor === m.identity;
-                const transferBusy = pendingTransfer === m.identity;
+                const movable = type === "team" && canManage && !isSelf && (m.role === "admin" || m.role === "member");
+                const removable =
+                  type === "team" &&
+                  m.role !== "owner" &&
+                  canRemoveMember({ canManage, isSelf, role: m.role, adminCount }).allowed;
+                const busy = busyMember === m.identity;
                 return (
-                  <div key={m.identity} className={styles.member}>
+                  <div key={m.identity} className={styles.member} data-testid={`member-${m.identity}`}>
                     <span className={styles.memberAvatar}>{initial}</span>
                     <div className={styles.memberInfo}>
                       {shownName && <span className={styles.memberLabel}>{shownName}{isSelf ? " (you)" : ""}</span>}
@@ -458,31 +313,38 @@ export default function SettingsModal({ type, id, groupId, name, namespaceId, on
                         <button
                           className={styles.copyIcon}
                           onClick={() => copyText(m.identity, m.identity)}
-                          title="Copy full identity"
-                          aria-label="Copy full identity"
+                          title="Copy account id"
+                          aria-label="Copy account id"
                         >
                           {copied === m.identity ? "✓" : "⧉"}
                         </button>
                         {!shownName && isSelf && <span className={styles.youTag}>you</span>}
                       </div>
                     </div>
-                    {/* Governance role beside the document role: the two
-                        badges sit side by side, so it is visible that team
-                        governance and document access are different things.
-                        Team settings show the shared MembersPanel instead. */}
-                    <span
-                      className={`${styles.roleBadge} ${isAdmin ? styles.roleAdmin : styles.roleMember}`}
-                      title="Team role (namespace governance)"
-                    >
-                      {isAdmin ? "Admin" : "Member"}
-                    </span>
-                    {/* Document access, for EVERY member — not only those the
-                        document has already heard from, who were the only rows
-                        that used to get a badge at all. */}
+                    {movable ? (
+                      <select
+                        className={styles.roleBtn}
+                        value={m.role}
+                        disabled={busy}
+                        onChange={(e) => void changeTeamRole(m.identity, m.role, e.target.value as "admin" | "member")}
+                        aria-label="Team role"
+                        data-testid={`team-role-${m.identity}`}
+                      >
+                        <option value="member">Member</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                    ) : (
+                      <span
+                        className={`${styles.roleBadge} ${isAdmin(m.role) ? styles.roleAdmin : styles.roleMember}`}
+                        title="Team role"
+                      >
+                        {TEAM_ROLE_LABEL[m.role] ?? m.role}
+                      </span>
+                    )}
                     {type === "project" && (
                       <span
                         className={`${styles.roleBadge} ${isEditor ? styles.roleAdmin : styles.roleMember}`}
-                        title="Document access (merge-enforced)"
+                        title="Document access"
                       >
                         {isOwner ? "Owner" : isEditor ? "Editor" : "Viewer"}
                       </span>
@@ -490,22 +352,30 @@ export default function SettingsModal({ type, id, groupId, name, namespaceId, on
                     {canSetEditor && (
                       <button
                         className={styles.roleBtn}
-                        disabled={editorBusy}
+                        disabled={pendingEditor === m.identity}
                         onClick={() => setEditor(m.identity, !isEditor)}
                         title={isEditor ? "Revoke edit access" : "Allow this member to edit the document"}
                       >
-                        {editorBusy ? "…" : isEditor ? "Make viewer" : "Make editor"}
+                        {pendingEditor === m.identity ? "…" : isEditor ? "Make viewer" : "Make editor"}
                       </button>
                     )}
                     {canTransfer && (
                       <button
                         className={styles.roleBtn}
-                        disabled={transferBusy}
+                        disabled={pendingTransfer === m.identity}
                         onClick={() => transferOwnership(m.identity)}
                         title="Transfer document ownership to this member"
                       >
-                        {transferBusy ? "…" : "Make owner"}
+                        {pendingTransfer === m.identity ? "…" : "Make owner"}
                       </button>
+                    )}
+                    {removable && (
+                      <RemoveMemberButton
+                        label={shownName || truncateMiddle(m.identity, 10, 6)}
+                        disabled={busy}
+                        prompt={`Remove ${shownName || "this member"} from the team?`}
+                        onConfirm={() => void removeMember(m.identity)}
+                      />
                     )}
                   </div>
                 );
@@ -513,7 +383,6 @@ export default function SettingsModal({ type, id, groupId, name, namespaceId, on
             </div>
           )}
         </div>
-        )}
       </div>
     </div>
   );

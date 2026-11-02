@@ -2,15 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { v4 as uuid } from "uuid";
 import { useApi } from "../api/useApi";
-import { listGroupContextRows, listSubgroupRows } from "../api/teamContexts";
 import { resetMethodSupport, rpcWithFallback } from "../api/compat";
-import { readProjectWithJoinRetry } from "../api/loadProject";
 import { mapLimit } from "../utils/concurrency";
 import { useSse } from "../hooks/useSse";
 import { useToast } from "../contexts/ToastContext";
 import { useShallow } from "zustand/react/shallow";
-import { useMemberNames, useMyName } from "@calimero-apps/names";
-import { useMero } from "@calimero-network/mero-react";
+import { useSignedIn } from "../api/sessionContext";
+import { useMyName, useTeam } from "../api/useTeam";
 import { decideProjectName } from "../utils/projectName";
 import { rememberProject } from "../utils/lastVisit";
 import { useEditorStore } from "../store/editorStore";
@@ -67,25 +65,22 @@ export default function EditorPage() {
   const ctxId = projectId ?? "";
   const navigate = useNavigate();
   const { showToast } = useToast();
-  // The session-aware API (see api/useApi). Contract calls go over the
-  // session's transport (node JSON-RPC, or the relay's intents for an
-  // account); blobs and membership through `useMero().admin`, which is the
-  // account admin on a delegated session. Stable for the life of the session,
-  // so these aliases are safe in the callbacks below.
+  // The API (see api/useApi): contract calls, and the document's blobs.
+  // Stable for the life of the session, so these aliases are safe in the
+  // callbacks below.
   const api = useApi();
-  const { admin } = api;
-  const { nodeUrl } = useMero();
+  const { targetKey } = useSignedIn();
   const rpcCall = api.call;
   const adminUploadBlob = api.uploadBlob;
   const adminGetBlob = api.getBlob;
   // The name each person set once for the whole team, shared by every app on it.
-  const { nameOf: teamNameOf } = useMemberNames(admin, teamId);
+  const team = useTeam(teamId);
+  const teamNameOf = team.nameOf;
 
-  // Remember this project for the next open (utils/lastVisit). Not under the
-  // desktop's placeholder team `t` (see main.tsx), which names no real team.
+  // Remember this project for the next open (utils/lastVisit).
   useEffect(() => {
-    if (teamId && teamId !== "t" && ctxId) rememberProject(nodeUrl, teamId, ctxId);
-  }, [nodeUrl, teamId, ctxId]);
+    if (teamId && ctxId) rememberProject(targetKey, teamId, ctxId);
+  }, [targetKey, teamId, ctxId]);
 
   const {
     doc, layers, selectedLayerId, editingMaskOf, showRulers, panels,
@@ -117,7 +112,7 @@ export default function EditorPage() {
 
   const myId = useRef<string>("");
   // Your name in the team: one per team, shared by every project in it.
-  const myName = useMyName(admin, teamId, myId.current);
+  const myName = useMyName(teamId, team);
   const loadedBlobs = useRef<Set<string>>(new Set());
   const lastCursor = useRef(0);
   const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -125,7 +120,6 @@ export default function EditorPage() {
 
   const [members, setMembers] = useState<Member[]>([]);
   const [cursors, setCursors] = useState<CursorState[]>([]);
-  const [subgroupId, setSubgroupId] = useState("");
   const [needName, setNeedName] = useState(false);
   // Whether this account is on this project's roster: null until known.
   const [onProject, setOnProject] = useState<boolean | null>(null);
@@ -137,32 +131,12 @@ export default function EditorPage() {
   const [saving, setSaving] = useState(false);
   const [ready, setReady] = useState(false);
   const [fatal, setFatal] = useState("");
-  // The team was just joined and the project's data has not reached this node
-  // yet: the read is being retried, so this is a wait, not an error.
-  const [syncing, setSyncing] = useState(false);
 
   // ── Identity ────────────────────────────────────────────────────────────
   //
-  // "Me" is the ACCOUNT — what the contract keys members by, what the node
-  // writes as, and what a delegated session executes as on the relay. Asked
-  // node-level (`getNodeIdentity`): one account serves every context, so
-  // neither the context's owned identities (a device key, not a member id)
-  // nor `joinContext().memberPublicKey` (empty through the account admin) is
-  // the answer, and a made-up uuid is never a member of anything.
-  //
-  // Joining first is idempotent and covers the desktop deep-linking straight
-  // into a project created on a peer after we joined the team.
-  const resolveIdentity = useCallback(async (): Promise<string> => {
-    await admin.joinContext(ctxId).catch(() => { /* already joined / not required */ });
-    try {
-      const me = await api.getNodeIdentity();
-      return me?.accountId ?? "";
-    } catch {
-      // Unknown identity leaves "am I a member" false, so the username prompt
-      // shows and `join` records us — rather than inventing a member id.
-      return "";
-    }
-  }, [ctxId, api, admin]);
+  // "Me" is the signed-in ACCOUNT: what the contract keys members, roles,
+  // authorship and cursors by.
+  const resolveIdentity = useCallback(async (): Promise<string> => api.accountId, [api]);
 
   // ── Loaders ───────────────────────────────────────────────────────────────
   //
@@ -268,42 +242,15 @@ export default function EditorPage() {
     resetMethodSupport();
     loadedBlobs.current = new Set();
     setReady(false);
-    setSyncing(false);
     setMembers([]);
     setCursors([]);
 
     let cancelled = false;
     (async () => {
       myId.current = await resolveIdentity();
-      // Resolve the subgroup (group) id this context lives under, for
-      // SettingsModal's governance member/role queries. `/contexts/{id}` does
-      // NOT expose the owning group, so walk the namespace's subgroups and
-      // match by context id. The base58 context id can't be used directly —
-      // `/groups/{id}/members` rejects it ("expected hex-encoded 32 bytes"),
-      // which is why members showed 0. Fall back to the namespace (teamId, hex)
-      // so Settings can still list members if the walk turns up nothing.
       try {
-        let resolved = "";
-        if (teamId) {
-          const subs = await listSubgroupRows(admin, teamId).catch(() => []);
-          for (const sg of subs) {
-            const gid = sg.groupId;
-            const list = await listGroupContextRows(admin, gid).catch(() => []);
-            if (list.some((c) => c.contextId === ctxId)) { resolved = gid; break; }
-          }
-        }
-        if (!cancelled) setSubgroupId(resolved || teamId || "");
-      } catch { /* optional — Settings falls back to namespace scope */ }
-
-      try {
-        const d = await readProjectWithJoinRetry(
-          () => rpcCall<DocumentInfo>(ctxId, "get_document", {}),
-          teamId ?? null,
-          () => cancelled,
-          () => { if (!cancelled) setSyncing(true); },
-        );
+        const d = await rpcCall<DocumentInfo>(ctxId, "get_document", {});
         if (cancelled) return;
-        setSyncing(false);
         if (d) {
           setDoc(d);
           // fit-to-screen-ish default
@@ -311,7 +258,7 @@ export default function EditorPage() {
           setPan(48, 48);
         }
       } catch {
-        if (!cancelled) { setSyncing(false); setFatal("Could not load the project. The node may still be syncing — try reopening."); }
+        if (!cancelled) { setFatal("Could not load the project. Check that it still exists and you are in its team."); }
         return;
       }
 
@@ -325,22 +272,8 @@ export default function EditorPage() {
       if (!cancelled && Array.isArray(ms)) {
         setMembers(ms);
         const alreadyMember = ms.some((m) => m.id === myId.current);
-        const storedName = localStorage.getItem("mp-username") ?? "";
         // Whether to ask for a name is the TEAM's question, decided below.
         setOnProject(alreadyMember);
-        if (alreadyMember && storedName) {
-          // Re-announce even as an existing member. `join` records this device's
-          // device→account pairing before its early return, and that pairing is
-          // the ONLY thing that lets an admin name us in a role grant — the
-          // members list an admin sees comes from the node's group membership,
-          // which knows nothing about accounts. A member whose row predates the
-          // account-keyed contract (or who has never moved a cursor) is otherwise
-          // permanently un-grantable: the grant fails with "that member hasn't
-          // opened this document yet". Idempotent — an unchanged pairing writes
-          // no CRDT delta.
-          rpcCall(ctxId, "join", { username: storedName, avatar: null, timestamp: ts() })
-            .catch(() => {});
-        }
       }
 
       const cs = await rpcCall<CursorState[]>(ctxId, "get_cursors", {}).catch(() => [] as CursorState[]);
@@ -1545,7 +1478,7 @@ export default function EditorPage() {
 
       {!ready && !fatal && (
         <div className={styles.loading}>
-          {syncing ? "Syncing the project from your team…" : "Loading project…"}
+          Loading project…
         </div>
       )}
       {showShowcase && (
@@ -1562,7 +1495,6 @@ export default function EditorPage() {
         <SettingsModal
           type="project"
           id={ctxId}
-          groupId={subgroupId}
           namespaceId={teamId}
           name={doc?.name ?? "Project"}
           onClose={() => setShowSettings(false)}
