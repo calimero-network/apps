@@ -29,6 +29,7 @@ import androidx.compose.material.icons.outlined.Layers
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.Verified
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -60,6 +61,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -68,10 +70,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.calimero.mero.app.MeroAppBackend
-import com.calimero.mero.compose.MeroAppSession
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import network.calimero.docs.app.DocRow
+import network.calimero.docs.app.DocsAppViewModel
 import network.calimero.docs.app.Folder
 import network.calimero.docs.app.FolderIssue
 import network.calimero.docs.app.LoadState
@@ -88,8 +90,7 @@ private const val SEARCH_DEBOUNCE_MS = 300L
 @Composable
 fun WorkspacesScreen(
     backend: MeroAppBackend,
-    session: MeroAppSession,
-    onSignOut: () -> Unit,
+    vm: DocsAppViewModel,
     onOpen: (Workspace) -> Unit,
 ) {
     val model = remember(backend) { WorkspacesModel(backend) }
@@ -136,7 +137,7 @@ fun WorkspacesScreen(
                             EmptyState(
                                 Icons.Outlined.Layers,
                                 "No workspaces yet",
-                                "Create a workspace in Mero Docs on the web or desktop, or accept an invitation there. It shows up here.",
+                                "Open an invitation link on this phone, or create a workspace in Mero Docs on the web. It shows up here.",
                             )
                         }
                     else -> {
@@ -148,7 +149,14 @@ fun WorkspacesScreen(
         }
     }
 
-    if (showAccount) AccountSheet(session = session, onDismiss = { showAccount = false }, onSignOut = onSignOut)
+    if (showAccount) {
+        AccountSheet(
+            vm = vm,
+            account = backend.account,
+            workspaces = { workspaces.map { it.id to it.name } },
+            onDismiss = { showAccount = false },
+        )
+    }
 }
 
 @Composable
@@ -184,29 +192,33 @@ private fun WorkspaceRow(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AccountSheet(
-    session: MeroAppSession,
+    vm: DocsAppViewModel,
+    account: String,
+    workspaces: () -> List<Pair<String, String>>,
     onDismiss: () -> Unit,
-    onSignOut: () -> Unit,
 ) {
     var confirm by remember { mutableStateOf(false) }
+    var approvals by remember { mutableStateOf(false) }
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = DocsTheme.ground) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
             Text("Account", style = DocsTheme.heading(17), modifier = Modifier.align(Alignment.CenterHorizontally))
             Row(Modifier.fillMaxWidth().card(), verticalAlignment = Alignment.CenterVertically) {
-                Avatar(session.account.orEmpty(), "Me", 44.dp)
+                Avatar(account, "Me", 44.dp)
                 Spacer(Modifier.width(12.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text("Signed in", style = DocsTheme.heading(17))
-                    Text(
-                        if (session.hasRelay) "Connected through your relay" else "No relay serves this account yet",
-                        style = DocsTheme.body(14, color = DocsTheme.muted),
-                    )
+                    Text("Connected to your cluster", style = DocsTheme.body(14, color = DocsTheme.muted))
                 }
             }
             DetailsDisclosure(
-                listOf("Account" to (session.account ?: "–"), "Application" to (session.applicationId ?: "–")),
+                listOf("Account" to account, "Application" to DocsFormat.PACKAGE_NAME, "Node" to (vm.nodeUrl ?: "–")),
                 Modifier.fillMaxWidth().card(),
             )
+            SecondaryButton(onClick = { approvals = true }, modifier = Modifier.testTag("account.approvals")) {
+                Icon(Icons.Outlined.Verified, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Approvals")
+            }
             SecondaryButton(onClick = { confirm = true }) {
                 Icon(Icons.AutoMirrored.Outlined.Logout, contentDescription = null, tint = DocsTheme.danger, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
@@ -223,12 +235,13 @@ private fun AccountSheet(
                 TextButton(onClick = {
                     confirm = false
                     onDismiss()
-                    onSignOut()
+                    vm.signOut()
                 }) { Text("Sign out", color = DocsTheme.danger) }
             },
             dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancel") } },
         )
     }
+    if (approvals) ApprovalsSheet(vm, orgs = { workspaces() }, onDismiss = { approvals = false })
 }
 
 /**
@@ -469,7 +482,7 @@ private fun SearchField(
 private fun IssueBanner(issue: FolderIssue) {
     val message =
         when (issue) {
-            FolderIssue.NoContext -> "This folder hasn't reached your relay yet. Pull to refresh in a moment."
+            FolderIssue.NoContext -> "This folder isn't ready yet. Pull to refresh in a moment."
             is FolderIssue.NoAccess -> "This folder is restricted. Ask a workspace admin to add you."
             is FolderIssue.Failed -> "Couldn't read this folder. ${issue.message}"
         }

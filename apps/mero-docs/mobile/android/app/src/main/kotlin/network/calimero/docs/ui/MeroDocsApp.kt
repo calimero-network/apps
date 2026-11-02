@@ -16,7 +16,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -27,46 +30,61 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.calimero.mero.app.MeroAppBackend
+import kotlinx.coroutines.launch
 import network.calimero.docs.app.DocsAppViewModel
 import network.calimero.docs.app.DocumentModel
 import network.calimero.docs.app.Workspace
 import network.calimero.docs.core.DocTarget
+import network.calimero.docs.core.DocsFormat
+import kotlin.coroutines.cancellation.CancellationException
 
 /** Restoring → a splash. Signed out → sign in. Signed in → workspaces, folders, a document. */
 @Composable
-fun MeroDocsApp(
-    vm: DocsAppViewModel,
-    onSignIn: () -> Unit,
-) {
+fun MeroDocsApp(vm: DocsAppViewModel) {
     DocsMaterialTheme {
         val restored by vm.restored.collectAsState()
-        val restoring by vm.session.isRestoring.collectAsState()
-        val backend by vm.session.backend.collectAsState()
-        val revision by vm.session.revision.collectAsState()
-        val auth by vm.session.client.state
-            .collectAsState()
-        val pendingInvitation by vm.session.pendingInvitation.collectAsState()
+        val backend by vm.backend.collectAsState()
+        val revision by vm.revision.collectAsState()
+        val pendingInvitation by vm.pendingInvitation.collectAsState()
+        val scope = rememberCoroutineScope()
+        var joinError by remember { mutableStateOf<String?>(null) }
 
         when {
-            !restored || restoring -> Splash("Restoring your session…")
-            auth.isDelegated && backend != null ->
-                key(revision) {
-                    SignedIn(vm, backend!!)
-                }
-            auth.isDelegated -> Splash("Connecting to your relay…") { SecondaryButton(onClick = vm::signOut, fullWidth = false) { Text("Sign out") } }
-            else -> SignInScreen(auth = auth, onSignIn = onSignIn, onCancel = { vm.session.cancelSignIn() })
+            !restored -> Splash("Restoring your session…")
+            backend != null -> key(revision) { SignedIn(vm, backend!!) }
+            else -> SignInScreen(vm)
         }
 
-        if (pendingInvitation != null) {
+        // An invitation link waits until someone is signed in, then asks.
+        if (pendingInvitation != null && backend != null) {
             AlertDialog(
-                onDismissRequest = { vm.session.dismissPendingInvitation() },
-                confirmButton = { TextButton(onClick = { vm.session.dismissPendingInvitation() }) { Text("OK") } },
-                title = { Text("Open the invitation on the web") },
-                text = {
-                    Text(
-                        "This app reads workspaces you are already in. Accept the invitation in Mero Docs on the web or desktop, and the workspace appears here.",
-                    )
+                onDismissRequest = { vm.dismissInvitation() },
+                title = { Text("Join this workspace?") },
+                text = { Text("You were invited to a Mero Docs workspace. Its folders and documents appear here once you join.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        scope.launch {
+                            try {
+                                vm.joinInvitation()
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (
+                                @Suppress("TooGenericExceptionCaught") e: Exception,
+                            ) {
+                                joinError = DocsFormat.errorText(e)
+                            }
+                        }
+                    }) { Text("Join") }
                 },
+                dismissButton = { TextButton(onClick = { vm.dismissInvitation() }) { Text("Not now") } },
+            )
+        }
+        joinError?.let {
+            AlertDialog(
+                onDismissRequest = { joinError = null },
+                title = { Text("Couldn't join") },
+                text = { Text(it) },
+                confirmButton = { TextButton(onClick = { joinError = null }) { Text("OK") } },
             )
         }
     }
@@ -105,8 +123,7 @@ private fun SignedIn(
         composable("workspaces") {
             WorkspacesScreen(
                 backend = backend,
-                session = vm.session,
-                onSignOut = vm::signOut,
+                vm = vm,
                 onOpen = { ws -> nav.navigate("workspace/${Uri.encode(ws.id)}?name=${Uri.encode(ws.name)}") },
             )
         }

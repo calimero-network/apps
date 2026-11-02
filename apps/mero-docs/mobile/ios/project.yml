@@ -4,7 +4,7 @@
 #   xcodegen generate          # writes MeroDocs.xcodeproj (not committed)
 #   open MeroDocs.xcodeproj
 #
-# Everything that is not a view (the generated contract client, the document
+# Everything that is not a view (the typed contract client, the document
 # reader, comment threads, the view models) is the local SwiftPM package DocsCore/, which
 # `swift test --package-path DocsCore` builds and tests on macOS.
 #
@@ -22,7 +22,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: 6c5f1167d1e586f556f59c326de5f51d034e80dd
+    revision: 37c09f3f96e7d98440f6618eef8a0e83ddee8ebd
   DocsCore:
     path: DocsCore
 
@@ -45,9 +45,9 @@ targets:
           # The node's consent page returns here (`mero-docs://consent?request_id=…&result=…`).
           - CFBundleURLName: network.calimero.docs.consent
             CFBundleURLSchemes: [mero-docs]
-        # Which cluster sign-in uses (Calimero 1.0). MeroNodeURL: a node of your
-        # Calimero Cloud cluster (from the cloud.calimero.network console);
-        # empty = the sign-in screen asks. MeroDevNodeURL: what the "Development
+        # Which cluster sign-in uses (Calimero 1.0). MeroNodeURL: your Calimero
+        # Cloud cluster, by name (`eu-shared-1`, read from the Cloud directory) or
+        # a node's URL; empty = the sign-in screen asks. MeroDevNodeURL: what the "Development
         # node" field starts with (`merod local`, mock attestation allowed).
         # See ../README.md.
         MeroDocsCallbackScheme: mero-docs

@@ -1,8 +1,6 @@
 package network.calimero.docs.core
 
-import network.calimero.docs.generated.CommentDto
-
-// Comments. The contract keeps flat, per-document comments (`add_comment`, `list_comments`): a
+// Comments. The contract keeps flat, per-document comments (`addComment`, `listComments`): a
 // body, an author and a time, with no block and no parent. The web app has no comments UI yet, so
 // this app sets the convention: a comment on a block starts its body with `[[block:<id>]]`, a reply
 // with `[[reply:<comment id>]]`, then a space and the text. A body without either is a comment on

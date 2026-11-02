@@ -9,8 +9,9 @@ import network.calimero.docs.app.RecentDoc
 import network.calimero.docs.app.RecentStore
 
 /**
- * A scripted docs node behind `InMemoryAppBackend`: raw JSON per method, as the relay returns it
- * (booleans in span marks, nanosecond u64s). (Swift `FakeDocs`.)
+ * A scripted docs app instance behind `InMemoryAppBackend`: raw JSON per method, as the node
+ * returns it (camelCase fields, u64s as decimal strings, timestamps in milliseconds, booleans in
+ * span marks). (Swift `FakeDocs`.)
  */
 class FakeDocs {
     val backend = InMemoryAppBackend()
@@ -38,9 +39,9 @@ class FakeDocs {
                 "g-product" to listOf(AppSubgroup("g-specs", "Specs", listOf("c-specs"))),
             )
         backend.members = setOf("c-product", "c-notes")
-        on("list_docs", "c-product", "[${doc("d1", "Roadmap", 300)}]")
-        on("list_docs", "c-notes", "[${doc("d2", "Standup notes", 500)}]")
-        on("list_docs", "c-specs", "[${doc("d3", "API spec", 100)}]")
+        on("listDocs", "c-product", "[${doc("d1", "Roadmap", 300)}]")
+        on("listDocs", "c-notes", "[${doc("d2", "Standup notes", 500)}]")
+        on("listDocs", "c-specs", "[${doc("d3", "API spec", 100)}]")
     }
 
     companion object {
@@ -53,15 +54,15 @@ class FakeDocs {
             title: String,
             updated: Long,
             archived: Boolean = false,
-        ) = """{"id":"$id","title":"$title","tags":[],"archived":$archived,"created_at":1700000000000000000,""" +
-            """"updated_at":${1_700_000_000_000_000_000 + updated},"created_by":"$OTHER","updated_by":"$OTHER","can_delete":false}"""
+        ) = """{"id":"$id","title":"$title","tags":[],"archived":$archived,"createdAt":"1700000000000",""" +
+            """"updatedAt":"${1_700_000_000_000 + updated}","createdBy":"$OTHER","updatedBy":"$OTHER","canDelete":false}"""
 
         fun comment(
             id: String,
             body: String,
             author: String = OTHER,
             at: Long,
-        ) = """{"id":"$id","author":"$author","doc_id":"d1","body":"$body","created_at":${1_700_000_000_000_000_000 + at}}"""
+        ) = """{"id":"$id","author":"$author","docId":"d1","body":"$body","createdAt":"${1_700_000_000_000 + at}"}"""
 
         /** A body as the node returns it: marks as JSON booleans, plain spans without `attributes`. */
         val BODY =

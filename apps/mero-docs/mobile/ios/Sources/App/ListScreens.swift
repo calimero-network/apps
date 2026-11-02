@@ -28,7 +28,7 @@ struct WorkspacesScreen: View {
                     EmptyState(
                         icon: "square.stack.3d.up",
                         title: "No workspaces yet",
-                        message: "Create a workspace in Mero Docs on the web or desktop, or accept an invitation there. It shows up here.")
+                        message: "Open an invitation link on this phone, or create a workspace in Mero Docs on the web. It shows up here.")
                     .plainRow()
                 } else {
                     Section {
@@ -106,7 +106,7 @@ struct AccountSheet: View {
                     Avatar(id: account ?? "", name: "Me", size: 44)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Signed in").font(Theme.heading(17)).foregroundStyle(Theme.ink)
-                        Text(DemoMode.isOn ? "Demo workspace" : (session.client.nodeURL.map { "Connected to \($0)" } ?? "Not connected"))
+                        Text(DemoMode.isOn ? "Demo workspace" : (session.client.nodeURL == nil ? "Not connected" : "Connected to your cluster"))
                             .font(Theme.body(14))
                             .foregroundStyle(Theme.muted)
                     }
@@ -115,6 +115,7 @@ struct AccountSheet: View {
                 DetailsDisclosure(rows: [
                     ("Account", account ?? "–"),
                     ("Application", DemoMode.applicationId ?? session.applicationId ?? "–"),
+                    ("Node", DemoMode.isOn ? "–" : (session.client.nodeURL ?? "–")),
                 ])
                 .card()
                 if !DemoMode.isOn {

@@ -4,8 +4,8 @@ import MeroKit
 import MeroKitUI
 
 /// Which Calimero 1.0 cluster the app talks to, from the Info.plist keys
-/// `project.yml` sets (see ../README.md): `MeroNodeURL` (a node of your Cloud
-/// cluster; empty = the sign-in screen asks) and `MeroDevNodeURL` (the
+/// `project.yml` sets (see ../README.md): `MeroNodeURL` (your Cloud cluster, by
+/// name or a node's URL; empty = the sign-in screen asks) and `MeroDevNodeURL` (the
 /// development node the sign-in screen offers).
 enum AppConfig {
     /// The app scheme the node's consent page returns to (`mero-docs://consent?…`).
@@ -21,7 +21,10 @@ enum AppConfig {
     }
 
     static var config: MeroProviderConfig {
-        MeroProviderConfig(nodeURL: CloudSettings.clusterURL, packageName: DocsFormat.packageName)
+        // A cluster given by name is reached through the directory at sign-in, not here.
+        MeroProviderConfig(
+            nodeURL: CloudSettings.clusterURL.flatMap { CloudSettings.isNodeURL($0) ? $0 : nil },
+            packageName: DocsFormat.packageName)
     }
 
     /// The Keychain service the session and the development passkey live under.
