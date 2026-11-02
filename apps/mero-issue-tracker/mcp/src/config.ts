@@ -13,7 +13,9 @@ export const DEFAULT_PACKAGE = 'com.calimero.mero-issue-tracker';
 
 export type Target =
   | { kind: 'local'; nodes: string[] }
-  | { kind: 'cloud'; cluster: string; minReleaseVersion: string; zone?: string; directory?: string };
+  | { kind: 'cloud'; cluster: string; minReleaseVersion: string; zone?: string; directory?: string }
+  /** An attested node the operator runs, reached by its URLs: no directory, the cloud's release policy. */
+  | { kind: 'node'; nodes: string[]; minReleaseVersion: string };
 
 export interface Config {
   target: Target;
@@ -77,8 +79,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     const zone = text(env.CALIMERO_ZONE);
     const directory = text(env.CALIMERO_DIRECTORY);
     target = { kind, cluster, minReleaseVersion, ...(zone ? { zone } : {}), ...(directory ? { directory } : {}) };
+  } else if (kind === 'node') {
+    const list = text(env.CALIMERO_NODES);
+    const minReleaseVersion = text(env.CALIMERO_MIN_RELEASE);
+    if (!list) throw new Error('CALIMERO_TARGET=node needs CALIMERO_NODES (the node URLs).');
+    if (!minReleaseVersion) {
+      throw new Error('CALIMERO_TARGET=node needs CALIMERO_MIN_RELEASE (the lowest mero-tee release a node may run).');
+    }
+    target = { kind, nodes: nodes(list), minReleaseVersion };
   } else {
-    throw new Error(`CALIMERO_TARGET is ${JSON.stringify(kind)}; use "local" or "cloud".`);
+    throw new Error(`CALIMERO_TARGET is ${JSON.stringify(kind)}; use "local", "cloud" or "node".`);
   }
 
   const bundle = text(env.TRACKER_BUNDLE);

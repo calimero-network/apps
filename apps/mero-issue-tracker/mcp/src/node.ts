@@ -26,6 +26,14 @@ export async function connect(cfg: Config): Promise<Client> {
   if (t.kind === 'local') {
     const [baseUrl, ...nodes] = t.nodes;
     client = new CalimeroClient({ baseUrl: baseUrl as string, nodes, policy: { allowMock: true } });
+  } else if (t.kind === 'node') {
+    // Attested under the release policy, as a cloud node is; reached by URL.
+    const [baseUrl, ...nodes] = t.nodes;
+    client = new CalimeroClient({
+      baseUrl: baseUrl as string,
+      nodes,
+      policy: { release: { minReleaseVersion: t.minReleaseVersion } },
+    });
   } else {
     client = await CalimeroClient.connect({
       cluster: t.cluster,

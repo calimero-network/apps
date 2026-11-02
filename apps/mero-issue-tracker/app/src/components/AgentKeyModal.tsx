@@ -9,11 +9,18 @@ export function mcpEnv(target: Target, key: string, workspace: string, bundle?: 
   const lines =
     target.kind === 'local'
       ? [`CALIMERO_TARGET=local`, `CALIMERO_NODES=${target.nodes.join(',')}`, ...(bundle ? [`TRACKER_BUNDLE=${bundle}`] : [])]
-      : [
-          `CALIMERO_TARGET=cloud`,
-          `CALIMERO_CLUSTER=${target.cluster}`,
-          `CALIMERO_MIN_RELEASE=${target.minReleaseVersion}`,
-        ];
+      : target.direct
+        ? [
+            // An attested node the operator runs, reached by URL: no directory.
+            `CALIMERO_TARGET=node`,
+            `CALIMERO_NODES=${(target.nodes ?? []).join(',')}`,
+            `CALIMERO_MIN_RELEASE=${target.minReleaseVersion}`,
+          ]
+        : [
+            `CALIMERO_TARGET=cloud`,
+            `CALIMERO_CLUSTER=${target.cluster}`,
+            `CALIMERO_MIN_RELEASE=${target.minReleaseVersion}`,
+          ];
   return [...lines, `CALIMERO_API_KEY=${key}`, `TRACKER_WORKSPACE=${workspace}`].join('\n');
 }
 

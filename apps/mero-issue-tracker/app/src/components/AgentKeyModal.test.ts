@@ -20,4 +20,16 @@ describe('mcpEnv', () => {
       ['CALIMERO_TARGET=cloud', 'CALIMERO_CLUSTER=eu-1', 'CALIMERO_MIN_RELEASE=2.3.109', 'CALIMERO_API_KEY=k', 'TRACKER_WORKSPACE=org-1'].join('\n'),
     );
   });
+
+  it('points it at an attested node by URL, with the release floor', () => {
+    expect(
+      mcpEnv(
+        { kind: 'cloud', direct: true, cluster: 'node.example', nodes: ['https://node.example'], minReleaseVersion: '2.3.109' },
+        'k',
+        'org-1',
+      ),
+    ).toBe(
+      ['CALIMERO_TARGET=node', 'CALIMERO_NODES=https://node.example', 'CALIMERO_MIN_RELEASE=2.3.109', 'CALIMERO_API_KEY=k', 'TRACKER_WORKSPACE=org-1'].join('\n'),
+    );
+  });
 });

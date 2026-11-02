@@ -170,6 +170,12 @@ VITE_CALIMERO_CLUSTER=<cluster name in the cloud's node directory>
 VITE_CALIMERO_MIN_RELEASE=<lowest mero-tee release a node may run>
 ```
 
+An operator's own attested node is reached by URL instead:
+`VITE_CALIMERO_TARGET=node`, `VITE_CALIMERO_NODES=<its https URLs>` and the same
+release floor. The target is fixed by the build: nobody picks a node or a
+cluster at sign-in. The Agent key's environment follows the build's target
+(`CALIMERO_TARGET=local`, `cloud` or `node`).
+
 The production frontend is the one **packed into the `.mpk`** (`frontend-dir`),
 which the cluster serves from the package's own origin: a Cloud node trusts
 passkey ceremonies only from its own origins and from frontends it serves from

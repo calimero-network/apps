@@ -48,10 +48,10 @@ strings.
 | `TRACKER_WORKSPACE` | yes, unless `TRACKER_APP` is set | - | The workspace: its organization id or its name. |
 | `TRACKER_REPO` | no | - | Default repo name, used when a tool call omits `repo`. |
 | `TRACKER_APP` | no | - | Pins one repo by its app instance id; workspace/repo resolution is skipped and every `repo` param ignored. |
-| `CALIMERO_TARGET` | no | `local` | `local` (the `merod local` nodes) or `cloud`. |
-| `CALIMERO_NODES` | no | `http://127.0.0.1:2501,…2502,…2503` | Local nodes, in failover order. |
+| `CALIMERO_TARGET` | no | `local` | `local` (the `merod local` nodes), `cloud` (a cluster by name) or `node` (an attested node the operator runs, by URL). |
+| `CALIMERO_NODES` | for `node` | `http://127.0.0.1:2501,…2502,…2503` | The nodes, in failover order: local ones, or a `node` target's `https` URLs. |
 | `CALIMERO_CLUSTER` | for `cloud` | - | The cluster's name in the cloud's node directory. |
-| `CALIMERO_MIN_RELEASE` | for `cloud` | - | The lowest mero-tee release a node may run. |
+| `CALIMERO_MIN_RELEASE` | for `cloud` and `node` | - | The lowest mero-tee release a node may run. |
 | `CALIMERO_ZONE`, `CALIMERO_DIRECTORY` | no | - | Try this zone first; another node directory. |
 | `TRACKER_PACKAGE` | no | `com.calimero.mero-issue-tracker` | The package repos are instances of. |
 | `TRACKER_BUNDLE` | no | - | On `merod local`: the dev bundle hash `pnpm dev:local` uploaded (repos created from it are not package instances). |

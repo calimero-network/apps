@@ -48,6 +48,18 @@ test('loadConfig connects to a cloud cluster by name, with a release floor', () 
 test('loadConfig refuses a missing workspace, API key, or an unknown target', () => {
   assert.throws(() => loadConfig({ CALIMERO_API_KEY: 'key' }), /TRACKER_WORKSPACE/);
   assert.throws(() => loadConfig({ TRACKER_WORKSPACE: 'w' }), /CALIMERO_API_KEY/);
-  assert.throws(() => loadConfig({ ...BASE, CALIMERO_TARGET: 'node' }), /"local" or "cloud"/);
+  assert.throws(() => loadConfig({ ...BASE, CALIMERO_TARGET: 'relay' }), /"local", "cloud" or "node"/);
   assert.throws(() => loadConfig({ ...BASE, CALIMERO_NODES: 'ftp://x' }), /not an http/);
+});
+
+test('loadConfig reaches an attested node by URL, with a release floor', () => {
+  const cfg = loadConfig({
+    ...BASE,
+    CALIMERO_TARGET: 'node',
+    CALIMERO_NODES: 'https://node.example/',
+    CALIMERO_MIN_RELEASE: '2.3.109',
+  });
+  assert.deepEqual(cfg.target, { kind: 'node', nodes: ['https://node.example'], minReleaseVersion: '2.3.109' });
+  assert.throws(() => loadConfig({ ...BASE, CALIMERO_TARGET: 'node', CALIMERO_MIN_RELEASE: '1' }), /CALIMERO_NODES/);
+  assert.throws(() => loadConfig({ ...BASE, CALIMERO_TARGET: 'node', CALIMERO_NODES: 'https://n' }), /CALIMERO_MIN_RELEASE/);
 });
