@@ -1,279 +1,71 @@
 # Mero Docs - Development Guide
 
-## Quick Start
+Mero Docs is a component app on Calimero 1.0: a contract on core's component
+SDK (`logic/`), developed against `merod local`, and a Vite + React frontend
+(`app/`) that talks to the cluster through mero-js's `CalimeroClient`
+(`@calimero-apps/connect`). The repo-wide guide is
+[`docs/COMPONENT-APPS.md`](../../../docs/COMPONENT-APPS.md).
 
-### Full Development Mode (with Local Registry)
+## Quick start
 
-```bash
-pnpm dev:full
-```
-
-This starts:
-- 🌐 **Local registry** (port 8082) - Stores and serves WASM files
-- 🎨 **Vite dev server** (port 5179) - Frontend app
-- 👀 **File watcher** - Auto-syncs WASM changes to registry
-
-### What Happens When You Edit Logic?
-
-1. Edit `logic/src/lib.rs`
-2. Save file
-3. Cargo rebuilds WASM (~5-10s)
-4. Watcher detects `logic/res/docs_app.wasm` changed
-5. **Auto-submits** manifest to local registry with `file://` URI
-6. Registry CLI **copies** WASM to local storage
-7. Registry **serves** WASM via HTTP
-8. App refetches manifest from registry
-9. **Test immediately** in browser at `http://localhost:5179`
-
----
-
-## Development Modes
-
-### Mode 1: Full Stack (Registry + App + Watcher)
-```bash
-pnpm dev:full
-```
-Use this for **package-based development** where the app fetches logic from the registry.
-
-### Mode 2: Basic (App + Watcher)
-```bash
-pnpm dev
-```
-Use this for **frontend-only development** without registry integration.
-
-### Mode 3: Local rig (three nodes + App + Watcher)
-```bash
-# Terminal 1: three merod nodes, the bundle, the mesh and app/.env.integration
-scripts/local-rig.sh up
-
-# Terminal 2: Dev with app
-pnpm dev
-```
-Use this for **network testing** with multiple nodes; see the rig section of the README for the offline switch and `?node=<n>`.
-
----
-
-## Manual Commands
+From the repository root, with `merod` at the pinned core tag on `PATH` (or in
+`MEROD_BIN`; Linux only):
 
 ```bash
-# Build logic
-pnpm logic:build
-
-# Sync to local registry
-pnpm registry:sync
-
-# Check registry status
-pnpm registry:status
-
-# Start registry manually
-pnpm registry:start
-
-# Reset registry (clean slate)
-calimero-registry local reset --force
-
-# Generate TypeScript client
-pnpm app:generate-client
+pnpm install
+pnpm dev:local mero-docs
 ```
 
----
+That starts `merod local` (three nodes on `127.0.0.1:2501-2503`), builds the
+component, uploads it as a raw bundle, writes `app/.env.development.local`
+and runs the dev server on exactly `http://localhost:5173/`. Sign up there
+with a passkey; creating a workspace creates an organization and its
+registry instance from that bundle.
 
-## Group Feature Setup
-
-Top-level workspace and folder flows talk to the Calimero node admin API directly. In local development:
-
-- Start a Calimero node with the admin API enabled and note its base URL, for example `http://localhost:2428`
-- Open `mero-docs` with a `node_url` query or hash param so the app stores the node endpoint before any admin calls
-- Sign in through the Calimero auth flow so the app has the access token used for `Authorization: Bearer ...` admin requests
-
-Examples:
-
-```text
-http://localhost:5179/?node_url=http://localhost:2428
-http://localhost:5179/#node_url=http://localhost:2428&access_token=...&refresh_token=...
-```
-
-Important notes:
-
-- Group admin requests are sent to `${node_url}/admin-api/*`, not to the Vite origin
-- Vite does not proxy `/admin-api` in development, so a same-origin request such as `http://localhost:5179/admin-api/groups` will 404
-- Group-scoped context creation uses `POST /admin-api/contexts` with `groupId` in the request body; there is no `POST /admin-api/groups/:groupId/contexts` route on the core server
-
----
-
-## App Features
-
-### Document Management
-- Create, edit, and delete documents
-- Rich text editing with TipTap editor
-- Auto-save with debounce
-- Document preview on home page
-
-### Organization
-- **Folders**: Create nested folder structure (similar to Notion)
-- **Tags**: Categorize documents with tags
-- **Search**: Full-text search across documents
-- **Archive**: Archive documents to keep workspace clean
-
-### Views
-- **Grid View**: Visual card-based layout
-- **List View**: Table-based compact layout
-- View preference persists in localStorage
-
-### Editor Features
-- Rich text formatting (bold, italic, underline)
-- Headings (H1, H2, H3)
-- Lists (ordered and unordered)
-- Text alignment
-- Links
-- Highlights
-- Code blocks
-- Blockquotes
-
----
-
-## File Structure
-
-```
-mero-docs/
-├── logic/                      # Rust smart contract
-│   ├── src/lib.rs             # Contract code
-│   ├── build.sh               # Build script
-│   └── res/                   # Build output (gitignored)
-│       ├── docs_app.wasm      # Compiled WASM
-│       └── abi.json           # ABI schema
-├── app/                       # React frontend
-│   ├── src/
-│   │   ├── App.tsx            # Main app (CalimeroProvider)
-│   │   ├── api/               # Generated TypeScript client
-│   │   ├── components/
-│   │   │   ├── editor/        # Document editor components
-│   │   │   ├── folders/       # Folder tree components
-│   │   │   ├── landing/       # Landing page components
-│   │   │   └── ui/            # Shared UI components
-│   │   └── pages/
-│   │       ├── home/          # Documents dashboard
-│   │       ├── editor/        # Document editor page
-│   │       ├── landing/       # Landing/marketing page
-│   │       └── login/         # Authentication
-│   └── package.json
-├── scripts/
-│   ├── registry-sync.sh       # Syncs WASM to local registry
-│   ├── on-res-change.mjs      # Watcher handler
-│   └── sync-wasm.sh           # Syncs WASM to merobox nodes
-├── manifest.json              # App manifest (for registry)
-└── package.json
-```
-
----
-
-## Troubleshooting
-
-### "Registry not running"
+The pieces separately:
 
 ```bash
-# Start manually:
-pnpm registry:start
-
-# Or check if it's already running:
-pnpm registry:status
+pnpm merod-local up                 # the cluster
+pnpm merod-local deploy mero-docs   # build + upload + .env.development.local
+pnpm -F mero-docs dev               # the frontend on :5173
+pnpm merod-local e2e mero-docs      # logic/scenarios/*.json on the cluster
 ```
 
-### "WASM file not found"
+## How the frontend maps onto Calimero 1.0
+
+| what the screens call it | what it is on 1.0 | where |
+|---|---|---|
+| workspace | an organization | `src/calimero/orgs.ts` |
+| workspace member, role, display name | org member (owner/admin = Admin, member, guest = Guest), org member metadata `{ name }` | `orgs.ts` |
+| folder, Open / Restricted | a team of the org, `join: everyone` / `join: invite`; name = team name, colour = team metadata | `src/lib/coreFolders.ts` |
+| folder role Viewer / Editor / Manager | a team row: `readOnly` / `member` / `member` + manager caps (`lead` shows as Owner) | `orgs.ts`, `src/lib/roles.ts` |
+| a folder's documents | one app instance with `access: team`, id in the team's metadata (`docsApp`) | `orgs.ts` `createContext` |
+| tags, saved views, managers | one org-access app instance, id in the org's metadata (`registryApp`) | `src/hooks/useDriveWorkspace.ts` |
+| invitation link | an org invite token in `?invite=`, naming the folder's team for a folder invite | `src/hooks/useNamespaceInvitation.ts` |
+| live updates, presence | `client.events(app)`, `publishPresence` / `presenceStream` | `src/calimero/live.ts` |
+| contract calls | `client.call` / `client.view`, camelCase | `src/lib/docsApi.ts` |
+
+Every membership change (role, capabilities, adding or removing someone,
+an invite, deleting or leaving a workspace) is a passkey step-up on 1.0, so
+it asks for the caller's passkey.
+
+## Commands
 
 ```bash
-# Build it first:
-pnpm logic:build
+# Frontend (from the repository root)
+pnpm -F mero-docs lint
+pnpm -F mero-docs typecheck
+pnpm -F mero-docs test        # vitest, including the ABI check against logic/res/abi.json
+pnpm -F mero-docs build
+
+# Logic
+cargo test --manifest-path apps/mero-docs/logic/Cargo.toml
+cargo run --release --manifest-path tools/component-bundle/Cargo.toml -- build apps/mero-docs/logic
 ```
 
-### "Port 8082 already in use"
+## Environment
 
-```bash
-# Use different port:
-calimero-registry local start -p 8083
-
-# Then update app to use new port in app/src/App.tsx
-```
-
-### "Client code out of sync"
-
-```bash
-# Regenerate after logic changes:
-pnpm app:generate-client
-
-# This reads logic/res/abi.json and generates app/src/api/*
-```
-
-### "Old WASM cached"
-
-```bash
-# Reset registry (removes all stored apps/artifacts):
-calimero-registry local reset --force
-
-# Then rebuild and sync:
-pnpm logic:build
-pnpm registry:sync
-```
-
-### "TypeScript errors"
-
-```bash
-# Clear Vite cache:
-rm -rf app/node_modules/.vite
-
-# Reinstall dependencies:
-cd app && pnpm install
-```
-
----
-
-## Architecture
-
-### Frontend (React + Vite)
-
-- **React 18** with TypeScript
-- **Vite** for fast development builds
-- **TailwindCSS** for styling
-- **TipTap** for rich text editing
-- **React Router** for navigation
-- **Calimero Client** for P2P networking
-
-### Backend (Rust + WASM)
-
-- **calimero-sdk** for contract development
-- **Borsh** serialization
-- CRDT-based data structures for conflict-free sync
-- Document storage with metadata (title, content, tags, folder)
-
-### Data Model
-
-```
-Document {
-    id: String,
-    title: String,
-    content: String (HTML),
-    tags: Vec<String>,
-    folder_id: Option<String>,
-    created_at: u64,
-    updated_at: u64,
-    archived: bool
-}
-
-Folder {
-    id: String,
-    name: String,
-    parent_id: Option<String>,
-    color: Option<String>,
-    created_at: u64
-}
-```
-
----
-
-## Next Steps
-
-1. **Build the logic:** `pnpm logic:build`
-2. **Start full dev:** `pnpm dev:full`
-3. **Open browser:** http://localhost:5179
-4. **Make changes** to `logic/src/lib.rs` and see them auto-sync!
-
-Happy coding! 🚀
+`app/.env.example` lists the `VITE_CALIMERO_*` variables. Development needs
+none (`pnpm dev:local` writes them); the production build, which is packed
+into the `.mpk` and served by the cluster, needs `VITE_CALIMERO_CLUSTER` and
+`VITE_CALIMERO_MIN_RELEASE`.

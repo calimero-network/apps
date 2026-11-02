@@ -7,11 +7,11 @@
     "@blocknote/core": "^0.51.4",
     "@blocknote/mantine": "^0.51.4",
     "@blocknote/react": "^0.51.4",
+    "@calimero-apps/connect": "workspace:*",
     "@calimero-apps/glass": "workspace:*",
     "@calimero-apps/node-served": "workspace:*",
     "@calimero-network/mero-icons": "catalog:",
-    "@calimero-network/mero-js": "catalog:",
-    "@calimero-network/mero-react": "catalog:",
+    "@calimero-network/mero-js": "catalog:component",
     "@calimero-network/mero-ui": "^0.3.6",
     "@floating-ui/react": "0.27.20",
     "@fontsource-variable/inter": "^5.3.0",
@@ -39,10 +39,7 @@
     "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
-    "@calimero-apps/e2e-node": "workspace:*",
-    "@calimero-network/abi-codegen": "catalog:",
     "@eslint/js": "^9.4.0",
-    "@playwright/test": "catalog:",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
@@ -73,10 +70,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "check:bundle": "node scripts/check-bundle-budget.mjs",
     "test": "vitest run",
-    "typecheck": "tsc -b && pnpm typecheck:e2e",
-    "typecheck:e2e": "tsc -p e2e/tsconfig.json",
+    "typecheck": "tsc -b",
     "lint": "pnpm lint:check",
     "lint:check": "pnpm lint:src",
     "lint:src": "eslint . --ext .ts,.tsx src --report-unused-disable-directives --max-warnings 0",
@@ -84,15 +79,7 @@
     "lint:src:fix": "eslint . --ext .ts,.tsx --fix src",
     "preview": "vite preview",
     "prettier": "exec prettier . --write",
-    "format:check": "prettier --check e2e",
-    "codegen": "calimero-abi-codegen -i ../logic/crates/registry/res/abi.json -o src/generated/registry --client-name RegistryClient && calimero-abi-codegen -i ../logic/res/abi.json -o src/generated/docs --client-name DocsClient",
-    "e2e:landing": "playwright test --project=landing",
-    "e2e:single": "playwright test --project=single-node",
-    "e2e:two-node": "playwright test --project=two-node",
-    "e2e:rich": "../scripts/local-rig.sh tokens && playwright test --project=rich",
-    "e2e:integration": "playwright test --project=single-node --project=two-node",
-    "e2e:report": "playwright show-report playwright-report",
-    "test:journey": "playwright test -c playwright.journey.config.ts"
+    "check:bundle": "node scripts/check-bundle-budget.mjs"
   },
   "eslintConfig": {
     "extends": [
@@ -100,9 +87,7 @@
       "react-app/jest"
     ],
     "ignorePatterns": [
-      "e2e/**",
-      "scripts/**",
-      "src/generated/**"
+      "scripts/**"
     ]
   },
   "browserslist": {

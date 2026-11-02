@@ -4,7 +4,7 @@
 // app version without the view, cannot answer; the caller then falls back to
 // the text it has read itself (`useTextIndex`).
 
-import type { DocSearchHit, DocsClient } from '@/generated/docs/DocsClient';
+import type { DocSearchHit, DocsClient } from '@/lib/docsApi';
 import type { DocText } from '@/lib/workspaceIndex/types';
 import { foldForSearch } from './match';
 

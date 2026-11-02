@@ -1,10 +1,10 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, act, waitFor } from '@testing-library/react';
-import { MeroContext } from '@calimero-network/mero-react';
+import { LiveContext } from '@/calimero/react';
 import { DisplayNameGate } from '../DisplayNameGate';
 
-// Runs the real useMemberDisplayName + mero-react useMemberMetadata, so the
+// Runs the real useMemberDisplayName + useMemberMetadata (@/calimero/react), so the
 // ordering below goes through the same fetch path the app uses.
 const driveState = {
   namespaceId: 'old-ns',
@@ -36,9 +36,9 @@ describe('DisplayNameGate across a namespace switch', () => {
     });
     const mero = { admin: { getMemberMetadata } };
     const ui = () => (
-      <MeroContext.Provider value={{ mero, admin: mero.admin } as any}>
+      <LiveContext.Provider value={{ admin: { ...mero.admin, onChange: () => () => {} } } as any}>
         <DisplayNameGate />
-      </MeroContext.Provider>
+      </LiveContext.Provider>
     );
 
     const { rerender } = render(ui());

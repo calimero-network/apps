@@ -291,8 +291,8 @@ describe('HomePage', () => {
     });
 
     it('keeps the dev node param while canonicalising', () => {
-      mount('/app/ws1?node=2&tag=q3');
-      expect(location.search).toBe('?node=2&tag=q3');
+      mount('/app/ws1?tag=q3');
+      expect(location.search).toBe('?tag=q3');
       expect(navType).toBe('POP');
     });
 

@@ -6,7 +6,7 @@ import { act, renderHook } from '@testing-library/react';
 import type { BackendBlock } from '@/lib/rich/blocknote';
 import type { FolderIndexStatus } from '../useWorkspaceIndex';
 import type { FolderInfo, IndexRow } from '@/lib/workspaceIndex/types';
-import { DocsClient } from '@/generated/docs/DocsClient';
+import { DocsClient } from '@/lib/docsApi';
 import { TEXT_INDEX_CONCURRENCY, useTextIndex } from '../useTextIndex';
 
 type Event = { contextId: string; type: string; data: unknown };
@@ -23,13 +23,13 @@ let subscribed: { ids: string[]; handler: (e: Event) => void } | null = null;
 // A new session per test: the text cache is per mero client.
 let mero = {};
 
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@/calimero/react', () => ({
   useMero: () => ({ mero }),
   useSubscription: (ids: string[], handler: (e: Event) => void) => {
     subscribed = { ids, handler };
   },
 }));
-vi.mock('@/generated/docs/DocsClient', () => ({
+vi.mock('@/lib/docsApi', () => ({
   DocsClient: class {
     constructor(
       _mero: unknown,

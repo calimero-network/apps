@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { DocsClient, DocSearchPage } from '@/generated/docs/DocsClient';
+import type { DocsClient, DocSearchPage } from '@/lib/docsApi';
 import type { DocText } from '../../workspaceIndex/types';
 import {
   blockOf,

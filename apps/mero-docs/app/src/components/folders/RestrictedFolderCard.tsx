@@ -43,7 +43,7 @@ import {
   useJoinSubgroupInheritance,
   useJoinContext,
   useMero,
-} from '@calimero-network/mero-react';
+} from '@/calimero/react';
 import { Button } from '@/components/ui/button';
 import { folderDocsContext } from '@/lib/coreFolders';
 
@@ -147,7 +147,7 @@ export function RestrictedFolderCard({
       setError(
         isSyncing
           ? "Workspace sync isn't quite there yet. Try again in a moment."
-          : "Your node can't reach this folder yet. Either sync is still in progress or the workspace owner needs to add you. Try again, or ask the admin.",
+          : "You can't open this folder yet. Try again, or ask a workspace admin or the folder's manager to add you.",
       );
     } finally {
       setJoining(false);

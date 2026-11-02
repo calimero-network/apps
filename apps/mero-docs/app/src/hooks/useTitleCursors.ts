@@ -2,7 +2,7 @@
 // title is one text sequence rather than a block per caret.
 
 import { useEffect, useRef, useState } from 'react';
-import type { DocsClient } from '@/generated/docs/DocsClient';
+import type { DocsClient } from '@/lib/docsApi';
 import { titleCarets, type TitleCaret } from '@/lib/rich/cursors';
 import { signature, type DocPresence } from '@/lib/rich/presence';
 

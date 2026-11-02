@@ -1,4 +1,4 @@
-import type { AdminApiClient } from '@calimero-network/mero-js';
+import type { OrgAdmin as AdminApiClient } from '@/calimero/orgs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { removeFromFolders } from '../removeFromFolders';
 

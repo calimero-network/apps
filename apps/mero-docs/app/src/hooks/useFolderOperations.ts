@@ -1,14 +1,14 @@
-// Folder CRUD, in core alone. A folder is a subgroup under its parent, with
-// its name and colour in the subgroup's metadata and one docs context inside
-// it; `subgroup_visibility` is Open (namespace members inherit membership via
-// core's parent-walk) or Restricted (explicit-invite-only). Nothing is written
-// to the namespace-wide registry, which every workspace member replicates.
+// Folder CRUD, in core alone. A folder is a team of the workspace's org under
+// its parent folder, named as the folder, with its colour in the team's
+// metadata and one docs app instance (`access: team`) whose id the metadata
+// keeps; `join` is everyone (Open: whoever reaches the parent is a member) or
+// invite (Restricted). Nothing is written to the registry instance.
 //
 // The previous app-layer membership cascade is gone: core handles
 // inheritance natively now, so we don't need to enumerate namespace
 // members and add them to each new folder.
 //
-// Mutations go through mero-react hooks, except rename and member adds: those
+// Mutations go through @/calimero/react hooks, except rename and member adds: those
 // hooks resolve a failed call to null, so they call `admin`, which throws.
 
 import { useCallback, useRef } from 'react';
@@ -20,8 +20,7 @@ import {
   useDeleteGroup,
   useSetSubgroupVisibility,
   useMero,
-} from '@calimero-network/mero-react';
-import { DOCS_SERVICE_ID } from '../constants/config';
+} from '@/calimero/react';
 import { FOLDER_COLOR_KEY } from '../lib/coreFolders';
 import { inheritReadOnly, readOnlyRowsBeforeOpen } from '../lib/applyFolderRole';
 
@@ -71,14 +70,7 @@ export function useFolderOperations(
       if (!rootGroupId || !admin) {
         throw new Error('workspace not bootstrapped');
       }
-      // Empty applicationId makes admin-api reject the context
-      // creation with a hex-decode error. Guard here so the user
-      // gets a meaningful message instead of a raw 400.
-      if (!applicationId) {
-        throw new Error(
-          'Application ID not resolved. Reconnect or set VITE_APPLICATION_ID',
-        );
-      }
+      if (!applicationId) throw new Error('This app has no package or bundle to create folders from.');
 
       // Best-effort compensating actions on partial failure. The sequence is
       // non-transactional (a group, then a context in it), so we track what we
@@ -125,48 +117,38 @@ export function useFolderOperations(
         // default.
         const bornOpen =
           input.parentGroupId === rootGroupId && input.visibility === 'Open';
+        // A team under its parent folder (the org itself at the top),
+        // named as the folder.
         const group = await createGroupInNamespace(input.namespaceId, {
           visibility: bornOpen ? 'open' : 'restricted',
+          parentId: input.parentGroupId,
+          name: input.alias,
         });
         if (!group?.groupId) throw new Error('createGroupInNamespace returned no groupId');
         createdGroupId = group.groupId;
         const newId = group.groupId;
 
-        if (input.parentGroupId !== rootGroupId) {
-          // Through the session-aware admin: the node's `POST
-          // /admin-api/groups/:child/reparent` on a node login, the account
-          // admin's governance op on an account. (This used to be a raw
-          // `fetch` with the node token read out of localStorage, from before
-          // mero-js surfaced `reparentGroup`.)
-          await admin.reparentGroup(newId, { newParentId: input.parentGroupId });
-        }
-
         if (openChild) {
           await readOnlyRowsBeforeOpen(writer, input.parentGroupId, newId);
         }
 
-        // Core expects lowercase `"open"` / `"restricted"`; see
-        // `crates/server/src/admin/handlers/groups/set_subgroup_visibility.rs:31`
-        // - capitalized values return 400 Bad Request.
+        // An Open sub-folder is created invite-only and opened once the
+        // parent's Read only rows are in it.
         if (!bornOpen) {
           await setSubgroupVisibility(newId, {
             subgroupVisibility: input.visibility.toLowerCase(),
           });
         }
 
-        // Now the name op encrypts on the namespace key chain for
-        // Open subgroups; on the subgroup key for Restricted.
-        // The colour rides in the same record, sealed with the name.
-        await admin.setGroupMetadata(newId, {
-          name: input.alias,
-          data: input.color ? { [FOLDER_COLOR_KEY]: input.color } : {},
-        });
+        // The colour lives in the team's metadata.
+        if (input.color) {
+          await admin.setGroupMetadata(newId, {
+            data: { [FOLDER_COLOR_KEY]: input.color },
+          });
+        }
 
         const ctx = await createContext({
-          applicationId,
           groupId: newId,
-          serviceName: DOCS_SERVICE_ID,
-          initializationParams: [],
           // The folder's own name, on the context too. `listGroupContexts`
           // returns this label to every member of the subgroup.
           name: input.alias,

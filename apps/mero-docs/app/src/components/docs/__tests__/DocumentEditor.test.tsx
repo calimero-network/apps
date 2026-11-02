@@ -4,7 +4,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import type { DocDto } from '@/generated/docs/DocsClient';
+import type { DocDto } from '@/lib/docsApi';
 import { contractErrorFixture } from '@/lib/__tests__/contractErrorFixture';
 import { DocumentEditor } from '../DocumentEditor';
 
@@ -39,7 +39,7 @@ const toastSuccess = vi.hoisted(() => vi.fn());
 vi.mock('sonner', () => ({
   toast: { error: toastError, success: toastSuccess },
 }));
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@/calimero/react', () => ({
   useSubscription: (_ids: string[], handler: (event: unknown) => void) => {
     handlers.add(handler);
     deliver = (event) => handlers.forEach((h) => h(event));

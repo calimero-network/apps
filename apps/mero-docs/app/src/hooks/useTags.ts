@@ -3,8 +3,8 @@
 
 import { createContext, useCallback, useContext, useMemo, useRef } from 'react';
 import { toast } from 'sonner';
-import type { DocsClient } from '@/generated/docs/DocsClient';
-import type { RegistryClient } from '@/generated/registry/RegistryClient';
+import type { DocsClient } from '@/lib/docsApi';
+import type { RegistryClient } from '@/lib/docsApi';
 import {
   findTagByName,
   normalizeTagName,

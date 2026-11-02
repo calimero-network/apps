@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { DocsClient } from '@/generated/docs/DocsClient';
+import { DocsClient } from '@/lib/docsApi';
 import { TagNameTakenError, useTagsSource } from '../useTags';
 import { row } from '@/lib/workspaceIndex/__tests__/row';
 import type { IndexRow } from '@/lib/workspaceIndex/types';
@@ -34,7 +34,7 @@ vi.mock('../useDriveWorkspace', () => ({ useDriveWorkspace: () => ws }));
 vi.mock('../useDocs', () => ({
   notifyDocsRefetch: (id: string) => notifyDocsRefetch(id),
 }));
-vi.mock('@/generated/docs/DocsClient', () => ({
+vi.mock('@/lib/docsApi', () => ({
   DocsClient: class {
     constructor(
       _mero: unknown,

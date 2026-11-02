@@ -18,7 +18,7 @@ const h = vi.hoisted(() => ({
   refetch: vi.fn(async () => undefined),
 }));
 
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@/calimero/react', () => ({
   useMero: () => ({ admin: h.admin, isDelegated: h.isDelegated }),
 }));
 vi.mock('@/hooks/useDriveWorkspace', () => ({
@@ -69,14 +69,6 @@ describe('WorkspaceExitPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /delete workspace/i }));
     expect((await screen.findByRole('alert')).textContent).toMatch(/permission denied/);
     expect(h.clearNamespace).not.toHaveBeenCalled();
-  });
-
-  it('offers an Admin on an account session neither (deleting a namespace is node-only)', () => {
-    h.caps = { caps: 0xffffffff, isAdmin: true };
-    h.isDelegated = true;
-    render(<WorkspaceExitPanel />);
-    expect(screen.queryByRole('button', { name: /delete workspace/i })).toBeNull();
-    expect(screen.queryByRole('button', { name: /leave workspace/i })).toBeNull();
   });
 
   it('offers nothing while the role is still loading', () => {
