@@ -235,6 +235,16 @@
       "p2Wins": "counter",
       "players": "perUser"
     },
+    "search": {
+      "actions": [],
+      "arena": [],
+      "corners": [],
+      "fought": [],
+      "matches": [],
+      "p1Wins": [],
+      "p2Wins": [],
+      "players": []
+    },
     "version": 1
   },
   "world": "calimero:app@0.5.0"
