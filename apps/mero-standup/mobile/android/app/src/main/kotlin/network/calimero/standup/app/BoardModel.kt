@@ -5,14 +5,14 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import network.calimero.standup.contract.DayView
+import network.calimero.standup.contract.DecisionView
+import network.calimero.standup.contract.MemberView
+import network.calimero.standup.contract.UpdateView
 import network.calimero.standup.core.Days
 import network.calimero.standup.core.ErrorText
 import network.calimero.standup.core.People
 import network.calimero.standup.core.UpdateDraft
-import network.calimero.standup.generated.DayView
-import network.calimero.standup.generated.DecisionView
-import network.calimero.standup.generated.MemberView
-import network.calimero.standup.generated.UpdateView
 import java.time.Clock
 
 /**

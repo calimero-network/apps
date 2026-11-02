@@ -55,10 +55,10 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import network.calimero.standup.app.BoardModel
 import network.calimero.standup.app.TeamModel
+import network.calimero.standup.contract.UpdateView
 import network.calimero.standup.core.Days
 import network.calimero.standup.core.ErrorText
 import network.calimero.standup.core.Limits
-import network.calimero.standup.generated.UpdateView
 
 /** The Standup tab: the week strip, your update, the team's, who is waiting and who is blocked. */
 @OptIn(ExperimentalMaterial3Api::class)

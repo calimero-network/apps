@@ -1,12 +1,12 @@
 # Mero Standup for iOS
 
 SwiftUI, iOS 16+. See [../README.md](../README.md) for what the app does. This iOS app runs
-on **Calimero 1.0** (below); the Android app is not ported yet.
+on **Calimero 1.0** (below), as does its Android twin (`../android`).
 
 ```
 Core/                          local Swift package StandupCore (no UI): `swift test` on macOS
   Sources/StandupCore/
-    Generated/StandupClient.swift   generated from ../logic/res/abi.json — do not edit
+    StandupContract.swift          the typed component-contract client (../logic/res/abi.json, web PR #709)
     Days, People, Drafts, Digest, RichText, StandupInvitation, Support
     TeamsModel, TeamModel, BoardModel, WeekModel, DecisionsModel, ApprovalsModel   view models
   Tests/StandupCoreTests/      view-model and helper tests on MeroKitTestSupport's InMemoryAppBackend
@@ -26,14 +26,14 @@ verified). The swift-sdk's `CalimeroAppBackend` maps the app layer onto the 1.0 
 | Teams | `listNamespaces()` + `listContexts(groupId:)` | the account's **orgs** running Mero Standup, and their **app instances** (one per team) |
 | Start a team | `foundNamespace(name:)` + `createContext(…)` | `POST /orgs` + org metadata, then `POST /apps {package, org}` |
 | Invite / join | `createInvitation` / `joinNamespace` | `POST /orgs/{org}/invites` → invite token; `POST /invites/{token}/redeem` |
-| Read / write | generated `StandupClient` over `contract.bound(to:)` | `POST /apps/{app}/views` / `POST /apps/{app}/intents` |
+| Read / write | `StandupClient` (component ABI: camelCase, u64 as decimal strings) over `contract.bound(to:)` | `POST /apps/{app}/views` / `POST /apps/{app}/intents` |
 | Live updates | `events(contextId:)`, polling as a fallback | `GET /apps/{app}/events` (sealed SSE) |
 | Approvals (an update of Mero Standup, a node release) | `session.pendingApprovals(org:)` + `session.requestConsent(_:)` (`ApprovalsModel`) | `POST /consent/requests` → the node's consent page in the system browser → `GET /consent/{id}/result` |
 
 ### Sign-in
 
-- **Calimero Cloud**: enter the cluster's node URL (from cloud.calimero.network; bake it in with
-  `CalimeroClusterURL`), then **Sign in with passkey** or **Create an account**. The node's TDX
+- **Calimero Cloud**: enter the cluster's name (its nodes come from the node directory) or one of
+  its node URLs (bake it in with `CalimeroClusterURL`), then **Sign in with passkey** or **Create an account**. The node's TDX
   attestation is verified (`CloudPolicy.production`). The device's passkey needs the cluster's
   relying party as an associated domain (`webcredentials:<rp-id>`, see `project.yml`).
 - **Development node**: a `merod local` node URL (default `http://localhost:2501`,
@@ -52,13 +52,22 @@ invitations) are refused.
 ### Approvals
 
 Node releases and app upgrades are approved only on the node's own consent page. **Teams** shows
-what waits for the signed-in person; **Review** opens the page in the system browser, which returns
+what waits for the signed-in person; **Review** first shows the request's confirmation code ("Check
+the code"), then opens the page in the system browser, where the same code shows. The page returns
 to `mero-standup://consent`.
+
+### The contract client
+
+`Core/Sources/StandupCore/StandupContract.swift` is a typed client of the component contract, the
+twin of the web app's `app/src/standup.ts` and Android's `contract/StandupClient.kt`: camelCase
+methods, arguments and results, absent options sent as `null` (the contract refuses unknown keys),
+timestamps as decimal strings, and the contract's error codes (`StandupAppCode`), which `ErrorText`
+puts into words.
 
 ## Build
 
 ```bash
-cd Core && swift test          # the core: generated client, helpers, view models
+cd Core && swift test          # the core: contract client, helpers, view models
 cd .. && xcodegen generate     # writes MeroStandup.xcodeproj
 xcodebuild build -project MeroStandup.xcodeproj -scheme MeroStandup \
   -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO
@@ -77,7 +86,7 @@ Info.plist keys set in `project.yml`:
 
 | Key | Default |
 | --- | --- |
-| `CalimeroClusterURL` | empty: the sign-in screen asks for the cluster's node URL |
+| `CalimeroClusterURL` | empty: the sign-in screen asks for the cluster's name or a node URL |
 | `DefaultNodeURL` | `http://localhost:2501`, the development node the sign-in screen prefills |
 | `MeroPackageVersion` | empty: new teams run the latest Mero Standup |
 | `StandupCallbackScheme` | `mero-standup` (the consent page returns to `mero-standup://consent`) |

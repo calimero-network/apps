@@ -48,7 +48,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import network.calimero.standup.BuildConfig
+import network.calimero.standup.app.ApprovalsModel
 import network.calimero.standup.app.StandupViewModel
 import network.calimero.standup.app.TeamSummary
 import network.calimero.standup.app.TeamsModel
@@ -66,13 +69,29 @@ fun TeamsScreen(
     val loading by model.isLoading.collectAsState()
     val loaded by model.hasLoaded.collectAsState()
     val error by model.error.collectAsState()
-    val pending by vm.session.pendingInvitation.collectAsState()
+    val session by vm.session.collectAsState()
+    val pending by (session?.pendingInvitation ?: remember { MutableStateFlow(null) }).collectAsState()
+    val consentResult by (session?.consentResult ?: remember { MutableStateFlow(null) }).collectAsState()
+    val approvals =
+        remember(model) {
+            ApprovalsModel(
+                packageName = StandupInvitation.PACKAGE_NAME,
+                appName = "Mero Standup",
+                fetch = { org -> checkNotNull(vm.session.value).client.pendingApprovals(org) },
+                consent = { request, confirm -> vm.requestConsent(request, confirm) },
+                returnTo = BuildConfig.CONSENT_CALLBACK_URL,
+            )
+        }
+    val orgs = teams.map { it.namespaceId }.distinct()
     val scope = rememberCoroutineScope()
     var starting by remember { mutableStateOf(false) }
     var joining by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
 
     LaunchedEffect(model) { model.load() }
+
+    // Once the teams are known, and whenever the consent page sent the person back: what waits.
+    LaunchedEffect(orgs, consentResult) { approvals.load(orgs) }
 
     fun joined(team: TeamSummary) {
         scope.launch {
@@ -116,6 +135,7 @@ fun TeamsScreen(
                 modifier = Modifier.fillMaxSize(),
             ) {
                 if (error != null) item { ErrorLine(error) }
+                item { ApprovalsCard(approvals, orgs) }
                 if (!loaded) {
                     item { Muted("Loading teams…", Modifier.padding(8.dp)) }
                 } else if (teams.isEmpty()) {
@@ -161,7 +181,7 @@ fun TeamsScreen(
         val invitation = remember(link) { StandupInvitation.parse(link) }
         var busy by remember(link) { mutableStateOf(false) }
         AlertDialog(
-            onDismissRequest = { vm.session.dismissPendingInvitation() },
+            onDismissRequest = { session?.dismissPendingInvitation() },
             title = { Text("Join this team?") },
             text = {
                 Text(
@@ -179,13 +199,13 @@ fun TeamsScreen(
                         scope.launch {
                             val team = model.join(invitation)
                             busy = false
-                            vm.session.dismissPendingInvitation()
+                            session?.dismissPendingInvitation()
                             if (team != null) joined(team)
                         }
                     })
                 }
             },
-            dismissButton = { LinkButton("Not now", onClick = { vm.session.dismissPendingInvitation() }) },
+            dismissButton = { LinkButton("Not now", onClick = { session?.dismissPendingInvitation() }) },
             containerColor = Palette.surface,
         )
     }

@@ -67,11 +67,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import network.calimero.standup.app.DecisionsModel
 import network.calimero.standup.app.TeamModel
+import network.calimero.standup.contract.DecisionView
 import network.calimero.standup.core.Days
 import network.calimero.standup.core.DecisionDraft
 import network.calimero.standup.core.ErrorText
 import network.calimero.standup.core.Limits
-import network.calimero.standup.generated.DecisionView
 
 /** The Decisions tab: search, filters, the log as a list or a timeline. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)

@@ -1,6 +1,8 @@
 package network.calimero.standup
 
 import com.calimero.mero.testkit.InMemoryAppBackend
+import network.calimero.standup.contract.DayView
+import network.calimero.standup.contract.MemberView
 import network.calimero.standup.core.Days
 import network.calimero.standup.core.DecisionDraft
 import network.calimero.standup.core.Digest
@@ -11,8 +13,6 @@ import network.calimero.standup.core.RichText.Inline
 import network.calimero.standup.core.StandupInvitation
 import network.calimero.standup.core.Tags
 import network.calimero.standup.core.UpdateDraft
-import network.calimero.standup.generated.DayView
-import network.calimero.standup.generated.MemberView
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -111,18 +111,20 @@ class CoreTest {
     @Test
     fun `invitation links round trip and refuse other apps`() {
         val ns = "ab".repeat(32)
-        val invitation = StandupInvitation(InMemoryAppBackend.invitation(ns), ns, "ctx-1")
+        val invitation = StandupInvitation(InMemoryAppBackend.invitation(ns).copy(name = "Platform"), "ctx-1")
         val link = invitation.link()
         assertTrue(link.startsWith("https://links.calimero.network/com.calimero.mero-standup/join?invitation="))
         val back = StandupInvitation.parse(link)!!
         assertEquals(ns, back.namespaceId)
         assertEquals("ctx-1", back.contextId)
-        assertEquals(invitation.invitation.raw, back.invitation.raw)
+        assertEquals(invitation.invitation.token, back.invitation.token)
+        assertEquals("Platform", back.name)
         val token = link.substringAfter("invitation=")
         assertNotNull(StandupInvitation.parse("calimero://com.calimero.mero-standup/join?invitation=$token"))
         assertNotNull(StandupInvitation.parse(token))
         assertNull(StandupInvitation.parse("https://links.calimero.network/com.calimero.chat/join?invitation=$token"))
         assertNull(StandupInvitation.parse("not a link"))
-        assertNull(StandupInvitation.parseJson("""{"namespaceId":"n","contextId":"c","invitation":{"invitation":{}}}"""))
+        // A pre-1.0 signed group invitation can't be redeemed on a 1.0 cluster.
+        assertNull(StandupInvitation.parseJson("""{"namespaceId":"n","contextId":"c","invitation":{"invitation":{},"inviter_signature":"5a"}}"""))
     }
 }

@@ -8,17 +8,18 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import network.calimero.standup.app.BoardModel
 import network.calimero.standup.app.DecisionsModel
 import network.calimero.standup.app.TeamsModel
 import network.calimero.standup.app.WeekModel
+import network.calimero.standup.contract.HelpView
+import network.calimero.standup.contract.TagCount
 import network.calimero.standup.core.DecisionDraft
 import network.calimero.standup.core.StandupInvitation
 import network.calimero.standup.core.UpdateDraft
-import network.calimero.standup.generated.HelpView
-import network.calimero.standup.generated.TagCount
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -47,7 +48,7 @@ class ModelsTest {
             assertTrue(backend.log.any { it.startsWith("createContext ${team.namespaceId} ${backend.applicationId} Platform") })
             assertEquals(listOf(team.contextId), backend.rootContexts[team.namespaceId])
             assertEquals(JsonObject(emptyMap()), backend.initArgs[team.contextId])
-            val named = backend.recording.calls("set_team_name").single()
+            val named = backend.recording.calls("setTeamName").single()
             assertEquals(team.contextId, named.contextId)
             assertEquals(JsonPrimitive("Platform"), (named.args as JsonObject)["name"])
             assertEquals(listOf(team), model.teams.value)
@@ -71,7 +72,7 @@ class ModelsTest {
             assertNull(model.error.value)
 
             val ns = "cd".repeat(32)
-            val team = model.join(StandupInvitation(InMemoryAppBackend.invitation(ns), ns, "joined-ctx"))
+            val team = model.join(StandupInvitation(InMemoryAppBackend.invitation(ns), "joined-ctx"))
             assertEquals("joined-ctx", team?.contextId)
             assertTrue(backend.log.contains("joinNamespace $ns"))
 
@@ -109,11 +110,11 @@ class ModelsTest {
             assertEquals(UpdateDraft(done = "write tests", blockers = "review"), board.draft)
             assertEquals("2026-10-27", board.carriedFrom)
             assertEquals(1 to true, board.summary("2026-10-28"))
-            assertEquals("2026-10-26", args(backend, "get_week")["start"].let { (it as JsonPrimitive).content })
-            assertEquals("2026-10-28", (args(backend, "list_decisions")["from_day"] as JsonPrimitive).content)
+            assertEquals("2026-10-26", args(backend, "getWeek")["start"].let { (it as JsonPrimitive).content })
+            assertEquals("2026-10-28", (args(backend, "listDecisions")["fromDay"] as JsonPrimitive).content)
 
             board.post(UpdateDraft("a", "b", ""))
-            val post = args(backend, "post_update")
+            val post = args(backend, "postUpdate")
             assertEquals(listOf("day", "done", "next", "blockers"), post.keys.toList())
             assertEquals("2026-10-28", (post["day"] as JsonPrimitive).content)
             assertEquals(1, team.version.value)
@@ -137,11 +138,11 @@ class ModelsTest {
             board.load()
             assertTrue(board.offered(blocked))
             board.offerHelp(blocked, "  pairing ")
-            assertEquals(JsonPrimitive("pairing"), args(backend, "offer_help")["note"])
+            assertEquals(JsonPrimitive("pairing"), args(backend, "offerHelp")["note"])
             board.withdrawHelp(blocked)
-            assertEquals(JsonPrimitive(ANA), args(backend, "withdraw_help")["author"])
+            assertEquals(JsonPrimitive(ANA), args(backend, "withdrawHelp")["author"])
             board.withdraw()
-            assertEquals(JsonPrimitive("2026-10-28"), args(backend, "clear_update")["day"])
+            assertEquals(JsonPrimitive("2026-10-28"), args(backend, "clearUpdate")["day"])
         }
 
     @Test
@@ -173,15 +174,17 @@ class ModelsTest {
             model.load()
             assertEquals(2, model.items.value.size)
             assertTrue(model.hasMore.value)
-            val first = args(backend, "list_decisions")
-            assertEquals(setOf("standing_only", "limit"), first.keys)
+            val first = args(backend, "listDecisions")
+            // Unknown keys are refused by the component contract; absent options go as null, as the web app sends them.
+            assertEquals(setOf("search", "tag", "fromDay", "standingOnly", "cursor", "limit"), first.keys)
+            assertEquals(JsonNull, first["search"])
             assertEquals("25", (first["limit"] as JsonPrimitive).content)
 
             model.showOlder()
-            assertEquals("50", (args(backend, "list_decisions")["limit"] as JsonPrimitive).content)
+            assertEquals("50", (args(backend, "listDecisions")["limit"] as JsonPrimitive).content)
             model.search.value = " ship "
             model.toggleTag("infra")
-            val filtered = args(backend, "list_decisions")
+            val filtered = args(backend, "listDecisions")
             assertEquals(JsonPrimitive("ship"), filtered["search"])
             assertEquals(JsonPrimitive("infra"), filtered["tag"])
             assertEquals("25", (filtered["limit"] as JsonPrimitive).content)
@@ -191,17 +194,17 @@ class ModelsTest {
 
             val id = model.log(DecisionDraft(title = " Ship ", decision = "Weekly", tagsInput = "Release Process, infra", with = setOf(BO, ANA), fromDay = "2026-10-28", supersedes = model.items.value[0]))
             assertEquals("new-id", id)
-            val logged = args(backend, "log_decision")
+            val logged = args(backend, "logDecision")
             assertEquals(JsonPrimitive("Ship"), logged["title"])
             assertEquals(JsonPrimitive("d2"), logged["supersedes"])
-            assertEquals(JsonPrimitive("2026-10-28"), logged["from_day"])
+            assertEquals(JsonPrimitive("2026-10-28"), logged["fromDay"])
             assertEquals("[\"infra\",\"release-process\"]", logged["tags"].toString())
             assertEquals("[\"$ANA\",\"$BO\"]", logged["with"].toString())
 
             model.log(DecisionDraft(title = "T", decision = "D"))
-            val plain = args(backend, "log_decision")
-            assertFalse(plain.containsKey("supersedes"))
-            assertFalse(plain.containsKey("from_day"))
+            val plain = args(backend, "logDecision")
+            assertEquals(JsonNull, plain["supersedes"])
+            assertEquals(JsonNull, plain["fromDay"])
         }
 
     @Test
@@ -217,7 +220,7 @@ class ModelsTest {
             assertFalse(team.needsName)
             team.renameTeam(" Core ")
             assertEquals("Core", team.teamName.value)
-            assertEquals(JsonPrimitive("Core"), args(backend, "set_team_name")["name"])
+            assertEquals(JsonPrimitive("Core"), args(backend, "setTeamName")["name"])
 
             val link = team.inviteLink()
             assertEquals("ctx", StandupInvitation.parse(link)?.contextId)

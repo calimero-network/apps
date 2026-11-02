@@ -5,11 +5,11 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import network.calimero.standup.contract.DecisionView
+import network.calimero.standup.contract.TagCount
 import network.calimero.standup.core.Days
 import network.calimero.standup.core.DecisionDraft
 import network.calimero.standup.core.ErrorText
-import network.calimero.standup.generated.DecisionView
-import network.calimero.standup.generated.TagCount
 import java.time.ZoneId
 
 /** A month of the timeline. */

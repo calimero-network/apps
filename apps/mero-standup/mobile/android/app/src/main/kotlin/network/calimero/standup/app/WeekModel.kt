@@ -3,11 +3,11 @@ package network.calimero.standup.app
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import network.calimero.standup.contract.DayView
 import network.calimero.standup.core.Days
 import network.calimero.standup.core.Digest
 import network.calimero.standup.core.ErrorText
 import network.calimero.standup.core.PersonWeek
-import network.calimero.standup.generated.DayView
 import java.time.Clock
 
 /** The Week tab: a week of standups per person, shareable as Markdown (the web's `WeekDigest`). */

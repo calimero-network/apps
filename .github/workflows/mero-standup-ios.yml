@@ -1,5 +1,5 @@
 # Native iOS Mero Standup (apps/mero-standup/mobile/ios): test the core package
-# (generated client, helpers, view models) on macOS, then generate the Xcode
+# (contract client, helpers, view models) on macOS, then generate the Xcode
 # project from project.yml and build the app for the iOS Simulator. The
 # swift-sdk is resolved from GitHub at the revision Core/Package.swift and
 # project.yml pin.
