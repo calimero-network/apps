@@ -13,22 +13,6 @@ Symbols, mapped one to one) and flows.
 The pins are the SDKs' `main` merge commits of those PRs (`ios/project.yml` +
 `ios/Core/Package.swift`, `android/kotlin-sdk.ref`).
 
-## Status: still on Calimero v1 (not ported)
-
-The contract (`../logic`) and the web app (`../app`) moved to Calimero 1.0: a
-component-SDK contract whose methods are camelCase (`createIssue`,
-`listIssues`, …), workspaces as organizations, repos as app instances, sign-in
-with passkeys, and every node attested before a request is sealed to it. These
-two apps still use the swift-sdk / kotlin-sdk v1 session described below
-(Cloud wallet sign-in, a relay, warrants, namespaces and contexts, the v1
-snake_case methods), so **they do not work against the ported contract**.
-
-They move when swift-sdk and kotlin-sdk carry a Calimero 1.0 client (the
-counterpart of mero-js's `CalimeroClient`: attestation, sealed requests,
-passkeys, orgs and app instances). Their code, unit tests and CI
-(`mero-issue-tracker-ios.yml`, `mero-issue-tracker-android.yml`, which run
-against fakes) are unchanged until then.
-
 ## Delegated execution only
 
 No node runs on the phone. Both apps use the SDKs' `MeroAppSession`: Calimero Cloud sign-in (the

@@ -31,7 +31,7 @@ apps/mero-issue-tracker/
 ├── app/                     Vite + React; @calimero-apps/connect + mero-js CalimeroClient
 ├── mcp/                     the stdio MCP server (mero-js CalimeroClient + an API key)
 ├── recipes/                 reference modules for other patterns (1.0 client + component SDK)
-└── mobile/                  native iOS/Android apps: still on the v1 SDKs, not ported (see below)
+└── mobile/                  native iOS/Android apps (ported in #691; see below)
 ```
 
 See [docs/COMPONENT-APPS.md](../../docs/COMPONENT-APPS.md) for how component
@@ -155,10 +155,9 @@ light/dark theme. Behind them:
   `/issue-tracker/issues/:id`, `/issue-tracker/members`); an invitation is
   `/?invite=<token>`.
 
-`mobile/` is **not ported**: the native apps use the swift-sdk / kotlin-sdk
-v1 session (relay, warrants, namespaces, contexts, snake_case methods), and
-those SDKs have no Calimero 1.0 client yet; `mobile/README.md` says what they
-wait for. Their CI runs against fakes and is unchanged.
+`mobile/`, the native iOS and Android apps, moves to Calimero 1.0 in its own PR,
+#691, which is built against this contract's ABI. Until #691 merges,
+`mobile/` holds the v1 apps.
 
 ## Production
 
