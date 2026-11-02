@@ -60,7 +60,7 @@ private inline fun <T> attempt(block: () -> T): Result<T> =
 
 // region Teams
 
-/** A team: a namespace running Mero Design. */
+/** A team: an organization running Mero Design. */
 data class Team(
     val id: String,
     val name: String,
@@ -94,7 +94,7 @@ class TeamsModel(
 
 // region Boards
 
-/** A board: a subgroup of the team with one context in it. */
+/** A board: an app instance of Mero Design in the team's organization. */
 data class BoardSummary(
     val contextId: String,
     val groupId: String,
@@ -116,20 +116,28 @@ class BoardsModel(
 
     suspend fun load() {
         if (_boards.value.isEmpty()) _state.value = LoadState.Loading
-        val subgroups =
-            attempt { backend.listSubgroups(teamId) }.getOrElse {
-                _state.value = LoadState.Failed(DesignFormat.errorText(it))
-                return
+        // The org's own instances, then those its teams hold (a board created in a team).
+        val listed = mutableListOf<Triple<String, String, String?>>()
+        val own = attempt { backend.listContextEntries(teamId) }
+        own.getOrNull()?.forEach { listed += Triple(it.id, teamId, it.name) }
+        val subgroups = attempt { backend.listSubgroups(teamId) }
+        subgroups.getOrNull()?.forEach { sg ->
+            sg.contextIds.filter { ctx -> listed.none { it.first == ctx } }.forEach { ctx ->
+                listed += Triple(ctx, sg.groupId, if (sg.contextIds.size == 1) sg.name else null)
             }
+        }
+        if (listed.isEmpty() && own.isFailure && subgroups.isFailure) {
+            _state.value = LoadState.Failed(DesignFormat.errorText(own.exceptionOrNull()!!))
+            return
+        }
         val known = _boards.value.associateBy { it.contextId }
         _boards.value =
-            subgroups.mapNotNull { sg ->
-                val ctx = sg.contextIds.firstOrNull() ?: return@mapNotNull null
-                val name = sg.name?.trim().orEmpty()
+            listed.map { (ctx, group, listedName) ->
+                val name = listedName?.trim().orEmpty()
                 val prev = known[ctx]
                 BoardSummary(
                     ctx,
-                    sg.groupId,
+                    group,
                     prev?.name ?: name.ifEmpty { "Board ${DesignFormat.shortId(ctx)}" },
                     prev?.description ?: "",
                     prev?.elementCount,
@@ -242,16 +250,9 @@ class BoardModel(
     val shareLink: String get() = DesignFormat.boardLink(teamId, contextId)
     val account: String get() = backend.account
 
-    /** Join the board's context when this account is not in it yet, then read everything. */
+    /** Read everything. On 1.0 every member of the team's organization reaches its boards. */
     suspend fun open() {
         _phase.value = Phase.Loading
-        val member = attempt { backend.isMember(contextId) }.getOrNull()
-        if (member == false) {
-            attempt { backend.joinContext(contextId) }.onFailure {
-                _phase.value = Phase.Failed("Couldn't join this board: ${DesignFormat.errorText(it)}")
-                return
-            }
-        }
         attempt { loadElements() }.onFailure {
             _phase.value = Phase.Failed(DesignFormat.errorText(it))
             return
@@ -280,7 +281,7 @@ class BoardModel(
         }
     }
 
-    /** Follow the board until cancelled: the relay's events when it streams, polling otherwise. */
+    /** Follow the board until cancelled: the instance's events, polling after a stream ends. */
     suspend fun live() {
         if (backend.canSubscribe) {
             attempt { backend.events(contextId).collect { refresh() } }

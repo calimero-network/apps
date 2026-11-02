@@ -1,5 +1,6 @@
 package network.calimero.design
 
+import com.calimero.mero.AppError
 import com.calimero.mero.app.AppContextEvent
 import com.calimero.mero.app.AppNamespace
 import com.calimero.mero.testkit.RecordedContractCall
@@ -8,6 +9,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import network.calimero.design.app.BoardModel
@@ -15,7 +17,10 @@ import network.calimero.design.app.BoardsModel
 import network.calimero.design.app.LoadState
 import network.calimero.design.app.TeamsModel
 import network.calimero.design.core.BlobLoading
+import network.calimero.design.core.ComponentTransport
+import network.calimero.design.core.DesignFormat
 import network.calimero.design.core.Point
+import network.calimero.design.core.designClient
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -63,14 +68,14 @@ class ModelTest {
             assertEquals(
                 RecordedContractCall.Path.QUERY,
                 backend.recording
-                    .calls("get_board")
+                    .calls("getBoard")
                     .first()
                     .path,
             )
         }
 
     @Test
-    fun `opening joins the board then draws it`() =
+    fun `opening reads the board then draws it`() =
         runTest {
             val backend =
                 Fixtures.backend(
@@ -87,7 +92,15 @@ class ModelTest {
             model.open()
             runCurrent()
             assertEquals(BoardModel.Phase.Ready, model.phase.value)
-            assertTrue(backend.log.contains("joinContext ${Fixtures.board}"))
+            assertTrue("org members reach the board as is", backend.log.none { it.startsWith("joinContext") })
+            assertEquals(
+                """{"cursor":null,"limit":1000}""",
+                backend.recording
+                    .calls("getElementsPage")
+                    .first()
+                    .args
+                    .toString(),
+            )
             assertEquals(2, model.scene.value.nodes.size)
             assertEquals("Landing v2", model.name.value)
             assertEquals("editor", model.role.value)
@@ -115,12 +128,15 @@ class ModelTest {
             val join = backend.recording.calls("join").single()
             assertEquals(RecordedContractCall.Path.EXECUTE, join.path)
             assertEquals(JsonPrimitive("Fran"), join.arg("username"))
-            val add = backend.recording.calls("add_comment").single()
+            assertEquals("u64 arguments travel as decimal strings", JsonPrimitive("1700000000000"), join.arg("timestamp"))
+            assertEquals(JsonNull, join.arg("avatar"))
+            val add = backend.recording.calls("addComment").single()
             assertEquals(RecordedContractCall.Path.EXECUTE, add.path)
             assertEquals(JsonPrimitive("Bigger logo?"), add.arg("content"))
-            assertEquals("120", add.arg("x").toString())
-            assertEquals("90", add.arg("y").toString())
-            assertEquals("1700000000000", add.arg("created_at").toString())
+            assertEquals(JsonPrimitive("120"), add.arg("x"))
+            assertEquals(JsonPrimitive("90"), add.arg("y"))
+            assertEquals(JsonPrimitive("1700000000000"), add.arg("createdAt"))
+            assertNull(add.arg("created_at"))
             assertEquals("Fran", model.myName)
             assertEquals(1, model.comments.value.size)
             assertEquals("Fran", model.nameFor(Fixtures.me))
@@ -143,8 +159,9 @@ class ModelTest {
             assertEquals("ff", model.nameFor("ff"))
             model.reply("c1", "Agreed")
             assertTrue(backend.recording.calls("join").isEmpty())
-            val reply = backend.recording.calls("add_reply").single()
-            assertEquals(JsonPrimitive("c1"), reply.arg("comment_id"))
+            val reply = backend.recording.calls("addReply").single()
+            assertEquals(JsonPrimitive("c1"), reply.arg("commentId"))
+            assertTrue((reply.arg("createdAt") as JsonPrimitive).isString)
             assertEquals(JsonPrimitive("Agreed"), reply.arg("content"))
         }
 
@@ -173,12 +190,12 @@ class ModelTest {
             val backend = Fixtures.backend()
             val model = BoardModel(backend, Fixtures.team, Fixtures.board, scope = backgroundScope)
             model.open()
-            val before = backend.recording.calls("get_elements").size
+            val before = backend.recording.calls("getElementsPage").size
             val job = launch { model.live() }
             runCurrent()
             backend.emit(AppContextEvent(Fixtures.board, "StateMutation"))
             runCurrent()
-            assertTrue(backend.recording.calls("get_elements").size > before)
+            assertTrue(backend.recording.calls("getElementsPage").size > before)
             job.cancel()
             backend.finishEvents()
             advanceUntilIdle()
@@ -193,4 +210,49 @@ class ModelTest {
             model.open()
             assertEquals(BoardModel.Phase.Failed("You're offline. Check your connection and try again."), model.phase.value)
         }
+
+    @Test
+    fun `a board larger than a page is read whole`() =
+        runTest {
+            val backend =
+                com.calimero.mero.testkit
+                    .InMemoryAppBackend()
+            val el = Fixtures.element("a", Fixtures.RECT)
+            backend.recording.handler = { call ->
+                val first = call.args.jsonObject["cursor"] == JsonNull
+                kotlinx.serialization.json.Json.parseToJsonElement(
+                    """{"items":[$el],"nextCursor":${if (first) "\"c1\"" else "null"}}""",
+                )
+            }
+            val elements = backend.designClient("board").getElements()
+            assertEquals(2, elements.size)
+            assertEquals(listOf(JsonNull, JsonPrimitive("c1")), backend.recording.calls("getElementsPage").map { it.arg("cursor") })
+        }
+
+    @Test
+    fun `v1 names map onto the component wire`() {
+        assertEquals("updateMemberUsername", ComponentTransport.camel("update_member_username"))
+        val (name, args) = ComponentTransport.wire("update_cursor", """{"x":-3,"y":4,"updated_at":1700000000000}""")
+        assertEquals("updateCursor", name)
+        assertEquals("""{"x":"-3","y":"4","updatedAt":"1700000000000"}""", args.toString())
+        assertEquals("""{"member":"ab"}""", ComponentTransport.wire("get_role", """{"member":"ab"}""").second.toString())
+    }
+
+    @Test
+    fun `refusals in words`() {
+        fun refusal(
+            code: String,
+            message: String,
+        ) = AppError(
+            "x",
+            kotlinx.serialization.json.Json
+                .parseToJsonElement("""{"code":"$code","fields":{"message":"$message"}}""")
+                .jsonObject,
+        )
+        assertEquals(
+            "You have view-only access to this board. Ask an admin for edit access to comment.",
+            DesignFormat.errorText(refusal("Forbidden", "only editors may comment")),
+        )
+        assertEquals("Comment not found", DesignFormat.errorText(refusal("Invalid", "comment not found")))
+    }
 }
