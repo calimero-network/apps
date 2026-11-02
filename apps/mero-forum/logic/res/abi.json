@@ -327,6 +327,14 @@
       "profiles": "perUser",
       "votes": "unorderedMap"
     },
+    "search": {
+      "commentVotes": [],
+      "comments": [],
+      "moderators": [],
+      "posts": [],
+      "profiles": [],
+      "votes": []
+    },
     "version": 1
   },
   "world": "calimero:app@0.5.0"
