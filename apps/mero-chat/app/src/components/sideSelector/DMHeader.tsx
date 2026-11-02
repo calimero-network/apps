@@ -4,7 +4,7 @@ import { sameAccount } from "../../utils/accountIdentity";
 import { useCallback, useMemo, memo } from "react";
 import { getGroupId } from "../../constants/config";
 import { useCurrentGroupPermissions } from "../../hooks/useCurrentGroupPermissions";
-import type { DMContextInfo } from "../../hooks/useDMs";
+import type { DMContextInfo } from "../../types/Common";
 
 const Container = styled.div<{ $isCollapsed?: boolean }>`
   display: flex;

@@ -2,7 +2,7 @@ import { memo } from "react";
 import { styled } from "styled-components";
 import DMHeader from "./DMHeader";
 import UserList from "./UserList";
-import type { DMContextInfo } from "../../hooks/useDMs";
+import type { DMContextInfo } from "../../types/Common";
 import type { CreateContextResult } from "../popups/StartDMPopup";
 import type { ContextUnread } from "../../hooks/useUnreadCounts";
 

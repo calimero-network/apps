@@ -35,8 +35,7 @@ vi.mock("../api/dataSource/clientApiDataSource", () => ({
   },
 }));
 
-vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
+vi.mock("../calimero/context", () => ({
   getContextId: mockGetContextId,
   getContextIdentity: mockGetContextIdentity,
 }));

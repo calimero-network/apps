@@ -13,10 +13,9 @@ import type {
   UpdatedMessages,
 } from "../types/Common";
 import { MessageStatus } from "../types/Common";
-import JoinChannel from "./JoinChannel";
 import ChatDisplaySplit from "./ChatDisplaySplit";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
-import { getContextIdentity as getExecutorPublicKey } from "@calimero-network/mero-react";
+import { getContextIdentity as getExecutorPublicKey } from "../calimero/context";
 import type { ResponseData } from "../api/types";
 import type { ChannelInfo, UserId } from "../api/clientApi";
 import { extractAndAddMentions } from "../utils/mentions";
@@ -112,8 +111,8 @@ const ThreadWrapper = styled.div`
 
 function ChatContainer({
   activeChat,
-  setIsOpenSearchChannel,
-  onJoinedChat,
+  setIsOpenSearchChannel: _setIsOpenSearchChannel,
+  onJoinedChat: _onJoinedChat,
   loadInitialChatMessages,
   focusMessageId,
   copyMessageLink,
@@ -693,14 +692,7 @@ function ChatContainer({
           onResultClick={onSearchResultClick}
         />
       )}
-      {activeChat.canJoin && activeChat.type === "channel" ? (
-        <JoinChannel
-          channelMeta={channelMeta}
-          activeChat={activeChat}
-          setIsOpenSearchChannel={setIsOpenSearchChannel}
-          onJoinedChat={onJoinedChat}
-        />
-      ) : (
+      {(
         <>
           <ChatDisplaySplit
             readMessage={() => {}}

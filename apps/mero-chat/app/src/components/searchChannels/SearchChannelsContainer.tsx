@@ -1,29 +1,12 @@
-import { styled } from "styled-components";
+import { useMemo, useState } from "react";
 import Loader from "../loader/Loader";
-import type { ActiveChat, GroupContextChannel } from "../../types/Common";
-import { useCallback, useEffect, useState } from "react";
-import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
-import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
-import type { ResponseData } from "../../api/types";
-import {
-  nodeApi as apiClientNode,
-  type LegacyFetchContextIdentitiesResponse as FetchContextIdentitiesResponse,
-} from "../../api/meroJsClient";
-import {
-  getGroupId,
-  getGroupMemberIdentity,
-  setContextMemberIdentity,
-} from "../../constants/config";
+import { styled } from "styled-components";
 import { Button, SearchInput } from "@calimero-network/mero-ui";
-import { log } from "../../utils/logger";
-import { useCurrentGroupPermissions } from "../../hooks/useCurrentGroupPermissions";
+
+import type { ActiveChat, GroupContextChannel } from "../../types/Common";
 import { buildChannelEntryChat } from "../../utils/channelEntry";
-import { isDmContextCandidate } from "../../utils/dmContext";
-import {
-  getIdentityDisplayName,
-  getMessengerDisplayName,
-} from "../../utils/messengerName";
-import { useToast } from "../../contexts/ToastContext";
+import { useWorkspace } from "../../calimero/WorkspaceProvider";
+import { selfAccount } from "../../calimero/connection";
 
 const SearchContainer = styled.div`
   padding: 24px;
@@ -190,231 +173,48 @@ function getActiveChannelName(
   return channel.info?.name ?? channel.alias ?? channel.contextId.substring(0, 8);
 }
 
+/**
+ * Browse the workspace's channels. In 1.0 there is no join step: a public
+ * channel reaches every member, and a private one only the members its
+ * creator added, so the list is the channels this account reaches.
+ */
 export default function SearchChannelsContainer({
   onChatSelected,
-  fetchChannels,
-  onChannelJoined,
 }: SearchChannelsContainerProps) {
-  const groupId = getGroupId();
-  const currentGroupPermissions = useCurrentGroupPermissions(groupId);
-  const { addToast } = useToast();
-  const [allChannels, setAllChannels] = useState<BrowsableChannel[]>([]);
+  const ws = useWorkspace();
   const [inputValue, setInputValue] = useState("");
-  const [isLoadingId, setIsLoadingId] = useState("");
-
-  const filteredChannels = inputValue
-    ? allChannels.filter((ch) => {
-        const query = inputValue.toLowerCase();
-        return [ch.alias, ch.info?.name, ch.contextId].some(
-          (value) => value?.toLowerCase().includes(query),
-        );
-      })
-    : allChannels;
-
-  useEffect(() => {
-    const loadChannels = async () => {
-      if (!groupId) return;
-      // Wait for the namespace member identity to resolve, otherwise canJoin
-      // races to false and the Join button looks permanently disabled.
-      if (currentGroupPermissions.loading) return;
-
-      const groupApi = new GroupApiDataSource();
-      const clientApi = new ClientApiDataSource();
-
-      const enrichContext = async (
-        ctxId: string,
-        alias: string | undefined,
-        visibility: "open" | "restricted",
-      ): Promise<BrowsableChannel | null> => {
-        const entry = { contextId: ctxId, alias };
-        if (isDmContextCandidate({ entry })) return null;
-
-        let isJoined = false;
-        let info = null;
-        let joinedIdentity = "";
-
-        try {
-          const idResp: ResponseData<FetchContextIdentitiesResponse> =
-            await apiClientNode.fetchContextIdentities(ctxId);
-          const identities = idResp.data?.data?.identities;
-          if (identities && identities.length > 0) {
-            isJoined = true;
-            joinedIdentity = identities[0];
-            const infoResp = await clientApi.getContextInfo(ctxId, identities[0]);
-            if (infoResp.data) info = infoResp.data;
-          }
-        } catch {
-          log.debug("SearchChannels", `Could not fetch info for ${ctxId}`);
-        }
-
-        if (isDmContextCandidate({ entry, info })) return null;
-        if (info && info.context_type !== "Channel") return null;
-
-        // Restricted channel the user is not in → hide completely
-        if (!isJoined && visibility === "restricted") return null;
-
-        const memberIdentity = currentGroupPermissions.memberIdentity;
-        let canJoin = isJoined;
-        let blockedReason = "";
-
-        if (!canJoin) {
-          if (!memberIdentity) {
-            blockedReason = "This node's workspace identity could not be resolved.";
-          } else {
-            canJoin = true;
-          }
-        }
-
-        return { contextId: ctxId, alias, info, isJoined, visibility, canJoin, blockedReason, joinedIdentity };
-      };
-
-      const collected: (BrowsableChannel | null)[] = [];
-
-      // 1-group-per-context model: each channel-group is a subgroup under the
-      // namespace, its VisibilityMode (open|restricted) IS the channel's
-      // public/private flag. DMs are also subgroups; filter them out by the
-      // context's info.context_type === "Dm" in enrichContext below.
-      const sgResp = await groupApi.listSubgroups(groupId);
-      if (sgResp.data && sgResp.data.length > 0) {
-        await Promise.all(
-          sgResp.data.map(async (sg) => {
-            const groupInfoResp = await groupApi.getGroup(sg.groupId);
-            // Fail closed if we can't read the subgroup info.
-            const sgVisibility: "open" | "restricted" =
-              groupInfoResp.data?.subgroupVisibility === "open" ? "open" : "restricted";
-
-            const sgListResp = await groupApi.listGroupContexts(sg.groupId);
-            if (!sgListResp.data) return;
-
-            const results = await Promise.all(
-              sgListResp.data.map((entry) =>
-                enrichContext(entry.contextId, entry.alias, sgVisibility),
-              ),
-            );
-            collected.push(...results);
-          }),
-        );
-      }
-
-      setAllChannels(collected.filter((ch): ch is BrowsableChannel => ch !== null));
-    };
-
-    void loadChannels();
-  }, [
-    currentGroupPermissions.canJoinOpenSubgroups,
-    currentGroupPermissions.isAdmin,
-    currentGroupPermissions.loading,
-    currentGroupPermissions.memberIdentity,
-    groupId,
-  ]);
-
-  const handleJoinChannel = useCallback(
-    async (contextId: string) => {
-      if (!groupId) return;
-
-      const channel = allChannels.find((entry) => entry.contextId === contextId);
-      if (channel && !channel.canJoin && !channel.isJoined) {
-        return;
-      }
-
-      setIsLoadingId(contextId);
-      try {
-        const groupApi = new GroupApiDataSource();
-        const joinResponse = await groupApi.joinGroupContext(groupId, { contextId });
-        if (joinResponse.error || !joinResponse.data) {
-          const message = joinResponse.error?.message || "Failed to join channel";
-          log.error("SearchChannels", "joinGroupContext failed", joinResponse.error);
-          addToast({ title: "Join channel", message, type: "channel", duration: 4000 });
-          return;
-        }
-
-        const memberKey = joinResponse.data.memberPublicKey;
-        setContextMemberIdentity(contextId, memberKey);
-        // Seed server-side member alias so other members see a display name
-        // instead of a raw identity hash on rc.35.
-        const namespaceIdentity = getGroupMemberIdentity(groupId);
-        const seedAlias =
-          (namespaceIdentity ? getIdentityDisplayName(namespaceIdentity) : "") ||
-          getMessengerDisplayName() ||
-          "";
-        if (seedAlias) {
-          groupApi
-            .setMemberMetadata(contextId, memberKey, { name: seedAlias })
-            .catch(() => {/* non-fatal — alias is best-effort */});
-          // Register the WASM-level `profile` for this context too — without
-          // this, `get_profiles` on the channel never returns us, and
-          // channel-members / mention / DM-invite UIs all fall through to
-          // displaying our raw identity hash. The auto-join path in
-          // `useGroupContexts` does this for restricted (admin-added)
-          // channels; this is the equivalent for the public/browse "Join"
-          // flow which routes here.
-          new ClientApiDataSource()
-            .joinChat({
-              contextId,
-              executorPublicKey: memberKey,
-              username: seedAlias,
-              isDM: false,
-            })
-            .catch(() => {/* non-fatal — set_profile is best-effort */});
-        }
-
-        setAllChannels((prev) =>
-          prev.map((ch) =>
-            ch.contextId === contextId
-              ? {
-                  ...ch,
-                  isJoined: true,
-                  canJoin: true,
-                  blockedReason: "",
-                  joinedIdentity: joinResponse.data.memberPublicKey,
-                }
-              : ch,
-          ),
-        );
-        onChannelJoined?.(contextId);
-        fetchChannels();
-        if (channel) {
-          onChatSelected(
-            buildChannelEntryChat({
-              contextId,
-              name: getActiveChannelName(channel),
-              contextIdentity: joinResponse.data.memberPublicKey,
-              username: "",
-            }),
-          );
-        }
-      } catch (err) {
-        log.error("SearchChannels", "Failed to join channel", err);
-        addToast({
-          title: "Join channel",
-          message: err instanceof Error ? err.message : "Failed to join channel",
-          type: "channel",
-          duration: 4000,
-        });
-      } finally {
-        setIsLoadingId("");
-      }
-    },
-    [addToast, allChannels, fetchChannels, groupId, onChatSelected],
+  const isLoadingId = "";
+  const allChannels: BrowsableChannel[] = useMemo(
+    () =>
+      ws.conversations
+        .filter((c) => c.kind !== "dm")
+        .map((c) => ({
+          contextId: c.appId,
+          alias: c.name,
+          info: { name: c.name, context_type: "Channel" as const, creator: c.owner },
+          isJoined: true,
+          visibility: c.kind === "private" ? ("restricted" as const) : ("open" as const),
+          canJoin: false,
+          blockedReason: "",
+          joinedIdentity: selfAccount(),
+        })),
+    [ws.conversations],
   );
-
-  const onViewChannel = useCallback(
-    (channel: BrowsableChannel) => {
-      if (!channel.joinedIdentity) {
-        return;
-      }
-
-      onChatSelected(
-        buildChannelEntryChat({
-          contextId: channel.contextId,
-          name: getActiveChannelName(channel),
-          contextIdentity: channel.joinedIdentity,
-          username: "",
-        }),
-      );
-    },
-    [onChatSelected],
+  const filteredChannels = allChannels.filter((c) =>
+    getChannelListName(c).toLowerCase().includes(inputValue.trim().toLowerCase()),
   );
+  const handleJoinChannel = (_contextId: string) => {};
+
+  const onViewChannel = (channel: BrowsableChannel) => {
+    onChatSelected(
+      buildChannelEntryChat({
+        contextId: channel.contextId,
+        name: getActiveChannelName(channel),
+        contextIdentity: channel.joinedIdentity ?? selfAccount(),
+        username: "",
+      }),
+    );
+  };
 
   return (
     <SearchContainer>

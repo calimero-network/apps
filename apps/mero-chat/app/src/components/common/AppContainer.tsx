@@ -7,14 +7,14 @@ import type {
   ChatMessagesDataWithOlder,
   CurbMessage,
 } from "../../types/Common";
-import type { SubgroupEntry } from "../../api/groupApi";
+import type { SubgroupEntry } from "../../types/Common";
 import type { SearchResult } from "../../hooks/messageSearch";
 import ChannelsContainer from "./ChannelsContainer";
 import CurbNavbar from "../navbar/CurbNavbar";
 import SearchChannelsContainer from "../searchChannels/SearchChannelsContainer";
 import ChatContainer from "../../chat/ChatContainer";
 import type { UserId } from "../../api/clientApi";
-import type { DMContextInfo } from "../../hooks/useDMs";
+import type { DMContextInfo } from "../../types/Common";
 import type { CreateContextResult } from "../popups/StartDMPopup";
 import type { ContextUnread } from "../../hooks/useUnreadCounts";
 

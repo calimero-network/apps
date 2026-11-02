@@ -1,9 +1,9 @@
 import react from "@vitejs/plugin-react-swc";
 import { defineConfig } from "vitest/config";
 import { VitePWA } from "vite-plugin-pwa";
-import { servedAssetsFallback } from "@calimero-apps/node-served/vite";
 
-// https://vite.dev/config/
+// `base: "./"`: the same build runs at / under `vite` and under the node's
+// /{version}/, where the cluster serves the bundle's frontend.
 export default defineConfig({
   base: "./",
   resolve: { dedupe: ["react", "react-dom"] },
@@ -11,18 +11,9 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: "./src/test/setup.ts",
-    exclude: ["**/node_modules/**", "**/e2e/**"],
-    server: {
-      deps: {
-        // The platform SDK ships extensionless directory imports (e.g.
-        // `export … from "./bridge"`) that Vite resolves but Node's raw ESM
-        // loader rejects. Inline it so vitest transforms it through Vite.
-        inline: [/@calimero-network\/mero-platform/],
-      },
-    },
+    exclude: ["**/node_modules/**", "**/dist/**"],
   },
   plugins: [
-    servedAssetsFallback(),
     react(),
     VitePWA({
       registerType: "autoUpdate",

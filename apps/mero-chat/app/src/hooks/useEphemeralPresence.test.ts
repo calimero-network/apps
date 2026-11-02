@@ -7,15 +7,14 @@ import {
   useEphemeralPresence,
 } from "./useEphemeralPresence";
 
-// The hook publishes through mero-react's `useEphemeral`. Record which context
+// The hook publishes through `calimero/presence`'s `useEphemeral`. Record which context
 // each publish went to, so a slice published into the context being *left* is
 // distinguishable from one published into the context being entered.
 const publishes: Array<{ ctx: string | null; slice: Record<string, unknown> }> = [];
 
 let peersFixture = new Map<string, Record<string, unknown>>();
 
-vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
+vi.mock("../calimero/presence", () => ({
   useEphemeral: (contextId: string | null) => ({
     peers: peersFixture,
     ageOf: () => undefined,

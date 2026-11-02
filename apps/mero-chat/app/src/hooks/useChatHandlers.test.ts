@@ -31,9 +31,10 @@ vi.mock("../api/dataSource/clientApiDataSource", () => ({
   }),
 }));
 
-vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  getContextIdentity: vi.fn().mockReturnValue("my-identity"),
+// The signed-in account: the contract's `sender` for every message this
+// account sends, in every conversation.
+vi.mock("../calimero/connection", () => ({
+  selfAccount: vi.fn().mockReturnValue("ctx-active-identity"),
 }));
 
 // Returns a JSON object with both channel and context_id fields so all

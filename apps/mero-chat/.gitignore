@@ -1,8 +1,6 @@
 # Rust / WASM
 logic/target/
-# NOT `logic/res/` — the standalone repo ignored it wholesale (`**/res/`), which
-# hides res/abi.json and res/state-schema.json, and ci.yml's ABI gate then has
-# nothing to diff and passes while checking nothing.
+# NOT `logic/res/` — that would hide res/abi.json, which components.yml diffs.
 logic/res/*.wasm
 logic/res/*.mpk
 logic/res/bundle-temp/
@@ -12,13 +10,7 @@ logic/dist/
 app/node_modules/
 app/dist/
 app/dev-dist/
-app/playwright-report/
-app/test-results/
-app/blob-report/
-
-# merobox runtime data (~400 MB of node state)
-logic/workflows/data/
-logic/workflows/**/.pids/
+app/dist-types/
 
 # misc
 .DS_Store

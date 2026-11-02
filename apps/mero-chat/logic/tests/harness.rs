@@ -1080,6 +1080,30 @@ fn a_member_who_is_not_staff_cannot_ban() {
     assert_eq!(role(&mut t, "bob"), json!("User"));
 }
 
+/// The organization's owner and admins are channel admins without a grant (as
+/// v1's frontend made them on opening a channel); a role set for one wins.
+#[test]
+fn org_admins_administer_every_channel() {
+    let mut t = common::app(Org::new().admins(["ada"]).members(["bob"]));
+    assert_eq!(role(&mut t, "ada"), json!("Admin"));
+    call(
+        &mut t,
+        "ada",
+        "updateInfo",
+        json!({ "name": "by an org admin" }),
+    );
+    set_role(&mut t, "ada", "bob", "Mod").expect("an org admin grants");
+    let id = send(&mut t, "bob", "x");
+    call(&mut t, "ada", "deleteMessage", json!({ "messageId": id }));
+    // Banning one is possible, and then they are banned here.
+    set_role(&mut t, "owner", "ada", "Banned").expect("ban");
+    assert_eq!(role(&mut t, "ada"), json!("Banned"));
+    assert_eq!(
+        code(t.as_("ada").call("updateInfo", json!({ "name": "x" }))),
+        "Forbidden"
+    );
+}
+
 /// A role is set only for someone the conversation reaches through its org.
 #[test]
 fn a_role_names_a_member() {

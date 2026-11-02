@@ -1,5 +1,5 @@
 import { memo } from "react";
-import type { DMContextInfo } from "../../hooks/useDMs";
+import type { DMContextInfo } from "../../types/Common";
 import UserItem from "./UserItem";
 import { styled } from "styled-components";
 import type { ContextUnread } from "../../hooks/useUnreadCounts";

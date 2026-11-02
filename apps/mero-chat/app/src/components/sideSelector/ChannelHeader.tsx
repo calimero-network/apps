@@ -1,16 +1,13 @@
 import { styled } from "styled-components";
 import CreateChannelPopup from "../popups/CreateChannelPopup";
 import { isValidChannelName } from "../../utils/validation";
-import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
 import { getGroupId } from "../../constants/config";
-import { createChannel as createChannelInWorkspace } from "../../utils/createChannel";
+import { useWorkspace } from "../../calimero/WorkspaceProvider";
+import { selfAccount } from "../../calimero/connection";
 import { memo, useCallback, useState } from "react";
 import { usePersistentState } from "../../hooks/usePersistentState";
 import { useCurrentGroupPermissions } from "../../hooks/useCurrentGroupPermissions";
 import { log } from "../../utils/logger";
-import {
-  getChannelVisibilityOption,
-} from "../../utils/channelVisibility";
 import { buildChannelEntryChat } from "../../utils/channelEntry";
 import type { ActiveChat } from "../../types/Common";
 
@@ -69,7 +66,6 @@ const ChannelHeader = memo(function ChannelHeader(props: ChannelHeaderProps) {
   const [isOpen, setIsOpen] = usePersistentState("createChannelModalOpen", false);
   const [inputValue, setInputValue] = usePersistentState("createChannelInputValue", "");
   const [defaultVisibility, setDefaultVisibility] = useState<"public" | "private">("public");
-  const [isLoadingDefaultVisibility, setIsLoadingDefaultVisibility] = useState(false);
   // Fresh subgroup names fetched from the server when the popup opens.
   // These take priority over the possibly-stale existingChannelNames prop.
   const [liveSubgroupNames, setLiveSubgroupNames] = useState<string[]>([]);
@@ -101,83 +97,38 @@ const ChannelHeader = memo(function ChannelHeader(props: ChannelHeaderProps) {
     [liveSubgroupNames, props.existingChannelNames],
   );
 
+  const ws = useWorkspace();
+
   const createChannel = async (
     channelName: string,
     isPublic: boolean,
     _isReadOnly: boolean,
   ): Promise<{ error: string } | void> => {
-    if (!groupId) {
-      log.error("ChannelHeader", "No groupId configured — cannot create channel");
-      return { error: "No workspace configured" };
-    }
-
     const lower = channelName.toLowerCase();
-    const allNames = liveSubgroupNames.length > 0
-      ? liveSubgroupNames
-      : (props.existingChannelNames ?? []);
-    const isDuplicate = allNames.some((n) => n.toLowerCase() === lower);
-    if (isDuplicate) {
+    const allNames = liveSubgroupNames.length > 0 ? liveSubgroupNames : (props.existingChannelNames ?? []);
+    if (allNames.some((n) => n.toLowerCase() === lower)) {
       log.warn("ChannelHeader", `Channel name "${channelName}" already exists`);
-      return { error: "A group with this name already exists" };
+      return { error: "A channel with this name already exists" };
     }
-
-    const namespaceId = props.targetGroupId ?? groupId;
-    const created = await createChannelInWorkspace(namespaceId, channelName, isPublic);
-    if ("error" in created) return created;
-    const { contextId, memberKey } = created;
-
+    let contextId: string;
+    try {
+      contextId = await ws.createChannel(channelName, !isPublic);
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : String(e) };
+    }
     setInputValue("");
     setIsOpen(false);
-
-    if (memberKey) {
-      props.onChannelSelected?.(
-        buildChannelEntryChat({ contextId, name: channelName, contextIdentity: memberKey }),
-      );
-    }
+    props.onChannelSelected?.(
+      buildChannelEntryChat({ contextId, name: channelName, contextIdentity: selfAccount() }),
+    );
     props.onChannelCreated?.();
   };
 
-  const prepareCreateChannelModal = useCallback(async () => {
-    const targetGroupId = props.targetGroupId ?? groupId;
-    if (!targetGroupId || isLoadingDefaultVisibility) {
-      return;
-    }
-
-    setIsLoadingDefaultVisibility(true);
-    const groupApi = new GroupApiDataSource();
-
-    try {
-      // Fetch subgroups and group info in parallel so the validator has
-      // fresh server-side names before the user starts typing.
-      const [subgroupsResp, groupResp] = await Promise.all([
-        groupApi.listSubgroups(targetGroupId),
-        groupApi.getGroup(targetGroupId),
-      ]);
-
-      if (subgroupsResp.data) {
-        setLiveSubgroupNames(
-          subgroupsResp.data.map((sg) => sg.alias ?? "").filter(Boolean),
-        );
-      }
-
-      if (groupResp.data?.subgroupVisibility) {
-        setDefaultVisibility(getChannelVisibilityOption(groupResp.data.subgroupVisibility));
-      } else {
-        setDefaultVisibility("public");
-        if (groupResp.error) {
-          log.error(
-            "ChannelHeader",
-            "Failed to read group default visibility, falling back to public",
-            groupResp.error,
-          );
-        }
-      }
-
-      setIsOpen(true);
-    } finally {
-      setIsLoadingDefaultVisibility(false);
-    }
-  }, [isLoadingDefaultVisibility, setIsOpen, groupId]);
+  const prepareCreateChannelModal = useCallback(() => {
+    setLiveSubgroupNames(ws.conversations.filter((c) => c.kind !== "dm").map((c) => c.name));
+    setDefaultVisibility("public");
+    setIsOpen(true);
+  }, [ws.conversations, setIsOpen]);
 
   return (
     <Container $isCollapsed={props.isCollapsed}>

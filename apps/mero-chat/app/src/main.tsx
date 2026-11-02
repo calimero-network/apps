@@ -1,252 +1,48 @@
 import "@calimero-apps/glass/glass.css";
 import React, { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import "./index.css";
-import App from "./App.tsx";
 import { BrowserRouter } from "react-router-dom";
-import { isServedByNode } from "@calimero-apps/node-served";
-import { SERVED_BY_NODE, nodeBasename } from "./utils/servedByNode";
-import {
-  MeroProvider,
-  AppMode as MeroAppMode,
-  primeInvitationCapture,
-  getNodeUrl,
-  setNodeUrl,
-} from "@calimero-network/mero-react";
-import MeroJsBridge from "./api/MeroJsBridge.tsx";
-import { BLOB_READ_TIMEOUT_MS } from "./api/blobs.ts";
-import {
-  jwtExpiryMs,
-  readStoredTokens,
-  seedTokens,
-  shouldSeedTokens,
-} from "./utils/authTokens.ts";
 import "@calimero-network/mero-ui/styles.css";
 import { ToastProvider } from "@calimero-network/mero-ui";
+import "react-photo-view/dist/react-photo-view.css";
+
+import "./index.css";
+import App from "./App.tsx";
 import ErrorBoundary from "./components/ErrorBoundary.tsx";
 import { WebSocketProvider } from "./contexts/WebSocketContext.tsx";
+import { captureInvite } from "./calimero/workspace.ts";
 import { log } from "./utils/logger.ts";
-import { APP_SLUG } from "./utils/invitation.ts";
-import { applyDevOverlay } from "./utils/devOverlay.ts";
 import { purgeLegacyIdentityDisplayNames } from "./utils/messengerName.ts";
+import { nodeBasename } from "./utils/servedByNode.ts";
 import { applyTheme, readStoredTheme } from "./theme/theme.ts";
 
 // index.html already set the theme before paint; this keeps the meta colour
-// and attribute right if that inline script was skipped (e.g. a cached shell).
+// and attribute right if that inline script was skipped (a cached shell).
 applyTheme(readStoredTheme());
-
-// Single-global-name model: legacy `curb_username_<identity>` rows from
-// older app versions are no longer read; clean them up once on startup so
-// the localStorage stays small and predictable.
 purgeLegacyIdentityDisplayNames();
 
-import "react-photo-view/dist/react-photo-view.css";
+// Before React mounts: a person opening an invitation link is usually not signed
+// in yet, and the token has to survive the passkey sign-up.
+captureInvite();
 
-// Session-specific keys that become stale across SSO opens and must be
-// cleared so the app starts fresh rather than navigating into old state.
-const SESSION_STALE_KEYS = [
-  "calimero_group_id",
-  "calimero_group_member_identities",
-  "calimero_context_member_identities",
-  "lastSession",
-];
-
-function clearStaleSessionData() {
-  for (const key of SESSION_STALE_KEYS) {
-    localStorage.removeItem(key);
-  }
-  // Legacy `sessionLastActivity*` rows from the removed inactivity auto-logout.
-  // Nothing reads them any more; purge so they don't linger in storage forever.
-  const toRemove: string[] = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
-    if (k && k.startsWith("sessionLastActivity")) toRemove.push(k);
-  }
-  toRemove.forEach((k) => localStorage.removeItem(k));
-}
-
-// Tauri SSO and web-auth callbacks deliver tokens via URL hash. MeroProvider's
-// internal `LocalStorageTokenStore()` reads tokens as a single JSON blob at
-// `mero-tokens`; seed the hash values there before React mounts (effects would
-// be too late).
-//
-// The stored bundle deliberately WINS over the hash unless the hash is genuinely
-// newer — see `shouldSeedTokens` (utils/authTokens.ts) for why clobbering it
-// gets the whole token family revoked under single-use refresh (core#3083).
-function persistAuthHashOnLoad(): void {
-  // On a node's origin MeroProvider completes the web login itself.
-  if (SERVED_BY_NODE) return;
-  const hash = window.location.hash.slice(1);
-  if (!hash) return;
-  const p = new URLSearchParams(hash);
-  const accessToken = p.get("access_token");
-  const refreshToken = p.get("refresh_token");
-  const expiresAt = p.get("expires_at");
-  const nodeUrl = p.get("node_url")?.trim();
-
-  // Read the node we were last pointed at BEFORE setNodeUrl overwrites it —
-  // a different node means the stored bundle belongs to a foreign token family.
-  const previousNodeUrl = getNodeUrl();
-  if (nodeUrl) setNodeUrl(nodeUrl);
-  if (!accessToken || !refreshToken) return;
-
-  const hashExpiresAtMs =
-    jwtExpiryMs(accessToken) ??
-    (expiresAt ? parseInt(expiresAt, 10) : Date.now() + 3600_000);
-
-  const nodeChanged =
-    !!nodeUrl && !!previousNodeUrl && previousNodeUrl.trim() !== nodeUrl;
-
-  const seed = shouldSeedTokens({
-    hashExpiresAtMs,
-    stored: readStoredTokens(),
-    nodeChanged,
-  });
-
-  if (seed) {
-    // Clear stale session data before writing new tokens — prevents the app
-    // from loading into a stale group/context from a previous SSO session.
-    // Only on a genuinely new session: re-opening the current one must not
-    // nuke the navigation state out from under a live tab.
-    clearStaleSessionData();
-    seedTokens(nodeUrl || previousNodeUrl, {
-      access_token: accessToken,
-      refresh_token: refreshToken,
-      expires_at: hashExpiresAtMs,
-    });
-  }
-
-  // Remove the hash either way, so MeroProvider's parseAuthCallback doesn't
-  // re-process the original tokens and overwrite the (possibly rotated) bundle.
-  window.history.replaceState(
-    {},
-    "",
-    window.location.pathname + window.location.search,
-  );
-}
-
-// An invitation reaches this app only as an opened link: the links page (or a
-// cold desktop start) appends `?invitation=…` to this URL, and a running
-// desktop sends a `deep-link` event. Capture both BEFORE React mounts: React
-// Router's <Navigate> replaces the URL with /login before any component effect
-// could read the query, and on a cold open the user is not signed in yet.
-//
-// The intent is persisted in the platform SDK's pending-intent store
-// (`calimero.platform.pendingIntents`, preserved across the Connect wipe — see
-// CONNECT_PRESERVE_EXACT in pages/Login) and offered by the app-level
-// `InvitationPrompt` once the session can join. A link addressed to another
-// app is dropped, not offered.
-primeInvitationCapture("mero-chat", { slug: APP_SLUG });
-
-const CALIMERO_APP_ID_KEY = "calimero-application-id";
-
-// Persist ONLY a URL-provided app-id (desktop SSO hash / explicit link).
-// The VITE_APPLICATION_ID build default must never be written to storage:
-// a misconfigured build env would poison the stored id for every later
-// session, and getApplicationId() (constants/config.ts) reads the stored
-// value ahead of the build defaults.
-function getUrlApplicationId(): string {
-  const fromSearch = new URLSearchParams(window.location.search)
-    .get("app-id")
-    ?.trim();
-  if (fromSearch) return fromSearch;
-  const hash = new URLSearchParams(window.location.hash.slice(1));
-  return hash.get("app-id")?.trim() || hash.get("application_id")?.trim() || "";
-}
-
-const urlApplicationId = getUrlApplicationId();
-// Always overwrite — hash app-id must win over any stale value from a previous session.
-if (urlApplicationId) {
-  localStorage.setItem(CALIMERO_APP_ID_KEY, urlApplicationId);
-}
-
-// Dev-only: when running under `make start`, dev-invite.sh writes
-// /dev-overlay.json with namespace_id + namespace_alias. The webapp
-// can't get the alias from /admin-api/namespaces on node-2 because
-// rc.35 governance doesn't propagate the alias field. Seed the local
-// alias cache so node-2's UI shows "Dev Workspace" instead of
-// "Workspace {short-id}". See needs-fix.md item A2.
-if (import.meta.env.DEV) {
-  void applyDevOverlay();
-}
-
-// Register service worker for PWA (production only — sw.js is not served in dev)
-// A node-served app shares one origin across versions, so no service worker there.
-if ("serviceWorker" in navigator && !import.meta.env.DEV && !SERVED_BY_NODE) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker
-      .register("/sw.js")
-      .then(() =>
-        log.info("ServiceWorker", "Service worker registered successfully"),
-      )
-      .catch((error) =>
-        log.error("ServiceWorker", "Service worker registration failed", error),
-      );
-  });
-}
-
+// StrictMode in dev only: double-invoked effects help find missing cleanup and
+// mislead when reading a request log.
 const AppWrapper = import.meta.env.DEV ? StrictMode : React.Fragment;
 
-function boot() {
-  // Seed SSO tokens from the URL hash before React reads localStorage.
-  //
-  // There is deliberately NO proactive refresh here. mero-js refreshes
-  // reactively on a 401 + `x-auth-error: token_expired`, behind a single-flight
-  // mutex. A hand-rolled refresh alongside it would (a) be rejected outright
-  // when the access token is still valid ("Access token still valid" — see
-  // core#3083) and (b) race the SDK's own refresh over the same stored bundle,
-  // so one of the two would present an already-consumed, single-use refresh
-  // token → `token_reuse` → the entire token family is revoked.
-  persistAuthHashOnLoad();
-
-  createRoot(document.getElementById("root")!).render(
-    <AppWrapper>
-      <ErrorBoundary
-        onError={(error, errorInfo) => {
-          log.error("App", "Uncaught error in React tree", {
-            error,
-            errorInfo,
-          });
-        }}
-      >
-        <MeroProvider
-          mode={MeroAppMode.MultiContext}
-          // The package name is what lets hosted login trust this origin: the
-          // node's auth page hands tokens only to loopback, itself, or the
-          // `links.frontend` the registry declares for the NAMED package. With
-          // no name it cannot look that up and refuses every web login with
-          // "Login callback destination is not allowed" (desktop still works,
-          // loopback is always trusted). Production shipped `packageName:""`
-          // because Vercel's VITE_APPLICATION_PACKAGE was empty, so the env
-          // var is only an override now, never the source.
-          packageName={import.meta.env.VITE_APPLICATION_PACKAGE || APP_SLUG}
-          registryUrl="https://apps.calimero.network"
-          // 35s, not MeroProvider's 30s default.
-          //
-          // This is the client budget for EVERY mero-js call, and the one that
-          // matters is a blob read: since rc.39 a blob a peer holds is found by
-          // probing the context, and core bounds that sweep at ~30s with the
-          // byte transfer on top. The default is therefore exactly the deadline
-          // — the client aborts at the moment core is finishing, so a
-          // cross-node image load fails roughly whenever discovery actually had
-          // work to do, and looks like flake. mero-js has no per-call timeout
-          // on `getBlob`, so this is the only place to set it.
-          timeoutMs={BLOB_READ_TIMEOUT_MS}
-          servedByNode={isServedByNode(new URL(window.location.href))}
-        >
-          <MeroJsBridge>
-            <BrowserRouter basename={nodeBasename()}>
-              <WebSocketProvider>
-                <ToastProvider>
-                  <App />
-                </ToastProvider>
-              </WebSocketProvider>
-            </BrowserRouter>
-          </MeroJsBridge>
-        </MeroProvider>
-      </ErrorBoundary>
-    </AppWrapper>,
-  );
-}
-
-boot();
+createRoot(document.getElementById("root")!).render(
+  <AppWrapper>
+    <ErrorBoundary
+      onError={(error, errorInfo) => {
+        log.error("App", "Uncaught error in React tree", { error, errorInfo });
+      }}
+    >
+      <BrowserRouter basename={nodeBasename()}>
+        <WebSocketProvider>
+          <ToastProvider>
+            <App />
+          </ToastProvider>
+        </WebSocketProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
+  </AppWrapper>,
+);

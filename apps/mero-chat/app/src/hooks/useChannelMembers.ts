@@ -1,9 +1,7 @@
 import { useState, useCallback } from "react";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
-import { GroupApiDataSource } from "../api/dataSource/groupApiDataSource";
 import type { ResponseData } from "../api/types";
 import { log } from "../utils/logger";
-import { nameRepository } from "../repositories/names/useNames";
 
 /**
  * Custom hook for managing channel-specific members and non-invited users
@@ -46,40 +44,11 @@ export function useChannelMembers() {
   // Legacy fallback: when `subgroupId` is unavailable (DMs routed through
   // this path), use `get_profiles` alone.
   const fetchChannelMembers = useCallback(
-    async (channelId: string, subgroupId?: string) => {
+    async (channelId: string, _subgroupId?: string) => {
       setLoading(true);
       setError(null);
 
       try {
-        if (subgroupId) {
-          const groupApi = new GroupApiDataSource();
-          const membersResp = await groupApi.listMembers(subgroupId);
-
-          if (membersResp.error || !membersResp.data) {
-            setError(
-              membersResp.error?.message || "Failed to fetch subgroup members",
-            );
-            return;
-          }
-
-          // Names come from the repository, not from a map assembled here.
-          //
-          // This used to fetch the namespace member list itself and merge it
-          // with subgroup aliases and per-context WASM profiles — a second
-          // cache with its own precedence, which is how the same person ended
-          // up displayed differently in the member list and in the messages
-          // beside it. The repository is the one resolver; its batcher turns
-          // these per-member calls into a single request.
-          const memberMap = new Map<string, string>();
-          await Promise.all(
-            membersResp.data.members.map(async (m) => {
-              memberMap.set(m.identity, await nameRepository.resolve(m.identity));
-            }),
-          );
-          setChannelUsers(memberMap);
-          return;
-        }
-
         const response: ResponseData<Map<string, string>> =
           await new ClientApiDataSource().getChannelMembers({
             channel: { name: channelId },

@@ -346,59 +346,6 @@ export type GetTotalDmUnreadCountProps = Record<string, never>;
 
 export type MarkAllDmsAsReadProps = Record<string, never>;
 
-export enum ClientMethod {
-  JOIN_CHAT = "join_chat",
-  CREATE_CHANNEL = "create_channel",
-  GET_CHANNELS = "get_channels",
-  GET_ALL_CHANNELS_SEARCH = "get_all_channels",
-  GET_CHANNEL_MEMBERS = "get_channel_members",
-  GET_CHANNEL_INFO = "get_channel_info",
-  INVITE_TO_CHANNEL = "invite_to_channel",
-  GET_INVITE_USERS = "get_non_member_users",
-  JOIN_CHANNEL = "join_channel",
-  LEAVE_CHANNEL = "leave_channel",
-  GET_MESSAGES = "get_messages",
-  GET_MESSAGES_FROM = "get_messages_from",
-  GET_MESSAGE_COUNT = "get_message_count",
-  SEND_MESSAGE = "send_message",
-  GET_DMS = "get_dms",
-  GET_CHAT_MEMBERS = "get_chat_members",
-  CREATE_DM = "create_dm_chat",
-  UPDATE_REACTION = "update_reaction",
-  DELETE_MESSAGE = "delete_message",
-  EDIT_MESSAGE = "edit_message",
-  UPDATE_NEW_IDENTITY = "update_new_identity",
-  UPDATE_INVITATION_PAYLOAD = "update_invitation_payload",
-  ACCEPT_INVITATION = "accept_invitation",
-  DELETE_DM = "delete_dm",
-  GET_USERNAME = "get_username",
-  GET_CHAT_USERNAMES = "get_chat_usernames",
-  READ_MESSAGE = "mark_messages_as_read",
-  READ_DM = "mark_dm_as_read",
-  GET_DM_UNREAD_COUNT = "get_dm_unread_count",
-  GET_TOTAL_DM_UNREAD_COUNT = "get_total_dm_unread_count",
-  MARK_ALL_DMS_AS_READ = "mark_all_dms_as_read",
-  // Moderation (in-WASM roles + ban gate). See curb/logic/src/lib.rs.
-  SET_MEMBER_ROLE = "set_member_role",
-  GET_MEMBER_ROLE = "get_member_role",
-  LIST_ROLES = "list_roles",
-  // Per-context read receipts (WASM-backed, cross-device).
-  MARK_AS_READ = "mark_as_read",
-  GET_UNREAD_COUNT = "get_unread_count",
-  GET_UNREAD_MENTIONS = "get_unread_mentions",
-  SEARCH_MESSAGES = "search_messages",
-  // The same page without the node's index, for a node running with search off.
-  SEARCH_MESSAGES_SCAN = "search_messages_scan",
-  MESSAGE_POSITION = "message_position",
-  // Pre-`search_messages` contracts only; see `searchAllMessages`.
-  SEARCH_ALL_MESSAGES = "search_all_messages",
-  // Per-user per-channel drafts (WASM-backed, effectively private).
-  SAVE_DRAFT = "save_draft",
-  GET_DRAFT = "get_draft",
-  DELETE_DRAFT = "delete_draft",
-}
-
-/// Per-context moderation role. Mirrors the Rust `Role` enum.
 export type Role = "User" | "Mod" | "Admin" | "Banned";
 
 export interface SetMemberRoleProps {
@@ -427,47 +374,8 @@ export interface MemberRoleEntry {
   role: Role;
 }
 
+/** What the message cache (`repositories/messages`) reads through. */
 export interface ClientApi {
-  joinChat(props: JoinChatProps): ApiResponse<string>;
-  createChannel(props: CreateChannelProps): ApiResponse<CreateChannelResponse>;
-  getChannels(): ApiResponse<Channels>;
-  getAllChannelsSearch(): ApiResponse<Channels>;
-  getChannelMembers(
-    props: GetChannelMembersProps,
-  ): ApiResponse<Map<string, string>>;
-  getChannelInfo(props: GetChannelInfoProps): ApiResponse<ChannelInfo>;
-  inviteToChannel(props: InviteToChannelProps): ApiResponse<string>;
-  getNonMemberUsers(props: GetNonMemberUsersProps): ApiResponse<UserId[]>;
-  joinChannel(props: JoinChannelProps): ApiResponse<string>;
-  leaveChannel(props: LeaveChannelProps): ApiResponse<string>;
-  getMessages(props: GetMessagesProps): ApiResponse<FullMessageResponse>;
   getMessagesFrom(props: GetMessagesFromProps): ApiResponse<FullMessageResponse>;
-  /** Channel length. One row read — no message bodies cross the wire. */
   getMessageCount(props: GetMessageCountProps): ApiResponse<number>;
-  searchMessages(props: SearchMessagesProps): ApiResponse<SearchPage>;
-  searchMessagesScan(props: SearchMessagesProps): ApiResponse<SearchPage>;
-  messagePosition(props: MessagePositionProps): ApiResponse<number | null>;
-  searchAllMessages(props: SearchAllMessagesProps): ApiResponse<FullMessageResponse>;
-  sendMessage(props: SendMessageProps): ApiResponse<Message>;
-  getDms(): ApiResponse<DMChatInfo[]>;
-  getChatMembers(props: GetChatMembersProps): ApiResponse<Map<string, string>>;
-  createDm(props: CreateDmProps): ApiResponse<string>;
-  updateReaction(props: UpdateReactionProps): ApiResponse<string>;
-  editMessage(props: EditMessageProps): ApiResponse<Message>;
-  deleteMessage(props: DeleteMessageProps): ApiResponse<string>;
-  updateNewIdentity(props: UpdateNewIdentityProps): ApiResponse<string>;
-  updateInvitationPayload(
-    props: UpdateInvitationPayloadProps,
-  ): ApiResponse<string>;
-  acceptInvitation(props: AcceptInvitationProps): ApiResponse<string>;
-  deleteDM(props: DeleteDMProps): ApiResponse<string>;
-  readMessage(props: ReadMessageProps): ApiResponse<string>;
-  readDm(props: ReadDmProps): ApiResponse<string>;
-  markAsRead(props: MarkAsReadProps): ApiResponse<string>;
-  getUnreadCount(props: GetUnreadProps): ApiResponse<number>;
-  getUnreadMentions(props: GetUnreadProps): ApiResponse<number>;
-  getUsername(props: GetUsernameProps): ApiResponse<string>;
-  setMemberRole(props: SetMemberRoleProps): ApiResponse<string>;
-  getMemberRole(props: GetMemberRoleProps): ApiResponse<Role>;
-  listRoles(props: ListRolesProps): ApiResponse<MemberRoleEntry[]>;
 }

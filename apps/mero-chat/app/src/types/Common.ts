@@ -205,3 +205,19 @@ export interface UpdatedMessages {
   id: string;
   descriptor: UpdateDescriptor<T>;
 }
+
+/** v1 channel folders (subgroups). A 1.0 workspace has none; kept for the sidebar's props. */
+export interface SubgroupEntry {
+  groupId: string;
+  alias?: string;
+}
+
+/** A DM in the sidebar: the conversation and the other person. */
+export interface DMContextInfo extends GroupContextChannel {
+  otherUsername: string;
+  otherAlias: string;
+  otherIdentity: string;
+  myIdentity: string;
+  /** The other person's account (v1: their namespace member identity). */
+  namespaceMemberIdentity: string;
+}

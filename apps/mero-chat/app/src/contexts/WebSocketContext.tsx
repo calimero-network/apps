@@ -1,59 +1,40 @@
-import React, {
+import {
   createContext,
-  useContext,
   useCallback,
+  useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
-import { useSubscription } from "@calimero-network/mero-react";
-import type {
-  GroupMembershipEventData,
-  GroupMigrationEventData,
-  SubscriptionEventData,
-} from "@calimero-network/mero-react";
-import type {
-  WebSocketEvent,
-  StateMutationData,
-} from "../types/WebSocketTypes";
+
+import type { CloudEvent } from "@calimero-network/mero-js";
+
+import { maybeConnection, onConnectionChange } from "../calimero/connection";
+import type { WebSocketEvent } from "../types/WebSocketTypes";
 import { log } from "../utils/logger";
 
-// Both group-keyed families carry `groupId`, so presence of that field alone
-// no longer separates them: mero-react 6 widened SubscriptionEventData to
-// include GroupMigrationEventData. Narrow on the type tag instead, or a
-// migration event would be handled as a membership change.
-const MEMBERSHIP_KINDS = ["MemberJoined", "MemberAdded", "MemberRemoved"] as const;
-const MIGRATION_KINDS = [
-  "MigrationStarted",
-  "MigrationProgress",
-  "CascadeProgress",
-  "MigrationCompleted",
-] as const;
+/**
+ * Live events of the open conversations, from mero-js's `client.events(app)`
+ * (committed events, then live, over SSE). v1 subscribed one socket to every
+ * context of the workspace; a 1.0 node streams one app per request, and a
+ * browser holds at most six HTTP/1.1 connections to a node, so at most
+ * `MAX_STREAMS` apps are streamed at once: the open conversation (and its
+ * neighbours when asked). Everything else is caught up by polling the unread
+ * counts (`Home`).
+ *
+ * Each event reaches listeners in v1's shape, `{ contextId, type:
+ * "StateMutation", data: { events: [{ kind, data }] } }`, with the contract's
+ * camelCase payload keys also given in snake_case (`messageId` and
+ * `message_id`), so the screens read them as before.
+ */
+export const MAX_STREAMS = 3;
 
-function isGroupMembershipEvent(
-  event: SubscriptionEventData,
-): event is GroupMembershipEventData {
-  const e = event as GroupMembershipEventData;
-  return (
-    typeof e.groupId === "string" &&
-    (MEMBERSHIP_KINDS as readonly string[]).includes(e.type)
-  );
-}
-
-function isGroupMigrationEvent(
-  event: SubscriptionEventData,
-): event is GroupMigrationEventData {
-  const e = event as GroupMigrationEventData;
-  return (
-    typeof e.groupId === "string" &&
-    (MIGRATION_KINDS as readonly string[]).includes(e.type)
-  );
-}
+export type WebSocketEventListener = (event: WebSocketEvent) => void;
 
 interface WebSocketContextValue {
   subscribeToContexts: (contextIds: string[]) => void;
   subscribeToContext: (contextId: string) => void;
-  subscribeToGroup: (groupId: string) => void;
   unsubscribeFromContext: (contextId: string) => void;
   unsubscribeAll: () => void;
   getSubscribedContexts: () => string[];
@@ -63,201 +44,130 @@ interface WebSocketContextValue {
   removeEventListener: (listener: WebSocketEventListener) => void;
 }
 
-export type WebSocketEventListener = (event: WebSocketEvent) => void;
-
 const WebSocketContext = createContext<WebSocketContextValue | null>(null);
 
-interface WebSocketProviderProps {
-  children: React.ReactNode;
+const snake = (k: string) => k.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
+
+/** `{ messageId }` -> `{ messageId, message_id }`: both spellings. */
+export function withSnakeKeys(data: unknown): unknown {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return data;
+  const out: Record<string, unknown> = { ...(data as Record<string, unknown>) };
+  for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
+    out[snake(k)] = v;
+  }
+  return out;
 }
 
-export function WebSocketProvider({ children }: WebSocketProviderProps) {
-  const [subscribedContextIds, setSubscribedContextIds] = useState<string[]>([]);
-  const subscribedContextIdsRef = useRef<string[]>([]);
-  subscribedContextIdsRef.current = subscribedContextIds;
+export function toWebSocketEvent(app: string, kind: string, data: unknown): WebSocketEvent {
+  return {
+    contextId: app,
+    type: "StateMutation",
+    data: { events: [{ kind, data: withSnakeKeys(data) }] },
+    timestamp: Date.now(),
+  };
+}
 
-  const [subscribedGroupIds, setSubscribedGroupIds] = useState<string[]>([]);
+export function WebSocketProvider({ children }: { children: React.ReactNode }) {
+  const [apps, setApps] = useState<string[]>([]);
+  const appsRef = useRef<string[]>([]);
+  appsRef.current = apps;
+  const listenersRef = useRef<Set<WebSocketEventListener>>(new Set());
+  const [generation, setGeneration] = useState(0);
 
-  const eventListenersRef = useRef<Set<WebSocketEventListener>>(new Set());
+  // A new session (or sign-out) restarts every stream.
+  useEffect(() => onConnectionChange(() => setGeneration((g) => g + 1)), []);
 
-  const eventCallbackFn = useCallback((event: SubscriptionEventData) => {
-    // Group-membership events are a separate id-space: keyed by `groupId`,
-    // no `contextId`, no `data.events`. Coercing everything to
-    // "StateMutation" (as this did) made them indistinguishable from a
-    // context event with no execution events, so every listener dropped them.
-    // Migration events are group-keyed too but carry none of the membership or
-    // state-mutation payload. Coercing them into StateMutation is the same bug
-    // the membership branch above exists to fix, so drop them explicitly until
-    // a consumer needs them.
-    if (isGroupMigrationEvent(event)) {
-      log.info(
-        "WebSocketContext",
-        `[SSE] ignoring migration event ${event.type} on groupId=${event.groupId}`,
-      );
-      return;
-    }
-
-    const wsEvent: WebSocketEvent = isGroupMembershipEvent(event)
-      ? {
-          contextId: "",
-          type: "GroupMembership",
-          groupId: event.groupId,
-          membershipKind: event.type,
-          membership: event.data,
-        }
-      : {
-          contextId: event.contextId,
-          type: "StateMutation",
-          data: event.data as StateMutationData,
-        };
-
-    log.info(
-      "WebSocketContext",
-      `[SSE] ${wsEvent.type} received ${wsEvent.groupId ? `groupId=${wsEvent.groupId}` : `contextId=${wsEvent.contextId}`}`,
-      wsEvent.membership ?? wsEvent.data,
-    );
-
-    eventListenersRef.current.forEach((listener) => {
+  const emit = useCallback((event: WebSocketEvent) => {
+    listenersRef.current.forEach((listener) => {
       try {
-        listener(wsEvent);
+        listener(event);
       } catch (error) {
         log.error("WebSocketContext", "Error in event listener", error);
       }
     });
   }, []);
 
-  // Object form so group ids ride along; core routes the two id-spaces
-  // independently and drops a membership event unless its group is subscribed.
-  const subscriptionInput = useMemo(
-    () => ({ contextIds: subscribedContextIds, groupIds: subscribedGroupIds }),
-    [subscribedContextIds, subscribedGroupIds],
-  );
-  useSubscription(subscriptionInput, eventCallbackFn);
+  useEffect(() => {
+    const conn = maybeConnection();
+    if (!conn) return;
+    const aborts = apps.slice(0, MAX_STREAMS).map((app) => {
+      const abort = new AbortController();
+      void (async () => {
+        let from: number | null = null;
+        let delay = 1_000;
+        while (!abort.signal.aborted) {
+          try {
+            if (from === null) {
+              // Start after what is committed now: earlier events are already
+              // in what the screens read.
+              const { index } = await conn.client.view(app, "getMessageCount", {});
+              from = index + 1;
+            }
+            for await (const event of conn.client.events(app, from, abort.signal) as AsyncGenerator<CloudEvent>) {
+              const at: number = Number(event.id);
+              if (Number.isFinite(at)) from = at + 1;
+              emit(toWebSocketEvent(app, event.kind, event.data));
+              delay = 1_000;
+            }
+          } catch (e) {
+            if (abort.signal.aborted) return;
+            log.warn("WebSocketContext", `event stream for ${app} closed`, e);
+          }
+          await new Promise((r) => setTimeout(r, delay));
+          delay = Math.min(delay * 2, 30_000);
+        }
+      })();
+      return abort;
+    });
+    return () => aborts.forEach((a) => a.abort());
+  }, [apps, emit, generation]);
 
-  const subscribeToContexts = useCallback((contextIds: string[]) => {
-    const valid = contextIds.filter(Boolean);
-    setSubscribedContextIds(valid);
-    log.info("WebSocketContext", `Subscribing to ${valid.length} contexts`);
+  const subscribeToContexts = useCallback((ids: string[]) => {
+    const next = [...new Set(ids.filter(Boolean))];
+    setApps((prev) => (prev.join() === next.join() ? prev : next));
   }, []);
-
-  const subscribeToContext = useCallback((contextId: string) => {
-    if (!contextId) return;
-    setSubscribedContextIds((prev) =>
-      prev.includes(contextId) ? prev : [...prev, contextId],
-    );
+  const subscribeToContext = useCallback((id: string) => {
+    if (!id) return;
+    setApps((prev) => (prev.includes(id) ? prev : [id, ...prev]));
   }, []);
-
-  const subscribeToGroup = useCallback((groupId: string) => {
-    if (!groupId) return;
-    setSubscribedGroupIds((prev) =>
-      prev.includes(groupId) ? prev : [...prev, groupId],
-    );
+  const unsubscribeFromContext = useCallback((id: string) => {
+    setApps((prev) => prev.filter((a) => a !== id));
   }, []);
+  const unsubscribeAll = useCallback(() => setApps([]), []);
 
-  const unsubscribeFromContext = useCallback((contextId: string) => {
-    setSubscribedContextIds((prev) => prev.filter((id) => id !== contextId));
-  }, []);
-
-  const unsubscribeAll = useCallback(() => {
-    setSubscribedContextIds([]);
-  }, []);
-
-  // Read from ref so these are stable functions that always return current values
-  const getSubscribedContexts = useCallback(
-    () => subscribedContextIdsRef.current,
-    [],
-  );
-  const isSubscribed = useCallback(
-    () => subscribedContextIdsRef.current.length > 0,
-    [],
-  );
-  const getSubscriptionCount = useCallback(
-    () => subscribedContextIdsRef.current.length,
-    [],
-  );
-
-  const addEventListener = useCallback((listener: WebSocketEventListener) => {
-    eventListenersRef.current.add(listener);
-    log.debug(
-      "WebSocketContext",
-      `Event listener added. Total: ${eventListenersRef.current.size}`,
-    );
-  }, []);
-
-  const removeEventListener = useCallback(
-    (listener: WebSocketEventListener) => {
-      eventListenersRef.current.delete(listener);
-      log.debug(
-        "WebSocketContext",
-        `Event listener removed. Total: ${eventListenersRef.current.size}`,
-      );
-    },
-    [],
-  );
-
-  const contextValue = useMemo<WebSocketContextValue>(
+  const value = useMemo<WebSocketContextValue>(
     () => ({
       subscribeToContexts,
       subscribeToContext,
-      subscribeToGroup,
       unsubscribeFromContext,
       unsubscribeAll,
-      getSubscribedContexts,
-      isSubscribed,
-      getSubscriptionCount,
-      addEventListener,
-      removeEventListener,
+      getSubscribedContexts: () => appsRef.current.slice(0, MAX_STREAMS),
+      isSubscribed: () => appsRef.current.length > 0,
+      getSubscriptionCount: () => Math.min(appsRef.current.length, MAX_STREAMS),
+      addEventListener: (l) => listenersRef.current.add(l),
+      removeEventListener: (l) => listenersRef.current.delete(l),
     }),
-    [
-      subscribeToContexts,
-      subscribeToContext,
-      subscribeToGroup,
-      unsubscribeFromContext,
-      unsubscribeAll,
-      getSubscribedContexts,
-      isSubscribed,
-      getSubscriptionCount,
-      addEventListener,
-      removeEventListener,
-    ],
+    [subscribeToContexts, subscribeToContext, unsubscribeFromContext, unsubscribeAll],
   );
 
-  return (
-    <WebSocketContext.Provider value={contextValue}>
-      {children}
-    </WebSocketContext.Provider>
-  );
+  return <WebSocketContext.Provider value={value}>{children}</WebSocketContext.Provider>;
 }
 
-export function useWebSocket() {
-  const context = useContext(WebSocketContext);
-
-  if (!context) {
-    throw new Error("useWebSocket must be used within WebSocketProvider");
-  }
-
-  return context;
+export function useWebSocket(): WebSocketContextValue {
+  const ctx = useContext(WebSocketContext);
+  if (!ctx) throw new Error("useWebSocket must be used within a WebSocketProvider");
+  return ctx;
 }
 
-/**
- * Hook to listen to WebSocket events from any component.
- * Automatically handles cleanup on unmount.
- */
-export function useWebSocketEvents(listener: WebSocketEventListener) {
-  const { addEventListener, removeEventListener } = useWebSocket();
-  const listenerRef = useRef(listener);
-
-  listenerRef.current = listener;
-
-  React.useEffect(() => {
-    const wrappedListener = (event: WebSocketEvent) => {
-      listenerRef.current(event);
-    };
-
-    addEventListener(wrappedListener);
-
-    return () => {
-      removeEventListener(wrappedListener);
-    };
-  }, [addEventListener, removeEventListener]);
+/** Calls `listener` for every event of the streamed conversations. */
+export function useWebSocketEvents(listener: WebSocketEventListener): void {
+  const ctx = useContext(WebSocketContext);
+  const ref = useRef(listener);
+  ref.current = listener;
+  useEffect(() => {
+    if (!ctx) return;
+    const l: WebSocketEventListener = (e) => ref.current(e);
+    ctx.addEventListener(l);
+    return () => ctx.removeEventListener(l);
+  }, [ctx]);
 }

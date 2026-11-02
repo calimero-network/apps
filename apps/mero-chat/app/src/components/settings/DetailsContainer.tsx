@@ -5,8 +5,8 @@ import MemberDetails from "./MemberDetails";
 import TabSwitch from "./TabSwitch";
 import type { ChannelMeta } from "../../types/Common";
 import type { UserId } from "../../api/clientApi";
-import { getContextIdentity } from "@calimero-network/mero-react";
-import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
+import { getContextIdentity } from "../../calimero/context";
+import { useMaybeWorkspace } from "../../calimero/WorkspaceProvider";
 import { isRestrictedChannelType } from "../../utils/channelVisibility";
 import { useToast } from "../../contexts/ToastContext";
 import { useDisplayName } from "../../repositories/names/useNames";
@@ -106,13 +106,23 @@ const DetailsContainer: React.FC<DetailsContainerProps> = (props) => {
     );
   };
 
-  const targetGroupId = props.contextSubgroupId ?? props.groupId;
+  // A private channel's members are its app's `accounts` access: its creator
+  // or an org admin adds and removes them (v1: the channel's own subgroup).
+  const ws = useMaybeWorkspace();
+  const changeMember = async (account: string, add: boolean): Promise<string | null> => {
+    if (!ws || !props.contextId) return "Not in a workspace";
+    try {
+      await ws.setPrivateMember(props.contextId, account, add);
+      return null;
+    } catch (e) {
+      return e instanceof Error ? e.message : String(e);
+    }
+  };
 
   const addMember = async (account: string, _channel: string) => {
-    if (!targetGroupId) return;
-    const result = await new GroupApiDataSource().addGroupMember(targetGroupId, account);
-    if (result.error) {
-      addToast({ title: "Add member", message: result.error.message || "Failed to add member", type: "channel", duration: 4000 });
+    const error = await changeMember(account, true);
+    if (error) {
+      addToast({ title: "Add member", message: error, type: "channel", duration: 4000 });
       return;
     }
     addToast({ title: "Add member", message: "Member added", type: "channel", duration: 2500 });
@@ -120,10 +130,9 @@ const DetailsContainer: React.FC<DetailsContainerProps> = (props) => {
   };
 
   const removeUserFromChannel = async (identity: string) => {
-    if (!targetGroupId) return;
-    const result = await new GroupApiDataSource().removeMember(targetGroupId, identity);
-    if (result.error) {
-      addToast({ title: "Remove member", message: result.error.message || "Failed to remove member", type: "channel", duration: 4000 });
+    const error = await changeMember(identity, false);
+    if (error) {
+      addToast({ title: "Remove member", message: error, type: "channel", duration: 4000 });
       return;
     }
     addToast({ title: "Remove member", message: "Member removed", type: "channel", duration: 2500 });

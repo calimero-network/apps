@@ -1,4 +1,5 @@
-import type { VisibilityMode } from "../api/groupApi";
+/** "open": every member of the workspace; "restricted": named members only. */
+export type VisibilityMode = "open" | "restricted";
 
 export type ChannelVisibilityOption = "public" | "private";
 // UI label only — the wire-level VisibilityMode stays "open"/"restricted".

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getContextId, getContextIdentity } from "@calimero-network/mero-react";
+import { getContextId, getContextIdentity } from "../calimero/context";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 import { emptyText } from "../utils/markdownParser";
 

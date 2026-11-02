@@ -1,91 +1,43 @@
-/**
- * Unit tests for usePresence
- *
- * Presence moved from a WASM `heartbeat` + `get_presence` poll to the node's
- * ephemeral channel, so the assertions about those calls are gone with them.
- * What survives is the behaviour callers actually depend on:
- *
- *   - isOnline is true for identities present in the context, false otherwise
- *   - hasOtherOnline ignores your own key and reports anyone else
- *   - the hook is disabled (no subscription, no publish) without both a
- *     contextId and an executorPublicKey
- *   - entering a context announces you exactly once
- */
-
 import { renderHook } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { usePresence } from "./usePresence";
+const { present, polled } = vi.hoisted(() => ({
+  present: new Set<string>(),
+  polled: [] as Array<string | undefined>,
+}));
 
-const mockSetPresence = vi.fn();
-let mockPeers = new Map<string, Record<string, never>>();
-const mockUseEphemeral = vi.fn();
-
-vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  useEphemeral: (contextId: string | null) => {
-    mockUseEphemeral(contextId);
-    return { peers: mockPeers, setPresence: mockSetPresence, ageOf: () => undefined, error: null };
+vi.mock("../calimero/presence", () => ({
+  usePresentAccounts: (app: string | undefined) => {
+    polled.push(app);
+    return present;
   },
 }));
 
-const ME = "myContextKey";
-const OTHER = "otherContextKey";
-
-beforeEach(() => {
-  vi.clearAllMocks();
-  mockPeers = new Map();
-});
+import { usePresence } from "./usePresence";
 
 describe("usePresence", () => {
-  it("reports an identity present in the context as online", () => {
-    mockPeers = new Map([[OTHER, {}]]);
-    const { result } = renderHook(() => usePresence("ctx-1", ME));
-    expect(result.current.isOnline(OTHER)).toBe(true);
+  it("reports an account present in the conversation as online", () => {
+    present.clear();
+    present.add("bob");
+    const { result } = renderHook(() => usePresence("app-1", "me"));
+    expect(result.current.isOnline("bob")).toBe(true);
+    expect(result.current.isOnline("carol")).toBe(false);
   });
 
-  it("reports an identity absent from the context as offline", () => {
-    mockPeers = new Map([[OTHER, {}]]);
-    const { result } = renderHook(() => usePresence("ctx-1", ME));
-    expect(result.current.isOnline("somebodyElse")).toBe(false);
+  it("hasOtherOnline ignores the caller's own account", () => {
+    present.clear();
+    present.add("me");
+    const { result } = renderHook(() => usePresence("app-1", "me"));
+    expect(result.current.hasOtherOnline("me")).toBe(false);
+    present.add("bob");
+    const again = renderHook(() => usePresence("app-1", "me"));
+    expect(again.result.current.hasOtherOnline("me")).toBe(true);
   });
 
-  it("reports nobody online when the context is empty", () => {
-    const { result } = renderHook(() => usePresence("ctx-1", ME));
-    expect(result.current.isOnline(OTHER)).toBe(false);
-    expect(result.current.hasOtherOnline(ME)).toBe(false);
-  });
-
-  // The DM fallback: used when `dm.otherIdentity` hasn't resolved to a context
-  // executor key yet, so the caller can only ask "is anyone but me here?".
-  it("hasOtherOnline finds a peer that is not my own key", () => {
-    mockPeers = new Map([[OTHER, {}]]);
-    const { result } = renderHook(() => usePresence("ctx-1", ME));
-    expect(result.current.hasOtherOnline(ME)).toBe(true);
-  });
-
-  it("hasOtherOnline ignores my own key", () => {
-    // `peers` excludes our own echo, but a caller may pass a key that happens
-    // to be in the map; it must never count as "someone else".
-    mockPeers = new Map([[ME, {}]]);
-    const { result } = renderHook(() => usePresence("ctx-1", ME));
-    expect(result.current.hasOtherOnline(ME)).toBe(false);
-  });
-
-  it("announces presence once on entering a context", () => {
-    renderHook(() => usePresence("ctx-1", ME));
-    expect(mockSetPresence).toHaveBeenCalledTimes(1);
-  });
-
-  it("is disabled without a contextId", () => {
-    renderHook(() => usePresence(undefined, ME));
-    expect(mockUseEphemeral).toHaveBeenCalledWith(null);
-    expect(mockSetPresence).not.toHaveBeenCalled();
-  });
-
-  it("is disabled without an executorPublicKey", () => {
-    renderHook(() => usePresence("ctx-1", undefined));
-    expect(mockUseEphemeral).toHaveBeenCalledWith(null);
-    expect(mockSetPresence).not.toHaveBeenCalled();
+  it("reads nothing without a conversation or an account", () => {
+    polled.length = 0;
+    renderHook(() => usePresence(undefined, "me"));
+    renderHook(() => usePresence("app-1", undefined));
+    expect(polled).toEqual([undefined, undefined]);
   });
 });

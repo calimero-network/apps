@@ -123,6 +123,6 @@ with a bridge so the web app's generated client calls through the native session
 ## Mero Chat on iOS: where it stands (2026-10-26)
 
 - **SDK:** pinned by commit; bumped to swift-sdk `6f97c85` (main: schema-27 namespace ops for core 0.11.0, registry installs the newest version the relay runtime accepts). No tagged release carries the delegated layer yet; once one does, switch `revision:` to `from:`.
-- **Tests:** 55 logic tests pass on the simulator. The live tests (`MeroChatLiveTests`) need `mobile/e2e/run-relay.sh` and skip without it.
+- **Tests:** 55 logic tests pass on the simulator. The live tests (`MeroChatLiveTests`) skip: their v1 relay (`mobile/e2e/run-relay.sh`) was removed when mero-chat's contract moved to Calimero 1.0 (see `apps/mero-chat/mobile/README.md`).
 - **Design:** stock SwiftUI (system list styles, default accent). It does not use the web app's glass light/dark theme or Calimero branding yet.
 - **Features vs web:** sign-in, workspaces (create, join, invite), channels (create, join open ones), DMs (open existing), paged history, send/edit/delete, reactions, display name, unread counts. **Missing:** threads, attachments and avatars, starting a DM, search, drafts, mentions, roles/moderation, channel settings, leaving, presence/typing, notifications, theme switch.

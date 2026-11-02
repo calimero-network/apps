@@ -1,22 +1,18 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { styled, keyframes } from "styled-components";
-import { useNavigate } from "react-router-dom";
 import BaseModal from "../common/popups/BaseModal";
-import { useMero, getContextIdentity as getExecutorPublicKey, getContextId } from "@calimero-network/mero-react";
-import {
-  clearStoredSession,
-  clearNamespaceReady,
-} from "../../utils/session";
+import { getContextIdentity as getExecutorPublicKey, getContextId } from "../../calimero/context";
+import { connection } from "../../calimero/connection";
+import { useWorkspace } from "../../calimero/WorkspaceProvider";
+import { clearStoredSession } from "../../utils/session";
 import {
   clearWorkspaceSelection,
   getGroupId,
 } from "../../constants/config";
 import { clearMessengerDisplayName, getMessengerDisplayName } from "../../utils/messengerName";
 import { useCurrentGroupPermissions } from "../../hooks/useCurrentGroupPermissions";
-import { useWorkspaceName } from "../../hooks/useWorkspaceName";
-import { GroupApiDataSource, uploadBlobDirect } from "../../api/dataSource/groupApiDataSource";
 import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
-import { downloadBlob, getMeroJs, isDelegatedSession } from "../../api/meroJsClient";
+import { downloadBlob, uploadBlob } from "../../api/meroJsClient";
 import { useToast } from "../../contexts/ToastContext";
 import { invalidateAvatarCache } from "../../hooks/useAvatarUrl";
 import { useTheme, type Theme } from "../../theme/theme";
@@ -458,15 +454,14 @@ export default function SettingsPopup({
   setIsOpen,
   toggle,
 }: SettingsPopupProps) {
-  const { logout } = useMero();
-  const navigate = useNavigate();
+  const ws = useWorkspace();
   const { addToast } = useToast();
   const { theme, setTheme } = useTheme();
   const groupId = getGroupId();
   // The one resolver, shared with the workspace switcher. Reading the local
   // alias directly here is what let the two disagree: Settings showed the name
   // while the switcher showed a truncated id.
-  const alias = useWorkspaceName(groupId);
+  const alias = ws.name;
   const { isAdmin, isModerator, loading: roleLoading, error: roleError, memberIdentity } =
     useCurrentGroupPermissions(groupId);
   // `isAdmin` is false before the role is read and when the read fails, so it
@@ -588,51 +583,32 @@ export default function SettingsPopup({
           });
           return;
         }
-        const uploadRes = await uploadBlobDirect(file, uploadContextId);
-        if (!uploadRes.data?.blobId) {
-          addToast({ title: "Avatar", message: "Upload failed", type: "channel", duration: 3000 });
-          return;
-        }
-        const blobId = uploadRes.data.blobId;
-
-        // Show the new image immediately.
+        // A blob belongs to one conversation, and a profile is per
+        // conversation: the avatar is uploaded to each and set in each, as v1
+        // set it in every context of the workspace.
         const newUrl = URL.createObjectURL(file);
         if (avatarObjectUrlRef.current) URL.revokeObjectURL(avatarObjectUrlRef.current);
         avatarObjectUrlRef.current = newUrl;
         setAvatarObjectUrl(newUrl);
 
-        // Always update the currently-active context first (fallback when
-        // listGroupContexts is stale or returns empty — e.g. after make stop).
-        const currentContextId = getContextId();
-        const currentIdentity = getExecutorPublicKey();
         const clientDs = new ClientApiDataSource();
-        if (currentContextId && currentIdentity) {
+        const me = getExecutorPublicKey();
+        const apps = [uploadContextId, ...ws.conversations.map((c) => c.appId).filter((a) => a !== uploadContextId)];
+        let failed = 0;
+        for (const app of apps) {
           try {
-            await clientDs.updateProfile(currentContextId, currentIdentity, username, blobId);
+            const { blobId } = await uploadBlob(file, app);
+            const profiles = await clientDs.getProfiles(app);
+            const mine = profiles.data?.find((p) => p.identity === me);
+            const res = await clientDs.updateProfile(app, me, mine?.username || username, blobId);
+            if (res.error) failed += 1;
           } catch {
-            // best-effort
+            failed += 1;
           }
         }
-
-        // Best-effort: propagate to every other context in the group.
-        const contextsRes = await new GroupApiDataSource().listGroupContexts(groupId);
-        for (const ctx of contextsRes.data ?? []) {
-          if (ctx.contextId === currentContextId) continue; // already done above
-          try {
-            const owned = await getMeroJs().admin.getContextIdentitiesOwned(ctx.contextId);
-            const executorKey = owned.identities?.[0];
-            if (!executorKey) continue;
-            const profilesRes = await clientDs.getProfiles(ctx.contextId, executorKey);
-            const myProfile = profilesRes.data?.find((p) => p.identity === executorKey);
-            await clientDs.updateProfile(
-              ctx.contextId,
-              executorKey,
-              myProfile?.username || username,
-              blobId,
-            );
-          } catch {
-            // best-effort per context
-          }
+        if (failed === apps.length) {
+          addToast({ title: "Avatar", message: "Upload failed", type: "channel", duration: 3000 });
+          return;
         }
 
         invalidateAvatarCache();
@@ -641,83 +617,71 @@ export default function SettingsPopup({
         setUploading(false);
       }
     },
-    [addToast, groupId, username],
+    [addToast, username, ws.conversations],
   );
 
   // ── Session handlers ────────────────────────────────────────────────────────
 
   const handleChangeWorkspace = () => {
-    clearWorkspaceSelection();
-    clearNamespaceReady();
-    clearMessengerDisplayName();
+    clearStoredSession();
     setIsOpen(false);
-    navigate("/login");
+    ws.switchTo("");
   };
 
   const handleLogout = () => {
-    const nodeUrl = localStorage.getItem("mero:node_url");
     clearStoredSession();
     clearWorkspaceSelection();
-    clearNamespaceReady();
     clearMessengerDisplayName();
-    sessionStorage.clear();
-    logout();
-    if (nodeUrl) localStorage.setItem("mero:node_url", nodeUrl);
     setIsOpen(false);
+    ws.signOut();
   };
 
   const handleLeaveWorkspace = async () => {
     if (!groupId || leaving) return;
     setLeaving(true);
-    const result = await new GroupApiDataSource().leaveNamespace(groupId);
-    setLeaving(false);
-    if (result.error) {
+    try {
+      await ws.removeMember(connection().accountId);
+    } catch (e) {
+      setLeaving(false);
       addToast({
         title: "Leave workspace",
-        message: result.error.message || "Failed to leave workspace",
+        message: e instanceof Error ? e.message : "Failed to leave workspace",
         type: "channel",
         duration: 5000,
       });
       return;
     }
-    addToast({
-      title: "Left workspace",
-      message: "You have left the workspace.",
-      type: "channel",
-      duration: 3000,
-    });
-    clearWorkspaceSelection();
-    clearNamespaceReady();
+    setLeaving(false);
+    addToast({ title: "Left workspace", message: "You have left the workspace.", type: "channel", duration: 3000 });
     setConfirmLeave(false);
     setIsOpen(false);
-    navigate("/login");
+    clearStoredSession();
+    ws.switchTo("");
   };
 
   const handleDeleteWorkspace = async () => {
     if (!groupId || deleting) return;
     setDeleting(true);
-    const result = await new GroupApiDataSource().deleteNamespace(groupId);
-    setDeleting(false);
-    if (result.error) {
+    try {
+      const conn = connection();
+      await conn.client.deleteOrg(groupId, conn.passkey());
+      conn.after();
+    } catch (e) {
+      setDeleting(false);
       addToast({
         title: "Delete workspace",
-        message: result.error.message || "Failed to delete workspace",
+        message: e instanceof Error ? e.message : "Failed to delete workspace",
         type: "channel",
         duration: 5000,
       });
       return;
     }
-    addToast({
-      title: "Workspace deleted",
-      message: "The workspace has been deleted.",
-      type: "channel",
-      duration: 3000,
-    });
-    clearWorkspaceSelection();
-    clearNamespaceReady();
+    setDeleting(false);
+    addToast({ title: "Workspace deleted", message: "The workspace has been deleted.", type: "channel", duration: 3000 });
     setConfirmDelete(false);
     setIsOpen(false);
-    navigate("/login");
+    clearStoredSession();
+    ws.switchTo("");
   };
 
   const popupContent = (
@@ -846,17 +810,13 @@ export default function SettingsPopup({
         </ThemeSwitch>
       </AppearanceCard>
 
-      {/* An admin deletes the workspace; everyone else leaves it. Leave is
-          never offered to an admin — server-side it would either fail
-          (last-admin protection) or hand the workspace off to an unintended
-          successor. Deleting a namespace is a node's own, local teardown (core
-          replicates no op for it, and an account has no form of it), so an
-          account admin is offered neither. */}
-      {roleKnown && isAdmin && !isDelegatedSession() && (
+      {/* The owner deletes the workspace (the org, its channels and DMs);
+          everyone else leaves it. */}
+      {roleKnown && ws.role === "owner" && (
         <DangerZone>
           {confirmDelete ? (
             <>
-              <DangerLabel>Delete this workspace and its channels from this node? Other members keep their copies.</DangerLabel>
+              <DangerLabel>Delete this workspace with every channel and DM in it, for everyone?</DangerLabel>
               <ConfirmActions>
                 <CancelLeaveButton onClick={() => setConfirmDelete(false)} disabled={deleting}>
                   Cancel
@@ -876,7 +836,7 @@ export default function SettingsPopup({
           )}
         </DangerZone>
       )}
-      {roleKnown && !isAdmin && (
+      {roleKnown && ws.role !== "owner" && (
         <DangerZone>
           {confirmLeave ? (
             <>

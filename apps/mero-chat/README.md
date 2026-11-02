@@ -1,156 +1,189 @@
-# Calimero Calimero Chat
+# Mero Chat
 
-[![Rust](https://img.shields.io/badge/rust-1.89+-orange.svg)](https://www.rust-lang.org/)
-[![Version](https://img.shields.io/badge/version-0.0.1-blue)](https://github.com/calimero-network/calimero-curb-chat)
+Team chat on Calimero 1.0: workspaces, public and private channels, threads,
+reactions, mentions, edits, file and image attachments, search, drafts, unread
+counts, roles and moderation, typing indicators, and direct messages.
 
-A chat application built on the Calimero Network, enabling private, decentralized messaging.
+- **Contract** (`logic/`): one conversation (a channel or a DM) as a
+  `calimero:app` WebAssembly component on core's component SDK
+  (`calimero-app-sdk`, `wasm32-wasip2`, core `1.0.0-rc.8`).
+- **Frontend** (`app/`): React + Vite, mero-js `CalimeroClient` through
+  `@calimero-apps/connect`: the local `merod local` cluster under `vite`, a
+  Calimero Cloud cluster in a production build.
+- **Native apps** (`mobile/`): iOS and Android clients that still speak the v1
+  relay API; not ported (see [`mobile/README.md`](mobile/README.md)).
 
-## Quick Start
+How the nouns map:
 
-### Prerequisites
+| v1 | 1.0 |
+|---|---|
+| workspace (namespace / group) | an **organization** |
+| channel (a context in a subgroup) | an **app instance** of `com.calimero.chat` in the org, `org` access (every member reaches it), named `#<name>` |
+| private channel (restricted subgroup + allowlist) | an app instance with `accounts` access (its creator and the members it adds), named `private:<name>` |
+| DM (two-member subgroup + context) | an app instance with `accounts` access (the two people), named `dm:<account>:<account>` |
+| identity per context (base58 / hex keys) | the **account** (one id everywhere: `sender`, reactions, mentions, roles) |
+| node login, desktop SSO, mero-react | a **passkey** account on the cluster |
+| group invitation link (`?invitation=`) | an **org invite** (`?invite=<token>`, made with the inviter's passkey, redeemed after sign-in) |
+| a member's namespace alias | the org's member metadata `{ name }` |
+| SSE subscription per context | `client.events(app, from)` for the open conversation; others' unread counts are polled |
+| `useEphemeral` presence | the node's presence API (`publishPresence` / `presenceStream`) |
 
-- [Rust 1.89+](https://www.rust-lang.org/tools/install)
-- [pnpm](https://pnpm.io/installation)
-- [merobox](https://www.piwheels.org/project/merobox/) (optional, for workflows)
-
-### Build and Run
+## Run it
 
 ```bash
-# Build the logic (Rust WASM). cargo-mero comes from the same core release as
-# the SDK pinned in the monorepo's root Cargo.toml:
-#   cargo install --git https://github.com/calimero-network/core --tag <sdk tag> cargo-mero --locked
-cd logic
-cargo mero build -p mero-chat
-
-# Start the app
-cd ../app
+rustup target add wasm32-wasip2
 pnpm install
-pnpm run dev
+pnpm dev:local mero-chat          # merod local + build + deploy + the app on http://localhost:5173/
 ```
 
-Open the app in your browser and connect to a running Calimero node.
+Sign up with a passkey, create a workspace (it starts with `#general`),
+invite a second browser profile with **Invite** (a link with `?invite=`),
+and chat. `merod` comes from core's `1.0.0-rc.8` release, see
+[`docs/COMPONENT-APPS.md`](../../docs/COMPONENT-APPS.md).
 
-## Logic
+## Test it
 
-```bash title="Terminal"
-cd logic
+```bash
+M=tools/component-bundle/Cargo.toml
+cargo test --manifest-path apps/mero-chat/logic/Cargo.toml        # search unit tests, harness, scenarios
+cargo run --release --manifest-path $M -- build apps/mero-chat/logic   # res/mero_chat.wasm + res/abi.json
+pnpm merod-local e2e mero-chat                                     # scenarios/*.json as real accounts on merod local
+pnpm -F mero-chat lint typecheck test build
 ```
 
-```bash title="Terminal"
-cargo mero build
-```
+- `logic/tests/harness.rs`: every method on core's real wasmtime engine
+  (`TestApp`): v1's `TestHost` tests method for method, the storage-level write
+  rules v1 relied on as the same calls made by an account the method refuses,
+  blobs, search (index and scan), paging bounds, access (anonymous `401`,
+  outsider `404`, guests) and the wire (camelCase names, `BadArgs`,
+  `NotAView`).
+- `logic/scenarios/chat.json` (from merobox `e2e.yml` and
+  `integration-setup.yml`) and `access.json` (forged writes, moderation, who
+  reaches the app): run by `cargo test` and on the cluster by CI's e2e job.
+- `app/src/calimero/chat.test.ts` asserts the frontend's method list and
+  parameter names are exactly the committed `logic/res/abi.json`'s;
+  `App.test.tsx` drives sign-up, the workspace picker and invite redemption
+  with a mocked client.
 
-## App
+## The contract
 
-```bash title="Terminal"
-cd app
-```
+State (all plain data: one leader applies every write in one log, so there is
+nothing to merge):
 
-```bash title="Terminal"
-pnpm install
-```
+| field | what |
+|---|---|
+| `info: Cell<Info>` | name, `Channel`/`Dm`, description, `createdAt` (seconds), creator |
+| `messages: Table<Message>` | every message, top-level (`parent = ""`) and reply; index `thread(parent, seq)`, count `perThread(parent)`, full-text `search = ["search_text"]` (the text a reader sees, folded for case and accents) |
+| `nextSeq: UnorderedMap<parent, u64>` | a message's position among its parent's: the stable `index` clients page and resume by |
+| `extras: UnorderedMap<id, Extras>` | a message's mentions and attachments (`BlobRef`s), at most 100 + 100 + 10 + 10, beside the record (a record holds no lists) |
+| `reactions: UnorderedMap<(message, emoji, account), bool>` | one row per reaction |
+| `profiles: UnorderedMap<account, Profile>` | username (fixed by the first `setProfile`) and avatar `BlobRef` |
+| `roles: UnorderedMap<account, Role>` | `Mod`, `Admin`, `Banned`; absent is `User` (or `Admin` for the org's owner and admins) |
+| `readReceipts: PerUser<u64>` | each account's last-read timestamp |
+| `drafts: UnorderedMap<(account, channel), String>` | each account's unsent drafts |
 
-```bash title="Terminal"
-pnpm run build
-```
+Who may do what: the platform decides who reaches the conversation (the org's
+owner, admins, members and guests for a channel; the listed accounts for a
+private channel or DM). Inside, each method checks `env::caller()`: only a
+message's sender edits it; its sender, a moderator or an admin deletes it; only
+an admin changes the info or anyone's role (a moderator may only ban a `User`
+or lift a ban); a banned member's writes are refused (`Banned`); profiles,
+reactions, read receipts and drafts are always the caller's own.
 
-```bash title="Terminal"
-pnpm run dev
-```
+Errors (`422 APP_ERROR`, `{ code, fields }`): `NotFound { what, id }`,
+`Forbidden { message }`, `Invalid { message }`, `Banned`.
 
-Open app in browser and connect to running node.
+Events, to everyone the conversation reaches (guests included, as v1's every
+context member): `Initialized`, `MessageSent { messageId }`,
+`MessageSentThread { messageId, parentMessageId }`, `ReactionUpdated
+{ messageId }`, `MessageEdited { messageId }`, `ProfileUpdated { identity }`,
+`InfoUpdated`, `RoleUpdated { identity }`.
 
-For more information how to build app check our docs:
-https://calimero-network.github.io/build/quickstart
+## What changed in the port, and why
 
+Same methods (camelCase on the wire), same arguments, same answers and events
+wherever the runtime allows. What a client sees differently:
 
-## Search
+| | v1 (`calimero-sdk`, wasmer) | now (component SDK) | why |
+|---|---|---|---|
+| method and argument names | `send_message`, `parent_message`, … | `sendMessage`, `parentMessage`, … | the ABI names methods and arguments in camelCase |
+| answer field names | snake_case (`total_count`, `thread_count`, `mentions_usernames`) | camelCase (`totalCount`, `threadCount`, `mentionsUsernames`) | the platform's convention; the frontend's adapter (`app/src/calimero/chat.ts`) maps them back |
+| 64-bit integers (`timestamp`, `index`, `editedOn`, `size`, counts, `createdAt`) | JSON numbers | decimal strings (`"1700000000"`), arguments too | D20: no precision loss in JSON |
+| `init` | `name, context_type, description, created_at, creator_username`, required | the same, every one optional (`initArgs` of `createApp`); `createdAt` defaults to the log's clock | a component's `init` takes `initArgs`, and a bare `createApp` sends none |
+| the sender | the entry's owner stamp (a patched node could write any `sender` field) | the caller | every write goes through a method on the leader |
+| message ids | `hex(sha256(account‖text‖ts‖counter))_ts` | `hex(32 random bytes of the run)_ts` | same shape; the seeded run randomness replaces the digest |
+| thread replies' `index` | its place in the thread at read time (shifts when a moderator removes one) | its position in the thread (`seq`), stable | positions are never reused |
+| thread order | by client timestamp | by arrival (log order) | positions are assigned on write |
+| a staff removal of a top-level message | kept in `hidden`, blanked on read | the message itself blanked and marked `deleted` | one writer: nothing forces a side table |
+| editing a deleted message | allowed (the text came back) | `NotFound` | a deleted message stays deleted |
+| replying to a reply | `Parent message not found` | `NotFound` (same rule: threads are one level) | — |
+| `getMessages` / `getMessagesFrom` without a limit | every message | 100 (at most 500 per page) | a growing collection is read in pages |
+| `getMessages` with `searchTerm` | scanned the whole channel | scans the newest 2,000 messages (or 1 MiB); `totalCount` counts matches among those | a per-call read of a whole collection is capped; `searchMessages` searches everything |
+| `searchMessages` order | newest first across pages; `frontierTimestamp` a bound | best match first (the host's index ranks by relevance), newest first within a page; `frontierTimestamp` is `null` | `Table::search` ranks by BM25; the scan (`searchMessagesScan`) keeps v1's order and frontier |
+| `searchMessages` limits | 20, at most 50 | the same | — |
+| `getProfiles` | every profile, a list | one page: `{ items, next }` (`cursor`, `limit` ≤ 1,000) | growing collection |
+| `listRoles` | `[[identity, role], …]` of every non-`User` | one page: `{ items: [{ identity, role }], next }`; the org's owner and admins are `Admin` without being listed | growing collection; tuples are not a component type |
+| org owners and admins | made channel admins by the frontend on every channel open (`set_member_role` self-assert) | `Admin` in every channel unless a role was set for them | the contract asks the org (`env::org_role`) |
+| `setMemberRole` target | any id | the app's owner or a member of its org (`Invalid` otherwise) | a role for an account that cannot reach the app is meaningless |
+| the ban | checked on the banned member's own node | checked by the leader: every write of a banned member is `Banned` | one writer |
+| `updateInfo` by a non-admin | `Only an admin can change…` (string error) | `Forbidden { message }` | typed errors |
+| attachments | `blob_id_str` announced to the context; client's size | a `BlobRef` the app must hold (`Invalid` otherwise); the node's recorded size wins | R8 blobs: the host keeps a referenced blob |
+| `uploadedAt` | nanoseconds | milliseconds | the component clock |
+| avatars | a blob id string | a `BlobRef` (`Invalid` for a blob the app does not hold) | as attachments |
+| drafts | `#[app::private]` node-local storage | in the app's state, keyed by the caller's account, read back only by `getDraft` for the caller | the component SDK has no private storage yet (see below) |
+| `MessageSentThread` event | `{ message_id }` | `{ messageId, parentMessageId }` | a reader refreshes the right thread |
+| events with a payload | tuple variants (`ReactionUpdated("id")`) | named fields (`{ messageId }`, `{ identity }`) | the component event shape |
+| new | | `messageIdAt(parentMessage?, index)`: `messagePosition`'s inverse | a link (and a scenario) names a position |
+| who may call | any member of the context | the org's members/admins/owner/guests (channel) or the listed accounts (private channel, DM); anonymous `401`, others `404` | the platform's access boundary |
 
-`search_messages(query, cursor, limit)` asks the node's full-text index of the
-channel (core's per-context search): top-level messages and thread replies,
-newest first by their own timestamp, a substring match from 3 characters (a
-prefix match below that), folded for case and accents. It reads only the page
-of hits, so a query costs the same in a channel of 2,000 messages or 200,000.
-A deleted message leaves the index; a staff-removed one is dropped when its
-hit is read back. Message text is
-editor HTML, so the index holds it as the plain text a reader sees. A hit's
-`index` is `null`: `message_position(message_id)` gives the position to open
-it at, and the app asks when a hit is clicked.
+The frontend kept its screens (sidebar, channel list, DMs, the virtualized
+message list, composer with mentions, emoji, attachments and drafts, threads,
+reactions, search overlay, permalinks, settings, the IndexedDB message cache,
+notifications and sounds) and changed underneath:
 
-A node running with search off cannot answer from an index, and says so; the
-app then calls `search_messages_scan`, which answers the same question without
-one, as described below.
+- `app/src/calimero/`: the session (passkeys, `SessionStore`), the connection
+  the data layer reads, the typed contract client and its adapter back to the
+  screens' shapes, workspaces (orgs, conversations, invites), presence and the
+  workspace provider.
+- `ClientApiDataSource` keeps its methods, now one call or view each; blobs
+  are uploaded to and downloaded from the conversation's app.
+- Removed with v1: mero-react / mero-platform, the node login and Connect
+  wipe, desktop SSO and token seeding, the namespace entry popup, subgroups,
+  context identities, invitation codecs and deep links, the TEE badge, the
+  admin panel's Details (namespace visibility, default capabilities) and
+  Upgrade tabs, channel "join" (every channel listed is one you reach), the
+  Playwright suites (mocked, rpc, live, journey, landing media recording) and
+  their helper scripts, and every merobox workflow, script and the
+  `permissions-testing.sh` / `scripts/` node harnesses.
+- Behaviour changes in the screens: live events stream for the open
+  conversation only (a browser holds at most six connections to a node; the
+  others' unread counts are polled every 30 s); the sidebar's online dot polls
+  the conversation's presence instead of every DM row publishing its own;
+  changing your avatar uploads it to each conversation of the workspace (a
+  blob belongs to one app); deleting a workspace is its owner's (`deleteOrg`),
+  leaving is everyone else's (`removeMember` of yourself).
 
-`search_messages_scan(query, cursor, limit)` walks the channel newest first by
-position, each top-level message followed by its thread, and returns slim hits
-(id, parent id, position, timestamps, sender, a plain-text snippet with the
-match offsets) plus an opaque `next_cursor`. One call stops at `limit` hits
-(default 20, max 50) or after reading 2,000 messages or 1 MiB of text, so a
-common term in a big channel costs one page, never the channel. Text is matched
-as it is shown (markup dropped) and folded for case, accents and width as
-mero-docs' `foldForSearch` folds it. Deleted and staff-removed messages are
-never found. The app asks every conversation for a page, merges the pages
-newest first by each page's `frontier_timestamp`, and "Load more" continues each
-conversation from its own cursor.
+## What the component SDK does not have yet
 
-Gas per call, measured through the real runtime (calimero-runtime
-0.11.0-rc.57, metered wasm, in-memory store; `needle` is in 1% of messages and
-10% of replies, `w5` in 2%, `zebrafish` in none; the budget is 1e9):
+- **Private (node-local) storage** (`#[app::private]`): v1 kept drafts on the
+  author's own node, never synced. Here they are in the app's replicated state,
+  readable only through `getDraft`, which answers the caller's own draft;
+  nobody else, the app's owner included, can read one through the app, but the
+  bytes are part of the app's state on the cluster's nodes.
+- **Migrations** (`#[app::migrate]`): v1 state cannot be carried into this
+  contract; a 1.0 deployment starts empty.
+- **Native mobile**: the pinned swift-sdk and kotlin-sdk have no 1.0 client;
+  `mobile/` is unchanged and its v1 live-relay tests were removed.
 
-| call | 2,000 msgs before | after | 5,000 msgs before | after |
-| --- | ---: | ---: | ---: | ---: |
-| `get_message_count` | 93M | 93M | 201M | 201M |
-| `get_messages` newest 50 | 124M | 109M | 251M | 217M |
-| search `needle`, first page | 192M | 205M | 446M | 312M |
-| search `zebrafish`, first page | 184M | 241M | 426M | 348M |
-| search `w5`, first page | 193M | 173M | 447M | 280M |
+The contract needs no event handlers, TEE methods, xcalls, actions or outbound
+HTTP: v1 used none of them. **No outbound hosts or secrets** need configuring.
 
-"Before" is `search_all_messages` (every match, rendered in full); "after" is
-one `search_messages` page. The old cost is ~90k gas per message in the channel
-and reaches the budget near 10k messages; a page adds at most 2,000 rows to the
-fixed cost below.
+## Production
 
-That fixed cost is core's, and it bounds this app today: on rc.57 any call that
-touches `messages` walks the vector's whole child trie (`get_message_count`
-alone is ~40k gas and ~1.6 storage reads per message in the channel), and
-`send_message` costs 658M gas at 2,000 messages and 1.55G at 5,000, so sends
-exceed the default budget near 3,200 messages. Search cannot fix that from the
-contract.
-
-## Workflows
-
-The `workflows/` folder contains an example bootstrap workflow that demonstrates the complete setup process with the following steps:
-
-1. Initialize Node 1 and Node 2
-2. Install Calimero Chat application and create context from Node 1
-3. Invite Node 2 to join the context from Node 1
-4. Join the context from Node 2
-5. Join the chat from Node 2
-6. Send a message from Node 1
-7. Send a message from Node 2
-8. Fetch messages from Node 1
-
-To run this workflow, you need to install [merobox](https://www.piwheels.org/project/merobox/) on your machine and execute:
-
-```bash title="Terminal"
-merobox --version
-> merobox, version 0.1.13
-merobox bootstrap workflows/bootstrap.yml
-> ...
-> 🎉 Workflow completed successfully!
-```
-
-## Owned keys are per owner (core 0.11.0-rc.57)
-
-Since core 0.11.0-rc.57 every owned collection (`Authored…`, `WriteOnce`, `Moderated`,
-`ModeratedOnce`) is one namespace per account: two accounts writing one key hold two
-independent entries, and a key-only `get`, `contains`, `owner_of`, `owned_by_me` or `remove`
-acts on the CALLER's own entry only. This app was migrated:
-
-- A message id's pointer (`message_ids`) is read across holders: each pointer is checked
-  against its own recorder, and the lowest account whose pointer holds wins.
-- A thread reply's sender is recovered among the holders of its key by the entry's bytes.
-- Staff deleting someone's reply remove every holder's entry with `remove_by`; a key-only
-  `remove` would remove only their own.
-- Reactions are counted once per key, as the entry of the account the key names; a copy
-  another account files under that key is ignored.
+The production frontend is the one packed into the `.mpk` (`frontend-dir =
+"../app/dist"`) and served by the cluster from the package's origin; set
+`VITE_CALIMERO_CLUSTER` and `VITE_CALIMERO_MIN_RELEASE` where it is built (see
+`app/.env.example` and [`docs/COMPONENT-APPS.md`](../../docs/COMPONENT-APPS.md)).
+Instances are created from the package `com.calimero.chat`. The Vercel
+deployment at `chat.hyperfeed.me` is outside the cluster's relying party and
+cannot sign in; it remains the listing's link.

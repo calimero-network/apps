@@ -1,17 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import styled from "styled-components";
-import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
-import { useWorkspaceName } from "../../hooks/useWorkspaceName";
-import { useNamespaceTee } from "../../hooks/useNamespaceTee";
-import {
-  resolveWorkspaceName,
-  shouldBackfillWorkspaceName,
-} from "../../utils/workspaceName";
-import type { GroupSummary } from "../../api/groupApi";
-import { getGroupId, setGroupId, getStoredGroupAlias } from "../../constants/config";
-import { clearStoredSession, setNamespaceReady } from "../../utils/session";
-import CreateWorkspacePopup from "../popups/CreateWorkspacePopup";
-import { nodeBasename } from "../../utils/servedByNode";
+
+import { useWorkspace } from "../../calimero/WorkspaceProvider";
 
 interface WorkspaceSwitcherProps {
   isCollapsed: boolean;
@@ -60,38 +50,8 @@ const WorkspaceName = styled.span`
   text-align: left;
 `;
 
-// Shown to every member; the TEE's details live in Workspace Admin > Details,
-// which only admins can open.
-const TeeShield = styled.span`
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  color: var(--glass-accent);
-`;
 
-const TeeNote = styled.div`
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--glass-ink) 7%, transparent);
-  font-size: 11px;
-  line-height: 1.4;
-  color: color-mix(in srgb, var(--glass-ink) 65%, transparent);
-  white-space: normal;
 
-  strong {
-    display: block;
-    color: var(--glass-ink);
-    font-weight: 600;
-  }
-`;
-
-const ShieldIcon = ({ size }: { size: number }) => (
-  <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-    <path d="M8 0 1.5 2.5v5C1.5 11.6 4.3 15 8 16c3.7-1 6.5-4.4 6.5-8.5v-5L8 0Zm-1 11.4L3.8 8.2l1.1-1.1L7 9.2l4.1-4.1 1.1 1.1L7 11.4Z" />
-  </svg>
-);
 
 const ChevronIcon = styled.div<{ $open: boolean }>`
   flex-shrink: 0;
@@ -172,93 +132,23 @@ const DropdownLabel = styled.div`
   color: color-mix(in srgb, var(--glass-ink) 25%, transparent);
 `;
 
+/**
+ * The open workspace (an organization), the others the account is in, and
+ * "New workspace", which goes back to the picker where one is created.
+ */
 export default function WorkspaceSwitcher({ isCollapsed }: WorkspaceSwitcherProps) {
-  const [workspaces, setWorkspaces] = useState<GroupSummary[]>([]);
+  const ws = useWorkspace();
   const [isOpen, setIsOpen] = useState(false);
-  // Creating a workspace used to be possible only from the entry screen, which
-  // a member already inside one never sees again.
-  const [creating, setCreating] = useState(false);
-  const currentGroupId = getGroupId();
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const displayName = ws.name || "Workspace";
 
-  useEffect(() => {
-    const api = new GroupApiDataSource();
-    void api.listGroups().then(async (resp) => {
-      if (!resp.data) return;
-
-      // Read the replicated name per workspace. The listing does not carry
-      // metadata, so this is one call each — a handful, and only on open.
-      // Failures are silent: a workspace whose metadata cannot be read still
-      // shows its local alias rather than disappearing.
-      const named = await Promise.all(
-        resp.data.map(async (w) => {
-          const localAlias = getStoredGroupAlias(w.groupId);
-          const record = await api.getGroupMetadata(w.groupId).catch(() => null);
-          const sources = {
-            metadataName: record?.data?.name,
-            serverAlias: w.alias,
-            localAlias,
-            groupId: w.groupId,
-          };
-
-          // Promote a name this browser knows and the workspace does not, so a
-          // workspace named before metadata was used becomes visible to
-          // everyone. Best-effort — a member without CAN_MANAGE_METADATA is
-          // refused, and the local alias keeps showing for them.
-          if (shouldBackfillWorkspaceName(sources)) {
-            void api.setGroupMetadata(w.groupId, localAlias).catch(() => {});
-          }
-
-          return { ...w, alias: resolveWorkspaceName(sources) };
-        }),
-      );
-
-      setWorkspaces(named);
-    });
-  }, []);
-
-  const current = workspaces.find((w) => w.groupId === currentGroupId);
-
-  // The pill's own name comes from the shared hook when the listing cannot
-  // supply it.
-  //
-  // The listing can be empty — a node that cannot resolve the application id
-  // returns nothing — and keying the displayed name off `find(...)` is what
-  // showed a truncated id here while Settings showed the name. The hook needs
-  // only the current group id, which is always known.
-  const currentName = useWorkspaceName(currentGroupId);
-  // The listing's entry already ranks metadata above the server alias above the
-  // local one, so prefer it when the workspace is in the list. The hook is the
-  // fallback for when it is NOT — an empty listing is exactly the case that
-  // showed a truncated id here while Settings showed the name.
-  const displayName = current?.alias || (currentGroupId ? currentName : "Workspace");
-  const teeEnabled = useNamespaceTee(currentGroupId);
-
-  const handleSelect = useCallback((groupId: string) => {
-    if (groupId === currentGroupId) { setIsOpen(false); return; }
-    setGroupId(groupId);
-    // The stored session chat belongs to the workspace we're leaving. Home
-    // restores it verbatim on mount — subscribing SSE to its contextId and
-    // selecting it — and ActiveChat carries no group id, so nothing
-    // downstream can tell it is stale. Carrying it across a switch lands the
-    // user on a channel from the old workspace, on a context the new one
-    // doesn't have. NamespaceEntryPopup.enterChat clears it for this reason;
-    // this path did not.
-    clearStoredSession();
-    // The remembered workspace is scoped to its id; move it along, or the
-    // reload below lands on the picker instead of the workspace picked here.
-    setNamespaceReady(groupId);
-    window.location.href = nodeBasename();
-  }, [currentGroupId]);
-
-  // The popup has already made the new workspace current (`setGroupId`). The
-  // old one's stored chat is dropped for the same reason as on a switch.
-  const handleCreated = useCallback((groupId: string) => {
-    setCreating(false);
-    clearStoredSession();
-    setNamespaceReady(groupId);
-    window.location.href = nodeBasename();
-  }, []);
+  const handleSelect = useCallback(
+    (org: string) => {
+      setIsOpen(false);
+      if (org !== ws.org) ws.switchTo(org);
+    },
+    [ws],
+  );
 
   useEffect(() => {
     if (!isOpen) return;
@@ -273,11 +163,7 @@ export default function WorkspaceSwitcher({ isCollapsed }: WorkspaceSwitcherProp
 
   return (
     <DropdownWrapper ref={wrapperRef}>
-      <Trigger
-        $isCollapsed={isCollapsed}
-        onClick={() => setIsOpen((o) => !o)}
-        title={isCollapsed ? (teeEnabled ? `${displayName} · TEE enabled` : displayName) : undefined}
-      >
+      <Trigger $isCollapsed={isCollapsed} onClick={() => setIsOpen((o) => !o)} title={isCollapsed ? displayName : undefined}>
         <WorkspaceIcon>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <rect x="3" y="3" width="7" height="7" rx="1" />
@@ -289,11 +175,6 @@ export default function WorkspaceSwitcher({ isCollapsed }: WorkspaceSwitcherProp
         {!isCollapsed && (
           <>
             <WorkspaceName>{displayName}</WorkspaceName>
-            {teeEnabled && (
-              <TeeShield role="img" aria-label="TEE enabled" title="TEE enabled">
-                <ShieldIcon size={12} />
-              </TeeShield>
-            )}
             <ChevronIcon $open={isOpen}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                 <polyline points="6 9 12 15 18 9" />
@@ -305,29 +186,12 @@ export default function WorkspaceSwitcher({ isCollapsed }: WorkspaceSwitcherProp
 
       {isOpen && (
         <Dropdown $isCollapsed={isCollapsed}>
-          {teeEnabled && (
-            <TeeNote>
-              <TeeShield>
-                <ShieldIcon size={12} />
-              </TeeShield>
-              <span>
-                <strong>TEE enabled</strong>
-                A hardware-attested node keeps this workspace in sync and
-                available when members are offline.
-              </span>
-            </TeeNote>
-          )}
           <DropdownLabel>Workspaces</DropdownLabel>
-          {workspaces.map((w) => {
-            const name = w.alias || w.groupId.slice(0, 12) + "…";
-            const active = w.groupId === currentGroupId;
+          {ws.workspaces.map((w) => {
+            const name = w.name || w.orgId.slice(0, 12) + "…";
+            const active = w.orgId === ws.org;
             return (
-              <DropdownItem
-                key={w.groupId}
-                $active={active}
-                onClick={() => handleSelect(w.groupId)}
-                title={name}
-              >
+              <DropdownItem key={w.orgId} $active={active} onClick={() => handleSelect(w.orgId)} title={name}>
                 {active ? <ActiveDot /> : <EmptyDot />}
                 {name}
               </DropdownItem>
@@ -337,19 +201,13 @@ export default function WorkspaceSwitcher({ isCollapsed }: WorkspaceSwitcherProp
             $active={false}
             onClick={() => {
               setIsOpen(false);
-              setCreating(true);
+              ws.switchTo("");
             }}
             data-testid="workspace-switcher-create"
           >
             <EmptyDot />+ New workspace
           </CreateItem>
         </Dropdown>
-      )}
-      {creating && (
-        <CreateWorkspacePopup
-          onSuccess={handleCreated}
-          onCancel={() => setCreating(false)}
-        />
       )}
     </DropdownWrapper>
   );

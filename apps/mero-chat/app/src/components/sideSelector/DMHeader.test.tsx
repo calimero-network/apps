@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { DMContextInfo } from "../../hooks/useDMs";
+import type { DMContextInfo } from "../../types/Common";
 
 // ── Pure logic mirrors of DMHeader hooks ────────────────────────────────────
 // These replicate the useMemo/useCallback logic from DMHeader.tsx so the

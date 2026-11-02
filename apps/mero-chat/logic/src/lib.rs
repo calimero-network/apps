@@ -36,7 +36,9 @@
 //!
 //! - only a message's sender edits it (`Forbidden`); its sender or a moderator
 //!   or admin deletes it;
-//! - only an admin changes the conversation's info or anyone's role; a moderator
+//! - only an admin (the creator, whoever an admin made one, and the
+//!   organization's owner and admins) changes the conversation's info or
+//!   anyone's role; a moderator
 //!   may only ban a `User` or unban a `Banned` member;
 //! - a `Banned` member's sends, edits, deletes, reactions, profile and drafts
 //!   are refused (`Banned`). In v1 the ban was checked on the banned member's
@@ -49,7 +51,7 @@
 
 use std::collections::BTreeMap;
 
-use calimero_app_sdk::env::Caller;
+use calimero_app_sdk::env::{Caller, OrgRole};
 use calimero_app_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -613,14 +615,16 @@ impl MeroChat {
 
     // ── roles ────────────────────────────────────────────────────────────────
 
-    /// `identity`'s role: `User` unless one was set.
+    /// `identity`'s role: the one set for them, else `Admin` for an owner or
+    /// admin of the organization, else `User`.
     #[app::view]
     pub fn get_member_role(&self, identity: String) -> app::Result<Role> {
         self.role_of(&identity)
     }
 
-    /// One page of the members whose role is not `User`, in account order
-    /// (`cursor`, `limit` as `getProfiles`).
+    /// One page of the members whose role was set (not `User`), in account
+    /// order (`cursor`, `limit` as `getProfiles`). The organization's owner and
+    /// admins are `Admin` without being listed (`getMemberRole` answers them).
     #[app::view]
     pub fn list_roles(&self, cursor: Option<String>, limit: Option<u32>) -> app::Result<RolePage> {
         let page = self.roles.page(list_opts(cursor, limit))?;
@@ -1228,9 +1232,17 @@ impl MeroChat {
             .ok_or_else(|| not_found("info", "conversation"))
     }
 
-    /// `account`'s role: `User` unless one was set.
+    /// `account`'s role: the one set for them; else `Admin` for an owner or
+    /// admin of the app's organization (v1's frontend made every workspace
+    /// admin an admin of each channel they opened); else `User`.
     fn role_of(&self, account: &str) -> app::Result<Role> {
-        Ok(self.roles.get(&account.to_owned())?.unwrap_or_default())
+        if let Some(role) = self.roles.get(&account.to_owned())? {
+            return Ok(role);
+        }
+        Ok(match env::org_role(account) {
+            Some(OrgRole::Admin | OrgRole::Owner) => Role::Admin,
+            _ => Role::User,
+        })
     }
 
     /// The caller, refused when banned.

@@ -69,6 +69,7 @@ Start here. These exist to be read, not shipped.
 
 | App | Live | What it is | Package |
 | --- | --- | --- | --- |
+| [mero-chat](apps/mero-chat) | [↗](https://chat.hyperfeed.me) | Team chat — workspaces, public and private channels, threads, reactions, mentions, attachments, search and DMs. A component app (Calimero 1.0): a workspace is an organization, each channel or DM an app instance; frontend on mero-js `CalimeroClient`. Native iOS/Android clients (v1) in `mobile/`. | `com.calimero.chat` |
 | [mero-design](apps/mero-design) | [↗](https://design.hyperfeed.me/) | Figma-style infinite canvas — shapes, text, images, SVG blobs, real-time multi-member editing. | `com.calimero.mero-design` |
 | [mero-pixart](apps/mero-pixart) | [↗](https://mero-pixart.vercel.app/) | Photoshop-style image editor — layers, folders, masks, adjustments, free transform, collaborative. | `com.calimero.mero-pixart` |
 | [mero-models](apps/mero-models) | — | Blender-style 3D modeller — primitives, meshes, edit mode with extrude, materials and lights, a transform gizmo, undo, OBJ/STL/glTF in and out; co-edited live with presence, editors enforced by the contract. | `com.calimero.mero-models` |

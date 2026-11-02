@@ -3,6 +3,17 @@
 Native iOS and Android clients for Mero Chat, next to the web frontend (`../app`) and the
 contract (`../logic`, package `com.calimero.chat`).
 
+> **Not ported to Calimero 1.0.** The contract in `../logic` and the web frontend moved to
+> the 1.0 runtime (a component on core's component SDK; mero-js `CalimeroClient`; orgs and
+> app instances instead of namespaces and contexts). These apps still speak the v1 relay API
+> below through the pinned swift-sdk / kotlin-sdk, which have no 1.0 client yet, so they are
+> left unchanged and work only against a v1 deployment of `com.calimero.chat`. Their live
+> tests ran against a v1 relay that `e2e/run-relay.sh` booted with merobox and the v1
+> contract built from `../logic`; with that contract gone from the tree, the relay script and
+> the `mero-chat-{ios,android}-live` workflows were removed. The offline builds and unit
+> tests (`mero-chat-ios.yml`, `mero-chat-android.yml`) are unchanged. Porting needs a 1.0
+> client in each SDK (passkey or API-key sessions, `/apps/{app}/intents` and `/views`, orgs).
+
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
 | iOS | [`ios/`](ios/README.md) | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI`, by SPM revision in `ios/project.yml` |

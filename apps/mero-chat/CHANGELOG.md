@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Moved to Calimero 1.0.** The contract is a component on core's component
+  SDK (`1.0.0-rc.8`): messages in one table with a full-text index,
+  attachments and avatars as blob references, roles and bans checked by the
+  contract itself. The frontend signs in with a passkey through mero-js
+  `CalimeroClient` (local `merod local` in development, Calimero Cloud in
+  production): a workspace is an organization, a channel or DM an app
+  instance, an invitation an org invite. Every client-visible change is listed
+  in the README, "What changed in the port". merobox workflows, the Playwright
+  suites and the node scripts are gone; the native apps' live-relay tests went
+  with the v1 contract.
+
 ### Fixed
 
 - Settings offers a workspace admin **Delete workspace** and everyone else

@@ -1,12 +1,12 @@
 import React, { memo, useCallback, useMemo, useState } from "react";
 import styled from "styled-components";
 import type { ActiveChat, GroupContextChannel } from "../../types/Common";
-import type { SubgroupEntry } from "../../api/groupApi";
+import type { SubgroupEntry } from "../../types/Common";
 import ChannelHeader from "./ChannelHeader";
 import ChannelList from "./ChannelList";
 import { CurbLogo } from "../navbar/CurbNavbar";
 import DMSideSelector from "./DMSideSelector";
-import type { DMContextInfo } from "../../hooks/useDMs";
+import type { DMContextInfo } from "../../types/Common";
 import type { CreateContextResult } from "../popups/StartDMPopup";
 import { scrollbarStyles } from "../../styles/scrollbar";
 import type { ContextUnread } from "../../hooks/useUnreadCounts";

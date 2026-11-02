@@ -1,9 +1,9 @@
 import { useCallback, memo, useState } from "react";
 import { styled } from "styled-components";
-import type { DMContextInfo } from "../../hooks/useDMs";
+import type { DMContextInfo } from "../../types/Common";
 import { IdentityAvatar } from "../IdentityAvatar";
 import ConfirmPopup from "../popups/ConfirmPopup";
-import { getDmDisplayName } from "../../utils/dmContext";
+import { shortAccount } from "../../utils/accountIdentity";
 import { useResolvedName } from "../../repositories/names/useNames";
 import type { ContextUnread } from "../../hooks/useUnreadCounts";
 import { usePresence } from "../../hooks/usePresence";
@@ -127,12 +127,9 @@ function UserItem({
   );
   const displayName =
     resolvedName ||
-    getDmDisplayName({
-      otherUsername: dm.otherUsername,
-      otherAlias: dm.otherAlias,
-      otherIdentity: dm.otherIdentity,
-      contextId: dm.contextId,
-    });
+    dm.otherUsername ||
+    dm.otherAlias ||
+    shortAccount(dm.otherIdentity);
 
   const handleClick = useCallback(() => {
     if (!dm.isJoined) {

@@ -4,15 +4,11 @@ import DetailsContainer from "../settings/DetailsContainer";
 import BaseModal from "../common/popups/BaseModal";
 import type { ChannelInfo, UserId } from "../../api/clientApi";
 import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
-import { ContextApiDataSource } from "../../api/dataSource/nodeApiDataSource";
-import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
 import type { ResponseData } from "../../api/types";
-import { getContextIdentity } from "@calimero-network/mero-react";
-import { isDelegatedSession } from "../../api/meroJsClient";
-import { useGroupAdmin } from "../../hooks/useGroupAdmin";
-import { useCurrentGroupPermissions } from "../../hooks/useCurrentGroupPermissions";
+import { getContextIdentity } from "../../calimero/context";
+import { useWorkspace } from "../../calimero/WorkspaceProvider";
+import { conversationOf } from "../../calimero/registry";
 import { getGroupId } from "../../constants/config";
-import type { GroupMember } from "../../api/groupApi";
 import { useToast } from "../../contexts/ToastContext";
 
 interface ChannelDetailsPopupProps {
@@ -60,27 +56,13 @@ export default function ChannelDetailsPopup({
   });
 
   const groupId = getGroupId();
-  const { members: groupMembers, fetchAll } = useGroupAdmin();
-
-  // Membership authority over a channel belongs to the CHANNEL's own group,
-  // never to the namespace root.
-  //
-  // The node enforces exactly that: `add_group_members` calls the direct
-  // `require_admin` on the subgroup, and a namespace admin does not inherit
-  // admin over a restricted one — `is_inherited_admin` stops walking the moment
-  // visibility is not Open. Asking the root instead made the UI disagree with
-  // the node in BOTH directions: it hid the controls from the person who
-  // created a private channel (Admin of that subgroup, Member at the root), and
-  // offered them to a namespace admin whose write the node then refused. That
-  // refusal arrived as a 500, so it read as a broken node rather than a
-  // deliberate no.
-  //
-  // `contextSubgroupId ?? groupId` is the same target `DetailsContainer` writes
-  // to, so the gate and the write can never disagree about which group is being
-  // changed.
-  const contextSubgroupId = chat.contextId ? getSubgroupForContext?.(chat.contextId) : undefined;
-  const membershipGroupId = contextSubgroupId ?? groupId;
-  const { isAdmin: canAdminChannelGroup } = useCurrentGroupPermissions(membershipGroupId ?? "");
+  const ws = useWorkspace();
+  // A private channel's members are managed by its creator or an org admin.
+  const contextSubgroupId = getSubgroupForContext && chat.contextId ? getSubgroupForContext(chat.contextId) : undefined;
+  const conversation = chat.contextId ? conversationOf(chat.contextId) : undefined;
+  const isPrivate = conversation?.kind === "private";
+  const canAdminChannelGroup =
+    isPrivate && (ws.role === "owner" || ws.role === "admin" || conversation?.owner === getContextIdentity());
   const { addToast } = useToast();
   const [isDeleting, setIsDeleting] = useState(false);
   const isBusy = isDeleting;
@@ -89,13 +71,13 @@ export default function ChannelDetailsPopup({
 
   const nonChannelMembers = useMemo(() => {
     const map = new Map<string, string>();
-    groupMembers.forEach((m: GroupMember) => {
-      if (m.identity && !channelUserList?.has(m.identity)) {
-        map.set(m.identity, m.alias || m.identity.substring(0, 12) + "...");
+    ws.members.forEach((m) => {
+      if (!channelUserList?.has(m.account)) {
+        map.set(m.account, m.name || m.account.substring(0, 12) + "...");
       }
     });
     return map;
-  }, [groupMembers, channelUserList]);
+  }, [ws.members, channelUserList]);
 
   const getChannelMetadata = async (channelName: string) => {
     const channelInfo: ResponseData<ChannelInfo> =
@@ -119,52 +101,16 @@ export default function ChannelDetailsPopup({
     if (!chat.contextId || isBusy) return;
     setIsDeleting(true);
     try {
-      // 1-group-per-context model: the channel lives inside a dedicated
-      // subgroup. Use the deleteGroup cascade (auth: namespace-admin OR
-      // CAN_DELETE_SUBGROUP at the namespace root OR subgroup-owner) — its
-      // apply path unregisters the contained context as part of the
-      // cascade. Calling deleteContext FIRST would re-check require_admin
-      // *on the subgroup itself* (delete_context.rs:67), which blocks
-      // namespace admins who didn't create the channel.
-      //
-      // Legacy fallback: if we couldn't resolve a subgroup for this
-      // context (shouldn't happen with current channel creation), drop
-      // back to deleteContext so older-data channels still work.
-      if (contextSubgroupId) {
-        const result = await new GroupApiDataSource().deleteGroup(contextSubgroupId);
-        if (result.error) {
-          addToast({
-            title: "Delete channel",
-            message: result.error.message || "Failed to delete channel",
-            type: "channel",
-            duration: 4000,
-          });
-          return;
-        }
-      } else if (isDelegatedSession()) {
-        // The fallback is a node's local `deleteContext`, which has no account
-        // form (the account admin throws `NotForAccountError`). An account
-        // deletes a channel only through its subgroup, resolved above; a
-        // channel with no subgroup is older data a node has to clean up.
+      try {
+        await ws.deleteConversation(chat.contextId);
+      } catch (e) {
         addToast({
           title: "Delete channel",
-          message:
-            "This channel has no subgroup to delete it through; an account cannot delete it. Delete it from the node that created it.",
+          message: e instanceof Error ? e.message : "Failed to delete channel",
           type: "channel",
-          duration: 5000,
+          duration: 4000,
         });
         return;
-      } else {
-        const result = await new ContextApiDataSource().deleteContext({ contextId: chat.contextId });
-        if (result.error) {
-          addToast({
-            title: "Delete channel",
-            message: result.error.message || "Failed to delete channel",
-            type: "channel",
-            duration: 4000,
-          });
-          return;
-        }
       }
       onChannelLeft?.(chat.contextId);
       setActiveChat(null);
@@ -189,9 +135,8 @@ export default function ChannelDetailsPopup({
 
   useEffect(() => {
     if (!isOpen) return;
-    if (groupId) void fetchAll(groupId);
     reFetchChannelMembers();
-  }, [isOpen, chat.contextId, groupId, fetchAll, reFetchChannelMembers]);
+  }, [isOpen, chat.contextId, reFetchChannelMembers]);
 
   const popupContent = (
     <DetailsContainer

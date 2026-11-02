@@ -1,10 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { describeError } from "@calimero-apps/connect";
 import { styled, keyframes } from "styled-components";
-import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
-import {
-  generateInvitationUrl,
-  serializeGroupInvitationPayload,
-} from "../../utils/invitation";
+import { useWorkspace } from "../../calimero/WorkspaceProvider";
 
 const spin = keyframes`to { transform: rotate(360deg); }`;
 const fadeUp = keyframes`
@@ -196,6 +193,7 @@ export default function GroupInviteModal({
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [copiedTarget, setCopiedTarget] = useState<"web" | "desktop" | "">("");
+  const { invite } = useWorkspace();
 
   useEffect(() => {
     if (!isOpen) {
@@ -215,44 +213,31 @@ export default function GroupInviteModal({
     }
 
     let cancelled = false;
-
-    const loadInvitation = async () => {
-      setLoading(true);
-      setErrorMessage("");
-
-      const response = await new GroupApiDataSource().createInvitation(groupId);
-
-      if (cancelled) return;
-
-      if (response.error || !response.data) {
-        setInvitationPayload("");
-        setErrorMessage(
-          response.error?.message || "Failed to generate invitation",
-        );
-        setLoading(false);
-        return;
-      }
-
-      setInvitationPayload(
-        serializeGroupInvitationPayload({
-          invitation: response.data.invitation,
-          groupAlias: response.data.groupAlias,
-        }),
-      );
-      setLoading(false);
+    // An org invite is approved with the inviter's passkey: the node answers
+    // 412 CONFIRM_REQUIRED and mero-js asks for it.
+    setLoading(true);
+    setErrorMessage("");
+    invite("member")
+      .then((link) => {
+        if (!cancelled) setInvitationPayload(link);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) {
+          setInvitationPayload("");
+          setErrorMessage(describeError(e));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
     };
+  }, [groupId, initialInvitationPayload, isOpen, invite]);
 
-    void loadInvitation();
-    return () => { cancelled = true; };
-  }, [groupId, initialInvitationPayload, isOpen]);
-
-  // One shareable link: the HTTPS universal link works everywhere — it opens the
-  // web/PWA app directly, and on a device with the desktop installed + associated
-  // hands off to the launcher. The old calimero:// "desktop link" is redundant.
-  const webUrl = useMemo(
-    () => (invitationPayload ? generateInvitationUrl(invitationPayload) : ""),
-    [invitationPayload],
-  );
+  // The link opens this frontend with `?invite=<token>`; it is redeemed after
+  // the person signs in (or up).
+  const webUrl = invitationPayload;
 
   const handleCopy = async () => {
     if (!webUrl) return;

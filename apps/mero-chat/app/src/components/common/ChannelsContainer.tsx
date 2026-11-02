@@ -1,9 +1,9 @@
 import React, { memo } from "react";
 import type { ActiveChat, GroupContextChannel } from "../../types/Common";
 import SideSelector from "../sideSelector/SideSelector";
-import type { DMContextInfo } from "../../hooks/useDMs";
+import type { DMContextInfo } from "../../types/Common";
 import type { CreateContextResult } from "../popups/StartDMPopup";
-import type { SubgroupEntry } from "../../api/groupApi";
+import type { SubgroupEntry } from "../../types/Common";
 import type { ContextUnread } from "../../hooks/useUnreadCounts";
 
 interface ChannelsContainerProps {

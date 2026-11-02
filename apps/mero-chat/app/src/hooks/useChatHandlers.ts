@@ -1,7 +1,7 @@
 import { useCallback, useRef } from "react";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 import type { ActiveChat } from "../types/Common";
-import type { DMContextInfo } from "./useDMs";
+import type { DMContextInfo } from "../types/Common";
 import { getStoredSession } from "../utils/session";
 import type { NotificationType } from "../utils/notificationSound";
 import { log } from "../utils/logger";

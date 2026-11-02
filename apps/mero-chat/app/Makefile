@@ -1,4 +1,4 @@
-.PHONY: install build typecheck lint unit e2e test clean
+.PHONY: install build typecheck lint test clean
 
 install:
 	pnpm install
@@ -7,21 +7,13 @@ build:
 	pnpm build
 
 typecheck:
-	pnpm exec tsc --noEmit
+	pnpm typecheck
 
 lint:
 	pnpm lint
 
-unit:
+test:
 	pnpm test
 
-e2e:
-	pnpm exec playwright test
-
-e2e-ui:
-	pnpm exec playwright test --ui
-
-test: unit e2e
-
 clean:
-	rm -rf dist e2e-report playwright-report test-results
+	rm -rf dist dist-types
