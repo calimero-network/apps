@@ -361,6 +361,22 @@
       "secrets": "table",
       "vaultName": "cell"
     },
+    "search": {
+      "audit": [],
+      "auditSeq": [],
+      "currentKey": [],
+      "defaultRole": [],
+      "devices": [],
+      "history": [],
+      "keyWraps": [],
+      "members": [],
+      "removed": [],
+      "revisionSeq": [],
+      "revoked": [],
+      "secretFields": [],
+      "secrets": [],
+      "vaultName": []
+    },
     "version": 1
   },
   "world": "calimero:app@0.5.0"
