@@ -11,12 +11,12 @@ copy, icons and flows.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+, AVFoundation + VideoToolbox | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `37c09f3` (swift-sdk#85) |
-| Android | `android/` | Jetpack Compose + Material 3, minSdk 26, CameraX + MediaCodec | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `61b65e9` (kotlin-sdk#68, `android/kotlin-sdk.ref`) |
+| iOS | `ios/` | SwiftUI, iOS 16+, AVFoundation + VideoToolbox | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `v0.5.0` |
+| Android | `android/` | Jetpack Compose + Material 3, minSdk 26, CameraX + MediaCodec | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `v0.2.0` (`android/kotlin-sdk.ref`) |
 
-**SDK pins.** Both pin the head of their SDK's Calimero 1.0 pull request (iOS in
-`ios/Core/Package.swift` and `ios/project.yml`, Android in `android/kotlin-sdk.ref`); the pins move
-to those PRs' merge commits once they land.
+**SDK pins.** Both pin their SDK's Calimero 1.0 release (iOS in
+`ios/Core/Package.swift` and `ios/project.yml`, Android in `android/kotlin-sdk.ref`, set to the
+release tag's commit).
 
 ## Calimero 1.0
 
