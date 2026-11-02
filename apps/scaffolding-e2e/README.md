@@ -1,359 +1,198 @@
-# Calimero Scaffolding E2E Application
+# Scaffolding E2E
 
-A full-stack Calimero app for testing and exploring the SDK. The backend is a Rust/WASM app (`logic/`) and the frontend is a React app (`frontend/`) — built on `@calimero-network/mero-react`, the same SDK the other mero apps use — that lets you call every method interactively and run an automated test suite against a live node.
+The SDK test bench: one contract that exercises the SDK's surface (KV, handlers,
+per-user, frozen and shared storage, roles and capabilities, an owned cell,
+counters, registers, nested maps, a vector, sets, ordered collections, a text
+document, authored entries, file records and a workspace directory), and a
+frontend where you can call every method by hand and run an automated suite
+against a node.
 
----
+A component app on Calimero 1.0: the contract is on core's component SDK
+(`calimero-app-sdk` at `1.0.0-rc.7`, `wasm32-wasip2`), local development runs on
+`merod local`, and the frontend talks to the local nodes in development and to
+Calimero Cloud in production through mero-js's `CalimeroClient`
+(`@calimero-apps/connect`). See [`docs/COMPONENT-APPS.md`](../../docs/COMPONENT-APPS.md).
 
-## Prerequisites
+| | |
+|---|---|
+| `logic/` | the contract (a standalone crate: its own `[workspace]` and `Cargo.lock`) |
+| `logic/tests/` | `harness.rs` (v1's tests and the access and wire checks, on core's wasmtime engine, `TestApp`), `scenarios.rs` (every `scenarios/*.json`) |
+| `logic/scenarios/` | one file per area, ported from v1's merobox workflows, plus `access.json`; run by `cargo test` **and** on `merod local` |
+| `app/` | Vite + React frontend: every method reachable from a screen, and the in-app "Run All Tests" suite |
 
-Install `merod` and `meroctl`:
+Core keeps its own copy of this scaffold (`core/apps/scaffolding-e2e`, still on
+the v1 SDK). The conformance workflow bundles **that** copy from core's
+checkout, so this move does not touch it.
 
-```bash
-./install-calimero.sh
-```
-
-You also need Node.js and `pnpm` for the frontend.
-
----
-
-## 1. Start a node
-
-Initialize (first time only):
-
-```bash
-merod --home ~/.calimero/node1 init --server-host 127.0.0.1 --server-port 2528 --auth-mode embedded
-```
-
-Run it:
-
-```bash
-merod --home ~/.calimero/node1 run
-```
-
-Leave this running. The node listens at `http://localhost:2528`.
-
----
-
-## 2. Register the node with meroctl
+## Run it
 
 ```bash
-meroctl node add node1 ~/.calimero/node1
-meroctl node use node1
+rustup target add wasm32-wasip2
+# merod at component-core-tag (root Cargo.toml), once: see docs/COMPONENT-APPS.md
+pnpm dev:local scaffolding-e2e   # merod local + the contract + the app on http://localhost:5173/
 ```
 
-Check it's alive:
+`merod local` is core's development cluster in one process: three nodes on
+`127.0.0.1:2501-2503`, mock attestation, passkeys trusted from
+`http://localhost:5173`. It replaces v1's `merod init --server-port … --auth-mode
+embedded` + `merod run` per node, and `setup.sh`. At core `1.0.0-rc.7` it runs on
+Linux only.
+
+In the browser: sign up with a passkey, create an instance with "shared"
+ticked, claim the workspace in **Setup**, and open any section. To try a second
+person, create an invitation link in **Setup** and open it in another browser
+profile. **Run All Tests** runs the in-app suite against the open instance.
+
+## Test it
 
 ```bash
-meroctl --node node1 node identity
+M=tools/component-bundle/Cargo.toml
+cargo fmt --manifest-path apps/scaffolding-e2e/logic/Cargo.toml -- --check
+cargo clippy --manifest-path apps/scaffolding-e2e/logic/Cargo.toml --all-targets -- -D warnings
+cargo clippy --manifest-path apps/scaffolding-e2e/logic/Cargo.toml --target wasm32-wasip2 -- -D warnings
+cargo test --manifest-path apps/scaffolding-e2e/logic/Cargo.toml          # harness + scenarios
+cargo run --release --manifest-path $M -- build apps/scaffolding-e2e/logic  # res/abi.json
+pnpm merod-local e2e scaffolding-e2e                                      # the scenarios on merod local
+pnpm -F scaffolding-e2e lint && pnpm -F scaffolding-e2e typecheck && pnpm -F scaffolding-e2e test && pnpm -F scaffolding-e2e build
 ```
 
----
-
-## 3. Build the app bundle
-
-Install the Calimero app toolchain once (pinned to the same core release as the
-SDK in `logic/Cargo.toml` — the ABI emitter is versioned with core):
-
-```bash
-cargo install --git https://github.com/calimero-network/core \
-  --tag 0.11.0-rc.28 cargo-mero --locked
-```
-
-Then build:
-
-```bash
-cd logic
-./build-bundle.sh
-cd ..
-```
-
-Output: `logic/dist/com.calimero.scaffolding-e2e-0.0.1.mpk`
-
-The first run also generates a signing key at `logic/res/my-key.json` and tells
-you so. It is gitignored — do not commit it. Whoever signs a package's first
-published version owns it, because the node derives the ApplicationId from
-(package, signer), so a different key is a different app rather than an upgrade.
-
-First build takes a few minutes (Rust + WASM). Subsequent builds are fast.
-
----
-
-## 4. Install the app on the node
-
-```bash
-meroctl --node node1 app install --path logic/dist/com.calimero.scaffolding-e2e-0.0.1.mpk
-```
-
-The output includes an `applicationId`. Copy it — you need it in the next steps.
-
----
-
-## 5. Create a namespace
-
-```bash
-meroctl --node node1 namespace create --application-id <APP_ID>
-```
-
-The output includes a `namespaceId`. Copy it.
-
----
-
-## 6. Create a context
-
-```bash
-meroctl --node node1 context create --application-id <APP_ID> --group-id <NS_ID>
-```
-
-The output includes a `contextId`. Copy it.
-
----
-
-## 7. Configure the frontend
-
-```bash
-cd frontend
-cp .env.example .env
-```
-
-Open `.env` and fill in your app ID:
-
-```env
-VITE_NODE_URL=http://localhost:2528
-VITE_APP_ID=<APP_ID from step 4>
-```
-
-Then copy the WASM into the public folder so the node can fetch it:
-
-```bash
-npm run sync-wasm
-```
-
----
-
-## 8. Start the frontend
-
-```bash
-pnpm install
-pnpm dev
-```
-
-Open `http://localhost:5173`. Click **Connect**, then select the context you created in step 6.
-
----
-
-## Hosted frontend
-
-The same frontend is deployed at **https://scaffolding-e2e.vercel.app/** — that URL is the
-`frontend` key in the bundle manifest, so it is what the desktop app and
-`links.calimero.network` open for `com.calimero.scaffolding-e2e`.
-
-It is a convenience, not a replacement for the local run: it is a static build with no node
-of its own, so you still need the node from step 1 and the context from step 6. The connect
-screen takes any node URL (default `http://localhost:2528`), and the app ID is resolved from
-the registry by package name, so the hosted build needs **no environment variables** — Vercel
-project settings are just root directory `frontend`, and `vercel.json` supplies the rest.
-
-Reaching a `localhost` node from the hosted page works out of the box: merod's default CORS
-config is permissive (`allowed_origins` unset ⇒ any origin, private-network requests allowed),
-and browsers exempt `http://localhost` from mixed-content blocking. A node that has set an
-explicit `allowed_origins` list must include `https://scaffolding-e2e.vercel.app`.
-
-Mode 1 (`VITE_APP_ID` + `npm run sync-wasm`) does **not** work on the hosted build: it serves
-the WASM from `public/app.wasm`, which only exists in a local checkout. The hosted build always
-runs in mode 2, resolving the app ID from the registry by package name.
-
----
-
-## Opening from Merobox
-
-If you open the app from the Merobox desktop app, authentication and node URL are injected automatically via the URL hash — you skip the connect screen entirely.
-
----
-
-## Adding a second node (optional)
-
-Initialize and run node2 in a separate terminal:
-
-```bash
-merod --home ~/.calimero/node2 init --server-host 127.0.0.1 --server-port 2529 --auth-mode embedded
-merod --home ~/.calimero/node2 run
-```
-
-Register it:
-
-```bash
-meroctl node add node2 ~/.calimero/node2
-```
-
-Install the same app on node2:
-
-```bash
-meroctl --node node2 app install --path logic/dist/com.calimero.scaffolding-e2e-0.0.1.mpk
-```
-
-Invite node2 to the namespace from node1:
-
-```bash
-meroctl --node node1 namespace invite <NS_ID>
-```
-
-Copy the invitation payload from the output, then on node2:
-
-```bash
-meroctl --node node2 namespace join <NS_ID> '<invitation payload>'
-meroctl --node node2 group join-context <CTX_ID>
-```
-
-Open two browser tabs. In each, connect to a different node (`localhost:2528` vs `localhost:2529`) and select the same context ID. Writes in one tab sync to the other.
-
----
-
-## Storage types
-
-The app demonstrates every storage primitive in the Calimero SDK. Two of them are worth explaining because their access rules are enforced at the CRDT merge layer, not just in application logic:
-
-### AuthoredMap
-
-A shared key→value map where **ownership is per-entry**. Any context member can insert a new key — the inserting node becomes the entry's owner. Only the owning node can update or remove that entry. Reads (`get`, `entries`) are open to all.
-
-This is implemented with `AuthoredMap<String, LwwRegister<String>>` from `calimero_storage::collections`. Ownership is stored in `StorageType::User { owner }` metadata and enforced at merge time.
-
-Frontend: **Storage → Authored Map**
-
-Methods exposed:
-- `authored_insert(key, value)` — insert a new entry (caller becomes owner)
-- `authored_update(key, value)` — update an entry (owner only)
-- `authored_remove(key)` — remove an entry (owner only)
-- `authored_get(key)` — read a single entry
-- `authored_entries()` — read all entries as a map
-- `authored_get_owner(key)` — returns the hex public key of the owner
-- `authored_len()` — entry count
-
-### SharedStorage
-
-A **single-value** store with an explicit writer set. Only callers whose **account** is in the writer set can call `shared_set`. The writer set is managed via `rotate_writers` (exposed as `shared_add_writer` in this app). Any context member can read.
-
-The writer set is a `BTreeSet<AccountId>` — an account id, not the device key the rest of this app reports. Core 0.11 split one identity into a device (the installation, the CRDT replica id, what `authored_get_owner` returns) and an account (the person, the only authorization subject), and only the account authorizes. `AccountId` is `From<[u8; 32]>`, so passing a device key where an account belongs still compiles and still "succeeds" — it just grants an account nobody holds, and the grantee stays unable to write. Since core 0.11.0-rc.27 removed base58 (core#3691) both are 64 hex characters, so this mistake no longer looks wrong either. Nothing on the wire maps a device key to an account, so a peer has to tell you theirs: `whoami`.
-
-The context creator (node1) is the initial writer. Use `shared_add_writer` with a 64-hex account id to authorize additional accounts before they attempt to write.
-
-Frontend: **Storage → Shared Storage**
-
-Methods exposed:
-- `whoami()` — the caller's own `{ device_id, account_id }`
-- `shared_set(value)` — set the shared value (writers only)
-- `shared_get()` — read the current value
-- `shared_get_writers()` — list authorized writer accounts (64-hex)
-- `shared_add_writer(account_hex)` — add a writer by account id
-- `shared_is_writer(account_hex)` — check if an account is authorized
-- `shared_is_frozen()` — whether the storage was locked at construction
-
-### UserStorage
-
-A per-user slot: each caller reads and writes their own entry, and everyone can
-read everyone else's. Same device/account split as `SharedStorage` above — and
-it moved. Through rc.20 this was `UnorderedMap<PublicKey, T>`, keyed by the
-**device**; from rc.21 it is `UnorderedMap<AccountId, T>`, keyed by the
-**account**, so a person gets one slot rather than one per machine.
-
-Both ids are 32 bytes, so the state schema is byte-identical and nothing
-fails loudly — but the addresses changed. **A context created on rc.20 or
-earlier keeps its user-storage bytes under the old device keys, where nothing
-reads them any more: `get_user_simple` will answer `null` for a user who
-plainly has data.** There is no migration; recreate the context.
-
-For the same reason `get_user_simple_for` takes a 64-hex `account_hex`, not a
-device key. A device key is not rejected — it names an empty slot, so you get
-`null` rather than an error, and since core 0.11.0-rc.27 it is the same 64 hex
-characters an account is. Get the value from `whoami()`.
-
-Frontend: **Storage → User Storage**
-
-Methods exposed:
-- `set_user_simple(value)` / `get_user_simple()` — the caller's own slot
-- `get_user_simple_for(account_hex)` — another user's slot, by account
-- `set_user_nested(key, value)` / `get_user_nested(key)` — a nested map per user
-
----
-
-## Publishing to the App Registry
-
-`.github/workflows/deploy-bundle.yml` builds, signs and publishes
-`com.calimero.scaffolding-e2e` to [apps.calimero.network](https://apps.calimero.network)
-on every merge to `master` that touches `logic/**`, and on manual dispatch.
-
-**The registry owns the version.** The workflow asks it for the highest
-published `appVersion` and increments the patch (starting at `0.0.1` when
-nothing is published). `logic/Cargo.toml`'s `version` field is not the release
-version and bumping it changes nothing — read a shipped version from the
-registry or the workflow's run summary, never from the tree. The trade-off is
-that there is no idempotency: a re-run mints another version of the same
-content.
-
-Everything the registry and the node render — name, description, author,
-license, tags, links, icon, `minRuntimeVersion` — comes from
-`[package.metadata.calimero]` in `logic/Cargo.toml`. No manifest is written by
-hand. `min-runtime-version` must stay equal to the `calimero-sdk` tag: this
-build imports host functions that only exist from that release on, and a node
-older than that installs the bundle happily and then fails at context creation
-with `link error: unknown import`.
-
-Two organization secrets are required:
-
-| Secret | What it is |
-| --- | --- |
-| `MERO_SIGN_KEY` | Full JSON of the production signing key. Must be the key that signed the package's first published version — the node derives the ApplicationId from (package, signer), so a different key publishes a *different app*, not an upgrade. |
-| `CALIMERO_REGISTRY_API_KEY` | API token from the registry's Organizations page (CLI Access). |
-
-⚠️ Set these at **organization** level. A repo-level secret of the same name
-shadows the org one, which is how a sibling app ended up published under an
-individual's account instead of `calimero-network`. The workflow's last step
-detects it — but only after the bundle is already on the registry.
-
-To change the icon, edit `logic/res/icon.svg` and run `logic/gen-icon.sh`.
-
----
-
-## Troubleshooting
-
-**`merod` / `meroctl` not found** — run `./install-calimero.sh` and restart your terminal.
-
-**`cargo mero` not found** — `cargo install --git https://github.com/calimero-network/core --tag 0.11.0-rc.28 cargo-mero --locked`.
-
-**`app install` fails** — run `./logic/build-bundle.sh` first.
-
-**Frontend shows "node: not set"** — set `VITE_NODE_URL` in `.env` or open the app from Merobox.
-
-**Login fails with "Login callback destination is not allowed."** — the node's auth
-frontend only hands tokens to an origin it trusts: loopback, its own origin, or the
-frontend URL the app registry declares for this package. On a hosted deploy that
-last one is the only route, so `frontend` in `logic/Cargo.toml`'s
-`[package.metadata.calimero]` must match the deployed origin EXACTLY — and the
-bundle must have been republished since it changed, because auth reads the
-manifest in the registry, not this repo. Check what the registry currently
-declares with:
-
-```bash
-curl -s "https://apps.calimero.network/api/v2/bundles?package=com.calimero.scaffolding-e2e" \
-  | jq '.[].links'
-```
-
-Local development never hits this (loopback is always trusted), which is why it
-can ship broken.
-
-**Context state not syncing** — both nodes need to be able to reach each other on the P2P port shown in the merod startup logs.
-
-## Owned keys are per owner (core 0.11.0-rc.57)
-
-Since core 0.11.0-rc.57 every owned collection (`Authored…`, `WriteOnce`, `Moderated`,
-`ModeratedOnce`) is one namespace per account: two accounts writing one key hold two
-independent entries, and a key-only `get`, `contains`, `owner_of`, `owned_by_me` or `remove`
-acts on the CALLER's own entry only. This app was migrated:
-
-- `authored_get` and `authored_get_owner` read the **lowest account** holding the key.
-- New: `authored_get_by(owner, key)` reads one owner's entry, and `authored_owners(key)`
-  lists every account holding it. `authored-shared.yml` uses both for its cross-node reads.
-- `authored_remove` removes the caller's own entry only.
-- The workspace directory (`ws_channels`, `ws_groups`) refuses registering an id another
-  account holds (it used to rely on the key being taken), lists each entry with its own
-  owner, and an admin's unregister removes every holder's entry with `remove_by`.
+| scenario | ported from | what it covers |
+|---|---|---|
+| `kv.json` | `e2e.yml` (KV part), `simple-sync.yml`, `handler-test.yml` | three accounts writing and reading one store; the handler methods and the `*WithHandler` calls |
+| `storage.json` | `e2e.yml` (user, frozen, private, blob parts) | `whoami`, per-user values, nested per-user maps, frozen values, the secrets game, file records |
+| `collections.json` | `e2e.yml` (nested CRDTs, RGA), `sorted-collections.yml` | counters, registers, nested maps, the metrics vector, tags, ordered map and set, the text document |
+| `access-control.json` | `access-control.yml` | the role registry, projection onto capabilities, admins, the owned cell |
+| `authored-shared.json` | `authored-shared.yml` | per-owner entries, the authored vector, the shared cell and its writer rotation |
+| `workspace-registry.json` | `workspace-registry.yml` | the claim, roles, channels, groups, the ping and `wsPong`'s refusal |
+| `host-logging.json` | `host-logging.yml` | `tracingProbe` at both levels |
+| `access.json` | — | guests, outsiders (404), anonymous callers (401), a removed member, `BadArgs`, forged writes as the calls an account is refused |
+
+v1's node-level workflows (`groups*.yml`, `group-*.yml`: namespaces, subgroups,
+late joiners, three-node meshes, multi-service bundles, capabilities on groups)
+test merod's group machinery, not this contract; on 1.0 that is the
+organization's job and core's own tests cover it, so they are not ported. The
+15-minute `soak/fuzzy-test.yml` load loop went with merobox.
+
+## What changed in the port, and why
+
+### Storage
+
+The app runs on its cluster's leader, which applies every write in one
+replicated log, so state is plain data structures and a later write replaces an
+earlier one. v1's CRDT types become the collection that stores the same thing:
+
+| v1 (`calimero-storage`) | component SDK |
+|---|---|
+| `UnorderedMap<String, LwwRegister<String>>` (KV, registers, games, title) | `UnorderedMap<String, String>` |
+| `Counter` (handlers, RGA edits, pongs) | `Counter` |
+| `UnorderedMap<String, Counter>` / `Counter<true>` (G- and PN-counters) | `UnorderedMap<String, u64>` / `UnorderedMap<String, i64>` |
+| `UserStorage<LwwRegister<String>>` | `PerUser<String>` |
+| `UserStorage<NestedMap>` | `UnorderedMap<(account, key), String>` |
+| `FrozenStorage<String>` | `Frozen<String>` |
+| `UnorderedMap<String, UnorderedMap<String, LwwRegister<String>>>` | `UnorderedMap<(outer, inner), String>` |
+| `Vector<Counter>` | `Vector<u64>` |
+| `UnorderedMap<String, UnorderedSet<String>>` | `Set<(key, tag)>` plus `UnorderedMap<key, count>` |
+| `SortedMap` / `SortedSet` | `UnorderedMap` / `Set` (every collection reads in key order; ranges and `last` are seeks) |
+| `ReplicatedGrowableArray` | `Text` (Fugue) |
+| `AuthoredMap<String, LwwRegister<String>>` | `UnorderedMap<(key, owner), String>` |
+| `AuthoredVector<LwwRegister<String>>` | `Vector<{ owner, value: Option<String> }>` (a removed slot keeps its place) |
+| `SharedStorage<LwwRegister<String>>` (shared cell, ACL document) | a `Cell<String>` and a writer `Set<String>` |
+| `Ownable<LwwRegister<String>>` | an owner `Cell<String>` and a `Cell<String>` |
+| `AccessControl` (+ `OpMask` projection onto a `SharedStorage`) | admin `Set<String>`, role `Set<(role, account)>`, projected `UnorderedMap<account, u8>` |
+| `SharedStorage<LwwRegister<WsClaim>>`, `SharedStorage<UnorderedMap<…>>`, `Moderated<UnorderedMap<…>>` | `Cell<WsClaim>`, `UnorderedMap<identity, role>`, a workspace admin `Set`, `UnorderedMap<id, record>` |
+| `#[app::private] PrivateSecrets` (node-local) | `UnorderedMap<(account, game), String>` (see below) |
+
+v1's storage-enforced write rules are checks in each method against
+`env::caller()`, answered `Forbidden`: the shared cell's writers, the owned cell's
+owner, ACL admins (grants, admin changes, `aclProject`), the projected `write`
+capability (`aclDocSet`), an authored entry's or slot's owner, and the workspace
+roles (`read-only` cannot write the directory, only workspace admins claim and
+set roles, only a registrant or an admin removes a channel or group). The app's
+owner holds every first seat v1 gave the context creator.
+
+### What a client sees
+
+| | v1 | now |
+|---|---|---|
+| method and argument names | `get_result`, `account_hex`, … | the same methods, camelCase: `getResult`, `accountHex`, … |
+| 64-bit integers | `usize`/`u64`/`i64` as JSON numbers | `u64`/`i64` as **decimal strings**, in arguments (`pushMetric { value: "3" }`, `getMetric { index: "0" }`, `uploadFile { size: "12" }`, `rgaInsertText { position: "0" }`), results (`len`, counters, indexes, lengths) and event fields |
+| record results | snake_case fields (`blob_id`, `uploaded_at`, `channel_count`, …) | camelCase fields (`blobId`, `uploadedAt`, `channelCount`, …), integer fields as decimal strings |
+| errors | `FunctionCallError` with a message (`app::bail!` strings, `Error::NotFound(..)`) | `422 APP_ERROR` with a code: `NotFound { key }` (every "not found": KV, counters, registers, metadata, metrics, tags, files, authored entries), `FrozenNotFound { hash }`, `NoHash`, `Forbidden { message }` (a rule refused the caller), `Invalid { message }` (v1's other messages, verbatim) |
+| identity | `whoami` → `{ device_id, account_id }`, two different 64-hex ids | `{ deviceId, accountId }`; 1.0 runs a method for the account, so `deviceId` is the account again (an API key's id for an API-key caller). Account ids are the node's, not 64 hex |
+| account arguments | parsed as 64 hex (`not an account id` otherwise) | any id; a **grant** (`aclGrant`, `aclGrantAdmin`, `ownedTransfer`, `sharedAddWriter`, `sharedRotateWriters`) must name the app's owner or an account in its org, else `Invalid` |
+| `tracingProbe` | `tracing` macros through the SDK subscriber, `set_log_level` retuning it | `env::log` lines (the component SDK has no `tracing` subscriber or level filter): the warn line always, info and debug with `debug: true`; still only in the node's log |
+| handlers | `setWithHandler` & co. emitted the event with a handler name, and every node that received it ran the handler | the `*WithHandler` calls run the handler method inline, once, in the same call (no event handlers in the component SDK); the handler methods stay callable |
+| frozen hash | hex SHA-256 v1's storage computed | hex SHA-256 of the stored (CBOR) value; `addFrozen` of the same value twice is one entry and the same hash |
+| secrets game | the secret in node-local `#[app::private]` storage: `mySecrets` returned this node's secrets | no private storage in the component SDK: the secret is the setter's own entry in the app's state, returned only by `mySecrets` of the same account (the node operator can read state); only its SHA-256 is public, as before. `addGuess` is a call (it emits) |
+| files | `uploadFile` announced the blob to the context (`blob_announce_to_context`); id `file_<device>_<time>` | the bytes are in the instance's blob store (`client.uploadBlob`), which every node serves; the contract keeps the record and checks the id is 64 hex. Id `file_<unique id>`. A contract cannot read blobs at core `1.0.0-rc.7` |
+| `searchFiles` | a scan of every record | a scan of the first 1,000 records (no full-text search at `1.0.0-rc.7`) |
+| listings (`entries`, `listFiles`, `sortedKeys`, `wsList*`, `aclAdmins`, …) | every entry | at most 1,000 (one page), in key order |
+| `sortedRange` / `sortedTagsRange` with `start >= end` | (a host error) | `{}` / `[]` |
+| `rgaInsertText` / `rgaDeleteText` out of range | an RGA error | `Invalid` |
+| `authoredInsert` | an error when the caller already holds the key | the same, `Invalid` |
+| `authoredUpdate` on a key the caller does not hold | a storage error | `NotFound` |
+| `authoredVecUpdate` / `authoredVecRemove` | by the slot's owner | the same; another account gets `Forbidden`, a missing or removed slot `NotFound` |
+| `acl*` | grants enforced at merge; `aclProject` gated on the caller's own `admin` mask | grants and `aclProject` are ACL-admin only (`Forbidden`); unchanged otherwise: a grant confers nothing until projected, admin grants and revokes project themselves, the last admin cannot be revoked |
+| `wsSetMemberRole` | rotated the admin set only for an identity that parsed as an account | every identity; `admin` adds it to the workspace admins, any other role removes it |
+| `wsRegisterChannel` / `wsRegisterGroup` on another account's id | refused by storage (`Invalid`-like message) | `Forbidden` |
+| `wsPingChannel` | queued an `xcall` to the target's `ws_pong` | records the ping and emits `ChannelPinged`; **nothing is sent** (core `1.0.0-rc.7` components cannot send an xcall), so the target's `wsPingCount` does not move |
+| `wsPong` | `#[app::xcall(from_same_app)]`: a call from another context of this app | `#[app::allow(app = "*")]`: accepts another app as the caller (`Caller::App`) whose id equals `fromContext`; an account calling it directly gets `Invalid`, as v1 refused a direct call |
+| `sharedIsFrozen` | the cell's frozen flag (always `false` here) | always `false` |
+| events | to every member of the context | to everyone the instance reaches (`Audience::All`); camelCase fields; `FrozenAdded.hash` a hex string, `UserSimpleSet.accountId` / `ChannelPinged.toContext` / `PongReceived.fromContext` strings, integer fields decimal strings |
+| migrations | none | none |
+
+### Frontend
+
+- mero-react's `MeroProvider`, the node connect screen and node-URL switching,
+  `lib/mero.ts`, the admin API client (`api/adminApi.ts`, `api/appScope.ts`,
+  `api/ids.ts`), v1 invitations (`lib/invite.ts`, `InvitationPrompt`) and
+  `@calimero-apps/node-served` are gone. The session is `@calimero-apps/connect`
+  (`src/session.ts`): passkey sign-in/up, stored per app and per target.
+- Contexts are app instances (`src/instances.ts`, `InstancePicker`: `listApps` by
+  the dev bundle or the package, `createApp(name, source, { org })`); namespace
+  invitations are org invites (`components/InviteCard.tsx`, a passkey step-up,
+  redeemed after sign-in).
+- `src/api/rpc.ts` is the **one adapter**: the sections keep calling v1's method
+  names with v1's arguments, and it picks `client.view` or `client.call` from the
+  ABI (`src/api/abi.ts`), renames to camelCase and converts 64-bit integers both
+  ways; `api/kvStore.ts` turns record results back into v1's shape. So the
+  sections are unchanged apart from copy. `abi.test.ts` checks that `abi.ts` is
+  the committed ABI, that the adapter calls every method with the ABI's
+  parameter names, and that **every method is reachable from a screen** (it
+  replaces `scripts/check-contract-calls.mjs`).
+- Blobs go to the open instance (`client.uploadBlob` / `downloadBlob`);
+  presence is `client.publishPresence` / `presenceStream`.
+- **Setup** (was the node/namespace/context wizard) shows the open instance,
+  creates an invitation link and claims the workspace. **Workspace Manager**
+  (was namespaces, subgroups and contexts through the admin API) is the `ws_*`
+  directory, the ping, `wsPong`'s refusal and the org. **Sync Test** (two nodes,
+  one context, and `sync-test-server` comparing their reads) is gone: one log
+  orders every write, so there is no cross-node convergence to watch; the
+  scenarios check every account reads every write.
+- The Playwright suites (`tests/`, `e2e/`, `playwright*.config.ts`) drove a v1
+  node and its auth frontend and are removed; the end-to-end run is `pnpm
+  merod-local e2e scaffolding-e2e`, and the screens are tested with a mocked
+  client (`App.test.tsx`).
+
+### Removed
+
+- `setup.sh` (started one or two v1 `merod` nodes with `--server-port` and
+  `--auth-mode embedded`, or merobox, authenticated them and created the
+  namespace and context), `install-calimero.sh` (downloaded merod/meroctl
+  `0.12.0-rc.3`), `docs/setup.md` (the same by hand), `Makefile` (the v1 CI
+  mirror) and `sync-test-server/` (the Node server Sync Test posted to). All of
+  them only served v1 nodes; `pnpm dev:local scaffolding-e2e` replaces them.
+- `logic/workflows/` (merobox), `logic/build*.sh`, `check-bundle-fresh.sh`,
+  `build-multi-service-bundle.sh` (a two-service v1 `.mpk` fixture),
+  `logic/static/` (blob fixtures for those workflows), `logic/README.md`,
+  `res/state-schema.json`, the `rlib` crate type and the CRDT merge tests
+  (`tests/converge.rs`, `tests/authorization.rs`, the `TestHost` module).
+- `.github/workflows/soak.yml`, which ran only this app's merobox
+  `soak/fuzzy-test.yml`, nightly.
+
+## Production
+
+The production frontend is the one bundled into the `.mpk` (`frontend-dir`), so
+the cluster serves it from the package's own origin, where passkeys work. Build
+it with `VITE_CALIMERO_CLUSTER` and `VITE_CALIMERO_MIN_RELEASE` set (see
+`app/.env.example`); without them the production build refuses to connect.

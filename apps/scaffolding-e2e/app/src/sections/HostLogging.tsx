@@ -92,12 +92,11 @@ export function HostLogging() {
         <div className="method-card">
           <div className="method-name">my_account()</div>
           <p className="method-hint">
-            The caller&apos;s account, 64 hex characters, on its own.{" "}
-            <code>whoami</code> returns the same value alongside the device id
-            and is the better call — one round trip for both halves. This one
-            exists so the account accessor is spelled the same here as in
-            core&apos;s copy of this scaffold, which is what keeps a merobox
-            scenario portable between the two.
+            The caller&apos;s account on its own. <code>whoami</code> returns
+            the same value (twice: 1.0 has no separate device id in a run). This
+            one exists so the account accessor is spelled the same here as in
+            core&apos;s copy of this scaffold, which keeps a scenario portable
+            between the two.
           </p>
           <button
             className="btn-calimero"

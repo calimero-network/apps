@@ -28,6 +28,10 @@ export function CrdtCounters() {
   const [livePn, setLivePn] = useState<number | null>(null);
 
   const incG = useCall();
+
+  const aliasInc = useCall();
+
+  const aliasGet = useCall();
   const incPn = useCall();
   const decPn = useCall();
 
@@ -54,8 +58,8 @@ export function CrdtCounters() {
           Conflict-free counters that merge across nodes.{" "}
           <strong>G-Counter</strong>: grow-only (increment only).{" "}
           <strong>PN-Counter</strong>: supports both increment and decrement.
-          Values auto-refresh every 3 s — increment on Node A and watch the count
-          update on Node B.
+          Values auto-refresh every 3 s — increment as one account and watch the count
+          update for another.
         </p>
       </div>
 
@@ -136,6 +140,32 @@ export function CrdtCounters() {
           </div>
           <ResultBox result={incPn.result} />
           <ResultBox result={decPn.result} />
+        </div>
+
+        <div className="method-card">
+          <div className="method-name">increment_counter / get_counter (v1 aliases)</div>
+          <p className="method-hint">
+            The legacy names of the G-Counter pair above, kept in the contract: the same counter
+            under the same key.
+          </p>
+          <div className="input-row">
+            <button
+              className="btn-calimero"
+              disabled={aliasInc.loading}
+              onClick={() => aliasInc.run(async () => { const r = await api.incrementCounter(gKey); poll(); return r; })}
+            >
+              {aliasInc.loading ? "..." : "increment_counter"}
+            </button>
+            <button
+              className="btn-calimero-outline"
+              disabled={aliasGet.loading}
+              onClick={() => aliasGet.run(() => api.getCounter(gKey))}
+            >
+              {aliasGet.loading ? "..." : "get_counter"}
+            </button>
+          </div>
+          <ResultBox result={aliasInc.result} />
+          <ResultBox result={aliasGet.result} />
         </div>
       </div>
     </div>

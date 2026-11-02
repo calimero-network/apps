@@ -94,11 +94,11 @@ export function UserStorage() {
               <input
                 className="form-control"
                 style={{ flex: 1 }}
-                placeholder="user account id (64 hex)"
+                placeholder="user account id"
                 value={forUserKey}
                 onChange={(e) => setForUserKey(e.target.value)}
               />
-              <FieldHelp text="The 64-hex account id of another context member — a person, not a device. Get it from their node's whoami(). A device key will NOT work: rc.21 rekeyed user storage by account, so a device key names an empty slot and this returns null rather than an error — and since core rc.27 both are 64 hex, so the shape gives no warning." />
+              <FieldHelp text="An account id, as whoami returns it (your own is also at the bottom of the sidebar). A grant must name the instance's owner or an account in its organization; anything else is refused as Invalid." />
             </div>
           </div>
           <button

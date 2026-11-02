@@ -35,7 +35,7 @@ export function ContextMembers() {
   return (
     <div>
       <div className="section-header">
-        <h2 className="section-title">Context Members</h2>
+        <h2 className="section-title">Workspace Members</h2>
         <p className="section-desc">
           Workspace-level membership and role management. Members are tracked
           inside the app with roles: <code>admin</code>, <code>member</code>,{" "}
@@ -73,11 +73,11 @@ export function ContextMembers() {
                 marginRight: 6,
               }}
             >
-              Infrastructure (meroctl)
+              Organization (the node)
             </span>
-            Controls who can <em>join</em> a context — handled via namespace
-            invitations. A node that hasn't been invited cannot reach any app
-            method.
+            Controls who can <em>reach</em> the instance at all: its owner,
+            admins, members and guests, invited from Setup. Anyone else is
+            refused before the app runs.
           </div>
           <div>
             <span
@@ -95,7 +95,7 @@ export function ContextMembers() {
             >
               App level (these methods)
             </span>
-            Fine-grained roles implemented inside the WASM app. The admin is
+            Fine-grained roles implemented inside the app component. The admin is
             set automatically on <code>ws_init</code>.
           </div>
         </div>
@@ -150,7 +150,7 @@ export function ContextMembers() {
                 value={getRoleIdentity}
                 onChange={(e) => setGetRoleIdentity(e.target.value)}
               />
-              <FieldHelp text="The Ed25519 public key of a context member, as 64 hex characters (core rc.27 removed base58). Visible in the context bar after login (the executor key), or run meroctl identity list on the target node." />
+              <FieldHelp text="An account id, as whoami returns it (your own is also at the bottom of the sidebar). A grant must name the instance's owner or an account in its organization; anything else is refused as Invalid." />
             </div>
           </div>
           <button
@@ -182,7 +182,7 @@ export function ContextMembers() {
                 value={setRoleIdentity}
                 onChange={(e) => setSetRoleIdentity(e.target.value)}
               />
-              <FieldHelp text="The Ed25519 public key of a context member, as 64 hex characters (core rc.27 removed base58). Visible in the context bar after login (the executor key), or run meroctl identity list on the target node." />
+              <FieldHelp text="An account id, as whoami returns it (your own is also at the bottom of the sidebar). A grant must name the instance's owner or an account in its organization; anything else is refused as Invalid." />
             </div>
             <select
               className="form-control"

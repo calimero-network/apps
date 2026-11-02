@@ -30,6 +30,8 @@ export function SharedStorage() {
   const addWriter = useCall();
   const isWriter = useCall();
   const isFrozen = useCall();
+  const rotate = useCall();
+  const [rotateKeys, setRotateKeys] = useState("");
 
   return (
     <div>
@@ -38,17 +40,15 @@ export function SharedStorage() {
         <p className="section-desc">
           Single-value storage with an explicit writer set. Only callers whose{" "}
           <strong>account</strong> is in the writer set can call{" "}
-          <code>shared_set</code>. The writer set is rotatable. The node that
-          initialized the context is the first writer; additional writers must
+          <code>shared_set</code>. The writer set is rotatable. The account that
+          created the instance is the first writer; additional writers must
           be added via <code>shared_add_writer</code> before they can write.
         </p>
         <p className="section-desc">
-          Note the identity: this set is keyed by <strong>account id</strong>{" "}
-          (64 hex characters), not by the device key shown in the context
-          bar and reported by the <code>authored_*</code> methods. Core 0.11
-          split the two, and only the account authorizes. Call{" "}
-          <code>whoami</code> to get yours — nothing on the wire maps a device
-          key to an account, so a peer has to hand you theirs.
+          The set is keyed by <strong>account id</strong>. Call{" "}
+          <code>whoami</code> to get yours (it is also at the bottom of the
+          sidebar); a second account has to hand you theirs. The rule is a check
+          in each method against the caller, refused as <code>Forbidden</code>.
         </p>
       </div>
 
@@ -118,11 +118,11 @@ export function SharedStorage() {
               <input
                 className="form-control"
                 style={{ flex: 1 }}
-                placeholder="64-hex account id"
+                placeholder="account id"
                 value={addWriterKey}
                 onChange={(e) => setAddWriterKey(e.target.value)}
               />
-              <FieldHelp text="An account id: 64 hex characters. Get it from shared_get_writers (for an existing writer) or from whoami (for yourself). NOT the executor key in the context bar — that is the device id, and granting it silently authorizes nobody. Since core rc.27 both are 64 hex, so nothing about the value will warn you." />
+              <FieldHelp text="An account id, as whoami returns it (your own is also at the bottom of the sidebar). A grant must name the instance's owner or an account in its organization; anything else is refused as Invalid." />
             </div>
           </div>
           <button
@@ -143,7 +143,7 @@ export function SharedStorage() {
           <div className="method-inputs">
             <input
               className="form-control"
-              placeholder="64-hex account id"
+              placeholder="account id"
               value={isWriterKey}
               onChange={(e) => setIsWriterKey(e.target.value)}
             />
@@ -156,6 +156,32 @@ export function SharedStorage() {
             {isWriter.loading ? "..." : "Execute"}
           </button>
           <ResultBox result={isWriter.result} />
+        </div>
+
+        <div className="method-card">
+          <div className="method-name">shared_rotate_writers(account_hexes)</div>
+          <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 10 }}>
+            Replaces the whole writer set (writers only). A set without you takes you out, with
+            no way back in; an empty set is refused. One account per line.
+          </p>
+          <div className="method-inputs">
+            <textarea
+              className="form-control"
+              rows={3}
+              aria-label="new writer set"
+              placeholder="account ids, one per line"
+              value={rotateKeys}
+              onChange={(e) => setRotateKeys(e.target.value)}
+            />
+          </div>
+          <button
+            className="btn-danger-outline"
+            disabled={rotate.loading}
+            onClick={() => rotate.run(() => api.sharedRotateWriters(rotateKeys.split(/\s+/).filter(Boolean)))}
+          >
+            {rotate.loading ? "..." : "Execute"}
+          </button>
+          <ResultBox result={rotate.result} />
         </div>
 
         <div className="method-card">

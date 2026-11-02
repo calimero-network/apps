@@ -1,29 +1,18 @@
-import react from "@vitejs/plugin-react-swc";
+// `defineConfig` from `vitest/config`, not from `vite`: vite's own type has no
+// `test` key, so a `test` block under the vite import fails `tsc -b`.
 import { defineConfig } from "vitest/config";
-import { servedAssetsFallback } from "@calimero-apps/node-served/vite";
+import react from "@vitejs/plugin-react";
 
 export default defineConfig({
+  // Relative, so the same build runs at / and under the node's /{version}/,
+  // where the cluster serves the bundle's frontend.
   base: "./",
-  plugins: [servedAssetsFallback(), react()],
+  plugins: [react()],
   test: {
     environment: "jsdom",
-    globals: true,
-    setupFiles: "./src/test/setup.ts",
-    // `tests/` holds the Playwright suite, which must not be run by vitest.
-    //
-    // `scripts/` is .mjs on purpose: the contract-call checker reads the repo
-    // off disk, and keeping it out of `src` keeps `node:fs` out of the app's
-    // tsconfig (which has no @types/node) while still letting it run as a
-    // plain `node scripts/check-contract-calls.mjs`.
-    include: ["src/**/*.{test,spec}.{ts,tsx}", "scripts/**/*.test.mjs"],
-    exclude: ["**/node_modules/**", "tests/**"],
-    server: {
-      deps: {
-        // @calimero-network/mero-platform (reached through mero-react's invitations)
-        // ships directory imports (`from "./bridge"`), which Node's ESM resolver
-        // rejects; inlining routes it through Vite's resolver instead.
-        inline: ["@calimero-network/mero-platform"],
-      },
-    },
+    setupFiles: ["./src/test/setup.ts"],
+    // `tsc -b` writes declarations under dist-types/; without this vitest also
+    // runs the compiled copies of the tests.
+    exclude: ["**/node_modules/**", "**/dist/**", "**/dist-types/**"],
   },
 });

@@ -46,19 +46,18 @@ reimplements one gets its own behaviour, and nothing notices.
 | mero-sign | **CalimeroProvider** | ❌ | ❌ | ❌ | legacy SDK — see §5 |
 | mero-stream | MeroProvider | ✅ | ✅ | ✅ | |
 | merraria | *none* | — | — | — | vanilla TS; reimplements the modal |
-| scaffolding-e2e | MeroProvider | ❌ | ✅ | ✅ | test harness; drives `discoverLocalNodes` itself |
+| scaffolding-e2e | *component app* | — | — | — | on Calimero 1.0: passkeys and org invites (`@calimero-apps/connect`), see docs/COMPONENT-APPS.md |
 
-**Eleven of the thirteen React apps present the identical flow** —
-`ConnectButton` into `LoginModal`, nothing hand-rolled. The two that do not
-(mero-sign, scaffolding-e2e), plus the two non-React games, each have a reason:
+**Eleven of the twelve React apps on the v1 flow present the identical flow** —
+`ConnectButton` into `LoginModal`, nothing hand-rolled. The one that does not
+(mero-sign), plus the two non-React games, each have a reason
+(scaffolding-e2e has moved to Calimero 1.0 and no longer uses this flow):
 
 - **mero-blocks / merraria** reimplement the modal in plain DOM, but on the *same
   primitives* — `DEFAULT_LOCAL_NODE_PORTS`, `localNodeUrl`, `probeNodeHealth`,
   plus a manual `node-url-input`. Same shape, separate code. They are not React,
   so `ConnectButton` is not available to them; the duplication is the cost of
   that, not a divergence in behaviour.
-- **scaffolding-e2e** deliberately drives discovery itself — exercising the SDK
-  surface is the point of that app.
 
 ### kv-store passes `packageName` without `registryUrl`
 
@@ -226,8 +225,8 @@ screen flashes; once logged in it gets out of the way and the dialog asks. Every
 app that mounts `InvitationDialog` under `MeroProvider` mounts the gate beside
 it, with the same `parse`, noun and app name. Without it, the landing page was
 all a logged-out invitee saw, with nothing saying they had been invited.
-mero-sign (legacy provider), mero-blocks and merraria (no `MeroProvider`) and
-scaffolding-e2e (test harness) do not have it yet. Its test ids are
+mero-sign (legacy provider), mero-blocks and merraria (no `MeroProvider`) do
+not have it yet. Its test ids are
 `invite-landing` (with `data-state`: `checking`, `invited`, `invalid`),
 `invite-landing-login` and `invite-landing-decline`.
 

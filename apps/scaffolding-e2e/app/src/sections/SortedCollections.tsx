@@ -237,7 +237,7 @@ export function SortedCollections() {
                 value={tagRemove}
                 onChange={(e) => setTagRemove(e.target.value)}
               />
-              <FieldHelp text="Removing and re-adding the same element used to never converge across nodes (fixed in rc.10). Worth re-adding after a remove and checking every node agrees." />
+              <FieldHelp text="Removing and re-adding the same element: v1 needed a fix for this to converge across nodes. With one log it is two writes in order; re-adding after a remove is still worth checking." />
             </div>
           </div>
           <button
