@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Calimero 1.0 (component SDK)
 
-- **Contract** on core's component SDK (`calimero-app-sdk` at `1.0.0-rc.7`,
+- **Contract** on core's component SDK (`calimero-app-sdk` at `1.0.0-rc.8`,
   `wasm32-wasip2`): the same methods, camelCase on the wire; shared events in a
   `Table`, private events and booking links as per-owner rows only the owner's
   calls read, display names per account. Every change a client sees is listed in

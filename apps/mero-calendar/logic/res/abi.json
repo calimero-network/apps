@@ -293,6 +293,14 @@
       "members": "unorderedMap",
       "privateEvents": "unorderedMap"
     },
+    "search": {
+      "bookingLinks": [],
+      "eventPeers": [],
+      "events": [],
+      "invitations": [],
+      "members": [],
+      "privateEvents": []
+    },
     "version": 1
   },
   "world": "calimero:app@0.5.0"
