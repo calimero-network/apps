@@ -149,7 +149,8 @@ struct Blow {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 struct Match {
     started_at: u64,
-    /// `"p1"` or `"p2"`, one per decided round.
+    /// `"p1"` or `"p2"`, one per decided round: at most 3, since the match
+    /// ends (`decide`) the moment a corner has [`ROUNDS_TO_WIN`] of them.
     rounds: Vec<String>,
     /// The round being fought (or the deciding one, once the match is over).
     round: u32,
@@ -159,7 +160,8 @@ struct Match {
     round_actions: [u32; 2],
     /// Every action written in this match, by both corners.
     actions: u32,
-    /// This round's blows that landed, oldest first, at most [`RECENT_HITS`].
+    /// This round's blows that landed, oldest first: at most [`RECENT_HITS`]
+    /// (`act` drops the oldest past it) and cleared each round (`decide`).
     blows: Vec<Blow>,
     /// `"p1"` or `"p2"`, or `""` while it is still being fought.
     winner: String,
