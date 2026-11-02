@@ -26,7 +26,7 @@ for the rest; [Porting an app](#porting-an-app-the-checklist) is the checklist.
 
 | | what | where |
 |---|---|---|
-| core pin | `component-core-tag` (now `1.0.0-rc.7`, the first release with core#4813) and `component-min-runtime-version` | root `Cargo.toml`, `[workspace.metadata.mero-apps]` |
+| core pin | `component-core-tag` (now `1.0.0-rc.8`: core#4813's collections, plus blobs, search, xcall, actions and outbound HTTP) and `component-min-runtime-version` | root `Cargo.toml`, `[workspace.metadata.mero-apps]` |
 | builder / bundler | `mero-component build \| bundle \| inspect \| abi`: core's `calimero-app-build` and `calimero-bundle` at the pinned tag | [`tools/component-bundle`](../tools/component-bundle) |
 | local cluster | `pnpm dev:local <app>`, `pnpm merod-local up \| deploy \| e2e` | [`packages/merod-local`](../packages/merod-local) |
 | frontend helper | `@calimero-apps/connect`: target (local / cloud) from env, the client, the stored session | [`packages/connect`](../packages/connect) |
@@ -79,17 +79,17 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
-calimero-app-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.7" }
+calimero-app-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
-calimero-app-sdk   = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.7", features = ["testing"] }
-calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.7" }
+calimero-app-sdk   = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8", features = ["testing"] }
+calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8" }
 serde_json = "1"
 
 [package.metadata.calimero]
 package = "com.calimero.my-app"
 name = "My App"
-min-runtime-version = "1.0.0-rc.7"
+min-runtime-version = "1.0.0-rc.8"
 # … the same keys as a v1 app (icon, frontend, frontend-dir, tags, …)
 
 [workspace]
@@ -124,8 +124,8 @@ replaces merobox and Docker for component apps.
 
 ```bash
 # merod at component-core-tag, once (either):
-curl -fsSL https://github.com/calimero-network/core/releases/download/1.0.0-rc.7/merod_x86_64-unknown-linux-gnu.tar.gz | tar xz
-cargo install --locked --git https://github.com/calimero-network/core --tag 1.0.0-rc.7 merod
+curl -fsSL https://github.com/calimero-network/core/releases/download/1.0.0-rc.8/merod_x86_64-unknown-linux-gnu.tar.gz | tar xz
+cargo install --locked --git https://github.com/calimero-network/core --tag 1.0.0-rc.8 merod
 
 pnpm dev:local <app>             # everything below in one command; Ctrl-C stops it all
 ```
@@ -394,18 +394,24 @@ per app, branched off `main` once this groundwork has merged.
 
 ## What the component SDK does not have yet
 
-At `1.0.0-rc.7` (core's `crates/app-sdk/AGENTS.md`, `apps/AGENTS.md`), an app
-that needs one of these stays on the v1 SDK until core ships it:
+Since `1.0.0-rc.8` the component SDK has what most v1 apps reached for beyond
+collections: **blobs** (`BlobRef` in state, `info`, download grants; core#4815),
+**full-text search** (`#[table(search = [..])]`, `Table::search` from views;
+core#4816), **cross-app calls** (`env::xcall` through the outbox, and
+synchronous `env::xcall_call` / `env::xcall_view`, within one organization;
+core#4816, core#4820), **actions** (`#[app::action]`, leader-run, with
+`ctx.view`/`ctx.call`/`ctx.fetch`; core#4818) and **outbound HTTP** from
+actions and from calls (`env::fetch`, recorded in the log, through the
+manifest's `outbound` prefixes and the owner's approval; core#4818, core#4822).
+See core's `crates/app-sdk/AGENTS.md` at the tag for each API.
 
-- **Blobs** (file upload/download from the contract): the node has a per-app
-  blob API (`client.uploadBlob`), but a contract cannot reference or read blobs yet.
-- **Cross-context / cross-app calls** (`xcall`): only `allow(app = …)` callers.
+Still missing at `1.0.0-rc.8`; an app that needs one stays on the v1 SDK, or
+ports without it and says so in its PR:
+
 - **Event handlers** (`#[app::on_*]`, reacting to another app's events).
-- **Search indexes** (`#[derive(Searchable)]`).
-- **TEE-decided methods** (`#[app::tee]`), **private (node-local) storage**
-  (`#[app::private]`), **outbound HTTP** from a method.
-- **Migrations** (`#[app::migrate]`, `upgrade_to` in the harness) and **actions**
-  (`#[app::action]`).
+- **TEE-decided methods** (`#[app::tee]`) and **private (node-local) storage**
+  (`#[app::private]`).
+- **Migrations** (`#[app::migrate]`, `upgrade_to` in the harness).
 - **CRDT types beyond `Text`/`RichText`**: `RichDocument`, undo, deltas, RGA,
   custom `Mergeable` rules (a plain record is usually what they become).
 - **Release attestation from a served page.** mero-js verifies a node's
