@@ -8,7 +8,7 @@ import { flushSync } from 'react-dom';
 import {
   useSubscription,
   type SubscriptionEventData,
-} from '@calimero-network/mero-react';
+} from '@/calimero/react';
 import { diffText, diffTextByIds, insertTextAt, type Change, type IdRun } from '@/lib/rich/delta';
 import { parseRichEvents } from '@/lib/rich/events';
 import { scalarToUtf16, utf16ToScalar } from '@/lib/rich/offsets';
@@ -16,7 +16,7 @@ import { applyChanges, moveInserts, transform, transformPosition } from '@/lib/r
 import { isTransportFailure } from '@/lib/rich/transport';
 import { UndoHistory } from '@/lib/rich/undo';
 import type { CaretSlice } from './useDocPresence';
-import type { Change as WireChange, DocsClient } from '@/generated/docs/DocsClient';
+import type { Change as WireChange, DocsClient } from '@/lib/docsApi';
 import type { SaveStatus } from '@/components/editor/types';
 import { isContextEvent } from './useContextEvents';
 import { useRetry } from './useRetry';

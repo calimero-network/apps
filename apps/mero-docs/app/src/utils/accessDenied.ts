@@ -1,4 +1,4 @@
-import { AuthRevokedError, HTTPError } from '@calimero-network/mero-js';
+import { AuthRevokedError, HTTPError } from '@/calimero/errors';
 
 // Membership refusals, told apart from real faults by HTTP status so the UI can
 // show a restricted state instead of a red error.
@@ -24,19 +24,17 @@ export function lacksFolderAccess(perms: {
   return perms.denied || isForbidden(perms.error);
 }
 
-// Core answers 404 for a capability read of someone removed from an Open folder.
-// The folder's group not existing on this node is a 404 too, and means the
-// opposite: nothing about the caller, just governance that has not arrived.
+// A 404 for a capability read: the member is not in the folder (never was,
+// removed, or a removal from an Open folder). v1 also answered 404 for a
+// folder whose group had not reached this node yet; on 1.0 every node reads
+// the same system state, so there is no such case.
 export function isMemberGone(err: unknown): boolean {
-  return err instanceof HTTPError && err.status === 404 && !isGroupNotOnNode(err);
+  return err instanceof HTTPError && err.status === 404;
 }
 
-// `group '<id>' not found`: the registry lists a folder whose group this node
-// has not applied yet. Wait for sync; the caller is not refused.
-export function isGroupNotOnNode(err: unknown): boolean {
-  if (!(err instanceof HTTPError) || err.status !== 404) return false;
-  const text = `${err.message} ${err.bodyText ?? ''}`;
-  return /group '[^']*' not found/i.test(text);
+/** Always false on 1.0: kept for callers that waited out v1's replication. */
+export function isGroupNotOnNode(_err: unknown): boolean {
+  return false;
 }
 
 // A revoked session also answers 403, but says nothing about membership.

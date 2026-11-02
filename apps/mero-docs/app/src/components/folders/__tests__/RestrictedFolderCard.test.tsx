@@ -16,7 +16,7 @@ const listGroupContexts = vi.fn();
 // Stable, like the session's admin.
 const meroStub = { admin: { listGroupContexts } };
 
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@/calimero/react', () => ({
   useSubscription: vi.fn(),
   useJoinSubgroupInheritance: () => ({
     joinSubgroupInheritance,

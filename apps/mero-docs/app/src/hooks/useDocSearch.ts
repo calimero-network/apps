@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useWorkspaceIndexValue } from '@/context/WorkspaceIndexContext';
-import type { DocsClient } from '@/generated/docs/DocsClient';
+import type { DocsClient } from '@/lib/docsApi';
 import { normalizeQuery } from '@/lib/search/match';
 import {
   folderMatches,

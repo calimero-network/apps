@@ -1,6 +1,5 @@
-import { HTTPError, RpcError } from '@calimero-network/mero-js';
 import { describe, expect, it } from 'vitest';
-import { contractErrorFixture } from './contractErrorFixture';
+import { contractErrorFixture, nodeError } from './contractErrorFixture';
 import {
   DOC_NOT_FOUND,
   DOC_NO_ACCESS,
@@ -11,9 +10,7 @@ import {
   documentSaveErrorMessage,
 } from '../documentError';
 
-const httpError = (status: number) =>
-  new HTTPError(status, 'x', 'http://node/jsonrpc', new Headers(), '{"error":"no"}');
-
+const httpError = nodeError;
 
 describe('documentLoadErrorMessage', () => {
   it('says a document the contract no longer holds is gone', () => {
@@ -25,8 +22,7 @@ describe('documentLoadErrorMessage', () => {
   });
 
   it('does not read prose as a not-found answer', () => {
-    const prose = Object.assign(new Error('FunctionCallError'), { data: 'not found: doc-1' });
-    expect(documentLoadErrorMessage(prose)).not.toBe(DOC_NOT_FOUND);
+    expect(documentLoadErrorMessage(new Error('not found: doc-1'))).not.toBe(DOC_NOT_FOUND);
   });
 
   it('says the same for a 404 from the node', () => {
@@ -42,7 +38,7 @@ describe('documentLoadErrorMessage', () => {
   });
 
   it('never shows the raw error type', () => {
-    expect(documentLoadErrorMessage(contractErrorFixture('Internal', 'boom'))).not.toContain('FunctionCallError');
+    expect(documentLoadErrorMessage(contractErrorFixture('Invalid', 'boom'))).not.toContain('APP_ERROR');
   });
 });
 
@@ -61,12 +57,12 @@ describe('documentSaveErrorMessage', () => {
 
   it('tells a lapsed session apart from lost access', () => {
     expect(documentSaveErrorMessage(httpError(401))).toMatch(/sign in/i);
-    expect(documentSaveErrorMessage(httpError(403))).toMatch(/can't edit/i);
+    expect(documentSaveErrorMessage(httpError(403))).toBe(DOC_READ_ONLY);
   });
 
   it("says a Read only member's change was not kept", () => {
-    const refused = new RpcError(-1, 'ReadOnlyWriteRefused', {}, 'ReadOnlyWriteRefused');
-    expect(documentSaveErrorMessage(refused)).toBe(DOC_READ_ONLY);
+    // The node refuses a write by a read-only team row with 403.
+    expect(documentSaveErrorMessage(nodeError(403))).toBe(DOC_READ_ONLY);
   });
 
   it('falls back to plain copy', () => {

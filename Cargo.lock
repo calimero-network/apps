@@ -902,40 +902,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mero-docs"
-version = "10.1.3"
-dependencies = [
- "bs58",
- "calimero-sdk",
- "calimero-storage",
- "calimero-storage-macros",
- "mero-docs-types",
- "serial_test",
-]
-
-[[package]]
-name = "mero-docs-registry"
-version = "10.1.3"
-dependencies = [
- "calimero-sdk",
- "calimero-storage",
- "calimero-storage-macros",
- "hex",
- "mero-docs-types",
- "serial_test",
-]
-
-[[package]]
-name = "mero-docs-types"
-version = "10.1.3"
-dependencies = [
- "borsh",
- "calimero-sdk",
- "serde",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "mero-forms"
 version = "0.1.0"
 dependencies = [

@@ -37,7 +37,7 @@ const ws: {
 };
 const mero = {};
 
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@/calimero/react', () => ({
   useMero: () => ({ mero }),
   useJoinContext: () => ({ joinContext }),
 }));
@@ -50,7 +50,7 @@ vi.mock('../useContextEvents', () => ({
     eventHandler = handler;
   },
 }));
-vi.mock('@/generated/docs/DocsClient', () => ({
+vi.mock('@/lib/docsApi', () => ({
   DocsClient: class {
     listDocs: ReturnType<typeof vi.fn>;
     constructor(_mero: unknown, contextId: string) {

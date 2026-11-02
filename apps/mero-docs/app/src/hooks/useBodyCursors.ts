@@ -3,7 +3,7 @@
 // which is the only reason a caret stays put while either side keeps typing.
 
 import { useEffect, useRef } from 'react';
-import type { DocsClient } from '@/generated/docs/DocsClient';
+import type { DocsClient } from '@/lib/docsApi';
 import {
   blockGeometry,
   type DocNode,

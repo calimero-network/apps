@@ -1,0 +1,585 @@
+[
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createDoc",
+  "args": {
+   "title": "Seed"
+  },
+  "save": "t"
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "titleApplyDelta",
+  "args": {
+   "doc": "$t",
+   "ops": [
+    {
+     "retain": 4
+    },
+    {
+     "insert": " plus"
+    }
+   ]
+  },
+  "save": "tu"
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getTitle",
+  "args": {
+   "doc": "$t"
+  },
+  "expect": {
+   "ok": "Seed plus"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "titleUndo",
+  "args": {
+   "doc": "$t",
+   "token": "$tu"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getTitle",
+  "args": {
+   "doc": "$t"
+  },
+  "expect": {
+   "ok": "Seed"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "titleApplyDeltaOn",
+  "args": {
+   "doc": "$t",
+   "base": "Stale",
+   "ops": [
+    {
+     "insert": "x"
+    }
+   ],
+   "anchor": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getTitle",
+  "args": {
+   "doc": "$t"
+  },
+  "expect": {
+   "ok": "Seed"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "titleAnchorAt",
+  "args": {
+   "doc": "$t",
+   "position": 2,
+   "before": true
+  },
+  "save": "ta"
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "titleApplyDelta",
+  "args": {
+   "doc": "$t",
+   "ops": [
+    {
+     "insert": ">> "
+    }
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "titleResolve",
+  "args": {
+   "doc": "$t",
+   "anchors": [
+    "$ta"
+   ]
+  },
+  "expect": {
+   "ok": [
+    5
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "titleApplyDelta",
+  "args": {
+   "doc": "$t",
+   "ops": [
+    {
+     "insert": "x",
+     "attributes": {
+      "bold": "true"
+     }
+    }
+   ]
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createDoc",
+  "args": {
+   "title": "Body"
+  },
+  "save": "d"
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "insertBlock",
+  "args": {
+   "doc": "$d",
+   "after": null,
+   "kind": "heading",
+   "depth": 0
+  },
+  "save": "h"
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setAttr",
+  "args": {
+   "doc": "$d",
+   "block": "$h",
+   "key": "level",
+   "value": "1"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "applyDelta",
+  "args": {
+   "doc": "$d",
+   "block": "$h",
+   "ops": [
+    {
+     "insert": "Title",
+     "attributes": {}
+    }
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "insertBlock",
+  "args": {
+   "doc": "$d",
+   "after": "$h",
+   "kind": "paragraph",
+   "depth": 0
+  },
+  "save": "p"
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "applyDelta",
+  "args": {
+   "doc": "$d",
+   "block": "$p",
+   "ops": [
+    {
+     "insert": "Hello ",
+     "attributes": {}
+    },
+    {
+     "insert": "world",
+     "attributes": {
+      "bold": "true"
+     }
+    }
+   ]
+  },
+  "save": "pu"
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getStateDigest",
+  "args": {
+   "doc": "$d"
+  },
+  "expect": {
+   "ok": "heading/0[level=1]{:Title};paragraph/0{:Hello }{bold=true:world};"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getBlockDelta",
+  "args": {
+   "doc": "$d",
+   "block": "$p"
+  },
+  "expect": {
+   "ok": [
+    {
+     "text": "Hello ",
+     "attributes": {}
+    },
+    {
+     "text": "world",
+     "attributes": {
+      "bold": "true"
+     }
+    }
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "applyDelta",
+  "args": {
+   "doc": "$d",
+   "block": "$p",
+   "ops": [
+    {
+     "retain": 6
+    },
+    {
+     "retain": 5,
+     "attributes": {
+      "bold": null,
+      "italic": "true"
+     }
+    }
+   ]
+  },
+  "save": "fu"
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getBlockDelta",
+  "args": {
+   "doc": "$d",
+   "block": "$p"
+  },
+  "expect": {
+   "ok": [
+    {
+     "text": "Hello ",
+     "attributes": {}
+    },
+    {
+     "text": "world",
+     "attributes": {
+      "italic": "true"
+     }
+    }
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "undo",
+  "args": {
+   "doc": "$d",
+   "block": "$p",
+   "token": "$fu"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getStateDigest",
+  "args": {
+   "doc": "$d"
+  },
+  "expect": {
+   "ok": "heading/0[level=1]{:Title};paragraph/0{:Hello }{bold=true:world};"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "applyDeltaOn",
+  "args": {
+   "doc": "$d",
+   "block": "$p",
+   "base": "Hello",
+   "ops": [
+    {
+     "insert": "x"
+    }
+   ],
+   "anchor": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getText",
+  "args": {
+   "doc": "$d",
+   "block": "$p"
+  },
+  "expect": {
+   "ok": "Hello world"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "splitBlock",
+  "args": {
+   "doc": "$d",
+   "block": "$p",
+   "at": 6
+  },
+  "save": "q"
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listBlocks",
+  "args": {
+   "doc": "$d"
+  },
+  "expect": {
+   "ok": [
+    "$h",
+    "$p",
+    "$q"
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getText",
+  "args": {
+   "doc": "$d",
+   "block": "$q"
+  },
+  "expect": {
+   "ok": "world"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "mergeBlocks",
+  "args": {
+   "doc": "$d",
+   "first": "$p",
+   "second": "$q"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getStateDigest",
+  "args": {
+   "doc": "$d"
+  },
+  "expect": {
+   "ok": "heading/0[level=1]{:Title};paragraph/0{:Hello }{bold=true:world};"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "moveBlock",
+  "args": {
+   "doc": "$d",
+   "block": "$p",
+   "after": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listBlocks",
+  "args": {
+   "doc": "$d"
+  },
+  "expect": {
+   "ok": [
+    "$p",
+    "$h"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setKind",
+  "args": {
+   "doc": "$d",
+   "block": "$p",
+   "kind": "bulletListItem"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setDepth",
+  "args": {
+   "doc": "$d",
+   "block": "$p",
+   "depth": 1
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getStateDigest",
+  "args": {
+   "doc": "$d"
+  },
+  "expect": {
+   "ok": "bulletListItem/1{:Hello }{bold=true:world};heading/0[level=1]{:Title};"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "mark",
+  "args": {
+   "doc": "$d",
+   "block": "$h",
+   "start": 0,
+   "end": 5,
+   "key": "underline",
+   "value": "true"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getBlockDelta",
+  "args": {
+   "doc": "$d",
+   "block": "$h"
+  },
+  "expect": {
+   "ok": [
+    {
+     "text": "Title",
+     "attributes": {
+      "underline": "true"
+     }
+    }
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "passageCount",
+  "args": {
+   "doc": "$d",
+   "block": "$p",
+   "needle": "o"
+  },
+  "expect": {
+   "ok": 2
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "undo",
+  "args": {
+   "doc": "$d",
+   "block": "$p",
+   "token": "$pu"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getText",
+  "args": {
+   "doc": "$d",
+   "block": "$p"
+  },
+  "expect": {
+   "ok": "world"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deleteBlock",
+  "args": {
+   "doc": "$d",
+   "block": "$p"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getBlock",
+  "args": {
+   "doc": "$d",
+   "block": "$p"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listBlocks",
+  "args": {
+   "doc": "$d"
+  },
+  "expect": {
+   "ok": [
+    "$h"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "applyDelta",
+  "args": {
+   "doc": "$d",
+   "block": "missing",
+   "ops": [
+    {
+     "insert": "x"
+    }
+   ]
+  },
+  "expect": {
+   "error": "NotFound"
+  }
+ }
+]

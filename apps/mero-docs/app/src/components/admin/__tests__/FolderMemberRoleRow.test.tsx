@@ -1,7 +1,7 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { HTTPError } from '@calimero-network/mero-js';
+import { HTTPError } from '@/calimero/errors';
 import { FolderMemberRoleRow } from '../FolderMemberRoleRow';
 import { CAPABILITIES } from '@/constants/config';
 
@@ -27,7 +27,7 @@ const byFolder = async (g: string) => ({
 });
 const listGroupMembers = vi.fn(byFolder);
 
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@/calimero/react', () => ({
   useMero: () => ({
     mero: {},
     // The session-aware admin (`useMero().admin`) is what the code writes through.
@@ -68,12 +68,7 @@ vi.mock('@/components/ui/confirm-dialog', () => ({
 }));
 
 const httpError = (status: number) =>
-  new HTTPError(
-    status,
-    '',
-    `/admin-api/groups/${FOLDER}/members/${BOB}/role`,
-    new Headers(),
-  );
+  new HTTPError(status, 'ERROR', `/admin-api/groups/${FOLDER}/members/${BOB}/role`);
 
 function roleSelectFor(coreRole: string) {
   render(

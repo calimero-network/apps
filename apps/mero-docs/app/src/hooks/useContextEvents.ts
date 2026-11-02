@@ -1,9 +1,9 @@
-// Subscribe to merod SSE events for one or more contexts and invoke
+// Subscribe to the committed events of one or more app instances and invoke
 // `onChange` whenever any event arrives. Drives live-refresh across
 // the app surface (workspace switcher, folder tree, members panels,
 // doc body, etc.) without polling.
 //
-// `useSubscription` from mero-react opens one EventSource per
+// `useSubscription` from @/calimero/react opens one EventSource per
 // distinct contextId set, internally keyed on `JSON.stringify`, and
 // fans events to all handlers. Multiple components subscribing to
 // the same id set share a single connection - the dedupe happens at
@@ -12,7 +12,7 @@
 // content produces the same stringified key.
 //
 // Handler stability: pass a stable `onChange` (wrapped in
-// `useCallback`) - mero-react reads the callback via ref so a fresh
+// `useCallback`) - @/calimero/react reads the callback via ref so a fresh
 // arrow each render does NOT disconnect the SSE socket, but the
 // caller should still keep handler identity stable so the
 // per-subscriber bookkeeping doesn't churn.
@@ -22,14 +22,13 @@ import {
   useSubscription,
   type SseEventData,
   type SubscriptionEventData,
-} from '@calimero-network/mero-react';
-import { parseSyncStatusEvent } from './useSyncStatus';
+} from '@/calimero/react';
 import { useStreamReconnect } from './useStreamReconnect';
 
 /**
  * Narrow a subscription event to the CONTEXT family.
  *
- * mero-react widened the `useSubscription` callback to a union: context events
+ * @/calimero/react widened the `useSubscription` callback to a union: context events
  * plus the group-keyed membership and migration families, and those two carry
  * a `groupId` and no `contextId` at all. Reading `event.contextId` off the
  * union is how a filter silently starts comparing `undefined` - so this tests
@@ -47,8 +46,8 @@ export function isContextEvent(
 }
 
 /** Normalise a context-id input (single id, array, or nullable) into a
- *  sorted, de-nulled string[]. Shared with useSyncStatus so both feed
- *  mero-react's per-id-set `useSubscription` an identical, stable key. */
+ *  sorted, de-nulled string[]. Feeds
+ *  the @/calimero/react per-id-set `useSubscription` an identical, stable key. */
 export function normalizeContextIds(
   contextIds:
     | ReadonlyArray<string | null | undefined>
@@ -104,7 +103,7 @@ export function useContextEvents(
   options?: UseContextEventsOptions,
 ): void {
   // Computing on every render is cheap (≤ a handful of strings) and lets
-  // mero-react's JSON.stringify dedupe inside useSubscription do its job
+  // the @/calimero/react JSON.stringify dedupe inside useSubscription do its job
   // without a redundant local memo layer.
   const ids = normalizeContextIds(contextIds);
 
@@ -134,16 +133,11 @@ export function useContextEvents(
   const handler = useCallback(
     (event: SubscriptionEventData) => {
       // Presence is transient and changes no state, so it must not trigger refetches.
-      if (!isContextEvent(event) || event.type === 'Ephemeral') return;
+      if (!isContextEvent(event)) return;
       if (strict) {
         const allowed = idsKey.length > 0 ? idsKey.split(',') : [];
         if (!allowed.includes(event.contextId)) return;
       }
-      // A sync run reports an in-progress phase, then one terminal phase; only the
-      // terminal one counts, even a failed run, since governance arrives by gossip.
-      const sync = parseSyncStatusEvent(event);
-      if (sync?.phase === 'syncing' || sync?.phase === 'receivingSnapshot')
-        return;
       if (debounceMs <= 0) {
         onChange(event.contextId);
         return;

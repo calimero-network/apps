@@ -17,8 +17,8 @@
 //   const forExistence = useDocs(folderId, { includeArchived: true });
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useJoinContext, useMero } from '@calimero-network/mero-react';
-import type { DocDto, DocsClient } from '../generated/docs/DocsClient';
+import { useJoinContext, useMero } from '@/calimero/react';
+import type { DocDto, DocsClient } from '@/lib/docsApi';
 import { useDriveWorkspace } from '../hooks/useDriveWorkspace';
 import { useDocsClient } from './useDocsClient';
 import { useDocEvents } from './useDocEvents';

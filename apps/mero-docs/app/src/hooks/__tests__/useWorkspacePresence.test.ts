@@ -18,10 +18,10 @@ const set = vi.fn(async () => {});
 let peers = new Map<string, unknown>();
 let ages = new Map<string, number>();
 let error: Error | null = null;
-// Stable like mero-react's useCallback, so a render alone never re-reads ages.
+// Stable like the @/calimero/react useCallback, so a render alone never re-reads ages.
 const ageOf = (author: string) => ages.get(author);
 
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@/calimero/react', () => ({
   useEphemeral: () => ({ peers, ageOf, error }),
   useMero: () => ({ mero: { ephemeral: { set } } }),
 }));

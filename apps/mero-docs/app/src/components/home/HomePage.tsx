@@ -18,7 +18,7 @@ import {
   useTextIndexValue,
   useWorkspaceIndexValue,
 } from '@/context/WorkspaceIndexContext';
-import { DEV_NODE_PARAM, useAppRoute } from '@/hooks/useAppRoute';
+import { useAppRoute } from '@/hooks/useAppRoute';
 import { useCreateDocument } from '@/hooks/useCreateDocument';
 import { useDocs } from '@/hooks/useDocs';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
@@ -149,7 +149,6 @@ export function HomePage({ folderId }: Props) {
   // Compared as parsed pairs: the router may re-encode the same query.
   React.useEffect(() => {
     const current = new URLSearchParams(params);
-    current.delete(DEV_NODE_PARAM);
     if (new URLSearchParams(canonical).toString() !== current.toString()) {
       navigateQuery(canonical, true);
     }

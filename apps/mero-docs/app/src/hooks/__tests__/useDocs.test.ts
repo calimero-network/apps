@@ -37,7 +37,7 @@ const meroStub = {
   },
 };
 
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@/calimero/react', () => ({
   useSubscription: vi.fn(),
   useJoinContext: () => ({ joinContext, loading: false, error: null }),
   useMero: () => meroStub,

@@ -1,12 +1,12 @@
 import { StrictMode } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
-import type { SseEventData } from '@calimero-network/mero-react';
-import { AuthRevokedError, HTTPError } from '@calimero-network/mero-js';
+import type { SseEventData } from '@/calimero/react';
+import { AuthRevokedError, HTTPError } from '@/calimero/errors';
 import { useMemberCaps } from '../useMemberCaps';
 
 const httpError = (status: number, body: string) =>
-  new HTTPError(status, '', '/admin-api/groups/g', new Headers(), body);
+  new HTTPError(status, 'ERROR', body);
 // core's typed refusal for a caller that is not in the group
 const notAMember = () => httpError(403, '{"error":"identity is not a member of group g"}');
 
@@ -30,7 +30,7 @@ const MERO_STUB = {
   },
 };
 let sseHandler: ((e: SseEventData) => void) | null = null;
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@/calimero/react', () => ({
   useSubscription: (_ids: unknown, handler: (e: SseEventData) => void) => {
     sseHandler = handler;
   },
@@ -51,7 +51,7 @@ function syncEnded(contextId: string, state: string) {
       contextId,
       type: 'SyncStatus',
       data: { syncState: { state }, failureCount: 0 },
-    }),
+    } as never),
   );
 }
 
@@ -123,7 +123,7 @@ describe('useMemberCaps', () => {
   });
 
   it('does not retry a revoked session that also answers 403', async () => {
-    const revoked = new AuthRevokedError('token_revoked', 403, '', '/', new Headers(), '');
+    const revoked = new AuthRevokedError('token_revoked');
     getCaps.mockRejectedValue(revoked);
     const { result } = renderHook(() => useMemberCaps('ns', 'g1'));
     await waitFor(() => expect(result.current.error).toBe(revoked));
@@ -135,7 +135,7 @@ describe('useMemberCaps', () => {
     getCaps.mockResolvedValue({ capabilities: 5 });
     const { result } = renderHook(() => useMemberCaps('ns', 'g1'));
     await waitFor(() => expect(result.current.caps).toBe(5));
-    getCaps.mockRejectedValue(new HTTPError(404, '', '/groups/g1/members/bob/capabilities', new Headers()));
+    getCaps.mockRejectedValue(new HTTPError(404, 'ERROR', '/groups/g1/members/bob/capabilities'));
     act(() => result.current.refetch());
     await waitFor(() => expect(result.current.error).not.toBeNull());
     expect(result.current.caps).toBe(0);

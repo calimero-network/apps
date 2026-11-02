@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useMero } from '@calimero-network/mero-react';
+import { useMero } from '@/calimero/react';
 
 const DEFAULT_OFFLINE_GRACE_MS = 5000;
 

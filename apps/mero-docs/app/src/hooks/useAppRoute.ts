@@ -5,8 +5,6 @@ import { useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { appPath, parseAppPath, type AppRoute } from '@/lib/routes';
 
-export const DEV_NODE_PARAM = 'node'; // dev rig window selector, see components/dev/devNode
-
 interface GoOptions {
   search?: string;
   replace?: boolean;
@@ -16,19 +14,17 @@ export function useAppRoute() {
   const { pathname, search, hash } = useLocation();
   const navigate = useNavigate();
   const route = useMemo(() => parseAppPath(pathname, hash), [pathname, hash]);
-  const node = new URLSearchParams(search).get(DEV_NODE_PARAM);
   const ws = route?.ws;
 
   const current = pathname + search + hash;
-  // The relative URL of a screen, carrying the dev node param so a new tab stays on the same node.
+  // The relative URL of a screen.
   const href = useCallback(
     (target: AppRoute | null, targetSearch = '') => {
       const url = new URL(target ? appPath(target) : '/app', window.location.origin);
       url.search = targetSearch;
-      if (node) url.searchParams.set(DEV_NODE_PARAM, node);
       return url.pathname + url.search + url.hash;
     },
-    [node],
+    [],
   );
   const go = useCallback(
     (target: AppRoute | null, opts: GoOptions = {}) => {

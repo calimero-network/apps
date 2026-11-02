@@ -1,6 +1,6 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import type { DocsClient, DocSearchPage } from '@/generated/docs/DocsClient';
+import type { DocsClient, DocSearchPage } from '@/lib/docsApi';
 import type { IndexRow } from '@/lib/workspaceIndex/types';
 import { INDEX_CATCH_UP_MS, useDocSearch } from '../useDocSearch';
 

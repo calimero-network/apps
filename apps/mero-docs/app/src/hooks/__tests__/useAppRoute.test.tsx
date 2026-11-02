@@ -70,21 +70,21 @@ describe('useAppRoute', () => {
     expect(result.current.url).toBe('/app/w');
   });
 
-  it('keeps the dev node param and drops every other one', () => {
-    const { result } = setup('/app/w?node=2&q=old');
+  it('drops every query param of the screen it leaves', () => {
+    const { result } = setup('/app/w?q=old');
     act(() => result.current.app.goFolder('f1'));
-    expect(result.current.url).toBe('/app/w/f/f1?node=2');
+    expect(result.current.url).toBe('/app/w/f/f1');
     act(() => result.current.app.goHome('q=new'));
-    expect(result.current.url).toBe('/app/w?q=new&node=2');
+    expect(result.current.url).toBe('/app/w?q=new');
   });
 
-  it('builds the URL of a screen for a new tab, keeping the dev node param', () => {
-    const { result } = setup('/app/w?node=2&tag=x');
+  it('builds the URL of a screen for a new tab', () => {
+    const { result } = setup('/app/w?tag=x');
     expect(
       result.current.app.href({ ws: 'w', folder: 'f 1', doc: 'd', block: 'b' }),
-    ).toBe('/app/w/f/f%201/d/d?node=2#b=b');
+    ).toBe('/app/w/f/f%201/d/d#b=b');
     expect(result.current.app.href({ ws: 'w' }, 'tag=q3')).toBe(
-      '/app/w?tag=q3&node=2',
+      '/app/w?tag=q3',
     );
     expect(setup('/app/w').result.current.app.href({ ws: 'w', folder: 'f' })).toBe(
       '/app/w/f/f',
@@ -92,19 +92,19 @@ describe('useAppRoute', () => {
   });
 
   it('carries a folder list filter in its search', () => {
-    const { result } = setup('/app/w?node=2');
+    const { result } = setup('/app/w');
     act(() => result.current.app.goFolder('f1', { search: 'tag=q3' }));
-    expect(result.current.url).toBe('/app/w/f/f1?tag=q3&node=2');
+    expect(result.current.url).toBe('/app/w/f/f1?tag=q3');
   });
 
   it('switches workspace, or clears it back to /app', () => {
-    const { result } = setup('/app/w/f/f1?node=1');
+    const { result } = setup('/app/w/f/f1');
     act(() => result.current.app.goWorkspace('w2'));
-    expect(result.current.url).toBe('/app/w2?node=1');
+    expect(result.current.url).toBe('/app/w2');
     act(() => result.current.app.goWorkspace(null, { replace: true }));
-    expect(result.current.url).toBe('/app?node=1');
+    expect(result.current.url).toBe('/app');
     act(() => result.current.navigate(-1));
-    expect(result.current.url).toBe('/app/w/f/f1?node=1');
+    expect(result.current.url).toBe('/app/w/f/f1');
   });
 
   // Clicking the folder that is already open must not make back a no-op.

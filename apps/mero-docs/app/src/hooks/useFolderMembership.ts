@@ -1,7 +1,7 @@
 // Group membership read + mutation. Used by both the namespace-level
 // members panel (folderId = rootGroupId) and per-folder sharing UIs.
 //
-// Reads through the admin client rather than mero-react's useGroupMembers
+// Reads through the admin client rather than the @/calimero/react useGroupMembers
 // so a stale reply can be dropped and a membership event can re-read.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -10,7 +10,7 @@ import {
   useAddGroupMembers,
   useRemoveGroupMembers,
   type GroupMember,
-} from '@calimero-network/mero-react';
+} from '@/calimero/react';
 import { splitTeeMembers } from '@/lib/roles';
 import { useContextEvents } from './useContextEvents';
 import { useDriveWorkspace } from './useDriveWorkspace';

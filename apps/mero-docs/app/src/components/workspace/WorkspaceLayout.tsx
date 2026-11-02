@@ -6,7 +6,7 @@
 //     when a doc is open; else Home, scoped to the folder when one is selected.
 //
 // Mounted by App.tsx on the /app/* route (via WorkspacePage's
-// auth-guarded shell). MeroProvider is the only app-level provider;
+// auth-guarded shell). The session (SessionProvider) is the app-level provider;
 // workspace + registry state comes from the useDriveWorkspace hook.
 //
 // The open doc and the settings view come from the URL (useAppRoute), so
@@ -22,12 +22,7 @@ import React, {
 } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Settings, LogOut, Circle, PanelLeft } from 'lucide-react';
-import {
-  clearNamespaceJustJoined as clearInviteSyncing,
-  isNamespaceJustJoined as isInviteSyncing,
-  useJoinSync,
-  useMero,
-} from '@calimero-network/mero-react';
+import { useMero } from '@/calimero/react';
 import { LogoWithText } from '@/components/icons/Logo';
 import { Button } from '@/components/ui/button';
 import { NamespaceSwitcher } from './NamespaceSwitcher';
@@ -47,7 +42,6 @@ import { useDocs } from '@/hooks/useDocs';
 import { MD_QUERY, useMediaQuery } from '@/hooks/useMediaQuery';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { usePublishWorkspacePresence } from '@/hooks/useWorkspacePresence';
-import type { SyncSnapshot } from '@/hooks/useSyncStatus';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { lacksFolderAccess } from '@/utils/accessDenied';
 import { resolveLinkTarget } from '@/lib/linkTarget';
@@ -86,34 +80,14 @@ export function WorkspaceLayout() {
     hiddenFolderIds,
     selfIdentity,
     stage,
-    syncStatus,
     refetch,
   } = useDriveWorkspace();
-  const { admin, nodeUrl, logout } = useMero();
+  const { nodeUrl, nodeLabel, logout } = useMero();
   // Grace-wrapped so a transient SSE blip doesn't flap the node dot red.
   const isOnline = useOnlineStatus();
   usePublishWorkspacePresence(registryContextId, selfIdentity);
   const selectedFolder = folders.find((f) => f.id === selectedFolderId);
 
-  // Explicit re-trigger for a stalled post-join sync - a real action so a
-  // user staring at a stuck "syncing" state re-fires the sync instead of
-  // re-joining. Best-effort: the SSE stream + refetch surface the outcome.
-  const onRetrySync = useCallback(() => {
-    // `admin` is null until the provider has a session. The button can only be
-    // pressed from a rendered workspace, so this is defensive - but an
-    // unguarded call here would throw inside an onClick and take the layout
-    // down with it rather than doing nothing.
-    if (!admin) return;
-    const ids = [namespaceId, registryContextId].filter(
-      (id): id is string => !!id,
-    );
-    for (const id of ids) {
-      admin.syncContext(id).catch((err: unknown) => {
-        console.warn('retry syncContext failed', id, err);
-      });
-    }
-    void refetch();
-  }, [admin, namespaceId, registryContextId, refetch]);
   // Per-folder permission probe. caps=null while fetching; caps=0
   // means "not a member" (or genuinely no caps). See RestrictedFolderCard
   // branch below for how we distinguish from "still loading".
@@ -122,10 +96,10 @@ export function WorkspaceLayout() {
     selectedFolder?.id ?? '',
   );
 
-  // Friendly display of the node URL - stripped of protocol for
-  // compactness, full URL kept in the title attribute for copy-paste.
+  // Which cluster this session is on: merod local in development, the
+  // Calimero Cloud cluster in production.
   const displayNode =
-    (nodeUrl ?? '').replace(/^https?:\/\//, '') || 'disconnected';
+    nodeLabel ?? 'disconnected';
 
   const { route, goWorkspace, goHome, goFolder, goDoc, goSettings } =
     useAppRoute();
@@ -205,21 +179,6 @@ export function WorkspaceLayout() {
     ],
   );
   const routedFolder = registryFolders?.find((f) => f.id === selectedFolderId);
-  // The invitation dialog (InvitationPrompt) holds "Syncing…" for what it
-  // joined until this page has its data. A workspace's is here when the gate
-  // behind "Syncing workspace from peers…" lifts: registry resolved, folder
-  // list read, workspace listed.
-  useJoinSync({
-    namespaceId,
-    settled: !!namespaceId && !isJustJoined,
-  });
-  // A folder invitation's wait is keyed by the folder, which is here once the
-  // workspace's folder list has it.
-  useEffect(() => {
-    for (const folder of registryFolders ?? []) {
-      if (isInviteSyncing(folder.id)) clearInviteSyncing(folder.id);
-    }
-  }, [registryFolders]);
   // Name what was linked: a doc link reads as a doc whether or not this node
   // lists its folder, since an unlisted folder may be Restricted to others and
   // the card must not tell that apart from one that never existed. An absent
@@ -352,7 +311,7 @@ export function WorkspaceLayout() {
           </div>
         )}
         <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-          {/* Connection indicator - shows the node URL and online
+          {/* Connection indicator - shows the cluster and online
               state. Hidden on narrow viewports; title carries the
               full URL for copy-paste. */}
           {nodeUrl && (
@@ -477,7 +436,7 @@ export function WorkspaceLayout() {
               // Only before any list has landed; a failed re-read keeps the last one.
               <EmptyState
                 title="Couldn't load your workspaces"
-                body="Check your connection to the node, then try again."
+                body="Check your connection, then try again."
               >
                 <Button variant="outline" onClick={() => void refetch()}>
                   Try again
@@ -489,13 +448,7 @@ export function WorkspaceLayout() {
                   Try again
                 </Button>
               </EmptyState>
-            ) : stage === 'syncing-from-peers' ||
-              (linkTarget === 'syncing' && isJustJoined) ? (
-              <SyncingWorkspaceState
-                syncStatus={syncStatus}
-                onRetry={onRetrySync}
-              />
-            ) : linkTarget === 'syncing' ? (
+            ) : stage === 'syncing-from-peers' || linkTarget === 'syncing' ? (
               <QuietLoading />
             ) : !selectedFolderId ? (
               <HomePage />
@@ -508,21 +461,6 @@ export function WorkspaceLayout() {
               <EmptyState title="Loading folder…" />
             ) : selectedFolderPerms.loading ? (
               <EmptyState title="Checking access…" />
-            ) : selectedFolderPerms.notSynced ? (
-              // Listed by the registry, but this node has not applied the
-              // folder's group yet - saying "not a member" here sends people
-              // asking for an invite they already have.
-              <EmptyState title="This folder hasn't synced to your node yet">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    onRetrySync();
-                    selectedFolderPerms.refetch();
-                  }}
-                >
-                  Try again
-                </Button>
-              </EmptyState>
             ) : lacksFolderAccess(selectedFolderPerms) ? (
               <div className="flex-1 overflow-y-auto p-6">
                 <div className="mx-auto max-w-3xl">
@@ -554,105 +492,6 @@ export function WorkspaceLayout() {
           />
         )}
       </WorkspaceIndexProvider>
-    </div>
-  );
-}
-
-// Phase → user-facing copy for the post-join syncing state. Pure and
-// lifted out so the component stays declarative (no let-mutation ladder);
-// the `default` covers "no event yet" and `idle`.
-function describeSync(snap: SyncSnapshot | null): {
-  title: string;
-  body: string;
-} {
-  switch (snap?.phase) {
-    case 'waitingForPeers':
-      return {
-        title: 'Connecting to peers…',
-        body: 'Finding a node that has this workspace. A fresh cross-network join can take up to a minute.',
-      };
-    case 'syncing':
-      return {
-        title: 'Syncing workspace…',
-        body: 'Found a peer. Pulling the latest workspace state.',
-      };
-    case 'receivingSnapshot':
-      return {
-        title: 'Receiving workspace…',
-        body:
-          snap.etaSecs != null
-            ? `Downloading state. About ${snap.etaSecs}s left.`
-            : 'Downloading workspace state from a peer.',
-      };
-    case 'backingOff': {
-      const attempt = snap.failureCount
-        ? ` (attempt ${snap.failureCount + 1})`
-        : '';
-      const when =
-        snap.retryInSecs != null ? ` in ${snap.retryInSecs}s` : ' shortly';
-      return {
-        title: 'Reconnecting…',
-        body: `Sync hit a snag${attempt}. Retrying${when}.`,
-      };
-    }
-    default:
-      return {
-        title: 'Syncing workspace from peers…',
-        body: "You've just joined this workspace. Connecting to the network to pull its state.",
-      };
-  }
-}
-
-// Post-join "syncing" state, driven by live SSE sync-status so the user
-// can tell "still connecting / receiving X%" from "stuck" - the whole
-// point of the fix (a static message reads the same as a failure, so
-// people re-click Join). Falls back to a generic connecting message
-// until the first SyncStatus event arrives.
-function SyncingWorkspaceState({
-  syncStatus,
-  onRetry,
-}: {
-  syncStatus: SyncSnapshot | null;
-  onRetry: () => void;
-}) {
-  const phase = syncStatus?.phase;
-  // `backingOff` is the authoritative "stuck" signal. A `lastError` can
-  // linger on the wire during an active phase, so it must NOT hide the
-  // spinner / show Retry - it's rendered separately as informational text.
-  const stalled = phase === 'backingOff';
-  const percent = phase === 'receivingSnapshot' ? syncStatus?.percent : null;
-  const { title, body } = describeSync(syncStatus);
-
-  return (
-    <div className="flex h-full items-center justify-center p-8">
-      <div className="w-full max-w-md text-center">
-        {!stalled && (
-          <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-b-2 border-t-2 border-primary-ink" />
-        )}
-        <h2 className="text-xl font-semibold text-foreground">{title}</h2>
-        <p className="mt-2 text-sm text-muted-foreground">{body}</p>
-        {percent != null && (
-          <div className="mt-4">
-            <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-              <div
-                className="h-full rounded-full bg-primary transition-all"
-                style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
-              />
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">{percent}%</p>
-          </div>
-        )}
-        {stalled && syncStatus?.lastError && (
-          <p className="mt-3 text-xs text-destructive">
-            {syncStatus.lastError.slice(0, 200)}
-          </p>
-        )}
-        {stalled && (
-          <Button variant="outline" className="mt-4" onClick={onRetry}>
-            Retry sync
-          </Button>
-        )}
-      </div>
     </div>
   );
 }

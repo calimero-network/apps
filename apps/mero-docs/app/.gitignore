@@ -8,7 +8,3 @@ pnpm-lock.yaml
 .DS_Store
 .vite
 
-# Playwright artifacts
-playwright-report/
-test-results/
-playwright/.cache/

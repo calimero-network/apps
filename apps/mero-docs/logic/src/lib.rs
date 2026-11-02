@@ -1,708 +1,362 @@
-//! Docs service - per-folder document storage. One WASM instance of this
-//! runs per folder context, isolating each folder's docs into its own
-//! replicated state so access control reduces to "are you a member of the
-//! folder's group?".
+//! Mero Docs on core's component SDK (`calimero-app-sdk`): a workspace of
+//! folders, each holding rich-text documents its members edit together.
 //!
-//! ## CRDT shape
+//! # Instances
 //!
-//! Every `position`, `start`, `end` and `at` on this surface indexes Unicode
-//! scalar values, not bytes and not UTF-16 code units. Block, mark and anchor
-//! identities cross JSON-RPC as bs58-encoded borsh, so a client passes them
-//! back verbatim and never parses them.
+//! v1 was a two-service bundle: a `registry` context per namespace and a `docs`
+//! context per folder. A component bundle has one service, so this one
+//! component carries both method sets and the frontend creates two kinds of
+//! instance from it:
 //!
-//! - `title` - `FugueText`, plain text that merges character by character
-//! - `body` - `RichDocument<DriveMarks>`, an ordered list of blocks each with
-//!   its own text, formatting and structure
-//! - `tags` - `UnorderedSet<String>`, so concurrent tag edits all survive
-//! - `archived` / `updated_at` - `LwwRegister<_>`
-//! - `updated_by` - `LwwRegister<String>`, hex account of the last editor
+//! - **the workspace's registry**: one instance per organization (org access),
+//!   holding the managers, the workspace tags and the saved views. It is called
+//!   with the registry methods only;
+//! - **a folder's documents**: one instance per folder, a team of the
+//!   organization (team access), holding that folder's documents, their tags and
+//!   comments. It is called with the docs methods only.
 //!
-//! Documents are PUBLIC on purpose: every member of the folder edits them
-//! together, and every node accepts any member's write to them. Owning a doc's
-//! entry would hand its nested title and body to its creator alone. What is
-//! not collaborative is held to its writer by storage instead: who created a
-//! doc and when (`headers`, which lists the doc and which only its creator or
-//! a moderator removes) and each comment (`comments`, owned by its author and
-//! removable by the folder's moderators).
+//! The node decides who reaches an instance at all (the organization, or the
+//! folder's team, with Restricted folders as invite-only teams), and refuses
+//! every write by a member whose team row is read-only (`403`). Everything
+//! finer is checked here against `env::caller()`, as stated on each method.
 //!
-//! ## Scope
+//! # State
 //!
-//! No cross-service calls into the registry. The docs service knows nothing
-//! about the folder tree, name, colour, or visibility - a folder is a core
-//! subgroup, and the client reads those from core (subgroup metadata and
-//! visibility), finding this context as the one context in the subgroup.
+//! The leader applies every write in one log, so state is plain data. The text
+//! stays a sequence CRDT because editors send edits typed against a view that
+//! is no longer current: a title and every block's body are each a `RichText`
+//! (Tree-Fugue characters + Peritext marks, core#4813) under its own name, and
+//! a document's block order is a `Text` with one character per block. What v1's
+//! `RichDocument`, anchors and undo tokens did on top is rebuilt in
+//! [`rich`]: see that module.
+//!
+//! Every change a client sees, compared with v1, is in `apps/mero-docs/README.md`,
+//! "What changed in the port".
 
-use std::collections::{BTreeMap, BTreeSet};
-use std::ops::DerefMut;
+use std::collections::BTreeMap;
 
-use calimero_sdk::abi::AbiType;
-use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
-use calimero_sdk::search::{Query, SearchCollection};
-use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::{app, AccountId};
-use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::fugue_text::{Anchor, Bias, IdRange, TextOp, Undo};
-use calimero_storage::collections::rich_text::{Attrs, DeltaOp, DeltaUndo};
-use calimero_storage::collections::{
-    BlockId, BlockView, Expand, FugueText, IndexedMap, LwwRegister, MarkId, MarkSchema, Mergeable,
-    Moderated, RichDocument, Span, UnorderedMap, UnorderedSet, ValueRef,
-};
-use calimero_storage::constants::DRIFT_TOLERANCE_NANOS;
-use calimero_storage::env as storage_env;
-use mero_docs_types::{is_valid_tag_key, DriveError};
+use calimero_app_sdk::env::Caller;
+use calimero_app_sdk::prelude::*;
+use serde::{Deserialize, Serialize};
 
-pub mod events;
-use events::Event;
+pub mod rich;
+pub mod search;
 
-const MAX_TITLE_LEN: usize = 1024; // Unicode scalar values; the web app sets no title limit
-const MAX_COMMENT_LEN: usize = 10_000; // Unicode scalar values; the web app sets no comment limit
-const MAX_BLOCK_TEXT_LEN: usize = 100_000; // Unicode scalar values; the web app sets no block limit
+use rich::{Change, Run, Span};
 
-// ---------------------------------------------------------------------------
-// Mark schema
-// ---------------------------------------------------------------------------
+/// The longest title, in Unicode scalar values.
+pub const MAX_TITLE_LEN: usize = 1024;
+/// The longest comment, in Unicode scalar values.
+pub const MAX_COMMENT_LEN: usize = 10_000;
+/// The longest block text, in Unicode scalar values.
+pub const MAX_BLOCK_TEXT_LEN: usize = 100_000;
+/// The longest tag name, in Unicode scalar values.
+pub const MAX_TAG_NAME_LEN: usize = 32;
+/// The longest tag key, in bytes.
+pub const TAG_KEY_MAX: usize = 64;
+/// The longest `searchDocs` query, in bytes.
+pub const MAX_DOC_SEARCH_QUERY: usize = 256;
+/// Hits per `searchDocs` page unless the caller asks for fewer.
+pub const DEFAULT_DOC_SEARCH_LIMIT: u32 = 20;
+/// The most hits one `searchDocs` page returns.
+pub const MAX_DOC_SEARCH_LIMIT: u32 = 100;
+/// Rows read per page when a method walks a whole collection.
+const BATCH: u32 = 1000;
+/// The character a block takes in its document's order text.
+const SLOT: &str = "\u{25a1}";
 
-/// The boundary policy every mero-docs document is written with.
-///
-/// Permanent once documents exist: a bias is chosen when a mark is written and
-/// never revisited, so changing an entry here re-renders nothing and only
-/// splits new writes from old ones. An undeclared key is rejected at write time.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct DriveMarks;
+// ── stored records ───────────────────────────────────────────────────────────
 
-impl MarkSchema for DriveMarks {
-    fn expand(prefix: &str) -> Option<Expand> {
-        Some(match prefix {
-            "bold" | "italic" | "underline" | "strike" | "textColor" | "backgroundColor" => {
-                Expand::After
-            }
-            "link" | "code" | "comment" => Expand::None,
-            _ => return None,
-        })
-    }
+/// A document's header. Its title, block order and bodies are texts named
+/// after its id ([`title_of`], [`order_of`], [`body_of`]).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DocMeta {
+    /// The account that created it.
+    pub created_by: String,
+    /// Unix milliseconds.
+    pub created_at: u64,
+    /// Unix milliseconds of the last change.
+    pub updated_at: u64,
+    /// The account that last changed it (tags excepted, as in v1).
+    pub updated_by: String,
+    pub archived: bool,
 }
 
-/// One document's body. Block `kind` and `attrs` are BlockNote's own strings,
-/// stored opaquely and never validated here.
-type Body = RichDocument<DriveMarks>;
-
-// ---------------------------------------------------------------------------
-// Wire types
-// ---------------------------------------------------------------------------
-
-/// One rendered block, mirroring `BlockView` so its id is the same bs58 token
-/// every other method takes and returns.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct Block {
-    /// The block id every method takes as `block`. Opaque; pass it back unchanged.
-    pub id: String,
-    /// The block type, as stored by `insert_block` or `set_kind`.
+/// One block of a document.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BlockRow {
     pub kind: String,
-    /// Nesting depth, 0 for top level.
     pub depth: u8,
-    /// The block's attributes, such as `level` on a heading.
+    /// BlockNote's own attributes (a heading's `level`, an image's blob id):
+    /// a handful per block, stored opaquely.
     pub attrs: BTreeMap<String, String>,
-    /// The block's text as runs of equally formatted characters, in order.
-    pub spans: Vec<Span>,
-    /// The id of each character of `spans`, in order.
-    pub ids: Vec<Run>,
+    /// The character this block holds in its document's order text.
+    pub slot: u64,
+    /// Deleted (or merged away): out of the document, its text kept so ids
+    /// that name it still resolve.
+    pub deleted: bool,
 }
 
-impl Block {
-    fn new(view: BlockView, body: &Body) -> app::Result<Self> {
-        Ok(Self {
-            id: encode_token(&view.id)?,
-            ids: runs(body.block_body(view.id)?.visible_ids()?),
-            kind: view.kind,
-            depth: view.depth,
-            attrs: view.attrs,
-            spans: view.spans,
-        })
-    }
+/// A comment, its author's alone.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CommentRow {
+    pub author: String,
+    pub body: String,
+    /// Unix milliseconds.
+    pub created_at: u64,
 }
 
-/// A run of character ids, mirroring `IdRange`, which has no `AbiType`.
-/// `replica` is decimal text because a full `u64` loses its top bits as a JSON number in a browser.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct Run {
-    /// The replica that wrote the run's first character.
-    pub replica: String,
-    /// That replica's counter for the run's first character.
-    pub counter: u32,
-    /// How many consecutive characters the run covers.
-    pub len: u32,
+/// A workspace tag.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct TagRow {
+    pub name: String,
+    pub color: String,
+    /// A deleted tag is a permanent tombstone: its key is never reused.
+    pub deleted: bool,
 }
 
-fn runs(ranges: Vec<IdRange>) -> Vec<Run> {
-    ranges
-        .into_iter()
-        .map(|range| Run {
-            replica: range.start.0.to_string(),
-            counter: range.start.1,
-            len: range.len,
-        })
-        .collect()
+/// A saved view.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ViewRow {
+    pub name: String,
+    pub query: String,
+    /// The account that first saved it.
+    pub created_by: String,
 }
 
-/// The title with the id of each of its characters, in order.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
+// ── results ──────────────────────────────────────────────────────────────────
+
+/// A document's header as callers see it. The body is read through
+/// `getDocument` / `getBlockDelta`.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocView {
+    pub id: String,
+    pub title: String,
+    /// Tag keys, sorted; the registry maps each to a name and colour.
+    pub tags: Vec<String>,
+    pub archived: bool,
+    /// Unix milliseconds, a decimal string on the wire.
+    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    pub created_at: u64,
+    /// Unix milliseconds, a decimal string on the wire.
+    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    pub updated_at: u64,
+    pub created_by: String,
+    pub updated_by: String,
+    /// Whether the caller may delete it: the rule `deleteDoc` enforces.
+    pub can_delete: bool,
+}
+
+/// The title with the id of each of its characters.
+#[derive(Serialize)]
 pub struct TitleState {
-    /// The title text.
     pub text: String,
-    /// The id of each character of `text`, in order.
     pub ids: Vec<Run>,
 }
 
-/// What `apply_delta_on` did. The block's spans come back either way, so a
-/// refused write hands the client exactly the state it has to rebase onto.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct Applied {
-    /// `true` when the steps were written, `false` when the write was refused.
-    pub applied: bool,
-    /// The undo token for `undo`; `null` on a refusal.
-    pub token: Option<String>,
-    /// The block's spans after the write, or the current ones on a refusal.
-    pub spans: Vec<Span>,
-    /// The gap after this write's last change, or on a refusal the anchor sent.
-    pub anchor: Option<String>,
-    /// Where `anchor` sits in `spans`.
-    pub anchor_pos: Option<usize>,
-    /// The id of each character of `spans`, so a refused write rebases by identity.
-    pub ids: Vec<Run>,
-}
-
-/// What `title_apply_delta_on` did; the title comes back either way.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
+/// What `titleApplyDeltaOn` did; the title comes back either way.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TitleApplied {
-    /// `true` when the steps were written, `false` when the write was refused.
+    /// Whether the steps were written.
     pub applied: bool,
-    /// The undo token for `title_undo`; `null` on a refusal.
+    /// The undo token for `titleUndo`; `null` on a refusal.
     pub token: Option<String>,
     /// The title after the write, or the current title on a refusal.
     pub text: String,
     /// The gap after this write's last change, or on a refusal the anchor sent.
     pub anchor: Option<String>,
     /// Where `anchor` sits in `text`.
-    pub anchor_pos: Option<usize>,
-    /// The id of each character of `text`.
+    pub anchor_pos: Option<u32>,
     pub ids: Vec<Run>,
 }
 
-/// One step of a text change, in Quill's delta shape: `{"retain": 6}`, `{"insert": "text"}` or `{"delete": 2}`.
-/// A `retain` or `insert` step also carries `attributes`: an object of formatting, or `null` for none.
-// Mirrors `DeltaOp`, which has no `AbiType`. Untagged so the JSON stays Quill's.
-#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde", untagged)]
-pub enum Change {
-    /// Keeps `retain` characters, optionally changing their formatting.
-    Retain {
-        /// How many characters to keep.
-        retain: usize,
-        /// Formatting to set on the kept characters; `null` leaves it as is.
-        #[serde(default)]
-        attributes: Option<Attrs>,
-    },
-    /// Inserts text at the current position.
-    Insert {
-        /// The text to insert.
-        insert: String,
-        /// Formatting of the inserted text.
-        #[serde(default)]
-        attributes: Option<Attrs>,
-    },
-    /// Removes characters at the current position.
-    Delete {
-        /// How many characters to remove.
-        delete: usize,
-    },
+/// What `applyDeltaOn` did; the block's spans come back either way.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Applied {
+    pub applied: bool,
+    pub token: Option<String>,
+    pub spans: Vec<Span>,
+    pub anchor: Option<String>,
+    pub anchor_pos: Option<u32>,
+    pub ids: Vec<Run>,
 }
 
-impl From<Change> for DeltaOp {
-    fn from(change: Change) -> Self {
-        match change {
-            Change::Retain { retain, attributes } => Self::Retain { retain, attributes },
-            Change::Insert { insert, attributes } => Self::Insert { insert, attributes },
-            Change::Delete { delete } => Self::Delete { delete },
-        }
-    }
-}
-
-impl Change {
-    /// The plain-text op this change is, for the title. The title carries no
-    /// formatting, so an op with attributes has no meaning there.
-    fn into_text_op(self) -> app::Result<TextOp> {
-        Ok(match self {
-            Self::Retain {
-                retain,
-                attributes: None,
-            } => TextOp::Retain(retain),
-            Self::Insert {
-                insert,
-                attributes: None,
-            } => TextOp::Insert(insert),
-            Self::Delete { delete } => TextOp::Delete(delete),
-            _ => {
-                return Err(app::err!(
-                    "the title carries no formatting: drop `attributes`"
-                ))
-            }
-        })
-    }
-}
-
-/// The gap right after an edit's last change, counted in the text it produces.
-fn edit_end(ops: &[Change]) -> usize {
-    ops.iter()
-        .map(|op| match op {
-            Change::Retain { retain, .. } => *retain,
-            Change::Insert { insert, .. } => insert.chars().count(),
-            Change::Delete { .. } => 0,
-        })
-        .sum()
-}
-
-/// Refuses a value of `len` that exceeds `max`.
-fn ensure_len(what: &str, len: usize, max: usize) -> Result<(), DriveError> {
-    if len > max {
-        return Err(DriveError::Invalid(format!(
-            "{what} too long: {len} characters, limit is {max}"
-        )));
-    }
-    Ok(())
-}
-
-/// The length a text of `current` characters has once `ops` are applied.
-fn len_after(current: usize, ops: &[Change]) -> usize {
-    let (added, removed) = ops.iter().fold((0, 0), |(added, removed), op| match op {
-        Change::Insert { insert, .. } => (added + insert.chars().count(), removed),
-        Change::Delete { delete } => (added, removed + delete),
-        Change::Retain { .. } => (added, removed),
-    });
-    (current + added).saturating_sub(removed)
-}
-
-/// Whether an anchored write is an insert right where its anchor sits. A client's
-/// position for its anchor can drift across identical characters; the node's cannot.
-fn at_anchor(anchored: bool, anchor_pos: Option<usize>, ops: &[Change]) -> bool {
-    if !anchored {
-        return true;
-    }
-    let (start, inserts) = match ops.split_first() {
-        Some((
-            Change::Retain {
-                retain,
-                attributes: None,
-            },
-            rest,
-        )) => (*retain, rest),
-        _ => (0, ops),
-    };
-    !inserts.is_empty()
-        && inserts.iter().all(|op| matches!(op, Change::Insert { .. }))
-        && anchor_pos == Some(start)
-}
-
-/// Opaque identities cross JSON-RPC as one string, so a client never parses them.
-fn encode_token<T: calimero_sdk::borsh::BorshSerialize>(value: &T) -> app::Result<String> {
-    Ok(bs58::encode(calimero_sdk::borsh::to_vec(value)?).into_string())
-}
-
-fn decode_token<T: calimero_sdk::borsh::BorshDeserialize>(token: &str) -> app::Result<T> {
-    let bytes = bs58::decode(token).into_vec()?;
-    Ok(calimero_sdk::borsh::from_slice(&bytes)?)
-}
-
-/// One block as a line of the document digest.
-fn digest_block(view: &BlockView, out: &mut String) {
-    out.push_str(&view.kind);
-    out.push('/');
-    out.push_str(&view.depth.to_string());
-    for (key, value) in &view.attrs {
-        out.push_str(&format!("[{key}={value}]"));
-    }
-    for span in &view.spans {
-        let attrs: Vec<String> = span
-            .attributes
-            .iter()
-            .map(|(key, value)| format!("{key}={value}"))
-            .collect();
-        out.push_str(&format!("{{{}:{}}}", attrs.join(","), span.text));
-    }
-    out.push(';');
-}
-
-// ---------------------------------------------------------------------------
-// Stored model
-// ---------------------------------------------------------------------------
-
-/// Per-document record.
-///
-/// `#[app::mergeable]` supplies the deterministic re-key cascade `title`, `body`
-/// and `tags` need: a nested collection stored under a value type that is not a
-/// registered `RekeyTarget` keeps a per-replica random storage id and never
-/// converges.
-///
-/// `Searchable`: the node's full-text index holds each doc's title (weighted
-/// double) and body text, formatting left out; `search_docs` queries it.
-#[app::mergeable(id = "mero_docs::DocRecord")]
-#[derive(BorshSerialize, BorshDeserialize, AbiType, app::Searchable)]
-#[borsh(crate = "calimero_sdk::borsh")]
-pub struct DocRecord {
-    /// The title, plain text.
-    #[search(text, weight = 200)]
-    pub title: FugueText,
-    /// The ordered blocks of the document.
-    #[search(text)]
-    pub body: Body,
-    /// The document's tags. A set, so two members tagging the same doc at once both keep their tag.
-    pub tags: UnorderedSet<String>,
-    /// Whether the document is hidden from the default list.
-    pub archived: LwwRegister<bool>,
-    /// When the document last changed, in nanoseconds since the Unix epoch.
-    pub updated_at: LwwRegister<u64>,
-    /// Hex account id of the last editor, advanced with `updated_at`.
-    pub updated_by: LwwRegister<String>,
-}
-
-// Dispatched, so each register merges alone: as one last-write-wins record, an
-// edit undid a concurrent archive. The collections sync as their own entities.
-impl Mergeable for DocRecord {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        <LwwRegister<bool> as Mergeable>::merge(&mut self.archived, &other.archived)?;
-        <LwwRegister<u64> as Mergeable>::merge(&mut self.updated_at, &other.updated_at)?;
-        <LwwRegister<String> as Mergeable>::merge(&mut self.updated_by, &other.updated_by)?;
-        Ok(())
-    }
-}
-
-/// Flat projection of a `DocRecord` for list / get APIs. The body is read
-/// through `get_document` / `get_block_delta`, never flattened into a string.
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct DocDto {
-    /// The document id.
+/// One rendered block.
+#[derive(Serialize)]
+pub struct Block {
+    /// The block id every method takes as `block`. Opaque.
     pub id: String,
-    /// The title text.
-    pub title: String,
-    /// Keys only, sorted; the registry maps each to a name and colour.
-    pub tags: Vec<String>,
-    /// Whether the document is archived.
-    pub archived: bool,
-    /// When the document was created, in nanoseconds since the Unix epoch; 0 when the creator cannot be determined.
-    pub created_at: u64,
-    /// When the document last changed, in nanoseconds since the Unix epoch.
-    pub updated_at: u64,
-    /// Hex account of whoever created the doc, from its header's owner stamp.
-    pub created_by: String,
-    /// Hex account of whoever last changed the document.
-    pub updated_by: String,
-    /// Whether the caller may delete it: the same rule `delete_doc` enforces.
-    pub can_delete: bool,
+    pub kind: String,
+    pub depth: u8,
+    pub attrs: BTreeMap<String, String>,
+    pub spans: Vec<Span>,
+    /// The id of each character of `spans`, as runs.
+    pub ids: Vec<Run>,
 }
 
-fn has_tag(rec: &DocRecord, tag: &str) -> Result<bool, DriveError> {
-    rec.tags
-        .contains(tag)
-        .map_err(|e| DriveError::Invalid(format!("tags.contains: {e}")))
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
-}
-
-/// The same hex account id the registry keys members by, so the client can name it.
-fn caller_account_hex() -> String {
-    hex(&calimero_sdk::env::account_id())
-}
-
-/// `<kind>-<nonce>-<account hex>-<device tag>`, from nothing another member can write:
-/// the full account is checked on read, the random nonce and device keep one account's ids apart.
-fn mint_id(kind: &str) -> String {
-    let mut nonce = [0u8; 8];
-    storage_env::random_bytes(&mut nonce);
-    let (account, device) = (storage_env::account_id(), storage_env::device_id());
-    format!(
-        "{kind}-{}-{}-{}",
-        hex(&nonce),
-        hex(&account),
-        hex(&device[..4])
-    )
-}
-
-/// The hex account a `mint_id` id names.
-fn creator_in(id: &str) -> Option<&str> {
-    match id.split('-').collect::<Vec<_>>()[..] {
-        [_, _, account, _] => Some(account),
-        _ => None,
-    }
-}
-
-/// `at`, unless it is further ahead of the reader's clock than storage lets a write be.
-fn not_ahead(at: u64, now: u64) -> Option<u64> {
-    (at <= now.saturating_add(DRIFT_TOLERANCE_NANOS)).then_some(at)
-}
-
-/// Whether `id` names `owner`. Anyone may hold an owned entry at any key, so a
-/// reader trusts only the entry of the account its id names.
-fn id_names(id: &str, owner: &AccountId) -> bool {
-    creator_in(id) == Some(hex(owner.as_bytes()).as_str())
-}
-
-// ---------------------------------------------------------------------------
-// Comments - authored (identity-gated) annotations on a doc
-// ---------------------------------------------------------------------------
-
-/// A per-document comment, owned by its author. Stored in an `AuthoredMap`, so
-/// the runtime stamps the writer's identity and a per-entry schema version on
-/// insert; only the owner can re-sign it (the basis of the migration banner).
-///
-/// The value type is intentionally STABLE across schema versions - the v1→v2
-/// migration bumps the *state* schema and adds a top-level marker, never a
-/// field inside `Comment` (changing an authored value type is a content
-/// rewrite, a different and harder migration class).
-#[app::mergeable(id = "mero_drive::Comment")]
-#[derive(Clone, BorshSerialize, BorshDeserialize, AbiType, app::Indexed)]
-#[borsh(crate = "calimero_sdk::borsh")]
-pub struct Comment {
-    /// Which doc this annotates. Immutable after create. Indexed, so one doc's
-    /// comments are a seek rather than a walk of the folder's.
-    #[index]
-    pub doc_id: String,
-    /// The comment text.
-    pub body: LwwRegister<String>,
-    /// Immutable after create.
-    pub created_at: u64,
-}
-
-impl Mergeable for Comment {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        // doc_id / created_at are immutable and identical across replicas.
-        <LwwRegister<String> as Mergeable>::merge(&mut self.body, &other.body)?;
-        Ok(())
-    }
-}
-
-/// Flat projection of a `Comment` for list / get APIs.
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct CommentDto {
-    /// The comment id.
-    pub id: String,
-    /// Hex account of the comment's author, from its owner stamp.
-    pub author: String,
-    /// The document the comment is on.
-    pub doc_id: String,
-    /// The comment text.
-    pub body: String,
-    /// When the comment was added, in nanoseconds since the Unix epoch.
-    pub created_at: u64,
-}
-
-fn project_comment(id: &str, author: String, c: &Comment) -> CommentDto {
-    CommentDto {
-        id: id.to_string(),
-        author,
-        doc_id: c.doc_id.clone(),
-        body: c.body.get().clone(),
-        created_at: c.created_at,
-    }
-}
-
-// ---------------------------------------------------------------------------
-// State
-// ---------------------------------------------------------------------------
-
-/// `docs` + their `headers` + moderated `comments`.
-#[app::state(version = 1, emits = for<'a> Event<'a>)]
-pub struct DocsState {
-    /// doc_id → record. Public: collaborative editing. The id is
-    /// `doc-<nonce>-<account>-<device tag>` and assigned by `create_doc`.
-    docs: UnorderedMap<String, DocRecord>,
-    /// doc_id → created_at, filed by the doc's creator, whose owner stamp it
-    /// carries. A doc is listed while that entry lives; only its creator or a
-    /// moderator (the founder) may remove it, and every node enforces that.
-    headers: Moderated<UnorderedMap<String, u64>>,
-    /// comment_id → comment. Each is owned by its author, who alone edits it;
-    /// the folder's moderators (its founder, who created this context) may
-    /// also remove any. Every node enforces both.
-    comments: Moderated<IndexedMap<String, Comment>>,
-}
-
-// The folder's documents, searchable by title and body.
-app::search_indexes!(DocsState {
-    "docs" (version = 1) => docs,
-});
-
-/// Hits per `search_docs` page unless the caller asks for fewer.
-const DEFAULT_DOC_SEARCH_LIMIT: u32 = 20;
-/// The longest query `search_docs` takes, in bytes.
-const MAX_DOC_SEARCH_QUERY: usize = 256;
-
-/// One document `search_docs` found.
-#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
+/// One document `searchDocs` found.
+#[derive(Serialize)]
 pub struct DocSearchHit {
-    /// The document id.
     pub id: String,
-    /// The document title.
     pub title: String,
-    /// A fragment of the title or body around the match, the matched words
-    /// wrapped in `<b>`; empty when there is none to show.
+    /// The title or body around the first match, matched words in `<b>`.
     pub snippet: String,
-    /// How well the document matched; higher is better.
+    /// Higher is better.
     pub score: f32,
-    /// Whether the document is archived.
     pub archived: bool,
 }
 
-/// A page of `search_docs`.
-#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
+/// A page of `searchDocs`.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DocSearchPage {
-    /// The hits on this page, best match first.
     pub hits: Vec<DocSearchHit>,
-    /// Documents the index matched in all.
+    /// Documents matched in all, a decimal string on the wire.
+    #[serde(with = "calimero_app_sdk::json::u64_str")]
     pub total: u64,
-    /// Pass back as `cursor` for the next page; `None` on the last.
+    /// Pass back as `cursor` for the next page; `null` on the last.
     pub next_cursor: Option<u32>,
 }
 
+/// A comment as callers see it.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommentView {
+    pub id: String,
+    pub author: String,
+    pub doc_id: String,
+    pub body: String,
+    /// Unix milliseconds, a decimal string on the wire.
+    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    pub created_at: u64,
+}
+
+/// A workspace tag.
+#[derive(Serialize)]
+pub struct TagView {
+    pub key: String,
+    pub name: String,
+    pub color: String,
+    pub deleted: bool,
+}
+
+/// A saved view.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ViewView {
+    pub id: String,
+    pub name: String,
+    pub query: String,
+    pub created_by: String,
+}
+
+// ── state ────────────────────────────────────────────────────────────────────
+
+/// One instance: a folder's documents, or a workspace's registry.
+#[app::state(version = 1)]
+pub struct MeroDocs {
+    // ---- a folder's documents
+    /// doc id -> header.
+    docs: UnorderedMap<String, DocMeta>,
+    /// (doc, tag key): a document's tags.
+    doc_tags: Set<(String, String)>,
+    /// (doc, block id) -> the block.
+    blocks: UnorderedMap<(String, String), BlockRow>,
+    /// (doc, slot) -> the block holding that character of the order text.
+    slots: UnorderedMap<(String, u64), String>,
+    /// (doc, comment id) -> the comment.
+    comments: UnorderedMap<(String, String), CommentRow>,
+    /// comment id -> its document.
+    comment_docs: UnorderedMap<String, String>,
+    /// Comments on live documents.
+    comment_total: Counter,
+    // ---- a workspace's registry
+    /// Accounts the owner made managers.
+    managers: Set<String>,
+    /// tag key -> tag; deleted tags stay as tombstones.
+    tags: UnorderedMap<String, TagRow>,
+    /// view id -> view.
+    views: UnorderedMap<String, ViewRow>,
+}
+
+/// The text holding a document's title.
+fn title_of(doc: &str) -> RichText {
+    rich::text(format!("dt:{doc}"))
+}
+
+/// The text with one character per block, in document order.
+fn order_of(doc: &str) -> Text {
+    Text::new(format!("do:{doc}"))
+}
+
+/// The text holding one block's body.
+fn body_of(doc: &str, block: &str) -> RichText {
+    rich::text(format!("db:{doc}:{block}"))
+}
+
 #[app::logic]
-impl DocsState {
+impl MeroDocs {
+    /// An empty instance; the creator (`env::app_owner()`) is the registry's
+    /// owner, or the folder's moderator.
     #[app::init]
-    pub fn init() -> DocsState {
-        DocsState {
-            docs: UnorderedMap::new_with_field_name("docs:docs"),
-            headers: Moderated::new_with_field_name("docs:headers"),
-            comments: Moderated::new_with_field_name("docs:comments"),
-        }
+    pub fn init() -> app::Result<Self> {
+        Ok(Self::load())
     }
 
-    // ---- CRUD ------------------------------------------------------------
+    // ── documents ────────────────────────────────────────────────────────────
 
-    /// Creates a document with the given title and an empty body, and returns its id.
-    /// Add the first block with `insert_block`.
-    /// Not idempotent: a retry after a lost response creates a second document, so check `list_docs` before repeating.
-    ///
-    /// # Arguments
-    ///
-    /// * `title` - The document title, plain text, at most 1024 characters.
-    ///
-    /// # Returns
-    ///
-    /// The new document's id, an opaque string the other methods take as `doc` or `id`.
+    /// Creates a document with the given title (at most 1024 characters) and an
+    /// empty body, and returns its id. Not idempotent: a retry after a lost
+    /// response creates a second document. Emits `DocCreated`.
     pub fn create_doc(&mut self, title: String) -> app::Result<String> {
-        let id = self.create_doc_inner(title).map_err(DriveError::into_app)?;
-        app::emit!(Event::DocCreated { id: &id });
+        let me = account()?;
+        check_chars("title", &title, MAX_TITLE_LEN)?;
+        let id = fresh_id("doc");
+        let now = env::time_now();
+        let _ = self.docs.insert(
+            &id,
+            &DocMeta {
+                created_by: me.clone(),
+                created_at: now,
+                updated_at: now,
+                updated_by: me,
+                archived: false,
+            },
+        )?;
+        let _ids = title_of(&id).text_mut().insert(0, &title)?;
+        env::emit(Event::DocCreated { id: id.clone() }, Audience::All)?;
         Ok(id)
     }
 
-    pub(crate) fn create_doc_inner(&mut self, title: String) -> Result<String, DriveError> {
-        let id = mint_id("doc");
-
-        let now = storage_env::time_now();
-        ensure_len("title", title.chars().count(), MAX_TITLE_LEN)?;
-        let mut title_text = FugueText::new();
-        let _minted = title_text
-            .insert_str(0, &title)
-            .map_err(|e| DriveError::Invalid(format!("title.insert_str: {e}")))?;
-        let rec = DocRecord {
-            title: title_text,
-            body: Body::new(),
-            tags: UnorderedSet::new(),
-            archived: LwwRegister::new(false),
-            updated_at: LwwRegister::new(now),
-            updated_by: LwwRegister::new(caller_account_hex()),
-        };
-        self.headers
-            .insert(id.clone(), now)
-            .map_err(|e| DriveError::Conflict(format!("headers.insert: {e}")))?;
-        self.docs
-            .insert(id.clone(), rec)
-            .map_err(|e| DriveError::Invalid(format!("docs.insert: {e}")))?;
-        Ok(id)
+    /// One document's header. `NotFound` for a missing document.
+    #[app::view]
+    pub fn get_doc(&self, id: String) -> app::Result<DocView> {
+        let meta = self.meta(&id)?;
+        self.doc_view(&id, &meta)
     }
 
-    /// Returns one document's metadata: title, tag keys, archived flag, timestamps, creator, last editor and whether the caller may delete it.
-    /// The body is read with `get_document`.
-    /// Fails when the document does not exist.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The document id.
-    ///
-    /// # Returns
-    ///
-    /// The document's metadata row.
+    /// Every document of the folder (archived ones only with `includeArchived`),
+    /// in id order.
     #[app::view]
-    pub fn get_doc(&self, id: String) -> app::Result<DocDto> {
-        let (creator, created_at) = self
-            .header_of(&id)
-            .map_err(DriveError::into_app)?
-            .ok_or_else(|| DriveError::NotFound(id.clone()).into_app())?;
-        let rec = self.docs.get(&id)?;
-        let now = storage_env::time_now();
-        self.project(&id, &creator, created_at, rec.as_deref(), now)
-            .map_err(DriveError::into_app)
-    }
-
-    /// Lists the documents in this folder's context, in no guaranteed order; sort by `updated_at` for most recent first.
-    /// Each row carries metadata only; read a body with `get_document`.
-    ///
-    /// # Arguments
-    ///
-    /// * `include_archived` - `true` to include archived documents, `false` to leave them out.
-    ///
-    /// # Returns
-    ///
-    /// One metadata row per document.
-    #[app::view]
-    pub fn list_docs(&self, include_archived: bool) -> app::Result<Vec<DocDto>> {
-        let headers = self
-            .headers
-            .entries_with_owners()
-            .map_err(|e| DriveError::Internal(format!("headers.entries: {e}")).into_app())?;
-        let now = storage_env::time_now();
+    pub fn list_docs(&self, include_archived: bool) -> app::Result<Vec<DocView>> {
         let mut out = Vec::new();
-        for (creator, id, created_at) in headers {
-            if !id_names(&id, &creator) {
-                continue;
+        for (id, meta) in self.all_docs()? {
+            if include_archived || !meta.archived {
+                out.push(self.doc_view(&id, &meta)?);
             }
-            let rec = self.docs.get(&id)?;
-            if !include_archived && rec.as_deref().is_some_and(|r| *r.archived.get()) {
-                continue;
-            }
-            out.push(
-                self.project(&id, &creator, created_at, rec.as_deref(), now)
-                    .map_err(DriveError::into_app)?,
-            );
         }
         Ok(out)
     }
 
-    /// Searches this folder's documents by title and body, best match first.
-    /// Words match as typed or as a prefix of a longer word, and the title counts double.
-    /// Archived documents come back only with `include_archived`; deleted ones never do.
-    /// The index lives on each node and lags an edit by up to a second.
-    /// On a node running with search off this fails; read the documents with `list_docs` and `get_document` instead.
-    ///
-    /// # Arguments
-    ///
-    /// * `query` - The words to find.
-    /// * `include_archived` - `true` to include archived documents, `false` to leave them out.
-    /// * `cursor` - `next_cursor` from the previous page, or `null` for the first page.
-    /// * `limit` - The most hits per page, or `null` for 20; at most 100.
-    ///
-    /// # Returns
-    ///
-    /// One page of hits, the total match count, and the cursor for the next page.
+    /// Searches the folder's titles and bodies: every word of `query` must start
+    /// a word of the document (case-insensitive), a title match scoring double;
+    /// best match first. `cursor` is the previous page's `nextCursor`; `limit`
+    /// defaults to 20, at most 100. A blank query finds nothing; one over 256
+    /// bytes is `Invalid`. Reads every document's text: core `1.0.0-rc.7` has no
+    /// full-text index for components.
     #[app::view]
     pub fn search_docs(
         &self,
@@ -712,57 +366,62 @@ impl DocsState {
         limit: Option<u32>,
     ) -> app::Result<DocSearchPage> {
         if query.len() > MAX_DOC_SEARCH_QUERY {
-            app::bail!(
+            return Err(invalid(format!(
                 "Search query too long: {} bytes, limit is {MAX_DOC_SEARCH_QUERY}",
                 query.len()
-            );
+            )));
         }
+        let terms = search::terms(&query);
         let mut page = DocSearchPage {
             hits: Vec::new(),
             total: 0,
             next_cursor: None,
         };
-        if query.trim().is_empty() {
+        if terms.is_empty() {
             return Ok(page);
         }
-        let query = Query::prefix(query)
-            .cursor(cursor.unwrap_or(0))
-            .limit(limit.unwrap_or(DEFAULT_DOC_SEARCH_LIMIT));
-        let found = self
-            .docs
-            .search("docs", &query)
-            .map_err(|e| app::err!("{e}"))?;
-        for hit in found.hits {
-            let listed = self
-                .header_of(&hit.key)
-                .map_err(|e| app::err!("{e}"))?
-                .is_some();
-            let archived = *hit.value.archived.get();
-            if !listed || (archived && !include_archived) {
+        let mut found = Vec::new();
+        for (id, meta) in self.all_docs()? {
+            if meta.archived && !include_archived {
                 continue;
             }
-            page.hits.push(DocSearchHit {
-                title: hit.value.title.get_text()?,
-                id: hit.key,
-                snippet: hit.snippet,
-                score: hit.score,
-                archived,
-            });
+            let title = rich::plain(&rich::chars(&title_of(&id))?);
+            let body = self.body_text(&id)?;
+            if let Some(score) = search::score(&terms, &title, &body) {
+                let mut snippet = search::snippet(&terms, &body);
+                if snippet.is_empty() {
+                    snippet = search::snippet(&terms, &title);
+                }
+                found.push(DocSearchHit {
+                    id,
+                    title,
+                    snippet,
+                    score,
+                    archived: meta.archived,
+                });
+            }
         }
-        page.total = found.total;
-        page.next_cursor = found.next_cursor;
+        found.sort_by(|a, b| {
+            b.score
+                .total_cmp(&a.score)
+                .then_with(|| a.title.cmp(&b.title))
+                .then_with(|| a.id.cmp(&b.id))
+        });
+        let from = cursor.unwrap_or(0) as usize;
+        let take = limit
+            .unwrap_or(DEFAULT_DOC_SEARCH_LIMIT)
+            .min(MAX_DOC_SEARCH_LIMIT) as usize;
+        page.total = found.len() as u64;
+        if from + take < found.len() {
+            page.next_cursor = Some((from + take) as u32);
+        }
+        page.hits = found.into_iter().skip(from).take(take).collect();
         Ok(page)
     }
 
-    /// Renames a document by replacing its whole title.
-    /// Character-level title edits go through `title_apply_delta`.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The document id.
-    /// * `title` - The new title, plain text, at most 1024 characters.
+    /// Replaces the whole title. Emits `TitleChanged` and `DocEdited`.
     pub fn edit_doc(&mut self, id: String, title: String) -> app::Result<()> {
-        let len = self.read(&id)?.title.len()?;
+        let len = rich::chars(&title_of(&id))?.len() as u32;
         let ops = vec![
             Change::Delete { delete: len },
             Change::Insert {
@@ -771,87 +430,152 @@ impl DocsState {
             },
         ];
         let _undo = self.title_apply_delta(id.clone(), ops)?;
-        app::emit!(Event::DocEdited { id: &id });
+        env::emit(Event::DocEdited { id }, Audience::All)?;
         Ok(())
     }
 
-    // ---- title ------------------------------------------------------------
-
-    /// Returns a document's title text.
-    ///
-    /// # Arguments
-    ///
-    /// * `doc` - The document id.
-    ///
-    /// # Returns
-    ///
-    /// The title.
-    #[app::view]
-    pub fn get_title(&self, doc: String) -> app::Result<String> {
-        Ok(self.read(&doc)?.title.get_text()?)
+    /// Hides a document from the default list. Emits `DocArchived`.
+    pub fn archive_doc(&mut self, id: String) -> app::Result<()> {
+        self.set_archived(&id, true)?;
+        env::emit(Event::DocArchived { id }, Audience::All)?;
+        Ok(())
     }
 
-    /// Returns a document's title text together with its character ids, read at the same moment so they line up.
-    /// Pass the ids to `title_apply_delta_on` so an edit lands where the caller saw it.
-    ///
-    /// # Arguments
-    ///
-    /// * `doc` - The document id.
-    ///
-    /// # Returns
-    ///
-    /// The title text and the ids of its characters as runs.
+    /// Brings an archived document back. Emits `DocUnarchived`.
+    pub fn unarchive_doc(&mut self, id: String) -> app::Result<()> {
+        self.set_archived(&id, false)?;
+        env::emit(Event::DocUnarchived { id }, Audience::All)?;
+        Ok(())
+    }
+
+    /// Deletes a document with its title, body, tags and comments. Only its
+    /// creator or the folder's moderator (whoever created this instance) may
+    /// (`Forbidden`). Emits `DocDeleted`.
+    pub fn delete_doc(&mut self, id: String) -> app::Result<()> {
+        let meta = self.meta(&id)?;
+        if !may_delete(&meta.created_by)? {
+            return Err(forbidden(format!(
+                "only the creator of {id} or a moderator may delete it"
+            )));
+        }
+        let _ = self.docs.remove(&id)?;
+        title_of(&id).clear()?;
+        // Every block ever written, deleted ones included.
+        loop {
+            let page = self.blocks.prefix(
+                &[KeyPart::Str(id.clone())],
+                FindOpts::default().limit(BATCH),
+            )?;
+            if page.items.is_empty() {
+                break;
+            }
+            for ((doc, block), row) in page.items {
+                body_of(&doc, &block).clear()?;
+                let _ = self.slots.remove(&(doc.clone(), row.slot))?;
+                let _ = self.blocks.remove(&(doc, block))?;
+            }
+        }
+        loop {
+            let page = self.slots.prefix(
+                &[KeyPart::Str(id.clone())],
+                FindOpts::default().limit(BATCH),
+            )?;
+            if page.items.is_empty() {
+                break;
+            }
+            for (key, _) in page.items {
+                let _ = self.slots.remove(&key)?;
+            }
+        }
+        order_of(&id).clear()?;
+        loop {
+            let page = self.doc_tags.prefix(
+                &[KeyPart::Str(id.clone())],
+                FindOpts::default().limit(BATCH),
+            )?;
+            if page.items.is_empty() {
+                break;
+            }
+            for key in page.items {
+                let _ = self.doc_tags.remove(&key)?;
+            }
+        }
+        loop {
+            let page = self.comments.prefix(
+                &[KeyPart::Str(id.clone())],
+                FindOpts::default().limit(BATCH),
+            )?;
+            if page.items.is_empty() {
+                break;
+            }
+            for ((doc, comment), _) in page.items {
+                let _ = self.comment_docs.remove(&comment)?;
+                let _ = self.comments.remove(&(doc, comment))?;
+                self.comment_total.add(-1)?;
+            }
+        }
+        env::emit(Event::DocDeleted { id }, Audience::All)?;
+        Ok(())
+    }
+
+    /// Tags a document; a tag it has already is a no-op. `tag` is a key of
+    /// lowercase letters, digits and dashes (1 to 64), else `Invalid`. Leaves
+    /// `updatedBy`. Emits `DocTagsChanged`.
+    pub fn add_tag(&mut self, id: String, tag: String) -> app::Result<()> {
+        if !is_valid_tag_key(&tag) {
+            return Err(invalid("invalid tag key"));
+        }
+        let _meta = self.meta(&id)?;
+        let _new = self.doc_tags.insert(&(id.clone(), tag))?;
+        env::emit(Event::DocTagsChanged { id }, Audience::All)?;
+        Ok(())
+    }
+
+    /// Removes a tag; one the document does not have is a no-op. Emits
+    /// `DocTagsChanged`.
+    pub fn remove_tag(&mut self, id: String, tag: String) -> app::Result<()> {
+        let _meta = self.meta(&id)?;
+        let _was = self.doc_tags.remove(&(id.clone(), tag))?;
+        env::emit(Event::DocTagsChanged { id }, Audience::All)?;
+        Ok(())
+    }
+
+    // ── title ────────────────────────────────────────────────────────────────
+
+    /// The title text.
+    #[app::view]
+    pub fn get_title(&self, doc: String) -> app::Result<String> {
+        let _meta = self.meta(&doc)?;
+        Ok(rich::plain(&rich::chars(&title_of(&doc))?))
+    }
+
+    /// The title with the id of each of its characters.
     #[app::view]
     pub fn get_title_state(&self, doc: String) -> app::Result<TitleState> {
-        let title = &self.read(&doc)?.title;
+        let _meta = self.meta(&doc)?;
+        let chars = rich::chars(&title_of(&doc))?;
         Ok(TitleState {
-            text: title.get_text()?,
-            ids: runs(title.visible_ids()?),
+            text: rich::plain(&chars),
+            ids: rich::runs(&chars)?,
         })
     }
 
-    /// Applies one editing transaction to a document's title and returns a token that `title_undo` takes.
-    /// `ops` is a list of steps that walk the text as it was before the change: `{"retain": 3, "attributes": null}` keeps three characters, `{"insert": "text", "attributes": null}` adds text, `{"delete": 2}` removes two.
-    /// Text after the last step is kept.
-    /// The title carries no formatting, so a step with non-null `attributes` is refused.
-    /// A transaction that leaves the title longer than 1024 characters is refused.
-    /// Positions count Unicode scalar values, not bytes or UTF-16 units.
-    ///
-    /// # Arguments
-    ///
-    /// * `doc` - The document id.
-    /// * `ops` - The steps of the transaction, in order.
-    ///
-    /// # Returns
-    ///
-    /// An opaque undo token.
+    /// Applies Quill steps (no `attributes`: the title is plain) to the title;
+    /// returns the undo token for `titleUndo`. At most 1024 characters after.
+    /// Emits `TitleChanged`.
     pub fn title_apply_delta(&mut self, doc: String, ops: Vec<Change>) -> app::Result<String> {
-        let title = &mut self.write(&doc)?.title;
-        ensure_len("title", len_after(title.len()?, &ops), MAX_TITLE_LEN)
-            .map_err(DriveError::into_app)?;
-        let ops: Vec<TextOp> = ops
-            .into_iter()
-            .map(Change::into_text_op)
-            .collect::<app::Result<_>>()?;
-        let steps = title.apply_delta(&ops)?;
-        app::emit!(Event::TitleChanged { doc: &doc });
-        encode_token(&steps)
+        self.touch(&doc)?;
+        let mut title = title_of(&doc);
+        let current = rich::chars(&title)?.len();
+        check_len("title", rich::len_after(current, &ops), MAX_TITLE_LEN)?;
+        let token = rich::apply_delta(&mut title, &ops, true)?;
+        env::emit(Event::TitleChanged { doc }, Audience::All)?;
+        Ok(token)
     }
 
-    /// Like `title_apply_delta`, but only applies when the title is still exactly `base`, because a position counted in any other text names the wrong place.
-    /// When `anchor` is given the write must also be an insert right where that anchor sits.
-    /// On refusal nothing is written: `applied` is `false` and `text` is the current title to rebase onto.
-    ///
-    /// # Arguments
-    ///
-    /// * `doc` - The document id.
-    /// * `base` - The full title text the steps were computed against.
-    /// * `ops` - The steps of the transaction, as for `title_apply_delta`.
-    /// * `anchor` - Optional cursor token from `title_anchor_at`; `null` for an unanchored write.
-    ///
-    /// # Returns
-    ///
-    /// Whether the write applied, the undo token, the resulting title, and an anchor at the end of the edit.
+    /// `titleApplyDelta`, only if the title is still `base` and, with an
+    /// `anchor`, the steps are an insert right at it; otherwise nothing is
+    /// written and the current title comes back to rebase onto.
     pub fn title_apply_delta_on(
         &mut self,
         doc: String,
@@ -859,116 +583,74 @@ impl DocsState {
         ops: Vec<Change>,
         anchor: Option<String>,
     ) -> app::Result<TitleApplied> {
-        let title = &self.read(&doc)?.title;
-        let current = title.get_text()?;
+        let _meta = self.meta(&doc)?;
+        let title = title_of(&doc);
+        let chars = rich::chars(&title)?;
+        let current = rich::plain(&chars);
         let anchor_pos = match &anchor {
-            Some(token) => title.resolve(&decode_token(token)?).ok(),
+            Some(token) => rich::resolve(&title, &chars, std::slice::from_ref(token))?
+                .pop()
+                .flatten(),
             None => None,
         };
-        if current != base || !at_anchor(anchor.is_some(), anchor_pos, &ops) {
+        if current != base || !rich::at_anchor(anchor.is_some(), anchor_pos, &ops) {
             return Ok(TitleApplied {
                 applied: false,
                 token: None,
                 text: current,
                 anchor: anchor_pos.and(anchor),
                 anchor_pos,
-                ids: runs(title.visible_ids()?),
+                ids: rich::runs(&chars)?,
             });
         }
-        let end = edit_end(&ops);
+        let end = rich::edit_end(&ops) as u32;
         let token = self.title_apply_delta(doc.clone(), ops)?;
-        let title = &self.read(&doc)?.title;
+        let chars = rich::chars(&title_of(&doc))?;
         Ok(TitleApplied {
             applied: true,
             token: Some(token),
-            text: title.get_text()?,
-            anchor: Some(encode_token(&title.anchor_at(end, Bias::After)?)?),
+            text: rich::plain(&chars),
+            anchor: Some(rich::anchor_at(&chars, end, false)?),
             anchor_pos: Some(end),
-            ids: runs(title.visible_ids()?),
+            ids: rich::runs(&chars)?,
         })
     }
 
-    /// Takes a whole title transaction back and returns a token that redoes it.
-    ///
-    /// # Arguments
-    ///
-    /// * `doc` - The document id.
-    /// * `token` - The token `title_apply_delta` (or a previous undo) returned.
-    ///
-    /// # Returns
-    ///
-    /// An opaque token that redoes the transaction.
+    /// Applies an undo token from `titleApplyDelta` (or `titleUndo`); returns
+    /// the token that undoes this. Emits `TitleChanged`.
     pub fn title_undo(&mut self, doc: String, token: String) -> app::Result<String> {
-        let steps: Vec<Undo> = decode_token(&token)?;
-        let redo = self.write(&doc)?.title.undo(&steps)?;
-        app::emit!(Event::TitleChanged { doc: &doc });
-        encode_token(&redo)
+        let edit = rich::Edit::from_token(&token)?;
+        self.touch(&doc)?;
+        let redo = rich::apply_edit(&mut title_of(&doc), &edit)?;
+        env::emit(Event::TitleChanged { doc }, Audience::All)?;
+        Ok(redo)
     }
 
-    /// Returns a cursor for the gap at a title position, as an opaque token that survives concurrent edits and that any member can resolve.
-    /// Positions count Unicode scalar values, not bytes or UTF-16 units.
-    ///
-    /// # Arguments
-    ///
-    /// * `doc` - The document id.
-    /// * `position` - The gap, counted from 0 at the start of the title.
-    /// * `before` - Which side the anchor leans toward when text is inserted exactly at the gap.
-    ///
-    /// # Returns
-    ///
-    /// An opaque anchor token.
+    /// An anchor for the gap at `position` of the title, stuck to the character
+    /// after it (`before`) or before it.
     #[app::view]
-    pub fn title_anchor_at(
-        &self,
-        doc: String,
-        position: usize,
-        before: bool,
-    ) -> app::Result<String> {
-        let bias = if before { Bias::Before } else { Bias::After };
-        encode_token(&self.read(&doc)?.title.anchor_at(position, bias)?)
+    pub fn title_anchor_at(&self, doc: String, position: u32, before: bool) -> app::Result<String> {
+        let _meta = self.meta(&doc)?;
+        rich::anchor_at(&rich::chars(&title_of(&doc))?, position, before)
     }
 
-    /// Returns where anchors currently sit in this node's copy of the title.
-    ///
-    /// # Arguments
-    ///
-    /// * `doc` - The document id.
-    /// * `anchors` - Tokens from `title_anchor_at`.
-    ///
-    /// # Returns
-    ///
-    /// One position per anchor, in order; `null` for an anchor this node cannot place yet.
-    // One tree rebuild per anchor; batch if cursor lists grow past a few peers.
+    /// Where each title anchor sits now; `null` for an unknown one.
     #[app::view]
     pub fn title_resolve(
         &self,
         doc: String,
         anchors: Vec<String>,
-    ) -> app::Result<Vec<Option<usize>>> {
-        let record = self.read(&doc)?;
-        anchors
-            .iter()
-            .map(|token| Ok(record.title.resolve(&decode_token::<Anchor>(token)?).ok()))
-            .collect()
+    ) -> app::Result<Vec<Option<u32>>> {
+        let _meta = self.meta(&doc)?;
+        let title = title_of(&doc);
+        let chars = rich::chars(&title)?;
+        rich::resolve(&title, &chars, &anchors)
     }
 
-    // ---- body structure ---------------------------------------------------
+    // ── body structure ───────────────────────────────────────────────────────
 
-    /// Inserts an empty block into a document's body and returns its id.
-    /// The body is an ordered list of blocks; each has a `kind`, a `depth` and its own text.
-    /// Fill the block with `apply_delta`.
-    /// Not idempotent: a retry after a lost response adds a second block, so check `list_blocks` before repeating.
-    ///
-    /// # Arguments
-    ///
-    /// * `doc` - The document id.
-    /// * `after` - The id of the block to insert after; `null` inserts at the top.
-    /// * `kind` - The block type, an opaque string stored as given. The Mero Docs editor uses `paragraph`, `heading`, `bulletListItem` and `image`.
-    /// * `depth` - Nesting depth, 0 for top level, 1 for a child of the block above, and so on.
-    ///
-    /// # Returns
-    ///
-    /// The new block's id.
+    /// Inserts an empty block of `kind` at `depth` after the block `after`
+    /// (`null`: first), and returns its id. Emits `BlockInserted`.
     pub fn insert_block(
         &mut self,
         doc: String,
@@ -976,98 +658,70 @@ impl DocsState {
         kind: String,
         depth: u8,
     ) -> app::Result<String> {
-        let after = after.as_deref().map(decode_token).transpose()?;
-        let block = self.write(&doc)?.body.insert_block(after, &kind, depth)?;
-        let block = encode_token(&block)?;
-        app::emit!(Event::BlockInserted {
-            doc: &doc,
-            block: &block
-        });
+        self.touch(&doc)?;
+        let block = self.new_block(&doc, after.as_deref(), kind, depth, BTreeMap::new())?;
+        env::emit(
+            Event::BlockInserted {
+                doc,
+                block: block.clone(),
+            },
+            Audience::All,
+        )?;
         Ok(block)
     }
 
-    /// Removes a block from a document's body.
-    ///
-    /// # Arguments
-    ///
-    /// * `doc` - The document id.
-    /// * `block` - The block id.
-    #[app::destructive]
+    /// Takes a block out of the document; its text is kept, so ids that name
+    /// it still resolve. Emits `BlockDeleted`.
     pub fn delete_block(&mut self, doc: String, block: String) -> app::Result<()> {
-        let id = decode_token(&block)?;
-        let _was = self.write(&doc)?.body.delete_block(id)?;
-        app::emit!(Event::BlockDeleted {
-            doc: &doc,
-            block: &block
-        });
+        self.touch(&doc)?;
+        let mut row = self.block_row(&doc, &block)?;
+        if !row.deleted {
+            let _gone = order_of(&doc).delete_ids(&[row.slot])?;
+            row.deleted = true;
+            let _ = self.blocks.insert(&(doc.clone(), block.clone()), &row)?;
+        }
+        env::emit(Event::BlockDeleted { doc, block }, Audience::All)?;
         Ok(())
     }
 
-    /// Moves a block to just after another block.
-    ///
-    /// # Arguments
-    ///
-    /// * `doc` - The document id.
-    /// * `block` - The block to move.
-    /// * `after` - The block to move it after; `null` moves it to the top.
+    /// Moves a block after `after` (`null`: first). Emits `BlockMoved`.
     pub fn move_block(
         &mut self,
         doc: String,
         block: String,
         after: Option<String>,
     ) -> app::Result<()> {
-        let id = decode_token(&block)?;
-        let after = after.as_deref().map(decode_token).transpose()?;
-        self.write(&doc)?.body.move_block(id, after)?;
-        app::emit!(Event::BlockMoved {
-            doc: &doc,
-            block: &block
-        });
+        self.touch(&doc)?;
+        let mut row = self.block_row(&doc, &block)?;
+        let after_slot = match &after {
+            Some(a) => Some(self.block_row(&doc, a)?.slot),
+            None => None,
+        };
+        let mut order = order_of(&doc);
+        if !row.deleted {
+            let _gone = order.delete_ids(&[row.slot])?;
+        }
+        let _ = self.slots.remove(&(doc.clone(), row.slot))?;
+        let slot = order.insert_after(after_slot, SLOT)?[0];
+        let _ = self.slots.insert(&(doc.clone(), slot), &block)?;
+        row.slot = slot;
+        row.deleted = false;
+        let _ = self.blocks.insert(&(doc.clone(), block.clone()), &row)?;
+        env::emit(Event::BlockMoved { doc, block }, Audience::All)?;
         Ok(())
     }
 
-    /// Changes a block's type.
-    ///
-    /// # Arguments
-    ///
-    /// * `doc` - The document id.
-    /// * `block` - The block id.
-    /// * `kind` - The new block type, as for `insert_block`.
+    /// Sets a block's type (BlockNote's own string). Emits `BlockChanged`.
     pub fn set_kind(&mut self, doc: String, block: String, kind: String) -> app::Result<()> {
-        let id = decode_token(&block)?;
-        self.write(&doc)?.body.set_kind(id, &kind)?;
-        app::emit!(Event::BlockChanged {
-            doc: &doc,
-            block: &block
-        });
-        Ok(())
+        self.change_block(doc, block, |row| row.kind = kind)
     }
 
-    /// Changes a block's nesting depth.
-    ///
-    /// # Arguments
-    ///
-    /// * `doc` - The document id.
-    /// * `block` - The block id.
-    /// * `depth` - The new depth, 0 for top level.
+    /// Sets a block's nesting depth. Emits `BlockChanged`.
     pub fn set_depth(&mut self, doc: String, block: String, depth: u8) -> app::Result<()> {
-        let id = decode_token(&block)?;
-        self.write(&doc)?.body.set_depth(id, depth)?;
-        app::emit!(Event::BlockChanged {
-            doc: &doc,
-            block: &block
-        });
-        Ok(())
+        self.change_block(doc, block, |row| row.depth = depth)
     }
 
-    /// Sets one attribute on a block, such as `level` on a heading, or removes it.
-    ///
-    /// # Arguments
-    ///
-    /// * `doc` - The document id.
-    /// * `block` - The block id.
-    /// * `key` - The attribute name.
-    /// * `value` - The attribute value as a string; `null` removes the attribute.
+    /// Sets a block attribute, or removes it with `null`. Emits `BlockChanged`.
     pub fn set_attr(
         &mut self,
         doc: String,
@@ -1075,122 +729,112 @@ impl DocsState {
         key: String,
         value: Option<String>,
     ) -> app::Result<()> {
-        let id = decode_token(&block)?;
-        self.write(&doc)?
-            .body
-            .set_attr(id, &key, value.as_deref())?;
-        app::emit!(Event::BlockChanged {
-            doc: &doc,
-            block: &block
-        });
-        Ok(())
+        self.change_block(doc, block, |row| {
+            let _old = match value {
+                Some(v) => row.attrs.insert(key, v),
+                None => row.attrs.remove(&key),
+            };
+        })
     }
 
-    /// Splits a block in two at a text position and returns the new block, which holds the text after the split and follows the original.
-    /// Not idempotent: a retry after a lost response splits again, so read the blocks before repeating.
-    /// Positions count Unicode scalar values, not bytes or UTF-16 units.
-    ///
-    /// # Arguments
-    ///
-    /// * `doc` - The document id.
-    /// * `block` - The block to split.
-    /// * `at` - The position to split at; the text from here on moves to the new block.
-    ///
-    /// # Returns
-    ///
-    /// The new block's id.
-    pub fn split_block(&mut self, doc: String, block: String, at: usize) -> app::Result<String> {
-        let id = decode_token(&block)?;
-        let new = self.write(&doc)?.body.split_block(id, at)?;
-        let new = encode_token(&new)?;
-        app::emit!(Event::BlockInserted {
-            doc: &doc,
-            block: &new
-        });
-        app::emit!(Event::BlockChanged {
-            doc: &doc,
-            block: &block
-        });
+    /// Splits a block at character `at`: the text from `at` on moves, with its
+    /// formatting, to a new block of the same type, depth and attributes right
+    /// after it, whose id is returned. The head keeps the block's id. Emits
+    /// `BlockInserted` and `BlockChanged`.
+    pub fn split_block(&mut self, doc: String, block: String, at: u32) -> app::Result<String> {
+        self.touch(&doc)?;
+        let row = self.block_row(&doc, &block)?;
+        let mut head = body_of(&doc, &block);
+        let chars = rich::chars(&head)?;
+        let at = at as usize;
+        if at > chars.len() {
+            return Err(invalid(format!(
+                "split at {at} is past the end ({})",
+                chars.len()
+            )));
+        }
+        let new = self.new_block(&doc, Some(&block), row.kind, row.depth, row.attrs)?;
+        let tail = &chars[at..];
+        if !tail.is_empty() {
+            rich::append(&mut body_of(&doc, &new), tail)?;
+            let ids: Vec<u64> = tail.iter().map(|c| c.id).collect();
+            let _gone = head.text_mut().delete_ids(&ids)?;
+        }
+        env::emit(
+            Event::BlockInserted {
+                doc: doc.clone(),
+                block: new.clone(),
+            },
+            Audience::All,
+        )?;
+        env::emit(Event::BlockChanged { doc, block }, Audience::All)?;
         Ok(new)
     }
 
-    /// Appends the text of `second` to `first` and removes `second`.
-    /// Refused when the joined text would be longer than 100000 characters.
-    ///
-    /// # Arguments
-    ///
-    /// * `doc` - The document id.
-    /// * `first` - The block that keeps its place and receives the text.
-    /// * `second` - The block whose text is appended and which is then removed.
+    /// Appends `second`'s text (with its formatting) to `first` and takes
+    /// `second` out of the document. At most 100,000 characters joined. Emits
+    /// `BlockChanged` and `BlockDeleted`.
     pub fn merge_blocks(&mut self, doc: String, first: String, second: String) -> app::Result<()> {
-        let (head, tail): (BlockId, BlockId) = (decode_token(&first)?, decode_token(&second)?);
-        let body = &mut self.write(&doc)?.body;
-        let joined = body.block_body(head)?.len()? + body.block_body(tail)?.len()?;
-        ensure_len("block text", joined, MAX_BLOCK_TEXT_LEN).map_err(DriveError::into_app)?;
-        body.merge_blocks(head, tail)?;
-        app::emit!(Event::BlockChanged {
-            doc: &doc,
-            block: &first
-        });
-        app::emit!(Event::BlockDeleted {
-            doc: &doc,
-            block: &second
-        });
+        if first == second {
+            return Err(invalid("a block cannot merge into itself"));
+        }
+        self.touch(&doc)?;
+        let _head = self.block_row(&doc, &first)?;
+        let mut tail_row = self.block_row(&doc, &second)?;
+        let mut head = body_of(&doc, &first);
+        let tail = rich::chars(&body_of(&doc, &second))?;
+        let joined = rich::chars(&head)?.len() + tail.len();
+        check_len("block text", joined, MAX_BLOCK_TEXT_LEN)?;
+        rich::append(&mut head, &tail)?;
+        if !tail_row.deleted {
+            let _gone = order_of(&doc).delete_ids(&[tail_row.slot])?;
+            tail_row.deleted = true;
+            let _ = self
+                .blocks
+                .insert(&(doc.clone(), second.clone()), &tail_row)?;
+        }
+        env::emit(
+            Event::BlockChanged {
+                doc: doc.clone(),
+                block: first,
+            },
+            Audience::All,
+        )?;
+        env::emit(Event::BlockDeleted { doc, block: second }, Audience::All)?;
         Ok(())
     }
 
-    // ---- body text --------------------------------------------------------
+    // ── body text ────────────────────────────────────────────────────────────
 
-    /// Applies one editing transaction to a block's text, formatting included, and returns a token that `undo` takes.
-    /// `ops` is a list of steps that walk the text as it was before the change: `{"retain": 3, "attributes": null}` keeps three characters, `{"insert": "text", "attributes": null}` adds text, `{"delete": 2}` removes two.
-    /// Text after the last step is kept.
-    /// A `retain` or `insert` step may carry `attributes` to set formatting, for example `{"insert": "hi", "attributes": {"bold": "true"}}`; to clear formatting from a range use `mark` with a `null` value.
-    /// Positions count Unicode scalar values, not bytes or UTF-16 units.
-    /// A transaction that leaves the block's text longer than 100000 characters is refused.
-    ///
-    /// # Arguments
-    ///
-    /// * `doc` - The document id.
-    /// * `block` - The block id.
-    /// * `ops` - The steps of the transaction, in order.
-    ///
-    /// # Returns
-    ///
-    /// An opaque undo token.
+    /// Applies Quill steps to a block's text; returns the undo token for
+    /// `undo`. An insert's `attributes` are its complete formatting; a retain's
+    /// change only the keys they name. Keys outside the schema (`bold`,
+    /// `italic`, `underline`, `strike`, `textColor`, `backgroundColor`, `link`,
+    /// `code`, `comment`) are `Invalid`. At most 100,000 characters after.
+    /// Emits `TextChanged`.
     pub fn apply_delta(
         &mut self,
         doc: String,
         block: String,
         ops: Vec<Change>,
     ) -> app::Result<String> {
-        let id = decode_token(&block)?;
-        let body = &mut self.write(&doc)?.body;
-        let resulting = len_after(body.block_body(id)?.len()?, &ops);
-        ensure_len("block text", resulting, MAX_BLOCK_TEXT_LEN).map_err(DriveError::into_app)?;
-        let ops: Vec<DeltaOp> = ops.into_iter().map(Into::into).collect();
-        let undo = body.apply_delta(id, &ops)?;
-        app::emit!(Event::TextChanged {
-            doc: &doc,
-            block: &block
-        });
-        encode_token(&undo)
+        self.touch(&doc)?;
+        let _row = self.block_row(&doc, &block)?;
+        let mut body = body_of(&doc, &block);
+        let current = rich::chars(&body)?.len();
+        check_len(
+            "block text",
+            rich::len_after(current, &ops),
+            MAX_BLOCK_TEXT_LEN,
+        )?;
+        let token = rich::apply_delta(&mut body, &ops, false)?;
+        env::emit(Event::TextChanged { doc, block }, Audience::All)?;
+        Ok(token)
     }
 
-    /// Like `apply_delta`, but only applies when the block's text is still exactly `base`, because a position counted in any other text names the wrong place.
-    /// When `anchor` is given the write must also be an insert right where that anchor sits.
-    /// On refusal nothing is written: `applied` is `false` and `spans` are the block's current spans to rebase onto.
-    ///
-    /// # Arguments
-    ///
-    /// * `doc` - The document id.
-    /// * `block` - The block id.
-    /// * `base` - The block's full plain text the steps were computed against.
-    /// * `ops` - The steps of the transaction, as for `apply_delta`.
-    /// * `anchor` - Optional cursor token from `anchor_at`; `null` for an unanchored write.
-    ///
-    /// # Returns
-    ///
-    /// Whether the write applied, the undo token, the block's spans afterwards, and an anchor at the end of the edit.
+    /// `applyDelta`, only if the block's text is still `base` and, with an
+    /// `anchor`, the steps are an insert right at it; otherwise nothing is
+    /// written and the block's current spans and ids come back to rebase onto.
     pub fn apply_delta_on(
         &mut self,
         doc: String,
@@ -1199,2509 +843,812 @@ impl DocsState {
         ops: Vec<Change>,
         anchor: Option<String>,
     ) -> app::Result<Applied> {
-        let id: BlockId = decode_token(&block)?;
-        let body = self.read(&doc)?.body.block_body(id)?;
-        // The spans are the text as well, so one read serves the guard and a refusal.
-        let spans = body.to_delta()?;
+        let _meta = self.meta(&doc)?;
+        let _row = self.block_row(&doc, &block)?;
+        let body = body_of(&doc, &block);
+        let chars = rich::chars(&body)?;
         let anchor_pos = match &anchor {
-            Some(token) => body.resolve_many(&[decode_token(token)?])?.pop().flatten(),
+            Some(token) => rich::resolve(&body, &chars, std::slice::from_ref(token))?
+                .pop()
+                .flatten(),
             None => None,
         };
-        let current: String = spans.iter().map(|span| span.text.as_str()).collect();
-        if current != base || !at_anchor(anchor.is_some(), anchor_pos, &ops) {
+        if rich::plain(&chars) != base || !rich::at_anchor(anchor.is_some(), anchor_pos, &ops) {
             return Ok(Applied {
                 applied: false,
                 token: None,
-                spans,
+                spans: rich::spans(&chars),
                 anchor: anchor_pos.and(anchor),
                 anchor_pos,
-                ids: runs(body.visible_ids()?),
+                ids: rich::runs(&chars)?,
             });
         }
-        let end = edit_end(&ops);
-        let token = self.apply_delta(doc.clone(), block, ops)?;
-        let body = self.read(&doc)?.body.block_body(id)?;
+        let end = rich::edit_end(&ops) as u32;
+        let token = self.apply_delta(doc.clone(), block.clone(), ops)?;
+        let chars = rich::chars(&body_of(&doc, &block))?;
         Ok(Applied {
             applied: true,
             token: Some(token),
-            spans: body.to_delta()?,
-            anchor: Some(encode_token(&body.anchor_at(end, Bias::After)?)?),
+            spans: rich::spans(&chars),
+            anchor: Some(rich::anchor_at(&chars, end, false)?),
             anchor_pos: Some(end),
-            ids: runs(body.visible_ids()?),
+            ids: rich::runs(&chars)?,
         })
     }
 
-    /// Takes a whole text transaction back and returns a token that redoes it.
-    ///
-    /// # Arguments
-    ///
-    /// * `doc` - The document id.
-    /// * `block` - The block the transaction was applied to.
-    /// * `token` - The token `apply_delta` (or a previous undo) returned.
-    ///
-    /// # Returns
-    ///
-    /// An opaque token that redoes the transaction.
+    /// Applies an undo token from `applyDelta` (or `undo`) to the block;
+    /// returns the token that undoes this. Emits `TextChanged`.
     pub fn undo(&mut self, doc: String, block: String, token: String) -> app::Result<String> {
-        let id: BlockId = decode_token(&block)?;
-        let undo: DeltaUndo = decode_token(&token)?;
-        let redo = self.write(&doc)?.body.apply_undo(id, &undo)?;
-        app::emit!(Event::TextChanged {
-            doc: &doc,
-            block: &block
-        });
-        encode_token(&redo)
+        let edit = rich::Edit::from_token(&token)?;
+        self.touch(&doc)?;
+        let _row = self.block_row(&doc, &block)?;
+        let redo = rich::apply_edit(&mut body_of(&doc, &block), &edit)?;
+        env::emit(Event::TextChanged { doc, block }, Audience::All)?;
+        Ok(redo)
     }
 
-    /// Sets one formatting key over a range of a block's text, or clears it.
-    /// Declared keys: `bold`, `italic`, `underline`, `strike`, `code`, `link`, `comment`, `textColor` and `backgroundColor`; any other key is refused.
-    /// Positions count Unicode scalar values, not bytes or UTF-16 units.
-    ///
-    /// # Arguments
-    ///
-    /// * `doc` - The document id.
-    /// * `block` - The block id.
-    /// * `start` - First position of the range, inclusive.
-    /// * `end` - Position after the range, exclusive.
-    /// * `key` - The formatting key.
-    /// * `value` - The value, for example `"true"` for `bold` or a URL for `link`; `null` clears the key.
-    ///
-    /// # Returns
-    ///
-    /// The id of the new mark, or `null` when the range already had that value and nothing was written.
+    /// Formats the characters `[start, end)` of a block: `key` to `value`, or
+    /// removes it with `null`. Returns the mark's id (`null` for an empty
+    /// range). Emits `MarkApplied`.
     pub fn mark(
         &mut self,
         doc: String,
         block: String,
-        start: usize,
-        end: usize,
+        start: u32,
+        end: u32,
         key: String,
         value: Option<String>,
     ) -> app::Result<Option<String>> {
-        let id = decode_token(&block)?;
-        let minted = self
-            .write(&doc)?
-            .body
-            .mark(id, start, end, &key, value.as_deref())?;
-        self.emit_mark(&doc, &block, minted)
+        self.touch(&doc)?;
+        let _row = self.block_row(&doc, &block)?;
+        let minted = rich::mark(
+            &mut body_of(&doc, &block),
+            start,
+            end,
+            &key,
+            value.as_deref(),
+        )?;
+        if let Some(mark_id) = &minted {
+            env::emit(
+                Event::MarkApplied {
+                    doc,
+                    block,
+                    mark_id: mark_id.clone(),
+                },
+                Audience::All,
+            )?;
+        }
+        Ok(minted)
     }
 
-    // ---- body reads -------------------------------------------------------
+    // ── body reads ───────────────────────────────────────────────────────────
 
-    /// Returns a document's body as an ordered list of blocks, each with its id, kind, depth, attributes and formatted text spans.
-    ///
-    /// # Arguments
-    ///
-    /// * `doc` - The document id.
-    ///
-    /// # Returns
-    ///
-    /// The blocks in document order.
+    /// Every block of the document, in order.
     #[app::view]
     pub fn get_document(&self, doc: String) -> app::Result<Vec<Block>> {
-        let body = &self.read(&doc)?.body;
-        body.blocks()?
+        let _meta = self.meta(&doc)?;
+        self.ordered_blocks(&doc)?
             .into_iter()
-            .map(|view| Block::new(view, body))
+            .map(|(id, row)| block_view(&doc, id, row))
             .collect()
     }
 
-    /// Returns one block with its kind, depth, attributes and formatted text spans.
-    ///
-    /// # Arguments
-    ///
-    /// * `doc` - The document id.
-    /// * `block` - The block id.
-    ///
-    /// # Returns
-    ///
-    /// The block, or `null` when there is no such block.
+    /// One block, or `null` when it is not in the document.
     #[app::view]
     pub fn get_block(&self, doc: String, block: String) -> app::Result<Option<Block>> {
-        let body = &self.read(&doc)?.body;
-        body.block(decode_token(&block)?)?
-            .map(|view| Block::new(view, body))
-            .transpose()
+        let _meta = self.meta(&doc)?;
+        match self.blocks.get(&(doc.clone(), block.clone()))? {
+            Some(row) if !row.deleted => Ok(Some(block_view(&doc, block, row)?)),
+            _ => Ok(None),
+        }
     }
 
-    /// Returns one block's text as formatted spans, the read an editor binding does on every keystroke.
-    ///
-    /// # Arguments
-    ///
-    /// * `doc` - The document id.
-    /// * `block` - The block id.
-    ///
-    /// # Returns
-    ///
-    /// The spans in order; each has `text` and, when formatted, `attributes`.
+    /// A block's text as runs of equally formatted characters.
     #[app::view]
     pub fn get_block_delta(&self, doc: String, block: String) -> app::Result<Vec<Span>> {
-        Ok(self.read(&doc)?.body.block_delta(decode_token(&block)?)?)
+        let _row = self.block_row(&doc, &block)?;
+        Ok(rich::spans(&rich::chars(&body_of(&doc, &block))?))
     }
 
-    /// Returns one block's plain text with formatting stripped.
-    ///
-    /// # Arguments
-    ///
-    /// * `doc` - The document id.
-    /// * `block` - The block id.
-    ///
-    /// # Returns
-    ///
-    /// The block's text.
+    /// A block's plain text.
     #[app::view]
     pub fn get_text(&self, doc: String, block: String) -> app::Result<String> {
-        Ok(self
-            .read(&doc)?
-            .body
-            .block_body(decode_token(&block)?)?
-            .get_text()?)
+        let _row = self.block_row(&doc, &block)?;
+        Ok(rich::plain(&rich::chars(&body_of(&doc, &block))?))
     }
 
-    /// Returns the ids of a document's blocks in document order.
-    ///
-    /// # Arguments
-    ///
-    /// * `doc` - The document id.
-    ///
-    /// # Returns
-    ///
-    /// The block ids.
+    /// The ids of the document's blocks, in order.
     #[app::view]
     pub fn list_blocks(&self, doc: String) -> app::Result<Vec<String>> {
-        self.read(&doc)?
-            .body
-            .blocks()?
-            .iter()
-            .map(|view| encode_token(&view.id))
-            .collect()
+        let _meta = self.meta(&doc)?;
+        Ok(self
+            .ordered_blocks(&doc)?
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect())
     }
 
-    /// Returns the whole body as one canonical line, so two replicas can be compared by a single value.
-    /// Block ids are left out because they differ between nodes.
-    ///
-    /// # Arguments
-    ///
-    /// * `doc` - The document id.
-    ///
-    /// # Returns
-    ///
-    /// The digest string.
+    /// The whole body as one string, `kind/depth[attr=value]{marks:text};` per
+    /// block: two readers agree on a document exactly when their digests match.
     #[app::view]
     pub fn get_state_digest(&self, doc: String) -> app::Result<String> {
+        let _meta = self.meta(&doc)?;
         let mut out = String::new();
-        for view in &self.read(&doc)?.body.blocks()? {
-            digest_block(view, &mut out);
+        for (id, row) in self.ordered_blocks(&doc)? {
+            out.push_str(&row.kind);
+            out.push('/');
+            out.push_str(&row.depth.to_string());
+            for (key, value) in &row.attrs {
+                out.push_str(&format!("[{key}={value}]"));
+            }
+            for span in rich::spans(&rich::chars(&body_of(&doc, &id))?) {
+                let attrs: Vec<String> = span
+                    .attributes
+                    .iter()
+                    .map(|(k, v)| format!("{k}={v}"))
+                    .collect();
+                out.push_str(&format!("{{{}:{}}}", attrs.join(","), span.text));
+            }
+            out.push(';');
         }
         Ok(out)
     }
 
-    /// Counts how many times a passage appears contiguously in a block's text.
-    ///
-    /// # Arguments
-    ///
-    /// * `doc` - The document id.
-    /// * `block` - The block id.
-    /// * `needle` - The text to look for.
-    ///
-    /// # Returns
-    ///
-    /// The number of occurrences.
+    /// How many times `needle` occurs in a block's text (non-overlapping).
     #[app::view]
-    pub fn passage_count(&self, doc: String, block: String, needle: String) -> app::Result<usize> {
-        let text = self
-            .read(&doc)?
-            .body
-            .block_body(decode_token(&block)?)?
-            .get_text()?;
-        Ok(text.matches(&needle).count())
+    pub fn passage_count(&self, doc: String, block: String, needle: String) -> app::Result<u32> {
+        let _row = self.block_row(&doc, &block)?;
+        if needle.is_empty() {
+            return Ok(0);
+        }
+        let text = rich::plain(&rich::chars(&body_of(&doc, &block))?);
+        Ok(text.matches(&needle).count() as u32)
     }
 
-    /// Returns a cursor for the gap at a position in a block's text, as an opaque token that survives concurrent edits and that any member can resolve.
-    /// Positions count Unicode scalar values, not bytes or UTF-16 units.
-    ///
-    /// # Arguments
-    ///
-    /// * `doc` - The document id.
-    /// * `block` - The block id.
-    /// * `position` - The gap, counted from 0 at the start of the text.
-    /// * `before` - Which side the anchor leans toward when text is inserted exactly at the gap.
-    ///
-    /// # Returns
-    ///
-    /// An opaque anchor token.
+    /// An anchor for the gap at `position` of a block, stuck to the character
+    /// after it (`before`) or before it.
     #[app::view]
     pub fn anchor_at(
         &self,
         doc: String,
         block: String,
-        position: usize,
+        position: u32,
         before: bool,
     ) -> app::Result<String> {
-        let bias = if before { Bias::Before } else { Bias::After };
-        encode_token(
-            &self
-                .read(&doc)?
-                .body
-                .block_body(decode_token(&block)?)?
-                .anchor_at(position, bias)?,
-        )
+        let _row = self.block_row(&doc, &block)?;
+        rich::anchor_at(&rich::chars(&body_of(&doc, &block))?, position, before)
     }
 
-    /// Returns where anchors currently sit in this node's copy of a block, in one pass.
-    ///
-    /// # Arguments
-    ///
-    /// * `doc` - The document id.
-    /// * `block` - The block id.
-    /// * `anchors` - Tokens from `anchor_at`.
-    ///
-    /// # Returns
-    ///
-    /// One position per anchor, in order; `null` for an anchor this node cannot place yet.
+    /// Where each of a block's anchors sits now; `null` for an unknown one.
     #[app::view]
     pub fn resolve_ids(
         &self,
         doc: String,
         block: String,
         anchors: Vec<String>,
-    ) -> app::Result<Vec<Option<usize>>> {
-        let anchors = anchors
-            .iter()
-            .map(|token| decode_token::<Anchor>(token))
-            .collect::<app::Result<Vec<Anchor>>>()?;
-        Ok(self
-            .read(&doc)?
-            .body
-            .block_body(decode_token(&block)?)?
-            .resolve_many(&anchors)?)
+    ) -> app::Result<Vec<Option<u32>>> {
+        let _row = self.block_row(&doc, &block)?;
+        let body = body_of(&doc, &block);
+        let chars = rich::chars(&body)?;
+        rich::resolve(&body, &chars, &anchors)
     }
 
-    /// Archives a document, which hides it from `list_docs` unless archived documents are requested.
-    /// Nothing is deleted and `unarchive_doc` reverses it.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The document id.
-    pub fn archive_doc(&mut self, id: String) -> app::Result<()> {
-        let id_for_event = id.clone();
-        self.set_archived_inner(id, true)
-            .map_err(DriveError::into_app)?;
-        app::emit!(Event::DocArchived { id: &id_for_event });
+    // ── comments ─────────────────────────────────────────────────────────────
+
+    /// Adds the caller's comment (at most 10,000 characters) to a document and
+    /// returns its id. Emits `CommentAdded`.
+    pub fn add_comment(&mut self, doc_id: String, body: String) -> app::Result<String> {
+        let me = account()?;
+        check_chars("comment", &body, MAX_COMMENT_LEN)?;
+        let _meta = self.meta(&doc_id)?;
+        let id = fresh_id("cmt");
+        let _ = self.comments.insert(
+            &(doc_id.clone(), id.clone()),
+            &CommentRow {
+                author: me,
+                body,
+                created_at: env::time_now(),
+            },
+        )?;
+        let _ = self.comment_docs.insert(&id, &doc_id)?;
+        self.comment_total.add(1)?;
+        env::emit(Event::CommentAdded { id: id.clone() }, Audience::All)?;
+        Ok(id)
+    }
+
+    /// A document's comments, oldest id first; none for a missing document.
+    #[app::view]
+    pub fn list_comments(&self, doc_id: String) -> app::Result<Vec<CommentView>> {
+        let mut out = Vec::new();
+        let mut cursor: Option<String> = None;
+        loop {
+            let mut opts = FindOpts::default().limit(BATCH);
+            if let Some(c) = cursor.take() {
+                opts = opts.cursor(c);
+            }
+            let page = self
+                .comments
+                .prefix(&[KeyPart::Str(doc_id.clone())], opts)?;
+            for ((doc, id), row) in page.items {
+                out.push(comment_view(id, doc, row));
+            }
+            match page.next {
+                Some(next) => cursor = Some(next),
+                None => return Ok(out),
+            }
+        }
+    }
+
+    /// One comment. `NotFound` for a missing one.
+    #[app::view]
+    pub fn get_comment(&self, id: String) -> app::Result<CommentView> {
+        let (doc, row) = self.comment(&id)?;
+        Ok(comment_view(id, doc, row))
+    }
+
+    /// How many comments the folder's documents hold.
+    #[app::view]
+    pub fn comment_count(&self) -> app::Result<u64> {
+        Ok(self.comment_total.get()?)
+    }
+
+    /// The schema version a comment was written under: 1 for every live
+    /// comment (one schema since the port), `null` for a missing one.
+    #[app::view]
+    pub fn comment_schema_version(&self, id: String) -> app::Result<Option<u32>> {
+        Ok(self.comment_docs.get(&id)?.map(|_| 1))
+    }
+
+    /// Replaces the text of the caller's own comment. Anyone else's is
+    /// `Forbidden`. Emits `CommentEdited`.
+    pub fn edit_comment(&mut self, id: String, body: String) -> app::Result<()> {
+        let me = account()?;
+        check_chars("comment", &body, MAX_COMMENT_LEN)?;
+        let (doc, mut row) = self.comment(&id)?;
+        if row.author != me {
+            return Err(forbidden(format!("only its author may edit {id}")));
+        }
+        row.body = body;
+        let _ = self.comments.insert(&(doc, id.clone()), &row)?;
+        env::emit(Event::CommentEdited { id }, Audience::All)?;
         Ok(())
     }
 
-    /// Restores an archived document to the default `list_docs` view.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The document id.
-    pub fn unarchive_doc(&mut self, id: String) -> app::Result<()> {
-        let id_for_event = id.clone();
-        self.set_archived_inner(id, false)
-            .map_err(DriveError::into_app)?;
-        app::emit!(Event::DocUnarchived { id: &id_for_event });
-        Ok(())
-    }
-
-    pub(crate) fn set_archived_inner(
-        &mut self,
-        id: String,
-        archived: bool,
-    ) -> Result<(), DriveError> {
-        let mut rec = self
-            .docs
-            .get_mut(&id)
-            .map_err(|e| DriveError::Invalid(format!("docs.get_mut: {e}")))?
-            .ok_or_else(|| DriveError::NotFound(id.clone()))?;
-        rec.archived.set(archived);
-        rec.updated_at.set(storage_env::time_now());
-        rec.updated_by.set(caller_account_hex());
-        Ok(())
-    }
-
-    /// Deletes a document, its whole body and its comments permanently.
-    /// Only the document's creator or a moderator of this folder (the member who created the folder's context) may delete it; `can_delete` on the document's row says whether the caller may.
-    /// A moderator removes every comment on it; the creator removes their own, and the rest are no longer listed.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The document id.
-    #[app::destructive]
-    pub fn delete_doc(&mut self, id: String) -> app::Result<()> {
-        let id_for_event = id.clone();
-        self.delete_doc_inner(id).map_err(DriveError::into_app)?;
-        app::emit!(Event::DocDeleted { id: &id_for_event });
-        Ok(())
-    }
-
-    /// The doc's creator, or a moderator of this folder, may delete it.
-    ///
-    /// Every node enforces that on the header, which is what lists the doc. The
-    /// body is public so every member can co-edit, so a patched node can still
-    /// remove it, as any editor can empty it; the doc then stays listed.
-    pub(crate) fn delete_doc_inner(&mut self, id: String) -> Result<(), DriveError> {
-        let (creator, _) = self
-            .header_of(&id)?
-            .ok_or_else(|| DriveError::NotFound(id.clone()))?;
-        if !self.caller_may_delete(&creator) {
-            return Err(DriveError::Forbidden(format!(
-                "only the creator of {id} or a moderator may delete it"
+    /// Deletes a comment: its author's own, or any as the folder's moderator.
+    /// Emits `CommentDeleted`.
+    pub fn delete_comment(&mut self, id: String) -> app::Result<()> {
+        let (doc, row) = self.comment(&id)?;
+        if !may_delete(&row.author)? {
+            return Err(forbidden(format!(
+                "only its author or a moderator may delete {id}"
             )));
         }
-        let _header = self
-            .headers
-            .remove_by(&creator, &id)
-            .map_err(|e| DriveError::Forbidden(format!("headers.remove: {e}")))?;
-        self.remove_comments_on(&id)?;
-        let _body = self
-            .docs
-            .remove(&id)
-            .map_err(|e| DriveError::Invalid(format!("docs.remove: {e}")))?;
+        let _ = self.comments.remove(&(doc, id.clone()))?;
+        let _ = self.comment_docs.remove(&id)?;
+        self.comment_total.add(-1)?;
+        env::emit(Event::CommentDeleted { id }, Audience::All)?;
         Ok(())
     }
 
-    // ---- tags ------------------------------------------------------------
+    // ── registry: owner and managers ─────────────────────────────────────────
 
-    /// Puts a tag on a document.
-    /// Adding a tag the document already has changes nothing.
-    /// The tag key must be a registered tag's key for the workspace to show it by name; see the registry's `set_tag`.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The document id.
-    /// * `tag` - The tag key: 1 to 64 characters of lowercase ASCII letters, digits and `-`.
-    pub fn add_tag(&mut self, id: String, tag: String) -> app::Result<()> {
-        let id_for_event = id.clone();
-        self.add_tag_inner(id, tag).map_err(DriveError::into_app)?;
-        app::emit!(Event::DocTagsChanged { id: &id_for_event });
-        Ok(())
-    }
-
-    pub(crate) fn add_tag_inner(&mut self, id: String, tag: String) -> Result<(), DriveError> {
-        if !is_valid_tag_key(&tag) {
-            return Err(DriveError::Invalid("invalid tag key".into()));
-        }
-        let mut rec = self
-            .docs
-            .get_mut(&id)
-            .map_err(|e| DriveError::Invalid(format!("docs.get_mut: {e}")))?
-            .ok_or_else(|| DriveError::NotFound(id.clone()))?;
-        // Opening the record for a write re-saves it, so a no-op would still sync a delta.
-        if has_tag(&rec, &tag)? {
-            return Ok(());
-        }
-        let _added = rec
-            .tags
-            .insert(tag)
-            .map_err(|e| DriveError::Invalid(format!("tags.insert: {e}")))?;
-        Ok(())
-    }
-
-    /// Takes a tag off a document.
-    /// Removing a tag the document does not have is not an error.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The document id.
-    /// * `tag` - The tag key.
-    #[app::destructive]
-    pub fn remove_tag(&mut self, id: String, tag: String) -> app::Result<()> {
-        let id_for_event = id.clone();
-        self.remove_tag_inner(id, tag)
-            .map_err(DriveError::into_app)?;
-        app::emit!(Event::DocTagsChanged { id: &id_for_event });
-        Ok(())
-    }
-
-    pub(crate) fn remove_tag_inner(&mut self, id: String, tag: String) -> Result<(), DriveError> {
-        let mut rec = self
-            .docs
-            .get_mut(&id)
-            .map_err(|e| DriveError::Invalid(format!("docs.get_mut: {e}")))?
-            .ok_or_else(|| DriveError::NotFound(id.clone()))?;
-        if !has_tag(&rec, &tag)? {
-            return Ok(());
-        }
-        let _was = rec
-            .tags
-            .remove(&tag)
-            .map_err(|e| DriveError::Invalid(format!("tags.remove: {e}")))?;
-        Ok(())
-    }
-
-    // ---- comments (authored / identity-gated) ----------------------------
-
-    /// Adds a comment to a document, owned by the caller, and returns its id.
-    /// Not idempotent: a retry after a lost response adds a second comment, so check `list_comments` before repeating.
-    ///
-    /// # Arguments
-    ///
-    /// * `doc_id` - The id of the document to comment on.
-    /// * `body` - The comment text, at most 10000 characters.
-    ///
-    /// # Returns
-    ///
-    /// The new comment's id.
-    pub fn add_comment(&mut self, doc_id: String, body: String) -> app::Result<String> {
-        let id = self
-            .add_comment_inner(doc_id, body)
-            .map_err(DriveError::into_app)?;
-        app::emit!(Event::CommentAdded { id: &id });
-        Ok(id)
-    }
-
-    pub(crate) fn add_comment_inner(
-        &mut self,
-        doc_id: String,
-        body: String,
-    ) -> Result<String, DriveError> {
-        ensure_len("comment", body.chars().count(), MAX_COMMENT_LEN)?;
-        if self.header_of(&doc_id)?.is_none() {
-            return Err(DriveError::NotFound(doc_id));
-        }
-        let id = mint_id("cmt");
-
-        let comment = Comment {
-            doc_id,
-            body: LwwRegister::new(body),
-            created_at: storage_env::time_now(),
-        };
-        // `insert` stamps the caller as owner + the current schema version.
-        self.comments
-            .insert(id.clone(), comment)
-            .map_err(|e| DriveError::Invalid(format!("comments.insert: {e}")))?;
-        Ok(id)
-    }
-
-    /// Lists one document's comments, in no guaranteed order; sort by `created_at`.
-    ///
-    /// # Arguments
-    ///
-    /// * `doc_id` - The document id.
-    ///
-    /// # Returns
-    ///
-    /// One row per comment, including its author's account id.
+    /// The registry's owner: the account that created this instance.
     #[app::view]
-    pub fn list_comments(&self, doc_id: String) -> app::Result<Vec<CommentDto>> {
-        if self.header_of(&doc_id)?.is_none() {
-            return Ok(Vec::new());
+    pub fn get_owner(&self) -> app::Result<String> {
+        Ok(env::app_owner())
+    }
+
+    /// Makes a member of the organization a manager. Only the owner may
+    /// (`Forbidden`); the owner itself, or someone outside the organization,
+    /// is `Invalid`. Emits `ManagerAdded`.
+    pub fn add_manager(&mut self, member: String) -> app::Result<()> {
+        self.owner_only("add managers")?;
+        if member == env::app_owner() {
+            return Err(invalid("owner is implicitly a manager"));
         }
-        let entries = self
-            .comments
-            .query("doc_id")
-            .eq(doc_id.as_str())
-            .entries()
-            .map_err(|e| DriveError::Internal(format!("comments.query: {e}")).into_app())?;
-        let mut seen = BTreeSet::new();
-        let mut out = Vec::with_capacity(entries.len());
-        for (id, _) in entries {
-            if !seen.insert(id.clone()) {
-                continue;
+        if env::org().is_some() && env::org_role(&member).is_none() {
+            return Err(invalid(format!("{member} is not in the organization")));
+        }
+        let _new = self.managers.insert(&member)?;
+        env::emit(Event::ManagerAdded { member }, Audience::All)?;
+        Ok(())
+    }
+
+    /// Takes a manager's role away. Only the owner may (`Forbidden`); someone
+    /// who is not a manager is `NotFound`. Emits `ManagerRemoved`.
+    pub fn remove_manager(&mut self, member: String) -> app::Result<()> {
+        self.owner_only("remove managers")?;
+        if !self.managers.remove(&member)? {
+            return Err(not_found("manager", &member));
+        }
+        env::emit(Event::ManagerRemoved { member }, Audience::All)?;
+        Ok(())
+    }
+
+    /// The managers (the owner not included), in account order.
+    #[app::view]
+    pub fn list_managers(&self) -> app::Result<Vec<String>> {
+        let mut out = Vec::new();
+        let mut cursor: Option<String> = None;
+        loop {
+            let mut opts = FindOpts::default().limit(BATCH);
+            if let Some(c) = cursor.take() {
+                opts = opts.cursor(c);
             }
-            if let Some((author, c)) = self.named_comment(&id)? {
-                if c.doc_id == doc_id {
-                    out.push(project_comment(&id, hex(author.as_bytes()), &c));
+            let page = self.managers.page(opts)?;
+            out.extend(page.items);
+            match page.next {
+                Some(next) => cursor = Some(next),
+                None => return Ok(out),
+            }
+        }
+    }
+
+    // ── registry: tags ───────────────────────────────────────────────────────
+
+    /// Creates or renames a workspace tag. `key`: 1 to 64 lowercase letters,
+    /// digits and dashes; `name`: 1 to 32 characters after trimming; `color`:
+    /// `#rrggbb`. A deleted tag's key is `Invalid` for good. Emits `TagChanged`.
+    pub fn set_tag(&mut self, key: String, name: String, color: String) -> app::Result<()> {
+        if !is_valid_tag_key(&key) {
+            return Err(invalid(format!("invalid tag key: {key}")));
+        }
+        let name = name.trim().to_owned();
+        if !(1..=MAX_TAG_NAME_LEN).contains(&name.chars().count()) {
+            return Err(invalid("invalid tag name"));
+        }
+        if !is_hex_color(&color) {
+            return Err(invalid(format!("invalid color: {color}")));
+        }
+        let mut row = self.tags.get(&key)?.unwrap_or_default();
+        if row.deleted {
+            return Err(invalid("tag deleted"));
+        }
+        row.name = name;
+        row.color = color;
+        let _ = self.tags.insert(&key, &row)?;
+        env::emit(Event::TagChanged { key }, Audience::All)?;
+        Ok(())
+    }
+
+    /// Deletes a workspace tag for good (its key stays taken). `NotFound` for
+    /// an unknown key. Emits `TagChanged`.
+    pub fn delete_tag(&mut self, key: String) -> app::Result<()> {
+        let Some(mut row) = self.tags.get(&key)? else {
+            return Err(not_found("tag", &key));
+        };
+        row.deleted = true;
+        let _ = self.tags.insert(&key, &row)?;
+        env::emit(Event::TagChanged { key }, Audience::All)?;
+        Ok(())
+    }
+
+    /// Every workspace tag, deleted ones included, in key order.
+    #[app::view]
+    pub fn list_tags(&self) -> app::Result<Vec<TagView>> {
+        let mut out = Vec::new();
+        let mut cursor: Option<String> = None;
+        loop {
+            let mut opts = FindOpts::default().limit(BATCH);
+            if let Some(c) = cursor.take() {
+                opts = opts.cursor(c);
+            }
+            let page = self.tags.page(opts)?;
+            out.extend(page.items.into_iter().map(|(key, row)| TagView {
+                key,
+                name: row.name,
+                color: row.color,
+                deleted: row.deleted,
+            }));
+            match page.next {
+                Some(next) => cursor = Some(next),
+                None => return Ok(out),
+            }
+        }
+    }
+
+    // ── registry: saved views ────────────────────────────────────────────────
+
+    /// Saves (or renames) a view. `id`: 1 to 64 ASCII letters, digits and
+    /// dashes; `name`: 1 to 60 bytes after trimming; `query`: at most 1000
+    /// bytes. The first saver is its `createdBy`. Emits `ViewChanged`.
+    pub fn save_view(&mut self, id: String, name: String, query: String) -> app::Result<()> {
+        let me = account()?;
+        let valid_id = (1..=64).contains(&id.len())
+            && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-');
+        if !valid_id {
+            return Err(invalid(format!("invalid view id: {id}")));
+        }
+        let name = name.trim().to_owned();
+        if !(1..=60).contains(&name.len()) {
+            return Err(invalid("invalid view name"));
+        }
+        if query.len() > 1000 {
+            return Err(invalid("query too long"));
+        }
+        let created_by = match self.views.get(&id)? {
+            Some(old) => old.created_by,
+            None => me,
+        };
+        let _ = self.views.insert(
+            &id,
+            &ViewRow {
+                name,
+                query,
+                created_by,
+            },
+        )?;
+        env::emit(Event::ViewChanged { id }, Audience::All)?;
+        Ok(())
+    }
+
+    /// Deletes a view. `NotFound` for an unknown id. Emits `ViewChanged`.
+    pub fn delete_view(&mut self, id: String) -> app::Result<()> {
+        if self.views.remove(&id)?.is_none() {
+            return Err(not_found("view", &id));
+        }
+        env::emit(Event::ViewChanged { id }, Audience::All)?;
+        Ok(())
+    }
+
+    /// Every saved view, in id order.
+    #[app::view]
+    pub fn list_views(&self) -> app::Result<Vec<ViewView>> {
+        let mut out = Vec::new();
+        let mut cursor: Option<String> = None;
+        loop {
+            let mut opts = FindOpts::default().limit(BATCH);
+            if let Some(c) = cursor.take() {
+                opts = opts.cursor(c);
+            }
+            let page = self.views.page(opts)?;
+            out.extend(page.items.into_iter().map(|(id, row)| ViewView {
+                id,
+                name: row.name,
+                query: row.query,
+                created_by: row.created_by,
+            }));
+            match page.next {
+                Some(next) => cursor = Some(next),
+                None => return Ok(out),
+            }
+        }
+    }
+}
+
+/// Why a call was refused. Every variant carries a `message`.
+#[app::error]
+pub enum Error {
+    /// No document, block, comment, tag, view or manager has this id.
+    NotFound { message: String },
+    /// An argument is out of range: too long, a bad key or colour, a position
+    /// past the end, a mark key outside the schema, a malformed token.
+    Invalid { message: String },
+    /// The caller may not do this (not the creator, author, moderator or owner).
+    Forbidden { message: String },
+}
+
+/// A change, emitted after the write that caused it, to everyone the
+/// instance reaches. Ids only: never positions.
+#[app::event]
+pub enum Event {
+    DocCreated {
+        id: String,
+    },
+    DocEdited {
+        id: String,
+    },
+    DocArchived {
+        id: String,
+    },
+    DocUnarchived {
+        id: String,
+    },
+    DocDeleted {
+        id: String,
+    },
+    DocTagsChanged {
+        id: String,
+    },
+    TitleChanged {
+        doc: String,
+    },
+    BlockInserted {
+        doc: String,
+        block: String,
+    },
+    BlockDeleted {
+        doc: String,
+        block: String,
+    },
+    BlockMoved {
+        doc: String,
+        block: String,
+    },
+    BlockChanged {
+        doc: String,
+        block: String,
+    },
+    TextChanged {
+        doc: String,
+        block: String,
+    },
+    MarkApplied {
+        doc: String,
+        block: String,
+        mark_id: String,
+    },
+    CommentAdded {
+        id: String,
+    },
+    CommentEdited {
+        id: String,
+    },
+    CommentDeleted {
+        id: String,
+    },
+    ManagerAdded {
+        member: String,
+    },
+    ManagerRemoved {
+        member: String,
+    },
+    TagChanged {
+        key: String,
+    },
+    ViewChanged {
+        id: String,
+    },
+}
+
+// ── private helpers ──────────────────────────────────────────────────────────
+
+impl MeroDocs {
+    fn meta(&self, id: &str) -> app::Result<DocMeta> {
+        self.docs
+            .get(&id.to_owned())?
+            .ok_or_else(|| not_found("document", id))
+    }
+
+    /// The document's header, stamped as just changed by the caller.
+    fn touch(&mut self, doc: &str) -> app::Result<()> {
+        let mut meta = self.meta(doc)?;
+        meta.updated_at = env::time_now();
+        meta.updated_by = account()?;
+        let _ = self.docs.insert(&doc.to_owned(), &meta)?;
+        Ok(())
+    }
+
+    fn set_archived(&mut self, id: &str, archived: bool) -> app::Result<()> {
+        self.touch(id)?;
+        let mut meta = self.meta(id)?;
+        meta.archived = archived;
+        let _ = self.docs.insert(&id.to_owned(), &meta)?;
+        Ok(())
+    }
+
+    fn all_docs(&self) -> app::Result<Vec<(String, DocMeta)>> {
+        let mut out = Vec::new();
+        let mut cursor: Option<String> = None;
+        loop {
+            let mut opts = FindOpts::default().limit(BATCH);
+            if let Some(c) = cursor.take() {
+                opts = opts.cursor(c);
+            }
+            let page = self.docs.page(opts)?;
+            out.extend(page.items);
+            match page.next {
+                Some(next) => cursor = Some(next),
+                None => return Ok(out),
+            }
+        }
+    }
+
+    fn doc_view(&self, id: &str, meta: &DocMeta) -> app::Result<DocView> {
+        let tags = self
+            .doc_tags
+            .prefix(
+                &[KeyPart::Str(id.to_owned())],
+                FindOpts::default().limit(BATCH),
+            )?
+            .items
+            .into_iter()
+            .map(|(_, tag)| tag)
+            .collect();
+        Ok(DocView {
+            id: id.to_owned(),
+            title: rich::plain(&rich::chars(&title_of(id))?),
+            tags,
+            archived: meta.archived,
+            created_at: meta.created_at,
+            updated_at: meta.updated_at,
+            created_by: meta.created_by.clone(),
+            updated_by: meta.updated_by.clone(),
+            can_delete: may_delete(&meta.created_by)?,
+        })
+    }
+
+    fn block_row(&self, doc: &str, block: &str) -> app::Result<BlockRow> {
+        self.blocks
+            .get(&(doc.to_owned(), block.to_owned()))?
+            .ok_or_else(|| not_found("block", block))
+    }
+
+    fn new_block(
+        &mut self,
+        doc: &str,
+        after: Option<&str>,
+        kind: String,
+        depth: u8,
+        attrs: BTreeMap<String, String>,
+    ) -> app::Result<String> {
+        let after_slot = match after {
+            Some(a) => Some(self.block_row(doc, a)?.slot),
+            None => None,
+        };
+        let slot = order_of(doc).insert_after(after_slot, SLOT)?[0];
+        let block = fresh_id("blk");
+        let _ = self.slots.insert(&(doc.to_owned(), slot), &block)?;
+        let _ = self.blocks.insert(
+            &(doc.to_owned(), block.clone()),
+            &BlockRow {
+                kind,
+                depth,
+                attrs,
+                slot,
+                deleted: false,
+            },
+        )?;
+        Ok(block)
+    }
+
+    fn change_block(
+        &mut self,
+        doc: String,
+        block: String,
+        change: impl FnOnce(&mut BlockRow),
+    ) -> app::Result<()> {
+        self.touch(&doc)?;
+        let mut row = self.block_row(&doc, &block)?;
+        change(&mut row);
+        let _ = self.blocks.insert(&(doc.clone(), block.clone()), &row)?;
+        env::emit(Event::BlockChanged { doc, block }, Audience::All)?;
+        Ok(())
+    }
+
+    /// The document's live blocks in order.
+    fn ordered_blocks(&self, doc: &str) -> app::Result<Vec<(String, BlockRow)>> {
+        let mut out = Vec::new();
+        for (slot, _) in order_of(doc).chars()? {
+            let Some(id) = self.slots.get(&(doc.to_owned(), slot))? else {
+                continue;
+            };
+            if let Some(row) = self.blocks.get(&(doc.to_owned(), id.clone()))? {
+                if !row.deleted && row.slot == slot {
+                    out.push((id, row));
                 }
             }
         }
         Ok(out)
     }
 
-    /// Returns one comment.
-    /// Fails when the comment does not exist.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The comment id.
-    ///
-    /// # Returns
-    ///
-    /// The comment row.
-    #[app::view]
-    pub fn get_comment(&self, id: String) -> app::Result<CommentDto> {
-        let (author, c) = self
-            .comment_holder(&id)?
-            .ok_or_else(|| DriveError::NotFound(id.clone()).into_app())?;
-        Ok(project_comment(&id, hex(author.as_bytes()), &c))
-    }
-
-    /// Returns how many comments the folder's live documents hold, across all of them.
-    /// A comment counts only when it is held by the account its id names.
-    ///
-    /// # Returns
-    ///
-    /// The comment count.
-    #[app::view]
-    pub fn comment_count(&self) -> app::Result<u64> {
-        let entries = self
-            .comments
-            .entries_with_owners()
-            .map_err(|e| DriveError::Internal(format!("comments.entries: {e}")).into_app())?;
-        let mut live = BTreeMap::new();
-        let mut count = 0;
-        for (owner, id, c) in entries {
-            if !id_names(&id, &owner) {
-                continue;
-            }
-            let doc_live = match live.get(&c.doc_id) {
-                Some(known) => *known,
-                None => {
-                    let found = self.header_of(&c.doc_id)?.is_some();
-                    let _previous = live.insert(c.doc_id, found);
-                    found
-                }
-            };
-            if !doc_live {
-                continue;
-            }
-            count += 1;
+    /// The body's plain text, one line per block.
+    fn body_text(&self, doc: &str) -> app::Result<String> {
+        let mut lines = Vec::new();
+        for (id, _) in self.ordered_blocks(doc)? {
+            lines.push(rich::plain(&rich::chars(&body_of(doc, &id))?));
         }
-        Ok(count)
+        Ok(lines.join("\n"))
     }
 
-    /// Returns the storage schema version stamped on a comment, or `null` when there is no such comment.
-    /// A diagnostic for the web app's migration banner; not needed to read or write comments.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The comment id.
-    ///
-    /// # Returns
-    ///
-    /// The schema version number, or `null`.
-    // Read by name from the account the comment's id names, so every node answers alike:
-    // a key-only `entry_schema_version` reads the caller's own entry only.
-    #[app::view]
-    pub fn comment_schema_version(&self, id: String) -> app::Result<Option<u32>> {
-        let Some((author, _)) = self.comment_holder(&id)? else {
-            return Ok(None);
-        };
-        self.comments
-            .entry_schema_version_by(&author, &id)
-            .map_err(|e| {
-                DriveError::Internal(format!("comments.entry_schema_version: {e}")).into_app()
-            })
-    }
-
-    /// Replaces a comment's text.
-    /// Only the comment's author may edit it.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The comment id.
-    /// * `body` - The new comment text, at most 10000 characters.
-    pub fn edit_comment(&mut self, id: String, body: String) -> app::Result<()> {
-        let id_for_event = id.clone();
-        self.edit_comment_inner(id, body)
-            .map_err(DriveError::into_app)?;
-        app::emit!(Event::CommentEdited { id: &id_for_event });
-        Ok(())
-    }
-
-    pub(crate) fn edit_comment_inner(
-        &mut self,
-        id: String,
-        body: String,
-    ) -> Result<(), DriveError> {
-        ensure_len("comment", body.chars().count(), MAX_COMMENT_LEN)?;
-        // The caller's own comment: keys are per owner, and only its author
-        // may change a comment.
-        let Some(mut c) = self
+    fn comment(&self, id: &str) -> app::Result<(String, CommentRow)> {
+        let doc = self
+            .comment_docs
+            .get(&id.to_owned())?
+            .ok_or_else(|| not_found("comment", id))?;
+        let row = self
             .comments
-            .get(&id)
-            .map_err(|e| DriveError::Invalid(format!("comments.get: {e}")))?
-        else {
-            let held = !self
-                .comments
-                .entries_at(&id)
-                .map_err(|e| DriveError::Invalid(format!("comments.entries_at: {e}")))?
-                .is_empty();
-            return Err(if held {
-                DriveError::Forbidden(format!("only its author may edit {id}"))
-            } else {
-                DriveError::NotFound(id)
-            });
-        };
-        c.body.set(body);
-        // `update` re-signs as the caller; storage refuses anyone but the
-        // comment's author, on every node.
-        self.comments
-            .update(&id, c)
-            .map_err(|e| DriveError::Forbidden(format!("comments.update: {e}")))?;
-        Ok(())
+            .get(&(doc.clone(), id.to_owned()))?
+            .ok_or_else(|| not_found("comment", id))?;
+        Ok((doc, row))
     }
 
-    /// Deletes a comment.
-    /// Only its author or a moderator of this folder (the member who created the folder's context) may delete it.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The comment id.
-    #[app::destructive]
-    pub fn delete_comment(&mut self, id: String) -> app::Result<()> {
-        let id_for_event = id.clone();
-        self.delete_comment_inner(id)
-            .map_err(DriveError::into_app)?;
-        app::emit!(Event::CommentDeleted { id: &id_for_event });
-        Ok(())
-    }
-
-    /// Its author, or a moderator of this folder, may remove a comment.
-    ///
-    /// Keys are per owner, so a key-only `remove` removes only the CALLER's
-    /// own comment. A caller holding none (a moderator) removes every
-    /// holder's comment at the id by name, which storage allows a moderator
-    /// only.
-    pub(crate) fn delete_comment_inner(&mut self, id: String) -> Result<(), DriveError> {
-        let holders = self
-            .comments
-            .entries_at(&id)
-            .map_err(|e| DriveError::Invalid(format!("comments.entries_at: {e}")))?;
-        if holders.is_empty() {
-            return Err(DriveError::NotFound(id));
-        }
-        let me = AccountId::from(calimero_sdk::env::account_id());
-        if holders.iter().any(|(owner, _)| *owner == me) {
-            let _ = self
-                .comments
-                .remove(&id)
-                .map_err(|e| DriveError::Forbidden(format!("comments.remove: {e}")))?;
-            return Ok(());
-        }
-        for (owner, _) in holders {
-            let _ = self
-                .comments
-                .remove_by(&owner, &id)
-                .map_err(|e| DriveError::Forbidden(format!("comments.remove: {e}")))?;
+    fn owner_only(&self, what: &str) -> app::Result<()> {
+        if account()? != env::app_owner() {
+            return Err(forbidden(format!("only the registry owner may {what}")));
         }
         Ok(())
     }
 }
 
-/// Outside `#[app::logic]`: these are plumbing, not JSON-RPC surface.
-impl DocsState {
-    /// A doc's creator and creation time: the header at `id` owned by the
-    /// account the id names. A key-only `get` would read the caller's own.
-    fn header_of(&self, id: &String) -> Result<Option<(AccountId, u64)>, DriveError> {
-        Ok(self
-            .headers
-            .entries_at(id)
-            .map_err(|e| DriveError::Invalid(format!("headers: {e}")))?
-            .into_iter()
-            .find(|(owner, _)| id_names(id, owner)))
-    }
+fn block_view(doc: &str, id: String, row: BlockRow) -> app::Result<Block> {
+    let chars = rich::chars(&body_of(doc, &id))?;
+    Ok(Block {
+        spans: rich::spans(&chars),
+        ids: rich::runs(&chars)?,
+        id,
+        kind: row.kind,
+        depth: row.depth,
+        attrs: row.attrs,
+    })
+}
 
-    /// The comment at `id` of the account the id names, with that account.
-    /// A key-only `get` would read the caller's own.
-    fn named_comment(&self, id: &String) -> app::Result<Option<(AccountId, Comment)>> {
-        Ok(self
-            .comments
-            .entries_at(id)?
-            .into_iter()
-            .find(|(owner, _)| id_names(id, owner)))
-    }
-
-    /// `named_comment`, while its doc is listed.
-    fn comment_holder(&self, id: &String) -> app::Result<Option<(AccountId, Comment)>> {
-        let Some((author, c)) = self.named_comment(id)? else {
-            return Ok(None);
-        };
-        let live = self
-            .header_of(&c.doc_id)
-            .map_err(DriveError::into_app)?
-            .is_some();
-        Ok(live.then_some((author, c)))
-    }
-
-    /// `rec` is `None` for a doc whose public body a patched node removed. Both
-    /// times are writer-chosen, so one claiming the future is not trusted.
-    fn project(
-        &self,
-        id: &str,
-        creator: &AccountId,
-        created_at: u64,
-        rec: Option<&DocRecord>,
-        now: u64,
-    ) -> Result<DocDto, DriveError> {
-        let created_at = not_ahead(created_at, now).unwrap_or_default();
-        let title = rec
-            .map(|r| r.title.get_text())
-            .transpose()
-            .map_err(|e| DriveError::Invalid(format!("title.get_text: {e}")))?;
-        let mut tags: Vec<String> = match rec {
-            Some(r) => r
-                .tags
-                .iter()
-                .map_err(|e| DriveError::Invalid(format!("tags.iter: {e}")))?
-                .collect(),
-            None => Vec::new(),
-        };
-        tags.sort();
-        Ok(DocDto {
-            id: id.to_owned(),
-            title: title.unwrap_or_default(),
-            tags,
-            archived: rec.is_some_and(|r| *r.archived.get()),
-            created_at,
-            updated_at: rec
-                .and_then(|r| not_ahead(*r.updated_at.get(), now))
-                .unwrap_or(created_at),
-            created_by: hex(creator.as_bytes()),
-            updated_by: rec.map(|r| r.updated_by.get().clone()).unwrap_or_default(),
-            can_delete: self.caller_may_delete(creator),
-        })
-    }
-
-    /// Removes the comments on `doc` that storage lets the caller remove: every
-    /// author's for a moderator, otherwise the caller's own.
-    fn remove_comments_on(&mut self, doc: &str) -> Result<(), DriveError> {
-        let me = AccountId::from(calimero_sdk::env::account_id());
-        let moderator = self.comments.is_moderator(&me);
-        let ids: BTreeSet<String> = self
-            .comments
-            .query("doc_id")
-            .eq(doc)
-            .entries()
-            .map_err(|e| DriveError::Invalid(format!("comments.query: {e}")))?
-            .into_iter()
-            .map(|(id, _)| id)
-            .collect();
-        for id in ids {
-            let holders = self
-                .comments
-                .entries_at(&id)
-                .map_err(|e| DriveError::Invalid(format!("comments.entries_at: {e}")))?;
-            for (owner, c) in holders {
-                if c.doc_id == doc && (moderator || owner == me) {
-                    let _ = self
-                        .comments
-                        .remove_by(&owner, &id)
-                        .map_err(|e| DriveError::Forbidden(format!("comments.remove: {e}")))?;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    /// The one rule `delete_doc` enforces and `DocDto::can_delete` reports.
-    fn caller_may_delete(&self, creator: &AccountId) -> bool {
-        let me = AccountId::from(calimero_sdk::env::account_id());
-        me == *creator || self.headers.is_moderator(&me)
-    }
-
-    fn read(&self, doc: &str) -> app::Result<ValueRef<DocRecord>> {
-        match self.docs.get(doc)? {
-            Some(found) => Ok(found),
-            None => Err(app::err!("unknown document '{doc}'")),
-        }
-    }
-
-    /// Every mutator goes through here, so the list's sort key and last editor
-    /// advance in one place rather than at fifteen call sites.
-    fn write(&mut self, doc: &str) -> app::Result<impl DerefMut<Target = DocRecord> + '_> {
-        match self.docs.get_mut(doc)? {
-            Some(mut found) => {
-                found.updated_at.set(storage_env::time_now());
-                found.updated_by.set(caller_account_hex());
-                Ok(found)
-            }
-            None => Err(app::err!("unknown document '{doc}'")),
-        }
-    }
-
-    fn emit_mark(
-        &self,
-        doc: &str,
-        block: &str,
-        minted: Option<MarkId>,
-    ) -> app::Result<Option<String>> {
-        let Some(minted) = minted else {
-            return Ok(None);
-        };
-        let mark_id = encode_token(&minted)?;
-        app::emit!(Event::MarkApplied {
-            doc,
-            block,
-            mark_id: &mark_id
-        });
-        Ok(Some(mark_id))
+fn comment_view(id: String, doc_id: String, row: CommentRow) -> CommentView {
+    CommentView {
+        id,
+        author: row.author,
+        doc_id,
+        body: row.body,
+        created_at: row.created_at,
     }
 }
 
-// ---------------------------------------------------------------------------
-// Unit tests
-// ---------------------------------------------------------------------------
-
-#[cfg(test)]
-mod tests {
-    use calimero_sdk::testing::TestHost;
-
-    use super::*;
-
-    std::thread_local! {
-        static DOC: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
-    }
-
-    /// The doc `host` created on this test's thread.
-    fn doc() -> String {
-        DOC.with_borrow(Clone::clone)
-    }
-
-    fn host(title: &str) -> TestHost<DocsState> {
-        let mut app = TestHost::new(DocsState::init);
-        let id = app.call(|s| s.create_doc(title.to_owned())).unwrap();
-        DOC.set(id);
-        app
-    }
-
-    fn retain(count: usize) -> Change {
-        Change::Retain {
-            retain: count,
-            attributes: None,
-        }
-    }
-
-    fn insert(text: &str) -> Change {
-        Change::Insert {
-            insert: text.to_owned(),
-            attributes: None,
-        }
-    }
-
-    fn title(app: &TestHost<DocsState>) -> String {
-        app.view(|s| s.get_title(doc())).unwrap()
-    }
-
-    fn digest(app: &TestHost<DocsState>) -> String {
-        app.view(|s| s.get_state_digest(doc())).unwrap()
-    }
-
-    fn add_block(app: &mut TestHost<DocsState>, kind: &str) -> String {
-        app.call(|s| s.insert_block(doc(), None, kind.to_owned(), 0))
-            .unwrap()
-    }
-
-    fn type_text(app: &mut TestHost<DocsState>, block: &str, text: &str) -> String {
-        app.call(|s| s.apply_delta(doc(), block.to_owned(), vec![insert(text)]))
-            .unwrap()
-    }
-
-    // ---- DriveMarks ------------------------------------------------------
-
-    /// The table is permanent once documents exist: a bias is chosen at write
-    /// time and never revisited, so a changed entry splits new writes from old.
-    #[test]
-    fn drive_marks_declares_the_growing_and_non_growing_keys() {
-        for key in [
-            "bold",
-            "italic",
-            "underline",
-            "strike",
-            "textColor",
-            "backgroundColor",
-        ] {
-            assert_eq!(DriveMarks::expand(key), Some(Expand::After), "{key}");
-        }
-        for key in ["link", "code", "comment"] {
-            assert_eq!(DriveMarks::expand(key), Some(Expand::None), "{key}");
-        }
-    }
-
-    #[test]
-    fn drive_marks_rejects_an_undeclared_key() {
-        assert_eq!(DriveMarks::expand("highlight"), None);
-        assert_eq!(DriveMarks::expand(""), None);
-
-        let mut app = host("t");
-        let block = add_block(&mut app, "paragraph");
-        let _typed = type_text(&mut app, &block, "hello");
-        let err = app
-            .call(|s| {
-                s.mark(
-                    doc(),
-                    block.clone(),
-                    0,
-                    5,
-                    "highlight".to_owned(),
-                    Some("yellow".to_owned()),
-                )
-            })
-            .unwrap_err();
-        let err = format!("{err:?}");
-        assert!(err.contains("unknown mark key 'highlight'"), "{err}");
-    }
-
-    /// One policy covers every suffix of a prefix, which is what makes a
-    /// per-thread `comment:<id>` one declaration rather than N.
-    #[test]
-    fn a_comment_suffix_shares_the_comment_policy() {
-        assert_eq!(DriveMarks::expand("comment"), Some(Expand::None));
-        let mut app = host("t");
-        let block = add_block(&mut app, "paragraph");
-        let _typed = type_text(&mut app, &block, "hello world");
-        let mark = app
-            .call(|s| {
-                s.mark(
-                    doc(),
-                    block.clone(),
-                    0,
-                    5,
-                    "comment:alpha".to_owned(),
-                    Some("first".to_owned()),
-                )
-            })
-            .unwrap();
-        assert!(mark.is_some());
-        assert_eq!(
-            digest(&app),
-            "paragraph/0{comment:alpha=first:hello}{: world};"
-        );
-    }
-
-    // ---- title -----------------------------------------------------------
-
-    #[test]
-    fn create_doc_seeds_the_title() {
-        let app = host("Roadmap");
-        assert_eq!(title(&app), "Roadmap");
-        assert_eq!(app.view(|s| s.get_doc(doc())).unwrap().title, "Roadmap");
-        // The body starts empty; a client adds the first block itself.
-        assert_eq!(digest(&app), "");
-    }
-
-    /// Position 2 is the gap AFTER the astral scalar: a UTF-16 index would land
-    /// inside its surrogate pair, a byte index inside its four bytes.
-    #[test]
-    fn a_title_delta_indexes_unicode_scalar_values() {
-        let mut app = host("a\u{1F600}b");
-        let _undo = app
-            .call(|s| s.title_apply_delta(doc(), vec![retain(2), insert("X")]))
-            .unwrap();
-        assert_eq!(title(&app), "a\u{1F600}Xb");
-    }
-
-    /// A ZWJ family is FIVE scalars, not one grapheme, so every joiner is its
-    /// own addressable position.
-    #[test]
-    fn a_zwj_sequence_is_five_addressable_scalars() {
-        const FAMILY: &str = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}";
-        let mut app = host(FAMILY);
-        let _undo = app
-            .call(|s| s.title_apply_delta(doc(), vec![retain(1), insert("-")]))
-            .unwrap();
-        assert_eq!(title(&app), "\u{1F468}-\u{200D}\u{1F469}\u{200D}\u{1F467}");
-
-        let anchor = app.view(|s| s.title_anchor_at(doc(), 6, true)).unwrap();
-        assert_eq!(
-            app.view(|s| s.title_resolve(doc(), vec![anchor])).unwrap(),
-            vec![Some(6)]
-        );
-    }
-
-    #[test]
-    fn title_undo_restores_the_previous_text() {
-        let mut app = host("Roadmap");
-        let undo = app
-            .call(|s| {
-                s.title_apply_delta(
-                    doc(),
-                    vec![retain(4), Change::Delete { delete: 3 }, insert("block")],
-                )
-            })
-            .unwrap();
-        assert_eq!(title(&app), "Roadblock");
-
-        let redo = app.call(|s| s.title_undo(doc(), undo)).unwrap();
-        assert_eq!(title(&app), "Roadmap");
-        let _again = app.call(|s| s.title_undo(doc(), redo)).unwrap();
-        assert_eq!(title(&app), "Roadblock");
-    }
-
-    #[test]
-    fn a_title_op_carrying_attributes_is_rejected() {
-        let mut app = host("t");
-        let err = app
-            .call(|s| {
-                s.title_apply_delta(
-                    doc(),
-                    vec![Change::Insert {
-                        insert: "x".to_owned(),
-                        attributes: Some(Attrs::from([(
-                            "bold".to_owned(),
-                            Some("true".to_owned()),
-                        )])),
-                    }],
-                )
-            })
-            .unwrap_err();
-        let err = format!("{err:?}");
-        assert!(err.contains("the title carries no formatting"), "{err}");
-        assert_eq!(title(&app), "t");
-    }
-
-    #[test]
-    fn edit_doc_replaces_the_whole_title() {
-        let mut app = host("old");
-        app.call(|s| s.edit_doc(doc(), "new".to_owned())).unwrap();
-        assert_eq!(title(&app), "new");
-    }
-
-    #[test]
-    fn a_title_longer_than_the_cap_is_refused() {
-        let at_cap = "\u{e9}".repeat(MAX_TITLE_LEN);
-        let over = format!("{at_cap}x");
-        let mut app = host(&at_cap);
-        assert!(app.call(|s| s.create_doc(over.clone())).is_err());
-        assert!(app.call(|s| s.edit_doc(doc(), over.clone())).is_err());
-        let grow = || vec![retain(MAX_TITLE_LEN), insert("x")];
-        assert!(app.call(|s| s.title_apply_delta(doc(), grow())).is_err());
-        let on = app.call(|s| s.title_apply_delta_on(doc(), at_cap.clone(), grow(), None));
-        assert!(on.is_err());
-        assert_eq!(title(&app), at_cap);
-        let swap = vec![Change::Delete { delete: 1 }, insert("a")];
-        app.call(|s| s.title_apply_delta(doc(), swap)).unwrap();
-        app.call(|s| s.edit_doc(doc(), over[2..].to_owned()))
-            .unwrap();
-    }
-
-    // ---- body ------------------------------------------------------------
-
-    #[test]
-    fn block_text_over_the_cap_is_refused() {
-        let mut app = host("t");
-        let block = add_block(&mut app, "paragraph");
-        let fill = "\u{e9}".repeat(MAX_BLOCK_TEXT_LEN);
-        let _typed = type_text(&mut app, &block, &fill);
-        let grow = || vec![retain(MAX_BLOCK_TEXT_LEN), insert("x")];
-        let plain = app.call(|s| s.apply_delta(doc(), block.clone(), grow()));
-        assert!(plain.is_err());
-        let on = app.call(|s| s.apply_delta_on(doc(), block.clone(), fill.clone(), grow(), None));
-        assert!(on.is_err());
-        let text = app.view(|s| s.get_text(doc(), block.clone())).unwrap();
-        assert_eq!(text, fill);
-        let swap = vec![Change::Delete { delete: 1 }, insert("a")];
-        app.call(|s| s.apply_delta(doc(), block.clone(), swap))
-            .unwrap();
-        let other = add_block(&mut app, "paragraph");
-        let _typed = type_text(&mut app, &other, "x");
-        let merged = app.call(|s| s.merge_blocks(doc(), block.clone(), other.clone()));
-        assert!(merged.is_err());
-        assert_eq!(app.view(|s| s.list_blocks(doc())).unwrap().len(), 2);
-    }
-
-    #[test]
-    fn apply_delta_renders_into_the_digest() {
-        let mut app = host("t");
-        let block = add_block(&mut app, "paragraph");
-        let _typed = type_text(&mut app, &block, "hello world");
-        assert_eq!(digest(&app), "paragraph/0{:hello world};");
-        assert_eq!(
-            app.view(|s| s.get_text(doc(), block.clone())).unwrap(),
-            "hello world"
-        );
-        assert_eq!(app.view(|s| s.list_blocks(doc())).unwrap(), vec![block]);
-    }
-
-    #[test]
-    fn title_apply_delta_on_applies_onto_the_title_it_was_diffed_against() {
-        let mut app = host("core");
-        let applied = app
-            .call(|s| {
-                s.title_apply_delta_on(
-                    doc(),
-                    "core".to_owned(),
-                    vec![retain(4), insert(" team")],
-                    None,
-                )
-            })
-            .unwrap();
-        assert!(applied.applied);
-        assert!(applied.token.is_some());
-        assert_eq!(applied.text, "core team");
-        assert_eq!(title(&app), "core team");
-    }
-
-    #[test]
-    fn title_apply_delta_on_refuses_a_stale_base_and_hands_back_the_title() {
-        let mut app = host("core");
-        let refused = app
-            .call(|s| {
-                s.title_apply_delta_on(doc(), "cor".to_owned(), vec![retain(3), insert("X")], None)
-            })
-            .unwrap();
-        assert!(!refused.applied);
-        assert_eq!(refused.token, None);
-        assert_eq!(refused.text, "core");
-        assert_eq!(title(&app), "core");
-        assert_eq!((refused.anchor, refused.anchor_pos), (None, None));
-    }
-
-    /// Appends `text` to the title through the guard.
-    fn guarded_title(app: &mut TestHost<DocsState>, text: &str) -> TitleApplied {
-        let base = title(app);
-        let end = base.chars().count();
-        app.call(|s| s.title_apply_delta_on(doc(), base, vec![retain(end), insert(text)], None))
-            .unwrap()
-    }
-
-    #[test]
-    fn title_apply_delta_on_hands_back_an_anchor_after_the_write() {
-        let mut app = host("Shared:");
-        let applied = guarded_title(&mut app, "a");
-        assert_eq!(applied.anchor_pos, Some(8));
-        let anchor = applied.anchor.unwrap();
-        assert_eq!(
-            app.view(|s| s.title_resolve(doc(), vec![anchor])).unwrap(),
-            vec![Some(8)]
-        );
-    }
-
-    #[test]
-    fn title_apply_delta_on_places_the_anchor_of_a_refused_write_beside_its_own_letter() {
-        let mut app = host("Shared:");
-        let anchor = guarded_title(&mut app, "a").anchor;
-        // Peers typed on both sides of the writer's `a`, one right in its gap.
-        let _left = app
-            .call(|s| s.title_apply_delta(doc(), vec![retain(7), insert("b3")]))
-            .unwrap();
-        let _right = app
-            .call(|s| s.title_apply_delta(doc(), vec![retain(10), insert("3c3")]))
-            .unwrap();
-        let refused = app
-            .call(|s| {
-                s.title_apply_delta_on(
-                    doc(),
-                    "Shared:a".to_owned(),
-                    vec![retain(8), insert("3")],
-                    anchor.clone(),
-                )
-            })
-            .unwrap();
-        assert!(!refused.applied);
-        assert_eq!(refused.text, "Shared:b3a3c3");
-        assert_eq!(refused.anchor, anchor);
-        assert_eq!(refused.anchor_pos, Some(10));
-    }
-
-    #[test]
-    fn apply_delta_on_applies_onto_the_text_it_was_diffed_against() {
-        let mut app = host("t");
-        let block = add_block(&mut app, "paragraph");
-        let _typed = type_text(&mut app, &block, "The fox.");
-        let applied = app
-            .call(|s| {
-                s.apply_delta_on(
-                    doc(),
-                    block.clone(),
-                    "The fox.".to_owned(),
-                    vec![retain(3), insert(" red")],
-                    None,
-                )
-            })
-            .unwrap();
-        assert!(applied.applied);
-        assert!(applied.token.is_some());
-        assert_eq!(applied.spans.len(), 1);
-        assert_eq!(applied.spans[0].text, "The red fox.");
-        assert_eq!(digest(&app), "paragraph/0{:The red fox.};");
-    }
-
-    #[test]
-    fn apply_delta_on_refuses_a_stale_base_and_hands_back_the_current_text() {
-        let mut app = host("t");
-        let block = add_block(&mut app, "paragraph");
-        let _typed = type_text(&mut app, &block, "The fox.");
-        // The client last saw "The fox"; a peer has since appended the dot.
-        let refused = app
-            .call(|s| {
-                s.apply_delta_on(
-                    doc(),
-                    block.clone(),
-                    "The fox".to_owned(),
-                    vec![retain(7), insert("es")],
-                    None,
-                )
-            })
-            .unwrap();
-        assert!(!refused.applied);
-        assert_eq!(refused.token, None);
-        assert_eq!(refused.spans[0].text, "The fox.");
-        assert_eq!(digest(&app), "paragraph/0{:The fox.};");
-        assert_eq!((refused.anchor, refused.anchor_pos), (None, None));
-    }
-
-    /// Each run as the character ids it names, in order.
-    fn char_ids(runs: &[Run]) -> Vec<(String, u32)> {
-        runs.iter()
-            .flat_map(|run| (0..run.len).map(move |i| (run.replica.clone(), run.counter + i)))
-            .collect()
-    }
-
-    #[test]
-    fn a_block_read_names_every_character_by_an_id_a_peer_insert_leaves_alone() {
-        let mut app = host("t");
-        let block = add_block(&mut app, "paragraph");
-        let mine = app
-            .call(|s| {
-                s.apply_delta_on(
-                    doc(),
-                    block.clone(),
-                    String::new(),
-                    vec![insert("aa")],
-                    None,
-                )
-            })
-            .unwrap();
-        let before = char_ids(&mine.ids);
-        assert_eq!(before.len(), 2);
-        // A peer types an identical `a` between ours; the guard refuses the stale write.
-        let _peer = app
-            .call(|s| s.apply_delta(doc(), block.clone(), vec![retain(1), insert("a")]))
-            .unwrap();
-        let refused = app
-            .call(|s| {
-                s.apply_delta_on(
-                    doc(),
-                    block.clone(),
-                    "aa".to_owned(),
-                    vec![insert("b")],
-                    None,
-                )
-            })
-            .unwrap();
-        assert!(!refused.applied);
-        let after = char_ids(&refused.ids);
-        assert_eq!(after.len(), 3);
-        assert_eq!((&after[0], &after[2]), (&before[0], &before[1]));
-        assert!(!before.contains(&after[1]));
-        let read = app
-            .view(|s| s.get_block(doc(), block.clone()))
-            .unwrap()
-            .unwrap();
-        assert_eq!(char_ids(&read.ids), after);
-        let whole = app.view(|s| s.get_document(doc())).unwrap();
-        assert_eq!(char_ids(&whole[0].ids), after);
-    }
-
-    #[test]
-    fn a_title_read_names_every_character_by_an_id_a_peer_insert_leaves_alone() {
-        let mut app = host("aa");
-        let before = char_ids(&app.view(|s| s.get_title_state(doc())).unwrap().ids);
-        let _peer = app
-            .call(|s| s.title_apply_delta(doc(), vec![retain(1), insert("a")]))
-            .unwrap();
-        let refused = app
-            .call(|s| s.title_apply_delta_on(doc(), "aa".to_owned(), vec![insert("b")], None))
-            .unwrap();
-        let after = char_ids(&refused.ids);
-        assert_eq!(refused.text, "aaa");
-        assert_eq!(after.len(), 3);
-        assert_eq!((&after[0], &after[2]), (&before[0], &before[1]));
-        let state = app.view(|s| s.get_title_state(doc())).unwrap();
-        assert_eq!((state.text.as_str(), char_ids(&state.ids)), ("aaa", after));
-    }
-
-    #[test]
-    fn an_anchored_write_away_from_its_anchor_is_refused_even_on_the_current_text() {
-        let mut app = host("t");
-        let block = add_block(&mut app, "paragraph");
-        let applied = app
-            .call(|s| {
-                s.apply_delta_on(
-                    doc(),
-                    block.clone(),
-                    String::new(),
-                    vec![insert("b1")],
-                    None,
-                )
-            })
-            .unwrap();
-        let anchor = applied.anchor;
-        // A peer's `1` beside ours: the client read the peer's as its own.
-        let _peer = app
-            .call(|s| s.apply_delta(doc(), block.clone(), vec![retain(2), insert("a1")]))
-            .unwrap();
-        let send = |at: usize| {
-            let (block, anchor) = (block.clone(), anchor.clone());
-            move |s: &mut DocsState| {
-                let ops = vec![retain(at), insert("X")];
-                s.apply_delta_on(doc(), block, "b1a1".to_owned(), ops, anchor)
-            }
-        };
-        let drifted = app.call(send(4)).unwrap();
-        assert!(!drifted.applied);
-        assert_eq!(drifted.anchor_pos, Some(2));
-        let placed = app.call(send(2)).unwrap();
-        assert!(placed.applied);
-        assert_eq!(placed.spans[0].text, "b1Xa1");
-    }
-
-    #[test]
-    fn title_apply_delta_on_refuses_an_anchored_write_that_is_not_an_insert() {
-        let mut app = host("Shared:");
-        let anchor = guarded_title(&mut app, "a").anchor;
-        let refused = app
-            .call(|s| {
-                s.title_apply_delta_on(
-                    doc(),
-                    "Shared:a".to_owned(),
-                    vec![retain(7), Change::Delete { delete: 1 }],
-                    anchor,
-                )
-            })
-            .unwrap();
-        assert!(!refused.applied);
-        assert_eq!(refused.anchor_pos, Some(8));
-        assert_eq!(title(&app), "Shared:a");
-    }
-
-    #[test]
-    fn apply_delta_on_places_the_anchor_of_a_refused_write_beside_its_own_letter() {
-        let mut app = host("t");
-        let block = add_block(&mut app, "paragraph");
-        let applied = app
-            .call(|s| {
-                s.apply_delta_on(
-                    doc(),
-                    block.clone(),
-                    String::new(),
-                    vec![insert("Shared:a")],
-                    None,
-                )
-            })
-            .unwrap();
-        assert_eq!(applied.anchor_pos, Some(8));
-        let anchor = applied.anchor;
-        let _left = app
-            .call(|s| s.apply_delta(doc(), block.clone(), vec![retain(7), insert("b3")]))
-            .unwrap();
-        let _right = app
-            .call(|s| s.apply_delta(doc(), block.clone(), vec![retain(10), insert("3c3")]))
-            .unwrap();
-        let refused = app
-            .call(|s| {
-                s.apply_delta_on(
-                    doc(),
-                    block.clone(),
-                    "Shared:a".to_owned(),
-                    vec![retain(8), insert("3")],
-                    anchor.clone(),
-                )
-            })
-            .unwrap();
-        assert!(!refused.applied);
-        assert_eq!(refused.spans[0].text, "Shared:b3a3c3");
-        assert_eq!(refused.anchor, anchor);
-        assert_eq!(refused.anchor_pos, Some(10));
-    }
-
-    #[test]
-    fn split_block_then_merge_blocks_round_trips_the_digest() {
-        let mut app = host("t");
-        let block = add_block(&mut app, "paragraph");
-        let _typed = type_text(&mut app, &block, "hello world");
-        let before = digest(&app);
-
-        let tail = app
-            .call(|s| s.split_block(doc(), block.clone(), 5))
-            .unwrap();
-        assert_eq!(digest(&app), "paragraph/0{:hello};paragraph/0{: world};");
-
-        app.call(|s| s.merge_blocks(doc(), block.clone(), tail))
-            .unwrap();
-        assert_eq!(digest(&app), before);
-    }
-
-    /// A section link names the heading's block id, so a split must leave that
-    /// id on the head half rather than moving it to the new block.
-    #[test]
-    fn a_split_heading_keeps_its_id_on_the_head_text() {
-        let mut app = host("t");
-        let heading = add_block(&mut app, "heading");
-        let _typed = type_text(&mut app, &heading, "Goals for Q3");
-        let tail = app
-            .call(|s| s.split_block(doc(), heading.clone(), 3))
-            .unwrap();
-        let head = app
-            .view(|s| s.get_block(doc(), heading.clone()))
-            .unwrap()
-            .expect("the heading id still resolves");
-        assert_eq!(head.kind, "heading");
-        assert_eq!(
-            app.view(|s| s.get_text(doc(), heading.clone())).unwrap(),
-            "Goa"
-        );
-        assert_eq!(
-            app.view(|s| s.list_blocks(doc())).unwrap(),
-            vec![heading, tail]
-        );
-    }
-
-    #[test]
-    fn mark_renders_as_two_spans_over_the_marked_range() {
-        let mut app = host("t");
-        let block = add_block(&mut app, "paragraph");
-        let _typed = type_text(&mut app, &block, "hello world");
-        let mark = app
-            .call(|s| {
-                s.mark(
-                    doc(),
-                    block.clone(),
-                    0,
-                    5,
-                    "bold".to_owned(),
-                    Some("true".to_owned()),
-                )
-            })
-            .unwrap();
-        assert!(mark.is_some(), "a first bold is not redundant");
-
-        let spans = app
-            .view(|s| s.get_block_delta(doc(), block.clone()))
-            .unwrap();
-        assert_eq!(spans.len(), 2);
-        assert_eq!(spans[0].text, "hello");
-        assert_eq!(
-            spans[0].attributes.get("bold").map(String::as_str),
-            Some("true")
-        );
-        assert_eq!(spans[1].text, " world");
-        assert!(spans[1].attributes.is_empty());
-        assert_eq!(digest(&app), "paragraph/0{bold=true:hello}{: world};");
-
-        // Bold is `Expand::After`, so typing at the run's end joins it.
-        let _typed = app
-            .call(|s| s.apply_delta(doc(), block.clone(), vec![retain(5), insert("X")]))
-            .unwrap();
-        assert_eq!(digest(&app), "paragraph/0{bold=true:helloX}{: world};");
-    }
-
-    #[test]
-    fn undo_returns_the_block_to_its_previous_digest() {
-        let mut app = host("t");
-        let block = add_block(&mut app, "paragraph");
-        let _typed = type_text(&mut app, &block, "hello world");
-        let before = digest(&app);
-
-        let undo = app
-            .call(|s| {
-                s.apply_delta(
-                    doc(),
-                    block.clone(),
-                    vec![
-                        Change::Retain {
-                            retain: 6,
-                            attributes: Some(Attrs::from([(
-                                "bold".to_owned(),
-                                Some("true".to_owned()),
-                            )])),
-                        },
-                        Change::Delete { delete: 5 },
-                        insert("there"),
-                    ],
-                )
-            })
-            .unwrap();
-        assert_eq!(digest(&app), "paragraph/0{bold=true:hello there};");
-
-        let _redo = app.call(|s| s.undo(doc(), block.clone(), undo)).unwrap();
-        assert_eq!(digest(&app), before);
-    }
-
-    #[test]
-    fn structure_writes_land_in_the_digest() {
-        let mut app = host("t");
-        let block = add_block(&mut app, "paragraph");
-        let _typed = type_text(&mut app, &block, "Alpha");
-        app.call(|s| s.set_kind(doc(), block.clone(), "heading".to_owned()))
-            .unwrap();
-        app.call(|s| s.set_depth(doc(), block.clone(), 2)).unwrap();
-        app.call(|s| {
-            s.set_attr(
-                doc(),
-                block.clone(),
-                "align".to_owned(),
-                Some("end".to_owned()),
-            )
-        })
-        .unwrap();
-        assert_eq!(digest(&app), "heading/2[align=end]{:Alpha};");
-
-        app.call(|s| s.set_attr(doc(), block.clone(), "align".to_owned(), None))
-            .unwrap();
-        assert_eq!(digest(&app), "heading/2{:Alpha};");
-
-        app.call(|s| s.delete_block(doc(), block)).unwrap();
-        assert_eq!(digest(&app), "");
-    }
-
-    #[test]
-    fn move_block_reorders_the_document() {
-        let mut app = host("t");
-        let first = add_block(&mut app, "paragraph");
-        let _typed = type_text(&mut app, &first, "Alpha");
-        let second = app
-            .call(|s| s.insert_block(doc(), Some(first.clone()), "paragraph".to_owned(), 0))
-            .unwrap();
-        let _typed = type_text(&mut app, &second, "Beta");
-        assert_eq!(digest(&app), "paragraph/0{:Alpha};paragraph/0{:Beta};");
-
-        app.call(|s| s.move_block(doc(), second.clone(), None))
-            .unwrap();
-        assert_eq!(digest(&app), "paragraph/0{:Beta};paragraph/0{:Alpha};");
-        assert_eq!(
-            app.view(|s| s.get_document(doc()))
-                .unwrap()
-                .iter()
-                .map(|b| b.id.clone())
-                .collect::<Vec<_>>(),
-            vec![second, first]
-        );
-    }
-
-    #[test]
-    fn an_anchor_survives_an_edit_before_it() {
-        let mut app = host("t");
-        let block = add_block(&mut app, "paragraph");
-        let _typed = type_text(&mut app, &block, "hello world");
-        let anchor = app
-            .view(|s| s.anchor_at(doc(), block.clone(), 6, true))
-            .unwrap();
-        let _typed = app
-            .call(|s| s.apply_delta(doc(), block.clone(), vec![insert("say ")]))
-            .unwrap();
-        assert_eq!(
-            app.view(|s| s.resolve_ids(doc(), block.clone(), vec![anchor]))
-                .unwrap(),
-            vec![Some(10)]
-        );
-        assert_eq!(
-            app.view(|s| s.passage_count(doc(), block, "hello world".to_owned()))
-                .unwrap(),
-            1
-        );
-    }
-
-    /// A subscriber is told WHERE to re-read and nothing else, so every payload
-    /// has to name the document and the block it points at.
-    #[test]
-    fn every_body_event_names_the_document_and_the_block() {
-        use calimero_sdk::serde_json::{from_slice, json, Value};
-
-        let mut app = host("t");
-        let _ignored = app.take_events();
-        let block = add_block(&mut app, "paragraph");
-        let _typed = type_text(&mut app, &block, "hello world");
-        let _mark = app
-            .call(|s| {
-                s.mark(
-                    doc(),
-                    block.clone(),
-                    0,
-                    5,
-                    "bold".to_owned(),
-                    Some("true".to_owned()),
-                )
-            })
-            .unwrap();
-        app.call(|s| s.move_block(doc(), block.clone(), None))
-            .unwrap();
-        app.call(|s| s.delete_block(doc(), block.clone())).unwrap();
-
-        let seen: Vec<(String, Value)> = app
-            .events()
-            .iter()
-            .map(|e| (e.kind.clone(), from_slice(&e.data).expect("JSON payload")))
-            .collect();
-        let kinds: Vec<&str> = seen.iter().map(|(kind, _)| kind.as_str()).collect();
-        assert_eq!(
-            kinds,
-            [
-                "BlockInserted",
-                "TextChanged",
-                "MarkApplied",
-                "BlockMoved",
-                "BlockDeleted"
-            ]
-        );
-        for (kind, payload) in &seen {
-            assert_eq!(payload["doc"], json!(doc()), "{kind} lost the document");
-            assert_eq!(payload["block"], json!(block), "{kind} lost the block");
-            assert!(
-                payload.get("position").is_none() && payload.get("start").is_none(),
-                "{kind} ships a position, which indexes the EMITTING node only"
-            );
-        }
-    }
-
-    // ---- documents -------------------------------------------------------
-
-    #[test]
-    fn create_doc_assigns_a_fresh_id_each_time() {
-        let mut app = DocsState::init();
-        let a = app.create_doc_inner("a".into()).unwrap();
-        let b = app.create_doc_inner("b".into()).unwrap();
-        assert_ne!(a, b);
-        let (a, b) = (
-            a.split('-').collect::<Vec<_>>(),
-            b.split('-').collect::<Vec<_>>(),
-        );
-        assert_eq!(
-            (a[0], &a[2..]),
-            (b[0], &b[2..]),
-            "one kind, account and device"
-        );
-    }
-
-    #[test]
-    fn list_docs_returns_created_docs() {
-        let mut app = DocsState::init();
-        app.create_doc_inner("a".into()).unwrap();
-        app.create_doc_inner("b".into()).unwrap();
-        assert_eq!(app.list_docs(false).unwrap().len(), 2);
-    }
-
-    /// What the node's indexer reads for a doc: its title and its body as a
-    /// reader sees it, and a body edit names the doc's entry so it is read again.
-    #[test]
-    fn the_index_holds_a_docs_title_and_body_text() {
-        use calimero_sdk::search::{SearchCollection, SearchValue};
-
-        let mut app = DocsState::init();
-        let id = app.create_doc_inner("Quarterly plan".into()).unwrap();
-        let block = app
-            .insert_block(id.clone(), None, "paragraph".into(), 0)
-            .unwrap();
-        let _undo = app
-            .apply_delta(
-                id.clone(),
-                block,
-                vec![Change::Insert {
-                    insert: "the budget is final".into(),
-                    attributes: None,
-                }],
-            )
-            .unwrap();
-        let (ids, next) = app.docs.search_page([0; 32], 10).unwrap();
-        assert_eq!((ids.len(), next), (1, None));
-        let doc = app.docs.search_extract(&ids).unwrap().remove(0).unwrap();
-        let field = |name: &str| {
-            doc.fields
-                .iter()
-                .find(|(n, _)| n == name)
-                .map(|(_, v)| v.clone())
-        };
-        assert_eq!(
-            field("title"),
-            Some(SearchValue::Str("Quarterly plan".into()))
-        );
-        assert_eq!(
-            field("body"),
-            Some(SearchValue::Str("the budget is final".into()))
-        );
-        let (key, _) = app.docs.search_entry(ids[0]).unwrap().unwrap();
-        assert_eq!(key, id);
-    }
-
-    #[test]
-    fn search_docs_checks_its_input_before_asking_the_node() {
-        let app = DocsState::init();
-        let huge = "x".repeat(MAX_DOC_SEARCH_QUERY + 1);
-        assert!(app.search_docs(huge, false, None, None).is_err());
-        let empty = app
-            .search_docs("  ".into(), false, None, None)
-            .expect("an empty query asks nothing");
-        assert!(empty.hits.is_empty() && empty.next_cursor.is_none());
-        let err = app
-            .search_docs("plan".into(), false, None, None)
-            .expect_err("no index here");
-        assert!(format!("{err:?}").contains("needs a node"), "{err:?}");
-    }
-
-    #[test]
-    fn get_doc_missing_is_error() {
-        let app = DocsState::init();
-        let err = app.get_doc("ghost".into()).unwrap_err();
-        assert_eq!(
-            calimero_sdk::serde_json::to_value(&err).unwrap(),
-            calimero_sdk::serde_json::json!({"kind": "NotFound", "data": "ghost"})
-        );
-    }
-
-    #[test]
-    fn a_refused_write_reaches_the_client_as_a_tagged_kind() {
-        let mut app = folder();
-        let id = app
-            .call_as_account(ALICE, ALICE, |s| s.create_doc("mine".into()))
-            .unwrap();
-        let err = app
-            .call_as_account(BOB, BOB, |s| s.delete_doc(id))
-            .unwrap_err();
-        let wire = calimero_sdk::serde_json::to_value(&err).unwrap();
-        assert_eq!(wire["kind"], "Forbidden");
-    }
-
-    #[test]
-    fn a_body_write_on_an_unknown_doc_is_an_error() {
-        let mut app = DocsState::init();
-        let err = app
-            .insert_block("ghost".into(), None, "paragraph".into(), 0)
-            .unwrap_err();
-        let err = format!("{err:?}");
-        assert!(err.contains("unknown document 'ghost'"), "{err}");
-    }
-
-    #[test]
-    fn archive_hides_from_list_by_default() {
-        let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into()).unwrap();
-        app.set_archived_inner(id.clone(), true).unwrap();
-        assert_eq!(app.list_docs(false).unwrap().len(), 0);
-        assert_eq!(app.list_docs(true).unwrap().len(), 1);
-        assert!(app.get_doc(id).unwrap().archived);
-    }
-
-    #[test]
-    fn unarchive_restores_in_default_list() {
-        let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into()).unwrap();
-        app.set_archived_inner(id.clone(), true).unwrap();
-        app.set_archived_inner(id.clone(), false).unwrap();
-        assert_eq!(app.list_docs(false).unwrap().len(), 1);
-        assert!(!app.get_doc(id).unwrap().archived);
-    }
-
-    #[test]
-    fn archive_unknown_is_not_found() {
-        let mut app = DocsState::init();
-        let err = app.set_archived_inner("ghost".into(), true).unwrap_err();
-        assert!(matches!(err, DriveError::NotFound(_)));
-    }
-
-    #[test]
-    fn delete_doc_removes_from_map() {
-        // Through `TestHost`, which aligns the SDK account with the storage
-        // writer as a node does: a doc's creator is the owner of its header.
-        let mut app = folder();
-        let id = app
-            .call_as_account(ALICE, ALICE, |s| s.create_doc_inner("t".into()))
-            .unwrap();
-        app.call_as_account(ALICE, ALICE, |s| s.delete_doc_inner(id.clone()))
-            .unwrap();
-        assert!(app.view(|s| s.get_doc(id)).is_err());
-        assert_eq!(app.view(|s| s.list_docs(true)).unwrap().len(), 0);
-    }
-
-    #[test]
-    fn delete_doc_unknown_is_not_found() {
-        let mut app = DocsState::init();
-        let err = app.delete_doc_inner("ghost".into()).unwrap_err();
-        assert!(matches!(err, DriveError::NotFound(_)));
-    }
-
-    #[test]
-    fn add_tag_inserts_and_is_set_no_dup() {
-        let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into()).unwrap();
-        app.add_tag_inner(id.clone(), "todo".into()).unwrap();
-        app.add_tag_inner(id.clone(), "todo".into()).unwrap();
-        let d = app.get_doc(id).unwrap();
-        assert_eq!(d.tags, vec!["todo".to_string()]);
-    }
-
-    /// The storage actions `f` queues for sync.
-    fn actions_of(f: impl FnOnce()) -> Vec<calimero_storage::action::Action> {
-        calimero_storage::delta::clear_pending_delta();
-        f();
-        calimero_storage::delta::commit_causal_delta(&[0; 32])
-            .unwrap()
-            .map(|delta| delta.actions)
-            .unwrap_or_default()
-    }
-
-    #[test]
-    fn add_tag_on_a_set_key_writes_nothing() {
-        let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into()).unwrap();
-        let first = actions_of(|| app.add_tag_inner(id.clone(), "todo".into()).unwrap());
-        assert!(!first.is_empty());
-        let actions = actions_of(|| app.add_tag_inner(id.clone(), "todo".into()).unwrap());
-        assert!(actions.is_empty(), "{actions:?}");
-    }
-
-    #[test]
-    fn remove_tag_of_an_absent_key_writes_nothing() {
-        let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into()).unwrap();
-        let actions = actions_of(|| app.remove_tag_inner(id.clone(), "never".into()).unwrap());
-        assert!(actions.is_empty(), "{actions:?}");
-    }
-
-    #[test]
-    fn add_tag_accepts_only_a_tag_key() {
-        let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into()).unwrap();
-        app.add_tag_inner(id.clone(), "launch-2".into()).unwrap();
-        let too_long = "a".repeat(mero_docs_types::TAG_KEY_MAX + 1);
-        for bad in ["", "Launch", "a b", too_long.as_str()] {
-            let err = app.add_tag_inner(id.clone(), bad.into()).unwrap_err();
-            assert!(
-                matches!(&err, DriveError::Invalid(msg) if msg == "invalid tag key"),
-                "{bad:?}: {err}"
-            );
-        }
-        assert_eq!(app.get_doc(id).unwrap().tags, vec!["launch-2".to_owned()]);
-    }
-
-    #[test]
-    fn list_docs_returns_tags_sorted() {
-        let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into()).unwrap();
-        for tag in ["zeta", "alpha", "mid", "beta"] {
-            app.add_tag_inner(id.clone(), tag.into()).unwrap();
-        }
-        app.remove_tag_inner(id.clone(), "mid".into()).unwrap();
-        assert_eq!(
-            app.list_docs(false).unwrap()[0].tags,
-            vec!["alpha".to_owned(), "beta".to_owned(), "zeta".to_owned()]
-        );
-    }
-
-    #[test]
-    fn remove_tag_is_idempotent_even_for_a_key_never_added() {
-        let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into()).unwrap();
-        app.remove_tag_inner(id.clone(), "never".into()).unwrap();
-        assert!(app.get_doc(id.clone()).unwrap().tags.is_empty());
-        app.add_tag_inner(id.clone(), "todo".into()).unwrap();
-        app.remove_tag_inner(id.clone(), "todo".into()).unwrap();
-        app.remove_tag_inner(id.clone(), "todo".into()).unwrap();
-        assert!(app.get_doc(id).unwrap().tags.is_empty());
-    }
-
-    #[test]
-    fn add_tag_unknown_doc_is_not_found() {
-        let mut app = DocsState::init();
-        let err = app.add_tag_inner("ghost".into(), "t".into()).unwrap_err();
-        assert!(matches!(err, DriveError::NotFound(_)));
-    }
-
-    #[test]
-    fn remove_tag_deletes_it() {
-        let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into()).unwrap();
-        app.add_tag_inner(id.clone(), "todo".into()).unwrap();
-        app.remove_tag_inner(id.clone(), "todo".into()).unwrap();
-        assert_eq!(app.get_doc(id).unwrap().tags.len(), 0);
-    }
-
-    #[test]
-    fn remove_tag_unknown_doc_is_not_found() {
-        let mut app = DocsState::init();
-        let err = app
-            .remove_tag_inner("ghost".into(), "t".into())
-            .unwrap_err();
-        assert!(matches!(err, DriveError::NotFound(_)));
-    }
-
-    #[test]
-    fn archive_advances_updated_at() {
-        let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into()).unwrap();
-        let before = app.get_doc(id.clone()).unwrap().updated_at;
-        std::thread::sleep(std::time::Duration::from_millis(2));
-        app.set_archived_inner(id.clone(), true).unwrap();
-        assert!(app.get_doc(id).unwrap().updated_at > before);
-    }
-
-    /// The list's sort key must move when the BODY moves, not only when the
-    /// record's metadata does.
-    #[test]
-    fn a_body_write_advances_updated_at() {
-        let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into()).unwrap();
-        let before = app.get_doc(id.clone()).unwrap().updated_at;
-        std::thread::sleep(std::time::Duration::from_millis(2));
-        let _block = app
-            .insert_block(id.clone(), None, "paragraph".into(), 0)
-            .unwrap();
-        assert!(app.get_doc(id).unwrap().updated_at > before);
-    }
-
-    #[test]
-    fn create_doc_records_the_caller_and_an_edit_records_the_editor() {
-        let mut app = folder();
-        let id = app
-            .call_as_account(ALICE, ALICE, |s| s.create_doc("t".to_owned()))
-            .unwrap();
-        let doc = app.view(|s| s.get_doc(id.clone())).unwrap();
-        assert_eq!(doc.created_by, hex(&ALICE));
-        assert_eq!(doc.updated_by, hex(&ALICE));
-
-        app.call_as_account(BOB, BOB, |s| s.edit_doc(id.clone(), "u".to_owned()))
-            .unwrap();
-        let doc = app.view(|s| s.get_doc(id.clone())).unwrap();
-        assert_eq!(doc.created_by, hex(&ALICE));
-        assert_eq!(doc.updated_by, hex(&BOB));
-    }
-
-    #[test]
-    fn archive_records_the_archiver_as_the_last_editor() {
-        let mut app = folder();
-        let id = app
-            .call_as_account(ALICE, ALICE, |s| s.create_doc("t".to_owned()))
-            .unwrap();
-        app.call_as_account(BOB, BOB, |s| s.archive_doc(id.clone()))
-            .unwrap();
-        let doc = app.view(|s| s.get_doc(id.clone())).unwrap();
-        assert_eq!(doc.created_by, hex(&ALICE));
-        assert_eq!(doc.updated_by, hex(&BOB));
-    }
-
-    #[test]
-    fn a_tag_change_leaves_the_last_editor() {
-        let mut app = folder();
-        let id = app
-            .call_as_account(ALICE, ALICE, |s| s.create_doc("t".to_owned()))
-            .unwrap();
-        app.call_as_account(BOB, BOB, |s| s.add_tag(id.clone(), "todo".to_owned()))
-            .unwrap();
-        assert_eq!(
-            app.view(|s| s.get_doc(id.clone())).unwrap().updated_by,
-            hex(&ALICE)
-        );
-    }
-
-    #[test]
-    fn add_tag_does_not_touch_the_title() {
-        let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into()).unwrap();
-        app.add_tag_inner(id.clone(), "x".into()).unwrap();
-        assert_eq!(app.get_doc(id).unwrap().title, "t");
-    }
-
-    // ---- who may do what ---------------------------------------------------
-    //
-    // Docs themselves are public (co-editing); these pin what is not.
-
-    const ALICE: [u8; 32] = [0xA1; 32];
-    const BOB: [u8; 32] = [0xB0; 32];
-
-    /// A folder context founded by the test host's default account.
-    fn folder() -> TestHost<DocsState> {
-        TestHost::new(DocsState::init)
-    }
-
-    #[test]
-    fn concurrent_creators_mint_distinct_ids() {
-        let mut app = folder();
-        let a = app
-            .call_as_account(ALICE, ALICE, |s| s.create_doc("a".into()))
-            .unwrap();
-        let b = app
-            .call_as_account(BOB, BOB, |s| s.create_doc("b".into()))
-            .unwrap();
-        assert_eq!(creator_in(&a), Some(hex(&ALICE).as_str()), "{a}");
-        assert_eq!(creator_in(&b), Some(hex(&BOB).as_str()), "{b}");
-    }
-
-    #[test]
-    fn a_docs_creator_is_its_headers_owner() {
-        let mut app = folder();
-        let id = app
-            .call_as_account(ALICE, ALICE, |s| s.create_doc("mine".into()))
-            .unwrap();
-        let doc = app.view(|s| s.get_doc(id.clone())).unwrap();
-        assert_eq!(doc.created_by, hex(&ALICE));
-        assert!(doc.created_at > 0);
-
-        // Keys are per owner: Bob's write lands as his own entry at the id.
-        // The id does not name his account, so it is never the header.
-        app.call_as_account(BOB, BOB, |s| s.headers.insert(id.clone(), 1))
-            .unwrap();
-        let doc = app.view(|s| s.get_doc(id.clone())).unwrap();
-        assert_eq!(doc.created_by, hex(&ALICE));
-        assert!(doc.created_at > 1);
-        assert_eq!(app.view(|s| s.list_docs(true)).unwrap().len(), 1);
-        let bobs_view = app.call_as_account(BOB, BOB, |s| s.get_doc(id.clone()));
-        assert!(
-            !bobs_view.unwrap().can_delete,
-            "a planted header is not a creator"
-        );
-        assert!(app.call_as_account(BOB, BOB, |s| s.delete_doc(id)).is_err());
-    }
-
-    #[test]
-    fn only_the_creator_or_a_moderator_deletes_a_doc() {
-        let mut app = folder();
-        let id = app
-            .call_as_account(ALICE, ALICE, |s| s.create_doc("mine".into()))
-            .unwrap();
-        assert!(app
-            .call_as_account(BOB, BOB, |s| s.delete_doc(id.clone()))
-            .is_err());
-        // Bob can still edit it: documents are collaborative.
-        app.call_as_account(BOB, BOB, |s| s.edit_doc(id.clone(), "ours".into()))
-            .unwrap();
-
-        // The folder's founder moderates.
-        app.call(|s| s.delete_doc(id.clone())).unwrap();
-        assert!(app.view(|s| s.get_doc(id)).is_err());
-
-        let own = app
-            .call_as_account(BOB, BOB, |s| s.create_doc("bob's".into()))
-            .unwrap();
-        app.call_as_account(BOB, BOB, |s| s.delete_doc(own))
-            .unwrap();
-    }
-
-    #[test]
-    fn can_delete_is_true_exactly_for_those_delete_doc_lets_through() {
-        let mut app = folder();
-        let founder = app.account_id();
-        let id = app
-            .call_as_account(ALICE, ALICE, |s| s.create_doc("mine".into()))
-            .unwrap();
-        let mut can_delete = |who: [u8; 32]| {
-            app.call_as_account(who, who, |s| {
-                let one = s.get_doc(id.clone()).unwrap().can_delete;
-                let listed = s.list_docs(false).unwrap();
-                assert_eq!(listed.iter().find(|d| d.id == id).unwrap().can_delete, one);
-                one
-            })
-        };
-        assert!(can_delete(ALICE), "the creator");
-        assert!(can_delete(founder), "the folder's founder moderates");
-        assert!(!can_delete(BOB), "another member");
-        assert!(app
-            .call_as_account(BOB, BOB, |s| s.delete_doc(id.clone()))
-            .is_err());
-    }
-
-    #[test]
-    fn a_comment_over_the_cap_is_refused() {
-        let at_cap = "\u{e9}".repeat(MAX_COMMENT_LEN);
-        let over = format!("{at_cap}x");
-        let mut app = DocsState::init();
-        let doc = app.create_doc_inner("d".into()).unwrap();
-        assert!(matches!(
-            app.add_comment_inner(doc.clone(), over.clone()),
-            Err(DriveError::Invalid(_))
-        ));
-        let id = app.add_comment_inner(doc, at_cap.clone()).unwrap();
-        assert!(matches!(
-            app.edit_comment_inner(id.clone(), over),
-            Err(DriveError::Invalid(_))
-        ));
-        app.edit_comment_inner(id, at_cap).unwrap();
-    }
-
-    #[test]
-    fn a_comment_is_its_authors_and_moderators_remove_any() {
-        let mut app = folder();
-        let doc = app.call(|s| s.create_doc("d".into())).unwrap();
-        let other = app.call(|s| s.create_doc("e".into())).unwrap();
-        let cmt = app
-            .call_as_account(ALICE, ALICE, |s| s.add_comment(doc.clone(), "hi".into()))
-            .unwrap();
-        let _elsewhere = app
-            .call_as_account(ALICE, ALICE, |s| s.add_comment(other.clone(), "yo".into()))
-            .unwrap();
-
-        let listed = app.view(|s| s.list_comments(doc.clone())).unwrap();
-        assert_eq!(listed.len(), 1, "only this doc's comments");
-        assert_eq!(listed[0].author, hex(&ALICE));
-        assert_eq!(listed[0].body, "hi");
-
-        assert!(app
-            .call_as_account(BOB, BOB, |s| s.edit_comment(cmt.clone(), "mine".into()))
-            .is_err());
-        assert!(app
-            .call_as_account(BOB, BOB, |s| s.delete_comment(cmt.clone()))
-            .is_err());
-        app.call_as_account(ALICE, ALICE, |s| {
-            s.edit_comment(cmt.clone(), "hello".into())
-        })
-        .unwrap();
-        assert_eq!(
-            app.view(|s| s.get_comment(cmt.clone())).unwrap().body,
-            "hello"
-        );
-
-        // The founder is the first moderator.
-        app.call(|s| s.delete_comment(cmt.clone())).unwrap();
-        assert!(app.view(|s| s.list_comments(doc)).unwrap().is_empty());
-    }
-
-    // ---- a doc record merges field by field --------------------------------
-
-    /// A Script whose collection entries reach the app's merges, as a node's
-    /// module load registers them; `Script::new` clears that registry.
-    fn docs_script() -> calimero_storage::testing::Script<DocsState> {
-        let script = calimero_storage::testing::Script::new(DocsState::init);
-        DocsState::__calimero_register_rekey();
-        script
-    }
-
-    #[test]
-    #[serial_test::serial]
-    #[ignore = "a Script test needs its own process: cargo test -- --ignored"]
-    fn an_archive_survives_a_concurrent_title_edit() {
-        let mut script = docs_script();
-        let (alice, bob) = (script.member(), script.member());
-        let mut id = String::new();
-        let created = script
-            .run(alice, |s| id = s.create_doc_inner("draft".into()).unwrap())
-            .unwrap();
-        assert_eq!(script.deliver(bob, created), 0);
-        let _archived = script
-            .run(alice, |s| s.set_archived_inner(id.clone(), true).unwrap())
-            .unwrap();
-        let _renamed = script
-            .run(bob, |s| s.edit_doc(id.clone(), "final".into()).unwrap())
-            .unwrap();
-        let orders = script.assert_every_order_converges(|s| {
-            let doc = s.get_doc(id.clone()).unwrap();
-            doc.archived && doc.title == "final"
-        });
-        assert_eq!(orders, 2);
-    }
-
-    // ---- a doc id is its creator's alone ---------------------------------
-
-    /// Two devices of one account, each creating before it has seen the
-    /// other's doc, as a partitioned pair of nodes would.
-    #[test]
-    #[serial_test::serial]
-    #[ignore = "a Script test needs its own process: cargo test -- --ignored"]
-    fn two_devices_of_one_account_create_two_docs() {
-        let mut script = docs_script();
-        let (laptop, phone) = (script.founder(), script.founder());
-        assert_eq!(script.account(laptop), script.account(phone));
-        let on_laptop = script
-            .run(laptop, |s| {
-                let _id = s.create_doc_inner("Laptop".into()).unwrap();
-            })
-            .unwrap();
-        let on_phone = script
-            .run(phone, |s| {
-                let _id = s.create_doc_inner("Phone".into()).unwrap();
-            })
-            .unwrap();
-        assert_eq!(script.deliver(laptop, on_phone), 0);
-        assert_eq!(script.deliver(phone, on_laptop), 0);
-        for device in [laptop, phone] {
-            let mut titles: Vec<String> = script.view(device, |s| {
-                s.list_docs(true)
-                    .unwrap()
-                    .into_iter()
-                    .map(|d| d.title)
-                    .collect()
-            });
-            titles.sort();
-            assert_eq!(titles, ["Laptop", "Phone"], "one whole doc per create");
-        }
-    }
-
-    /// A planted header at the creator's id, from an account sharing the
-    /// creator's first bytes.
-    #[test]
-    fn a_prefix_matching_account_cannot_strip_a_docs_creator() {
-        const MALLORY: [u8; 32] = {
-            let mut id = [0u8; 32];
-            id[0] = 0xA1;
-            id[1] = 0xA1;
-            id[2] = 0xA1;
-            id[3] = 0xA1;
-            id
-        };
-        let mut app = folder();
-        let id = app
-            .call_as_account(ALICE, ALICE, |s| s.create_doc("mine".into()))
-            .unwrap();
-        app.call_as_account(MALLORY, MALLORY, |s| s.headers.insert(id.clone(), 1))
-            .unwrap();
-        let doc = app
-            .call_as_account(ALICE, ALICE, |s| s.get_doc(id.clone()))
-            .unwrap();
-        assert_eq!(doc.created_by, hex(&ALICE));
-        assert!(doc.can_delete);
-        app.call_as_account(ALICE, ALICE, |s| s.delete_doc(id))
-            .unwrap();
-    }
-
-    /// A planted comment at the author's id, from an account that sorts
-    /// below the author.
-    #[test]
-    fn a_comment_planted_at_anothers_id_is_not_theirs() {
-        const MALLORY: [u8; 32] = [0x01; 32];
-        let mut app = folder();
-        let doc = app.call(|s| s.create_doc("d".into())).unwrap();
-        let cmt = app
-            .call_as_account(ALICE, ALICE, |s| s.add_comment(doc.clone(), "hi".into()))
-            .unwrap();
-        let planted = Comment {
-            doc_id: doc.clone(),
-            body: LwwRegister::new("forged".to_owned()),
-            created_at: 1,
-        };
-        app.call_as_account(MALLORY, MALLORY, |s| {
-            s.comments.insert(cmt.clone(), planted)
-        })
-        .unwrap();
-        let shown = app.view(|s| s.get_comment(cmt.clone())).unwrap();
-        assert_eq!((shown.author, shown.body), (hex(&ALICE), "hi".to_owned()));
-        let listed = app.view(|s| s.list_comments(doc)).unwrap();
-        assert_eq!(listed.len(), 1);
-        assert_eq!(app.view(|s| s.comment_count()).unwrap(), 1);
-        assert_eq!(
-            (&listed[0].author, &listed[0].body),
-            (&hex(&ALICE), &"hi".to_owned())
-        );
-    }
-
-    #[test]
-    #[serial_test::serial]
-    #[ignore = "a Script test needs its own process: cargo test -- --ignored"]
-    fn two_devices_of_one_account_add_two_comments() {
-        let mut script = docs_script();
-        let (laptop, phone) = (script.founder(), script.founder());
-        let mut doc = String::new();
-        let created = script
-            .run(laptop, |s| doc = s.create_doc_inner("d".into()).unwrap())
-            .unwrap();
-        assert_eq!(script.deliver(phone, created), 0);
-        let on_laptop = script
-            .run(laptop, |s| {
-                let _id = s.add_comment_inner(doc.clone(), "Laptop".into()).unwrap();
-            })
-            .unwrap();
-        let on_phone = script
-            .run(phone, |s| {
-                let _id = s.add_comment_inner(doc.clone(), "Phone".into()).unwrap();
-            })
-            .unwrap();
-        assert_eq!(script.deliver(laptop, on_phone), 0);
-        assert_eq!(script.deliver(phone, on_laptop), 0);
-        for device in [laptop, phone] {
-            let mut bodies: Vec<String> = script.view(device, |s| {
-                s.list_comments(doc.clone())
-                    .unwrap()
-                    .into_iter()
-                    .map(|c| c.body)
-                    .collect()
-            });
-            bodies.sort();
-            assert_eq!(bodies, ["Laptop", "Phone"], "one comment per add");
-        }
-    }
-
-    // ---- a doc is deleted only by its creator or a moderator ---------------
-
-    /// Replicas apply each other's signed deltas as nodes do.
-    #[test]
-    #[serial_test::serial]
-    #[ignore = "a Script test needs its own process: cargo test -- --ignored"]
-    fn a_direct_body_delete_by_a_non_creator_leaves_the_doc_listed() {
-        let mut script = docs_script();
-        let (alice, bob) = (script.member(), script.member());
-        let mut id = String::new();
-        let created = script
-            .run(alice, |s| id = s.create_doc_inner("mine".into()).unwrap())
-            .unwrap();
-        assert_eq!(script.deliver(bob, created), 0);
-
-        // A patched node skips `delete_doc`'s check.
-        let forged = script
-            .run(bob, |s| {
-                let _ = s.docs.remove(&id).unwrap();
-            })
-            .unwrap();
-        let _dropped = script.deliver(alice, forged);
-        let creator = hex(script.account(alice).as_bytes());
-        let listed = script.view(alice, |s| {
-            s.list_docs(true)
-                .unwrap()
-                .into_iter()
-                .map(|d| (d.id, d.created_by, d.can_delete))
-                .collect::<Vec<_>>()
-        });
-        assert_eq!(listed, [(id.clone(), creator, true)]);
-        let deleted = script.run(alice, |s| s.delete_doc_inner(id.clone()).unwrap());
-        assert!(deleted.is_some());
-        assert!(script.view(alice, |s| s.list_docs(true).unwrap().is_empty()));
-    }
-
-    /// The list is the docs whose creator still holds their header.
-    #[test]
-    fn a_body_without_its_creators_header_is_not_listed() {
-        let mut app = folder();
-        let id = app
-            .call_as_account(BOB, BOB, |s| s.create_doc("orphan".into()))
-            .unwrap();
-        let _removed = app
-            .call_as_account(BOB, BOB, |s| s.headers.remove(&id))
-            .unwrap();
-        assert!(app.view(|s| s.list_docs(true)).unwrap().is_empty());
-        assert!(app.view(|s| s.get_doc(id)).is_err());
-    }
-
-    // ---- a writer cannot pin a doc to the top of every list ----------------
-
-    /// The docs by `updated_at`, newest first, as the app sorts them.
-    fn newest_first(s: &DocsState) -> Vec<String> {
-        let mut docs = s.list_docs(false).unwrap();
-        docs.sort_by_key(|a| std::cmp::Reverse(a.updated_at));
-        docs.into_iter().map(|d| d.id).collect()
-    }
-
-    #[test]
-    #[serial_test::serial]
-    #[ignore = "a Script test needs its own process: cargo test -- --ignored"]
-    fn a_forged_updated_at_does_not_pin_a_doc_to_the_top() {
-        let mut script = docs_script();
-        let (alice, mallory) = (script.member(), script.member());
-        let mut a = String::new();
-        let mut b = String::new();
-        let created = script
-            .run(alice, |s| a = s.create_doc_inner("a".into()).unwrap())
-            .unwrap();
-        assert_eq!(script.deliver(mallory, created), 0);
-        let forged = script
-            .run(mallory, |s| {
-                b = s.create_doc_inner("b".into()).unwrap();
-                s.docs
-                    .get_mut(&b)
-                    .unwrap()
-                    .unwrap()
-                    .updated_at
-                    .set(u64::MAX);
-            })
-            .unwrap();
-        assert_eq!(script.deliver(alice, forged), 0);
-
-        // Alice edits her doc after Mallory's write: hers is the newest edit.
-        let _edited = script
-            .run(alice, |s| s.edit_doc(a.clone(), "a2".into()).unwrap())
-            .unwrap();
-        assert_eq!(script.view(alice, newest_first), [a, b]);
-    }
-
-    #[test]
-    fn a_creation_time_ahead_of_the_readers_clock_reads_as_unknown() {
-        let mut app = folder();
-        let id = app
-            .call_as_account(ALICE, ALICE, |s| s.create_doc("mine".into()))
-            .unwrap();
-        app.call_as_account(ALICE, ALICE, |s| s.headers.update(&id, u64::MAX))
-            .unwrap();
-        let doc = app.view(|s| s.get_doc(id)).unwrap();
-        assert_eq!(doc.created_at, 0);
-        assert!(doc.updated_at > 0 && doc.updated_at < u64::MAX);
-    }
-
-    /// A stamp is trusted up to exactly the skew storage accepts on a write.
-    #[test]
-    fn a_stamp_is_trusted_up_to_the_drift_storage_accepts() {
-        let now = 1_000;
-        let edge = now + DRIFT_TOLERANCE_NANOS;
-        assert_eq!(not_ahead(edge, now), Some(edge));
-        assert_eq!(not_ahead(edge + 1, now), None);
-    }
-
-    /// Deleting a doc removes its comments as far as the deleter may: a
-    /// moderator removes every author's, a creator only their own.
-    #[test]
-    fn deleting_a_doc_removes_the_comments_the_deleter_may_remove() {
-        let mut app = folder();
-        let seed = |app: &mut TestHost<DocsState>| {
-            let doc = app
-                .call_as_account(ALICE, ALICE, |s| s.create_doc("d".into()))
-                .unwrap();
-            for who in [ALICE, BOB] {
-                let _id = app
-                    .call_as_account(who, who, |s| s.add_comment(doc.clone(), "c".into()))
-                    .unwrap();
-            }
-            doc
-        };
-        // What storage still holds, since reads hide a deleted doc's comments.
-        let authors = |app: &TestHost<DocsState>, doc: &String| {
-            app.view(|s| s.comments.entries_with_owners())
-                .unwrap()
-                .into_iter()
-                .filter(|(_, _, c)| c.doc_id == *doc)
-                .map(|(owner, _, _)| hex(owner.as_bytes()))
-                .collect::<Vec<_>>()
-        };
-
-        let doc = seed(&mut app);
-        app.call_as_account(ALICE, ALICE, |s| s.delete_doc(doc.clone()))
-            .unwrap();
-        assert_eq!(
-            authors(&app, &doc),
-            [hex(&BOB)],
-            "the creator removes her own"
-        );
-
-        let doc = seed(&mut app);
-        app.call(|s| s.delete_doc(doc.clone())).unwrap();
-        assert!(authors(&app, &doc).is_empty(), "a moderator removes all");
-    }
-
-    /// A planted comment at the author's id, filed under another doc, is not
-    /// that doc's comment, and deleting that doc leaves the author's alone.
-    #[test]
-    fn a_comment_planted_under_another_doc_stays_out_of_it() {
-        const MALLORY: [u8; 32] = [0x01; 32];
-        let mut app = folder();
-        let z = app
-            .call_as_account(ALICE, ALICE, |s| s.create_doc("z".into()))
-            .unwrap();
-        let y = app
-            .call_as_account(MALLORY, MALLORY, |s| s.create_doc("y".into()))
-            .unwrap();
-        let x = app
-            .call_as_account(ALICE, ALICE, |s| s.add_comment(z.clone(), "hi".into()))
-            .unwrap();
-        let planted = Comment {
-            doc_id: y.clone(),
-            body: LwwRegister::new("forged".to_owned()),
-            created_at: 1,
-        };
-        app.call_as_account(MALLORY, MALLORY, |s| s.comments.insert(x.clone(), planted))
-            .unwrap();
-        assert!(app.view(|s| s.list_comments(y.clone())).unwrap().is_empty());
-
-        app.call(|s| s.delete_doc(y)).unwrap();
-        let on_z = app.view(|s| s.list_comments(z)).unwrap();
-        assert_eq!(on_z.len(), 1);
-        assert_eq!((&on_z[0].id, &on_z[0].body), (&x, &"hi".to_owned()));
-    }
-
-    #[test]
-    fn comments_of_a_missing_or_deleted_doc_are_refused_and_hidden() {
-        let mut app = folder();
-        assert!(app
-            .call_as_account(BOB, BOB, |s| s.add_comment("ghost".into(), "c".into()))
-            .is_err());
-        let doc = app
-            .call_as_account(ALICE, ALICE, |s| s.create_doc("d".into()))
-            .unwrap();
-        let bobs = app
-            .call_as_account(BOB, BOB, |s| s.add_comment(doc.clone(), "c".into()))
-            .unwrap();
-        app.call_as_account(ALICE, ALICE, |s| s.delete_doc(doc.clone()))
-            .unwrap();
-        assert!(app.view(|s| s.list_comments(doc)).unwrap().is_empty());
-        assert_eq!(
-            app.view(|s| s.comment_schema_version(bobs.clone()))
-                .unwrap(),
-            None
-        );
-        assert!(app.view(|s| s.get_comment(bobs)).is_err());
-        assert_eq!(app.view(|s| s.comment_count()).unwrap(), 0);
-    }
+/// The calling account; `LoginRequired` for anything that is not one.
+fn account() -> app::Result<String> {
+    match env::caller() {
+        Caller::Account(account) | Caller::ApiKey { account, .. } => Ok(account),
+        Caller::Public | Caller::System | Caller::App(_) => Err(AppError::login_required()),
+    }
+}
+
+/// Whether the caller may delete what `creator` made: its creator, or the
+/// folder's moderator (the account that created this instance).
+fn may_delete(creator: &str) -> app::Result<bool> {
+    let me = account()?;
+    Ok(me == creator || me == env::app_owner())
+}
+
+/// `<kind>-<16 hex>`: 8 random bytes of the run.
+fn fresh_id(kind: &str) -> String {
+    let hex: String = env::random_bytes(8)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    format!("{kind}-{hex}")
+}
+
+/// A tag key: 1 to 64 lowercase letters, digits and dashes.
+pub fn is_valid_tag_key(key: &str) -> bool {
+    (1..=TAG_KEY_MAX).contains(&key.len())
+        && key
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
+
+fn is_hex_color(s: &str) -> bool {
+    s.len() == 7 && s.starts_with('#') && s[1..].bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+fn check_chars(what: &str, value: &str, max: usize) -> app::Result<()> {
+    check_len(what, value.chars().count(), max)
+}
+
+fn check_len(what: &str, len: usize, max: usize) -> app::Result<()> {
+    if len > max {
+        return Err(invalid(format!(
+            "{what} too long: {len} characters, limit is {max}"
+        )));
+    }
+    Ok(())
+}
+
+pub(crate) fn not_found(what: &str, id: &str) -> AppError {
+    Error::NotFound {
+        message: format!("{what} not found: {id}"),
+    }
+    .into()
+}
+
+pub(crate) fn invalid(message: impl Into<String>) -> AppError {
+    Error::Invalid {
+        message: message.into(),
+    }
+    .into()
+}
+
+pub(crate) fn forbidden(message: impl Into<String>) -> AppError {
+    Error::Forbidden {
+        message: message.into(),
+    }
+    .into()
 }

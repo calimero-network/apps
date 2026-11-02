@@ -46,11 +46,6 @@
     "update_member_username",
     "update_shadow"
   ],
-  "mero-docs": [
-    "comment_schema_version",
-    "delete_comment",
-    "list_comments"
-  ],
   "mero-forum": [
     "delete_comment",
     "get_nickname",
