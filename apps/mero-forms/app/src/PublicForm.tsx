@@ -1,27 +1,32 @@
 import { useEffect, useRef, useState } from "react";
-import type { LinkFormView } from "./generated/FormsClient";
+import { FormsClient, type LinkFormView } from "./formsApi";
 import { FieldInput } from "./FormFill";
-import { callWithGrant, sha256Hex } from "./lib/accessGrants";
 import { fetchCaptchaConfig, mountCaptcha, requestPass } from "./lib/captcha";
 import { missingRequired, toAnswers, type Draft } from "./lib/fields";
-import { newNonce, parsePublicLink, publicRefusal } from "./lib/publicLink";
+import { newNonce, parsePublicLink, publicRefusal, sha256Hex } from "./lib/publicLink";
+import { useSessionApi } from "./sessionContext";
 
 /**
- * A form opened from its public link: no sign-in, no node of the visitor's
- * own, no member key.
+ * A form opened from its public link: no sign-in, no account of the
+ * visitor's own.
  *
- * The link's fragment names a teammate's node, the workspace and an access
- * grant's token (see `lib/publicLink.ts`). This page calls that node's public
- * `/grant-calls` route with the token, for `link_form` to show the questions
- * and `submit_via_link` to send the answers. The grant names nothing else, and
- * the contract takes a response only while the form is public, under the
- * link's hourly cap, and with a captcha when the form asks for one: a pass
- * this deployment's verifier signed, or the Turnstile token itself, which the
- * contract checks with the team's own keys.
+ * The link's fragment names the workspace (an app instance) and an API key
+ * (see `lib/publicLink.ts`). This page makes a client of its own, never the
+ * page's signed-in one, that authenticates with that key, and calls
+ * `linkForm` to show the questions and `submitViaLink` to send the answers.
+ * The key names nothing else, and the contract takes a response only while
+ * the form is public, under the link's hourly cap, and with a captcha pass
+ * this deployment's verifier signed when the form asks for one.
  */
 export function PublicForm() {
   // Read once, on the first render: the fragment is the whole input.
   const [target] = useState(() => parsePublicLink(window.location.hash));
+  const { api, deps } = useSessionApi();
+  // The cluster this frontend talks to.
+  const where =
+    api.session.status === "signed-out" || api.session.status === "signed-in" ? api.session.target : null;
+  const unconfigured = api.session.status === "unconfigured" ? api.session.message : null;
+  const [forms, setForms] = useState<FormsClient | null>(null);
   const [linkId, setLinkId] = useState<string | null>(null);
   const [form, setForm] = useState<LinkFormView | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -36,34 +41,29 @@ export function PublicForm() {
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const captchaEl = useRef<HTMLDivElement>(null);
 
-  const call = <T,>(method: string, args: Record<string, unknown>) =>
-    callWithGrant<T>(target!.nodeUrl, target!.contextId, target!.token, method, args);
-
   useEffect(() => {
-    if (!target) return;
+    if (!target || !where) return;
     let live = true;
     (async () => {
+      const client = await deps.makeClient(where);
+      client.useApiKey(target.token);
+      const f = new FormsClient(client, target.app);
       const link = await sha256Hex(target.token);
-      const view = await callWithGrant<LinkFormView>(target.nodeUrl, target.contextId, target.token, "link_form", {
-        link,
-      });
+      const view = await f.linkForm({ link });
       if (!live) return;
+      setForms(f);
       setLinkId(link);
       setForm(view);
       document.title = `${view.title} · Mero Forms`;
       if (view.captcha && view.accepting) {
-        // A form the contract checks itself uses the team's own site key; one
-        // checked with a pass uses this deployment's verifier's.
-        const key = view.captcha_by_node && view.captcha_site_key
-          ? view.captcha_site_key
-          : (await fetchCaptchaConfig()).siteKey;
+        const key = (await fetchCaptchaConfig()).siteKey;
         if (live) setSiteKey(key);
       }
     })().catch((e: unknown) => live && setLoadError(publicRefusal(e)));
     return () => {
       live = false;
     };
-  }, [target]);
+  }, [target, where, deps]);
 
   useEffect(() => {
     const el = captchaEl.current;
@@ -81,7 +81,7 @@ export function PublicForm() {
   }, [siteKey, nonce, sent]);
 
   async function submit() {
-    if (!target || !form || !linkId) return;
+    if (!target || !form || !linkId || !forms) return;
     const missing = missingRequired(form, draft);
     if (missing.length) {
       setError(`Still needed: ${missing.join(", ")}`);
@@ -94,18 +94,16 @@ export function PublicForm() {
     setBusy(true);
     setError(null);
     try {
-      // The contract checks the token itself, or takes a pass the verifier
-      // signed for it.
-      const byNode = form.captcha && form.captcha_by_node;
-      const captcha =
-        form.captcha && !byNode && captchaToken
+      // The contract takes a pass the verifier signed for this form, link and nonce.
+      const pass =
+        form.captcha && captchaToken
           ? await requestPass({ token: captchaToken, formId: form.form_id, link: linkId, nonce })
           : null;
-      await call<string>("submit_via_link", {
+      await forms.submitViaLink({
         link: linkId,
         answers: toAnswers(form, draft),
-        captcha,
-        captcha_token: byNode ? captchaToken : null,
+        captcha: pass,
+        captcha_token: null,
       });
       setSent(true);
       setDraft({});
@@ -131,7 +129,13 @@ export function PublicForm() {
             </p>
           </section>
         )}
-        {target && !form && !loadError && (
+        {target && unconfigured && (
+          <section className="card">
+            <h2>This form could not be opened</h2>
+            <p className="empty">{unconfigured}</p>
+          </section>
+        )}
+        {target && !form && !loadError && !unconfigured && (
           <section className="card">
             <p className="empty">Opening the form…</p>
           </section>

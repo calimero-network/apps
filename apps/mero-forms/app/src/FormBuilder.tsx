@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Field, FormView } from "./generated/FormsClient";
+import type { Field, FormView } from "./formsApi";
 import { KINDS, KIND_LABEL, isFieldId, isKind, newField, takesOptions, uniqueId, type Kind } from "./lib/fields";
 import { Icon } from "./ui";
 import type { Workspace } from "./useWorkspace";

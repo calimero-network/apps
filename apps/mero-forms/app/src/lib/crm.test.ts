@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { ResponseView } from "../generated/FormsClient";
-import type { ContactView } from "../generated/crm/CrmClient";
+import type { ResponseView } from "../formsApi";
+import type { ContactView } from "../crmApi";
 import { guessMapping } from "../CrmSettings";
 import { parseRoute, routeHash } from "../route";
 import { NO_LINK, crmPayload, existingContact, isLinked } from "./crm";

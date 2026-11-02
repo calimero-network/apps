@@ -11,23 +11,22 @@
 import { ArrowUpRight, BarChart, ExternalLink, FileCheck, LockCheck, Shield } from '@calimero-network/mero-icons';
 
 import Animation from './animation';
-import LoginPopup from './loginPopup';
 import type { LandingConfig } from './landingTypes';
 
 export const CONFIG: LandingConfig = {
   name: "Mero Forms",
   packageId: "com.calimero.mero-forms",
-  tagline: "Build forms with the fields you need, collect responses from your website or by hand, and send any response to Mero CRM. A website submits with a key that can answer one form and nothing else; responses live on your team's own nodes.",
+  tagline: "Build forms with the fields you need, collect responses from your website, a public link or by hand, and send any response to Mero CRM. A website answers with a key that can answer one form and nothing else.",
   dir: "mero-forms",
   markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
-  availability: "web+desktop",
+  availability: "web",
   tint: "#7c5cff",
   themeStorageKey: "mero-forms:theme",
   trust: ["No form vendor", "Answers checked by the contract", "Hands off to Mero CRM"],
   explainer: [
     "A form builder for a team: short answer, paragraph, email, phone, number, website, date, multiple choice and checkboxes, each required or not, with help text. Responses come in from your website or are entered by hand, and read back as a summary, a table and one response at a time, with a CSV export.",
-    "A workspace of forms is a Calimero context replicated between your team’s own nodes. A website answers through a key that is bound to one form and can do nothing else, and any response worth following up goes on to Mero CRM as a contact and a deal.",
+    "A workspace of forms is a Calimero app in your organization, and only its team reads the responses. A website answers through a key that is bound to one form and can do nothing else, and any response worth following up goes on to Mero CRM as a contact and a deal.",
   ],
   features: [
     {
@@ -62,25 +61,25 @@ export const CONFIG: LandingConfig = {
     },
   ],
   overview: {
-    headline: "Forms whose answers stay on your nodes.",
+    headline: "Forms whose answers stay with your team.",
     comparison: {
       heading: "A form builder, without the form vendor",
       sub: "The builder, the questions and the response table you expect. The difference is who holds the answers.",
       themLabel: "A typical online form service",
       rows: [
-        { label: "Where responses live", them: "In the vendor’s database", us: "On your team’s own nodes, nobody else’s" },
+        { label: "Where responses live", them: "In the vendor’s database", us: "In your workspace on attested Calimero nodes, read only by your team" },
         { label: "Who can read them", them: "Your team, and the vendor", us: "Your team. A website key can add a response and read nothing" },
         { label: "Checking answers", them: "In the form page, if at all", us: "In the contract, against every question, whoever sends it" },
         { label: "Your website’s form", them: "An embed or a third-party script", us: "Your own backend, answering with a key issued from the app" },
         { label: "Following up", them: "An integration, or a copy and paste", us: "Send to Mero CRM as a contact and a deal, in one click" },
       ],
     },
-    closing: { title: "Build your first form", body: "Connect a node, or install the desktop app that bundles one, then start from a template." },
+    closing: { title: "Build your first form", body: "Sign in with a passkey, start a workspace, then start from a template." },
   },
   faq: [
     {
       q: "Can my website read the responses?",
-      a: "No. A form key is an account bound to one form: it can add a response to that form and nothing else. Only the team can read responses, and the website never holds a node.",
+      a: "No. A form key is an API key bound to one form: it can add a response to that form and read its questions, nothing else. Only the team can read responses.",
     },
     {
       q: "What happens to old responses when I change a question?",
@@ -104,12 +103,12 @@ export const CONFIG: LandingConfig = {
         "A workspace holds your team’s forms. Each form has its questions, and each answer a respondent gives is checked against the question it answers.",
       ],
       concepts: [
-        { term: "Namespace", def: "Your team, plus one member per website form key. Its members are who can reach the workspace; only the team reads responses." },
-        { term: "Workspace", def: "One Calimero context holding the forms, their responses, the team and the form key register." },
+        { term: "Organization", def: "Who can reach the workspace. Being in it is not being on the team: only the team reads responses." },
+        { term: "Workspace", def: "One Calimero app instance in the organization, holding the forms, their responses, the team and the form key register." },
         { term: "Form", def: "A title, a description and a list of questions, open or closed to new responses. A form with responses can be closed but not deleted." },
         { term: "Question", def: "A kind (short answer, paragraph, email, phone, number, website, date, multiple choice or checkboxes), a label, help text, whether it is required, and choices where it has them. Its id is what a website sends the answer under." },
         { term: "Response", def: "Every answer to a form, as sent, with each question’s label and kind at the time, where it came from and who sent it." },
-        { term: "Form key", def: "An account with one certified device and no node, bound to one form. A website’s backend answers with it through a relay; it can do nothing else." },
+        { term: "Form key", def: "An API key of an admin’s account, limited to this workspace and registered with one form. A website’s backend answers with it; it can do nothing else." },
         { term: "Team", def: "The admins and the people they add. Only the team builds forms and reads responses; only admins issue form keys." },
       ],
     },
@@ -117,19 +116,19 @@ export const CONFIG: LandingConfig = {
       id: "start",
       heading: "Getting started",
       steps: [
-        { title: "Connect a node", body: "Press Connect to node and pick your node in the popup." },
+        { title: "Sign in", body: "Press Sign in and use a passkey, or create an account with a new one." },
         { title: "Start a workspace", body: "Name it for your team. You are its first admin; invite teammates and add them to the team from Team." },
         { title: "Build a form", body: "Start from Contact us, Request a demo or Feedback, or a blank form, and add the questions you need." },
-        { title: "Collect responses", body: "Issue a form key for your website from the form’s Connect tab, or enter a response by hand from Preview." },
+        { title: "Collect responses", body: "Share a public link, issue a form key for your website from the form’s Connect tab, or enter a response by hand from Preview." },
       ],
     },
     {
       id: "sharing",
       heading: "Your website, and Mero CRM",
       paragraphs: [
-        "An admin issues a form key from the form’s Connect tab. The app mints the key in the browser, adds it to the namespace and registers it with the form, then shows its environment variables once for the website’s backend. The backend signs each response with it and a relay writes it into the workspace.",
-        "A relay is a Calimero Cloud node when the namespace is always-on, or a node of your own that an admin lets write for form keys. Revoking a key removes its membership, and the website stops being able to send.",
-        "Link a form to a Mero CRM pipeline you are a member of, choose the stage new deals start in and which question fills the name, email, phone and organization. Send to CRM then makes a contact (reusing one with the same email), a deal, and a note with every answer.",
+        "An admin issues a form key from the form’s Connect tab: an API key, approved with their passkey, that reaches only this workspace’s two website methods and is registered with the form. The app shows its environment variables once for the website’s backend, which calls the workspace with it.",
+        "Revoking a key revokes the API key and its registration, and the website stops being able to send.",
+        "Link a form to a Mero CRM pipeline you can reach, choose the stage new deals start in and which question fills the name, email, phone and organization. Send to CRM then makes a contact (reusing one with the same email), a deal, and a note with every answer.",
       ],
     },
     {
@@ -137,17 +136,10 @@ export const CONFIG: LandingConfig = {
       heading: "What is stored, and where",
       bullets: [
         "Responses in a map keyed by id, insert-only: the contract refuses an id that exists and nothing else writes them.",
-        "Forms, the team’s marks on responses (archived, the CRM deal it became) and the workspace name in shared storage that only the team can write, enforced on every node.",
-        "The form key register in shared storage only admins can write. Being a member of the namespace is what lets a key write; the register is what binds it to one form.",
+        "Forms, the team’s marks on responses (archived, the CRM deal it became) and the workspace name, which only the team can write: the contract checks every call.",
+        "The form key register, which only admins can write. The API key is what lets a website call; the register is what binds it to one form.",
+        "All of it in one app on attested Calimero nodes, which apply every change in one ordered log.",
         "Every answer checked against its question before it is stored, and stored with the question’s label and kind so it reads the same after the form changes.",
-      ],
-    },
-    {
-      id: "offline",
-      heading: "Offline, and what happens when you reconnect",
-      paragraphs: [
-        "Your node holds the whole state, so the app keeps working with no network — every change is written locally and queued.",
-        "When your node reaches a peer again, the two exchange changes and merge them. Merging is CRDT-based, not last-write-wins-by-clock, so two people editing different things at the same time both keep their work. Where two people genuinely changed the same single value, the later write wins on that one value and nothing else is lost.",
       ],
     },
     {
@@ -155,16 +147,15 @@ export const CONFIG: LandingConfig = {
       heading: "When something looks wrong",
       concepts: [
         { term: "A website’s response is refused", def: "An answer does not fit its question (an option the form does not have, a required question left blank), the form is closed, or the key was issued for another form." },
-        { term: "Send to CRM offers no pipeline", def: "You are not a member of a Mero CRM pipeline yet. Join one from its invite link, or paste its id in the Connect tab." },
+        { term: "Send to CRM offers no pipeline", def: "Your account does not reach a Mero CRM pipeline yet. Join its organization from an invite link, or paste its id in the Connect tab." },
         { term: "A form will not delete", def: "It has responses. Close it instead, so nothing anyone sent disappears." },
       ],
     },
   ],
   previewSteps: [
     { title: "A form takes shape", body: "Questions of the kinds you need, each with its own id, in a builder that reads like the form it makes." },
-    { title: "A website answers", body: "The site’s backend signs the response with its form key, a relay writes it, and the contract checks every answer." },
+    { title: "A website answers", body: "The site’s backend sends the response with its form key, and the contract checks every answer." },
     { title: "The responses add up", body: "The choice questions summarise themselves, and every response is one row, kept exactly as it was sent." },
     { title: "One goes to the CRM", body: "Send to CRM makes a contact and a deal in the pipeline, with every answer in a note on it." },
   ],
-  loginPopup: LoginPopup,
 };
