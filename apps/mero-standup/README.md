@@ -173,9 +173,10 @@ trusts passkey ceremonies only from frontends it serves. Build it with
 
 ## Mobile
 
-`mobile/` (SwiftUI and Compose) still targets the **v1** contract through the
-v1 relay (`MeroAppSession`, namespaces, warrants) and is not ported here; see
-[mobile/README.md](mobile/README.md).
+The native apps (`mobile/`, SwiftUI and Compose) move to Calimero 1.0 in
+#688, which calls this contract's component ABI (the camelCase methods,
+arguments and results above) and merges after this port. This port leaves
+`mobile/` as it is on `main`.
 
 ## Layout
 
@@ -194,5 +195,5 @@ app/src/WeekDigest.tsx      a week per person, copy as Markdown
 app/src/DecisionLog.tsx     log, supersede, tags, people, timeline
 app/src/App.tsx             sign-in, team picker, top bar, team name, account menu, tabs
 app/src/lib/                pure, unit-tested: days, carry-forward, digest, rich text, tags
-mobile/                     native clients, still on the v1 contract
+mobile/                     native clients (moved to 1.0 in #688)
 ```

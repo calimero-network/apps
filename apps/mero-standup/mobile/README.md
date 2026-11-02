@@ -1,14 +1,5 @@
 # Mero Standup: native mobile apps
 
-> **Status: on the v1 contract, not ported to the component runtime.** The web app and the
-> contract (`../logic`) moved to Calimero 1.0 (core's component SDK, `CalimeroClient`, passkey
-> accounts, orgs). These clients still speak the v1 contract through the v1 relay
-> (`MeroAppSession`, namespaces, warrants, snake_case methods) with clients generated from the v1
-> ABI, which `../logic/res/abi.json` no longer is. Porting them needs native clients for the 1.0
-> node API (passkey sign-in, `/apps/{app}` calls and views, org invites, the event stream), which
-> the pinned swift-sdk and kotlin-sdk do not have. Until they do, the apps keep their committed
-> generated clients and `scripts/regenerate-clients.sh` refuses to run against the component ABI.
-
 Native iOS and Android clients for Mero Standup, next to the web frontend (`../app`) and the
 contract (`../logic`, package `com.calimero.mero-standup`). Both platforms have the same screens,
 copy, icons and flows.
