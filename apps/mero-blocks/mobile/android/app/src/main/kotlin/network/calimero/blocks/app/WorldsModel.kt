@@ -12,9 +12,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import network.calimero.blocks.generated.BlocksClient
 
-/** A world to open: its context, the namespace it is the only world of, and its open subgroup. */
+/**
+ * A world to open: its app instance and the organization it is the only world of. `groupId` is kept
+ * for links from the earlier 1.0 build (a world's team); new worlds have none.
+ */
 data class WorldRef(
     val contextId: String,
     val namespaceId: String,
@@ -25,7 +27,7 @@ data class WorldRef(
 /** One row of the world list. */
 data class WorldEntry(
     val ref: WorldRef,
-    /** Players online now, once read (`get_players`). */
+    /** Players online now, once read (`getPlayers`). */
     val online: Int? = null,
 ) {
     val id: String get() = ref.contextId
@@ -43,10 +45,9 @@ data class WorldsState(
 /**
  * The worlds this account is in, and making, joining, sharing and leaving them. (Swift `WorldsModel`.)
  *
- * The web app's model (`app/src/net/admin.ts` `createWorld`): every world is its OWN namespace,
- * named after the world, with one open subgroup and the world's context in it. Invitations are
- * namespace invitations, so one link admits to exactly one world, and the open subgroup lets the
- * invitee join the context by inheritance.
+ * The web app's model (`app/src/net/worlds.ts` `createWorld`): every world is its OWN organization,
+ * named after the world, with the world's app instance in it. Invitations are org invites, so one
+ * link admits to exactly one world, and the org grants its app instance.
  */
 class WorldsModel(
     private val backend: MeroAppBackend,
@@ -79,16 +80,13 @@ class WorldsModel(
         _state.update { it.copy(loading = false, loaded = true) }
     }
 
-    /** The worlds in one namespace: the context of each subgroup, else any in its root (a curb-style namespace). */
+    /** The worlds in one organization: its app instances (the web's), else those in its teams (worlds the earlier 1.0 build made). */
     private suspend fun refs(namespace: AppNamespace): List<WorldRef> {
-        val out =
-            backend.listSubgroups(namespace.id).flatMap { subgroup ->
-                val name = subgroup.name ?: namespace.name ?: BlocksConstants.DEFAULT_WORLD_NAME
-                subgroup.contextIds.map { WorldRef(it, namespace.id, subgroup.groupId, name) }
-            }
+        val fallback = namespace.name ?: BlocksConstants.DEFAULT_WORLD_NAME
+        val out = backend.listContextEntries(namespace.id).map { WorldRef(it.id, namespace.id, null, it.name ?: fallback) }
         if (out.isNotEmpty()) return out
-        return backend.listContexts(namespace.id).map {
-            WorldRef(it, namespace.id, null, namespace.name ?: BlocksConstants.DEFAULT_WORLD_NAME)
+        return backend.listSubgroups(namespace.id).flatMap { subgroup ->
+            subgroup.contextIds.map { WorldRef(it, namespace.id, subgroup.groupId, subgroup.name ?: fallback) }
         }
     }
 
@@ -108,7 +106,10 @@ class WorldsModel(
         _state.update { s -> s.copy(worlds = s.worlds.map { e -> counts[e.id]?.let { e.copy(online = it) } ?: e }) }
     }
 
-    /** A new world: its own namespace, an open subgroup, and the context with the contract's `init` arguments. */
+    /**
+     * A new world: its own organization and the app instance in it, with the contract's `init`
+     * arguments (`name`, `seed`, `now`; u64 as decimal strings), as the web's `createWorld`.
+     */
     suspend fun create(
         rawName: String,
         seed: ULong?,
@@ -118,45 +119,34 @@ class WorldsModel(
         val name = BlocksText.worldName(rawName)
         val chosen = seed ?: BlocksConstants.SEED_RANGE.random()
         val founded = backend.foundNamespace(name)
-        val groupId = backend.createSubgroup(founded.namespaceId, name, isPublic = true)
         val contextId =
             backend.createContext(
-                groupId,
+                founded.namespaceId,
                 appId,
                 name,
                 buildJsonObject {
                     put("name", name)
-                    put("seed", chosen.toLong())
-                    put("now", nowSeconds().toLong())
+                    put("seed", (chosen % 4_294_967_296uL).toString())
+                    put("now", nowSeconds().toString())
                 },
             )
-        val ref = WorldRef(contextId, founded.namespaceId, groupId, name)
-        _state.update { s ->
-            s.copy(
-                worlds = listOf(WorldEntry(ref, 0)) + s.worlds,
-                notice =
-                    if (founded.haEnabled) {
-                        s.notice
-                    } else {
-                        "The cloud is not hosting this world yet${founded.haError?.let { " ($it)" }.orEmpty()}. " +
-                            "You can play, but friends may not be able to join while you are offline."
-                    },
-            )
-        }
+        val ref = WorldRef(contextId, founded.namespaceId, null, name)
+        _state.update { s -> s.copy(worlds = listOf(WorldEntry(ref, 0)) + s.worlds) }
         return ref
     }
 
     /**
-     * Redeem an invitation: join the world's namespace. [didJoin] runs after (the session reconnects
-     * to the admitting relay there when the account had none). The world's context is joined when it
-     * is opened ([GameModel.prepare]).
+     * Redeem an invitation: redeem its token, joining the world's organization. [didJoin] runs after
+     * (the session re-reads what the account sees). The world's app instance is entered when it is
+     * opened ([GameModel.prepare]).
      */
     suspend fun join(
         invitation: BlocksInvitation,
         didJoin: suspend () -> Unit,
     ): WorldRef {
-        val namespaceId = invitation.namespaceId
-        backend.joinNamespace(namespaceId, invitation.invitation)
+        val joined = backend.joinNamespace(invitation.namespaceId, invitation.invitation)
+        // The node names the organization the token opened (a web link carries none).
+        val namespaceId = joined.namespaceId.ifEmpty { invitation.namespaceId }
         didJoin()
         val name = invitation.name ?: BlocksConstants.DEFAULT_WORLD_NAME
         invitation.contextId?.let { return WorldRef(it, namespaceId, invitation.groupId, name) }
@@ -165,13 +155,13 @@ class WorldsModel(
             ?: throw BlocksException(BlocksException.Kind.NO_WORLD_IN_INVITATION)
     }
 
-    /** A link that admits someone to [ref]'s world. */
+    /** A link that admits someone to [ref]'s world. Minting it asks for the passkey (the node's step-up). */
     suspend fun inviteLink(ref: WorldRef): String {
-        val signed = backend.createInvitation(ref.namespaceId)
-        return BlocksInvitation(signed, ref.name, ref.contextId, ref.groupId).link()
+        val minted = backend.createInvitation(ref.namespaceId)
+        return BlocksInvitation(minted, ref.name, ref.contextId, ref.groupId).link()
     }
 
-    /** Leave a world: leave its namespace, which is that world alone. */
+    /** Leave a world: leave its organization, which is that world alone. */
     suspend fun leave(ref: WorldRef) {
         backend.leaveNamespace(ref.namespaceId)
         _state.update { s -> s.copy(worlds = s.worlds.filterNot { it.id == ref.contextId }) }

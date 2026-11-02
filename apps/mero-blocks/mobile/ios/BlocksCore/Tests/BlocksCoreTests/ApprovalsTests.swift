@@ -59,18 +59,48 @@ final class ApprovalsTests: XCTestCase {
                 if scope == "denied" { throw URLError(.userAuthenticationRequired) }
                 return scope == nil ? account : org
             },
-            consent: { build in
+            consent: { build, confirm in
                 asked.append(build("mero-blocks://enrol"))
-                return approved
+                let started = try JSONDecoder().decode(
+                    ConsentStarted.self, from: Data(#"{"requestId":"r1","url":"https://n/consent/r1","expiresAt":0,"code":"ABC-DEF"}"#.utf8))
+                return await confirm(started) ? approved : nil
             })
         await model.refresh(orgs: ["org1", "denied"])
         XCTAssertEqual(loads, [nil, "org1", "denied"])
         // The account's release, its upgrade, and the org's release (the same upgrade only once).
         XCTAssertEqual(model.items.count, 3)
-        await model.approve(model.items[0])
+        let first = model.items[0]
+        let approving = Task { await model.approve(first) }
+        // The code shows before the page opens; the person goes on.
+        for _ in 0..<200 where model.confirmation == nil { await Task.yield() }
+        XCTAssertEqual(model.confirmation?.code, "ABC-DEF")
+        model.answerConfirmation(true)
+        await approving.value
+        XCTAssertNil(model.confirmation)
         XCTAssertEqual(asked, [.release(scope: .account, version: "2.3.110", returnTo: "mero-blocks://enrol")])
         XCTAssertEqual(model.message, "Approved.")
         XCTAssertNil(model.busy)
         XCTAssertEqual(loads.count, 6)
+    }
+
+    func testDecliningTheCodeOpensNothing() async throws {
+        let account = try pending()
+        let model = ApprovalsModel(
+            load: { _ in account },
+            consent: { _, confirm in
+                let started = try JSONDecoder().decode(
+                    ConsentStarted.self, from: Data(#"{"requestId":"r2","url":"https://n/consent/r2","expiresAt":0}"#.utf8))
+                let opened = await confirm(started)
+                XCTAssertFalse(opened)
+                return nil
+            })
+        await model.refresh()
+        let approving = Task { await model.approve(model.items[0]) }
+        for _ in 0..<200 where model.confirmation == nil { await Task.yield() }
+        // A node that sent no code: the app derives it from the request id, as the page does.
+        XCTAssertEqual(model.confirmation?.code, confirmationCode("r2"))
+        model.answerConfirmation(false)
+        await approving.value
+        XCTAssertEqual(model.message, "Not opened. Nothing changed.")
     }
 }

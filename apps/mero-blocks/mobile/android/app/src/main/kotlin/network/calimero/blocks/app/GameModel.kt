@@ -8,7 +8,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import network.calimero.blocks.generated.BlocksClient
 
 /**
  * One open world: gets the account into its context, then serves the game page — answers its

@@ -25,7 +25,7 @@ enum Fixtures {
             "name": "Lime Valley", "groupId": .string(String(repeating: "b", count: 64)),
         ] as JSONValue)
 
-    static func meta() -> JSONValue { .object(["name": "Lime Valley", "seed": 1337, "createdAt": 1_730_000_000]) }
+    static func meta() -> JSONValue { .object(["name": "Lime Valley", "seed": "1337", "createdAt": "1730000000"]) }
 }
 
 final class InvitationTests: XCTestCase {
@@ -68,6 +68,30 @@ final class InvitationTests: XCTestCase {
         XCTAssertEqual(back.namespaceId, Fixtures.webNamespace)
     }
 
+    func testTheWebFrontendsLinkOpens() throws {
+        let invitation = try XCTUnwrap(BlocksInvitation.parse("https://blocks.example/?invite=inv_lime"))
+        XCTAssertEqual(invitation.invitation.token, "inv_lime")
+        XCTAssertNil(invitation.contextId)
+        XCTAssertNil(BlocksInvitation.parse("https://blocks.example/?invite=nope"))
+    }
+
+    func testTheContractsRefusalsReadAsWords() {
+        XCTAssertEqual(
+            BlocksText.error(AppError("refused", details: ["code": "TooManyEdits", "fields": ["got": 600, "max": 512]])),
+            "Too many block changes at once (at most 512). Try again.")
+        XCTAssertEqual(BlocksText.error(ConfirmCancelled()), "The passkey prompt was cancelled. Nothing changed.")
+        XCTAssertEqual(BlocksText.error(ConsentStale("stale")), "That approval is out of date. Refresh and review it again.")
+    }
+
+    /// The methods the phone calls, as the component ABI (`logic/res/abi.json`) names them.
+    func testTheClientCallsTheComponentSurface() {
+        XCTAssertEqual(
+            Set(BlocksClient.methods.keys),
+            ["worldMeta", "getOverrides", "getPlayers", "overrideCount", "join", "heartbeat", "leave", "setBlocks"])
+        XCTAssertEqual(BlocksClient.methods["getPlayers"], ["now", "cursor", "limit"])
+        XCTAssertEqual(Set(BridgeRouter.names.values), Set(BlocksClient.methods.keys))
+    }
+
     func testTheNodesErrorsReadAsWords() {
         XCTAssertEqual(
             BlocksText.error(ReleaseDeadlineError("deadline", details: ["release": "2.3.110"])),
@@ -92,11 +116,13 @@ final class WorldsModelTests: XCTestCase {
         XCTAssertEqual(ref.name, "Lime Valley")
         let log = backend.log
         XCTAssertEqual(log.first, "foundNamespace Lime Valley")
-        XCTAssertTrue(log.contains("createSubgroup \(ref.namespaceId) Lime Valley open"), "\(log)")
-        XCTAssertEqual(ref.groupId.map { backend.publicSubgroups.contains($0) }, true)
+        // The app instance sits in the world's organization itself: no team.
+        XCTAssertTrue(log.contains("createContext \(ref.namespaceId) \(backend.applicationId) Lime Valley"), "\(log)")
+        XCTAssertNil(ref.groupId)
+        XCTAssertTrue(backend.publicSubgroups.isEmpty)
         guard case .object(let args)? = backend.initArgs[ref.contextId] else { return XCTFail("no init args") }
         XCTAssertEqual(args["name"], .string("Lime Valley"))
-        XCTAssertEqual(args["seed"], .number(4242))
+        XCTAssertEqual(args["seed"], .string("4242"))
         XCTAssertNotNil(args["now"])
         XCTAssertEqual(model.worlds.first?.ref, ref)
     }
@@ -105,18 +131,21 @@ final class WorldsModelTests: XCTestCase {
         let model = WorldsModel(backend: backend, applicationId: backend.applicationId)
         let ref = try await model.create(name: "   ", seed: nil)
         XCTAssertEqual(ref.name, "overworld")
-        guard case .object(let args)? = backend.initArgs[ref.contextId], case .number(let seed)? = args["seed"] else {
+        guard case .object(let args)? = backend.initArgs[ref.contextId], case .string(let seed)? = args["seed"] else {
             return XCTFail("no seed")
         }
-        XCTAssertTrue(BlocksConstants.seedRange.contains(UInt64(seed)))
+        XCTAssertTrue(BlocksConstants.seedRange.contains(UInt64(seed) ?? 0))
     }
 
     func testListsEveryWorldWithWhoIsPlaying() async throws {
         backend.recording.setHandler { call in
-            call.method == "get_players"
-                ? .array([
-                    .object(["id": "a", "name": "A", "x": 0, "y": 0, "z": 0, "yaw": 0, "pitch": 0, "sel": 0, "online": true]),
-                    .object(["id": "b", "name": "B", "x": 0, "y": 0, "z": 0, "yaw": 0, "pitch": 0, "sel": 0, "online": false]),
+            call.method == "getPlayers"
+                ? .object([
+                    "items": .array([
+                        .object(["id": "a", "name": "A", "x": 0, "y": 0, "z": 0, "yaw": 0, "pitch": 0, "sel": 0, "online": true]),
+                        .object(["id": "b", "name": "B", "x": 0, "y": 0, "z": 0, "yaw": 0, "pitch": 0, "sel": 0, "online": false]),
+                    ]),
+                    "next": .null,
                 ]) : .null
         }
         let creator = WorldsModel(backend: backend, applicationId: backend.applicationId)
@@ -128,7 +157,7 @@ final class WorldsModelTests: XCTestCase {
         XCTAssertNil(model.error)
         XCTAssertEqual(Set(model.worlds.map(\.ref)), [one, two])
         XCTAssertEqual(model.worlds.map(\.online), [1, 1])
-        XCTAssertEqual(backend.recording.calls("get_players").first?.path, .query)
+        XCTAssertEqual(backend.recording.calls("getPlayers").first?.path, .query)
     }
 
     func testSignedOutThereIsNothingToList() async {
@@ -197,7 +226,7 @@ final class GameModelTests: XCTestCase {
 
     override func setUp() async throws {
         backend = InMemoryAppBackend(account: Fixtures.me)
-        backend.recording.setHandler { call in call.method == "world_meta" ? Fixtures.meta() : .null }
+        backend.recording.setHandler { call in call.method == "worldMeta" ? Fixtures.meta() : .null }
         sent = []
     }
 
@@ -251,8 +280,8 @@ final class GameModelTests: XCTestCase {
         XCTAssertEqual(answer["id"] as? Int, 1)
         XCTAssertEqual(answer["ok"] as? Bool, true)
         XCTAssertEqual((answer["result"] as? [String: Any])?["seed"] as? Int, 1337)
-        XCTAssertEqual(backend.recording.calls("world_meta").first?.contextId, world.contextId)
-        XCTAssertEqual(backend.recording.calls("world_meta").first?.path, .query)
+        XCTAssertEqual(backend.recording.calls("worldMeta").first?.contextId, world.contextId)
+        XCTAssertEqual(backend.recording.calls("worldMeta").first?.path, .query)
 
         await model.receive(#"{"id":2,"op":"execute","method":"init","args":{"name":"x","seed":1,"now":1}}"#)
         let refused = try object(sent.last)

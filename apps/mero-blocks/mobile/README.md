@@ -10,38 +10,48 @@ flows.
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
 | Game page | `game/` | TypeScript, the web app's engine + Vite + three.js | — |
-| iOS | `ios/` | SwiftUI + WKWebView, iOS 16+, XcodeGen | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `6c5f116` (head of `feat/calimero-1.0`, swift-sdk#85; moves to its merge commit once it lands), in `ios/project.yml` and `ios/BlocksCore/Package.swift`. **Calimero 1.0.** |
-| Android | `android/` | Jetpack Compose + Material 3 + WebView, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `ea8ded7` (kotlin-sdk#67 merge commit on `main`), composite build at the SHA in `android/kotlin-sdk.ref` |
+| iOS | `ios/` | SwiftUI + WKWebView, iOS 16+, XcodeGen | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `37c09f3` (swift-sdk#85), in `ios/project.yml` and `ios/BlocksCore/Package.swift` |
+| Android | `android/` | Jetpack Compose + Material 3 + WebView, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `61b65e9` (kotlin-sdk#68), composite build at the SHA in `android/kotlin-sdk.ref` |
 
-**The iOS app runs on Calimero 1.0; the Android app (kotlin-sdk#67's `main` merge commit) still
-speaks the 0.x API until kotlin-sdk is ported.** Bumping is one line per platform (iOS: both
-`revision:` values; Android: `kotlin-sdk.ref`).
+Both apps run on **Calimero 1.0**. The pins are the heads of the SDKs' 1.0 pull requests and move
+to their merge commits once they land (iOS: both `revision:` values; Android: `kotlin-sdk.ref`).
 
-## Calimero 1.0 on iOS
+## Calimero 1.0
 
-- **Sign in** with a passkey on the world's cluster (`MeroAppSession.signIn()`, the device's
-  platform passkey), or **create an account** (`signUp(name:)`). The session (a 15-minute access
-  token and a 30-day refresh token) is kept in the Keychain and refreshed at launch. Every request
-  goes over the sealed channel to an attested node.
-- **The cluster** is `MeroNodeURL` in `ios/project.yml` (a node from Calimero Cloud's console, plus
-  `MeroNodes` for failover). Left empty, the sign-in screen asks for one.
-- **Development**: on the sign-in screen, "Choose your cluster" (or "Change") takes any node URL
-  and a "Development cluster" switch, which trusts mock attestation (`allowMock`) as `merod local`
-  serves it (`cargo run -p merod -- local`, nodes on `http://127.0.0.1:2501-2503`). The app then
-  keeps a soft passkey for that node and creates its account on the first sign-in. Or set
-  `MeroNodeURL` and `MeroAllowMock: "YES"` in `project.yml`.
-- **Words**: a world is its own **organization**, holding one open **team** and the world's **app instance**. "Me" for the contract (the game page's `myId`) is the account: on 1.0 there are no device keys (`env::account_id() == executor_id()`). The bridge protocol between the page and the app is unchanged.
-- **Invitations** are org invite tokens (`POST /orgs/{org}/invites`, redeemed with
-  `POST /invites/{token}/redeem`). The link keeps its URL; its payload is swift-sdk's
-  `OrgInvitation`, `{"invitation": "inv_…", "namespaceId": "…", "contextId"?: "…", "name"?: "…"}` plus the world's `groupId` (team),
-  which every 1.0 client of the package reads. Android and the web still use the 0.x signed
-  invitation until they are ported, so links do not cross between them and iOS yet.
-- **Approvals**: when a node release or an app upgrade waits for the account (or an organization it
-  owns), the worlds list shows it under "Needs your approval". "Review" opens the **node's consent page in
-  the system browser**; the page returns to `mero-blocks://consent`. The app never approves by itself.
-  A call refused because a release deadline has passed says so in words.
-- A real cluster's passkeys need the app to carry the `webcredentials:<rp-id>` Associated Domain of
-  that cluster; it is not set in `project.yml` yet.
+- **Sign in.** "Choose your cluster" offers **Calimero Cloud** (the cluster's name, whose nodes the
+  node directory lists, or one node's URL; real TDX attestation) or a **Development node**
+  (`merod local`, mock attestation; `http://127.0.0.1:2501` from the iOS Simulator,
+  `http://10.0.2.2:2501` from the Android emulator). Then "Sign in with a passkey" or "Create an
+  account". On a development node the app keeps a soft passkey for that node and creates its
+  account on the first sign-in. The session is kept in the Keychain / encrypted preferences and
+  refreshed at launch; every request goes over the sealed channel to an attested node. Build-time
+  defaults: `MeroCluster` / `MeroNodeURL` / `MeroAllowMock` in `ios/project.yml`,
+  `-PmeroCluster` / `-PmeroNodeUrl` / `-PmeroAllowMock` for Android.
+- **Words**, as the web app's (`app/src/net/worlds.ts`): a world is its own **organization** with
+  the world's **app instance** in it, created with `init({name, seed, now})` (u64 as decimal
+  strings). Worlds the earlier 1.0 iOS build made (org + team + app instance) are still listed.
+  "Me" for the contract (the game page's `myId`) is the account: the phone sends no `device`, so
+  `PlayerView.id` is the account.
+- **The contract** is the component ABI (`../logic/res/abi.json`): `worldMeta`, `getOverrides`,
+  `getPlayers`, `overrideCount`, `join`, `heartbeat`, `leave`, `setBlocks`, camelCase, with `now`,
+  `seed` and `createdAt` as decimal strings and `getOverrides` / `getPlayers` paged
+  (`{items, next}`, followed to the end). `BlocksClient` (Swift and Kotlin) is hand-written for
+  those calls; a unit test pins its method list. Its typed refusals (`APP_ERROR`: `TooManyEdits`,
+  `TooManyDevices`, `BadDevice`, `Uninitialized`) and the node's errors (`ConfirmCancelled`,
+  `LoginRequired`, `WrongNode`, `Unavailable`, `ReleaseDeadline`, `ConsentStale`) read as plain
+  words (`BlocksText.error`).
+- **Invitations** are org invite links. Minting one asks for your passkey (the node's step-up).
+  The link's payload is the SDK's `OrgInvitation`, `{"invitation": "inv_…", "namespaceId": "…",
+  "contextId"?: "…", "name"?: "…"}` (plus `groupId` for an earlier build's world). Joining
+  redeems the token. The web app's own link (`<frontend>/?invite=inv_…`) pasted into "Join with a
+  link" opens too: the org the node answers with leads to its first world.
+- **Approvals**: when a node release or an app upgrade waits for the account (or a world it owns),
+  the worlds list shows it under "Needs your approval". "Review" asks the node for a consent
+  request, shows its **confirmation code** first, and then opens the **node's consent page in the
+  system browser** (Custom Tab on Android), which shows the same code and returns to
+  `mero-blocks://consent`. The app never approves by itself.
+- A real cluster's passkeys need the `webcredentials:<rp-id>` Associated Domain (iOS) / Digital
+  Asset Links (Android) of that cluster; neither is set yet.
 
 ## How the game runs
 
@@ -62,8 +72,8 @@ A native engine port is not worth it: the engine (`../app/src/engine`, `renderer
 - **The switch.** The web game talks to the contract only through `SyncEngine`, which takes an
   `exec(method, args)` function (`GameClient.exec` → mero-js on the web). The mobile entry hands it
   `bridge.exec` instead, so `join`, `heartbeat`, `set_blocks`, `get_overrides`, `get_players` and
-  `leave` all go to the app. **The web app's source is unchanged**: the mobile entry imports its
-  modules, and the web build does not include it.
+  `leave` all go to the app, with those names and `now` as a number. The mobile entry imports the
+  web app's modules, and the web build does not include it.
 - **The bridge** (`game/src/bridge.ts` ↔ `Bridge.swift` / `Bridge.kt`), JSON text both ways:
 
   ```
@@ -76,13 +86,16 @@ A native engine port is not worth it: the engine (`../app/src/engine`, `renderer
   The page posts through `window.webkit.messageHandlers.meroBlocks` (iOS) or the
   `MeroBlocksAndroid` JavaScript interface; the app answers with
   `window.meroBridge.receive("<JSON as a string literal>")`. `window.meroBridge.query/execute` are
-  the page's calls. On the app side `BridgeRouter` runs each call through the generated
-  `BlocksClient` over `contract.bound(to: contextId)`: only the seven methods the game uses, views
-  on `query` and mutations on `execute`, arguments decoded into the ABI's types (so a malformed or
-  out-of-range edit never reaches the relay). `init` and anything else are refused.
-- **Live updates.** The app subscribes to the world's relay events and forwards each as a nudge;
-  the page re-reads the world and the roster. The page's own polling (players every 0.5 s, blocks
-  every 5 s, the web build's values) covers a relay that cannot stream.
+  the page's calls. On the app side `BridgeRouter` runs each call through `BlocksClient` over
+  `contract.bound(to: contextId)`: only the methods the game uses, views on `query` and mutations
+  on `execute`, arguments decoded into the ABI's types (so a malformed or out-of-range edit never
+  reaches the node). It puts each call on the component wire (`get_players` → `getPlayers`, `now`
+  as a decimal string, pages followed) and answers in the page's shapes (whole lists, `seed` and
+  `createdAt` as numbers), so the bundled page works unchanged; the camelCase names are accepted
+  too. `init` and anything else are refused.
+- **Live updates.** The app subscribes to the world's events on the node and forwards each as a
+  nudge; the page re-reads the world and the roster. The page's own polling (players every 0.5 s,
+  blocks every 5 s, the web build's values) covers a node that cannot stream.
 - **Lifecycle.** The game screen locks to landscape (the shell stays portrait on phones), hides the
   system bars, keeps the screen awake, and pauses the game (and saves) when the app goes to the
   background or the pause menu opens.
@@ -97,10 +110,10 @@ Icons are Material Symbols paths; haptics on place/break and hotbar picks.
 
 ## Screens
 
-1. **Sign in** — what the app is; on iOS "Sign in with a passkey" / "Create an account" on the cluster (Android: "Sign in with Calimero"); an invited banner when a link is waiting.
-2. **Worlds** — every world the account is in, with how many are playing; pull to refresh; swipe a
-   row left to share an invitation, right to leave the world (confirmed); empty and no-relay
-   states. The + menu has **Create world** (sheet: name, seed or random) and **Join with a link**
+1. **Sign in** — what the app is; choose the cluster (Calimero Cloud or a development node), then "Sign in with a passkey" / "Create an account"; an invited banner when a link is waiting.
+2. **Worlds** — every world the account is in, with how many are playing, and what needs your
+   approval; pull to refresh; swipe a row left to share an invitation, right to leave the world
+   (confirmed); an empty state. The + menu has **Create world** (sheet: name, seed or random) and **Join with a link**
    (sheet: paste a link).
 3. **Join this world?** — asked before an invitation link (opened or pasted) does anything; ids
    behind **Details**.
@@ -112,10 +125,11 @@ Icons are Material Symbols paths; haptics on place/break and hotbar picks.
 
 ## Features vs the web app
 
-Done: account sign-in; the world list; create a world (its own namespace, an open subgroup and the
-context, with `{name, seed, now}`, as `createWorld` does); invitations in the web app's format both
-ways (`https://links.calimero.network/com.calimero.mero-blocks/join?invitation=<base58(deflate({invitation, groupAlias, contextId, groupId}))>`,
-plus `calimero://`), redeemed by direct admission and an inheritance join of the world's context;
+Done: passkey sign-in; the world list; create a world (its own organization and the app instance
+in it, with `{name, seed, now}`, as `createWorld` does); org invite links
+(`https://links.calimero.network/com.calimero.mero-blocks/join?invitation=…`, plus `calimero://`;
+the web's `?invite=` link pastes in too), redeemed with the invite token; approvals on the node's
+consent page;
 the whole game (terrain, lighting, day/night, place/break, the hotbar, other players' avatars and
 names, presence, live sync, the pose and edits saved on the device per world); player name.
 New on mobile: leave a world, look sensitivity in the pause menu.
@@ -130,17 +144,6 @@ Not in the apps:
   assetlinks for this app, so an https invitation opens via the chooser (Android) or Safari; pasting
   it into **Join with a link** always works.
 
-## Generated contract client
-
-`ios/BlocksCore/Sources/BlocksCore/Generated/BlocksClient.swift` and
-`android/app/src/main/kotlin/network/calimero/blocks/generated/BlocksClient.kt` are generated from
-`../logic/res/abi.json` with `--transport-import` (they use the SDKs' `ContextContractCalling`, so no
-adapter) and committed. Regenerate both after an ABI change:
-
-```bash
-ABI_CODEGEN=/path/to/mero-devtools-js/abi-codegen/dist/cli.js ./scripts/regenerate.sh
-```
-
 ## Build and test
 
 The game page — rebuild and commit it after an engine change (CI fails while it is stale):
@@ -149,7 +152,7 @@ The game page — rebuild and commit it after an engine change (CI fails while i
 ./scripts/build-game.sh     # pnpm install (web app deps), build game/assets/game, run the page's bridge tests
 ```
 
-iOS — the non-UI layer (generated client, the bridge, view models) is a local SwiftPM package that
+iOS — the non-UI layer (the contract client, the bridge, view models) is a local SwiftPM package that
 builds and tests on macOS with no simulator:
 
 ```bash
@@ -169,34 +172,27 @@ cd android
 The tests cover the bridge on both platforms (message decoding and encoding, the script literal,
 routing each method to the right path with typed arguments, refusals), the view models against the
 SDKs' fakes (`InMemoryAppBackend`, `RecordingContextContract`), invitations against a token minted
-by the web app's own encoder, and that the bundled page is there (`GameBundleTests` /
+for 1.0 (and a 0.x one that is refused), and that the bundled page is there (`GameBundleTests` /
 `GameBundleTest`; CI also checks it is inside the built `.app` and APK).
 
 ## Callbacks
 
-iOS: the node's consent page returns to `mero-blocks://consent` (`MeroBlocksCallback*` keys in
-`project.yml`); the cluster is `MeroNodeURL` / `MeroNodes` / `MeroAllowMock`. Android: sign-in
-returns to `mero-blocks://enrol` (`meroEnrolCallback` in `gradle.properties`); the hosted wallet
-returns only to `https://` callbacks today, so production sign-in needs a verified https callback
-(App Links). Cloud, wallet and registry URLs are overridable the same way.
+Both apps: the node's consent page returns to `mero-blocks://consent` (iOS: `MeroBlocksCallback*`
+keys in `project.yml`; Android: `meroConsentCallback`).
 
 ## SDK notes
 
-- "Me" for the contract: on iOS (1.0) the account (`session.account`); on Android (0.x) the
-  device's signing key (`env::device_id()` under delegation), read from
-  `client.account.deviceKeys.load()?.signPublicKey`.
-- `events(contextId)` carries only the event kind, not its payload, so the game cannot skip its
-  own `BlocksChanged` echoes; it re-reads on every event, which the web build's merge already
-  handles.
-- The world invitation carries `groupId` beside the SDK's `OrgInvitation` fields, so
-  `BlocksInvitation` encodes it with `InviteCodec` directly (iOS; Android still uses
-  `AppInvitation` for the 0.x signed part).
+- "Me" for the contract is the account (`session.account`), on both platforms.
+- `events(contextId)` is forwarded as the event kind only, so the game cannot skip its own
+  `BlocksChanged` echoes; it re-reads on every event, which the web build's merge already handles.
+- The world invitation can carry `groupId` beside the SDK's `OrgInvitation` fields, so
+  `BlocksInvitation` encodes it with `InviteCodec` directly.
 - The planned WebView host kit is not in the SDKs yet; this app's `GameModel` + `Bridge` is a
   candidate for it.
 
 ## CI
 
-`.github/workflows/mero-blocks-ios.yml` (macOS: `swift test` on BlocksCore, XcodeGen, simulator
+`.github/workflows/mero-blocks-ios.yml` (macOS: `swift test` on BlocksCore, XcodeGen, an app
 build, the game page inside the `.app`) and `.github/workflows/mero-blocks-android.yml` (the game
 page rebuilt from the web engine and compared with the committed one; fetch the SDK, ktlint,
 detekt, unit tests, Android lint, `assembleDebug`, the game page inside the APK), each

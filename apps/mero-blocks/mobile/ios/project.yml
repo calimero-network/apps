@@ -21,7 +21,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: 6c5f1167d1e586f556f59c326de5f51d034e80dd
+    revision: 37c09f3f96e7d98440f6618eef8a0e83ddee8ebd
   BlocksCore:
     path: BlocksCore
 
@@ -56,10 +56,12 @@ targets:
           # Invitation deep links: `calimero://com.calimero.mero-blocks/join?invitation=…`.
           - CFBundleURLName: network.calimero.blocks.invite
             CFBundleURLSchemes: [calimero]
-        # The Calimero 1.0 cluster. MeroNodeURL: a node from Calimero Cloud's
-        # console (empty = sign-in asks for one); MeroNodes: the cluster's other
+        # The Calimero 1.0 cluster. MeroCluster: a Calimero Cloud cluster by
+        # name (its nodes come from the node directory); or MeroNodeURL: one
+        # node (empty both = sign-in asks); MeroNodes: the cluster's other
         # nodes, comma-separated, for failover; MeroAllowMock: YES only for a
-        # `merod local` cluster (mock attestation). See ../README.md.
+        # `merod local` development node (mock attestation). See ../README.md.
+        MeroCluster: ""
         MeroNodeURL: ""
         MeroNodes: ""
         MeroAllowMock: "NO"

@@ -11,12 +11,12 @@ fun configString(name: String): String {
     return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 }
 
-// The wallet redirects to this URL; the manifest's intent filter is built from its scheme and host
-// so the two cannot drift apart.
-val enrolCallback: String = providers.gradleProperty("meroEnrolCallback").getOrElse("mero-blocks://enrol").trim()
-val enrolScheme: String = enrolCallback.substringBefore("://")
-val enrolHost: String =
-    enrolCallback
+// The node's consent page returns to this URL; the manifest's intent filter is built from its scheme
+// and host so the two cannot drift apart.
+val consentCallback: String = providers.gradleProperty("meroConsentCallback").getOrElse("mero-blocks://consent").trim()
+val consentScheme: String = consentCallback.substringBefore("://")
+val consentHost: String =
+    consentCallback
         .substringAfter("://")
         .substringBefore('/')
         .substringBefore('#')
@@ -34,12 +34,24 @@ android {
         versionCode = 1
         versionName = "0.1.0"
 
-        buildConfigField("String", "CLOUD_BASE_URL", configString("meroCloudUrl"))
-        buildConfigField("String", "WALLET_URL", configString("meroWalletUrl"))
-        buildConfigField("String", "REGISTRY_URL", configString("meroRegistryUrl"))
-        buildConfigField("String", "ENROL_CALLBACK_URL", "\"$enrolCallback\"")
-        manifestPlaceholders["enrolScheme"] = enrolScheme
-        manifestPlaceholders["enrolHost"] = enrolHost
+        // The Calimero 1.0 cluster: a Calimero Cloud cluster by name (`-PmeroCluster=eu-shared-1`),
+        // or one node (`-PmeroNodeUrl=…`, with `-PmeroAllowMock=true` for a `merod local`
+        // development node). All empty: the sign-in screen asks.
+        buildConfigField("String", "MERO_CLUSTER", configString("meroCluster"))
+        buildConfigField("String", "MERO_NODE_URL", configString("meroNodeUrl"))
+        buildConfigField(
+            "boolean",
+            "MERO_ALLOW_MOCK",
+            providers
+                .gradleProperty("meroAllowMock")
+                .getOrElse("false")
+                .trim()
+                .equals("true", ignoreCase = true)
+                .toString(),
+        )
+        buildConfigField("String", "CONSENT_CALLBACK_URL", "\"$consentCallback\"")
+        manifestPlaceholders["consentScheme"] = consentScheme
+        manifestPlaceholders["consentHost"] = consentHost
     }
 
     // The game page (../game/assets/game, built by ../scripts/build-game.sh) ships as the app's

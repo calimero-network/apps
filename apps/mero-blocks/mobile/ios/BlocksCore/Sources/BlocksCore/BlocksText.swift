@@ -40,6 +40,12 @@ public enum BlocksText {
     /// shown as it came.
     public static func error(_ error: Error) -> String {
         switch error {
+        case is ConfirmCancelled, is PasskeyCancelled:
+            return "The passkey prompt was cancelled. Nothing changed."
+        case is ConfirmRequired:
+            return "This needs your passkey. Try again and approve it when asked."
+        case is ConsentStale:
+            return "That approval is out of date. Refresh and review it again."
         case let error as ReleaseDeadlineError:
             let release = error.release.isEmpty ? "a node release" : "node release \(error.release)"
             return "Your cluster takes no new work until \(release) is approved. Review it under Needs your approval."
@@ -52,15 +58,32 @@ public enum BlocksText {
         case let error as UnavailableError:
             return "Your cluster is busy (\(error.reason)). Try again shortly."
         case let error as AppError:
-            return error.message.isEmpty ? error.appCode : error.message
+            return appError(error)
         case let error as CalimeroError:
             return error.message.isEmpty ? error.code : error.message
+        case is URLError:
+            return "Your cluster can't be reached. Check your connection and try again."
         default:
             break
         }
         if let described = (error as? LocalizedError)?.errorDescription, !described.isEmpty { return described }
         let text = String(describing: error)
         return text.isEmpty ? "Something went wrong talking to your cluster." : text
+    }
+
+    /// The world contract's typed refusals (`#[app::error]` in `logic`), in words.
+    static func appError(_ error: AppError) -> String {
+        func field(_ name: String) -> String {
+            error.fields[name].flatMap { $0.stringValue ?? $0.intValue.map(String.init) } ?? "?"
+        }
+        switch error.appCode {
+        case "TooManyEdits": return "Too many block changes at once (at most \(field("max"))). Try again."
+        case "TooManyDevices": return "Your account is already playing on \(field("max")) devices in this world."
+        case "BadDevice": return "This device's name is not one the world takes."
+        case "Uninitialized": return "This world is not set up yet. Try again in a moment."
+        case "": return error.message.isEmpty ? "The world refused this." : error.message
+        default: return error.message.isEmpty ? error.appCode : error.message
+        }
     }
 
     /// A readable short form of an id nobody named.

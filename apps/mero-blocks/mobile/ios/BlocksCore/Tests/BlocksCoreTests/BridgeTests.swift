@@ -105,8 +105,8 @@ final class BridgeCodecTests: XCTestCase {
     }
 }
 
-/// Contract calls from the page go through the generated client on the right path, with typed
-/// arguments; nothing else gets through.
+/// Contract calls from the page go through ``BlocksClient`` on the component wire, on the right
+/// path, with typed arguments, and come back in the page's shapes; nothing else gets through.
 final class BridgeRouterTests: XCTestCase {
     private let contextId = String(repeating: "cc", count: 32)
     private var recording: RecordingContextContract!
@@ -116,20 +116,27 @@ final class BridgeRouterTests: XCTestCase {
         recording = RecordingContextContract()
         recording.setHandler { call in
             switch call.method {
-            case "world_meta": return .object(["name": "Lime Valley", "seed": 1337, "createdAt": 1_730_000_000])
-            case "get_overrides": return .array([.object(["k": "1,2,3", "b": 8])])
-            case "get_players":
-                return .array([
-                    .object([
-                        "id": .string(String(repeating: "ab", count: 32)), "name": "Ana", "x": 1.5, "y": 30, "z": 2,
-                        "yaw": 0.5, "pitch": 0, "sel": 2, "online": true,
-                    ])
+            case "worldMeta": return .object(["name": "Lime Valley", "seed": "1337", "createdAt": "1730000000"])
+            case "getOverrides":
+                // Two pages: the router follows `next`.
+                if call.args["cursor"] == nil { return .object(["items": .array([.object(["k": "1,2,3", "b": 8])]), "next": "p2"]) }
+                return .object(["items": .array([.object(["k": "4,5,6", "b": 2])]), "next": .null])
+            case "getPlayers":
+                return .object([
+                    "items": .array([
+                        .object([
+                            "id": .string(String(repeating: "ab", count: 32)), "account": .string(String(repeating: "ab", count: 32)),
+                            "device": "", "name": "Ana", "x": 1.5, "y": 30, "z": 2, "yaw": 0.5, "pitch": 0, "sel": 2, "online": true,
+                        ])
+                    ]),
+                    "next": .null,
                 ])
             case "join":
                 return .object([
-                    "id": "me", "name": "Ana", "x": 0, "y": 0, "z": 0, "yaw": 0, "pitch": 0, "sel": 0, "online": true,
+                    "id": "me", "account": "me", "device": "", "name": "Ana", "x": 0, "y": 0, "z": 0, "yaw": 0, "pitch": 0,
+                    "sel": 0, "online": true,
                 ])
-            case "set_blocks": return .number(2)
+            case "setBlocks": return .number(2)
             default: return .null
             }
         }
@@ -145,17 +152,24 @@ final class BridgeRouterTests: XCTestCase {
         let object = try XCTUnwrap(try json(meta) as? [String: Any])
         XCTAssertEqual(object["seed"] as? Int, 1337)
         XCTAssertEqual(object["createdAt"] as? Int, 1_730_000_000)
-        XCTAssertEqual(recording.calls("world_meta").first?.path, .query)
-        XCTAssertEqual(recording.calls("world_meta").first?.contextId, contextId)
+        XCTAssertEqual(recording.calls("worldMeta").first?.path, .query)
+        XCTAssertEqual(recording.calls("worldMeta").first?.contextId, contextId)
 
         let players = try await router.handle(op: .query, method: "get_players", argsJSON: Data(#"{"now":1730000001}"#.utf8))
         let rows = try XCTUnwrap(try json(players) as? [[String: Any]])
         XCTAssertEqual(rows.first?["name"] as? String, "Ana")
         XCTAssertEqual(rows.first?["online"] as? Bool, true)
-        XCTAssertEqual(recording.calls("get_players").first?.args, .object(["now": 1_730_000_001]))
+        // u64 on the component wire is a decimal string.
+        XCTAssertEqual(recording.calls("getPlayers").first?.args, .object(["now": "1730000001"]))
 
+        // Both pages, as one list: the page's shape.
         let overrides = try await router.handle(op: .query, method: "get_overrides", argsJSON: Data("{}".utf8))
-        XCTAssertEqual((try json(overrides) as? [[String: Any]])?.first?["b"] as? Int, 8)
+        XCTAssertEqual((try json(overrides) as? [[String: Any]])?.compactMap { $0["b"] as? Int }, [8, 2])
+        XCTAssertEqual(recording.calls("getOverrides").map(\.args), [.object([:]), .object(["cursor": "p2"])])
+
+        // A page built against the component ABI may use its names.
+        _ = try await router.handle(op: .query, method: "worldMeta", argsJSON: Data("{}".utf8))
+        XCTAssertEqual(recording.calls("worldMeta").count, 2)
     }
 
     func testMutationsAreSignedExecutes() async throws {
@@ -167,12 +181,12 @@ final class BridgeRouterTests: XCTestCase {
         guard case .object(let args) = call.args, case .object(let t)? = args["t"] else { return XCTFail("no t") }
         XCTAssertEqual(t["x"], .number(12.5))
         XCTAssertEqual(t["sel"], .number(3))
-        XCTAssertEqual(args["now"], .number(1_730_000_000))
+        XCTAssertEqual(args["now"], .string("1730000000"))
 
         let edits = #"{"edits":[{"x":10,"y":31,"z":12,"b":0},{"x":10,"y":32,"z":12,"b":8}],"now":1730000002}"#
         let applied = try await router.handle(op: .execute, method: "set_blocks", argsJSON: Data(edits.utf8))
         XCTAssertEqual(String(decoding: applied, as: UTF8.self), "2")
-        guard case .object(let sent)? = recording.calls("set_blocks").first?.args, case .array(let list)? = sent["edits"]
+        guard case .object(let sent)? = recording.calls("setBlocks").first?.args, case .array(let list)? = sent["edits"]
         else { return XCTFail("no edits") }
         XCTAssertEqual(list.count, 2)
 
@@ -216,7 +230,7 @@ final class BridgeRouterTests: XCTestCase {
             ("set_blocks", #"{"edits":[{"x":1,"y":2,"z":3,"b":-1}],"now":1}"#),
             ("set_blocks", #"{"edits":[{"x":1,"y":2,"z":3,"b":16}],"now":1}"#),
         ] {
-            let op: BridgeOp = BridgeRouter.views.contains(method) ? .query : .execute
+            let op: BridgeOp = BridgeRouter.views.contains(BridgeRouter.contractMethod(method) ?? "") ? .query : .execute
             do {
                 _ = try await router.handle(op: op, method: method, argsJSON: Data(args.utf8))
                 XCTFail("\(method) \(args) got through")

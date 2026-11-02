@@ -122,6 +122,13 @@ struct WorldsScreen: View {
             }
         }
         .sheet(item: $share) { link in ShareSheet(items: [link.url]) }
+        .sheet(
+            item: Binding(
+                get: { approvals.confirmation },
+                set: { if $0 == nil, approvals.confirmation != nil { approvals.answerConfirmation(false) } })
+        ) { confirmation in
+            ConsentCodeSheet(confirmation: confirmation) { approvals.answerConfirmation($0) }
+        }
         .confirmationDialog(
             "Leave \(leaving?.name ?? "this world")?", isPresented: Binding(get: { leaving != nil }, set: { if !$0 { leaving = nil } }), titleVisibility: .visible,
             presenting: leaving

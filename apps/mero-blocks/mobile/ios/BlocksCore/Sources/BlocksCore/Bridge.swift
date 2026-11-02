@@ -44,7 +44,7 @@ public enum BridgeError: Error, LocalizedError, Equatable {
 /// What the app tells the page when it starts.
 public struct GameStart: Equatable, Sendable, Encodable {
     public let contextId: String
-    /// "Me" as the contract keys players: this device's signing key, 64 hex.
+    /// "Me" as the contract keys players: the account, 64 hex (`PlayerView.id` with no device).
     public let myId: String
     public let name: String
     public let worldName: String
@@ -146,16 +146,27 @@ public enum BridgeCodec {
     }
 }
 
-/// Runs the page's contract calls through the generated ``BlocksClient``: only the methods the
-/// game uses, each on its own path (views `query`, mutations `execute`), with typed arguments.
+/// Runs the page's contract calls through ``BlocksClient`` on the component ABI: only the methods
+/// the game uses, each on its own path (views `query`, mutations `execute`), with typed arguments.
 /// `init` and anything else are refused.
+///
+/// The page speaks the bridge wire it always has (`game/src/bridge.ts`, `v1World.ts`): snake_case
+/// names, `now` as a number, whole lists. This router puts each call on the component wire
+/// (camelCase, u64 as decimal strings, pages followed) and answers in the page's shapes. The
+/// camelCase names are accepted too, for a page built against the component ABI.
 public struct BridgeRouter: Sendable {
-    public static let views: Set<String> = ["world_meta", "get_overrides", "get_players", "override_count"]
-    public static let mutations: Set<String> = ["join", "leave", "heartbeat", "set_blocks"]
+    /// The page's name for each method -> the contract's.
+    public static let names: [String: String] = [
+        "world_meta": "worldMeta", "get_overrides": "getOverrides", "get_players": "getPlayers",
+        "override_count": "overrideCount", "join": "join", "leave": "leave", "heartbeat": "heartbeat",
+        "set_blocks": "setBlocks",
+    ]
+    public static let views: Set<String> = ["worldMeta", "getOverrides", "getPlayers", "overrideCount"]
+    public static let mutations: Set<String> = ["join", "leave", "heartbeat", "setBlocks"]
 
     /// The contract stores any byte; the client only defines ids 0 to 15, and at most 512 a call.
     public static let maxEdits = 512
-    public static let maxBlockId: UInt32 = 15
+    public static let maxBlockId: UInt8 = 15
 
     public let client: BlocksClient
 
@@ -177,31 +188,31 @@ public struct BridgeRouter: Sendable {
         let now: UInt64
     }
 
-    /// The method's return value as JSON text.
+    /// The contract's name for what the page called, or nil when the game may not call it.
+    public static func contractMethod(_ method: String) -> String? {
+        if let mapped = names[method] { return mapped }
+        return views.contains(method) || mutations.contains(method) ? method : nil
+    }
+
+    /// The method's return value as JSON text, in the shape the page reads.
     public func handle(op: BridgeOp, method: String, argsJSON: Data) async throws -> Data {
-        let expected: BridgeOp
-        if Self.views.contains(method) {
-            expected = .query
-        } else if Self.mutations.contains(method) {
-            expected = .execute
-        } else {
-            throw BridgeError.unknownMethod(method)
-        }
+        guard let name = Self.contractMethod(method) else { throw BridgeError.unknownMethod(method) }
+        let expected: BridgeOp = Self.views.contains(name) ? .query : .execute
         guard op == expected else { throw BridgeError.wrongPath(method: method, expected: expected) }
 
         func args<T: Decodable>(_ type: T.Type) throws -> T {
             do {
-                return try JSONDecoder().decode(type, from: argsJSON)
+                return try JSONDecoder().decode(type, from: Self.numericNow(argsJSON))
             } catch {
                 throw BridgeError.badArguments(method: method, detail: String(describing: error))
             }
         }
         let encoder = JSONEncoder()
-        switch method {
-        case "world_meta": return try encoder.encode(try await client.worldMeta())
-        case "get_overrides": return try encoder.encode(try await client.getOverrides())
-        case "override_count": return try encoder.encode(try await client.overrideCount())
-        case "get_players":
+        switch name {
+        case "worldMeta": return try encoder.encode(try await client.worldMeta())
+        case "getOverrides": return try encoder.encode(try await client.getOverrides())
+        case "overrideCount": return try encoder.encode(try await client.overrideCount())
+        case "getPlayers":
             return try encoder.encode(try await client.getPlayers(now: try args(NowArgs.self).now))
         case "join":
             let a = try args(JoinArgs.self)
@@ -211,7 +222,7 @@ public struct BridgeRouter: Sendable {
         case "heartbeat":
             let a = try args(HeartbeatArgs.self)
             try await client.heartbeat(t: a.t, now: a.now)
-        case "set_blocks":
+        case "setBlocks":
             let a = try args(SetBlocksArgs.self)
             if a.edits.count > Self.maxEdits {
                 throw BridgeError.badArguments(method: method, detail: "more than \(Self.maxEdits) edits")
@@ -224,5 +235,15 @@ public struct BridgeRouter: Sendable {
             throw BridgeError.unknownMethod(method)
         }
         return Data("null".utf8)
+    }
+
+    /// The page's `now` is a number; a page on the component wire sends a decimal string. Either
+    /// reads as a number here.
+    static func numericNow(_ argsJSON: Data) -> Data {
+        guard var object = (try? JSONSerialization.jsonObject(with: argsJSON)) as? [String: Any],
+            let text = object["now"] as? String, let value = UInt64(text)
+        else { return argsJSON }
+        object["now"] = NSNumber(value: value)
+        return (try? JSONSerialization.data(withJSONObject: object)) ?? argsJSON
     }
 }

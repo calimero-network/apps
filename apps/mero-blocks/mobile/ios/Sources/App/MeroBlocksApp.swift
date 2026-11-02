@@ -59,6 +59,10 @@ struct RootView: View {
         .task {
             guard !didRestore else { return }
             await session.restore()
+            if session.client.nodeURL == nil, let cluster = AppConfig.cluster {
+                await session.client.connect(cluster: cluster)
+                session.rebuild()
+            }
             didRestore = true
         }
         .onChange(of: session.pendingInvitation) { _ in pickUpInvitation() }
