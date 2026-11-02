@@ -6,7 +6,17 @@ import type { Abi } from "../lens/validate";
 import { groupSets, modeOf, uncovered, validateActions } from "./actions";
 
 const APPS = path.resolve(__dirname, "../../../..");
-const abiOf = (app: string) => JSON.parse(readFileSync(path.join(APPS, app, "logic/res/abi.json"), "utf8")) as Abi;
+/**
+ * mero-crm moved to Calimero 1.0 (a component contract with its own ABI
+ * format and camelCase methods). Hyperfeed runs on v1 nodes, where the CRM is
+ * still the published v1 bundle, so its actions are checked against that
+ * contract's ABI, frozen in fixtures/abi when the app was ported.
+ */
+const FROZEN_V1: Record<string, string> = {
+  "mero-crm": path.join(__dirname, "../fixtures/abi/mero-crm-v1.json"),
+};
+const abiOf = (app: string) =>
+  JSON.parse(readFileSync(FROZEN_V1[app] ?? path.join(APPS, app, "logic/res/abi.json"), "utf8")) as Abi;
 const fixture = (name: string) => JSON.parse(readFileSync(path.join(__dirname, "fixtures", `${name}.json`), "utf8")) as ActionDef[];
 
 describe("the shipped actions", () => {
