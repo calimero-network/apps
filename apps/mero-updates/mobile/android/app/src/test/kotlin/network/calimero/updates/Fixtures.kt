@@ -5,12 +5,14 @@ import com.calimero.mero.testkit.RecordedContractCall
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import network.calimero.updates.app.AudienceModel
 import network.calimero.updates.app.AudienceSummary
+import network.calimero.updates.core.ComponentWire
 import network.calimero.updates.generated.AskView
 import network.calimero.updates.generated.CategoryView
 import network.calimero.updates.generated.CommentView
@@ -41,10 +43,24 @@ val NOW_MS: ULong = clock.millis().toULong()
 
 private val json = Json { encodeDefaults = true }
 
+/** [value] as the component contract answers it: camelCase keys, and every `u64` field a decimal string. */
 fun <T> json(
     serializer: KSerializer<T>,
     value: T,
-): JsonElement = json.encodeToJsonElement(serializer, value)
+): JsonElement = contractWire(json.encodeToJsonElement(serializer, value))
+
+private fun contractWire(value: JsonElement): JsonElement =
+    when (value) {
+        is JsonArray -> JsonArray(value.map(::contractWire))
+        is JsonObject ->
+            JsonObject(
+                value.entries.associate { (k, v) ->
+                    val number = (v as? JsonPrimitive)?.takeIf { !it.isString && k in ComponentWire.U64_FIELDS && v !is JsonNull }
+                    ComponentWire.camel(k) to (number?.let { JsonPrimitive(it.content) } ?: contractWire(v))
+                },
+            )
+        else -> value
+    }
 
 @Suppress("LongParameterList")
 fun card(
@@ -110,29 +126,29 @@ class FakeAudience {
 
         fun arg(key: String) = (args[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
         return when (call.method) {
-            "get_me" -> json(MeView.serializer(), me)
-            "get_overview" -> json(Overview.serializer(), overview)
-            "list_categories" -> json(ListSerializer(CategoryView.serializer()), categories)
-            "list_posts" -> {
+            "getMe" -> json(MeView.serializer(), me)
+            "getOverview" -> json(Overview.serializer(), overview)
+            "listCategories" -> json(ListSerializer(CategoryView.serializer()), categories)
+            "listPosts" -> {
                 var items = if (arg("kind") == "question") questions else posts
-                arg("category_id")?.let { c -> items = items.filter { it.categoryId == c } }
+                arg("categoryId")?.let { c -> items = items.filter { it.categoryId == c } }
                 (args["limit"] as? JsonPrimitive)?.content?.toIntOrNull()?.let { items = items.take(it) }
                 json(PostPage.serializer(), PostPage(items, null))
             }
-            "get_post" -> postViews[arg("post_id")]?.let { json(PostView.serializer(), it) } ?: JsonNull
-            "list_comments" -> json(ListSerializer(CommentView.serializer()), comments)
-            "list_drafts" -> json(ListSerializer(DraftView.serializer()), drafts)
-            "list_metrics" -> json(ListSerializer(MetricSeries.serializer()), series)
-            "list_people" -> json(ListSerializer(PersonView.serializer()), people)
-            "get_engagement" -> json(ListSerializer(EngagementRow.serializer()), emptyList())
-            "list_asks" -> json(ListSerializer(AskView.serializer()), asks.filter { a -> arg("status").let { it == null || a.status == it } })
-            "list_contributions" -> json(ListSerializer(ContributionView.serializer()), contributions)
-            "get_settings" -> json(Settings.serializer(), settings)
-            "save_draft" -> JsonPrimitive(arg("draft_id") ?: "draft-1")
-            "publish_update" -> JsonPrimitive("post-new")
-            "ask_question" -> JsonPrimitive("q-new")
-            "add_comment" -> JsonPrimitive("c-new")
-            "create_category" -> JsonPrimitive("cat-new")
+            "getPost" -> postViews[arg("postId")]?.let { json(PostView.serializer(), it) } ?: JsonNull
+            "listComments" -> json(ListSerializer(CommentView.serializer()), comments)
+            "listDrafts" -> json(ListSerializer(DraftView.serializer()), drafts)
+            "listMetrics" -> json(ListSerializer(MetricSeries.serializer()), series)
+            "listPeople" -> json(ListSerializer(PersonView.serializer()), people)
+            "getEngagement" -> json(ListSerializer(EngagementRow.serializer()), emptyList())
+            "listAsks" -> json(ListSerializer(AskView.serializer()), asks.filter { a -> arg("status").let { it == null || a.status == it } })
+            "listContributions" -> json(ListSerializer(ContributionView.serializer()), contributions)
+            "getSettings" -> json(Settings.serializer(), settings)
+            "saveDraft" -> JsonPrimitive(arg("draftId") ?: "draft-1")
+            "publishUpdate" -> JsonPrimitive("post-new")
+            "askQuestion" -> JsonPrimitive("q-new")
+            "addComment" -> JsonPrimitive("c-new")
+            "createCategory" -> JsonPrimitive("cat-new")
             else -> JsonNull
         }
     }

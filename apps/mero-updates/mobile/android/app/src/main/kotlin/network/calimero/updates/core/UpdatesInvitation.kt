@@ -1,35 +1,35 @@
 package network.calimero.updates.core
 
-import com.calimero.mero.admin.SignedGroupOpenInvitation
+import com.calimero.mero.app.OrgInvitation
 import com.calimero.mero.invite.InviteCodec
 import com.calimero.mero.invite.InviteLink
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
 import java.net.URI
 import java.net.URLDecoder
 
 /**
- * A company or audience invitation in the web app's format (`app/src/lib/inviteCodec.ts` +
- * `inviteLink.ts`), so a link minted on a phone opens in the browser and the other way round:
+ * A company or audience invitation: Calimero 1.0's org invite token in the SDK's link shape
+ * ([OrgInvitation]), plus where to land. (Swift `UpdatesInvitation`.)
  *
- * - payload: JSON `{"invitation": <SignedGroupOpenInvitation>, "kind": "namespace"|"audience",
- *   "groupId": <namespace>, "groupAlias": <company name>, "audienceId"?, "contextId"?, "audienceName"?}`
+ * - payload: JSON `{"invitation": "inv_…", "namespaceId": <org>, "contextId"?, "name"?: <company name>,
+ *   "kind": "namespace"|"audience", "audienceId"?, "audienceName"?}`
  * - token: `base58(deflate(payload))` ([InviteCodec], byte-compatible with fflate + bs58)
  * - link: `https://links.calimero.network/com.calimero.mero-updates/join?invitation=<token>`
  *
- * The grant is always the namespace (audiences are open subgroups, reachable by every company
- * member); `audienceId` / `contextId` only say where to land.
+ * The grant is always the org (audiences are open teams, reachable by every company member):
+ * redeeming the token (`POST /invites/{token}/redeem`) joins the org it belongs to; `audienceId` /
+ * `contextId` only say where to land. A pre-1.0 signed invitation is refused (a 1.0 cluster cannot
+ * redeem it).
  */
 class UpdatesInvitation(
-    /** The signed envelope, carried through verbatim (re-modelling it breaks its signature). */
-    val invitation: SignedGroupOpenInvitation,
+    /** The org invite token. */
+    val invitation: OrgInvitation,
     val kind: Kind,
-    /** The namespace (company) it admits to, read from inside the signed invitation. */
+    /** The org (company) it admits to. */
     val namespaceId: String,
     val companyName: String? = null,
     val audienceId: String? = null,
@@ -43,17 +43,17 @@ class UpdatesInvitation(
         AUDIENCE("audience"),
     }
 
-    /** The payload JSON the web app's `encodeInvite` writes. */
-    fun payload(): String =
-        buildJsonObject {
-            put("invitation", invitation.raw)
-            put("kind", kind.wire)
-            put("groupId", namespaceId)
-            companyName?.let { put("groupAlias", it) }
-            audienceId?.let { put("audienceId", it) }
-            contextId?.let { put("contextId", it) }
-            audienceName?.let { put("audienceName", it) }
-        }.toString()
+    /** The SDK's [OrgInvitation] JSON with this app's landing fields beside it. */
+    fun payload(): String {
+        val base = OrgInvitation(namespaceId, invitation.token, contextId?.ifBlank { null }, companyName?.ifBlank { null }).toJson()
+        val extra =
+            buildMap {
+                put("kind", JsonPrimitive(kind.wire))
+                audienceId?.ifBlank { null }?.let { put("audienceId", JsonPrimitive(it)) }
+                audienceName?.ifBlank { null }?.let { put("audienceName", JsonPrimitive(it)) }
+            }
+        return JsonObject(base + extra).toString()
+    }
 
     /** The shareable link. */
     fun link(): String = InviteLink.invitation(InviteCodec.encode(payload()), PACKAGE_NAME)
@@ -77,8 +77,7 @@ class UpdatesInvitation(
         fun parse(input: String): UpdatesInvitation? {
             val trimmed = input.trim()
             if (trimmed.isEmpty()) return null
-            val legacy = legacyCode(trimmed)
-            val candidate = legacy ?: trimmed
+            val candidate = legacyCode(trimmed) ?: trimmed
             val lower = candidate.lowercase()
             val isLink = lower.startsWith("http://") || lower.startsWith("https://") || lower.startsWith("calimero://")
             if (isLink) {
@@ -101,61 +100,25 @@ class UpdatesInvitation(
                 ?.ifEmpty { null }
         }
 
-        /** Read the decoded payload: checks the envelope is signed and leaves its fields to the node. */
+        /** Read the decoded payload (under an optional `data` envelope). A 0.x payload (a signed object as `invitation`) is refused. */
         fun parseJson(json: String): UpdatesInvitation? {
             val parsed = runCatching { Json.parseToJsonElement(json) as? JsonObject }.getOrNull() ?: return null
             val root = parsed["data"] as? JsonObject ?: parsed
-            val inner = root["invitation"]
-            val fields: JsonObject
-            val signedObject: JsonObject
-            when {
-                inner is JsonObject && isSigned(inner) -> {
-                    fields = root
-                    signedObject = inner
-                }
-                isSigned(root) -> {
-                    fields = JsonObject(emptyMap())
-                    signedObject = root
-                }
-                else -> return null
-            }
-            val signed = SignedGroupOpenInvitation(snakeSignature(signedObject))
-            val chainNamespace =
-                (fields["chain"] as? JsonArray)
-                    ?.mapNotNull { it as? JsonObject }
-                    ?.firstOrNull { it.string("kind") == "namespace" }
-                    ?.let { it["invitation"] as? JsonObject }
-                    ?.takeIf { isSigned(it) }
-                    ?.let { hex(SignedGroupOpenInvitation(snakeSignature(it)).invitation.groupId) }
-            val namespaceId =
-                listOfNotNull(chainNamespace, hex(signed.invitation.groupId), fields.string("groupId"))
-                    .firstOrNull { it.isNotEmpty() } ?: return null
-            val audienceId = fields.string("audienceId")?.ifBlank { null }
-            val contextId = fields.string("contextId")?.ifBlank { null }
+            val base = OrgInvitation.decodeJson(root.toString()) ?: return null
+            val audienceId = root.string("audienceId")?.ifBlank { null }
+            val contextId = base.contextId?.ifBlank { null }
             val kind =
-                if (fields.string("kind") == "audience" || (audienceId != null && contextId != null)) Kind.AUDIENCE else Kind.NAMESPACE
+                if (root.string("kind") == "audience" || (audienceId != null && contextId != null)) Kind.AUDIENCE else Kind.NAMESPACE
             return UpdatesInvitation(
-                invitation = signed,
+                invitation = base,
                 kind = kind,
-                namespaceId = namespaceId,
-                companyName = (fields.string("groupAlias") ?: fields.string("groupName"))?.ifBlank { null },
+                namespaceId = base.namespaceId,
+                companyName = (base.name ?: root.string("groupAlias"))?.ifBlank { null },
                 audienceId = audienceId,
                 contextId = contextId,
-                audienceName = fields.string("audienceName")?.ifBlank { null },
+                audienceName = root.string("audienceName")?.ifBlank { null },
             )
         }
-
-        private fun isSigned(o: JsonObject): Boolean =
-            o["invitation"] is JsonObject && (o.string("inviter_signature") != null || o.string("inviterSignature") != null)
-
-        /** Accept the camelCase spelling some nodes write. */
-        private fun snakeSignature(o: JsonObject): JsonObject {
-            if (o["inviter_signature"] != null) return o
-            val camel = o["inviterSignature"] ?: return o
-            return JsonObject(o.filterKeys { it != "inviterSignature" } + ("inviter_signature" to camel))
-        }
-
-        internal fun hex(bytes: List<Int>): String = bytes.joinToString("") { "%02x".format(it and 0xFF) }
 
         private fun JsonObject.string(key: String): String? = (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull
     }

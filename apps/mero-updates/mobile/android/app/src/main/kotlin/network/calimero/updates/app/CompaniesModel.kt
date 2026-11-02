@@ -25,7 +25,7 @@ class CompaniesModel(
     private val _hostingNote = MutableStateFlow<String?>(null)
     val hostingNote: StateFlow<String?> = _hostingNote.asStateFlow()
 
-    /** Whether a relay serves the account. Without one only joining works. */
+    /** Whether the account reaches its cluster (always, while signed in on 1.0). */
     val hasRelay: Boolean get() = backend.hasRelay
 
     suspend fun load() {

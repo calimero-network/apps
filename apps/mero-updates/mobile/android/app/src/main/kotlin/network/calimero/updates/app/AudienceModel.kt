@@ -194,7 +194,7 @@ class AudienceModel(
     // Live
 
     /**
-     * Follow the audience while it is open: the relay's event stream when it has one, coalesced (a
+     * Follow the audience while it is open: the node's event stream when it has one, coalesced (a
      * publish emits several events), and a poll either way, since a dropped stream would otherwise
      * leave the feed stale with nothing saying so. Runs until cancelled.
      */

@@ -167,7 +167,7 @@ fun CompanyScreen(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     CircularProgressIndicator(Modifier.size(18.dp), color = Palette.ink, strokeWidth = 2.dp)
                                     Spacer(Modifier.width(10.dp))
-                                    Text("Syncing this company's audiences. They appear as your relay catches up.", color = Palette.ink2, fontSize = 15.sp)
+                                    Text("Loading this company's audiences. They appear in a moment.", color = Palette.ink2, fontSize = 15.sp)
                                 }
                             }
                         }

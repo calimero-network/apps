@@ -6,19 +6,18 @@ copy, icons (SF Symbols / Material, mapped) and flows.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | [`ios/`](ios/README.md) | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `6c5f116` (head of swift-sdk#85, `feat/calimero-1.0`, Calimero 1.0; moves to its merge commit once it lands) |
-| Android | [`android/`](android/README.md) | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `ea8ded7` (`android/kotlin-sdk.ref`) |
+| iOS | [`ios/`](ios/README.md) | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `37c09f3` (head of swift-sdk#85, Calimero 1.0) |
+| Android | [`android/`](android/README.md) | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `61b65e9` (head of kotlin-sdk#68, Calimero 1.0) |
 
-**SDK pins.** iOS pins the head of swift-sdk#85 (the Calimero 1.0 port of `MeroAppSession`,
-`MeroAppBackend` and `ContextContract`); Android the `main` merge commit of kotlin-sdk PR #67. The pins are set in
-`Core/Package.swift` and `project.yml` on iOS, `kotlin-sdk.ref` on Android.
+**SDK pins.** Both pin the heads of the SDKs' Calimero 1.0 PRs: `ios/Core/Package.swift` and
+`ios/project.yml`, `android/kotlin-sdk.ref`. They move to the merge commits once those PRs land.
 
 ## How the apps reach Calimero
 
-**iOS runs on Calimero 1.0.** The app talks to a node of a Calimero Cloud cluster over the sealed
-channel (`calimero/sealed-http/v2`, after the node's TDX attestation is verified) and signs in with
-a passkey; it runs no node. `MeroAppSession` builds the SDK's `CloudAppBackend`, and the view
-models keep their `MeroAppBackend` calls, each of which maps one to one:
+Both apps run on **Calimero 1.0**. They talk to a node of a Calimero cluster over the sealed
+channel (`calimero/sealed-http/v2`, after the node's TDX attestation is verified) and sign in with
+a passkey; the phone runs no node. `MeroAppSession` builds the SDK's `CalimeroAppBackend`, and the
+view models keep their `MeroAppBackend` calls, each of which maps one to one:
 
 | The app | `MeroAppBackend` | Calimero 1.0 |
 | --- | --- | --- |
@@ -27,46 +26,58 @@ models keep their `MeroAppBackend` calls, each of which maps one to one:
 | audience's context | context | app instance (`/apps/{app}/views`, `/intents`, `/events`) |
 | invitation | `OrgInvitation` | org invite token, redeemed at `/invites/{token}/redeem` |
 
-Sign-in (`ios/Sources/App/CloudAccess.swift`, the same file in every ported app):
+**Sign-in** (iOS `ios/Sources/App/CloudAccess.swift`, Android `UpdatesViewModel` + `SignInScreen`):
 
-- **Calimero Cloud:** a node URL of your cluster (from cloud.calimero.network; `MeroNodeURL` in
-  `ios/project.yml` prefills it), then *Sign in with passkey* or *Create an account*. The device's
-  passkey belongs to the cluster's relying party: add the `webcredentials:<rp-id>` associated
-  domain to the app for a real cluster.
-- **Development node:** a `merod local` node (`MeroDevNodeURL`, `http://localhost:2501` by
-  default), mock attestation allowed (`allowMock`), with a software passkey the SDK keeps for it.
-- **Approvals** (Companies → account menu): node releases and app upgrades waiting for you, per org and
-  for your own apps. *Review* opens the node's consent page in the system browser, which returns
-  to `mero-updates://consent`. The app's own session cannot approve anything.
+- **Calimero Cloud:** the cluster's **name** (its nodes come from the Calimero node directory) or
+  one of its node URLs, then *Sign in with passkey* or *Create an account*. iOS prefills it from
+  `MeroNodeURL`, Android from `-PmeroCluster`. The device's passkey belongs to the cluster's relying
+  party: a real cluster needs the `webcredentials:<rp-id>` associated domain (iOS) or Digital Asset
+  Links (Android).
+- **Development node:** a `merod local` node (iOS `http://localhost:2501`, Android emulator
+  `http://10.0.2.2:2501`), mock attestation allowed, with a software passkey kept for it.
+- On Android the Activity hands its passkey to the session (`onCreate` / `onDestroy`), so inviting
+  and member changes are approved with it; on iOS the SDK does this itself.
 
-**Android still runs on 0.x** (delegated execution through the account's relay, wallet sign-in);
-its port follows the kotlin-sdk's.
+**Approvals** (Companies → account menu → Approvals): node releases and app upgrades waiting for
+you, per company and for your own apps. *Review* first shows the request's **confirmation code**,
+then opens the node's consent page (the system browser on iOS, a Custom Tab on Android), which
+shows the same code and returns to `mero-updates://consent`. The app's own session cannot approve
+anything.
 
-What both apps do (on Android, through the relay; on iOS, through the cluster's node):
+**The contract** is the component ABI (`../logic/res/abi.json`), called exactly as the web app's
+`app/src/lib/updatesClient.ts` does. The generated `UpdatesClient` (v1 shapes: snake_case fields,
+numbers) is kept, and `ComponentWire` (iOS `Core/Sources/UpdatesCore/ComponentWire.swift`, Android
+`core/ComponentWire.kt`) sits under it:
 
-- **Reads** (the contract's `read_only` views) are the relay's account-scoped query; **writes**
-  are warrants the device key signs (on iOS: `/apps/{app}/views` and `/intents`). The generated `UpdatesClient` decides which per method.
-- **Companies and audiences** are what the web app makes: a company is a namespace founded for
-  the app; an audience is an open subgroup of it with one context, which holds the updates.
-  Opening an audience joins its context when the account is not in it yet.
-- **Invitations**: `https://links.calimero.network/com.calimero.mero-updates/join?invitation=<base58(deflate(json))>`.
-  On iOS the payload is the SDK's 1.0 `OrgInvitation` JSON plus this app's landing fields,
-  `{"invitation": "inv_…", "namespaceId", "contextId"?, "name"?, "kind", "audienceId"?, "audienceName"?}`, redeemed with
-  `POST /invites/{token}/redeem`; pre-1.0 signed invitations are refused. Android and the web app
-  still write the 0.x `{invitation, kind, groupId, …}` payload (redeemed through the relay) until
-  their ports. The older `?invite=` links are read too.
-- **Drafts** (`save_draft` / `list_drafts` / `delete_draft`) use the contract's `#[app::private]`
-  storage exactly as the web does. On Android the executing node is the account's relay, so a
-  draft lives in that node's private storage and never replicates to investors; on iOS (1.0) the
-  call runs on the cluster's leader for the app. The payload is
-  the web composer's JSON, so either client opens a draft the other saved on the same node.
+- out: method and argument names become camelCase (`add_comment {post_id}` → `addComment {postId}`),
+  a parameter left out is sent as `null`, and the `u64` argument `since` goes as a decimal string;
+- in: keys become snake_case again and the `u64` fields (times and counts) arrive as decimal
+  strings and become numbers;
+- refusals are `422 APP_ERROR {code, fields: {message}}` (`NotFound`, `Invalid`, `Forbidden`), shown
+  with the contract's message. `ConfirmCancelled`, `LoginRequired`, `WrongNode`, `Unavailable`,
+  `ReleaseDeadline`, `ConsentStale` and `PasskeyRequired` each get a plain sentence.
+
+The wire tests (`ComponentWireTests`, `ComponentWireTest`) call every client method and pin the
+call/view split and every parameter name to the ABI; the model tests' fakes answer in the
+component shape.
+
+What both apps do:
+
+- **Companies and audiences** are what the web app makes: a company is an org; an audience is an
+  open team of it with one app instance, which holds the updates.
+- **Invitations**: `https://links.calimero.network/com.calimero.mero-updates/join?invitation=<base58(deflate(json))>`
+  with the SDK's `OrgInvitation` JSON plus this app's landing fields,
+  `{"invitation": "inv_…", "namespaceId", "contextId"?, "name"?, "kind", "audienceId"?, "audienceName"?}`.
+  Pre-1.0 signed invitations are refused. The older `?invite=` links are read too.
+- **Drafts** (`saveDraft` / `listDrafts` / `deleteDraft`) are per account in the app's state, as
+  in the component port: no other account can read them.
 - **Live updates** come from the app instance's event stream (coalesced, 250 ms), with a poll as a
   fallback, like the web's `AudienceShell` revision.
 
 ## Screens
 
-1. **Sign in**: what the app is; on iOS a Calimero Cloud passkey (sign in or create an account)
-   or a development node.
+1. **Sign in**: what the app is; a Calimero Cloud cluster by name or node URL with a passkey (sign
+   in or create an account), or a development node.
 2. **Companies**: your companies, a new company, join with a pasted invitation link; an opened
    invitation link asks "Join …?" first and lands in the audience (or company) it names.
 3. **Company**: its audiences, a new audience (born open, with its context), "Invite people"
@@ -111,21 +122,16 @@ plain text, as on the web.
 - **Dark theme.** The apps use the Calimero light style only; the web app has a theme switch.
 - **Push reminders** for the next update due. The SDKs have no push yet.
 
-## Regenerating the contract client
+## The contract client
 
 `ios/Core/Sources/UpdatesCore/Generated/UpdatesClient.swift` and
-`android/app/src/main/kotlin/network/calimero/updates/generated/UpdatesClient.kt` are generated
-from `../logic/res/abi.json` with `calimero-abi-codegen --target swift|kotlin`. Do not edit
-them; after a contract change run:
-
-```bash
-./scripts/regenerate-clients.sh
-# or with a local build of the codegen:
-ABI_CODEGEN="node /path/to/abi-codegen/dist/cli.js" ./scripts/regenerate-clients.sh
-```
+`android/app/src/main/kotlin/network/calimero/updates/generated/UpdatesClient.kt` were generated
+from the v1 ABI and are kept as the screens' types. abi-codegen has no target for the component
+ABI yet, so they are not regenerated: a contract change goes into `ComponentWire`'s method table
+and the wire tests on both platforms.
 
 ## CI
 
 `.github/workflows/mero-updates-ios.yml` (macOS: `swift test` on the core package, XcodeGen and a
-simulator build of the app) and `.github/workflows/mero-updates-android.yml` (fetch the SDK,
+build of the app) and `.github/workflows/mero-updates-android.yml` (fetch the SDK,
 ktlint, detekt, unit tests, Android lint, `assembleDebug`), each path-filtered to its folder.

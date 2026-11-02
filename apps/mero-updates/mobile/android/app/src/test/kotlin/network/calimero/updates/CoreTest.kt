@@ -1,5 +1,10 @@
 package network.calimero.updates
 
+import com.calimero.mero.AppError
+import com.calimero.mero.ConfirmCancelled
+import com.calimero.mero.LoginRequired
+import com.calimero.mero.WrongNode
+import com.calimero.mero.app.OrgInvitation
 import com.calimero.mero.invite.InviteCodec
 import com.calimero.mero.testkit.InMemoryAppBackend
 import kotlinx.serialization.json.buildJsonObject
@@ -8,6 +13,7 @@ import network.calimero.updates.core.AskKind
 import network.calimero.updates.core.Catalog
 import network.calimero.updates.core.Composer
 import network.calimero.updates.core.ComposerState
+import network.calimero.updates.core.ErrorText
 import network.calimero.updates.core.Format
 import network.calimero.updates.core.Metrics
 import network.calimero.updates.core.People
@@ -186,6 +192,7 @@ class InvitationTest {
         assertTrue(link.startsWith("https://links.calimero.network/com.calimero.mero-updates/join?invitation="))
         val parsed = UpdatesInvitation.parse(link)!!
         assertEquals(ns, parsed.namespaceId)
+        assertEquals("inv_fake-$ns", parsed.invitation.token)
         assertEquals(UpdatesInvitation.Kind.AUDIENCE, parsed.kind)
         assertEquals("ctx", parsed.contextId)
         assertEquals("Angels", parsed.audienceName)
@@ -194,20 +201,27 @@ class InvitationTest {
     }
 
     @Test
-    fun `reads the web payload and takes the namespace from the signature`() {
-        val payload =
-            buildJsonObject {
-                put("invitation", InMemoryAppBackend.invitation(ns).raw)
-                put("kind", "namespace")
-                put("groupId", "tampered")
-                put("groupAlias", "Acme")
-            }.toString()
-        val token = InviteCodec.encode(payload)
+    fun `the SDK reads the same link`() {
+        val token =
+            InviteCodec.encode(
+                UpdatesInvitation(InMemoryAppBackend.invitation(ns), UpdatesInvitation.Kind.NAMESPACE, ns, companyName = "Acme").payload(),
+            )
+        assertEquals(OrgInvitation(ns, "inv_fake-$ns", name = "Acme"), OrgInvitation.decode(token))
         val parsed = UpdatesInvitation.parse(token)!!
-        assertEquals(ns, parsed.namespaceId)
         assertEquals(UpdatesInvitation.Kind.NAMESPACE, parsed.kind)
         assertEquals("Whole company · Acme", parsed.scope)
         assertNotNull(UpdatesInvitation.parse("https://updates.example.com/spaces?invite=$token"))
+    }
+
+    @Test
+    fun `refuses a pre-1_0 signed invitation`() {
+        val payload =
+            buildJsonObject {
+                put("invitation", buildJsonObject { put("inviter_signature", "ff") })
+                put("kind", "namespace")
+                put("groupAlias", "Acme")
+            }.toString()
+        assertNull(UpdatesInvitation.parse(InviteCodec.encode(payload)))
     }
 
     @Test
@@ -219,5 +233,32 @@ class InvitationTest {
         assertNull(UpdatesInvitation.parse(link))
         assertNull(UpdatesInvitation.parse("hello"))
         assertNull(UpdatesInvitation.parse(""))
+    }
+}
+
+class ErrorTextTest {
+    private fun app(
+        code: String,
+        message: String?,
+    ) = AppError(
+        "refused",
+        buildJsonObject {
+            put("code", code)
+            put("fields", buildJsonObject { message?.let { put("message", it) } })
+        },
+    )
+
+    @Test
+    fun `contract refusals in words`() {
+        assertEquals("Only the team may publish an update.", ErrorText.describe(app("Forbidden", "only the team may publish an update")))
+        assertEquals("That is no longer here. It may have been deleted.", ErrorText.describe(app("NotFound", null)))
+        assertEquals("Check what you entered and try again.", ErrorText.describe(app("Invalid", "")))
+    }
+
+    @Test
+    fun `cluster errors in words`() {
+        assertEquals("The passkey prompt was cancelled, so nothing changed.", ErrorText.describe(ConfirmCancelled()))
+        assertEquals("Your session ended. Sign in again.", ErrorText.describe(LoginRequired("expired")))
+        assertTrue(ErrorText.describe(WrongNode("moved")).contains("Sign in again"))
     }
 }

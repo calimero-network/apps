@@ -20,6 +20,7 @@ import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Drafts
 import androidx.compose.material.icons.outlined.Layers
+import androidx.compose.material.icons.outlined.VerifiedUser
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -72,6 +73,7 @@ fun CompaniesScreen(
     var creating by remember { mutableStateOf(false) }
     var joining by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
+    var approvals by remember { mutableStateOf(false) }
 
     LaunchedEffect(model) { model.load() }
 
@@ -84,6 +86,14 @@ fun CompaniesScreen(
                     Box {
                         IconButton(onClick = { menu = true }) { Icon(Icons.Outlined.AccountCircle, contentDescription = "Account") }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Approvals") },
+                                leadingIcon = { Icon(Icons.Outlined.VerifiedUser, contentDescription = null) },
+                                onClick = {
+                                    menu = false
+                                    approvals = true
+                                },
+                            )
                             DropdownMenuItem(
                                 text = { Text("Sign out") },
                                 leadingIcon = { Icon(Icons.AutoMirrored.Outlined.Logout, contentDescription = null) },
@@ -136,11 +146,7 @@ fun CompaniesScreen(
                             EmptyState(
                                 Icons.Outlined.Layers,
                                 "No companies yet",
-                                if (model.hasRelay) {
-                                    "Founders: create yours below. Investors: open the invitation link a founder sent you."
-                                } else {
-                                    "Your account has no relay yet. Join a company with an invitation link first."
-                                },
+                                "Founders: create yours below. Investors: open the invitation link a founder sent you.",
                             )
                         }
                     }
@@ -158,6 +164,7 @@ fun CompaniesScreen(
         }
     }
 
+    if (approvals) ApprovalsSheet(vm, companies.map { it.id to it.title }) { approvals = false }
     if (creating) {
         NewCompanySheet(model, onDismiss = { creating = false }) { company ->
             creating = false
@@ -264,7 +271,7 @@ fun InvitationPrompt(
     vm: UpdatesViewModel,
     backend: MeroAppBackend,
 ) {
-    val pending by vm.session.pendingInvitation.collectAsState()
+    val pending by vm.pendingInvitation.collectAsState()
     val link = pending ?: return
     val model = remember(backend, link) { CompaniesModel(backend) }
     val invitation = remember(link) { UpdatesInvitation.parse(link) }
@@ -272,7 +279,7 @@ fun InvitationPrompt(
     val error by model.error.collectAsState()
     val scope = rememberCoroutineScope()
     AlertDialog(
-        onDismissRequest = { vm.session.dismissPendingInvitation() },
+        onDismissRequest = { vm.dismissPendingInvitation() },
         icon = { IconTile(Icons.Outlined.Drafts, accent = true, size = 48.dp) },
         title = {
             Text(
@@ -304,7 +311,7 @@ fun InvitationPrompt(
                         scope.launch {
                             val landing = model.join(invitation)
                             if (landing != null) {
-                                vm.session.dismissPendingInvitation()
+                                vm.dismissPendingInvitation()
                                 vm.didJoin()
                                 vm.land(landing)
                             }
@@ -313,7 +320,7 @@ fun InvitationPrompt(
                 )
             }
         },
-        dismissButton = { LinkButton("Not now", onClick = { vm.session.dismissPendingInvitation() }) },
+        dismissButton = { LinkButton("Not now", onClick = { vm.dismissPendingInvitation() }) },
         containerColor = Palette.surface,
     )
 }
