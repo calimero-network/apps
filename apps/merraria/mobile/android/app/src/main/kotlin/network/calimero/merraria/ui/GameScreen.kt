@@ -527,9 +527,9 @@ private fun PauseMenu(
                 }
                 ZoomRow(state.zoom) { model.setZoom(it) }
                 Disclosure("Details") {
-                    DetailRow("World (context)", ref.contextId)
-                    DetailRow("Namespace", ref.namespaceId)
-                    ref.groupId?.let { DetailRow("Group", it) }
+                    DetailRow("World (app instance)", ref.contextId)
+                    DetailRow("Organization", ref.namespaceId)
+                    ref.groupId?.let { DetailRow("Team", it) }
                 }
                 SecondaryButton(
                     onClick = {

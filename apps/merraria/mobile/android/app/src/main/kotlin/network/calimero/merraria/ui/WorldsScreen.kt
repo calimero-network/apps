@@ -56,6 +56,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.calimero.mero.app.MeroAppBackend
 import kotlinx.coroutines.launch
+import network.calimero.merraria.app.ApprovalsModel
 import network.calimero.merraria.app.MerrariaText
 import network.calimero.merraria.app.PlayerSettings
 import network.calimero.merraria.app.WorldEntry
@@ -75,6 +76,7 @@ fun WorldsScreen(
     onJoin: (WorldInvitation) -> Unit,
     onShare: (String) -> Unit,
     onSignOut: () -> Unit,
+    approvals: ApprovalsModel? = null,
 ) {
     val model = remember(backend) { WorldsModel(backend, applicationId) }
     val state by model.state.collectAsState()
@@ -86,7 +88,14 @@ fun WorldsScreen(
     var actionError by remember { mutableStateOf<String?>(null) }
     var refreshing by remember { mutableStateOf(false) }
 
-    LaunchedEffect(model) { model.load() }
+    LaunchedEffect(model) {
+        model.load()
+        approvals?.refresh(
+            model.state.value.worlds
+                .map { it.ref.namespaceId }
+                .distinct(),
+        )
+    }
 
     fun invite(ref: WorldRef) {
         scope.launch {
@@ -142,6 +151,11 @@ fun WorldsScreen(
                 scope.launch {
                     refreshing = true
                     model.load()
+                    approvals?.refresh(
+                        model.state.value.worlds
+                            .map { it.ref.namespaceId }
+                            .distinct(),
+                    )
                     refreshing = false
                 }
             },
@@ -160,20 +174,13 @@ fun WorldsScreen(
                         }
                     }
                 }
+                approvals?.let { item { ApprovalsSection(it) } }
                 when {
                     !state.loaded ->
                         item {
                             Box(Modifier.fillMaxWidth().padding(vertical = 48.dp), contentAlignment = Alignment.Center) {
                                 CircularProgressIndicator(color = MerrariaColors.Ink, strokeWidth = 2.dp)
                             }
-                        }
-                    !model.hasRelay ->
-                        item {
-                            EmptyState(
-                                title = "Join your first world",
-                                text = "Your account has no relay yet. Open an invitation link a friend sent you, or paste it here.",
-                                action = "Join with a link",
-                            ) { pasting = true }
                         }
                     state.worlds.isEmpty() ->
                         item {

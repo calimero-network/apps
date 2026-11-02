@@ -4,12 +4,12 @@
 #   xcodegen generate          # writes Merraria.xcodeproj (not committed)
 #   open Merraria.xcodeproj
 #
-# The non-UI layer (generated contract client, world list, invitations, the game bridge and the
+# The non-UI layer (typed contract client, world list, invitations, the game bridge and the
 # touch-control mapping) is the local SwiftPM package in MerrariaCore/, tested on macOS with
 # `swift test --package-path MerrariaCore` (no simulator). The game itself is the web app's engine,
 # built into ../game/www (../scripts/build-game.sh) and shipped as a folder resource.
-# The swift-sdk is pinned by revision to its main merge commit of swift-sdk#84. Keep it
-# equal to the revision in MerrariaCore/Package.swift.
+# The swift-sdk is pinned by revision to the head of swift-sdk#85 (Calimero 1.0); it moves to the
+# merge commit once that lands. Keep it equal to the revision in MerrariaCore/Package.swift.
 name: Merraria
 
 options:
@@ -21,7 +21,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: 6c5f1167d1e586f556f59c326de5f51d034e80dd
+    revision: 37c09f3f96e7d98440f6618eef8a0e83ddee8ebd
   MerrariaCore:
     path: MerrariaCore
 

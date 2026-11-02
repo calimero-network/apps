@@ -18,8 +18,6 @@ subprojects {
         ignoreFailures.set(false)
         filter {
             exclude { entry -> entry.file.path.contains("/build/") }
-            // The contract client is generated from the ABI (../scripts/regenerate.sh): never hand-formatted.
-            exclude { entry -> entry.file.path.contains("/generated/") }
         }
     }
 

@@ -11,7 +11,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import network.calimero.merraria.generated.PlayerView
+import network.calimero.merraria.contract.PlayerView
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -93,22 +93,20 @@ class BridgeTest {
         assertEquals("""{"contextId":"ctx","name":"Ada \"A\"","zoom":1}""", GameConfig("ctx", "Ada \"A\"", 1.0).json)
     }
 
-    // ---- dispatch through the generated client ---------------------------------------------------
+    // ---- dispatch through the typed client (v1 page names in, component ABI out) -------------------
 
     private fun dispatcher(): Pair<BridgeDispatcher, InMemoryAppBackend> {
         val backend = InMemoryAppBackend()
         backend.recording.handler = { call ->
             when (call.method) {
-                "get_overrides" ->
-                    JsonArray(
-                        listOf(
-                            buildJsonObject {
-                                put("k", "4,5")
-                                put("t", 3)
-                            },
-                        ),
-                    )
-                "world_meta" ->
+                // Two pages: the bridge reads both and answers v1's single array.
+                "getOverrides" ->
+                    if ((call.args as JsonObject)["cursor"] == null) {
+                        Json.parseToJsonElement("""{"items":[{"k":"4,5","t":3}],"next":"c1"}""")
+                    } else {
+                        Json.parseToJsonElement("""{"items":[{"k":"6,7","t":1}],"next":null}""")
+                    }
+                "worldMeta" ->
                     buildJsonObject {
                         put("name", "surface")
                         put("seed", 1337)
@@ -125,7 +123,7 @@ class BridgeTest {
                         put("action", "idle")
                         put("online", true)
                     }
-                "set_tiles" -> JsonPrimitive(1)
+                "setTiles" -> JsonPrimitive(1)
                 else -> JsonNull as JsonElement
             }
         }
@@ -136,7 +134,7 @@ class BridgeTest {
     fun `views go through query and writes through execute`() =
         runTest {
             val (dispatcher, backend) = dispatcher()
-            assertEquals("""[{"k":"4,5","t":3}]""", dispatcher.run(BridgeOp.QUERY, "get_overrides", "{}"))
+            assertEquals("""[{"k":"4,5","t":3},{"k":"6,7","t":1}]""", dispatcher.run(BridgeOp.QUERY, "get_overrides", "{}"))
             assertEquals("1", dispatcher.run(BridgeOp.EXECUTE, "set_tiles", """{"edits":[{"x":4,"y":5,"t":0}],"now":99}"""))
             assertEquals(
                 "null",
@@ -147,15 +145,23 @@ class BridgeTest {
                 ),
             )
             val calls = backend.recording.calls
-            assertEquals(listOf("get_overrides", "set_tiles", "heartbeat"), calls.map { it.method })
+            assertEquals(listOf("getOverrides", "getOverrides", "setTiles", "heartbeat"), calls.map { it.method })
             assertEquals(
-                listOf(RecordedContractCall.Path.QUERY, RecordedContractCall.Path.EXECUTE, RecordedContractCall.Path.EXECUTE),
+                listOf(
+                    RecordedContractCall.Path.QUERY,
+                    RecordedContractCall.Path.QUERY,
+                    RecordedContractCall.Path.EXECUTE,
+                    RecordedContractCall.Path.EXECUTE,
+                ),
                 calls.map { it.path },
             )
-            assertEquals(listOf("ctx1", "ctx1", "ctx1"), calls.map { it.contextId })
-            val edits = (calls[1].args as JsonObject)["edits"] as JsonArray
+            assertEquals(listOf("ctx1", "ctx1", "ctx1", "ctx1"), calls.map { it.contextId })
+            assertEquals("the first page sends no cursor", JsonObject(emptyMap()), calls[0].args)
+            assertEquals(JsonObject(mapOf("cursor" to JsonPrimitive("c1"))), calls[1].args)
+            val edits = (calls[2].args as JsonObject)["edits"] as JsonArray
             assertEquals(Json.parseToJsonElement("""[{"x":4,"y":5,"t":0}]"""), edits)
-            assertEquals(JsonPrimitive("walking"), ((calls[2].args as JsonObject)["t"] as JsonObject)["action"])
+            assertEquals("99", ((calls[2].args as JsonObject)["now"] as JsonPrimitive).content)
+            assertEquals(JsonPrimitive("walking"), ((calls[3].args as JsonObject)["t"] as JsonObject)["action"])
         }
 
     @Test
@@ -174,6 +180,8 @@ class BridgeTest {
                 Triple(BridgeOp.EXECUTE, "get_overrides", "{}"),
                 Triple(BridgeOp.QUERY, "set_tiles", """{"edits":[],"now":1}"""),
                 Triple(BridgeOp.EXECUTE, "init", """{"name":"x","seed":1,"now":1}"""),
+                Triple(BridgeOp.EXECUTE, "createWorld", """{"name":"x","seed":1,"now":1}"""),
+                Triple(BridgeOp.QUERY, "getOverrides", "{}"),
                 Triple(BridgeOp.QUERY, "drop_tables", "{}"),
                 Triple(BridgeOp.EXECUTE, "set_tiles", """{"edits":"nope","now":1}"""),
             ).forEach { (op, method, args) ->

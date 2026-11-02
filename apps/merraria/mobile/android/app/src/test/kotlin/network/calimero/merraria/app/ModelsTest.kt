@@ -3,6 +3,7 @@ package network.calimero.merraria.app
 import com.calimero.mero.app.AppContextEvent
 import com.calimero.mero.invite.InviteCodec
 import com.calimero.mero.testkit.InMemoryAppBackend
+import com.calimero.mero.testkit.RecordedContractCall
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.TestScope
@@ -22,23 +23,25 @@ import java.io.IOException
 
 class WorldsModelTest {
     @Test
-    fun `create founds a namespace an open subgroup and the world`() =
+    fun `create founds an organization the instance and creates the world`() =
         runTest {
             val backend = InMemoryAppBackend()
             val model = WorldsModel(backend, backend.applicationId)
-            val ref = model.create("  Caves  ", 4242uL)
+            val ref = model.create("  Caves  ", 4242u)
             assertEquals("Caves", ref.name)
+            assertNull(ref.groupId)
             assertEquals(
-                listOf(
-                    "foundNamespace Caves",
-                    "createSubgroup ${ref.namespaceId} Caves open",
-                    "createContext ${ref.groupId} ${backend.applicationId} Caves",
-                ),
+                listOf("foundNamespace Caves", "createContext ${ref.namespaceId} ${backend.applicationId} Caves"),
                 backend.log,
             )
-            val args = backend.initArgs[ref.contextId] as JsonObject
+            // The component `init()` takes nothing; the creator founds the world with `createWorld`.
+            assertEquals(JsonObject(emptyMap()), backend.initArgs[ref.contextId])
+            val create = backend.recording.calls("createWorld").single()
+            assertEquals(RecordedContractCall.Path.EXECUTE, create.path)
+            assertEquals(ref.contextId, create.contextId)
+            val args = create.args as JsonObject
             assertEquals(JsonPrimitive("Caves"), args["name"])
-            assertEquals(JsonPrimitive(4242L), args["seed"])
+            assertEquals("4242", (args["seed"] as JsonPrimitive).content)
             assertNotNull(args["now"])
 
             model.load()
@@ -53,11 +56,11 @@ class WorldsModelTest {
     fun `an empty name is the web default`() =
         runTest {
             val backend = InMemoryAppBackend()
-            assertEquals(MerrariaConstants.DEFAULT_WORLD_NAME, WorldsModel(backend, backend.applicationId).create("   ", 1uL).name)
+            assertEquals(MerrariaConstants.DEFAULT_WORLD_NAME, WorldsModel(backend, backend.applicationId).create("   ", 1u).name)
         }
 
     @Test
-    fun `no relay lists nothing and refuses to create`() =
+    fun `signed out lists nothing and refuses to create`() =
         runTest {
             val backend = InMemoryAppBackend().apply { hasRelay = false }
             val model = WorldsModel(backend, backend.applicationId)
@@ -68,10 +71,10 @@ class WorldsModelTest {
                     .isEmpty(),
             )
             try {
-                model.create("x", 1uL)
-                fail("created without a relay")
+                model.create("x", 1u)
+                fail("created while signed out")
             } catch (e: MerrariaException) {
-                assertEquals(MerrariaException.Kind.NO_RELAY, e.kind)
+                assertEquals(MerrariaException.Kind.SIGNED_OUT, e.kind)
             }
         }
 
@@ -81,7 +84,7 @@ class WorldsModelTest {
             val backend = InMemoryAppBackend().apply { failure = IOException("offline") }
             val model = WorldsModel(backend, backend.applicationId)
             model.load()
-            assertEquals("offline", model.state.value.error)
+            assertEquals("Can't reach your cluster. Check your connection and try again.", model.state.value.error)
             model.dismissError()
             assertNull(model.state.value.error)
         }
@@ -91,7 +94,7 @@ class WorldsModelTest {
         runTest {
             val host = InMemoryAppBackend()
             val hostModel = WorldsModel(host, host.applicationId)
-            val ref = hostModel.create("Caves", 1uL)
+            val ref = hostModel.create("Caves", 1u)
             val link = hostModel.inviteLink(ref)
             assertTrue(link, link.startsWith("https://links.calimero.network/com.calimero.merraria/join?invitation="))
 
@@ -110,30 +113,29 @@ class WorldsModelTest {
         }
 
     @Test
-    fun `an invitation without a world opens the namespace's first`() =
+    fun `an invitation without a world opens the organization's first`() =
         runTest {
             val backend = InMemoryAppBackend()
             val model = WorldsModel(backend, backend.applicationId)
-            val ref = model.create("Caves", 1uL)
-            val bare = WorldInvitation(InMemoryAppBackend.invitation(ref.namespaceId), null, null, null)
+            val ref = model.create("Caves", 1u)
+            val bare = WorldInvitation(InMemoryAppBackend.invitation(ref.namespaceId), null)
             val joined = model.join(bare) {}
             assertEquals(ref.contextId, joined.contextId)
-            assertEquals(ref.groupId, joined.groupId)
+            assertNull(joined.groupId)
         }
 }
 
 class WorldInvitationTest {
-    /** A token as the web app's `encodeInvite` writes it (camelCase signature, `groupAlias`). */
+    /** The 1.0 link payload: an `OrgInvitation` plus `groupId`; a pre-1.0 signed invitation is refused. */
     @Test
-    fun `reads the web app's token`() {
+    fun `reads the org invitation payload`() {
         val namespaceId = "ab".repeat(32)
-        val signed = InMemoryAppBackend.invitation(namespaceId).raw
-        val camel = JsonObject(signed.toMutableMap().apply { put("inviterSignature", remove("inviter_signature")!!) })
         val payload =
             JsonObject(
                 mapOf(
-                    "invitation" to camel,
-                    "groupAlias" to JsonPrimitive("surface"),
+                    "invitation" to JsonPrimitive("inv_abc"),
+                    "namespaceId" to JsonPrimitive(namespaceId),
+                    "name" to JsonPrimitive("surface"),
                     "contextId" to JsonPrimitive("ctx9"),
                     "groupId" to JsonPrimitive("grp9"),
                 ),
@@ -141,15 +143,18 @@ class WorldInvitationTest {
         val token = InviteCodec.encode(payload.toString())
         val parsed = WorldInvitation.parse("https://links.calimero.network/com.calimero.merraria/join?invitation=$token")!!
         assertEquals(namespaceId, parsed.namespaceId)
+        assertEquals("inv_abc", parsed.invitation.token)
         assertEquals("surface", parsed.worldName)
         assertEquals("ctx9", parsed.contextId)
         assertEquals("grp9", parsed.groupId)
         assertNotNull(WorldInvitation.parse(token))
+        val old = """{"invitation":{"invitation":{"group_id":[1]},"inviter_signature":"s"},"namespaceId":"aa","contextId":"cc"}"""
+        assertNull(WorldInvitation.parseJson(old))
     }
 
     @Test
     fun `refuses another app's link and junk`() {
-        val token = WorldInvitation(InMemoryAppBackend.invitation("ab".repeat(32)), null, null, null).token()
+        val token = WorldInvitation(InMemoryAppBackend.invitation("ab".repeat(32)), null).token()
         assertNull(WorldInvitation.parse("https://links.calimero.network/com.calimero.chat/join?invitation=$token"))
         assertNull(WorldInvitation.parse("hello"))
     }
@@ -184,15 +189,16 @@ class GameModelTest {
         runTest {
             val backend = InMemoryAppBackend()
             backend.recording.handler = { call ->
-                if (call.method == "world_meta") throw IOException("offline")
-                kotlinx.serialization.json.JsonArray(emptyList())
+                if (call.method == "worldMeta") throw IOException("offline")
+                kotlinx.serialization.json.Json
+                    .parseToJsonElement("""{"items":[],"next":null}""")
             }
             val (game, sent) = model(backend)
             game.receive("""{"type":"request","id":2,"op":"query","method":"get_overrides","args":{}}""")
             game.receive("""{"type":"request","id":3,"op":"query","method":"world_meta","args":{}}""")
             runCurrent()
             assertTrue(sent.toString(), AppMessage.success(2, "[]") in sent)
-            assertTrue(sent.toString(), AppMessage.failure(3, "offline") in sent)
+            assertTrue(sent.toString(), AppMessage.failure(3, "Can't reach your cluster. Check your connection and try again.") in sent)
         }
 
     @Test

@@ -68,9 +68,9 @@ class TouchControlsTest {
 
     @Test
     fun `seeds are read like the web app`() {
-        assertEquals(1337uL, MerrariaConstants.seed("1337", 1uL))
-        assertEquals(43uL, MerrariaConstants.seed("-42.9", 1uL))
-        assertEquals(7uL, MerrariaConstants.seed("abc", 7uL))
-        assertEquals(7uL, MerrariaConstants.seed("0", 7uL))
+        assertEquals(1337u, MerrariaConstants.seed("1337", 1u))
+        assertEquals(43u, MerrariaConstants.seed("-42.9", 1u))
+        assertEquals(7u, MerrariaConstants.seed("abc", 7u))
+        assertEquals(7u, MerrariaConstants.seed("0", 7u))
     }
 }

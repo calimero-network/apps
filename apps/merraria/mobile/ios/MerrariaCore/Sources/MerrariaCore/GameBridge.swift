@@ -191,9 +191,15 @@ public struct GameConfig: Equatable, Sendable {
     }
 }
 
-/// Answers the page's contract calls with the generated client, method by method: only the
-/// contract's own methods, each by its own kind (a view as `query`, a write as `execute`), with
-/// its arguments decoded into the contract's types. `init` is not the page's to call.
+/// Answers the page's contract calls with the typed client, method by method: only the contract's
+/// own methods, each by its own kind (a view as `query`, a write as `execute`), with its arguments
+/// decoded into the contract's types. `init` and `createWorld` are not the page's to call.
+///
+/// The page speaks the v1 method names (`app/src/native/host.ts`, `V1_METHOD`: `get_overrides`,
+/// `set_tiles`, `world_meta`, `get_players`), so a game bundle built before or after the component
+/// port runs unchanged. This is the one place they meet the component ABI's camelCase names:
+/// `get_overrides` reads every page of `getOverrides` and answers v1's single array, and each `now`
+/// (seconds) is sent as the contract's u32.
 public struct BridgeDispatcher: Sendable {
     public let client: MerrariaClient
 
@@ -215,41 +221,44 @@ public struct BridgeDispatcher: Sendable {
         }
         switch method {
         case "get_overrides":
-            return try encode(try await client.getOverrides())
+            return try encode(try await client.allOverrides())
         case "get_players":
             let args = try decode(NowArgs.self, argsJSON)
-            return try encode(try await client.getPlayers(now: args.now))
+            return try encode(try await client.getPlayers(now: args.seconds))
         case "world_meta":
             return try encode(try await client.worldMeta())
         case "heartbeat":
             let args = try decode(HeartbeatArgs.self, argsJSON)
-            try await client.heartbeat(t: args.t, now: args.now)
+            try await client.heartbeat(t: args.t, now: u32(args.now))
             return "null"
         case "join":
             let args = try decode(JoinArgs.self, argsJSON)
-            return try encode(try await client.join(name: args.name, now: args.now))
+            return try encode(try await client.join(name: args.name, now: u32(args.now)))
         case "leave":
             let args = try decode(NowArgs.self, argsJSON)
-            try await client.leave(now: args.now)
+            try await client.leave(now: args.seconds)
             return "null"
         default:  // set_tiles
             let args = try decode(SetTilesArgs.self, argsJSON)
-            return try encode(try await client.setTiles(edits: args.edits, now: args.now))
+            return try encode(try await client.setTiles(edits: args.edits, now: u32(args.now)))
         }
     }
 
-    private struct NowArgs: Decodable { let now: UInt64 }
+    private struct NowArgs: Decodable {
+        let now: Double
+        var seconds: UInt32 { u32(now) }
+    }
     private struct HeartbeatArgs: Decodable {
         let t: Transform
-        let now: UInt64
+        let now: Double
     }
     private struct JoinArgs: Decodable {
         let name: String
-        let now: UInt64
+        let now: Double
     }
     private struct SetTilesArgs: Decodable {
         let edits: [Edit]
-        let now: UInt64
+        let now: Double
     }
 
     private func decode<T: Decodable>(_ type: T.Type, _ data: Data) throws -> T {
@@ -265,4 +274,10 @@ public struct BridgeDispatcher: Sendable {
         encoder.outputFormatting = [.sortedKeys]
         return String(decoding: try encoder.encode(value), as: UTF8.self)
     }
+}
+
+/// A page's `now` (seconds, a JSON number) as the contract's u32: whole seconds, clamped.
+func u32(_ seconds: Double) -> UInt32 {
+    guard seconds.isFinite, seconds > 0 else { return 0 }
+    return seconds >= Double(UInt32.max) ? UInt32.max : UInt32(seconds.rounded(.down))
 }

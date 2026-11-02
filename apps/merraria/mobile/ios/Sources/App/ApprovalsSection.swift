@@ -12,8 +12,10 @@ extension ApprovalsModel {
                 guard let session else { throw CancellationError() }
                 return try await session.pendingApprovals(org: org)
             },
-            consent: { [weak session] build in
-                guard let session, let started = try? await session.requestConsent(build(session.callback.url))
+            consent: { [weak session] build, confirm in
+                guard let session,
+                    let started = try? await session.requestConsent(
+                        build(session.callback.url), confirm: { started in await confirm(started.code) })
                 else { return nil }
                 // The page's return (handled by the session) answers at once; else ask the node.
                 if let result = session.consentResult, result.requestId == started.requestId { return result }
@@ -61,6 +63,24 @@ struct ApprovalsSection: View {
             }
             .card()
             .plainRow()
+            .alert(
+                "Check the code",
+                isPresented: Binding(
+                    get: { model.confirmationCode != nil },
+                    set: { if !$0, model.confirmationCode != nil { model.answerConfirmation(false) } })
+            ) {
+                Button("Continue") { model.answerConfirmation(true) }
+                Button("Cancel", role: .cancel) { model.answerConfirmation(false) }
+            } message: {
+                Text(confirmationText)
+            }
         }
+    }
+
+    private var confirmationText: String {
+        let code = model.confirmationCode ?? ""
+        return code.isEmpty
+            ? "Your cluster's approval page opens next. Approve there with your passkey."
+            : "The approval page will show the code \(code). Continue only if it matches, then approve with your passkey."
     }
 }

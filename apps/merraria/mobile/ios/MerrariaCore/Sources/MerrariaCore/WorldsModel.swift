@@ -27,10 +27,9 @@ public struct WorldEntry: Identifiable, Equatable, Sendable {
 
 /// The worlds: every world this account is in, and creating, joining and inviting to them.
 ///
-/// As on the web (`app/src/net/admin.ts`), a world is its own namespace named after it, an open
-/// subgroup inside that, and the context (the world state) in the subgroup. One namespace per
-/// world keeps an invitation's scope to exactly one world, and the subgroup being open is what lets
-/// an invited player join it.
+/// As on the web (`app/src/net/worlds.ts`), a world is an app instance in an organization of its
+/// own, named after it: one organization per world keeps an invitation's scope to exactly one world.
+/// Worlds an earlier build put in an open team of their organization are still listed and opened.
 @MainActor
 public final class WorldsModel: ObservableObject {
     @Published public private(set) var worlds: [WorldEntry] = []
@@ -92,21 +91,19 @@ public final class WorldsModel: ObservableObject {
         }
     }
 
-    /// A new world: its organization, its open team, and the app instance, initialised with
-    /// `{name, seed, now}` (the contract's `init`).
-    public func create(name: String, seed: UInt64) async throws -> WorldRef {
+    /// A new world, as the web app makes one: its organization, the app instance in it (the
+    /// contract's `init()` takes nothing), then `createWorld(name, seed, now)`, which only the
+    /// creator may run.
+    public func create(name: String, seed: UInt32) async throws -> WorldRef {
         guard backend.hasRelay else { throw MerrariaError.signedOut }
         guard let applicationId, !applicationId.isEmpty else { throw MerrariaError.noApplication }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let title = trimmed.isEmpty ? MerrariaConstants.defaultWorldName : String(trimmed.prefix(MerrariaConstants.maxWorldName))
         let namespaceId = try await backend.foundNamespace(name: title).namespaceId
-        let groupId = try await backend.createSubgroup(namespaceId: namespaceId, name: title, isPublic: true)
         let contextId = try await backend.createContext(
-            groupId: groupId, applicationId: applicationId, name: title,
-            initArgs: .object([
-                "name": .string(title), "seed": .number(Double(seed)), "now": .number(Double(nowSeconds())),
-            ]))
-        let ref = WorldRef(contextId: contextId, namespaceId: namespaceId, groupId: groupId, name: title)
+            groupId: namespaceId, applicationId: applicationId, name: title, initArgs: .object([:]))
+        try await MerrariaClient.bound(backend, contextId: contextId).createWorld(name: title, seed: seed, now: nowSeconds())
+        let ref = WorldRef(contextId: contextId, namespaceId: namespaceId, groupId: nil, name: title)
         worlds.insert(WorldEntry(ref: ref, players: 1), at: 0)
         return ref
     }

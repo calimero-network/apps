@@ -11,9 +11,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.calimero.mero.ConsentRequest
+import com.calimero.mero.ConsentStarted
+import com.calimero.mero.compose.MeroAppSession
+import kotlinx.coroutines.flow.MutableStateFlow
+import network.calimero.merraria.app.ApprovalsModel
 import network.calimero.merraria.app.MerrariaAppViewModel
 
 /** Restoring → a splash. Signed out → sign-in. Signed in → the worlds, and the world being played over them, full screen. (iOS `RootView`.) */
@@ -21,44 +27,69 @@ import network.calimero.merraria.app.MerrariaAppViewModel
 fun MerrariaApp(
     vm: MerrariaAppViewModel,
     onSignIn: () -> Unit,
+    onSignUp: (String) -> Unit,
     onShare: (String) -> Unit,
+    consent: suspend (MeroAppSession, ConsentRequest, suspend (ConsentStarted) -> Boolean) -> ConsentStarted,
 ) {
     MerrariaTheme {
-        val session = vm.session
+        val session by vm.session.collectAsState()
+        val cluster by vm.cluster.collectAsState()
+        val busy by vm.busy.collectAsState()
+        val error by vm.error.collectAsState()
         val restored by vm.restored.collectAsState()
-        val restoring by session.isRestoring.collectAsState()
-        val auth by session.client.state.collectAsState()
-        val backend by session.backend.collectAsState()
-        val revision by session.revision.collectAsState()
-        val pending by session.pendingInvitation.collectAsState()
+        val pending by vm.pendingLink.collectAsState()
         val joining by vm.joining.collectAsState()
         val playing by vm.playing.collectAsState()
-
-        when {
-            !restored || restoring -> Splash("Restoring your session…")
-            !auth.isDelegated -> SignInScreen(auth = auth, invited = pending != null, onSignIn = onSignIn, onCancel = vm::cancelSignIn)
-            backend == null ->
-                Splash("Connecting to your relay…") {
-                    SecondaryButton(onClick = vm::signOut, fullWidth = false) { ButtonLabel("Sign out") }
+        val current = session
+        val backend by (current?.backend ?: remember { MutableStateFlow(null) }).collectAsState()
+        val revision by (current?.revision ?: remember { MutableStateFlow(0) }).collectAsState()
+        val approvals =
+            remember(current, backend) {
+                current?.takeIf { backend != null }?.let { s ->
+                    ApprovalsModel(
+                        load = { org -> s.client.pendingApprovals(org) },
+                        consent = { build, confirm ->
+                            val started = consent(s, build(s.callbackUrl)) { confirm(it.code) }
+                            s.consentResult.value?.takeIf { it.requestId == started.requestId }
+                                ?: runCatching { s.client.consentResult(started.requestId) }.getOrNull()
+                        },
+                    )
                 }
+            }
+
+        val signedIn = backend
+        when {
+            !restored -> Splash("Restoring your session…")
+            signedIn == null ->
+                SignInScreen(
+                    cluster = cluster,
+                    busy = busy,
+                    error = error,
+                    invited = pending != null,
+                    onChoose = vm::choose,
+                    onSignIn = onSignIn,
+                    onSignUp = onSignUp,
+                    onCancel = vm::cancelSignIn,
+                    onDismissError = vm::dismissError,
+                )
             else -> {
-                val current = backend!!
                 val world = playing
                 if (world != null) {
                     key(world.contextId) {
-                        GameScreen(backend = current, ref = world, settings = vm.settings, onShare = onShare, onClose = { vm.play(null) })
+                        GameScreen(backend = signedIn, ref = world, settings = vm.settings, onShare = onShare, onClose = { vm.play(null) })
                     }
                 } else {
                     key(revision) {
                         WorldsScreen(
-                            backend = current,
-                            applicationId = session.applicationId,
-                            account = auth.account.orEmpty(),
+                            backend = signedIn,
+                            applicationId = current?.applicationId,
+                            account = current?.account.orEmpty(),
                             settings = vm.settings,
                             onPlay = vm::play,
                             onJoin = vm::ask,
                             onShare = onShare,
                             onSignOut = vm::signOut,
+                            approvals = approvals,
                         )
                     }
                 }

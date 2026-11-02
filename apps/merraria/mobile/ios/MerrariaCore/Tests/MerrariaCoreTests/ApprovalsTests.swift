@@ -59,7 +59,7 @@ final class ApprovalsTests: XCTestCase {
                 if scope == "denied" { throw URLError(.userAuthenticationRequired) }
                 return scope == nil ? account : org
             },
-            consent: { build in
+            consent: { build, _ in
                 asked.append(build("merraria://enrol"))
                 return approved
             })
@@ -72,5 +72,27 @@ final class ApprovalsTests: XCTestCase {
         XCTAssertEqual(model.message, "Approved.")
         XCTAssertNil(model.busy)
         XCTAssertEqual(loads.count, 6)
+    }
+
+    func testTheCodeIsShownFirstAndCancellingOpensNothing() async throws {
+        let account = try pending()
+        var opened = 0
+        let model = ApprovalsModel(
+            load: { _ in account },
+            consent: { _, confirm in
+                guard await confirm("ABC-DEF") else { return nil }
+                opened += 1
+                return nil
+            })
+        await model.refresh()
+        let item = model.items[0]
+        let task = Task { await model.approve(item) }
+        while model.confirmationCode == nil { await Task.yield() }
+        XCTAssertEqual(model.confirmationCode, "ABC-DEF")
+        model.answerConfirmation(false)
+        await task.value
+        XCTAssertEqual(opened, 0)
+        XCTAssertEqual(model.message, "Cancelled. Nothing was approved.")
+        XCTAssertNil(model.confirmationCode)
     }
 }

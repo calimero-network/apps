@@ -7,22 +7,23 @@ import XCTest
 
 @MainActor
 final class WorldsModelTests: XCTestCase {
-    func testCreateFoundsANamespaceAnOpenSubgroupAndTheWorld() async throws {
+    func testCreateFoundsAnOrganizationTheInstanceAndCreatesTheWorld() async throws {
         let backend = InMemoryAppBackend()
         let model = WorldsModel(backend: backend, applicationId: backend.applicationId)
         let ref = try await model.create(name: "  Caves  ", seed: 4242)
         XCTAssertEqual(ref.name, "Caves")
+        XCTAssertNil(ref.groupId)
         XCTAssertEqual(
             backend.log,
-            [
-                "foundNamespace Caves",
-                "createSubgroup \(ref.namespaceId) Caves open",
-                "createContext \(ref.groupId!) \(backend.applicationId) Caves",
-            ])
-        let args = backend.initArgs[ref.contextId]
-        XCTAssertEqual(args?["name"], .string("Caves"))
-        XCTAssertEqual(args?["seed"], .number(4242))
-        XCTAssertNotNil(args?["now"])
+            ["foundNamespace Caves", "createContext \(ref.namespaceId) \(backend.applicationId) Caves"])
+        // The component `init()` takes nothing; the creator founds the world with `createWorld`.
+        XCTAssertEqual(backend.initArgs[ref.contextId], .object([:]))
+        let create = try XCTUnwrap(backend.recording.calls("createWorld").first)
+        XCTAssertEqual(create.path, .execute)
+        XCTAssertEqual(create.contextId, ref.contextId)
+        XCTAssertEqual(create.args["name"], .string("Caves"))
+        XCTAssertEqual(create.args["seed"], .number(4242))
+        XCTAssertNotNil(create.args["now"])
 
         await model.load()
         XCTAssertEqual(model.worlds.map(\.ref), [ref])
@@ -95,7 +96,7 @@ final class WorldsModelTests: XCTestCase {
             groupId: nil)
         let joined = try await model.join(bare) {}
         XCTAssertEqual(joined.contextId, ref.contextId)
-        XCTAssertEqual(joined.groupId, ref.groupId)
+        XCTAssertNil(joined.groupId)
     }
 }
 
@@ -165,8 +166,8 @@ final class GameModelTests: XCTestCase {
     func testRunsContractRequestsAndAnswersFailures() async throws {
         let backend = InMemoryAppBackend()
         backend.recording.setHandler { call in
-            if call.method == "world_meta" { throw Offline() }
-            return .array([])
+            if call.method == "worldMeta" { throw Offline() }
+            return .object(["items": .array([]), "next": .null])
         }
         let (game, _, box) = model(backend)
         game.receive(#"{"type":"request","id":2,"op":"query","method":"get_overrides","args":{}}"#)

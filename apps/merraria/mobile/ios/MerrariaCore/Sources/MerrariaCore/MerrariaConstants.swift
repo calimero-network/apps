@@ -15,19 +15,19 @@ public enum MerrariaConstants {
     public static let zoomRange: ClosedRange<Double> = 0.6...1.6
 
     /// A seed for a new world: positive, small enough for the engine's 32-bit noise.
-    public static func randomSeed() -> UInt64 { UInt64.random(in: 1...999_999) }
+    public static func randomSeed() -> UInt32 { UInt32.random(in: 1...999_999) }
 
     /// A seed typed by the player, as the web app reads it: `abs(floor(n))`, else `fallback`.
-    public static func seed(from text: String, fallback: UInt64) -> UInt64 {
+    public static func seed(from text: String, fallback: UInt32) -> UInt32 {
         guard let value = Double(text.trimmingCharacters(in: .whitespaces)), value.isFinite else { return fallback }
         let whole = abs(value.rounded(.down))
         guard whole >= 1, whole < Double(UInt32.max) else { return fallback }
-        return UInt64(whole)
+        return UInt32(whole)
     }
 }
 
-/// Seconds since the epoch: every `now` the contract takes (the web app's `nowSecs`).
-public func nowSeconds() -> UInt64 { UInt64(Date().timeIntervalSince1970) }
+/// Seconds since the epoch: every `now` the contract takes, a u32 (the web app's `nowSecs`).
+public func nowSeconds() -> UInt32 { u32(Date().timeIntervalSince1970) }
 
 public enum MerrariaError: Error, LocalizedError, Equatable {
     case signedOut
@@ -57,13 +57,22 @@ public enum MerrariaText {
             return "Your cluster takes no new work until \(release) is approved. Review it under Needs your approval."
         case is NotFound:
             return "This isn't shared with you, or it was deleted."
-        case is LoginRequired, is SignedOutError:
+        case is LoginRequired:
             return "Your session ended. Sign in again."
+        case is SignedOutError:
+            return "You're signed out. Sign in again to play."
+        case is ConfirmCancelled:
+            return "Cancelled. Nothing was sent."
+        case is ConsentStale:
+            return "That approval is out of date. Refresh and review it again."
+        case let error as TrapError:
+            return "The world stopped that action (\(error.kind.isEmpty ? "trap" : error.kind)). Try again."
         case is WrongNode:
             return "This node doesn't serve your world. Try another node of the cluster."
         case let error as UnavailableError:
             return "Your cluster is busy (\(error.reason)). Try again shortly."
         case let error as AppError:
+            if let words = MerrariaRefusal.message(code: error.appCode, fields: error.fields) { return words }
             return error.message.isEmpty ? error.appCode : error.message
         case let error as CalimeroError:
             return error.message.isEmpty ? error.code : error.message

@@ -87,21 +87,26 @@ final class BridgeTests: XCTestCase {
             #"{"contextId":"ctx","name":"Ada \"A\"","zoom":1}"#)
     }
 
-    // MARK: Dispatch through the generated client
+    // MARK: Dispatch through the typed client (v1 page names in, component ABI out)
 
     private func dispatcher() -> (BridgeDispatcher, InMemoryAppBackend) {
         let backend = InMemoryAppBackend()
         backend.recording.setHandler { call in
             switch call.method {
-            case "get_overrides": return .array([.object(["k": .string("4,5"), "t": .number(3)])])
-            case "world_meta":
+            case "getOverrides":
+                // Two pages: the bridge reads both and answers v1's single array.
+                if call.args["cursor"] == nil {
+                    return .object(["items": .array([.object(["k": .string("4,5"), "t": .number(3)])]), "next": .string("c1")])
+                }
+                return .object(["items": .array([.object(["k": .string("6,7"), "t": .number(1)])]), "next": .null])
+            case "worldMeta":
                 return .object(["name": .string("surface"), "seed": .number(1337), "createdAt": .number(10)])
             case "join":
                 return .object([
                     "id": .string("dev1"), "name": .string("Ada"), "x": .number(1.5), "y": .number(2),
                     "dir": .number(1), "sel": .number(0), "action": .string("idle"), "online": .bool(true),
                 ])
-            case "set_tiles": return .number(1)
+            case "setTiles": return .number(1)
             default: return .null
             }
         }
@@ -111,7 +116,7 @@ final class BridgeTests: XCTestCase {
     func testViewsGoThroughQueryAndWritesThroughExecute() async throws {
         let (dispatcher, backend) = dispatcher()
         let overrides = try await dispatcher.run(op: .query, method: "get_overrides", argsJSON: Data("{}".utf8))
-        XCTAssertEqual(overrides, #"[{"k":"4,5","t":3}]"#)
+        XCTAssertEqual(overrides, #"[{"k":"4,5","t":3},{"k":"6,7","t":1}]"#)
         let applied = try await dispatcher.run(
             op: .execute, method: "set_tiles", argsJSON: Data(#"{"edits":[{"x":4,"y":5,"t":0}],"now":99}"#.utf8))
         XCTAssertEqual(applied, "1")
@@ -122,13 +127,15 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(heartbeat, "null")
 
         let calls = backend.recording.calls
-        XCTAssertEqual(calls.map(\.method), ["get_overrides", "set_tiles", "heartbeat"])
-        XCTAssertEqual(calls.map(\.path), [.query, .execute, .execute])
-        XCTAssertEqual(calls.map(\.contextId), ["ctx1", "ctx1", "ctx1"])
+        XCTAssertEqual(calls.map(\.method), ["getOverrides", "getOverrides", "setTiles", "heartbeat"])
+        XCTAssertEqual(calls.map(\.path), [.query, .query, .execute, .execute])
+        XCTAssertEqual(calls.map(\.contextId), ["ctx1", "ctx1", "ctx1", "ctx1"])
+        XCTAssertEqual(calls[0].args, .object([:]), "the first page sends no cursor")
+        XCTAssertEqual(calls[1].args, .object(["cursor": .string("c1")]))
         XCTAssertEqual(
-            calls[1].args,
+            calls[2].args,
             .object(["edits": .array([.object(["x": .number(4), "y": .number(5), "t": .number(0)])]), "now": .number(99)]))
-        XCTAssertEqual(calls[2].args["t"]?["action"], .string("walking"))
+        XCTAssertEqual(calls[3].args["t"]?["action"], .string("walking"))
     }
 
     func testJoinReturnsThePlayerView() async throws {
@@ -145,6 +152,8 @@ final class BridgeTests: XCTestCase {
             (BridgeOp.execute, "get_overrides", "{}"),
             (.query, "set_tiles", #"{"edits":[],"now":1}"#),
             (.execute, "init", #"{"name":"x","seed":1,"now":1}"#),
+            (.execute, "createWorld", #"{"name":"x","seed":1,"now":1}"#),
+            (.query, "getOverrides", "{}"),
             (.query, "drop_tables", "{}"),
             (.execute, "set_tiles", #"{"edits":"nope","now":1}"#),
         ] {
