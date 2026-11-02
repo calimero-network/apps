@@ -106,7 +106,7 @@ struct InvitationSheet: View {
             case .confirm:
                 header(symbol: "envelope.open", tone: Palette.limeSoft, title: "Join this voting group?")
                 Text(
-                    "Joining makes your account a member of the workspace it lives in, and its polls and ballots sync to you from the other members."
+                    "Joining makes your account a member of the workspace it lives in, so you can see its polls and vote in them."
                 )
                 .font(.system(size: 16)).foregroundStyle(Palette.muted).multilineTextAlignment(.center)
                 Spacer(minLength: 0)
@@ -115,7 +115,7 @@ struct InvitationSheet: View {
             case .joining:
                 ProgressView().tint(Palette.ink).controlSize(.large).padding(.top, 12)
                 Text("Joining…").font(Typeface.display(22)).foregroundStyle(Palette.ink)
-                Text("This can take up to a minute when no other member is online.")
+                Text("Your cluster is adding you to the workspace.")
                     .font(.system(size: 15)).foregroundStyle(Palette.muted).multilineTextAlignment(.center)
                 Spacer(minLength: 0)
             case .joined(let group):
@@ -127,6 +127,12 @@ struct InvitationSheet: View {
                     model.reset()
                 }
                 .buttonStyle(PrimaryButtonStyle())
+            case .joinedWorkspace(let workspace):
+                header(symbol: "checkmark", tone: Palette.lime, title: "You're in \(workspace)")
+                Text("It has no voting group yet. Its groups show on your home screen as they are made.")
+                    .font(.system(size: 16)).foregroundStyle(Palette.muted).multilineTextAlignment(.center)
+                Spacer(minLength: 0)
+                Button("Done") { model.reset() }.buttonStyle(PrimaryButtonStyle())
             case .failed(let message):
                 header(symbol: "exclamationmark.triangle", tone: Palette.dangerSoft, title: "Couldn't join")
                 Text(message).font(.system(size: 16)).foregroundStyle(Palette.muted).multilineTextAlignment(.center)
@@ -158,7 +164,10 @@ struct InvitationSheet: View {
         Haptics.tap()
         Task {
             await model.accept(backend: { session.backend }, didJoin: { await session.didJoinNamespace() })
-            if case .joined = model.stage { Haptics.success() } else { Haptics.failure() }
+            switch model.stage {
+            case .joined, .joinedWorkspace: Haptics.success()
+            default: Haptics.failure()
+            }
         }
     }
 }

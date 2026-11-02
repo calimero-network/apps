@@ -10,16 +10,42 @@ import android.util.Base64
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.calimero.mero.compose.MeroAppConfig
+import com.calimero.mero.CalimeroClient
+import com.calimero.mero.CalimeroClientOptions
+import com.calimero.mero.CalimeroConnectOptions
+import com.calimero.mero.CloudPolicy
+import com.calimero.mero.ConsentRequest
+import com.calimero.mero.ConsentStarted
+import com.calimero.mero.PasskeyProvider
+import com.calimero.mero.PendingApprovals
+import com.calimero.mero.SoftPasskey
+import com.calimero.mero.app.MeroAppBackend
+import com.calimero.mero.app.SignedOutException
 import com.calimero.mero.compose.MeroAppSession
+import com.calimero.mero.compose.PlatformPasskey
+import com.calimero.mero.storage.EncryptedSessionStore
+import com.calimero.mero.storage.MemorySessionStore
+import com.calimero.mero.storage.SessionStore
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import network.calimero.vote.core.InvitationModel
 import network.calimero.vote.core.TrusteeKey
 import network.calimero.vote.core.TrusteeKeyStore
 import network.calimero.vote.core.VoteConstants
+import network.calimero.vote.core.VoteErrorText
+import network.calimero.vote.core.VoteInvitation
 import network.calimero.vote.ui.VoteApp
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import java.io.IOException
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -28,16 +54,25 @@ import javax.crypto.spec.GCMParameterSpec
 
 /**
  * The one activity. Links arrive here, on the launch intent (cold start) or through
- * [onNewIntent], and go to [VoteViewModel.handleLink]: the wallet's sign-in redirect, or an
- * invitation (`https://links.calimero.network/com.calimero.mero-vote/join?invitation=…`).
+ * [onNewIntent], and go to [VoteViewModel.handleLink]: the node's consent page sending the person
+ * back (`mero-vote://consent?request_id=…`), or an invitation
+ * (`https://links.calimero.network/com.calimero.mero-vote/join?invitation=…`).
  */
 class MainActivity : ComponentActivity() {
     private val vm: VoteViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // The passkey sheet needs this Activity: it approves the account's step-ups (invites,
+        // member changes) while the app is on screen.
+        vm.attach(this)
         if (savedInstanceState == null) consume(intent)
-        setContent { VoteApp(vm = vm, onSignIn = { vm.session.signIn(this) }) }
+        setContent { VoteApp(vm = vm, activity = this) }
+    }
+
+    override fun onDestroy() {
+        vm.attach(null)
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -53,39 +88,231 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-/** The session, the invitation being redeemed, and the trustee keys, for the app's life. */
+/** How the app is signed in. */
+enum class SignInMode {
+    /** A Calimero Cloud cluster: real TDX quotes from a signed mero-tee release, the device's passkey. */
+    CLOUD,
+
+    /** `merod local`: mock attestation allowed, a software passkey kept on the device. */
+    DEV,
+}
+
+/**
+ * The session, the invitation being redeemed, and the trustee keys, for the app's life. The
+ * session is a [MeroAppSession] on the cluster the person chose (by name, through the Calimero
+ * Cloud directory, or by a node's URL), or on a `merod local` node; which one is kept beside the
+ * session ([SessionStore]) so a relaunch restores it. (iOS: `MeroAppSession` + `CloudSignInPanel`.)
+ */
+@Suppress("TooManyFunctions")
 class VoteViewModel(
     app: Application,
 ) : AndroidViewModel(app) {
-    val session: MeroAppSession =
-        MeroAppSession.create(
-            app,
-            packageName = VoteConstants.PACKAGE_NAME,
-            callbackUrl = BuildConfig.ENROL_CALLBACK_URL,
-            config =
-                MeroAppConfig(
-                    registryUrl = BuildConfig.REGISTRY_URL.ifBlank { null },
-                    cloudBaseUrl = BuildConfig.CLOUD_BASE_URL.ifBlank { MeroAppConfig().cloudBaseUrl },
-                ),
-            walletUrl = BuildConfig.WALLET_URL.ifBlank { com.calimero.mero.account.Enrolment.DEFAULT_WALLET_URL },
-            scope = viewModelScope,
-        )
+    private val store: SessionStore =
+        runCatching<SessionStore> { EncryptedSessionStore(app, "calimero_session_${VoteConstants.PACKAGE_NAME}") }
+            .getOrElse { MemorySessionStore() }
+
     val invitation = InvitationModel()
     val keys: TrusteeKeyStore = KeystoreTrusteeKeyStore(app)
 
-    init {
-        viewModelScope.launch { session.restore() }
-    }
+    /** The session; null while signed out. */
+    var session by mutableStateOf<MeroAppSession?>(null)
+        private set
 
-    /** Every link the activity receives. */
-    fun handleLink(url: String) =
+    private val _backend = MutableStateFlow<MeroAppBackend?>(null)
+
+    /** What the screens run on: the session's backend, null while signed out. */
+    val backend: StateFlow<MeroAppBackend?> = _backend.asStateFlow()
+
+    private val _revision = MutableStateFlow(0)
+
+    /** Bumped whenever the account changes or joins something: screens re-read. */
+    val revision: StateFlow<Int> = _revision.asStateFlow()
+
+    var restoring by mutableStateOf(true)
+        private set
+    var busy by mutableStateOf(false)
+        private set
+    var error by mutableStateOf<String?>(null)
+        private set
+
+    /** The cluster (name or node URL) or development node last used. */
+    var target by mutableStateOf(store.value(KEY_TARGET).orEmpty())
+        private set
+    var mode by mutableStateOf(store.value(KEY_MODE)?.let { runCatching { SignInMode.valueOf(it) }.getOrNull() } ?: SignInMode.CLOUD)
+        private set
+
+    val account: String? get() = session?.account
+
+    private var activityPasskey: PasskeyProvider? = null
+    private var mirror: Job? = null
+
+    init {
         viewModelScope.launch {
-            session.handle(url)
-            session.pendingInvitation.value?.let {
-                invitation.open(it)
-                session.dismissPendingInvitation()
+            try {
+                if (store.load() != null && target.isNotEmpty()) open(mode, target).restore()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (
+                @Suppress("TooGenericExceptionCaught") e: Exception,
+            ) {
+                error = VoteErrorText.describe(e)
+            } finally {
+                restoring = false
             }
         }
+    }
+
+    /** The Activity on screen (null once it is gone): its passkey approves the account's step-ups. */
+    fun attach(activity: Context?) {
+        activityPasskey = activity?.let { PlatformPasskey(it) }
+        approve()
+    }
+
+    /** A Calimero Cloud cluster, by name or a node's URL: sign in, or (with [create]) sign up as [name]. */
+    fun signInCloud(
+        activity: Context,
+        cluster: String,
+        create: Boolean,
+        name: String,
+    ) = attempt {
+        val s = open(SignInMode.CLOUD, cluster)
+        if (create) s.signUp(PlatformPasskey(activity), name.trim()) else s.signIn(PlatformPasskey(activity))
+    }
+
+    /**
+     * A `merod local` node, with a software passkey kept on the device: the first time it signs up
+     * as [name], after that it signs in with the same key.
+     */
+    fun signInDev(
+        url: String,
+        name: String,
+    ) = attempt {
+        val node = url.trim().trimEnd('/')
+        val s = open(SignInMode.DEV, node)
+        val saved = devPasskey(node)
+        if (saved != null) {
+            s.signIn(saved)
+        } else {
+            val passkey = SoftPasskey(rpId = node.toHttpUrlOrNull()?.host?.let(::devRpId) ?: "localhost", origin = DEV_ORIGIN)
+            s.signUp(passkey, name.trim().ifEmpty { "android" })
+            store.setValue(KEY_DEV_PASSKEY + node, passkey.export())
+        }
+        approve()
+    }
+
+    fun signOut() =
+        viewModelScope.launch {
+            session?.signOut()
+            session = null
+            mirror?.cancel()
+            _backend.value = null
+            _revision.value += 1
+        }
+
+    /** Every link the activity receives: the consent page coming back, or an invitation. */
+    fun handleLink(url: String) =
+        viewModelScope.launch {
+            if (session?.handle(url) == true) {
+                session?.pendingInvitation?.value?.let { invitation.open(it) }
+                session?.dismissPendingInvitation()
+                return@launch
+            }
+            if (VoteInvitation.parse(url) != null) invitation.open(url)
+        }
+
+    /** After redeeming an invitation: re-read what the account sees. */
+    suspend fun didJoin() {
+        session?.didJoinNamespace()
+        _revision.value += 1
+    }
+
+    /** What waits for the person's decision in [org] (or their own apps). */
+    suspend fun pendingApprovals(org: String? = null): PendingApprovals =
+        (session ?: throw SignedOutException("pendingApprovals")).client.pendingApprovals(org)
+
+    /** Open the node's consent page for [request]; [confirm] shows its confirmation code first. */
+    suspend fun requestConsent(
+        context: Context,
+        request: ConsentRequest,
+        confirm: suspend (ConsentStarted) -> Boolean,
+    ): ConsentStarted = (session ?: throw SignedOutException("requestConsent")).requestConsent(context, request, confirm)
+
+    private fun devPasskey(node: String): SoftPasskey? =
+        store.value(KEY_DEV_PASSKEY + node)?.let { runCatching { SoftPasskey.restore(it) }.getOrNull() }
+
+    /** Hand the session the passkey that approves its step-ups. */
+    private fun approve() {
+        val s = session ?: return
+        s.passkey = if (mode == SignInMode.DEV) devPasskey(target) ?: activityPasskey else activityPasskey
+    }
+
+    private fun attempt(block: suspend () -> Unit) {
+        error = null
+        busy = true
+        viewModelScope.launch {
+            try {
+                block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: IOException) {
+                error = if (mode == SignInMode.DEV) "Can't reach $target. Is the node running?" else VoteErrorText.describe(e)
+            } catch (
+                @Suppress("TooGenericExceptionCaught") e: Exception,
+            ) {
+                error = VoteErrorText.describe(e)
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    /**
+     * A [MeroAppSession] on [value] under [newMode]'s policy: a node URL directly, a cluster name
+     * through the Calimero Cloud directory. Its backend is mirrored into [backend].
+     */
+    private suspend fun open(
+        newMode: SignInMode,
+        value: String,
+    ): MeroAppSession {
+        val trimmed = value.trim().trimEnd('/')
+        mode = newMode
+        target = trimmed
+        store.setValue(KEY_MODE, newMode.name)
+        store.setValue(KEY_TARGET, trimmed)
+        val policy = if (newMode == SignInMode.DEV) CloudPolicy.development else CloudPolicy.production
+        val client =
+            if (newMode == SignInMode.DEV || isNodeUrl(trimmed)) {
+                CalimeroClient(CalimeroClientOptions(baseUrl = trimmed, policy = policy))
+            } else {
+                CalimeroClient.connect(CalimeroConnectOptions(cluster = trimmed, policy = policy))
+            }
+        val s = MeroAppSession(client, VoteConstants.PACKAGE_NAME, BuildConfig.CONSENT_CALLBACK_URL, store, scope = viewModelScope)
+        session = s
+        approve()
+        mirror?.cancel()
+        mirror =
+            viewModelScope.launch {
+                s.backend.collect {
+                    _backend.value = it
+                    _revision.value += 1
+                }
+            }
+        return s
+    }
+
+    companion object {
+        /** The origin `merod local` allows (`--origins`); a software passkey's client data claims it. */
+        const val DEV_ORIGIN = "http://localhost:3000"
+        private const val KEY_MODE = "mode"
+        private const val KEY_TARGET = "target"
+        private const val KEY_DEV_PASSKEY = "devPasskey:"
+
+        /** Whether [value] names a node by URL rather than a cluster by name. */
+        fun isNodeUrl(value: String): Boolean = "://" in value || '.' in value || ':' in value
+
+        /** The emulator reaches the host as 10.0.2.2, but `merod local`'s relying party is `localhost`. */
+        private fun devRpId(host: String): String = if (host == "10.0.2.2" || host == "127.0.0.1") "localhost" else host
+    }
 }
 
 /**

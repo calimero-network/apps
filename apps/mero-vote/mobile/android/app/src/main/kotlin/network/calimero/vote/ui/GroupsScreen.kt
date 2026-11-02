@@ -1,6 +1,5 @@
 package network.calimero.vote.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,11 +22,11 @@ import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Ballot
-import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.ContentPaste
 import androidx.compose.material.icons.outlined.Layers
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Verified
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -63,6 +62,7 @@ import network.calimero.vote.core.GroupRef
 import network.calimero.vote.core.GroupRow
 import network.calimero.vote.core.GroupsModel
 import network.calimero.vote.core.LoadPhase
+import network.calimero.vote.core.VoteConstants
 import network.calimero.vote.core.VoteErrorText
 import network.calimero.vote.core.VoteFormat
 import network.calimero.vote.core.VoteInvitation
@@ -76,6 +76,7 @@ private enum class GroupsSheet { NEW_WORKSPACE, JOIN, ACCOUNT }
 fun GroupsScreen(
     model: GroupsModel,
     vm: VoteViewModel,
+    activity: android.content.Context,
     open: (GroupRef) -> Unit,
     openInvitation: (String) -> Unit,
 ) {
@@ -144,26 +145,6 @@ fun GroupsScreen(
         ) {
             LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxSize()) {
                 item { NoticeBanner(notice) { notice = null } }
-                if (!model.hasRelay) {
-                    item {
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(Palette.LimeSoft)
-                                .padding(14.dp),
-                            verticalAlignment = Alignment.Top,
-                        ) {
-                            Icon(Icons.Outlined.CloudOff, contentDescription = null, tint = Palette.Ink, modifier = Modifier.size(20.dp))
-                            Spacer(Modifier.width(10.dp))
-                            Text(
-                                "Your account has no relay yet. Join a voting group from an invitation link to get one.",
-                                fontSize = 14.sp,
-                                color = Palette.Ink,
-                            )
-                        }
-                    }
-                }
                 when (val p = phase) {
                     LoadPhase.Loading -> items(3) { SkeletonCard() }
                     is LoadPhase.Failed -> item { ErrorState(p.message) { scope.launch { model.load() } } }
@@ -229,7 +210,7 @@ fun GroupsScreen(
                 sheet = null
                 openInvitation(link)
             }
-        GroupsSheet.ACCOUNT -> AccountSheet(vm) { sheet = null }
+        GroupsSheet.ACCOUNT -> AccountSheet(vm, activity) { sheet = null }
         null -> Unit
     }
 }
@@ -306,7 +287,7 @@ private fun JoinSheet(
                 if (clip != null && link.isEmpty()) {
                     SecondaryButton("Paste from clipboard", { link = clip }, compact = true, icon = Icons.Outlined.ContentPaste)
                 }
-                Text("Links look like links.calimero.network/com.calimero.mero-vote/join?invitation=…", fontSize = 13.sp, color = Palette.Muted)
+                Text("An invite link from the Mero Vote app or the web app works here.", fontSize = 13.sp, color = Palette.Muted)
                 error?.let { Text(it, fontSize = 14.sp, color = Palette.Danger) }
                 Spacer(Modifier.height(24.dp))
             }
@@ -319,10 +300,15 @@ private fun JoinSheet(
 @Composable
 private fun AccountSheet(
     vm: VoteViewModel,
+    activity: android.content.Context,
     dismiss: () -> Unit,
 ) {
-    val scope = rememberCoroutineScope()
-    val account = vm.session.account.orEmpty()
+    var approvals by remember { mutableStateOf(false) }
+    val account = vm.account.orEmpty()
+    if (approvals) {
+        ApprovalsSheet(vm, activity) { approvals = false }
+        return
+    }
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = Palette.Surface) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -334,13 +320,18 @@ private fun AccountSheet(
             }
             Text("You set the name others see inside each voting group, from its Members page.", fontSize = 13.sp, color = Palette.Muted)
             Hairline()
-            DetailsDisclosure(listOf("Account" to account, "Application" to vm.session.applicationId.orEmpty()))
+            TextButton(onClick = { approvals = true }) {
+                Icon(Icons.Outlined.Verified, contentDescription = null, tint = Palette.Ink)
+                Spacer(Modifier.width(8.dp))
+                Text("Approvals", color = Palette.Ink, fontSize = 16.sp)
+            }
+            Text("Node releases and app updates waiting for you, approved on your cluster's consent page.", fontSize = 13.sp, color = Palette.Muted)
+            Hairline()
+            DetailsDisclosure(listOf("Account" to account, "Application" to VoteConstants.PACKAGE_NAME, "Cluster" to vm.target))
             Hairline()
             TextButton(onClick = {
-                scope.launch {
-                    vm.session.signOut()
-                    dismiss()
-                }
+                vm.signOut()
+                dismiss()
             }) {
                 Icon(Icons.AutoMirrored.Outlined.Logout, contentDescription = null, tint = Palette.Danger)
                 Spacer(Modifier.width(8.dp))

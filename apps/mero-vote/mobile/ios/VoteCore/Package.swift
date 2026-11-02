@@ -20,7 +20,7 @@ let package = Package(
         // swift-sdk#85 (feat/calimero-1.0, Calimero 1.0) head; moves to its merge commit once it lands.
         .package(
             url: "https://github.com/calimero-network/swift-sdk",
-            revision: "6c5f1167d1e586f556f59c326de5f51d034e80dd"),
+            revision: "37c09f3f96e7d98440f6618eef8a0e83ddee8ebd"),
     ],
     targets: [
         // ristretto255 and the mero-vote protocol, with no dependencies but

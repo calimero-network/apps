@@ -26,7 +26,7 @@ class GroupsModelTest {
             val (backend, script) = makeBackend()
             backend.namespaces = listOf(AppNamespace(NS, "Team", backend.applicationId))
             backend.rootContexts = mapOf(NS to listOf(CTX))
-            script.on("list_polls") { listOf(summary("p1", Phase.Voting, 1uL), summary("p2", Phase.Closed, 5uL, "Newest")) }
+            script.on("listPolls") { listOf(summary("p1", Phase.Voting, 1uL), summary("p2", Phase.Closed, 5uL, "Newest")) }
             val model = GroupsModel(backend, backend.applicationId)
             model.load()
             assertEquals(LoadPhase.Loaded, model.phase.value)
@@ -80,7 +80,7 @@ class GroupModelTest {
             val (backend, script) = makeBackend()
             script.on("whoami") { Identity(ME) }
             script.on("roster") { listOf(member(BOB, "Bob")) }
-            script.on("list_polls") { listOf(summary("old", createdAt = 1uL), summary("new", createdAt = 9uL)) }
+            script.on("listPolls") { listOf(summary("old", createdAt = 1uL), summary("new", createdAt = 9uL)) }
             val model = GroupModel(backend, group())
             model.refresh()
             assertEquals(ME, model.me.value)
@@ -103,13 +103,13 @@ class GroupModelTest {
             val (backend, script) = makeBackend()
             script.on("whoami") { Identity(ME) }
             script.on("roster") { listOf(member(ME, "Ana")) }
-            script.on("list_polls") { emptyList<String>() }
+            script.on("listPolls") { emptyList<String>() }
             val model = GroupModel(backend, group())
             model.setName(" Ana ")
             assertEquals(
                 "Ana",
                 backend.recording
-                    .calls("set_name")
+                    .calls("setName")
                     .single()
                     .string("name"),
             )
@@ -122,8 +122,8 @@ class GroupModelTest {
             val (backend, script) = makeBackend()
             script.on("whoami") { Identity(ME) }
             script.on("roster") { emptyList<String>() }
-            script.on("list_polls") { emptyList<String>() }
-            script.on("create_poll") { "poll-1" }
+            script.on("listPolls") { emptyList<String>() }
+            script.on("createPoll") { "poll-1" }
             val model = GroupModel(backend, group())
             val draft =
                 PollDraft(ME, emptyList()).copy(
@@ -133,19 +133,19 @@ class GroupModelTest {
                 )
             assertEquals(2, draft.threshold)
             assertEquals("poll-1", model.createPoll(draft))
-            val call = backend.recording.calls("create_poll").single()
+            val call = backend.recording.calls("createPoll").single()
             assertEquals("Where?", call.string("title"))
             assertEquals(listOf("Lisbon", "Zagreb"), call.arg("options")!!.jsonArray.map { it.jsonPrimitive.content })
-            assertEquals(1, call.arg("min_choices")!!.jsonPrimitive.int)
-            assertEquals(1, call.arg("max_choices")!!.jsonPrimitive.int)
+            assertEquals(1, call.arg("minChoices")!!.jsonPrimitive.int)
+            assertEquals(1, call.arg("maxChoices")!!.jsonPrimitive.int)
             assertEquals(2, call.arg("threshold")!!.jsonPrimitive.int)
             assertEquals(JsonArray(emptyList()), call.arg("voters"))
 
             val approval = draft.copy(mode = PollDraft.Mode.MULTI, maxChoices = 5, everyone = false, voters = setOf(BOB))
             model.createPoll(approval)
-            val second = backend.recording.calls("create_poll").last()
-            assertEquals(0, second.arg("min_choices")!!.jsonPrimitive.int)
-            assertEquals(2, second.arg("max_choices")!!.jsonPrimitive.int)
+            val second = backend.recording.calls("createPoll").last()
+            assertEquals(0, second.arg("minChoices")!!.jsonPrimitive.int)
+            assertEquals(2, second.arg("maxChoices")!!.jsonPrimitive.int)
             assertEquals(listOf(BOB), second.arg("voters")!!.jsonArray.map { it.jsonPrimitive.content })
 
             try {
@@ -198,6 +198,34 @@ class InvitationModelTest {
     }
 
     @Test
+    fun `reads the web app's invite links`() {
+        val web = VoteInvitation.parse("https://vote.example.com/?invite=inv_abc123")!!
+        assertEquals("inv_abc123", web.invitation.token)
+        assertNull(web.contextId)
+        assertEquals("inv_abc123", VoteInvitation.parse("inv_abc123")!!.invitation.token)
+        assertNull(VoteInvitation.parse("https://vote.example.com/?other=1"))
+    }
+
+    @Test
+    fun `refuses pre-1_0 signed invitations`() {
+        val pre10 = """{"invitation":{"invitation":{"group_id":[1]},"inviter_signature":"ff"},"namespaceId":"ab","contextId":"cd"}"""
+        assertNull(VoteInvitation.parse(pre10))
+        val orgOnly = VoteInvitation.parse("""{"invitation":"inv_x","namespaceId":"ab"}""")
+        assertNotNull(orgOnly)
+        assertNull(orgOnly!!.contextId)
+    }
+
+    @Test
+    fun `a web link joins the org the node names`() =
+        runTest {
+            val (backend, _) = makeBackend()
+            val model = InvitationModel(retryDelayMs = 0)
+            assertTrue(model.open("https://vote.example.com/?invite=inv_abc123"))
+            model.accept(backend = { backend }, didJoin = {})
+            assertTrue(model.stage.value is InvitationModel.Stage.JoinedWorkspace)
+        }
+
+    @Test
     fun `reads the web's payload`() {
         val json = InviteCodec.decode(token())!!
         assertTrue(json.contains("\"namespaceId\""))
@@ -226,10 +254,10 @@ class InvitationModelTest {
     fun `a failed join says why`() =
         runTest {
             val (backend, _) = makeBackend()
-            backend.failure = java.io.IOException("Couldn't reach the relay. Try again.")
+            backend.failure = java.io.IOException("offline")
             val model = InvitationModel(retryDelayMs = 0)
             model.open(token())
             model.accept(backend = { backend }, didJoin = {})
-            assertEquals(InvitationModel.Stage.Failed("Couldn't reach the relay. Try again."), model.stage.value)
+            assertEquals(InvitationModel.Stage.Failed("Couldn't reach the cluster. Try again."), model.stage.value)
         }
 }

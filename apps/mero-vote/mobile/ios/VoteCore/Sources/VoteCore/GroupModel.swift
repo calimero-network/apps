@@ -34,6 +34,13 @@ public struct PollDraft: Equatable, Sendable {
 
     public var hasDuplicates: Bool { Set(filled).count != filled.count }
 
+    /// The contract verifies a ballot in one call, so a poll's ballot is bounded:
+    /// `2·options + maxChoices − minChoices + 1 ≤ 38` proof branches.
+    public var fitsOneBallot: Bool {
+        let (minC, maxC) = mode == .single ? (1, 1) : (0, self.maxC)
+        return 2 * filled.count + maxC - minC + 1 <= VoteConstants.maxBallotBranches
+    }
+
     public var isValid: Bool {
         !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && filled.count >= 2 && !hasDuplicates
             && !trustees.isEmpty && (everyone || !voters.isEmpty)
@@ -140,6 +147,9 @@ public final class GroupModel: ObservableObject {
         guard draft.isValid else {
             throw VoteModelError.message(
                 draft.hasDuplicates ? "Two options say the same thing." : "Add a question, two options and a trustee.")
+        }
+        guard draft.fitsOneBallot else {
+            throw VoteModelError.message("Too many options for that many picks. Remove an option or allow fewer picks.")
         }
         do {
             let id = try await client.createPoll(

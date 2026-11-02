@@ -268,7 +268,7 @@ struct JoinSheet: View {
                     }
                     .buttonStyle(SecondaryButtonStyle(compact: true))
                 }
-                Text("Links look like links.calimero.network/com.calimero.mero-vote/join?invitation=…")
+                Text("An invite link from the Mero Vote app or the web app works here.")
                     .font(.system(size: 13)).foregroundStyle(Palette.muted)
                 if let error {
                     Text(error).font(.system(size: 14)).foregroundStyle(Palette.danger)

@@ -44,6 +44,16 @@ data class PollDraft(
 
     val hasDuplicates: Boolean get() = filled.toSet().size != filled.size
 
+    /**
+     * The contract verifies a ballot in one call, so a poll's ballot is bounded:
+     * `2·options + maxChoices − minChoices + 1 ≤ 38` proof branches.
+     */
+    val fitsOneBallot: Boolean
+        get() {
+            val (lo, hi) = if (mode == Mode.SINGLE) 1 to 1 else 0 to maxC
+            return 2 * filled.size + hi - lo + 1 <= VoteConstants.MAX_BALLOT_BRANCHES
+        }
+
     val isValid: Boolean
         get() = title.isNotBlank() && filled.size >= 2 && !hasDuplicates && trustees.isNotEmpty() && (everyone || voters.isNotEmpty())
 
@@ -101,7 +111,7 @@ class GroupModel(
         }
     }
 
-    /** Re-read whenever the group changes: live events, or a poll when the relay cannot stream. */
+    /** Re-read whenever the group changes: live events, or a poll when the node cannot stream. */
     suspend fun watch() = VoteWatch.run(backend, group.contextId) { refresh() }
 
     val myName: String?
@@ -143,6 +153,9 @@ class GroupModel(
     suspend fun createPoll(draft: PollDraft): String {
         if (!draft.isValid) {
             throw VoteModelException(if (draft.hasDuplicates) "Two options say the same thing." else "Add a question, two options and a trustee.")
+        }
+        if (!draft.fitsOneBallot) {
+            throw VoteModelException("Too many options for that many picks. Remove an option or allow fewer picks.")
         }
         val single = draft.mode == PollDraft.Mode.SINGLE
         val id =

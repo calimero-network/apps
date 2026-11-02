@@ -1,20 +1,12 @@
 #!/usr/bin/env bash
-# Regenerate the typed contract client for both apps from the contract's ABI
-# (apps/mero-vote/logic/res/abi.json), with mero-devtools-js's abi-codegen.
+# The contract's ABI (apps/mero-vote/logic/res/abi.json) is a Calimero 1.0 component ABI, which
+# the v1 abi-codegen does not read. The two clients are kept by hand against it, in step with the
+# web adapter (apps/mero-vote/app/src/meroVote.ts):
 #
-#   ABI_CODEGEN=/path/to/abi-codegen/dist/cli.js ./scripts/regenerate-client.sh
+#   ios/VoteCore/Sources/VoteCore/VoteClient.swift
+#   android/app/src/main/kotlin/network/calimero/vote/generated/VoteClient.kt
 #
-# `--transport-import` makes each client take the SDK's own ContextContractCalling, so
-# `VoteClient(transport: contract.bound(to: contextId))` needs no adapter.
-# Commit the two generated files. Never edit them by hand.
+# WireTests (Swift) and WireTest (Kotlin) pin their method names and wire shapes.
 set -euo pipefail
-
-here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cli="${ABI_CODEGEN:?set ABI_CODEGEN to the abi-codegen dist/cli.js}"
-abi="$here/../logic/res/abi.json"
-
-node "$cli" -i "$abi" -o "$here/ios/VoteCore/Sources/VoteCore" \
-  --target swift --client-name VoteClient --transport-import MeroKit
-node "$cli" -i "$abi" -o "$here/android/app/src/main/kotlin/network/calimero/vote/generated" \
-  --target kotlin --package network.calimero.vote.generated --client-name VoteClient \
-  --transport-import com.calimero.mero.app.ContextContractCalling
+echo "regenerate-client.sh: the mobile clients are kept by hand against the component ABI; see ../README.md (Contract client)." >&2
+exit 1

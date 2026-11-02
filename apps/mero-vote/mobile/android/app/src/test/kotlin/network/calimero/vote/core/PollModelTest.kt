@@ -70,8 +70,8 @@ class PollModelTest {
         runTest {
             val (backend, script) = makeBackend(ME)
             script.on("whoami") { Identity(ME) }
-            script.on("get_poll") { view(Phase.Voting) }
-            script.on("cast_ballot") { "digest" }
+            script.on("getPoll") { view(Phase.Voting) }
+            script.on("castBallot") { "digest" }
             val model = model(backend)
             model.load()
             model.toggle(0)
@@ -82,8 +82,8 @@ class PollModelTest {
             assertTrue(model.canCast)
             model.cast()
             assertNull(model.error.value)
-            val call = backend.recording.calls("cast_ballot").single()
-            assertEquals(pollId, call.string("poll_id"))
+            val call = backend.recording.calls("castBallot").single()
+            assertEquals(pollId, call.string("pollId"))
             val wire = testJson.decodeFromJsonElement(WireBallot.serializer(), call.arg("ballot")!!)
             val pk = RistrettoPoint.fromHex(transcript.state.election!!.key)
             val rules = VoteWire.rules(transcript.definition)
@@ -102,7 +102,7 @@ class PollModelTest {
         runTest {
             val (backend, script) = makeBackend(ME)
             script.on("whoami") { Identity(ME) }
-            script.on("get_poll") { view(Phase.Voting).let { it.copy(definition = it.definition.copy(minChoices = 1u, maxChoices = 1u)) } }
+            script.on("getPoll") { view(Phase.Voting).let { it.copy(definition = it.definition.copy(minChoices = 1u, maxChoices = 1u)) } }
             val model = model(backend)
             model.load()
             model.toggle(0)
@@ -116,7 +116,7 @@ class PollModelTest {
             val me = trustees[0]
             val (backend, script) = makeBackend(me)
             script.on("whoami") { Identity(me) }
-            script.on("get_poll") { view(Phase.KeyCeremony) }
+            script.on("getPoll") { view(Phase.KeyCeremony) }
             script.on("ceremony") { Ceremony(2u, trustees.mapIndexed { i, t -> CeremonyTrustee(t, (i + 1).toUInt()) }, emptyList()) }
             val keys = MemoryTrusteeKeyStore()
             val model = model(backend, keys)
@@ -125,7 +125,7 @@ class PollModelTest {
             model.publishTransportKey()
             val stored = keys.load(CTX, pollId, me)
             assertNotNull(stored)
-            val call = backend.recording.calls("publish_transport_key").single()
+            val call = backend.recording.calls("publishTransportKey").single()
             val key = call.string("key")!!
             assertEquals(RistrettoPoint.BASE.multiply(Scalar.fromHex(stored!!.secret)).hex(), key)
             val proof = testJson.decodeFromJsonElement(WireBranch.serializer(), call.arg("proof")!!)
@@ -138,13 +138,13 @@ class PollModelTest {
             val me = trustees[0]
             val (backend, script) = makeBackend(me)
             script.on("whoami") { Identity(me) }
-            script.on("get_poll") { view(Phase.KeyCeremony) }
+            script.on("getPoll") { view(Phase.KeyCeremony) }
             val keys = MemoryTrusteeKeyStore().apply { refuses = true }
             val model = model(backend, keys)
             model.load()
             model.publishTransportKey()
             assertEquals("This device can't store your trustee key.", model.error.value)
-            assertTrue(backend.recording.calls("publish_transport_key").isEmpty())
+            assertTrue(backend.recording.calls("publishTransportKey").isEmpty())
         }
 
     @Test
@@ -153,7 +153,7 @@ class PollModelTest {
             val me = trustees[0]
             val (backend, script) = makeBackend(me)
             script.on("whoami") { Identity(me) }
-            script.on("get_poll") { view(Phase.Voting) }
+            script.on("getPoll") { view(Phase.Voting) }
             val model = model(backend)
             model.load()
             val wrong = TrusteeKey(contextId = CTX, pollId = pollId, account = me, secret = transport[1]["secret"]!!.jsonPrimitive.content)
@@ -180,8 +180,8 @@ class PollModelTest {
             val me = trustees[0]
             val (backend, script) = makeBackend(me)
             script.on("whoami") { Identity(me) }
-            script.on("get_poll") { view(Phase.Closed) }
-            script.put("get_result") {
+            script.on("getPoll") { view(Phase.Closed) }
+            script.put("getResult") {
                 testJson.encodeToJsonElement(
                     network.calimero.vote.generated.AuditReport
                         .serializer(),
@@ -189,7 +189,7 @@ class PollModelTest {
                 )
             }
             val aggregate = Vectors.root["aggregate"]!!.jsonArray.map { WireCiphertext(it.jsonObject["a"]!!.jsonPrimitive.content, it.jsonObject["b"]!!.jsonPrimitive.content) }
-            script.on("tally_inputs") { TallyInputs(aggregate, 5u) }
+            script.on("tallyInputs") { TallyInputs(aggregate, 5u) }
             val keys = MemoryTrusteeKeyStore()
             keys.save(TrusteeKey(contextId = CTX, pollId = pollId, account = me, secret = transport[0]["secret"]!!.jsonPrimitive.content))
             val model = model(backend, keys)
@@ -197,7 +197,7 @@ class PollModelTest {
             model.publishPartial { it }
             assertNull(model.error.value)
             val partials =
-                backend.recording.calls("publish_partial").single().arg("partials")!!.jsonArray.map {
+                backend.recording.calls("publishPartial").single().arg("partials")!!.jsonArray.map {
                     testJson.decodeFromJsonElement(WirePartial.serializer(), it)
                 }
             val vkey =
@@ -220,7 +220,7 @@ class PollModelTest {
     fun `re-verifying the honest transcript agrees with the node`() =
         runTest {
             val (backend, script) = makeBackend(ME)
-            script.put("get_transcript") { Vectors.audit("honest")["transcript"]!! }
+            script.put("getTranscript") { Vectors.audit("honest")["transcript"]!! }
             val model = model(backend)
             model.reverify()
             val audit = model.localAudit.value!!
@@ -235,7 +235,7 @@ class PollModelTest {
         runTest {
             val (backend, script) = makeBackend(trustees[0])
             script.on("whoami") { Identity(trustees[0]) }
-            script.on("get_poll") { view(Phase.KeyCeremony) }
+            script.on("getPoll") { view(Phase.KeyCeremony) }
             val model = model(backend)
             model.load()
             assertTrue(model.isCreator)
