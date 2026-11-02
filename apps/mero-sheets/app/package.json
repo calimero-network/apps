@@ -4,15 +4,12 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@calimero-apps/connect": "workspace:*",
     "@calimero-apps/glass": "workspace:*",
-    "@calimero-apps/names": "workspace:*",
     "@calimero-apps/node-served": "workspace:*",
     "@calimero-network/mero-icons": "catalog:",
-    "@calimero-network/mero-js": "catalog:",
-    "@calimero-network/mero-platform": "catalog:",
-    "@calimero-network/mero-react": "catalog:",
+    "@calimero-network/mero-js": "catalog:component",
     "@calimero-network/mero-ui": "catalog:",
-    "bs58": "catalog:",
     "fflate": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
@@ -21,10 +18,7 @@
     "uqr": "^0.1.2"
   },
   "devDependencies": {
-    "@calimero-apps/e2e-node": "workspace:*",
-    "@calimero-network/abi-codegen": "catalog:",
     "@eslint/js": "catalog:",
-    "@playwright/test": "^1.59.1",
     "@testing-library/react": "catalog:",
     "@types/node": "^25.6.0",
     "@types/react": "catalog:",
@@ -35,30 +29,18 @@
     "eslint-plugin-react-hooks": "catalog:",
     "globals": "catalog:",
     "jsdom": "catalog:",
-    "tweetnacl": "^1.0.3",
-    "tweetnacl-util": "^0.15.1",
     "typescript": "catalog:",
     "typescript-eslint": "catalog:",
     "vite": "catalog:",
-    "vite-plugin-node-polyfills": "^0.24.0",
     "vitest": "catalog:"
   },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "codegen": "node scripts/codegen.mjs",
     "preview": "vite preview",
-    "merod:start": "../../scripts/merod-start.sh .merod-data 2",
-    "merod:stop": "../../scripts/merod-stop.sh .merod-data",
-    "merod:install": "node scripts/merod-install.mjs",
     "test": "vitest run",
-    "test:unit": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint .",
-    "landing:media": "NODE_COUNT=1 playwright test -c playwright.media.config.ts",
-    "test:journey": "playwright test -c playwright.journey.config.ts"
+    "lint": "eslint ."
   }
 }

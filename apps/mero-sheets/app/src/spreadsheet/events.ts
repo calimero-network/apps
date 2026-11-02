@@ -33,57 +33,36 @@ const empty = (): Extract<RefreshPlan, { full: false }> => ({
 
 const FULL: RefreshPlan = { full: true };
 
-/** A node event as the subscription delivers it: `{ contextId, type, data }`. */
-interface NodeEvent {
-  type?: string;
+/**
+ * One of the app's events as `client.events` streams it (`{ id, kind, data }`):
+ * the contract's event name and its fields, camelCase.
+ */
+export interface AppEvent {
+  kind?: string;
   data?: unknown;
 }
 
-interface ExecutionEvent {
-  kind?: unknown;
-  data?: unknown;
-}
-
-/** An app event's payload: JSON, carried as a byte array. */
-function payload(e: ExecutionEvent): Record<string, unknown> | null {
-  if (!Array.isArray(e.data)) return null;
-  try {
-    const v: unknown = JSON.parse(new TextDecoder().decode(new Uint8Array(e.data as number[])));
-    return v && typeof v === 'object' ? (v as Record<string, unknown>) : null;
-  } catch {
-    return null;
-  }
+function fields(e: AppEvent): Record<string, unknown> | null {
+  return e.data && typeof e.data === 'object' ? (e.data as Record<string, unknown>) : null;
 }
 
 /**
- * The plan for one event, or `null` when it changes nothing this hook shows:
- * presence frames, sync-status updates and cross-context call reports.
+ * The plan for one event (or a burst of them), or `null` when it changes
+ * nothing this hook shows.
  */
-export function planFor(event: NodeEvent): RefreshPlan | null {
-  switch (event.type) {
-    case 'Ephemeral':
-    case 'SyncStatus':
-    case 'XCall':
-      return null;
-    case 'StateMutation':
-      break;
-    // An application upgrade, or anything this build does not know.
-    default:
-      return FULL;
-  }
-  const events = (event.data as { events?: unknown } | undefined)?.events;
-  // A mutation that carries no events (a state sync rather than a replayed
-  // delta) says nothing about what changed.
-  if (!Array.isArray(events) || events.length === 0) return FULL;
+export function planFor(event: AppEvent | readonly AppEvent[]): RefreshPlan | null {
+  const events = Array.isArray(event) ? event : [event as AppEvent];
+  // Nothing to go on: read everything.
+  if (events.length === 0) return FULL;
 
   const plan = empty();
-  for (const e of events as ExecutionEvent[]) {
-    const p = payload(e);
+  for (const e of events) {
+    const p = fields(e);
     switch (e.kind) {
       case 'CellUpdated':
       case 'CellCleared':
       case 'CellsChanged': {
-        const sheet = p?.sheet_id;
+        const sheet = p?.sheetId;
         if (typeof sheet !== 'string') return FULL;
         plan.sheets.add(sheet);
         break;
@@ -108,7 +87,7 @@ export function planFor(event: NodeEvent): RefreshPlan | null {
       // Rows or columns moved: the layout changes, and so do the node's values
       // for ranges on that sheet.
       case 'AxesChanged': {
-        const sheet = p?.sheet_id;
+        const sheet = p?.sheetId;
         if (typeof sheet !== 'string') return FULL;
         plan.layouts = true;
         plan.sheets.add(sheet);
@@ -147,7 +126,7 @@ export function planFor(event: NodeEvent): RefreshPlan | null {
         break;
       // A linked sheet arrived, changed or went: the tabs, and its values.
       case 'LinkedChanged': {
-        const sheet = p?.sheet_id;
+        const sheet = p?.sheetId;
         if (typeof sheet !== 'string') return FULL;
         plan.sheetList = true;
         plan.sheets.add(sheet);
@@ -201,19 +180,15 @@ export interface Mention {
 }
 
 /** The mentions an event carries (a `CommentAdded` naming anyone). */
-export function mentionsIn(event: NodeEvent): Mention[] {
-  if (event.type !== 'StateMutation') return [];
-  const events = (event.data as { events?: unknown } | undefined)?.events;
-  if (!Array.isArray(events)) return [];
-  return (events as ExecutionEvent[]).flatMap((e) => {
-    if (e.kind !== 'CommentAdded') return [];
-    const p = payload(e);
-    const { id, sheet_id, author, mentions } = p ?? {};
-    if (typeof id !== 'string' || typeof sheet_id !== 'string' || typeof author !== 'string' || !Array.isArray(mentions)) {
-      return [];
-    }
-    return [{ commentId: id, sheetId: sheet_id, author, mentions: mentions.filter((m): m is string => typeof m === 'string') }];
-  });
+export function mentionsIn(event: AppEvent | readonly AppEvent[]): Mention[] {
+  if (Array.isArray(event)) return event.flatMap((e: AppEvent) => mentionsIn(e));
+  event = event as AppEvent;
+  if (event.kind !== 'CommentAdded') return [];
+  const { id, sheetId, author, mentions } = fields(event) ?? {};
+  if (typeof id !== 'string' || typeof sheetId !== 'string' || typeof author !== 'string' || !Array.isArray(mentions)) {
+    return [];
+  }
+  return [{ commentId: id, sheetId, author, mentions: mentions.filter((m): m is string => typeof m === 'string') }];
 }
 
 /** An alert rule firing: whom it tells, and what. */
@@ -225,16 +200,13 @@ export interface Alert {
 }
 
 /** The alerts an event carries. */
-export function alertsIn(event: NodeEvent): Alert[] {
-  if (event.type !== 'StateMutation') return [];
-  const events = (event.data as { events?: unknown } | undefined)?.events;
-  if (!Array.isArray(events)) return [];
-  return (events as ExecutionEvent[]).flatMap((e) => {
-    if (e.kind !== 'AlertTriggered') return [];
-    const { rule_id, sheet_id, recipients, message } = payload(e) ?? {};
-    if (typeof rule_id !== 'string' || typeof sheet_id !== 'string' || typeof message !== 'string' || !Array.isArray(recipients)) {
-      return [];
-    }
-    return [{ ruleId: rule_id, sheetId: sheet_id, message, recipients: recipients.filter((r): r is string => typeof r === 'string') }];
-  });
+export function alertsIn(event: AppEvent | readonly AppEvent[]): Alert[] {
+  if (Array.isArray(event)) return event.flatMap((e: AppEvent) => alertsIn(e));
+  event = event as AppEvent;
+  if (event.kind !== 'AlertTriggered') return [];
+  const { ruleId, sheetId, recipients, message } = fields(event) ?? {};
+  if (typeof ruleId !== 'string' || typeof sheetId !== 'string' || typeof message !== 'string' || !Array.isArray(recipients)) {
+    return [];
+  }
+  return [{ ruleId, sheetId, message, recipients: recipients.filter((r): r is string => typeof r === 'string') }];
 }

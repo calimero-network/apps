@@ -17,14 +17,16 @@
  *
  * Three states:
  *  1. Workspace picker (!ws.contextId) — open / create a workspace
- *  2. Opening (ws.contextId set, !ws.ready) — identity resolving
+ *  2. Opening (ws.contextId set, !ws.ready) — momentary: an instance opens at once
  *  3. Workspace open — full spreadsheet UI (with ← back to the picker)
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useGroupMembers, useMero } from '@calimero-network/mero-react';
-import { useMemberNames, useMyName } from '@calimero-apps/names';
+import { targetKey } from '@calimero-apps/connect';
+import { useSignedIn } from '../../sessionContext';
+import { describeTarget } from '../../session';
+import { useOrgMembers } from '../../hooks/useOrgMembers';
 import { C } from '../../theme';
 import ThemeToggle from '../../components/ThemeToggle';
 import { field, primaryPill, secondaryPill } from '../../components/glass';
@@ -34,7 +36,6 @@ import { useSpreadsheet } from '../../hooks/useSpreadsheet';
 import { describeError } from '../../utils/errors';
 import { cellRef } from '../../components/FormulaBar';
 import { isFormula, insertReference, type AutoRef } from '../../spreadsheet/formulaEdit';
-import { JoinSyncBanner } from '@calimero-network/mero-react';
 import { columnLabel, normalizeRect, rangeRef, sheetPrefix, rectCells, type CellCoord, type Rect } from '../../spreadsheet/refs';
 import { planFill } from '../../spreadsheet/fill';
 import { toTSV, fromTSV } from '../../spreadsheet/clipboard';
@@ -51,8 +52,7 @@ import NamesModal from '../../components/NamesModal';
 import ActivityPanel from '../../components/ActivityPanel';
 import CommentsPanel from '../../components/CommentsPanel';
 import NotePanel from '../../components/NotePanel';
-import PeoplePanel, { type ReplicaPolicy } from '../../components/PeoplePanel';
-import { NO_REPLICA_POLICY, replicaPolicyFrom, storeReplicaPolicy } from '../../spreadsheet/replicas';
+import PeoplePanel from '../../components/PeoplePanel';
 import ProtectModal from '../../components/ProtectModal';
 import FormatBar from '../../components/FormatBar';
 import RulesModal, { conditionLabel } from '../../components/RulesModal';
@@ -83,12 +83,11 @@ import { forgetLastWorkspace } from '../../lib/lastWorkspace';
 
 
 export default function AppPage() {
-  const { logout, admin, nodeUrl, isDelegated } = useMero();
+  const { client, signOut: endSession, passkey, after, target, accountId } = useSignedIn();
   const ws = useWorkspace();
   const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
   const ss = useSpreadsheet({
     contextId: ws.contextId,
-    executorPublicKey: ws.executorPublicKey,
     activeSheetId,
   });
   const navigate = useNavigate();
@@ -108,14 +107,14 @@ export default function AppPage() {
     navigate(location.pathname, { replace: true, state: null });
   }, [joined, landJoined, navigate, location.pathname]);
 
-  // Log out: mero-react drops this browser's node session (tokens and all),
-  // and the front door is where a signed-out visitor belongs. The spreadsheet
+  // Log out: the session ends on the cluster and in this browser, and the
+  // front door is where a signed-out visitor belongs. The spreadsheet
   // remembered for a reload goes too: the next sign-in starts at the picker.
   const signOut = useCallback(() => {
-    forgetLastWorkspace(nodeUrl);
-    logout();
+    forgetLastWorkspace(`${targetKey(target)}:${accountId}`);
+    void endSession();
     navigate('/', { replace: true });
-  }, [logout, navigate, nodeUrl]);
+  }, [endSession, navigate, target, accountId]);
 
   // id↔name resolvers for translating formulas at the frontend boundary: the
   // engine/store deal in canonical sheet ids; the formula bar shows names.
@@ -150,7 +149,7 @@ export default function AppPage() {
     setInviteError(null);
     try {
       setInviteCode(
-        await ws.invite({ contextId: ws.contextId, projectName: ws.activeName }),
+        await ws.invite({ contextId: ws.contextId }),
       );
     } catch (err) {
       setInviteError(describeError(err));
@@ -179,14 +178,15 @@ export default function AppPage() {
     ss.selfId !== null &&
     !ss.members.some((m) => m.id === ss.selfId && m.nickname.trim());
 
-  // The name each person set for the whole workspace (namespace member
-  // metadata), shared by every app on it. It names people who have not picked
-  // a nickname in this workbook, or have not opened it at all.
-  const { nameOf: namespaceNameOf, displayName: namespaceDisplayName } = useMemberNames(admin, ws.namespaceId);
+  // The name each person set for the whole workspace (org member metadata),
+  // shared by every app in it. It names people who have not picked a nickname
+  // in this workbook, or have not opened it at all.
+  const org = useOrgMembers(ws.namespaceId);
+  const { nameOf: namespaceNameOf, displayName: namespaceDisplayName } = org;
   // Your own name is the workspace's, one per workspace: a workbook asks only
   // when the workspace has none for you, and only once its names have loaded.
-  const myName = useMyName(admin, ws.namespaceId, ss.selfId);
-  const selfNamespaceName = normaliseName(myName.name);
+  const selfNamespaceName = normaliseName(org.myName);
+  const setMyName = org.setMyName;
 
   const submitNickname = useCallback(
     async (name: string) => {
@@ -197,14 +197,14 @@ export default function AppPage() {
         rememberName(name);
         // The workspace-wide name too, so every other app on it says the same.
         // Best-effort: the workbook nickname is what was asked for.
-        if (name !== selfNamespaceName) void myName.setName(name).catch(() => undefined);
+        if (name !== selfNamespaceName) void setMyName(name).catch(() => undefined);
       } catch (err) {
         setNicknameError(describeError(err));
       } finally {
         setSavingNickname(false);
       }
     },
-    [ss, myName, selfNamespaceName],
+    [ss, setMyName, selfNamespaceName],
   );
 
   // Someone who already named themselves for the workspace is not asked again:
@@ -254,7 +254,6 @@ export default function AppPage() {
   const [showActivity, setShowActivity] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [showPeople, setShowPeople] = useState(false);
-  const [replicaPolicy, setReplicaPolicy] = useState<ReplicaPolicy | null>(null);
   const [showProtect, setShowProtect] = useState(false);
   const [protectSaving, setProtectSaving] = useState(false);
   const [protectError, setProtectError] = useState<string | null>(null);
@@ -536,32 +535,20 @@ export default function AppPage() {
 
   // ── Who may do what: workbook role, protected ranges, and core's group
   //    roster for the workspace (who is in it at all, and who administers it).
-  const { members: groupMembers, refetch: refetchGroup } = useGroupMembers(ws.namespaceId);
-  // The group roster is read once by the hook; re-read it when someone joins
+  const { people: groupMembers, refetch: refetchGroup } = org;
+  // The org roster is read once by the hook; re-read it when someone joins
   // the workbook and whenever the People panel opens.
   useEffect(() => {
     if (showPeople) void refetchGroup();
   }, [showPeople, ss.members.length, refetchGroup]);
-  // The always-on replica admission policy, read when the panel opens.
-  //    The policy is a node's own setting (core has no delegated form of it), so
-  //    an account session does not read it: the panel says it is not available.
-  useEffect(() => {
-    if (!showPeople || !admin || isDelegated || !ws.namespaceId) return;
-    let live = true;
-    admin.getTeeAdmissionPolicy(ws.namespaceId)
-      .then((p) => { if (live) setReplicaPolicy(replicaPolicyFrom(p)); })
-      .catch(() => { if (live) setReplicaPolicy(NO_REPLICA_POLICY); });
-    return () => { live = false; };
-  }, [showPeople, admin, isDelegated, ws.namespaceId]);
   const selfMember = ss.members.find((m) => m.id === ss.selfId);
   const myRole = selfMember?.role ?? 'editor';
   const isOwner = myRole === 'owner';
-  const isGroupAdmin = !!selfMember?.account &&
-    groupMembers.some((g) => g.identity === selfMember.account && g.role === 'Admin');
+  const isGroupAdmin = ws.orgRole === 'owner' || ws.orgRole === 'admin';
   const placed = activeSheetId && !isPrivateActive
     ? placeProtections(ss.protections, activeSheetId, (r, c) => ss.refOf(activeSheetId, r, c), ss.selfId, myRole)
     : [];
-  // A private sheet is this node's alone: no role or protection applies.
+  // A private sheet is this account's alone: no role or protection applies.
   const selectedLock = activeLinkedFrom && selectedCell
     ? `Linked from ${activeLinkedFrom}: read-only`
     : selectedCell && !isPrivateActive ? lockedReason(placed, myRole, selectedCell.row, selectedCell.col) : null;
@@ -1301,7 +1288,7 @@ export default function AppPage() {
   const accountControls = (
     <>
       <ThemeToggle />
-      <LogoutBtn type="button" onClick={signOut} aria-label="Log out" title="Log out of your node" data-testid="action-logout">
+      <LogoutBtn type="button" onClick={signOut} aria-label="Log out" title="Log out" data-testid="action-logout">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
           stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -1313,7 +1300,7 @@ export default function AppPage() {
   );
 
   // 1. Workspace picker — shown whenever no workspace is open. Lists every
-  //    workspace on this node and lets you open, create, or join one.
+  //    spreadsheet in the workspace and lets you open or create one.
   if (!ws.contextId) {
     // While a reload decides whether to reopen the last spreadsheet, the list
     // stays hidden: showing it for a moment and then leaving reads as a glitch.
@@ -1324,7 +1311,7 @@ export default function AppPage() {
           <AppMark aria-hidden="true"><SheetGlyph size={18} /></AppMark>
           <TitleBlock>
             <TitleName>{APP_DISPLAY_NAME}</TitleName>
-            <TitleMeta>Spreadsheets on your node</TitleMeta>
+            <TitleMeta>Spreadsheets on Calimero</TitleMeta>
           </TitleBlock>
           <TopSpacer />
           {accountControls}
@@ -1336,8 +1323,8 @@ export default function AppPage() {
             <h1>{ws.namespaceName}</h1>
             <p>
               Open a spreadsheet or create a new one. To join someone else&rsquo;s,
-              open the invitation link they sent you. All data lives on your node —
-              no central server.
+              open the invitation link they sent you. Only the people in this
+              workspace can read it.
             </p>
           </PickerHero>
 
@@ -1374,19 +1361,7 @@ export default function AppPage() {
                 </WorkspaceList>
               )}
 
-              {/* Joined, but this workspace's spreadsheets have not replicated yet.
-                  Without this the list above is empty and reads as "there is
-                  nothing here" rather than "it is on its way". */}
-              {ws.isSyncing && (
-                <div style={{ margin: '4px 0 12px' }}>
-                  <JoinSyncBanner
-                    show
-                    what="spreadsheets"
-                    onDismiss={ws.dismissSyncing}
-                  />
-                </div>
-              )}
-              {listLoading && !ws.isSyncing && !ws.namespacesFailed && <StatusLine>Loading spreadsheets…</StatusLine>}
+              {listLoading && !ws.namespacesFailed && <StatusLine>Loading spreadsheets…</StatusLine>}
               {ws.namespacesFailed && ws.workspaces.length === 0 && (
                 <ErrLine data-testid="workspaces-failed">
                   Your spreadsheets could not be loaded. Try again before creating one.{' '}
@@ -1395,18 +1370,12 @@ export default function AppPage() {
                   </SecondaryBtn>
                 </ErrLine>
               )}
-              {!listLoading && !ws.isSyncing && !ws.namespacesFailed && ws.workspaces.length === 0 && (
+              {!listLoading && !ws.namespacesFailed && ws.workspaces.length === 0 && (
                 <EmptyList>
                   <RowIcon aria-hidden="true"><SheetGlyph size={20} /></RowIcon>
                   <strong>No spreadsheets yet</strong>
                   <span>Create the first one, or open an invitation link someone sent you.</span>
                 </EmptyList>
-              )}
-              {ws.notInstalled && (
-                <ErrLine>
-                  This app is not installed on your node, so it has nowhere to keep a
-                  spreadsheet. Install it from the registry and reload.
-                </ErrLine>
               )}
             </Card>
 
@@ -1451,7 +1420,7 @@ export default function AppPage() {
           <AppMark aria-hidden="true"><SheetGlyph size={18} /></AppMark>
           <TitleBlock>
             <TitleName>{APP_DISPLAY_NAME}</TitleName>
-            <TitleMeta>Spreadsheets on your node</TitleMeta>
+            <TitleMeta>Spreadsheets on Calimero</TitleMeta>
           </TitleBlock>
           <TopSpacer />
           {accountControls}
@@ -1480,10 +1449,7 @@ export default function AppPage() {
   // `init_project` lands, and only then a placeholder.
   const activeWorkspaceName = ss.project?.name?.trim() || ws.activeName;
   const roster = labelsById(labelMembers(withNamespaceNames(ss.members, namespaceNameOf), ss.selfId));
-  // `ss.selfId` — the id the CONTRACT writes under — and NOT
-  // `ws.executorPublicKey`, which is a context identity. Both are 64 hex, so the
-  // old comparison type-checked, never matched, and rendered the local user as a
-  // stranger in their own spreadsheet.
+  // `ss.selfId` — the account the CONTRACT knows this user by (`whoami`).
   const collaborators = distinctCollaborators(presence.cursors, ss.selfId, C.green, roster);
   const peers = peerCount(presence.cursors, ss.selfId);
   const cursorLabel = (author: string) => avatarLabel(roster.get(author)?.label ?? author);
@@ -1553,7 +1519,7 @@ export default function AppPage() {
         <TitleBlock>
           <TitleName>{activeWorkspaceName}</TitleName>
           <TitleMeta>
-            <span>your node</span>
+            <span>{describeTarget(target)}</span>
             <LivePill $on={connected} title={connected ? 'Live' : 'Offline'}>
               <span aria-hidden="true" />{connected ? 'live' : 'offline'}
             </LivePill>
@@ -1850,7 +1816,7 @@ export default function AppPage() {
           onClose={() => setShowInvite(false)}
         />
       )}
-      {needsNickname && myName.ready && !adoptNamespaceName && (
+      {needsNickname && org.loaded && !adoptNamespaceName && (
         <NicknameModal
           projectName={activeWorkspaceName}
           initialName={selfNamespaceName || rememberedName()}
@@ -2083,22 +2049,23 @@ export default function AppPage() {
           isGroupAdmin={isGroupAdmin}
           onSetRole={ss.setRole}
           onSetGroupRole={async (account, role) => {
-            if (!admin || !ws.namespaceId) return;
-            await admin.updateMemberRole(ws.namespaceId, account, { role });
+            if (!ws.namespaceId) return;
+            // A passkey step-up: the cluster asks the admin to approve it.
+            try {
+              await client.setMember(ws.namespaceId, account, role as 'guest' | 'member' | 'admin', passkey());
+            } finally {
+              after();
+            }
             await refetchGroup();
           }}
           onRemove={async (account) => {
-            if (!admin || !ws.namespaceId) return;
-            await admin.removeGroupMembers(ws.namespaceId, { members: [account] });
+            if (!ws.namespaceId) return;
+            try {
+              await client.removeMember(ws.namespaceId, account, passkey());
+            } finally {
+              after();
+            }
             await refetchGroup();
-          }}
-          policy={replicaPolicy}
-          policyUnavailable={isDelegated}
-          onSetPolicy={async (p) => {
-            if (!admin || isDelegated || !ws.namespaceId) return null;
-            const { stored, warning } = await storeReplicaPolicy(admin, ws.namespaceId, p);
-            setReplicaPolicy(stored);
-            return warning;
           }}
           onClose={() => setShowPeople(false)}
         />

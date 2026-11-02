@@ -3,7 +3,6 @@ import styled from 'styled-components';
 import { renderSVG } from 'uqr';
 import { C } from '../theme';
 import { closeButton, dialogSurface, overlay, primaryPill } from './glass';
-import { invitationUrl } from '../lib/inviteLink';
 
 /**
  * An invitation, as a LINK you copy and send.
@@ -31,7 +30,7 @@ export default function InviteModal({
   error,
   onClose,
 }: {
-  /** The minted invite code, or '' while it is still being minted. */
+  /** The minted invitation link, or '' while it is still being minted. */
   code: string;
   /** What the invitation grants, in words — e.g. "Finance team · 4 spreadsheets". */
   scope: string;
@@ -46,12 +45,9 @@ export default function InviteModal({
     null,
   );
 
-  // `invitationUrl` THROWS on an empty code, and this dialog is rendered while
-  // the mint is still in flight — so guard rather than call it eagerly.
-  const link = useMemo(
-    () => (code.trim() ? invitationUrl(code) : null),
-    [code],
-  );
+  // The minted link (an org invite token in `?invite=`), or nothing while the
+  // mint is still in flight.
+  const link = code.trim() || null;
 
   // Rendered from the LINK, not the raw code: a phone scanning this should end
   // up in the app.
@@ -125,7 +121,7 @@ export default function InviteModal({
             </PrimaryBtn>
 
             <Hint>
-              Anyone with this link can open every spreadsheet in the workspace.
+              Anyone with this link can join the workspace once and open every spreadsheet in it.
               They pick a name for themselves when they join.
             </Hint>
           </>

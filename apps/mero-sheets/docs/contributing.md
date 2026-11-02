@@ -1,70 +1,49 @@
 ---
 title: Contributing
 layout: default
-nav_order: 6
+nav_order: 4
 ---
 
 # Contributing
 
+The contract is a component on core's component SDK; the repo-wide guide is
+[docs/COMPONENT-APPS.md](https://github.com/calimero-network/apps/blob/main/docs/COMPONENT-APPS.md).
+
 ## Prerequisites
 
-- Node 22 (`.nvmrc`) + pnpm (via `corepack enable`)
-- Rust toolchain with `rustup target add wasm32-unknown-unknown`
-- `wasm-pack` **0.13.1** (pinned — the committed client WASM artifact must match)
-- For smoke/perf e2e: Docker + `merobox` (`pipx install merobox`)
+- Rust with the `wasm32-wasip2` target (`rustup target add wasm32-wasip2`)
+- Node 20+ and pnpm
+- For the local cluster: core's `merod` at the pinned tag (Linux)
 
-## Build
-
-```bash
-pnpm install
-pnpm app:build        # client → app/dist
-pnpm logic:build      # WASM app bundle (.mpk)
-bash logic/build-recalc-wasm.sh   # regenerate the client recalc WASM artifact
-```
-
-## Test
+## Build and test
 
 ```bash
-# client unit tests (vitest)
-pnpm --filter ./app test
+# contract: fmt, clippy (host and wasm32-wasip2), the TestApp harness and
+# every scenarios/*.json, plus the recalc engine's unit tests
+cd logic
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo clippy --target wasm32-wasip2 -- -D warnings
+cargo test
 
-# perf generators/bench (pure Python, no Docker)
-cd test/perf/lib && python3 -m pytest
+# the component and its ABI (res/abi.json is committed and diffed in CI)
+cd ../../..
+cargo run --release --manifest-path tools/component-bundle/Cargo.toml -- build apps/mero-sheets/logic
 
-# two-node smoke workflow (Docker)
-pnpm test:smoke
+# frontend
+pnpm -F mero-sheets lint typecheck test build
 
-# node-level scenarios (Docker + merobox), from logic/ after
-# `cargo mero bundle` has written dist/com.calimero.mero-sheets.mpk
-merobox bootstrap run workflows/spec-smoke.yml   # every shared-state method, two nodes
-merobox bootstrap run workflows/links.yml        # linked workbooks over xcall
-
-# node-side perf sweeps (Docker) — see the Perf suite page
-bash test/perf/run-perf.sh
-
-# client e2e (Playwright)
-cd app && npx playwright test
+# everything on merod local: the cluster, the component, the dev server on :5173
+pnpm dev:local mero-sheets
+pnpm merod-local e2e mero-sheets   # every scenario as real accounts on three nodes
 ```
 
-The Playwright global setup starts real `merod` nodes (three by default,
-`NODE_COUNT` to change it) bootstrapped to each other, and installs the bundle
-on each. Specs seed their own state through the UI with the helpers in
-`app/e2e/helpers.ts`: `openNewWorkbook` creates a workbook on a node,
-`enterCell` types into a cell, and `withTwoMembers` has a second member join
-from another node with an invitation link, so the collaboration specs run
-across real nodes. `theme.spec.ts`, `log-out.spec.ts` and `glass-layout.spec.ts`
-cover the light/dark switch, Log out, and dialogs that must still cover the
-whole viewport inside the glass frame. Start from fresh nodes: a node that has kept dozens of
-workbooks from earlier runs syncs them all and slows every spec down.
+The browser's copy of the formula engine (`app/src/engine/recalc/`) is
+committed; rebuild it with `logic/build-recalc-wasm.sh` (wasm-pack) after a
+change to `crates/recalc`.
 
-## CI
+## Scenarios
 
-Every contract method must be called by a merobox scenario under
-`logic/workflows/` (`scripts/check-merobox-coverage.py`, in the monorepo's
-App metadata job); a new method needs a step there in the same change.
-
-- **`verify.yml`** — Calimero-Studio-managed gate; fires on `workshop/**` /
-  `ai-builder/**` branches (dormant on `main`).
-- **`recalc-wasm-freshness.yml`** — on PRs touching the recalc crates, rebuilds
-  the client WASM artifact and fails if it drifts from the committed copy.
-- **`pages.yml`** — builds and deploys this docs site to GitHub Pages.
+`logic/scenarios/*.json` are neutral steps run by `cargo test` on core's real
+engine and by `pnpm merod-local e2e` on a three-node cluster. Each one's
+`.org.json` names the accounts it needs. Add one for every new method.

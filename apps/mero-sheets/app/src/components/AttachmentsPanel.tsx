@@ -1,6 +1,6 @@
 /**
  * AttachmentsPanel — files attached to the selected cell. Each file is a
- * blob announced to this workbook, so collaborators' nodes can fetch it;
+ * blob of this workbook's app instance, which every member can read;
  * the cell keeps its name, size and who attached it.
  */
 import React, { useEffect, useRef, useState } from 'react';

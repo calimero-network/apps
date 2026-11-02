@@ -1,137 +1,109 @@
-import React, { type ReactNode, useCallback } from 'react';
-import type { AcceptedInvite } from './lib/workspaces';
-import {
-  BrowserRouter,
-  Navigate,
-  Route,
-  Routes,
-  useNavigate,
-} from 'react-router-dom';
-import { AppMode, MeroProvider, useMero } from '@calimero-network/mero-react';
+import { useCallback, useState, type ReactNode } from 'react';
+import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { ToastProvider } from '@calimero-network/mero-ui';
+import { nodeBasename } from '@calimero-apps/node-served';
 
 import LandingPage from './pages/landing/LandingPage';
 import AppPage from './pages/app/AppPage';
 import InvitationPrompt from './components/InvitationPrompt';
-import { APP_PACKAGE, APP_ROUTE } from './config';
-import { isServedByNode, nodeBasename } from '@calimero-apps/node-served';
-
-const pageUrl = () => new URL(window.location.href);
+import SignInModal from './components/SignInModal';
+import { APP_ROUTE } from './config';
+import type { AcceptedInvite } from './lib/workspaces';
+import type { SessionDeps } from './session';
+import { SessionProvider, useSessionApi } from './sessionContext';
 
 /** Every path the shared landing page serves. See src/pages/landing. */
 const LANDING_PATHS = ['/', '/docs', '/preview'];
 
+/** Signed in, signed out, or still connecting (restoring a stored session). */
+function useAuth(): { isAuthenticated: boolean; isLoading: boolean } {
+  const { api } = useSessionApi();
+  return {
+    isAuthenticated: api.session.status === 'signed-in',
+    isLoading: api.session.status === 'connecting',
+  };
+}
 
 /**
- * Auth route guards. The MeroProvider resolves auth ASYNCHRONOUSLY — on first
- * render `isAuthenticated` is `false` while `isLoading` is `true` until the
- * `getContexts()` probe (and any login-callback / desktop-SSO token) resolves.
- *
- * Both guards MUST wait for `isLoading` to settle before redirecting; otherwise
- * a freshly-authenticated user (or a refresh on a protected route) is bounced
- * away before the probe finishes — the exact "logged in but kicked back to the
- * landing page" bug. Mirrors mero-design's RequireAuth / RedirectIfAuthed.
+ * Route guards. Restoring a stored session is asynchronous, so both wait for
+ * it rather than bouncing a signed-in visitor away on the first render.
  */
 function RequireAuth({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isLoading } = useMero();
-  if (isLoading) return null; // wait for the auth probe; avoids a flash-bounce
+  const { isAuthenticated, isLoading } = useAuth();
+  if (isLoading) return null;
   if (!isAuthenticated) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
 function RedirectIfAuthed({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isLoading } = useMero();
+  const { isAuthenticated, isLoading } = useAuth();
   if (isLoading) return null;
   if (isAuthenticated) return <Navigate to={APP_ROUTE} replace />;
   return <>{children}</>;
 }
 
+/** The landing page with the passkey sign-in as its connect action. */
+function Landing() {
+  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+  const [signingIn, setSigningIn] = useState(false);
+  return (
+    <>
+      <LandingPage
+        onConnect={() => setSigningIn(true)}
+        isAuthenticated={isAuthenticated}
+        onOpenApp={() => navigate(APP_ROUTE)}
+      />
+      <SignInModal open={signingIn} onClose={() => setSigningIn(false)} />
+    </>
+  );
+}
+
 /**
- * The invitation prompt, mounted ABOVE the routes.
- *
- * An invitation link can land on any URL — and in this app it reliably lands on
- * one that immediately redirects: an authenticated visitor is bounced from `/`
- * to the app route, and an unauthenticated one goes through the whole login
- * round-trip first. A handler living on a page would miss the invitation in both
- * of the two cases that actually happen, so it lives here, where it is always
- * mounted, and the platform store buffers the intent until it asks.
- *
- * Accepting navigates to the app route, carrying what was joined in the
- * navigation state: the app page may already be showing (the usual case), so a
- * bare navigation would change nothing there. It hands the state to
- * `useWorkspace().landJoined`, which re-reads the node and opens the
- * spreadsheet the link named.
+ * The invitation prompt, mounted ABOVE the routes: a link can land on any
+ * route, and a signed-out visitor goes through the sign-in first. Joining
+ * navigates to the app route carrying what was joined, which the app page
+ * hands to `useWorkspace().landJoined`.
  */
 function AppInvitations() {
   const navigate = useNavigate();
   const onJoined = useCallback(
-    (joined: Pick<AcceptedInvite, 'namespaceId' | 'contextId'>) =>
-      navigate(APP_ROUTE, { state: { joined } }),
+    (joined: AcceptedInvite) => navigate(APP_ROUTE, { state: { joined } }),
     [navigate],
   );
-  const { isAuthenticated, isLoading } = useMero();
-  // Nothing to join into without a node session, and prompting before login
-  // would ask a question the user cannot answer yet. The intent is durable, so
-  // it is still here after they sign in.
-  return <InvitationPrompt onJoined={onJoined} enabled={!isLoading && isAuthenticated} />;
+  return <InvitationPrompt onJoined={onJoined} />;
 }
 
-export default function App() {
-  const registryUrl =
-    import.meta.env.VITE_REGISTRY_URL?.trim() || 'https://apps.calimero.network';
-  // P4 RUNTIME defense against package shadowing: APP_PACKAGE (from
-  // studio.config via ./config) takes precedence over a stale
-  // VITE_PACKAGE_NAME left in app/.env. The canonical strip lives in
-  // configTools.propagateSpecToConfig; this precedence flip survives any
-  // out-of-band .env write at any time — keep BOTH.
-  const packageName =
-    APP_PACKAGE || import.meta.env.VITE_PACKAGE_NAME?.trim();
-
+export default function App({ deps }: { deps?: SessionDeps } = {}) {
   return (
-    <MeroProvider
-      mode={AppMode.MultiContext}
-      packageName={packageName}
-      registryUrl={registryUrl}
-      servedByNode={isServedByNode(pageUrl())}
-    >
+    <SessionProvider deps={deps}>
       <ToastProvider>
-        <BrowserRouter basename={nodeBasename(pageUrl(), '/')}>
+        <BrowserRouter basename={nodeBasename(new URL(window.location.href), '/')}>
           <AppInvitations />
           <Routes>
-            {/* Landing is the front door; authenticated users (incl. desktop
-                SSO skip) are redirected straight into the app. */}
-            {/* The landing page is three pages: `/`, `/docs` and `/preview`. They are
-                real URLs so they can be shared and opened cold, which needs a route
-                here — otherwise this app's catch-all swallows the deep link before
-                the page ever renders. */}
             {LANDING_PATHS.map((landingPath) => (
               <Route
                 key={landingPath}
                 path={landingPath}
-                // ⚠️ Only `/` bounces a signed-in visitor into the app. `/docs` and
-                // `/preview` are reference pages, and somebody already signed in is
-                // exactly the person most likely to want to read them.
+                // Only `/` bounces a signed-in visitor into the app; `/docs` and
+                // `/preview` are reference pages.
                 element={
                   landingPath === '/' ? (
                     <RedirectIfAuthed>
-                      <LandingPage />
+                      <Landing />
                     </RedirectIfAuthed>
                   ) : (
-                    <LandingPage />
+                    <Landing />
                   )
                 }
               />
             ))}
-            {/* The /login PAGE is gone — every app had one, every one looked
-                different, and its whole content was a button the visitor had
-                already pressed to get there. The path stays as a redirect so a
-                bookmark lands on the front door instead of a blank route. */}
             <Route path="/login" element={<Navigate to="/" replace />} />
             <Route path={APP_ROUTE} element={<RequireAuth><AppPage /></RequireAuth>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>
       </ToastProvider>
-    </MeroProvider>
+    </SessionProvider>
   );
 }

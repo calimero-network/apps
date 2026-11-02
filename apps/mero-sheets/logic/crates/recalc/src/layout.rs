@@ -16,7 +16,7 @@
 //! same spot tie-break on the id.
 
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 /// Width of an implicit position's number: room for 10^9 rows.
 const IMPLICIT_WIDTH: usize = 9;
@@ -56,7 +56,7 @@ pub enum Axis {
     /// Materialised order, with an index for id → position.
     Explicit {
         ids: Vec<String>,
-        index: HashMap<String, usize>,
+        index: BTreeMap<String, usize>,
     },
 }
 
@@ -66,7 +66,7 @@ impl Axis {
         if entries.is_empty() {
             return Axis::Identity(len);
         }
-        let mut overridden: HashMap<u32, bool> = HashMap::new();
+        let mut overridden: BTreeMap<u32, bool> = BTreeMap::new();
         let mut added: Vec<(&str, &str)> = Vec::new();
         for e in entries {
             match implicit_index(&e.id) {

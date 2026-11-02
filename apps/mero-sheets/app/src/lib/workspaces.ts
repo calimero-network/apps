@@ -1,470 +1,250 @@
-// ── Namespaces, spreadsheets, invitations ────────────────────────────────────
-//
-// The model, with the vocabulary kept straight:
-//
-//   Namespace  = the shared workspace          ← you invite people HERE
-//     └── Context = one spreadsheet
-//     └── Context = one spreadsheet
-//
-// mero-sheets binds each spreadsheet's context directly to the namespace root
-// rather than to a subgroup, so there is exactly one membership to grant and a
-// namespace invitation covers every spreadsheet in it. That is worth saying out
-// loud in the UI, and this module's callers do.
-//
-// Extracted from `useWorkspace` because these are multi-call sequences with
-// retries and fallbacks in them, they are the part most likely to need a fix,
-// and a hook is the worst place to unit-test one.
-
-import type { MeroJs } from '@calimero-network/mero-js';
-import {
-  NotForAccountError,
-  describeInviteFailure,
-  redeemInvitation,
-  type RedeemOutcome,
-} from '@calimero-network/mero-react';
-import {
-  encodeInvite,
-  namespaceIdOfInvite,
-  type InviteChainEntry,
-  type SheetsInvitePayload,
-  type SignedInvitation,
-} from './inviteCodec';
-
-/** The session admin client, as `useMero().admin` provides it (node or account). */
-export type AdminLike = MeroJs['admin'];
-
 /**
- * Progress sink. Every flow in here is several round-trips deep, and a single
- * "Working…" for six seconds of network is the difference between "loading" and
- * "broken" from the user's side — so each step names itself.
+ * The workspace and its spreadsheets on Calimero 1.0.
+ *
+ * | v1 | here |
+ * |---|---|
+ * | the workspace: a namespace of the app on your node | an **organization** (`createOrg`) |
+ * | a spreadsheet: a context in the namespace | an **app instance** in the org (`createApp(name, source, { org })`) |
+ * | the spreadsheet's name: context metadata | the instance's `name` |
+ * | a namespace invitation: a signed payload in a deflate+base58 link | an **org invite** token in `?invite=` (`invite` is a passkey step-up; `redeemInvite` after sign-in); a link that opens a spreadsheet also carries `&sheet=<app id>` |
+ * | joining a context, waiting for it to reach your node | nothing: every member of the org reaches its instances, and nothing has to replicate first |
+ * | the name a person set for the whole workspace: namespace member metadata | org **member metadata** `{ name }` |
  */
+import { ORG_CAPABILITIES, type AppInfo, type CalimeroClient, type PasskeyProvider } from '@calimero-network/mero-js';
+import type { AppSource, KeyValueStorage } from '@calimero-apps/connect';
+
+import { APP_NAME } from '../config';
+
 export type StatusFn = (message: string) => void;
 const noop: StatusFn = () => {};
 
-/**
- * Members can create per-namespace contexts and invite others. Mirrors core's
- * MemberCapabilities bits (CAN_CREATE_CONTEXT | CAN_INVITE_MEMBERS).
- */
-export const DEFAULT_CAPABILITIES = 1 | 2; // = 3
+/** A workspace (org) this account is in. */
+export interface WorkspaceOrg {
+  orgId: string;
+  name: string;
+  /** `owner` | `admin` | `member` | `guest`. */
+  role: string;
+}
 
-/** How long to wait for a joined context's identity to land, and how often to look. */
-const IDENTITY_TIMEOUT_MS = 30_000;
-const IDENTITY_POLL_MS = 1_200;
+/** What `/me` answers about orgs. */
+interface MeOrgs {
+  orgs?: Array<{ orgId: string; name: string; role: string }>;
+}
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** Every org this account is in. */
+export async function listOrgs(client: Pick<CalimeroClient, 'me'>): Promise<WorkspaceOrg[]> {
+  const me = (await client.me()) as MeOrgs;
+  return (me.orgs ?? []).map((o) => ({ orgId: o.orgId, name: o.name, role: o.role }));
+}
 
-/**
- * Descend an invitation response until we reach the object that actually carries
- * the signature. The join endpoints want the invitation OBJECT — not a JSON
- * string of it, and not a wrapper around it.
- */
-export function unwrapInvitation(payload: unknown): SignedInvitation | null {
-  let node: unknown = payload;
-  for (let i = 0; i < 5; i++) {
-    if (!node || typeof node !== 'object') return null;
-    const o = node as Record<string, unknown>;
-    if ('inviter_signature' in o || 'inviterSignature' in o) {
-      return o as unknown as SignedInvitation;
-    }
-    if ('invitation' in o) node = o.invitation;
-    else return null;
-  }
-  return null;
+/** The instances of this app (the dev bundle, or the package) the account reaches. */
+export async function listInstances(client: Pick<CalimeroClient, 'listApps'>, source: AppSource): Promise<AppInfo[]> {
+  const filter = typeof source === 'string' ? { bundle: source } : { package: source.package };
+  return client.listApps(filter);
 }
 
 /**
- * A join that is already satisfied is a SUCCESS, not a failure. Re-opening a
- * link, a retry after a timeout, and walking a chain that overlaps memberships
- * you already hold all land here — and every one of them should end with the
- * user inside, rather than staring at "already a member" styled as an error.
+ * The human name for a workspace. Never a bare id: an org created without a
+ * name reads as the app's name and the start of its id.
  */
-export function isAlreadyMember(e: unknown): boolean {
-  const m = (e instanceof Error ? e.message : String(e)).toLowerCase();
-  return (
-    m.includes('already a member') ||
-    m.includes('already member') ||
-    m.includes('already joined') ||
-    m.includes('alreadyjoined') ||
-    m.includes('duplicate member')
-  );
-}
-
-// ── Naming ───────────────────────────────────────────────────────────────────
-
-/**
- * A readable name for a namespace, never an id dressed up as one.
- *
- * `Namespace.name` is optional on the wire and was never populated by this app,
- * because `createNamespace` was called without one. It is now, but a namespace
- * created by an older build still has none, so the fallback has to exist and has
- * to look like a fallback.
- */
-export function namespaceLabel(
-  ns: { namespaceId: string; name?: string },
-  appName: string,
-): string {
+export function namespaceLabel(ns: { namespaceId: string; name?: string }, appName: string): string {
   return (ns.name ?? '').trim() || `${appName} · ${ns.namespaceId.slice(0, 6)}`;
 }
 
-/** A readable name for a spreadsheet whose own name has not resolved yet. */
+/** What to call a spreadsheet whose instance has no name. */
 export function spreadsheetFallbackLabel(contextId: string): string {
   return `Untitled · ${contextId.slice(0, 6)}`;
 }
 
-// ── Namespace ────────────────────────────────────────────────────────────────
-
-/**
- * The namespace that holds this app's spreadsheets, creating it on first run.
- *
- * `name` is passed to `createNamespace` — a field that exists on
- * `CreateNamespaceRequest` and was simply never filled in, which is why every
- * invitation this app minted described itself with a 64-hex group id.
- */
-export async function ensureNamespace(
-  admin: AdminLike,
-  opts: { applicationId: string; existingNamespaceId: string | null; name: string },
-  onStatus: StatusFn = noop,
-): Promise<string> {
-  if (opts.existingNamespaceId) return opts.existingNamespaceId;
-
-  onStatus('Creating your workspace…');
-  // No `upgradePolicy`: mero-js 13 dropped it from CreateNamespaceRequest and
-  // every core request body is a closed set, so sending it is a 400 for the
-  // whole call rather than an ignored key.
-  const ns = await admin.createNamespace({
-    applicationId: opts.applicationId,
-    name: opts.name,
-  });
-
-  onStatus('Granting member capabilities…');
-  // ⚠️ NOT SWALLOWED, AND THAT CHANGED AT rc.41.
-  //
-  // This call used to end `.catch(() => {})`, with the note "a failure here
-  // costs invitees their permissions rather than breaking the workspace". That
-  // was true while core seeded a new namespace with `CAN_JOIN_OPEN_SUBGROUPS`
-  // and nothing else.
-  //
-  // 0.11.0-rc.41 changed the seed. `initial_default_capabilities` in core's
-  // `crates/context/src/handlers/create_group.rs` now returns
-  //
-  //     CAN_JOIN_OPEN_SUBGROUPS | CAN_AUTHOR_ON_BEHALF
-  //
-  // for a namespace root (#3969), and rc.41 also publishes it as a governance
-  // op so it REPLICATES to every peer (#3974). `CAN_AUTHOR_ON_BEHALF` is write
-  // as somebody else — in a shared spreadsheet, edits attributed to a
-  // collaborator who did not make them.
-  //
-  // So the cost of losing this write inverted: it no longer withholds a
-  // capability, it GRANTS one, to everyone invited, silently and permanently.
-  await admin.setDefaultCapabilities(ns.namespaceId, {
-    defaultCapabilities: DEFAULT_CAPABILITIES,
-  });
-
-  return ns.namespaceId;
-}
-
-// ── Spreadsheets (contexts) ──────────────────────────────────────────────────
-
+/** A spreadsheet in the workspace: one app instance. */
 export interface SpreadsheetRow {
+  /** The app instance id (v1's context id). */
   contextId: string;
   name: string;
-  /** True when this row's name is a placeholder, not something anyone typed. */
+  /** True when `name` is a placeholder rather than something someone typed. */
   unnamed: boolean;
 }
 
-/**
- * Every spreadsheet in the namespace, by name.
- *
- * Names come from the node, not from `localStorage`. The previous version kept
- * them in a per-browser map keyed by context id, which meant the creator saw
- * "Q3 Budget" and every single person they invited saw "Workspace 1" — the name
- * was never sent anywhere.
- *
- * Two node-side sources, in order: the context listing's own `name`, and the
- * context's metadata record. The metadata record is the one that survives,
- * because it is a replicated record on the group rather than a label the
- * listing may or may not carry; the listing is preferred when present only
- * because it costs no extra round-trip.
- *
- * A per-context read failure degrades THAT row to a placeholder instead of
- * emptying the list — a context whose metadata has not replicated to this node
- * yet is the normal case right after joining, not an error.
- */
-export async function listSpreadsheets(
-  admin: AdminLike,
-  namespaceId: string,
-  contexts: readonly { contextId: string; name?: string }[],
-): Promise<SpreadsheetRow[]> {
-  return Promise.all(
-    contexts.map(async (c) => {
-      const listed = (c.name ?? '').trim();
-      if (listed) return { contextId: c.contextId, name: listed, unnamed: false };
-      const meta = await admin
-        .getContextMetadata(namespaceId, c.contextId)
-        .catch(() => null);
-      const name = (meta?.name ?? '').trim();
+/** The spreadsheets in `org`, by name. */
+export function spreadsheetsIn(instances: readonly AppInfo[], org: string): SpreadsheetRow[] {
+  return instances
+    .filter((a) => a.org === org)
+    .map((a) => {
+      const name = (a.name ?? '').trim();
       return name
-        ? { contextId: c.contextId, name, unnamed: false }
-        : {
-            contextId: c.contextId,
-            name: spreadsheetFallbackLabel(c.contextId),
-            unnamed: true,
-          };
-    }),
-  );
+        ? { contextId: a.appId, name, unnamed: false }
+        : { contextId: a.appId, name: spreadsheetFallbackLabel(a.appId), unnamed: true };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name) || a.contextId.localeCompare(b.contextId));
 }
 
 /**
- * Create one spreadsheet: a context in the namespace, named.
- *
- * The name is written in three places on purpose, and none of them is
- * redundant:
- *
- *   1. `createContext({name})` — the node's own label for the context.
- *   2. the context METADATA record — replicated with the group, so a peer who
- *      joins later can read the name WITHOUT holding an identity in the context.
- *      That is the case the picker has to render, and the only source that
- *      covers it.
- *   3. the contract, via `init_project(name)` — the authoritative title, shown
- *      once the spreadsheet is open. The caller does that step, because it
- *      needs the context's executor identity, which does not exist yet here.
- *
- * Step 2 is best-effort: a nameless spreadsheet still works, and losing the
- * label is not worth failing a created spreadsheet over.
+ * What a member may do unless an admin sets otherwise, as v1 set it on a new
+ * namespace: create spreadsheets and invite people (and join open teams, the
+ * node's own default).
  */
-export async function createSpreadsheet(
-  admin: AdminLike,
-  opts: {
-    applicationId: string;
-    namespaceId: string;
-    name: string;
-    serviceName: string;
-  },
+export const MEMBER_DEFAULTS =
+  ORG_CAPABILITIES.CREATE_APP | ORG_CAPABILITIES.INVITE_MEMBERS | ORG_CAPABILITIES.JOIN_OPEN_TEAMS;
+
+/**
+ * The workspace to create a spreadsheet in: `existing`, or a new org whose
+ * members may create spreadsheets and invite. Setting those defaults is a
+ * passkey step-up; refused, the org stays (only its owner and admins can then
+ * create and invite) and `warning` says so.
+ */
+export async function ensureWorkspace(
+  client: Pick<CalimeroClient, 'createOrg' | 'setCapabilities'>,
+  opts: { existing: string | null; name: string; passkey: () => PasskeyProvider },
   onStatus: StatusFn = noop,
-): Promise<{ contextId: string; memberPublicKey: string }> {
-  onStatus('Creating the spreadsheet…');
-  const ctx = await admin.createContext({
-    applicationId: opts.applicationId,
-    groupId: opts.namespaceId,
-    serviceName: opts.serviceName,
-    name: opts.name,
-    initializationParams: [],
-  });
-
-  onStatus('Naming it…');
-  await admin
-    .setContextMetadata(opts.namespaceId, ctx.contextId, { name: opts.name })
-    .catch(() => {});
-
-  return { contextId: ctx.contextId, memberPublicKey: ctx.memberPublicKey };
+): Promise<{ orgId: string; warning: string | null }> {
+  if (opts.existing) return { orgId: opts.existing, warning: null };
+  onStatus('Creating your workspace…');
+  const orgId = await client.createOrg(opts.name);
+  onStatus('Letting members create spreadsheets and invite…');
+  try {
+    await client.setCapabilities(orgId, MEMBER_DEFAULTS, opts.passkey());
+    return { orgId, warning: null };
+  } catch {
+    return {
+      orgId,
+      warning: 'The workspace was created, but people you invite will not be able to create spreadsheets or invite others.',
+    };
+  }
 }
 
-// ── Invitations ──────────────────────────────────────────────────────────────
-
-/**
- * Mint an OPEN namespace invitation and encode it as one shareable code.
- *
- * OPEN means the invitation carries no invitee key, so anyone holding the code
- * can join. Deliberately do NOT pass `inviteePublicKey`: it is silently ignored
- * and misleads the next reader.
- *
- * `recursive` is not passed either. The previous version passed
- * `{recursive: true}`, which changes the RESPONSE SHAPE to `{invitations: […]}`
- * — and there is nothing to recurse into, because this app has no subgroups. It
- * bought a second wire format for zero grant.
- *
- * The names ride ALONGSIDE the signature, not inside it: they steer what the
- * recipient is told and which spreadsheet opens, and they cannot grant
- * anything. The id acted on always comes from inside the signed blob.
- */
-export async function mintInvite(
-  admin: AdminLike,
-  opts: {
-    namespaceId: string;
-    namespaceName?: string;
-    /** The spreadsheet open when Invite was pressed — opened after joining. */
-    contextId?: string | null;
-    projectName?: string;
-  },
+/** A new spreadsheet in `org`: an app instance, named. Answers its id. */
+export async function createSpreadsheet(
+  client: Pick<CalimeroClient, 'createApp'>,
+  source: AppSource,
+  org: string,
+  name: string,
   onStatus: StatusFn = noop,
 ): Promise<string> {
-  onStatus('Minting an invitation…');
-  const res = await admin.createNamespaceInvitation(opts.namespaceId, {});
-  const invitation = unwrapInvitation(res);
-  if (!invitation) {
-    throw new Error('The node returned an invitation with no signature.');
-  }
-  onStatus('Building the link…');
-  return encodeInvite({
-    invitation,
-    kind: 'namespace',
-    groupId: opts.namespaceId,
-    groupAlias: opts.namespaceName,
-    contextId: opts.contextId ?? undefined,
-    projectName: opts.projectName,
-  });
+  onStatus('Creating the spreadsheet…');
+  return client.createApp(name, source, { org });
 }
 
+// ── members ──────────────────────────────────────────────────────────────────
+
+/** The parts of `GET /orgs/{org}` the screens read. */
+export interface OrgMembers {
+  /** account -> `owner` | `admin` | `member` | `guest`. */
+  roles: Map<string, string>;
+  /** account -> the name they set for the workspace, where one is set. */
+  names: Map<string, string>;
+}
+
+export async function readMembers(client: Pick<CalimeroClient, 'getOrg'>, org: string): Promise<OrgMembers> {
+  const o = (await client.getOrg(org)) as Record<string, unknown>;
+  const members = (o.members ?? {}) as Record<string, string>;
+  const meta = (o.memberMetadata ?? {}) as Record<string, unknown>;
+  const names = new Map<string, string>();
+  for (const [account, value] of Object.entries(meta)) {
+    const name = (value as { name?: unknown } | null)?.name;
+    if (typeof name === 'string' && name.trim()) names.set(account, name.trim());
+  }
+  return { roles: new Map(Object.entries(members)), names };
+}
+
+/** Publishes the name `account` goes by across the workspace (org member metadata). */
+export async function publishWorkspaceName(
+  client: Pick<CalimeroClient, 'setMemberMetadata'>,
+  org: string,
+  account: string,
+  name: string,
+): Promise<void> {
+  await client.setMemberMetadata(org, account, { name });
+}
+
+// ── invitations ──────────────────────────────────────────────────────────────
+
+/**
+ * The link that opens this frontend with `token` to redeem; with `sheet`, the
+ * joiner lands in that spreadsheet instead of on the workspace's list.
+ */
+export function inviteLink(
+  token: string,
+  sheet?: string | null,
+  location: Pick<Location, 'origin' | 'pathname'> = window.location,
+): string {
+  const url = new URL(location.pathname, location.origin);
+  url.searchParams.set('invite', token);
+  if (sheet) url.searchParams.set('sheet', sheet);
+  return url.toString();
+}
+
+/** A workspace invitation as a link: an org invite, approved with the inviter's passkey (412 step-up). */
+export async function mintInvite(
+  client: Pick<CalimeroClient, 'invite'>,
+  opts: { org: string; sheet: string | null; passkey: () => PasskeyProvider },
+  onStatus: StatusFn = noop,
+): Promise<string> {
+  onStatus('Approve the invitation with your passkey…');
+  const token = await client.invite(opts.org, 'member', opts.passkey());
+  return inviteLink(token, opts.sheet);
+}
+
+export interface PendingInvite {
+  token: string;
+  /** The spreadsheet the link lands in, when it names one. */
+  sheet: string | null;
+}
+
+const PENDING = `${APP_NAME}:pending-invite`;
+
+/**
+ * Takes `?invite=` (and `&sheet=`) off the address bar into storage, before
+ * anything renders: a person opening a link is usually not signed in yet, and
+ * the token must survive the sign-up. Redeemed (and dropped) once a session
+ * exists and the person says yes.
+ */
+export function captureInvite(storage: KeyValueStorage = localStorage, loc: Location = window.location): void {
+  const url = new URL(loc.href);
+  const token = url.searchParams.get('invite');
+  if (!token) return;
+  const pending: PendingInvite = { token, sheet: url.searchParams.get('sheet') };
+  try {
+    storage.setItem(PENDING, JSON.stringify(pending));
+  } catch {
+    return;
+  }
+  url.searchParams.delete('invite');
+  url.searchParams.delete('sheet');
+  window.history.replaceState(null, '', url.toString());
+}
+
+export function pendingInvite(storage: KeyValueStorage = localStorage): PendingInvite | null {
+  try {
+    const raw = storage.getItem(PENDING);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<PendingInvite>;
+    return typeof parsed.token === 'string' && parsed.token
+      ? { token: parsed.token, sheet: typeof parsed.sheet === 'string' ? parsed.sheet : null }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function dropInvite(storage: KeyValueStorage = localStorage): void {
+  try {
+    storage.removeItem(PENDING);
+  } catch {
+    /* nothing stored */
+  }
+}
+
+/** The org an invitation redeemed into, from whichever field the node named it. */
+export function joinedOrg(redeemed: Record<string, unknown>): string | null {
+  for (const key of ['org', 'orgId']) {
+    const v = redeemed[key];
+    if (typeof v === 'string' && v) return v;
+  }
+  return null;
+}
+
+/** What a join landed in, for the app page to open. */
 export interface AcceptedInvite {
   namespaceId: string | null;
-  /** Carried by the code as a hint; may not have replicated to this node yet. */
   contextId: string | null;
-  projectName?: string;
-  namespaceName?: string;
-}
-
-/**
- * A workspace join the node did not let through, as `redeemInvitation` read it.
- *
- * The message is already the sentence to show (in this app's word,
- * "workspace"); `outcome` is what the invitation prompt hands its dialog, which
- * keeps or lets go of the invitation by it.
- */
-export class InviteRedeemError extends Error {
-  readonly outcome: Extract<RedeemOutcome, { status: 'failed' }>;
-  constructor(outcome: Extract<RedeemOutcome, { status: 'failed' }>) {
-    super(describeInviteFailure(outcome.reason, 'workspace') ?? outcome.message);
-    this.name = 'InviteRedeemError';
-    this.outcome = outcome;
-  }
-}
-
-/**
- * Accept a decoded invite: walk its chain, or join the single group it names.
- *
- * The id acted on always comes from INSIDE the signed invitation, never from the
- * wrapper, so a tampered code cannot redirect a join somewhere else.
- */
-export async function acceptInvite(
-  admin: AdminLike,
-  payload: SheetsInvitePayload,
-  onStatus: StatusFn = noop,
-): Promise<AcceptedInvite> {
-  const result: AcceptedInvite = {
-    namespaceId: null,
-    contextId: payload.contextId ?? null,
-    projectName: payload.projectName,
-    namespaceName: payload.groupAlias,
-  };
-
-  const steps: InviteChainEntry[] = payload.chain ?? [
-    {
-      groupId: namespaceIdOfInvite(payload),
-      invitation: payload.invitation,
-      kind: 'namespace',
-    },
-  ];
-
-  for (const step of steps) {
-    // Trust the signature, not the label: re-read the id from the signed blob.
-    const signedId = namespaceIdOfInvite(step.invitation) || step.groupId;
-    const label = payload.groupAlias
-      ? `“${payload.groupAlias}”`
-      : 'the workspace';
-    onStatus(`Joining ${label}…`);
-    if (step.kind === 'namespace') {
-      // Membership, not the request, decides whether the join worked: the
-      // desktop proxy aborts at 30s while a join can take far longer and land
-      // anyway. `redeemInvitation` sends the join once and, when it throws,
-      // asks the node whether the namespace is now listed.
-      let heldAlready = false;
-      const outcome = await redeemInvitation(
-        { namespaceId: signedId, invitation: step.invitation },
-        {
-          join: async (namespaceId, invitation) => {
-            try {
-              await admin.joinNamespace(namespaceId, {
-                invitation: invitation as never,
-                // The node stores this as the namespace's name for THIS member,
-                // so a joiner who arrives via a link ends up with the same label
-                // the inviter sees rather than a bare id.
-                ...(payload.groupAlias ? { groupName: payload.groupAlias } : {}),
-              });
-            } catch (e) {
-              if (!isAlreadyMember(e)) throw e;
-              heldAlready = true;
-            }
-          },
-          memberships: async () =>
-            ((await admin.listNamespaces()) ?? []).map((n) => n.namespaceId),
-        },
-      );
-      if (outcome.status === 'failed') throw new InviteRedeemError(outcome);
-      if (heldAlready || outcome.status === 'already-member') {
-        onStatus(`Already in ${label} — continuing…`);
-      }
-      result.namespaceId = signedId;
-    } else {
-      try {
-        await admin.joinGroup({ invitation: step.invitation as never });
-      } catch (e) {
-        // A legacy group invitation has no delegated form: say so, rather than
-        // the bare "needs a node" the account admin refuses it with.
-        if (e instanceof NotForAccountError) {
-          throw new Error(
-            'This invitation is an older group invitation, which is not available for cloud accounts yet. Ask for a new link.',
-          );
-        }
-        if (!isAlreadyMember(e)) throw e;
-        onStatus(`Already in ${label} — continuing…`);
-      }
-    }
-  }
-
-  return result;
-}
-
-/**
- * Get an executor identity in a spreadsheet's context, joining it if needed.
- *
- * ── The bug this fixes ──────────────────────────────────────────────────────
- *
- * Opening a spreadsheet used to be "ask for the identity we own here; if there
- * is none, stay on the Opening… screen". For the person who CREATED the
- * spreadsheet there is always one, so it worked. For anyone who joined by
- * invitation there never is: auto-follow carries a context identity only into
- * contexts created AFTER you became a member, and every spreadsheet in a
- * workspace you were invited to predates your invitation by definition. So an
- * invited collaborator could see the spreadsheet in the list, click it, and sit
- * on "Opening workspace…" until they gave up. Nothing errored; nothing ever
- * would have.
- *
- * So: use the identity we hold, otherwise ASK for the context, and only fall
- * back to polling if that request itself fails — which is the transient case
- * (the context has not replicated to this node yet) and the only one worth
- * waiting on.
- */
-export async function enterSpreadsheet(
-  admin: AdminLike,
-  contextId: string,
-  onStatus: StatusFn = noop,
-): Promise<string> {
-  const owned = await admin.getContextIdentitiesOwned(contextId).catch(() => null);
-  const existing = owned?.identities?.[0];
-  if (existing) return existing;
-
-  onStatus('Joining this spreadsheet…');
-  const joined = await admin.joinContext(contextId).catch(() => null);
-  if (joined?.memberPublicKey) return joined.memberPublicKey;
-
-  onStatus('Waiting for the spreadsheet to reach your node…');
-  const deadline = Date.now() + IDENTITY_TIMEOUT_MS;
-  let lastError: unknown = null;
-  while (Date.now() < deadline) {
-    await sleep(IDENTITY_POLL_MS);
-    const again = await admin.getContextIdentitiesOwned(contextId).catch(() => null);
-    const id = again?.identities?.[0];
-    if (id) return id;
-    const retry = await admin.joinContext(contextId).catch((e) => {
-      lastError = e;
-      return null;
-    });
-    if (retry?.memberPublicKey) return retry.memberPublicKey;
-  }
-
-  const detail = lastError instanceof Error ? ` (${lastError.message})` : '';
-  throw new Error(
-    `This spreadsheet has not reached your node yet${detail}. It replicates from ` +
-      'a peer who is online, so try again once someone else has it open.',
-  );
 }

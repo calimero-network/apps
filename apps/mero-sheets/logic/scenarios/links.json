@@ -1,0 +1,287 @@
+[
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "initProject",
+  "args": {
+   "name": "Plan"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createSheet",
+  "args": {
+   "name": "Model"
+  },
+  "save": "sid"
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "receiveLink",
+  "args": {
+   "fromContext": "finance-app",
+   "publicationId": "pub-1",
+   "name": "Rates",
+   "sourceName": "Finance",
+   "rows": 1,
+   "cols": 2,
+   "values": [
+    "Rate",
+    "=1.5"
+   ]
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setCell",
+  "args": {
+   "sheetId": "$sid",
+   "rowId": "0",
+   "colId": "0",
+   "rawValue": "=[link-financeapp-pub-1]!B1*4"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "publishRange",
+  "args": {
+   "sheetId": "$sid",
+   "topRowId": "0",
+   "leftColId": "0",
+   "bottomRowId": "0",
+   "rightColId": "0",
+   "targetContext": "summary-app",
+   "name": "Out"
+  },
+  "save": "pub"
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "pushPublication",
+  "args": {
+   "id": "$pub"
+  },
+  "expect": {
+   "ok": {
+    "publication_id": "$pub",
+    "target_context": "summary-app",
+    "name": "Out",
+    "source_name": "Plan",
+    "rows": 1,
+    "cols": 1,
+    "values": [
+     "6"
+    ]
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setCell",
+  "args": {
+   "sheetId": "link-financeapp-pub-1",
+   "rowId": "0",
+   "colId": "0",
+   "rawValue": "x"
+  },
+  "expect": {
+   "error": "NotFound"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "receiveLink",
+  "args": {
+   "fromContext": "finance-app",
+   "publicationId": "pub-1",
+   "name": "Rates",
+   "sourceName": "Finance",
+   "rows": 1,
+   "cols": 2,
+   "values": [
+    "Rate"
+   ]
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "publishRange",
+  "args": {
+   "sheetId": "$sid",
+   "topRowId": "0",
+   "leftColId": "0",
+   "bottomRowId": "0",
+   "rightColId": "0",
+   "targetContext": "not an id",
+   "name": "Out"
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "unlink",
+  "args": {
+   "id": "link-financeapp-pub-1"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getLinks",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "receiveLink",
+  "args": {
+   "fromContext": "finance-app",
+   "publicationId": "pub-1",
+   "name": "Rates",
+   "sourceName": "Finance",
+   "rows": 1,
+   "cols": 1,
+   "values": [
+    "9"
+   ]
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getLinks",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "pushPublication",
+  "args": {
+   "id": "$pub"
+  },
+  "expect": {
+   "ok": {
+    "publication_id": "$pub",
+    "target_context": "summary-app",
+    "name": "Out",
+    "source_name": "Plan",
+    "rows": 1,
+    "cols": 1,
+    "values": [
+     "#REF!"
+    ]
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "receiveLink",
+  "args": {
+   "fromContext": "finance-app",
+   "publicationId": "pub-2",
+   "name": "More",
+   "sourceName": "Finance",
+   "rows": 1,
+   "cols": 1,
+   "values": [
+    "1"
+   ]
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "dropLink",
+  "args": {
+   "fromContext": "finance-app",
+   "publicationId": "pub-2"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getLinks",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "unpublish",
+  "args": {
+   "id": "$pub"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "unpublish",
+  "args": {
+   "id": "$pub"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getPublications",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "pushPublication",
+  "args": {
+   "id": "$pub"
+  },
+  "expect": {
+   "error": "NotFound"
+  }
+ }
+]

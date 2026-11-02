@@ -1,13 +1,14 @@
 [package]
 name    = "mero-sheets-types"
-version = "0.1.0"
-edition.workspace    = true
-authors.workspace    = true
-license.workspace    = true
-repository.workspace = true
+version     = "0.1.0"
+edition     = "2021"
+authors     = ["Calimero Limited <info@calimero.network>"]
+license     = "MIT OR Apache-2.0"
+repository  = "https://github.com/calimero-network/apps"
+publish     = false
 
 [dependencies]
-thiserror = { workspace = true }
-hex       = { workspace = true }
-borsh     = { workspace = true, features = ["derive"] }
+thiserror = "1.0.56"
+hex       = "0.4.3"
+borsh     = { version = "1.6.1", features = ["derive"] }
 serde     = { version = "1.0", features = ["derive"] }

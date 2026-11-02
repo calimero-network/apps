@@ -1,57 +1,34 @@
 /**
- * useWorkspace — the Calimero workspace and the spreadsheets inside it.
+ * useWorkspace — the workspace (an organization) and the spreadsheets inside it
+ * (instances of this app in that organization).
  *
- * Model:
- *  - The app installs as a Calimero application. One NAMESPACE per node holds
- *    this app's spreadsheets; each SPREADSHEET is one context bound to the
- *    namespace root. There are no subgroups, so one membership covers
- *    everything — which is what an invitation grants and what the UI says.
- *  - `contextId` is the open spreadsheet (null = show the picker).
- *  - When launched from the desktop app (SSO), `useMero()` carries a `contextId`
- *    and `contextIdentity` from the auth callback — open that directly.
- *
- * ── What changed here, and why ──────────────────────────────────────────────
- *
- * 1. The application id is resolved FROM THE NODE by package, not taken from
- *    the session or a baked env var. See `lib/appId` — both of the old sources
- *    describe how you arrived, not which app you are.
- * 2. Spreadsheet names come from the node, not from a `localStorage` map keyed
- *    by context id. That map was per-browser: the creator saw "Q3 Budget" and
- *    every person they invited saw "Workspace 1", because the name had never
- *    been sent anywhere.
- * 3. Opening a spreadsheet JOINS its context when this node holds no identity
- *    in it. Waiting for auto-follow — which only carries identities into
- *    contexts created after you joined — is why an invited collaborator could
- *    sit on "Opening workspace…" indefinitely with nothing logged.
- * 4. Invitations are minted here and redeemed by the app-level
- *    `InvitationPrompt` once an opened link is accepted; `landJoined` is the
- *    half of a join that needs this hook's state.
- * 5. A reload reopens the spreadsheet you had open, once the node confirms it
- *    still lists it (see `lib/lastWorkspace`), instead of dropping you on the
- *    picker every time.
+ * Model on Calimero 1.0 (see `lib/workspaces` for the v1 mapping):
+ *  - The workspace is one org this account is in: the one an invitation just
+ *    joined, else the one open before a reload, else the first org holding a
+ *    spreadsheet, else the first org. None until the first spreadsheet is
+ *    created, which creates it.
+ *  - `contextId` is the open spreadsheet's app instance id (null = the picker).
+ *    Every member of the org reaches every instance in it, so opening one is
+ *    immediate: there is no identity to resolve and nothing to sync first.
+ *  - A reload reopens the spreadsheet you had open, once the cluster confirms
+ *    you still reach it (see `lib/lastWorkspace`).
  */
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import {
-  JOIN_SYNC_POLL_MS,
-  isNamespaceJustJoined,
-  subscribeJustJoined,
-  useJoinSync,
-  useMero,
-  useNamespacesForApplication,
-  useGroupContexts,
-} from '@calimero-network/mero-react';
-import { APP_DISPLAY_NAME, PRIMARY_SERVICE } from '../config';
-import { useApplicationId } from './useApplicationId';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { targetKey } from '@calimero-apps/connect';
+import { describeError } from '../utils/errors';
+import { APP_DISPLAY_NAME } from '../config';
+import { useSignedIn } from '../sessionContext';
 import {
   createSpreadsheet,
-  enterSpreadsheet,
-  ensureNamespace,
-  listSpreadsheets,
+  ensureWorkspace,
+  listInstances,
+  listOrgs,
   mintInvite,
   namespaceLabel,
   spreadsheetFallbackLabel,
+  spreadsheetsIn,
   type AcceptedInvite,
-  type SpreadsheetRow,
+  type WorkspaceOrg,
 } from '../lib/workspaces';
 import {
   forgetLastSpreadsheet,
@@ -61,6 +38,7 @@ import {
   readLastWorkspace,
   rememberWorkspace,
 } from '../lib/lastWorkspace';
+import type { AppInfo } from '@calimero-network/mero-js';
 
 export interface Workspace {
   contextId: string;
@@ -71,44 +49,28 @@ export interface Workspace {
 
 export interface UseWorkspaceReturn {
   /** Every spreadsheet in the workspace — the list to pick from. */
-  /** A namespace joined this session whose spreadsheets have not arrived yet. */
-  isSyncing: boolean;
-  dismissSyncing: () => void;
   workspaces: Workspace[];
-  /** The namespace holding them, or null before one exists on this node. */
+  /** The workspace's org id, or null before one exists for this account. */
   namespaceId: string | null;
   /** Its human name. Never a bare id — see `namespaceLabel`. */
   namespaceName: string;
-  /** The open spreadsheet's context id — null when showing the picker. */
+  /** The caller's role in the workspace org (`owner`, `admin`, `member`, `guest`). */
+  orgRole: string | null;
+  /** The open spreadsheet's app instance id — null when showing the picker. */
   contextId: string | null;
-  /**
-   * True while the node is read to decide whether the spreadsheet open before
-   * a reload can be reopened. The picker waits rather than flashing its list.
-   */
+  /** True while the cluster is read to decide whether to reopen the last spreadsheet. */
   resuming: boolean;
-  /** Executor public key for the open context (the signer for RPC calls). */
-  executorPublicKey: string | null;
   /** The open spreadsheet's name, as the picker knows it. */
   activeName: string;
-  /** True once the open context is resolved and we hold its executor identity. */
+  /** True once a spreadsheet is open. */
   ready: boolean;
   loading: boolean;
-  /**
-   * True once a press of "create" would do what it says: this app's id and its
-   * namespace (or the lack of one) are known, and no create is running. Unlike
-   * `loading` it does not flicker while the node is read, so a press is never
-   * dropped on a button that was on a frame ago.
-   */
+  /** True once a press of "create" would do what it says. */
   canCreate: boolean;
   /** What a multi-step operation is currently doing, for the UI to echo. */
   status: string | null;
   error: Error | null;
-  /** True when the node has answered and this app is not installed on it. */
-  notInstalled: boolean;
-  /**
-   * The workspace list failed. Its empty answer is not "no workspace", so
-   * create stays off (it would found a duplicate) until a retry answers.
-   */
+  /** The workspace list failed: create stays off until a retry answers. */
   namespacesFailed: boolean;
   retryNamespaces: () => void;
   openWorkspace: (contextId: string) => void;
@@ -117,415 +79,185 @@ export interface UseWorkspaceReturn {
   pendingInitName: string | null;
   clearPendingInit: () => void;
   leaveWorkspace: () => void;
-  /** Mint a shareable invite code for this workspace. */
-  invite: (opts?: { contextId?: string | null; projectName?: string }) => Promise<string>;
+  /** Mint a shareable invitation link for this workspace (a passkey step-up). */
+  invite: (opts?: { contextId?: string | null }) => Promise<string>;
   inviteLoading: boolean;
-  /**
-   * Land a join the invitation prompt completed: re-read the node and open the
-   * spreadsheet the link named, if it named one.
-   */
-  landJoined: (landed: Pick<AcceptedInvite, 'namespaceId' | 'contextId'>) => Promise<void>;
-  /** Re-read namespaces and contexts from the node. */
+  /** Land a join the invitation prompt completed: re-read and open what the link named. */
+  landJoined: (landed: AcceptedInvite) => Promise<void>;
+  /** Re-read orgs and instances from the cluster. */
   refresh: () => Promise<void>;
 }
 
 export function useWorkspace(): UseWorkspaceReturn {
-  // `admin`, never `mero.admin`: on an account session `mero` is the relay
-  // client, whose node routes (create a namespace or context, join) refuse an
-  // account (403). `admin` is the node's own client on a node login and the
-  // account admin on an account, where writes become delegated ops.
-  const {
-    admin,
-    nodeUrl,
-    contextId: callbackContextId,
-    contextIdentity: callbackContextIdentity,
-  } = useMero();
-  const { appId: applicationId, resolving: appIdResolving, notInstalled } =
-    useApplicationId();
+  const { client, accountId, target, source, passkey, after } = useSignedIn();
+  // Remembered per cluster and per account.
+  const memoryKey = `${targetKey(target)}:${accountId}`;
+  const remembered = useMemo(() => readLastWorkspace(memoryKey), [memoryKey]);
 
-  const {
-    namespaces,
-    loading: nsLoading,
-    error: nsError,
-    refetch: refetchNamespaces,
-  } = useNamespacesForApplication(applicationId || null);
-
-  // A workspace joined by invitation this session, once the node lists it.
+  const [orgs, setOrgs] = useState<WorkspaceOrg[]>([]);
+  const [instances, setInstances] = useState<AppInfo[]>([]);
+  const [listed, setListed] = useState(false);
+  const [listing, setListing] = useState(false);
+  const [listError, setListError] = useState<Error | null>(null);
   const [joinedNsId, setJoinedNsId] = useState<string | null>(null);
-
-  // What was open before this load, on this node. Read once per node: it only
-  // steers startup, and what is open now is written back as it changes.
-  const remembered = useMemo(() => readLastWorkspace(nodeUrl), [nodeUrl]);
-
-  // The app's namespace: the one just joined, else the one open last (while
-  // the node still lists it), else the first one bound to this application.
-  // null on first run. Preferring the joined one is what lands an invited
-  // person who already had a workspace in the one they were invited to, and
-  // what lets the join-sync gate below see that workspace's list.
-  const pickedNsId = pickNamespace(
-    namespaces.map((n) => n.namespaceId),
-    joinedNsId,
-    remembered.namespaceId,
-  );
-  const namespace = namespaces.find((n) => n.namespaceId === pickedNsId) ?? null;
-  const namespaceId = namespace?.namespaceId ?? null;
-  const namespaceName = namespace
-    ? namespaceLabel(namespace, APP_DISPLAY_NAME)
-    : APP_DISPLAY_NAME;
-
-  const {
-    contexts: nsContexts,
-    loading: ctxLoading,
-    refetch: refetchContexts,
-  } = useGroupContexts(namespaceId);
-
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  /** The namespace whose spreadsheet list has been read at least once. */
-  const [listedForNs, setListedForNs] = useState<string | null>(null);
-  const [contextId, setContextId] = useState<string | null>(callbackContextId);
-  const [executorPublicKey, setExecutorPublicKey] = useState<string | null>(
-    callbackContextIdentity,
-  );
+  const [contextId, setContextId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [pendingInitName, setPendingInitName] = useState<string | null>(null);
   const [inviteLoading, setInviteLoading] = useState(false);
-  // Whether startup has decided about reopening the last spreadsheet. Settled
-  // from the start when the SSO callback names one, or nothing is remembered.
-  const [resumeSettled, setResumeSettled] = useState(
-    () => !!callbackContextId || !readLastWorkspace(nodeUrl).contextId,
-  );
-
-  // Desktop SSO: the auth callback pins a specific context — open it directly.
-  useEffect(() => {
-    if (callbackContextId) {
-      setContextId(callbackContextId);
-      if (callbackContextIdentity) setExecutorPublicKey(callbackContextIdentity);
-    }
-  }, [callbackContextId, callbackContextIdentity]);
-
-  // Resolve the spreadsheet names from the node whenever the context list moves.
-  //
-  // A separate effect rather than a `useMemo` because it is asynchronous: the
-  // names live in replicated metadata records, one read per context. Keyed on
-  // the context ids so it does not re-run on every unrelated render.
-  const contextKey = nsContexts.map((c) => c.contextId).join(',');
-  useEffect(() => {
-    if (!admin || !namespaceId) {
-      setWorkspaces([]);
-      return;
-    }
-    let cancelled = false;
-    void listSpreadsheets(admin, namespaceId, nsContexts).then(
-      (rows: SpreadsheetRow[]) => {
-        if (cancelled) return;
-        setWorkspaces(rows);
-        // A real read came back. Whether an EMPTY one settles the join-sync
-        // gate is decided there, not here: see `settled` below.
-        setListedForNs(namespaceId);
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [admin, namespaceId, contextKey]);
-
-  // Get an executor identity in the open context — joining it when this node
-  // holds none, which is ALWAYS the case for a spreadsheet you were invited to.
-  useEffect(() => {
-    if (!admin || !contextId || executorPublicKey) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const identity = await enterSpreadsheet(admin, contextId, (s) => {
-          if (!cancelled) setStatus(s);
-        });
-        if (!cancelled) {
-          setExecutorPublicKey(identity);
-          setStatus(null);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err : new Error(String(err)));
-          setStatus(null);
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [admin, contextId, executorPublicKey]);
+  const [resumeSettled, setResumeSettled] = useState(() => !readLastWorkspace(memoryKey).contextId);
 
   const refresh = useCallback(async () => {
-    await Promise.all([refetchNamespaces(), refetchContexts()]);
-  }, [refetchNamespaces, refetchContexts]);
+    setListing(true);
+    try {
+      const [o, apps] = await Promise.all([listOrgs(client), listInstances(client, source)]);
+      setOrgs(o);
+      setInstances(apps);
+      setListError(null);
+      setListed(true);
+    } catch (e) {
+      setListError(e instanceof Error ? e : new Error(describeError(e)));
+    } finally {
+      setListing(false);
+      after();
+    }
+  }, [client, source, after]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  // The workspace: the one just joined, else the one open last, else the first
+  // org holding a spreadsheet, else the first org.
+  const withSheets = orgs.filter((o) => instances.some((a) => a.org === o.orgId)).map((o) => o.orgId);
+  const pickedNsId = pickNamespace(
+    [...withSheets, ...orgs.map((o) => o.orgId).filter((id) => !withSheets.includes(id))],
+    joinedNsId,
+    remembered.namespaceId,
+  );
+  const org = orgs.find((o) => o.orgId === pickedNsId) ?? null;
+  const namespaceId = org?.orgId ?? null;
+  const namespaceName = org ? namespaceLabel({ namespaceId: org.orgId, name: org.name }, APP_DISPLAY_NAME) : APP_DISPLAY_NAME;
+  const workspaces = useMemo(() => (namespaceId ? spreadsheetsIn(instances, namespaceId) : []), [instances, namespaceId]);
 
   const openWorkspace = useCallback((id: string) => {
     setError(null);
-    setExecutorPublicKey(null); // force identity re-resolution for the new context
     setContextId(id);
   }, []);
 
-  // Leaving is a choice to be on the picker, so a reload keeps you there: the
-  // spreadsheet is forgotten, the workspace it was in is not.
   const leaveWorkspace = useCallback(() => {
-    forgetLastSpreadsheet(nodeUrl);
+    forgetLastSpreadsheet(memoryKey);
     setResumeSettled(true);
     setContextId(null);
-    setExecutorPublicKey(null);
     setPendingInitName(null);
     setStatus(null);
     setError(null);
-  }, [nodeUrl]);
+  }, [memoryKey]);
 
   const clearPendingInit = useCallback(() => setPendingInitName(null), []);
-
-  // Whether this app's namespaces have been read for the current app id.
-  //
-  // `loading` alone cannot say: mero-react's resource hooks report themselves
-  // in flight only from the render AFTER their inputs change, so between the
-  // app id resolving and the namespace read starting there is a render with
-  // nothing loading and no namespace. Gating "create" on `loading` turned the
-  // button on in that render and off again in the next (and once more between
-  // the namespace and the context reads), and a press in one of those frames
-  // hit a disabled button and was lost. A press in the very first one was
-  // worse: with no namespace known yet, create would have made a second one.
-  // So: settled means a read for this id was seen in flight and then ended.
-  //
-  // And ended WITHOUT failing. A failed list reads `[]`, which is not "no
-  // namespace": creating from it founds a second workspace beside the one the
-  // read could not reach. A failed read is retried, never created over.
-  const nsReadStartedFor = useRef<string | null>(null);
-  const [nsSettledFor, setNsSettledFor] = useState<string | null>(null);
-  useEffect(() => {
-    if (!applicationId) return;
-    if (nsLoading) nsReadStartedFor.current = applicationId;
-    else if (nsReadStartedFor.current === applicationId) setNsSettledFor(applicationId);
-  }, [applicationId, nsLoading]);
-  const namespacesFailed = !!nsError && !nsLoading;
-  const namespaceKnown =
-    !!applicationId && nsSettledFor === applicationId && !namespacesFailed;
 
   const creatingRef = useRef(false);
   const createWorkspace = useCallback(
     async (name: string) => {
-      if (!admin || !applicationId || !namespaceKnown || creatingRef.current) return;
+      if (!listed || listError || creatingRef.current) return;
       creatingRef.current = true;
       setBusy(true);
       setError(null);
       try {
-        const nsId = await ensureNamespace(
-          admin,
-          {
-            applicationId,
-            existingNamespaceId: namespaceId,
-            // The namespace is what an invitation names, so it gets a readable
-            // name too — `createNamespace` has always taken one and this app
-            // never passed it, which is why every invite described itself with
-            // a 64-hex group id.
-            name: APP_DISPLAY_NAME,
-          },
+        const { orgId, warning } = await ensureWorkspace(
+          client,
+          { existing: namespaceId, name: APP_DISPLAY_NAME, passkey },
           setStatus,
         );
-        const ctx = await createSpreadsheet(
-          admin,
-          {
-            applicationId,
-            namespaceId: nsId,
-            name,
-            serviceName: PRIMARY_SERVICE.name,
-          },
-          setStatus,
-        );
-        setExecutorPublicKey(ctx.memberPublicKey);
-        setContextId(ctx.contextId);
+        const appId = await createSpreadsheet(client, source, orgId, name, setStatus);
+        if (warning) setError(new Error(warning));
+        setJoinedNsId(orgId);
+        setContextId(appId);
         setPendingInitName(name); // AppPage runs init_project once ready
         await refresh();
       } catch (err) {
-        setError(err instanceof Error ? err : new Error(String(err)));
+        setError(err instanceof Error ? err : new Error(describeError(err)));
       } finally {
         creatingRef.current = false;
         setBusy(false);
         setStatus(null);
+        after();
       }
     },
-    [admin, applicationId, namespaceKnown, namespaceId, refresh],
+    [client, source, passkey, after, listed, listError, namespaceId, refresh],
   );
 
   const activeName = useMemo(() => {
     if (!contextId) return APP_DISPLAY_NAME;
     const row = workspaces.find((w) => w.contextId === contextId);
-    return row?.name ?? spreadsheetFallbackLabel(contextId);
-  }, [contextId, workspaces]);
+    if (row) return row.name;
+    const inst = instances.find((a) => a.appId === contextId);
+    return inst?.name?.trim() || spreadsheetFallbackLabel(contextId);
+  }, [contextId, workspaces, instances]);
 
   const invite = useCallback(
-    async (opts?: { contextId?: string | null; projectName?: string }) => {
-      if (!admin) throw new Error('Not connected yet.');
-      if (!namespaceId) {
-        throw new Error('No workspace yet — create a spreadsheet first.');
-      }
+    async (opts?: { contextId?: string | null }) => {
+      if (!namespaceId) throw new Error('No workspace yet — create a spreadsheet first.');
       setInviteLoading(true);
       try {
-        return await mintInvite(
-          admin,
-          {
-            namespaceId,
-            namespaceName,
-            contextId: opts?.contextId ?? null,
-            projectName: opts?.projectName,
-          },
-          setStatus,
-        );
+        return await mintInvite(client, { org: namespaceId, sheet: opts?.contextId ?? null, passkey }, setStatus);
       } finally {
         setInviteLoading(false);
         setStatus(null);
+        after();
       }
     },
-    [admin, namespaceId, namespaceName],
+    [client, namespaceId, passkey, after],
   );
 
   const landJoined = useCallback(
-    async (landed: Pick<AcceptedInvite, 'namespaceId' | 'contextId'>) => {
-      // The join has returned; the workspace's own state has not arrived yet.
-      // The redemption has marked it just-joined, and the gate below holds the
-      // dialog until its spreadsheets are read. Not marked again here: a page
-      // already showing this workspace settles and clears the mark at once, and
-      // a second mark in the same render went unseen by useJoinSync, so nothing
-      // cleared it and the dialog sat on "Syncing…".
+    async (landed: AcceptedInvite) => {
       if (landed.namespaceId) setJoinedNsId(landed.namespaceId);
       await refresh();
-      // The code can name a spreadsheet to open. It is an unsigned hint, so
-      // the node still decides whether to admit us — `openWorkspace` goes
-      // through `enterSpreadsheet`, which asks.
       if (landed.contextId) openWorkspace(landed.contextId);
     },
     [refresh, openWorkspace],
   );
 
-  // Whether this namespace's context list has come back from the node. The
-  // spreadsheet list alone cannot say: it is rebuilt the moment `namespaceId`
-  // changes, from whatever contexts are on hand (none, or the previous
-  // namespace's), so it would "settle" a just-joined workspace before reading
-  // it at all. Same in-flight-then-ended test as `namespaceKnown` above, for
-  // the same reason.
-  const ctxReadStartedFor = useRef<string | null>(null);
-  const [ctxSettledFor, setCtxSettledFor] = useState<string | null>(null);
-  useEffect(() => {
-    if (!namespaceId) return;
-    if (ctxLoading) ctxReadStartedFor.current = namespaceId;
-    else if (ctxReadStartedFor.current === namespaceId) setCtxSettledFor(namespaceId);
-  }, [namespaceId, ctxLoading]);
-
-  // An empty list is a settled answer only once the namespace is no longer
-  // just-joined. Before that it is what a node that has not synced the
-  // workspace yet returns, and settling on it closed the invitation dialog onto
-  // an empty picker that nothing ever re-read. The watchdog clears the flag, so
-  // a workspace that really has no spreadsheets still settles.
-  //
-  // The gate watches the namespace just joined even before the node lists it.
-  // Until then `namespaceId` is whichever workspace this node already had (or
-  // none): watching that one left the joined namespace's flag with no one to
-  // clear it and, since that one was never just-joined, nothing re-reading the
-  // node, so the dialog sat on "Syncing…" until its ceiling.
-  const watchedNs = joinedNsId ?? namespaceId;
-  const onWatched = namespaceId === watchedNs;
-  const listed = onWatched && ctxSettledFor === namespaceId && listedForNs === namespaceId;
-  // useJoinSync reads the just-joined flag only when its namespace changes. A
-  // join of the workspace this page already shows (a new spreadsheet in a
-  // workspace this node joined before) marks it without changing it, so the
-  // gate gets the namespace only while it is flagged: the mark is then a change.
-  const watchedJustJoined = useSyncExternalStore(
-    subscribeJustJoined,
-    () => !!watchedNs && isNamespaceJustJoined(watchedNs),
-    () => false,
-  );
-  const { isSyncing, dismiss: dismissSyncing } = useJoinSync({
-    namespaceId: watchedJustJoined ? watchedNs : null,
-    settled: listed && (workspaces.length > 0 || !isNamespaceJustJoined(namespaceId)),
-    // Not listed yet, or still empty: let the gate wait up to its ceiling
-    // rather than the base window, since the spreadsheets may be on their way.
-    active: !onWatched || workspaces.length === 0,
-  });
-
-  // While the gate is up, keep re-reading: the context list only moves when
-  // asked, and the node gains the workspace's spreadsheets on its own schedule.
-  // A read that fails because the node has not synced yet is retried here too.
-  useEffect(() => {
-    if (!isSyncing) return;
-    const timer = setInterval(() => void refresh(), JOIN_SYNC_POLL_MS);
-    return () => clearInterval(timer);
-  }, [isSyncing, refresh]);
-
-  // Reopen the spreadsheet open before the reload — once, and only once the
-  // node has answered: its namespaces for this app, then that namespace's
-  // context list (`ctxSettledFor`, the same in-flight-then-ended test the
-  // join-sync gate uses, so a stale or empty first read cannot decide it).
-  // Anything else opened first (a click, an invitation, a create) wins.
-  // Something no longer listed is forgotten, and the picker shows.
+  // Reopen the spreadsheet open before the reload, once the cluster has
+  // answered and only if this account still reaches it.
   useEffect(() => {
     if (resumeSettled) return;
     if (contextId) {
       setResumeSettled(true);
       return;
     }
-    // Not installed: the node will never list a namespace to wait for.
-    if (notInstalled) {
-      setResumeSettled(true);
-      return;
-    }
-    if (!namespaceKnown) return;
-    if (namespaceId && ctxSettledFor !== namespaceId) return;
+    if (!listed) return;
     setResumeSettled(true);
-    const target = pickResume(
-      namespaceId,
-      nsContexts.map((c) => c.contextId),
-      remembered,
-    );
+    const target = pickResume(namespaceId, workspaces.map((w) => w.contextId), remembered);
     if (target) openWorkspace(target);
-    else if (namespaceId === remembered.namespaceId) forgetLastSpreadsheet(nodeUrl);
-    else forgetLastWorkspace(nodeUrl);
-  }, [
-    resumeSettled,
-    contextId,
-    notInstalled,
-    namespaceKnown,
-    namespaceId,
-    ctxSettledFor,
-    nsContexts,
-    remembered,
-    openWorkspace,
-    nodeUrl,
-  ]);
+    else if (namespaceId === remembered.namespaceId) forgetLastSpreadsheet(memoryKey);
+    else forgetLastWorkspace(memoryKey);
+  }, [resumeSettled, contextId, listed, namespaceId, workspaces, remembered, openWorkspace, memoryKey]);
 
-  // Remember what is open once we are in it, paired with its namespace only
-  // when that namespace lists it — so the pair a reload validates is a real one.
+  // Remember what is open, paired with its workspace once that lists it.
   useEffect(() => {
-    if (!contextId || !executorPublicKey || !namespaceId) return;
-    if (!nsContexts.some((c) => c.contextId === contextId)) return;
-    rememberWorkspace(nodeUrl, namespaceId, contextId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodeUrl, namespaceId, contextId, executorPublicKey, contextKey]);
+    if (!contextId || !namespaceId) return;
+    if (!workspaces.some((w) => w.contextId === contextId)) return;
+    rememberWorkspace(memoryKey, namespaceId, contextId);
+  }, [memoryKey, namespaceId, contextId, workspaces]);
 
   return {
-    isSyncing,
-    dismissSyncing,
     workspaces,
     namespaceId,
     namespaceName,
+    orgRole: org?.role ?? null,
     contextId,
     resuming: !resumeSettled && !contextId,
-    executorPublicKey,
     activeName,
-    ready: contextId !== null && executorPublicKey !== null,
-    loading: appIdResolving || nsLoading || ctxLoading || busy,
-    canCreate: namespaceKnown && !busy,
+    ready: contextId !== null,
+    loading: (listing && !listed) || busy,
+    canCreate: listed && !listError && !busy,
     status,
     error,
-    notInstalled,
-    namespacesFailed,
-    retryNamespaces: () => void refetchNamespaces(),
+    namespacesFailed: !!listError && !listing,
+    retryNamespaces: () => void refresh(),
     openWorkspace,
     createWorkspace,
     pendingInitName,

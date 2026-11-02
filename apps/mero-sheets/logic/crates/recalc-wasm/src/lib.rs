@@ -9,7 +9,7 @@
 //! the same code.
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 
 use mero_sheets_recalc::formula::{self, Env, CATALOG};
 use mero_sheets_recalc::layout::{Axis, AxisEntry, Layout};
@@ -140,7 +140,7 @@ pub fn evaluate_json(input: &str) -> String {
             )
         })
         .collect();
-    let sheet_ids: HashSet<String> = parsed.sheet_ids.into_iter().collect();
+    let sheet_ids: BTreeSet<String> = parsed.sheet_ids.into_iter().collect();
     let env = ENV.with(|env| Env {
         now_ms: parsed.now_ms,
         ..env.borrow().clone()
