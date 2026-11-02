@@ -62,7 +62,7 @@ apps/merraria/
                 getPlayers / heartbeat (0.5s/3s, silent)
 ```
 
-- **Contract** (`logic/`, `calimero-app-sdk` at core `1.0.0-rc.7`):
+- **Contract** (`logic/`, `calimero-app-sdk` at core `1.0.0-rc.8`):
   `meta: Cell<{name, seed, createdAt}>` (written once by `createWorld`, by the
   world's owner), `overrides: UnorderedMap<"x,y", tile>` (public on purpose:
   anyone in the world may dig or build anywhere) and `players:

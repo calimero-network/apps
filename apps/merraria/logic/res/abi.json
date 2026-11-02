@@ -161,6 +161,11 @@
       "overrides": "unorderedMap",
       "players": "unorderedMap"
     },
+    "search": {
+      "meta": [],
+      "overrides": [],
+      "players": []
+    },
     "version": 1
   },
   "world": "calimero:app@0.5.0"
