@@ -623,6 +623,21 @@
       "teammates": "set",
       "updates": "unorderedMap"
     },
+    "search": {
+      "asks": [],
+      "categories": [],
+      "comments": [],
+      "drafts": [],
+      "mutes": [],
+      "offers": [],
+      "profiles": [],
+      "questions": [],
+      "reactions": [],
+      "reads": [],
+      "settings": [],
+      "teammates": [],
+      "updates": []
+    },
     "version": 1
   },
   "world": "calimero:app@0.5.0"
