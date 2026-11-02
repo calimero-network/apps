@@ -15,8 +15,6 @@
 //! The expensive half, the snippet, is only ever built for a hit a call
 //! returns; the scan itself costs one plain-text pass and one fold per message.
 
-use calimero_storage::collections::LwwRegister;
-
 mod fold_table;
 
 /// Characters of context kept before a match in a snippet.
@@ -180,10 +178,11 @@ fn entity(body: &str) -> Option<char> {
 /// The text a reader sees in message HTML: tags dropped (block ones as a
 /// space), the common entities decoded, whitespace collapsed and trimmed.
 /// A `<` that does not open a tag is text, as a browser shows it.
-/// What the search index holds for a message's text: the text a reader sees
-/// (`Message`'s `#[search(with = ...)]`).
-pub(crate) fn indexed_text(html: &LwwRegister<String>) -> Option<String> {
-    Some(plain_text(html.get()))
+/// What the search index holds for a message's text (`Message::search_text`,
+/// the field `#[table(search = [..])]` names): the text a reader sees, folded,
+/// so a folded query matches it whatever its case and accents.
+pub(crate) fn indexed_text(html: &str) -> String {
+    folded_text(html)
 }
 
 pub(crate) fn plain_text(html: &str) -> String {

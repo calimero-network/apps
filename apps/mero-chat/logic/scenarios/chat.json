@@ -1,0 +1,849 @@
+[
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "updateInfo",
+  "args": {
+   "name": "General (updated)",
+   "description": "Team channel"
+  },
+  "expect": {
+   "ok": "Info updated"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getInfo",
+  "args": {}
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getMemberRole",
+  "args": {
+   "identity": "@owner"
+  },
+  "expect": {
+   "ok": "Admin"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setProfile",
+  "args": {
+   "username": "Alice"
+  },
+  "expect": {
+   "ok": "Profile set"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "view",
+  "method": "getProfiles",
+  "args": {},
+  "expect": {
+   "ok": {
+    "items": [
+     {
+      "identity": "@owner",
+      "username": "Alice",
+      "avatar": null
+     }
+    ],
+    "next": null
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setProfile",
+  "args": {
+   "username": "Bob"
+  },
+  "expect": {
+   "ok": "Profile set"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "setProfile",
+  "args": {
+   "username": "Carol"
+  },
+  "expect": {
+   "ok": "Profile set"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "view",
+  "method": "getProfiles",
+  "args": {
+   "limit": 3
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setProfile",
+  "args": {
+   "username": "Mallory"
+  },
+  "expect": {
+   "ok": "Profile set"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "sendMessage",
+  "args": {
+   "message": "Hello from Alice!",
+   "mentions": [],
+   "mentionsUsernames": [],
+   "timestamp": "1699999100"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "sendMessage",
+  "args": {
+   "message": "Hi Alice, Bob here!",
+   "mentions": [],
+   "mentionsUsernames": [],
+   "timestamp": "1699999110"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "sendMessage",
+  "args": {
+   "message": "Carol here with the keyword zephyr",
+   "mentions": [],
+   "mentionsUsernames": [],
+   "timestamp": "1699999120"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "messageIdAt",
+  "args": {
+   "index": "0"
+  },
+  "save": "alice_msg"
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "messageIdAt",
+  "args": {
+   "index": "1"
+  },
+  "save": "bob_msg"
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "messageIdAt",
+  "args": {
+   "index": "2"
+  },
+  "save": "carol_msg"
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getMessageCount",
+  "args": {},
+  "expect": {
+   "ok": "3"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getMessages",
+  "args": {
+   "limit": 50
+  },
+  "expect": {
+   "ok": {
+    "totalCount": 3,
+    "startPosition": 0,
+    "messages": [
+     {
+      "index": "0",
+      "timestamp": "1699999100",
+      "sender": "@owner",
+      "mentions": [],
+      "mentionsUsernames": [],
+      "files": [],
+      "images": [],
+      "id": "$alice_msg",
+      "text": "Hello from Alice!",
+      "editedOn": null,
+      "reactions": null,
+      "deleted": null,
+      "threadCount": 0,
+      "threadLastTimestamp": "0",
+      "parentMessageId": null
+     },
+     {
+      "index": "1",
+      "timestamp": "1699999110",
+      "sender": "@bob",
+      "mentions": [],
+      "mentionsUsernames": [],
+      "files": [],
+      "images": [],
+      "id": "$bob_msg",
+      "text": "Hi Alice, Bob here!",
+      "editedOn": null,
+      "reactions": null,
+      "deleted": null,
+      "threadCount": 0,
+      "threadLastTimestamp": "0",
+      "parentMessageId": null
+     },
+     {
+      "index": "2",
+      "timestamp": "1699999120",
+      "sender": "@carol",
+      "mentions": [],
+      "mentionsUsernames": [],
+      "files": [],
+      "images": [],
+      "id": "$carol_msg",
+      "text": "Carol here with the keyword zephyr",
+      "editedOn": null,
+      "reactions": null,
+      "deleted": null,
+      "threadCount": 0,
+      "threadLastTimestamp": "0",
+      "parentMessageId": null
+     }
+    ]
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getMessages",
+  "args": {
+   "limit": 50
+  },
+  "expect": {
+   "ok": {
+    "totalCount": 3,
+    "startPosition": 0,
+    "messages": [
+     {
+      "index": "0",
+      "timestamp": "1699999100",
+      "sender": "@owner",
+      "mentions": [],
+      "mentionsUsernames": [],
+      "files": [],
+      "images": [],
+      "id": "$alice_msg",
+      "text": "Hello from Alice!",
+      "editedOn": null,
+      "reactions": null,
+      "deleted": null,
+      "threadCount": 0,
+      "threadLastTimestamp": "0",
+      "parentMessageId": null
+     },
+     {
+      "index": "1",
+      "timestamp": "1699999110",
+      "sender": "@bob",
+      "mentions": [],
+      "mentionsUsernames": [],
+      "files": [],
+      "images": [],
+      "id": "$bob_msg",
+      "text": "Hi Alice, Bob here!",
+      "editedOn": null,
+      "reactions": null,
+      "deleted": null,
+      "threadCount": 0,
+      "threadLastTimestamp": "0",
+      "parentMessageId": null
+     },
+     {
+      "index": "2",
+      "timestamp": "1699999120",
+      "sender": "@carol",
+      "mentions": [],
+      "mentionsUsernames": [],
+      "files": [],
+      "images": [],
+      "id": "$carol_msg",
+      "text": "Carol here with the keyword zephyr",
+      "editedOn": null,
+      "reactions": null,
+      "deleted": null,
+      "threadCount": 0,
+      "threadLastTimestamp": "0",
+      "parentMessageId": null
+     }
+    ]
+   }
+  }
+ },
+ {
+  "as": "carol",
+  "op": "view",
+  "method": "getMessages",
+  "args": {
+   "limit": 50
+  },
+  "expect": {
+   "ok": {
+    "totalCount": 3,
+    "startPosition": 0,
+    "messages": [
+     {
+      "index": "0",
+      "timestamp": "1699999100",
+      "sender": "@owner",
+      "mentions": [],
+      "mentionsUsernames": [],
+      "files": [],
+      "images": [],
+      "id": "$alice_msg",
+      "text": "Hello from Alice!",
+      "editedOn": null,
+      "reactions": null,
+      "deleted": null,
+      "threadCount": 0,
+      "threadLastTimestamp": "0",
+      "parentMessageId": null
+     },
+     {
+      "index": "1",
+      "timestamp": "1699999110",
+      "sender": "@bob",
+      "mentions": [],
+      "mentionsUsernames": [],
+      "files": [],
+      "images": [],
+      "id": "$bob_msg",
+      "text": "Hi Alice, Bob here!",
+      "editedOn": null,
+      "reactions": null,
+      "deleted": null,
+      "threadCount": 0,
+      "threadLastTimestamp": "0",
+      "parentMessageId": null
+     },
+     {
+      "index": "2",
+      "timestamp": "1699999120",
+      "sender": "@carol",
+      "mentions": [],
+      "mentionsUsernames": [],
+      "files": [],
+      "images": [],
+      "id": "$carol_msg",
+      "text": "Carol here with the keyword zephyr",
+      "editedOn": null,
+      "reactions": null,
+      "deleted": null,
+      "threadCount": 0,
+      "threadLastTimestamp": "0",
+      "parentMessageId": null
+     }
+    ]
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "searchMessages",
+  "args": {
+   "query": "zephyr"
+  },
+  "expect": {
+   "ok": {
+    "hits": [
+     {
+      "id": "$carol_msg",
+      "parentMessageId": null,
+      "index": null,
+      "timestamp": "1699999120",
+      "anchorTimestamp": "1699999120",
+      "sender": "@carol",
+      "snippet": "Carol here with the keyword zephyr",
+      "matchStart": 28,
+      "matchEnd": 34
+     }
+    ],
+    "nextCursor": null,
+    "frontierTimestamp": null
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "messagePosition",
+  "args": {
+   "messageId": "$carol_msg"
+  },
+  "expect": {
+   "ok": "2"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "searchMessagesScan",
+  "args": {
+   "query": "zephyr"
+  },
+  "expect": {
+   "ok": {
+    "hits": [
+     {
+      "id": "$carol_msg",
+      "parentMessageId": null,
+      "index": "2",
+      "timestamp": "1699999120",
+      "anchorTimestamp": "1699999120",
+      "sender": "@carol",
+      "snippet": "Carol here with the keyword zephyr",
+      "matchStart": 28,
+      "matchEnd": 34
+     }
+    ],
+    "nextCursor": null,
+    "frontierTimestamp": "1699999100"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getMessages",
+  "args": {
+   "searchTerm": "ZEPHYR"
+  },
+  "expect": {
+   "ok": {
+    "totalCount": 1,
+    "startPosition": 0,
+    "messages": [
+     {
+      "index": "2",
+      "timestamp": "1699999120",
+      "sender": "@carol",
+      "mentions": [],
+      "mentionsUsernames": [],
+      "files": [],
+      "images": [],
+      "id": "$carol_msg",
+      "text": "Carol here with the keyword zephyr",
+      "editedOn": null,
+      "reactions": null,
+      "deleted": null,
+      "threadCount": 0,
+      "threadLastTimestamp": "0",
+      "parentMessageId": null
+     }
+    ]
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "updateReaction",
+  "args": {
+   "messageId": "$alice_msg",
+   "emoji": "👍",
+   "add": true
+  },
+  "expect": {
+   "ok": "Reaction added successfully"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "view",
+  "method": "getMessagesFrom",
+  "args": {
+   "start": "0",
+   "limit": 1
+  },
+  "expect": {
+   "ok": {
+    "totalCount": 3,
+    "startPosition": 0,
+    "messages": [
+     {
+      "index": "0",
+      "timestamp": "1699999100",
+      "sender": "@owner",
+      "mentions": [],
+      "mentionsUsernames": [],
+      "files": [],
+      "images": [],
+      "id": "$alice_msg",
+      "text": "Hello from Alice!",
+      "editedOn": null,
+      "reactions": {
+       "👍": [
+        "@bob"
+       ]
+      },
+      "deleted": null,
+      "threadCount": 0,
+      "threadLastTimestamp": "0",
+      "parentMessageId": null
+     }
+    ]
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "updateReaction",
+  "args": {
+   "messageId": "$alice_msg",
+   "emoji": "👍",
+   "add": false
+  },
+  "expect": {
+   "ok": "Reaction removed successfully"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "view",
+  "method": "getMessagesFrom",
+  "args": {
+   "start": "0",
+   "limit": 1
+  },
+  "expect": {
+   "ok": {
+    "totalCount": 3,
+    "startPosition": 0,
+    "messages": [
+     {
+      "index": "0",
+      "timestamp": "1699999100",
+      "sender": "@owner",
+      "mentions": [],
+      "mentionsUsernames": [],
+      "files": [],
+      "images": [],
+      "id": "$alice_msg",
+      "text": "Hello from Alice!",
+      "editedOn": null,
+      "reactions": null,
+      "deleted": null,
+      "threadCount": 0,
+      "threadLastTimestamp": "0",
+      "parentMessageId": null
+     }
+    ]
+   }
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "sendMessage",
+  "args": {
+   "message": "Replying in a thread",
+   "mentions": [],
+   "mentionsUsernames": [],
+   "timestamp": "1699999130",
+   "parentMessage": "$alice_msg"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "messageIdAt",
+  "args": {
+   "parentMessage": "$alice_msg",
+   "index": "0"
+  },
+  "save": "reply"
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getMessages",
+  "args": {
+   "parentMessage": "$alice_msg"
+  },
+  "expect": {
+   "ok": {
+    "totalCount": 1,
+    "startPosition": 0,
+    "messages": [
+     {
+      "index": "0",
+      "timestamp": "1699999130",
+      "sender": "@carol",
+      "mentions": [],
+      "mentionsUsernames": [],
+      "files": [],
+      "images": [],
+      "id": "$reply",
+      "text": "Replying in a thread",
+      "editedOn": null,
+      "reactions": null,
+      "deleted": null,
+      "threadCount": 0,
+      "threadLastTimestamp": "0",
+      "parentMessageId": "$alice_msg"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getMessagesFrom",
+  "args": {
+   "start": "0",
+   "limit": 1
+  },
+  "expect": {
+   "ok": {
+    "totalCount": 3,
+    "startPosition": 0,
+    "messages": [
+     {
+      "index": "0",
+      "timestamp": "1699999100",
+      "sender": "@owner",
+      "mentions": [],
+      "mentionsUsernames": [],
+      "files": [],
+      "images": [],
+      "id": "$alice_msg",
+      "text": "Hello from Alice!",
+      "editedOn": null,
+      "reactions": null,
+      "deleted": null,
+      "threadCount": 1,
+      "threadLastTimestamp": "1699999130",
+      "parentMessageId": null
+     }
+    ]
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "messagePosition",
+  "args": {
+   "messageId": "$reply"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "editMessage",
+  "args": {
+   "messageId": "$bob_msg",
+   "newMessage": "Hi Alice, Bob here (edited)",
+   "timestamp": "1699999140"
+  },
+  "expect": {
+   "ok": {
+    "index": "1",
+    "timestamp": "1699999110",
+    "sender": "@bob",
+    "mentions": [],
+    "mentionsUsernames": [],
+    "files": [],
+    "images": [],
+    "id": "$bob_msg",
+    "text": "Hi Alice, Bob here (edited)",
+    "editedOn": "1699999140",
+    "reactions": null,
+    "deleted": null,
+    "threadCount": 0,
+    "threadLastTimestamp": "0",
+    "parentMessageId": null
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getUnreadCount",
+  "args": {},
+  "expect": {
+   "ok": 2
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "markAsRead",
+  "args": {
+   "timestamp": "1699999120"
+  },
+  "expect": {
+   "ok": "ok"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getUnreadCount",
+  "args": {},
+  "expect": {
+   "ok": 0
+  }
+ },
+ {
+  "as": "carol",
+  "op": "view",
+  "method": "getUnreadCount",
+  "args": {},
+  "expect": {
+   "ok": 2
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "saveDraft",
+  "args": {
+   "channel": "general",
+   "text": "half a thought"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getDraft",
+  "args": {
+   "channel": "general"
+  },
+  "expect": {
+   "ok": "half a thought"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "view",
+  "method": "getDraft",
+  "args": {
+   "channel": "general"
+  },
+  "expect": {
+   "ok": ""
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "deleteDraft",
+  "args": {
+   "channel": "general"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getDraft",
+  "args": {
+   "channel": "general"
+  },
+  "expect": {
+   "ok": ""
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "deleteMessage",
+  "args": {
+   "messageId": "$carol_msg"
+  },
+  "expect": {
+   "ok": "Message deleted successfully"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getMessagesFrom",
+  "args": {
+   "start": "2"
+  },
+  "expect": {
+   "ok": {
+    "totalCount": 3,
+    "startPosition": 2,
+    "messages": [
+     {
+      "index": "2",
+      "timestamp": "1699999120",
+      "sender": "@carol",
+      "mentions": [],
+      "mentionsUsernames": [],
+      "files": [],
+      "images": [],
+      "id": "$carol_msg",
+      "text": "",
+      "editedOn": null,
+      "reactions": null,
+      "deleted": true,
+      "threadCount": 0,
+      "threadLastTimestamp": "0",
+      "parentMessageId": null
+     }
+    ]
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "searchMessagesScan",
+  "args": {
+   "query": "zephyr"
+  },
+  "expect": {
+   "ok": {
+    "hits": [],
+    "nextCursor": null,
+    "frontierTimestamp": "1699999100"
+   }
+  }
+ }
+]

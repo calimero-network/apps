@@ -1,0 +1,386 @@
+[
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "sendMessage",
+  "args": {
+   "message": "bob's message",
+   "mentions": [],
+   "mentionsUsernames": [],
+   "timestamp": "1699999100"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "messageIdAt",
+  "args": {
+   "index": "0"
+  },
+  "save": "bob_msg"
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "editMessage",
+  "args": {
+   "messageId": "$bob_msg",
+   "newMessage": "forged",
+   "timestamp": "1699999100"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "deleteMessage",
+  "args": {
+   "messageId": "$bob_msg"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "setMemberRole",
+  "args": {
+   "target": "@bob",
+   "role": "Banned"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "setMemberRole",
+  "args": {
+   "target": "@carol",
+   "role": "Admin"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "updateInfo",
+  "args": {
+   "name": "hijacked"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getMessagesFrom",
+  "args": {
+   "start": "0"
+  },
+  "expect": {
+   "ok": {
+    "totalCount": 1,
+    "startPosition": 0,
+    "messages": [
+     {
+      "index": "0",
+      "timestamp": "1699999100",
+      "sender": "@bob",
+      "mentions": [],
+      "mentionsUsernames": [],
+      "files": [],
+      "images": [],
+      "id": "$bob_msg",
+      "text": "bob's message",
+      "editedOn": null,
+      "reactions": null,
+      "deleted": null,
+      "threadCount": 0,
+      "threadLastTimestamp": "0",
+      "parentMessageId": null
+     }
+    ]
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setMemberRole",
+  "args": {
+   "target": "@carol",
+   "role": "Mod"
+  },
+  "expect": {
+   "ok": "Role updated"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setMemberRole",
+  "args": {
+   "target": "@carol",
+   "role": "Mod"
+  },
+  "expect": {
+   "ok": "Role unchanged"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "setMemberRole",
+  "args": {
+   "target": "@bob",
+   "role": "Banned"
+  },
+  "expect": {
+   "ok": "Role updated"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getMemberRole",
+  "args": {
+   "identity": "@bob"
+  },
+  "expect": {
+   "ok": "Banned"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "sendMessage",
+  "args": {
+   "message": "x",
+   "mentions": [],
+   "mentionsUsernames": [],
+   "timestamp": "1699999100"
+  },
+  "expect": {
+   "error": "Banned"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "updateReaction",
+  "args": {
+   "messageId": "$bob_msg",
+   "emoji": "👍",
+   "add": true
+  },
+  "expect": {
+   "error": "Banned"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setProfile",
+  "args": {
+   "username": "Bob"
+  },
+  "expect": {
+   "error": "Banned"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setMemberRole",
+  "args": {
+   "target": "@bob",
+   "role": "User"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "setMemberRole",
+  "args": {
+   "target": "@bob",
+   "role": "Admin"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "setMemberRole",
+  "args": {
+   "target": "@owner",
+   "role": "Banned"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "setMemberRole",
+  "args": {
+   "target": "@bob",
+   "role": "User"
+  },
+  "expect": {
+   "ok": "Role updated"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "deleteMessage",
+  "args": {
+   "messageId": "$bob_msg"
+  },
+  "expect": {
+   "ok": "Message deleted successfully"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getMessagesFrom",
+  "args": {
+   "start": "0"
+  },
+  "expect": {
+   "ok": {
+    "totalCount": 1,
+    "startPosition": 0,
+    "messages": [
+     {
+      "index": "0",
+      "timestamp": "1699999100",
+      "sender": "@bob",
+      "mentions": [],
+      "mentionsUsernames": [],
+      "files": [],
+      "images": [],
+      "id": "$bob_msg",
+      "text": "",
+      "editedOn": null,
+      "reactions": null,
+      "deleted": true,
+      "threadCount": 0,
+      "threadLastTimestamp": "0",
+      "parentMessageId": null
+     }
+    ]
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setMemberRole",
+  "args": {
+   "target": "@owner",
+   "role": "User"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "sendMessage",
+  "args": {
+   "message": "a guest speaks",
+   "mentions": [],
+   "mentionsUsernames": [],
+   "timestamp": "1699999101"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "view",
+  "method": "getMessageCount",
+  "args": {},
+  "expect": {
+   "ok": "2"
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "view",
+  "method": "getMessages",
+  "args": {},
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "call",
+  "method": "sendMessage",
+  "args": {
+   "message": "x",
+   "mentions": [],
+   "mentionsUsernames": [],
+   "timestamp": "1699999100"
+  },
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "view",
+  "method": "getMessages",
+  "args": {},
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "call",
+  "method": "updateReaction",
+  "args": {
+   "messageId": "$bob_msg",
+   "emoji": "👍",
+   "add": true
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getMessageCount",
+  "args": {},
+  "expect": {
+   "ok": "2"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "get_messages",
+  "args": {},
+  "expect": {
+   "error": "UnknownMethod"
+  }
+ }
+]

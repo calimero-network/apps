@@ -1,380 +1,208 @@
-use calimero_sdk::abi::AbiType;
-use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
-use calimero_sdk::search::{Query, SearchCollection};
-use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::{app, env, AccountId, BlobId};
-use calimero_storage::address::Id;
-use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::{
-    AccessControl, AuthoredSortedMap, AuthoredVector, Frozen, LwwRegister,
-    Mergeable as MergeableTrait, Moderated, Op, SharedStorage, SortedMap, UnorderedMap,
-    UnorderedSet, UserStorage, Vector, WriteOnce,
-};
-use types::id;
+//! Mero Chat: one conversation (a channel, or a direct message between two
+//! people) on core's component SDK (`calimero-app-sdk`).
+//!
+//! One app instance is one conversation, as one v1 context was. A workspace is
+//! the organization the instances belong to; a channel is an instance every
+//! member of it reaches, a DM one only its two people reach (the frontend
+//! creates it with `accounts` access). The app runs on its cluster's leader,
+//! which applies every write in one replicated log, so state is plain tables
+//! and maps: v1's CRDT plumbing (`Mergeable` rules, owner-stamped entries and
+//! "the lowest holder wins" picks, writer sets rotated after every role change)
+//! has nothing left to decide.
+//!
+//! | v1 (`calimero-storage`) | here |
+//! |---|---|
+//! | `AuthoredVector<Message>` (top level) + `Moderated<SortedMap<thread key, Message>>` (replies) + `WriteOnce<UnorderedMap<id, Slot>>` | one `messages` table keyed by id: `thread` index on `(parent, seq)` (`parent` is `""` at the top level), `perThread` count, full-text `search` on the folded text |
+//! | the vector's stable index | `seq`: a message's position among its parent's, from `nextSeq`, never reused |
+//! | `mentions`, `mentions_usernames`, `files`, `images` inside the message | `extras`, a map beside the table (a record holds no lists), bounded per message |
+//! | `Attachment { blob_id: BlobId }`, `blob_announce_to_context` | `BlobRef` in `extras` (the host keeps a referenced blob) |
+//! | `AuthoredSortedMap<"msg␟emoji␟account", ()>` | `reactions: UnorderedMap<(message, emoji, account), bool>` |
+//! | `UserStorage<StoredProfile>` | `profiles: UnorderedMap<account, Profile>` (listed by `getProfiles`, written only by its account) |
+//! | `AccessControl` (admins, `"mod"`) + `SharedStorage<banned>` | `roles: UnorderedMap<account, Role>`; absent is `User` |
+//! | `SharedStorage<hidden>` (a staff removal of a top-level message) | the message itself, blanked and marked deleted |
+//! | `UserStorage<LwwRegister<u64>>` read receipts | `readReceipts: PerUser<u64>` |
+//! | `Frozen<Founding>` + `SharedStorage<ChannelText>` | `info: Cell<Info>` |
+//! | `#[app::private] Drafts` (node-local) | `drafts: UnorderedMap<(account, channel), text>` in app state: see `saveDraft` |
+//! | `app::search_indexes!` over both collections | `#[table(search = ["search_text"])]` |
+//!
+//! # Who may do what
+//!
+//! The platform decides who reaches the conversation (the organization's
+//! members, admins, owner and guests for a channel; the two accounts of a DM).
+//! Every one of them may read, send, react, keep a draft and name themselves.
+//! The rules v1 kept in storage (`Authored*`, `Moderated`, `SharedStorage`,
+//! `UserStorage`, `AccessControl`) are checks here, against `env::caller()`,
+//! before anything is written:
+//!
+//! - only a message's sender edits it (`Forbidden`); its sender or a moderator
+//!   or admin deletes it;
+//! - only an admin changes the conversation's info or anyone's role; a moderator
+//!   may only ban a `User` or unban a `Banned` member;
+//! - a `Banned` member's sends, edits, deletes, reactions, profile and drafts
+//!   are refused (`Banned`). In v1 the ban was checked on the banned member's
+//!   own node, which a patched node skipped; here the leader checks it;
+//! - a profile, a reaction, a read receipt and a draft are always the caller's
+//!   own: no method takes the account it writes for.
+//!
+//! Every client-visible difference from v1 is in `apps/mero-chat/README.md`,
+//! "What changed in the port".
+
+use std::collections::BTreeMap;
+
+use calimero_app_sdk::env::Caller;
+use calimero_app_sdk::prelude::*;
+use serde::{Deserialize, Serialize};
+
 mod search;
-mod types;
-use std::collections::{BTreeSet, HashMap};
-use std::fmt::Write;
-use std::ops::{Bound, Range};
 
-id::define!(pub UserId<32, 44>);
-type MessageId = String;
-
-/// Longest accepted search term.
-///
-/// A search folds the term once and runs a substring match per message, so the
-/// work is (messages x term length) and the caller chooses the second factor.
-/// Without a bound, one request with a multi-megabyte term is a cheap way to
-/// make a node chew through a channel; the runtime charges per wasm operator.
-///
-/// 256 is well past any real query; the point is that the ceiling exists, not
-/// where exactly it sits.
-const MAX_SEARCH_TERM_LEN: usize = 256;
-
-/// Hits `search_messages` returns when the caller names no limit, and the most
+/// Longest accepted search term, in bytes (the host refuses more than 256).
+pub const MAX_SEARCH_TERM_LEN: usize = 256;
+/// Hits `searchMessages` returns when the caller names no limit, and the most
 /// it returns at all.
-const DEFAULT_SEARCH_LIMIT: usize = 20;
-const MAX_SEARCH_LIMIT: usize = 50;
+pub const DEFAULT_SEARCH_LIMIT: u32 = 20;
+pub const MAX_SEARCH_LIMIT: u32 = 50;
+/// What one `searchMessagesScan` (and one filtered `getMessages`) may read
+/// before it stops: stored messages, and bytes of their text.
+pub const MAX_SEARCH_ROWS: usize = 2_000;
+pub const MAX_SEARCH_BYTES: usize = 1 << 20;
 
-/// What one `search_messages` call may read before it stops and hands back a
-/// cursor: stored messages (top-level and replies), and bytes of their text.
-///
-/// This is what keeps a search inside the gas budget however big the channel
-/// is and however common the term: a call does at most this much and the next
-/// page continues from its cursor. The byte cap is the one that bites on a
-/// channel of long messages; both are far under the gas limit (see the README
-/// for the measurement).
-const MAX_SEARCH_ROWS: usize = 2_000;
-const MAX_SEARCH_BYTES: usize = 1 << 20;
+/// Ceilings on what one write may add.
+pub const MAX_MESSAGE_LEN: usize = 20_000;
+pub const MAX_ATTACHMENTS: usize = 10;
+pub const MAX_MENTIONS: usize = 100;
+pub const MAX_EMOJI_LEN: usize = 64;
+pub const MAX_NAME_LEN: usize = 100;
+pub const MAX_DESCRIPTION_LEN: usize = 1_000;
+pub const MAX_USERNAME_LEN: usize = 50;
+/// An account id, a mention, a file name or a draft's channel name, in bytes.
+pub const MAX_ID_LEN: usize = 256;
 
-/// Ceilings on what one write may add. Every member's node stores and replays
-/// whatever another member writes, so an unbounded field is a way to make every
-/// node carry (and every reader decode) as much as one sender cares to send.
-const MAX_MESSAGE_LEN: usize = 20_000;
-const MAX_ATTACHMENTS: usize = 10;
-const MAX_MENTIONS: usize = 100;
-const MAX_EMOJI_LEN: usize = 64;
-const MAX_NAME_LEN: usize = 100;
-const MAX_DESCRIPTION_LEN: usize = 1_000;
+/// How far ahead of the log's clock a client timestamp may be, in seconds.
+/// Timestamps are the client's (seconds since the epoch) and order unread
+/// counts; one far in the future would stay "unread" forever.
+pub const MAX_CLOCK_SKEW_SECS: u64 = 300;
 
-/// How far ahead of this node's clock a client timestamp may be, in seconds.
-/// Timestamps are the client's (seconds since the epoch) and order threads and
-/// unread counts; one far in the future would stay "newest" and "unread"
-/// forever. Clocks run behind as well as ahead, so the past is not bounded.
-const MAX_CLOCK_SKEW_SECS: u64 = 300;
+/// How many of the newest messages an unread count looks at.
+pub const MAX_UNREAD_SCAN: u32 = 500;
 
-/// How many of the newest messages an unread count looks at. The count walks
-/// back from the end of the channel, so its cost is this, not the channel's
-/// length; a count at the ceiling reads as "at least this many".
-const MAX_UNREAD_SCAN: usize = 500;
+/// Messages one `getMessages` / `getMessagesFrom` page holds when the caller
+/// names no limit, and the most it holds at all.
+pub const DEFAULT_MESSAGE_PAGE: u32 = 100;
+pub const MAX_MESSAGE_PAGE: u32 = 500;
 
-/// Separates the parts of a composite `threads` / `reactions` key. It cannot
-/// occur in a hex id, and emoji containing it are refused.
-const KEY_SEP: char = '\u{1f}';
+/// Rows of a listing (`getProfiles`, `listRoles`) per page, and the most.
+pub const DEFAULT_LIST_PAGE: u32 = 100;
+pub const MAX_LIST_PAGE: u32 = 1_000;
 
-fn hex(bytes: &[u8]) -> String {
-    let mut s = String::with_capacity(bytes.len() * 2);
-    for b in bytes {
-        // SAFETY: writing to a String cannot fail.
-        write!(&mut s, "{b:02x}").unwrap();
-    }
-    s
+/// Reactions read for one message: one page of its reactions.
+const MAX_REACTIONS_READ: u32 = 1_000;
+/// Rows removed per batch when a staff removal clears what hangs off a reply.
+const BATCH: u32 = 1_000;
+
+/// The `parent` of a top-level message.
+const TOP: &str = "";
+
+// ── stored records ───────────────────────────────────────────────────────────
+
+/// One message: top-level (`parent` is `""`) or a reply in a thread (`parent`
+/// is the top-level message's id). The lists a message carries are in
+/// `extras`, beside it.
+#[derive(Record)]
+#[table(
+    key = "id",
+    index(thread = ["parent", "seq"]),
+    count(per_thread = ["parent"]),
+    search = ["search_text"],
+)]
+pub struct Message {
+    /// 64 hex characters, `_`, the client timestamp: v1's shape.
+    pub id: String,
+    /// `""` for a top-level message, else the top-level message it replies to.
+    pub parent: String,
+    /// Its position among its parent's messages: the stable `index` clients
+    /// page and resume by. Appends take the next one; nothing renumbers.
+    pub seq: u64,
+    /// The account that sent it.
+    pub sender: String,
+    /// The client's timestamp, seconds since the epoch.
+    pub timestamp: u64,
+    /// The message as the editor wrote it (HTML).
+    pub text: String,
+    /// What the host's full-text index holds: the text a reader sees, folded
+    /// for case and accents. `""` once deleted, so a deleted message is never
+    /// found.
+    pub search_text: String,
+    /// The client timestamp of the last edit.
+    pub edited_on: Option<u64>,
+    /// Blanked by its sender or a moderator: the slot stays, the text is gone.
+    pub deleted: bool,
 }
 
-fn user_of(account: AccountId) -> UserId {
-    UserId::new(*account.as_bytes())
-}
-
-/// The account, among `holders` of one key, whose entry is `row`.
-///
-/// Keys of an owned collection are per owner (core rc.57): one key appears
-/// once per account holding it, and an ordered read hands back rows without
-/// saying whose each is. The owner is recovered by matching the row's bytes
-/// against every holder's entry at the key. A `Message` is built from
-/// `LwwRegister`s, which carry the write's timestamp and writer, so two
-/// accounts' entries are never byte-identical; the lowest matching account
-/// answers if they ever were.
-fn holder_of<V: BorshSerialize>(holders: Vec<(AccountId, V)>, row: &V) -> Option<AccountId> {
-    let row = calimero_sdk::borsh::to_vec(row).ok()?;
-    holders
-        .into_iter()
-        .filter(|(_, held)| calimero_sdk::borsh::to_vec(held).is_ok_and(|bytes| bytes == row))
-        .map(|(owner, _)| owner)
-        .min()
-}
-
-/// Refuses a client timestamp too far ahead of this node's clock.
-fn check_timestamp(timestamp: u64) -> app::Result<()> {
-    let now_secs = env::time_now() / 1_000_000_000;
-    if timestamp > now_secs.saturating_add(MAX_CLOCK_SKEW_SECS) {
-        app::bail!("Timestamp {timestamp} is too far in the future");
-    }
-    Ok(())
-}
-
-/// `"<parent>␟<timestamp:020>␟<id>"`: one thread is one key prefix, in time
-/// order. The timestamp is recovered from the id's `_<timestamp>` suffix, so a
-/// reply's key follows from its parent and its id alone.
-fn thread_key(parent: &str, message_id: &str) -> app::Result<String> {
-    let Some(timestamp) = message_id
-        .rsplit_once('_')
-        .and_then(|(_, ts)| ts.parse::<u64>().ok())
-    else {
-        app::bail!("Malformed message id");
-    };
-    Ok(format!(
-        "{parent}{KEY_SEP}{timestamp:020}{KEY_SEP}{message_id}"
-    ))
-}
-
-fn thread_prefix(parent: &str) -> String {
-    format!("{parent}{KEY_SEP}")
-}
-
-/// `"<message>␟<emoji>␟<account hex>"`: one message's reactions are one prefix.
-fn reaction_key(message_id: &str, emoji: &str, account: &UserId) -> String {
-    format!(
-        "{message_id}{KEY_SEP}{emoji}{KEY_SEP}{}",
-        hex(account.as_ref())
-    )
-}
-
-/// The slice of `total` items a `(limit, offset)` page covers, counted back
-/// from the END (offset 0 is the newest page), and the `start_position` it
-/// reports: the offset, except 0 for an empty collection.
-fn page_window(total: usize, limit: Option<usize>, offset: Option<usize>) -> (Range<usize>, u32) {
-    if total == 0 {
-        return (0..0, 0);
-    }
-    let offset = offset.unwrap_or(0);
-    if offset >= total {
-        return (0..0, offset as u32);
-    }
-    let end = total - offset;
-    (
-        end.saturating_sub(limit.unwrap_or(total))..end,
-        offset as u32,
-    )
-}
-
-fn search_hit(
-    message: &Message,
-    parent: Option<&str>,
-    index: Option<usize>,
-    anchor_timestamp: u64,
-    sender: UserId,
-    found: search::Snippet,
-) -> SearchHit {
-    SearchHit {
-        id: message.id.get().clone(),
-        parent_message_id: parent.map(str::to_owned),
-        index: index.map(|i| i as u64),
-        timestamp: *message.timestamp,
-        anchor_timestamp,
-        sender,
-        snippet: found.text,
-        match_start: found.match_start,
-        match_end: found.match_end,
-    }
-}
-
-/// Build the storage key for a user's per-channel draft.
-/// Format: "<base58_user_id>:<channel_name>"
-fn draft_key(user_base58: &str, channel: &str) -> String {
-    format!("{user_base58}:{channel}")
-}
-
-/// Unsent drafts — node-local, never synced.
-///
-/// These used to live on the replicated state as
-/// `UnorderedMap<String, LwwRegister<String>>`, keyed `"{user}:{channel}"`, with
-/// a comment calling them "effectively private — each user only reads/writes
-/// their own keys". That was true of the API and false of the storage: the keys
-/// gate what the CONTRACT will hand back, while the bytes themselves replicated
-/// to every member of the channel and sat decrypted in their local store. Half
-/// a sentence typed and abandoned was readable by everyone it was about.
-///
-/// `#[app::private]` puts them in the node-local namespace instead, so they are
-/// never part of the synced tree at all — the gate stops being a convention the
-/// contract has to keep and becomes a property of where the data lives.
-///
-/// The value is a plain `String`, not an `LwwRegister`: private storage has a
-/// single writer, so there is no concurrent edit to reconcile. (The macro
-/// rejects CRDT types here for exactly that reason.)
-#[derive(BorshDeserialize, BorshSerialize, Debug)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[app::private]
-pub struct Drafts {
-    entries: UnorderedMap<String, String>,
-}
-
-impl Default for Drafts {
-    fn default() -> Self {
-        Self {
-            entries: UnorderedMap::new(),
-        }
-    }
-}
-
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-#[borsh(crate = "calimero_sdk::borsh")]
-pub struct MessageSentEvent {
-    pub message_id: String,
-}
-
-// `#[app::mergeable]`, not `#[derive(Mergeable)]`: since core 0.11.0-rc.32 a type
-// that implements `Mergeable` must SAY how it merges, and the two answers are
-// different decisions, not styles. The derive writes a field-by-field merge and
-// sets `DISPATCHED = false` — the storage layer then resolves the entry
-// structurally and never calls the rule below, which for `Attachment` would
-// silently discard "newest upload wins" in favour of last-write-wins on the
-// whole value. The attribute stamps a `CustomTypeId` on every entry holding an
-// `Attachment` and dispatches merge to the impl here, which is the rule this app
-// actually depends on. It also emits the `RekeyTarget` that used to be written
-// by hand just below — writing one as well is a conflicting-impl error.
-//
-// No `id = "..."` override: the default digest is over `module_path!()` + the
-// type name, and neither this crate nor this module is expected to be renamed.
-// Pin an id only if the type may move after entries have been stamped.
-#[app::mergeable]
-#[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize, AbiType)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+/// A file or an image on a message.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Attachment {
     pub name: String,
     pub mime_type: String,
     pub size: u64,
-    pub blob_id: BlobId,
+    /// The blob; the host keeps it while this reference is stored.
+    pub blob: BlobRef,
+    /// When it was attached: the log's clock, milliseconds since the epoch.
     pub uploaded_at: u64,
 }
 
-impl MergeableTrait for Attachment {
-    /// Newest upload wins, with a deterministic tie-break.
-    ///
-    /// The tie-break is not decoration. `merge` must be commutative and
-    /// idempotent, and `uploaded_at` is a millisecond clock: two replicas that
-    /// attach different files in the same millisecond compare equal, and a rule
-    /// that only acts on `>` then leaves each side holding its own value
-    /// forever — every re-merge changes nothing, so the entry never converges
-    /// and no error is ever raised. Ordering the equal-clock case by the
-    /// remaining fields gives both sides the same answer whichever way round
-    /// they merge. `blob_id` is compared as its hex string, which is what the
-    /// wire carries since rc.27.
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        let newer = other.uploaded_at > self.uploaded_at;
-        let wins_tie =
-            other.uploaded_at == self.uploaded_at && other.tie_break_key() > self.tie_break_key();
-        if newer || wins_tie {
-            *self = other.clone();
-        }
-        Ok(())
-    }
+/// The lists one message carries, kept beside its record (a record holds no
+/// lists). Written once, when the message is sent; absent when all are empty.
+#[derive(Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Extras {
+    /// At most `MAX_MENTIONS` (enforced by `sendMessage`).
+    pub mentions: Vec<String>,
+    /// At most `MAX_MENTIONS` (enforced by `sendMessage`).
+    pub mentions_usernames: Vec<String>,
+    /// At most `MAX_ATTACHMENTS` (enforced by `sendMessage`).
+    pub files: Vec<Attachment>,
+    /// At most `MAX_ATTACHMENTS` (enforced by `sendMessage`).
+    pub images: Vec<Attachment>,
 }
 
-impl Attachment {
-    /// Total order over the fields that identify an attachment, used only to
-    /// settle an equal-`uploaded_at` merge. `blob_id` alone would do in
-    /// practice, but including the rest keeps the key a function of the whole
-    /// value, so two attachments that differ at all order differently.
-    fn tie_break_key(&self) -> (String, String, u64, String) {
-        (
-            self.blob_id.to_string(),
-            self.name.clone(),
-            self.size,
-            self.mime_type.clone(),
-        )
-    }
-
-    fn to_public(&self) -> AttachmentPublic {
-        AttachmentPublic {
-            name: self.name.clone(),
-            mime_type: self.mime_type.clone(),
-            size: self.size,
-            blob_id: self.blob_id.to_string(),
-            uploaded_at: self.uploaded_at,
-        }
-    }
+/// One account's profile in this conversation.
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Profile {
+    /// Fixed by the first `setProfile`.
+    pub username: String,
+    pub avatar: Option<BlobRef>,
 }
 
-#[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize, AbiType)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct AttachmentPublic {
+/// What the conversation is, and what it is called.
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Info {
     pub name: String,
-    pub mime_type: String,
-    pub size: u64,
-    pub blob_id: String,
-    pub uploaded_at: u64,
+    pub context_type: ContextType,
+    pub description: String,
+    /// Seconds since the epoch.
+    pub created_at: u64,
+    /// The account that created it (the app's owner).
+    pub creator: String,
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, AbiType)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct AttachmentInput {
-    pub name: String,
-    pub mime_type: String,
-    pub size: u64,
-    pub blob_id_str: String,
-}
-
-#[app::event]
-pub enum Event {
-    Initialized(),
-    MessageSent(MessageSentEvent),
-    MessageSentThread(MessageSentEvent),
-    ReactionUpdated(String),
-    /// Payload: the id of the message whose TEXT changed.
-    ///
-    /// Editing used to emit `MessageSent`, which is what a brand-new message
-    /// emits. A peer could not tell the two apart, so it announced an edit as
-    /// "X sent a message" and refreshed the newest page looking for it — and an
-    /// edit to an older message is not in that page, so the change never
-    /// appeared. Naming the message lets a reader refresh exactly it.
-    MessageEdited(String),
-    ProfileUpdated(String),
-    InfoUpdated(),
-    /// Payload: target identity (base58) whose role just changed.
-    RoleUpdated(String),
-}
-
-/// "channel" or "dm", fixed when the context is created.
-#[derive(
-    BorshDeserialize, BorshSerialize, Serialize, Deserialize, PartialEq, Eq, Clone, Default, AbiType,
-)]
-#[serde(crate = "calimero_sdk::serde")]
-#[borsh(crate = "calimero_sdk::borsh")]
+/// `"Channel"` or `"Dm"`, fixed when the conversation is created.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ContextType {
     #[default]
     Channel,
     Dm,
 }
 
-/// In-context moderation role. Who holds which role is enforced by storage
-/// (`roles` and `banned` are writer-set guarded). What a ban STOPS is not: every
-/// state-mutating method checks the caller is not Banned, but that check runs
-/// on the banned member's own node, so a patched node skips it. Banned users
-/// stay in the underlying group; removing them for good is a core group kick.
+/// A member's moderation role here.
 ///
-/// - `User`     default for everyone except the creator
-/// - `Mod`      can flip a User to Banned (and back)
-/// - `Admin`    can change anyone's role; creator starts here
-/// - `Banned`   cannot perform any state-mutating action
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    BorshDeserialize,
-    BorshSerialize,
-    Serialize,
-    Deserialize,
-    AbiType,
-)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-#[derive(Default)]
+/// - `User`: everyone without another role;
+/// - `Mod`: may ban a `User` and unban a `Banned` member;
+/// - `Admin`: may change anyone's role and the info; the creator starts here;
+/// - `Banned`: may read, but every write of theirs is refused.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Role {
     #[default]
     User,
@@ -383,273 +211,95 @@ pub enum Role {
     Banned,
 }
 
-/// Named role inside `AccessControl` for moderators. `Admin` is the admin tier
-/// (writer set) and `Banned` is a separate exclusion set, so `"mod"` is the only
-/// named role the registry stores.
-const ROLE_MOD: &str = "mod";
+// ── arguments and results ────────────────────────────────────────────────────
 
-// Dispatched merge (see `Attachment` for why the attribute and not the derive).
-// `Message` cannot take `#[derive(Mergeable)]` in any case: the derive writes its
-// own `Mergeable` impl, which would collide with the one below, and its
-// field lint rejects a bare `sender: UserId`. The attribute also emits the
-// `RekeyTarget` impl that used to be hand-written after the merge, field by
-// field under `field_child_id(parent_id, "<field name>")` — the same child ids,
-// so nothing moves in storage.
-//
-// Searchable: the node's full-text index holds each message's text as a reader
-// sees it (markup dropped, trigrams for substring search) and its timestamp to
-// rank by. A deleted message is not in it.
-#[app::mergeable]
-#[derive(BorshDeserialize, BorshSerialize, AbiType, app::Searchable)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[search(index_if = Message::is_indexed)]
-pub struct Message {
-    #[search(number)]
-    pub timestamp: LwwRegister<u64>,
-    /// Whoever the writing node SAID sent it, echoed back to that sender. A
-    /// patched node can put anyone here, so no read trusts it: views take the
-    /// sender from the entry's owner stamp.
-    pub sender: UserId,
-    pub mentions: UnorderedSet<UserId>,
-    pub mentions_usernames: Vector<LwwRegister<String>>,
-    pub files: Vector<Attachment>,
-    pub images: Vector<Attachment>,
-    pub id: LwwRegister<MessageId>,
-    #[search(text, infix, with = search::indexed_text)]
-    pub text: LwwRegister<String>,
-    pub edited_on: Option<LwwRegister<u64>>,
-    pub deleted: Option<LwwRegister<bool>>,
+/// A file or image to attach: a blob the client uploaded to this app first
+/// (`POST /apps/{app}/blobs`).
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AttachmentInput {
+    pub name: String,
+    pub mime_type: String,
+    /// The client's count; the node's own record of the blob's size wins.
+    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    pub size: u64,
+    /// The blob id: 64 lowercase hex digits.
+    pub blob_id_str: String,
 }
 
-impl Message {
-    /// Whether the message is in the search index: a deleted one is not.
-    /// (A staff removal lives in `hidden`, outside the message, and is
-    /// filtered when a hit is read back.)
-    fn is_indexed(&self) -> bool {
-        !self.deleted.as_ref().is_some_and(|flag| **flag)
-    }
+/// An attachment as callers see it.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AttachmentView {
+    pub name: String,
+    pub mime_type: String,
+    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    pub size: u64,
+    /// 64 lowercase hex digits: `GET /apps/{app}/blobs/{id}`.
+    pub blob_id: String,
+    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    pub uploaded_at: u64,
 }
 
-impl MergeableTrait for Message {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        MergeableTrait::merge(&mut self.timestamp, &other.timestamp)?;
-        MergeableTrait::merge(&mut self.id, &other.id)?;
-        MergeableTrait::merge(&mut self.text, &other.text)?;
-        MergeableTrait::merge(&mut self.mentions, &other.mentions)?;
-        MergeableTrait::merge(&mut self.mentions_usernames, &other.mentions_usernames)?;
-        MergeableTrait::merge(&mut self.files, &other.files)?;
-        MergeableTrait::merge(&mut self.images, &other.images)?;
-        if let Some(ref b) = other.edited_on {
-            if let Some(ref mut a) = self.edited_on {
-                MergeableTrait::merge(a, b)?;
-            } else {
-                self.edited_on = Some(b.clone());
-            }
-        }
-        if let Some(ref b) = other.deleted {
-            if let Some(ref mut a) = self.deleted {
-                MergeableTrait::merge(a, b)?;
-            } else {
-                self.deleted = Some(b.clone());
-            }
-        }
-        Ok(())
-    }
-}
-
-// The `RekeyTarget` impl that used to sit here is now emitted by
-// `#[app::mergeable]` on the struct above. It re-keys every field under
-// `field_child_id(parent_id, "<field name>")` — byte-for-byte the child ids the
-// hand-written version derived — and its `register_nested_value_types` scans
-// the field types, so `Attachment` (reached through `files`/`images:
-// Vector<Attachment>`) is still registered. Writing one here as well is a
-// conflicting-impl error.
-
-impl Clone for Message {
-    fn clone(&self) -> Self {
-        Message {
-            timestamp: self.timestamp.clone(),
-            sender: self.sender,
-            mentions: {
-                let mut new_set = UnorderedSet::new();
-                if let Ok(iter) = self.mentions.iter() {
-                    for item in iter {
-                        let _ = new_set.insert(item);
-                    }
-                }
-                new_set
-            },
-            mentions_usernames: {
-                let mut new_vec = Vector::new();
-                if let Ok(iter) = self.mentions_usernames.iter() {
-                    for item in iter {
-                        let _ = new_vec.push(item.clone());
-                    }
-                }
-                new_vec
-            },
-            files: {
-                let mut new_vec = Vector::new();
-                if let Ok(iter) = self.files.iter() {
-                    for attachment in iter {
-                        let _ = new_vec.push(attachment.clone());
-                    }
-                }
-                new_vec
-            },
-            images: {
-                let mut new_vec = Vector::new();
-                if let Ok(iter) = self.images.iter() {
-                    for attachment in iter {
-                        let _ = new_vec.push(attachment.clone());
-                    }
-                }
-                new_vec
-            },
-            id: self.id.clone(),
-            text: self.text.clone(),
-            edited_on: self.edited_on.clone(),
-            deleted: self.deleted.clone(),
-        }
-    }
-}
-
-impl Serialize for Message {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: calimero_sdk::serde::Serializer,
-    {
-        use calimero_sdk::serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("Message", 10)?;
-        state.serialize_field("timestamp", &*self.timestamp)?;
-        state.serialize_field("sender", &self.sender)?;
-
-        let mentions_vec: Vec<UserId> = if let Ok(iter) = self.mentions.iter() {
-            iter.collect()
-        } else {
-            Vec::new()
-        };
-        state.serialize_field("mentions", &mentions_vec)?;
-
-        let mentions_usernames_vec: Vec<String> = if let Ok(iter) = self.mentions_usernames.iter() {
-            iter.map(|r| r.get().clone()).collect()
-        } else {
-            Vec::new()
-        };
-        state.serialize_field("mentions_usernames", &mentions_usernames_vec)?;
-        let files_vec = attachments_vector_to_public(&self.files);
-        state.serialize_field("files", &files_vec)?;
-        let images_vec = attachments_vector_to_public(&self.images);
-        state.serialize_field("images", &images_vec)?;
-
-        state.serialize_field("id", self.id.get())?;
-        state.serialize_field("text", self.text.get())?;
-        state.serialize_field("edited_on", &self.edited_on.as_ref().map(|r| **r))?;
-        state.serialize_field("deleted", &self.deleted.as_ref().map(|r| **r))?;
-        state.end()
-    }
-}
-
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-#[borsh(crate = "calimero_sdk::borsh")]
-pub struct MessageWithReactions {
-    /// Position in the channel's append-only vector.
-    ///
-    /// A STABLE cursor, and the reason clients can page and resume without
-    /// gaps: appends land at the end and never renumber what came before, and
-    /// a delete keeps its slot (the text is blanked, the entry stays). So an
-    /// index a client stored two hours ago still names the same message.
-    ///
-    /// Counting a window from the END, which `get_messages` does, has no such
-    /// property: every append shifts it and a client paging that way re-reads
-    /// or skips messages. Use `get_messages_from` for anything that resumes.
+/// A message as callers see it (v1's `MessageWithReactions`).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageView {
+    /// Its position among its parent's messages: stable, so a client can store
+    /// it and resume from it (`getMessagesFrom`).
+    #[serde(with = "calimero_app_sdk::json::u64_str")]
     pub index: u64,
+    #[serde(with = "calimero_app_sdk::json::u64_str")]
     pub timestamp: u64,
-    pub sender: UserId,
-    pub mentions: Vec<UserId>,
+    pub sender: String,
+    pub mentions: Vec<String>,
     pub mentions_usernames: Vec<String>,
-    pub files: Vec<AttachmentPublic>,
-    pub images: Vec<AttachmentPublic>,
-    pub id: MessageId,
+    pub files: Vec<AttachmentView>,
+    pub images: Vec<AttachmentView>,
+    pub id: String,
+    /// `""` once deleted.
     pub text: String,
+    #[serde(with = "calimero_app_sdk::json::opt_u64_str")]
     pub edited_on: Option<u64>,
-    pub reactions: Option<HashMap<String, Vec<UserId>>>,
+    /// Emoji -> the accounts that reacted with it; `null` when none (or deleted).
+    pub reactions: Option<BTreeMap<String, Vec<String>>>,
+    /// `true` once deleted, else `null`.
     pub deleted: Option<bool>,
+    /// Replies, for a top-level message read with its thread; else 0.
     pub thread_count: u32,
+    /// The newest reply's timestamp, or 0.
+    #[serde(with = "calimero_app_sdk::json::u64_str")]
     pub thread_last_timestamp: u64,
+    /// The top-level message a reply belongs to; `null` at the top level.
     pub parent_message_id: Option<String>,
 }
 
-fn attachments_vector_to_public(vector: &Vector<Attachment>) -> Vec<AttachmentPublic> {
-    let mut attachments = Vec::new();
-    if let Ok(iter) = vector.iter() {
-        for attachment in iter {
-            attachments.push(attachment.to_public());
-        }
-    }
-    attachments
-}
-
-fn attachment_inputs_to_vector(
-    inputs: Option<Vec<AttachmentInput>>,
-    context_id: &[u8; 32],
-) -> app::Result<Vector<Attachment>> {
-    let mut vector = Vector::new();
-    if let Some(attachment_inputs) = inputs {
-        for attachment_input in attachment_inputs {
-            let blob_id: BlobId = attachment_input.blob_id_str.parse()?;
-            if !env::blob_announce_to_context(blob_id.as_ref(), context_id) {
-                app::log!(
-                    "Warning: failed to announce blob {} to context",
-                    attachment_input.blob_id_str,
-                );
-            }
-            let _ = vector.push(Attachment {
-                name: attachment_input.name,
-                mime_type: attachment_input.mime_type,
-                size: attachment_input.size,
-                blob_id,
-                uploaded_at: env::time_now(),
-            });
-        }
-    }
-    Ok(vector)
-}
-
-#[derive(Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
+/// A window of messages.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FullMessageResponse {
     pub total_count: u32,
-    pub messages: Vec<MessageWithReactions>,
+    pub messages: Vec<MessageView>,
     pub start_position: u32,
 }
 
-/// One message a search found: enough to list and open it, not the message.
-///
-/// Deliberately slim. Rendering a full message walks its mentions, files,
-/// images, reactions and thread; a search used to do that for every hit and
-/// then throw away all but one page. A client wanting the whole message reads
-/// it by `index` (`get_messages_from`), or opens the thread by
-/// `parent_message_id`.
-#[derive(Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
+/// One message a search found: enough to list and open it.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SearchHit {
-    pub id: MessageId,
+    pub id: String,
     /// Set for a thread reply: the top-level message it replies to.
-    pub parent_message_id: Option<MessageId>,
-    /// Position of the top-level message: the hit itself, or a reply's
-    /// parent. What a permalink to the conversation is made of. `None` from
-    /// the index-backed search, which does not walk the channel: ask
-    /// `message_position` for it when the hit is opened.
+    pub parent_message_id: Option<String>,
+    /// Position of the top-level message (the hit, or a reply's parent); `null`
+    /// from the index-backed search: ask `messagePosition`.
+    #[serde(with = "calimero_app_sdk::json::opt_u64_str")]
     pub index: Option<u64>,
+    #[serde(with = "calimero_app_sdk::json::u64_str")]
     pub timestamp: u64,
-    /// The timestamp the hit is ranked by. The index ranks every message by
-    /// its own; the scan fallback ranks a reply by its parent's, listing it
-    /// with its thread.
+    /// The timestamp the hit is listed by: its own (index), its thread's (scan).
+    #[serde(with = "calimero_app_sdk::json::u64_str")]
     pub anchor_timestamp: u64,
-    /// From the entry's owner stamp, never the message's own field.
-    pub sender: UserId,
+    pub sender: String,
     /// Plain text around the first match, not markup.
     pub snippet: String,
     /// The match inside `snippet`, in UTF-16 code units (a JS string index).
@@ -657,839 +307,587 @@ pub struct SearchHit {
     pub match_end: u32,
 }
 
-/// A page of `search_messages`.
-#[derive(Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
+/// A page of a search.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SearchPage {
     pub hits: Vec<SearchHit>,
-    /// Opaque; pass it back for the next page. `None` once the walk reached the
-    /// oldest message.
+    /// Opaque; pass it back for the next page. `null` at the end.
     pub next_cursor: Option<String>,
-    /// The oldest timestamp among the top-level messages this call read, or
-    /// `None` if it read none. The walk goes newest first by position, so later
-    /// pages rank at or below it (up to clock skew between senders): a client
-    /// merging several channels can show every hit above it without waiting
-    /// for more pages.
+    /// The scan: the oldest top-level timestamp it read (later pages rank at
+    /// or below it). The index ranks by relevance, so it answers `null`.
+    #[serde(with = "calimero_app_sdk::json::opt_u64_str")]
     pub frontier_timestamp: Option<u64>,
 }
 
-/// Per-context metadata returned by `get_info` / `get_channel_info`.
-#[derive(Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
+/// The conversation's metadata (`getInfo`, `getChannelInfo`).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ContextInfo {
     pub name: String,
     pub context_type: ContextType,
     pub description: String,
+    #[serde(with = "calimero_app_sdk::json::u64_str")]
     pub created_at: u64,
     pub creator: String,
 }
 
-/// Per-context user profile returned by `get_profiles`.
-#[derive(Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
+/// A profile as callers see it.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UserProfile {
-    pub identity: UserId,
+    pub identity: String,
     pub username: String,
+    /// The avatar's blob id, or `null`.
     pub avatar: Option<String>,
 }
 
-/// Per-context profile stored in CRDT state.
-// Dispatched merge (see `Attachment`). The rule below is not plain field-by-field
-// delegation — it lifts a `None` avatar to the other side's `Some` — so the
-// derive's structural resolution would quietly lose an avatar set concurrently
-// with a rename. `#[app::mergeable]` also emits the `RekeyTarget` that followed
-// the impl.
-#[app::mergeable]
-#[derive(BorshDeserialize, BorshSerialize, AbiType)]
-#[borsh(crate = "calimero_sdk::borsh")]
-pub struct StoredProfile {
-    pub username: LwwRegister<String>,
-    pub avatar: Option<LwwRegister<String>>,
+/// A page of profiles.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfilePage {
+    pub items: Vec<UserProfile>,
+    pub next: Option<String>,
 }
 
-impl MergeableTrait for StoredProfile {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        MergeableTrait::merge(&mut self.username, &other.username)?;
-        if let (Some(ref mut a), Some(ref b)) = (&mut self.avatar, &other.avatar) {
-            MergeableTrait::merge(a, b)?;
-        } else if other.avatar.is_some() {
-            self.avatar = other.avatar.clone();
-        }
-        Ok(())
-    }
+/// A member with a role other than `User`.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoleEntry {
+    pub identity: String,
+    pub role: Role,
 }
 
-/// What a context is founded with. Frozen in `init`: nobody, the creator
-/// included, can change it afterwards.
-#[derive(BorshDeserialize, BorshSerialize, Default, AbiType)]
-#[borsh(crate = "calimero_sdk::borsh")]
-pub struct Founding {
-    pub context_type: ContextType,
-    pub created_at: u64,
-    pub creator: String,
+/// A page of roles.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RolePage {
+    pub items: Vec<RoleEntry>,
+    pub next: Option<String>,
 }
 
-/// The channel's name and description, writable by the admins only.
-#[derive(BorshDeserialize, BorshSerialize, Default, AbiType, app::Mergeable)]
-#[borsh(crate = "calimero_sdk::borsh")]
-pub struct ChannelText {
-    pub name: LwwRegister<String>,
-    pub description: LwwRegister<String>,
-}
+// ── state ────────────────────────────────────────────────────────────────────
 
-/// Where a message lives: a slot of the channel, or a key of the thread map.
-#[derive(BorshDeserialize, BorshSerialize, AbiType)]
-#[borsh(crate = "calimero_sdk::borsh")]
-pub enum Slot {
-    /// The `messages` entry's id, as bytes.
-    Channel([u8; 32]),
-    Thread(String),
-}
-
-/// One context = one conversation (channel or DM).
-/// Messages, threads, reactions, profiles, and metadata live here.
-///
-/// Every field that is not collaborative is held to its writer by storage, on
-/// every node, so a patched node cannot get around the checks below by
-/// skipping them: the checks only make a refused write fail early.
-#[app::state(emits = Event)]
+/// One conversation.
+#[app::state(version = 1)]
 pub struct MeroChat {
-    founding: Frozen<Founding>,
-    /// Writers: the admins (kept equal to `roles.admins()`, see `sync_staff`).
-    info: SharedStorage<ChannelText>,
-    /// Top-level messages. Each slot is owned by its sender; the index is the
-    /// stable cursor clients page and resume by.
-    messages: AuthoredVector<Message>,
-    /// Message id -> the `messages` entry holding it, written once by the
-    /// sender. Turns edits, deletes and "does this message exist" into one
-    /// lookup instead of a walk of the channel.
-    message_ids: WriteOnce<UnorderedMap<MessageId, Slot>>,
-    /// `thread_key(parent, id)` -> reply. The author edits their reply; the
-    /// staff (the moderators) remove any.
-    threads: Moderated<SortedMap<String, Message>>,
-    /// `reaction_key(message, emoji, account)` -> nothing: the key is the
-    /// reaction, and the entry is owned by whoever reacted.
-    reactions: AuthoredSortedMap<String, ()>,
-    /// One profile per account, written only by that account.
-    profiles: UserStorage<StoredProfile>,
-    /// Per-context moderation roles, backed by a writer-set-guarded registry.
-    /// The admin tier IS the writer set, so a non-admin's forged `grant`/
-    /// `grant_admin` delta is rejected at merge. `Admin` maps to the admin
-    /// tier; `Mod` to the `"mod"` named role; `Banned` lives in `banned`.
-    roles: AccessControl,
-    /// Soft-ban exclusion set. Missing/`false` entry = not banned. Kept apart
-    /// from `AccessControl` because moderators (not just admins) may ban and
-    /// unban, which its admin-gated `grant` cannot express. Writers: the
-    /// staff, admins and moderators (see `sync_staff`).
-    banned: SharedStorage<UnorderedMap<UserId, LwwRegister<bool>>>,
-    /// Top-level messages the staff removed. A message's slot belongs to its
-    /// sender and cannot be rewritten by anyone else, so a removal is recorded
-    /// here and every read blanks the message. Writers: the staff.
-    hidden: SharedStorage<UnorderedMap<MessageId, LwwRegister<bool>>>,
-    /// Per-account last-read timestamp, written only by that account. Enables
-    /// cross-device unread tracking without localStorage.
-    read_receipts: UserStorage<LwwRegister<u64>>,
-    // Drafts are NOT here: they are node-local, in `Drafts`. They lived on this
-    // synced state until it was noticed that "each user only reads/writes their
-    // own keys" describes the API, not the storage — the bytes replicated to
-    // everyone regardless.
+    /// Name, type, description, creation. Set by `init`.
+    info: Cell<Info>,
+    /// Every message, top-level and reply.
+    messages: Table<Message>,
+    /// Parent (`""` for the top level) -> the `seq` its next message takes.
+    next_seq: UnorderedMap<String, u64>,
+    /// Message id -> its mentions and attachments, when it has any.
+    extras: UnorderedMap<String, Extras>,
+    /// `(message, emoji, account)` -> `true`: the key is the reaction.
+    reactions: UnorderedMap<(String, String, String), bool>,
+    /// Account -> its profile, written only by that account.
+    profiles: UnorderedMap<String, Profile>,
+    /// Account -> its role, when it is not `User`.
+    roles: UnorderedMap<String, Role>,
+    /// Each account's last-read timestamp, written only by that account.
+    read_receipts: PerUser<u64>,
+    /// `(account, channel)` -> that account's unsent draft.
+    drafts: UnorderedMap<(String, String), String>,
 }
-
-// One index over both places a message lives: top-level messages and thread
-// replies, ranked together newest first.
-app::search_indexes!(MeroChat {
-    "messages" (version = 1) => messages | threads,
-});
-
-/// The index `search_messages` queries.
-const SEARCH_INDEX: &str = "messages";
 
 #[app::logic]
+#[allow(clippy::too_many_arguments)]
 impl MeroChat {
+    /// The new conversation. The node runs it once, when the app is created,
+    /// with the `initArgs` the creator passes (all optional: a nameless
+    /// `Channel` without them). The creator (the app's owner) is its first
+    /// admin; a non-blank `creatorUsername` is their profile. `createdAt`
+    /// (seconds) defaults to the log's clock. Emits `Initialized`.
     #[app::init]
     pub fn init(
-        name: String,
-        context_type: ContextType,
-        description: String,
-        created_at: u64,
-        creator_username: String,
-    ) -> MeroChat {
-        app::emit!(Event::Initialized());
-
-        let creator = Self::executor_id().to_string();
-        let me: AccountId = env::account_id().into();
-
-        // The context creator is the sole initial admin (the writer set), and so
-        // the sole initial staff member of every staff-written field. Other
-        // admins/mods are granted at runtime by an existing admin.
-        let roles = AccessControl::new(me);
-
-        // Pre-seed the creator's profile so get_profiles returns their name
-        // immediately after context state gossip, without waiting for an
-        // explicit set_profile call from the creator.
-        let mut profiles = UserStorage::new();
-        // The creator is `info`'s only writer, so this write cannot be refused.
-        let mut info = SharedStorage::new(BTreeSet::from([me]), false);
-        let _ = info.insert(ChannelText {
-            name: LwwRegister::new(name),
-            description: LwwRegister::new(description),
-        });
-        if !creator_username.trim().is_empty() {
-            let _ = profiles.insert(StoredProfile {
-                username: LwwRegister::new(creator_username),
-                avatar: None,
-            });
+        name: Option<String>,
+        context_type: Option<ContextType>,
+        description: Option<String>,
+        created_at: Option<u64>,
+        creator_username: Option<String>,
+    ) -> app::Result<Self> {
+        let name = name.unwrap_or_default();
+        let description = description.unwrap_or_default();
+        check_max("name", &name, MAX_NAME_LEN)?;
+        check_max("description", &description, MAX_DESCRIPTION_LEN)?;
+        let creator = env::app_owner();
+        let mut chat = Self::load();
+        chat.info.set(&Info {
+            name,
+            context_type: context_type.unwrap_or_default(),
+            description,
+            created_at: created_at.unwrap_or_else(now_secs),
+            creator: creator.clone(),
+        })?;
+        let _old = chat.roles.insert(&creator, &Role::Admin)?;
+        if let Some(username) = creator_username.filter(|u| !u.trim().is_empty()) {
+            check_username(&username)?;
+            let _old = chat.profiles.insert(
+                &creator,
+                &Profile {
+                    username,
+                    avatar: None,
+                },
+            )?;
         }
-
-        MeroChat {
-            founding: Frozen::new(Founding {
-                context_type,
-                created_at,
-                creator,
-            }),
-            info,
-            messages: AuthoredVector::new(),
-            message_ids: WriteOnce::new(),
-            threads: Moderated::new(),
-            reactions: AuthoredSortedMap::new(),
-            profiles,
-            roles,
-            banned: SharedStorage::new(BTreeSet::from([me]), false),
-            hidden: SharedStorage::new(BTreeSet::from([me]), false),
-            read_receipts: UserStorage::new(),
-        }
+        env::emit(Event::Initialized, Audience::All)?;
+        Ok(chat)
     }
 
+    // ── info ─────────────────────────────────────────────────────────────────
+
+    /// The conversation's name, type, description, creation time and creator.
     #[app::view]
     pub fn get_info(&self) -> app::Result<ContextInfo> {
-        let founding = self.founding.get()?;
-        let info = self.info.get()?;
+        let info = self.info()?;
         Ok(ContextInfo {
-            name: info.name.get().clone(),
-            context_type: founding.context_type.clone(),
-            description: info.description.get().clone(),
-            created_at: founding.created_at,
-            creator: founding.creator.clone(),
+            name: info.name,
+            context_type: info.context_type,
+            description: info.description,
+            created_at: info.created_at,
+            creator: info.creator,
         })
     }
 
-    /// Alias for `get_info` — satisfies frontends that call `get_channel_info`.
-    /// The legacy `channel` argument is accepted but ignored.
+    /// `getInfo`, for frontends that ask for it by its old name. `channel` is
+    /// accepted and ignored: one app is one conversation.
     #[app::view]
-    pub fn get_channel_info(&self, _channel: Option<String>) -> app::Result<ContextInfo> {
+    pub fn get_channel_info(&self, channel: Option<String>) -> app::Result<ContextInfo> {
+        let _ = channel;
         self.get_info()
     }
 
-    /// No-op stub so frontends that call `mark_messages_as_read` don't get
-    /// a "method not found" error. Read state is tracked client-side only.
-    #[app::view]
-    pub fn mark_messages_as_read(
-        &self,
-        _channel: Option<String>,
-        _timestamp: Option<u64>,
-    ) -> app::Result<String> {
-        Ok("ok".to_string())
-    }
-
-    /// Persist the caller's last-read position. No event is emitted so this
-    /// is a silent CRDT write — it gossips to other nodes but does not trigger
-    /// an SSE notification on any subscriber.
-    pub fn mark_as_read(&mut self, timestamp: u64) -> app::Result<String> {
-        let _ = self.read_receipts.insert(LwwRegister::new(timestamp))?;
-        Ok("ok".to_string())
-    }
-
-    /// Count messages newer than the caller's last-read timestamp, excluding
-    /// messages sent by the caller and soft-deleted messages. Looks at the
-    /// newest `MAX_UNREAD_SCAN` messages only, so the count saturates there.
-    #[app::view]
-    pub fn get_unread_count(&self) -> u32 {
-        let caller = Self::executor_id();
-        self.unread(|_| true, &caller)
-    }
-
-    /// Count unread messages that mention the caller directly (@username),
-    /// or use a broadcast mention (@everyone / @here). Same window as
-    /// `get_unread_count`.
-    #[app::view]
-    pub fn get_unread_mentions(&self) -> u32 {
-        let caller = Self::executor_id();
-        self.unread(
-            |msg| {
-                // Broadcast mentions (@everyone / @here) always count.
-                let is_broadcast = msg.mentions_usernames.iter().is_ok_and(|mut unames| {
-                    unames.any(|r| {
-                        let s = r.get().as_str();
-                        s == "everyone" || s == "here"
-                    })
-                });
-                // Direct mention: caller's UserId is in the message's mentions set.
-                is_broadcast
-                    || msg
-                        .mentions
-                        .iter()
-                        .is_ok_and(|mut mentions| mentions.any(|uid| uid == caller))
-            },
-            &caller,
-        )
-    }
-
-    /// Rename the channel or change its description. Admins only: storage
-    /// refuses anyone outside `info`'s writer set, on every node.
+    /// Renames the conversation or changes its description (either may be
+    /// `null`: unchanged). Admins only (`Forbidden`). Emits `InfoUpdated`.
     pub fn update_info(
         &mut self,
         name: Option<String>,
         description: Option<String>,
     ) -> app::Result<String> {
-        self.roles
-            .only_admin()
-            .map_err(|_| app::err!("Only an admin can change the channel's info"))?;
-        if name.as_ref().is_some_and(|n| n.len() > MAX_NAME_LEN) {
-            app::bail!("Name cannot be longer than {MAX_NAME_LEN} bytes");
+        let me = account()?;
+        if self.role_of(&me)? != Role::Admin {
+            return Err(forbidden("Only an admin can change the channel's info"));
         }
-        if description
-            .as_ref()
-            .is_some_and(|d| d.len() > MAX_DESCRIPTION_LEN)
-        {
-            app::bail!("Description cannot be longer than {MAX_DESCRIPTION_LEN} bytes");
+        let mut info = self.info()?;
+        if let Some(name) = name {
+            check_max("name", &name, MAX_NAME_LEN)?;
+            info.name = name;
         }
-        let current = self.info.get()?;
-        let mut next = ChannelText {
-            name: current.name.clone(),
-            description: current.description.clone(),
-        };
-        if let Some(n) = name {
-            next.name.set(n);
+        if let Some(description) = description {
+            check_max("description", &description, MAX_DESCRIPTION_LEN)?;
+            info.description = description;
         }
-        if let Some(d) = description {
-            next.description.set(d);
-        }
-        let _ = self.info.insert(next)?;
-        app::emit!(Event::InfoUpdated());
-        Ok("Info updated".to_string())
+        self.info.set(&info)?;
+        env::emit(Event::InfoUpdated, Audience::All)?;
+        Ok("Info updated".to_owned())
     }
 
-    /// Set or update this user's profile in the current context.
-    ///
-    /// Username is **write-once** as far as this method goes: once a profile
-    /// exists for an identity, the `username` field is preserved on subsequent
-    /// calls — only the avatar can be changed. This freezes a member's handle
-    /// to whatever they registered at first profile creation (typically on
-    /// join), so other members keep seeing a stable identity even if the user
-    /// later rotates their local `chat-username` from a different device.
-    ///
-    /// The profile lives in the caller's own `UserStorage` slot, so nobody
-    /// else can write it — not even first. That is what stops one member
-    /// claiming another's slot before they do and speaking under their name.
-    /// The username freeze is the owner's own choice, not something storage
-    /// enforces against them.
+    // ── read state ───────────────────────────────────────────────────────────
+
+    /// Kept so frontends calling it get an answer: `"ok"`, nothing recorded.
+    /// `markAsRead` records the read position.
+    #[app::view]
+    pub fn mark_messages_as_read(
+        &self,
+        channel: Option<String>,
+        timestamp: Option<u64>,
+    ) -> app::Result<String> {
+        let _ = (channel, timestamp);
+        Ok("ok".to_owned())
+    }
+
+    /// Records the caller's last-read timestamp (seconds). No event: nobody
+    /// else needs to know.
+    pub fn mark_as_read(&mut self, timestamp: u64) -> app::Result<String> {
+        let _ = account()?;
+        let _account = self.read_receipts.set(&timestamp)?;
+        Ok("ok".to_owned())
+    }
+
+    /// Top-level messages newer than the caller's last-read timestamp, not
+    /// sent by the caller and not deleted. Looks at the newest 500 messages
+    /// only, so the count saturates there.
+    #[app::view]
+    pub fn get_unread_count(&self) -> app::Result<u32> {
+        let me = account()?;
+        self.unread(&me, |_| Ok(true))
+    }
+
+    /// The unread messages (as `getUnreadCount` counts them) that mention the
+    /// caller or `@everyone` / `@here`.
+    #[app::view]
+    pub fn get_unread_mentions(&self) -> app::Result<u32> {
+        let me = account()?;
+        self.unread(&me, |message| {
+            let Some(extras) = self.extras.get(&message.id)? else {
+                return Ok(false);
+            };
+            Ok(extras
+                .mentions_usernames
+                .iter()
+                .any(|u| u == "everyone" || u == "here")
+                || extras.mentions.contains(&me))
+        })
+    }
+
+    // ── profiles ─────────────────────────────────────────────────────────────
+
+    /// Sets the caller's profile. The username is fixed by the first call:
+    /// later calls change only the avatar (a `null` avatar keeps the one
+    /// there). `username` must not be blank (at most 50 bytes); `avatar` is the
+    /// id of a blob uploaded to this app (`Invalid` otherwise). Emits
+    /// `ProfileUpdated`.
     pub fn set_profile(&mut self, username: String, avatar: Option<String>) -> app::Result<String> {
-        self.require_not_banned()?;
-        if username.trim().is_empty() {
-            app::bail!("Username cannot be empty");
-        }
-        if username.len() > 50 {
-            app::bail!("Username cannot be longer than 50 characters");
-        }
-
-        let executor_id = Self::executor_id();
-
-        // Announce avatar blob to this context so it replicates to other nodes.
-        let avatar_register: Option<LwwRegister<String>> = if let Some(ref blob_id_str) = avatar {
-            let blob_id: BlobId = blob_id_str
-                .parse()
-                .map_err(|e| app::err!("Invalid avatar blob ID: {e}"))?;
-            if !env::blob_announce_to_context(blob_id.as_ref(), &env::context_id()) {
-                app::log!(
-                    "Warning: failed to announce avatar blob {} to context",
-                    blob_id_str
-                );
-            }
-            Some(LwwRegister::new(blob_id_str.clone()))
-        } else {
-            None
-        };
-
-        let profile = match self.profiles.get()? {
-            // Preserve the frozen username; only the avatar is mutable.
-            // If no new avatar is provided (caller passed null), keep the existing one.
-            Some(existing) => StoredProfile {
-                username: LwwRegister::new(existing.username.get().clone()),
-                avatar: avatar_register.or(existing.avatar),
+        let me = self.active_account()?;
+        check_username(&username)?;
+        let avatar = avatar.map(|id| held_blob(&id)).transpose()?;
+        let profile = match self.profiles.get(&me)? {
+            Some(existing) => Profile {
+                username: existing.username,
+                avatar: avatar.or(existing.avatar),
             },
-            None => StoredProfile {
-                username: LwwRegister::new(username),
-                avatar: avatar_register,
-            },
+            None => Profile { username, avatar },
         };
-        let _ = self.profiles.insert(profile)?;
-
-        app::emit!(Event::ProfileUpdated(executor_id.to_string()));
-        Ok("Profile set".to_string())
+        let _old = self.profiles.insert(&me, &profile)?;
+        env::emit(Event::ProfileUpdated { identity: me }, Audience::All)?;
+        Ok("Profile set".to_owned())
     }
 
+    /// One page of profiles, in account order: `cursor` is the previous page's
+    /// `next` (`null` for the first), `limit` at most 1,000 (100 when `null`).
     #[app::view]
-    pub fn get_profiles(&self) -> Vec<UserProfile> {
-        let mut result = Vec::new();
-        if let Ok(entries) = self.profiles.entries() {
-            for (account, profile) in entries {
-                result.push(UserProfile {
-                    identity: user_of(account),
-                    username: profile.username.get().clone(),
-                    avatar: profile.avatar.as_ref().map(|a| a.get().clone()),
-                });
-            }
-        }
-        result
+    pub fn get_profiles(
+        &self,
+        cursor: Option<String>,
+        limit: Option<u32>,
+    ) -> app::Result<ProfilePage> {
+        let page = self.profiles.page(list_opts(cursor, limit))?;
+        Ok(ProfilePage {
+            items: page
+                .items
+                .into_iter()
+                .map(|(identity, p)| UserProfile {
+                    identity,
+                    username: p.username,
+                    avatar: p.avatar.map(|a| a.id()),
+                })
+                .collect(),
+            next: page.next,
+        })
     }
 
-    // ── Drafts ─────────────────────────────────────────────────────────────
+    // ── drafts ───────────────────────────────────────────────────────────────
 
-    /// Save a draft for the calling user in the given channel.
-    /// Passing an empty string is equivalent to deleting the draft.
+    /// Saves the caller's draft for `channel`; an empty `text` deletes it.
+    ///
+    /// v1 kept drafts in node-local `#[app::private]` storage, which the
+    /// component SDK does not have. They are in the app's state here, keyed by
+    /// the caller's account: only `getDraft` reads one, and only its author's.
     pub fn save_draft(&mut self, channel: String, text: String) -> app::Result<()> {
-        self.require_not_banned()?;
-        let key = draft_key(&Self::executor_id().to_string(), &channel);
-        let mut drafts = Drafts::private_load_or_default()?;
-        let mut drafts = drafts.as_mut();
+        let me = self.active_account()?;
+        check_max("channel", &channel, MAX_ID_LEN)?;
+        check_max("text", &text, MAX_MESSAGE_LEN)?;
+        let key = (me, channel);
         if text.is_empty() {
-            let _ = drafts.entries.remove(&key)?;
+            let _old = self.drafts.remove(&key)?;
         } else {
-            let _ = drafts.entries.insert(key, text)?;
+            let _old = self.drafts.insert(&key, &text)?;
         }
         Ok(())
     }
 
-    /// Return the calling user's draft for the given channel, or an empty
-    /// string if none exists.
+    /// The caller's draft for `channel`, or `""`.
     #[app::view]
-    pub fn get_draft(&self, channel: String) -> String {
-        let key = draft_key(&Self::executor_id().to_string(), &channel);
-        let Ok(drafts) = Drafts::private_load_or_default() else {
-            return String::new();
-        };
-        drafts
-            .entries
-            .get(&key)
-            .ok()
-            .flatten()
-            .map(|text| text.clone())
-            .unwrap_or_default()
+    pub fn get_draft(&self, channel: String) -> app::Result<String> {
+        let me = account()?;
+        Ok(self.drafts.get(&(me, channel))?.unwrap_or_default())
     }
 
-    /// Delete the calling user's draft for the given channel.
+    /// Deletes the caller's draft for `channel`.
     pub fn delete_draft(&mut self, channel: String) -> app::Result<()> {
-        self.require_not_banned()?;
-        let key = draft_key(&Self::executor_id().to_string(), &channel);
-        let mut drafts = Drafts::private_load_or_default()?;
-        let _ = drafts.as_mut().entries.remove(&key)?;
+        let me = self.active_account()?;
+        let _old = self.drafts.remove(&(me, channel))?;
         Ok(())
     }
 
-    // ── Moderation: roles + ban gate ───────────────────────────────────────
+    // ── roles ────────────────────────────────────────────────────────────────
 
-    /// Read the current role of `identity`. Defaults to `User` when the
-    /// identity has no explicit entry (i.e. anyone who joined and never
-    /// had their role changed).
+    /// `identity`'s role: `User` unless one was set.
     #[app::view]
-    pub fn get_member_role(&self, identity: UserId) -> Role {
+    pub fn get_member_role(&self, identity: String) -> app::Result<Role> {
         self.role_of(&identity)
     }
 
-    /// All members with a non-default role (Admin / Mod / Banned). Members with
-    /// the implicit `User` role are not returned (they're inferred).
+    /// One page of the members whose role is not `User`, in account order
+    /// (`cursor`, `limit` as `getProfiles`).
     #[app::view]
-    pub fn list_roles(&self) -> Vec<(UserId, Role)> {
-        let mut ids: Vec<UserId> = Vec::new();
-        if let Ok(banned) = self.banned.get() {
-            if let Ok(entries) = banned.entries() {
-                for (id, flag) in entries {
-                    if *flag.get() && !ids.contains(&id) {
-                        ids.push(id);
-                    }
-                }
-            }
-        }
-        for who in self.roles.admins() {
-            let id = user_of(who);
-            if !ids.contains(&id) {
-                ids.push(id);
-            }
-        }
-        if let Ok(mods) = self.roles.members_of(ROLE_MOD) {
-            for who in mods {
-                let id = user_of(who);
-                if !ids.contains(&id) {
-                    ids.push(id);
-                }
-            }
-        }
-        ids.into_iter()
-            .map(|id| {
-                let r = self.role_of(&id);
-                (id, r)
-            })
-            .filter(|(_, r)| *r != Role::User)
-            .collect()
+    pub fn list_roles(&self, cursor: Option<String>, limit: Option<u32>) -> app::Result<RolePage> {
+        let page = self.roles.page(list_opts(cursor, limit))?;
+        Ok(RolePage {
+            items: page
+                .items
+                .into_iter()
+                .map(|(identity, role)| RoleEntry { identity, role })
+                .collect(),
+            next: page.next,
+        })
     }
 
-    /// Change a member's role. Authorisation:
-    /// - `Admin` may change anyone's role to anything.
-    /// - `Mod`   may only flip a `User` to `Banned` (or back).
-    /// - `User`/`Banned` may not call this.
-    /// An admin cannot demote themselves below `Admin` (lockout-prevention).
-    ///
-    /// Admin/Mod grants go through `AccessControl` (admin-gated, rejected at
-    /// merge if forged). Ban/unban writes `banned`, whose writers are the
-    /// staff, so a moderator — who is not an admin — can still moderate and a
-    /// member who is neither cannot ban anyone, however patched their node.
-    pub fn set_member_role(&mut self, target: UserId, role: Role) -> app::Result<String> {
-        let me = Self::executor_id();
-        let actor_role = self.role_of(&me);
-        let target_role = self.role_of(&target);
-
-        if me == target && actor_role == Role::Admin && role != Role::Admin {
-            app::bail!("An admin cannot demote themselves below Admin");
+    /// Changes `target`'s role. An admin may set anyone's role to anything,
+    /// except their own below `Admin`; a moderator may only turn a `User` into
+    /// `Banned` or back; anyone else gets `Forbidden`. `target` must be the
+    /// app's owner or in its organization (`Invalid`). Emits `RoleUpdated`
+    /// when the role changes; setting the role someone has answers
+    /// `"Role unchanged"` and announces nothing.
+    pub fn set_member_role(&mut self, target: String, role: Role) -> app::Result<String> {
+        let me = account()?;
+        let actor = self.role_of(&me)?;
+        let current = self.role_of(&target)?;
+        if me == target && actor == Role::Admin && role != Role::Admin {
+            return Err(forbidden("An admin cannot demote themselves below Admin"));
         }
-        if !Self::can_change_role(actor_role, target_role, role) {
-            app::bail!("You don't have permission to change this member's role");
+        if !can_change_role(actor, current, role) {
+            return Err(forbidden(
+                "You don't have permission to change this member's role",
+            ));
         }
-
-        let who = Self::to_account(&target);
-        let actor_is_admin = actor_role == Role::Admin;
-        // Strip grants based on the target's *actual* writer-set / registry
-        // membership, NOT the display role. Only an admin may revoke; a
-        // moderator's sole permitted transition is User<->Banned on a plain
-        // User, which holds no grants.
-        let has_mod = self.roles.has_role(ROLE_MOD, &who).unwrap_or(false);
-        let has_admin = self.roles.is_admin(&who);
-        match role {
-            Role::Admin => {
-                if has_mod {
-                    self.revoke_mod(&who)?;
-                }
-                self.set_banned(&target, false)?;
-                self.roles
-                    .grant_admin(who)
-                    .map_err(|e| app::err!("grant admin failed: {e}"))?;
-            }
-            Role::Mod => {
-                if has_admin {
-                    self.revoke_admin_member(&who)?;
-                }
-                self.set_banned(&target, false)?;
-                self.roles
-                    .grant(ROLE_MOD, who)
-                    .map_err(|e| app::err!("grant mod failed: {e}"))?;
-            }
-            Role::Banned => {
-                if actor_is_admin {
-                    if has_mod {
-                        self.revoke_mod(&who)?;
-                    }
-                    if has_admin {
-                        self.revoke_admin_member(&who)?;
-                    }
-                }
-                self.set_banned(&target, true)?;
-            }
-            Role::User => {
-                if actor_is_admin {
-                    if has_mod {
-                        self.revoke_mod(&who)?;
-                    }
-                    if has_admin {
-                        self.revoke_admin_member(&who)?;
-                    }
-                }
-                self.set_banned(&target, false)?;
-            }
+        if target != env::app_owner() && env::org_role(&target).is_none() {
+            return Err(invalid(format!("{target} is not a member")));
         }
-        if actor_is_admin {
-            self.sync_staff()?;
+        if current == role {
+            return Ok("Role unchanged".to_owned());
         }
-
-        // The app re-asserts an admin's own role whenever a channel opens:
-        // the writes above keep the grants in step, but a role that did not
-        // change is no news to announce.
-        if target_role == role {
-            return Ok("Role unchanged".to_string());
+        if role == Role::User {
+            let _old = self.roles.remove(&target)?;
+        } else {
+            let _old = self.roles.insert(&target, &role)?;
         }
-        app::emit!(Event::RoleUpdated(target.to_string()));
-        Ok("Role updated".to_string())
+        env::emit(Event::RoleUpdated { identity: target }, Audience::All)?;
+        Ok("Role updated".to_owned())
     }
 
-    fn executor_id() -> UserId {
-        UserId::new(env::account_id())
-    }
+    // ── messages ─────────────────────────────────────────────────────────────
 
-    fn me() -> AccountId {
-        env::account_id().into()
-    }
-
-    // Eight arguments are the ABI: every one is a named parameter the frontend
-    // sends. Collapsing them into a struct would change the JSON-RPC shape.
-    #[allow(clippy::too_many_arguments)]
+    /// Sends a message as the caller, at the top level or, with
+    /// `parentMessage`, as a reply in that top-level message's thread
+    /// (`NotFound` for a missing parent). `timestamp` is the client's, in
+    /// seconds, at most 300 s ahead of the log's clock. At most 20,000 bytes of
+    /// text, 100 mentions, 10 files and 10 images, each a blob uploaded to this
+    /// app (`Invalid`). Emits `MessageSent`, or `MessageSentThread` for a reply.
     pub fn send_message(
         &mut self,
         message: String,
-        mentions: Vec<UserId>,
+        mentions: Vec<String>,
         mentions_usernames: Vec<String>,
-        parent_message: Option<MessageId>,
+        parent_message: Option<String>,
         timestamp: u64,
         files: Option<Vec<AttachmentInput>>,
         images: Option<Vec<AttachmentInput>>,
-    ) -> app::Result<Message> {
-        self.require_not_banned()?;
+    ) -> app::Result<MessageView> {
+        let me = self.active_account()?;
         check_timestamp(timestamp)?;
         if message.len() > MAX_MESSAGE_LEN {
-            app::bail!("Message cannot be longer than {MAX_MESSAGE_LEN} bytes");
+            return Err(invalid(format!(
+                "Message cannot be longer than {MAX_MESSAGE_LEN} bytes"
+            )));
         }
         if mentions.len() > MAX_MENTIONS || mentions_usernames.len() > MAX_MENTIONS {
-            app::bail!("A message can mention at most {MAX_MENTIONS} members");
+            return Err(invalid(format!(
+                "A message can mention at most {MAX_MENTIONS} members"
+            )));
         }
-        if files.as_ref().is_some_and(|f| f.len() > MAX_ATTACHMENTS)
-            || images.as_ref().is_some_and(|i| i.len() > MAX_ATTACHMENTS)
-        {
-            app::bail!(
+        for m in mentions.iter().chain(&mentions_usernames) {
+            check_max("mention", m, MAX_ID_LEN)?;
+        }
+        let files = files.unwrap_or_default();
+        let images = images.unwrap_or_default();
+        if files.len() > MAX_ATTACHMENTS || images.len() > MAX_ATTACHMENTS {
+            return Err(invalid(format!(
                 "A message can carry at most {MAX_ATTACHMENTS} files and {MAX_ATTACHMENTS} images"
-            );
+            )));
         }
-        if let Some(parent) = &parent_message {
-            if self.entry_of(parent)?.is_none() {
-                app::bail!("Parent message not found");
+        let parent = match &parent_message {
+            Some(parent) => {
+                let top = self.messages.get(parent)?;
+                if !top.is_some_and(|m| m.parent == TOP) {
+                    return Err(not_found("message", parent));
+                }
+                parent.clone()
             }
-        }
-        let executor_id = Self::executor_id();
-
-        let message_id = self.get_message_id(&executor_id, &message, timestamp);
-        let current_context = env::context_id();
-
-        let files_vector = attachment_inputs_to_vector(files, &current_context)?;
-        let images_vector = attachment_inputs_to_vector(images, &current_context)?;
-
-        let mut mentions_set = UnorderedSet::new();
-        for m in &mentions {
-            let _ = mentions_set.insert(*m);
-        }
-        let mut mentions_usernames_vec = Vector::new();
-        for m in &mentions_usernames {
-            let _ = mentions_usernames_vec.push(LwwRegister::new(m.clone()));
-        }
-
-        let msg = Message {
-            timestamp: LwwRegister::new(timestamp),
-            sender: executor_id,
-            mentions: mentions_set,
-            mentions_usernames: mentions_usernames_vec,
-            files: files_vector,
-            images: images_vector,
-            id: LwwRegister::new(message_id.clone()),
-            text: LwwRegister::new(message),
-            deleted: None,
-            edited_on: None,
+            None => TOP.to_owned(),
         };
-
-        if let Some(parent_id) = parent_message {
-            let key = thread_key(&parent_id, &message_id)?;
-            self.threads.insert(key.clone(), msg.clone())?;
-            self.message_ids
-                .insert(message_id.clone(), Slot::Thread(key))?;
-
-            app::emit!(Event::MessageSentThread(MessageSentEvent {
-                message_id: message_id.clone(),
-            }));
-        } else {
-            let entry = self.messages.push(msg.clone())?;
-            self.message_ids
-                .insert(message_id.clone(), Slot::Channel(entry.into()))?;
-
-            app::emit!(Event::MessageSent(MessageSentEvent {
-                message_id: message_id.clone(),
-            }));
+        let extras = Extras {
+            mentions,
+            mentions_usernames,
+            files: attachments(files)?,
+            images: attachments(images)?,
+        };
+        let id = fresh_message_id(timestamp);
+        let seq = self.next_seq.get(&parent)?.unwrap_or(0);
+        let _old = self.next_seq.insert(&parent, &(seq + 1))?;
+        let record = Message {
+            id: id.clone(),
+            parent: parent.clone(),
+            seq,
+            sender: me,
+            timestamp,
+            search_text: search::indexed_text(&message),
+            text: message,
+            edited_on: None,
+            deleted: false,
+        };
+        self.messages.insert(record)?;
+        if !(extras.mentions.is_empty()
+            && extras.mentions_usernames.is_empty()
+            && extras.files.is_empty()
+            && extras.images.is_empty())
+        {
+            let _old = self.extras.insert(&id, &extras)?;
         }
-
-        Ok(msg)
+        let event = if parent == TOP {
+            Event::MessageSent {
+                message_id: id.clone(),
+            }
+        } else {
+            Event::MessageSentThread {
+                message_id: id.clone(),
+                parent_message_id: parent,
+            }
+        };
+        env::emit(event, Audience::All)?;
+        self.view_of_id(&id)
     }
 
-    /// A page of the channel, or of one thread, counted back from the END:
-    /// offset 0 is the newest page. `search_term` keeps only the messages whose
-    /// text contains it (see `search_messages` for how text is compared), and
-    /// `total_count` is then the number of matches.
+    /// A window of the channel, or of one thread (`parentMessage`), counted
+    /// back from the END: `offset` 0 is the newest page. `limit` defaults to
+    /// 100 and is at most 500. Each message carries its `index`, reactions and,
+    /// at the top level, its thread's size and newest reply.
     ///
-    /// A search here still reads the whole channel, because `total_count`
-    /// promises every match; it builds only the page it returns, though.
-    /// Anything that searches a channel which can grow should use
-    /// `search_messages`, whose cost per call is bounded.
+    /// `searchTerm` keeps only messages whose text contains it (folded, as
+    /// `searchMessages` compares), among the newest 2,000 messages (or 1 MiB of
+    /// text); `totalCount` is then the matches among those. `searchMessages`
+    /// searches everything.
     #[app::view]
     pub fn get_messages(
         &self,
-        parent_message: Option<MessageId>,
-        limit: Option<usize>,
-        offset: Option<usize>,
+        parent_message: Option<String>,
+        limit: Option<u32>,
+        offset: Option<u32>,
         search_term: Option<String>,
     ) -> app::Result<FullMessageResponse> {
-        if let Some(term) = &search_term {
-            if term.len() > MAX_SEARCH_TERM_LEN {
-                app::bail!(
-                    "Search term too long: {} characters, limit is {MAX_SEARCH_TERM_LEN}",
-                    term.len()
-                );
+        let parent = parent_message.unwrap_or_default();
+        let limit = message_limit(limit);
+        let offset = offset.unwrap_or(0);
+        let top = parent == TOP;
+        if let Some(term) = search_term {
+            check_term(&term)?;
+            let needle = search::fold_query(&term);
+            // Newest first, bounded; then the window, counted from the end.
+            let mut matches = Vec::new();
+            let (mut rows, mut bytes) = (0usize, 0usize);
+            let mut cursor: Option<String> = None;
+            'scan: loop {
+                let mut opts = FindOpts::default().reverse().limit(BATCH);
+                if let Some(c) = cursor.take() {
+                    opts = opts.cursor(c);
+                }
+                let page = self
+                    .messages
+                    .find("thread", &[KeyPart::Str(parent.clone())], opts)?;
+                for message in page.items {
+                    if rows >= MAX_SEARCH_ROWS || bytes >= MAX_SEARCH_BYTES {
+                        break 'scan;
+                    }
+                    rows += 1;
+                    bytes += message.text.len();
+                    if !message.deleted && search::folded_text(&message.text).contains(&needle) {
+                        matches.push(message);
+                    }
+                }
+                match page.next {
+                    Some(next) => cursor = Some(next),
+                    None => break,
+                }
             }
-        }
-        let needle = search_term.as_deref().map(search::fold_query);
-        let wanted = |message: &Message| {
-            needle
-                .as_deref()
-                .is_none_or(|needle| self.text_matches(message, needle))
-        };
-
-        if let Some(parent_id) = parent_message {
-            // A reply's index is its place in the whole thread, match or not.
-            let replies: Vec<(usize, String, Message)> = self
-                .threads
-                .prefix(thread_prefix(&parent_id).as_bytes())?
-                .enumerate()
-                .filter(|(_, (_, message))| wanted(message))
-                .map(|(index, (key, message))| (index, key, message))
-                .collect();
-            let (window, start_position) = page_window(replies.len(), limit, offset);
-            let messages = replies[window]
-                .iter()
-                .map(|(index, key, message)| {
-                    let sender = self.thread_sender(key, message);
-                    self.message_to_public(message, sender, false, *index as u64)
-                })
-                .collect();
+            matches.reverse();
+            let total = matches.len() as u64;
+            let (window, start_position) = page_window(total, limit, offset);
+            let messages = matches
+                .into_iter()
+                .skip(window.start as usize)
+                .take((window.end - window.start) as usize)
+                .map(|m| self.view(m, top))
+                .collect::<app::Result<_>>()?;
             return Ok(FullMessageResponse {
-                total_count: replies.len() as u32,
+                total_count: total as u32,
                 messages,
                 start_position,
             });
         }
-
-        if needle.is_none() {
-            return Ok(self.page_unfiltered(&self.messages, limit, offset, true));
-        }
-
-        // Matched on the cheap fields first; only the page is rendered.
-        let matches: Vec<usize> = self
-            .messages
-            .iter()?
-            .enumerate()
-            .filter(|(_, message)| wanted(message))
-            .map(|(index, _)| index)
-            .collect();
-        let (window, start_position) = page_window(matches.len(), limit, offset);
+        let total = self.count_of(&parent)?;
+        let end_seq = self.next_seq.get(&parent)?.unwrap_or(0);
+        // Positions are seqs: the top level is never removed from, so its count
+        // and its next seq agree; a thread's window is its newest seqs.
+        let (window, start_position) = page_window(end_seq, limit, offset);
+        let messages = self.window(&parent, window.start, window.end, top)?;
         Ok(FullMessageResponse {
-            total_count: matches.len() as u32,
-            messages: matches[window]
-                .iter()
-                .filter_map(|&index| self.public_at(&self.messages, index, true))
-                .collect(),
+            total_count: total as u32,
+            messages,
             start_position,
         })
     }
 
-    /// Messages by ABSOLUTE position, ascending — the resumable read.
-    ///
-    /// `get_messages` counts its window from the END, so every append shifts
-    /// it: a client that stored an offset and came back later re-reads or skips
-    /// messages, and the gap is silent. Indices from the START do not move,
-    /// because appends land after them and a delete keeps its slot. That makes
-    /// `start` a cursor a client can persist across sessions.
-    ///
-    /// Two uses, both needed for a chat that survives being closed:
-    ///
-    /// - **Catch up.** A client holding everything through index `n` asks for
-    ///   `n + 1` onward and gets exactly what it missed, however long it was
-    ///   away and whether or not it was subscribed at the time. Live events are
-    ///   an optimisation on top of this, never the only way to learn.
-    /// - **Backfill.** Scrolling up asks for a window ending where the local
-    ///   copy begins.
-    ///
-    /// `total_count` is the channel's length, so a client can tell how far
-    /// behind it is before fetching anything.
+    /// Top-level messages by position, ascending, from `start`: the resumable
+    /// read. Positions never move, so a client holding everything through
+    /// index `n` asks for `n + 1` and gets exactly what it missed. `limit`
+    /// defaults to 100 and is at most 500; `totalCount` is the channel's length.
     #[app::view]
     pub fn get_messages_from(
         &self,
         start: u64,
-        limit: Option<usize>,
+        limit: Option<u32>,
     ) -> app::Result<FullMessageResponse> {
-        let total = self.messages.len().unwrap_or(0);
-        let start_idx = start as usize;
-
-        if start_idx >= total {
-            return Ok(FullMessageResponse {
-                total_count: total as u32,
-                messages: Vec::new(),
-                start_position: start as u32,
-            });
-        }
-
-        let end_idx = limit
-            .map_or(total, |l| start_idx.saturating_add(l))
+        let total = self.count_of(TOP)?;
+        let end = start
+            .saturating_add(u64::from(message_limit(limit)))
             .min(total);
-
-        let mut page = Vec::with_capacity(end_idx - start_idx);
-        for idx in start_idx..end_idx {
-            if let Some(public) = self.public_at(&self.messages, idx, true) {
-                page.push(public);
-            }
-        }
-
+        let messages = if start >= total {
+            Vec::new()
+        } else {
+            self.window(TOP, start, end, true)?
+        };
         Ok(FullMessageResponse {
             total_count: total as u32,
-            messages: page,
+            messages,
             start_position: start as u32,
         })
     }
 
-    /// How many messages the channel holds, without reading any of them.
-    ///
-    /// One row read — the child trie maintains the count. A client compares it
-    /// with the highest index it has stored to know whether it is behind, and
-    /// by how much, before deciding what to fetch.
+    /// How many top-level messages the channel holds (a stored count).
     #[app::view]
     pub fn get_message_count(&self) -> app::Result<u64> {
-        Ok(self.messages.len().unwrap_or(0) as u64)
+        self.count_of(TOP)
     }
 
-    /// Messages whose text contains `query`, newest first, answered from the
-    /// node's full-text index: a page costs the same however long the channel
-    /// is.
-    ///
-    /// Text is matched as a reader sees it (markup dropped, entities decoded),
-    /// folded for case and accents, so "cafe" finds "Café". A query of three
-    /// characters or more matches anywhere in a word; a shorter one matches
-    /// the start of a word. Deleted and staff-removed messages are never
-    /// returned. Top-level messages and thread replies are ranked together by
-    /// their own timestamp.
-    ///
-    /// A page holds at most `limit` hits (default 20, at most 50), fewer when
-    /// a hit the index still holds is gone from state or removed; `next_cursor`
-    /// continues it. Hits carry no `index`: open one with `message_position`.
-    ///
-    /// On a node running with search off the index is not there and this
-    /// fails; `search_messages_scan` answers the same question by walking the
-    /// channel.
+    /// Messages whose text contains `query`, from the host's full-text index:
+    /// a page costs the same however long the channel is. Text is matched as a
+    /// reader sees it, folded for case and accents ("cafe" finds "Café"); a
+    /// query of three characters or more matches anywhere, a shorter one the
+    /// start of a word. Deleted messages are never found. Top-level messages
+    /// and replies come together, best match first, newest first within a
+    /// page; at most `limit` hits (20 when `null`, at most 50), `nextCursor`
+    /// continues. Hits carry no `index`: open one with `messagePosition`.
     #[app::view]
     pub fn search_messages(
         &self,
         query: String,
         cursor: Option<String>,
-        limit: Option<usize>,
+        limit: Option<u32>,
     ) -> app::Result<SearchPage> {
-        if query.len() > MAX_SEARCH_TERM_LEN {
-            app::bail!(
-                "Search term too long: {} characters, limit is {MAX_SEARCH_TERM_LEN}",
-                query.len()
-            );
-        }
+        check_term(&query)?;
         let needle = search::fold_query(&query);
-        let limit = limit
-            .unwrap_or(DEFAULT_SEARCH_LIMIT)
-            .clamp(1, MAX_SEARCH_LIMIT);
+        let limit = search_limit(limit);
         let mut page = SearchPage {
             hits: Vec::new(),
             next_cursor: None,
@@ -1502,99 +900,79 @@ impl MeroChat {
             None => 0,
             Some(raw) => raw
                 .parse::<u32>()
-                .map_err(|_| app::err!("Invalid search cursor"))?,
+                .map_err(|_| invalid("Invalid search cursor"))?,
         };
-        let query = if needle.chars().count() >= 3 {
-            Query::substring(needle.clone())
+        let mode = if needle.chars().count() >= 3 {
+            SearchMode::Substring
         } else {
-            Query::prefix(needle.clone())
+            SearchMode::Prefix
         };
-        let response = query
-            .newest_first("timestamp")
-            .cursor(offset)
-            .limit(limit as u32)
-            .run(SEARCH_INDEX)
-            .map_err(|e| app::err!("{e}"))?;
-        for found in &response.hits {
-            let (message, parent, sender) =
-                if let Some((entry, message)) = self.messages.search_entry(found.id)? {
-                    let sender = self
-                        .messages
-                        .owner_of_id(Id::from(entry))?
-                        .map_or(UserId::new([0; 32]), user_of);
-                    (message, None, sender)
-                } else if let Some((key, reply)) = self.threads.search_entry(found.id)? {
-                    let sender = self.thread_sender(&key, &reply);
-                    let parent = key.split(KEY_SEP).next().unwrap_or_default().to_owned();
-                    (reply, Some(parent), sender)
-                } else {
-                    // Gone from state since the index saw it.
-                    continue;
-                };
-            if self.is_deleted(&message) {
+        let found = self.messages.search(
+            &needle,
+            SearchOpts::default().mode(mode).cursor(offset).limit(limit),
+        )?;
+        for hit in found.items {
+            let message = hit.record;
+            if message.deleted {
                 continue;
             }
-            let at = *message.timestamp;
-            page.frontier_timestamp = Some(page.frontier_timestamp.map_or(at, |f| f.min(at)));
-            let snippet = search::snippet(&search::plain_text(message.text.get()), &needle);
+            let snippet = search::snippet(&search::plain_text(&message.text), &needle);
+            let parent = (message.parent != TOP).then(|| message.parent.clone());
             page.hits.push(search_hit(
                 &message,
-                parent.as_deref(),
+                parent,
                 None,
-                at,
-                sender,
+                message.timestamp,
                 snippet,
             ));
         }
-        page.next_cursor = response.next_cursor.map(|next| next.to_string());
+        page.hits.sort_by_key(|h| std::cmp::Reverse(h.timestamp));
+        page.next_cursor = found.next.map(|n| n.to_string());
         Ok(page)
     }
 
-    /// The position of the top-level message `message_id` in the channel, for
-    /// opening a search hit where it was said (`get_messages_from`). A reply
-    /// has none: open its parent's. Costs a read of the channel's list of
-    /// messages, as a positional read does.
+    /// The position of the top-level message `messageId`, for opening a search
+    /// hit where it was said (`getMessagesFrom`); `null` for a reply (open its
+    /// parent's) or an unknown id.
     #[app::view]
-    pub fn message_position(&self, message_id: MessageId) -> app::Result<Option<u64>> {
-        let Some(entry) = self.entry_of(&message_id)? else {
-            return Ok(None);
-        };
-        Ok(self.messages.position_of_id(entry)?.map(|p| p as u64))
+    pub fn message_position(&self, message_id: String) -> app::Result<Option<u64>> {
+        Ok(self
+            .messages
+            .get(&message_id)?
+            .filter(|m| m.parent == TOP)
+            .map(|m| m.seq))
     }
 
-    /// `search_messages` without the index: walks the channel, a bounded
-    /// amount of work per call. For a node running with search off.
-    ///
-    /// Text is compared as a reader sees it (markup dropped, entities decoded)
-    /// and folded for case, accents and width as mero-docs folds it, so "cafe"
-    /// finds "Café". Deleted and staff-removed messages are never returned.
-    ///
-    /// The channel is walked by position from the newest message down, each
-    /// top-level message followed by the replies in its thread, so a reply is
-    /// listed with its thread and ranked by `anchor_timestamp`. A call stops at
-    /// `limit` hits (default 20, at most 50) or once it has read
-    /// `MAX_SEARCH_ROWS` messages or `MAX_SEARCH_BYTES` of text, whichever
-    /// comes first, and returns a `next_cursor` to continue from; a page can
-    /// therefore hold fewer hits than `limit`, even none, and still not be the
-    /// last. A common term in a huge channel costs a page, never the channel.
+    /// The id of the message at position `index` among `parentMessage`'s
+    /// replies (the top level when `null`), or `null`: `messagePosition`'s
+    /// inverse, for a link that names a position. New in the port.
+    #[app::view]
+    pub fn message_id_at(
+        &self,
+        parent_message: Option<String>,
+        index: u64,
+    ) -> app::Result<Option<String>> {
+        let parent = parent_message.unwrap_or_default();
+        Ok(self.at(&parent, index)?.map(|m| m.id))
+    }
+
+    /// `searchMessages` without the index: walks the channel from the newest
+    /// message down, each top-level message followed by its thread, so a reply
+    /// is listed with its thread and ranked by `anchorTimestamp`. A call stops
+    /// at `limit` hits (20, at most 50) or after reading 2,000 messages or
+    /// 1 MiB of text, and returns a `nextCursor` to continue from; a page can
+    /// hold fewer hits than `limit`, even none, and still not be the last.
     #[app::view]
     pub fn search_messages_scan(
         &self,
         query: String,
         cursor: Option<String>,
-        limit: Option<usize>,
+        limit: Option<u32>,
     ) -> app::Result<SearchPage> {
-        if query.len() > MAX_SEARCH_TERM_LEN {
-            app::bail!(
-                "Search term too long: {} characters, limit is {MAX_SEARCH_TERM_LEN}",
-                query.len()
-            );
-        }
+        check_term(&query)?;
         let needle = search::fold_query(&query);
-        let limit = limit
-            .unwrap_or(DEFAULT_SEARCH_LIMIT)
-            .clamp(1, MAX_SEARCH_LIMIT);
-        let total = self.messages.len()?;
+        let limit = search_limit(limit) as usize;
+        let total = self.count_of(TOP)? as usize;
         let mut page = SearchPage {
             hits: Vec::new(),
             next_cursor: None,
@@ -1610,11 +988,9 @@ impl MeroChat {
             },
             Some(raw) => search::Cursor::decode(&raw)
                 .filter(|c| c.index < total)
-                .ok_or_else(|| app::err!("Invalid search cursor"))?,
+                .ok_or_else(|| invalid("Invalid search cursor"))?,
         };
-
-        let mut rows = 0usize;
-        let mut bytes = 0usize;
+        let (mut rows, mut bytes) = (0usize, 0usize);
         let spent =
             |rows: usize, bytes: usize| rows >= MAX_SEARCH_ROWS || bytes >= MAX_SEARCH_BYTES;
         'walk: loop {
@@ -1622,53 +998,68 @@ impl MeroChat {
                 page.next_cursor = Some(at.encode());
                 break;
             }
-            if let Some(message) = self.messages.get(at.index)? {
+            if let Some(message) = self.at(TOP, at.index as u64)? {
                 rows += 1;
-                let anchor = *message.timestamp;
+                let anchor = message.timestamp;
                 page.frontier_timestamp =
                     Some(page.frontier_timestamp.map_or(anchor, |f| f.min(anchor)));
-                let mut last = match at.step {
+                let mut after = match &at.step {
                     search::Step::Message => {
-                        bytes += message.text.get().len();
-                        if let Some(found) = self.hit_snippet(&message, &needle) {
-                            let sender = self
-                                .messages
-                                .owner_of(at.index)?
-                                .map_or(UserId::new([0; 32]), user_of);
+                        bytes += message.text.len();
+                        if let Some(found) = hit_snippet(&message, &needle) {
                             page.hits.push(search_hit(
                                 &message,
                                 None,
-                                Some(at.index),
+                                Some(at.index as u64),
                                 anchor,
-                                sender,
                                 found,
                             ));
                         }
                         None
                     }
-                    search::Step::Replies(after) => after,
+                    search::Step::Replies(after) => match after {
+                        None => None,
+                        Some(seq) => Some(
+                            seq.parse::<u64>()
+                                .map_err(|_| invalid("Invalid search cursor"))?,
+                        ),
+                    },
                 };
-                let parent = message.id.get();
-                for (key, reply) in self.replies_after(parent, last.as_deref())? {
-                    if page.hits.len() >= limit || spent(rows, bytes) {
-                        at.step = search::Step::Replies(last);
-                        page.next_cursor = Some(at.encode());
-                        break 'walk;
+                let mut next_reply: Option<String> = None;
+                loop {
+                    let from = after.map_or(0, |s| s + 1);
+                    let mut opts = FindOpts::default()
+                        .from(vec![KeyPart::Int(i128::from(from))])
+                        .limit(BATCH);
+                    if let Some(c) = next_reply.take() {
+                        opts = opts.cursor(c);
                     }
-                    rows += 1;
-                    bytes += reply.text.get().len();
-                    if let Some(found) = self.hit_snippet(&reply, &needle) {
-                        let sender = self.thread_sender(&key, &reply);
-                        page.hits.push(search_hit(
-                            &reply,
-                            Some(parent),
-                            Some(at.index),
-                            anchor,
-                            sender,
-                            found,
-                        ));
+                    let replies =
+                        self.messages
+                            .find("thread", &[KeyPart::Str(message.id.clone())], opts)?;
+                    for reply in replies.items {
+                        if page.hits.len() >= limit || spent(rows, bytes) {
+                            at.step = search::Step::Replies(after.map(|s| s.to_string()));
+                            page.next_cursor = Some(at.encode());
+                            break 'walk;
+                        }
+                        rows += 1;
+                        bytes += reply.text.len();
+                        if let Some(found) = hit_snippet(&reply, &needle) {
+                            page.hits.push(search_hit(
+                                &reply,
+                                Some(message.id.clone()),
+                                Some(at.index as u64),
+                                anchor,
+                                found,
+                            ));
+                        }
+                        after = Some(reply.seq);
                     }
-                    last = Some(reply.id.get().clone());
+                    match replies.next {
+                        Some(next) => next_reply = Some(next),
+                        None => break,
+                    }
                 }
             }
             let Some(next) = at.index.checked_sub(1) else {
@@ -1682,2079 +1073,520 @@ impl MeroChat {
         Ok(page)
     }
 
-    /// Add or remove the CALLER's reaction to a message.
-    ///
-    /// Reactions are keyed by ACCOUNT, and each is an entry owned by the
-    /// account that made it: storage refuses anyone else's add in their name
-    /// (the key's account must match the owner stamp to be counted) and any
-    /// removal but their own. The client resolves accounts to names for
-    /// display.
+    /// Adds (`add`) or removes the caller's `emoji` reaction to a message
+    /// (`NotFound` for a missing one). `emoji` is 1 to 64 bytes. Emits
+    /// `ReactionUpdated`.
     pub fn update_reaction(
         &mut self,
-        message_id: MessageId,
+        message_id: String,
         emoji: String,
         add: bool,
     ) -> app::Result<String> {
-        self.require_not_banned()?;
-        if emoji.is_empty() || emoji.len() > MAX_EMOJI_LEN || emoji.contains(KEY_SEP) {
-            app::bail!("Invalid emoji");
+        let me = self.active_account()?;
+        if emoji.is_empty() || emoji.len() > MAX_EMOJI_LEN {
+            return Err(invalid("Invalid emoji"));
         }
-        if self.slot_of(&message_id)?.is_none() {
-            app::bail!("Message not found");
+        if !self.messages.contains(&message_id)? {
+            return Err(not_found("message", &message_id));
         }
-        let action = if add { "added" } else { "removed" };
-
-        let key = reaction_key(&message_id, &emoji, &Self::executor_id());
+        let key = (message_id.clone(), emoji, me);
         if add {
-            if !self.reactions.contains(&key)? {
-                self.reactions.insert(key, ())?;
-            }
+            let _old = self.reactions.insert(&key, &true)?;
         } else {
-            let _ = self.reactions.remove(&key)?;
+            let _old = self.reactions.remove(&key)?;
         }
-
-        app::emit!(Event::ReactionUpdated(message_id.to_string()));
-        Ok(format!("Reaction {} successfully", action))
+        env::emit(Event::ReactionUpdated { message_id }, Audience::All)?;
+        let action = if add { "added" } else { "removed" };
+        Ok(format!("Reaction {action} successfully"))
     }
 
+    /// Replaces the text of the caller's own message (`Forbidden` for anyone
+    /// else's; `NotFound` for a missing or deleted one, or a `parentId` that is
+    /// not its thread's). `timestamp` (seconds) becomes its `editedOn`. Emits
+    /// `MessageEdited`.
     pub fn edit_message(
         &mut self,
-        message_id: MessageId,
+        message_id: String,
         new_message: String,
         timestamp: u64,
-        parent_id: Option<MessageId>,
-    ) -> app::Result<Message> {
-        self.require_not_banned()?;
+        parent_id: Option<String>,
+    ) -> app::Result<MessageView> {
+        let me = self.active_account()?;
         check_timestamp(timestamp)?;
         if new_message.len() > MAX_MESSAGE_LEN {
-            app::bail!("Message cannot be longer than {MAX_MESSAGE_LEN} bytes");
+            return Err(invalid(format!(
+                "Message cannot be longer than {MAX_MESSAGE_LEN} bytes"
+            )));
         }
-
-        let updated = if let Some(parent_message_id) = parent_id {
-            let key = thread_key(&parent_message_id, &message_id)?;
-            // Keys are per owner: `owned_by_me` asks about the caller's own
-            // reply, `entries_at` about anyone's.
-            if !self.threads.owned_by_me(&key)? {
-                if self.threads.entries_at(&key)?.is_empty() {
-                    app::bail!("Message not found");
-                }
-                app::bail!("You can only edit your own messages");
-            }
-            self.threads.modify(&key, |message| {
-                message.text.set(new_message);
-                message.edited_on = Some(LwwRegister::new(timestamp));
-                message.clone()
-            })?
-        } else {
-            let Some(entry) = self.entry_of(&message_id)? else {
-                app::bail!("Message not found");
-            };
-            if !self.messages.owned_by_me_id(entry)? {
-                app::bail!("You can only edit your own messages");
-            }
-            let Some(mut updated) = self.messages.get_by_id(entry)? else {
-                app::bail!("Message not found");
-            };
-            updated.text.set(new_message);
-            updated.edited_on = Some(LwwRegister::new(timestamp));
-            self.messages.update_by_id(entry, updated.clone())?;
-            updated
-        };
-
-        // An edit, not a send. Emitting `MessageSent` here told every peer
-        // a new message had arrived: they announced "X sent a message" for
-        // text that was already on screen, and went looking for it in the
-        // newest page — where an edit to an older message is not.
-        app::emit!(Event::MessageEdited(updated.id.get().clone()));
-        Ok(updated)
+        let message = self.find_message(&message_id, parent_id.as_deref())?;
+        if message.deleted {
+            return Err(not_found("message", &message_id));
+        }
+        if message.sender != me {
+            return Err(forbidden("You can only edit your own messages"));
+        }
+        let _ = self.messages.update(&message_id, |m| {
+            m.search_text = search::indexed_text(&new_message);
+            m.text = new_message;
+            m.edited_on = Some(timestamp);
+        })?;
+        env::emit(
+            Event::MessageEdited {
+                message_id: message_id.clone(),
+            },
+            Audience::All,
+        )?;
+        self.view_of_id(&message_id)
     }
 
-    /// Delete a message. Its sender blanks it in place (the slot and its
-    /// index stay). The staff remove anyone's: a thread reply is removed from
-    /// the thread outright, and a top-level message, whose slot only its
-    /// sender can rewrite, is recorded in `hidden` and read back
-    /// blank. Both are enforced by storage, so a member who is neither the
-    /// sender nor staff cannot delete, or undelete, anything.
+    /// Deletes a message. Its sender blanks it in place (the slot and its
+    /// `index` stay). A moderator or admin deletes anyone's: a reply is removed
+    /// from its thread outright (with its reactions), a top-level message is
+    /// blanked. Anyone else gets `Forbidden`; a missing message, or a
+    /// `parentId` that is not its thread's, `NotFound`. Emits `MessageSent`
+    /// (top level) or `MessageSentThread` (reply), as v1 did.
     pub fn delete_message(
         &mut self,
-        message_id: MessageId,
-        parent_id: Option<MessageId>,
+        message_id: String,
+        parent_id: Option<String>,
     ) -> app::Result<String> {
-        self.require_not_banned()?;
-        let actor_role = self.role_of(&Self::executor_id());
-        let is_staff = actor_role == Role::Admin || actor_role == Role::Mod;
-
-        if let Some(parent_message_id) = parent_id {
-            let key = thread_key(&parent_message_id, &message_id)?;
-            let holders = self.threads.entries_at(&key)?;
-            if holders.is_empty() {
-                app::bail!("Message not found");
-            }
-            if self.threads.owned_by_me(&key)? {
-                self.threads.modify(&key, |message| {
-                    message.text.set(String::new());
-                    message.deleted = Some(LwwRegister::new(true));
-                })?;
-            } else if is_staff {
-                // `remove_by`, naming each holder: a key-only `remove` removes
-                // only the caller's own entry, and the staff member holds none.
-                for (owner, _) in holders {
-                    let _ = self.threads.remove_by(&owner, &key)?;
-                }
-            } else {
-                app::bail!("You don't have permission to delete this message");
-            }
-
-            app::emit!(Event::MessageSentThread(MessageSentEvent {
-                message_id: message_id.clone(),
-            }));
-            Ok("Thread message deleted successfully".to_string())
+        let me = self.active_account()?;
+        let message = self.find_message(&message_id, parent_id.as_deref())?;
+        let staff = matches!(self.role_of(&me)?, Role::Admin | Role::Mod);
+        let reply = message.parent != TOP;
+        if message.sender == me || (staff && !reply) {
+            let _ = self.messages.update(&message_id, |m| {
+                m.text = String::new();
+                m.search_text = String::new();
+                m.deleted = true;
+            })?;
+        } else if staff {
+            self.remove_reply(&message_id)?;
         } else {
-            let Some(entry) = self.entry_of(&message_id)? else {
-                app::bail!("Message not found");
-            };
-            if self.messages.owned_by_me_id(entry)? {
-                let Some(mut deleted) = self.messages.get_by_id(entry)? else {
-                    app::bail!("Message not found");
-                };
-                deleted.text.set(String::new());
-                deleted.deleted = Some(LwwRegister::new(true));
-                self.messages.update_by_id(entry, deleted)?;
-            } else if is_staff && self.hidden.can(&Self::me(), Op::Write) {
-                let _ = self
-                    .hidden
-                    .get_mut()?
-                    .insert(message_id.clone(), LwwRegister::new(true))?;
-            } else {
-                app::bail!("You don't have permission to delete this message");
-            }
-
-            app::emit!(Event::MessageSent(MessageSentEvent {
-                message_id: message_id.clone(),
-            }));
-            Ok("Message deleted successfully".to_string())
+            return Err(forbidden(
+                "You don't have permission to delete this message",
+            ));
+        }
+        if reply {
+            env::emit(
+                Event::MessageSentThread {
+                    message_id,
+                    parent_message_id: message.parent,
+                },
+                Audience::All,
+            )?;
+            Ok("Thread message deleted successfully".to_owned())
+        } else {
+            env::emit(Event::MessageSent { message_id }, Audience::All)?;
+            Ok("Message deleted successfully".to_owned())
         }
     }
+}
+
+/// A typed failure: `422 APP_ERROR` with `{ code, fields }` on the wire.
+#[app::error]
+pub enum Error {
+    /// No `what` with this `id` (a message, a parent).
+    NotFound { what: String, id: String },
+    /// The caller may not do this.
+    Forbidden { message: String },
+    /// An argument is out of bounds or malformed.
+    Invalid { message: String },
+    /// The caller is banned here: every write of theirs is refused.
+    Banned,
+}
+
+/// A change to the conversation, emitted after the write that caused it, to
+/// everyone who reaches it.
+#[app::event]
+pub enum Event {
+    /// The conversation was created.
+    Initialized,
+    /// A top-level message was sent, or deleted (as in v1).
+    MessageSent { message_id: String },
+    /// A reply was sent in `parentMessageId`'s thread, or deleted.
+    MessageSentThread {
+        message_id: String,
+        parent_message_id: String,
+    },
+    /// Someone's reactions to `messageId` changed.
+    ReactionUpdated { message_id: String },
+    /// The text of `messageId` changed.
+    MessageEdited { message_id: String },
+    /// `identity` set their profile.
+    ProfileUpdated { identity: String },
+    /// The name or description changed.
+    InfoUpdated,
+    /// `identity`'s role changed.
+    RoleUpdated { identity: String },
 }
 
 impl MeroChat {
-    fn role_of(&self, user: &UserId) -> Role {
-        let who = Self::to_account(user);
-        // The admin tier is checked first. A ban flag on an admin (which only
-        // a patched moderator could write) must not lock the admins out of
-        // the moderation that would undo it; banning an admin through this
-        // app revokes the admin grant first.
-        if self.roles.is_admin(&who) {
-            Role::Admin
-        } else if self.is_banned(user) {
-            Role::Banned
-        } else if self.roles.has_role(ROLE_MOD, &who).unwrap_or(false) {
-            Role::Mod
-        } else {
-            Role::User
+    fn info(&self) -> app::Result<Info> {
+        self.info
+            .get()?
+            .ok_or_else(|| not_found("info", "conversation"))
+    }
+
+    /// `account`'s role: `User` unless one was set.
+    fn role_of(&self, account: &str) -> app::Result<Role> {
+        Ok(self.roles.get(&account.to_owned())?.unwrap_or_default())
+    }
+
+    /// The caller, refused when banned.
+    fn active_account(&self) -> app::Result<String> {
+        let me = account()?;
+        if self.role_of(&me)? == Role::Banned {
+            return Err(Error::Banned.into());
         }
+        Ok(me)
     }
 
-    fn is_banned(&self, user: &UserId) -> bool {
-        self.banned
-            .get()
-            .is_ok_and(|b| matches!(b.get(user), Ok(Some(flag)) if *flag.get()))
+    /// How many messages `parent` holds now (a maintained count).
+    fn count_of(&self, parent: &str) -> app::Result<u64> {
+        Ok(self
+            .messages
+            .count("perThread", &[KeyPart::Str(parent.to_owned())])?)
     }
 
-    /// Storage refuses, on every other node, a ban written by anyone outside
-    /// `banned`'s writer set; this makes the refusal local and readable too.
-    fn set_banned(&mut self, user: &UserId, banned: bool) -> app::Result<()> {
-        if !self.banned.can(&Self::me(), Op::Write) {
-            app::bail!("Only an admin or moderator can ban or unban");
-        }
-        let _ = self
-            .banned
-            .get_mut()?
-            .insert(*user, LwwRegister::new(banned))?;
-        Ok(())
+    /// The message of `parent`'s at position `seq`.
+    fn at(&self, parent: &str, seq: u64) -> app::Result<Option<Message>> {
+        let page = self.messages.find(
+            "thread",
+            &[KeyPart::Str(parent.to_owned())],
+            FindOpts::default()
+                .from(vec![KeyPart::Int(i128::from(seq))])
+                .to(vec![KeyPart::Int(i128::from(seq) + 1)])
+                .limit(1),
+        )?;
+        Ok(page.items.into_iter().next())
     }
 
-    fn revoke_mod(&mut self, who: &AccountId) -> app::Result<()> {
-        self.roles
-            .revoke(ROLE_MOD, who)
-            .map_err(|e| app::err!("revoke mod failed: {e}"))?;
-        Ok(())
-    }
-
-    fn revoke_admin_member(&mut self, who: &AccountId) -> app::Result<()> {
-        self.roles
-            .revoke_admin(who)
-            .map_err(|e| app::err!("revoke admin failed: {e}"))?;
-        Ok(())
-    }
-
-    /// Bring every staff-written field's writers in line with `roles`: the
-    /// admins write `info`; admins and moderators write `banned` and
-    /// `hidden` and moderate `threads`. Each is its own writer set, verified by every node,
-    /// so after a role change they are rotated here, by the admin who made it.
-    fn sync_staff(&mut self) -> app::Result<()> {
-        let admins = self.roles.admins();
-        let mut staff = admins.clone();
-        staff.extend(self.roles.members_of(ROLE_MOD)?);
-        if self.info.writers() != admins {
-            self.info.rotate_writers(admins)?;
-        }
-        if self.banned.writers() != staff {
-            self.banned.rotate_writers(staff.clone())?;
-        }
-        if self.hidden.writers() != staff {
-            self.hidden.rotate_writers(staff.clone())?;
-        }
-        if self.threads.moderators() != staff {
-            self.threads.set_moderators(staff)?;
-        }
-        Ok(())
-    }
-
-    /// Map a curb `UserId` (32-byte key) to the `AccountId` the access-control
-    /// components key on.
-    fn to_account(user: &UserId) -> AccountId {
-        let slice: &[u8] = user.as_ref();
-        let mut arr = [0u8; 32];
-        arr.copy_from_slice(slice);
-        AccountId::from(arr)
-    }
-
-    /// App-level only. A banned member's own node runs this check, so a
-    /// patched one can skip it: the ban keeps honest clients out and marks the
-    /// member for the staff, whose removals storage does enforce. Removing
-    /// someone for good is a group kick, in core.
-    fn require_not_banned(&self) -> app::Result<()> {
-        if self.is_banned(&Self::executor_id()) {
-            app::bail!("You are banned from this context");
-        }
-        Ok(())
-    }
-
-    fn can_change_role(actor: Role, target_current: Role, target_new: Role) -> bool {
-        match actor {
-            Role::Admin => true,
-            Role::Mod => {
-                (target_current == Role::User && target_new == Role::Banned)
-                    || (target_current == Role::Banned && target_new == Role::User)
-            }
-            _ => false,
-        }
-    }
-
-    /// Where `message_id` lives, if the account that recorded it also owns
-    /// the entry it points at. A patched node could record an id against
-    /// someone else's entry; such a pointer is ignored.
-    ///
-    /// Keys are per owner, so several accounts can each hold a pointer under
-    /// one id. Each is checked against its own recorder, and the lowest
-    /// account whose pointer holds wins: the same pick on every node.
-    fn slot_of(&self, message_id: &str) -> app::Result<Option<Slot>> {
-        let key = message_id.to_owned();
-        let mut pointers = self.message_ids.entries_at(&key)?;
-        pointers.sort_by_key(|(recorder, _)| *recorder);
-        for (recorder, slot) in pointers {
-            // A pointer its recorder signed twice is sealed and points nowhere.
-            let Some(slot) = slot.value() else {
-                continue;
-            };
-            let genuine = match &slot {
-                Slot::Channel(entry) => {
-                    self.messages.owner_of_id(Id::from(*entry))? == Some(recorder)
-                }
-                // A removed reply is gone; the recorder must hold it.
-                Slot::Thread(thread_key) => self.threads.contains_by(&recorder, thread_key)?,
-            };
-            if genuine {
-                return Ok(Some(slot));
-            }
-        }
-        Ok(None)
-    }
-
-    /// The `messages` entry a top-level message id names.
-    fn entry_of(&self, message_id: &str) -> app::Result<Option<Id>> {
-        Ok(match self.slot_of(message_id)? {
-            Some(Slot::Channel(entry)) => Some(Id::from(entry)),
-            _ => None,
-        })
-    }
-
-    /// The owner stamp of the thread reply `message` at `key`, as a `UserId`:
-    /// the holder of `key` whose entry it is (keys are per owner, so a
-    /// key-only `owner_of` would only ever name the caller).
-    fn thread_sender(&self, key: &String, message: &Message) -> UserId {
-        self.threads
-            .entries_at(key)
-            .ok()
-            .and_then(|holders| holder_of(holders, message))
-            .map_or(UserId::new([0; 32]), user_of)
-    }
-
-    /// Unread top-level messages matching `wanted`, newest first, over the
-    /// newest `MAX_UNREAD_SCAN` messages.
-    fn unread(&self, wanted: impl Fn(&Message) -> bool, caller: &UserId) -> u32 {
-        let last_read = self
-            .read_receipts
-            .get_for_user(&Self::to_account(caller))
-            .ok()
-            .flatten()
-            .map(|r| *r.get())
-            .unwrap_or(0);
-
-        let total = self.messages.len().unwrap_or(0);
-        let mut count = 0u32;
-        for idx in (total.saturating_sub(MAX_UNREAD_SCAN)..total).rev() {
-            let Ok(Some(msg)) = self.messages.get(idx) else {
-                continue;
-            };
-            if *msg.timestamp <= last_read {
-                continue;
-            }
-            if self.messages.owner_of(idx).ok().flatten().map(user_of) == Some(*caller) {
-                continue;
-            }
-            if self.is_deleted(&msg) {
-                continue;
-            }
-            if wanted(&msg) {
-                count += 1;
-            }
-        }
-        count
-    }
-
-    fn is_deleted(&self, message: &Message) -> bool {
-        message.deleted.as_ref().is_some_and(|r| **r)
-            || self
-                .hidden
-                .get()
-                .is_ok_and(|h| matches!(h.get(message.id.get()), Ok(Some(flag)) if *flag.get()))
-    }
-
-    /// A message's id: a digest of what identifies it, never a copy of it.
-    ///
-    /// This function used to build a buffer called `hash_input` and hex-encode
-    /// it WITHOUT hashing, so the id was
-    /// `hex(account ‖ plaintext ‖ timestamp ‖ counter)`. The message text came
-    /// back out of it verbatim, and the id grew with the message — a 37-char
-    /// message produced a 184-char id.
-    ///
-    /// That is not a cosmetic defect. Ids are the app's only handle on a
-    /// message: they key `threads`, `reactions` and `hidden`, they
-    /// travel in events, and they are what any "link to this message" feature
-    /// would put in a URL — where the plaintext would then reach every client,
-    /// proxy log, scanner and chat history that touched the link.
-    ///
-    /// The digest covers the same four fields, so ids stay unique for the same
-    /// reasons they were before: the counter separates two identical messages
-    /// sent by the same account in the same millisecond.
-    fn get_message_id(&self, account: &UserId, message: &str, timestamp: u64) -> MessageId {
-        use sha2::{Digest, Sha256};
-
-        let message_counter =
-            self.messages.len().unwrap_or(0) as u64 + self.threads.len().unwrap_or(0) as u64 + 1;
-
-        let mut hasher = Sha256::new();
-        hasher.update(account.as_ref());
-        hasher.update(message.as_bytes());
-        hasher.update(timestamp.to_be_bytes());
-        hasher.update(message_counter.to_be_bytes());
-        let digest = hasher.finalize();
-
-        // The timestamp suffix is kept: it is already public in the message it
-        // names, it keeps ids roughly time-ordered for debugging, and
-        // `thread_key` orders a reply by it.
-        format!("{}_{}", hex(&digest), timestamp)
-    }
-
-    /// Whether the text a reader sees in `message` contains `needle` (folded,
-    /// see `search_messages`), and the message is still there to be found.
-    /// The visibility check runs only on a text match: it is the dearer read.
-    fn text_matches(&self, message: &Message, needle: &str) -> bool {
-        search::folded_text(message.text.get()).contains(needle) && !self.is_deleted(message)
-    }
-
-    /// The snippet for `message` if it is a hit for `needle`: the one place a
-    /// search pays for more than a fold.
-    fn hit_snippet(&self, message: &Message, needle: &str) -> Option<search::Snippet> {
-        self.text_matches(message, needle)
-            .then(|| search::snippet(&search::plain_text(message.text.get()), needle))
-    }
-
-    /// `parent`'s replies in thread order, after the reply `after` if given.
-    fn replies_after(
+    /// `parent`'s messages at positions `[start, end)`, rendered, ascending.
+    fn window(
         &self,
         parent: &str,
-        after: Option<&str>,
-    ) -> app::Result<Vec<(String, Message)>> {
-        Ok(match after {
-            None => self
-                .threads
-                .prefix(thread_prefix(parent).as_bytes())?
-                .collect(),
-            Some(reply) => {
-                // One past the separator: the first key after this thread's.
-                let end = format!("{parent}{}", char::from(KEY_SEP as u8 + 1));
-                self.threads
-                    .range((
-                        Bound::Excluded(thread_key(parent, reply)?),
-                        Bound::Excluded(end),
-                    ))?
-                    .collect()
-            }
-        })
+        start: u64,
+        end: u64,
+        with_threads: bool,
+    ) -> app::Result<Vec<MessageView>> {
+        if start >= end {
+            return Ok(Vec::new());
+        }
+        let page = self.messages.find(
+            "thread",
+            &[KeyPart::Str(parent.to_owned())],
+            FindOpts::default()
+                .from(vec![KeyPart::Int(i128::from(start))])
+                .to(vec![KeyPart::Int(i128::from(end))])
+                .limit((end - start).min(u64::from(MAX_MESSAGE_PAGE)) as u32),
+        )?;
+        page.items
+            .into_iter()
+            .map(|m| self.view(m, with_threads))
+            .collect()
     }
 
-    /// The message at `index`, rendered, with its sender from the slot's
-    /// owner stamp.
-    fn public_at(
-        &self,
-        messages: &AuthoredVector<Message>,
-        index: usize,
-        include_threads: bool,
-    ) -> Option<MessageWithReactions> {
-        let message = messages.get(index).ok().flatten()?;
-        let sender = user_of(messages.owner_of(index).ok().flatten()?);
-        Some(self.message_to_public(&message, sender, include_threads, index as u64))
+    /// The message `id`, which must be in `parent`'s thread when one is named.
+    fn find_message(&self, id: &str, parent: Option<&str>) -> app::Result<Message> {
+        match self.messages.get(id)? {
+            Some(m) if parent.is_none_or(|p| p == m.parent) => Ok(m),
+            _ => Err(not_found("message", id)),
+        }
     }
 
-    /// One stored message rendered for the API. `sender` is the entry's owner
-    /// stamp, never the message's own `sender` field.
-    ///
-    /// Shared by every read that renders messages, so they cannot drift in
-    /// what they return.
-    fn message_to_public(
-        &self,
-        message: &Message,
-        sender: UserId,
-        include_threads: bool,
-        index: u64,
-    ) -> MessageWithReactions {
-        let (thread_count, thread_last_timestamp) = if include_threads {
-            self.get_thread_info(message.id.get())
+    fn view_of_id(&self, id: &str) -> app::Result<MessageView> {
+        let message = self
+            .messages
+            .get(id)?
+            .ok_or_else(|| not_found("message", id))?;
+        let top = message.parent == TOP;
+        self.view(message, top)
+    }
+
+    /// One stored message rendered for the API: its lists, its reactions (none
+    /// once deleted) and, with `with_threads`, its thread's size and newest
+    /// reply. Every read renders through here, so they cannot drift.
+    fn view(&self, m: Message, with_threads: bool) -> app::Result<MessageView> {
+        let extras = self.extras.get(&m.id)?.unwrap_or_default();
+        let (thread_count, thread_last_timestamp) = if with_threads {
+            let count = self.count_of(&m.id)?;
+            let last = self.messages.find(
+                "thread",
+                &[KeyPart::Str(m.id.clone())],
+                FindOpts::default().reverse().limit(1),
+            )?;
+            (count as u32, last.items.first().map_or(0, |r| r.timestamp))
         } else {
             (0, 0)
         };
-
-        let mentions_vec: Vec<UserId> = if let Ok(iter) = message.mentions.iter() {
-            iter.collect()
+        let reactions = if m.deleted {
+            None
         } else {
-            Vec::new()
+            self.reactions_of(&m.id)?
         };
-        let mentions_usernames_vec: Vec<String> =
-            if let Ok(iter) = message.mentions_usernames.iter() {
-                iter.map(|r| r.get().clone()).collect()
-            } else {
-                Vec::new()
-            };
-
-        let msg_id = message.id.get().clone();
-        let is_deleted = self.is_deleted(message);
-        let (text, reactions) = if is_deleted {
-            (String::new(), None)
-        } else {
-            (
-                message.text.get().clone(),
-                self.get_reactions_for_message(&msg_id),
-            )
-        };
-
-        MessageWithReactions {
-            index,
-            timestamp: *message.timestamp,
-            sender,
-            id: msg_id,
-            text,
-            mentions: mentions_vec,
-            mentions_usernames: mentions_usernames_vec,
-            files: attachments_vector_to_public(&message.files),
-            images: attachments_vector_to_public(&message.images),
+        Ok(MessageView {
+            index: m.seq,
+            timestamp: m.timestamp,
+            sender: m.sender,
+            mentions: extras.mentions,
+            mentions_usernames: extras.mentions_usernames,
+            files: extras.files.into_iter().map(attachment_view).collect(),
+            images: extras.images.into_iter().map(attachment_view).collect(),
+            id: m.id,
+            text: if m.deleted { String::new() } else { m.text },
+            edited_on: m.edited_on,
             reactions,
-            deleted: if is_deleted {
-                Some(true)
-            } else {
-                message.deleted.as_ref().map(|r| **r)
-            },
-            edited_on: message.edited_on.as_ref().map(|r| **r),
+            deleted: m.deleted.then_some(true),
             thread_count,
             thread_last_timestamp,
-            parent_message_id: None,
+            parent_message_id: (m.parent != TOP).then_some(m.parent),
+        })
+    }
+
+    /// Emoji -> the accounts that reacted with it, over one page of the
+    /// message's reactions; `None` when there are none.
+    fn reactions_of(&self, message_id: &str) -> app::Result<Option<BTreeMap<String, Vec<String>>>> {
+        let page = self.reactions.prefix(
+            &[KeyPart::Str(message_id.to_owned())],
+            FindOpts::default().limit(MAX_REACTIONS_READ),
+        )?;
+        let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        for ((_, emoji, account), _) in page.items {
+            out.entry(emoji).or_default().push(account);
+        }
+        Ok((!out.is_empty()).then_some(out))
+    }
+
+    /// A staff removal of a reply: the reply, its reactions and its lists.
+    fn remove_reply(&mut self, id: &str) -> app::Result<()> {
+        let _removed = self.messages.remove(&id.to_owned())?;
+        let _old = self.extras.remove(&id.to_owned())?;
+        loop {
+            let page = self.reactions.prefix(
+                &[KeyPart::Str(id.to_owned())],
+                FindOpts::default().limit(BATCH),
+            )?;
+            if page.items.is_empty() {
+                return Ok(());
+            }
+            for (key, _) in page.items {
+                let _old = self.reactions.remove(&key)?;
+            }
         }
     }
 
-    /// One page of the unfiltered channel, rendering only that page.
-    ///
-    /// Only correct when nothing is filtered out, which is exactly the
-    /// no-search case: every stored message occupies a slot in the response
-    /// (a deleted one keeps its place with blanked text), so `total` is the
-    /// collection's length and the window is read by position.
-    ///
-    /// Worth stating why this matters, because the old path looked harmless:
-    /// it decoded every message, then did a nested reactions lookup and a
-    /// thread lookup per message, and only then threw away all but one page.
-    /// Cost grew with history until a single `get_messages` exhausted the gas
-    /// limit — measured at ~2,300 messages, while `send_message` stayed flat
-    /// past 20,000.
-    fn page_unfiltered(
-        &self,
-        messages: &AuthoredVector<Message>,
-        limit: Option<usize>,
-        offset: Option<usize>,
-        include_threads: bool,
-    ) -> FullMessageResponse {
-        let total = messages.len().unwrap_or(0);
-        let (window, start_position) = page_window(total, limit, offset);
-        FullMessageResponse {
-            total_count: total as u32,
-            messages: window
-                .filter_map(|idx| self.public_at(messages, idx, include_threads))
-                .collect(),
-            start_position,
-        }
-    }
-
-    /// Emoji -> the ACCOUNTS that reacted with it.
-    ///
-    /// Accounts, not names: the client resolves them, so a rename is reflected
-    /// on reactions already given rather than only on new ones. A reaction
-    /// counts only when the account in its key holds it: a patched node can
-    /// write a key naming someone else, but that is its own entry at the key.
-    ///
-    /// Keys are per owner, so one key appears once per account holding it.
-    /// Each distinct key is read once, as the entry of the account it names.
-    fn get_reactions_for_message(&self, message_id: &str) -> Option<HashMap<String, Vec<UserId>>> {
-        let prefix = format!("{message_id}{KEY_SEP}");
-        let mut hashmap: HashMap<String, Vec<UserId>> = HashMap::new();
-        let mut last: Option<String> = None;
-        for (key, ()) in self.reactions.prefix(prefix.as_bytes()).ok()? {
-            if last.as_ref() == Some(&key) {
+    /// Unread top-level messages matching `wanted`, over the newest 500.
+    fn unread(&self, me: &str, wanted: impl Fn(&Message) -> app::Result<bool>) -> app::Result<u32> {
+        let last_read = self.read_receipts.get_for(me)?.unwrap_or(0);
+        let page = self.messages.find(
+            "thread",
+            &[KeyPart::Str(TOP.to_owned())],
+            FindOpts::default().reverse().limit(MAX_UNREAD_SCAN),
+        )?;
+        let mut count = 0;
+        for m in page.items {
+            if m.timestamp <= last_read || m.sender == me || m.deleted {
                 continue;
             }
-            last = Some(key.clone());
-            let Some((emoji, account_hex)) = key[prefix.len()..].rsplit_once(KEY_SEP) else {
-                continue;
-            };
-            let Ok(owner) = account_hex.parse::<AccountId>() else {
-                continue;
-            };
-            if hex(owner.as_bytes()) != account_hex
-                || !self.reactions.contains_by(&owner, &key).unwrap_or(false)
-            {
-                continue;
+            if wanted(&m)? {
+                count += 1;
             }
-            hashmap
-                .entry(emoji.to_owned())
-                .or_default()
-                .push(user_of(owner));
         }
-        (!hashmap.is_empty()).then_some(hashmap)
-    }
-
-    fn get_thread_info(&self, message_id: &str) -> (u32, u64) {
-        let Ok(replies) = self.threads.prefix(thread_prefix(message_id).as_bytes()) else {
-            return (0, 0);
-        };
-        let mut count = 0u32;
-        let mut last_ts = 0;
-        for (_, reply) in replies {
-            count += 1;
-            last_ts = *reply.timestamp;
-        }
-        (count, last_ts)
+        Ok(count)
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use calimero_sdk::testing::TestHost;
-    use calimero_sdk::BlobId;
+// ── helpers ──────────────────────────────────────────────────────────────────
 
-    use super::{
-        draft_key, hex, reaction_key, thread_key, ContextType, LwwRegister, MeroChat, Message, Op,
-        Role, SearchHit, UnorderedSet, UserId, Vector, MAX_MESSAGE_LEN, MAX_SEARCH_BYTES,
-        MAX_SEARCH_LIMIT, MAX_SEARCH_TERM_LEN,
-    };
-
-    // ── AccessControl-backed roles (TestHost) ──────────────────────────────────
-
-    const MODR: [u8; 32] = [0x22; 32];
-    const USER: [u8; 32] = [0x33; 32];
-
-    const CREATOR: fn() -> [u8; 32] = calimero_sdk::env::account_id;
-
-    /// Send a top-level message as the default executor; returns its id.
-    fn send(app: &mut TestHost<MeroChat>, text: &str) -> String {
-        app.call(|s| s.send_message(text.to_owned(), vec![], vec![], None, 1, None, None))
-            .expect("send")
-            .id
-            .get()
-            .clone()
+/// The signed-in caller's account.
+fn account() -> app::Result<String> {
+    match env::caller() {
+        Caller::Account(account) | Caller::ApiKey { account, .. } => Ok(account),
+        Caller::Public | Caller::System | Caller::App(_) => Err(AppError::login_required()),
     }
+}
 
-    fn send_as(app: &mut TestHost<MeroChat>, who: [u8; 32], text: &str) -> String {
-        app.call_as_account(who, who, |s| {
-            s.send_message(text.to_owned(), vec![], vec![], None, 1, None, None)
-        })
-        .expect("send")
-        .id
-        .get()
-        .clone()
+/// The log's clock in seconds.
+fn now_secs() -> u64 {
+    env::time_now() / 1_000
+}
+
+/// A new message id: 32 random bytes of the run as hex, `_`, the timestamp
+/// (v1's shape; the random half is seeded per logged run, so replay agrees).
+fn fresh_message_id(timestamp: u64) -> String {
+    let hex: String = env::random_bytes(32)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    format!("{hex}_{timestamp}")
+}
+
+fn not_found(what: &str, id: &str) -> AppError {
+    Error::NotFound {
+        what: what.to_owned(),
+        id: id.to_owned(),
     }
+    .into()
+}
 
-    fn new_chat() -> TestHost<MeroChat> {
-        // init runs as the default test executor, who becomes the sole admin.
-        // `TestHost::new` does not align the storage layer's account with the
-        // SDK's while `init` runs, and the moderators of `threads` are read
-        // from the storage layer's, so align them here as a node does.
-        TestHost::new(|| {
-            calimero_storage::env::with_account_id(calimero_sdk::env::account_id(), || {
-                MeroChat::init(
-                    "ctx".to_owned(),
-                    ContextType::Channel,
-                    "desc".to_owned(),
-                    0,
-                    "creator".to_owned(),
-                )
+fn forbidden(message: impl Into<String>) -> AppError {
+    Error::Forbidden {
+        message: message.into(),
+    }
+    .into()
+}
+
+fn invalid(message: impl Into<String>) -> AppError {
+    Error::Invalid {
+        message: message.into(),
+    }
+    .into()
+}
+
+fn check_max(field: &str, value: &str, max: usize) -> app::Result<()> {
+    if value.len() > max {
+        return Err(invalid(format!(
+            "{field} cannot be longer than {max} bytes"
+        )));
+    }
+    Ok(())
+}
+
+fn check_username(username: &str) -> app::Result<()> {
+    if username.trim().is_empty() {
+        return Err(invalid("Username cannot be empty"));
+    }
+    check_max("username", username, MAX_USERNAME_LEN)
+}
+
+fn check_term(term: &str) -> app::Result<()> {
+    if term.len() > MAX_SEARCH_TERM_LEN {
+        return Err(invalid(format!(
+            "Search term too long: {} bytes, limit is {MAX_SEARCH_TERM_LEN}",
+            term.len()
+        )));
+    }
+    Ok(())
+}
+
+/// Refuses a client timestamp too far ahead of the log's clock.
+fn check_timestamp(timestamp: u64) -> app::Result<()> {
+    if timestamp > now_secs().saturating_add(MAX_CLOCK_SKEW_SECS) {
+        return Err(invalid(format!(
+            "Timestamp {timestamp} is too far in the future"
+        )));
+    }
+    Ok(())
+}
+
+fn message_limit(limit: Option<u32>) -> u32 {
+    limit.unwrap_or(DEFAULT_MESSAGE_PAGE).min(MAX_MESSAGE_PAGE)
+}
+
+fn search_limit(limit: Option<u32>) -> u32 {
+    limit
+        .unwrap_or(DEFAULT_SEARCH_LIMIT)
+        .clamp(1, MAX_SEARCH_LIMIT)
+}
+
+fn list_opts(cursor: Option<String>, limit: Option<u32>) -> FindOpts {
+    let opts = FindOpts::default().limit(limit.unwrap_or(DEFAULT_LIST_PAGE).min(MAX_LIST_PAGE));
+    match cursor {
+        Some(c) => opts.cursor(c),
+        None => opts,
+    }
+}
+
+/// The positions a `(limit, offset)` window covers among `total`, counted
+/// back from the END (offset 0 is the newest page), and the `startPosition` it
+/// reports: the offset, except 0 for an empty collection.
+fn page_window(total: u64, limit: u32, offset: u32) -> (std::ops::Range<u64>, u32) {
+    if total == 0 {
+        return (0..0, 0);
+    }
+    let offset_u = u64::from(offset);
+    if offset_u >= total {
+        return (0..0, offset);
+    }
+    let end = total - offset_u;
+    (end.saturating_sub(u64::from(limit))..end, offset)
+}
+
+/// The blob `id` as a reference, if this app holds it.
+fn held_blob(id: &str) -> app::Result<BlobRef> {
+    let blob = BlobRef::parse(id).ok_or_else(|| invalid(format!("Invalid blob id {id:?}")))?;
+    if blob.info().is_none() {
+        return Err(invalid(format!("No such blob: {id}")));
+    }
+    Ok(blob)
+}
+
+fn attachments(inputs: Vec<AttachmentInput>) -> app::Result<Vec<Attachment>> {
+    inputs
+        .into_iter()
+        .map(|input| {
+            check_max("attachment name", &input.name, MAX_ID_LEN)?;
+            check_max("mime type", &input.mime_type, MAX_ID_LEN)?;
+            let blob = BlobRef::parse(&input.blob_id_str)
+                .ok_or_else(|| invalid(format!("Invalid blob id {:?}", input.blob_id_str)))?;
+            let info = blob
+                .info()
+                .ok_or_else(|| invalid(format!("No such blob: {}", input.blob_id_str)))?;
+            Ok(Attachment {
+                name: input.name,
+                mime_type: input.mime_type,
+                size: info.size,
+                blob,
+                uploaded_at: env::time_now(),
             })
         })
+        .collect()
+}
+
+fn attachment_view(a: Attachment) -> AttachmentView {
+    AttachmentView {
+        name: a.name,
+        mime_type: a.mime_type,
+        size: a.size,
+        blob_id: a.blob.id(),
+        uploaded_at: a.uploaded_at,
     }
+}
 
-    #[test]
-    fn removing_the_last_reaction_of_a_kind_removes_the_kind() {
-        // `or_insert` creates the set on the way in, so taking the reaction
-        // away again used to leave `{"👍": []}` behind: a pill with a count of
-        // zero, which a client cannot tell apart from one nobody has pressed.
-        // "No reactions" must arrive in one shape, not two.
-        let mut app = new_chat();
-
-        let sent = app
-            .call(|c| c.send_message("hello".to_owned(), vec![], vec![], None, 0, None, None))
-            .expect("send");
-        let id = sent.id.to_string();
-
-        app.call(|c| c.update_reaction(id.clone(), "👍".to_owned(), true))
-            .expect("add");
-
-        let with_reaction = app
-            .call(|c| c.get_messages(None, Some(10), Some(0), None))
-            .expect("read");
-        let reacted = with_reaction
-            .messages
-            .iter()
-            .find(|m| m.id == id)
-            .expect("message present");
-        assert!(
-            reacted
-                .reactions
-                .as_ref()
-                .is_some_and(|r| r.contains_key("👍")),
-            "the reaction should be there once added",
-        );
-
-        app.call(|c| c.update_reaction(id.clone(), "👍".to_owned(), false))
-            .expect("remove");
-
-        let after = app
-            .call(|c| c.get_messages(None, Some(10), Some(0), None))
-            .expect("read");
-        let cleared = after
-            .messages
-            .iter()
-            .find(|m| m.id == id)
-            .expect("message present");
-
-        let leftover = cleared
-            .reactions
-            .as_ref()
-            .map(|r| r.keys().cloned().collect::<Vec<_>>())
-            .unwrap_or_default();
-        assert!(
-            leftover.is_empty(),
-            "an emptied reaction kind lingered: {leftover:?}",
-        );
-    }
-
-    #[test]
-    fn creator_is_the_sole_admin() {
-        let app = new_chat();
-        let admins = app
-            .view(|s| s.list_roles())
-            .into_iter()
-            .filter(|(_, r)| *r == Role::Admin)
-            .count();
-        assert_eq!(admins, 1);
-    }
-
-    #[test]
-    fn non_admin_cannot_grant_admin() {
-        // The headline fix: a non-admin's attempt to promote themselves (or
-        // anyone) to Admin is refused by the fail-fast guard, and the
-        // authoritative writer-set check rejects a forged grant delta at merge.
-        let mut app = new_chat();
-        let target = UserId::new(USER);
-        let denied = app.call_as_account(MODR, MODR, |s| s.set_member_role(target, Role::Admin));
-        assert!(denied.is_err());
-        assert_eq!(app.view(|s| s.get_member_role(target)), Role::User);
-    }
-
-    #[test]
-    fn setting_a_role_a_member_already_has_announces_nothing() {
-        // The app re-asserts an admin's own Admin role each time they open a
-        // channel. Announcing that as a role change told them "you are now
-        // Admin" over and over; only a real change is news.
-        let mut app = new_chat();
-        let me = UserId::new(CREATOR());
-        let modr = UserId::new(MODR);
-        let _ = app.take_events();
-
-        app.call(|s| s.set_member_role(me, Role::Admin)).unwrap();
-        assert!(
-            app.take_events().is_empty(),
-            "admin to admin is not a change"
-        );
-
-        app.call(|s| s.set_member_role(modr, Role::Mod)).unwrap();
-        assert_eq!(app.take_events().len(), 1, "user to mod is");
-        app.call(|s| s.set_member_role(modr, Role::Mod)).unwrap();
-        assert!(app.take_events().is_empty(), "mod to mod is not");
-        assert_eq!(app.view(|s| s.get_member_role(modr)), Role::Mod);
-    }
-
-    #[test]
-    fn admin_promotes_mod_then_mod_moderates_within_limits() {
-        let mut app = new_chat();
-        let modr = UserId::new(MODR);
-        let user = UserId::new(USER);
-
-        // Admin promotes a moderator.
-        app.call(|s| s.set_member_role(modr, Role::Mod)).unwrap();
-        assert_eq!(app.view(|s| s.get_member_role(modr)), Role::Mod);
-
-        // The moderator may ban a user (separate exclusion set, no admin grant).
-        app.call_as_account(MODR, MODR, |s| s.set_member_role(user, Role::Banned))
-            .unwrap();
-        assert_eq!(app.view(|s| s.get_member_role(user)), Role::Banned);
-
-        // …but may not escalate a user to Admin.
-        assert!(app
-            .call_as_account(MODR, MODR, |s| s.set_member_role(user, Role::Admin))
-            .is_err());
-
-        // …and may unban (Banned → User).
-        app.call_as_account(MODR, MODR, |s| s.set_member_role(user, Role::User))
-            .unwrap();
-        assert_eq!(app.view(|s| s.get_member_role(user)), Role::User);
-    }
-
-    #[test]
-    fn banned_member_is_blocked_from_mutations() {
-        let mut app = new_chat();
-        let user = UserId::new(USER);
-        app.call(|s| s.set_member_role(user, Role::Banned)).unwrap();
-        // A banned caller's state-mutating action is rejected by the ban gate.
-        let r = app.call_as_account(USER, USER, |s| {
-            s.save_draft("general".to_owned(), "hi".to_owned())
-        });
-        assert!(r.is_err());
-    }
-
-    /// A reaction records the ACCOUNT that made it, and nothing the caller says.
-    ///
-    /// `update_reaction` used to take the reacting user as a caller-supplied
-    /// string, which made impersonation reachable through the plain public ABI:
-    /// call it with someone else's name to react as them, or with `add: false`
-    /// to remove theirs. The parameter is gone; the executor is the only
-    /// source.
-    #[test]
-    fn a_reaction_records_the_caller_account() {
-        let mut app = new_chat();
-        let id = send(&mut app, "hello");
-
-        app.call_as_account(MODR, MODR, |s| {
-            s.update_reaction(id.clone(), "\u{1f44d}".to_owned(), true)
-        })
-        .unwrap();
-
-        let reactors = app
-            .view(|s| s.get_reactions_for_message(&id))
-            .unwrap_or_default();
-        let thumbs = reactors.get("\u{1f44d}").cloned().unwrap_or_default();
-
-        assert_eq!(thumbs, vec![UserId::new(MODR)], "the reactor is the caller");
-    }
-
-    /// Two members with the SAME display name must hold separate reactions.
-    ///
-    /// Keying by name meant they shared one slot — each able to remove the
-    /// other's — and that a rename split a member's own reaction in two.
-    #[test]
-    fn same_named_members_do_not_share_a_reaction() {
-        let mut app = new_chat();
-        let id = send(&mut app, "hello");
-
-        let name = "Xabi".to_owned();
-        app.call_as_account(MODR, MODR, |s| s.set_profile(name.clone(), None))
-            .unwrap();
-        app.call_as_account(USER, USER, |s| s.set_profile(name.clone(), None))
-            .unwrap();
-
-        app.call_as_account(MODR, MODR, |s| {
-            s.update_reaction(id.clone(), "\u{1f44d}".to_owned(), true)
-        })
-        .unwrap();
-        app.call_as_account(USER, USER, |s| {
-            s.update_reaction(id.clone(), "\u{1f44d}".to_owned(), true)
-        })
-        .unwrap();
-
-        let reactors = app
-            .view(|s| s.get_reactions_for_message(&id))
-            .unwrap_or_default();
-        let mut thumbs = reactors.get("\u{1f44d}").cloned().unwrap_or_default();
-        thumbs.sort();
-        let mut want = vec![UserId::new(MODR), UserId::new(USER)];
-        want.sort();
-
-        assert_eq!(thumbs, want, "each account holds its own reaction");
-
-        // And one removing does not take the other's with it.
-        app.call_as_account(MODR, MODR, |s| {
-            s.update_reaction(id.clone(), "\u{1f44d}".to_owned(), false)
-        })
-        .unwrap();
-        let after = app
-            .view(|s| s.get_reactions_for_message(&id))
-            .unwrap_or_default();
-        assert_eq!(
-            after.get("\u{1f44d}").cloned().unwrap_or_default(),
-            vec![UserId::new(USER)],
-        );
-    }
-
-    /// D7: a search term has a ceiling.
-    ///
-    /// Search matches the term against every message it reads, so the cost is
-    /// (messages x term length) and the caller picks the second factor. The runtime meters wasm operators and
-    /// has no read limit, so an unbounded term is a cheap way to make a node
-    /// grind through the whole channel on request.
-    #[test]
-    fn an_oversized_search_term_is_refused() {
-        let mut app = new_chat();
-        app.call(|s| {
-            s.send_message(
-                "hello".to_owned(),
-                Vec::new(),
-                Vec::new(),
-                None,
-                1,
-                None,
-                None,
-            )
-        })
-        .unwrap();
-
-        let huge = "x".repeat(MAX_SEARCH_TERM_LEN + 1);
-
-        assert!(
-            app.view(|s| s.search_messages_scan(huge.clone(), None, None))
-                .is_err(),
-            "search_messages accepted an oversized term",
-        );
-        assert!(
-            app.view(|s| s.get_messages(None, None, None, Some(huge)))
-                .is_err(),
-            "get_messages accepted an oversized search term",
-        );
-    }
-
-    /// The bound must not reject terms anyone would actually type.
-    #[test]
-    fn a_normal_search_term_still_works() {
-        let mut app = new_chat();
-        app.call(|s| {
-            s.send_message(
-                "the merger closes friday".to_owned(),
-                Vec::new(),
-                Vec::new(),
-                None,
-                1,
-                None,
-                None,
-            )
-        })
-        .unwrap();
-
-        let found = app
-            .view(|s| s.search_messages_scan("merger".to_owned(), None, None))
-            .expect("search");
-        assert_eq!(found.hits.len(), 1);
-
-        // Exactly at the limit is accepted; the ceiling is inclusive.
-        let at_limit = "y".repeat(MAX_SEARCH_TERM_LEN);
-        assert!(app
-            .view(|s| s.search_messages_scan(at_limit, None, None))
-            .is_ok());
-    }
-
-    /// S2: a draft belongs to its author's node, not to the channel.
-    ///
-    /// Drafts used to sit on the replicated state, so an unsent message
-    /// replicated in the clear to every member of the channel. The API only
-    /// ever returned you your own — which is what made it look private — but
-    /// the bytes were in everyone's local store either way.
-    ///
-    /// Round-tripping through the private API is the observable part of the
-    /// fix; that the data is node-local is a property of `#[app::private]`.
-    #[test]
-    fn a_draft_round_trips_for_its_author() {
-        let mut app = new_chat();
-
-        app.call(|s| s.save_draft("general".to_owned(), "half a thought".to_owned()))
-            .unwrap();
-        assert_eq!(
-            app.view(|s| s.get_draft("general".to_owned())),
-            "half a thought"
-        );
-
-        // A different channel is a different draft, not the same one.
-        assert_eq!(app.view(|s| s.get_draft("random".to_owned())), "");
-
-        // Saving empty text clears it, which is how the composer signals
-        // "nothing left to keep".
-        app.call(|s| s.save_draft("general".to_owned(), String::new()))
-            .unwrap();
-        assert_eq!(app.view(|s| s.get_draft("general".to_owned())), "");
-    }
-
-    /// Deleting a draft removes it rather than blanking it.
-    #[test]
-    fn a_deleted_draft_is_gone() {
-        let mut app = new_chat();
-
-        app.call(|s| s.save_draft("general".to_owned(), "typing…".to_owned()))
-            .unwrap();
-        app.call(|s| s.delete_draft("general".to_owned())).unwrap();
-
-        assert_eq!(app.view(|s| s.get_draft("general".to_owned())), "");
-    }
-
-    /// S1: a message id must be a digest, not a transcript.
-    ///
-    /// The id used to be `hex(account ‖ plaintext ‖ …)` with no hashing at all,
-    /// so the message came straight back out of it. Ids travel in events, key
-    /// reactions and threads, and are exactly what a "link to this message"
-    /// would carry in a URL.
-    #[test]
-    fn a_message_id_does_not_contain_the_message() {
-        let mut app = new_chat();
-        let secret = "the merger closes friday, tell no one";
-
-        let message = app
-            .call(|s| {
-                s.send_message(
-                    secret.to_owned(),
-                    Vec::new(),
-                    Vec::new(),
-                    None,
-                    1,
-                    None,
-                    None,
-                )
-            })
-            .unwrap();
-
-        // Neither as text nor as the hex the old derivation produced.
-        assert!(!message.id.contains(secret));
-        let as_hex: String = secret.bytes().map(|b| format!("{b:02x}")).collect();
-        assert!(
-            !message.id.contains(&as_hex),
-            "id still carries the plaintext: {}",
-            message.id
-        );
-    }
-
-    /// The id's length must not track the message's.
-    ///
-    /// A length that grows with the message leaks how much was said even when
-    /// the words are hidden, and made ids unusable in a URL: a 500-character
-    /// message used to yield an id of about 1080 characters.
-    #[test]
-    fn message_id_length_does_not_grow_with_the_message() {
-        let mut app = new_chat();
-
-        let send = |app: &mut TestHost<MeroChat>, text: String, ts: u64| {
-            app.call(|s| s.send_message(text, Vec::new(), Vec::new(), None, ts, None, None))
-                .unwrap()
-                .id
-        };
-
-        let short = send(&mut app, "hi".to_owned(), 1);
-        let long = send(&mut app, "x".repeat(500), 2);
-
-        assert_eq!(short.len(), long.len());
-        // 64 hex characters of digest, an underscore, and the timestamp.
-        assert!(short.starts_with(&short[..64]));
-        assert_eq!(short[..64].len(), 64);
-    }
-
-    /// Hashing must not cost uniqueness: the same words twice are two messages.
-    #[test]
-    fn identical_messages_still_get_distinct_ids() {
-        let mut app = new_chat();
-
-        let send = |app: &mut TestHost<MeroChat>| {
-            app.call(|s| {
-                s.send_message(
-                    "same".to_owned(),
-                    Vec::new(),
-                    Vec::new(),
-                    None,
-                    7,
-                    None,
-                    None,
-                )
-            })
-            .unwrap()
-            .id
-        };
-
-        let first = send(&mut app);
-        let second = send(&mut app);
-
-        assert_ne!(first, second);
-    }
-
-    /// The property the whole resume story rests on: an index, once handed out,
-    /// keeps naming the same message however many messages arrive after it.
-    ///
-    /// If this stopped holding, a client returning after two hours would ask
-    /// for "everything after 42" and get the wrong messages — silently, with no
-    /// error and no gap it could detect.
-    #[test]
-    fn an_index_keeps_naming_the_same_message_as_the_channel_grows() {
-        let mut app = new_chat();
-
-        let send = |app: &mut TestHost<MeroChat>, n: u64| {
-            app.call(|s| {
-                s.send_message(format!("m{n}"), Vec::new(), Vec::new(), None, n, None, None)
-            })
-            .unwrap();
-        };
-
-        for n in 0..5 {
-            send(&mut app, n);
+fn can_change_role(actor: Role, current: Role, new: Role) -> bool {
+    match actor {
+        Role::Admin => true,
+        Role::Mod => {
+            (current == Role::User && new == Role::Banned)
+                || (current == Role::Banned && new == Role::User)
         }
-
-        let before = app.view(|s| s.get_messages_from(2, Some(2))).unwrap();
-        let named: Vec<String> = before.messages.iter().map(|m| m.text.clone()).collect();
-        assert_eq!(named, vec!["m2", "m3"]);
-        assert_eq!(before.messages[0].index, 2);
-
-        // Twenty more arrive.
-        for n in 5..25 {
-            send(&mut app, n);
-        }
-
-        let after = app.view(|s| s.get_messages_from(2, Some(2))).unwrap();
-        let still: Vec<String> = after.messages.iter().map(|m| m.text.clone()).collect();
-        assert_eq!(
-            still, named,
-            "the same indices must still name the same messages after appends"
-        );
-        assert_eq!(after.total_count, 25);
+        Role::User | Role::Banned => false,
     }
-
-    /// Catching up asks for everything after the last index held, and gets
-    /// exactly that — no overlap to dedupe, no gap to detect.
-    #[test]
-    fn catching_up_from_the_last_index_returns_exactly_what_was_missed() {
-        let mut app = new_chat();
-        for n in 0..3 {
-            app.call(|s| {
-                s.send_message(
-                    format!("old{n}"),
-                    Vec::new(),
-                    Vec::new(),
-                    None,
-                    n,
-                    None,
-                    None,
-                )
-            })
-            .unwrap();
-        }
-
-        // The client goes away holding everything through index 2.
-        let held_through = app.view(|s| s.get_message_count()).unwrap() - 1;
-        assert_eq!(held_through, 2);
-
-        for n in 0..4 {
-            app.call(|s| {
-                s.send_message(
-                    format!("new{n}"),
-                    Vec::new(),
-                    Vec::new(),
-                    None,
-                    10 + n,
-                    None,
-                    None,
-                )
-            })
-            .unwrap();
-        }
-
-        let missed = app
-            .view(|s| s.get_messages_from(held_through + 1, None))
-            .unwrap();
-        let texts: Vec<String> = missed.messages.iter().map(|m| m.text.clone()).collect();
-        assert_eq!(texts, vec!["new0", "new1", "new2", "new3"]);
-        assert_eq!(missed.total_count, 7);
-    }
-
-    /// A cursor past the end is "you are up to date", not an error and not a
-    /// wrapped-around page.
-    #[test]
-    fn a_cursor_past_the_end_returns_nothing_and_the_current_length() {
-        let mut app = new_chat();
-        app.call(|s| {
-            s.send_message(
-                "only".to_owned(),
-                Vec::new(),
-                Vec::new(),
-                None,
-                1,
-                None,
-                None,
-            )
-        })
-        .unwrap();
-
-        let resp = app.view(|s| s.get_messages_from(99, Some(10))).unwrap();
-        assert!(resp.messages.is_empty());
-        assert_eq!(resp.total_count, 1);
-        assert_eq!(resp.start_position, 99);
-    }
-
-    /// The page arithmetic, pinned: offset 0 is the NEWEST page, not the
-    /// oldest, and an off-by-one returns plausible-looking messages from the
-    /// wrong place. A search matching every message must page the same way as
-    /// no search at all, since both go through `page_window`.
-    #[test]
-    fn a_page_counts_back_from_the_newest_message() {
-        let mut app = new_chat();
-
-        for i in 0..25 {
-            app.call(|s| {
-                s.send_message(
-                    format!("m{i}"),
-                    Vec::new(),
-                    Vec::new(),
-                    None,
-                    i as u64,
-                    None,
-                    None,
-                )
-            })
-            .unwrap();
-        }
-
-        let range =
-            |from: usize, to: usize| (from..to).map(|i| format!("m{i}")).collect::<Vec<_>>();
-        for (limit, offset, want, start_position) in [
-            (None, None, range(0, 25), 0),
-            (Some(1), None, range(24, 25), 0),
-            (Some(5), None, range(20, 25), 0),
-            (Some(5), Some(0), range(20, 25), 0),
-            (Some(5), Some(5), range(15, 20), 5),
-            (Some(5), Some(23), range(0, 2), 23),
-            (Some(5), Some(25), vec![], 25),
-            (Some(5), Some(100), vec![], 100),
-            (Some(100), Some(0), range(0, 25), 0),
-            (Some(0), Some(0), vec![], 0),
-        ] {
-            for term in [None, Some("M".to_owned())] {
-                let page = app
-                    .view(|s| s.get_messages(None, limit, offset, term.clone()))
-                    .unwrap();
-                let got: Vec<String> = page.messages.iter().map(|m| m.text.clone()).collect();
-                let at = format!("limit={limit:?} offset={offset:?} term={term:?}");
-                assert_eq!(got, want, "page at {at}");
-                assert_eq!(page.total_count, 25, "total_count at {at}");
-                assert_eq!(
-                    page.start_position, start_position,
-                    "start_position at {at}"
-                );
-            }
-        }
-    }
-
-    /// An empty channel reports start_position 0, not the requested offset;
-    /// clients have always seen that shape.
-    #[test]
-    fn an_empty_channel_pages_from_position_zero() {
-        let app = new_chat();
-        let page = app
-            .view(|s| s.get_messages(None, Some(10), Some(7), None))
-            .unwrap();
-        assert_eq!(page.total_count, 0);
-        assert_eq!(page.start_position, 0);
-        assert!(page.messages.is_empty());
-    }
-
-    #[test]
-    fn admin_demotes_mod_to_user() {
-        let mut app = new_chat();
-        let modr = UserId::new(MODR);
-        app.call(|s| s.set_member_role(modr, Role::Mod)).unwrap();
-        app.call(|s| s.set_member_role(modr, Role::User)).unwrap();
-        assert_eq!(app.view(|s| s.get_member_role(modr)), Role::User);
-    }
-
-    #[test]
-    fn banning_then_clearing_does_not_leave_stale_grants() {
-        // Banning a mod and later assigning User/Mod must clear the underlying
-        // AccessControl grant rather than rely on the (ban-masked) display role,
-        // so role_of always matches the requested role.
-        let mut app = new_chat();
-        let modr = UserId::new(MODR);
-        app.call(|s| s.set_member_role(modr, Role::Mod)).unwrap();
-        app.call(|s| s.set_member_role(modr, Role::Banned)).unwrap();
-        assert_eq!(app.view(|s| s.get_member_role(modr)), Role::Banned);
-        // Underlying mod grant must already be cleared by the ban.
-        app.call(|s| s.set_member_role(modr, Role::User)).unwrap();
-        assert_eq!(app.view(|s| s.get_member_role(modr)), Role::User);
-    }
-
-    // ── Storage-enforced protections ───────────────────────────────────────
-    //
-    // A member can run a patched node that skips every check in this file, so
-    // the tests below that call a collection directly play that node: they are
-    // the writes storage itself must refuse.
-
-    const MOD2: [u8; 32] = [0x44; 32];
-
-    fn stored_message(sender: UserId, id: &str, text: &str) -> Message {
-        Message {
-            timestamp: LwwRegister::new(1),
-            sender,
-            mentions: UnorderedSet::new(),
-            mentions_usernames: Vector::new(),
-            files: Vector::new(),
-            images: Vector::new(),
-            id: LwwRegister::new(id.to_owned()),
-            text: LwwRegister::new(text.to_owned()),
-            edited_on: None,
-            deleted: None,
-        }
-    }
-
-    #[test]
-    fn a_member_who_is_not_staff_cannot_ban_even_bypassing_the_app() {
-        let mut app = new_chat();
-        let admin = UserId::new(CREATOR());
-        let user = UserId::new(USER);
-
-        assert!(app
-            .call_as_account(USER, USER, |s| s.set_member_role(admin, Role::Banned))
-            .is_err());
-        assert!(app
-            .call_as_account(USER, USER, |s| s.set_banned(&admin, true))
-            .is_err());
-        assert!(!app.view(|s| s.is_banned(&admin)));
-        // What every other node enforces on a patched node's direct write: only
-        // the staff are writers of the ban set.
-        assert!(!app.view(|s| s.banned.can(&USER.into(), Op::Write)));
-        assert!(app.view(|s| s.banned.can(&CREATOR().into(), Op::Write)));
-        assert!(!app.view(|s| s.is_banned(&user)));
-    }
-
-    #[test]
-    fn a_banned_member_cannot_unban_themselves() {
-        let mut app = new_chat();
-        let user = UserId::new(USER);
-        app.call(|s| s.set_member_role(user, Role::Banned)).unwrap();
-
-        assert!(app
-            .call_as_account(USER, USER, |s| s.set_banned(&user, false))
-            .is_err());
-        assert_eq!(app.view(|s| s.get_member_role(user)), Role::Banned);
-    }
-
-    #[test]
-    fn a_ban_flag_on_an_admin_does_not_lock_the_admins_out() {
-        let mut app = new_chat();
-        let admin = UserId::new(CREATOR());
-        let modr = UserId::new(MODR);
-        app.call(|s| s.set_member_role(modr, Role::Mod)).unwrap();
-
-        // A moderator is staff, so storage lets their node write any ban flag;
-        // a patched one could flag an admin.
-        app.call_as_account(MODR, MODR, |s| s.set_banned(&admin, true))
-            .unwrap();
-
-        assert_eq!(app.view(|s| s.get_member_role(admin)), Role::Admin);
-        app.call(|s| s.set_member_role(modr, Role::User))
-            .expect("the admin still moderates");
-    }
-
-    #[test]
-    fn a_profile_slot_is_its_owners_alone() {
-        let mut app = new_chat();
-        app.call_as_account(USER, USER, |s| s.set_profile("user".to_owned(), None))
-            .unwrap();
-
-        let profiles = app.view(|s| s.get_profiles());
-        let name_of = |id: [u8; 32]| {
-            profiles
-                .iter()
-                .find(|p| p.identity == UserId::new(id))
-                .map(|p| p.username.clone())
-        };
-        assert_eq!(name_of(USER).as_deref(), Some("user"));
-        assert_eq!(name_of(CREATOR()).as_deref(), Some("creator"));
-        // Nobody wrote MODR's slot, and nobody but MODR can.
-        assert_eq!(name_of(MODR), None);
-    }
-
-    #[test]
-    fn a_messages_sender_is_its_owner_stamp_not_its_field() {
-        let mut app = new_chat();
-        let victim = UserId::new(MODR);
-
-        // A patched node pushes a message claiming to be from someone else.
-        app.call_as_account(USER, USER, |s| {
-            s.messages
-                .push(stored_message(victim, "forged_1", "I resign"))
-                .map(|_| ())
-        })
-        .unwrap();
-
-        let page = app
-            .view(|s| s.get_messages(None, None, None, None))
-            .unwrap();
-        assert_eq!(page.messages.len(), 1);
-        assert_eq!(page.messages[0].sender, UserId::new(USER));
-    }
-
-    #[test]
-    fn only_the_sender_edits_a_message() {
-        let mut app = new_chat();
-        let id = send_as(&mut app, USER, "draft");
-
-        assert!(app
-            .call_as_account(MODR, MODR, |s| s.edit_message(
-                id.clone(),
-                "mine now".to_owned(),
-                2,
-                None
-            ))
-            .is_err());
-        app.call_as_account(USER, USER, |s| {
-            s.edit_message(id.clone(), "final".to_owned(), 2, None)
-        })
-        .unwrap();
-
-        let page = app
-            .view(|s| s.get_messages(None, None, None, None))
-            .unwrap();
-        assert_eq!(page.messages[0].text, "final");
-        assert_eq!(page.messages[0].edited_on, Some(2));
-    }
-
-    #[test]
-    fn only_the_sender_or_staff_delete_a_message_and_nobody_else_undeletes_it() {
-        let mut app = new_chat();
-        let id = send_as(&mut app, USER, "spam");
-
-        assert!(app
-            .call_as_account(MODR, MODR, |s| s.delete_message(id.clone(), None))
-            .is_err());
-        // Neither is a writer of the hidden set, which every node checks.
-        assert!(!app.view(|s| s.hidden.can(&MODR.into(), Op::Write)));
-        assert!(!app.view(|s| s.hidden.can(&USER.into(), Op::Write)));
-
-        // An admin removes someone else's message.
-        app.call(|s| s.delete_message(id.clone(), None)).unwrap();
-        let page = app
-            .view(|s| s.get_messages(None, None, None, None))
-            .unwrap();
-        assert_eq!(page.messages[0].deleted, Some(true));
-        assert_eq!(page.messages[0].text, "");
-
-        // A sender deletes their own.
-        let own = send_as(&mut app, USER, "oops");
-        app.call_as_account(USER, USER, |s| s.delete_message(own.clone(), None))
-            .unwrap();
-        assert_eq!(app.view(|s| s.get_unread_count()), 0);
-    }
-
-    #[test]
-    fn a_moderator_removes_a_thread_reply_and_a_member_cannot() {
-        let mut app = new_chat();
-        let parent = send(&mut app, "parent");
-        let reply = app
-            .call_as_account(USER, USER, |s| {
-                s.send_message(
-                    "reply".to_owned(),
-                    vec![],
-                    vec![],
-                    Some(parent.clone()),
-                    2,
-                    None,
-                    None,
-                )
-            })
-            .unwrap()
-            .id
-            .get()
-            .clone();
-        let key = thread_key(&parent, &reply).unwrap();
-        let thread_len = |app: &TestHost<MeroChat>| {
-            app.view(|s| s.get_messages(Some(parent.clone()), None, None, None))
-                .unwrap()
-                .messages
-                .len()
-        };
-        assert_eq!(thread_len(&app), 1);
-
-        assert!(app
-            .call_as_account(MODR, MODR, |s| s
-                .delete_message(reply.clone(), Some(parent.clone())))
-            .is_err());
-        // Keys are per owner: MODR's key-only remove names MODR's own entry,
-        // and removing USER's by name needs a moderator.
-        assert!(app
-            .call_as_account(MODR, MODR, |s| s.threads.remove(&key))
-            .unwrap()
-            .is_none());
-        assert!(app
-            .call_as_account(MODR, MODR, |s| s.threads.remove_by(&USER.into(), &key))
-            .is_err());
-        assert_eq!(thread_len(&app), 1);
-
-        // Promoting a moderator makes them one of `threads`' moderators.
-        app.call(|s| s.set_member_role(UserId::new(MOD2), Role::Mod))
-            .unwrap();
-        app.call_as_account(MOD2, MOD2, |s| {
-            s.delete_message(reply.clone(), Some(parent.clone()))
-        })
-        .unwrap();
-        assert_eq!(thread_len(&app), 0);
-
-        // And demoting them takes it away again.
-        app.call(|s| s.set_member_role(UserId::new(MOD2), Role::User))
-            .unwrap();
-        assert!(!app.view(|s| s.threads.is_moderator(&MOD2.into())));
-    }
-
-    #[test]
-    fn a_reaction_is_its_reactors_alone() {
-        let mut app = new_chat();
-        let id = send(&mut app, "hello");
-        app.call_as_account(MODR, MODR, |s| {
-            s.update_reaction(id.clone(), "+1".to_owned(), true)
-        })
-        .unwrap();
-        let modrs = reaction_key(&id, "+1", &UserId::new(MODR));
-
-        // Nobody else can take it away: keys are per owner, so USER's remove
-        // names USER's own entry at the key, of which there is none.
-        assert!(app
-            .call_as_account(USER, USER, |s| s.reactions.remove(&modrs))
-            .unwrap()
-            .is_none());
-        // Nor can USER file a copy under MODR's key and have it count twice.
-        app.call_as_account(USER, USER, |s| s.reactions.insert(modrs.clone(), ()))
-            .unwrap();
-        // A key naming someone else is stored, but its owner stamp gives it away.
-        app.call_as_account(USER, USER, |s| {
-            s.reactions
-                .insert(reaction_key(&id, "-1", &UserId::new(MODR)), ())
-        })
-        .unwrap();
-
-        let reactions = app
-            .view(|s| s.get_reactions_for_message(&id))
-            .unwrap_or_default();
-        assert_eq!(reactions.get("+1"), Some(&vec![UserId::new(MODR)]));
-        assert_eq!(reactions.get("-1"), None);
-    }
-
-    #[test]
-    fn only_admins_change_the_channels_info() {
-        let mut app = new_chat();
-
-        assert!(app
-            .call_as_account(USER, USER, |s| s
-                .update_info(Some("pwned".to_owned()), None))
-            .is_err());
-        let text = app.view(|s| s.get_info()).unwrap();
-        assert!(app
-            .call_as_account(USER, USER, |s| s.info.insert(super::ChannelText::default()))
-            .is_err());
-
-        app.call(|s| s.update_info(Some("renamed".to_owned()), None))
-            .unwrap();
-        let info = app.view(|s| s.get_info()).unwrap();
-        assert_eq!(info.name, "renamed");
-        assert_eq!(info.description, text.description);
-        // Founding facts come from the frozen record.
-        assert_eq!(info.creator, UserId::new(CREATOR()).to_string());
-        assert!(info.context_type == ContextType::Channel);
-    }
-
-    #[test]
-    fn a_read_receipt_is_per_account() {
-        let mut app = new_chat();
-        send_as(&mut app, USER, "one");
-        send_as(&mut app, USER, "two");
-
-        app.call_as_account(MODR, MODR, |s| s.mark_as_read(10))
-            .unwrap();
-        assert_eq!(app.view(|s| s.get_unread_count()), 2);
-        app.set_account(MODR);
-        assert_eq!(app.view(|s| s.get_unread_count()), 0);
-    }
-
-    #[test]
-    fn what_one_write_may_add_is_bounded() {
-        let mut app = new_chat();
-        let send_text = |app: &mut TestHost<MeroChat>, text: String, ts: u64| {
-            app.call(|s| s.send_message(text, vec![], vec![], None, ts, None, None))
-        };
-
-        assert!(send_text(&mut app, "x".repeat(MAX_MESSAGE_LEN + 1), 1).is_err());
-        assert!(send_text(&mut app, "x".repeat(MAX_MESSAGE_LEN), 1).is_ok());
-
-        // A timestamp an hour ahead of the node's clock is refused.
-        let now = calimero_sdk::env::time_now() / 1_000_000_000;
-        assert!(send_text(&mut app, "later".to_owned(), now + 3_600).is_err());
-        assert!(send_text(&mut app, "now".to_owned(), now).is_ok());
-
-        // Replies and reactions need a message to attach to.
-        assert!(app
-            .call(|s| s.send_message(
-                "orphan".to_owned(),
-                vec![],
-                vec![],
-                Some("nope_1".to_owned()),
-                1,
-                None,
-                None
-            ))
-            .is_err());
-        assert!(app
-            .call(|s| s.update_reaction("nope_1".to_owned(), "+1".to_owned(), true))
-            .is_err());
-        let id = send(&mut app, "hi");
-        assert!(app
-            .call(|s| s.update_reaction(id.clone(), "x".repeat(65), true))
-            .is_err());
-        assert!(app
-            .call(|s| s.update_reaction(id.clone(), format!("a{}b", '\u{1f}'), true))
-            .is_err());
-        assert_eq!(hex(&[0xab, 0x01]), "ab01");
-    }
-
-    // ── BlobId roundtrip ───────────────────────────────────────────────────────
-
-    #[test]
-    fn blob_id_roundtrip_typical() {
-        let original = BlobId::from([
-            0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54,
-            0x32, 0x10, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0xfe, 0xdc, 0xba, 0x98,
-            0x76, 0x54, 0x32, 0x10,
-        ]);
-        let encoded = original.to_string();
-        let decoded: BlobId = encoded.parse().expect("roundtrip should succeed");
-        assert_eq!(original, decoded);
-    }
-
-    #[test]
-    fn blob_id_roundtrip_all_zeros() {
-        let blob_id = BlobId::from([0u8; 32]);
-        let parsed: BlobId = blob_id.to_string().parse().expect("all-zeros roundtrip");
-        assert_eq!(blob_id, parsed);
-    }
-
-    #[test]
-    fn blob_id_roundtrip_all_max() {
-        let blob_id = BlobId::from([0xffu8; 32]);
-        let parsed: BlobId = blob_id.to_string().parse().expect("all-0xFF roundtrip");
-        assert_eq!(blob_id, parsed);
-    }
-
-    /// A blob id is 64 lowercase hex characters.
-    ///
-    /// This replaces a test that asserted the encoded id contained no `0`, `O`,
-    /// `I` or `l` — the base58 alphabet's excluded characters. core removed
-    /// base58 in 0.11.0-rc.27 and `Display` is `hex::encode` now, so that
-    /// assertion was checking a property the type no longer has. It kept
-    /// passing only because the byte it chose, `0x42`, happens to render as
-    /// "42": the all-zeros id it tested two functions above would have failed
-    /// it. Asserting the real shape instead, and over bytes that would catch
-    /// the drift.
-    #[test]
-    fn blob_id_encodes_as_64_lowercase_hex() {
-        for bytes in [[0x00u8; 32], [0x42u8; 32], [0xffu8; 32]] {
-            let encoded = BlobId::from(bytes).to_string();
-            assert_eq!(encoded.len(), 64, "encoded: {encoded}");
-            assert!(
-                encoded
-                    .chars()
-                    .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c)),
-                "not lowercase hex: {encoded}"
-            );
-        }
-        assert_eq!(BlobId::from([0x00u8; 32]).to_string(), "0".repeat(64));
-        assert_eq!(BlobId::from([0xffu8; 32]).to_string(), "f".repeat(64));
-    }
-
-    #[test]
-    fn parse_blob_id_rejects_non_hex_characters() {
-        assert!("not-valid-hex!!!!-/-".parse::<BlobId>().is_err());
-        // `g` is past the hex alphabet, and 64 characters long so the length
-        // check cannot be what rejects it.
-        assert!("g".repeat(64).parse::<BlobId>().is_err());
-    }
-
-    /// The whole point of `api/blobs.ts`'s `toBlobIdHex`, from the other side.
-    ///
-    /// This app's lineage used to `bs58::encode` a blob id before storing it.
-    /// Base58 of 32 bytes is ~44 characters from a wider alphabet, so it is
-    /// non-empty and looks like an id — and the node refuses it. Pinning the
-    /// refusal here means a reintroduction fails in `cargo test` rather than as
-    /// a 404 three layers away.
-    #[test]
-    fn parse_blob_id_rejects_a_base58_spelling_of_a_real_id() {
-        let id = BlobId::from([0x42u8; 32]);
-        let as_base58 = bs58::encode(*id.as_ref()).into_string();
-        assert_ne!(as_base58, id.to_string());
-        assert!(as_base58.parse::<BlobId>().is_err(), "base58: {as_base58}");
-    }
-
-    #[test]
-    fn parse_blob_id_wrong_length() {
-        // Hex, and every character legal — only the length is wrong, so this
-        // cannot pass for the wrong reason.
-        assert!("01020304".parse::<BlobId>().is_err());
-        assert!("a".repeat(63).parse::<BlobId>().is_err());
-        assert!("a".repeat(65).parse::<BlobId>().is_err());
-    }
-
-    #[test]
-    fn parse_blob_id_empty_string() {
-        assert!("".parse::<BlobId>().is_err());
-    }
-
-    // ── Draft key format ────────────────────────────────────────────────────
-
-    #[test]
-    fn draft_key_contains_user_and_channel() {
-        assert_eq!(
-            draft_key("SomeBase58UserId", "general"),
-            "SomeBase58UserId:general"
-        );
-    }
-
-    #[test]
-    fn draft_key_separator_is_colon() {
-        let key = draft_key("abc", "my-channel");
-        let parts: Vec<&str> = key.splitn(2, ':').collect();
-        assert_eq!(parts, ["abc", "my-channel"]);
-    }
-
-    #[test]
-    fn draft_key_with_real_base58_user_id() {
-        let user_b58 = BlobId::from([0x01u8; 32]).to_string();
-        let key = draft_key(&user_b58, "announcements");
-        assert!(key.starts_with(&user_b58));
-        assert!(key.ends_with(":announcements"));
-    }
-
-    #[test]
-    fn draft_key_different_users_produce_different_keys() {
-        let a = BlobId::from([0x01u8; 32]).to_string();
-        let b = BlobId::from([0x02u8; 32]).to_string();
-        assert_ne!(draft_key(&a, "general"), draft_key(&b, "general"));
-    }
-
-    #[test]
-    fn draft_key_same_user_different_channels_produce_different_keys() {
-        let user = BlobId::from([0xaau8; 32]).to_string();
-        assert_ne!(draft_key(&user, "general"), draft_key(&user, "random"));
-    }
-
-    #[test]
-    fn draft_key_channel_name_with_colon_is_preserved() {
-        let key = draft_key("user123", "chan:with:colons");
-        let parts: Vec<&str> = key.splitn(2, ':').collect();
-        assert_eq!(parts[1], "chan:with:colons");
-    }
-
-    #[test]
-    fn draft_key_empty_channel_name() {
-        assert_eq!(draft_key("userXYZ", ""), "userXYZ:");
-    }
-
-    #[test]
-    fn draft_key_is_deterministic() {
-        let user = BlobId::from([0x55u8; 32]).to_string();
-        assert_eq!(draft_key(&user, "stable"), draft_key(&user, "stable"));
-    }
-
-    // ── search_messages ────────────────────────────────────────────────────
-
-    fn send_at(app: &mut TestHost<MeroChat>, who: [u8; 32], text: &str, ts: u64) -> String {
-        app.call_as_account(who, who, |s| {
-            s.send_message(text.to_owned(), vec![], vec![], None, ts, None, None)
-        })
-        .expect("send")
-        .id
-        .get()
-        .clone()
-    }
-
-    fn reply_at(
-        app: &mut TestHost<MeroChat>,
-        who: [u8; 32],
-        parent: &str,
-        text: &str,
-        ts: u64,
-    ) -> String {
-        app.call_as_account(who, who, |s| {
-            s.send_message(
-                text.to_owned(),
-                vec![],
-                vec![],
-                Some(parent.to_owned()),
-                ts,
-                None,
-                None,
-            )
-        })
-        .expect("reply")
-        .id
-        .get()
-        .clone()
-    }
-
-    /// Every hit for `query`, page by page, and how many pages it took.
-    fn search_all(app: &TestHost<MeroChat>, query: &str, limit: usize) -> (Vec<SearchHit>, usize) {
-        let mut hits = Vec::new();
-        let mut cursor = None;
-        let mut pages = 0;
-        loop {
-            let page = app
-                .view(|s| s.search_messages_scan(query.to_owned(), cursor.clone(), Some(limit)))
-                .expect("search");
-            pages += 1;
-            assert!(
-                page.hits.len() <= limit,
-                "a page holds at most `limit` hits"
-            );
-            hits.extend(page.hits);
-            cursor = page.next_cursor;
-            if cursor.is_none() {
-                return (hits, pages);
-            }
-            assert!(pages < 10_000, "the walk must end");
-        }
-    }
-
-    #[test]
-    fn a_hit_is_opened_at_the_position_message_position_names() {
-        let mut app = new_chat();
-        let first = send_at(&mut app, USER, "one", 1);
-        let second = send_at(&mut app, MODR, "two", 2);
-        let reply = reply_at(&mut app, USER, &first, "a reply", 3);
-        let at = |app: &TestHost<MeroChat>, id: &str| {
-            app.view(|s| s.message_position(id.to_owned()))
-                .expect("position")
-        };
-        assert_eq!(at(&app, &first), Some(0));
-        assert_eq!(at(&app, &second), Some(1));
-        assert_eq!(at(&app, &reply), None, "a reply opens at its parent's");
-        assert_eq!(at(&app, "no-such-message"), None);
-        let window = app
-            .view(|s| s.get_messages_from(1, Some(1)))
-            .expect("window");
-        assert_eq!(
-            window.messages[0].id, second,
-            "the position reads the same message back"
-        );
-    }
-
-    #[test]
-    fn the_index_backed_search_checks_its_input_before_asking_the_node() {
-        let app = new_chat();
-        let huge = "x".repeat(MAX_SEARCH_TERM_LEN + 1);
-        assert!(app.view(|s| s.search_messages(huge, None, None)).is_err());
-        let empty = app
-            .view(|s| s.search_messages("   ".to_owned(), None, None))
-            .expect("an empty query asks nothing");
-        assert!(empty.hits.is_empty() && empty.next_cursor.is_none());
-        assert!(app
-            .view(|s| s.search_messages("x".to_owned(), Some("not a cursor".to_owned()), None))
-            .is_err());
-        // Without a node there is no index to ask: the error says so, and the
-        // scan answers instead.
-        let err = app
-            .view(|s| s.search_messages("hello".to_owned(), None, None))
-            .err()
-            .expect("no index here");
-        assert!(format!("{err:?}").contains("needs a node"), "{err:?}");
-    }
-
-    #[test]
-    fn search_is_newest_first_and_lists_a_reply_with_its_thread() {
-        let mut app = new_chat();
-        let first = send_at(&mut app, USER, "needle one", 1);
-        let quiet = send_at(&mut app, USER, "nothing here", 2);
-        let last = send_at(&mut app, MODR, "needle three", 3);
-        let late = reply_at(&mut app, MODR, &quiet, "a needle in the thread", 4);
-        let own = reply_at(&mut app, USER, &last, "needle again", 5);
-
-        let page = app
-            .view(|s| s.search_messages_scan("NEEDLE".to_owned(), None, None))
-            .unwrap();
-        let ids: Vec<&str> = page.hits.iter().map(|h| h.id.as_str()).collect();
-        assert_eq!(
-            ids,
-            [last.as_str(), own.as_str(), late.as_str(), first.as_str()]
-        );
-        assert!(
-            page.next_cursor.is_none(),
-            "the whole channel fits one page"
-        );
-        assert_eq!(page.frontier_timestamp, Some(1));
-
-        let reply = &page.hits[2];
-        assert_eq!(reply.parent_message_id.as_deref(), Some(quiet.as_str()));
-        assert_eq!(
-            reply.index,
-            Some(1),
-            "a reply carries its parent's position"
-        );
-        assert_eq!((reply.timestamp, reply.anchor_timestamp), (4, 2));
-        assert_eq!(reply.sender, UserId::new(MODR), "from the owner stamp");
-        assert_eq!(page.hits[0].sender, UserId::new(MODR));
-        assert_eq!(page.hits[3].sender, UserId::new(USER));
-        assert_eq!(page.hits[3].parent_message_id, None);
-    }
-
-    #[test]
-    fn search_pages_by_cursor_without_gaps_or_repeats() {
-        let mut app = new_chat();
-        for i in 0..12u64 {
-            let id = send_at(&mut app, USER, &format!("needle {i}"), 10 + i);
-            if i % 4 == 0 {
-                // Enough replies that some pages end inside a thread.
-                for r in 0..5u64 {
-                    reply_at(
-                        &mut app,
-                        MODR,
-                        &id,
-                        &format!("needle reply {i}.{r}"),
-                        100 + i * 10 + r,
-                    );
-                }
-            }
-        }
-
-        let whole = app
-            .view(|s| s.search_messages_scan("needle".to_owned(), None, Some(MAX_SEARCH_LIMIT)))
-            .unwrap();
-        assert_eq!(whole.hits.len(), 12 + 3 * 5);
-        assert!(whole.next_cursor.is_none());
-
-        for limit in [1, 2, 3, 7] {
-            let (paged, pages) = search_all(&app, "needle", limit);
-            let got: Vec<&str> = paged.iter().map(|h| h.id.as_str()).collect();
-            let want: Vec<&str> = whole.hits.iter().map(|h| h.id.as_str()).collect();
-            assert_eq!(
-                got, want,
-                "paging by {limit} must walk the same hits in the same order"
-            );
-            assert!(pages >= whole.hits.len().div_ceil(limit));
-        }
-
-        // A message sent after the first page is newer than the walk: the
-        // cursor goes on from where it was, and the new message is not in it.
-        let first = app
-            .view(|s| s.search_messages_scan("needle".to_owned(), None, Some(3)))
-            .unwrap();
-        send_at(&mut app, USER, "needle late", 999);
-        let next = app
-            .view(|s| {
-                s.search_messages_scan("needle".to_owned(), first.next_cursor.clone(), Some(3))
-            })
-            .unwrap();
-        assert_eq!(next.hits[0].id, whole.hits[3].id);
-    }
-
-    #[test]
-    fn deleted_and_removed_messages_are_not_found() {
-        let mut app = new_chat();
-        let modr = UserId::new(MOD2);
-        app.call(|s| s.set_member_role(modr, Role::Mod)).unwrap();
-
-        let own = send_at(&mut app, USER, "needle mine", 1);
-        let spam = send_at(&mut app, MODR, "needle spam", 2);
-        let parent = send_at(&mut app, USER, "parent", 3);
-        let removed = reply_at(&mut app, MODR, &parent, "needle removed reply", 4);
-        let withdrawn = reply_at(&mut app, USER, &parent, "needle withdrawn reply", 5);
-        let kept = send_at(&mut app, USER, "needle kept", 6);
-
-        app.call_as_account(USER, USER, |s| s.delete_message(own.clone(), None))
-            .unwrap();
-        // Staff: a top-level message is hidden, a reply removed outright.
-        app.call(|s| s.delete_message(spam.clone(), None)).unwrap();
-        app.call_as_account(MOD2, MOD2, |s| {
-            s.delete_message(removed.clone(), Some(parent.clone()))
-        })
-        .unwrap();
-        app.call_as_account(USER, USER, |s| {
-            s.delete_message(withdrawn.clone(), Some(parent.clone()))
-        })
-        .unwrap();
-
-        let (hits, _) = search_all(&app, "needle", 50);
-        let ids: Vec<&str> = hits.iter().map(|h| h.id.as_str()).collect();
-        assert_eq!(ids, [kept.as_str()]);
-
-        // `get_messages` must not say a hidden message matched either: its
-        // text is blanked, but it used to be counted and returned.
-        let page = app
-            .view(|s| s.get_messages(None, None, None, Some("spam".to_owned())))
-            .unwrap();
-        assert_eq!(page.total_count, 0);
-    }
-
-    #[test]
-    fn search_reads_text_as_it_is_shown() {
-        let mut app = new_chat();
-        send_at(
-            &mut app,
-            USER,
-            "<p>Meet at the <strong>Caf\u{e9}</strong> &amp; bring the \u{fb01}les</p>",
-            1,
-        );
-
-        let found = app
-            .view(|s| s.search_messages_scan("cafe".to_owned(), None, None))
-            .unwrap();
-        assert_eq!(found.hits.len(), 1);
-        let hit = &found.hits[0];
-        assert_eq!(hit.snippet, "Meet at the Caf\u{e9} & bring the \u{fb01}les");
-        let units: Vec<u16> = hit.snippet.encode_utf16().collect();
-        let marked = String::from_utf16(&units[hit.match_start as usize..hit.match_end as usize]);
-        assert_eq!(marked.unwrap(), "Caf\u{e9}");
-
-        for query in ["files", "  CAFÉ  ", "the caf"] {
-            assert_eq!(
-                app.view(|s| s.search_messages_scan(query.to_owned(), None, None))
-                    .unwrap()
-                    .hits
-                    .len(),
-                1,
-                "{query:?}"
-            );
-        }
-        // Markup is not text.
-        for query in ["strong", "<p>", "amp"] {
-            assert!(
-                app.view(|s| s.search_messages_scan(query.to_owned(), None, None))
-                    .unwrap()
-                    .hits
-                    .is_empty(),
-                "{query:?} matched markup"
-            );
-        }
-    }
-
-    #[test]
-    fn an_empty_query_finds_nothing_and_a_bad_cursor_is_refused() {
-        let mut app = new_chat();
-        send_at(&mut app, USER, "hello", 1);
-
-        let empty = app
-            .view(|s| s.search_messages_scan("   ".to_owned(), None, None))
-            .unwrap();
-        assert!(empty.hits.is_empty() && empty.next_cursor.is_none());
-
-        for cursor in ["nope", "5", "-1", "0:bad"] {
-            assert!(
-                app.view(|s| s.search_messages_scan(
-                    "hello".to_owned(),
-                    Some(cursor.to_owned()),
-                    None
-                ))
-                .is_err(),
-                "cursor {cursor:?} was accepted"
-            );
-        }
-        // A limit of 0 still makes progress; one past the ceiling is clamped.
-        let one = app
-            .view(|s| s.search_messages_scan("hello".to_owned(), None, Some(0)))
-            .unwrap();
-        assert_eq!(one.hits.len(), 1);
-    }
-
-    /// The gas guarantee: however long the channel and however rare the term,
-    /// one call reads at most `MAX_SEARCH_BYTES` of text (and `MAX_SEARCH_ROWS`
-    /// messages), then hands back a cursor. Long messages make the byte cap the
-    /// one that bites, which keeps this test small.
-    #[test]
-    fn one_call_reads_a_bounded_slice_of_a_big_channel() {
-        let mut app = new_chat();
-        send_at(&mut app, USER, "the needle is in the oldest message", 1);
-        let filler = "x".repeat(MAX_MESSAGE_LEN);
-        let n = 3 * MAX_SEARCH_BYTES / MAX_MESSAGE_LEN;
-        for i in 0..n {
-            send_at(&mut app, USER, &filler, 2 + i as u64);
-        }
-        let per_call = MAX_SEARCH_BYTES.div_ceil(MAX_MESSAGE_LEN);
-
-        let first = app
-            .view(|s| s.search_messages_scan("needle".to_owned(), None, None))
-            .unwrap();
-        assert!(first.hits.is_empty());
-        let cursor = super::search::Cursor::decode(first.next_cursor.as_deref().unwrap()).unwrap();
-        let read = n - cursor.index;
-        assert!(
-            read <= per_call + 1,
-            "one call read {read} messages of {MAX_MESSAGE_LEN} bytes, the cap allows {per_call}"
-        );
-
-        let (hits, pages) = search_all(&app, "needle", 20);
-        assert_eq!(hits.len(), 1);
-        assert!(pages >= 3, "the walk took {pages} pages");
-    }
-
-    /// Every read is a view: callable on a shared borrow, which is what lets
-    /// a node serve them under its read lock.
-    #[test]
-    fn every_read_is_callable_as_a_view() {
-        let mut app = new_chat();
-        let id = send(&mut app, "hello");
-        let user = UserId::new(USER);
-        app.view(|s| {
-            s.get_info().unwrap();
-            s.get_channel_info(None).unwrap();
-            s.mark_messages_as_read(None, None).unwrap();
-            s.get_unread_count();
-            s.get_unread_mentions();
-            s.get_profiles();
-            s.get_draft("general".to_owned());
-            s.get_member_role(user);
-            s.list_roles();
-            s.get_messages(Some(id.clone()), None, None, None).unwrap();
-            s.get_messages_from(0, None).unwrap();
-            s.get_message_count().unwrap();
-            s.search_messages_scan("hello".to_owned(), None, None)
-                .unwrap();
-        });
+}
+
+/// The snippet for `message` if its text, as a reader sees it, holds `needle`.
+fn hit_snippet(message: &Message, needle: &str) -> Option<search::Snippet> {
+    (!message.deleted && search::folded_text(&message.text).contains(needle))
+        .then(|| search::snippet(&search::plain_text(&message.text), needle))
+}
+
+fn search_hit(
+    message: &Message,
+    parent: Option<String>,
+    index: Option<u64>,
+    anchor_timestamp: u64,
+    found: search::Snippet,
+) -> SearchHit {
+    SearchHit {
+        id: message.id.clone(),
+        parent_message_id: parent,
+        index,
+        timestamp: message.timestamp,
+        anchor_timestamp,
+        sender: message.sender.clone(),
+        snippet: found.text,
+        match_start: found.match_start,
+        match_end: found.match_end,
     }
 }
