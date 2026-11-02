@@ -6,7 +6,17 @@ import { fillReplyCall, parseLens, runLens, type LensHost, type LensSpec } from 
 import { validateLens, type Abi } from "./validate";
 
 const APPS = path.resolve(__dirname, "../../../..");
-const abiOf = (app: string) => JSON.parse(readFileSync(path.join(APPS, app, "logic/res/abi.json"), "utf8")) as Abi;
+/**
+ * Apps that moved to Calimero 1.0 (a component contract with its own ABI
+ * format and camelCase methods). Hyperfeed runs on v1 nodes, where they are
+ * still the published v1 bundles, so it is checked against those contracts'
+ * ABIs, frozen in fixtures/abi when each app was ported.
+ */
+const FROZEN_V1: Record<string, string> = {
+  "mero-chat": path.join(__dirname, "../fixtures/abi/mero-chat-v1.json"),
+};
+const abiOf = (app: string) =>
+  JSON.parse(readFileSync(FROZEN_V1[app] ?? path.join(APPS, app, "logic/res/abi.json"), "utf8")) as Abi;
 const fixture = (name: string) => parseLens(readFileSync(path.join(__dirname, "fixtures", `${name}.json`), "utf8"));
 
 const ME = new Set(["me-b58", "me-hex"]);
