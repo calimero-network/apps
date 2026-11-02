@@ -84,6 +84,8 @@ final class DemoBackend: MeroAppBackend, ContextContract, @unchecked Sendable {
         return locked {
             let id = mint()
             namespaces.append(AppNamespace(id: id, name: name, applicationId: applicationId, memberCount: 1))
+            // The org's own instances are listed under its id.
+            subgroups[id] = [AppSubgroup(groupId: id, name: name, contextIds: [])]
             return AppFoundedNamespace(namespaceId: id, haEnabled: true)
         }
     }

@@ -2,10 +2,10 @@ import Foundation
 import MeroKit
 
 /// A lobby invitation: Calimero 1.0's org invite token in the SDK's link shape
-/// (``OrgInvitation``), plus the inviter's player key. (Kotlin `LobbyInvitation`.)
+/// (``OrgInvitation``), plus the inviter's account. (Kotlin `LobbyInvitation`.)
 ///
 /// - payload: `{"invitation": "inv_…", "namespaceId": "<org>", "name": "<lobby name>",
-///   "__lobbyName": "<lobby name>", "__inviterKey": "<player key>"}`; the SDK reads the first
+///   "__lobbyName": "<lobby name>", "__inviterKey": "<account>"}`; the SDK reads the first
 ///   three and ignores the rest
 /// - token: `base58(deflate(payload))` (``InviteCodec``)
 /// - link: `https://links.calimero.network/com.calimero.battleships/join?invitation=<token>`
@@ -16,7 +16,7 @@ import MeroKit
 public struct LobbyInvitation: Sendable {
     public let invitation: OrgInvitation
     public let lobbyName: String?
-    /// The inviter's player key, so the joiner has someone to challenge straight away.
+    /// The inviter's account, so the joiner has someone to challenge straight away.
     public let inviterKey: String?
 
     public init(invitation: OrgInvitation, lobbyName: String? = nil, inviterKey: String? = nil) {
@@ -81,8 +81,9 @@ public struct LobbyInvitation: Sendable {
         return LobbyInvitation(invitation: base, lobbyName: name, inviterKey: key)
     }
 
+    /// Whether `value` can be a player: an account id (opaque on 1.0; no spaces, at most 128).
     static func isKey(_ value: String) -> Bool {
         let trimmed = value.trimmingCharacters(in: .whitespaces)
-        return trimmed.count == 64 && trimmed.allSatisfy(\.isHexDigit)
+        return !trimmed.isEmpty && trimmed.count <= 128 && !trimmed.contains(where: \.isWhitespace)
     }
 }

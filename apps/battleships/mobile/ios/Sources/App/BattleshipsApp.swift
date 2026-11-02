@@ -42,11 +42,12 @@ enum Route: Hashable {
     case match(MatchRoute)
 }
 
-/// A match, who you are in it, and its lobby (for a rematch).
+/// A match, who you are in it, its lobby (for a rematch), and the opponent's name there.
 struct MatchRoute: Hashable {
     let ref: MatchRef
     let me: String
     let lobby: AppNamespace
+    var opponentName: String?
 }
 
 /// Signed out: the sign-in screen. Signed in: the lobbies, and everything under them.
@@ -67,7 +68,7 @@ struct RootView: View {
                 ProgressView().tint(Palette.ink).frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Palette.ground)
             } else if let backend = activeBackend {
-                let game = battleshipsBackend(backend)
+                let game = backend
                 NavigationStack(path: $path) {
                     LobbiesScreen(
                         backend: game, applicationId: applicationId,
@@ -105,25 +106,6 @@ struct RootView: View {
             .presentationDetents([.medium])
             .interactiveDismissDisabled(isJoining)
         }
-    }
-
-    /// The package's two services: instances are created per service and tagged with it. On a
-    /// Calimero 1.0 cluster the node's app record (and the tag in its metadata) says which is which.
-    private func battleshipsBackend(_ backend: any MeroAppBackend) -> any BattleshipsBackend {
-        guard let cloud = backend as? CalimeroAppBackend else { return ServiceBattleshipsBackend(app: backend) }
-        let client = cloud.client
-        return ServiceBattleshipsBackend(
-            app: cloud,
-            tagService: { id, name, service in
-                var metadata = try await client.getApp(id)["metadata"]?.objectValue ?? [:]
-                metadata["name"] = .string(name)
-                metadata["service"] = .string(service)
-                try await client.setAppMetadata(id, .object(metadata))
-            },
-            readService: { id in
-                let app = try await client.getApp(id)
-                return app["service"]?.stringValue ?? app["metadata"]?["service"]?.stringValue
-            })
     }
 
     private var invitedTitle: String? {

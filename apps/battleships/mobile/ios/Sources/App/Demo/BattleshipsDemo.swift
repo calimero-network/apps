@@ -1,25 +1,24 @@
 #if DEBUG
 import BattleshipsCore
 import Foundation
-import GameGenerated
-import LobbyGenerated
 import MeroKit
 
 /// Battleships' demo: four lobbies, their players, matches and results, and
-/// a lobby contract and game contract that answer from them in the generated
-/// clients' wire shape. Writes change the fixtures: challenging someone
+/// the component contract answering from them in its wire shape (camelCase
+/// methods, u64s as decimal strings), one app instance per lobby. Writes change the fixtures: challenging someone
 /// creates a match, deploying commits a fleet, firing is answered from the
 /// opponent's board (and they fire back a few seconds later), and sinking
 /// the last ship finishes the match and records the result in the lobby.
 enum BattleshipsDemo {
     static let account = DemoIds.hex("account:me")
-    static let me = DemoIds.hex("player:me")
+    /// On 1.0 a player is their account.
+    static let me = account
     static let applicationId = DemoIds.hex("app:battleships")
 
     static let boards = InMemoryBoardStore()
     static let backend: DemoBackend = makeBackend()
 
-    static func player(_ name: String) -> String { DemoIds.hex("player:\(name)") }
+    static func player(_ name: String) -> String { accountOf(name) }
     static func accountOf(_ name: String) -> String { DemoIds.hex("account:\(name)") }
 
     private static func makeBackend() -> DemoBackend {
@@ -30,7 +29,7 @@ enum BattleshipsDemo {
         for lobby in store.lobbyList {
             namespaces.append(
                 AppNamespace(id: lobby.namespaceId, name: lobby.name, applicationId: applicationId, memberCount: lobby.memberCount))
-            let contexts = [lobby.contextId] + lobby.matches.compactMap(\.contextId)
+            let contexts = [lobby.contextId]
             subgroups[lobby.namespaceId] = [AppSubgroup(groupId: lobby.namespaceId, name: lobby.name, contextIds: contexts)]
             members.formUnion(contexts)
         }
@@ -79,6 +78,7 @@ enum BattleshipsDemo {
         private let now: Date
         private var lobbies: [String: Lobby] = [:]
         private var order: [String] = []
+        /// By match id: every match is rows in its lobby's instance.
         private var games: [String: Game] = [:]
         private var next = 0
 
@@ -94,75 +94,77 @@ enum BattleshipsDemo {
         func handle(_ call: DemoCall) throws -> Data {
             lock.lock()
             defer { lock.unlock() }
-            if lobbies[call.contextId] != nil { return try lobbyCall(call) }
-            if games[call.contextId] != nil { return try gameCall(call) }
-            throw DemoContractError("unknown context")
+            if lobbies[call.contextId] == nil {
+                // A lobby founded in the demo: an empty instance with you in it.
+                lobbies[call.contextId] = Lobby(
+                    name: "", namespaceId: "", contextId: call.contextId, memberCount: 1,
+                    players: [PlayerEntry(account: BattleshipsDemo.account, player: BattleshipsDemo.me)], matches: [],
+                    history: [])
+            }
+            if let matchId = call.string("matchId") { return try gameCall(call, matchId: matchId) }
+            return try lobbyCall(call)
         }
 
         private func lobbyCall(_ call: DemoCall) throws -> Data {
             guard var lobby = lobbies[call.contextId] else { return DemoReply.null }
             defer { lobbies[call.contextId] = lobby }
             switch call.method {
-            case "register_player":
+            case "registerPlayer", "getCurrentUser":
                 return try DemoReply.json(BattleshipsDemo.me)
-            case "get_matches":
+            case "getMatches":
                 return try DemoReply.json(lobby.matches)
-            case "get_players":
+            case "getPlayers":
                 return try DemoReply.json(lobby.players)
-            case "get_history":
+            case "getHistory":
                 return try DemoReply.json(lobby.history)
-            case "get_player_stats":
-                let key = (call.string("player") ?? BattleshipsDemo.me).lowercased()
+            case "getPlayerStats":
+                let key = call.string("player") ?? BattleshipsDemo.me
                 let wins = lobby.history.filter { $0.winner == key }.count
                 let losses = lobby.history.filter { $0.loser == key }.count
                 return try DemoReply.json(
                     PlayerStatsView(wins: UInt64(wins), losses: UInt64(losses), gamesPlayed: UInt64(wins + losses)))
-            case "create_match":
-                let opponent = (call.string("player2") ?? "").lowercased()
+            case "createMatch":
+                let opponent = call.string("player2") ?? ""
                 guard let entry = lobby.players.first(where: { $0.player == opponent }) else {
-                    throw DemoContractError("player2 is not a valid hex key")
+                    throw DemoContractError("the opponent has not opened this lobby")
                 }
                 next += 1
-                let matchId = DemoIds.hex("match:new:\(next)")
+                let matchId = "\(BattleshipsDemo.me.prefix(8))-\(ms(Date()))-\(next)"
                 lobby.matches.append(
                     MatchSummary(
                         matchId: matchId, player1: BattleshipsDemo.me, player2: opponent, player2Account: entry.account,
                         status: .pending, createdMs: ms(Date())))
-                return try DemoReply.json(matchId)
-            case "set_match_context_id":
-                guard let matchId = call.string("match_id"), let contextId = call.string("context_id"),
-                    let index = lobby.matches.firstIndex(where: { $0.matchId == matchId })
-                else { return DemoReply.null }
-                lobby.matches[index].contextId = contextId
                 var rng = SeededRandom(seed: matchId)
-                games[contextId] = Game(
-                    lobbyContextId: call.contextId, matchId: matchId, opponent: lobby.matches[index].player2,
+                games[matchId] = Game(
+                    lobbyContextId: call.contextId, matchId: matchId, opponent: opponent,
                     enemy: FleetLayout.random(using: &rng).cells, turn: BattleshipsDemo.me)
-                return DemoReply.null
+                return try DemoReply.json(matchId)
             default:
                 return DemoReply.null
             }
         }
 
-        private func gameCall(_ call: DemoCall) throws -> Data {
-            guard var game = games[call.contextId] else { return DemoReply.null }
-            defer { games[call.contextId] = game }
+        private func gameCall(_ call: DemoCall, matchId: String) throws -> Data {
+            guard var game = games[matchId] else { throw DemoContractError("NotFound") }
+            defer { games[matchId] = game }
             tick(&game)
             let me = BattleshipsDemo.me
             switch call.method {
-            case "get_match_state":
+            case "getMatchState":
                 return try DemoReply.json(
                     MatchStateView(
                         standing: game.standing, committed: game.committed, endedBy: game.endedBy, loser: game.loser,
                         revealed: game.revealed, auditFailed: [], winner: game.winner))
-            case "get_shots":
+            case "getShots":
                 return try DemoReply.json(ShotsView(size: UInt32(BoardGeometry.size), shots: game.shots))
-            case "get_incoming_shots":
+            case "getIncomingShots":
                 return try DemoReply.json(ShotsView(size: UInt32(BoardGeometry.size), shots: game.incoming))
-            case "get_current_turn":
+            case "getWinner":
+                return try game.winner.map(DemoReply.json) ?? DemoReply.null
+            case "getCurrentTurn":
                 guard let turn = game.turn, game.standing == "playing" else { return DemoReply.null }
                 return try DemoReply.json(turn)
-            case "commit_board":
+            case "commitBoard":
                 if !game.committed.contains(me) { game.committed.append(me) }
                 if game.committed.count < 2 {
                     game.opponentCommitsAt = Date().addingTimeInterval(7)
@@ -170,7 +172,7 @@ enum BattleshipsDemo {
                     activate(game)
                 }
                 return DemoReply.null
-            case "propose_shot":
+            case "proposeShot":
                 guard game.standing == "playing" else { throw DemoContractError("match finished") }
                 guard game.turn == me else { throw DemoContractError("not your turn") }
                 let cell = Coordinate(call.int("x") ?? -1, call.int("y") ?? -1)
@@ -186,7 +188,7 @@ enum BattleshipsDemo {
                     game.opponentFiresAt = Date().addingTimeInterval(4)
                 }
                 return DemoReply.null
-            case "reveal_board":
+            case "revealBoard":
                 if !game.revealed.contains(me) { game.revealed.append(me) }
                 if !game.revealed.contains(game.opponent) { game.revealed.append(game.opponent) }
                 return DemoReply.null
@@ -258,7 +260,7 @@ enum BattleshipsDemo {
             anchor.matches.append(
                 MatchSummary(
                     matchId: DemoIds.hex("match:mila-rafael"), player1: player("Mila"), player2: player("Rafael"),
-                    player2Account: accountOf("Rafael"), status: .active, contextId: DemoIds.hex("ctx:mila-rafael"),
+                    player2Account: accountOf("Rafael"), status: .active,
                     createdMs: ago(2 * hour)))
             for (winner, loser, seconds) in [
                 ("Mila", "Jonah", 4 * day), (me, "Mila", 8 * day), ("Priya", "Tomas", 6 * day), ("Rafael", me, 9 * day),
@@ -311,7 +313,6 @@ enum BattleshipsDemo {
             let me = BattleshipsDemo.me
             let opponent = player(name)
             let matchId = DemoIds.hex("match:\(lobby.name):\(name):\(created)")
-            let contextId = DemoIds.hex("context:\(matchId)")
             var rng = SeededRandom(seed: matchId)
             let myLayout = FleetLayout.random(using: &rng)
             let enemy = FleetLayout.random(using: &rng).cells
@@ -327,7 +328,7 @@ enum BattleshipsDemo {
             game.incoming = Self.volley(on: board.cells, hits: theirHits, misses: finished ? 21 : 13, rng: &rng)
             var summary = MatchSummary(
                 matchId: matchId, player1: meFirst ? me : opponent, player2: meFirst ? opponent : me,
-                player2Account: meFirst ? accountOf(name) : BattleshipsDemo.account, status: .active, contextId: contextId,
+                player2Account: meFirst ? accountOf(name) : BattleshipsDemo.account, status: .active,
                 createdMs: created)
             switch state {
             case .won, .lost:
@@ -344,7 +345,7 @@ enum BattleshipsDemo {
                 game.turn = opponent
             }
             lobby.matches.append(summary)
-            games[contextId] = game
+            games[matchId] = game
         }
 
         /// `hits` shots on ship squares and `misses` on open water.
@@ -363,7 +364,6 @@ enum BattleshipsDemo {
             let me = BattleshipsDemo.me
             let opponent = player(name)
             let matchId = DemoIds.hex("match:midgame:\(name)")
-            let contextId = DemoIds.hex("context:\(matchId)")
 
             var theirs = FleetLayout()
             theirs.place(0, at: Coordinate(1, 1), horizontal: true)  // carrier B2-F2
@@ -423,11 +423,11 @@ enum BattleshipsDemo {
             game.incoming = incoming
             game.committed = [me, opponent]
             game.turn = me
-            games[contextId] = game
+            games[matchId] = game
             lobby.matches.append(
                 MatchSummary(
                     matchId: matchId, player1: me, player2: opponent, player2Account: accountOf(name), status: .active,
-                    contextId: contextId, createdMs: created))
+                    createdMs: created))
         }
     }
 }

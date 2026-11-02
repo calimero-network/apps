@@ -5,12 +5,14 @@ import SwiftUI
 // Calimero 1.0 sign-in and approvals, shared by the native apps (the same file in each; only
 // `CloudStyle.app`, in Theme.swift, differs).
 //
-// - Cloud: a node URL of the person's cluster (from the cloud.calimero.network console; prefilled
-//   from `MeroNodeURL`), then the device's passkey: sign in, or create an account.
+// - Cloud: the person's cluster by name (looked up in the Calimero directory) or a node URL of it
+//   (from the cloud.calimero.network console; prefilled from `MeroNodeURL`), then the device's
+//   passkey: sign in, or create an account.
 // - Development: a `merod local` node (`MeroDevNodeURL`, `http://localhost:2501` by default) with
 //   mock attestation allowed (`allowMock`) and a software passkey the SDK keeps for that node.
 // - Approvals: releases and upgrades waiting for the person's decision, approved on the node's
-//   own consent page in the system browser (an app's session cannot approve anything itself).
+//   own consent page in the system browser (an app's session cannot approve anything itself),
+//   after the app shows the confirmation code the page will show.
 
 /// The colours the shared sign-in and approvals views use, set per app in Theme.swift.
 struct CloudStyle {
@@ -54,7 +56,7 @@ struct CloudSignInPanel: View {
                     .accessibilityIdentifier("signIn.error")
             }
             if CloudSettings.clusterURL == nil {
-                field("Cluster URL", text: $clusterURL, placeholder: "https://node.your-cluster.calimero.network")
+                field("Cluster", text: $clusterURL, placeholder: "your-cluster, or https://node.example")
                     .keyboardType(.URL)
                     .accessibilityIdentifier("signIn.cluster")
             }
@@ -75,13 +77,13 @@ struct CloudSignInPanel: View {
                 .accessibilityIdentifier("signIn.connect")
             } else if creating {
                 primary(title: "Create account", symbol: "person.badge.key", enabled: canUseCluster && !trimmed(name).isEmpty) {
-                    connectCluster()
+                    guard await connectCluster() else { return }
                     await session.signUp(name: trimmed(name))
                 }
                 .accessibilityIdentifier("signIn.create")
             } else {
                 primary(title: "Sign in with passkey", symbol: "person.badge.key", enabled: canUseCluster) {
-                    connectCluster()
+                    guard await connectCluster() else { return }
                     await session.signIn()
                 }
                 .accessibilityIdentifier("signIn.passkey")
@@ -108,8 +110,14 @@ struct CloudSignInPanel: View {
 
     private var canUseCluster: Bool { !trimmed(clusterURL).isEmpty }
 
-    private func connectCluster() {
-        session.connect(nodeURL: trimmed(clusterURL), allowMock: false)
+    /// A URL connects to that node; anything else is a cluster name the directory resolves.
+    private func connectCluster() async -> Bool {
+        let value = trimmed(clusterURL)
+        if value.contains("://") {
+            session.connect(nodeURL: value, allowMock: false)
+            return true
+        }
+        return await session.client.connect(cluster: value)
     }
 
     private func trimmed(_ value: String) -> String { value.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -176,6 +184,7 @@ struct ApprovalsSheet: View {
     @State private var loading = true
     @State private var error: String?
     @State private var deciding: String?
+    @StateObject private var codeCheck = ConsentCodeCheck()
 
     struct Section: Identifiable {
         let id: String
@@ -232,6 +241,15 @@ struct ApprovalsSheet: View {
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .task { await load() }
             .refreshable { await load() }
+            .alert(
+                "Check the code", isPresented: codeCheck.isShown,
+                actions: {
+                    Button("Cancel", role: .cancel) { codeCheck.answer(false) }
+                    Button("Continue") { codeCheck.answer(true) }
+                },
+                message: {
+                    Text("The approval page will show \(codeCheck.code ?? ""). Continue only if it shows this code.")
+                })
         }
         .tint(style.ink)
     }
@@ -256,7 +274,9 @@ struct ApprovalsSheet: View {
                         deciding = key
                         Task {
                             do {
-                                _ = try await session.requestConsent(request(session.callback.url))
+                                _ = try await session.requestConsent(request(session.callback.url)) { started in
+                                    await codeCheck.confirm(started.code)
+                                }
                             } catch {
                                 self.error = MeroClient.describe(error)
                             }
@@ -293,5 +313,33 @@ struct ApprovalsSheet: View {
         } catch {
             self.error = MeroClient.describe(error)
         }
+    }
+}
+
+/// The confirmation code shown before the consent page opens: the page shows the same code, so the
+/// person can tell it is the request this app made.
+@MainActor
+final class ConsentCodeCheck: ObservableObject {
+    @Published private(set) var code: String?
+    private var waiting: CheckedContinuation<Bool, Never>?
+
+    var isShown: Binding<Bool> {
+        Binding(get: { self.code != nil }, set: { if !$0 { self.answer(false) } })
+    }
+
+    /// Show `code` and wait for the person; no code (an older node) goes straight on.
+    func confirm(_ code: String?) async -> Bool {
+        guard let code, !code.isEmpty else { return true }
+        answer(false)
+        return await withCheckedContinuation { continuation in
+            waiting = continuation
+            self.code = code
+        }
+    }
+
+    func answer(_ ok: Bool) {
+        code = nil
+        waiting?.resume(returning: ok)
+        waiting = nil
     }
 }
