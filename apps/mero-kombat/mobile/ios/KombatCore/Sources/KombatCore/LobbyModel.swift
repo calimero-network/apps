@@ -140,10 +140,10 @@ public final class LobbyModel: ObservableObject {
         } else {
             target = try await backend.foundNamespace(name: name).namespaceId
         }
-        // The contract's `init(title, now)`, as the web app's `arenaInit()` sends it.
+        // The contract's `init(title?, now?)`, as the web app passes it (`now` a u64 decimal string).
         let contextId = try await backend.createContext(
             groupId: target, applicationId: applicationId, name: name,
-            initArgs: .object(["title": .string(name), "now": .number(Double(nowMillis()))]))
+            initArgs: KombatClient.initArgs(title: name, now: nowMillis()))
         let ref = ArenaRef(contextId: contextId, namespaceId: target)
         arenas.insert(ArenaEntry(ref: ref, namespaceName: namespaces.first { $0.id == target }?.name ?? name), at: 0)
         return ref

@@ -22,7 +22,7 @@ public func nowMillis() -> UInt64 { UInt64(Date().timeIntervalSince1970 * 1000) 
 
 extension KombatClient {
     /// `KombatClient` for `contextId` in the account's backend: the SDK's bound contract is the
-    /// generated client's transport as is (`--transport-import MeroKit`).
+    /// typed client's transport as is.
     public static func bound(_ backend: any MeroAppBackend, contextId: String) -> KombatClient {
         KombatClient(transport: backend.contract.bound(to: contextId))
     }
@@ -155,14 +155,23 @@ public enum KombatText {
             return "Your cluster takes no new work until \(release) is approved. Review it under Needs your approval."
         case is NotFound:
             return "This isn't shared with you, or it was deleted."
-        case is LoginRequired, is SignedOutError:
+        case is LoginRequired:
             return "Your session ended. Sign in again."
         case is WrongNode:
             return "This node doesn't serve your arena. Try another node of the cluster."
+        case let error as TrapError:
+            return "The arena stopped that move (\(error.kind.isEmpty ? "trap" : error.kind)). Try again."
         case let error as UnavailableError:
             return "Your cluster is busy (\(error.reason)). Try again shortly."
         case let error as AppError:
+            if let words = KombatRefusal.message(code: error.appCode) { return words }
             return error.message.isEmpty ? error.appCode : error.message
+        case is ConfirmCancelled:
+            return "Cancelled. Nothing was sent."
+        case is ConsentStale:
+            return "That approval is out of date. Refresh and review it again."
+        case is SignedOutError:
+            return "You're signed out. Sign in again to fight."
         case let error as CalimeroError:
             return error.message.isEmpty ? error.code : error.message
         default:

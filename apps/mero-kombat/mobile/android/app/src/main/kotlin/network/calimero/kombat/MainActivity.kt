@@ -14,8 +14,8 @@ import network.calimero.kombat.ui.MeroKombatApp
 
 /**
  * The one activity, landscape only (the manifest). Links arrive here, on the launch intent (cold
- * start) or through [onNewIntent], and go to [KombatAppViewModel.handleLink]: the wallet's sign-in
- * redirect, or an arena invitation
+ * start) or through [onNewIntent], and go to [KombatAppViewModel.handleLink]: the node's consent page
+ * sending the person back (`mero-kombat://consent?request_id=…&result=…`), or an arena invitation
  * (`https://links.calimero.network/com.calimero.mero-kombat/join?invitation=…`).
  */
 class MainActivity : ComponentActivity() {
@@ -29,10 +29,23 @@ class MainActivity : ComponentActivity() {
             hide(WindowInsetsCompat.Type.systemBars())
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
+        // The passkey that approves the account's step-ups (inviting) while this activity lives.
+        vm.attach(this)
         if (savedInstanceState == null) consume(intent)
         setContent {
-            MeroKombatApp(vm = vm, onSignIn = { vm.signIn(this) }, onShare = ::share)
+            MeroKombatApp(
+                vm = vm,
+                onSignIn = { vm.signIn(this) },
+                onSignUp = { vm.signUp(this, it) },
+                onShare = ::share,
+                consent = { session, request, confirm -> session.requestConsent(this, request, confirm) },
+            )
         }
+    }
+
+    override fun onDestroy() {
+        vm.attach(null)
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {

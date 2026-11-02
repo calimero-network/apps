@@ -490,8 +490,8 @@ struct ArenaDetailsSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    DetailRow(label: "Arena (context)", value: model.contextId)
-                    DetailRow(label: "Namespace", value: model.ref.namespaceId ?? "Unknown")
+                    DetailRow(label: "Arena (app instance)", value: model.contextId)
+                    DetailRow(label: "Organization", value: model.ref.namespaceId ?? "Unknown")
                     DetailRow(label: "You", value: model.view?.me ?? "")
                 } header: {
                     Text("Ids")

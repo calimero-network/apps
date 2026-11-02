@@ -35,6 +35,14 @@ final class Calimero10Tests: XCTestCase {
             "Your cluster takes no new work until node release 2.3.110 is approved. Review it under Needs your approval.")
         XCTAssertEqual(KombatText.error(NotFound("no such app")), "This isn't shared with you, or it was deleted.")
         XCTAssertEqual(KombatText.error(LoginRequired("expired")), "Your session ended. Sign in again.")
+        XCTAssertEqual(KombatText.error(ConfirmCancelled()), "Cancelled. Nothing was sent.")
+        XCTAssertEqual(
+            KombatText.error(AppError("refused", details: ["code": .string("CornerTaken"), "fields": .object([:])])),
+            "That corner is taken.")
+        XCTAssertEqual(
+            KombatText.error(
+                AppError("refused", details: ["code": .string("RoundOver"), "fields": .object(["current": .number(2)])])),
+            "That round is over.")
     }
 
 }

@@ -127,7 +127,7 @@ fun NewArenaSheet(
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
-    fun namespaceLabel(id: String?) = id?.let { namespaces.firstOrNull { c -> c.id == it }?.name ?: KombatText.shortId(it) } ?: "New namespace"
+    fun namespaceLabel(id: String?) = id?.let { namespaces.firstOrNull { c -> c.id == it }?.name ?: KombatText.shortId(it) } ?: "New organization"
 
     KombatSheet("New arena", onDismiss = onDismiss, dismissible = !busy) {
         OutlinedTextField(
@@ -145,13 +145,13 @@ fun NewArenaSheet(
                 value = namespaceLabel(namespaceId),
                 onValueChange = {},
                 readOnly = true,
-                label = { Text("Namespace") },
+                label = { Text("Organization") },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = namespaceMenu) },
                 colors = fieldColors(),
                 modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable),
             )
             ExposedDropdownMenu(expanded = namespaceMenu, onDismissRequest = { namespaceMenu = false }) {
-                DropdownMenuItem(text = { Text("New namespace") }, onClick = {
+                DropdownMenuItem(text = { Text("New organization") }, onClick = {
                     namespaceId = null
                     namespaceMenu = false
                 })
@@ -164,7 +164,7 @@ fun NewArenaSheet(
             }
         }
         Text(
-            "A namespace is who can fight in its arenas: one invitation lets someone into every arena in it.",
+            "An organization is who can fight in its arenas: one invitation lets someone into every arena in it.",
             style = Type.body(13, color = KombatColors.Muted),
         )
         error?.let { ErrorBanner(it) { error = null } }
@@ -246,12 +246,12 @@ fun JoinSheet(
             Text("You've been invited to fight in Mero Kombat.", style = Type.body(14, color = KombatColors.Muted))
         }
         Text(
-            "Joining adds your account to the namespace this arena belongs to, and opens the arena. You can take a corner or watch.",
+            "Joining adds your account to the organization this arena belongs to, and opens the arena. You can take a corner or watch.",
             style = Type.body(15, color = KombatColors.Ink2),
         )
         Disclosure("Details") {
-            DetailRow("Namespace", invitation.namespaceId)
-            DetailRow("Arena (context)", invitation.contextId)
+            DetailRow("Organization", invitation.namespaceId)
+            DetailRow("Arena (app instance)", invitation.contextId)
         }
         error?.let { ErrorBanner(it) { error = null } }
         PrimaryButton(onClick = { scope.launch { attempt({ busy = it }, { error = it }) { onJoin() } } }, enabled = !busy) {

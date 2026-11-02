@@ -1,9 +1,25 @@
 package network.calimero.kombat.app
 
+import com.calimero.mero.AppError
+import com.calimero.mero.CalimeroError
+import com.calimero.mero.ConfirmCancelled
+import com.calimero.mero.ConsentStale
+import com.calimero.mero.LoginRequired
+import com.calimero.mero.NotFound
+import com.calimero.mero.PasskeyCancelled
+import com.calimero.mero.ReleaseDeadlineError
+import com.calimero.mero.TrapError
+import com.calimero.mero.UnavailableError
+import com.calimero.mero.WrongNode
 import com.calimero.mero.app.MeroAppBackend
-import network.calimero.kombat.generated.ArenaView
-import network.calimero.kombat.generated.FighterView
-import network.calimero.kombat.generated.KombatClient
+import com.calimero.mero.app.PasskeyRequired
+import com.calimero.mero.app.SignedOutException
+import com.calimero.mero.tee.TeeTrustException
+import network.calimero.kombat.contract.ArenaView
+import network.calimero.kombat.contract.FighterView
+import network.calimero.kombat.contract.KombatClient
+import network.calimero.kombat.contract.KombatRefusal
+import java.io.IOException
 
 /** The app's fixed values, shared with the web app and the contract's bundle. (Swift `KombatConstants`.) */
 object KombatConstants {
@@ -30,8 +46,8 @@ object KombatConstants {
 fun nowMillis(): ULong = System.currentTimeMillis().toULong()
 
 /**
- * [KombatClient] for [contextId] in the account's backend: the SDK's bound contract is the generated
- * client's transport as is (`--transport-import com.calimero.mero.app.ContextContractCalling`).
+ * [KombatClient] for the arena app instance [contextId] in the account's backend: the SDK's bound
+ * contract is the client's transport as is.
  */
 fun kombatClient(
     backend: MeroAppBackend,
@@ -88,10 +104,10 @@ class KombatException(
     enum class Kind(
         val message: String,
     ) {
-        NO_NAMESPACE("This arena's namespace is not known on this device yet. Open it from Arenas and try again."),
-        NO_APPLICATION("Mero Kombat is still being looked up in the app registry. Try again in a moment."),
+        NO_NAMESPACE("This arena's organization is not known on this device yet. Open it from Arenas and try again."),
+        NO_APPLICATION("Mero Kombat is not published on this cluster yet."),
         NOT_AN_INVITATION("That is not a Mero Kombat invitation link."),
-        NO_RELAY("Your account has no relay yet. Join an arena from an invitation link first."),
+        SIGNED_OUT("You're signed out. Sign in again to fight."),
     }
 }
 
@@ -134,6 +150,27 @@ object KombatText {
     /** A readable short form of an id nobody named. */
     fun shortId(id: String): String = if (id.length > 12) "${id.take(6)}…${id.takeLast(4)}" else id
 
-    /** An error as one sentence. A contract refusal is already written for a player, so it is shown as it came. */
-    fun error(error: Throwable): String = error.message?.takeIf { it.isNotBlank() } ?: "Something went wrong talking to the relay."
+    /** An error as one sentence: the node's typed errors and the contract's refusals in plain words. */
+    @Suppress("CyclomaticComplexMethod")
+    fun error(error: Throwable): String =
+        when (error) {
+            is ReleaseDeadlineError -> {
+                val release = if (error.release.isEmpty()) "a node release" else "node release ${error.release}"
+                "Your cluster takes no new work until $release is approved. Review it under Needs your approval."
+            }
+            is NotFound -> "This isn't shared with you, or it was deleted."
+            is LoginRequired -> "Your session ended. Sign in again."
+            is SignedOutException -> "You're signed out. Sign in again to fight."
+            is WrongNode -> "This node doesn't serve your arena. Try another node of the cluster."
+            is UnavailableError -> "Your cluster is busy (${error.reason}). Try again shortly."
+            is TrapError -> "The arena stopped that move (${error.kind.ifEmpty { "trap" }}). Try again."
+            is AppError -> KombatRefusal.message(error.appCode) ?: error.nodeMessage.ifEmpty { error.appCode }
+            is ConsentStale -> "That approval is out of date. Refresh and review it again."
+            is ConfirmCancelled, is PasskeyCancelled -> "Cancelled. Nothing was sent."
+            is PasskeyRequired -> "This needs your passkey. Keep the app open and try again."
+            is TeeTrustException -> "The node did not prove it runs attested Calimero software, so nothing was sent."
+            is CalimeroError -> error.nodeMessage.ifEmpty { error.code }
+            is IOException -> "Can't reach your cluster. Check your connection and try again."
+            else -> error.message?.takeIf { it.isNotBlank() } ?: "Something went wrong talking to your cluster."
+        }
 }

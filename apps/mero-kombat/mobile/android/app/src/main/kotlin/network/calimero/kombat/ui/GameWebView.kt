@@ -31,7 +31,7 @@ const val GAME_PAGE = "file:///android_asset/game/index.html"
  * The bridge is two calls: the page posts JSON strings to `MeroBridgeAndroid.postMessage`
  * ([BridgeInbound]), and the host's messages run as `window.meroGame.receive(…)`
  * ([network.calimero.kombat.app.BridgeOutbound.script]). Contract calls never leave the app through
- * the page: they come here and go out through the generated client.
+ * the page: they come here and go out through the typed client.
  */
 @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
 @Composable

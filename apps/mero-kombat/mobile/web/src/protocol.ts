@@ -33,7 +33,7 @@ export type ToNative =
   | { v: 1; op: "presence"; slice: Slice }
   | { v: 1; op: "over"; over: boolean };
 
-/** The contract's ArenaView as the generated clients serialise it (snake_case, as in the ABI). */
+/** The contract's ArenaView in the page's own wire form (snake_case; the native GameCalls converts the contract's camelCase). */
 export interface ArenaViewWire {
   title: string;
   match_index: number;

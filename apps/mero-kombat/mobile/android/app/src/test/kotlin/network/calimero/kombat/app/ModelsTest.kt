@@ -10,7 +10,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import network.calimero.kombat.generated.MatchSummary
+import network.calimero.kombat.contract.MatchSummary
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -43,7 +43,7 @@ class ArenaModelTest {
             assertEquals(0, model.state.value.local)
             assertEquals(listOf(BridgeOutbound.Boot(GameMode.NET, 0, listOf("cryo", "jinzo"), false)), page.boots)
             val wire = Json.parseToJsonElement(page.states.first()).jsonObject
-            assertEquals("the page reads the ABI's field names", "p1", wire["my_seat"]?.jsonPrimitive?.content)
+            assertEquals("the page reads its own snake_case wire", "p1", wire["my_seat"]?.jsonPrimitive?.content)
             assertEquals("0", wire["match_index"]?.jsonPrimitive?.content)
             assertEquals(
                 RecordedContractCall.Path.QUERY,
@@ -80,7 +80,7 @@ class ArenaModelTest {
         }
 
     @Test
-    fun `an act from the page is one transaction through the generated client`() =
+    fun `an act from the page is one transaction through the client`() =
         runTest {
             val model = model()
             val page = PageSpy().also { it.attach(model) }
@@ -97,7 +97,9 @@ class ArenaModelTest {
             assertEquals(ref.contextId, call.contextId)
             assertEquals(JsonPrimitive("uppercut"), args("act")?.get("kind"))
             assertEquals("42", args("act")?.get("id")?.jsonPrimitive?.content)
-            assertEquals("0", args("act")?.get("match_index")?.jsonPrimitive?.content)
+            assertEquals("the contract takes camelCase", "0", args("act")?.get("matchIndex")?.jsonPrimitive?.content)
+            assertNull(args("act")?.get("match_index"))
+            assertEquals("a u64 is a decimal string", JsonPrimitive("1700000000000"), args("act")?.get("now"))
             assertTrue(BridgeOutbound.Result(9, "null") in page.messages)
             assertEquals(1, model.state.value.meter.sent)
             assertEquals(1, model.state.value.meter.ok)
@@ -258,7 +260,7 @@ class PracticeModelTest {
 
 class LobbyModelTest {
     @Test
-    fun `creating an arena founds a namespace and initialises the contract`() =
+    fun `creating an arena founds an organization and initialises the contract`() =
         runTest {
             val backend = InMemoryAppBackend(account = Fixtures.me)
             ArenaScript(Fixtures.arena(status = "waiting", mySeat = "")).install(backend.recording)
@@ -269,7 +271,7 @@ class LobbyModelTest {
             assertNotNull(ref.namespaceId)
             val init = backend.initArgs[ref.contextId] as JsonObject
             assertEquals(JsonPrimitive("Friday night"), init["title"])
-            assertNotNull(init["now"])
+            assertTrue("now is a u64 decimal string", (init["now"] as JsonPrimitive).isString)
             lobby.load()
             assertEquals(
                 listOf(ref.contextId),

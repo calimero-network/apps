@@ -14,9 +14,9 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
-import network.calimero.kombat.generated.ArenaView
-import network.calimero.kombat.generated.FighterView
-import network.calimero.kombat.generated.MatchSummary
+import network.calimero.kombat.contract.ArenaView
+import network.calimero.kombat.contract.FighterView
+import network.calimero.kombat.contract.MatchSummary
 
 /**
  * What a screen hosting the game page does with it: answer what the page posts, and push what the
@@ -122,7 +122,7 @@ class ArenaModel(
     // ---- running -------------------------------------------------------------------------------
 
     /**
-     * Announce, read, then keep current: every relay event is a nudge to re-read, the poll covers
+     * Announce, read, then keep current: every arena event is a nudge to re-read, the poll covers
      * events missed while the stream reconnects, and the opponent's presence streams in.
      */
     suspend fun run() {
@@ -323,7 +323,7 @@ class ArenaModel(
         _state.update { it.copy(error = null) }
     }
 
-    private suspend fun call(body: suspend (network.calimero.kombat.generated.KombatClient) -> Unit): Boolean {
+    private suspend fun call(body: suspend (network.calimero.kombat.contract.KombatClient) -> Unit): Boolean {
         _state.update { it.copy(busy = true, error = null) }
         var failure: String? = null
         try {
@@ -343,7 +343,7 @@ class ArenaModel(
 
     suspend fun inviteLink(): String {
         val namespaceId = ref.namespaceId ?: throw KombatException(KombatException.Kind.NO_NAMESPACE)
-        return KombatInvitation(backend.createInvitation(namespaceId), namespaceId, contextId).link()
+        return KombatInvitation.of(backend.createInvitation(namespaceId), contextId).link()
     }
 }
 

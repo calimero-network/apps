@@ -11,7 +11,7 @@ struct SignInView: View {
     let invited: Bool
     let onPractice: () -> Void
     @State private var showCreate = false
-    @State private var showNode = false
+    @State private var showNode: ClusterSheet.Mode?
 
     var body: some View {
         ZStack {
@@ -50,12 +50,19 @@ struct SignInView: View {
                         }
                         if client.nodeURL == nil {
                             Button {
-                                showNode = true
+                                showNode = .cloud
                             } label: {
-                                Label("Choose your cluster", systemImage: "server.rack")
+                                Label("Sign in with Calimero Cloud", systemImage: "cloud")
                             }
                             .buttonStyle(PrimaryButtonStyle())
                             .accessibilityIdentifier("chooseNodeButton")
+                            Button {
+                                showNode = .development
+                            } label: {
+                                Label("Development node", systemImage: "hammer")
+                            }
+                            .buttonStyle(SecondaryButtonStyle())
+                            .accessibilityIdentifier("developmentNodeButton")
                         } else {
                             Button {
                                 Haptics.tap()
@@ -90,7 +97,7 @@ struct SignInView: View {
                             Text(nodeLine).font(Theme.body(13)).foregroundStyle(Theme.muted).lineLimit(2)
                             Spacer(minLength: 0)
                             if client.nodeURL != nil {
-                                Button("Change") { showNode = true }
+                                Button("Change") { showNode = client.allowMock ? .development : .cloud }
                                     .font(Theme.body(13, .semibold))
                                     .accessibilityIdentifier("changeNodeButton")
                             }
@@ -113,20 +120,34 @@ struct SignInView: View {
             }
             .presentationDetents([.medium, .large])
         }
-        .sheet(isPresented: $showNode) {
-            NodeSheet(current: client.nodeURL ?? "", allowMock: client.allowMock) { url, allowMock in
-                showNode = false
-                session.connect(nodeURL: url, allowMock: allowMock)
+        .sheet(item: $showNode) { mode in
+            ClusterSheet(mode: mode, current: client.nodeURL ?? "") { entry in
+                showNode = nil
+                Task { await connect(entry, mode: mode) }
             }
             .presentationDetents([.large])
         }
     }
 
+    /// A Cloud cluster by its name (its nodes come from the node directory) or a node's URL; a
+    /// development node (`merod local`) by URL, with mock attestation allowed.
+    private func connect(_ entry: String, mode: ClusterSheet.Mode) async {
+        switch mode {
+        case .development:
+            session.connect(nodeURL: entry, allowMock: true)
+        case .cloud where entry.contains("://"):
+            session.connect(nodeURL: entry, allowMock: false)
+        case .cloud:
+            await client.connect(cluster: entry)
+            session.rebuild()
+        }
+    }
+
     private var nodeLine: String {
-        guard let url = client.nodeURL else { return "Choose the cluster your arenas run on to sign in. Practice needs no account." }
+        guard let url = client.nodeURL else { return "Sign in on the Calimero cluster your arenas run on. Practice needs no account." }
         let host = URL(string: url)?.host ?? url
         return client.allowMock
-            ? "Development cluster at \(host) (mock attestation). Practice needs no account."
+            ? "Development node at \(host) (mock attestation). Practice needs no account."
             : "Signing in to \(host). Practice needs no account."
     }
 
@@ -193,55 +214,62 @@ private struct CreateAccountSheet: View {
     }
 }
 
-/// The node to talk to: one of the cluster's nodes from Calimero Cloud's
-/// console, or a development cluster (`merod local`) with mock attestation.
-private struct NodeSheet: View {
-    let submit: (_ url: String, _ allowMock: Bool) -> Void
-    @State private var url: String
-    @State private var allowMock: Bool
-    @SwiftUI.Environment(\.dismiss) private var dismiss
-
-    init(current: String, allowMock: Bool, submit: @escaping (_ url: String, _ allowMock: Bool) -> Void) {
-        self.submit = submit
-        _url = State(initialValue: current)
-        _allowMock = State(initialValue: allowMock)
+/// Where to sign in: a Calimero Cloud cluster, by name (`acme`) or a node's URL, or a development
+/// node (`merod local`) whose mock attestation is trusted.
+struct ClusterSheet: View {
+    enum Mode: String, Identifiable {
+        case cloud, development
+        var id: String { rawValue }
     }
 
-    private var trimmed: String { url.trimmingCharacters(in: .whitespacesAndNewlines) }
+    let mode: Mode
+    let submit: (String) -> Void
+    @State private var entry: String
+    @SwiftUI.Environment(\.dismiss) private var dismiss
+
+    init(mode: Mode, current: String, submit: @escaping (String) -> Void) {
+        self.mode = mode
+        self.submit = submit
+        _entry = State(initialValue: current)
+    }
+
+    private var trimmed: String { entry.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    private var valid: Bool {
+        switch mode {
+        case .cloud: return !trimmed.isEmpty && (!trimmed.contains("://") || URL(string: trimmed)?.host != nil)
+        case .development: return URL(string: trimmed)?.scheme != nil
+        }
+    }
 
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Paste the address of a node in your cluster. The app checks the node's attestation before it sends anything.")
+                Text(
+                    mode == .cloud
+                        ? "Enter your cluster's name from Calimero Cloud, or the address of one of its nodes. The app checks each node's attestation before it sends anything."
+                        : "Enter the address `merod local` printed. The app trusts its mock attestation, so use this only for a cluster on your own machine."
+                )
+                .font(Theme.body(15))
+                .foregroundStyle(Theme.muted)
+                TextField(mode == .cloud ? "Cluster name or URL" : "http://localhost:2501", text: $entry)
                     .font(Theme.body(15))
-                    .foregroundStyle(Theme.muted)
-                TextField("https://node.example.calimero.network", text: $url)
-                    .font(Theme.body(15))
-                    .keyboardType(.URL)
+                    .keyboardType(mode == .cloud ? .default : .URL)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .card(padding: 14)
-                Toggle(isOn: $allowMock) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Development cluster").font(Theme.body(15, .medium)).foregroundStyle(Theme.ink)
-                        Text("Trust mock attestation, as `merod local` serves. Never for a real cluster.")
-                            .font(Theme.body(13))
-                            .foregroundStyle(Theme.muted)
-                    }
-                }
-                .tint(Theme.ink)
-                .card(padding: 14)
-                Button("Use this node") {
+                    .accessibilityIdentifier("clusterField")
+                Button(mode == .cloud ? "Continue" : "Use this node") {
                     Haptics.tap()
-                    submit(trimmed, allowMock)
+                    submit(trimmed)
                 }
                 .buttonStyle(PrimaryButtonStyle())
-                .disabled(URL(string: trimmed)?.scheme == nil)
+                .disabled(!valid)
                 Spacer()
             }
             .padding(16)
             .background(Theme.ground)
-            .navigationTitle("Your cluster")
+            .navigationTitle(mode == .cloud ? "Calimero Cloud" : "Development node")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) { Button("Cancel") { dismiss() } }

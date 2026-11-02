@@ -10,11 +10,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
-import network.calimero.kombat.generated.ArenaView
+import network.calimero.kombat.contract.ArenaView
+import network.calimero.kombat.contract.KombatClient
 
-/** An arena to open: its context and the namespace it lives in. */
+/** An arena to open: its app instance and the organization it lives in. */
 data class ArenaRef(
     val contextId: String,
     val namespaceId: String?,
@@ -76,11 +75,11 @@ data class LobbyState(
 )
 
 /**
- * The lobby: every arena in every namespace this account belongs to, and making and joining arenas.
- * (Swift `LobbyModel`.)
+ * The lobby: every arena in every organization this account belongs to, and making and joining
+ * arenas. (Swift `LobbyModel`.)
  *
- * An arena is one context created directly in its namespace, exactly as the web app's
- * `ContextPicker` does, so the namespace invitation an arena mints is the one that admits to it.
+ * An arena is one app instance created directly in its organization, so the organization invite an
+ * arena mints is the one that admits to it.
  */
 class LobbyModel(
     private val backend: MeroAppBackend,
@@ -133,22 +132,17 @@ class LobbyModel(
         _state.update { state -> state.copy(arenas = state.arenas.map { entry -> summaries[entry.id]?.let { entry.copy(summary = it) } ?: entry }) }
     }
 
-    /** A new arena: in [namespaceId], or in a new namespace named after the arena when null. */
+    /** A new arena: in organization [namespaceId], or in a new one named after the arena when null. */
     suspend fun create(
         title: String,
         namespaceId: String?,
     ): ArenaRef {
-        if (!backend.hasRelay) throw KombatException(KombatException.Kind.NO_RELAY)
+        if (!backend.hasRelay) throw KombatException(KombatException.Kind.SIGNED_OUT)
         val applicationId = applicationId?.takeIf { it.isNotEmpty() } ?: throw KombatException(KombatException.Kind.NO_APPLICATION)
         val name = title.trim().take(64).ifEmpty { KombatConstants.DEFAULT_TITLE }
         val target = namespaceId ?: backend.foundNamespace(name).namespaceId
-        // The contract's `init(title, now)`, as the web app's `arenaInit()` sends it.
-        val initArgs =
-            buildJsonObject {
-                put("title", name)
-                put("now", nowMillis().toLong())
-            }
-        val contextId = backend.createContext(target, applicationId, name, initArgs)
+        // The contract's `init(title?, now?)`, as the web app passes it (`now` a u64 decimal string).
+        val contextId = backend.createContext(target, applicationId, name, KombatClient.initArgs(name, nowMillis()))
         val ref = ArenaRef(contextId, target)
         val namespaceName =
             _state.value.namespaces
@@ -159,9 +153,9 @@ class LobbyModel(
     }
 
     /**
-     * Redeem an invitation: join its namespace, which admits to every arena directly in it.
-     * [didJoin] runs after (the session reconnects to the admitting relay there when the account had
-     * none). The arena may take a moment to sync; the arena screen polls until it reads.
+     * Redeem an invitation: redeem its token, joining the organization, which admits to every arena
+     * directly in it. [didJoin] runs after (the session re-reads what the account sees). The arena
+     * screen polls until it reads.
      */
     suspend fun join(
         invitation: KombatInvitation,
@@ -172,10 +166,10 @@ class LobbyModel(
         return ArenaRef(invitation.contextId, invitation.namespaceId)
     }
 
-    /** A link that admits someone to [ref]'s namespace and opens that arena. */
+    /** A link that admits someone to [ref]'s organization and opens that arena. */
     suspend fun inviteLink(ref: ArenaRef): String {
         val namespaceId = ref.namespaceId ?: throw KombatException(KombatException.Kind.NO_NAMESPACE)
-        return KombatInvitation(backend.createInvitation(namespaceId), namespaceId, ref.contextId).link()
+        return KombatInvitation.of(backend.createInvitation(namespaceId), ref.contextId).link()
     }
 
     fun dismissError() {

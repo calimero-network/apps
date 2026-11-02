@@ -64,13 +64,21 @@ public enum ApprovalItem: Identifiable, Equatable, Sendable {
 @MainActor
 public final class ApprovalsModel: ObservableObject {
     public typealias Load = @MainActor (_ org: String?) async throws -> PendingApprovals
-    public typealias Consent = @MainActor (_ request: @escaping (String) -> ConsentRequest) async -> ConsentResult?
+    /// Asks for the request on the node, runs `confirm` with the node's confirmation code before the
+    /// page opens (answer `false` and it is not opened), then answers the decision.
+    public typealias Consent = @MainActor (
+        _ request: @escaping (String) -> ConsentRequest, _ confirm: @escaping @MainActor (String?) async -> Bool
+    ) async -> ConsentResult?
 
     @Published public private(set) var items: [ApprovalItem] = []
     /// The item whose consent page is open.
     @Published public private(set) var busy: String?
     /// The last decision or failure, in words.
     @Published public private(set) var message: String?
+    /// The confirmation code to show before the consent page opens (the page shows the same one).
+    /// Set while the app waits for ``answerConfirmation(_:)``; "" when the node sent no code.
+    @Published public private(set) var confirmationCode: String?
+    private var confirmation: CheckedContinuation<Bool, Never>?
 
     private let load: Load
     private let consent: Consent
@@ -97,7 +105,16 @@ public final class ApprovalsModel: ObservableObject {
     public func approve(_ item: ApprovalItem) async {
         busy = item.id
         defer { busy = nil }
-        let result = await consent { item.request(returnTo: $0) }
+        var cancelled = false
+        let result = await consent({ item.request(returnTo: $0) }) { [weak self] code in
+            let go = await self?.confirm(code: code) ?? false
+            cancelled = !go
+            return go
+        }
+        if cancelled {
+            message = "Cancelled. Nothing was approved."
+            return
+        }
         switch result?.status {
         case .approved?: message = "Approved."
         case .declined?: message = "Declined."
@@ -105,5 +122,19 @@ public final class ApprovalsModel: ObservableObject {
         case nil: message = "The consent page did not answer. Try again."
         }
         await refresh()
+    }
+
+    /// Show `code` and wait for the person to continue to the consent page or cancel.
+    public func confirm(code: String?) async -> Bool {
+        confirmation?.resume(returning: false)
+        confirmationCode = code ?? ""
+        return await withCheckedContinuation { confirmation = $0 }
+    }
+
+    /// The person's answer to ``confirmationCode``: `true` opens the consent page.
+    public func answerConfirmation(_ go: Bool) {
+        confirmationCode = nil
+        confirmation?.resume(returning: go)
+        confirmation = nil
     }
 }

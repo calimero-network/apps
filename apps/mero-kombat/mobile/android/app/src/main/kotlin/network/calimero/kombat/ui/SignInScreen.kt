@@ -12,38 +12,62 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.TrackChanges
-import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.Build
+import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.Drafts
+import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import com.calimero.mero.compose.MeroAuthState
+import network.calimero.kombat.app.ClusterChoice
+import network.calimero.kombat.app.ClusterKind
+import network.calimero.kombat.app.KombatAppViewModel
+import java.net.URI
 
 /**
- * Signed out: what the app is, the one button that signs in with a Calimero account, and practice,
- * which needs no account. Two columns: the phone is held sideways. (iOS `SignInView`.)
+ * Signed out: what the app is, where to sign in (a Calimero Cloud cluster by name or URL, or a
+ * development node for `merod local`), a passkey on it, and practice, which needs no account. Two
+ * columns: the phone is held sideways. (iOS `SignInView`.)
  */
+@Suppress("LongParameterList", "LongMethod")
 @Composable
 fun SignInScreen(
-    auth: MeroAuthState,
+    cluster: ClusterChoice?,
+    busy: Boolean,
+    error: String?,
     invited: Boolean,
+    onChoose: (ClusterChoice) -> Unit,
     onSignIn: () -> Unit,
+    onSignUp: (String) -> Unit,
     onCancel: () -> Unit,
+    onDismissError: () -> Unit,
     onPractice: () -> Unit,
 ) {
+    var sheet by remember { mutableStateOf<ClusterKind?>(null) }
+    var creating by remember { mutableStateOf(false) }
+
     Box(
         Modifier
             .fillMaxSize()
@@ -60,13 +84,13 @@ fun SignInScreen(
                 AppMark(56.dp)
                 Text("Mero Kombat", style = Type.heading(34))
                 Text(
-                    "A one-on-one fighting game where every punch is a transaction. Two fighters, best of three rounds, no game server.",
+                    "A one-on-one fighting game where every punch is a transaction on your attested Calimero cluster. Two fighters, best of three rounds, no game server.",
                     style = Type.body(16, color = KombatColors.Ink2),
                 )
                 Card {
                     Point(Icons.Outlined.Dns, "No game server")
                     Point(Icons.Filled.Bolt, "Every blow is a transaction")
-                    Point(Icons.Outlined.AccountCircle, "Your Calimero account")
+                    Point(Icons.Outlined.Key, "Your Calimero account, with a passkey")
                 }
             }
             Column(Modifier.widthIn(max = 340.dp).padding(top = 74.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -84,26 +108,155 @@ fun SignInScreen(
                         Text("You've been invited to an arena. Sign in to join it.", style = Type.body(14))
                     }
                 }
-                auth.error?.let { ErrorBanner(it) {} }
-                PrimaryButton(onClick = onSignIn, enabled = !auth.isLoading) {
-                    if (auth.isLoading) CircularProgressIndicator(Modifier.size(18.dp), color = KombatColors.Ink, strokeWidth = 2.dp)
-                    ButtonLabel(if (auth.isLoading) "Signing in…" else "Sign in with Calimero")
-                }
-                if (auth.isLoading) {
-                    TextButton(onClick = onCancel, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-                        Text("Cancel", style = Type.body(14, FontWeight.SemiBold))
+                error?.let { ErrorBanner(it, onDismiss = onDismissError) }
+                if (cluster == null) {
+                    PrimaryButton(onClick = { sheet = ClusterKind.CLOUD }, enabled = !busy) {
+                        if (busy) {
+                            CircularProgressIndicator(Modifier.size(18.dp), color = KombatColors.Ink, strokeWidth = 2.dp)
+                        } else {
+                            Icon(Icons.Outlined.Cloud, contentDescription = null, modifier = Modifier.size(18.dp))
+                        }
+                        ButtonLabel(if (busy) "Finding your cluster…" else "Sign in with Calimero Cloud")
+                    }
+                    SecondaryButton(onClick = { sheet = ClusterKind.DEVELOPMENT }, enabled = !busy) {
+                        Icon(Icons.Outlined.Build, contentDescription = null, modifier = Modifier.size(18.dp))
+                        ButtonLabel("Development node")
+                    }
+                } else {
+                    PrimaryButton(onClick = onSignIn, enabled = !busy) {
+                        if (busy) {
+                            CircularProgressIndicator(Modifier.size(18.dp), color = KombatColors.Ink, strokeWidth = 2.dp)
+                        } else {
+                            Icon(Icons.Outlined.Key, contentDescription = null, modifier = Modifier.size(18.dp))
+                        }
+                        ButtonLabel(if (busy) "Waiting for your passkey…" else "Sign in with a passkey")
+                    }
+                    if (busy) {
+                        TextButton(onClick = onCancel, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                            Text("Cancel", style = Type.body(14, FontWeight.SemiBold))
+                        }
+                    } else {
+                        SecondaryButton(onClick = { creating = true }) { ButtonLabel("Create an account") }
                     }
                 }
                 SecondaryButton(onClick = onPractice) {
                     Icon(Icons.Filled.TrackChanges, contentDescription = null, modifier = Modifier.size(18.dp))
                     ButtonLabel("Practice vs CPU")
                 }
-                Text(
-                    "The Calimero wallet approves this device. Practice needs no account.",
-                    style = Type.body(13, color = KombatColors.Muted),
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(clusterLine(cluster), style = Type.body(13, color = KombatColors.Muted), modifier = Modifier.weight(1f))
+                    if (cluster != null) {
+                        TextButton(onClick = { sheet = cluster.kind }, enabled = !busy) {
+                            Text("Change", style = Type.body(13, FontWeight.SemiBold))
+                        }
+                    }
+                }
             }
         }
+    }
+
+    sheet?.let { kind ->
+        ClusterSheet(
+            kind = kind,
+            current = cluster?.takeIf { it.kind == kind }?.entry.orEmpty(),
+            onSubmit = { entry ->
+                sheet = null
+                onChoose(ClusterChoice(kind, entry))
+            },
+            onDismiss = { sheet = null },
+        )
+    }
+    if (creating) {
+        CreateAccountSheet(
+            onSubmit = { name ->
+                creating = false
+                onSignUp(name)
+            },
+            onDismiss = { creating = false },
+        )
+    }
+}
+
+private fun clusterLine(cluster: ClusterChoice?): String {
+    if (cluster == null) return "Sign in on the Calimero cluster your arenas run on. Practice needs no account."
+    val host = if (cluster.isUrl) runCatching { URI(cluster.entry).host }.getOrNull() ?: cluster.entry else cluster.entry
+    return when (cluster.kind) {
+        ClusterKind.DEVELOPMENT -> "Development node at $host (mock attestation). Practice needs no account."
+        ClusterKind.CLOUD -> "Signing in to $host. Practice needs no account."
+    }
+}
+
+/**
+ * Where to sign in: a Calimero Cloud cluster, by name (`acme`) or a node's URL, or a development node
+ * (`merod local`) whose mock attestation is trusted. (iOS `ClusterSheet`.)
+ */
+@Composable
+private fun ClusterSheet(
+    kind: ClusterKind,
+    current: String,
+    onSubmit: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val cloud = kind == ClusterKind.CLOUD
+    var entry by remember { mutableStateOf(current.ifEmpty { if (cloud) "" else KombatAppViewModel.DEFAULT_DEV_NODE }) }
+    val trimmed = entry.trim()
+    val valid =
+        if (cloud) {
+            trimmed.isNotEmpty() && (!trimmed.contains("://") || runCatching { URI(trimmed).host }.getOrNull() != null)
+        } else {
+            runCatching { URI(trimmed).scheme }.getOrNull() != null
+        }
+
+    KombatSheet(if (cloud) "Calimero Cloud" else "Development node", onDismiss = onDismiss) {
+        Text(
+            if (cloud) {
+                "Enter your cluster's name from Calimero Cloud, or the address of one of its nodes. The app checks each node's attestation before it sends anything."
+            } else {
+                "Enter the address `merod local` printed. The app trusts its mock attestation, so use this only for a cluster on your own machine."
+            },
+            style = Type.body(15, color = KombatColors.Muted),
+        )
+        OutlinedTextField(
+            value = entry,
+            onValueChange = { entry = it },
+            label = { Text(if (cloud) "Cluster name or URL" else "Node URL") },
+            singleLine = true,
+            keyboardOptions =
+                KeyboardOptions(
+                    capitalization = KeyboardCapitalization.None,
+                    autoCorrectEnabled = false,
+                    keyboardType = if (cloud) KeyboardType.Text else KeyboardType.Uri,
+                    imeAction = ImeAction.Done,
+                ),
+            colors = fieldColors(),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        PrimaryButton(onClick = { onSubmit(trimmed) }, enabled = valid) { ButtonLabel(if (cloud) "Continue" else "Use this node") }
+    }
+}
+
+/** A name for a new account, then a new passkey. (iOS `CreateAccountSheet`.) */
+@Composable
+private fun CreateAccountSheet(
+    onSubmit: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var name by remember { mutableStateOf("") }
+    KombatSheet("Create an account", onDismiss = onDismiss) {
+        Text(
+            "Your name is what your opponents see. A new passkey on this phone signs you in from now on.",
+            style = Type.body(15, color = KombatColors.Muted),
+        )
+        OutlinedTextField(
+            value = name,
+            onValueChange = { name = it.take(64) },
+            label = { Text("Your name") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
+            colors = fieldColors(),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        PrimaryButton(onClick = { onSubmit(name.trim()) }, enabled = name.isNotBlank()) { ButtonLabel("Create the passkey") }
     }
 }
 

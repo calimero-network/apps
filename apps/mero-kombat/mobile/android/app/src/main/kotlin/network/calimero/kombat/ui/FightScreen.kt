@@ -57,14 +57,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.calimero.mero.app.CalimeroAppBackend
 import com.calimero.mero.app.MeroAppBackend
-import com.calimero.mero.presence.RelayPresenceClient
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import network.calimero.kombat.app.ArenaModel
 import network.calimero.kombat.app.ArenaRef
 import network.calimero.kombat.app.ArenaState
+import network.calimero.kombat.app.CalimeroPresenceChannel
 import network.calimero.kombat.app.FighterInfo
 import network.calimero.kombat.app.GameHost
 import network.calimero.kombat.app.GameMode
@@ -73,9 +74,8 @@ import network.calimero.kombat.app.KombatText
 import network.calimero.kombat.app.PlayerStore
 import network.calimero.kombat.app.PracticeModel
 import network.calimero.kombat.app.PresenceChannel
-import network.calimero.kombat.app.RelayPresenceChannel
-import network.calimero.kombat.generated.ArenaView
-import network.calimero.kombat.generated.FighterView
+import network.calimero.kombat.contract.ArenaView
+import network.calimero.kombat.contract.FighterView
 
 /**
  * The fight, full screen and sideways: the game page edge to edge, the pad under the thumbs, a slim
@@ -212,13 +212,13 @@ fun ArenaScreen(
     backend: MeroAppBackend,
     ref: ArenaRef,
     store: PlayerStore,
-    relayPresence: RelayPresenceClient?,
     onBack: () -> Unit,
     onShare: (String) -> Unit,
 ) {
     val model =
         remember(backend, ref) {
-            val presence: PresenceChannel? = relayPresence?.let { RelayPresenceChannel(it, ref.contextId) }
+            // The arena's 1.0 presence, on the account's cluster session.
+            val presence: PresenceChannel? = (backend as? CalimeroAppBackend)?.let { CalimeroPresenceChannel(it.client, ref.contextId) }
             ArenaModel(backend, ref, store, presence)
         }
     val state by model.state.collectAsState()
@@ -552,15 +552,15 @@ private fun DetailsSheet(
 ) {
     KombatSheet("Details", onDismiss = onDismiss) {
         Card {
-            DetailRow("Arena (context)", model.contextId)
-            DetailRow("Namespace", model.ref.namespaceId ?: "Unknown")
+            DetailRow("Arena (app instance)", model.contextId)
+            DetailRow("Organization", model.ref.namespaceId ?: "Unknown")
             DetailRow("You", state.view?.me.orEmpty())
         }
         Card {
             DetailRow("Every action at this arena", "${state.view?.totalActions ?: 0u} tx")
             DetailRow("This match", "${state.view?.matchActions ?: 0u} tx")
             DetailRow("Sent from this phone", "${state.meter.sent} sent · ${state.meter.ok} confirmed · ${state.meter.failed} failed")
-            DetailRow("Presence", if (model.hasPresence) "Through your relay" else "Unavailable on this session")
+            DetailRow("Presence", if (model.hasPresence) "Through your cluster" else "Unavailable on this session")
         }
     }
 }
