@@ -50,30 +50,81 @@ final class ApprovalsTests: XCTestCase {
         XCTAssertTrue(items.isEmpty)
     }
 
-    func testLoadSkipsUnreadableScopesAndApproveOpensConsent() async throws {
-        var requested: [ConsentRequest] = []
-        let model = ApprovalsModel(
+    static let started = try! JSONDecoder().decode(
+        ConsentStarted.self,
+        from: Data(#"{"requestId":"r1","url":"https://node/consent/r1","expiresAt":0,"code":"ABC-123"}"#.utf8))
+
+    private func model(requested: @escaping (ConsentRequest) -> Void) -> ApprovalsModel {
+        ApprovalsModel(
             packageName: ForumConstants.packageName, appName: "Mero Forum",
             fetch: { org in
                 guard let org else { throw NotFound("no account report") }
                 return try Self.pending(org: org)
             },
-            consent: { build in
-                requested.append(build("mero-forum://consent"))
+            consent: { build, confirm in
+                guard await confirm(Self.started) else {
+                    return try? JSONDecoder().decode(
+                        ConsentResult.self, from: Data(#"{"requestId":"r1","kind":"upgrade","status":"pending"}"#.utf8))
+                }
+                requested(build("mero-forum://consent"))
                 return try? JSONDecoder().decode(
                     ConsentResult.self, from: Data(#"{"requestId":"r1","kind":"upgrade","status":"approved"}"#.utf8))
             })
+    }
+
+    private func waitForConfirmation(_ model: ApprovalsModel) async {
+        for _ in 0..<200 where model.confirmation == nil { await Task.yield() }
+    }
+
+    func testLoadSkipsUnreadableScopesAndApproveShowsTheCodeThenOpensConsent() async throws {
+        var requested: [ConsentRequest] = []
+        let model = model { requested.append($0) }
         await model.load(orgs: ["org1"])
         XCTAssertEqual(model.items.count, 2)
-        let approved = await model.approve(model.items[0], orgs: ["org1"])
+        let item = model.items[0]
+        let approving = Task { await model.approve(item, orgs: ["org1"]) }
+        await waitForConfirmation(model)
+        XCTAssertEqual(model.confirmation?.code, "ABC-123", "the code shows before the page opens")
+        XCTAssertEqual(model.confirmation?.title, item.title)
+        XCTAssertTrue(requested.isEmpty)
+        model.answer(true)
+        let approved = await approving.value
         XCTAssertTrue(approved)
         XCTAssertEqual(requested, [.upgrade(app: "app-1", toVersion: "1.2.0", returnTo: "mero-forum://consent")])
         XCTAssertNil(model.approving)
+        XCTAssertNil(model.confirmation)
+    }
+
+    func testCancellingTheCodeKeepsThePageClosed() async throws {
+        var requested: [ConsentRequest] = []
+        let model = model { requested.append($0) }
+        await model.load(orgs: ["org1"])
+        let item = model.items[0]
+        let approving = Task { await model.approve(item, orgs: ["org1"]) }
+        await waitForConfirmation(model)
+        model.answer(false)
+        let approved = await approving.value
+        XCTAssertFalse(approved)
+        XCTAssertTrue(requested.isEmpty)
+        XCTAssertNil(model.error, "cancelling is not an error")
     }
 
     func testClusterErrorsInWords() {
         XCTAssertEqual(ForumErrorText.describe(ConfirmCancelled()), "The passkey prompt was cancelled.")
         XCTAssertTrue(ForumErrorText.describe(ReleaseDeadlineError("deadline passed")).contains("needs approval"))
         XCTAssertEqual(ForumErrorText.describe(LoginRequired("expired")), "Your session ended. Sign in again.")
+        XCTAssertTrue(ForumErrorText.describe(WrongNode("wrong node")).contains("doesn't serve your account"))
+        XCTAssertTrue(ForumErrorText.describe(ConsentStale("stale")).contains("out of date"))
+    }
+
+    func testContractRefusalsInWords() {
+        let forbidden = AppError(
+            "refused", details: ["code": .string("Forbidden"), "fields": .object(["message": .string("only a moderator can do that")])])
+        XCTAssertEqual(ForumErrorText.describe(forbidden), "Only a moderator can do that.")
+        let missing = AppError(
+            "refused", details: ["code": .string("NotFound"), "fields": .object(["what": .string("post"), "id": .string("p1")])])
+        XCTAssertEqual(ForumErrorText.describe(missing), "This post no longer exists. It may have been deleted.")
+        let invalid = AppError("refused", details: ["code": .string("Invalid"), "fields": .object([:])])
+        XCTAssertEqual(ForumErrorText.describe(invalid), "That isn't valid. Check it and try again.")
     }
 }

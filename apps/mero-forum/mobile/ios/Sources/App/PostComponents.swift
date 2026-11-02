@@ -1,5 +1,4 @@
 import ForumCore
-import ForumGenerated
 import SwiftUI
 
 /// Name, handle and age on one line, the timeline way.

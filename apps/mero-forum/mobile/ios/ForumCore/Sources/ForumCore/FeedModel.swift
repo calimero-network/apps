@@ -1,5 +1,4 @@
 import Foundation
-import ForumGenerated
 import MeroKit
 
 /// One forum's timeline, and everything done to it: post, vote, edit, delete,

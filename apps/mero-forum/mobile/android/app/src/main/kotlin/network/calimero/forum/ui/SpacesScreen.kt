@@ -69,6 +69,7 @@ import androidx.compose.ui.unit.sp
 import com.calimero.mero.app.AppNamespace
 import kotlinx.coroutines.launch
 import network.calimero.forum.ForumViewModel
+import network.calimero.forum.core.ForumConstants
 import network.calimero.forum.core.ForumErrorText
 import network.calimero.forum.core.ForumFormat
 import network.calimero.forum.core.ForumInvitation
@@ -92,7 +93,15 @@ fun SpacesScreen(
     var refreshing by remember { mutableStateOf(false) }
     var sheet by remember { mutableStateOf<SpacesSheet?>(null) }
     var menu by remember { mutableStateOf(false) }
-    LaunchedEffect(model) { model.load() }
+    val consentReturned by vm.consentReturned.collectAsState()
+    LaunchedEffect(model) {
+        model.load()
+        vm.approvals.load(model.spaces.value.map { it.id })
+    }
+    // The consent page sent the person back: what waits has changed.
+    LaunchedEffect(consentReturned) {
+        if (consentReturned > 0) vm.approvals.load(spaces.map { it.id })
+    }
 
     Scaffold(
         containerColor = Palette.Ground,
@@ -134,6 +143,7 @@ fun SpacesScreen(
                 scope.launch {
                     refreshing = true
                     model.load()
+                    vm.approvals.load(model.spaces.value.map { it.id })
                     refreshing = false
                 }
             },
@@ -152,10 +162,11 @@ fun SpacesScreen(
                         ) {
                             Icon(Icons.Outlined.PortableWifiOff, contentDescription = null, tint = Palette.Ink, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(10.dp))
-                            Text("Your account has no relay yet. Join a space from an invitation link to get one.", fontSize = 14.sp, color = Palette.Ink)
+                            Text("You're not connected to your cluster. Sign in again, or join a space from an invitation link.", fontSize = 14.sp, color = Palette.Ink)
                         }
                     }
                 }
+                item { ApprovalsCard(vm.approvals) }
                 when (val p = phase) {
                     LoadPhase.Loading -> items(3) { SkeletonCard() }
                     is LoadPhase.Failed -> item { ErrorState(p.message) { scope.launch { model.load() } } }
@@ -392,7 +403,8 @@ private fun ProfileSheet(
 ) {
     val scope = rememberCoroutineScope()
     val name = vm.names.name
-    val account = vm.session.account.orEmpty()
+    val backend by vm.backend.collectAsState()
+    val account = backend?.account.orEmpty()
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = Palette.Surface) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -404,11 +416,11 @@ private fun ProfileSheet(
             }
             Text("You set the name you post under inside each forum, from its info page.", fontSize = 13.sp, color = Palette.Muted)
             Hairline()
-            DetailsDisclosure(listOf("Account" to account, "Application" to vm.session.applicationId.orEmpty()))
+            DetailsDisclosure(listOf("Account" to account, "Application" to ForumConstants.PACKAGE_NAME))
             Hairline()
             TextButton(onClick = {
                 scope.launch {
-                    vm.session.signOut()
+                    vm.signOut()
                     dismiss()
                 }
             }) {

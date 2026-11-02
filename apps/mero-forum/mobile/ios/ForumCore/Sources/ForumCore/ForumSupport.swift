@@ -1,5 +1,4 @@
 import Foundation
-import ForumGenerated
 import MeroKit
 
 /// Constants shared with the web app (`app/src/lib/inviteLink.ts`) and the contract.
@@ -14,30 +13,6 @@ public enum ForumConstants {
     public static let maxTitle = 300
     public static let maxBody = 10_000
     public static let maxName = 64
-}
-
-/// MeroKit's bound contract, as the generated client's transport. The two
-/// protocols have the same requirements (JSON bytes in and out); they are
-/// separate types only because the generated file declares its own.
-public struct ForumTransport: ForumGenerated.ContextContractCalling {
-    public let bound: BoundContextContract
-
-    public init(_ bound: BoundContextContract) { self.bound = bound }
-
-    public func query(method: String, argsJSON: Data) async throws -> Data {
-        try await bound.query(method: method, argsJSON: argsJSON)
-    }
-
-    public func execute(method: String, argsJSON: Data) async throws -> Data {
-        try await bound.execute(method: method, argsJSON: argsJSON)
-    }
-}
-
-extension ForumClient {
-    /// The forum client for one app instance, over the account's sealed session.
-    public static func make(contract: any ContextContract, contextId: String) -> ForumClient {
-        ForumClient(transport: ForumTransport(contract.bound(to: contextId)))
-    }
 }
 
 /// Where a forum lives: the space (org), the forum (team) and its app instance.
@@ -139,9 +114,31 @@ public enum ForumErrorText {
             return "A newer node release needs approval before anything can change. Review it under Spaces."
         case is ConsentStale: return "That approval request is out of date. Try again."
         case is NotFound: return "This isn't available to you (yet)."
+        case is WrongNode: return "This node doesn't serve your account. Sign in again to reach your cluster."
         case let error as UnavailableError:
             return "Your cluster is unavailable right now (\(error.reason)). Try again shortly."
+        case let error as AppError: return refusal(code: error.appCode, fields: error.fields)
         default: return nil
         }
+    }
+
+    /// The contract's refusals (`APP_ERROR`): `NotFound {what, id}`,
+    /// `Forbidden {message}`, `Invalid {message}`.
+    public static func refusal(code: String, fields: [String: JSONValue]) -> String? {
+        let message = fields["message"]?.stringValue?.nilIfEmpty.map(sentence)
+        switch code {
+        case "NotFound":
+            let what = fields["what"]?.stringValue?.nilIfEmpty ?? "item"
+            return "This \(what) no longer exists. It may have been deleted."
+        case "Forbidden": return message ?? "You're not allowed to do that."
+        case "Invalid": return message ?? "That isn't valid. Check it and try again."
+        default: return message
+        }
+    }
+
+    /// `text` with a capital first letter and a full stop.
+    static func sentence(_ text: String) -> String {
+        let capital = text.prefix(1).uppercased() + text.dropFirst()
+        return capital.hasSuffix(".") || capital.hasSuffix("!") || capital.hasSuffix("?") ? capital : capital + "."
     }
 }

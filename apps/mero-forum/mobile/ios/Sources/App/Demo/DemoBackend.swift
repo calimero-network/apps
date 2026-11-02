@@ -99,6 +99,13 @@ final class DemoBackend: MeroAppBackend, ContextContract, @unchecked Sendable {
     func createContext(groupId: String, applicationId: String, name: String, initArgs: JSONValue) async throws -> String {
         locked {
             let id = mint()
+            if subgroups[groupId] != nil {
+                // An app instance directly in the org (how forums are made on 1.0): kept as a
+                // one-instance entry so the demo's forum list reads it back.
+                subgroups[groupId]?.append(AppSubgroup(groupId: id, name: name, contextIds: [id]))
+                members.insert(id)
+                return id
+            }
             for (namespace, list) in subgroups {
                 guard let index = list.firstIndex(where: { $0.groupId == groupId }) else { continue }
                 let old = list[index]
@@ -106,6 +113,16 @@ final class DemoBackend: MeroAppBackend, ContextContract, @unchecked Sendable {
             }
             members.insert(id)
             return id
+        }
+    }
+
+    /// The forums of a space: each demo forum's app instance, under the forum's name.
+    func listContextEntries(groupId: String) async throws -> [AppContextEntry] {
+        try await pause()
+        return locked {
+            (subgroups[groupId] ?? []).compactMap { group in
+                group.contextIds.first.map { AppContextEntry(id: $0, name: group.name) }
+            }
         }
     }
 

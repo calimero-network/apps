@@ -4,7 +4,8 @@ import SwiftUI
 
 /// The front door: what Mero Forum is, then sign-in to a Calimero 1.0 cluster.
 ///
-/// - Calimero Cloud: the cluster's node URL (from the console, or baked in as
+/// - Calimero Cloud: the cluster by name (`eu-shared-1`, its nodes read from
+///   the Cloud directory) or by a node URL from the console (or baked in as
 ///   `CalimeroClusterURL`), then the device's passkey. "Create an account"
 ///   registers a new passkey under a name.
 /// - Development: a `merod local` node URL with mock attestation allowed; the
@@ -69,7 +70,7 @@ struct SignInView: View {
                     .font(.system(size: 13)).foregroundStyle(Palette.muted)
             } else {
                 fieldLabel("Cluster")
-                urlField("https://node.your-cluster.calimero.network", text: $clusterURL)
+                urlField("Cluster name or node URL", text: $clusterURL)
                 if mode == .create {
                     fieldLabel("Your name")
                     textField("e.g. Ada Lovelace", text: $name)
@@ -154,11 +155,9 @@ struct SignInView: View {
         Task {
             switch mode {
             case .signIn:
-                session.connect(nodeURL: clusterURL, allowMock: false)
-                await session.signIn()
+                if await connectCloud() { await session.signIn() }
             case .create:
-                session.connect(nodeURL: clusterURL, allowMock: false)
-                await session.signUp(name: trimmedName)
+                if await connectCloud() { await session.signUp(name: trimmedName) }
             case .development:
                 session.connect(nodeURL: devNodeURL, allowMock: true)
                 _ = await session.client.signInOrSignUp(name: trimmedName.isEmpty ? nil : trimmedName)
@@ -166,6 +165,20 @@ struct SignInView: View {
             }
             busy = false
         }
+    }
+
+    /// Reach the Cloud cluster the field names: a node URL as is, anything else
+    /// as a cluster name looked up in the Cloud directory. Every node is
+    /// verified (`CloudPolicy.production`).
+    private func connectCloud() async -> Bool {
+        let entry = clusterURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if entry.contains("://") || entry.contains(".") || entry.contains(":") {
+            session.connect(nodeURL: entry, allowMock: false)
+            return true
+        }
+        let ok = await session.client.connect(cluster: entry)
+        session.rebuild()
+        return ok
     }
 }
 

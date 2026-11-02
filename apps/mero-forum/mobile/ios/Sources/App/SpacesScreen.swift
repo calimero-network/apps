@@ -20,9 +20,9 @@ struct SpacesScreen: View {
                     guard let session else { throw CancellationError() }
                     return try await session.pendingApprovals(org: org)
                 },
-                consent: { [weak session] request in
+                consent: { [weak session] request, confirm in
                     guard let session else { return nil }
-                    return await session.client.requestConsent(request, callback: session.callback)
+                    return await session.client.requestConsent(request, callback: session.callback, confirm: confirm)
                 }))
         self.openInvitation = openInvitation
     }
@@ -42,6 +42,9 @@ struct SpacesScreen: View {
                     .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Palette.limeSoft))
                 }
                 ApprovalsCard(model: approvals, orgs: model.spaces.map(\.id))
+                    .sheet(item: Binding(get: { approvals.confirmation }, set: { if $0 == nil { approvals.answer(false) } })) {
+                        ConsentCodeSheet(confirmation: $0) { approvals.answer($0) }
+                    }
                 switch model.phase {
                 case .loading:
                     ForEach(0..<3, id: \.self) { _ in SkeletonCard() }

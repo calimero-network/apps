@@ -4,7 +4,7 @@
 #   xcodegen generate          # writes MeroForum.xcodeproj (not committed)
 #   open MeroForum.xcodeproj
 #
-# The logic (generated contract client, view models, invitation codec) lives in
+# The logic (typed contract client, view models, invitation codec) lives in
 # the local ForumCore package, which builds and tests on macOS with
 # `swift test --package-path ForumCore`. The swift-sdk is pinned by revision to
 # the head of its Calimero 1.0 port (calimero-network/swift-sdk#85, branch
@@ -32,7 +32,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: 35148e4de782c065f777e80c592d9548acd645cd
+    revision: 37c09f3f96e7d98440f6618eef8a0e83ddee8ebd
   ForumCore:
     path: ForumCore
 

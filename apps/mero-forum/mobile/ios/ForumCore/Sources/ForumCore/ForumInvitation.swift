@@ -83,6 +83,7 @@ public struct ForumInvitation: Sendable {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         if trimmed.hasPrefix("{") { return parse(json: trimmed) }
+        if let web = webLink(trimmed) { return web }
         let token: String?
         if let legacy = legacyToken(trimmed) {
             token = legacy
@@ -91,6 +92,19 @@ public struct ForumInvitation: Sendable {
         }
         guard let token, let json = InviteCodec.decode(token: token) else { return nil }
         return parse(json: json)
+    }
+
+    /// The web app's Calimero 1.0 link: `…?invite=inv_…` (an org invite token
+    /// as is), plus `&forum=<app id>` for a forum. The org is learnt when the
+    /// token is redeemed, so ``namespaceId`` is empty until then.
+    private static func webLink(_ raw: String) -> ForumInvitation? {
+        guard let components = URLComponents(string: raw), let items = components.queryItems,
+            let token = items.first(where: { $0.name == "invite" })?.value?.nilIfEmpty, token.hasPrefix("inv_")
+        else { return nil }
+        let forum = items.first(where: { $0.name == "forum" })?.value?.nilIfEmpty
+        return ForumInvitation(
+            invitation: OrgInvitation(namespaceId: "", token: token, contextId: forum),
+            kind: forum == nil ? .space : .forum, forumId: forum, contextId: forum)
     }
 
     /// `…?invite=<code>`: what this app's web build shared before platform links.

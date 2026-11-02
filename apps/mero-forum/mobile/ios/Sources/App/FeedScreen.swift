@@ -1,5 +1,4 @@
 import ForumCore
-import ForumGenerated
 import MeroKit
 import SwiftUI
 

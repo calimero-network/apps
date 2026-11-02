@@ -1,10 +1,24 @@
 package network.calimero.forum.core
 
-import com.calimero.mero.account.NoRelayException
+import com.calimero.mero.AppError
+import com.calimero.mero.ConfirmCancelled
+import com.calimero.mero.ConfirmRequired
+import com.calimero.mero.ConsentStale
+import com.calimero.mero.LoginRequired
+import com.calimero.mero.NotFound
+import com.calimero.mero.PasskeyCancelled
+import com.calimero.mero.ReleaseDeadlineError
+import com.calimero.mero.UnavailableError
+import com.calimero.mero.WrongNode
 import com.calimero.mero.app.ContextContract
+import com.calimero.mero.app.PasskeyRequired
+import com.calimero.mero.app.SignedOutException
+import com.calimero.mero.tee.TeeTrustException
 import kotlinx.serialization.SerializationException
-import network.calimero.forum.generated.ContextContractCalling
-import network.calimero.forum.generated.ForumClient
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import network.calimero.forum.contract.ForumClient
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
@@ -17,7 +31,7 @@ object ForumConstants {
     /** One page of the feed or of a thread, as on the web. */
     const val PAGE_SIZE: UInt = 20u
 
-    /** How often an open forum is re-read when the relay cannot stream events. */
+    /** How often an open forum is re-read when the node's event stream is down. */
     const val POLL_INTERVAL_MS = 10_000L
 
     /** The contract's limits (`MAX_TITLE`, `MAX_BODY`, `MAX_NICKNAME`). */
@@ -26,31 +40,13 @@ object ForumConstants {
     const val MAX_NAME = 64
 }
 
-/**
- * The SDK's bound contract, as the generated client's transport. The two interfaces have the same
- * methods; they are separate types only because the generated file declares its own.
- */
-class ForumTransport(
-    private val bound: com.calimero.mero.app.ContextContractCalling,
-) : ContextContractCalling {
-    override suspend fun query(
-        method: String,
-        argsJson: String,
-    ): String = bound.query(method, argsJson)
-
-    override suspend fun execute(
-        method: String,
-        argsJson: String,
-    ): String = bound.execute(method, argsJson)
-}
-
-/** The forum client for one context, over the account's relay. */
+/** The forum client for one app instance, over the account's sealed session. */
 fun forumClient(
     contract: ContextContract,
     contextId: String,
-): ForumClient = ForumClient(ForumTransport(contract.bound(contextId)))
+): ForumClient = ForumClient(contract.bound(contextId))
 
-/** Where a forum lives: the space (namespace), the forum (subgroup) and its context. */
+/** Where a forum lives: the space (org), the forum and its app instance (the same id on 1.0). */
 data class ForumRef(
     val namespaceId: String,
     val spaceName: String,
@@ -102,14 +98,45 @@ object ForumErrorText {
     fun describe(error: Throwable): String =
         when (error) {
             is ForumModelException -> error.message.orEmpty()
-            is NoRelayException -> "No relay serves your account yet. Join a space from an invitation link to get one."
+            is SignedOutException -> "You're not connected to your cluster. Sign in again."
+            is ConfirmCancelled, is PasskeyCancelled -> "The passkey prompt was cancelled."
+            is PasskeyRequired, is ConfirmRequired -> "This needs your passkey. Open the app and try again."
+            is LoginRequired -> "Your session ended. Sign in again."
+            is ReleaseDeadlineError -> "A newer node release needs approval before anything can change. Review it under Spaces."
+            is ConsentStale -> "That approval request is out of date. Try again."
+            is NotFound -> "This isn't available to you (yet)."
+            is WrongNode -> "This node doesn't serve your account. Sign in again to reach your cluster."
+            is UnavailableError -> "Your cluster is unavailable right now (${error.reason}). Try again shortly."
+            is AppError -> refusal(error.appCode, error.fields) ?: fromText(error.message.orEmpty())
+            is TeeTrustException -> "Your cluster's node could not be verified: ${error.message}"
             is UnknownHostException -> "You're offline. Check your connection and try again."
-            is SocketTimeoutException -> "The relay took too long to answer. Try again."
+            is SocketTimeoutException -> "Your cluster took too long to answer. Try again."
             is SerializationException ->
                 "The forum answered in a shape this app doesn't understand. Update the app and try again."
-            is IOException -> error.message?.takeIf { it.isNotBlank() } ?: "Couldn't reach the relay. Try again."
+            is IOException -> "Couldn't reach your cluster. Try again."
             else -> fromText(error.message.orEmpty())
         }
+
+    /** The contract's refusals (`APP_ERROR`): `NotFound {what, id}`, `Forbidden {message}`, `Invalid {message}`. */
+    fun refusal(
+        code: String,
+        fields: JsonObject,
+    ): String? {
+        fun field(key: String) = (fields[key] as? JsonPrimitive)?.contentOrNull?.nullIfBlank()
+        val message = field("message")?.let(::sentence)
+        return when (code) {
+            "NotFound" -> "This ${field("what") ?: "item"} no longer exists. It may have been deleted."
+            "Forbidden" -> message ?: "You're not allowed to do that."
+            "Invalid" -> message ?: "That isn't valid. Check it and try again."
+            else -> message
+        }
+    }
+
+    /** [text] with a capital first letter and a full stop. */
+    internal fun sentence(text: String): String {
+        val capital = text.replaceFirstChar { it.uppercase() }
+        return if (capital.endsWith('.') || capital.endsWith('!') || capital.endsWith('?')) capital else "$capital."
+    }
 
     private fun fromText(text: String): String =
         when {

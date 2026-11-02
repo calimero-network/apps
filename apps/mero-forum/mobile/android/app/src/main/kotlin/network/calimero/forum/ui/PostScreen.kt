@@ -46,13 +46,13 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import network.calimero.forum.contract.CommentView
+import network.calimero.forum.contract.PostView
 import network.calimero.forum.core.FeedModel
 import network.calimero.forum.core.ForumErrorText
 import network.calimero.forum.core.ForumFormat
 import network.calimero.forum.core.LoadPhase
 import network.calimero.forum.core.ThreadModel
-import network.calimero.forum.generated.CommentView
-import network.calimero.forum.generated.PostView
 
 /** One post, its replies, and a reply box that stays above the keyboard. */
 @OptIn(ExperimentalMaterial3Api::class)

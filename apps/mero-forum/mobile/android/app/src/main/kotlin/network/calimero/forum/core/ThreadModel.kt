@@ -7,9 +7,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import network.calimero.forum.generated.CommentView
-import network.calimero.forum.generated.ForumClient
-import network.calimero.forum.generated.PostView
+import network.calimero.forum.contract.CommentView
+import network.calimero.forum.contract.ForumClient
+import network.calimero.forum.contract.PostView
 
 /** One post and its replies: read, reply, vote, edit, delete, moderate. (Swift `ThreadModel`.) */
 @Suppress("TooManyFunctions")

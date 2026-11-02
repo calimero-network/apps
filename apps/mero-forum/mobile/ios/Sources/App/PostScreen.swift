@@ -1,5 +1,4 @@
 import ForumCore
-import ForumGenerated
 import SwiftUI
 
 /// One post, its replies, and a reply box that stays above the keyboard.

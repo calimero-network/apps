@@ -11,8 +11,13 @@ import Combine
 /// the node's consent page in the system browser; an app's own session can't
 /// approve anything.
 ///
+/// Before the page opens, the node's confirmation code is shown in the app
+/// (``confirmation``): the page shows the same code, so the person can check
+/// it is the request the app made. Continuing opens the page; cancelling
+/// doesn't.
+///
 /// The app hands it `MeroAppSession.pendingApprovals(org:)` and
-/// `MeroClient.requestConsent(_:callback:)`; tests hand it fakes.
+/// `MeroClient.requestConsent(_:callback:confirm:)`; tests hand it fakes.
 @MainActor
 public final class ApprovalsModel: ObservableObject {
     /// One thing to approve.
@@ -47,12 +52,29 @@ public final class ApprovalsModel: ObservableObject {
     }
 
     public typealias Fetch = @MainActor (_ org: String?) async throws -> PendingApprovals
-    public typealias Consent = @MainActor (_ request: @escaping (String) -> ConsentRequest) async -> ConsentResult?
+    /// Shows the confirmation code before the page opens: `false` keeps it closed.
+    public typealias Confirm = @MainActor (ConsentStarted) async -> Bool
+    public typealias Consent = @MainActor (
+        _ request: @escaping (String) -> ConsentRequest, _ confirm: @escaping Confirm
+    ) async -> ConsentResult?
+
+    /// A confirmation code waiting for the person to continue to the consent page.
+    public struct Confirmation: Identifiable, Equatable, Sendable {
+        public let id: String
+        /// What is being approved (the item's title).
+        public let title: String
+        /// The code the consent page shows too (`ABC-123`), or `nil` from a node that predates it.
+        public let code: String?
+    }
 
     @Published public private(set) var items: [Item] = []
     /// The item whose consent page is open.
     @Published public private(set) var approving: String?
     @Published public var error: String?
+    /// The code to show before the consent page opens; answer it with ``answer(_:)``.
+    @Published public private(set) var confirmation: Confirmation?
+
+    private var pendingAnswer: CheckedContinuation<Bool, Never>?
 
     private let packageName: String
     private let appName: String
@@ -84,12 +106,36 @@ public final class ApprovalsModel: ObservableObject {
         approving = item.id
         defer { approving = nil }
         error = nil
-        guard let result = await consent({ item.request(returnTo: $0) }) else {
+        var cancelled = false
+        let result = await consent({ item.request(returnTo: $0) }) { [weak self] started in
+            guard let self else { return false }
+            let proceed = await self.ask(Confirmation(id: started.requestId, title: item.title, code: started.code))
+            cancelled = !proceed
+            return proceed
+        }
+        if cancelled { return false }
+        guard let result else {
             error = "Couldn't open the approval page. Try again."
             return false
         }
         await load(orgs: orgs)
         return result.status == .approved
+    }
+
+    /// The person's answer to ``confirmation``: `true` opens the consent page.
+    public func answer(_ proceed: Bool) {
+        confirmation = nil
+        let waiting = pendingAnswer
+        pendingAnswer = nil
+        waiting?.resume(returning: proceed)
+    }
+
+    private func ask(_ confirmation: Confirmation) async -> Bool {
+        pendingAnswer?.resume(returning: false)
+        return await withCheckedContinuation { continuation in
+            pendingAnswer = continuation
+            self.confirmation = confirmation
+        }
     }
 
     /// The actionable items in one scope's pending list: upgrades of this

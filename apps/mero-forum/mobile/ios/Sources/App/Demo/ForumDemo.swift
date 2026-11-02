@@ -1,6 +1,5 @@
 #if DEBUG
 import ForumCore
-import ForumGenerated
 import Foundation
 import MeroKit
 
@@ -93,7 +92,7 @@ enum ForumDemo {
             let now = DemoIds.stamp(ago: 0)
 
             switch call.method {
-            case "list_posts":
+            case "listPosts":
                 var live = forum.posts
                 if call.string("sort") == "top" {
                     live.sort { ($0.others + Int64($0.myVote), $0.createdAt) > ($1.others + Int64($1.myVote), $1.createdAt) }
@@ -101,58 +100,58 @@ enum ForumDemo {
                     live.sort { $0.createdAt > $1.createdAt }
                 }
                 return try DemoReply.json(PostPage(items: live.map { view($0, in: forum) }, nextCursor: nil))
-            case "get_post":
-                guard let post = forum.posts.first(where: { $0.id == call.string("post_id") }) else {
+            case "getPost":
+                guard let post = forum.posts.first(where: { $0.id == call.string("postId") }) else {
                     throw DemoContractError("no such post")
                 }
                 return try DemoReply.json(view(post, in: forum))
-            case "list_comments":
-                let items = forum.replies.filter { $0.postId == call.string("post_id") }.sorted { $0.createdAt < $1.createdAt }
+            case "listComments":
+                let items = forum.replies.filter { $0.postId == call.string("postId") }.sorted { $0.createdAt < $1.createdAt }
                 return try DemoReply.json(CommentPage(items: items.map(view), nextCursor: nil))
-            case "create_post":
+            case "createPost":
                 let id = mint("post")
                 forum.posts.append(
                     Post(id: id, author: me, title: call.string("title") ?? "", body: call.string("body") ?? "",
                          createdAt: now, editedAt: now, others: 0, myVote: 0))
                 return try DemoReply.json(id)
-            case "create_comment":
+            case "createComment":
                 let id = mint("reply")
                 forum.replies.append(
-                    Reply(id: id, postId: call.string("post_id") ?? "", author: me, body: call.string("body") ?? "",
+                    Reply(id: id, postId: call.string("postId") ?? "", author: me, body: call.string("body") ?? "",
                           createdAt: now, editedAt: now, others: 0, myVote: 0))
                 return try DemoReply.json(id)
-            case "edit_post":
-                if let i = forum.posts.firstIndex(where: { $0.id == call.string("post_id") }) {
+            case "editPost":
+                if let i = forum.posts.firstIndex(where: { $0.id == call.string("postId") }) {
                     forum.posts[i].title = call.string("title") ?? forum.posts[i].title
                     forum.posts[i].body = call.string("body") ?? forum.posts[i].body
                     forum.posts[i].editedAt = now
                 }
-            case "edit_comment":
-                if let i = forum.replies.firstIndex(where: { $0.id == call.string("comment_id") }) {
+            case "editComment":
+                if let i = forum.replies.firstIndex(where: { $0.id == call.string("commentId") }) {
                     forum.replies[i].body = call.string("body") ?? forum.replies[i].body
                     forum.replies[i].editedAt = now
                 }
-            case "delete_post", "moderate_post":
-                let id = call.string("post_id")
+            case "deletePost", "moderatePost":
+                let id = call.string("postId")
                 forum.posts.removeAll { $0.id == id }
                 forum.replies.removeAll { $0.postId == id }
-            case "delete_comment", "moderate_comment":
-                forum.replies.removeAll { $0.id == call.string("comment_id") }
+            case "deleteComment", "moderateComment":
+                forum.replies.removeAll { $0.id == call.string("commentId") }
             case "vote":
-                if let i = forum.posts.firstIndex(where: { $0.id == call.string("post_id") }) {
+                if let i = forum.posts.firstIndex(where: { $0.id == call.string("postId") }) {
                     forum.posts[i].myVote = Int32(call.int("value") ?? 0)
                 }
-            case "vote_comment":
-                if let i = forum.replies.firstIndex(where: { $0.id == call.string("comment_id") }) {
+            case "voteComment":
+                if let i = forum.replies.firstIndex(where: { $0.id == call.string("commentId") }) {
                     forum.replies[i].myVote = Int32(call.int("value") ?? 0)
                 }
-            case "get_nickname":
+            case "getNickname":
                 return try DemoReply.json(names[call.string("account") ?? ""] ?? "")
-            case "set_nickname":
+            case "setNickname":
                 names[me] = call.string("name") ?? ""
             case "moderators":
                 return try DemoReply.json(forum.moderators)
-            case "set_moderators":
+            case "setModerators":
                 forum.moderators = call.strings("accounts") ?? forum.moderators
             default:
                 break

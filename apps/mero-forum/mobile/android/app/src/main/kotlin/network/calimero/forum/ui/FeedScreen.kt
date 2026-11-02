@@ -64,13 +64,13 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import network.calimero.forum.contract.PostView
 import network.calimero.forum.core.FeedModel
 import network.calimero.forum.core.FeedSort
 import network.calimero.forum.core.ForumErrorText
 import network.calimero.forum.core.ForumFormat
 import network.calimero.forum.core.ForumsModel
 import network.calimero.forum.core.LoadPhase
-import network.calimero.forum.generated.PostView
 
 /** A destructive action waiting for a yes. */
 data class Confirm(
