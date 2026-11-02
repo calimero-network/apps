@@ -68,7 +68,18 @@ public enum DesignFormat {
     /// The Calimero 1.0 node's typed errors, in words.
     static func clusterText(_ error: Error) -> String? {
         switch error {
+        case let error as AppError:
+            // The contract's refusals: `Forbidden {message}` / `Invalid {message}`.
+            if let message = error.fields["message"]?.stringValue?.trimmingCharacters(in: .whitespaces), !message.isEmpty {
+                if message.lowercased().contains("view-only") || message.lowercased().contains("editor") {
+                    return "You have view-only access to this board. Ask an admin for edit access to comment."
+                }
+                return message.prefix(1).uppercased() + message.dropFirst()
+            }
+            return error.appCode == "Forbidden"
+                ? "You don't have access to do that on this board." : "That isn't allowed on this board."
         case is ConfirmCancelled: return "The passkey prompt was cancelled."
+        case is WrongNode, is NotLeader: return "Your cluster is busy right now. Try again shortly."
         case is LoginRequired: return "Your session ended. Sign in again."
         case is SignedOutError: return "You're signed out. Sign in again to see your boards."
         case is ReleaseDeadlineError:

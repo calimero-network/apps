@@ -51,3 +51,31 @@ struct ApprovalsCard: View {
         }
     }
 }
+
+/// The confirmation code shown before the consent page opens: the page shows the same code, so the
+/// person can tell it is the request this app made.
+@MainActor
+final class ConsentCodeCheck: ObservableObject {
+    @Published private(set) var code: String?
+    private var waiting: CheckedContinuation<Bool, Never>?
+
+    var isShown: Binding<Bool> {
+        Binding(get: { self.code != nil }, set: { if !$0 { self.answer(false) } })
+    }
+
+    /// Show `code` and wait for the person; no code (an older node) goes straight on.
+    func confirm(_ code: String?) async -> Bool {
+        guard let code, !code.isEmpty else { return true }
+        answer(false)
+        return await withCheckedContinuation { continuation in
+            waiting = continuation
+            self.code = code
+        }
+    }
+
+    func answer(_ ok: Bool) {
+        code = nil
+        waiting?.resume(returning: ok)
+        waiting = nil
+    }
+}

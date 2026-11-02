@@ -4,8 +4,9 @@ import SwiftUI
 
 /// Signed out: what the app is, then sign-in to a Calimero 1.0 cluster.
 ///
-/// - Calimero Cloud: the cluster's node URL (from the console, or baked in
-///   as `CalimeroClusterURL`), then the device's passkey. "Create an account"
+/// - Calimero Cloud: the cluster's name (looked up in the Calimero directory)
+///   or a node URL of it (from the console, or baked in as
+///   `CalimeroClusterURL`), then the device's passkey. "Create an account"
 ///   registers a new passkey under a name.
 /// - Development: a `merod local` node URL with mock attestation allowed; the
 ///   SDK makes and keeps a software passkey for that node.
@@ -59,7 +60,7 @@ struct SignInView: View {
                     .font(Theme.body(13)).foregroundStyle(Theme.muted)
             } else {
                 FieldLabel("Cluster")
-                urlField("https://node.your-cluster.calimero.network", text: $clusterURL)
+                urlField("your-cluster, or https://node.example", text: $clusterURL)
                 if mode == .create {
                     FieldLabel("Your name")
                     TextField("e.g. Ada Lovelace", text: $name).textInputAutocapitalization(.words).signInField()
@@ -138,11 +139,9 @@ struct SignInView: View {
         Task {
             switch mode {
             case .signIn:
-                session.connect(nodeURL: clusterURL, allowMock: false)
-                await session.signIn()
+                if await connectCluster() { await session.signIn() }
             case .create:
-                session.connect(nodeURL: clusterURL, allowMock: false)
-                await session.signUp(name: trimmedName)
+                if await connectCluster() { await session.signUp(name: trimmedName) }
             case .development:
                 session.connect(nodeURL: devNodeURL, allowMock: true)
                 _ = await client.signInOrSignUp(name: trimmedName.isEmpty ? nil : trimmedName)
@@ -150,6 +149,18 @@ struct SignInView: View {
             }
             busy = false
         }
+    }
+}
+
+extension SignInView {
+    /// A URL connects to that node; anything else is a cluster name the directory resolves.
+    func connectCluster() async -> Bool {
+        let value = clusterURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.contains("://") {
+            session.connect(nodeURL: value, allowMock: false)
+            return true
+        }
+        return await client.connect(cluster: value)
     }
 }
 

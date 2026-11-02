@@ -56,7 +56,9 @@ enum Fixtures {
         backend.subgroups = [team: [AppSubgroup(groupId: group, name: "Landing page", contextIds: [board])]]
         if memberOfBoard { backend.members = [board] }
         let answers = Answers(elements: elements, comments: comments, members: members, cursors: cursors, role: role)
-        backend.recording.setRawHandler { call in Data(answers.answer(call.method).utf8) }
+        backend.recording.setHandler { call in
+            try JSONDecoder().decode(JSONValue.self, from: Data(answers.answer(call.method).utf8))
+        }
         return backend
     }
 
@@ -64,10 +66,11 @@ enum Fixtures {
         let lock = NSLock()
         var table: [String: String]
         init(elements: String, comments: String, members: String, cursors: String, role: String) {
+            // The component contract's names; the whole board fits one `getElementsPage`.
             table = [
-                "get_elements": elements, "get_comments": comments, "get_members": members, "get_cursors": cursors,
-                "my_role": "\"\(role)\"",
-                "get_board": #"{"name":"Landing v2","description":"Hero and pricing","elementCount":3,"memberCount":2,"owner":null}"#,
+                "getElementsPage": #"{"items":"# + elements + #","nextCursor":null}"#, "getComments": comments,
+                "getMembers": members, "getCursors": cursors, "myRole": "\"\(role)\"",
+                "getBoard": #"{"name":"Landing v2","description":"Hero and pricing","elementCount":3,"memberCount":2,"owner":null}"#,
             ]
         }
         func answer(_ method: String) -> String {

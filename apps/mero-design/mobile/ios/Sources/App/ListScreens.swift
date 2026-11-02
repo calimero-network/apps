@@ -9,9 +9,12 @@ struct TeamsScreen: View {
     @StateObject private var model: TeamsModel
     @StateObject private var approvals: ApprovalsModel
     @State private var showAccount = false
+    @StateObject private var codeCheck: ConsentCodeCheck
 
     init(session: MeroAppSession, backend: any MeroAppBackend) {
         self.session = session
+        let codeCheck = ConsentCodeCheck()
+        _codeCheck = StateObject(wrappedValue: codeCheck)
         _model = StateObject(wrappedValue: TeamsModel(backend: backend))
         _approvals = StateObject(
             wrappedValue: ApprovalsModel(
@@ -22,7 +25,10 @@ struct TeamsScreen: View {
                 },
                 consent: { [weak session] request in
                     guard let session else { return nil }
-                    return await session.client.requestConsent(request, callback: session.callback)
+                    // The page shows a confirmation code; the app shows it first.
+                    return await session.client.requestConsent(request, callback: session.callback) { started in
+                        await codeCheck.confirm(started.code)
+                    }
                 }))
     }
 
@@ -66,6 +72,13 @@ struct TeamsScreen: View {
         .scrollContentBackground(.hidden)
         .background(Theme.ground)
         .navigationTitle("Mero Design")
+        .alert(
+            "Check the code", isPresented: codeCheck.isShown,
+            actions: {
+                Button("Cancel", role: .cancel) { codeCheck.answer(false) }
+                Button("Continue") { codeCheck.answer(true) }
+            },
+            message: { Text("The approval page will show \(codeCheck.code ?? ""). Continue only if it shows this code.") })
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {

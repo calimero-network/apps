@@ -14,8 +14,8 @@ let package = Package(
         .library(name: "DesignCore", targets: ["DesignCore"]),
     ],
     dependencies: [
-        // swift-sdk `main`, the merge commit of PR #84. Keep it equal to ../project.yml.
-        .package(url: "https://github.com/calimero-network/swift-sdk", revision: "35148e4de782c065f777e80c592d9548acd645cd"),
+        // swift-sdk#85 (Calimero 1.0) head; moves to its merge commit once it lands. Keep it equal to ../project.yml.
+        .package(url: "https://github.com/calimero-network/swift-sdk", revision: "37c09f3f96e7d98440f6618eef8a0e83ddee8ebd"),
     ],
     targets: [
         .target(

@@ -153,47 +153,55 @@ enum DesignDemo {
             guard var board = boards[call.contextId] else { throw DemoContractError("context not found") }
             defer { boards[call.contextId] = board }
             let me = DesignDemo.me
-            func u64(_ key: String) -> UInt64 { (call.args[key] as? NSNumber)?.uint64Value ?? DesignDemo.ms(ago: 0) }
-            func i64(_ key: String) -> Int64 { (call.args[key] as? NSNumber)?.int64Value ?? 0 }
+            // The component wire: 64-bit arguments arrive as decimal strings.
+            func u64(_ key: String) -> UInt64 {
+                (call.args[key] as? String).flatMap(UInt64.init) ?? (call.args[key] as? NSNumber)?.uint64Value
+                    ?? DesignDemo.ms(ago: 0)
+            }
+            func i64(_ key: String) -> Int64 {
+                (call.args[key] as? String).flatMap(Int64.init) ?? (call.args[key] as? NSNumber)?.int64Value ?? 0
+            }
 
             switch call.method {
-            case "get_board":
+            case "getBoard":
                 return try DemoReply.json(
                     BoardInfo(
                         name: board.name, description: board.description, elementCount: UInt32(board.elements.count),
                         memberCount: UInt32(board.members.count), owner: board.members.first { $0.username == "Priya Raman" }?.id))
-            case "get_elements":
-                return try DemoReply.json(board.elements.sorted { $0.layerIndex < $1.layerIndex })
-            case "get_comments":
+            case "getElementsPage":
+                // One page holds the whole demo board.
+                return try DemoReply.json(
+                    ElementPage(items: board.elements.sorted { $0.layerIndex < $1.layerIndex }, nextCursor: nil))
+            case "getComments":
                 return try DemoReply.json(board.comments)
-            case "get_members":
+            case "getMembers":
                 return try DemoReply.json(board.members)
-            case "my_role":
+            case "myRole":
                 return try DemoReply.json("editor")
-            case "can_edit":
+            case "canEdit":
                 return try DemoReply.json(true)
-            case "get_cursors":
+            case "getCursors":
                 let now = DesignDemo.ms(ago: 1.5)
                 return try DemoReply.json(
                     board.viewers.map { name, x, y in
                         CursorState(
                             identity: DemoIds.hex("device:\(name)"), account: DesignDemo.person(name), x: x, y: y, updatedAt: now)
                     })
-            case "add_comment":
+            case "addComment":
                 let id = call.string("id") ?? UUID().uuidString.lowercased()
                 let comment = Comment(
                     id: id, x: i64("x"), y: i64("y"), content: call.string("content") ?? "", author: me,
-                    createdAt: u64("created_at"), replies: board.comments.first { $0.id == id }?.replies ?? [])
+                    createdAt: u64("createdAt"), replies: board.comments.first { $0.id == id }?.replies ?? [])
                 board.comments.removeAll { $0.id == id }
                 board.comments.append(comment)
-            case "add_reply":
-                guard let i = board.comments.firstIndex(where: { $0.id == call.string("comment_id") }) else {
+            case "addReply":
+                guard let i = board.comments.firstIndex(where: { $0.id == call.string("commentId") }) else {
                     throw DemoContractError("comment not found")
                 }
                 board.comments[i].replies.append(
                     CommentReply(
-                        id: call.string("reply_id") ?? UUID().uuidString.lowercased(), content: call.string("content") ?? "",
-                        author: me, createdAt: u64("created_at")))
+                        id: call.string("replyId") ?? UUID().uuidString.lowercased(), content: call.string("content") ?? "",
+                        author: me, createdAt: u64("createdAt")))
             case "join":
                 if !board.members.contains(where: { $0.id == me }) {
                     let at = u64("timestamp")
@@ -205,6 +213,12 @@ enum DesignDemo {
             }
             return DemoReply.null
         }
+    }
+
+    /// `getElementsPage`'s answer.
+    struct ElementPage: Encodable {
+        let items: [Element]
+        let nextCursor: String?
     }
 
     // MARK: Images
