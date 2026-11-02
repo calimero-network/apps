@@ -5,9 +5,10 @@ import MeroKitTestSupport
 @testable import CalendarCore
 
 enum Fixture {
-    static let me = String(repeating: "ab", count: 32)
-    static let bob = String(repeating: "b0", count: 32)
-    static let carol = String(repeating: "c0", count: 32)
+    // Account ids, as a 1.0 node names them.
+    static let me = "acc_me"
+    static let bob = "acc_bob"
+    static let carol = "acc_carol"
     static let utc = TimeZone(identifier: "UTC")!
     static let math = CalendarMath(timeZone: utc, locale: Locale(identifier: "en_US_POSIX"))
 
@@ -22,7 +23,7 @@ enum Fixture {
         return math.calendar.date(from: c)!
     }
 
-    /// A `get_events` row the way the contract writes it.
+    /// A `getEvents` row the way the contract writes it.
     static func eventJSON(
         id: String, title: String, owner: String, start: String, end: String, peers: [String] = [],
         type: String = "event", color: String = "#2aa775", isPrivate: Bool = false
@@ -36,7 +37,8 @@ enum Fixture {
 
     static func member(_ id: String, _ name: String) -> JSONValue {
         .object([
-            "id": .string(id), "username": .string(name), "joinedAt": .number(1), "usernameUpdatedAt": .number(1),
+            "id": .string(id), "username": .string(name), "joinedAt": .string("1761650000000000001"),
+            "usernameUpdatedAt": .string("1"),
         ])
     }
 
@@ -51,8 +53,10 @@ enum Fixture {
         backend.recording.setHandler { call in
             if let value = answer(call) { return value }
             switch call.method {
-            case "get_events", "get_private_events", "get_members": return .array([])
-            case "create_event", "update_event", "delete_event": return .string("evt-new")
+            case "getEvents", "getPrivateEvents", "getMembers": return .array([])
+            case "createEvent", "createPrivateEvent": return .string("evt-new")
+            case "updateEvent", "updatePrivateEvent", "deleteEvent", "deletePrivateEvent":
+                return .string(call.sent["eventId"] as? String ?? "")
             default: return .null
             }
         }

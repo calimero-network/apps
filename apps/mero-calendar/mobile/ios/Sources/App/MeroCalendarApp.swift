@@ -20,10 +20,9 @@ struct MeroCalendarApp: App {
     }
 }
 
-/// Things kept on this device: private events and the names given to things.
+/// Things kept on this device: the names given to things.
 enum DeviceStores {
     static let keyValue: KeyValueStore = DefaultsStore()
-    static let privateEvents = PrivateEventStore(store: keyValue)
     static let names = NameBook(store: keyValue)
 }
 
@@ -113,9 +112,10 @@ struct SignedInView: View {
                     guard let session else { throw CancellationError() }
                     return try await session.pendingApprovals(org: org)
                 },
-                consent: { [weak session] request in
+                consent: { [weak session] request, confirm in
                     guard let session else { return nil }
-                    return await session.client.requestConsent(request, callback: session.callback)
+                    return await session.client.requestConsent(
+                        request, callback: session.callback, confirm: { await confirm($0) })
                 }))
     }
 
@@ -133,8 +133,7 @@ struct SignedInView: View {
                     case .calendar(let team, let calendar):
                         CalendarScreen(
                             model: CalendarModel(
-                                backend: backend, team: team, calendar: calendar, names: DeviceStores.names,
-                                privateStore: DeviceStores.privateEvents))
+                                backend: backend, team: team, calendar: calendar, names: DeviceStores.names))
                     }
                 }
         }

@@ -2,7 +2,8 @@ import CalendarCore
 import SwiftUI
 
 /// What waits for the person's approval (an update of Mero Calendar, a node
-/// release): "Review" opens the node's consent page in the system browser.
+/// release): "Review" shows the confirmation code first, then opens the
+/// node's consent page in the system browser, where the same code shows.
 /// Nothing shows when there is nothing to approve.
 struct ApprovalsCard: View {
     @ObservedObject var model: ApprovalsModel
@@ -35,6 +36,18 @@ struct ApprovalsCard: View {
                 }
             }
             .accessibilityIdentifier("approvals.card")
+            .alert(
+                "Check the code",
+                isPresented: Binding(
+                    get: { model.confirmationCode != nil }, set: { if !$0 { model.answerConfirmation(false) } }),
+                actions: {
+                    Button("Open approval page") { model.answerConfirmation(true) }
+                    Button("Cancel", role: .cancel) { model.answerConfirmation(false) }
+                },
+                message: {
+                    Text(
+                        "The approval page will show \(model.confirmationCode ?? ""). Approve only if it shows the same code.")
+                })
         }
     }
 

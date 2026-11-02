@@ -58,7 +58,7 @@ final class ApprovalsTests: XCTestCase {
                 guard let org else { throw NotFound("no account report") }
                 return try Self.pending(org: org)
             },
-            consent: { build in
+            consent: { build, _ in
                 requested.append(build("mero-calendar://consent"))
                 return try? JSONDecoder().decode(
                     ConsentResult.self, from: Data(#"{"requestId":"r1","kind":"upgrade","status":"approved"}"#.utf8))
@@ -69,6 +69,43 @@ final class ApprovalsTests: XCTestCase {
         XCTAssertTrue(approved)
         XCTAssertEqual(requested, [.upgrade(app: "app-1", toVersion: "1.2.0", returnTo: "mero-calendar://consent")])
         XCTAssertNil(model.approving)
+    }
+
+    func testTheConfirmationCodeIsShownBeforeThePageOpens() async throws {
+        var opened = false
+        let model = ApprovalsModel(
+            packageName: CalendarConstants.packageName, appName: "Mero Calendar",
+            fetch: { org in try Self.pending(org: org ?? "org1") },
+            consent: { _, confirm in
+                let started = try! JSONDecoder().decode(
+                    ConsentStarted.self,
+                    from: Data(#"{"requestId":"r1","url":"https://node/consent/r1","expiresAt":1,"code":"ABC-DEF"}"#.utf8))
+                guard await confirm(started) else { return nil }
+                opened = true
+                return nil
+            })
+        await model.load(orgs: ["org1"])
+        let item = try XCTUnwrap(model.items.first)
+        let approving = Task { await model.approve(item, orgs: ["org1"]) }
+        while model.confirmationCode == nil { await Task.yield() }
+        XCTAssertEqual(model.confirmationCode, "ABC-DEF")
+        model.answerConfirmation(false)
+        let approved = await approving.value
+        XCTAssertFalse(approved)
+        XCTAssertFalse(opened)
+        XCTAssertNil(model.confirmationCode)
+        XCTAssertNil(model.error, "declining the code is not an error")
+    }
+
+    func testContractErrorsInWords() {
+        func refusal(_ code: String, _ fields: [String: JSONValue] = [:]) -> AppError {
+            AppError("refused", details: ["code": .string(code), "fields": .object(fields)])
+        }
+        XCTAssertEqual(ErrorText.describe(refusal("Forbidden"), doing: "save"), "Only the event's owner can change it.")
+        XCTAssertEqual(
+            ErrorText.describe(refusal("Invalid", ["message": .string("title cannot be empty")]), doing: "save"),
+            "That isn't valid: title cannot be empty.")
+        XCTAssertTrue(ErrorText.describe(refusal("NotFound", ["id": .string("e1")]), doing: "save").contains("no longer exists"))
     }
 
     func testClusterErrorsInWords() {

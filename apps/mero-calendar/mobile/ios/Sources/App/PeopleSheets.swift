@@ -1,7 +1,7 @@
 import CalendarCore
 import SwiftUI
 
-/// The calendar's members (`get_members`).
+/// The calendar's members (`getMembers`).
 struct MembersSheet: View {
     @ObservedObject var model: CalendarModel
     @Environment(\.dismiss) private var dismiss
@@ -114,7 +114,7 @@ struct CalendarDetailsSheet: View {
                 row("Team id (organization)", model.team.id)
                 row("Your account", model.me)
                 Section {
-                    Text("Private events are kept on this device and are never sent to your cluster or your team.")
+                    Text("Private events are yours alone: only your own account can read them, on any device.")
                         .font(Theme.body(13)).foregroundStyle(Theme.muted)
                 }
             }

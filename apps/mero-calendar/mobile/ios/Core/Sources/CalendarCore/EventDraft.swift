@@ -42,8 +42,8 @@ public struct EventDraft: Equatable, Sendable {
 
     public var isNew: Bool { original == nil }
 
-    /// A shared event can't become private again: it is already replicated
-    /// to every member (the contract's `update_event` note).
+    /// A shared event can't become private again: sharing is one way (the
+    /// contract's `updateEvent`).
     public var canTogglePrivate: Bool { original == nil || original?.isPrivate == true }
 
     /// Why the draft can't be saved yet, or `nil`.
@@ -85,7 +85,7 @@ public struct EventDraft: Equatable, Sendable {
         let (s, e) = normalisedTimes(math: math)
         return CalendarItem(
             id: original?.id ?? "", title: title.trimmingCharacters(in: .whitespacesAndNewlines),
-            description: description, owner: original?.owner ?? owner.lowercased(), start: s, end: e,
+            description: description, owner: original?.owner ?? owner, start: s, end: e,
             isAllDay: isAllDay, color: color, peers: isPrivate ? [] : peers, isPrivate: isPrivate)
     }
 }
