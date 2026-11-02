@@ -6,22 +6,16 @@ export default defineConfig({
   // Relative, so the same build runs at / and under the node's /{version}/.
   base: "./",
   server: {
-    port: 5176,
-    strictPort: false,
+    // 5173 exactly: the origin `merod local` trusts passkey ceremonies from
+    // (`pnpm dev:local mero-pixart` passes it too). `strictPort` so a busy port
+    // fails instead of silently moving to an origin no passkey works on.
+    port: 5173,
+    strictPort: true,
   },
   test: {
     environment: "jsdom",
     globals: true,
     setupFiles: "./src/test/setup.ts",
-    exclude: ["**/node_modules/**", "**/e2e/**"],
-    server: {
-      deps: {
-        // The platform SDK ships extensionless directory imports (e.g.
-        // `export … from "./bridge"`) that Vite resolves but Node's raw ESM
-        // loader rejects. Inline it so vitest transforms it through Vite.
-        inline: [/@calimero-network\/mero-platform/],
-      },
-    },
   },
   plugins: [react(), servedAssetsFallback()],
 });

@@ -1,0 +1,424 @@
+[
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addLayer",
+  "args": {
+   "layer": {
+    "id": "e2e-layer",
+    "name": "E2E Layer",
+    "kind": "raster",
+    "parentId": null,
+    "layerIndex": 0,
+    "visible": true,
+    "locked": false,
+    "opacity": 100,
+    "blendMode": "normal",
+    "x": "0",
+    "y": "0",
+    "width": 1280,
+    "height": 720,
+    "rotation": 0,
+    "scaleX": 100,
+    "scaleY": 100,
+    "fill": "",
+    "adjustments": {},
+    "text": null,
+    "createdAt": "1700000000000",
+    "updatedAt": "1700000000000"
+   }
+  },
+  "expect": {
+   "ok": "e2e-layer"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getLayers",
+  "args": {},
+  "expect": {
+   "ok": {
+    "items": [
+     {
+      "id": "e2e-layer",
+      "name": "E2E Layer",
+      "kind": "raster",
+      "parentId": null,
+      "layerIndex": 0,
+      "visible": true,
+      "locked": false,
+      "opacity": 100,
+      "blendMode": "normal",
+      "x": "0",
+      "y": "0",
+      "width": 1280,
+      "height": 720,
+      "rotation": 0,
+      "scaleX": 100,
+      "scaleY": 100,
+      "skewX": 0,
+      "skewY": 0,
+      "flipH": false,
+      "flipV": false,
+      "warp": "",
+      "pixelsRev": "0",
+      "maskRev": "0",
+      "hasMask": false,
+      "fill": "",
+      "adjustments": {
+       "brightness": 0,
+       "contrast": 0,
+       "saturation": 0,
+       "hue": 0,
+       "exposure": 0,
+       "blur": 0,
+       "invert": false,
+       "curves": ""
+      },
+      "text": null,
+      "createdBy": "@owner",
+      "createdAt": "1700000000000",
+      "updatedAt": "1700000000000"
+     }
+    ],
+    "next": null
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "myRole",
+  "args": {},
+  "expect": {
+   "ok": "viewer"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "deleteLayer",
+  "args": {
+   "id": "e2e-layer"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "view-only: editor or admin access is required to modify this document"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "updateLayer",
+  "args": {
+   "id": "e2e-layer",
+   "name": "mine",
+   "updatedAt": "1"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "addLayer",
+  "args": {
+   "layer": {
+    "id": "forged",
+    "name": "Forged",
+    "kind": "raster",
+    "parentId": null,
+    "layerIndex": 9,
+    "visible": true,
+    "locked": false,
+    "opacity": 100,
+    "blendMode": "normal",
+    "x": "0",
+    "y": "0",
+    "width": 1280,
+    "height": 720,
+    "rotation": 0,
+    "scaleX": 100,
+    "scaleY": 100,
+    "fill": "",
+    "adjustments": {},
+    "text": null,
+    "createdAt": "1700000000000",
+    "updatedAt": "1700000000000"
+   }
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "clearLayers",
+  "args": {},
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the document's owner may clear the document"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "updateDocument",
+  "args": {
+   "name": "Hijacked"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "grantEditor",
+  "args": {
+   "member": "@bob"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "transferOwnership",
+  "args": {
+   "newOwner": "@bob"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getLayers",
+  "args": {},
+  "expect": {
+   "ok": {
+    "items": [
+     {
+      "id": "e2e-layer",
+      "name": "E2E Layer",
+      "kind": "raster",
+      "parentId": null,
+      "layerIndex": 0,
+      "visible": true,
+      "locked": false,
+      "opacity": 100,
+      "blendMode": "normal",
+      "x": "0",
+      "y": "0",
+      "width": 1280,
+      "height": 720,
+      "rotation": 0,
+      "scaleX": 100,
+      "scaleY": 100,
+      "skewX": 0,
+      "skewY": 0,
+      "flipH": false,
+      "flipV": false,
+      "warp": "",
+      "pixelsRev": "0",
+      "maskRev": "0",
+      "hasMask": false,
+      "fill": "",
+      "adjustments": {
+       "brightness": 0,
+       "contrast": 0,
+       "saturation": 0,
+       "hue": 0,
+       "exposure": 0,
+       "blur": 0,
+       "invert": false,
+       "curves": ""
+      },
+      "text": null,
+      "createdBy": "@owner",
+      "createdAt": "1700000000000",
+      "updatedAt": "1700000000000"
+     }
+    ],
+    "next": null
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getRole",
+  "args": {
+   "member": "@bob"
+  },
+  "expect": {
+   "ok": "viewer"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "grantEditor",
+  "args": {
+   "member": "@bob"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "updateLayer",
+  "args": {
+   "id": "e2e-layer",
+   "name": "Bob's",
+   "updatedAt": "1700000000900"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getLayer",
+  "args": {
+   "id": "e2e-layer"
+  },
+  "expect": {
+   "ok": {
+    "id": "e2e-layer",
+    "name": "Bob's",
+    "kind": "raster",
+    "parentId": null,
+    "layerIndex": 0,
+    "visible": true,
+    "locked": false,
+    "opacity": 100,
+    "blendMode": "normal",
+    "x": "0",
+    "y": "0",
+    "width": 1280,
+    "height": 720,
+    "rotation": 0,
+    "scaleX": 100,
+    "scaleY": 100,
+    "skewX": 0,
+    "skewY": 0,
+    "flipH": false,
+    "flipV": false,
+    "warp": "",
+    "pixelsRev": "0",
+    "maskRev": "0",
+    "hasMask": false,
+    "fill": "",
+    "adjustments": {
+     "brightness": 0,
+     "contrast": 0,
+     "saturation": 0,
+     "hue": 0,
+     "exposure": 0,
+     "blur": 0,
+     "invert": false,
+     "curves": ""
+    },
+    "text": null,
+    "createdBy": "@owner",
+    "createdAt": "1700000000000",
+    "updatedAt": "1700000000900"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "revokeEditor",
+  "args": {
+   "member": "@bob"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "deleteLayer",
+  "args": {
+   "id": "e2e-layer"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getLayer",
+  "args": {
+   "id": "e2e-layer"
+  },
+  "expect": {
+   "ok": {
+    "id": "e2e-layer",
+    "name": "Bob's",
+    "kind": "raster",
+    "parentId": null,
+    "layerIndex": 0,
+    "visible": true,
+    "locked": false,
+    "opacity": 100,
+    "blendMode": "normal",
+    "x": "0",
+    "y": "0",
+    "width": 1280,
+    "height": 720,
+    "rotation": 0,
+    "scaleX": 100,
+    "scaleY": 100,
+    "skewX": 0,
+    "skewY": 0,
+    "flipH": false,
+    "flipV": false,
+    "warp": "",
+    "pixelsRev": "0",
+    "maskRev": "0",
+    "hasMask": false,
+    "fill": "",
+    "adjustments": {
+     "brightness": 0,
+     "contrast": 0,
+     "saturation": 0,
+     "hue": 0,
+     "exposure": 0,
+     "blur": 0,
+     "invert": false,
+     "curves": ""
+    },
+    "text": null,
+    "createdBy": "@owner",
+    "createdAt": "1700000000000",
+    "updatedAt": "1700000000900"
+   }
+  },
+  "events": {
+   "bob": [
+    "LayerAdded",
+    "RoleUpdated",
+    "LayerUpdated",
+    "RoleUpdated"
+   ]
+  }
+ }
+]

@@ -14,10 +14,12 @@
 // same job. The verdict is remembered per method name, so a document on an old
 // contract pays the failed call once, not once per action.
 
-/** True when the node rejected the call because the WASM has no such export. */
+/** True when the node rejected the call because the app has no such method. */
 export function isMethodNotFoundError(err: unknown): boolean {
+  // The component runtime: `422 APP_ERROR` with code `UnknownMethod`.
+  if ((err as { appCode?: unknown } | null)?.appCode === "UnknownMethod") return true;
   const msg = err instanceof Error ? err.message : String(err ?? "");
-  // calimero-runtime: `#[error("method {name:?} not found")]`
+  // v1's calimero-runtime: `#[error("method {name:?} not found")]`
   return /method\s+.*not found/i.test(msg);
 }
 

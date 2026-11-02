@@ -2,20 +2,14 @@
 logic/target/
 logic/dist/
 logic/res/*.mpk
-logic/res/bundle-temp/
 *.wasm
 
 # Node
 node_modules/
 app/node_modules/
 app/dist/
-app/dev-dist/
 app/.env.local
-app/.env.integration
-app/e2e-report/
-app/playwright-report/
-app/test-results/
-app/e2e-artifacts/
+app/.env.development.local
 
 # macOS
 .DS_Store
@@ -27,11 +21,3 @@ app/e2e-artifacts/
 
 # Logs
 *.log
-/tmp/*.log
-/tmp/*.pid
-
-# Calimero node homes (dev)
-~/.calimero/mero-pixart-*
-
-# build artifacts / caches
-logic/res/bundle-temp/

@@ -1,5 +1,14 @@
 # Mero PixArt: native mobile apps
 
+> **Status: still v1.** The contract and the web editor moved to the 1.0 runtime (component SDK,
+> app instances, orgs, passkeys, pixels as 256 × 256 tiles; see [`../README.md`](../README.md#mobile)).
+> These native apps still go through the v1 Swift and Kotlin SDKs (`MeroAppSession`: relay,
+> contexts, namespace invitations), a client generated from the v1 ABI, and one PNG blob per layer
+> (`blobId`), and their pinned SDKs have no 1.0 client to replace that with. Until they do, the apps
+> work only against a v1 deployment of the app. Do not run `scripts/regenerate-client.sh` until
+> then: `../logic/res/abi.json` is now the component ABI, which the committed v1 clients do not
+> match (the script refuses it).
+
 Native iOS and Android viewers for Mero PixArt, next to the web editor (`../app`) and the contract
 (`../logic`, package `com.calimero.mero-pixart`). They have the same screens, copy, icons (SF Symbols
 and the matching Material icons) and behaviour.

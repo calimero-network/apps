@@ -668,12 +668,16 @@ export const APPS = {
 
   'mero-pixart': {
     displayName: 'Mero PixArt',
-    e2eDir: 'e2e',
-    availability: 'web+desktop',
-    trust: ['Non-destructive edits', 'Real layer folders', 'Pixels on your nodes'],
+    // A component app (calimero-app-sdk, merod local, CalimeroClient): no
+    // Playwright, so no generated landing spec. docs/COMPONENT-APPS.md.
+    e2eDir: null,
+    availability: 'web',
+    // Passes its own passkey sign-in to the landing page as `onConnect`.
+    ownConnect: true,
+    trust: ['Non-destructive edits', 'Real layer folders', 'No passwords'],
     explainer: [
       'A collaborative raster image editor with the depth of a desktop tool — layer folders, masks, blend modes, curves and a corner-pin warp — that several people can work in at the same time.',
-      'Adjustments are non-destructive and applied live, so you can reconsider an exposure change a week later. The project, including every uploaded image, lives as blobs on your node rather than in a cloud editor’s bucket.',
+      'Adjustments are non-destructive and applied live, so you can reconsider an exposure change a week later. The project, including every uploaded image, lives as blobs of an app instance only your team reaches, rather than in a cloud editor’s bucket.',
     ],
     features: [
       { icon: 'Cube3DLayers', title: 'Layers and folders', body: 'Raster, text and fill layers inside real collapsible folders, not a flat list pretending to nest.' },
@@ -681,14 +685,13 @@ export const APPS = {
       { icon: 'LineChart', title: 'Curves', body: 'A per-channel RGB spline editor applied through a lookup table, the way a real editor does it.' },
       { icon: 'Eye', title: 'Blend modes and masks', body: 'All sixteen blend modes, per-layer opacity, and paintable masks to hide or reveal.' },
       { icon: 'Cube3D', title: 'Free transform', body: 'Move, scale, rotate, shear, mirror, and a corner-pin warp for perspective.' },
-      { icon: 'Circle', title: 'Paint tools', body: 'Brush, eraser, bucket fill and eyedropper, each re-rendering the layer to a new blob.' },
+      { icon: 'Circle', title: 'Paint tools', body: 'Brush, eraser, bucket fill and eyedropper. A stroke re-uploads only the 256-pixel tiles it touched.' },
     ],
     overview: {
-      headline: 'Your images. Your layers. Your nodes.',
-      // Recorded from the real editor by `pnpm landing:media` in
-      // apps/mero-pixart/app, against the mocked node the `mocked` Playwright
-      // project uses (no merod). The chapter times match CHAPTERS in
-      // e2e/media/capture-landing-media.spec.ts.
+      headline: 'Your images. Your layers. Your team.',
+      // Recorded from the real editor on the v1 build (the Playwright capture
+      // it came from went with the port to the component SDK); the editor's
+      // screens are unchanged.
       showcase: {
         heading: 'A launch poster, edited in layers',
         sub: 'Recorded from the real editor on the bundled Aurora Edition project: 23 layers in six folders, all drawn by the app’s own compositor.',
@@ -696,7 +699,7 @@ export const APPS = {
           src: '/landing/demo.webm',
           poster: '/landing/demo-poster.jpg',
           chapters: [
-            { at: 0, title: 'Open a project', body: 'A finished poster on your node, in folders, with Ada from your team already in it.' },
+            { at: 0, title: 'Open a project', body: 'A finished poster, in folders, with Ada from your team already in it.' },
             { at: 3.5, title: 'Adjust, non-destructively', body: 'Swing the backdrop’s hue and saturation. They are stored as settings, so the pixels underneath never change.' },
             { at: 8.5, title: 'Change a blend mode', body: 'Set the brightest ribbon to Multiply and it sinks into the night sky, then back to Screen.' },
             { at: 12, title: 'Hide a whole folder', body: 'One eye hides the product card and everything in it. Nothing is deleted.' },
@@ -709,28 +712,28 @@ export const APPS = {
         sub: 'Layers, masks, blend modes and curves, the way a desktop editor does them. The difference is where the file lives.',
         themLabel: 'A typical cloud image editor',
         rows: [
-          { label: 'Where the file lives', them: 'On the vendor’s servers', us: 'On your node, and the nodes of the people you invite' },
-          { label: 'Your uploaded images', them: 'In the vendor’s storage bucket', us: 'Stored as blobs on your node' },
-          { label: 'Who can open it', them: 'The vendor, and whoever it grants access', us: 'Only members of the project’s namespace' },
+          { label: 'Where the file lives', them: 'On the vendor’s servers', us: 'In an app instance only your team’s members reach' },
+          { label: 'Your uploaded images', them: 'In the vendor’s storage bucket', us: 'Stored as blobs of the project, 256-pixel tiles at a time' },
+          { label: 'Who can open it', them: 'The vendor, and whoever it grants access', us: 'Only members of the project’s team' },
           { label: 'Adding a collaborator', them: 'Another seat on the monthly bill', us: 'An invite. The app is open source and free' },
           { label: 'Getting your work out', them: 'Often a proprietary format', us: 'Export PNG, JPEG or SVG whenever you want' },
         ],
       },
       collaboration: {
-        heading: 'Several people, one image, no server in the middle',
+        heading: 'Several people, one image, one log',
         sub: 'Everyone in a project sees each other’s cursors and changes, and two people can work on it at once without either losing work, because of how a document is stored.',
         points: [
-          { title: 'Every layer is its own record', body: 'Two people working on different layers never queue behind each other.' },
+          { title: 'Every layer is its own record', body: 'Two people working on different layers never overwrite each other.' },
           { title: 'Pixels, mask, transform and adjustments are separate', body: 'One person paints on a layer while another moves it or tunes its curves, and both changes land.' },
           { title: 'Adjustments are settings, not pixels', body: 'They are applied when the image is drawn, so undoing a change never needs the original back from anyone.' },
-          { title: 'Presence stays out of the file', body: 'Cursors travel separately from the document, so they can never touch the artwork.' },
+          { title: 'Presence stays out of the file', body: 'Cursors are the node’s presence, never written to the document, so they can never touch the artwork.' },
         ],
         roles: [
           { name: 'Owner', can: 'Names the document, sets its size and background, grants and revokes the editor role, and can hand ownership on.' },
           { name: 'Editor', can: 'Adds, paints, transforms, adjusts and deletes layers.' },
           { name: 'Viewer', can: 'Watches the image change without being able to change it.' },
         ],
-        rolesNote: 'The contract checks these, not just the interface: a layer change from a viewer, or a rename from a non-owner, is refused wherever it came from.',
+        rolesNote: 'The contract checks these, not just the interface: a layer change from a viewer, or a rename from a non-owner, is refused before anything is written.',
       },
       audiences: {
         heading: 'Made for images that are nobody else’s business',
@@ -738,7 +741,7 @@ export const APPS = {
           {
             label: 'Design & marketing teams',
             title: 'Campaign artwork that stays off a vendor’s cloud until launch day',
-            body: 'Posters, ads and social assets built in layers and folders by the whole team, on your own nodes.',
+            body: 'Posters, ads and social assets built in layers and folders by the whole team, and nobody else.',
             uses: ['Layer folders', 'Blend modes', 'PNG and JPEG export'],
           },
           {
@@ -762,22 +765,21 @@ export const APPS = {
         ],
       },
       openSource: {
-        // The workspace licence logic/Cargo.toml inherits. The Makefile's own
-        // targets: `setup` checks prerequisites and builds, `dev` starts two
-        // local nodes, invites the second and serves the app on :5176.
+        // logic/Cargo.toml's licence. `pnpm dev:local` starts merod local
+        // (three nodes in one process), deploys the component and serves the
+        // app on :5173 (docs/COMPONENT-APPS.md).
         license: 'MIT or Apache-2.0',
         commands: [
           '# fork calimero-network/apps on GitHub, then',
           'git clone https://github.com/<you>/apps',
-          'cd apps/apps/mero-pixart',
-          'make setup   # check tools, build logic, install app deps',
-          'make dev     # 2 local nodes + app on :5176',
+          'cd apps && pnpm install',
+          'pnpm dev:local mero-pixart   # merod local + the app on :5173',
         ],
       },
       alwaysOn: true,
       closing: {
         title: 'Start your first image',
-        body: 'Connect a node, or install the desktop app that bundles one, then invite the people you make things with.',
+        body: 'Sign in with a passkey, create a team, then invite the people you make things with.',
       },
     },
   },

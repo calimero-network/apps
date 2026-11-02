@@ -1,86 +1,104 @@
-import { type ReactNode } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
+import { useState, type ReactNode } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
+import { nodeBasename } from "@calimero-apps/node-served";
 import LandingPage from "./pages/landing/LandingPage";
 import TeamsPage from "./pages/TeamsPage";
 import ProjectsPage from "./pages/ProjectsPage";
 import EditorPage from "./pages/EditorPage";
 import InvitationPrompt from "./components/InvitationPrompt";
+import SignInModal from "./components/SignInModal";
 import { ToastProvider } from "./contexts/ToastContext";
+import type { SessionDeps } from "./session";
+import { SessionProvider, useSessionApi } from "./sessionContext";
 
 /** Every path the shared landing page serves. See src/pages/landing. */
-const LANDING_PATHS = ['/', '/docs', '/preview'];
+const LANDING_PATHS = ["/", "/docs", "/preview"];
 
+/** Signed in, signed out, or still connecting (restoring a stored session). */
+function useAuth(): { isAuthenticated: boolean; isLoading: boolean } {
+  const { api } = useSessionApi();
+  return {
+    isAuthenticated: api.session.status === "signed-in",
+    isLoading: api.session.status === "connecting",
+  };
+}
 
 function RequireAuth({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isLoading } = useMero();
-  if (isLoading) return null; // wait for the auth probe; avoids a flash to /login
+  const { isAuthenticated, isLoading } = useAuth();
+  if (isLoading) return null; // restoring a stored session: no flash of the landing page
   if (!isAuthenticated) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
-
 /**
- * An authenticated visitor has no business on the marketing page.
- *
- * ⚠️ THIS IS THE STEP THAT CARRIES YOU INTO THE APP. The SSO callback returns
- * to wherever login started — `connectToNode` uses `window.location.href` as
- * the callback URL — which for a visitor who pressed Connect on the landing
- * page is `/`. Without this guard the tokens land, `isAuthenticated` flips
- * true, and the router renders the landing page again: you log in successfully
- * and end up exactly where you started.
- *
- * The app used to get this from a `RedirectIfAuthed` wrapped around its
- * `/login` route. Deleting that page took the redirect with it; the landing
- * routes need the same guard, because they are now where login begins and ends.
+ * An authenticated visitor has no business on the marketing page: into the
+ * app, resuming the team (and project) open last.
  */
 function RedirectIfAuthed({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isLoading } = useMero();
-  if (isLoading) return null; // the auth probe is still in flight
-  // `resume`: the teams list goes on to the team (and project) open last
-  // rather than asking again (utils/lastVisit).
+  const { isAuthenticated, isLoading } = useAuth();
+  if (isLoading) return null;
   if (isAuthenticated) return <Navigate to="/teams" replace state={{ resume: true }} />;
   return <>{children}</>;
 }
 
-export default function App() {
+/** The landing page with the passkey sign-in as its connect action. */
+function Landing() {
+  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+  const [signingIn, setSigningIn] = useState(false);
+  return (
+    <>
+      <LandingPage
+        onConnect={() => setSigningIn(true)}
+        isAuthenticated={isAuthenticated}
+        onOpenApp={() => navigate("/teams")}
+      />
+      <SignInModal open={signingIn} onClose={() => setSigningIn(false)} />
+    </>
+  );
+}
+
+function AppRoutes() {
   return (
     <ToastProvider>
       {/* Above the routes: an invitation link can open this app on any page. */}
       <InvitationPrompt />
       <Routes>
-        {/* The landing page is three pages: `/`, `/docs` and `/preview`. They are
-            real URLs so they can be shared and opened cold, which needs a route
-            here — otherwise this app's catch-all swallows the deep link before
-            the page ever renders. */}
+        {/* The landing page is three pages: `/`, `/docs` and `/preview`, real
+            URLs so they can be shared and opened cold. Only `/` bounces a
+            signed-in visitor into the app. */}
         {LANDING_PATHS.map((landingPath) => (
           <Route
             key={landingPath}
             path={landingPath}
-            // ⚠️ Only `/` bounces a signed-in visitor into the app. `/docs` and
-            // `/preview` are reference pages, and somebody already signed in is
-            // exactly the person most likely to want to read them.
             element={
-              landingPath === '/' ? (
+              landingPath === "/" ? (
                 <RedirectIfAuthed>
-                  <LandingPage />
+                  <Landing />
                 </RedirectIfAuthed>
               ) : (
-                <LandingPage />
+                <Landing />
               )
             }
           />
         ))}
-        {/* The /login PAGE is gone — every app had one, every one looked
-            different, and its whole content was a button the visitor had
-            already pressed to get there. The path stays as a redirect so a
-            bookmark lands on the front door instead of a blank route. */}
         <Route path="/login" element={<Navigate to="/" replace />} />
+        {/* Teams are organizations; projects are app instances in one. */}
         <Route path="/teams" element={<RequireAuth><TeamsPage /></RequireAuth>} />
         <Route path="/teams/:teamId/projects" element={<RequireAuth><ProjectsPage /></RequireAuth>} />
         <Route path="/teams/:teamId/projects/:projectId" element={<RequireAuth><EditorPage /></RequireAuth>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </ToastProvider>
+  );
+}
+
+export default function App({ deps }: { deps?: SessionDeps } = {}) {
+  return (
+    <SessionProvider deps={deps}>
+      <BrowserRouter basename={nodeBasename(new URL(window.location.href), "/")}>
+        <AppRoutes />
+      </BrowserRouter>
+    </SessionProvider>
   );
 }

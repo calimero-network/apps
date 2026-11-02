@@ -1,13 +1,10 @@
-import { useMero } from "@calimero-network/mero-react";
-import { placeholderName, useGroupName } from "@calimero-apps/names";
+import { useEffect, useState } from "react";
 
-// Human names for teams (namespaces) aren't always available from the server on
-// the node that *joined* a team — the namespace metadata may not have synced yet,
-// so the team would otherwise render as a raw ID. We cache the name locally:
-//   - when a team is created (the creator knows the name)
-//   - when a team is joined (the inviter embeds the name in the invitation)
-// and fall back to it when the server returns no alias/name. Mirrors curb's
-// getStoredGroupAlias() fallback chain.
+import { useSignedIn } from "../sessionContext";
+
+// A team (org) knows its own name, but a page opened by deep link shows the
+// URL's id until the org has answered; this browser remembers the names it has
+// seen, so the header does not flash `Team fb884a` on the next open.
 
 const KEY = (groupId: string) => `mp-team-name-${groupId}`;
 
@@ -29,7 +26,7 @@ export function getStoredTeamName(groupId: string): string {
   }
 }
 
-/** Best display name for a team: server name → cached name → "Team abc123". */
+/** Best display name for a team: the org's name → cached name → "Team abc123". */
 export function teamLabel(groupId: string, serverName?: string): string {
   const s = serverName?.trim();
   if (s) return s;
@@ -38,22 +35,27 @@ export function teamLabel(groupId: string, serverName?: string): string {
   return `Team ${groupId.slice(0, 6)}`;
 }
 
-/**
- * A team's name for rendering: the namespace's replicated record first, so a
- * deep link or a new device shows the name rather than `Team fb884a`, then the
- * listing, then this browser's cache. A name only this browser knows is
- * promoted into the record once, so everyone else sees it too.
- */
-export function useTeamName(groupId: string | undefined, listedName?: string): string {
-  const { admin } = useMero();
-  return useGroupName(
-    admin,
-    groupId,
-    {
-      listedName,
-      localName: groupId ? getStoredTeamName(groupId) : "",
-      fallback: groupId ? placeholderName("Team", groupId) : "Team",
-    },
-    { backfillLocal: true },
-  );
+/** A team's name for rendering: the org's own, once it answers; until then the cache. */
+export function useTeamName(groupId: string | undefined): string {
+  const { client, after } = useSignedIn();
+  const [name, setName] = useState(() => (groupId ? teamLabel(groupId) : "Team"));
+  useEffect(() => {
+    if (!groupId) return;
+    let live = true;
+    setName(teamLabel(groupId));
+    client
+      .getOrg(groupId)
+      .then((o) => {
+        const n = typeof o.name === "string" ? o.name : "";
+        if (!live || !n) return;
+        setStoredTeamName(groupId, n);
+        setName(n);
+      })
+      .catch(() => {})
+      .finally(after);
+    return () => {
+      live = false;
+    };
+  }, [client, groupId, after]);
+  return name;
 }

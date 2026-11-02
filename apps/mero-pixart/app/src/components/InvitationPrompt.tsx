@@ -1,86 +1,98 @@
-import { useMemo } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import type { SignedGroupOpenInvitation } from "@calimero-network/mero-js";
-import {
-  InvitationDialog,
-  InvitationGate,
-  useInviteRedemption,
-  useMero,
-  type ParsedInvitation,
-} from "@calimero-network/mero-react";
-import { useApi } from "../api/useApi";
-import { decodeInvitationObject } from "../utils/invitation";
-import { setStoredTeamName } from "../utils/teamName";
+import { CalimeroError } from "@calimero-network/mero-js";
+import { describeError } from "@calimero-apps/connect";
 
-/** Read a raw invitation token into the parts the join needs. */
-function parseTeamInvitation(raw: string): ParsedInvitation | null {
-  const invObj = decodeInvitationObject<Record<string, unknown>>(raw);
-  const outer = (invObj.invitation as Record<string, unknown>) ?? invObj;
-  const inner = (outer?.invitation as Record<string, unknown>) ?? outer;
-  const rawGroupId =
-    inner?.group_id ?? inner?.groupId ?? outer?.group_id ?? outer?.groupId;
-  const namespaceId = Array.isArray(rawGroupId)
-    ? (rawGroupId as number[])
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("")
-    : String(rawGroupId ?? "");
-  if (!namespaceId) return null;
-
-  // The inviter embeds the human team name so the joiner doesn't render a raw ID.
-  const teamName =
-    typeof invObj.__teamName === "string" ? invObj.__teamName.trim() : "";
-  if (teamName) setStoredTeamName(namespaceId, teamName);
-
-  return { namespaceId, invitation: outer, teamName: teamName || undefined };
-}
+import { dropInvite, joinedOrg, pendingInvite, type PendingInvite } from "../api/teams";
+import { useMaybeSignedIn, useSessionApi } from "../sessionContext";
+import SignInModal from "./SignInModal";
+import styles from "./InviteModal.module.css";
 
 /**
- * An invitation link opened this app: mero-react's `InvitationDialog`.
+ * "Join this team?" for an invitation that arrived as a link (`?invite=`,
+ * taken into storage before the first render, see `captureInvite`).
  *
- * Mounted once, above the routes, so a link opened on any page — the landing
- * page, the editor, the teams list — is offered wherever the person is.
- * Capture is primed in `main.tsx` and buffers the invitation until the session
- * can join, so arriving before login loses nothing. It asks first: joining
- * puts this node into someone else's team, which a forwarded link must not do
- * on its own. Once joined it opens the team, as the teams list would, and
- * stays on "Syncing…" until ProjectsPage's `useJoinSync` sees the team's
- * project list come back from the node.
+ * Mounted above the routes because a link can land on any page. It asks
+ * rather than joins: joining puts you in someone's organization, and a
+ * forwarded link should not do that silently. Signed out, it offers the
+ * sign-in first; the token survives the sign-up. Signed in, Join redeems the
+ * org invite and lands in the project the link names, or on the team's project
+ * list. There is no "Syncing…" stage any more: nothing has to replicate before
+ * a new member can open a project.
  */
 export default function InvitationPrompt() {
+  const { api } = useSessionApi();
+  const signedIn = useMaybeSignedIn();
   const navigate = useNavigate();
-  const { isAuthenticated, isLoading } = useMero();
-  // The session-aware API (see api/useApi): on an account the join redeems
-  // through the admitter's route; the raw node route is a 403 there.
-  const api = useApi();
+  const [invite, setInvite] = useState<PendingInvite | null>(() => pendingInvite());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [signingIn, setSigningIn] = useState(false);
+  const ready = api.session.status === "signed-out" || api.session.status === "signed-in";
 
-  /** The two calls the standard join needs from this app. */
-  const redeemer = useMemo(
-    () => ({
-      join: async (namespaceId: string, invitation: unknown) => {
-        await api.admin.joinNamespace(namespaceId, {
-          invitation: invitation as SignedGroupOpenInvitation,
-        });
-      },
-      memberships: async () => {
-        const items = await api.listNamespaces(await api.ensureAppId());
-        return items.map((n) => n.namespaceId ?? "");
-      },
-    }),
-    [api],
-  );
+  useEffect(() => {
+    if (signedIn) setSigningIn(false);
+  }, [signedIn]);
 
-  const redemption = useInviteRedemption({
-    parse: parseTeamInvitation,
-    redeemer,
-    enabled: isAuthenticated && !isLoading,
-    onJoined: (namespaceId) => navigate(`/teams/${namespaceId}/projects`),
-  });
+  const dismiss = useCallback(() => {
+    dropInvite();
+    setInvite(null);
+    setError(null);
+  }, []);
+
+  const join = useCallback(async () => {
+    if (!signedIn || !invite) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const org = joinedOrg(await signedIn.client.redeemInvite(invite.token));
+      dropInvite();
+      setInvite(null);
+      if (org && invite.project) navigate(`/teams/${org}/projects/${invite.project}`);
+      else navigate(org ? `/teams/${org}/projects` : "/teams");
+    } catch (e) {
+      // A refusal (used, expired, revoked) can never succeed: drop it. Anything
+      // else (the cluster unreachable) is kept for another try.
+      if (e instanceof CalimeroError && e.status < 500) dropInvite();
+      setError(`The invitation could not be accepted: ${describeError(e)}`);
+    } finally {
+      setBusy(false);
+      signedIn.after();
+    }
+  }, [signedIn, invite, navigate]);
+
+  if (!invite || !ready) return null;
 
   return (
     <>
-      {/* Logged out with a link opened: "you're invited" and the login, not the landing page. */}
-      <InvitationGate parse={parseTeamInvitation} noun="team" appName="Mero PixArt" />
-      <InvitationDialog redemption={redemption} noun="team" appName="Mero PixArt" />
+      {!signingIn && (
+        <div className="mp-overlay" data-testid="invitation-dialog">
+          <div className={`mp-modal ${styles.modal}`}>
+            <div className={styles.header}>
+              <h2 className={styles.title}>You&apos;re invited to a Mero PixArt team</h2>
+            </div>
+            <p className={styles.desc}>
+              {invite.project
+                ? "Joining gives you access to the team and opens the project you were invited to."
+                : "Joining gives you access to the team and every project in it."}
+            </p>
+            {error && <p className={styles.error} role="alert" data-testid="invitation-error">{error}</p>}
+            {signedIn ? (
+              <button className="mp-btn mp-btn--primary" onClick={() => void join()} disabled={busy} data-testid="invitation-join">
+                {busy ? "Joining…" : "Join"}
+              </button>
+            ) : (
+              <button className="mp-btn mp-btn--primary" onClick={() => setSigningIn(true)} data-testid="invitation-signin">
+                Sign in to join
+              </button>
+            )}
+            <button className="mp-btn mp-btn--ghost" onClick={dismiss} disabled={busy} data-testid="invitation-dismiss">
+              Not now
+            </button>
+          </div>
+        </div>
+      )}
+      <SignInModal open={signingIn} onClose={() => setSigningIn(false)} />
     </>
   );
 }

@@ -20,13 +20,13 @@ export function ctx2d(c: HTMLCanvasElement): CanvasRenderingContext2D {
   return ctx;
 }
 
-/** Encode a canvas to PNG bytes for blob upload. */
-export function canvasToPngBytes(canvas: HTMLCanvasElement): Promise<ArrayBuffer> {
+/** Encode a canvas to PNG (or `mime`) bytes for blob upload. */
+export function canvasToPngBytes(canvas: HTMLCanvasElement, mime = "image/png"): Promise<ArrayBuffer> {
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (!blob) return reject(new Error("canvas.toBlob returned null"));
       blob.arrayBuffer().then(resolve, reject);
-    }, "image/png");
+    }, mime, 0.92);
   });
 }
 

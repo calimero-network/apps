@@ -41,7 +41,7 @@ export default function CursorsOverlay({ cursors, myIdentity, members, teamName 
         const label = teamName?.(c.identity) || member?.username?.trim() || shortLabel(c.identity);
         return (
           <div
-            key={c.identity}
+            key={`${c.identity}:${c.device ?? ""}`}
             className={styles.cursor}
             style={{ left: c.x, top: c.y, "--cursor-color": color } as React.CSSProperties}
           >

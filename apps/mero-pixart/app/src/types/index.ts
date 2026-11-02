@@ -85,8 +85,19 @@ export interface Layer {
   flipV: boolean;
   /** corner-pin warp, JSON-encoded `WarpCorners` (empty/absent = no warp) */
   warp?: string;
+  /**
+   * The screens' cache key for the layer's pixels (`px:<id>:<rev>`, "" for
+   * none yet). The contract keeps pixels as tiles and answers `pixelsRev`; the
+   * adapter (api/pixart.ts) derives this from it.
+   */
   blobId?: string;
+  /** As `blobId`, for the mask (`mask:<id>:<rev>`, null for none). */
   maskBlobId?: string | null;
+  /** Writes to the pixel tiles so far (0: none). */
+  pixelsRev?: number;
+  /** Writes to the mask tiles so far. */
+  maskRev?: number;
+  hasMask?: boolean;
   fill?: string;
   adjustments: Adjustments;
   text?: TextProps | null;
@@ -121,7 +132,10 @@ export interface MemberRole {
 }
 
 export interface CursorState {
+  /** The account behind the pointer (what members are keyed by). */
   identity: string;
+  /** The device it comes from: one person on two devices has two pointers. */
+  device?: string;
   x: number;
   y: number;
   updatedAt: number;

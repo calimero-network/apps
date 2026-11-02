@@ -1,0 +1,719 @@
+[
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getDocument",
+  "args": {},
+  "expect": {
+   "ok": {
+    "name": "",
+    "description": "",
+    "width": 1280,
+    "height": 720,
+    "background": "#00000000",
+    "layerCount": 0,
+    "memberCount": 0,
+    "owner": "@owner"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "updateDocument",
+  "args": {
+   "name": "Test Project",
+   "description": "Logic test",
+   "width": 1280,
+   "height": 720
+  },
+  "expect": {
+   "ok": null
+  },
+  "events": {
+   "owner": [
+    "DocumentUpdated"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getDocument",
+  "args": {},
+  "expect": {
+   "ok": {
+    "name": "Test Project",
+    "description": "Logic test",
+    "width": 1280,
+    "height": 720,
+    "background": "#00000000",
+    "layerCount": 0,
+    "memberCount": 0,
+    "owner": "@owner"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "join",
+  "args": {
+   "username": "Alice",
+   "avatar": null,
+   "timestamp": "1700000000000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getMembers",
+  "args": {},
+  "expect": {
+   "ok": {
+    "items": [
+     {
+      "id": "@owner",
+      "username": "Alice",
+      "avatar": null,
+      "joinedAt": "1700000000000",
+      "usernameUpdatedAt": "1700000000000"
+     }
+    ],
+    "next": null
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "myRole",
+  "args": {},
+  "expect": {
+   "ok": "admin"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "canEdit",
+  "args": {},
+  "expect": {
+   "ok": true
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addLayer",
+  "args": {
+   "layer": {
+    "id": "layer-bg",
+    "name": "Background",
+    "kind": "raster",
+    "parentId": null,
+    "layerIndex": 0,
+    "visible": true,
+    "locked": false,
+    "opacity": 100,
+    "blendMode": "normal",
+    "x": "0",
+    "y": "0",
+    "width": 1280,
+    "height": 720,
+    "rotation": 0,
+    "scaleX": 100,
+    "scaleY": 100,
+    "fill": "#ffffff",
+    "adjustments": {},
+    "text": null,
+    "createdAt": "1700000000000",
+    "updatedAt": "1700000000000"
+   }
+  },
+  "expect": {
+   "ok": "layer-bg"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addLayer",
+  "args": {
+   "layer": {
+    "id": "layer-title",
+    "name": "Title Text",
+    "kind": "text",
+    "parentId": null,
+    "layerIndex": 1,
+    "visible": true,
+    "locked": false,
+    "opacity": 100,
+    "blendMode": "normal",
+    "x": "100",
+    "y": "50",
+    "width": 400,
+    "height": 80,
+    "rotation": 0,
+    "scaleX": 100,
+    "scaleY": 100,
+    "fill": "",
+    "adjustments": {},
+    "text": {
+     "content": "Hello",
+     "fontFamily": "Inter",
+     "fontSize": 48,
+     "color": "#000000",
+     "bold": true,
+     "italic": false,
+     "align": null
+    },
+    "createdAt": "1700000000000",
+    "updatedAt": "1700000000000"
+   }
+  },
+  "expect": {
+   "ok": "layer-title"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getLayers",
+  "args": {},
+  "expect": {
+   "ok": {
+    "items": [
+     {
+      "id": "layer-bg",
+      "name": "Background",
+      "kind": "raster",
+      "parentId": null,
+      "layerIndex": 0,
+      "visible": true,
+      "locked": false,
+      "opacity": 100,
+      "blendMode": "normal",
+      "x": "0",
+      "y": "0",
+      "width": 1280,
+      "height": 720,
+      "rotation": 0,
+      "scaleX": 100,
+      "scaleY": 100,
+      "skewX": 0,
+      "skewY": 0,
+      "flipH": false,
+      "flipV": false,
+      "warp": "",
+      "pixelsRev": "0",
+      "maskRev": "0",
+      "hasMask": false,
+      "fill": "#ffffff",
+      "adjustments": {
+       "brightness": 0,
+       "contrast": 0,
+       "saturation": 0,
+       "hue": 0,
+       "exposure": 0,
+       "blur": 0,
+       "invert": false,
+       "curves": ""
+      },
+      "text": null,
+      "createdBy": "@owner",
+      "createdAt": "1700000000000",
+      "updatedAt": "1700000000000"
+     },
+     {
+      "id": "layer-title",
+      "name": "Title Text",
+      "kind": "text",
+      "parentId": null,
+      "layerIndex": 1,
+      "visible": true,
+      "locked": false,
+      "opacity": 100,
+      "blendMode": "normal",
+      "x": "100",
+      "y": "50",
+      "width": 400,
+      "height": 80,
+      "rotation": 0,
+      "scaleX": 100,
+      "scaleY": 100,
+      "skewX": 0,
+      "skewY": 0,
+      "flipH": false,
+      "flipV": false,
+      "warp": "",
+      "pixelsRev": "0",
+      "maskRev": "0",
+      "hasMask": false,
+      "fill": "",
+      "adjustments": {
+       "brightness": 0,
+       "contrast": 0,
+       "saturation": 0,
+       "hue": 0,
+       "exposure": 0,
+       "blur": 0,
+       "invert": false,
+       "curves": ""
+      },
+      "text": {
+       "content": "Hello",
+       "fontFamily": "Inter",
+       "fontSize": 48,
+       "color": "#000000",
+       "bold": true,
+       "italic": false,
+       "align": null
+      },
+      "createdBy": "@owner",
+      "createdAt": "1700000000000",
+      "updatedAt": "1700000000000"
+     }
+    ],
+    "next": null
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getLayer",
+  "args": {
+   "id": "layer-title"
+  },
+  "expect": {
+   "ok": {
+    "id": "layer-title",
+    "name": "Title Text",
+    "kind": "text",
+    "parentId": null,
+    "layerIndex": 1,
+    "visible": true,
+    "locked": false,
+    "opacity": 100,
+    "blendMode": "normal",
+    "x": "100",
+    "y": "50",
+    "width": 400,
+    "height": 80,
+    "rotation": 0,
+    "scaleX": 100,
+    "scaleY": 100,
+    "skewX": 0,
+    "skewY": 0,
+    "flipH": false,
+    "flipV": false,
+    "warp": "",
+    "pixelsRev": "0",
+    "maskRev": "0",
+    "hasMask": false,
+    "fill": "",
+    "adjustments": {
+     "brightness": 0,
+     "contrast": 0,
+     "saturation": 0,
+     "hue": 0,
+     "exposure": 0,
+     "blur": 0,
+     "invert": false,
+     "curves": ""
+    },
+    "text": {
+     "content": "Hello",
+     "fontFamily": "Inter",
+     "fontSize": 48,
+     "color": "#000000",
+     "bold": true,
+     "italic": false,
+     "align": null
+    },
+    "createdBy": "@owner",
+    "createdAt": "1700000000000",
+    "updatedAt": "1700000000000"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "updateLayer",
+  "args": {
+   "id": "layer-bg",
+   "name": "Renamed Background",
+   "opacity": 80,
+   "visible": false,
+   "x": "10",
+   "y": "20",
+   "updatedAt": "1700000000500"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getLayer",
+  "args": {
+   "id": "layer-bg"
+  },
+  "expect": {
+   "ok": {
+    "id": "layer-bg",
+    "name": "Renamed Background",
+    "kind": "raster",
+    "parentId": null,
+    "layerIndex": 0,
+    "visible": false,
+    "locked": false,
+    "opacity": 80,
+    "blendMode": "normal",
+    "x": "10",
+    "y": "20",
+    "width": 1280,
+    "height": 720,
+    "rotation": 0,
+    "scaleX": 100,
+    "scaleY": 100,
+    "skewX": 0,
+    "skewY": 0,
+    "flipH": false,
+    "flipV": false,
+    "warp": "",
+    "pixelsRev": "0",
+    "maskRev": "0",
+    "hasMask": false,
+    "fill": "#ffffff",
+    "adjustments": {
+     "brightness": 0,
+     "contrast": 0,
+     "saturation": 0,
+     "hue": 0,
+     "exposure": 0,
+     "blur": 0,
+     "invert": false,
+     "curves": ""
+    },
+    "text": null,
+    "createdBy": "@owner",
+    "createdAt": "1700000000000",
+    "updatedAt": "1700000000500"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "updateAdjustments",
+  "args": {
+   "id": "layer-bg",
+   "brightness": 20,
+   "contrast": -10,
+   "saturation": 15,
+   "hue": 30,
+   "exposure": 5,
+   "blur": 2,
+   "invert": true,
+   "updatedAt": "1700000000600"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getLayer",
+  "args": {
+   "id": "layer-bg"
+  },
+  "expect": {
+   "ok": {
+    "id": "layer-bg",
+    "name": "Renamed Background",
+    "kind": "raster",
+    "parentId": null,
+    "layerIndex": 0,
+    "visible": false,
+    "locked": false,
+    "opacity": 80,
+    "blendMode": "normal",
+    "x": "10",
+    "y": "20",
+    "width": 1280,
+    "height": 720,
+    "rotation": 0,
+    "scaleX": 100,
+    "scaleY": 100,
+    "skewX": 0,
+    "skewY": 0,
+    "flipH": false,
+    "flipV": false,
+    "warp": "",
+    "pixelsRev": "0",
+    "maskRev": "0",
+    "hasMask": false,
+    "fill": "#ffffff",
+    "adjustments": {
+     "brightness": 20,
+     "contrast": -10,
+     "saturation": 15,
+     "hue": 30,
+     "exposure": 5,
+     "blur": 2,
+     "invert": true,
+     "curves": ""
+    },
+    "text": null,
+    "createdBy": "@owner",
+    "createdAt": "1700000000000",
+    "updatedAt": "1700000000600"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "bringToFront",
+  "args": {
+   "id": "layer-bg",
+   "updatedAt": "1700000000700"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "sendToBack",
+  "args": {
+   "id": "layer-title",
+   "updatedAt": "1700000000800"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getLayers",
+  "args": {},
+  "expect": {
+   "ok": {
+    "items": [
+     {
+      "id": "layer-title",
+      "name": "Title Text",
+      "kind": "text",
+      "parentId": null,
+      "layerIndex": 1,
+      "visible": true,
+      "locked": false,
+      "opacity": 100,
+      "blendMode": "normal",
+      "x": "100",
+      "y": "50",
+      "width": 400,
+      "height": 80,
+      "rotation": 0,
+      "scaleX": 100,
+      "scaleY": 100,
+      "skewX": 0,
+      "skewY": 0,
+      "flipH": false,
+      "flipV": false,
+      "warp": "",
+      "pixelsRev": "0",
+      "maskRev": "0",
+      "hasMask": false,
+      "fill": "",
+      "adjustments": {
+       "brightness": 0,
+       "contrast": 0,
+       "saturation": 0,
+       "hue": 0,
+       "exposure": 0,
+       "blur": 0,
+       "invert": false,
+       "curves": ""
+      },
+      "text": {
+       "content": "Hello",
+       "fontFamily": "Inter",
+       "fontSize": 48,
+       "color": "#000000",
+       "bold": true,
+       "italic": false,
+       "align": null
+      },
+      "createdBy": "@owner",
+      "createdAt": "1700000000000",
+      "updatedAt": "1700000000800"
+     },
+     {
+      "id": "layer-bg",
+      "name": "Renamed Background",
+      "kind": "raster",
+      "parentId": null,
+      "layerIndex": 2,
+      "visible": false,
+      "locked": false,
+      "opacity": 80,
+      "blendMode": "normal",
+      "x": "10",
+      "y": "20",
+      "width": 1280,
+      "height": 720,
+      "rotation": 0,
+      "scaleX": 100,
+      "scaleY": 100,
+      "skewX": 0,
+      "skewY": 0,
+      "flipH": false,
+      "flipV": false,
+      "warp": "",
+      "pixelsRev": "0",
+      "maskRev": "0",
+      "hasMask": false,
+      "fill": "#ffffff",
+      "adjustments": {
+       "brightness": 20,
+       "contrast": -10,
+       "saturation": 15,
+       "hue": 30,
+       "exposure": 5,
+       "blur": 2,
+       "invert": true,
+       "curves": ""
+      },
+      "text": null,
+      "createdBy": "@owner",
+      "createdAt": "1700000000000",
+      "updatedAt": "1700000000700"
+     }
+    ],
+    "next": null
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "updateDocument",
+  "args": {
+   "name": "Renamed Project",
+   "width": 1920,
+   "height": 1080
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getDocument",
+  "args": {},
+  "expect": {
+   "ok": {
+    "name": "Renamed Project",
+    "description": "Logic test",
+    "width": 1920,
+    "height": 1080,
+    "background": "#00000000",
+    "layerCount": 2,
+    "memberCount": 1,
+    "owner": "@owner"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deleteLayer",
+  "args": {
+   "id": "layer-title"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getLayers",
+  "args": {},
+  "expect": {
+   "ok": {
+    "items": [
+     {
+      "id": "layer-bg",
+      "name": "Renamed Background",
+      "kind": "raster",
+      "parentId": null,
+      "layerIndex": 2,
+      "visible": false,
+      "locked": false,
+      "opacity": 80,
+      "blendMode": "normal",
+      "x": "10",
+      "y": "20",
+      "width": 1280,
+      "height": 720,
+      "rotation": 0,
+      "scaleX": 100,
+      "scaleY": 100,
+      "skewX": 0,
+      "skewY": 0,
+      "flipH": false,
+      "flipV": false,
+      "warp": "",
+      "pixelsRev": "0",
+      "maskRev": "0",
+      "hasMask": false,
+      "fill": "#ffffff",
+      "adjustments": {
+       "brightness": 20,
+       "contrast": -10,
+       "saturation": 15,
+       "hue": 30,
+       "exposure": 5,
+       "blur": 2,
+       "invert": true,
+       "curves": ""
+      },
+      "text": null,
+      "createdBy": "@owner",
+      "createdAt": "1700000000000",
+      "updatedAt": "1700000000700"
+     }
+    ],
+    "next": null
+   }
+  },
+  "events": {
+   "owner": [
+    "DocumentUpdated",
+    "MemberJoined",
+    "LayerAdded",
+    "LayerAdded",
+    "LayerUpdated",
+    "LayerUpdated",
+    "LayersReordered",
+    "LayersReordered",
+    "DocumentUpdated",
+    "LayerDeleted"
+   ]
+  }
+ }
+]

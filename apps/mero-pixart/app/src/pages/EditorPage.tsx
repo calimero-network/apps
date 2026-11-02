@@ -2,15 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { v4 as uuid } from "uuid";
 import { useApi } from "../api/useApi";
-import { listGroupContextRows, listSubgroupRows } from "../api/teamContexts";
 import { resetMethodSupport, rpcWithFallback } from "../api/compat";
-import { readProjectWithJoinRetry } from "../api/loadProject";
+import { useMemberNames, useMyName } from "../api/names";
+import { revOf } from "../api/pixart";
+import { HEARTBEAT_MS, cursorPublisher, subscribeCursors } from "../api/presence";
+import { clearMask, commitTiles, forgetAllTiles, forgetLayerTiles, loadTiles } from "../api/tiles";
 import { mapLimit } from "../utils/concurrency";
-import { useSse } from "../hooks/useSse";
+import { useAppEvents } from "../hooks/useAppEvents";
 import { useToast } from "../contexts/ToastContext";
 import { useShallow } from "zustand/react/shallow";
-import { useMemberNames, useMyName } from "@calimero-apps/names";
-import { useMero } from "@calimero-network/mero-react";
+import { useSignedIn } from "../sessionContext";
+import { extractErrorMessage } from "../utils/errorMessage";
 import { decideProjectName } from "../utils/projectName";
 import { rememberProject } from "../utils/lastVisit";
 import { useEditorStore } from "../store/editorStore";
@@ -57,9 +59,10 @@ const ts = () => Date.now();
 /** How many blob uploads to keep in flight while loading a showcase. Enough to
  *  hide the round-trips, few enough that a node is not hammered by one click. */
 const UPLOAD_CONCURRENCY = 4;
-// Downloads are cheaper than uploads (no PNG encode, and `adminGetBlob` serves
+// Downloads are cheaper than uploads (no PNG encode, and `api.getBlob` serves
 // repeat opens straight from IndexedDB), so this can sit higher than the upload
-// width without burying the node.
+// width without burying the node. Counted in layers; each layer's tiles load
+// with their own bounded concurrency (api/tiles.ts).
 const DOWNLOAD_CONCURRENCY = 6;
 
 export default function EditorPage() {
@@ -67,25 +70,20 @@ export default function EditorPage() {
   const ctxId = projectId ?? "";
   const navigate = useNavigate();
   const { showToast } = useToast();
-  // The session-aware API (see api/useApi). Contract calls go over the
-  // session's transport (node JSON-RPC, or the relay's intents for an
-  // account); blobs and membership through `useMero().admin`, which is the
-  // account admin on a delegated session. Stable for the life of the session,
-  // so these aliases are safe in the callbacks below.
+  // The session's API (see api/useApi): contract calls through the adapter
+  // that keeps v1's names and answers, blobs per app instance. Stable for the
+  // life of the session, so these aliases are safe in the callbacks below.
   const api = useApi();
-  const { admin } = api;
-  const { nodeUrl } = useMero();
+  const { client, accountId, scope } = useSignedIn();
   const rpcCall = api.call;
-  const adminUploadBlob = api.uploadBlob;
-  const adminGetBlob = api.getBlob;
   // The name each person set once for the whole team, shared by every app on it.
-  const { nameOf: teamNameOf } = useMemberNames(admin, teamId);
+  const { nameOf: teamNameOf } = useMemberNames(teamId);
 
   // Remember this project for the next open (utils/lastVisit). Not under the
   // desktop's placeholder team `t` (see main.tsx), which names no real team.
   useEffect(() => {
-    if (teamId && teamId !== "t" && ctxId) rememberProject(nodeUrl, teamId, ctxId);
-  }, [nodeUrl, teamId, ctxId]);
+    if (teamId && ctxId) rememberProject(scope, teamId, ctxId);
+  }, [scope, teamId, ctxId]);
 
   const {
     doc, layers, selectedLayerId, editingMaskOf, showRulers, panels,
@@ -115,17 +113,20 @@ export default function EditorPage() {
     myRole: s.myRole,
   })));
 
-  const myId = useRef<string>("");
+  // "Me" is the signed-in account: what the contract keys members, roles and
+  // authorship by.
+  const myId = useRef<string>(accountId);
+  myId.current = accountId;
   // Your name in the team: one per team, shared by every project in it.
-  const myName = useMyName(admin, teamId, myId.current);
+  const myName = useMyName(teamId);
   const loadedBlobs = useRef<Set<string>>(new Set());
   const lastCursor = useRef(0);
+  const lastCursorAt = useRef<{ x: number; y: number } | null>(null);
   const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const adjTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [members, setMembers] = useState<Member[]>([]);
   const [cursors, setCursors] = useState<CursorState[]>([]);
-  const [subgroupId, setSubgroupId] = useState("");
   const [needName, setNeedName] = useState(false);
   // Whether this account is on this project's roster: null until known.
   const [onProject, setOnProject] = useState<boolean | null>(null);
@@ -137,32 +138,6 @@ export default function EditorPage() {
   const [saving, setSaving] = useState(false);
   const [ready, setReady] = useState(false);
   const [fatal, setFatal] = useState("");
-  // The team was just joined and the project's data has not reached this node
-  // yet: the read is being retried, so this is a wait, not an error.
-  const [syncing, setSyncing] = useState(false);
-
-  // ── Identity ────────────────────────────────────────────────────────────
-  //
-  // "Me" is the ACCOUNT — what the contract keys members by, what the node
-  // writes as, and what a delegated session executes as on the relay. Asked
-  // node-level (`getNodeIdentity`): one account serves every context, so
-  // neither the context's owned identities (a device key, not a member id)
-  // nor `joinContext().memberPublicKey` (empty through the account admin) is
-  // the answer, and a made-up uuid is never a member of anything.
-  //
-  // Joining first is idempotent and covers the desktop deep-linking straight
-  // into a project created on a peer after we joined the team.
-  const resolveIdentity = useCallback(async (): Promise<string> => {
-    await admin.joinContext(ctxId).catch(() => { /* already joined / not required */ });
-    try {
-      const me = await api.getNodeIdentity();
-      return me?.accountId ?? "";
-    } catch {
-      // Unknown identity leaves "am I a member" false, so the username prompt
-      // shows and `join` records us — rather than inventing a member id.
-      return "";
-    }
-  }, [ctxId, api, admin]);
 
   // ── Loaders ───────────────────────────────────────────────────────────────
   //
@@ -194,57 +169,53 @@ export default function EditorPage() {
     if (renderFrame.current !== null) cancelAnimationFrame(renderFrame.current);
   }, []);
 
+  // A layer's pixels and mask are tiles (api/tiles.ts). `blobId` /
+  // `maskBlobId` name a revision of them (`px:<id>:<rev>`), so a key not loaded
+  // yet means "read this layer's tiles again".
   const loadBlobs = useCallback(async (ls: Layer[]) => {
-    // One job per blob rather than per layer, so a layer's pixels and its mask
-    // are two independent fetches and neither waits on the other.
-    const jobs: { blobId: string; layer: Layer; kind: "pixels" | "mask" }[] = [];
+    const jobs: { key: string; layer: Layer; kind: "pixels" | "mask" }[] = [];
     for (const l of ls) {
       if (l.blobId && !loadedBlobs.current.has(l.blobId)) {
         loadedBlobs.current.add(l.blobId);
-        jobs.push({ blobId: l.blobId, layer: l, kind: "pixels" });
+        jobs.push({ key: l.blobId, layer: l, kind: "pixels" });
       }
       if (l.maskBlobId && !loadedBlobs.current.has(l.maskBlobId)) {
         loadedBlobs.current.add(l.maskBlobId);
-        jobs.push({ blobId: l.maskBlobId, layer: l, kind: "mask" });
+        jobs.push({ key: l.maskBlobId, layer: l, kind: "mask" });
       }
     }
     if (jobs.length === 0) return;
 
-    await mapLimit(jobs, DOWNLOAD_CONCURRENCY, async ({ blobId, layer, kind }) => {
+    await mapLimit(jobs, DOWNLOAD_CONCURRENCY, async ({ key, layer, kind }) => {
       try {
-        const buf = await adminGetBlob(blobId, ctxId);
-        const img = await bytesToImage(buf);
-        const c = kind === "pixels"
-          ? getLayerCanvas(layer.id, layer.width || img.width, layer.height || img.height)
-          : getMaskCanvas(layer.id, layer.width || img.width, layer.height || img.height);
-        const cx = ctx2d(c);
-        cx.clearRect(0, 0, c.width, c.height);
-        cx.drawImage(img, 0, 0);
+        const w = Math.max(1, layer.width);
+        const h = Math.max(1, layer.height);
+        const c = kind === "pixels" ? getLayerCanvas(layer.id, w, h) : getMaskCanvas(layer.id, w, h);
+        if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+        await loadTiles(api, ctxId, layer.id, kind, c, scheduleRender);
         if (kind === "pixels") setLayerCanvas(layer.id, c);
         scheduleRender();
       } catch {
         // Let it be retried by the next refetch rather than leaving the layer
         // permanently blank.
-        loadedBlobs.current.delete(blobId);
+        loadedBlobs.current.delete(key);
       }
     }).catch(() => { /* individual failures are already swallowed above */ });
 
-    // A final bump, in case the last frame's redraw landed before the last blob.
+    // A final bump, in case the last frame's redraw landed before the last tile.
     scheduleRender();
-  }, [ctxId, scheduleRender, adminGetBlob]);
+  }, [ctxId, scheduleRender, api]);
 
   const refetch = useCallback(async () => {
     try {
-      const [d, ls, ms, cs] = await Promise.all([
+      const [d, ls, ms] = await Promise.all([
         rpcCall<DocumentInfo>(ctxId, "get_document", {}),
         rpcCall<Layer[]>(ctxId, "get_layers", {}),
         rpcCall<Member[]>(ctxId, "get_members", {}),
-        rpcCall<CursorState[]>(ctxId, "get_cursors", {}),
       ]);
       if (d) setDoc(d);
       if (Array.isArray(ls)) { setLayers(ls); loadBlobs(ls); }
       if (Array.isArray(ms)) setMembers(ms);
-      if (Array.isArray(cs)) setCursors(cs);
     } catch { /* transient */ }
   }, [ctxId, setDoc, setLayers, loadBlobs, rpcCall]);
 
@@ -266,52 +237,27 @@ export default function EditorPage() {
     // A different project can be running a different app build, so the
     // "this method is missing" verdicts must not carry over.
     resetMethodSupport();
+    forgetAllTiles();
     loadedBlobs.current = new Set();
     setReady(false);
-    setSyncing(false);
     setMembers([]);
     setCursors([]);
 
     let cancelled = false;
     (async () => {
-      myId.current = await resolveIdentity();
-      // Resolve the subgroup (group) id this context lives under, for
-      // SettingsModal's governance member/role queries. `/contexts/{id}` does
-      // NOT expose the owning group, so walk the namespace's subgroups and
-      // match by context id. The base58 context id can't be used directly —
-      // `/groups/{id}/members` rejects it ("expected hex-encoded 32 bytes"),
-      // which is why members showed 0. Fall back to the namespace (teamId, hex)
-      // so Settings can still list members if the walk turns up nothing.
+      // Every member of the team reaches the project at once: nothing to join
+      // or wait for (v1 retried while a just-joined team synced).
       try {
-        let resolved = "";
-        if (teamId) {
-          const subs = await listSubgroupRows(admin, teamId).catch(() => []);
-          for (const sg of subs) {
-            const gid = sg.groupId;
-            const list = await listGroupContextRows(admin, gid).catch(() => []);
-            if (list.some((c) => c.contextId === ctxId)) { resolved = gid; break; }
-          }
-        }
-        if (!cancelled) setSubgroupId(resolved || teamId || "");
-      } catch { /* optional — Settings falls back to namespace scope */ }
-
-      try {
-        const d = await readProjectWithJoinRetry(
-          () => rpcCall<DocumentInfo>(ctxId, "get_document", {}),
-          teamId ?? null,
-          () => cancelled,
-          () => { if (!cancelled) setSyncing(true); },
-        );
+        const d = await rpcCall<DocumentInfo>(ctxId, "get_document", {});
         if (cancelled) return;
-        setSyncing(false);
         if (d) {
           setDoc(d);
           // fit-to-screen-ish default
           setZoom(1);
           setPan(48, 48);
         }
-      } catch {
-        if (!cancelled) { setSyncing(false); setFatal("Could not load the project. The node may still be syncing — try reopening."); }
+      } catch (e) {
+        if (!cancelled) setFatal(`Could not load the project: ${extractErrorMessage(e)}`);
         return;
       }
 
@@ -325,26 +271,9 @@ export default function EditorPage() {
       if (!cancelled && Array.isArray(ms)) {
         setMembers(ms);
         const alreadyMember = ms.some((m) => m.id === myId.current);
-        const storedName = localStorage.getItem("mp-username") ?? "";
         // Whether to ask for a name is the TEAM's question, decided below.
         setOnProject(alreadyMember);
-        if (alreadyMember && storedName) {
-          // Re-announce even as an existing member. `join` records this device's
-          // device→account pairing before its early return, and that pairing is
-          // the ONLY thing that lets an admin name us in a role grant — the
-          // members list an admin sees comes from the node's group membership,
-          // which knows nothing about accounts. A member whose row predates the
-          // account-keyed contract (or who has never moved a cursor) is otherwise
-          // permanently un-grantable: the grant fails with "that member hasn't
-          // opened this document yet". Idempotent — an unchanged pairing writes
-          // no CRDT delta.
-          rpcCall(ctxId, "join", { username: storedName, avatar: null, timestamp: ts() })
-            .catch(() => {});
-        }
       }
-
-      const cs = await rpcCall<CursorState[]>(ctxId, "get_cursors", {}).catch(() => [] as CursorState[]);
-      if (!cancelled && Array.isArray(cs)) setCursors(cs);
 
       if (!cancelled) { setReady(true); clearHistory(); }
     })();
@@ -379,7 +308,27 @@ export default function EditorPage() {
     if (refetchTimer.current) clearTimeout(refetchTimer.current);
     refetchTimer.current = setTimeout(() => { refetch(); }, 300);
   };
-  useSse(ctxId || null, scheduleRefetch, scheduleRefetch);
+  useAppEvents(client, ctxId || null, scheduleRefetch, scheduleRefetch);
+
+  // ── Live pointers: the node's presence channel, per device ────────────────
+  useEffect(() => {
+    if (!ctxId) return;
+    return subscribeCursors(client, ctxId, (update) => setCursors(update));
+  }, [client, ctxId]);
+  const publishCursor = useMemo(() => (ctxId ? cursorPublisher(client, ctxId) : null), [client, ctxId]);
+  // Presence entries are swept 7 s after their last refresh: keep a still
+  // pointer alive while the editor is open.
+  useEffect(() => {
+    if (!publishCursor) return;
+    const id = setInterval(() => {
+      const at = lastCursorAt.current;
+      if (at && Date.now() - lastCursor.current >= HEARTBEAT_MS) {
+        lastCursor.current = Date.now();
+        publishCursor(at.x, at.y).catch(() => {});
+      }
+    }, HEARTBEAT_MS);
+    return () => clearInterval(id);
+  }, [publishCursor]);
 
   // ── Join / username ───────────────────────────────────────────────────────
   const handleJoin = useCallback(async (username: string) => {
@@ -415,45 +364,46 @@ export default function EditorPage() {
   }, [onProject, myName.ready, myName.name]);
 
   // ── Pixel commit (raster) ───────────────────────────────────────────────
+  // Only the tiles a stroke changed are uploaded and written (api/tiles.ts).
   const commitPixels = useCallback(async (layerId: string) => {
     const c = peekLayerCanvas(layerId);
     if (!c) return;
     setSaving(true);
     try {
-      const bytes = await canvasToPngBytes(c);
-      const { blobId } = await adminUploadBlob(bytes, ctxId);
-      if (!blobId) throw new Error("blob upload failed");
-      loadedBlobs.current.add(blobId);
       const now = ts();
-      await rpcCall(ctxId, "update_layer_content", {
-        id: layerId, blob_id: blobId, width: c.width, height: c.height, updated_at: now,
-      });
+      await commitTiles(api, ctxId, layerId, "pixels", c, now);
       const l = useEditorStore.getState().layers.find((x) => x.id === layerId);
-      if (l) upsertLayer({ ...l, blobId, width: c.width, height: c.height, updatedAt: now });
+      if (l) {
+        const rev = revOf(l.blobId) + 1;
+        const blobId = `px:${layerId}:${rev}`;
+        loadedBlobs.current.add(blobId);
+        upsertLayer({ ...l, blobId, pixelsRev: rev, width: c.width, height: c.height, updatedAt: now });
+      }
     } catch (e) {
       showToast(errMsg(e), "error");
     } finally {
       setSaving(false);
     }
-  }, [ctxId, upsertLayer, showToast, adminUploadBlob, rpcCall]);
+  }, [ctxId, upsertLayer, showToast, api]);
 
   const commitMaskPixels = useCallback(async (layerId: string) => {
     const c = peekMaskCanvas(layerId);
     if (!c) return;
     setSaving(true);
     try {
-      const bytes = await canvasToPngBytes(c);
-      const { blobId } = await adminUploadBlob(bytes, ctxId);
-      if (!blobId) throw new Error("mask upload failed");
-      loadedBlobs.current.add(blobId);
       const now = ts();
-      await rpcCall(ctxId, "update_layer_mask", { id: layerId, mask_blob_id: blobId, updated_at: now });
+      await commitTiles(api, ctxId, layerId, "mask", c, now);
       const l = useEditorStore.getState().layers.find((x) => x.id === layerId);
-      if (l) upsertLayer({ ...l, maskBlobId: blobId, updatedAt: now });
+      if (l) {
+        const rev = revOf(l.maskBlobId) + 1;
+        const maskBlobId = `mask:${layerId}:${rev}`;
+        loadedBlobs.current.add(maskBlobId);
+        upsertLayer({ ...l, maskBlobId, maskRev: rev, hasMask: true, updatedAt: now });
+      }
     } catch (e) {
       showToast(errMsg(e), "error");
     } finally { setSaving(false); }
-  }, [ctxId, upsertLayer, showToast, adminUploadBlob, rpcCall]);
+  }, [ctxId, upsertLayer, showToast, api]);
 
   // ── Metadata commit (transform / props) ───────────────────────────────────
   const commitMeta = useCallback(async (layerId: string, patch: Partial<Layer>) => {
@@ -859,7 +809,7 @@ export default function EditorPage() {
       upsertLayer({ ...l, maskBlobId: null, updatedAt: ts() });
       setEditingMask(null);
       bumpRender();
-      try { await rpcCall(ctxId, "update_layer_mask", { id, mask_blob_id: null, updated_at: ts() }); }
+      try { await clearMask(api, ctxId, id, ts()); }
       catch (e) { showToast(errMsg(e), "error"); }
     } else {
       getMaskCanvas(id, l.width, l.height); // white = fully visible
@@ -867,7 +817,7 @@ export default function EditorPage() {
       await commitMaskPixels(id);
       bumpRender();
     }
-  }, [ctxId, canEdit, upsertLayer, setEditingMask, bumpRender, commitMaskPixels, showToast, rpcCall]);
+  }, [ctxId, canEdit, upsertLayer, setEditingMask, bumpRender, commitMaskPixels, showToast, api]);
 
   // ── Adjustments ─────────────────────────────────────────────────────────
   const onAdjust = useCallback((patch: Partial<Adjustments>) => {
@@ -1195,26 +1145,16 @@ export default function EditorPage() {
           const patch: { id: string; blobId?: string; maskBlobId?: string } = { id: layer.id };
           const pixels = built.canvases.get(layer.id);
           if (pixels) {
-            const { blobId } = await adminUploadBlob(await canvasToPngBytes(pixels), ctxId);
-            if (blobId) {
-              loadedBlobs.current.add(blobId);
-              patch.blobId = blobId;
-              await rpcCall(ctxId, "update_layer_content", {
-                id: layer.id, blob_id: blobId,
-                width: pixels.width, height: pixels.height, updated_at: ts(),
-              });
-            }
+            forgetLayerTiles(ctxId, layer.id);
+            await commitTiles(api, ctxId, layer.id, "pixels", pixels, ts());
+            patch.blobId = `px:${layer.id}:1`;
+            loadedBlobs.current.add(patch.blobId);
           }
           const mask = built.masks.get(layer.id);
           if (mask) {
-            const { blobId } = await adminUploadBlob(await canvasToPngBytes(mask), ctxId);
-            if (blobId) {
-              loadedBlobs.current.add(blobId);
-              patch.maskBlobId = blobId;
-              await rpcCall(ctxId, "update_layer_mask", {
-                id: layer.id, mask_blob_id: blobId, updated_at: ts(),
-              });
-            }
+            await commitTiles(api, ctxId, layer.id, "mask", mask, ts());
+            patch.maskBlobId = `mask:${layer.id}:1`;
+            loadedBlobs.current.add(patch.maskBlobId);
           }
           return patch;
         },
@@ -1244,7 +1184,7 @@ export default function EditorPage() {
     }
   }, [
     ctxId, doc, canEdit, setDoc, setLayers, selectLayer, clearHistory, removeLayer,
-    setZoom, setPan, bumpRender, persistMoves, showToast, adminUploadBlob, rpcCall,
+    setZoom, setPan, bumpRender, persistMoves, showToast, api, rpcCall,
   ]);
 
   // A deep link (`?showcase=aurora`) opens straight into a populated document —
@@ -1268,6 +1208,20 @@ export default function EditorPage() {
   }, [ready]);
 
   // ── Export ───────────────────────────────────────────────────────────────
+  /**
+   * Keeps an export as a blob of the project (`add_export`), so the team can
+   * find it again; the download itself does not wait for it, and a failure is
+   * said, not thrown.
+   */
+  const keepExport = useCallback(async (bytes: Uint8Array | ArrayBuffer, name: string, format: "png" | "jpeg" | "svg") => {
+    try {
+      const { blobId } = await api.uploadBlob(bytes, ctxId);
+      await api.pixart.addExport(ctxId, blobId, name, format);
+    } catch (e) {
+      showToast(`Exported, but not kept in the project: ${errMsg(e)}`, "error");
+    }
+  }, [api, ctxId, showToast]);
+
   const onExport = useCallback((format: "png" | "jpeg" | "svg") => {
     if (!doc) return;
     if (format === "svg") {
@@ -1281,6 +1235,7 @@ export default function EditorPage() {
       a.download = `${doc.name || "mero-pixart"}.svg`;
       a.click();
       URL.revokeObjectURL(url);
+      void keepExport(new TextEncoder().encode(svg), a.download, "svg");
       return;
     }
     const bg = format === "jpeg" ? (doc.background && doc.background !== "#00000000" ? doc.background : "#ffffff") : doc.background;
@@ -1298,15 +1253,22 @@ export default function EditorPage() {
     a.href = url;
     a.download = `${doc.name || "mero-pixart"}.${format === "png" ? "png" : "jpg"}`;
     a.click();
-  }, [doc]);
+    const name = a.download;
+    void canvasToPngBytes(flat, format === "png" ? "image/png" : "image/jpeg")
+      .then((bytes) => keepExport(bytes, name, format))
+      .catch(() => {});
+  }, [doc, keepExport]);
 
   // ── Cursor broadcast ───────────────────────────────────────────────────────
+  // Presence, not a write to the document (v1's `update_cursor`): one entry
+  // per device, sent at most every 150 ms while moving.
   const onCursorMove = useCallback((x: number, y: number) => {
+    lastCursorAt.current = { x, y };
     const now = Date.now();
-    if (now - lastCursor.current < 1500) return;
+    if (now - lastCursor.current < 150 || !publishCursor) return;
     lastCursor.current = now;
-    rpcCall(ctxId, "update_cursor", { x: Math.round(x), y: Math.round(y), updated_at: now }).catch(() => {});
-  }, [ctxId, rpcCall]);
+    publishCursor(x, y).catch(() => {});
+  }, [publishCursor]);
 
   // ── Keyboard shortcuts ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -1545,7 +1507,7 @@ export default function EditorPage() {
 
       {!ready && !fatal && (
         <div className={styles.loading}>
-          {syncing ? "Syncing the project from your team…" : "Loading project…"}
+          Loading project…
         </div>
       )}
       {showShowcase && (
@@ -1562,7 +1524,6 @@ export default function EditorPage() {
         <SettingsModal
           type="project"
           id={ctxId}
-          groupId={subgroupId}
           namespaceId={teamId}
           name={doc?.name ?? "Project"}
           onClose={() => setShowSettings(false)}
@@ -1573,8 +1534,7 @@ export default function EditorPage() {
 }
 
 function errMsg(e: unknown): string {
-  if (e instanceof Error) return e.message;
-  return String(e);
+  return extractErrorMessage(e);
 }
 
 /** Integer box covering several layers, used to give a new folder a real
