@@ -60,10 +60,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # The newest core release unless a ref is given. Not the Cargo.toml
+      # The newest core 0.x release unless a ref is given. Not the Cargo.toml
       # `merod-image` pin setup-merod reads: the rig drives core's newest
       # routes, and the nightly is how a new release gets checked before the
       # workspace pin moves. The pin is the fallback when the API is down.
+      #
+      # 0.x only: the rig is the v0.12 stack (mock-TEE relay, mero-auth,
+      # scaffolding-e2e), and core 1.0 has none of them, so a 1.0 release
+      # fails the build before a single row runs. The conformance app moves
+      # to the 1.0 component runtime with the rest of the apps; until then a
+      # 1.0 ref is only taken when given explicitly.
       - name: Resolve the core ref
         id: core
         env:
@@ -73,7 +79,8 @@ jobs:
           set -euo pipefail
           ref="$REF"
           if [ -z "$ref" ]; then
-            if ! ref=$(gh api 'repos/calimero-network/core/releases?per_page=1' --jq '.[0].tag_name'); then
+            if ! ref=$(gh api 'repos/calimero-network/core/releases?per_page=100' \
+                --jq '[.[] | select(.tag_name | startswith("0."))][0].tag_name'); then
               ref=""
             fi
             if [ -z "$ref" ] || [ "$ref" = "null" ]; then
