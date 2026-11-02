@@ -194,7 +194,33 @@ abstract class Instance {
   protected async call<T>(method: string, args: Record<string, unknown> = {}): Promise<T> {
     return (await this.transport.call(this.appId, method, args)).result as T;
   }
+
+  /**
+   * Every item of a paged view (`{ items, next }`), following `next` page by
+   * page. The contract answers one page per call; the screens take whole lists.
+   */
+  protected async all<T>(method: string, args: Record<string, unknown> = {}, limit = MAX_PAGE): Promise<T[]> {
+    const out: T[] = [];
+    let cursor: string | null = null;
+    for (;;) {
+      const page: Paged<T> | null = await this.view<Paged<T>>(method, { ...args, cursor, limit });
+      out.push(...(page?.items ?? []));
+      if (!page?.next) return out;
+      cursor = page.next;
+    }
+  }
 }
+
+/** One page of a list view. */
+export interface Paged<T> {
+  items: T[];
+  next: string | null;
+}
+
+/** The largest page a list view returns (`getDocument` takes at most {@link MAX_BLOCK_PAGE}). */
+export const MAX_PAGE = 1000;
+/** The largest page of `getDocument`: each block carries its text. */
+export const MAX_BLOCK_PAGE = 200;
 
 // ---------------------------------------------------------------- docs
 
@@ -208,8 +234,8 @@ export class DocsClient extends Instance {
     return docOf(await this.view('getDoc', p));
   }
   async listDocs(p: { include_archived: boolean }): Promise<DocDto[]> {
-    const rows = await this.view<unknown[]>('listDocs', { includeArchived: p.include_archived });
-    return (rows ?? []).map(docOf);
+    const rows = await this.all<unknown>('listDocs', { includeArchived: p.include_archived });
+    return rows.map(docOf);
   }
   async searchDocs(p: {
     query: string;
@@ -338,7 +364,7 @@ export class DocsClient extends Instance {
 
   // body reads
   getDocument(p: { doc: string }): Promise<Block[]> {
-    return this.view('getDocument', p);
+    return this.all('getDocument', p, MAX_BLOCK_PAGE);
   }
   getBlock(p: { doc: string; block: string }): Promise<Block | null> {
     return this.view('getBlock', p);
@@ -350,7 +376,7 @@ export class DocsClient extends Instance {
     return this.view('getText', p);
   }
   listBlocks(p: { doc: string }): Promise<string[]> {
-    return this.view('listBlocks', p);
+    return this.all('listBlocks', p);
   }
   getStateDigest(p: { doc: string }): Promise<string> {
     return this.view('getStateDigest', p);
@@ -370,7 +396,7 @@ export class DocsClient extends Instance {
     return this.call('addComment', { docId: p.doc_id, body: p.body });
   }
   async listComments(p: { doc_id: string }): Promise<CommentDto[]> {
-    return ((await this.view<unknown[]>('listComments', { docId: p.doc_id })) ?? []).map(commentOf);
+    return (await this.all<unknown>('listComments', { docId: p.doc_id })).map(commentOf);
   }
   async getComment(p: { id: string }): Promise<CommentDto> {
     return commentOf(await this.view('getComment', p));
@@ -403,7 +429,7 @@ export class RegistryClient extends Instance {
     await this.call('removeManager', p);
   }
   listManagers(): Promise<string[]> {
-    return this.view('listManagers');
+    return this.all('listManagers');
   }
   async setTag(p: { key: string; name: string; color: string }): Promise<void> {
     await this.call('setTag', p);
@@ -412,7 +438,7 @@ export class RegistryClient extends Instance {
     await this.call('deleteTag', p);
   }
   async listTags(): Promise<TagDto[]> {
-    return (await this.view<TagDto[]>('listTags')) ?? [];
+    return this.all<TagDto>('listTags');
   }
   async saveView(p: { id: string; name: string; query: string }): Promise<void> {
     await this.call('saveView', p);
@@ -421,7 +447,7 @@ export class RegistryClient extends Instance {
     await this.call('deleteView', p);
   }
   async listViews(): Promise<ViewDto[]> {
-    const rows = (await this.view<Array<Record<string, unknown>>>('listViews')) ?? [];
+    const rows = await this.all<Record<string, unknown>>('listViews');
     return rows.map((v) => ({
       id: String(v.id ?? ''),
       name: String(v.name ?? ''),

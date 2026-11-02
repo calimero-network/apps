@@ -1,5 +1,6 @@
 // Picked, pasted or dropped files become image blocks: each is checked, stored
-// as a blob announced to the folder's docs context, then placed. A refused
+// as a blob of the folder's docs instance, then placed (the contract keeps a
+// reference to it while the block exists). A refused
 // file is a toast and leaves the document alone.
 
 import { useCallback } from 'react';

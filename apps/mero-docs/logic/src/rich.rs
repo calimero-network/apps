@@ -100,6 +100,17 @@ pub fn text(name: String) -> RichText {
 /// The live characters of `rt`, in order, with their ids and formatting.
 pub fn chars(rt: &RichText) -> app::Result<Vec<Char>> {
     let ids = rt.text().chars()?;
+    // `spans` loads the whole text again; a text without marks has none to read.
+    if rt.marks()?.is_empty() {
+        return Ok(ids
+            .into_iter()
+            .map(|(id, ch)| Char {
+                id,
+                ch,
+                attrs: Attrs::new(),
+            })
+            .collect());
+    }
     let spans = rt.spans()?;
     let mut out = Vec::with_capacity(ids.len());
     let mut it = ids.into_iter();
@@ -432,8 +443,18 @@ fn unknown_id(e: StorageError) -> AppError {
 }
 
 /// Apply Quill steps to `rt`; returns the undo token of the change.
-pub fn apply_delta(rt: &mut RichText, ops: &[Change], plain_only: bool) -> app::Result<String> {
-    let order = chars(rt)?;
+///
+/// `order` is `chars(rt)` as the caller already read it (every read loads the
+/// whole text, so it is read once per run). Returns the undo token and the
+/// plain text after the edit, worked out from `order` and `ops` without
+/// reading the text again.
+pub fn apply_delta(
+    rt: &mut RichText,
+    order: &[Char],
+    ops: &[Change],
+    plain_only: bool,
+) -> app::Result<(String, String)> {
+    let mut after_text = String::new();
     let mut inverse = Edit::default();
     let mut pos = 0usize;
     let mut last_insert: Option<u64> = None;
@@ -459,10 +480,11 @@ pub fn apply_delta(rt: &mut RichText, ops: &[Change], plain_only: bool) -> app::
                     let ids: Vec<u64> = order[pos..pos + n].iter().map(|c| c.id).collect();
                     for (key, value) in attrs {
                         let _expand = check_key(key)?;
-                        inverse.format.extend(previous(&order, &ids, key));
+                        inverse.format.extend(previous(order, &ids, key));
                         formats.push((ids.clone(), key.clone(), value.clone()));
                     }
                 }
+                after_text.extend(order[pos..pos + n].iter().map(|c| c.ch));
                 pos += n;
                 last_insert = None;
             }
@@ -504,11 +526,13 @@ pub fn apply_delta(rt: &mut RichText, ops: &[Change], plain_only: bool) -> app::
                 }
                 last_insert = ids.last().copied();
                 inverse.remove.extend(ids);
+                after_text.push_str(insert);
             }
         }
     }
+    after_text.extend(order[pos..].iter().map(|c| c.ch));
     if !deletes.is_empty() {
-        inverse.restore = restores(&order, &deletes);
+        inverse.restore = restores(order, &deletes);
         let ids: Vec<u64> = deletes.into_iter().collect();
         let _gone = rt.text_mut().delete_ids(&ids)?;
     }
@@ -520,7 +544,7 @@ pub fn apply_delta(rt: &mut RichText, ops: &[Change], plain_only: bool) -> app::
         }
     }
     settle(rt, &settle_on)?;
-    inverse.token()
+    Ok((inverse.token()?, after_text))
 }
 
 /// Apply an undo token to `rt`; returns the token of its inverse.
@@ -562,6 +586,26 @@ pub fn apply_edit(rt: &mut RichText, edit: &Edit) -> app::Result<String> {
     }
     settle(rt, &settle_on)?;
     inverse.token()
+}
+
+/// The number of live characters `rt` has once `edit` is applied: removes of
+/// live characters out, restored text in. Read before writing anything, so a
+/// limit is checked on the caller's token, not on its result.
+pub fn len_after_edit(rt: &RichText, edit: &Edit) -> app::Result<usize> {
+    let live: BTreeSet<u64> = chars(rt)?.iter().map(|c| c.id).collect();
+    let removed: BTreeSet<u64> = edit
+        .remove
+        .iter()
+        .copied()
+        .filter(|id| live.contains(id))
+        .collect();
+    let restored: usize = edit
+        .restore
+        .iter()
+        .flat_map(|r| &r.spans)
+        .map(|span| span.text.chars().count())
+        .sum();
+    Ok(live.len() - removed.len() + restored)
 }
 
 /// Append `tail` (characters with formatting) to the end of `rt`.

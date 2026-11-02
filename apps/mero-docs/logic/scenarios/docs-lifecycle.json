@@ -7,7 +7,10 @@
    "includeArchived": false
   },
   "expect": {
-   "ok": []
+   "ok": {
+    "items": [],
+    "next": null
+   }
   }
  },
  {
@@ -100,54 +103,16 @@
  },
  {
   "as": "bob",
-  "op": "view",
-  "method": "searchDocs",
+  "op": "call",
+  "method": "setAttr",
   "args": {
-   "query": "monda",
-   "includeArchived": false,
-   "cursor": null,
-   "limit": null
+   "doc": "$b",
+   "block": "$blk",
+   "key": "url",
+   "value": "blob:abababababababababababababababababababababababababababababababab"
   },
   "expect": {
-   "ok": {
-    "hits": [
-     {
-      "id": "$b",
-      "title": "Launch notes",
-      "snippet": "We ship on <b>Monday</b>",
-      "score": 1.0,
-      "archived": false
-     }
-    ],
-    "total": "1",
-    "nextCursor": null
-   }
-  }
- },
- {
-  "as": "bob",
-  "op": "view",
-  "method": "searchDocs",
-  "args": {
-   "query": "roadm",
-   "includeArchived": false,
-   "cursor": null,
-   "limit": null
-  },
-  "expect": {
-   "ok": {
-    "hits": [
-     {
-      "id": "$a",
-      "title": "Roadmap",
-      "snippet": "<b>Roadmap</b>",
-      "score": 2.0,
-      "archived": false
-     }
-    ],
-    "total": "1",
-    "nextCursor": null
-   }
+   "error": "Invalid"
   }
  },
  {

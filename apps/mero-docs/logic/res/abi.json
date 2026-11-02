@@ -421,10 +421,18 @@
         [
           "doc",
           "string"
+        ],
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
         ]
       ],
       "public": false,
-      "returns": "list<Block>"
+      "returns": "ListPage<Block>"
     },
     "getOwner": {
       "allowSystem": false,
@@ -531,10 +539,18 @@
         [
           "doc",
           "string"
+        ],
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
         ]
       ],
       "public": false,
-      "returns": "list<string>"
+      "returns": "ListPage<String>"
     },
     "listComments": {
       "allowSystem": false,
@@ -544,10 +560,18 @@
         [
           "docId",
           "string"
+        ],
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
         ]
       ],
       "public": false,
-      "returns": "list<CommentView>"
+      "returns": "ListPage<CommentView>"
     },
     "listDocs": {
       "allowSystem": false,
@@ -557,34 +581,69 @@
         [
           "includeArchived",
           "bool"
+        ],
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
         ]
       ],
       "public": false,
-      "returns": "list<DocView>"
+      "returns": "ListPage<DocView>"
     },
     "listManagers": {
       "allowSystem": false,
       "confirm": false,
       "kind": "view",
-      "params": [],
+      "params": [
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
+        ]
+      ],
       "public": false,
-      "returns": "list<string>"
+      "returns": "ListPage<String>"
     },
     "listTags": {
       "allowSystem": false,
       "confirm": false,
       "kind": "view",
-      "params": [],
+      "params": [
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
+        ]
+      ],
       "public": false,
-      "returns": "list<TagView>"
+      "returns": "ListPage<TagView>"
     },
     "listViews": {
       "allowSystem": false,
       "confirm": false,
       "kind": "view",
-      "params": [],
+      "params": [
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
+        ]
+      ],
       "public": false,
-      "returns": "list<ViewView>"
+      "returns": "ListPage<ViewView>"
     },
     "mark": {
       "allowSystem": false,
@@ -1022,16 +1081,37 @@
   },
   "state": {
     "fields": {
+      "blockBlobs": "unorderedMap",
+      "blockText": "unorderedMap",
       "blocks": "unorderedMap",
       "commentDocs": "unorderedMap",
       "commentTotal": "counter",
       "comments": "unorderedMap",
+      "docIndex": "table",
       "docTags": "set",
       "docs": "unorderedMap",
       "managers": "set",
       "slots": "unorderedMap",
       "tags": "unorderedMap",
       "views": "unorderedMap"
+    },
+    "search": {
+      "blockBlobs": [],
+      "blockText": [],
+      "blocks": [],
+      "commentDocs": [],
+      "commentTotal": [],
+      "comments": [],
+      "docIndex": [
+        "title",
+        "body"
+      ],
+      "docTags": [],
+      "docs": [],
+      "managers": [],
+      "slots": [],
+      "tags": [],
+      "views": []
     },
     "version": 1
   },

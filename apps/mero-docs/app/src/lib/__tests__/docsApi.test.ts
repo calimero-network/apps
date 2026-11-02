@@ -107,6 +107,27 @@ describe('docsApi against the committed ABI', () => {
 });
 
 describe('docsApi results', () => {
+  it('follows `next` through every page of a list view', async () => {
+    const pages: Record<string, { items: string[]; next: string | null }> = {
+      start: { items: ['a', 'b'], next: 'c1' },
+      c1: { items: ['c'], next: null },
+    };
+    const sent: Array<Record<string, unknown>> = [];
+    const transport = {
+      call: vi.fn(),
+      view: vi.fn(async (_app: string, _method: string, args: Record<string, unknown>) => {
+        sent.push(args);
+        return { index: 1, result: pages[(args.cursor as string | null) ?? 'start'] };
+      }),
+    };
+    const ids = await new DocsClient(transport as never, 'app').listBlocks({ doc: 'd' });
+    expect(ids).toEqual(['a', 'b', 'c']);
+    expect(sent).toEqual([
+      { doc: 'd', cursor: null, limit: 1000 },
+      { doc: 'd', cursor: 'c1', limit: 1000 },
+    ]);
+  });
+
   it('reads a document back in v1 shape: snake_case, nanoseconds', async () => {
     const { transport } = recorder({
       id: 'd',

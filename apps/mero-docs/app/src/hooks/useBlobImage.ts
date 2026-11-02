@@ -1,6 +1,6 @@
-// An image block's picture. The bytes are read through the folder's docs
-// context, so the node can find them on a peer, and checked again on the way
-// in: a member writing to the contract directly can name any blob.
+// An image block's picture. The bytes are read from the folder's docs
+// instance and checked again on the way in: the contract refuses a blob the
+// folder does not hold, but not what the bytes are.
 
 import { useCallback, useEffect, useState } from 'react';
 import { useMero } from '@/calimero/react';

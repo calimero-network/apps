@@ -30,6 +30,16 @@
 //! `RichDocument`, anchors and undo tokens did on top is rebuilt in
 //! [`rich`]: see that module.
 //!
+//! # Search, images
+//!
+//! `searchDocs` asks the node's full-text index (core `1.0.0-rc.8`,
+//! `#[table(search = [..])]`): each document has one [`DocIndex`] row, its
+//! title and its body's plain text (the first 64 KiB, the most the node
+//! indexes per field), rewritten by every write that changes either. An image
+//! block names its picture as `blob:<id>` in an attribute; the instance keeps a
+//! [`BlobRef`] to it for as long as the block exists, so the node keeps the
+//! picture, and refuses a blob it does not hold.
+//!
 //! Every change a client sees, compared with v1, is in `apps/mero-docs/README.md`,
 //! "What changed in the port".
 
@@ -40,7 +50,6 @@ use calimero_app_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
 
 pub mod rich;
-pub mod search;
 
 use rich::{Change, Run, Span};
 
@@ -62,10 +71,44 @@ pub const DEFAULT_DOC_SEARCH_LIMIT: u32 = 20;
 pub const MAX_DOC_SEARCH_LIMIT: u32 = 100;
 /// Rows read per page when a method walks a whole collection.
 const BATCH: u32 = 1000;
+/// Rows per page of a list view unless the caller asks for fewer.
+pub const DEFAULT_PAGE_LIMIT: u32 = 100;
+/// The most rows one page of a list view returns.
+pub const MAX_PAGE_LIMIT: u32 = 1000;
+/// Blocks per page of `getDocument` / `listBlocks` unless the caller asks for fewer.
+pub const DEFAULT_BLOCK_PAGE: u32 = 100;
+/// The most blocks one page of `getDocument` returns: each carries its text.
+pub const MAX_BLOCK_PAGE: u32 = 200;
+/// The most blocks a document holds (`insertBlock` / `splitBlock` refuse more).
+pub const MAX_DOC_BLOCKS: u64 = 5000;
+/// The most attributes one block holds.
+pub const MAX_BLOCK_ATTRS: usize = 32;
+/// The longest attribute key, in bytes.
+pub const MAX_ATTR_KEY: usize = 64;
+/// The longest attribute value, in bytes.
+pub const MAX_ATTR_VALUE: usize = 4096;
+/// The most tags one document carries.
+pub const MAX_DOC_TAGS: usize = 64;
+/// The most body text a document's search row holds, in bytes: the node
+/// indexes at most this much of a field (core `MAX_FIELD_TEXT_BYTES`).
+pub const MAX_INDEXED_BODY: usize = 64 * 1024;
 /// The character a block takes in its document's order text.
 const SLOT: &str = "\u{25a1}";
 
 // ── stored records ───────────────────────────────────────────────────────────
+
+/// A document's row in the node's full-text index: its title and its body's
+/// plain text, one line per block, cut at [`MAX_INDEXED_BODY`] bytes. Rewritten
+/// whole by every write that changes the title or a block's text; bounded by
+/// the title limit and that cut.
+#[derive(Record)]
+#[table(key = "id", search = ["title", "body"])]
+pub struct DocIndex {
+    /// The document id.
+    pub id: String,
+    pub title: String,
+    pub body: String,
+}
 
 /// A document's header. Its title, block order and bodies are texts named
 /// after its id ([`title_of`], [`order_of`], [`body_of`]).
@@ -82,6 +125,9 @@ pub struct DocMeta {
     pub archived: bool,
 }
 
+/// A block id with its row.
+type Row = (String, BlockRow);
+
 /// One block of a document.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BlockRow {
@@ -89,6 +135,7 @@ pub struct BlockRow {
     pub depth: u8,
     /// BlockNote's own attributes (a heading's `level`, an image's blob id):
     /// a handful per block, stored opaquely.
+    /// At most [`MAX_BLOCK_ATTRS`], enforced by `setAttr`.
     pub attrs: BTreeMap<String, String>,
     /// The character this block holds in its document's order text.
     pub slot: u64,
@@ -221,6 +268,32 @@ pub struct DocSearchPage {
     pub next_cursor: Option<u32>,
 }
 
+/// One page of a list view: pass `next` back as `cursor` for the following
+/// page; `null` on the last.
+#[derive(Serialize)]
+pub struct ListPage<T> {
+    pub items: Vec<T>,
+    pub next: Option<String>,
+}
+
+/// The page size a list view uses: `limit` (1 to `max`), else `default`.
+fn page_limit(limit: Option<u32>, default: u32, max: u32) -> app::Result<u32> {
+    match limit {
+        None => Ok(default),
+        Some(n) if (1..=max).contains(&n) => Ok(n),
+        Some(n) => Err(invalid(format!("limit {n} is out of range: 1 to {max}"))),
+    }
+}
+
+/// `FindOpts` for one page from `cursor`.
+fn find_opts(cursor: Option<String>, limit: u32) -> FindOpts {
+    let opts = FindOpts::default().limit(limit);
+    match cursor {
+        Some(c) => opts.cursor(c),
+        None => opts,
+    }
+}
+
 /// A comment as callers see it.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -273,6 +346,13 @@ pub struct MeroDocs {
     comment_docs: UnorderedMap<String, String>,
     /// Comments on live documents.
     comment_total: Counter,
+    /// (doc, block) -> a live block's plain text, what [`DocIndex`] is built from.
+    block_text: UnorderedMap<(String, String), String>,
+    /// (doc, block, attribute) -> the blob an image block's attribute names
+    /// (`blob:<id>`): the node keeps a blob while state refers to it.
+    block_blobs: UnorderedMap<(String, String, String), BlobRef>,
+    /// The documents' full-text index (`searchDocs`).
+    doc_index: Table<DocIndex>,
     // ---- a workspace's registry
     /// Accounts the owner made managers.
     managers: Set<String>,
@@ -327,6 +407,7 @@ impl MeroDocs {
             },
         )?;
         let _ids = title_of(&id).text_mut().insert(0, &title)?;
+        self.reindex(&id)?;
         env::emit(Event::DocCreated { id: id.clone() }, Audience::All)?;
         Ok(id)
     }
@@ -338,25 +419,38 @@ impl MeroDocs {
         self.doc_view(&id, &meta)
     }
 
-    /// Every document of the folder (archived ones only with `includeArchived`),
-    /// in id order.
+    /// One page of the folder's documents (archived ones only with
+    /// `includeArchived`), in id order: `limit` (1 to 1000, default 100)
+    /// documents are read from `cursor` (the previous page's `next`), so a page
+    /// without archived ones may hold fewer, and `next` is `null` on the last.
     #[app::view]
-    pub fn list_docs(&self, include_archived: bool) -> app::Result<Vec<DocView>> {
-        let mut out = Vec::new();
-        for (id, meta) in self.all_docs()? {
+    pub fn list_docs(
+        &self,
+        include_archived: bool,
+        cursor: Option<String>,
+        limit: Option<u32>,
+    ) -> app::Result<ListPage<DocView>> {
+        let limit = page_limit(limit, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT)?;
+        let page = self.docs.page(find_opts(cursor, limit))?;
+        let mut items = Vec::new();
+        for (id, meta) in page.items {
             if include_archived || !meta.archived {
-                out.push(self.doc_view(&id, &meta)?);
+                items.push(self.doc_view(&id, &meta)?);
             }
         }
-        Ok(out)
+        Ok(ListPage {
+            items,
+            next: page.next,
+        })
     }
 
-    /// Searches the folder's titles and bodies: every word of `query` must start
-    /// a word of the document (case-insensitive), a title match scoring double;
-    /// best match first. `cursor` is the previous page's `nextCursor`; `limit`
-    /// defaults to 20, at most 100. A blank query finds nothing; one over 256
-    /// bytes is `Invalid`. Reads every document's text: core `1.0.0-rc.7` has no
-    /// full-text index for components.
+    /// Searches the folder's titles and bodies with the node's full-text index
+    /// (BM25): every word of `query` must occur in the title or the body, the
+    /// last one as a prefix (search as you type), case-insensitively; best match
+    /// first. `cursor` is the previous page's `nextCursor`; `limit` 1 to 100,
+    /// default 20. Archived documents are left out of a page unless
+    /// `includeArchived`, so such a page may hold fewer; `total` counts every
+    /// match. A blank query finds nothing; one over 256 bytes is `Invalid`.
     #[app::view]
     pub fn search_docs(
         &self,
@@ -371,51 +465,37 @@ impl MeroDocs {
                 query.len()
             )));
         }
-        let terms = search::terms(&query);
+        let limit = page_limit(limit, DEFAULT_DOC_SEARCH_LIMIT, MAX_DOC_SEARCH_LIMIT)?;
         let mut page = DocSearchPage {
             hits: Vec::new(),
             total: 0,
             next_cursor: None,
         };
-        if terms.is_empty() {
+        if query.trim().is_empty() {
             return Ok(page);
         }
-        let mut found = Vec::new();
-        for (id, meta) in self.all_docs()? {
+        let mut opts = SearchOpts::default().mode(SearchMode::Prefix).limit(limit);
+        if let Some(c) = cursor {
+            opts = opts.cursor(c);
+        }
+        let found = self.doc_index.search(&query, opts)?;
+        page.total = found.total;
+        page.next_cursor = found.next;
+        for hit in found.items {
+            let Some(meta) = self.docs.get(&hit.record.id)? else {
+                continue;
+            };
             if meta.archived && !include_archived {
                 continue;
             }
-            let title = rich::plain(&rich::chars(&title_of(&id))?);
-            let body = self.body_text(&id)?;
-            if let Some(score) = search::score(&terms, &title, &body) {
-                let mut snippet = search::snippet(&terms, &body);
-                if snippet.is_empty() {
-                    snippet = search::snippet(&terms, &title);
-                }
-                found.push(DocSearchHit {
-                    id,
-                    title,
-                    snippet,
-                    score,
-                    archived: meta.archived,
-                });
-            }
+            page.hits.push(DocSearchHit {
+                id: hit.record.id,
+                title: hit.record.title,
+                snippet: hit.snippet,
+                score: hit.score,
+                archived: meta.archived,
+            });
         }
-        found.sort_by(|a, b| {
-            b.score
-                .total_cmp(&a.score)
-                .then_with(|| a.title.cmp(&b.title))
-                .then_with(|| a.id.cmp(&b.id))
-        });
-        let from = cursor.unwrap_or(0) as usize;
-        let take = limit
-            .unwrap_or(DEFAULT_DOC_SEARCH_LIMIT)
-            .min(MAX_DOC_SEARCH_LIMIT) as usize;
-        page.total = found.len() as u64;
-        if from + take < found.len() {
-            page.next_cursor = Some((from + take) as u32);
-        }
-        page.hits = found.into_iter().skip(from).take(take).collect();
         Ok(page)
     }
 
@@ -471,6 +551,7 @@ impl MeroDocs {
             }
             for ((doc, block), row) in page.items {
                 body_of(&doc, &block).clear()?;
+                let _ = self.block_text.remove(&(doc.clone(), block.clone()))?;
                 let _ = self.slots.remove(&(doc.clone(), row.slot))?;
                 let _ = self.blocks.remove(&(doc, block))?;
             }
@@ -488,6 +569,19 @@ impl MeroDocs {
             }
         }
         order_of(&id).clear()?;
+        loop {
+            let page = self.block_blobs.prefix(
+                &[KeyPart::Str(id.clone())],
+                FindOpts::default().limit(BATCH),
+            )?;
+            if page.items.is_empty() {
+                break;
+            }
+            for (key, _) in page.items {
+                let _ = self.block_blobs.remove(&key)?;
+            }
+        }
+        let _ = self.doc_index.remove(&id)?;
         loop {
             let page = self.doc_tags.prefix(
                 &[KeyPart::Str(id.clone())],
@@ -526,7 +620,13 @@ impl MeroDocs {
             return Err(invalid("invalid tag key"));
         }
         let _meta = self.meta(&id)?;
-        let _new = self.doc_tags.insert(&(id.clone(), tag))?;
+        let key = (id.clone(), tag);
+        if !self.doc_tags.contains(&key)? && self.tags_of(&id)?.len() >= MAX_DOC_TAGS {
+            return Err(invalid(format!(
+                "a document carries at most {MAX_DOC_TAGS} tags"
+            )));
+        }
+        let _new = self.doc_tags.insert(&key)?;
         env::emit(Event::DocTagsChanged { id }, Audience::All)?;
         Ok(())
     }
@@ -564,13 +664,8 @@ impl MeroDocs {
     /// returns the undo token for `titleUndo`. At most 1024 characters after.
     /// Emits `TitleChanged`.
     pub fn title_apply_delta(&mut self, doc: String, ops: Vec<Change>) -> app::Result<String> {
-        self.touch(&doc)?;
-        let mut title = title_of(&doc);
-        let current = rich::chars(&title)?.len();
-        check_len("title", rich::len_after(current, &ops), MAX_TITLE_LEN)?;
-        let token = rich::apply_delta(&mut title, &ops, true)?;
-        env::emit(Event::TitleChanged { doc }, Audience::All)?;
-        Ok(token)
+        let chars = rich::chars(&title_of(&doc))?;
+        self.write_title(doc, &chars, &ops)
     }
 
     /// `titleApplyDelta`, only if the title is still `base` and, with an
@@ -604,7 +699,7 @@ impl MeroDocs {
             });
         }
         let end = rich::edit_end(&ops) as u32;
-        let token = self.title_apply_delta(doc.clone(), ops)?;
+        let token = self.write_title(doc.clone(), &chars, &ops)?;
         let chars = rich::chars(&title_of(&doc))?;
         Ok(TitleApplied {
             applied: true,
@@ -621,7 +716,11 @@ impl MeroDocs {
     pub fn title_undo(&mut self, doc: String, token: String) -> app::Result<String> {
         let edit = rich::Edit::from_token(&token)?;
         self.touch(&doc)?;
-        let redo = rich::apply_edit(&mut title_of(&doc), &edit)?;
+        let mut title = title_of(&doc);
+        // A token is the caller's JSON: its result is checked like any edit's.
+        check_len("title", rich::len_after_edit(&title, &edit)?, MAX_TITLE_LEN)?;
+        let redo = rich::apply_edit(&mut title, &edit)?;
+        self.reindex(&doc)?;
         env::emit(Event::TitleChanged { doc }, Audience::All)?;
         Ok(redo)
     }
@@ -679,6 +778,7 @@ impl MeroDocs {
             let _gone = order_of(&doc).delete_ids(&[row.slot])?;
             row.deleted = true;
             let _ = self.blocks.insert(&(doc.clone(), block.clone()), &row)?;
+            self.refresh_text(&doc, &[&block])?;
         }
         env::emit(Event::BlockDeleted { doc, block }, Audience::All)?;
         Ok(())
@@ -704,9 +804,13 @@ impl MeroDocs {
         let _ = self.slots.remove(&(doc.clone(), row.slot))?;
         let slot = order.insert_after(after_slot, SLOT)?[0];
         let _ = self.slots.insert(&(doc.clone(), slot), &block)?;
+        let revived = row.deleted;
         row.slot = slot;
         row.deleted = false;
         let _ = self.blocks.insert(&(doc.clone(), block.clone()), &row)?;
+        if revived {
+            self.refresh_text(&doc, &[&block])?;
+        }
         env::emit(Event::BlockMoved { doc, block }, Audience::All)?;
         Ok(())
     }
@@ -729,6 +833,20 @@ impl MeroDocs {
         key: String,
         value: Option<String>,
     ) -> app::Result<()> {
+        if key.is_empty() || key.len() > MAX_ATTR_KEY {
+            return Err(invalid(format!(
+                "an attribute key is 1 to {MAX_ATTR_KEY} bytes"
+            )));
+        }
+        if let Some(v) = &value {
+            check_len("attribute value", v.len(), MAX_ATTR_VALUE)?;
+            let row = self.block_row(&doc, &block)?;
+            if !row.attrs.contains_key(&key) && row.attrs.len() >= MAX_BLOCK_ATTRS {
+                return Err(invalid(format!(
+                    "a block holds at most {MAX_BLOCK_ATTRS} attributes"
+                )));
+            }
+        }
         self.change_block(doc, block, |row| {
             let _old = match value {
                 Some(v) => row.attrs.insert(key, v),
@@ -760,6 +878,7 @@ impl MeroDocs {
             let ids: Vec<u64> = tail.iter().map(|c| c.id).collect();
             let _gone = head.text_mut().delete_ids(&ids)?;
         }
+        self.refresh_text(&doc, &[&block, &new])?;
         env::emit(
             Event::BlockInserted {
                 doc: doc.clone(),
@@ -793,6 +912,7 @@ impl MeroDocs {
                 .blocks
                 .insert(&(doc.clone(), second.clone()), &tail_row)?;
         }
+        self.refresh_text(&doc, &[&first, &second])?;
         env::emit(
             Event::BlockChanged {
                 doc: doc.clone(),
@@ -818,18 +938,9 @@ impl MeroDocs {
         block: String,
         ops: Vec<Change>,
     ) -> app::Result<String> {
-        self.touch(&doc)?;
         let _row = self.block_row(&doc, &block)?;
-        let mut body = body_of(&doc, &block);
-        let current = rich::chars(&body)?.len();
-        check_len(
-            "block text",
-            rich::len_after(current, &ops),
-            MAX_BLOCK_TEXT_LEN,
-        )?;
-        let token = rich::apply_delta(&mut body, &ops, false)?;
-        env::emit(Event::TextChanged { doc, block }, Audience::All)?;
-        Ok(token)
+        let chars = rich::chars(&body_of(&doc, &block))?;
+        self.write_block(doc, block, &chars, &ops)
     }
 
     /// `applyDelta`, only if the block's text is still `base` and, with an
@@ -864,7 +975,7 @@ impl MeroDocs {
             });
         }
         let end = rich::edit_end(&ops) as u32;
-        let token = self.apply_delta(doc.clone(), block.clone(), ops)?;
+        let token = self.write_block(doc.clone(), block.clone(), &chars, &ops)?;
         let chars = rich::chars(&body_of(&doc, &block))?;
         Ok(Applied {
             applied: true,
@@ -882,7 +993,15 @@ impl MeroDocs {
         let edit = rich::Edit::from_token(&token)?;
         self.touch(&doc)?;
         let _row = self.block_row(&doc, &block)?;
-        let redo = rich::apply_edit(&mut body_of(&doc, &block), &edit)?;
+        let mut body = body_of(&doc, &block);
+        // A token is the caller's JSON: its result is checked like any edit's.
+        check_len(
+            "block text",
+            rich::len_after_edit(&body, &edit)?,
+            MAX_BLOCK_TEXT_LEN,
+        )?;
+        let redo = rich::apply_edit(&mut body, &edit)?;
+        self.refresh_text(&doc, &[&block])?;
         env::emit(Event::TextChanged { doc, block }, Audience::All)?;
         Ok(redo)
     }
@@ -923,14 +1042,26 @@ impl MeroDocs {
 
     // ── body reads ───────────────────────────────────────────────────────────
 
-    /// Every block of the document, in order.
+    /// One page of the document's blocks, in order: `limit` 1 to 200 (default
+    /// 100) from `cursor` (the previous page's `next`: a position, so a block
+    /// inserted or removed before it between two reads shifts the pages).
     #[app::view]
-    pub fn get_document(&self, doc: String) -> app::Result<Vec<Block>> {
+    pub fn get_document(
+        &self,
+        doc: String,
+        cursor: Option<String>,
+        limit: Option<u32>,
+    ) -> app::Result<ListPage<Block>> {
         let _meta = self.meta(&doc)?;
-        self.ordered_blocks(&doc)?
-            .into_iter()
-            .map(|(id, row)| block_view(&doc, id, row))
-            .collect()
+        let limit = page_limit(limit, DEFAULT_BLOCK_PAGE, MAX_BLOCK_PAGE)?;
+        let (rows, next) = self.blocks_page(&doc, cursor, limit)?;
+        Ok(ListPage {
+            items: rows
+                .into_iter()
+                .map(|(id, row)| block_view(&doc, id, row))
+                .collect::<app::Result<_>>()?,
+            next,
+        })
     }
 
     /// One block, or `null` when it is not in the document.
@@ -957,15 +1088,22 @@ impl MeroDocs {
         Ok(rich::plain(&rich::chars(&body_of(&doc, &block))?))
     }
 
-    /// The ids of the document's blocks, in order.
+    /// One page of the ids of the document's blocks, in order: `limit` 1 to
+    /// 1000 (default 100) from `cursor`, as `getDocument`.
     #[app::view]
-    pub fn list_blocks(&self, doc: String) -> app::Result<Vec<String>> {
+    pub fn list_blocks(
+        &self,
+        doc: String,
+        cursor: Option<String>,
+        limit: Option<u32>,
+    ) -> app::Result<ListPage<String>> {
         let _meta = self.meta(&doc)?;
-        Ok(self
-            .ordered_blocks(&doc)?
-            .into_iter()
-            .map(|(id, _)| id)
-            .collect())
+        let limit = page_limit(limit, DEFAULT_BLOCK_PAGE, MAX_PAGE_LIMIT)?;
+        let (rows, next) = self.blocks_page(&doc, cursor, limit)?;
+        Ok(ListPage {
+            items: rows.into_iter().map(|(id, _)| id).collect(),
+            next,
+        })
     }
 
     /// The whole body as one string, `kind/depth[attr=value]{marks:text};` per
@@ -1056,27 +1194,28 @@ impl MeroDocs {
         Ok(id)
     }
 
-    /// A document's comments, oldest id first; none for a missing document.
+    /// One page of a document's comments, in id order (ids are random, not
+    /// by time): `limit` 1 to 1000 (default 100) from `cursor`, the previous
+    /// page's `next`. None for a missing document.
     #[app::view]
-    pub fn list_comments(&self, doc_id: String) -> app::Result<Vec<CommentView>> {
-        let mut out = Vec::new();
-        let mut cursor: Option<String> = None;
-        loop {
-            let mut opts = FindOpts::default().limit(BATCH);
-            if let Some(c) = cursor.take() {
-                opts = opts.cursor(c);
-            }
-            let page = self
-                .comments
-                .prefix(&[KeyPart::Str(doc_id.clone())], opts)?;
-            for ((doc, id), row) in page.items {
-                out.push(comment_view(id, doc, row));
-            }
-            match page.next {
-                Some(next) => cursor = Some(next),
-                None => return Ok(out),
-            }
-        }
+    pub fn list_comments(
+        &self,
+        doc_id: String,
+        cursor: Option<String>,
+        limit: Option<u32>,
+    ) -> app::Result<ListPage<CommentView>> {
+        let limit = page_limit(limit, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT)?;
+        let page = self
+            .comments
+            .prefix(&[KeyPart::Str(doc_id)], find_opts(cursor, limit))?;
+        Ok(ListPage {
+            items: page
+                .items
+                .into_iter()
+                .map(|((doc, id), row)| comment_view(id, doc, row))
+                .collect(),
+            next: page.next,
+        })
     }
 
     /// One comment. `NotFound` for a missing one.
@@ -1165,23 +1304,20 @@ impl MeroDocs {
         Ok(())
     }
 
-    /// The managers (the owner not included), in account order.
+    /// One page of the managers (the owner not included), in account order:
+    /// `limit` 1 to 1000 (default 100) from `cursor`, the previous page's `next`.
     #[app::view]
-    pub fn list_managers(&self) -> app::Result<Vec<String>> {
-        let mut out = Vec::new();
-        let mut cursor: Option<String> = None;
-        loop {
-            let mut opts = FindOpts::default().limit(BATCH);
-            if let Some(c) = cursor.take() {
-                opts = opts.cursor(c);
-            }
-            let page = self.managers.page(opts)?;
-            out.extend(page.items);
-            match page.next {
-                Some(next) => cursor = Some(next),
-                None => return Ok(out),
-            }
-        }
+    pub fn list_managers(
+        &self,
+        cursor: Option<String>,
+        limit: Option<u32>,
+    ) -> app::Result<ListPage<String>> {
+        let limit = page_limit(limit, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT)?;
+        let page = self.managers.page(find_opts(cursor, limit))?;
+        Ok(ListPage {
+            items: page.items,
+            next: page.next,
+        })
     }
 
     // ── registry: tags ───────────────────────────────────────────────────────
@@ -1223,28 +1359,29 @@ impl MeroDocs {
         Ok(())
     }
 
-    /// Every workspace tag, deleted ones included, in key order.
+    /// One page of the workspace tags, deleted ones included, in key order:
+    /// `limit` 1 to 1000 (default 100) from `cursor`, the previous page's `next`.
     #[app::view]
-    pub fn list_tags(&self) -> app::Result<Vec<TagView>> {
-        let mut out = Vec::new();
-        let mut cursor: Option<String> = None;
-        loop {
-            let mut opts = FindOpts::default().limit(BATCH);
-            if let Some(c) = cursor.take() {
-                opts = opts.cursor(c);
-            }
-            let page = self.tags.page(opts)?;
-            out.extend(page.items.into_iter().map(|(key, row)| TagView {
-                key,
-                name: row.name,
-                color: row.color,
-                deleted: row.deleted,
-            }));
-            match page.next {
-                Some(next) => cursor = Some(next),
-                None => return Ok(out),
-            }
-        }
+    pub fn list_tags(
+        &self,
+        cursor: Option<String>,
+        limit: Option<u32>,
+    ) -> app::Result<ListPage<TagView>> {
+        let limit = page_limit(limit, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT)?;
+        let page = self.tags.page(find_opts(cursor, limit))?;
+        Ok(ListPage {
+            items: page
+                .items
+                .into_iter()
+                .map(|(key, row)| TagView {
+                    key,
+                    name: row.name,
+                    color: row.color,
+                    deleted: row.deleted,
+                })
+                .collect(),
+            next: page.next,
+        })
     }
 
     // ── registry: saved views ────────────────────────────────────────────────
@@ -1291,28 +1428,29 @@ impl MeroDocs {
         Ok(())
     }
 
-    /// Every saved view, in id order.
+    /// One page of the saved views, in id order: `limit` 1 to 1000 (default
+    /// 100) from `cursor`, the previous page's `next`.
     #[app::view]
-    pub fn list_views(&self) -> app::Result<Vec<ViewView>> {
-        let mut out = Vec::new();
-        let mut cursor: Option<String> = None;
-        loop {
-            let mut opts = FindOpts::default().limit(BATCH);
-            if let Some(c) = cursor.take() {
-                opts = opts.cursor(c);
-            }
-            let page = self.views.page(opts)?;
-            out.extend(page.items.into_iter().map(|(id, row)| ViewView {
-                id,
-                name: row.name,
-                query: row.query,
-                created_by: row.created_by,
-            }));
-            match page.next {
-                Some(next) => cursor = Some(next),
-                None => return Ok(out),
-            }
-        }
+    pub fn list_views(
+        &self,
+        cursor: Option<String>,
+        limit: Option<u32>,
+    ) -> app::Result<ListPage<ViewView>> {
+        let limit = page_limit(limit, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT)?;
+        let page = self.views.page(find_opts(cursor, limit))?;
+        Ok(ListPage {
+            items: page
+                .items
+                .into_iter()
+                .map(|(id, row)| ViewView {
+                    id,
+                    name: row.name,
+                    query: row.query,
+                    created_by: row.created_by,
+                })
+                .collect(),
+            next: page.next,
+        })
     }
 }
 
@@ -1427,25 +1565,9 @@ impl MeroDocs {
         Ok(())
     }
 
-    fn all_docs(&self) -> app::Result<Vec<(String, DocMeta)>> {
-        let mut out = Vec::new();
-        let mut cursor: Option<String> = None;
-        loop {
-            let mut opts = FindOpts::default().limit(BATCH);
-            if let Some(c) = cursor.take() {
-                opts = opts.cursor(c);
-            }
-            let page = self.docs.page(opts)?;
-            out.extend(page.items);
-            match page.next {
-                Some(next) => cursor = Some(next),
-                None => return Ok(out),
-            }
-        }
-    }
-
-    fn doc_view(&self, id: &str, meta: &DocMeta) -> app::Result<DocView> {
-        let tags = self
+    /// A document's tag keys, sorted: at most [`MAX_DOC_TAGS`].
+    fn tags_of(&self, id: &str) -> app::Result<Vec<String>> {
+        Ok(self
             .doc_tags
             .prefix(
                 &[KeyPart::Str(id.to_owned())],
@@ -1454,7 +1576,163 @@ impl MeroDocs {
             .items
             .into_iter()
             .map(|(_, tag)| tag)
-            .collect();
+            .collect())
+    }
+
+    /// `titleApplyDelta` on the title as `chars` read it: the length check,
+    /// the write, the search row (from the text the edit produced, without
+    /// reading the title again) and `TitleChanged`.
+    fn write_title(
+        &mut self,
+        doc: String,
+        chars: &[rich::Char],
+        ops: &[Change],
+    ) -> app::Result<String> {
+        self.touch(&doc)?;
+        check_len("title", rich::len_after(chars.len(), ops), MAX_TITLE_LEN)?;
+        let (token, title) = rich::apply_delta(&mut title_of(&doc), chars, ops, true)?;
+        self.reindex_with(&doc, title)?;
+        env::emit(Event::TitleChanged { doc }, Audience::All)?;
+        Ok(token)
+    }
+
+    /// `applyDelta` on a block as `chars` read it: the length check, the
+    /// write, its `block_text` and search row (from the text the edit produced)
+    /// and `TextChanged`.
+    fn write_block(
+        &mut self,
+        doc: String,
+        block: String,
+        chars: &[rich::Char],
+        ops: &[Change],
+    ) -> app::Result<String> {
+        self.touch(&doc)?;
+        check_len(
+            "block text",
+            rich::len_after(chars.len(), ops),
+            MAX_BLOCK_TEXT_LEN,
+        )?;
+        let (token, text) = rich::apply_delta(&mut body_of(&doc, &block), chars, ops, false)?;
+        // A deleted block keeps its text but stays out of the search row.
+        if !self.block_row(&doc, &block)?.deleted {
+            let _ = self
+                .block_text
+                .insert(&(doc.clone(), block.clone()), &text)?;
+        }
+        self.reindex(&doc)?;
+        env::emit(Event::TextChanged { doc, block }, Audience::All)?;
+        Ok(token)
+    }
+
+    /// Re-reads the text of `blocks` into `block_text` (a deleted block's is
+    /// dropped), then rebuilds the document's search row.
+    fn refresh_text(&mut self, doc: &str, blocks: &[&str]) -> app::Result<()> {
+        for block in blocks {
+            let key = (doc.to_owned(), (*block).to_owned());
+            match self.blocks.get(&key)? {
+                Some(row) if !row.deleted => {
+                    let text = rich::plain(&rich::chars(&body_of(doc, block))?);
+                    let _ = self.block_text.insert(&key, &text)?;
+                }
+                _ => {
+                    let _ = self.block_text.remove(&key)?;
+                }
+            }
+        }
+        self.reindex(doc)
+    }
+
+    /// Rewrites the document's [`DocIndex`] row: the title, and every live
+    /// block's text in block-id order, one line each, cut at
+    /// [`MAX_INDEXED_BODY`] bytes. One range read of `block_text` (a document
+    /// holds at most [`MAX_DOC_BLOCKS`] blocks).
+    fn reindex(&mut self, doc: &str) -> app::Result<()> {
+        let title = rich::plain(&rich::chars(&title_of(doc))?);
+        self.reindex_with(doc, title)
+    }
+
+    /// [`Self::reindex`] with the title already known.
+    fn reindex_with(&mut self, doc: &str, title: String) -> app::Result<()> {
+        let mut body = String::new();
+        let mut cursor: Option<String> = None;
+        'pages: loop {
+            let page = self
+                .block_text
+                .prefix(&[KeyPart::Str(doc.to_owned())], find_opts(cursor, BATCH))?;
+            for (_, text) in page.items {
+                if !body.is_empty() {
+                    body.push('\n');
+                }
+                body.push_str(&text);
+                if body.len() >= MAX_INDEXED_BODY {
+                    break 'pages;
+                }
+            }
+            match page.next {
+                Some(next) => cursor = Some(next),
+                None => break,
+            }
+        }
+        if body.len() > MAX_INDEXED_BODY {
+            let mut cut = MAX_INDEXED_BODY;
+            while !body.is_char_boundary(cut) {
+                cut -= 1;
+            }
+            body.truncate(cut);
+        }
+        self.doc_index.upsert(DocIndex {
+            id: doc.to_owned(),
+            title,
+            body,
+        })?;
+        Ok(())
+    }
+
+    /// Keeps a [`BlobRef`] for every attribute of the block that names a blob
+    /// (`blob:<id>`) and drops the ones it no longer names. A blob the instance
+    /// does not hold (never uploaded to it, or deleted) is `Invalid`.
+    fn link_blobs(
+        &mut self,
+        doc: &str,
+        block: &str,
+        attrs: &BTreeMap<String, String>,
+    ) -> app::Result<()> {
+        let held = self
+            .block_blobs
+            .prefix(
+                &[KeyPart::Str(doc.to_owned()), KeyPart::Str(block.to_owned())],
+                FindOpts::default().limit(BATCH),
+            )?
+            .items;
+        for ((d, b, key), blob) in &held {
+            if attrs.get(key).and_then(|v| blob_in(v)) != Some(*blob) {
+                let _ = self
+                    .block_blobs
+                    .remove(&(d.clone(), b.clone(), key.clone()))?;
+            }
+        }
+        for (key, value) in attrs {
+            let Some(blob) = blob_in(value) else {
+                continue;
+            };
+            let already = held.iter().any(|((_, _, k), b)| k == key && *b == blob);
+            if already {
+                continue;
+            }
+            if blob.info().is_none() {
+                return Err(invalid(format!(
+                    "{value} names a blob this folder does not hold"
+                )));
+            }
+            let _ = self
+                .block_blobs
+                .insert(&(doc.to_owned(), block.to_owned(), key.clone()), &blob)?;
+        }
+        Ok(())
+    }
+
+    fn doc_view(&self, id: &str, meta: &DocMeta) -> app::Result<DocView> {
+        let tags = self.tags_of(id)?;
         Ok(DocView {
             id: id.to_owned(),
             title: rich::plain(&rich::chars(&title_of(id))?),
@@ -1486,8 +1764,15 @@ impl MeroDocs {
             Some(a) => Some(self.block_row(doc, a)?.slot),
             None => None,
         };
-        let slot = order_of(doc).insert_after(after_slot, SLOT)?[0];
+        let mut order = order_of(doc);
+        if order.len()? >= MAX_DOC_BLOCKS {
+            return Err(invalid(format!(
+                "a document holds at most {MAX_DOC_BLOCKS} blocks"
+            )));
+        }
+        let slot = order.insert_after(after_slot, SLOT)?[0];
         let block = fresh_id("blk");
+        self.link_blobs(doc, &block, &attrs)?;
         let _ = self.slots.insert(&(doc.to_owned(), slot), &block)?;
         let _ = self.blocks.insert(
             &(doc.to_owned(), block.clone()),
@@ -1511,13 +1796,47 @@ impl MeroDocs {
         self.touch(&doc)?;
         let mut row = self.block_row(&doc, &block)?;
         change(&mut row);
+        self.link_blobs(&doc, &block, &row.attrs)?;
         let _ = self.blocks.insert(&(doc.clone(), block.clone()), &row)?;
         env::emit(Event::BlockChanged { doc, block }, Audience::All)?;
         Ok(())
     }
 
+    /// `limit` live blocks of the document from position `cursor` (a decimal
+    /// string, `null` for the start), and the position after them when more
+    /// follow. Reads the order text whole (one character per block, at most
+    /// [`MAX_DOC_BLOCKS`]) and only the page's rows.
+    fn blocks_page(
+        &self,
+        doc: &str,
+        cursor: Option<String>,
+        limit: u32,
+    ) -> app::Result<(Vec<Row>, Option<String>)> {
+        let from = match cursor {
+            None => 0,
+            Some(c) => c
+                .parse::<usize>()
+                .map_err(|_| invalid(format!("bad cursor: {c}")))?,
+        };
+        let slots = order_of(doc).chars()?;
+        let to = from.saturating_add(limit as usize).min(slots.len());
+        let mut out = Vec::new();
+        for (slot, _) in slots.get(from..to).unwrap_or_default() {
+            let Some(id) = self.slots.get(&(doc.to_owned(), *slot))? else {
+                continue;
+            };
+            if let Some(row) = self.blocks.get(&(doc.to_owned(), id.clone()))? {
+                if !row.deleted && row.slot == *slot {
+                    out.push((id, row));
+                }
+            }
+        }
+        let next = (to < slots.len()).then(|| to.to_string());
+        Ok((out, next))
+    }
+
     /// The document's live blocks in order.
-    fn ordered_blocks(&self, doc: &str) -> app::Result<Vec<(String, BlockRow)>> {
+    fn ordered_blocks(&self, doc: &str) -> app::Result<Vec<Row>> {
         let mut out = Vec::new();
         for (slot, _) in order_of(doc).chars()? {
             let Some(id) = self.slots.get(&(doc.to_owned(), slot))? else {
@@ -1530,15 +1849,6 @@ impl MeroDocs {
             }
         }
         Ok(out)
-    }
-
-    /// The body's plain text, one line per block.
-    fn body_text(&self, doc: &str) -> app::Result<String> {
-        let mut lines = Vec::new();
-        for (id, _) in self.ordered_blocks(doc)? {
-            lines.push(rich::plain(&rich::chars(&body_of(doc, &id))?));
-        }
-        Ok(lines.join("\n"))
     }
 
     fn comment(&self, id: &str) -> app::Result<(String, CommentRow)> {
@@ -1605,6 +1915,11 @@ fn fresh_id(kind: &str) -> String {
         .map(|b| format!("{b:02x}"))
         .collect();
     format!("{kind}-{hex}")
+}
+
+/// The blob an attribute value names: `blob:` and the blob's 64 hex digits.
+fn blob_in(value: &str) -> Option<BlobRef> {
+    value.strip_prefix("blob:").and_then(BlobRef::parse)
 }
 
 /// A tag key: 1 to 64 lowercase letters, digits and dashes.

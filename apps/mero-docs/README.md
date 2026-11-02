@@ -11,8 +11,9 @@ and to Calimero Cloud in production through mero-js's `CalimeroClient`
 |---|---|
 | `logic/` | the contract (a standalone crate: its own `[workspace]` and `Cargo.lock`) |
 | `logic/src/rich.rs` | the text engine: Quill deltas, character ids, anchors and undo tokens on the SDK's Fugue `RichText` |
+| core pin | `1.0.0-rc.8` (`logic/Cargo.toml`, `min-runtime-version` too): blobs and full-text search are used; xcall, actions and outbound HTTP are not needed (v1 had no cross-service calls and no outbound requests) |
 | `logic/tests/` | `harness.rs` (every method on core's wasmtime engine, `TestApp`), `scenarios.rs` (every `scenarios/*.json`), `guide.rs` (the agent guide's format) |
-| `logic/scenarios/` | `docs-lifecycle.json`, `rich-body.json`, `registry.json` (v1's merobox workflows), `access.json` (the node's gate, guests, other members' content); run by `cargo test` and on `merod local` |
+| `logic/scenarios/` | `docs-lifecycle.json`, `rich-body.json`, `registry.json` (v1's workflows), `access.json` (the node's gate, guests, other members' content); run by `cargo test` and on `merod local` |
 | `logic/GUIDE.md` | the agent guide the bundle carries |
 | `app/` | Vite + React + BlockNote frontend |
 | `mobile/` | native iOS and Android readers, **still v1** (see [Mobile](#mobile)) |
@@ -31,7 +32,7 @@ and to Calimero Cloud in production through mero-js's `CalimeroClient`
 | joining | an org invite (`?invite=<token>`, naming the restricted folders' teams), redeemed after a passkey sign-in | a namespace invitation link, then joining each context and waiting for it to sync |
 | who you are | an account, signed in with a passkey | a node identity, signed in through the node |
 | presence and cursors | the node's presence API (`publishPresence`, `presenceStream`) | ephemeral context messages |
-| images | blobs of the folder's documents instance (`uploadBlob`, `downloadBlob`) | context blobs |
+| images | blobs of the folder's documents instance (`uploadBlob`, `downloadBlob`); the instance keeps a `BlobRef` to each one an image block names, so the node keeps the blob while the block exists | context blobs |
 
 The node decides who reaches an instance at all: the org's members reach the
 registry; a folder's instance is reached by its team (an open team by everyone
@@ -86,7 +87,8 @@ only ever fills its own.
 | `FugueText` / `RichText` deltas, anchors, undo (`DeltaUndo`, `Undo`) | rebuilt on the SDK's `RichText` in `src/rich.rs`: `chars`, `insert_after`, `delete_ids`, `mark_ids` |
 | `headers: Moderated<UnorderedMap<String, u64>>` (creator = owner stamp, removable by the founder) | `createdBy` on `DocMeta`; `deleteDoc` checks the caller is the creator or `env::app_owner()` |
 | `comments: Moderated<IndexedMap<String, Comment>>` (`#[index] doc_id`) | `comments: UnorderedMap<(doc, comment), CommentRow>` with `author`, `commentDocs: UnorderedMap<comment, doc>`, `commentTotal: Counter` |
-| `search_indexes!` + `#[derive(Searchable)]` (the node's full-text index) | not in components at `1.0.0-rc.7`: `searchDocs` reads the folder's text itself (below) |
+| `search_indexes!` + `#[derive(Searchable)]` (the node's full-text index) | `docIndex: Table<DocIndex>` with `#[table(key = "id", search = ["title", "body"])]`: one row per document, its title and its body's plain text (the first 64 KiB, what the node indexes per field), rewritten by every write that changes either; `blockText: UnorderedMap<(doc, block), String>` holds each live block's text, so a row is rebuilt from one range read |
+| image blocks naming context blobs (`url: blob:<id>` in the block's attributes, nothing in state) | the same attribute, and `blockBlobs: UnorderedMap<(doc, block, attribute), BlobRef>` beside it, kept by `setAttr` / `splitBlock` / `deleteDoc` |
 | registry `owner: Frozen<String>` + `AccessControl` | `env::app_owner()` and `managers: Set<String>` |
 | registry `tags: UnorderedMap<String, TagRecord>` (per-field `LwwRegister`, tombstone merged by OR) | `tags: UnorderedMap<String, TagRow>`; the tombstone stays |
 | registry `views` + `view_origins: WriteOnce<…>` (first saver) | `views: UnorderedMap<String, ViewRow>` with `createdBy`, kept from the first save |
@@ -110,12 +112,16 @@ text and an anchor, rebase by character ids on a refusal) is unchanged.
 | character ids (`ids` runs) | `{replica: <node>, counter, len}` per writer | `{replica: "0", counter, len}`: one leader mints every id |
 | anchors and undo tokens | bs58 borsh | `s`, `e`, `a<id>`, `b<id>` / a JSON inverse edit; both still opaque |
 | accounts (`createdBy`, `updatedBy`, `author`, managers) | 64-hex node account ids | 1.0 account ids |
-| `searchDocs` | the node's full-text index (BM25, snippets from the indexer) | every query word must start a word of the title or body, case-insensitive; a title match scores 2, a body match 1; snippet from the body (else the title), matches in `<b>`; reads the folder's text on each call |
-| `searchDocs` on a node with search off | an error, the client fell back to its own text index | always answers |
+| `searchDocs` | the node's full-text index (BM25, snippets from the indexer), the title weighted double | the node's full-text index (BM25, prefix mode: the last word as you type it, snippets from the indexer); the title is **not** weighted above the body (the component index has no field weights); archived hits are dropped from a page unless `includeArchived`, so a page may hold fewer than `limit`, and `total` counts them; `limit` over 100 is `Invalid` (v1 capped it) |
+| `searchDocs` on a node with search off | an error, the client fell back to its own text index | always answers (the index is the node's, kept from state) |
 | `deleteDoc` | removed the header, the record and the comments the deleter could remove | removes the title, every block's text, the tags and all the document's comments |
 | who may delete a document or a comment | its creator / author or the founder (who created the folder's context) | its creator / author or `env::app_owner()` (who created the folder's instance) |
 | `commentSchemaVersion` | the comment's per-entry schema version | `1` for a live comment, `null` otherwise |
-| `listDocs`, `listComments`, `listTags`, `listViews`, `listManagers` order | storage order | key order (document, comment, tag, view id; account) |
+| `listDocs`, `listComments`, `listTags`, `listViews`, `listManagers` | every row, storage order | **one page** `{ items, next }` in key order (document, comment, tag, view id; account): optional `cursor` (the previous `next`) and `limit` (1 to 1000, default 100); `listDocs` without archived ones may answer fewer than `limit` |
+| `getDocument`, `listBlocks` | every block | **one page** `{ items, next }` in document order: `cursor` is a position (a decimal string), `limit` 1 to 200 (`getDocument`, default 100) or 1 to 1000 (`listBlocks`) |
+| bounds | none | a document holds at most 5,000 blocks, a block 32 attributes (key 1 to 64 bytes, value up to 4 KiB), a document 64 tags (`Invalid` past each) |
+| `setAttr` naming `blob:<id>` | any string | a blob the folder holds, else `Invalid`; anything that is not `blob:` and 64 hex digits is a plain attribute |
+| `undo` / `titleUndo` with a token that would grow the text past its limit | applied | `Invalid` (a token is the caller's JSON; it is checked as any edit) |
 | `addManager` | any 32-byte hex key | a member of the organization (`Invalid` otherwise) |
 | `removeManager` of a non-manager | a no-op | `NotFound` |
 | an op past the end of a text, an undeclared mark key, a malformed token | a storage error string | `Invalid { message }` |
@@ -125,6 +131,53 @@ text and an anchor, rebase by character ids on a refusal) is unchanged.
 | `getBlockDelta` / `spans` | `{text, attributes}` | the same |
 | events | `DocCreated`, …, `MarkApplied { mark_id }` | the same events; `MarkApplied { markId }` |
 | a text split or merged, then undone | the moved text kept its v1 ids | the moved text gets new ids (as v1's split did), so an undo token taken before the split no longer covers it |
+
+### Block size: what the component runtime limits today
+
+The SDK's `Text` / `RichText` (core#4813) load **every character node** on every
+read and edit, and every run has the node's fuel budget (core `DEFAULT_FUEL`,
+200M). A keystroke through the editor's path (`applyDeltaOn`) reads the block
+before and after the write, so the practical size of one block is what fits.
+Measured in the harness at rc.8 with this crate's release profile (LTO):
+
+| one block | typing one character (`applyDeltaOn`) |
+|---|---|
+| 3,000 characters, no formatting | ok (pinned by `a_three_thousand_character_block_stays_editable`) |
+| 4,000 characters, no formatting | ok |
+| 5,000 characters, no formatting | `OutOfFuel` |
+| 1,000 characters, 300 formatting marks | ok |
+| 1,500 characters, 200 marks | ok for a plain insert, `OutOfFuel` for an insert with formatting |
+| 2,000 characters, 100 marks | `OutOfFuel` |
+
+Marks cost as much as length: `RichText::spans` is O(characters × marks), and
+a mark is never removed (unformatting writes a newer one). A refused run
+changes nothing (the node discards it), and the editor shows the error. The
+port reads each text as few times as it can (`rich::apply_delta` takes the
+characters already read and works out the new plain text itself; `chars` skips
+the second load for a block without marks), which roughly doubled #733's
+ceiling, but the fix belongs in core: incremental reads in `Text` and a sweep in
+`spans`. Until then, long documents should be many paragraphs, which BlockNote
+already makes them. `MAX_BLOCK_TEXT_LEN` stays 100,000 (v1's), but a block that
+long cannot be edited on rc.8.
+
+### What the editor loses from v1's `RichDocument`
+
+`RichDocument`, its undo (`DeltaUndo`/`Undo`) and `MarkSchema` are not in the
+component SDK. `src/rich.rs` rebuilds the wire protocol the editor speaks, so
+the editor works as before, except:
+
+- **Undo tokens are this app's JSON**, not the SDK's: an undone delete inserts the text again as new characters at the gap it left (as v1's `FugueText::undo` did), with its formatting; the token carries no history, so it is checked like any edit.
+- **Split and merge give moved text new ids** (as v1's split did), so an undo
+  token taken before a split or merge no longer covers the moved text.
+- **Block structure is not a CRDT.** v1 merged concurrent structural edits
+  inside `RichDocument`; here the block order is a Fugue `Text` of one
+  character per block, so concurrent moves and inserts still land where meant,
+  but kind / depth / attributes are plain rows: a later `setKind` or `setAttr`
+  replaces an earlier one (the log orders them).
+- **Mark boundaries** keep v1's growth rules (`DriveMarks`: `bold` … grow,
+  `link`, `code`, `comment` do not), fixed per mark as v1 did, but the schema is
+  this crate's table (`rich::expands`), not a type the SDK enforces.
+- **Ids** are one leader's counters (`replica: "0"`), and the size limits above.
 
 ### Frontend
 
@@ -150,9 +203,16 @@ What a person sees differently:
 
 ### Removed
 
-- `logic/crates/registry`, `logic/crates/types` (folded into the one crate), `logic/res/state-schema.json`, `logic/workflows/` (16 merobox workflows), `logic/tests/collab_convergence.rs`.
+- `logic/crates/registry`, `logic/crates/types` (folded into the one crate), `logic/res/state-schema.json`, `logic/workflows/` (16 v1 workflows), `logic/tests/collab_convergence.rs`.
 - `scripts/` (`local-rig.sh`, `registry-sync.sh`, `sync-wasm.sh`, `setup-cargo-mero.sh`, `on-res-change.mjs`): v1's three-node rig, the local registry sync and the cargo-mero installer. With the installer gone, the repo's `check-cargo-mero-pin.py` (and its test) and their CI steps go too; so do the `cargo test -p mero-docs*` `--ignored` steps and the `Browser E2E rich (mero-docs)` job in `ci.yml`.
-- The merobox workflows about namespaces, folder groups, roles, visibility and Read only sweeps (`members`, `namespace-lifecycle`, `open-subgroup`, `restricted-privacy`, `folder-read-only`, `nested-read-only-*`, `open-restricted-collab`, `one-account-two-devices`) tested core v1's group machinery, not this contract. In 1.0 that is the node's team access, which core tests; `access.json` keeps what the contract itself decides.
+- The v1 workflows about namespaces, folder groups, roles, visibility and Read only sweeps (`members`, `namespace-lifecycle`, `open-subgroup`, `restricted-privacy`, `folder-read-only`, `nested-read-only-*`, `open-restricted-collab`, `one-account-two-devices`) tested core v1's group machinery, not this contract. In 1.0 that is the node's team access, which core tests; `access.json` keeps what the contract itself decides.
+
+## Events and guests
+
+Every event goes to `Audience::All`. On a folder's instance that is its team; on
+the registry, the organization. Guests of the organization reach an instance only
+when its access lets them, and the events carry ids only (no titles, text or
+comment bodies), so a guest learns nothing from them it could not read anyway.
 
 ## Mobile
 
@@ -163,6 +223,10 @@ against a v1 deployment of the app (see `mobile/README.md`).
 v1 clients are not overwritten.
 
 ## Production
+
+No outbound HTTP, xcall or secrets: an operator configures no `outbound` hosts
+and approves nothing for this app. Blobs (images) are stored by the node under
+each folder's instance and kept while a block refers to them.
 
 The production frontend is the one the bundle carries (`frontend-dir =
 "../app/dist"`): a Cloud node trusts passkey ceremonies only from frontends it

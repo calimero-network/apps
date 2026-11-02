@@ -579,7 +579,7 @@ fn a_block_read_names_every_character_by_an_id_a_peer_insert_leaves_alone() {
     let b = block(&mut t, &d, None, "paragraph");
     type_text(&mut t, &d, &b, 0, "ac");
     let get = |t: &mut TestApp| {
-        let doc = view(t, "owner", "getDocument", json!({ "doc": d }));
+        let doc = view(t, "owner", "getDocument", json!({ "doc": d }))["items"].clone();
         char_ids(&doc[0]["ids"])
     };
     let before = get(&mut t);
@@ -674,7 +674,7 @@ fn split_block_then_merge_blocks_round_trips_the_digest() {
     ));
     // The head keeps the id; the tail moves with its formatting and the block's attributes.
     assert_eq!(text(&mut t, &d, &b), "Head");
-    let blocks = view(&mut t, "owner", "listBlocks", json!({ "doc": d }));
+    let blocks = view(&mut t, "owner", "listBlocks", json!({ "doc": d }))["items"].clone();
     assert_eq!(blocks, json!([b, new]));
     assert_eq!(
         digest(&mut t, &d),
@@ -753,7 +753,7 @@ fn move_block_reorders_the_document() {
     let b = block(&mut t, &d, Some(&a), "paragraph");
     let c = block(&mut t, &d, Some(&b), "paragraph");
     assert_eq!(
-        view(&mut t, "owner", "listBlocks", json!({ "doc": d })),
+        view(&mut t, "owner", "listBlocks", json!({ "doc": d }))["items"].clone(),
         json!([a, b, c])
     );
     call(
@@ -763,7 +763,7 @@ fn move_block_reorders_the_document() {
         json!({ "doc": d, "block": c, "after": null }),
     );
     assert_eq!(
-        view(&mut t, "owner", "listBlocks", json!({ "doc": d })),
+        view(&mut t, "owner", "listBlocks", json!({ "doc": d }))["items"].clone(),
         json!([c, a, b])
     );
     call(
@@ -773,13 +773,13 @@ fn move_block_reorders_the_document() {
         json!({ "doc": d, "block": c, "after": b }),
     );
     assert_eq!(
-        view(&mut t, "owner", "listBlocks", json!({ "doc": d })),
+        view(&mut t, "owner", "listBlocks", json!({ "doc": d }))["items"].clone(),
         json!([a, b, c])
     );
     // A block inserted after a moved-away block's old place still lands after it.
     let e = block(&mut t, &d, Some(&a), "paragraph");
     assert_eq!(
-        view(&mut t, "owner", "listBlocks", json!({ "doc": d })),
+        view(&mut t, "owner", "listBlocks", json!({ "doc": d }))["items"].clone(),
         json!([a, e, b, c])
     );
 }
@@ -883,7 +883,8 @@ fn create_doc_assigns_a_fresh_id_each_time_and_list_docs_returns_them() {
         "cy",
         "listDocs",
         json!({ "includeArchived": false }),
-    );
+    )["items"]
+        .clone();
     let mut ids: Vec<String> = list
         .as_array()
         .unwrap()
@@ -919,7 +920,8 @@ fn archive_hides_from_the_default_list_and_unarchive_restores() {
             "owner",
             "listDocs",
             json!({ "includeArchived": false })
-        ),
+        )["items"]
+            .clone(),
         json!([])
     );
     assert_eq!(
@@ -928,10 +930,11 @@ fn archive_hides_from_the_default_list_and_unarchive_restores() {
             "owner",
             "listDocs",
             json!({ "includeArchived": true })
-        )
-        .as_array()
-        .unwrap()
-        .len(),
+        )["items"]
+            .clone()
+            .as_array()
+            .unwrap()
+            .len(),
         1
     );
     call(&mut t, "owner", "unarchiveDoc", json!({ "id": d }));
@@ -941,10 +944,11 @@ fn archive_hides_from_the_default_list_and_unarchive_restores() {
             "owner",
             "listDocs",
             json!({ "includeArchived": false })
-        )
-        .as_array()
-        .unwrap()
-        .len(),
+        )["items"]
+            .clone()
+            .as_array()
+            .unwrap()
+            .len(),
         1
     );
     assert_eq!(
@@ -1074,7 +1078,7 @@ fn delete_doc_removes_its_body_tags_and_comments() {
         "NotFound"
     );
     assert_eq!(
-        view(&mut t, "owner", "listComments", json!({ "docId": d })),
+        view(&mut t, "owner", "listComments", json!({ "docId": d }))["items"].clone(),
         json!([])
     );
     assert_eq!(
@@ -1087,7 +1091,7 @@ fn delete_doc_removes_its_body_tags_and_comments() {
 }
 
 #[test]
-fn search_finds_titles_and_bodies_by_word_prefix() {
+fn search_finds_titles_and_bodies_through_the_index() {
     let mut t = app();
     let a = doc(&mut t, "owner", "Launch plan");
     let b = doc(&mut t, "owner", "Notes");
@@ -1095,41 +1099,293 @@ fn search_finds_titles_and_bodies_by_word_prefix() {
     type_text(&mut t, &b, &blk, 0, "We launch on Monday");
     let archived = doc(&mut t, "owner", "Launch retro");
     call(&mut t, "owner", "archiveDoc", json!({ "id": archived }));
-    let page = view(
+    let found = |t: &mut TestApp, q: &str, archived: bool, limit: Value| {
+        view(
+            t,
+            "bob",
+            "searchDocs",
+            json!({ "query": q, "includeArchived": archived, "cursor": null, "limit": limit }),
+        )
+    };
+    let ids = |page: &Value| {
+        let mut ids: Vec<String> = page["hits"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|h| s(&h["id"]))
+            .collect();
+        ids.sort();
+        ids
+    };
+    // The harness scans instead of ranking: assert which documents match.
+    let page = found(&mut t, "LAUN", false, Value::Null);
+    let mut want = vec![a.clone(), b.clone()];
+    want.sort();
+    assert_eq!(ids(&page), want);
+    // `total` counts the archived match the page leaves out.
+    assert_eq!(page["total"], json!("3"));
+    assert_eq!(page["nextCursor"], Value::Null);
+    let all = found(&mut t, "launch", true, Value::Null);
+    assert_eq!(ids(&all).len(), 3);
+    let first = found(&mut t, "launch", true, json!(1));
+    assert_eq!(first["hits"].as_array().unwrap().len(), 1);
+    assert_eq!(first["nextCursor"], json!(1));
+    assert_eq!(
+        found(&mut t, "launch tuesday", true, Value::Null)["hits"],
+        json!([])
+    );
+
+    // Every write that changes the text keeps the index current.
+    call(
+        &mut t,
+        "owner",
+        "applyDelta",
+        json!({ "doc": b, "block": blk, "ops": [{ "delete": 19 }, { "insert": "Ship it" }] }),
+    );
+    assert_eq!(
+        ids(&found(&mut t, "monday", true, Value::Null)),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        ids(&found(&mut t, "ship", true, Value::Null)),
+        vec![b.clone()]
+    );
+    call(
+        &mut t,
+        "owner",
+        "editDoc",
+        json!({ "id": a, "title": "Roadmap" }),
+    );
+    assert_eq!(
+        ids(&found(&mut t, "roadmap", true, Value::Null)),
+        vec![a.clone()]
+    );
+    call(
+        &mut t,
+        "owner",
+        "deleteBlock",
+        json!({ "doc": b, "block": blk }),
+    );
+    assert_eq!(
+        ids(&found(&mut t, "ship", true, Value::Null)),
+        Vec::<String>::new()
+    );
+    call(&mut t, "owner", "deleteDoc", json!({ "id": a }));
+    assert_eq!(
+        ids(&found(&mut t, "roadmap", true, Value::Null)),
+        Vec::<String>::new()
+    );
+    let r = t.as_("bob").view(
+        "searchDocs",
+        json!({ "query": "x", "includeArchived": true, "cursor": null, "limit": 101 }),
+    );
+    assert_eq!(code(r), "Invalid");
+}
+
+#[test]
+fn an_undo_token_cannot_grow_a_text_past_its_limit() {
+    let mut t = app();
+    let d = doc(&mut t, "owner", "Doc");
+    let b = block(&mut t, &d, None, "paragraph");
+    let big = "x".repeat(100_001);
+    let forged =
+        json!({ "restore": [{ "spans": [{ "text": big, "attributes": {} }] }] }).to_string();
+    let r = t
+        .as_("bob")
+        .call("undo", json!({ "doc": d, "block": b, "token": forged }));
+    assert_eq!(code(r), "Invalid");
+    assert_eq!(text(&mut t, &d, &b), "");
+    let forged =
+        json!({ "restore": [{ "spans": [{ "text": "y".repeat(1025), "attributes": {} }] }] })
+            .to_string();
+    let r = t
+        .as_("bob")
+        .call("titleUndo", json!({ "doc": d, "token": forged }));
+    assert_eq!(code(r), "Invalid");
+    assert_eq!(title(&mut t, &d), "Doc");
+}
+
+/// Every text read loads the whole text (the SDK's `Text`), within the node's
+/// fuel per run: an unformatted block of 3,000 characters must stay editable
+/// through the editor's path. See the README, "Block size".
+#[test]
+fn a_three_thousand_character_block_stays_editable() {
+    let mut t = app();
+    let d = doc(&mut t, "owner", "Doc");
+    let b = block(&mut t, &d, None, "paragraph");
+    let mut len = 0;
+    while len < 3000 {
+        type_text(&mut t, &d, &b, len, &"x".repeat(500));
+        len += 500;
+    }
+    let r = call(
         &mut t,
         "bob",
-        "searchDocs",
-        json!({ "query": "LAUN", "includeArchived": false, "cursor": null, "limit": null }),
+        "applyDeltaOn",
+        json!({ "doc": d, "block": b, "base": "x".repeat(3000), "ops": [{ "retain": 5 }, { "insert": "y" }], "anchor": null }),
     );
-    let hits: Vec<String> = page["hits"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|h| s(&h["id"]))
-        .collect();
-    // A title match scores double, so it comes first.
-    assert_eq!(hits, [a, b.clone()]);
-    assert_eq!(page["total"], json!("2"));
-    assert_eq!(page["nextCursor"], Value::Null);
-    assert_eq!(
-        page["hits"][1]["snippet"],
-        json!("We <b>launch</b> on Monday")
+    assert_eq!(r["applied"], json!(true));
+}
+
+// ── images (blobs) ───────────────────────────────────────────────────────────
+
+#[test]
+fn an_image_block_keeps_its_blob_while_the_block_exists() {
+    let mut t = app();
+    let d = doc(&mut t, "owner", "Doc");
+    let b = block(&mut t, &d, None, "image");
+    let id = t.upload_blob(b"\x89PNG....", "image/png");
+    let url = format!("blob:{id}");
+    call(
+        &mut t,
+        "bob",
+        "setAttr",
+        json!({ "doc": d, "block": b, "key": "url", "value": url }),
     );
+    assert_eq!(t.blob_refs(&id), 1);
+    // A split copies the attributes, and the reference with them.
+    let tail = s(&call(
+        &mut t,
+        "owner",
+        "splitBlock",
+        json!({ "doc": d, "block": b, "at": 0 }),
+    ));
+    assert_eq!(t.blob_refs(&id), 2);
+    call(
+        &mut t,
+        "owner",
+        "setAttr",
+        json!({ "doc": d, "block": tail, "key": "url", "value": null }),
+    );
+    assert_eq!(t.blob_refs(&id), 1);
+    call(&mut t, "owner", "deleteDoc", json!({ "id": d }));
+    assert_eq!(t.blob_refs(&id), 0);
+}
+
+#[test]
+fn a_blob_the_folder_does_not_hold_is_refused() {
+    let mut t = app();
+    let d = doc(&mut t, "owner", "Doc");
+    let b = block(&mut t, &d, None, "image");
+    let r = t.as_("bob").call(
+        "setAttr",
+        json!({ "doc": d, "block": b, "key": "url", "value": format!("blob:{}", "ab".repeat(32)) }),
+    );
+    assert_eq!(code(r), "Invalid");
+    // Anything that is not `blob:` and 64 hex digits is a plain attribute.
+    call(
+        &mut t,
+        "bob",
+        "setAttr",
+        json!({ "doc": d, "block": b, "key": "url", "value": "https://example.com/a.png" }),
+    );
+}
+
+#[test]
+fn blocks_attributes_and_tags_are_bounded() {
+    let mut t = app();
+    let d = doc(&mut t, "owner", "Doc");
+    let b = block(&mut t, &d, None, "paragraph");
+    for i in 0..32 {
+        call(
+            &mut t,
+            "owner",
+            "setAttr",
+            json!({ "doc": d, "block": b, "key": format!("k{i}"), "value": "v" }),
+        );
+    }
+    let r = t.as_("owner").call(
+        "setAttr",
+        json!({ "doc": d, "block": b, "key": "k32", "value": "v" }),
+    );
+    assert_eq!(code(r), "Invalid");
+    // Rewriting one it has is fine.
+    call(
+        &mut t,
+        "owner",
+        "setAttr",
+        json!({ "doc": d, "block": b, "key": "k0", "value": "w" }),
+    );
+    let r = t.as_("owner").call(
+        "setAttr",
+        json!({ "doc": d, "block": b, "key": "k0", "value": "x".repeat(4097) }),
+    );
+    assert_eq!(code(r), "Invalid");
+    for i in 0..64 {
+        call(
+            &mut t,
+            "owner",
+            "addTag",
+            json!({ "id": d, "tag": format!("t{i}") }),
+        );
+    }
+    let r = t
+        .as_("owner")
+        .call("addTag", json!({ "id": d, "tag": "t64" }));
+    assert_eq!(code(r), "Invalid");
+    call(&mut t, "owner", "addTag", json!({ "id": d, "tag": "t0" }));
+}
+
+#[test]
+fn list_views_return_pages() {
+    let mut t = app();
+    let mut ids = Vec::new();
+    for i in 0..5 {
+        ids.push(doc(&mut t, "owner", &format!("D{i}")));
+    }
+    ids.sort();
+    let mut seen = Vec::new();
+    let mut cursor = Value::Null;
+    loop {
+        let page = view(
+            &mut t,
+            "bob",
+            "listDocs",
+            json!({ "includeArchived": false, "cursor": cursor, "limit": 2 }),
+        );
+        let items = page["items"].as_array().unwrap();
+        assert!(items.len() <= 2);
+        seen.extend(items.iter().map(|d| s(&d["id"])));
+        if page["next"].is_null() {
+            break;
+        }
+        cursor = page["next"].clone();
+    }
+    assert_eq!(seen, ids);
+    let r = t.as_("bob").view(
+        "listDocs",
+        json!({ "includeArchived": false, "cursor": null, "limit": 1001 }),
+    );
+    assert_eq!(code(r), "Invalid");
+
+    let d = &ids[0];
+    let mut blocks = Vec::new();
+    let mut after: Option<String> = None;
+    for _ in 0..3 {
+        let b = block(&mut t, d, after.as_deref(), "paragraph");
+        after = Some(b.clone());
+        blocks.push(b);
+    }
     let first = view(
         &mut t,
         "bob",
-        "searchDocs",
-        json!({ "query": "launch", "includeArchived": true, "cursor": null, "limit": 1 }),
+        "getDocument",
+        json!({ "doc": d, "cursor": null, "limit": 2 }),
     );
-    assert_eq!(first["total"], json!("3"));
-    assert_eq!(first["nextCursor"], json!(1));
-    let none = view(
+    assert_eq!(first["items"].as_array().unwrap().len(), 2);
+    assert_eq!(first["next"], json!("2"));
+    let rest = view(
         &mut t,
         "bob",
-        "searchDocs",
-        json!({ "query": "launch tuesday", "includeArchived": true, "cursor": null, "limit": null }),
+        "listBlocks",
+        json!({ "doc": d, "cursor": "2", "limit": null }),
     );
-    assert_eq!(none["hits"], json!([]));
+    assert_eq!(rest, json!({ "items": [blocks[2]], "next": null }));
+    let r = t.as_("bob").view(
+        "getDocument",
+        json!({ "doc": d, "cursor": "x", "limit": null }),
+    );
+    assert_eq!(code(r), "Invalid");
 }
 
 #[test]
@@ -1192,7 +1448,7 @@ fn a_comment_is_its_authors_and_the_moderator_removes_any() {
         json!({ "id": c, "body": "edited" }),
     );
     assert_eq!(
-        view(&mut t, "cy", "listComments", json!({ "docId": d }))[0]["body"],
+        view(&mut t, "cy", "listComments", json!({ "docId": d }))["items"].clone()[0]["body"],
         json!("edited")
     );
     assert_eq!(
@@ -1201,7 +1457,7 @@ fn a_comment_is_its_authors_and_the_moderator_removes_any() {
     );
     call(&mut t, "owner", "deleteComment", json!({ "id": c }));
     assert_eq!(
-        view(&mut t, "cy", "listComments", json!({ "docId": d })),
+        view(&mut t, "cy", "listComments", json!({ "docId": d }))["items"].clone(),
         json!([])
     );
     let own = s(&call(
@@ -1251,7 +1507,7 @@ fn the_owner_alone_names_managers() {
     call(&mut t, "owner", "addManager", json!({ "member": "cy" }));
     call(&mut t, "owner", "addManager", json!({ "member": "bob" }));
     assert_eq!(
-        view(&mut t, "gus", "listManagers", json!({})),
+        view(&mut t, "gus", "listManagers", json!({}))["items"].clone(),
         json!(["bob", "cy"])
     );
     assert_eq!(
@@ -1284,7 +1540,7 @@ fn the_owner_alone_names_managers() {
         "NotFound"
     );
     assert_eq!(
-        view(&mut t, "owner", "listManagers", json!({})),
+        view(&mut t, "owner", "listManagers", json!({}))["items"].clone(),
         json!(["cy"])
     );
     assert_eq!(
@@ -1303,7 +1559,7 @@ fn tags_validate_and_a_deleted_tag_stays_deleted() {
         json!({ "key": "launch", "name": "  Launch  ", "color": "#aabbcc" }),
     );
     assert_eq!(
-        view(&mut t, "cy", "listTags", json!({})),
+        view(&mut t, "cy", "listTags", json!({}))["items"].clone(),
         json!([{ "key": "launch", "name": "Launch", "color": "#aabbcc", "deleted": false }])
     );
     for (key, name, color) in [
@@ -1322,7 +1578,7 @@ fn tags_validate_and_a_deleted_tag_stays_deleted() {
     }
     call(&mut t, "cy", "deleteTag", json!({ "key": "launch" }));
     assert_eq!(
-        view(&mut t, "cy", "listTags", json!({}))[0]["deleted"],
+        view(&mut t, "cy", "listTags", json!({}))["items"].clone()[0]["deleted"],
         json!(true)
     );
     assert_eq!(
@@ -1354,7 +1610,7 @@ fn a_view_keeps_its_first_saver() {
         json!({ "id": "v-1", "name": "Renamed", "query": "tag:y" }),
     );
     assert_eq!(
-        view(&mut t, "owner", "listViews", json!({})),
+        view(&mut t, "owner", "listViews", json!({}))["items"].clone(),
         json!([{ "id": "v-1", "name": "Renamed", "query": "tag:y", "createdBy": "bob" }])
     );
     for (id, name, query) in [
@@ -1371,7 +1627,10 @@ fn a_view_keeps_its_first_saver() {
         );
     }
     call(&mut t, "cy", "deleteView", json!({ "id": "v-1" }));
-    assert_eq!(view(&mut t, "owner", "listViews", json!({})), json!([]));
+    assert_eq!(
+        view(&mut t, "owner", "listViews", json!({}))["items"].clone(),
+        json!([])
+    );
     assert_eq!(
         code(t.as_("cy").call("deleteView", json!({ "id": "v-1" }))),
         "NotFound"

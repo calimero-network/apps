@@ -96,10 +96,10 @@ function fakeClient() {
   let session: CalimeroSession | undefined;
   const views: Record<string, unknown> = {
     getOwner: ME,
-    listManagers: [],
-    listTags: [],
-    listViews: [],
-    listDocs: [DOC],
+    listManagers: { items: [], next: null },
+    listTags: { items: [], next: null },
+    listViews: { items: [], next: null },
+    listDocs: { items: [DOC], next: null },
     getDoc: DOC,
     searchDocs: { hits: [], total: '0', nextCursor: null },
   };
@@ -166,7 +166,7 @@ describe('App on Calimero 1.0', () => {
     const client = fakeClient();
     render(<App deps={deps(client)} />);
     expect((await screen.findAllByText('Launch plan')).length).toBeGreaterThan(0);
-    expect(client.view).toHaveBeenCalledWith('docs-eng', 'listDocs', { includeArchived: true });
+    expect(client.view).toHaveBeenCalledWith('docs-eng', 'listDocs', { includeArchived: true, cursor: null, limit: 1000 });
   });
 
   it('asks before redeeming an invitation, then redeems the org invite token', async () => {

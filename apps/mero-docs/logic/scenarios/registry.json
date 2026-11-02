@@ -14,7 +14,10 @@
   "method": "listTags",
   "args": {},
   "expect": {
-   "ok": []
+   "ok": {
+    "items": [],
+    "next": null
+   }
   }
  },
  {
@@ -23,7 +26,10 @@
   "method": "listViews",
   "args": {},
   "expect": {
-   "ok": []
+   "ok": {
+    "items": [],
+    "next": null
+   }
   }
  },
  {
@@ -52,14 +58,17 @@
   "method": "listTags",
   "args": {},
   "expect": {
-   "ok": [
-    {
-     "key": "q3-plan",
-     "name": "Q3 plan",
-     "color": "#00ff00",
-     "deleted": false
-    }
-   ]
+   "ok": {
+    "items": [
+     {
+      "key": "q3-plan",
+      "name": "Q3 plan",
+      "color": "#00ff00",
+      "deleted": false
+     }
+    ],
+    "next": null
+   }
   }
  },
  {
@@ -96,20 +105,23 @@
   "method": "listTags",
   "args": {},
   "expect": {
-   "ok": [
-    {
-     "key": "launch",
-     "name": "Go live",
-     "color": "#123456",
-     "deleted": true
-    },
-    {
-     "key": "q3-plan",
-     "name": "Q3 plan",
-     "color": "#00ff00",
-     "deleted": false
-    }
-   ]
+   "ok": {
+    "items": [
+     {
+      "key": "launch",
+      "name": "Go live",
+      "color": "#123456",
+      "deleted": true
+     },
+     {
+      "key": "q3-plan",
+      "name": "Q3 plan",
+      "color": "#00ff00",
+      "deleted": false
+     }
+    ],
+    "next": null
+   }
   }
  },
  {
@@ -188,14 +200,17 @@
   "method": "listViews",
   "args": {},
   "expect": {
-   "ok": [
-    {
-     "id": "v-1",
-     "name": "Launch",
-     "query": "tag:launch archived:no",
-     "createdBy": "@bob"
-    }
-   ]
+   "ok": {
+    "items": [
+     {
+      "id": "v-1",
+      "name": "Launch",
+      "query": "tag:launch archived:no",
+      "createdBy": "@bob"
+     }
+    ],
+    "next": null
+   }
   }
  },
  {
@@ -255,9 +270,12 @@
   "method": "listManagers",
   "args": {},
   "expect": {
-   "ok": [
-    "@bob"
-   ]
+   "ok": {
+    "items": [
+     "@bob"
+    ],
+    "next": null
+   }
   }
  },
  {
@@ -307,7 +325,10 @@
   "method": "listManagers",
   "args": {},
   "expect": {
-   "ok": []
+   "ok": {
+    "items": [],
+    "next": null
+   }
   }
  }
 ]

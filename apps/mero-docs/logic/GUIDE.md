@@ -75,18 +75,18 @@ Reshape blocks with `moveBlock` (`doc`, `block`, `after`), `setKind`, `setDepth`
 ### Add an image
 
 1. Upload the image as a blob of the folder's documents instance; keep its id.
-2. `insertBlock` with `kind` `image`, then `setAttr` with `key` `url` and `value` `blob:<blob id>`, and `setAttr` with `key` `name` and the file name.
+2. `insertBlock` with `kind` `image`, then `setAttr` with `key` `url` and `value` `blob:<blob id>`, and `setAttr` with `key` `name` and the file name. A blob the folder does not hold is `Invalid`; the folder keeps the blob while the block exists.
 
 The web app shows PNG, JPEG, GIF and WebP images of at most 10 MB.
 Leave an image block's text empty.
 
 ### Read documents
 
-- `listDocs` with `includeArchived` lists headers: title, tag keys, archived flag, creator, last editor and timestamps.
+- `listDocs` with `includeArchived` (and optional `cursor`, `limit` up to 1000) answers one page `{ items, next }` of headers; pass `next` back as `cursor` until it is `null`. Each header has: title, tag keys, archived flag, creator, last editor and timestamps.
   Timestamps are milliseconds since the Unix epoch, as decimal strings.
-- `getDocument` returns every block in order with its kind, depth, attributes, formatted `spans` and character `ids`.
+- `getDocument` (optional `cursor`, `limit` up to 200) answers one page `{ items, next }` of the blocks in order, with its kind, depth, attributes, formatted `spans` and character `ids`.
 - `getBlock` returns one block, or `null`; `getText` one block's plain text; `getTitle` the title; `getDoc` with `id` one header.
-- `searchDocs` with `query`, `includeArchived`, `cursor` and `limit` finds documents whose title and body hold a word starting with each query word, best match first.
+- `searchDocs` with `query`, `includeArchived`, `cursor` and `limit` finds documents through the node's full-text index: every query word in the title or body, the last as a prefix, best match first. `total` counts archived matches even when the page leaves them out.
   Pass `null` as `cursor` and `limit` for the first page of 20, then the returned `nextCursor`.
   The query is at most 256 bytes.
 
@@ -119,12 +119,12 @@ Edit safely like this, because another member may change the text between your r
 ### Tag documents
 
 1. On the registry, `setTag` with `key` (lowercase letters, digits and `-`, at most 64 characters), `name` (1 to 32 characters) and `color` (`#rrggbb`).
-   `listTags` shows the workspace's tags; a deleted key is listed with `deleted: true` and cannot be reused.
+   `listTags` shows the workspace's tags (one page `{ items, next }`, as `listDocs`); a deleted key is listed with `deleted: true` and cannot be reused.
 2. On the folder's instance, `addTag` with `id` and `tag` set to the key; `removeTag` takes it off.
 
 ### Comment on a document
 
-- `addComment` with `docId` and `body`; `listComments` with `docId` returns them with the author's account.
+- `addComment` with `docId` and `body`; `listComments` with `docId` returns one page `{ items, next }` of them with the author's account.
 - Only the author can `editComment`.
   The author or the folder's moderator (whoever created the folder's instance) can `deleteComment`.
 

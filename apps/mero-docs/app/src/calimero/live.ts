@@ -89,7 +89,7 @@ export class EventHub {
       try {
         if (from === null) {
           // Start after what is already applied: a view answers the index.
-          const { index } = await this.client.view(app, 'listManagers', {});
+          const { index } = await this.client.view(app, 'listManagers', { limit: 1 });
           from = index + 1;
         }
         const events = this.client.events(app, from, signal);
