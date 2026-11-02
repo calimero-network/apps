@@ -13,6 +13,27 @@ Material Symbols on Android).
 **The SDK pins** are set in `ios/project.yml` and
 `ios/Core/Package.swift` (keep them equal), and `android/kotlin-sdk.ref`.
 
+## Status: still on Calimero v1 (not ported)
+
+The contract (`../logic`) and the web app (`../app`) moved to Calimero 1.0: a
+component-SDK contract whose methods are camelCase (`createDeal`,
+`listDeals`, …) and whose u64 arguments are decimal strings, workspaces as
+organizations, pipelines as app instances, sign-in with passkeys, and every
+node attested before a request is sealed to it. These two apps still use the
+swift-sdk / kotlin-sdk v1 session described below (Cloud wallet sign-in, a
+relay, namespaces and contexts, the v1 snake_case methods), so **they do not
+work against the ported contract**.
+
+They move when swift-sdk and kotlin-sdk carry a Calimero 1.0 client (the
+counterpart of mero-js's `CalimeroClient`: attestation, sealed requests,
+passkeys, orgs and app instances). Their code, unit tests and CI
+(`mero-crm-ios.yml`, `mero-crm-android.yml`, which run against fakes) are
+unchanged until then.
+
+Do not run `scripts/regenerate-clients.sh` until then: `../logic/res/abi.json`
+is now the component ABI. The v1 ABI the committed clients were generated from
+is frozen in `apps/mero-forms/app/src/fixtures/abi/mero-crm-v1.json`.
+
 ## Delegated execution only
 
 Neither app runs a node. Sign-in, the account's relay, deep links and invitations are the SDKs'

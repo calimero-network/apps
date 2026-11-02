@@ -1,0 +1,221 @@
+[
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "submitLead",
+  "args": {
+   "sourceRef": "resp-1",
+   "stageId": "stage-lead",
+   "name": "Grace",
+   "email": "grace@navy.mil",
+   "phone": "",
+   "organization": "Initech",
+   "jobTitle": "",
+   "title": "",
+   "source": "Mero Forms · Contact us",
+   "note": "Message: call me back"
+  },
+  "save": "lead",
+  "events": {
+   "bob": [
+    "ContactChanged",
+    "DealCreated",
+    "NoteChanged",
+    "LeadReceived"
+   ],
+   "owner": [
+    "ContactChanged",
+    "DealCreated",
+    "NoteChanged",
+    "LeadReceived"
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "submitLead",
+  "args": {
+   "sourceRef": "resp-1",
+   "stageId": "stage-lead",
+   "name": "Grace",
+   "email": "grace@navy.mil",
+   "phone": "",
+   "organization": "Initech",
+   "jobTitle": "",
+   "title": "",
+   "source": "Mero Forms · Contact us",
+   "note": "Message: call me back"
+  },
+  "events": {
+   "bob": [
+    "ContactChanged",
+    "DealCreated",
+    "NoteChanged",
+    "LeadReceived"
+   ]
+  }
+ },
+ {
+  "as": "ada",
+  "op": "call",
+  "method": "submitLead",
+  "args": {
+   "sourceRef": "resp-1",
+   "stageId": "stage-lead",
+   "name": "Grace H.",
+   "email": "GRACE@navy.mil",
+   "phone": "",
+   "organization": "Initech",
+   "jobTitle": "",
+   "title": "",
+   "source": "Mero Forms · Contact us",
+   "note": "Message: call me back"
+  },
+  "events": {
+   "bob": [
+    "ContactChanged",
+    "DealCreated",
+    "NoteChanged",
+    "LeadReceived",
+    "DealCreated",
+    "NoteChanged",
+    "LeadReceived"
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "submitLead",
+  "args": {
+   "sourceRef": "resp-2",
+   "stageId": "stage-lead",
+   "name": "Grace",
+   "email": "not an email",
+   "phone": "",
+   "organization": "Initech",
+   "jobTitle": "",
+   "title": "",
+   "source": "Mero Forms · Contact us",
+   "note": "Message: call me back"
+  },
+  "expect": {
+   "error": "Invalid",
+   "fields": {
+    "message": "email must look like name@example.com"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "submitLead",
+  "args": {
+   "sourceRef": "resp-3",
+   "stageId": "stage-gone",
+   "name": "Grace",
+   "email": "",
+   "phone": "",
+   "organization": "Initech",
+   "jobTitle": "",
+   "title": "",
+   "source": "Mero Forms · Contact us",
+   "note": "Message: call me back"
+  },
+  "expect": {
+   "error": "NotFound",
+   "fields": {
+    "what": "stage",
+    "id": "stage-gone"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "submitLead",
+  "args": {
+   "sourceRef": "",
+   "stageId": "stage-lead",
+   "name": "Grace",
+   "email": "",
+   "phone": "",
+   "organization": "Initech",
+   "jobTitle": "",
+   "title": "",
+   "source": "Mero Forms · Contact us",
+   "note": "Message: call me back"
+  },
+  "expect": {
+   "error": "Invalid",
+   "fields": {
+    "message": "source_ref must not be empty"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "searchDeals",
+  "args": {
+   "text": "initech"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "searchContacts",
+  "args": {
+   "text": "grace"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listContacts",
+  "args": {
+   "limit": 10
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "call",
+  "method": "submitLead",
+  "args": {
+   "sourceRef": "resp-9",
+   "stageId": "stage-lead",
+   "name": "Grace",
+   "email": "",
+   "phone": "",
+   "organization": "Initech",
+   "jobTitle": "",
+   "title": "",
+   "source": "Mero Forms · Contact us",
+   "note": "Message: call me back"
+  },
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "call",
+  "method": "submitLead",
+  "args": {
+   "sourceRef": "resp-9",
+   "stageId": "stage-lead",
+   "name": "Grace",
+   "email": "",
+   "phone": "",
+   "organization": "Initech",
+   "jobTitle": "",
+   "title": "",
+   "source": "Mero Forms · Contact us",
+   "note": "Message: call me back"
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ }
+]

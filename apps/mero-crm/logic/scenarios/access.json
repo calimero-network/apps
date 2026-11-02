@@ -1,0 +1,274 @@
+[
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "createDeal",
+  "args": {
+   "title": "Bob's deal",
+   "value": "1000",
+   "organization": "",
+   "contactId": null,
+   "stageId": "stage-lead",
+   "owner": null,
+   "expectedClose": null,
+   "source": ""
+  },
+  "save": "bobs"
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "createContact",
+  "args": {
+   "name": "Bob's contact",
+   "email": "",
+   "phone": "",
+   "organization": "",
+   "jobTitle": ""
+  },
+  "save": "bobs_contact"
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addNote",
+  "args": {
+   "dealId": "$bobs",
+   "body": "owner's note"
+  },
+  "save": "note"
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deleteDeal",
+  "args": {
+   "dealId": "$bobs"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the creator may delete this deal"
+   }
+  }
+ },
+ {
+  "as": "ada",
+  "op": "call",
+  "method": "deleteDeal",
+  "args": {
+   "dealId": "$bobs"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the creator may delete this deal"
+   }
+  }
+ },
+ {
+  "as": "ada",
+  "op": "call",
+  "method": "deleteContact",
+  "args": {
+   "contactId": "$bobs_contact"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the creator may delete this contact"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "deleteNote",
+  "args": {
+   "noteId": "$note"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the author may delete this note"
+   }
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "moveDeal",
+  "args": {
+   "dealId": "$bobs",
+   "stageId": "stage-meeting"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "deleteNote",
+  "args": {
+   "noteId": "$note"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the author may delete this note"
+   }
+  }
+ },
+ {
+  "as": "gus",
+  "op": "view",
+  "method": "listDeals",
+  "args": {
+   "status": "open",
+   "stageId": "stage-lead",
+   "owner": null
+  },
+  "expect": {
+   "ok": {
+    "items": [],
+    "next": null
+   }
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "call",
+  "method": "deleteDeal",
+  "args": {
+   "dealId": "$bobs"
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "view",
+  "method": "listStages",
+  "args": {},
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "view",
+  "method": "listStages",
+  "args": {},
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "call",
+  "method": "createDeal",
+  "args": {
+   "title": "x",
+   "value": "1",
+   "organization": "",
+   "contactId": null,
+   "stageId": "stage-lead",
+   "owner": null,
+   "expectedClose": null,
+   "source": ""
+  },
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "moveDeal",
+  "args": {
+   "deal_id": "$bobs",
+   "stage_id": "stage-lead"
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createDeal",
+  "args": {
+   "title": "x",
+   "value": 1,
+   "organization": "",
+   "contactId": null,
+   "stageId": "stage-lead",
+   "owner": null,
+   "expectedClose": null,
+   "source": ""
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "list_stages",
+  "args": {},
+  "expect": {
+   "error": "UnknownMethod"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "markWon",
+  "args": {
+   "dealId": "$bobs"
+  },
+  "expect": {
+   "error": "NotAView"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "deleteContact",
+  "args": {
+   "contactId": "$bobs_contact"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "deleteDeal",
+  "args": {
+   "dealId": "$bobs"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "listDeals",
+  "args": {
+   "status": null,
+   "stageId": null,
+   "owner": null
+  },
+  "expect": {
+   "ok": {
+    "items": [],
+    "next": null
+   }
+  }
+ }
+]
