@@ -14,8 +14,9 @@ auditable like Snapshot, with no trusted server.
 Runs on Calimero 1.0: the contract is a `calimero:app` component on core's component SDK
 (`calimero-app-sdk`, wasmtime), developed against `merod local`, and the frontend talks to
 Calimero Cloud in production through mero-js's `CalimeroClient` (see
-[docs/COMPONENT-APPS.md](../../docs/COMPONENT-APPS.md)). The native mobile apps in `mobile/` are
-still on the v1 contract; see [mobile/README.md](mobile/README.md).
+[docs/COMPONENT-APPS.md](../../docs/COMPONENT-APPS.md)). The native iOS and Android apps in
+`mobile/` move to the same contract in their own PR (#697), which follows this port; see
+[mobile/README.md](mobile/README.md).
 
 ## Is Calimero enough, or do we need ZK?
 
@@ -144,7 +145,7 @@ app/
   src/crypto/*.test.ts     byte-for-byte agreement with vectors.json; tamper cases
   src/theme.ts             light/dark, kept under mero-vote:theme (index.html applies it pre-paint)
   src/signOut.ts           Log out: forget the open group, then end the session
-mobile/                 native iOS and Android apps, still on the v1 contract
+mobile/                 native iOS and Android apps (ported to this contract in #697)
 ```
 
 Light is the default; the sun/moon button in the top bar switches to dark. **Log out** is always
