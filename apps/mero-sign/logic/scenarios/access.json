@@ -1,0 +1,412 @@
+[
+  {
+    "as": "bob",
+    "op": "call",
+    "method": "setup",
+    "args": {
+      "isPrivate": false,
+      "contextName": "Hijack"
+    },
+    "expect": {
+      "error": "Forbidden",
+      "fields": {
+        "message": "Only the app's owner can set it up"
+      }
+    }
+  },
+  {
+    "op": "call",
+    "method": "setup",
+    "args": {
+      "isPrivate": false,
+      "contextName": "NDA"
+    },
+    "expect": {
+      "ok": null
+    }
+  },
+  {
+    "as": "@anonymous",
+    "op": "view",
+    "method": "whoami",
+    "expect": {
+      "refused": "UNAUTHENTICATED"
+    }
+  },
+  {
+    "as": "mallory",
+    "op": "call",
+    "method": "registerSelfAsParticipant",
+    "expect": {
+      "refused": "NOT_FOUND"
+    }
+  },
+  {
+    "as": "bob",
+    "op": "view",
+    "method": "listDocuments",
+    "args": {},
+    "expect": {
+      "error": "Forbidden",
+      "fields": {
+        "message": "You are not a participant in this agreement"
+      }
+    }
+  },
+  {
+    "as": "bob",
+    "op": "call",
+    "method": "uploadDocument",
+    "args": {
+      "name": "x.pdf",
+      "hash": "344bc6334e09c0ee3f6e1f7306d1a1eca145e1f4de837e461e68fe9c883d8a46",
+      "pdfBlobIdStr": "344bc6334e09c0ee3f6e1f7306d1a1eca145e1f4de837e461e68fe9c883d8a46",
+      "fileSize": "17"
+    },
+    "expect": {
+      "error": "Forbidden",
+      "fields": {
+        "message": "You are not a participant in this agreement"
+      }
+    }
+  },
+  {
+    "as": "bob",
+    "op": "call",
+    "method": "addParticipant",
+    "args": {
+      "userIdStr": "@bob",
+      "permission": "Admin"
+    },
+    "expect": {
+      "error": "Forbidden",
+      "fields": {
+        "message": "User permissions not found"
+      }
+    }
+  },
+  {
+    "op": "call",
+    "method": "addParticipant",
+    "args": {
+      "userIdStr": "@bob",
+      "permission": "Read"
+    },
+    "expect": {
+      "ok": null
+    }
+  },
+  {
+    "op": "call",
+    "method": "addParticipant",
+    "args": {
+      "userIdStr": "@bob",
+      "permission": "Sign"
+    },
+    "expect": {
+      "error": "Conflict",
+      "fields": {
+        "message": "User is already a participant"
+      }
+    }
+  },
+  {
+    "op": "call",
+    "method": "addParticipant",
+    "args": {
+      "userIdStr": "@dave",
+      "permission": "Owner"
+    },
+    "expect": {
+      "error": "Invalid",
+      "fields": {
+        "message": "Unknown permission \"Owner\": Read, Sign or Admin"
+      }
+    }
+  },
+  {
+    "as": "carol",
+    "op": "call",
+    "method": "registerSelfAsParticipant",
+    "expect": {
+      "ok": null
+    }
+  },
+  {
+    "as": "carol",
+    "op": "view",
+    "method": "getUserPermission",
+    "args": {
+      "userIdStr": "@carol"
+    },
+    "expect": {
+      "ok": "Sign"
+    }
+  },
+  {
+    "as": "bob",
+    "op": "call",
+    "method": "uploadDocument",
+    "args": {
+      "name": "x.pdf",
+      "hash": "344bc6334e09c0ee3f6e1f7306d1a1eca145e1f4de837e461e68fe9c883d8a46",
+      "pdfBlobIdStr": "344bc6334e09c0ee3f6e1f7306d1a1eca145e1f4de837e461e68fe9c883d8a46",
+      "fileSize": "17"
+    },
+    "expect": {
+      "error": "Forbidden",
+      "fields": {
+        "message": "Sign permission or higher is required for this operation"
+      }
+    }
+  },
+  {
+    "as": "carol",
+    "op": "call",
+    "method": "uploadDocument",
+    "args": {
+      "name": "nda.pdf",
+      "hash": "a3a6d7fccdb48e6f31e8d2bdc637a7ba7dd76d273863d84313fe7681f92066b7",
+      "pdfBlobIdStr": "344bc6334e09c0ee3f6e1f7306d1a1eca145e1f4de837e461e68fe9c883d8a46",
+      "fileSize": "17"
+    },
+    "expect": {
+      "error": "HashMismatch",
+      "fields": {
+        "expected": "a3a6d7fccdb48e6f31e8d2bdc637a7ba7dd76d273863d84313fe7681f92066b7",
+        "actual": "344bc6334e09c0ee3f6e1f7306d1a1eca145e1f4de837e461e68fe9c883d8a46"
+      }
+    }
+  },
+  {
+    "as": "carol",
+    "op": "call",
+    "method": "uploadDocument",
+    "args": {
+      "name": "nda.pdf",
+      "hash": "344bc6334e09c0ee3f6e1f7306d1a1eca145e1f4de837e461e68fe9c883d8a46",
+      "pdfBlobIdStr": "344bc6334e09c0ee3f6e1f7306d1a1eca145e1f4de837e461e68fe9c883d8a46",
+      "fileSize": "17"
+    },
+    "save": "doc"
+  },
+  {
+    "as": "bob",
+    "op": "view",
+    "method": "getDocumentStatus",
+    "args": {
+      "documentId": "$doc"
+    },
+    "expect": {
+      "ok": {
+        "status": "Pending",
+        "hash": "344bc6334e09c0ee3f6e1f7306d1a1eca145e1f4de837e461e68fe9c883d8a46",
+        "signatures": "0"
+      }
+    }
+  },
+  {
+    "as": "bob",
+    "op": "call",
+    "method": "setConsent",
+    "args": {
+      "documentId": "$doc"
+    },
+    "expect": {
+      "ok": null
+    }
+  },
+  {
+    "as": "bob",
+    "op": "call",
+    "method": "signDocument",
+    "confirmed": true,
+    "args": {
+      "documentId": "$doc",
+      "baseHash": "344bc6334e09c0ee3f6e1f7306d1a1eca145e1f4de837e461e68fe9c883d8a46",
+      "pdfBlobIdStr": "a3a6d7fccdb48e6f31e8d2bdc637a7ba7dd76d273863d84313fe7681f92066b7",
+      "fileSize": "33",
+      "newHash": "a3a6d7fccdb48e6f31e8d2bdc637a7ba7dd76d273863d84313fe7681f92066b7"
+    },
+    "expect": {
+      "error": "Forbidden",
+      "fields": {
+        "message": "Sign permission or higher is required for this operation"
+      }
+    }
+  },
+  {
+    "as": "carol",
+    "op": "call",
+    "method": "removeParticipant",
+    "args": {
+      "userIdStr": "@bob"
+    },
+    "expect": {
+      "error": "Forbidden",
+      "fields": {
+        "message": "Admin permissions required for this operation"
+      }
+    }
+  },
+  {
+    "as": "carol",
+    "op": "call",
+    "method": "setParticipantPermission",
+    "args": {
+      "userIdStr": "@carol",
+      "permission": "Admin"
+    },
+    "expect": {
+      "error": "Forbidden",
+      "fields": {
+        "message": "Admin permissions required for this operation"
+      }
+    }
+  },
+  {
+    "as": "carol",
+    "op": "call",
+    "method": "deleteDocument",
+    "args": {
+      "documentId": "$doc"
+    },
+    "expect": {
+      "error": "Forbidden",
+      "fields": {
+        "message": "Admin permissions required for this operation"
+      }
+    }
+  },
+  {
+    "op": "call",
+    "method": "setParticipantPermission",
+    "args": {
+      "userIdStr": "@owner",
+      "permission": "Sign"
+    },
+    "expect": {
+      "error": "Conflict",
+      "fields": {
+        "message": "An agreement needs at least one admin: promote someone else first"
+      }
+    }
+  },
+  {
+    "op": "call",
+    "method": "removeParticipant",
+    "args": {
+      "userIdStr": "@owner"
+    },
+    "expect": {
+      "error": "Conflict",
+      "fields": {
+        "message": "An agreement needs at least one admin: promote someone else first"
+      }
+    }
+  },
+  {
+    "op": "call",
+    "method": "removeParticipant",
+    "args": {
+      "userIdStr": "@carol"
+    },
+    "expect": {
+      "ok": null
+    }
+  },
+  {
+    "as": "carol",
+    "op": "call",
+    "method": "registerSelfAsParticipant",
+    "expect": {
+      "error": "Forbidden",
+      "fields": {
+        "message": "An admin removed you from this agreement"
+      }
+    }
+  },
+  {
+    "as": "carol",
+    "op": "view",
+    "method": "getDocumentStatus",
+    "args": {
+      "documentId": "$doc"
+    },
+    "expect": {
+      "error": "Forbidden",
+      "fields": {
+        "message": "You are not a participant in this agreement"
+      }
+    }
+  },
+  {
+    "op": "call",
+    "method": "setParticipantPermission",
+    "args": {
+      "userIdStr": "@bob",
+      "permission": "Admin"
+    },
+    "expect": {
+      "ok": null
+    }
+  },
+  {
+    "op": "call",
+    "method": "setParticipantPermission",
+    "args": {
+      "userIdStr": "@owner",
+      "permission": "Read"
+    },
+    "expect": {
+      "ok": null
+    }
+  },
+  {
+    "op": "call",
+    "method": "deleteDocument",
+    "args": {
+      "documentId": "$doc"
+    },
+    "expect": {
+      "error": "Forbidden",
+      "fields": {
+        "message": "Admin permissions required for this operation"
+      }
+    }
+  },
+  {
+    "as": "bob",
+    "op": "call",
+    "method": "addParticipant",
+    "args": {
+      "userIdStr": "@carol",
+      "permission": "Sign"
+    },
+    "expect": {
+      "ok": null
+    }
+  },
+  {
+    "as": "carol",
+    "op": "view",
+    "method": "getUserPermission",
+    "args": {
+      "userIdStr": "@carol"
+    },
+    "expect": {
+      "ok": "Sign"
+    }
+  },
+  {
+    "as": "bob",
+    "op": "call",
+    "method": "deleteDocument",
+    "args": {
+      "documentId": "$doc"
+    },
+    "expect": {
+      "ok": null
+    }
+  }
+]

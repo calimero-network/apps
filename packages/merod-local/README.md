@@ -18,9 +18,11 @@ skips the build. State and the cluster log live in `.merod-local/`.
 (`crates/app-sdk/src/testing/scenario.rs`), on the cluster: per file a fresh
 org (`owner`, and the admins, members and guests its `.org.json` lists, each
 invited and redeemed; `outsiders` sign up without joining), a fresh app from
-the uploaded bundle in that org, every account on a different node, an event
-stream per account. `ok`, `error` (+ `fields`), `trap`, `confirmRequired` and
-`refused` expectations, `$saved` and `@account` substitution, `confirmed: true`
+the uploaded bundle in that org, the blobs its `.org.json` lists under
+`"blobs"` (label → UTF-8 content, uploaded by `owner`; steps name a blob by its
+SHA-256), every account on a different node, an event stream per account.
+`ok`, `error` (+ `fields`), `trap`, `confirmRequired` and `refused`
+expectations, `$saved` and `@account` substitution, `confirmed: true`
 (the step's passkey answers the 412) and `removeMember` are supported; a file
 that ticks a timer, advances the clock, calls as `@system` or needs teams is
 skipped with the reason (the harness covers it).

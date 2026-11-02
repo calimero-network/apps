@@ -26,6 +26,12 @@ export interface OrgSpec {
   /** Accounts that exist but are not in the org (refused `NOT_FOUND`). */
   outsiders?: string[];
   teams?: Record<string, string[]>;
+  /**
+   * Blobs the app holds before the first step (label → UTF-8 content), as a
+   * client would have uploaded them. A blob's id is the SHA-256 of its bytes,
+   * so steps name each one by that hex digest.
+   */
+  blobs?: Record<string, string>;
 }
 
 /** The result of one step: what the node answered, or what it threw. */

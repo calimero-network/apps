@@ -1,0 +1,11 @@
+{
+  "members": [
+    "bob"
+  ],
+  "blobs": {
+    "upload": "%PDF-1.4 series-a.pdf: the agreement as uploaded\n",
+    "bob": "%PDF-1.4 series-a.pdf: countersigned by bob\n",
+    "both": "%PDF-1.4 series-a.pdf: countersigned by bob, then by owner\n",
+    "stale": "%PDF-1.4 series-a.pdf: signed by owner from the upload (stale)\n"
+  }
+}

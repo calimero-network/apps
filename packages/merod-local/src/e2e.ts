@@ -6,8 +6,9 @@
  *
  * Per scenario: a fresh org (`owner` creates it; `<name>.org.json` lists who
  * is invited as admin, member or guest, and who signs up without joining), a
- * fresh app from the uploaded bundle in that org, and an event stream per
- * account from the app's first index.
+ * fresh app from the uploaded bundle in that org, the blobs `<name>.org.json`
+ * lists uploaded to it, and an event stream per account from the app's first
+ * index.
  */
 
 import { readFileSync, existsSync } from "node:fs";
@@ -87,6 +88,9 @@ export async function runScenario(file: string, bundle: string, nodes: string[] 
     await (people.get(name) as Person).client.redeemInvite(token);
   }
   const app = await owner.client.createApp(`e2e-${run}`, bundle, { org: orgId });
+  for (const content of Object.values(org.blobs ?? {})) {
+    await owner.client.uploadBlob(app, new TextEncoder().encode(content));
+  }
 
   const listeners = new Map<string, Listener>();
   for (const [name, person] of people) listeners.set(name, listen(person.client, app));

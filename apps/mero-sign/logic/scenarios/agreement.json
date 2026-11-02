@@ -1,0 +1,384 @@
+[
+  {
+    "op": "call",
+    "method": "setup",
+    "args": {
+      "isPrivate": false,
+      "contextName": "Series A"
+    },
+    "expect": {
+      "ok": null
+    }
+  },
+  {
+    "op": "view",
+    "method": "isDefaultPrivateContext",
+    "expect": {
+      "ok": false
+    }
+  },
+  {
+    "op": "view",
+    "method": "getUserPermission",
+    "args": {
+      "userIdStr": "@owner"
+    },
+    "expect": {
+      "ok": "Admin"
+    }
+  },
+  {
+    "as": "bob",
+    "op": "view",
+    "method": "whoami",
+    "expect": {
+      "ok": "@bob"
+    }
+  },
+  {
+    "as": "bob",
+    "op": "call",
+    "method": "registerSelfAsParticipant",
+    "expect": {
+      "ok": null
+    },
+    "events": {
+      "owner": [
+        "ParticipantJoined"
+      ],
+      "bob": [
+        "ParticipantJoined"
+      ]
+    }
+  },
+  {
+    "as": "bob",
+    "op": "call",
+    "method": "registerSelfAsParticipant",
+    "expect": {
+      "error": "Conflict",
+      "fields": {
+        "message": "Already registered as participant"
+      }
+    }
+  },
+  {
+    "op": "view",
+    "method": "getUserPermission",
+    "args": {
+      "userIdStr": "@bob"
+    },
+    "expect": {
+      "ok": "Sign"
+    }
+  },
+  {
+    "op": "call",
+    "method": "uploadDocument",
+    "args": {
+      "name": "series-a.pdf",
+      "hash": "f31ec45b28ffd596718e94df2f99f51b86e2b5ea2b7e972bd907636ea4c2d7e2",
+      "pdfBlobIdStr": "f31ec45b28ffd596718e94df2f99f51b86e2b5ea2b7e972bd907636ea4c2d7e2",
+      "fileSize": "49"
+    },
+    "save": "doc",
+    "events": {
+      "owner": [
+        "ParticipantJoined",
+        "DocumentUploaded"
+      ],
+      "bob": [
+        "ParticipantJoined",
+        "DocumentUploaded"
+      ]
+    }
+  },
+  {
+    "as": "bob",
+    "op": "view",
+    "method": "getDocumentStatus",
+    "args": {
+      "documentId": "$doc"
+    },
+    "expect": {
+      "ok": {
+        "status": "Pending",
+        "hash": "f31ec45b28ffd596718e94df2f99f51b86e2b5ea2b7e972bd907636ea4c2d7e2",
+        "signatures": "0"
+      }
+    }
+  },
+  {
+    "as": "bob",
+    "op": "call",
+    "method": "signDocument",
+    "confirmed": true,
+    "args": {
+      "documentId": "$doc",
+      "baseHash": "f31ec45b28ffd596718e94df2f99f51b86e2b5ea2b7e972bd907636ea4c2d7e2",
+      "pdfBlobIdStr": "4ecf2ac48cb125ec7b81ee4df7fbca30ec345bc4318d58284c61be1fc48ba453",
+      "fileSize": "44",
+      "newHash": "4ecf2ac48cb125ec7b81ee4df7fbca30ec345bc4318d58284c61be1fc48ba453"
+    },
+    "expect": {
+      "error": "ConsentRequired",
+      "fields": {
+        "message": "You must provide consent before signing this document"
+      }
+    }
+  },
+  {
+    "as": "bob",
+    "op": "call",
+    "method": "setConsent",
+    "args": {
+      "documentId": "$doc"
+    },
+    "expect": {
+      "ok": null
+    }
+  },
+  {
+    "op": "view",
+    "method": "hasConsented",
+    "args": {
+      "userIdStr": "@bob",
+      "documentId": "$doc"
+    },
+    "expect": {
+      "ok": true
+    }
+  },
+  {
+    "op": "view",
+    "method": "hasConsented",
+    "args": {
+      "userIdStr": "@owner",
+      "documentId": "$doc"
+    },
+    "expect": {
+      "ok": false
+    }
+  },
+  {
+    "as": "bob",
+    "op": "call",
+    "method": "signDocument",
+    "args": {
+      "documentId": "$doc",
+      "baseHash": "f31ec45b28ffd596718e94df2f99f51b86e2b5ea2b7e972bd907636ea4c2d7e2",
+      "pdfBlobIdStr": "4ecf2ac48cb125ec7b81ee4df7fbca30ec345bc4318d58284c61be1fc48ba453",
+      "fileSize": "44",
+      "newHash": "4ecf2ac48cb125ec7b81ee4df7fbca30ec345bc4318d58284c61be1fc48ba453"
+    },
+    "expect": {
+      "confirmRequired": true
+    }
+  },
+  {
+    "as": "bob",
+    "op": "call",
+    "method": "signDocument",
+    "confirmed": true,
+    "args": {
+      "documentId": "$doc",
+      "baseHash": "f31ec45b28ffd596718e94df2f99f51b86e2b5ea2b7e972bd907636ea4c2d7e2",
+      "pdfBlobIdStr": "4ecf2ac48cb125ec7b81ee4df7fbca30ec345bc4318d58284c61be1fc48ba453",
+      "fileSize": "44",
+      "newHash": "4ecf2ac48cb125ec7b81ee4df7fbca30ec345bc4318d58284c61be1fc48ba453"
+    },
+    "expect": {
+      "ok": null
+    },
+    "events": {
+      "owner": [
+        "ParticipantJoined",
+        "DocumentUploaded",
+        "DocumentSigned"
+      ]
+    }
+  },
+  {
+    "as": "bob",
+    "op": "view",
+    "method": "markParticipantSigned",
+    "args": {
+      "documentId": "$doc"
+    },
+    "expect": {
+      "ok": null
+    }
+  },
+  {
+    "op": "view",
+    "method": "getDocumentStatus",
+    "args": {
+      "documentId": "$doc"
+    },
+    "expect": {
+      "ok": {
+        "status": "PartiallySigned",
+        "hash": "4ecf2ac48cb125ec7b81ee4df7fbca30ec345bc4318d58284c61be1fc48ba453",
+        "signatures": "1"
+      }
+    }
+  },
+  {
+    "op": "call",
+    "method": "setConsent",
+    "args": {
+      "documentId": "$doc"
+    },
+    "expect": {
+      "ok": null
+    }
+  },
+  {
+    "op": "call",
+    "method": "signDocument",
+    "confirmed": true,
+    "args": {
+      "documentId": "$doc",
+      "baseHash": "f31ec45b28ffd596718e94df2f99f51b86e2b5ea2b7e972bd907636ea4c2d7e2",
+      "pdfBlobIdStr": "a49e5ce2b11b8c9f26dc382aaff36c455434d8308c1ea66fc86fdbbc5457f0c8",
+      "fileSize": "63",
+      "newHash": "a49e5ce2b11b8c9f26dc382aaff36c455434d8308c1ea66fc86fdbbc5457f0c8"
+    },
+    "expect": {
+      "error": "StaleVersion",
+      "fields": {
+        "current": "4ecf2ac48cb125ec7b81ee4df7fbca30ec345bc4318d58284c61be1fc48ba453",
+        "message": "This document changed while you were signing it: you started from f31ec45b28ffd596718e94df2f99f51b86e2b5ea2b7e972bd907636ea4c2d7e2, but it is now at 4ecf2ac48cb125ec7b81ee4df7fbca30ec345bc4318d58284c61be1fc48ba453. Somebody else signed in the meantime, and saving this copy would erase their signature. Reopen the document and sign again."
+      }
+    }
+  },
+  {
+    "op": "view",
+    "method": "getDocumentStatus",
+    "args": {
+      "documentId": "$doc"
+    },
+    "expect": {
+      "ok": {
+        "status": "PartiallySigned",
+        "hash": "4ecf2ac48cb125ec7b81ee4df7fbca30ec345bc4318d58284c61be1fc48ba453",
+        "signatures": "1"
+      }
+    }
+  },
+  {
+    "op": "call",
+    "method": "signDocument",
+    "confirmed": true,
+    "args": {
+      "documentId": "$doc",
+      "baseHash": "4ecf2ac48cb125ec7b81ee4df7fbca30ec345bc4318d58284c61be1fc48ba453",
+      "pdfBlobIdStr": "9d8f9a6d98c27bff386493cf636a31280a857e64f1f6ef1a9530f7916e7233a5",
+      "fileSize": "59",
+      "newHash": "9d8f9a6d98c27bff386493cf636a31280a857e64f1f6ef1a9530f7916e7233a5"
+    },
+    "expect": {
+      "ok": null
+    }
+  },
+  {
+    "op": "view",
+    "method": "markParticipantSigned",
+    "args": {
+      "documentId": "$doc"
+    },
+    "expect": {
+      "ok": null
+    }
+  },
+  {
+    "as": "bob",
+    "op": "view",
+    "method": "getDocumentStatus",
+    "args": {
+      "documentId": "$doc"
+    },
+    "expect": {
+      "ok": {
+        "status": "FullySigned",
+        "hash": "9d8f9a6d98c27bff386493cf636a31280a857e64f1f6ef1a9530f7916e7233a5",
+        "signatures": "2"
+      }
+    }
+  },
+  {
+    "as": "bob",
+    "op": "call",
+    "method": "signDocument",
+    "confirmed": true,
+    "args": {
+      "documentId": "$doc",
+      "baseHash": "9d8f9a6d98c27bff386493cf636a31280a857e64f1f6ef1a9530f7916e7233a5",
+      "pdfBlobIdStr": "9d8f9a6d98c27bff386493cf636a31280a857e64f1f6ef1a9530f7916e7233a5",
+      "fileSize": "59",
+      "newHash": "9d8f9a6d98c27bff386493cf636a31280a857e64f1f6ef1a9530f7916e7233a5"
+    },
+    "expect": {
+      "error": "Conflict",
+      "fields": {
+        "message": "This document is fully signed and takes no more signatures"
+      }
+    }
+  },
+  {
+    "as": "bob",
+    "op": "call",
+    "method": "deleteDocument",
+    "args": {
+      "documentId": "$doc"
+    },
+    "expect": {
+      "error": "Forbidden",
+      "fields": {
+        "message": "Admin permissions required for this operation"
+      }
+    }
+  },
+  {
+    "op": "call",
+    "method": "deleteDocument",
+    "args": {
+      "documentId": "$doc"
+    },
+    "expect": {
+      "ok": null
+    },
+    "events": {
+      "bob": [
+        "ParticipantJoined",
+        "DocumentUploaded",
+        "DocumentSigned",
+        "DocumentSigned",
+        "DocumentDeleted"
+      ]
+    }
+  },
+  {
+    "as": "bob",
+    "op": "view",
+    "method": "listDocuments",
+    "args": {},
+    "expect": {
+      "ok": {
+        "items": [],
+        "next": null
+      }
+    }
+  },
+  {
+    "as": "bob",
+    "op": "view",
+    "method": "getDocumentStatus",
+    "args": {
+      "documentId": "$doc"
+    },
+    "expect": {
+      "error": "NotFound"
+    }
+  }
+]

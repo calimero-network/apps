@@ -1,0 +1,15 @@
+{
+  "members": [
+    "bob"
+  ],
+  "guests": [
+    "carol"
+  ],
+  "outsiders": [
+    "mallory"
+  ],
+  "blobs": {
+    "nda": "%PDF-1.4 nda.pdf\n",
+    "signed": "%PDF-1.4 nda.pdf signed by carol\n"
+  }
+}

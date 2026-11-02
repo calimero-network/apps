@@ -1,0 +1,261 @@
+[
+  {
+    "op": "view",
+    "method": "isDefaultPrivateContext",
+    "expect": {
+      "ok": false
+    }
+  },
+  {
+    "op": "view",
+    "method": "listSignatures",
+    "args": {},
+    "expect": {
+      "error": "NotSetUp",
+      "fields": {}
+    }
+  },
+  {
+    "op": "call",
+    "method": "setup",
+    "args": {
+      "isPrivate": true,
+      "contextName": "default"
+    },
+    "expect": {
+      "ok": null
+    }
+  },
+  {
+    "op": "call",
+    "method": "setup",
+    "args": {
+      "isPrivate": true,
+      "contextName": "default"
+    },
+    "expect": {
+      "error": "AlreadySetUp",
+      "fields": {}
+    }
+  },
+  {
+    "op": "view",
+    "method": "isDefaultPrivateContext",
+    "expect": {
+      "ok": true
+    }
+  },
+  {
+    "op": "call",
+    "method": "createSignature",
+    "args": {
+      "name": "Initials",
+      "blobIdStr": "8ba29d1c273bcf4cbe58a05f9de31a6bd12b6d71bb326f56c1491ece5e1536a0",
+      "dataSize": "35"
+    },
+    "expect": {
+      "ok": "1"
+    },
+    "events": {
+      "owner": [
+        "SignatureCreated"
+      ]
+    }
+  },
+  {
+    "op": "call",
+    "method": "createSignature",
+    "args": {
+      "name": "Full",
+      "blobIdStr": "8ba29d1c273bcf4cbe58a05f9de31a6bd12b6d71bb326f56c1491ece5e1536a0",
+      "dataSize": "1"
+    },
+    "expect": {
+      "error": "Invalid",
+      "fields": {
+        "message": "The blob holds 35 bytes, not 1"
+      }
+    }
+  },
+  {
+    "op": "call",
+    "method": "createSignature",
+    "args": {
+      "name": "Full",
+      "blobIdStr": "0000000000000000000000000000000000000000000000000000000000000000",
+      "dataSize": "1"
+    },
+    "expect": {
+      "error": "BlobNotFound",
+      "fields": {
+        "blobId": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    }
+  },
+  {
+    "op": "call",
+    "method": "createSignature",
+    "args": {
+      "name": "Full",
+      "blobIdStr": "8ba29d1c273bcf4cbe58a05f9de31a6bd12b6d71bb326f56c1491ece5e1536a0",
+      "dataSize": "35"
+    },
+    "expect": {
+      "ok": "2"
+    }
+  },
+  {
+    "op": "call",
+    "method": "deleteSignature",
+    "args": {
+      "signatureId": "1"
+    },
+    "expect": {
+      "ok": null
+    }
+  },
+  {
+    "op": "call",
+    "method": "deleteSignature",
+    "args": {
+      "signatureId": "1"
+    },
+    "expect": {
+      "error": "NotFound",
+      "fields": {
+        "message": "Signature not found: 1"
+      }
+    }
+  },
+  {
+    "op": "call",
+    "method": "joinSharedContext",
+    "args": {
+      "contextIdStr": "app-series-a",
+      "contextName": "Series A"
+    },
+    "expect": {
+      "ok": null
+    }
+  },
+  {
+    "op": "call",
+    "method": "joinSharedContext",
+    "args": {
+      "contextIdStr": "app-series-a",
+      "contextName": "Series A"
+    },
+    "expect": {
+      "error": "Conflict",
+      "fields": {
+        "message": "Already joined this context"
+      }
+    }
+  },
+  {
+    "op": "call",
+    "method": "leaveSharedContext",
+    "args": {
+      "contextIdStr": "app-series-a"
+    },
+    "expect": {
+      "ok": null
+    },
+    "events": {
+      "owner": [
+        "SignatureCreated",
+        "SignatureCreated",
+        "SignatureDeleted",
+        "ContextJoined",
+        "ContextLeft"
+      ]
+    }
+  },
+  {
+    "op": "view",
+    "method": "listJoinedContexts",
+    "args": {},
+    "expect": {
+      "ok": {
+        "items": [],
+        "next": null
+      }
+    }
+  },
+  {
+    "op": "call",
+    "method": "leaveSharedContext",
+    "args": {
+      "contextIdStr": "app-series-a"
+    },
+    "expect": {
+      "error": "NotFound",
+      "fields": {
+        "message": "Context not found"
+      }
+    }
+  },
+  {
+    "op": "call",
+    "method": "registerSelfAsParticipant",
+    "expect": {
+      "error": "WrongContext",
+      "fields": {
+        "message": "Cannot register as participant in private context"
+      }
+    }
+  },
+  {
+    "op": "view",
+    "method": "listDocuments",
+    "args": {},
+    "expect": {
+      "error": "WrongContext",
+      "fields": {
+        "message": "This method can only be called from shared context"
+      }
+    }
+  },
+  {
+    "as": "bob",
+    "op": "call",
+    "method": "createSignature",
+    "args": {
+      "name": "Forged",
+      "blobIdStr": "8ba29d1c273bcf4cbe58a05f9de31a6bd12b6d71bb326f56c1491ece5e1536a0",
+      "dataSize": "35"
+    },
+    "expect": {
+      "error": "Forbidden",
+      "fields": {
+        "message": "This library is its owner's alone"
+      }
+    }
+  },
+  {
+    "as": "bob",
+    "op": "view",
+    "method": "listSignatures",
+    "args": {},
+    "expect": {
+      "error": "Forbidden",
+      "fields": {
+        "message": "This library is its owner's alone"
+      }
+    }
+  },
+  {
+    "as": "bob",
+    "op": "call",
+    "method": "deleteSignature",
+    "args": {
+      "signatureId": "2"
+    },
+    "expect": {
+      "error": "Forbidden",
+      "fields": {
+        "message": "This library is its owner's alone"
+      }
+    }
+  }
+]
