@@ -1,17 +1,5 @@
 # Mero Updates: native mobile apps
 
-> **Not ported to Calimero 1.0 yet.** The contract (`../logic`) and the web
-> frontend (`../app`) moved to core's component SDK and mero-js `CalimeroClient`
-> (organizations, app instances, passkeys, camelCase methods). These native apps
-> still speak the v1 session of their pinned SDKs (relay, warrants, namespaces,
-> contexts, snake_case methods, the `links.calimero.network` invitation format),
-> and swift-sdk / kotlin-sdk have no Calimero 1.0 client yet, so they cannot
-> reach a 1.0 instance. They are left unchanged until those SDKs ship one; their
-> CI runs against fakes and is unaffected. Porting them then means: sign in with
-> a passkey, list `com.calimero.mero-updates` instances by organization, call
-> the camelCase methods, and read 64-bit numbers as decimal strings (the web
-> app's `src/lib/updatesClient.ts` is the mapping).
-
 Native iOS and Android clients for Mero Updates, next to the web frontend (`../app`) and the
 contract (`../logic`, package `com.calimero.mero-updates`). Both platforms have the same screens,
 copy, icons (SF Symbols / Material, mapped) and flows.

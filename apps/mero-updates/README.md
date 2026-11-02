@@ -20,7 +20,7 @@ apps/mero-updates/
 │   ├── scenarios/           e2e, permissions, access (+ .org.json): harness AND merod local
 │   └── res/abi.json         the component's ABI (committed, diffed in CI)
 ├── app/                     Vite + React; @calimero-apps/connect + mero-js CalimeroClient
-└── mobile/                  native iOS/Android apps: still on the v1 SDKs, not ported (see below)
+└── mobile/                  native iOS/Android apps: move to Calimero 1.0 in #693 (see below)
 ```
 
 See [docs/COMPONENT-APPS.md](../../docs/COMPONENT-APPS.md) for how component apps are built, run and
@@ -256,9 +256,10 @@ thread, Q&A, asks, KPIs, people and engagement, settings, the light/dark theme. 
   company?" prompt after sign-in;
 - **names**: a company-wide name is org member metadata `{ name }` (was namespace member metadata).
 
-`mobile/` is **not ported**: the native apps use the swift-sdk / kotlin-sdk v1 session, and those SDKs
-have no Calimero 1.0 client yet; `mobile/README.md` says what they wait for. Their CI runs against
-fakes and is unchanged.
+`mobile/` moves to Calimero 1.0 in its own PR, #693: the native iOS and Android apps call this
+contract's component ABI through a `ComponentWire` layer that maps their v1 method names and
+snake_case fields to the camelCase ABI and reads 64-bit numbers back from decimal strings. #693
+depends on this PR and merges right after it; until then `mobile/` is as on `main`.
 
 ## Production
 
