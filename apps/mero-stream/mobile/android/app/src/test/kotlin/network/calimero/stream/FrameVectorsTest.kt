@@ -17,6 +17,7 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -46,13 +47,24 @@ class FrameVectorsTest {
     private fun cases() = vectors["cases"]!!.jsonArray.map { it.jsonObject }
 
     @Test fun `payload capacity matches the web`() {
-        assertEquals(vectors["maxPayloadAvc"]!!.jsonPrimitive.int, LiveFrames.maxPayloadBytes("avc1.42001f"))
+        val codec = "avc1.42001f"
+        assertEquals(vectors["maxPayloadAvc"]!!.jsonPrimitive.int, WEB_SLICE - LiveFrames.HEADER_FIXED_BYTES - codec.length)
+        assertEquals(4_096 - 40 - 11, LiveFrames.maxPayloadBytes(codec))
+    }
+
+    @Test fun `every slice fits Calimero 1_0 presence`() {
+        val slices = LiveFrames.encodeFragments(LiveFrame(1, 0, true, 640, 480, 0, 0, 0, "avc1.42001f", pattern(50_000, 3)))
+        assertEquals(13, slices.size)
+        assertTrue(slices.all { it.size <= 4_096 })
+        val reassembler = FrameReassembler()
+        val out = slices.mapNotNull { LiveFrames.decodeFragment(it) }.mapNotNull { reassembler.push("a", it) }
+        assertEquals(50_000, out.first().bytes.size)
     }
 
     @Test fun `encodes exactly what the web encodes`() {
         for (c in cases()) {
             val f = c["frame"]!!.jsonObject
-            val encoded = LiveFrames.encodeFragments(frame(f, f["bytes"]!!.jsonPrimitive.content.hexToBytes()))
+            val encoded = LiveFrames.encodeFragments(frame(f, f["bytes"]!!.jsonPrimitive.content.hexToBytes()), WEB_SLICE)
             assertEquals(c["name"].toString(), c["fragments"]!!.jsonArray.map { it.jsonPrimitive.content }, encoded.map { it.toHex() })
         }
     }
@@ -75,7 +87,7 @@ class FrameVectorsTest {
         val f = multi["frame"]!!.jsonObject
         val bytes = pattern(f["byteLength"]!!.jsonPrimitive.int, f["patternSeed"]!!.jsonPrimitive.int)
         val source = frame(f, bytes)
-        val slices = LiveFrames.encodeFragments(source)
+        val slices = LiveFrames.encodeFragments(source, WEB_SLICE)
         assertEquals(multi["fragmentLengths"]!!.jsonArray.map { it.jsonPrimitive.int }, slices.map { it.size })
         assertEquals(multi["headersHex"]!!.jsonArray.map { it.jsonPrimitive.content }, slices.map { it.copyOf(51).toHex() })
 
@@ -120,6 +132,12 @@ class FrameVectorsTest {
     }
 
     companion object {
+        /**
+         * The web's vectors were written for 0.x presence slices (16 KiB); 1.0 presence takes 4 KiB,
+         * which [LiveFrames.MAX_SLICE_BYTES] now is. The framing is the same at either size.
+         */
+        const val WEB_SLICE = 16_384
+
         /** byte i = (i * 31 + seed) & 0xff, as in gen-frame-vectors.ts. */
         fun pattern(
             count: Int,

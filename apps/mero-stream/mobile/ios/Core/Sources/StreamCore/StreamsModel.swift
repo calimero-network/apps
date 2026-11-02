@@ -1,7 +1,7 @@
 import Foundation
 import MeroKit
 
-/// A stream: a namespace you invite people to. Each room in it is one call.
+/// A stream: an organization you invite people to. Each room in it is one call.
 public struct StreamSummary: Identifiable, Hashable, Sendable {
     public let id: String
     public var name: String
@@ -22,19 +22,22 @@ public struct StreamSummary: Identifiable, Hashable, Sendable {
     }
 }
 
-/// A room: a subgroup of the stream, and the context that is its call.
+/// A room: an app instance in the stream's organization, which is its call.
+/// Everyone in the organization reaches every room in it (the web's model).
 public struct RoomSummary: Identifiable, Hashable, Sendable {
+    /// The app instance's id.
     public let id: String
     public let namespaceId: String
     public var name: String
-    public var contextId: String?
 
-    public init(id: String, namespaceId: String, name: String, contextId: String?) {
+    public init(id: String, namespaceId: String, name: String) {
         self.id = id
         self.namespaceId = namespaceId
         self.name = name
-        self.contextId = contextId
     }
+
+    /// The call's app instance: the room itself.
+    public var contextId: String? { id }
 
     public var title: String {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
@@ -48,8 +51,8 @@ public enum InvitationLanding: Equatable, Sendable {
     case room(StreamSummary, RoomSummary)
 }
 
-/// The stream list (the web's `/streams`): the account's namespaces for this
-/// app, creating one, inviting to one, and joining one from a link.
+/// The stream list (the web's `/streams`): the account's organizations for
+/// this app, creating one, inviting to one, and joining one from a link.
 @MainActor
 public final class StreamsModel: ObservableObject {
     @Published public private(set) var streams: [StreamSummary] = []
@@ -77,7 +80,7 @@ public final class StreamsModel: ObservableObject {
             let backend = backend
             let counts = await withTaskGroup(of: (String, Int?).self) { group in
                 for ns in namespaces {
-                    group.addTask { (ns.id, try? await backend.listSubgroups(namespaceId: ns.id).count) }
+                    group.addTask { (ns.id, try? await backend.listContextEntries(groupId: ns.id).count) }
                 }
                 var out: [String: Int] = [:]
                 for await (id, count) in group { if let count { out[id] = count } }
@@ -93,7 +96,7 @@ public final class StreamsModel: ObservableObject {
         }
     }
 
-    /// Found a stream. Returns it, or nil with ``error`` set.
+    /// Create a stream (an organization the account owns). Returns it, or nil with ``error`` set.
     public func create(name: String) async -> StreamSummary? {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -112,7 +115,8 @@ public final class StreamsModel: ObservableObject {
         }
     }
 
-    /// A link that joins the whole stream and lands on its rooms.
+    /// A link that joins the whole stream and lands on its rooms. Minting it
+    /// asks for the passkey (the node's step-up).
     public func inviteLink(for stream: StreamSummary) async -> String? {
         isWorking = true
         defer { isWorking = false }
@@ -135,9 +139,7 @@ public final class StreamsModel: ObservableObject {
             if !streams.contains(where: { $0.id == stream.id }) { streams.append(stream) }
             error = nil
             if invitation.opensRoom, let roomId = invitation.roomId {
-                let room = RoomSummary(
-                    id: roomId, namespaceId: invitation.namespaceId, name: invitation.roomName ?? "",
-                    contextId: invitation.contextId)
+                let room = RoomSummary(id: roomId, namespaceId: invitation.namespaceId, name: invitation.roomName ?? "")
                 return .room(stream, room)
             }
             return .stream(stream)

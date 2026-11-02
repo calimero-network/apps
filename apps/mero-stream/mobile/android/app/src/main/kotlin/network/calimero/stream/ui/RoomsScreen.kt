@@ -59,8 +59,8 @@ import network.calimero.stream.app.RoomSummary
 import network.calimero.stream.app.RoomsModel
 import network.calimero.stream.app.StreamSummary
 import network.calimero.stream.app.StreamViewModel
+import network.calimero.stream.core.Member
 import network.calimero.stream.core.People
-import network.calimero.stream.generated.Member
 
 /** One stream's rooms (the web's `/streams/:id`). Each room is one video call. */
 @OptIn(ExperimentalMaterial3Api::class)

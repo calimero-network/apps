@@ -13,8 +13,11 @@ package network.calimero.stream.core
  * tests check this encoder writes them exactly.
  */
 object LiveFrames {
-    /** `EPHEMERAL_MAX_BYTES` in core: one presence slice. */
-    const val MAX_SLICE_BYTES = 16_384
+    /**
+     * `MAX_STATE_BYTES` in core 1.0's presence: one slice. (0.x relays took 16 KiB;
+     * [encodeFragments] still writes that size for the web's vectors.)
+     */
+    const val MAX_SLICE_BYTES = 4_096
     const val VERSION = 2
     const val HEADER_FIXED_BYTES = 40
     const val MAX_FRAGMENTS = 255
@@ -27,10 +30,13 @@ object LiveFrames {
     fun maxPayloadBytes(codec: String): Int = MAX_SLICE_BYTES - HEADER_FIXED_BYTES - codec.length
 
     /** Split one frame into presence-sized slices. A zero-byte frame is still one slice. */
-    fun encodeFragments(frame: LiveFrame): List<ByteArray> {
+    fun encodeFragments(
+        frame: LiveFrame,
+        sliceBytes: Int = MAX_SLICE_BYTES,
+    ): List<ByteArray> {
         require(frame.codec.all { it.code < 0x80 }) { "codec string must be ASCII: ${frame.codec}" }
         val codec = frame.codec.toByteArray(Charsets.US_ASCII)
-        val capacity = MAX_SLICE_BYTES - HEADER_FIXED_BYTES - codec.size
+        val capacity = sliceBytes - HEADER_FIXED_BYTES - codec.size
         require(capacity > 0 && codec.size <= 255) { "codec string leaves no room for payload" }
         val count = maxOf(1, (frame.bytes.size + capacity - 1) / capacity)
         require(count <= MAX_FRAGMENTS) { "frame of ${frame.bytes.size} bytes needs $count fragments" }

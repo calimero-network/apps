@@ -57,24 +57,41 @@ public enum ApprovalItem: Identifiable, Equatable, Sendable {
     }
 }
 
+/// The confirmation code of a consent request the node accepted: the app
+/// shows it before opening the page, and the page shows the same one.
+public struct ConsentConfirmation: Identifiable, Equatable, Sendable {
+    public let id: String
+    public let code: String
+    public let title: String
+}
+
 /// What waits for this account's approval, and asking for it on the node's
 /// consent page. The app wires `load` to `MeroAppSession.pendingApprovals(org:)`
-/// and `consent` to `MeroAppSession.requestConsent(_:)`, which opens the page
-/// in the system browser.
+/// and `consent` to `MeroAppSession.requestConsent(_:confirm:)`, which opens the
+/// page in the system browser once ``confirm(_:title:)`` said yes.
 @MainActor
 public final class ApprovalsModel: ObservableObject {
     public typealias Load = @MainActor (_ org: String?) async throws -> PendingApprovals
-    public typealias Consent = @MainActor (_ request: @escaping (String) -> ConsentRequest) async -> ConsentResult?
+    /// Ask the node for the consent request `request(returnTo)`, call `confirm`
+    /// with its answer (open the page only on true), and answer the decision.
+    public typealias Consent = @MainActor (
+        _ request: @escaping (String) -> ConsentRequest,
+        _ confirm: @escaping @MainActor (ConsentStarted) async -> Bool
+    ) async throws -> ConsentResult?
 
     @Published public private(set) var items: [ApprovalItem] = []
     /// The item whose consent page is open.
     @Published public private(set) var busy: String?
     /// The last decision or failure, in words.
     @Published public private(set) var message: String?
+    /// The confirmation code on screen, before the consent page opens.
+    @Published public private(set) var confirmation: ConsentConfirmation?
 
     private let load: Load
     private let consent: Consent
     private var orgs: [String] = []
+    private var answer: CheckedContinuation<Bool, Never>?
+    private var declined = false
 
     public init(load: @escaping Load, consent: @escaping Consent) {
         self.load = load
@@ -93,17 +110,42 @@ public final class ApprovalsModel: ObservableObject {
         items = found
     }
 
-    /// Open the consent page for `item` and re-read once the person is back.
+    /// Show the request's confirmation code, then open the consent page for
+    /// `item` if the person goes on, and re-read once they are back.
     public func approve(_ item: ApprovalItem) async {
         busy = item.id
+        declined = false
         defer { busy = nil }
-        let result = await consent { item.request(returnTo: $0) }
-        switch result?.status {
-        case .approved?: message = "Approved."
-        case .declined?: message = "Declined."
-        case .pending?: message = "Not decided yet. You can come back to it."
-        case nil: message = "The consent page did not answer. Try again."
+        do {
+            let result = try await consent({ item.request(returnTo: $0) }) { [weak self] started in
+                guard let self else { return false }
+                return await self.confirm(started, title: item.title)
+            }
+            switch result?.status {
+            case .approved?: message = "Approved."
+            case .declined?: message = "Declined."
+            case .pending?: message = "Not decided yet. You can come back to it."
+            case nil: message = declined ? "Not opened. Nothing changed." : "The consent page did not answer. Try again."
+            }
+        } catch {
+            message = ErrorText.describe(error)
         }
         await refresh()
+    }
+
+    /// Hold the consent page until the person has seen the code and chosen.
+    public func confirm(_ started: ConsentStarted, title: String) async -> Bool {
+        answer?.resume(returning: false)
+        let code = started.code.flatMap { $0.isEmpty ? nil : $0 } ?? confirmationCode(started.requestId)
+        confirmation = ConsentConfirmation(id: started.requestId, code: code, title: title)
+        return await withCheckedContinuation { answer = $0 }
+    }
+
+    /// The person's choice on the code screen: open the page, or not.
+    public func answerConfirmation(_ open: Bool) {
+        confirmation = nil
+        answer?.resume(returning: open)
+        answer = nil
+        declined = !open
     }
 }

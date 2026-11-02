@@ -19,6 +19,7 @@ import network.calimero.stream.core.LiveFrame
 import network.calimero.stream.core.LiveFrames
 import network.calimero.stream.core.MediaChannel
 import network.calimero.stream.core.MediaSlice
+import network.calimero.stream.core.Member
 import network.calimero.stream.core.Mulaw
 import network.calimero.stream.core.People
 import network.calimero.stream.core.Person
@@ -26,7 +27,6 @@ import network.calimero.stream.core.SlotView
 import network.calimero.stream.core.Slots
 import network.calimero.stream.core.StreamException
 import network.calimero.stream.core.streamClient
-import network.calimero.stream.generated.Member
 
 /** A remote sender of video, as the call sees it. */
 data class RemotePeer(
@@ -59,7 +59,7 @@ data class CallStats(
  * presence, exactly as the web's `useLiveStream` (and identical to the iOS `CallModel`):
  *
  * - **Send.** The platform encoder hands over H.264 Annex-B access units; each is framed
- *   ([LiveFrames]) into ≤16 KiB slices and published one at a time. Audio (µ-law, track 1) rides the
+ *   ([LiveFrames]) into ≤4 KiB slices and published one at a time. Audio (µ-law, track 1) rides the
  *   same channel.
  * - **Receive.** Every slice is parsed and reassembled per sender and track; video passes a
  *   per-sender keyframe gate before it reaches that sender's decoder.
@@ -84,6 +84,10 @@ class CallModel(
     val joinFailed: StateFlow<String?> = _joinFailed.asStateFlow()
     private val _members = MutableStateFlow<List<Member>>(emptyList())
     val members: StateFlow<List<Member>> = _members.asStateFlow()
+
+    /** Names people set for the whole stream (organization member metadata), by account: a tile's name when the room has none. */
+    private val _streamNames = MutableStateFlow<Map<String, String>>(emptyMap())
+    val streamNames: StateFlow<Map<String, String>> = _streamNames.asStateFlow()
     private val _peers = MutableStateFlow<List<RemotePeer>>(emptyList())
     val peers: StateFlow<List<RemotePeer>> = _peers.asStateFlow()
     private val _speaking = MutableStateFlow<Set<String>>(emptySet())
@@ -158,14 +162,23 @@ class CallModel(
     val displayName: String get() = _name.value.trim().ifEmpty { "guest" }
 
     /** Everyone in the room: the contract's members plus anyone sending. */
-    fun people(): List<Person> =
-        People.roster(
-            members = _members.value.map { it.memberId to it.username },
+    fun people(): List<Person> {
+        val names = _streamNames.value
+        val known = _members.value.map { it.memberId }.toSet()
+        val named =
+            _members.value.map { m -> m.memberId to m.username.trim().ifEmpty { names[m.memberId].orEmpty() } } +
+                _peers.value
+                    .map { it.id }
+                    .filter { it !in known }
+                    .mapNotNull { id -> names[id]?.let { id to it } }
+        return People.roster(
+            members = named,
             liveIds = _peers.value.map { it.id }.toSet(),
             me = me,
             selfName = displayName,
             selfLive = _isLive.value,
         )
+    }
 
     val degraded: Boolean get() = _slots.value.occupied >= Slots.DEGRADED_FROM_BROADCASTERS
 
@@ -216,10 +229,11 @@ class CallModel(
         var attempt = 0
         while (true) {
             try {
-                client.join(name, (now() / 1000).toULong())
+                client.join(name, now() / 1000)
                 _joined.value = true
                 _joinFailed.value = null
                 refreshMembers()
+                refreshStreamNames()
                 return
             } catch (e: CancellationException) {
                 throw e
@@ -235,13 +249,16 @@ class CallModel(
         }
     }
 
-    /** Change your name in this room: re-join with it (the contract's join is idempotent). */
+    /**
+     * Change your name in this room: re-join with it (the contract's join is idempotent), and publish
+     * it for the whole stream (the organization's member metadata, as the web does), best effort.
+     */
     suspend fun rename(next: String) {
         val trimmed = next.trim()
         if (trimmed.isEmpty()) return
         _name.value = trimmed
         try {
-            client.join(trimmed, (now() / 1000).toULong())
+            client.join(trimmed, now() / 1000)
             _joined.value = true
             refreshMembers()
         } catch (e: CancellationException) {
@@ -249,6 +266,26 @@ class CallModel(
         } catch (e: Exception) {
             error.value = ErrorText.describe(e)
         }
+        try {
+            backend.setMemberName(room.namespaceId, trimmed)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Best effort: the room's own name is already set.
+        }
+    }
+
+    /** The stream-wide names, best effort. */
+    suspend fun refreshStreamNames() {
+        val list = runCatching { backend.listMembers(room.namespaceId) }.getOrNull() ?: return
+        _streamNames.value =
+            list
+                .mapNotNull { m ->
+                    m.name
+                        ?.trim()
+                        ?.takeIf { it.isNotEmpty() }
+                        ?.let { m.identity to it }
+                }.toMap()
     }
 
     /** Try joining again after it gave up. */
@@ -378,7 +415,7 @@ class CallModel(
     }
 
     /**
-     * One slice at a time, in order: the relay drops a slice whose seq is below one it has already
+     * One slice at a time, in order: the node drops a slice whose seq is below one it has already
      * applied, so concurrent publishes would race.
      */
     @Suppress("NestedBlockDepth")
@@ -546,7 +583,7 @@ class CallModel(
         const val KEYFRAME_INTERVAL_MS = 2_000L
 
         /**
-         * A phone publishes each slice as a signed relay POST, so it starts lower than the web's
+         * A phone publishes each slice as a presence POST to the node, so it starts lower than the web's
          * 25 fps / 1.5 Mbps; the shared split applies on top.
          */
         val BASE_ENCODING = Encoding(fps = 15, bitrate = 1_000_000)

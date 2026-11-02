@@ -527,7 +527,7 @@ struct CallDetailsSheet: View {
                 }
                 Section {
                     Text(
-                        "Video is H.264 carried on the room's ephemeral presence in ≤16 KiB slices, so nothing about the call is stored. With \(Slots.degradedFromBroadcasters) people on camera, each stream gets about \(Slots.degradedDeliveryPercent)% of its frames through: frame rate and bitrate are shared, and that is measured, not something the app can tune away. One person on camera at a time is smooth."
+                        "Video is H.264 carried on the room's presence in ≤4 KiB slices, so nothing about the call is stored. With \(Slots.degradedFromBroadcasters) people on camera, each stream gets about \(Slots.degradedDeliveryPercent)% of its frames through: frame rate and bitrate are shared, and that is measured, not something the app can tune away. One person on camera at a time is smooth."
                     )
                     .font(.system(size: 14)).foregroundStyle(.secondary)
                 } header: {
@@ -535,8 +535,8 @@ struct CallDetailsSheet: View {
                 }
                 Section {
                     DetailsDisclosure(rows: [
-                        ("Room ID", target.room.id), ("Context ID", target.contextId), ("Stream ID", target.stream.id),
-                        ("Your device key", model.me),
+                        ("Room (app instance) ID", target.contextId), ("Stream (organization) ID", target.stream.id),
+                        ("Your account", model.me),
                     ])
                 }
             }

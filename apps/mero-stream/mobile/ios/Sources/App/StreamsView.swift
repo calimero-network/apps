@@ -134,6 +134,13 @@ struct StreamsView: View {
             }
         }
         .sheet(item: $shared) { link in ShareLinkSheet(text: link.url).presentationDetents([.medium, .large]) }
+        .sheet(
+            item: Binding(
+                get: { approvals.confirmation },
+                set: { if $0 == nil, approvals.confirmation != nil { approvals.answerConfirmation(false) } })
+        ) { confirmation in
+            ConsentCodeSheet(confirmation: confirmation) { approvals.answerConfirmation($0) }
+        }
     }
 
     /// The streams, then what waits for approval in the account and in each stream.

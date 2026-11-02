@@ -15,7 +15,13 @@ struct StreamApp: App {
                 .environmentObject(session)
                 .tint(Palette.ink)
                 .preferredColorScheme(.light)
-                .task { await session.restore() }
+                .task {
+                    await session.restore()
+                    if session.client.nodeURL == nil, let cluster = AppConfig.cluster {
+                        await session.client.connect(cluster: cluster)
+                        session.rebuild()
+                    }
+                }
                 .onOpenURL { url in Task { await session.handle(url) } }
                 .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
                     if let url = activity.webpageURL { Task { await session.handle(url) } }

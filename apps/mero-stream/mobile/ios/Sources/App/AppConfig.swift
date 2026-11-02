@@ -31,6 +31,10 @@ enum AppConfig {
             policy: allowMock ? .development : .production, packageVersion: string("MeroPackageVersion"))
     }
 
+    /// A Calimero Cloud cluster to connect to by name (the node directory lists
+    /// its nodes) when no node is set and nothing is stored. Empty = ask.
+    static var cluster: String? { string("MeroCluster") }
+
     /// The Keychain service the account session (and a development cluster's soft passkey) live under.
     static let keychainService = "network.calimero.stream"
 

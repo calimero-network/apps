@@ -49,10 +49,13 @@ public final class CalimeroMediaChannel: MediaChannel, @unchecked Sendable {
         self.selfAuthor = account
     }
 
+    /// A `seq` that only grows, across launches too: the node keeps the highest
+    /// seq it saw from this device for the entry's 7 s life and drops anything
+    /// at or below it, so it is seeded from the clock (microseconds), as the web does.
     private func nextSeq() -> Int {
         lock.lock()
         defer { lock.unlock() }
-        seq += 1
+        seq = max(seq + 1, Int(Date().timeIntervalSince1970 * 1_000_000))
         return seq
     }
 

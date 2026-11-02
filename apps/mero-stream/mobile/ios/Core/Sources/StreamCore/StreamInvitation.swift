@@ -10,7 +10,11 @@ import MeroKit
 ///
 /// A stream link lands on the stream's rooms; a room link drops the person
 /// straight into that call. Both grant the same thing: membership of the
-/// stream's organization. `name` is the room's name for a room link.
+/// stream's organization. `name` is the room's name for a room link, and
+/// `roomId` / `contextId` are both the room's app instance.
+///
+/// The web app's own link (`<frontend>/?invite=inv_…&stream=<org>&room=<app>&name=…`)
+/// is read too, so a link pasted from a browser opens here.
 public struct StreamInvitation: Sendable {
     /// The registry package, which is also the links' slug (`APP_SLUG`).
     public static let packageName = "com.calimero.mero-stream"
@@ -41,7 +45,7 @@ public struct StreamInvitation: Sendable {
     public var roomName: String? { invitation.name }
 
     /// Whether it drops the person into one call.
-    public var opensRoom: Bool { kind == .room && roomId != nil && contextId != nil }
+    public var opensRoom: Bool { kind == .room && roomId != nil }
 
     private struct Payload: Codable {
         let invitation: String
@@ -67,6 +71,7 @@ public struct StreamInvitation: Sendable {
     /// app's link.
     public static func parse(_ input: String) -> StreamInvitation? {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let web = parseWebLink(trimmed) { return web }
         guard var token = InviteLink.token(fromPasted: trimmed, expectedSlug: packageName) else { return nil }
         if token == trimmed, let legacy = queryValue(trimmed, "invite") { token = legacy }
         guard let json = InviteCodec.decode(token: token) else { return nil }
@@ -85,12 +90,25 @@ public struct StreamInvitation: Sendable {
             namespaceName: payload.namespaceName, roomId: payload.roomId)
     }
 
+    /// The web frontend's link: `?invite=inv_…&stream=<org>[&room=<app>][&name=…]`.
+    static func parseWebLink(_ link: String) -> StreamInvitation? {
+        guard let token = queryValue(link, "invite"), token.hasPrefix("inv_"),
+            let org = queryValue(link, "stream"), !org.isEmpty
+        else { return nil }
+        let room = queryValue(link, "room").flatMap { $0.isEmpty ? nil : $0 }
+        let name = queryValue(link, "name").flatMap { $0.isEmpty ? nil : $0 }
+        return StreamInvitation(
+            invitation: OrgInvitation(namespaceId: org, token: token), kind: room == nil ? .namespace : .room,
+            namespaceName: room == nil ? name : nil, roomId: room, contextId: room, roomName: room == nil ? nil : name)
+    }
+
     private static func queryValue(_ link: String, _ name: String) -> String? {
         guard let q = link.firstIndex(of: "?") else { return nil }
         for pair in link[link.index(after: q)...].split(separator: "&") {
             let parts = pair.split(separator: "=", maxSplits: 1)
             if parts.count == 2, parts[0] == name {
-                return String(parts[1]).removingPercentEncoding ?? String(parts[1])
+                let raw = String(parts[1]).replacingOccurrences(of: "+", with: " ")
+                return raw.removingPercentEncoding ?? raw
             }
         }
         return nil

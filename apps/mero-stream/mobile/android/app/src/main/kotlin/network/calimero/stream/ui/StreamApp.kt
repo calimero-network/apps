@@ -33,6 +33,7 @@ import network.calimero.stream.core.StreamInvitation
 /** What the screens need from the activity. */
 class Platform(
     val signIn: () -> Unit,
+    val signUp: (name: String) -> Unit,
     val share: (title: String, text: String) -> Unit,
     val copy: (label: String, text: String) -> Unit,
     val openSettings: () -> Unit,
@@ -45,16 +46,18 @@ fun StreamApp(
     platform: Platform,
 ) {
     StreamTheme {
-        val backend by vm.session.backend.collectAsState()
-        val revision by vm.session.revision.collectAsState()
-        val openStream by vm.openStream.collectAsState()
-        val call by vm.call.collectAsState()
-        val pending by vm.session.pendingInvitation.collectAsState()
+        val session by vm.sessionFlow.collectAsState()
         Box(Modifier.fillMaxSize().background(Palette.Ground)) {
-            val current = backend
-            if (current == null) {
+            val active = session
+            val backend = active?.backend?.collectAsState()?.value
+            if (active == null || backend == null) {
                 SignInScreen(vm, platform)
             } else {
+                val current = backend
+                val revision by active.revision.collectAsState()
+                val openStream by vm.openStream.collectAsState()
+                val call by vm.call.collectAsState()
+                val pending by active.pendingInvitation.collectAsState()
                 val streams = remember(current, revision) { StreamsModel(current) }
                 val stream = openStream
                 if (stream == null) {

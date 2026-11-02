@@ -12,9 +12,9 @@ extension ApprovalsModel {
                 guard let session else { throw CancellationError() }
                 return try await session.pendingApprovals(org: org)
             },
-            consent: { [weak session] build in
-                guard let session, let started = try? await session.requestConsent(build(session.callback.url))
-                else { return nil }
+            consent: { [weak session] build, confirm in
+                guard let session else { return nil }
+                let started = try await session.requestConsent(build(session.callback.url), confirm: confirm)
                 // The page's return (handled by the session) answers at once; else ask the node.
                 if let result = session.consentResult, result.requestId == started.requestId { return result }
                 return try? await session.client.cloud?.consentResult(started.requestId)
@@ -64,5 +64,42 @@ struct ApprovalsSection: View {
                 Text("Needs your approval").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.muted)
             }
         }
+    }
+}
+
+/// The consent request's confirmation code, shown before the node's consent
+/// page opens: the page shows the same code, so the person can check it is
+/// the request this app made.
+struct ConsentCodeSheet: View {
+    let confirmation: ConsentConfirmation
+    let answer: (Bool) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            RowIcon(symbol: "checkmark.shield")
+            Text("Check the code").font(Typeface.display(26)).foregroundStyle(Palette.ink)
+            Text("\(confirmation.title). Your cluster's approval page opens next and shows this code. Approve only if they match.")
+                .font(.system(size: 16)).foregroundStyle(Palette.inkSoft)
+            Text(confirmation.code)
+                .font(.system(size: 34, weight: .semibold, design: .monospaced))
+                .foregroundStyle(Palette.ink)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 18)
+                .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Palette.sunken))
+                .accessibilityIdentifier("consentCode")
+            Spacer()
+            Button {
+                Haptics.tap()
+                answer(true)
+            } label: {
+                Label("Open the approval page", systemImage: "arrow.up.forward.app")
+            }
+            .buttonStyle(PrimaryButtonStyle())
+            Button("Not now") { answer(false) }.buttonStyle(SecondaryButtonStyle())
+        }
+        .padding(24)
+        .presentationDetents([.medium])
+        .interactiveDismissDisabled()
+        .background(Palette.surface)
     }
 }

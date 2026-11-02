@@ -1,5 +1,6 @@
 import Foundation
 import MeroKit
+import MeroKitTestSupport
 import XCTest
 @testable import StreamCore
 
@@ -45,4 +46,43 @@ final class Calimero10Tests: XCTestCase {
         XCTAssertEqual(ErrorText.describe(LoginRequired("expired")), "Your session ended. Sign in again.")
     }
 
+    func testAWebLinkPastedFromTheBrowserOpens() throws {
+        let stream = try XCTUnwrap(
+            StreamInvitation.parse("https://stream.example/?invite=inv_abc&stream=org1&name=Studio+One"))
+        XCTAssertEqual(stream.namespaceId, "org1")
+        XCTAssertEqual(stream.invitation.token, "inv_abc")
+        XCTAssertEqual(stream.namespaceName, "Studio One")
+        XCTAssertFalse(stream.opensRoom)
+        let room = try XCTUnwrap(StreamInvitation.parse("https://stream.example/?invite=inv_abc&stream=org1&room=app1&name=Daily"))
+        XCTAssertTrue(room.opensRoom)
+        XCTAssertEqual(room.roomId, "app1")
+        XCTAssertEqual(room.roomName, "Daily")
+    }
+
+    func testTheContractsRefusalsReadAsWords() {
+        XCTAssertEqual(
+            ErrorText.describe(AppError("refused", details: ["code": "NotJoined"])),
+            "Join the room before you take part in its call.")
+        XCTAssertEqual(
+            ErrorText.describe(AppError("refused", details: ["code": "ChunkTooLarge", "fields": ["max": 4096]])),
+            "A frame was too large for the room (limit 4096 bytes).")
+        XCTAssertEqual(ErrorText.describe(ConfirmCancelled()), "The passkey prompt was cancelled. Nothing changed.")
+        XCTAssertEqual(ErrorText.describe(ConsentStale("stale")), "That approval is out of date. Refresh and review it again.")
+    }
+
+    /// The methods the phone calls, as the component ABI (`logic/res/abi.json`) names them.
+    func testTheClientCallsTheComponentSurface() async throws {
+        XCTAssertEqual(StreamClient.methods, ["join": ["username", "now"], "getMembers": []])
+        let backend = InMemoryAppBackend()
+        backend.recording.setHandler { call in
+            call.method == "join"
+                ? .object(["memberId": "a", "username": "Ana", "joinedAt": "1700000000", "updatedAt": "1700000001"]) : .array([])
+        }
+        let member = try await StreamClient(backend: backend, contextId: "c1").join(username: "Ana", now: 1_700_000_000)
+        XCTAssertEqual(member.joinedAt, 1_700_000_000)
+        XCTAssertEqual(member.updatedAt, 1_700_000_001)
+        XCTAssertEqual(backend.recording.calls("join").first?.args["now"], .string("1700000000"))
+        _ = try await StreamClient(backend: backend, contextId: "c1").getMembers()
+        XCTAssertEqual(backend.recording.calls("getMembers").count, 1)
+    }
 }

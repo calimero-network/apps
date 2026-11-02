@@ -1,8 +1,9 @@
 import MeroKitUI
 import SwiftUI
 
-/// Signed out: what the app is, and a passkey on the cluster. A developer can
-/// point the app at another node (a `merod local` cluster with mock attestation).
+/// Signed out: what the app is, and a passkey on the cluster. The cluster is a
+/// Calimero Cloud cluster (by name or a node's URL) or a development node
+/// (`merod local`, mock attestation).
 struct SignInView: View {
     @EnvironmentObject private var session: MeroAppSession
     @ObservedObject var client: MeroClient
@@ -102,9 +103,10 @@ struct SignInView: View {
             }
         }
         .sheet(isPresented: $choosingNode) {
-            NodeSheet(current: client.nodeURL ?? "", allowMock: client.allowMock) { url, allowMock in
+            NodeSheet(current: client.nodeURL ?? "", allowMock: client.allowMock) { choice in
+                if let failure = await use(choice) { return failure }
                 choosingNode = false
-                session.connect(nodeURL: url, allowMock: allowMock)
+                return nil
             }
             .presentationDetents([.medium, .large])
         }
@@ -112,10 +114,26 @@ struct SignInView: View {
 
     private var busy: Bool { signingIn || session.isRestoring }
 
+    /// Connect to the chosen cluster. Answers why it failed, or nil.
+    private func use(_ choice: ClusterChoice) async -> String? {
+        switch choice {
+        case .development(let url):
+            session.connect(nodeURL: url, allowMock: true)
+            return nil
+        case .cloud(let text) where ClusterChoice.isURL(text):
+            session.connect(nodeURL: text, allowMock: false)
+            return nil
+        case .cloud(let name):
+            let ok = await client.connect(cluster: name)
+            session.rebuild()
+            return ok ? nil : (client.errorMessage ?? "No cluster is called “\(name)”.")
+        }
+    }
+
     private var nodeLine: String {
         guard let url = client.nodeURL else { return "Choose the cluster your streams run on to sign in." }
         let host = URL(string: url)?.host ?? url
-        return client.allowMock ? "Development cluster at \(host)." : "Signing in to \(host)."
+        return client.allowMock ? "Development node at \(host)." : "Calimero Cloud, node \(host)."
     }
 
     private func run(_ work: @escaping () async -> Void) {
@@ -138,50 +156,85 @@ struct SignInView: View {
     }
 }
 
-/// The node to talk to: one of the cluster's nodes from Calimero Cloud's
-/// console, or a development cluster (`merod local`) with mock attestation.
+/// Where to sign in: a Calimero Cloud cluster (by name, or one of its nodes'
+/// URLs), or a development node (`merod local`, mock attestation).
+enum ClusterChoice: Equatable {
+    case cloud(String)
+    case development(String)
+
+    /// A URL is a node; anything else is a cluster name for the node directory.
+    static func isURL(_ text: String) -> Bool {
+        guard let url = URL(string: text), let scheme = url.scheme?.lowercased() else { return false }
+        return (scheme == "https" || scheme == "http") && url.host != nil
+    }
+}
+
 private struct NodeSheet: View {
     @Environment(\.dismiss) private var dismiss
-    let submit: (_ url: String, _ allowMock: Bool) -> Void
-    @State private var url: String
-    @State private var allowMock: Bool
+    let submit: (ClusterChoice) async -> String?
+    @State private var development: Bool
+    @State private var cloud: String
+    @State private var local: String
+    @State private var busy = false
+    @State private var error: String?
 
-    init(current: String, allowMock: Bool, submit: @escaping (_ url: String, _ allowMock: Bool) -> Void) {
+    init(current: String, allowMock: Bool, submit: @escaping (ClusterChoice) async -> String?) {
         self.submit = submit
-        _url = State(initialValue: current)
-        _allowMock = State(initialValue: allowMock)
+        _development = State(initialValue: allowMock)
+        _cloud = State(initialValue: allowMock ? "" : current)
+        _local = State(initialValue: allowMock && !current.isEmpty ? current : "http://127.0.0.1:2501")
     }
 
-    private var trimmed: String { url.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var value: String { (development ? local : cloud).trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var canUse: Bool { development ? ClusterChoice.isURL(value) : !value.isEmpty }
 
     var body: some View {
         VStack(spacing: 0) {
             SheetBar(
-                title: "Your cluster", action: "Use", canAct: URL(string: trimmed)?.scheme != nil, busy: false,
-                cancel: { dismiss() }, act: { submit(trimmed, allowMock) })
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Paste the address of a node in your cluster. The app checks the node's attestation before it sends anything.")
-                    .font(.system(size: 15)).foregroundStyle(Palette.muted)
-                TextField("https://node.example.calimero.network", text: $url)
-                    .font(.system(size: 15, design: .monospaced))
-                    .keyboardType(.URL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .padding(.horizontal, 14)
-                    .frame(minHeight: 50)
-                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Palette.sunken))
-                Toggle(isOn: $allowMock) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Development cluster").font(.system(size: 15, weight: .semibold)).foregroundStyle(Palette.ink)
-                        Text("Trust mock attestation, as `merod local` serves. Never for a real cluster.")
-                            .font(.system(size: 13)).foregroundStyle(Palette.muted)
+                title: "Your cluster", action: "Use", canAct: canUse, busy: busy,
+                cancel: { dismiss() },
+                act: {
+                    busy = true
+                    error = nil
+                    Task {
+                        error = await submit(development ? .development(value) : .cloud(value))
+                        busy = false
                     }
+                })
+            VStack(alignment: .leading, spacing: 14) {
+                Picker("Where", selection: $development) {
+                    Text("Calimero Cloud").tag(false)
+                    Text("Development node").tag(true)
                 }
-                .tint(Palette.ink)
+                .pickerStyle(.segmented)
+                if development {
+                    Text("A node you run with `merod local`. Its attestation is a mock, so use this only for development.")
+                        .font(.system(size: 15)).foregroundStyle(Palette.muted)
+                    field("http://127.0.0.1:2501", text: $local)
+                } else {
+                    Text("Your cluster's name from Calimero Cloud, or the address of one of its nodes. The app checks each node's attestation before it sends anything.")
+                        .font(.system(size: 15)).foregroundStyle(Palette.muted)
+                    field("eu-shared-1", text: $cloud)
+                }
+                if let error {
+                    Text(error).font(.footnote).foregroundStyle(Palette.danger)
+                }
                 Spacer()
             }
             .padding(16)
         }
         .background(Palette.surface)
+    }
+
+    private func field(_ placeholder: String, text: Binding<String>) -> some View {
+        TextField(placeholder, text: text)
+            .font(.system(size: 15, design: .monospaced))
+            .keyboardType(.URL)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .padding(.horizontal, 14)
+            .frame(minHeight: 50)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Palette.sunken))
+            .accessibilityIdentifier("clusterField")
     }
 }
