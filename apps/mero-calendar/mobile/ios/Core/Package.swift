@@ -12,9 +12,8 @@ let package = Package(
         .library(name: "CalendarCore", targets: ["CalendarCore"]),
     ],
     dependencies: [
-        // The head of calimero-network/swift-sdk#85 (core 1.0); moves to its
-        // merge commit once it lands. Keep in step with project.yml.
-        .package(url: "https://github.com/calimero-network/swift-sdk", revision: "37c09f3f96e7d98440f6618eef8a0e83ddee8ebd"),
+        // swift-sdk release v0.5.0 (core 1.0). Keep in step with project.yml.
+        .package(url: "https://github.com/calimero-network/swift-sdk", exact: "0.5.0"),
     ],
     targets: [
         // The calendar contract's typed client (../../../logic/res/abi.json).

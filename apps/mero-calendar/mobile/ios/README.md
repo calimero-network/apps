@@ -121,10 +121,8 @@ Bundle id `network.calimero.calendar`, iOS 16+. CI:
 ### The SDK pin
 
 `Core/Package.swift`, `Core/Package.resolved` and `project.yml` pin the
-swift-sdk by revision to `37c09f3f96e7d98440f6618eef8a0e83ddee8ebd`, the head
-of its Calimero 1.0 port (calimero-network/swift-sdk#85, branch
-`feat/calimero-1.0`). It moves to that PR's merge commit once it lands. To bump
-it, change the revision in all three files.
+swift-sdk to its `v0.5.0` release (tag commit `1aa332e`). To bump it, change the
+version in all three files.
 
 ### Pointing it at another environment
 

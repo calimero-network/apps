@@ -52,8 +52,8 @@ cd apps/mero-calendar/mobile/android
 
 ### The SDK pin
 
-`kotlin-sdk.ref` pins `61b65e9c0c87db8fbb2d3b2ce827603b0c84d5f9`, the head of
-calimero-network/kotlin-sdk#68 (Calimero 1.0); it moves to the merge commit once that lands. The SDK
+`kotlin-sdk.ref` pins `1e3f27c2cb672651a34a743435144e291de66022`, the commit of the kotlin-sdk
+`v0.2.0` release (Calimero 1.0), which is not on Maven Central. The SDK
 is built from source as a Gradle composite build (`settings.gradle.kts`): `-PmeroKotlinSdkDir=/path`,
 else `MERO_KOTLIN_SDK_DIR`, else `.sdk/kotlin-sdk`.
 
