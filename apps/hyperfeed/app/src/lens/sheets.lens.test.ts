@@ -4,8 +4,13 @@ import { describe, expect, it } from "vitest";
 import { parseLens, runLens, type LensHost } from "./lens";
 import { validateLens, type Abi } from "./validate";
 
-const APPS = path.resolve(__dirname, "../../../..");
-const abi = JSON.parse(readFileSync(path.join(APPS, "mero-sheets", "logic/res/abi.json"), "utf8")) as Abi;
+/**
+ * mero-sheets moved to Calimero 1.0 (a component contract with its own ABI
+ * format and camelCase methods). Hyperfeed runs on v1 nodes, where mero-sheets
+ * is still the published v1 bundle, so its lens is checked against that
+ * contract's ABI, frozen in fixtures/abi when the app was ported.
+ */
+const abi = JSON.parse(readFileSync(path.join(__dirname, "../fixtures/abi/mero-sheets-v1.json"), "utf8")) as Abi;
 const lens = parseLens(readFileSync(path.join(__dirname, "fixtures", "sheets.json"), "utf8"));
 
 const MY_HEX = "aa".repeat(32);
