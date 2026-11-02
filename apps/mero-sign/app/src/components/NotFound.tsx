@@ -27,7 +27,7 @@ export default function NotFound() {
           </h1>
           <p className={styles.subtitle}>
             The address you opened is not one this app has. Nothing is wrong
-            with your node.
+            with your account.
           </p>
           <div className={styles.joinRow}>
             <Link className={styles.btn} to="/agreements">

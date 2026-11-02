@@ -15,16 +15,10 @@ export default defineConfig({
     },
   },
   server: {
-    // PINNED, and not 5173. Every mero app served from the same origin shares one
-    // localStorage, so running this on a port another Calimero app had used
-    // inherited that app's session — you were logged in as whoever was last
-    // here, with THEIR application id. One port per app makes that impossible.
-    // 5188 is this app's, and it is what playwright.config.ts already claims.
-    //
-    // `strictPort` because the failure mode of NOT having it is silent and
-    // expensive: vite picks the next free port, and the screenshots you take are
-    // sharp, working, and of a different product.
-    port: Number(process.env.PW_PORT) || 5188,
+    // 5173 exactly: the origin `merod local` trusts passkey ceremonies from
+    // (`pnpm dev:local mero-sign` serves it there). `strictPort` so a busy
+    // port fails instead of silently moving to an origin no passkey works on.
+    port: 5173,
     strictPort: true,
   },
   build: {

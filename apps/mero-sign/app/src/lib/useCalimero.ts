@@ -1,64 +1,39 @@
 /**
- * `useCalimero()`, backed by mero-react instead of `calimero-client`.
+ * `useCalimero()`: the four things the screens ask of the session — `app`,
+ * `isAuthenticated`, `login`, `logout` — now from `@calimero-apps/connect`
+ * and a passkey instead of mero-react and a node.
  *
- * Twelve files in this app call `useCalimero()` for one of four things: `app`,
- * `isAuthenticated`, `login`, `logout`. Keeping that shape means the SDK swap
- * is a change of import line in those twelve files, and nothing else — which
- * matters because two of them are on the signing path.
- *
- * ⚠️ `login()` IS THE WHOLE POINT OF THE MIGRATION. The old
- * `useCalimero().login()` opened `calimero-client`'s hardcoded `SetupModal`:
- *
- *     Select your Calimero node type to continue.
- *     ( ) Local  ( ) Remote
- *     Using default local node: http://node1.127.0.0.1.nip.io
- *
- * No prop removes it — it is built into that SDK. So it survived being wrapped
- * in a nicer dialog, survived the dialog being deleted, and survived the second
- * connect screen being fixed, because none of those were the thing rendering
- * it. `login()` here opens the LoginModal every other app in this repo uses.
+ * `app` is the signed-in session (null until there is one). The data sources
+ * take it so a screen re-reads when the account changes; the requests
+ * themselves go through `lib/node`'s session.
  */
-import { useMemo } from 'react';
-import { useMero } from '@calimero-network/mero-react';
+import { useCallback } from 'react';
 
-import { useActiveWorkspace } from './activeWorkspace';
-import { useOpenLogin } from './loginGate';
-import { meroApp, type MeroAppLike } from './meroApp';
-import { signClientOf } from './node';
+import { useMaybeSignedIn, useSessionApi, type SignedIn } from '../sessionContext';
 
 export interface CalimeroLike {
-  /** The data layer's duck-typed client. Null until a node is connected. */
-  app: MeroAppLike | null;
+  app: SignedIn | null;
   isAuthenticated: boolean;
-  /** Opens the node picker. See the warning above. */
+  /** Opens the passkey sign-in. */
   login: () => void;
   logout: () => void;
 }
 
 /**
- * @param workspaceId overrides the active workspace for this caller. Only the
- *   agreements screen passes one — it is routed by `/workspaces/:workspaceId`
- *   and therefore knows its workspace a render before the store does. Everyone
- *   else gets whatever workspace the app is currently in.
+ * The argument is v1's workspace override. Kept so call sites read the same;
+ * an instance carries its org, so nothing here depends on it.
  */
-export function useCalimero(workspaceId?: string | null): CalimeroLike {
-  const { mero, admin, isAuthenticated, isDelegated, logout } = useMero();
-  const activeWorkspace = useActiveWorkspace();
-  const login = useOpenLogin();
-
-  // ⚠️ `undefined` and `null` MEAN DIFFERENT THINGS here. Omitting the argument
-  // is "use the app's current workspace"; passing `null` is "deliberately
-  // outside one", which is what the landing and signature screens want. `??`
-  // keeps that distinction — `||` would silently turn the second into the
-  // first.
-  const effective = workspaceId === undefined ? activeWorkspace : workspaceId;
-
-  const app = useMemo(() => {
-    const client = signClientOf(mero, admin);
-    // `isDelegated` rides along so the adapter can refuse a node-only route
-    // (the legacy `joinGroup` invite) in words rather than as the relay's 403.
-    return client ? meroApp(client, effective, { isDelegated }) : null;
-  }, [mero, admin, effective, isDelegated]);
-
-  return { app, isAuthenticated, login, logout };
+export function useCalimero(_workspaceId?: string | null): CalimeroLike {
+  const { api, openSignIn } = useSessionApi();
+  const app = useMaybeSignedIn();
+  const { signOut } = api;
+  const logout = useCallback(() => {
+    void signOut();
+  }, [signOut]);
+  return {
+    app,
+    isAuthenticated: api.session.status === 'signed-in',
+    login: openSignIn,
+    logout,
+  };
 }

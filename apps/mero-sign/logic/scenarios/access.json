@@ -1,0 +1,250 @@
+[
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setup",
+  "args": {
+   "isPrivate": false,
+   "contextName": "NDA"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setup",
+  "args": {
+   "isPrivate": true,
+   "contextName": "default"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "view",
+  "method": "listDocuments",
+  "args": {},
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "view",
+  "method": "listDocuments",
+  "args": {},
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "view",
+  "method": "listDocuments",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "registerSelfAsParticipant",
+  "args": {},
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "Only members of the organization can join an agreement"
+   }
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "uploadDocument",
+  "args": {
+   "name": "x",
+   "hash": "h",
+   "pdfBlobIdStr": "abababababababababababababababababababababababababababababababab",
+   "fileSize": "1",
+   "embeddings": null,
+   "extractedText": null,
+   "chunks": null
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "You are not a participant in this agreement"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "addParticipant",
+  "args": {
+   "userIdStr": "@bob",
+   "permission": "Admin"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "Admin permissions required for this operation"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addParticipant",
+  "args": {
+   "userIdStr": "@bob",
+   "permission": "Read"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "uploadDocument",
+  "args": {
+   "name": "Series A Agreement.pdf",
+   "hash": "h0",
+   "pdfBlobIdStr": "abababababababababababababababababababababababababababababababab",
+   "fileSize": "1024",
+   "embeddings": null,
+   "extractedText": null,
+   "chunks": null
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "Sign permission or higher is required for this operation"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setParticipantPermission",
+  "args": {
+   "userIdStr": "@bob",
+   "permission": "Admin"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setParticipantPermission",
+  "args": {
+   "userIdStr": "@owner",
+   "permission": "Sign"
+  },
+  "expect": {
+   "error": "Conflict",
+   "fields": {
+    "message": "An agreement needs at least one admin: promote someone else first"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "removeParticipant",
+  "args": {
+   "userIdStr": "@bob"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "registerSelfAsParticipant",
+  "args": {},
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "An admin removed you from this agreement"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "listParticipants",
+  "args": {},
+  "expect": {
+   "ok": [
+    "@owner"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "uploadDocument",
+  "args": {
+   "name": "x",
+   "hash": "h",
+   "pdfBlobIdStr": "not-a-blob-id",
+   "fileSize": "1",
+   "embeddings": null,
+   "extractedText": null,
+   "chunks": null
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setConsent",
+  "args": {
+   "document_id": "x"
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "sign_document",
+  "args": {},
+  "expect": {
+   "error": "UnknownMethod"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "setConsent",
+  "args": {
+   "documentId": "x"
+  },
+  "expect": {
+   "error": "NotAView"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "listSignatures",
+  "args": {},
+  "expect": {
+   "error": "Invalid"
+  }
+ }
+]

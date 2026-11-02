@@ -272,9 +272,8 @@ export class DocumentService {
   }
 
   private formatDocument(documentInfo: DocumentInfo): Document {
-    const uploadedAtMs = Math.floor(
-      Number(documentInfo.uploaded_at) / 1_000_000,
-    );
+    // Unix milliseconds on Calimero 1.0 (v1 sent nanoseconds).
+    const uploadedAtMs = Number(documentInfo.uploaded_at);
 
     const dateObj = new Date(uploadedAtMs);
     const uploadedAtStr = dateObj.toLocaleString(undefined, {

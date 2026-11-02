@@ -393,28 +393,17 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
           return;
         }
 
-        // ⚠️ THE LIBRARY'S OWN CONTEXT, not the agreement's. These rows came
-        // out of the PRIVATE context (`listSignatures` runs there) and so
-        // did their blobs. This used to send `agreementContextID || ''` —
-        // the wrong context on a node, and on a relay `''` is a 400 for an
-        // account. Ensured once, before the per-row fetches.
+        // THE LIBRARY'S OWN INSTANCE, not the agreement's: these rows came
+        // out of the private library and so did their blobs. Once, before
+        // the per-row fetches.
         const libraryContextId = await defaultContextIdFor(app);
 
         const signaturesWithImages = await Promise.all(
           signaturesArray.map(async (sig: any) => {
             let dataURL = '';
             try {
-              // ⚠️ `blob_id` IS BYTES, per the ABI — the generated client
-              // hands over a `CalimeroBytes`, not a string. `bs58.encode`
-              // here produced an id the node refuses with "Failed to decode
-              // blob ID (expected hex)", so the picker showed named rows with
-              // no images. `toBlobIdHex` takes the byte array; legacy base58
-              // strings still resolve, for signatures saved before the fix.
-              const blobId = toBlobIdHex(
-                typeof sig.blob_id === 'string'
-                  ? sig.blob_id
-                  : sig.blob_id.toArray(),
-              );
+              // The image's blob id in the library: 64 hex digits.
+              const blobId = toBlobIdHex(sig.blob_id);
               const blob = await blobClient.downloadBlob(
                 blobId,
                 libraryContextId,
@@ -436,12 +425,8 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
               id: sig.id.toString(),
               name: sig.name,
               dataURL,
-              // Nanoseconds from the contract (`env::time_now`), as the
-              // signature library reads them; `new Date(ns)` printed
-              // "Invalid Date" in this picker.
-              createdAt: new Date(
-                Number(sig.created_at) / 1_000_000,
-              ).toLocaleDateString(),
+              // Unix milliseconds from the contract.
+              createdAt: new Date(Number(sig.created_at)).toLocaleDateString(),
             };
           }),
         );

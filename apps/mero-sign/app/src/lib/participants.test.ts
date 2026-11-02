@@ -31,8 +31,8 @@ describe('toHexId', () => {
     expect(toHexId([1, 2, 3])).toBe('010203');
   });
 
-  it('passes a string through, normalised', () => {
-    expect(toHexId('  AABB  ')).toBe('aabb');
+  it('passes an account string through, trimmed', () => {
+    expect(toHexId('  AABB  ')).toBe('AABB');
   });
 
   it('accepts a Uint8Array', () => {
