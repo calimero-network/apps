@@ -1,8 +1,10 @@
 /**
  * Where a component app's frontend connects: the three `merod local` nodes in
- * development, a Calimero Cloud cluster (by name, through the cloud's node
- * directory) in production. Decided from the build's environment only, so the
- * same code runs in both and a production build can never trust a mock quote.
+ * development; in production a Calimero Cloud cluster (by name, through the
+ * cloud's node directory) or an attested node the operator runs (by URL).
+ * Decided from the build's environment only, once, when the service starts:
+ * the person signing in never picks a target, and a production build can never
+ * trust a mock quote.
  */
 
 import type { CloudPolicy } from "@calimero-network/mero-js";
@@ -22,8 +24,14 @@ export type Target =
     }
   | {
       kind: "cloud";
-      /** The cluster's name in the node directory, e.g. `eu-shared-1`. */
+      /**
+       * The cluster's name in the node directory, e.g. `eu-shared-1`. For a
+       * node reached directly (`VITE_CALIMERO_TARGET=node`) it is the first
+       * node's host: there is no directory, and `nodes` is always set.
+       */
       cluster: string;
+      /** Reached by URL (`VITE_CALIMERO_TARGET=node`), not through a directory. */
+      direct?: true;
       /** Try the nodes in this zone first. */
       zone?: string;
       /** Another node directory than mero-js's default (staging). */
@@ -40,10 +48,11 @@ export type Target =
 /**
  * The variables `resolveTarget` reads: Vite's `import.meta.env` as is.
  *
- * - `VITE_CALIMERO_TARGET` `local` | `cloud`: overrides the mode (a production
- *   build against `merod local`, a dev server against the cloud).
+ * - `VITE_CALIMERO_TARGET` `local` | `cloud` | `node`: overrides the mode (a
+ *   production build against `merod local`, a dev server against the cloud, or
+ *   an attested node the operator runs, reached by URL).
  * - `VITE_CALIMERO_NODES`: comma-separated node URLs for `local` (default
- *   {@link LOCAL_NODES}).
+ *   {@link LOCAL_NODES}) and `node` (required).
  * - `VITE_CALIMERO_CLUSTER`, `VITE_CALIMERO_ZONE`, `VITE_CALIMERO_DIRECTORY`,
  *   `VITE_CALIMERO_MIN_RELEASE`: the cloud cluster and its trust floor.
  */
@@ -97,8 +106,8 @@ function urls(list: string): string[] {
 /** Local nodes in development (`DEV`), the cloud cluster otherwise. */
 export function resolveTarget(env: ConnectEnv): Target {
   const asked = text(env.VITE_CALIMERO_TARGET);
-  if (asked !== undefined && asked !== "local" && asked !== "cloud") {
-    throw new ConfigError(`VITE_CALIMERO_TARGET is ${JSON.stringify(asked)}; use "local" or "cloud"`);
+  if (asked !== undefined && asked !== "local" && asked !== "cloud" && asked !== "node") {
+    throw new ConfigError(`VITE_CALIMERO_TARGET is ${JSON.stringify(asked)}; use "local", "cloud" or "node"`);
   }
   const kind = asked ?? (env.DEV ? "local" : "cloud");
   if (kind === "local") {
@@ -106,6 +115,26 @@ export function resolveTarget(env: ConnectEnv): Target {
     const nodes = given ? urls(given) : [...LOCAL_NODES];
     if (nodes.length === 0) throw new ConfigError("VITE_CALIMERO_NODES names no node");
     return { kind, nodes };
+  }
+  if (kind === "node") {
+    const given = text(env.VITE_CALIMERO_NODES);
+    const nodes = given ? urls(given) : [];
+    const first = nodes[0];
+    if (!first) {
+      throw new ConfigError("VITE_CALIMERO_NODES is not set: a node target connects to the node URLs it names");
+    }
+    for (const node of nodes) {
+      if (new URL(node).protocol !== "https:") {
+        throw new ConfigError(`VITE_CALIMERO_NODES: ${node} is not https: an attested node is reached over TLS`);
+      }
+    }
+    const minReleaseVersion = text(env.VITE_CALIMERO_MIN_RELEASE);
+    if (!minReleaseVersion) {
+      throw new ConfigError(
+        "VITE_CALIMERO_MIN_RELEASE is not set: the lowest mero-tee release the node may run",
+      );
+    }
+    return { kind: "cloud", cluster: new URL(first).host, direct: true, nodes, minReleaseVersion };
   }
   const cluster = text(env.VITE_CALIMERO_CLUSTER);
   if (!cluster) {
@@ -143,7 +172,8 @@ export function policyFor(target: Target): CloudPolicy {
 
 /** A stable name for the target, for keying what is stored per cluster. */
 export function targetKey(target: Target): string {
-  return target.kind === "local" ? `local:${target.nodes.join(",")}` : `cloud:${target.cluster}`;
+  if (target.kind === "local") return `local:${target.nodes.join(",")}`;
+  return target.direct ? `node:${(target.nodes ?? []).join(",")}` : `cloud:${target.cluster}`;
 }
 
 /** What `createApp` makes an instance from. */
