@@ -3,8 +3,9 @@ import SwiftUI
 
 /// Signed out: what the app is, then sign-in to a Calimero 1.0 cluster.
 ///
-/// - Calimero Cloud: the cluster's node URL (from the console, or baked in
-///   as `CalimeroClusterURL`), then the device's passkey. "Create an account"
+/// - Calimero Cloud: the cluster by name (its nodes come from the node
+///   directory) or a node URL (from the console, or baked in as
+///   `CalimeroClusterURL`), then the device's passkey. "Create an account"
 ///   registers a new passkey under a name.
 /// - Development: a `merod local` node URL with mock attestation allowed; the
 ///   SDK makes and keeps a software passkey for that node.
@@ -74,7 +75,9 @@ struct SignInView: View {
                     .font(.footnote).foregroundStyle(Palette.ink2)
             } else {
                 SectionLabel(title: "Cluster")
-                field("https://node.your-cluster.calimero.network", text: $clusterURL, url: true)
+                field("Cluster name or node URL", text: $clusterURL, url: true)
+                Text("Your cluster's name from Calimero Cloud, or one of its node URLs.")
+                    .font(.footnote).foregroundStyle(Palette.ink2)
                 if mode == .create {
                     SectionLabel(title: "Your name")
                     field("e.g. Ada Lovelace", text: $name, url: false)
@@ -152,11 +155,9 @@ struct SignInView: View {
         Task {
             switch mode {
             case .signIn:
-                session.connect(nodeURL: clusterURL, allowMock: false)
-                await session.signIn()
+                if await connectCloud() { await session.signIn() }
             case .create:
-                session.connect(nodeURL: clusterURL, allowMock: false)
-                await session.signUp(name: trimmedName)
+                if await connectCloud() { await session.signUp(name: trimmedName) }
             case .development:
                 session.connect(nodeURL: devNodeURL, allowMock: true)
                 _ = await client.signInOrSignUp(name: trimmedName.isEmpty ? nil : trimmedName)
@@ -164,5 +165,24 @@ struct SignInView: View {
             }
             signingIn = false
         }
+    }
+
+    /// Reach the Cloud cluster the field names: a node URL directly, a
+    /// cluster name through the node directory. Every node's attestation is
+    /// verified (`CloudPolicy.production`). `false` when no node was found.
+    private func connectCloud() async -> Bool {
+        let raw = clusterURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if Self.isURL(raw) {
+            session.connect(nodeURL: raw, allowMock: false)
+            return true
+        }
+        let found = await client.connect(cluster: raw)
+        session.rebuild()
+        return found
+    }
+
+    /// A node URL rather than a cluster name.
+    static func isURL(_ raw: String) -> Bool {
+        raw.contains("://") || raw.contains(".") || raw.contains(":")
     }
 }

@@ -67,7 +67,7 @@ open MeroStandup.xcodeproj
 
 ## SDK pin
 
-`project.yml` and `Core/Package.swift` pin swift-sdk `35148e4de782c065f777e80c592d9548acd645cd`,
+`project.yml` and `Core/Package.swift` pin swift-sdk `37c09f3f96e7d98440f6618eef8a0e83ddee8ebd`,
 the head of its Calimero 1.0 port (calimero-network/swift-sdk#85, branch `feat/calimero-1.0`). It
 moves to that PR's merge commit once it lands. Bump both together.
 

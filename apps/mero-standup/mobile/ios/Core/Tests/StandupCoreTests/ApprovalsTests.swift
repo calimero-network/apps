@@ -58,7 +58,7 @@ final class ApprovalsTests: XCTestCase {
                 guard let org else { throw NotFound("no account report") }
                 return try Self.pending(org: org)
             },
-            consent: { build in
+            consent: { build, _ in
                 requested.append(build("mero-standup://consent"))
                 return try? JSONDecoder().decode(
                     ConsentResult.self, from: Data(#"{"requestId":"r1","kind":"upgrade","status":"approved"}"#.utf8))
@@ -69,6 +69,52 @@ final class ApprovalsTests: XCTestCase {
         XCTAssertTrue(approved)
         XCTAssertEqual(requested, [.upgrade(app: "app-1", toVersion: "1.2.0", returnTo: "mero-standup://consent")])
         XCTAssertNil(model.approving)
+    }
+
+    func testTheConfirmationCodeIsShownBeforeThePageOpens() async throws {
+        var opened = false
+        let model = ApprovalsModel(
+            packageName: StandupInvitation.packageName, appName: "Mero Standup",
+            fetch: { org in try Self.pending(org: org ?? "org1") },
+            consent: { _, confirm in
+                let started = try! JSONDecoder().decode(
+                    ConsentStarted.self,
+                    from: Data(#"{"requestId":"r1","url":"https://node/consent/r1","expiresAt":1,"code":"ABC-DEF"}"#.utf8))
+                guard await confirm(started) else { return nil }
+                opened = true
+                return nil
+            })
+        await model.load(orgs: ["org1"])
+        let item = try XCTUnwrap(model.items.first)
+        let approving = Task { await model.approve(item, orgs: ["org1"]) }
+        while model.confirmationCode == nil { await Task.yield() }
+        XCTAssertEqual(model.confirmationCode, "ABC-DEF")
+        model.answerConfirmation(false)
+        let approved = await approving.value
+        XCTAssertFalse(approved)
+        XCTAssertFalse(opened)
+        XCTAssertNil(model.error, "declining the code is not an error")
+    }
+
+    func testContractErrorsInWords() {
+        func refusal(_ code: String, _ fields: [String: JSONValue] = [:]) -> AppError {
+            AppError("refused", details: ["code": .string(code), "fields": .object(fields)])
+        }
+        XCTAssertEqual(ErrorText.describe(refusal("OwnBlocker")), "You can't offer help with your own blocker.")
+        XCTAssertEqual(
+            ErrorText.describe(refusal("TooLong", ["field": .string("done"), "limit": .number(2000)])),
+            "Done is too long (at most 2000 characters).")
+        XCTAssertEqual(ErrorText.describe(refusal("Empty", ["field": .string("title")])), "Title can't be empty.")
+        XCTAssertEqual(Set(StandupMethods.calls + StandupMethods.views).count, 18)
+        XCTAssertEqual(StandupAppCode.allCases.count, 11)
+    }
+
+    func testTimestampsAreDecimalStrings() throws {
+        let json = #"{"day":"2026-10-28","author":"acc_a","authorName":"Ana","done":"d","next":"n","blockers":"","createdAt":"1761652800000000001","editedAt":2,"helpers":[]}"#
+        let update = try JSONDecoder().decode(UpdateView.self, from: Data(json.utf8))
+        XCTAssertEqual(update.createdAt, 1_761_652_800_000_000_001)
+        XCTAssertEqual(update.editedAt, 2)
+        XCTAssertEqual(update.authorName, "Ana")
     }
 
     func testClusterErrorsInWords() {

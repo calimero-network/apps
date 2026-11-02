@@ -73,9 +73,10 @@ struct TeamsView: View {
                             guard let session else { throw CancellationError() }
                             return try await session.pendingApprovals(org: org)
                         },
-                        consent: { [weak session] request in
+                        consent: { [weak session] request, confirm in
                             guard let session else { return nil }
-                            return await session.client.requestConsent(request, callback: session.callback)
+                            return await session.client.requestConsent(
+                                request, callback: session.callback, confirm: { await confirm($0) })
                         })
                 }
                 await approvals?.load(orgs: orgs)

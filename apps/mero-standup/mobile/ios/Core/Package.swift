@@ -17,7 +17,7 @@ let package = Package(
         // revision in ../project.yml.
         .package(
             url: "https://github.com/calimero-network/swift-sdk",
-            revision: "35148e4de782c065f777e80c592d9548acd645cd")
+            revision: "37c09f3f96e7d98440f6618eef8a0e83ddee8ebd")
     ],
     targets: [
         .target(
