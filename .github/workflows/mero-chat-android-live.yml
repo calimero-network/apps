@@ -94,6 +94,19 @@ jobs:
         with:
           app: mero-chat
 
+      # The native apps are still v1 (mobile/README.md), and so is the relay
+      # they are tested against: run-relay.sh bundles the v1 contract, which
+      # left the tree when apps/mero-chat/logic moved to the component SDK.
+      # Put the last v1 contract back for this job, as a root workspace member.
+      - name: Restore the v1 mero-chat contract
+        run: |
+          set -euo pipefail
+          V1=c0f46f285a88700fd42b824e4abadec902951527
+          git fetch --no-tags --depth 1 origin "$V1"
+          rm -rf apps/mero-chat/logic
+          git checkout "$V1" -- apps/mero-chat/logic Cargo.lock
+          perl -ni -e 'print unless m{"apps/mero-chat/logic",}' Cargo.toml
+
       - name: Boot the relay
         working-directory: apps/mero-chat/mobile/e2e
         run: |

@@ -177,9 +177,9 @@ layer under them.
 on the v1 Swift and Kotlin SDKs (relay, contexts, namespace invitations, the v1
 contract's methods), and the pinned SDKs have no 1.0 client to port them to yet.
 They work only against a v1 deployment of the app until those SDKs speak the 1.0
-API. Their live suites bundle `logic/` for a v1 relay, which the component crate
-no longer is; the live workflows no longer run on changes to `logic/` (see
-[`mobile/README.md`](mobile/README.md)).
+API. Their live suites bundle the contract for a v1 relay, so the live workflows
+restore the last v1 `logic/` from history first, and no longer run on changes to
+`logic/` (see [`mobile/README.md`](mobile/README.md)).
 
 ## Production
 
