@@ -54,7 +54,7 @@ public struct SceneSummary: Identifiable, Equatable, Sendable {
     public var id: String { contextId }
     public let contextId: String
     public var name: String
-    /// From the scene's own `get_scene`, once it answers.
+    /// From the scene's own `getScene`, once it answers.
     public var objectCount: Int?
     public var memberCount: Int?
     public var role: String?

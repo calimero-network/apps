@@ -9,7 +9,6 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.long
 import network.calimero.models.core.BlobLoading
 import network.calimero.models.core.LoadState
 import network.calimero.models.core.ModelsFormat
@@ -73,13 +72,14 @@ class ModelTest {
             assertEquals("Crate kit", model.name.value)
             assertEquals(4, model.objects.value.size)
             assertTrue(backend.recording.calls.all { it.path == RecordedContractCall.Path.QUERY })
+            // A u64 argument travels as a decimal string on the component ABI.
             assertEquals(
-                Fixtures.NOW,
+                Fixtures.NOW.toString(),
                 backend.recording
-                    .calls("list_locks")
+                    .calls("listLocks")
                     .first()
                     .arg("now")!!
-                    .jsonPrimitive.long,
+                    .jsonPrimitive.content,
             )
             assertNotNull(model.viewerJson())
         }
@@ -142,13 +142,13 @@ class ModelTest {
             val backend = Fixtures.backend()
             val model = scene(backend)
             model.open()
-            val before = backend.recording.calls("get_objects").size
+            val before = backend.recording.calls("getObjects").size
             val live = launch { model.live() }
             runCurrent()
             backend.emit(AppContextEvent(Fixtures.scene, "StateMutation"))
             runCurrent()
             live.cancel()
-            assertTrue(backend.recording.calls("get_objects").size > before)
+            assertTrue(backend.recording.calls("getObjects").size > before)
         }
 
     @Test

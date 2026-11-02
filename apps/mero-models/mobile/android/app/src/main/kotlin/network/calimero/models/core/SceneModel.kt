@@ -146,7 +146,7 @@ class SceneModel(
         }
     }
 
-    /** Follow the scene until cancelled: the relay's events when it streams them, polling otherwise. */
+    /** Follow the scene until cancelled: the node's event stream (`/apps/{app}/events`), polling otherwise. */
     suspend fun live() {
         if (backend.canSubscribe) {
             attempt { backend.events(contextId).collect { refresh() } }
@@ -277,7 +277,7 @@ class SceneModel(
     }
 
     companion object {
-        /** How often to re-read when the relay cannot stream events (the web's poll). */
+        /** How often to re-read when the node cannot stream events (the web's poll). */
         const val POLL_INTERVAL_MS = 5_000L
         private val json = Json { encodeDefaults = true }
     }

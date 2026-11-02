@@ -59,22 +59,35 @@ public enum ApprovalItem: Identifiable, Equatable, Sendable {
 
 /// What waits for this account's approval, and asking for it on the node's
 /// consent page. The app wires `load` to `MeroAppSession.pendingApprovals(org:)`
-/// and `consent` to `MeroAppSession.requestConsent(_:)`, which opens the page
-/// in the system browser.
+/// and `consent` to `MeroAppSession.requestConsent(_:confirm:)`, which opens
+/// the page in the system browser. Before the page opens, the model holds the
+/// request's confirmation code in ``code``: the screen shows it, and the person
+/// continues (``continueToPage()``) or stops (``cancelCode()``). The page shows
+/// the same code, so they can check it is the request this app made.
+/// (Kotlin `ApprovalsModel`.)
 @MainActor
 public final class ApprovalsModel: ObservableObject {
     public typealias Load = @MainActor (_ org: String?) async throws -> PendingApprovals
-    public typealias Consent = @MainActor (_ request: @escaping (String) -> ConsentRequest) async -> ConsentResult?
+    public typealias Confirm = @MainActor (ConsentStarted) async -> Bool
+    public typealias Consent = @MainActor (
+        _ request: @escaping (String) -> ConsentRequest, _ confirm: @escaping Confirm
+    ) async throws -> ConsentResult?
 
     @Published public private(set) var items: [ApprovalItem] = []
     /// The item whose consent page is open.
     @Published public private(set) var busy: String?
     /// The last decision or failure, in words.
     @Published public private(set) var message: String?
+    /// The confirmation code of the request about to open (`ABC-DEF`), shown
+    /// before the page opens; `nil` otherwise.
+    @Published public private(set) var code: String?
 
     private let load: Load
     private let consent: Consent
     private var orgs: [String] = []
+    private var answer: CheckedContinuation<Bool, Never>?
+    /// Whether the person continued to the page for the request in progress.
+    private var opened = false
 
     public init(load: @escaping Load, consent: @escaping Consent) {
         self.load = load
@@ -93,17 +106,49 @@ public final class ApprovalsModel: ObservableObject {
         items = found
     }
 
-    /// Open the consent page for `item` and re-read once the person is back.
+    /// Ask the node for `item`'s consent request, show its confirmation code,
+    /// open the page once the person continues, and re-read once they are back.
     public func approve(_ item: ApprovalItem) async {
         busy = item.id
+        message = nil
+        opened = false
         defer { busy = nil }
-        let result = await consent { item.request(returnTo: $0) }
-        switch result?.status {
-        case .approved?: message = "Approved."
-        case .declined?: message = "Declined."
-        case .pending?: message = "Not decided yet. You can come back to it."
-        case nil: message = "The consent page did not answer. Try again."
+        do {
+            let result = try await consent({ item.request(returnTo: $0) }) { [weak self] started in
+                guard let self else { return false }
+                return await self.ask(started)
+            }
+            switch (opened, result?.status) {
+            case (false, _): message = "Nothing was approved."
+            case (_, .approved?): message = "Approved."
+            case (_, .declined?): message = "Declined."
+            case (_, .pending?): message = "Not decided yet. You can come back to it."
+            case (_, nil): message = "The consent page did not answer. Try again."
+            }
+        } catch {
+            message = ModelsFormat.errorText(error)
         }
+        code = nil
         await refresh()
+    }
+
+    /// The person checked the code: open the consent page.
+    public func continueToPage() { reply(true) }
+
+    /// The person stopped: the page is not opened.
+    public func cancelCode() { reply(false) }
+
+    private func ask(_ started: ConsentStarted) async -> Bool {
+        code = (started.code ?? "").isEmpty ? confirmationCode(started.requestId) : started.code
+        let go = await withCheckedContinuation { answer = $0 }
+        code = nil
+        opened = go
+        return go
+    }
+
+    private func reply(_ go: Bool) {
+        let pending = answer
+        answer = nil
+        pending?.resume(returning: go)
     }
 }

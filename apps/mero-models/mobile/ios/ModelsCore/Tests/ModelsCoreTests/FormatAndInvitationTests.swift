@@ -25,6 +25,30 @@ final class FormatAndInvitationTests: XCTestCase {
             "Your cluster takes no new work until node release 2.3.110 is approved. Review it under Needs your approval.")
         XCTAssertEqual(ModelsFormat.errorText(NotFound("no such app")), "This isn't shared with you, or it was deleted.")
         XCTAssertEqual(ModelsFormat.errorText(LoginRequired("expired")), "Your session ended. Sign in again.")
+        XCTAssertEqual(ModelsFormat.errorText(ConfirmCancelled()), "You dismissed the passkey prompt, so nothing changed.")
+        XCTAssertEqual(
+            ModelsFormat.errorText(WrongNode("not approved")),
+            "This node runs a release your account hasn't approved. Try another node of the cluster.")
+    }
+
+    /// `422 APP_ERROR {code, fields: {message}}`: the contract's own words, else words for its code.
+    func testTheContractsErrorsReadAsWords() {
+        let locked = AppError(
+            "app error", details: ["code": .string("Locked"), "fields": .object(["message": .string("crate is checked out by Ana")])])
+        XCTAssertEqual(ModelsFormat.errorText(locked), "crate is checked out by Ana")
+        let forbidden = AppError("app error", details: ["code": .string("Forbidden"), "fields": .object([:])])
+        XCTAssertEqual(ModelsFormat.errorText(forbidden), "Your role in this scene doesn't allow that.")
+    }
+
+    func testTheSignInFieldTakesAClusterNameOrANode() {
+        XCTAssertEqual(ClusterTarget.parse(" EU-shared-1 "), .name("eu-shared-1"))
+        XCTAssertEqual(ClusterTarget.parse("https://node1.example.com/"), .url("https://node1.example.com"))
+        XCTAssertEqual(ClusterTarget.parse("node1.example.com"), .url("https://node1.example.com"))
+        XCTAssertEqual(ClusterTarget.parse("http://127.0.0.1:2501"), .url("http://127.0.0.1:2501"))
+        XCTAssertNil(ClusterTarget.parse("ftp://x.y"))
+        XCTAssertNil(ClusterTarget.parse("two words"))
+        XCTAssertNil(ClusterTarget.parse(""))
+        XCTAssertEqual(ClusterTarget.parse("https://node1.example.com")?.label, "node1.example.com")
     }
 
     func testALinkRoundTripsInTheWebFormat() async throws {

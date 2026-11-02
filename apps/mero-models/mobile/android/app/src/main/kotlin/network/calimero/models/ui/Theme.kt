@@ -124,11 +124,13 @@ fun PrimaryButton(
 fun SecondaryButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     fullWidth: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     OutlinedButton(
         onClick = onClick,
+        enabled = enabled,
         shape = RoundedCornerShape(12.dp),
         border = BorderStroke(ModelsTheme.hairline, ModelsTheme.lineStrong),
         colors = ButtonDefaults.outlinedButtonColors(containerColor = ModelsTheme.surface, contentColor = ModelsTheme.ink),

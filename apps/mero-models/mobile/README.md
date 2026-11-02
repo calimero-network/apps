@@ -7,49 +7,57 @@ same code.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `6c5f116` (head of `feat/calimero-1.0`, PR #85; moves to its merge commit once it lands). **Calimero 1.0.** |
-| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `ea8ded7` (`main` merge commit of PR #67), composite build from `android/kotlin-sdk.ref` |
+| iOS | `ios/` | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `37c09f3` (head of PR #85, Calimero 1.0) |
+| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `61b65e9` (head of PR #68, Calimero 1.0), composite build from `android/kotlin-sdk.ref` |
 | Viewport | `viewer/` | three.js 0.185 + the web studio's drawing code, bundled into one local file | |
 
-**The iOS app runs on Calimero 1.0; the Android app still speaks the 0.x API until kotlin-sdk is
-ported.** On iOS the pin lives in `ios/project.yml` and `ios/ModelsCore/Package.swift` (keep them
-equal); on Android, `android/kotlin-sdk.ref`.
+**Both apps run on Calimero 1.0** and call the scene's component contract as `../logic/res/abi.json`
+declares it (the web port, #729). The SDK pins move to the merge commits of swift-sdk#85 and
+kotlin-sdk#68 once those land. On iOS the pin lives in `ios/project.yml` and
+`ios/ModelsCore/Package.swift` (keep them equal); on Android, `android/kotlin-sdk.ref`.
 
-## Calimero 1.0 on iOS
+## Calimero 1.0
 
-- **Sign in** with a passkey on the studio's cluster (`MeroAppSession.signIn()`, the device's
-  platform passkey), or **create an account** (`signUp(name:)`). The session (a 15-minute access
-  token and a 30-day refresh token) is kept in the Keychain and refreshed at launch. Every request
-  goes over the sealed channel to an attested node.
-- **The cluster** is `MeroNodeURL` in `ios/project.yml` (a node from Calimero Cloud's console, plus
-  `MeroNodes` for failover). Left empty, the sign-in screen asks for one.
-- **Development**: on the sign-in screen, "Choose your cluster" (or "Change") takes any node URL
-  and a "Development cluster" switch, which trusts mock attestation (`allowMock`) as `merod local`
-  serves it (`cargo run -p merod -- local`, nodes on `http://127.0.0.1:2501-2503`). The app then
-  keeps a soft passkey for that node and creates its account on the first sign-in. Or set
-  `MeroNodeURL` and `MeroAllowMock: "YES"` in `project.yml`.
+- **Sign in** has two tabs, the same on both phones:
+  - **Calimero Cloud**: the cluster's name (`eu-shared-1`, its nodes read from the node directory
+    and tried in order) or one of its nodes' addresses, then **Sign in with a passkey** (the
+    device's platform passkey) or **Create an account** (a name, then a new passkey). Every
+    request goes over the sealed channel to a node whose TDX attestation checked out.
+  - **Development node**: a `merod local` node's URL (`http://127.0.0.1:2501` on iOS,
+    `http://10.0.2.2:2501` from the Android emulator). The app trusts its mock attestation
+    (`allowMock`), keeps a soft passkey for that node, and creates the account on the first
+    sign-in.
+
+  The session (a 15-minute access token and a 30-day refresh token) is kept in the Keychain /
+  Keystore with the node it lives on, and refreshed at launch.
 - **Words**: a studio is an **organization**; a scene is an **app instance** of
   `com.calimero.mero-models` in it (org-wide, or in one of its **teams**).
-- **Invitations** are org invite tokens (`POST /orgs/{org}/invites`, redeemed with
-  `POST /invites/{token}/redeem`).
+- **Invitations** are org invite links: `POST /orgs/{org}/invites` mints a token, the link carries
+  it as the SDKs' `OrgInvitation`, and opening it redeems it (`POST /invites/{token}/redeem`).
+  Minting is a passkey step-up, so the session gets the device's passkey (Android: the Activity on
+  screen hands its `PlatformPasskey` to `MeroAppSession.passkey`).
 - **Approvals**: when a node release or an app upgrade waits for the account (or a studio it owns),
-  the studios list shows it under "Needs your approval". "Review" opens the **node's consent page
-  in the system browser**; the page returns to `mero-models://consent`. The app never approves by
-  itself. A refused call because a release deadline has passed says so in words.
-- A real cluster's passkeys need the app to carry the `webcredentials:<rp-id>` Associated Domain of
-  that cluster; it is not set in `project.yml` yet.
+  the studios list shows it under "Needs your approval". **Review** asks the node for a consent
+  request and first shows its **confirmation code**; **Open the approval page** then opens the
+  node's consent page in the system browser (Custom Tab on Android), which shows the same code
+  and returns to `mero-models://consent`. The app never approves by itself.
+- **Errors** read as words: a dismissed passkey prompt, an ended session, a node running a
+  release the account has not approved (`WRONG_NODE`), a cluster that cannot be reached, a passed
+  release deadline, a stale consent request, and the contract's `APP_ERROR` codes (`Forbidden`,
+  `Invalid`, `Locked`, with the contract's own message when it sends one).
+- A real cluster's passkeys need the app to carry that cluster's `webcredentials:<rp-id>`
+  Associated Domain (iOS) / Digital Asset Links (Android); neither is set yet.
 
 ## View only
 
 The phone is for looking at scenes, not modelling them. What both apps do:
 
-- **Sign in** with a Calimero account (`MeroAppSession`): on iOS a passkey on the 1.0 cluster (see
-  above); on Android the wallet certifies the phone's key. The session is kept in the Keychain /
-  Keystore and restored at launch.
-- **Studios**: the account's organizations (namespaces on Android's 0.x) running Mero Models; one
-  invitation opens every scene in one. Pull to refresh.
-- **Scenes**: a studio's scenes (contexts in its root group, as the web's "New scene" makes them,
-  plus any in subgroups), named by each scene's own `get_scene`, with object and member counts.
+- **Sign in** with a Calimero account (`MeroAppSession`, see above). The session is kept in the
+  Keychain / Keystore and restored at launch.
+- **Studios**: the account's organizations running Mero Models; one invitation opens every scene in
+  one. Pull to refresh.
+- **Scenes**: a studio's scenes (app instances of the org, as the web's "New scene" makes them,
+  plus any in its teams), named by each scene's own `getScene`, with object and member counts.
   Swipe a scene to share a link to it. Pull to refresh.
 - **Scene**: the 3D viewport with one-finger orbit, pinch to zoom and two-finger pan, a fit
   button, Solid / Rendered shading (the studio's two lit modes) and the grid. Tap an object to
@@ -63,11 +71,9 @@ The phone is for looking at scenes, not modelling them. What both apps do:
   web's interval).
 - **Share**: mints an invitation to the studio and shares
   `https://links.calimero.network/com.calimero.mero-models/join?invitation=…`
-  (`base58(deflate(JSON))`). On iOS the payload is swift-sdk's `OrgInvitation`,
+  (`base58(deflate(JSON))`). The payload is the SDKs' `OrgInvitation`,
   `{"invitation": "inv_…", "namespaceId": "<studio>", "contextId": "<scene>"}`, the shape every
-  1.0 client of the package reads. Android still mints the 0.x `{invitation, namespaceId,
-  contextId}` with a signed invitation; the two do not open each other's links until Android is
-  ported.
+  1.0 client of the package reads, so a link from either phone or the web opens on the others.
 - **Invitations**: such a link opened on the phone (or pasted under "Join with a link") asks to
   join, redeems it, and opens the scene.
 - **About this scene**: counts, your role, and the ids behind a Details disclosure.
@@ -93,8 +99,10 @@ one self-contained file, `viewer/dist/viewer.html` (about 620 KB). Both apps shi
 local resource (iOS: a bundle resource from `project.yml`; Android: an asset directory in
 `app/build.gradle.kts`); nothing loads from a CDN. The native side reads the scene through the
 contract and hands it to the page as JSON; the page asks for blobs by id and the app reads them:
-on iOS with `MeroAppBackend.getBlob(blobId:contextId:)` (`/apps/{app}/blobs`), on Android with the
-signed-in client's `admin.getBlob(blobId, contextId)`.
+with `MeroAppBackend.getBlob` (`GET /apps/{app}/blobs/{blob}`): meshes and textures are the scene's
+own blobs (core #4815). A node at `1.0.0-rc.7` answers blob routes `409 NOT_SUPPORTED`, so there
+meshes stay placeholder boxes until the cluster runs the next core release; nothing changes in
+the apps then.
 Everything around the viewport is native.
 
 Because it is one file and the studio's code, both platforms render identically (same lighting,
@@ -110,21 +118,27 @@ node apps/mero-models/mobile/viewer/build.mjs
 ## Through `MeroAppBackend`
 
 Neither app runs a node. `MeroAppSession` signs in and gives a `MeroAppBackend`: studios, scenes,
-membership, invitations, blobs and events go through it. On iOS that is swift-sdk's
-`CloudAppBackend` over the 1.0 `CalimeroClient` (contract reads are `/apps/{app}/views`); on
-Android it is still the 0.x relay. The apps make no contract writes.
+membership, invitations, blobs and events go through it: the SDKs' `CalimeroAppBackend` over the
+1.0 `CalimeroClient`, so contract reads are views on `/apps/{app}`. The apps make no contract
+writes. Tests run the same view models on the SDKs' in-memory backend (`MeroKitTestSupport` /
+`mero-testkit`), with the contract's answers scripted.
 
-## Generated contract client
+## Contract client
 
-`ModelsClient` is generated from `../logic/res/abi.json` with `--transport-import`, so it takes
-the SDK's `ContextContractCalling` and `ModelsClient(transport: contract.bound(to: contextId))`
-works with no adapter. Never edit it by hand:
+`ModelsClient` was generated by abi-codegen from the v1 ABI and moved to the component wire by
+hand, because abi-codegen does not read component ABIs (`abiVersion`) yet. It takes the SDK's
+`ContextContractCalling`, so `ModelsClient(transport: contract.bound(to: appId))` needs no
+adapter. Against `../logic/res/abi.json`:
 
-- iOS: `ios/ModelsCore/Sources/ModelsCore/Generated/ModelsClient.swift`
-- Android: `android/app/src/main/kotlin/network/calimero/models/generated/ModelsClient.kt`
+- method names and arguments are camelCase (`getScene`, `listLocks`, `listHistory(assetId)`);
+- every `u64` argument (`now`) is a decimal string; answers keep v1's snake_case fields and
+  JSON numbers;
+- `init` takes no arguments and the node runs it, so the client has none.
 
-After a contract change, regenerate both with `scripts/regenerate-client.sh` (set `ABI_CODEGEN`
-to an abi-codegen `dist/cli.js` that has the `swift` and `kotlin` targets) and commit the result.
+The files: `ios/ModelsCore/Sources/ModelsCore/Generated/ModelsClient.swift` and
+`android/app/src/main/kotlin/network/calimero/models/generated/ModelsClient.kt`. The unit tests
+pin the wire (method names, `now` as a string). Once abi-codegen reads component ABIs, regenerate
+both from `abi.json` instead.
 
 ## Build and test
 
@@ -144,11 +158,10 @@ cd android
 ./gradlew ktlintCheck detekt testDebugUnitTest lint assembleDebug
 ```
 
-iOS: point the app at a cluster with the `MeroNodeURL` / `MeroNodes` / `MeroAllowMock` Info.plist
-keys in `ios/project.yml` (or from the sign-in screen); the consent page returns to
-`mero-models://consent`. Android: sign-in returns to `mero-models://enrol`; point it at another
-environment with `-PmeroCloudUrl=` / `-PmeroWalletUrl=` / `-PmeroRegistryUrl=` /
-`-PmeroEnrolCallback=`.
+The cluster is chosen on the sign-in screen. iOS can start on one with the `MeroNodeURL` /
+`MeroNodes` / `MeroAllowMock` Info.plist keys in `ios/project.yml`; Android prefills the
+Calimero Cloud field with `-PmeroCluster=<name or URL>`. Both receive the consent page's return
+on `mero-models://consent`.
 
 CI: `.github/workflows/mero-models-ios.yml` (ModelsCore tests on macOS, simulator build) and
 `.github/workflows/mero-models-android.yml` (ktlint, detekt, unit tests, Android Lint,
