@@ -129,9 +129,11 @@ export function useSession(deps: SessionDeps = defaultDeps): SessionApi {
   );
 }
 
-/** "merod local (3 nodes)" / "Calimero Cloud eu-shared-1". */
+/** "merod local (3 nodes)" / "Calimero Cloud eu-shared-1" / "node crm.example.com". */
 export function describeTarget(target: Target): string {
-  return target.kind === "local"
-    ? `merod local (${target.nodes.length} node${target.nodes.length === 1 ? "" : "s"})`
-    : `Calimero Cloud ${target.cluster}`;
+  if (target.kind === "local") {
+    return `merod local (${target.nodes.length} node${target.nodes.length === 1 ? "" : "s"})`;
+  }
+  // VITE_CALIMERO_TARGET=node: an attested node the operator runs, by URL.
+  return target.direct ? `node ${target.cluster}` : `Calimero Cloud ${target.cluster}`;
 }
