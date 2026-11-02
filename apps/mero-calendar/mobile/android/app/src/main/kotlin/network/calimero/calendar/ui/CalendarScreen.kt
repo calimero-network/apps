@@ -207,7 +207,7 @@ fun CalendarScreen(
                     "Your account" to model.account,
                 ),
             )
-            Text("Private events are kept on this device and are never sent to your relay or your team.", style = Tokens.caption)
+            Text("Private events are yours alone: only your own account can read them, on any device.", style = Tokens.caption)
         }
     }
     if (state.askName) {

@@ -1,41 +1,39 @@
 package network.calimero.calendar.data
 
-import network.calimero.calendar.generated.CalendarClient
-import network.calimero.calendar.generated.CreateCalendarEvent
-import network.calimero.calendar.generated.UpdateCalendarEvent
-import network.calimero.calendar.generated.CalendarEvent as WireEvent
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import network.calimero.calendar.contract.CalendarClient
+import network.calimero.calendar.contract.CreateCalendarEvent
+import network.calimero.calendar.contract.UpdateCalendarEvent
+import network.calimero.calendar.contract.CalendarEvent as WireEvent
 
 /**
- * One calendar (a context): its shared events through the generated client, its private events
- * from this device ([PrivateEventStore]). Mirrors the web app's `ClientApiDataSource` on an
- * account session:
+ * One calendar (an app instance) through its typed contract client: the phone's copy of the web
+ * app's `api/calendar.ts` adapter (iOS `CalendarRepository`).
  *
- * - a private event, and a peerless one (which the contract would route to its private storage,
- *   which a relay does not have), stays on this device;
- * - an event with peers goes to `create_event`;
- * - a private event that gains peers and stops being private is promoted (the contract's own
- *   `update_private_event` rule): created shared, then dropped from this device.
+ * Private events live in the contract too: per-owner rows only the owner's own calls read
+ * (`getPrivateEvents`), so they follow the account to every device.
+ *
+ * - a private event goes to `createPrivateEvent`; anything else to `createEvent`, which the
+ *   contract keeps private when no one is invited;
+ * - a private event is saved with `updatePrivateEvent`, which promotes it to a shared one when the
+ *   edit invites someone; a shared one with `updateEvent` (sharing is one way).
  */
 class CalendarRepository(
     private val client: CalendarClient,
-    private val privateStore: PrivateEventStore,
-    private val account: String,
-    namespaceId: String,
-    private val contextId: String,
-    private val now: () -> Long = System::currentTimeMillis,
 ) {
-    private val key = privateStore.key(account, namespaceId)
-
-    suspend fun events(): List<CalEvent> {
-        val shared = client.getEvents().mapNotNull(::toEvent)
-        return shared + privateStore.list(key, contextId)
-    }
+    suspend fun events(): List<CalEvent> =
+        coroutineScope {
+            val shared = async { client.getEvents() }
+            val mine = async { client.getPrivateEvents() }
+            val all = shared.await().mapNotNull { toEvent(it, it.private) } + mine.await().mapNotNull { toEvent(it, true) }
+            all.distinctBy { it.id }.sortedWith(compareBy({ it.start }, { it.title }))
+        }
 
     suspend fun members(): List<CalMember> = client.getMembers().map { CalMember(it.id, it.username.trim()) }
 
     suspend fun create(fields: EventFields): String {
-        if (fields.isPrivate || fields.peers.isEmpty()) return privateStore.add(key, contextId, account, fields)
-        return client.createEvent(
+        val data =
             CreateCalendarEvent(
                 title = fields.title,
                 description = fields.description,
@@ -43,27 +41,16 @@ class CalendarRepository(
                 end = fields.end,
                 eventType = fields.type,
                 color = fields.color,
-                peers = fields.peers.map(HexIdTransport::bytesOf),
-            ),
-            now().toULong(),
-        )
+                peers = if (fields.isPrivate) emptyList() else fields.peers,
+            )
+        return if (fields.isPrivate) client.createPrivateEvent(data) else client.createEvent(data)
     }
 
     suspend fun update(
         event: CalEvent,
         fields: EventFields,
     ): String {
-        if (event.isLocal) {
-            if (!fields.isPrivate && fields.peers.isNotEmpty()) {
-                val id = create(fields)
-                privateStore.remove(key, event.id)
-                return id
-            }
-            check(privateStore.update(key, event.id, fields)) { "This private event is no longer on this device." }
-            return event.id
-        }
-        return client.updateEvent(
-            event.id,
+        val patch =
             UpdateCalendarEvent(
                 title = fields.title,
                 description = fields.description,
@@ -71,36 +58,34 @@ class CalendarRepository(
                 end = fields.end,
                 eventType = fields.type,
                 color = fields.color,
-                peers = fields.peers.map(HexIdTransport::bytesOf),
-            ),
-            now().toULong(),
-        )
+                peers = if (fields.isPrivate) emptyList() else fields.peers,
+            )
+        return if (event.isPrivate) client.updatePrivateEvent(event.id, patch) else client.updateEvent(event.id, patch)
     }
 
     suspend fun delete(event: CalEvent) {
-        if (event.isLocal) {
-            check(privateStore.remove(key, event.id)) { "This private event is no longer on this device." }
-            return
-        }
-        client.deleteEvent(event.id)
+        if (event.isPrivate) client.deletePrivateEvent(event.id) else client.deleteEvent(event.id)
     }
 
-    suspend fun setUsername(name: String) = client.setUsername(name, now().toULong())
+    suspend fun setUsername(name: String) = client.setUsername(name)
 
-    private fun toEvent(wire: WireEvent): CalEvent? {
+    private fun toEvent(
+        wire: WireEvent,
+        isPrivate: Boolean,
+    ): CalEvent? {
         val start = EventTime.parse(wire.start) ?: return null
         val end = EventTime.parse(wire.end) ?: start
         return CalEvent(
             id = wire.id,
             title = wire.title,
             description = wire.description,
-            owner = HexIdTransport.hexOf(wire.owner),
+            owner = wire.owner,
             start = start,
-            end = end,
+            end = if (end.isBefore(start)) start else end,
             allDay = wire.eventType == CalendarConstants.TYPE_ALL_DAY,
             color = wire.color.ifBlank { CalendarConstants.DEFAULT_COLOR },
-            peers = wire.peers.map(HexIdTransport::hexOf),
-            isPrivate = false,
+            peers = wire.peers,
+            isPrivate = isPrivate,
         )
     }
 }

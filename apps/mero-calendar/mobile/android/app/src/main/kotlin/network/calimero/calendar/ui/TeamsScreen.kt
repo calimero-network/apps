@@ -41,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import network.calimero.calendar.app.ApprovalsModel
 import network.calimero.calendar.app.Team
 import network.calimero.calendar.app.TeamsModel
 import network.calimero.calendar.data.ErrorText
@@ -49,6 +50,7 @@ import network.calimero.calendar.data.ErrorText
 @Composable
 fun TeamsScreen(
     model: TeamsModel,
+    approvals: ApprovalsModel,
     account: String?,
     onOpen: (Team) -> Unit,
     onCreated: (Team) -> Unit,
@@ -67,7 +69,10 @@ fun TeamsScreen(
     var notice by remember { mutableStateOf<String?>(null) }
     val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
-    LaunchedEffect(model) { model.load() }
+    LaunchedEffect(model) {
+        model.load()
+        approvals.load(model.orgs)
+    }
 
     Scaffold(
         modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
@@ -81,16 +86,14 @@ fun TeamsScreen(
                     Box {
                         IconButton(onClick = { addMenu = true }) { Icon(Icons.Filled.Add, contentDescription = "Add") }
                         DropdownMenu(expanded = addMenu, onDismissRequest = { addMenu = false }) {
-                            if (!state.noRelay) {
-                                DropdownMenuItem(
-                                    text = { Text("Create team") },
-                                    leadingIcon = { Icon(Icons.Filled.Add, null) },
-                                    onClick = {
-                                        addMenu = false
-                                        creating = true
-                                    },
-                                )
-                            }
+                            DropdownMenuItem(
+                                text = { Text("Create team") },
+                                leadingIcon = { Icon(Icons.Filled.Add, null) },
+                                onClick = {
+                                    addMenu = false
+                                    creating = true
+                                },
+                            )
                             DropdownMenuItem(
                                 text = { Text("Join with a link") },
                                 leadingIcon = { Icon(Icons.Filled.Link, null) },
@@ -129,6 +132,7 @@ fun TeamsScreen(
                 scope.launch {
                     refreshing = true
                     model.load()
+                    approvals.load(model.orgs)
                     refreshing = false
                 }
             },
@@ -145,13 +149,8 @@ fun TeamsScreen(
                 item { Text("Teams are shared calendars.", style = Tokens.caption, modifier = Modifier.padding(bottom = 6.dp)) }
                 notice?.let { item { ErrorBanner(it) } }
                 state.error?.let { item { ErrorBanner(it) { scope.launch { model.load() } } } }
+                item { ApprovalsCard(approvals, orgs = model.orgs) }
                 when {
-                    state.noRelay ->
-                        item {
-                            EmptyState(Icons.Filled.Link, "Join your first team", "Your account isn't on a relay yet. Open an invitation link to join a team.") {
-                                PrimaryButton("Join with a link", onClick = { joining = true })
-                            }
-                        }
                     state.loading -> item { Loading() }
                     state.teams.isEmpty() && state.error == null ->
                         item {

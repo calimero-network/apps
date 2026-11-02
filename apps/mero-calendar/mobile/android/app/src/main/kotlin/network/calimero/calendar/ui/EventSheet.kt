@@ -110,19 +110,19 @@ fun EventSheet(
         ToggleRow("All day", draft.allDay, Icons.Filled.WbSunny) { draft = draft.withAllDay(it) }
         DateTimeRow("Starts", Icons.Filled.Schedule, draft.start, draft.allDay) { draft = draft.withStart(it) }
         DateTimeRow("Ends", Icons.Filled.Update, draft.end, draft.allDay) { draft = draft.copy(end = it) }
-        val sharedAlready = existing != null && !existing.isLocal
+        val sharedAlready = existing != null && !existing.isPrivate
         ToggleRow(
             "Private",
             draft.isPrivate,
             Icons.Filled.Lock,
             enabled = !sharedAlready,
-            caption = if (sharedAlready) "Shared events can't be made private again." else "Only on this device. A private event never leaves your phone.",
+            caption = if (sharedAlready) "Shared events can't be made private again." else "Only you see a private event, on any device you sign in on.",
         ) { draft = draft.withPrivate(it) }
         Text("Color", style = Tokens.label)
         ColorRow(draft.color) { draft = draft.copy(color = it) }
         if (!draft.isPrivate) {
             Text("Invite teammates", style = Tokens.label)
-            val others = members.filter { !it.id.equals(model.account, ignoreCase = true) }
+            val others = members.filter { it.id != model.account }
             if (others.isEmpty()) {
                 Text("No teammates have joined yet.", style = Tokens.caption)
             } else {
@@ -192,7 +192,7 @@ fun EventSheet(
                 Spacer(Modifier.width(6.dp))
                 Text("Delete event", color = Tokens.danger, fontWeight = FontWeight.Medium)
             }
-            DetailsDisclosure(listOf("Event id" to existing.id, "Owner" to ownerLabel(existing)))
+            DetailsDisclosure(listOf("Event id" to existing.id, "Owner" to existing.owner))
         }
     }
     if (confirmDelete && existing != null) {
@@ -253,10 +253,8 @@ private fun ViewOnly(
     }
     if (event.description.isNotBlank()) Text(event.description, style = Tokens.body)
     Text("Only the owner can edit this event.", style = Tokens.caption)
-    DetailsDisclosure(listOf("Event id" to event.id, "Owner" to ownerLabel(event)))
+    DetailsDisclosure(listOf("Event id" to event.id, "Owner" to event.owner))
 }
-
-private fun ownerLabel(event: CalEvent): String = if (event.isLocal) "This device" else event.owner
 
 private fun newDraft(target: EventTarget.New): EventDraft {
     val hour = target.hour ?: return EventDraft.newOn(target.day)

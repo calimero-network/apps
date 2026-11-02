@@ -21,8 +21,8 @@ maps the app layer onto the 1.0 API:
 | Create a calendar | `createSubgroup(…, isPublic: true)` + `createContext(…, initArgs: {})` | `POST /orgs/{org}/teams {join: everyone}` + `POST /apps {package, org, access: team}` |
 | Open a calendar | `isMember` / `joinContext` (retried for 20 s, 90 s right after joining the team) | `GET /apps/{app}`; open teams inherit org membership |
 | Invite / join | `createInvitation` / `joinNamespace` + `session.didJoinNamespace()` | `POST /orgs/{org}/invites` → invite token; `POST /invites/{token}/redeem` |
-| Read events / members | generated `CalendarClient` over `contract.bound(to:)` → `query` | `POST /apps/{app}/views` |
-| Create / edit / delete events, set your name | generated `CalendarClient` → `execute` | `POST /apps/{app}/intents` |
+| Read events / members | `CalendarClient` over `contract.bound(to:)` → `query` | `POST /apps/{app}/views` |
+| Create / edit / delete events, set your name | `CalendarClient` → `execute` | `POST /apps/{app}/intents` |
 | Live updates | `events(contextId:)`; 10 s polling as a fallback | `GET /apps/{app}/events` (sealed SSE) |
 | Approvals (an update of Mero Calendar, a node release) | `session.pendingApprovals(org:)` + `MeroClient.requestConsent(_:callback:)` (`ApprovalsModel`) | `POST /consent/requests` → the node's consent page in the system browser → `GET /consent/{id}/result` |
 
@@ -62,38 +62,22 @@ opens the page in the system browser, which returns to
 
 ## Private events
 
-The contract keeps private events in `#[app::private]` storage, which is
-node-local. On 1.0 an app instance runs replicated across the cluster (calls
-run on its Raft leader), so there is no one node to keep them on; the web app
-keeps an account's private events in the browser (`app/src/api/privateStore.ts`). The phone does the same: a private
-event, and a peerless one (which the contract would route to private storage),
-is stored on the device only (`PrivateEventStore`, keyed by account + team,
-each record carrying its calendar's context id; ids `local-…`). It is never
-sent to the cluster. `get_private_events` / `create_private_event` are not called.
+Private events are the contract's per-owner rows: `getPrivateEvents`,
+`createPrivateEvent`, `updatePrivateEvent`, `deletePrivateEvent`. Only the
+owner's own calls read them, so they follow the account to every device. A
+peerless `createEvent` stays private too (the contract routes it). Editing a
+private event so that it invites someone promotes it with `updatePrivateEvent`
+(same id). A shared event can't be made private again; the toggle says so.
 
-Editing a device-local event so that it is not private and has someone invited
-promotes it: `create_event`, then the local copy is dropped (the contract's own
-`update_private_event` promotes the same way). A shared event can't be made
-private again; the toggle says so.
+## The contract client
 
-## Generated client
-
-`Core/Sources/CalendarGenerated/CalendarClient.swift` is generated from the
-contract's ABI and is not edited by hand. Regenerate it after the contract
-changes:
-
-```sh
-# from the repo root
-node <abi-codegen>/dist/cli.js -i apps/mero-calendar/logic/res/abi.json \
-  -o apps/mero-calendar/mobile/ios/Core/Sources/CalendarGenerated \
-  --target swift --client-name CalendarClient
-```
-
-The ABI declares `owner` / `peers` as 32-byte arrays, so the generated types
-hold `[UInt8]`; the contract's `UserId` actually serialises as 64 hex
-characters. `HexIdTransport` (the transport the generated client is given)
-rewrites exactly those fields for `get_events` / `get_private_events` answers and
-for the four event writes, and passes everything else through byte for byte.
+`Core/Sources/CalendarContract/CalendarContract.swift` is a typed client of
+the component contract (`logic/res/abi.json` of the component port, web PR
+#720), the twin of the web app's `app/src/api/calendar.ts` and of the Android
+app's `contract/CalendarClient.kt`: camelCase methods and arguments, no
+`timestamp` arguments, account ids as strings, `u64` values as decimal
+strings (`U64`), and the contract's error codes (`CalendarAppCode`), which
+`ErrorText` puts into words. `CalendarContractTests` pins the method list.
 
 ## Screens
 
@@ -105,15 +89,15 @@ strip, overlapping events side by side, the current time), Agenda (by day,
 swipe to delete). The **event sheet** creates, edits or (not yours) shows an
 event: title, all day, native date and time pickers, private, the web app's ten
 colors, invite teammates, description, delete. Plus **Members**, **Your name**
-(asked on a calendar's first open, `set_username`) and **Details**.
+(asked on a calendar's first open, `setUsername`) and **Details**.
 
 ## Layout
 
 ```
 project.yml                  XcodeGen spec (the .xcodeproj is generated, not committed)
 Core/                        local SwiftPM package, checked on macOS with `swift test`
-  Sources/CalendarGenerated/ the generated contract client
-  Sources/CalendarCore/      HexIdTransport, EventTime, CalendarRepository, PrivateEventStore,
+  Sources/CalendarContract/  the typed component-contract client
+  Sources/CalendarCore/      EventTime, CalendarRepository,
                              TeamInvitation, CalendarMath, EventDraft, and the view models
                              (TeamsModel, CalendarsModel, CalendarModel, ApprovalsModel)
   Tests/CalendarCoreTests/   view-model and wire tests against InMemoryAppBackend
@@ -137,16 +121,16 @@ Bundle id `network.calimero.calendar`, iOS 16+. CI:
 ### The SDK pin
 
 `Core/Package.swift`, `Core/Package.resolved` and `project.yml` pin the
-swift-sdk by revision to `35148e4de782c065f777e80c592d9548acd645cd`, the head
+swift-sdk by revision to `37c09f3f96e7d98440f6618eef8a0e83ddee8ebd`, the head
 of its Calimero 1.0 port (calimero-network/swift-sdk#85, branch
 `feat/calimero-1.0`). It moves to that PR's merge commit once it lands. To bump
-it, change the revision in all three files and regenerate.
+it, change the revision in all three files.
 
 ### Pointing it at another environment
 
 `project.yml` sets these Info.plist keys:
 
-- `CalimeroClusterURL`: the cluster's node URL. Empty: the sign-in screen asks.
+- `CalimeroClusterURL`: the cluster's name or a node URL. Empty: the sign-in screen asks.
 - `DefaultNodeURL`: the development node the sign-in screen prefills.
 - `MeroPackageVersion`: the version new calendars run. Empty: the latest.
 - `MeroCalendarCallbackScheme` (`mero-calendar`, so `mero-calendar://consent`)
@@ -155,14 +139,14 @@ it, change the revision in all three files and regenerate.
 
 ## Not supported yet
 
-- **Booking links**: the web app offers them only to a node login (a guest's
-  browser calls the owner's node under an access grant); the phone has no node.
+- **Booking links**: the contract has them (and the client covers them), but
+  the phone app doesn't offer them yet; they stay on the web app.
 - **Passkey step-up** (`412 CONFIRM_REQUIRED`) is handled by the SDK with the
   device's passkey; the app adds no UI of its own for it.
 - **Year view** (the web app's year grid).
 - **Deleting or leaving a team or calendar, member roles and capabilities**:
   `MeroAppBackend` has the calls on 1.0, but the app doesn't offer them yet. Members shows the calendar's
-  `get_members` names.
+  `getMembers` names.
 - **Universal links** for `https://links.calimero.network/…`: needs an
   Associated Domains entitlement; `calimero://com.calimero.mero-calendar/join?…`
   opens the app, and an https link can be pasted into **Join with a link**.
