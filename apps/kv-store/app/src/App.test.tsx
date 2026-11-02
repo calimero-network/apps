@@ -88,7 +88,7 @@ describe("App", () => {
     await screen.findByText("Your stores");
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "alice");
     expect(new SessionStore(APP, LOCAL, storage).load()).toEqual(SESSION);
-    expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" });
+    await waitFor(() => expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" }));
 
     fireEvent.change(screen.getByLabelText("store name"), { target: { value: "team" } });
     fireEvent.click(screen.getByText("Create"));
