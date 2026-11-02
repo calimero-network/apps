@@ -1,5 +1,6 @@
 // The connection to Calimero, for every screen: the local `merod local` nodes
-// under `vite` (dev), a Calimero Cloud cluster by name in a production build,
+// under `vite` (dev), a Calimero Cloud cluster by name (or an attested node by
+// URL, `VITE_CALIMERO_TARGET=node`) in a production build,
 // through `@calimero-apps/connect` and mero-js's `CalimeroClient`. It replaces
 // mero-react's `MeroProvider`: sign-in is a passkey (sign in, or a new account
 // with a new passkey), a session is stored per app and per target, and there is
@@ -55,7 +56,7 @@ export interface Calimero {
   busy: boolean;
   isAuthenticated: boolean;
   isLoading: boolean;
-  /** "merod local (3 nodes)" / "Calimero Cloud <cluster>". */
+  /** "merod local (3 nodes)" / "Calimero Cloud <cluster>" / "node <host>". */
   where: string;
   signIn(): Promise<void>;
   signUp(name: string): Promise<void>;
@@ -85,7 +86,9 @@ export function describeTarget(target: Target | null): string {
   if (!target) return '';
   return target.kind === 'local'
     ? `merod local (${target.nodes.length} node${target.nodes.length === 1 ? '' : 's'})`
-    : `Calimero Cloud ${target.cluster}`;
+    : target.direct
+      ? `node ${target.cluster}`
+      : `Calimero Cloud ${target.cluster}`;
 }
 
 type State =

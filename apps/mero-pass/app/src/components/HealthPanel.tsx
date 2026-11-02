@@ -23,9 +23,12 @@ export default function HealthPanel({
   onOpen: (id: string) => void;
 }) {
   // A frontend the cluster serves may connect only to the cluster's own API
-  // origins (its CSP), so Have I Been Pwned is out of reach there.
+  // origins (its CSP), so Have I Been Pwned is out of reach there. A node
+  // reached by URL (`direct`) also lists `nodes`, but its page is not the
+  // cluster's: the check stays available.
   const { target } = useCalimero();
-  const SERVED_BY_NODE = target?.kind === 'cloud' && !!target.nodes?.length;
+  const SERVED_BY_NODE =
+    target?.kind === 'cloud' && !target.direct && !!target.nodes?.length;
   const [breached, setBreached] = useState<Set<string>>(new Set());
   const [checking, setChecking] = useState(false);
   const [checked, setChecked] = useState(false);
