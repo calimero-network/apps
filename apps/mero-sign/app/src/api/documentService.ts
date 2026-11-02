@@ -1,16 +1,20 @@
 import { ClientApiDataSource } from './dataSource/ClientApiDataSource';
-import { DocumentInfo, Document } from './clientApi';
-import { blobClient } from '../lib/node';
-import { toBlobIdHex } from '../lib/blobIds';
-import { toHexId } from '../lib/participants';
-// TODO: Re-enable when AI chatbot is re-implemented
-// import { processPDFAndGenerateEmbeddings } from '../services/embeddingService';
+import type { Document, DocumentInfo, ErrorResponse } from './clientApi';
+import { sha256Hex } from '../lib/documentIntegrity';
+import type { Conn } from '../lib/conn';
 
+/**
+ * Documents as files: the PDF is uploaded as a blob of the agreement's app,
+ * and the contract records its SHA-256 (which is the blob's id, and which the
+ * contract checks) beside it. A signature is a new PDF with the signer's mark,
+ * uploaded the same way and recorded against the version it was made from.
+ */
 export class DocumentService {
   private clientApi: ClientApiDataSource;
 
-  constructor() {
-    this.clientApi = new ClientApiDataSource();
+  /** `conn` defaults to the signed-in session of `CalimeroProvider`. */
+  constructor(conn?: Conn | null) {
+    this.clientApi = new ClientApiDataSource(conn);
   }
 
   async uploadDocument(
@@ -18,147 +22,43 @@ export class DocumentService {
     name: string,
     file: File,
     agreementContextID?: string,
-    agreementContextUserID?: string,
-    onBlobProgress?: (progress: number) => void,
-    onEmbeddingProgress?: (progress: number) => void,
-    onStorageProgress?: () => void,
-  ): Promise<{ data?: string; error?: any }> {
-    try {
-      // ⚠️ THE CONTEXT IS NOT OPTIONAL. A blob uploaded without one is
-      // stored only on the node that took it and is never announced to the
-      // agreement's peers — so the upload succeeds, the document appears in
-      // the list for everyone, and every other signer gets nothing when they
-      // open it. `''` is not "no context", it is a context id of zero length.
-      const blobResponse = await blobClient.uploadBlob(
-        file,
-        onBlobProgress,
-        contextId,
-      );
-
-      if (blobResponse.error) {
-        console.error(
-          `Upload failed for ${file.name}:`,
-          blobResponse.error.message,
-        );
-        return { error: blobResponse.error };
-      }
-
-      if (!blobResponse.data?.blobId) {
-        console.error(`Failed to get blob ID from upload for ${file.name}`);
-        return { error: { message: 'Failed to get blob ID from upload' } };
-      }
-
-      // Calculate hash from file for verification
-      const arrayBuffer = await file.arrayBuffer();
-      const pdfData = new Uint8Array(arrayBuffer);
-      const hash = await this.calculateFileHash(pdfData);
-
-      // TODO: Re-enable embedding generation when AI chatbot is re-implemented
-      // let embeddings: number[] | undefined;
-      // let extractedText: string | undefined;
-      // let chunks: any[] | undefined;
-      // try {
-      //   onEmbeddingProgress?.(0);
-
-      //   onEmbeddingProgress?.(20);
-      //   const {
-      //     text,
-      //     fullTextEmbedding,
-      //     chunks: documentChunks,
-      //   } = await processPDFAndGenerateEmbeddings(file);
-
-      //   onEmbeddingProgress?.(100);
-
-      //   extractedText = text;
-      //   embeddings = fullTextEmbedding;
-      //   chunks = documentChunks;
-      // } catch (embeddingError) {
-      //   console.warn(
-      //     'Embedding generation failed, proceeding without embeddings:',
-      //     embeddingError,
-      //   );
-      //   onEmbeddingProgress?.(100);
-      // }
-
-      // Report start of storage
-      onStorageProgress?.();
-
-      // Set embeddings to undefined since AI chatbot is disabled
-      const embeddings: number[] | undefined = undefined;
-      const extractedText: string | undefined = undefined;
-      const chunks: any[] | undefined = undefined;
-
-      // ⚠️ HEX, verbatim from the node. This used to convert to base58,
-      // which is what the node later refused to decode. See `lib/blobIds`.
-      const blobId = toBlobIdHex(blobResponse.data.blobId);
-      if (!blobId) {
-        return {
-          error: {
-            message: `The node returned a blob id this app cannot use: ${blobResponse.data.blobId}`,
-          },
-        };
-      }
-
-      const response = await this.clientApi.uploadDocument(
-        contextId,
-        name,
-        hash,
-        blobId,
-        file.size,
-        embeddings,
-        extractedText,
-        chunks,
-        agreementContextID,
-        agreementContextUserID,
-      );
-
-      return {
-        data: response.data || undefined,
-        error: response.error,
-      };
-    } catch (error) {
-      console.error(`Upload error for ${file.name}:`, error);
-      return { error: { message: `Upload error: ${error}` } };
-    }
+    _agreementContextUserID?: string,
+  ): Promise<{ data?: string; error?: ErrorResponse }> {
+    const app = agreementContextID || contextId;
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const hash = await sha256Hex(bytes.buffer);
+    const blob = await this.clientApi.uploadBlob(bytes, app);
+    if (blob.error) return { error: blob.error };
+    // The search content stays off while the legal assistant cannot answer
+    // (`LEGAL_ASSISTANT_ENABLED`); the contract takes it when it comes back.
+    const response = await this.clientApi.uploadDocument(
+      app,
+      name,
+      hash,
+      blob.data.id,
+      bytes.length,
+      undefined,
+      undefined,
+      undefined,
+      app,
+    );
+    return response.error ? { error: response.error } : { data: response.data };
   }
 
   async listDocuments(
     contextId: string,
     agreementContextID?: string,
-    agreementContextUserID?: string,
-  ): Promise<{ data?: Document[]; error?: any }> {
-    try {
-      const response = await this.clientApi.listDocuments(
-        contextId,
-        agreementContextID,
-        agreementContextUserID,
-      );
-
-      if (response.error) {
-        return { error: response.error };
-      }
-
-      const documents: DocumentInfo[] = response.data || [];
-      const formattedDocuments: Document[] = documents.map((doc) =>
-        this.formatDocument(doc),
-      );
-
-      return { data: formattedDocuments };
-    } catch (error) {
-      console.error('Error listing documents:', error);
-      return { error: { message: 'Failed to list documents' } };
-    }
+    _agreementContextUserID?: string,
+  ): Promise<{ data?: Document[]; error?: ErrorResponse }> {
+    const response = await this.clientApi.listDocuments(contextId, agreementContextID);
+    if (response.error) return { error: response.error };
+    return { data: response.data.map((doc) => this.formatDocument(doc)) };
   }
 
   /**
-   * Sign a document as the signed-in person.
-   *
-   * ⚠️ `signerId` is gone. It used to be `localStorage['agreementContextUserID']`
-   * — the context member DEVICE key — handed to a contract that wrote it into
-   * the signature unchecked. Two separate faults in one argument: anybody could
-   * name anybody, and the value named was the wrong KIND of id, so the recorded
-   * signer matched no row of the participant roster. The contract derives the
-   * signer from `env::account_id()` now.
+   * Sign as the signed-in person: upload the PDF with their mark, then record
+   * it as made from `baseHash`, the version they opened. The node asks for
+   * their passkey (a fresh confirmation); the contract refuses a stale base.
    */
   async signDocument(
     contextId: string,
@@ -166,118 +66,50 @@ export class DocumentService {
     baseHash: string,
     updatedPdfFile: File,
     agreementContextID?: string,
-    agreementContextUserID?: string,
-    onProgress?: (progress: number) => void,
-  ): Promise<{ data?: void; error?: any }> {
-    try {
-      // Upload the new signed PDF via blob API
-      // Announced to the agreement, as above — a signed PDF nobody else can
-      // fetch is the failure this app exists to avoid.
-      const blobResponse = await blobClient.uploadBlob(
-        updatedPdfFile,
-        onProgress,
-        contextId,
-      );
-
-      if (blobResponse.error) {
-        console.error(
-          `Upload failed for signed PDF:`,
-          blobResponse.error.message,
-        );
-        return { error: blobResponse.error };
-      }
-
-      if (!blobResponse.data?.blobId) {
-        console.error(`Failed to get blob ID from upload for signed PDF`);
-        return { error: { message: 'Failed to get blob ID from upload' } };
-      }
-
-      // Calculate hash from file for verification
-      const arrayBuffer = await updatedPdfFile.arrayBuffer();
-      const updatedPdfData = new Uint8Array(arrayBuffer);
-      const newHash = await this.calculateFileHash(updatedPdfData);
-
-      // HEX, as above.
-      const blobId = toBlobIdHex(blobResponse.data.blobId);
-      if (!blobId) {
-        return {
-          error: {
-            message: `The node returned a blob id this app cannot use: ${blobResponse.data.blobId}`,
-          },
-        };
-      }
-
-      // `baseHash` is the hash of the version this signer opened. Signing
-      // replaces the document's whole PDF, so if somebody else signed while
-      // this one was being filled in, saving would drop their mark — the
-      // contract compares and refuses rather than losing it silently.
-      const response = await this.clientApi.signDocument(
-        contextId,
-        documentId,
-        baseHash,
-        blobId,
-        updatedPdfFile.size,
-        newHash,
-        agreementContextID,
-        agreementContextUserID,
-      );
-
-      if (!response.error) {
-        // Recomputes "has everybody signed?" against the participant roster.
-        // That comparison could never succeed before: signatures held the device
-        // key passed above and the roster holds accounts.
-        await this.clientApi.markParticipantSigned(
-          contextId,
-          documentId,
-          agreementContextID,
-          agreementContextUserID,
-        );
-      }
-
-      return {
-        data: response.data === null ? undefined : response.data,
-        error: response.error,
-      };
-    } catch (error) {
-      console.error('Error signing document:', error);
-      return { error: { message: 'Failed to sign document' } };
-    }
+    _agreementContextUserID?: string,
+  ): Promise<{ data?: void; error?: ErrorResponse }> {
+    const app = agreementContextID || contextId;
+    const bytes = new Uint8Array(await updatedPdfFile.arrayBuffer());
+    const newHash = await sha256Hex(bytes.buffer);
+    const blob = await this.clientApi.uploadBlob(bytes, app);
+    if (blob.error) return { error: blob.error };
+    const response = await this.clientApi.signDocument(
+      app,
+      documentId,
+      baseHash,
+      blob.data.id,
+      bytes.length,
+      newHash,
+      app,
+    );
+    if (response.error) return { error: response.error };
+    await this.clientApi.markParticipantSigned(app, documentId, app);
+    return {};
   }
 
   async searchDocumentByEmbedding(
     queryEmbedding: number[],
     documentId: string,
     agreementContextID?: string,
-    agreementContextUserID?: string,
-  ): Promise<{ data?: string; error?: any }> {
-    try {
-      const response = await this.clientApi.searchDocumentByEmbedding(
-        queryEmbedding,
-        documentId,
-        agreementContextID,
-        agreementContextUserID,
-      );
+    _agreementContextUserID?: string,
+  ): Promise<{ data?: string; error?: ErrorResponse }> {
+    const response = await this.clientApi.searchDocumentByEmbedding(
+      queryEmbedding,
+      documentId,
+      agreementContextID,
+    );
+    return response.error ? { error: response.error } : { data: response.data };
+  }
 
-      return {
-        data: response.data || undefined,
-        error: response.error,
-      };
-    } catch (error) {
-      console.error(
-        'DocumentService: Error in searchDocumentsByEmbedding:',
-        error,
-      );
-      return { error: { message: `Search error: ${error}` } };
-    }
+  /** The PDF of a document's current version, from the agreement's blobs. */
+  async downloadDocument(app: string, blobId: string): Promise<Blob> {
+    const res = await this.clientApi.downloadBlob(blobId, app);
+    if (res.error) throw new Error(res.error.message);
+    return new Blob([res.data as BlobPart], { type: 'application/pdf' });
   }
 
   private formatDocument(documentInfo: DocumentInfo): Document {
-    const uploadedAtMs = Math.floor(
-      Number(documentInfo.uploaded_at) / 1_000_000,
-    );
-
-    const dateObj = new Date(uploadedAtMs);
-    const uploadedAtStr = dateObj.toLocaleString(undefined, {
+    const uploadedAtStr = new Date(documentInfo.uploaded_at).toLocaleString(undefined, {
       year: 'numeric',
       month: 'numeric',
       day: 'numeric',
@@ -285,48 +117,23 @@ export class DocumentService {
       minute: '2-digit',
       hour12: true,
     });
-
-    // ⚠️ HEX, both of them. These were `bs58.encode`, which is the read half
-    // of the same defect: the id came back from the contract in the encoding
-    // the NODE refuses, so the blob fetch that follows fails with "expected
-    // hex". `toBlobIdHex` also accepts a legacy base58 id, so documents
-    // recorded by the previous build still open. See `lib/blobIds`.
-    const pdfBlobId = toBlobIdHex(
-      documentInfo.pdf_blob_id as string | number[],
-    );
-
-    // An account id, and hex for the same reason since rc.27 — see the note
-    // at the top of `lib/participants`.
-    const uploadedBy = toHexId(documentInfo.uploaded_by as string | number[]);
-
     return {
       id: documentInfo.id,
       name: documentInfo.name,
-      size: this.formatFileSize(documentInfo.size),
+      size: formatFileSize(documentInfo.size),
       uploadedAt: uploadedAtStr,
       status: documentInfo.status,
-      uploadedBy: uploadedBy,
+      uploadedBy: documentInfo.uploaded_by,
       hash: documentInfo.hash,
-      pdfBlobId: pdfBlobId,
+      pdfBlobId: documentInfo.pdf_blob_id,
     };
   }
+}
 
-  private formatFileSize(bytes: number): string {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  }
-
-  private async calculateFileHash(data: Uint8Array): Promise<string> {
-    const buffer = new Uint8Array(data);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
-  }
-
-  private sanitizeDocumentId(documentId: string): string {
-    return documentId.replace(/[^a-zA-Z0-9_-]/g, '_');
-  }
+export function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }

@@ -29,14 +29,16 @@ import { initials } from './monogram';
  * from anything that has already been through here.
  */
 export function toHexId(value: string | number[] | Uint8Array): string {
-  if (typeof value === 'string') return value.trim().toLowerCase();
+  // Account ids are opaque strings on 1.0: compared as given, never re-cased.
+  if (typeof value === 'string') return value.trim();
   const bytes = Array.isArray(value) ? value : Array.from(value);
   return bytes.map((b) => Number(b).toString(16).padStart(2, '0')).join('');
 }
 
-/** A 32-byte hex id, the only thing the contract's parsers accept. */
+/** Something that can be an account id: non-empty, one token. */
 export function isHexId(value: string): boolean {
-  return /^[0-9a-f]{64}$/.test(value.trim().toLowerCase());
+  const v = value.trim();
+  return v.length > 0 && v.length <= 256 && !/\s/.test(v);
 }
 
 /** Shortened for display, keeping both ends so two ids stay distinguishable. */

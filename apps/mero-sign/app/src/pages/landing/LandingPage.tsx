@@ -25,7 +25,7 @@ import {
   Wifi,
 } from '@calimero-network/mero-icons';
 
-import { nodeBasename } from '@calimero-apps/node-served';
+import { nodeBasename } from '../../lib/servedByNode';
 
 import { CONFIG } from './landing.config';
 import type { IconComponent, OverviewExtras } from './landingTypes';
@@ -33,7 +33,7 @@ import './landing.css';
 
 const THEME_KEY = 'cal-lp-theme';
 // A node serves the app under /{version}/, so root-relative assets and view paths need that prefix.
-const BASE = nodeBasename(new URL(window.location.href), '/');
+const BASE = nodeBasename();
 const asset = (p: string) => BASE + p.replace(/^\//, '');
 /**
  * Four apps (mero-calendar, mero-meet, mero-sheets, mero-issue-tracker) already

@@ -148,19 +148,17 @@ describe('declaring a workspace gone', () => {
   const page = readFileSync(resolve(__dirname, 'AgreementsPage.tsx'), 'utf8');
 
   it('asks the node which workspaces it has, before deciding', () => {
-    expect(page).toMatch(/listWorkspaces\(adminApi\(\), applicationId\)/);
+    expect(page).toMatch(/listWorkspaces\(app\)/);
   });
 
   it('keeps the selection when the check itself cannot run', () => {
-    // No app id, or the check throwing, must both bail BEFORE `setGone`.
-    const guardA = page.indexOf('if (!applicationId) return;');
-    const guardB = page.indexOf('if (!known) return;');
+    // The check throwing, or the workspace being listed, must bail BEFORE `setGone`.
+    const guardB = page.indexOf('if (!known ||');
     const present = page.indexOf(
       'known.some((w) => w.namespaceId === workspaceId)',
     );
     const gone = page.indexOf('setGone(true)');
     for (const [name, at] of [
-      ['applicationId guard', guardA],
       ['failed-check guard', guardB],
       ['present guard', present],
     ] as const) {

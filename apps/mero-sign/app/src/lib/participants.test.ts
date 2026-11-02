@@ -31,8 +31,9 @@ describe('toHexId', () => {
     expect(toHexId([1, 2, 3])).toBe('010203');
   });
 
-  it('passes a string through, normalised', () => {
-    expect(toHexId('  AABB  ')).toBe('aabb');
+  it('passes an account id through as given, trimmed', () => {
+    // Account ids are opaque on 1.0: re-casing one would name somebody else.
+    expect(toHexId('  AbC-1  ')).toBe('AbC-1');
   });
 
   it('accepts a Uint8Array', () => {
@@ -46,13 +47,13 @@ describe('isHexId', () => {
     expect(isHexId(ALICE.toUpperCase())).toBe(true);
   });
 
-  it('rejects base58, which is what the old UI displayed', () => {
-    expect(isHexId('GXtgv6t5u8QwtXGcxYHvDbEge7EHo1ewupnrmWnAKamo')).toBe(false);
+  it('accepts any one-token account id', () => {
+    expect(isHexId('GXtgv6t5u8QwtXGcxYHvDbEge7EHo1ewupnrmWnAKamo')).toBe(true);
   });
 
-  it('rejects the wrong length', () => {
-    expect(isHexId('aabb')).toBe(false);
-    expect(isHexId(ALICE + 'aa')).toBe(false);
+  it('rejects an empty or spaced value', () => {
+    expect(isHexId('  ')).toBe(false);
+    expect(isHexId('two words')).toBe(false);
   });
 });
 

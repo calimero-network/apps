@@ -1,71 +1,37 @@
-import { describe, expect, it } from 'vitest';
-import { buildInviteLink, invitationFromRaw } from '@calimero-network/mero-react';
-import { APP_SLUG, invitationUrl, urlWithoutInvitation } from './inviteLink';
+import { describe, expect, it, vi } from 'vitest';
 
-const CODE = '3vQB7B6MrGQZaxCuFg4oh';
+import { captureInvite, dropInvite, invitationUrl, pendingInvite } from './inviteLink';
 
-describe('invitationUrl', () => {
-  it('is an HTTPS platform link addressed by this app package', () => {
-    const url = invitationUrl(CODE);
-    expect(url.startsWith('https://links.calimero.network/')).toBe(true);
-    expect(url).toContain(`/${APP_SLUG}/join`);
-    expect(new URL(url).searchParams.get('invitation')).toBe(CODE);
+function memory() {
+  const m = new Map<string, string>();
+  return {
+    getItem: (k: string) => m.get(k) ?? null,
+    setItem: (k: string, v: string) => void m.set(k, v),
+    removeItem: (k: string) => void m.delete(k),
+  };
+}
+
+describe('invitation links', () => {
+  it('carry the token and the agreement hint', () => {
+    const url = invitationUrl('tok 1', 'app-1', { origin: 'https://sign.example', pathname: '/1.0.0/' });
+    expect(url).toBe('https://sign.example/1.0.0/?invite=tok+1&agreement=app-1');
+    expect(() => invitationUrl(' ')).toThrow();
   });
 
-  it('is not derived from the current origin', () => {
-    // The whole point: minted inside the desktop shell the old version produced
-    // a `tauri://…` URL, which nobody else can open.
-    expect(invitationUrl(CODE)).not.toContain('localhost');
+  it('are captured off the address bar before sign-in, and kept until dropped', () => {
+    const storage = memory();
+    const replace = vi.fn();
+    const got = captureInvite(storage, { href: 'https://sign.example/?invite=tok&agreement=app-1&x=1' }, replace);
+    expect(got).toEqual({ token: 'tok', agreement: 'app-1' });
+    expect(replace).toHaveBeenCalledWith('https://sign.example/?x=1');
+    expect(pendingInvite(storage)).toEqual({ token: 'tok', agreement: 'app-1' });
+    dropInvite(storage);
+    expect(pendingInvite(storage)).toBeNull();
   });
 
-  it('honours a host override', () => {
-    expect(invitationUrl(CODE, 'https://links.example.test')).toContain(
-      'https://links.example.test',
-    );
-  });
-
-  it('refuses to build a link for an empty code', () => {
-    expect(() => invitationUrl('   ')).toThrow();
-  });
-});
-
-describe('the shared capture', () => {
-  it('builds the same link every app shares', () => {
-    expect(invitationUrl(CODE)).toBe(buildInviteLink(APP_SLUG, CODE));
-  });
-
-  it('reads the token back out of the link this app shares', () => {
-    expect(invitationFromRaw(invitationUrl(CODE))).toBe(CODE);
-  });
-});
-
-describe('urlWithoutInvitation', () => {
-  it('drops the invitation parameter', () => {
-    expect(urlWithoutInvitation('https://app.test/?invitation=abc')).toBe(
-      'https://app.test/',
-    );
-  });
-
-  it('keeps the other query parameters', () => {
-    expect(
-      urlWithoutInvitation('https://app.test/x?a=1&invitation=abc&b=2'),
-    ).toBe('https://app.test/x?a=1&b=2');
-  });
-
-  // The fragment carries the SSO session on the desktop hand-off. The previous
-  // implementation replaced the URL with `location.pathname`, which dropped it —
-  // accepting an invitation signed you out.
-  it('PRESERVES the hash', () => {
-    expect(
-      urlWithoutInvitation(
-        'https://app.test/?invitation=abc#access_token=t&node_url=http://n',
-      ),
-    ).toBe('https://app.test/#access_token=t&node_url=http://n');
-  });
-
-  it('leaves a URL with no query alone', () => {
-    expect(urlWithoutInvitation('https://app.test/x#y')).toBe(
-      'https://app.test/x#y',
-    );
+  it('leave a page without one alone', () => {
+    const replace = vi.fn();
+    expect(captureInvite(memory(), { href: 'https://sign.example/agreements' }, replace)).toBeNull();
+    expect(replace).not.toHaveBeenCalled();
   });
 });

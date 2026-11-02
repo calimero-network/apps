@@ -1,7 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { useMero } from '@calimero-network/mero-react';
 import {
   ArrowLeft,
   FileSignature,
@@ -13,6 +12,8 @@ import {
 } from 'lucide-react';
 
 import { useSignOut } from '../../auth/signOut';
+import { useCalimero } from '../../lib/useCalimero';
+import { describeTarget } from '../../lib/session';
 import ThemeToggle from './ThemeToggle';
 import styles from './AppShell.module.css';
 
@@ -35,22 +36,11 @@ interface Back {
   to: string;
 }
 
-/**
- * The node this session is talking to, shortened to its host.
- *
- * `useMero().nodeUrl` is where the URL lives — the SDK owns it since the move
- * to mero-js; the old `getAppEndpointKey()` readout returned null and showed
- * nothing.
- */
+/** Where this session is connected: "merod local (3 nodes)" or "Calimero Cloud <cluster>". */
 function useNodeHost(): string {
-  const { nodeUrl } = useMero();
-  if (!nodeUrl) return '';
-  try {
-    return new URL(nodeUrl).host;
-  } catch {
-    // A stored value that is not a URL: show nothing rather than a raw string.
-    return '';
-  }
+  const { session } = useCalimero();
+  const s = session.session;
+  return s.status === 'signed-in' || s.status === 'signed-out' ? describeTarget(s.target) : '';
 }
 
 const NAV = [
@@ -129,7 +119,7 @@ function Identity() {
         <span className={styles.identityText}>
           <span className={styles.identityLabel}>Signed in to</span>
           <span className={styles.identityHost} title={host || undefined}>
-            {host || 'your node'}
+            {host || 'Calimero'}
           </span>
         </span>
       </div>

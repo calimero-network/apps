@@ -34,12 +34,10 @@ import ui from './ui/controls.module.css';
 import v from './PDFViewer.module.css';
 import { DocumentService } from '../api/documentService';
 import { ClientApiDataSource } from '../api/dataSource/ClientApiDataSource';
-import { blobClient } from '../lib/node';
 import { useCalimero } from '../lib/useCalimero';
-import { defaultContextIdFor } from '../api/defaultContextService';
+import { withImages } from '../lib/signatureLibrary';
 import ConsentModal from './ConsentModal';
 import LegalChatbot, { LEGAL_ASSISTANT_ENABLED } from './LegalChatbot';
-import { toBlobIdHex } from '../lib/blobIds';
 
 interface SavedSignature {
   id: string;
@@ -121,12 +119,12 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
   const [showConsentModal, setShowConsentModal] = useState(false);
   const [showChatbot, setShowChatbot] = useState(false);
 
-  const documentService = new DocumentService();
+  const documentService = new DocumentService(app);
 
-  const agreementContextID =
-    localStorage.getItem('agreementContextID') || undefined;
-  const agreementContextUserID =
-    localStorage.getItem('agreementContextUserID') || undefined;
+  // The agreement is the app instance this document lives in; the signer is
+  // the signed-in account.
+  const agreementContextID = contextId || undefined;
+  const agreementContextUserID = app?.accountId || undefined;
 
   const loadPDF = useCallback(async () => {
     if (!file) return;
@@ -381,70 +379,8 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
           return;
         }
 
-        // ⚠️ NO ENVELOPE TO UNWRAP any more. This used to probe `.output` and
-        // `.result` because the hand-written RPC shim returned whichever the
-        // node of the day produced. The generated client returns the typed
-        // array, so the three-way guess is gone — and it was the kind of
-        // guess that silently yields [] when a shape changes.
-        const signaturesArray = response.data ?? [];
-
-        if (!signaturesArray || signaturesArray.length === 0) {
-          setSavedSignatures([]);
-          return;
-        }
-
-        // ⚠️ THE LIBRARY'S OWN CONTEXT, not the agreement's. These rows came
-        // out of the PRIVATE context (`listSignatures` runs there) and so
-        // did their blobs. This used to send `agreementContextID || ''` —
-        // the wrong context on a node, and on a relay `''` is a 400 for an
-        // account. Ensured once, before the per-row fetches.
-        const libraryContextId = await defaultContextIdFor(app);
-
-        const signaturesWithImages = await Promise.all(
-          signaturesArray.map(async (sig: any) => {
-            let dataURL = '';
-            try {
-              // ⚠️ `blob_id` IS BYTES, per the ABI — the generated client
-              // hands over a `CalimeroBytes`, not a string. `bs58.encode`
-              // here produced an id the node refuses with "Failed to decode
-              // blob ID (expected hex)", so the picker showed named rows with
-              // no images. `toBlobIdHex` takes the byte array; legacy base58
-              // strings still resolve, for signatures saved before the fix.
-              const blobId = toBlobIdHex(
-                typeof sig.blob_id === 'string'
-                  ? sig.blob_id
-                  : sig.blob_id.toArray(),
-              );
-              const blob = await blobClient.downloadBlob(
-                blobId,
-                libraryContextId,
-              );
-              if (blob) {
-                dataURL = await new Promise<string>((resolve) => {
-                  const reader = new FileReader();
-                  reader.onloadend = () => resolve(reader.result as string);
-                  reader.readAsDataURL(blob);
-                });
-              }
-            } catch (e) {
-              console.error(
-                `Failed to fetch signature PNG for blobId ${sig.blob_id}:`,
-                e,
-              );
-            }
-            return {
-              id: sig.id.toString(),
-              name: sig.name,
-              dataURL,
-              // Nanoseconds from the contract (`env::time_now`), as the
-              // signature library reads them; `new Date(ns)` printed
-              // "Invalid Date" in this picker.
-              createdAt: new Date(
-                Number(sig.created_at) / 1_000_000,
-              ).toLocaleDateString(),
-            };
-          }),
-        );
+        // The images are blobs of the personal library, not the agreement's.
+        const signaturesWithImages = await withImages(api, response.data ?? []);
         setSavedSignatures(signaturesWithImages);
       } catch (error) {
         console.error('Failed to list signatures:', error);
@@ -453,7 +389,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
     }
 
     fetchSignatures();
-  }, [api, app]);
+  }, [api]);
 
   const handleCreateNewSignature = () => {
     setShowSignatureOptions(false);
@@ -531,10 +467,6 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
       const signedFile = new File([signedPDFBlob], file?.name || 'signed.pdf', {
         type: 'application/pdf',
       });
-      const agreementContextID =
-        localStorage.getItem('agreementContextID') || undefined;
-      const agreementContextUserID =
-        localStorage.getItem('agreementContextUserID') || undefined;
 
       // Use DocumentService for signing
       // `documentHash` is what this viewer opened. The contract refuses the
@@ -547,7 +479,6 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
         signedFile,
         agreementContextID,
         agreementContextUserID,
-        undefined,
       );
 
       if (response.error) {

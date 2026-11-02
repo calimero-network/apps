@@ -12,6 +12,27 @@ sent.** Uploading documents, placing fields and the semantic search stay on the 
 
 The pins are the `main` merge commits of swift-sdk#84 and kotlin-sdk#67.
 
+## Status: still on Calimero v1 (not ported)
+
+The contract (`../logic`) and the web app (`../app`) moved to Calimero 1.0: a
+component-SDK contract whose methods are camelCase (`signDocument`,
+`listDocuments`, …) with 64-bit values as decimal strings, workspaces as
+organizations, agreements and the personal library as app instances (`init()`
+then `setup(isPrivate, contextName)`), documents as blobs whose SHA-256 the
+contract checks, a passkey confirmation on every signature, and sign-in with
+passkeys. These two apps still use the swift-sdk / kotlin-sdk v1 session
+described below (Cloud wallet sign-in, a relay, warrants, namespaces and
+contexts, the private context's identity mapping, the v1 snake_case methods),
+so **they do not work against the ported contract**.
+
+They move when swift-sdk and kotlin-sdk carry a Calimero 1.0 client (the
+counterpart of mero-js's `CalimeroClient`: attestation, sealed requests,
+passkeys and step-ups, orgs and app instances, blobs). Their code, unit tests
+and CI (`mero-sign-ios.yml`, `mero-sign-android.yml`, which run against fakes)
+are unchanged until then. Do not run `scripts/regenerate-client.sh` against the
+new `res/abi.json`: the generated v1 clients would no longer match the session
+they are used with.
+
 ## Delegated execution only
 
 Neither app runs or logs into a node. The person signs in with their Calimero account (the wallet

@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MoreHorizontal, PenLine, Trash2 } from 'lucide-react';
-import { blobClient } from '../../lib/node';
 import { useCalimero } from '../../lib/useCalimero';
-import { defaultContextIdFor } from '../../api/defaultContextService';
-import { toBlobIdHex } from '../../lib/blobIds';
+import { saveSignature, withImages } from '../../lib/signatureLibrary';
 import { ClientApiDataSource } from '../../api/dataSource/ClientApiDataSource';
 import SignaturePadComponent from '../../components/SignaturePad';
 import { AppShell } from '../../components/shell/AppShell';
@@ -12,21 +10,7 @@ import styles from './AgreementsPage.module.css';
 // ── The signature library ────────────────────────────────────────────────────
 //
 // mero-design's Teams grid, for the drawings you sign with. They live in your
-// PRIVATE context and never leave it — which is the one thing this screen has
-// to make obvious, and previously said nowhere.
-//
-// The data flow is unchanged from the screen this replaces; only the markup is.
-
-function dataURLToBlob(dataURL: string): Blob {
-  const arr = dataURL.split(',');
-  const mimeMatch = arr[0].match(/:(.*?);/);
-  const mime = mimeMatch ? mimeMatch[1] : 'image/png';
-  const bstr = atob(arr[1]);
-  let n = bstr.length;
-  const u8arr = new Uint8Array(n);
-  while (n--) u8arr[n] = bstr.charCodeAt(n);
-  return new Blob([u8arr], { type: mime });
-}
+// personal library, an app instance only your account reaches.
 
 interface SavedSignature {
   id: string;
@@ -67,72 +51,15 @@ export default function SignaturesPage() {
         return;
       }
 
-      // ⚠️ NO ENVELOPE, NO CASTS. This used to probe `.output` then `.result`
-      // and then re-declare the row shape by hand — including
-      // `blob_id: string | number[]`, which is how the encoding bug got in.
-      // The generated client returns `SignatureRecord[]` straight from the
-      // ABI, so the shape is the contract's, not this file's guess.
+      // The images are blobs of the personal library.
       const rows = response.data ?? [];
-      if (rows.length === 0) {
-        setSignatures([]);
-        return;
-      }
-
-      // The PRIVATE context the library lives in, ensured rather than read
-      // back from storage — `localStorage.getItem('defaultContextId') || ''`
-      // is empty on a fresh session, and a blob fetch with no context is a
-      // 400 for an account. Once, not per row.
-      const contextId = await defaultContextIdFor(app);
-
-      const withImages = await Promise.all(
-        rows.map(async (sig) => {
-          let dataURL = '';
-          // ⚠️ HEX. This was `bs58.encode`, and the node answers a base58
-          // blob id with "Failed to decode blob ID (expected hex) … Odd
-          // number of digits" — which the empty catch below then swallowed.
-          // That is the whole of "my signature saved but is never displayed":
-          // the row listed, the image 500'd, and nothing said so.
-          // `blob_id` is BYTES per the ABI — `CalimeroBytes`, not a string.
-          // That divergence was the bug; the type carries it now.
-          const blobId = toBlobIdHex(
-            typeof sig.blob_id === 'string'
-              ? sig.blob_id
-              : sig.blob_id.toArray(),
-          );
-          try {
-            const blob = blobId
-              ? await blobClient.downloadBlob(blobId, contextId)
-              : null;
-            if (blob) {
-              dataURL = await new Promise<string>((resolve) => {
-                const reader = new FileReader();
-                reader.onloadend = () => resolve(reader.result as string);
-                reader.readAsDataURL(blob);
-              });
-            }
-          } catch (e) {
-            // Still lists as a named row — a library that hides a signature
-            // because its image would not load is worse. But it is REPORTED
-            // now: silence here is what let the encoding bug live.
-            console.error(`Could not load signature image ${blobId}:`, e);
-          }
-          return {
-            id: String(sig.id),
-            name: sig.name,
-            dataURL,
-            createdAt: new Date(
-              Number(sig.created_at) / 1_000_000,
-            ).toLocaleDateString(),
-          };
-        }),
-      );
-      setSignatures(withImages);
+      setSignatures(await withImages(api, rows));
     } catch {
       setSignatures([]);
     } finally {
       setLoading(false);
     }
-  }, [api, app]);
+  }, [api]);
 
   useEffect(() => {
     void fetchSignatures();
@@ -153,30 +80,7 @@ export default function SignaturesPage() {
       setSaving(true);
       setError(null);
       try {
-        const blob = dataURLToBlob(signatureData);
-        const file = new File([blob], 'signature.png', { type: blob.type });
-        // The PRIVATE context: a signature is yours and is announced
-        // nowhere else. `''` would store it on this node with no context at
-        // all — a different thing from "my own context" — and a relay
-        // refuses an account's blob without one. Ensured, not read back.
-        const contextId = await defaultContextIdFor(app);
-        const uploaded = await blobClient.uploadBlob(file, () => {}, contextId);
-        if (uploaded.error || !uploaded.data?.blobId) {
-          throw new Error(uploaded.error?.message ?? 'Upload failed');
-        }
-        // ⚠️ HEX, verbatim. This was converted to base58, which is what made
-        // every saved signature unreadable on the way back out.
-        const blobId = toBlobIdHex(uploaded.data.blobId);
-        if (!blobId) {
-          throw new Error(
-            `The node returned a blob id this app cannot use: ${uploaded.data.blobId}`,
-          );
-        }
-        await api.createSignature(
-          `Signature ${signatures.length + 1}`,
-          blobId,
-          file.size,
-        );
+        await saveSignature(api, signatureData, `Signature ${signatures.length + 1}`);
         await fetchSignatures();
       } catch (e) {
         // Was swallowed entirely: a failed save closed the pad and left the
@@ -190,7 +94,7 @@ export default function SignaturesPage() {
         setPadOpen(false);
       }
     },
-    [api, app, signatures.length, fetchSignatures],
+    [api, signatures.length, fetchSignatures],
   );
 
   const remove = useCallback(async () => {
@@ -211,7 +115,7 @@ export default function SignaturesPage() {
           <h1 className={styles.title}>Your signatures</h1>
           <p className={styles.subtitle}>
             The drawings you sign documents with. They are stored in your own
-            private context and never leave your node.
+            personal library, which only your account can open.
           </p>
         </header>
 

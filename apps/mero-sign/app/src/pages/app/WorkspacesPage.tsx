@@ -13,15 +13,10 @@ import {
   Layers,
   MoreHorizontal,
   Plus,
-  Server,
   UserPlus,
 } from 'lucide-react';
 
 import { AppShell } from '../../components/shell/AppShell';
-import {
-  NOT_INSTALLED_MESSAGE,
-  useApplicationId,
-} from '../../hooks/useApplicationId';
 import {
   getActiveWorkspace,
   pickResumeWorkspace,
@@ -30,12 +25,12 @@ import {
 import {
   createWorkspace,
   listWorkspaces,
+  mintWorkspaceInvite,
   type WorkspaceRow,
 } from '../../lib/agreements';
-import { encodeInvite } from '../../lib/inviteCodec';
 import { invitationUrl } from '../../lib/inviteLink';
+import { describeError } from '@calimero-apps/connect';
 import { hueOf, initials } from '../../lib/monogram';
-import { adminApi, apiClient } from '../../lib/node';
 import { useCalimero } from '../../lib/useCalimero';
 import styles from './AgreementsPage.module.css';
 
@@ -88,11 +83,8 @@ export default function WorkspacesPage({
   // does. See the load effect.
   const { key: navigationKey } = useLocation();
   const { app } = useCalimero();
-  const {
-    applicationId,
-    loading: idLoading,
-    notInstalled,
-  } = useApplicationId();
+  // One log serves every node: nothing to install or resolve first.
+  const idLoading = false;
 
   const [rows, setRows] = useState<WorkspaceRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -110,14 +102,14 @@ export default function WorkspacesPage({
   const menuRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
-    if (!applicationId) {
+    if (!app) {
       setRows([]);
       setLoading(false);
       return;
     }
     setLoading(true);
     try {
-      setRows(await listWorkspaces(adminApi(), applicationId));
+      setRows(await listWorkspaces(app));
       setBanner(null);
     } catch (error) {
       setRows([]);
@@ -131,7 +123,7 @@ export default function WorkspacesPage({
     } finally {
       setLoading(false);
     }
-  }, [applicationId]);
+  }, [app]);
 
   // Keyed on the navigation too: the invitation prompt lives above the routes
   // and lands the joiner by navigating, so a join that lands here has to
@@ -182,40 +174,14 @@ export default function WorkspacesPage({
 
   const create = useCallback(async () => {
     const name = newName.trim();
-    if (!name || !applicationId) return;
+    if (!name || !app) return;
     setCreating(true);
     setBanner(null);
     try {
-      // The creator's own account, so `createWorkspace` can give them the
-      // admin mask explicitly. Without it the node reports the DEFAULT
-      // capabilities for the creator — which were just set to the signer mask
-      // — and the person who made the workspace cannot put an agreement in it.
-      const identity = await apiClient.node().createNewIdentity();
-      const created = await createWorkspace(
-        adminApi(),
-        { applicationId, name, accountId: identity.data?.accountId ?? null },
-        setStatus,
-      );
+      const created = await createWorkspace(app, name, setStatus);
       setNewName('');
       setStatus('');
       setActiveWorkspace(created.namespaceId);
-      if (created.haError) {
-        // Founded, but the cloud is not hosting it — for an account that is
-        // "this account is not linked to a cloud user yet". Said NOW, where
-        // the person can act on it, rather than at invite time as a bare
-        // "not hosted". Staying on this screen is what keeps the sentence
-        // on the screen; the new workspace is in the list below it. The
-        // banner is set AFTER the reload, which clears it on success.
-        await load();
-        setBanner({
-          kind: 'notice',
-          text:
-            `"${name}" was created, but invitations to it will not work ` +
-            `yet: ${created.haError}. Link this account to your cloud ` +
-            'user in the wallet before inviting anyone.',
-        });
-        return;
-      }
       navigate(`/workspaces/${created.namespaceId}`);
     } catch (error) {
       setStatus('');
@@ -229,55 +195,28 @@ export default function WorkspacesPage({
     } finally {
       setCreating(false);
     }
-  }, [applicationId, load, navigate, newName]);
+  }, [app, navigate, newName]);
 
   const invite = useCallback(async (row: WorkspaceRow) => {
     setInviteFor(row);
     setInviteLink('');
     setMinting(true);
     try {
-      const res = await apiClient
-        .node()
-        .contextInviteByOpenInvitation(row.namespaceId);
-      if (res.error || !res.data) {
-        throw new Error(res.error?.message ?? 'The node minted no invitation.');
-      }
-      // `encodeInvite` unwraps the admin-api envelope itself; the workspace
-      // name rides alongside so the recipient's prompt can say what they are
-      // being invited to before they commit. It is outside the signature and
-      // is treated as a display hint on the other side.
-      const code = encodeInvite({
-        invitation: res.data as never,
-        workspaceName: row.name,
-      });
-      setInviteLink(invitationUrl(code));
+      // An org invite, approved with this account's passkey (a step-up).
+      if (!app) throw new Error('Sign in first.');
+      setInviteLink(invitationUrl(await mintWorkspaceInvite(app, row.namespaceId)));
     } catch (error) {
       setInviteFor(null);
       setBanner({
         kind: 'error',
-        text:
-          error instanceof Error
-            ? error.message
-            : 'Could not mint an invitation.',
+        text: `Could not mint an invitation: ${describeError(error)}`,
       });
     } finally {
       setMinting(false);
     }
-  }, []);
+  }, [app]);
 
   const body = useMemo(() => {
-    if (notInstalled) {
-      return (
-        <div className={styles.emptyState}>
-          <span className={styles.emptyIcon}>
-            <Server size={24} />
-          </span>
-          <p className={styles.empty} data-testid="not-installed">
-            {NOT_INSTALLED_MESSAGE}
-          </p>
-        </div>
-      );
-    }
     if (loading || idLoading) {
       return (
         <div className={styles.skeletonGrid} aria-label="Loading…">
@@ -397,7 +336,6 @@ export default function WorkspacesPage({
     invite,
     loading,
     menuOpenId,
-    notInstalled,
     open,
     rows,
   ]);
@@ -450,7 +388,7 @@ export default function WorkspacesPage({
             <button
               className={styles.btn}
               onClick={() => void create()}
-              disabled={creating || !newName.trim() || !applicationId}
+              disabled={creating || !newName.trim() || !app}
               data-testid="create-workspace"
             >
               {creating ? <span className={styles.spinner} /> : null}
@@ -477,7 +415,7 @@ export default function WorkspacesPage({
             screen (and in the rail), where a document is about to be signed.
 
             The DATA is unchanged and deliberately so: a signature is stored
-            in this node's own private context and is the same drawing in
+            in your own personal library and is the same drawing in
             every workspace. Scoping the store per workspace would mean
             re-drawing your signature for each team, which is not what a
             signature is. Only the way in moved. */}
@@ -500,7 +438,7 @@ export default function WorkspacesPage({
             </h2>
             <p className={styles.modalDesc}>
               Anyone with this link can join the workspace and its agreements.
-              The node expires it after 24 hours.
+              It expires after 24 hours.
             </p>
             {minting ? (
               <p className={styles.empty}>

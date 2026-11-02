@@ -1,256 +1,127 @@
 # MeroSign
 
-**MeroSign** is a privacy-first e-signature platform built on **Calimero**.  
-It empowers users on independent nodes to securely collaborate and sign PDF contracts peer-to-peer,  
-all without centralized servers or intermediaries.
+Document signing on [Calimero](https://calimero.network) 1.0: upload a PDF,
+collect signatures from the people in your workspace, and check that the copy
+you hold is the one everybody signed.
 
----
+- **Contract** (`logic/`): core's **component SDK** (`calimero-app-sdk`, a
+  `calimero:app` WebAssembly component, `wasm32-wasip2`), pinned at core
+  `1.0.0-rc.8`.
+- **Frontend** (`app/`): Vite + React on mero-js's `CalimeroClient` through
+  `@calimero-apps/connect`: `merod local` in development, Calimero Cloud in
+  production.
+- **Mobile** (`mobile/`): native iOS and Android apps, still on the v1 SDKs
+  (see [mobile/README.md](mobile/README.md): they cannot reach the ported
+  contract yet).
 
-## Live Application
+## The model
 
-🔗 [MeroSign App](https://mero-sign-eta.vercel.app)
+| | what it is |
+|---|---|
+| **Workspace** | an organization (`createOrg`), marked `{ kind: "mero-sign:workspace" }`. The people you sign with; invitations are to a workspace. |
+| **Agreement** | an app instance in the workspace's org, set up with `setup(isPrivate: false, name)`. Its creator is its first Admin. |
+| **Participant** | an account in the agreement at `Admin`, `Sign` or `Read`. Opening an agreement registers you as `Sign` (`registerSelfAsParticipant`) unless an admin removed you. |
+| **Document** | a PDF uploaded as a **blob** of the agreement, recorded with its SHA-256 (which *is* the blob id, and the contract checks it). Everybody holding `Sign` or `Admin` at upload must sign it. |
+| **Signature** | a new PDF with the signer's mark, uploaded as a blob, recorded as one row `(document, signer)` made from the version it was signed on. A **passkey confirmation** approves each one. |
+| **Personal library** | an app instance with no org (only its owner reaches it), set up with `setup(isPrivate: true, "default")`: your saved signature images (blobs) and bookmarked agreements. |
+| **Invitation** | an org invite (`client.invite`, approved with your passkey, 24 h), as a link `?invite=<token>&agreement=<app id>`; redeemed after sign-in, landing in the agreement it names. |
 
----
-
-## Project Overview & Current Status
-
-### Default Context (User’s Private Workspace)
-
-- Each user creates a **private default context** on their node.
-- This context stores:
-  - The user’s **signature library**
-  - A list of **agreements** (shared contexts) the user belongs to
-
-### Creating or Joining Agreements
-
-- **Create Agreement**: A user creates a new shared context, names it, and becomes the Admin. The name is written into the agreement's own contract state, so it replicates — it is not a label in one browser.
-- **Invite Collaborators**: two ways, both from the agreement screen.
-  - **Shareable link** — an open invitation, valid 24 hours, anybody holding the link may redeem it:
-    `https://links.calimero.network/com.calimero.mero-sign/join?invitation=<code>`.
-    It opens the desktop app on a device that has it and the web app otherwise. A `calimero://` deep link and the bare code are offered alongside it for the desktop and for pasting into another mero app.
-  - **Invite one person** — a targeted invitation minted for a named Calimero identity, with a permission assigned up front.
-- **Join Agreement**: open the link someone sent you; the app asks before it joins. The joiner is **not** asked to name the agreement: the name comes from the agreement's replicated contract state, so every node shows what the creator typed.
-
-### Shared Context Workflow
-
-- Multiple users across nodes join a **shared context**.
-- Within the shared agreement:
-  - Users **upload PDFs**
-  - Members can **view or sign**, according to their permissions
-  - Access remains restricted to invited participants—**no third parties have access**
-
-### Roles
-
-Every participant holds one of three levels, stored in the agreement's own
-contract state and keyed by **account** (so the same person on a second machine
-keeps their role):
-
-| Level   | What it allows                                                                 |
-| ------- | ------------------------------------------------------------------------------ |
-| `Read`  | Open the agreement and read its documents.                                     |
-| `Sign`  | Upload documents and sign them. What redeeming an invitation gives you.        |
-| `Admin` | Everything a signer can do, plus deleting documents and managing participants. |
-
-The agreement's creator is its first `Admin`. An admin can change anyone's
-level, up or down, from the participants panel, or remove them; the last admin
-cannot step down. Levels are grants in an `AccessControl` registry that only
-admins can write, so every node refuses a member who writes one for themselves,
-and a demotion converges like a promotion. Redeeming an invitation registers you
-as a signer in your own `UserStorage` slot; an admin's removal outranks it.
-
-### Signing
-
-A signature is recorded for the **caller's account**. There is no signer
-parameter — `sign_document`, `set_consent` and `mark_participant_signed` all
-take only the document — and on every other node the signer is the signature
-entry's owner stamp, so nobody can write a signature in someone else's name.
-
-To sign you must be a participant holding `Sign` or `Admin`, and you must have
-consented to that document yourself (consents live in your own `UserStorage`
-slot). The document names who must sign it when it is uploaded — every
-participant holding `Sign` or `Admin` then — and becomes `FullySigned` once all
-of them have. That is terminal: a completed document takes no more signatures,
-and nobody who joins later reopens it.
-
-**Nothing is overwritten.** The uploaded document is written once
-(`ModeratedOnce`: only an admin can remove it). Each signature is a write-once
-entry recording the version it signed (`base_hash`), the version it produced
-(`new_hash`) and that version's PDF blob. The document's current version is the
-end of that chain, and its status is derived from it on every read. A signer who
-built on a stale version is refused; if two signers race on the same version,
-every node keeps the same one on the document and the other signs again.
-
-### Signature Library
-
-Each user can maintain a **personal signature library** within their private default context. This feature allows users to:
-
-- **Create and Store Signatures**: Users can draw their digital signatures securely within their private workspace
-- **Reuse Signatures**: Once created, signatures can be applied to multiple documents without recreating them
-- **Privacy-First Storage**: All signatures remain stored locally on the user's node—never exposed to external parties
-- **Quick Access**: Stored signatures are readily available when signing documents, streamlining the signing process
-
-The signature library ensures both convenience and security, allowing users to maintain consistent digital signatures while preserving complete privacy and control over their signing credentials.
-
-### PDF Upload & Signing
-
-- When a PDF is uploaded to the context, it is stored securely within the Calimero node
-- After signing:
-  - The **signed PDF** is saved back into the context
-  - All documents remain encrypted and private within the user's Calimero context
-- Document verification and integrity features will be available with future Calimero-based implementations
-
-### AI Legal Chatbot
-
-An AI-powered legal chatbot feature is planned for future implementation using Calimero-based services. This feature will:
-
-- Generate embeddings for uploaded documents and store them securely on the Calimero node
-- Provide document analysis, question-answering, and summarization capabilities
-- Maintain complete privacy by processing data locally on Calimero nodes
-- Ensure all document content remains encrypted and never exposed to external parties
-
-_Note: This feature is currently under development and will be available in a future release._
-
-### Audit Trail
-
-An audit trail feature for tracking user actions is planned for future implementation using Calimero-based services. This will provide:
-
-- **Document Upload Tracking**: Record when documents are uploaded to a context
-- **User Consent Logging**: Track explicit consent given before document signing
-- **Signing Event Recording**: Log signing events with timestamps and user identities
-
-_Note: This feature is currently under development and will be available in a future release._
-
----
-
-## Workflow Flowchart
-
-<p align="center">
-  <img src="assets/MeroSign_Dark.png" alt="MeroSign Workflow" width="700"/>
-</p>
-<p align="center">
-  <img src="assets/Legal_Chatbot_dark.png" alt="Legal Chatbot" width="700"/>
-</p>
-
----
-
-## Features Overview
-
-| Feature                    | Description                                                                        |
-| -------------------------- | ---------------------------------------------------------------------------------- |
-| Private Context            | Local workspace per user for signature library and agreement list.                 |
-| Agreement Creation         | Create a shared context; you become its administrator.                             |
-| Invitation System          | Shareable Calimero invite links, plus targeted payloads tied to an identity.       |
-| Join Agreement             | Open the link; the app asks first, and the agreement keeps its creator's name.     |
-| Roles                      | Read / Sign / Admin, keyed by account; admins can promote and remove.              |
-| Signing                    | The signer is the caller's account; no client can name who signed.                 |
-| Collaborative PDF Workflow | Users upload, view, and sign PDFs based on assigned roles in context.              |
-| Document Storage           | All documents stored securely and encrypted within Calimero contexts.              |
-| Signature Library          | Personal signature library stored in user's private default context.               |
-| AI Legal Chatbot           | _Coming soon_ - Privacy-preserving chatbot for document analysis (Calimero-based). |
-| Audit Trail                | _Coming soon_ - Comprehensive audit logging (Calimero-based).                      |
-| End‑to‑End Privacy         | Documents are never exposed outside Calimero if not explicitly shared.             |
-
----
-
-## Tutorial: App Setup
-
-### Logic
-
-```bash title="Terminal"
-cd logic
-```
-
-```bash title="Terminal"
-chmod +x ./build.sh
-```
-
-```bash title="Terminal"
-./build.sh
-```
-
-### Canister
-
-For detailed canister setup and deployment, see `merosign_registry/BUILD.md`.
-
-Set up your environment variables as needed for your Calimero deployment.
-
----
-
-### App
-
-```bash title="Terminal"
-cd app
-```
-
-```bash title="Terminal"
-pnpm install
-```
-
-```bash title="Terminal"
-pnpm build
-```
-
-```bash title="Terminal"
-pnpm dev
-```
-
-Open the app in your browser and connect to your running node.
-
-The app will be deployed and accessible at: [http://localhost:5173/](http://localhost:5173/)
-
----
-
-### Initial Application Context Initialization
-
-To initialize your application context, run:
+## Run it
 
 ```bash
-cargo run -p meroctl -- --node nodeX context create --application-id <APP_ID> --params '{"is_private": true,"context_name": "default"}'
+# merod at core 1.0.0-rc.8, once:
+curl -fsSL https://github.com/calimero-network/core/releases/download/1.0.0-rc.8/merod_x86_64-unknown-linux-gnu.tar.gz | tar xz
+
+pnpm dev:local mero-sign      # merod local + build + deploy + the dev server on http://localhost:5173/
 ```
 
-Replace `<APP_ID>`, `nodeX`, and other parameters as needed for your deployment.
+Sign up with a passkey, create a workspace, an agreement, upload a PDF and
+sign it. For a second signer, open the workspace's invitation link in another
+browser profile.
 
----
+## Test it
 
-## Technical Implementation Details
+```bash
+M=tools/component-bundle/Cargo.toml
+cargo test --manifest-path apps/mero-sign/logic/Cargo.toml        # TestApp harness + scenarios
+cargo run --release --manifest-path $M -- build apps/mero-sign/logic   # res/mero_sign.wasm + res/abi.json
+pnpm merod-local e2e mero-sign                                     # the scenarios on merod local
+pnpm -F mero-sign lint typecheck test build
+```
 
-**Calimero-Based Contexts**
+- `logic/tests/harness.rs`: every method on core's real wasmtime engine
+  (`TestApp`): setup, the library, participants and levels, upload, consent,
+  signing (confirmation, stale versions, repeats, completion), deletion and
+  blob retention, download grants, search, bounds, and the node's own checks.
+- `logic/scenarios/*.json`: `agreement` (the old merobox two-node workflow:
+  a second signer joins, signs; a stale copy is refused; fully signed; delete),
+  `library` (the personal context), `access` (every write rule v1 kept in
+  storage, as a refused call). The blobs a scenario needs are listed in its
+  `.org.json` under `"blobs"` and uploaded before the first step, in the
+  harness and on the cluster.
+- `app/src/lib/meroSign.test.ts`: the wrapper's method list, confirmations and
+  parameter names are exactly the committed `logic/res/abi.json`'s;
+  `screens.test.tsx` and the `lib`/`api` tests run the screens and the adapter
+  against a mocked client.
 
-- User-specific default context stores local signatures and membership.
-- Shared contexts are created or joined via invitation links (open invitations) or targeted invite payloads.
-- An agreement's name lives in its contract state (`context_name`), which is why it is the same on every node.
-- All interactions (invite, upload, sign) use Calimero RPC and encryption.
-- Documents are stored encrypted within Calimero contexts, ensuring complete privacy.
+## What changed in the port, and why
 
-**Future Enhancements**
+The methods, their arguments and the events are v1's where the new runtime
+allows. What a client sees differently:
 
-- Document verification and integrity features will be implemented using Calimero-based services
-- AI Legal Chatbot will use Calimero-native AI services for document analysis
-- Audit trail functionality will be built on Calimero's logging and verification capabilities
+| | v1 (`calimero-sdk`, wasmer) | now (component SDK) | why |
+|---|---|---|---|
+| method names | `upload_document`, `sign_document`, … | `uploadDocument`, `signDocument`, … (arguments too: `pdfBlobIdStr`, `fileSize`, …) | the ABI is camelCase |
+| `init(is_private, context_name)` | arguments to `init` | `init()`, then `setup(isPrivate, contextName)` once, by the app's owner (`AlreadySetUp`, `Forbidden`); before it, `NotSetUp` | the runtime runs `init` with no arguments |
+| ids | 32-byte arrays (`UserId`, `BlobId`, `ContextId`) | strings: account ids, app ids, blob ids as 64 hex | accounts and apps are the node's |
+| u64 values | JSON numbers (`size`, `created_at`, signature ids) | decimal strings (`"2048"`) | no precision loss in JSON |
+| times | nanoseconds | milliseconds | the runtime's clock |
+| signature ids | random 53-bit numbers | `"1"`, `"2"`, … from a counter | one log orders every write, so a counter cannot collide |
+| `list_signatures`, `list_joined_contexts`, `list_documents` | every entry | one page: `{ items, next }` (`cursor`, `limit` ≤ 1,000, 100 by default); the frontend follows `next` | multi-row reads are pages |
+| `join_shared_context(context_id, shared_identity, name)` | three arguments | `joinSharedContext(contextIdStr, contextName)`: the bookmark of an app id | one account is the same identity in every app |
+| `get_identity_mapping`, `get_shared_identity`, `resolve_private_identity` | v1's per-context identities | **removed** | there is nothing to map: no per-context identity exists |
+| `ContextMetadata` | `private_identity`, `shared_identity` | not stored (the frontend fills both with the account) | same |
+| `get_context_details(context_id)` | `created_at` was the read's own clock | `contextIdStr` optional and ignored (the app answers for itself); `createdAt` is when `setup` ran | |
+| `upload_document` | any `hash` | `hash` must be the PDF's SHA-256, i.e. the blob id (`HashMismatch`); the blob must exist (`BlobNotFound`) and hold `fileSize` bytes (`Invalid`); search content bounded (≤ 2,048 dims, 64 KiB text, 200 chunks) | documents are blobs; one value is rewritten whole, so bounds |
+| `sign_document` | consent, then sign | consent, then sign **with a passkey confirmation** (`#[app::confirm]`, `412 CONFIRM_REQUIRED` without one); `newHash` must be the new blob's SHA-256 | a signature is the act a fresh confirmation is for |
+| two signers on one version | a fork, settled by a rule on every node | the second is refused (`StaleVersion { current }`) | one log orders them |
+| a signer later demoted | their signature dropped from the chain | it stays | a signature is a fact about the past |
+| `mark_participant_signed` | a call that wrote nothing | a view | it writes nothing |
+| participants | unlimited | at most 256 per agreement (`Conflict`) | bounds every per-call read and a document's signer list |
+| `add_participant` | any key | an account the workspace holds (`NotFound` otherwise); permission `"Read"`/`"Sign"`/`"Admin"` (`Invalid` otherwise) | accounts are the org's |
+| `set_consent` | anyone, any id | participants only, an existing document | consents are kept per document and deleted with it |
+| reading documents, signatures, search | any context member | participants only (`Forbidden`); `getContextDetails`, `whoami`, `getUserPermission`, `listParticipants`, `hasConsented` stay open to anyone the app reaches | an org member who never joined, or was removed, does not read the documents |
+| errors | a string | `422 APP_ERROR` `{ code, fields }`: `Forbidden`, `NotFound`, `Invalid`, `Conflict`, `WrongContext`, `ConsentRequired`, `StaleVersion`, `BlobNotFound`, `HashMismatch`, `NotSetUp`, `AlreadySetUp`; `fields.message` is v1's text | `#[app::error]` |
+| events | `UserId` arrays, snake_case fields, `ParticipantInvited` declared | account strings, camelCase fields; the library's reach its owner, an agreement's everyone the app reaches (guests included); `ParticipantInvited` dropped (never emitted) | |
+| new | | `getDocumentStatus` (status, current hash, signature count), `documentDownload` (current blob, hash, size, a one-hour download grant) | a status poll without timestamps; grants for signers |
+| `DocumentInfo` | `embeddings`, `extracted_text`, `chunks` (always `None` in lists) | dropped from the answer; `originalHash` added | they were never filled in a list |
 
----
+v1 kept its write rules in storage (`Frozen`, `AccessControl`, `UserStorage`,
+`ModeratedOnce`, `WriteOnce`) because a member running a modified node could
+write around the methods. Under one log every write goes through a method, so
+each rule is a check against `env::caller()` before anything is written; the
+table in `logic/src/lib.rs` lists them and `scenarios/access.json` refuses each
+forged write.
 
-## Security & Privacy Assurance
+**Removed:** the merobox workflows (`logic/workflows/`) and probes,
+`src/tests.rs` (`TestHost`), `res/state-schema.json`, the generated
+`MeroSignClient`, mero-react's provider and join-sync, the node login, the
+desktop SSO hand-off, the v1 invitation codec and deep links, the admin-API
+namespace/subgroup/context plumbing, the Playwright browser, journey and live
+e2e suites that drove merobox, and their entry in
+`scripts/merobox-coverage-baseline.json`.
 
-- All documents remain encrypted within Calimero contexts.
-- No files ever leave user nodes—complete end-to-end privacy.
-- Access to documents is strictly permissioned, ensuring privacy and control.
-- All data processing happens locally on Calimero nodes.
-- Future AI features will maintain the same privacy-first approach, processing data entirely within Calimero infrastructure.
+**Not available yet (rc.8):** nothing this app uses is missing. The legal
+assistant's retrieval (`searchDocumentByEmbedding`, a cosine search over
+stored chunks) is ported; its answer generation never existed on v1 either,
+so the assistant stays hidden (`LEGAL_ASSISTANT_ENABLED`). The contract makes
+**no outbound HTTP** and declares no `outbound` hosts: an operator configures
+no hosts and no secrets for it.
 
----
+## Production
 
-## Owned keys are per owner (core 0.11.0-rc.57)
-
-Since core 0.11.0-rc.57 every owned collection (`Authored…`, `WriteOnce`, `Moderated`,
-`ModeratedOnce`) is one namespace per account: two accounts writing one key hold two
-independent entries, and a key-only `get`, `contains`, `owner_of`, `owned_by_me` or `remove`
-acts on the CALLER's own entry only. This app was migrated:
-
-- A document is read through the entry of the **lowest account** holding its id
-  (ids are random, so a second holder only exists if a patched node copied one), and
-  `uploaded_by` names that account.
-- A document's signatures are read per key with every holder's account (`entries_at`):
-  the signer is the entry's owner stamp, as before.
-- `delete_document` removes every holder's entry with `remove_by`; a key-only `remove`
-  would remove only the admin's own.
+The production frontend is the one packed into the bundle (`frontend-dir`),
+served by the cluster from the package's origin: a Cloud node trusts passkey
+ceremonies only there. Build it with `VITE_CALIMERO_CLUSTER` and
+`VITE_CALIMERO_MIN_RELEASE` set (`app/.env.example`). Agreements and libraries
+are created from the package `com.calimero.mero-sign`.

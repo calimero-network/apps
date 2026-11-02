@@ -1,7 +1,12 @@
-import { isServedByNode, nodeBasename as basename } from '@calimero-apps/node-served';
+/**
+ * The app's base path: `/` on the dev server, the node's `/{version}/` where
+ * the cluster serves the bundle's frontend (the build is relative,
+ * `base: './'`). Ends with `/`.
+ */
+export function basename(pathname: string = window.location.pathname): string {
+  const match = /^\/\d+\.\d+\.\d+[^/]*\//.exec(pathname);
+  return match ? match[0] : '/';
+}
 
-export const SERVED_BY_NODE = isServedByNode(new URL(window.location.href));
-
-// Router basename with a trailing slash: `/<version>/` on a node, else `/`.
-const BASE = basename(new URL(window.location.href), '/');
+const BASE = basename();
 export const nodeBasename = (): string => BASE;

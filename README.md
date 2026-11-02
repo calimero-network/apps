@@ -87,7 +87,7 @@ Start here. These exist to be read, not shipped.
 | App | Live | What it is | Package |
 | --- | --- | --- | --- |
 | [mero-pass](apps/mero-pass) | [↗](https://mero-pass.vercel.app) | Secret manager — a vault is a context. Credentials stay on member nodes, versioned and attributed, with no master password to phish. | `com.calimero.mero-pass` |
-| [mero-sign](apps/mero-sign) | [↗](https://mero-sign.vercel.app) | Document signing — upload a PDF, collect signatures from namespace members, verify them peer-to-peer. | `com.calimero.mero-sign` |
+| [mero-sign](apps/mero-sign) | [↗](https://mero-sign-eta.vercel.app) | Document signing on Calimero 1.0 (component SDK): PDFs as blobs, a signer per row, passkey-confirmed signatures, workspaces as organizations; frontend on mero-js `CalimeroClient`. | `com.calimero.mero-sign` |
 | [mero-vote](apps/mero-vote) | — | Private polls with verifiable tallies — ballots encrypted in the browser (ElGamal on ristretto255) with zero-knowledge well-formedness proofs, t-of-n threshold-decrypted totals (distributed key generation, no trusted dealer), and a tally every member re-verifies. | `com.calimero.mero-vote` |
 
 ### Games
