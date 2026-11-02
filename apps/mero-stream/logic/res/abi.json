@@ -270,6 +270,14 @@
       "name": "cell",
       "nextSeq": "counter"
     },
+    "search": {
+      "chunkCursors": [],
+      "chunks": [],
+      "fragments": [],
+      "members": [],
+      "name": [],
+      "nextSeq": []
+    },
     "version": 1
   },
   "world": "calimero:app@0.5.0"
