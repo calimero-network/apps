@@ -15,26 +15,6 @@ The SDK pins are the `main` merge commits of those app-session PRs. To bump them
 `revision:` in `ios/project.yml` and `ios/PassCore/Package.swift` (keep the two identical), and
 `android/kotlin-sdk.ref`.
 
-## Status: still on Calimero v1 (not ported)
-
-The contract (`../logic`) and the web app (`../app`) moved to Calimero 1.0: a
-component-SDK contract whose methods are camelCase (`addSecret`,
-`listSecrets`, …) with 64-bit times as decimal strings, teams as
-organizations, vaults as app instances, sign-in with passkeys, and every node
-attested before a request is sealed to it. These two apps still use the
-swift-sdk / kotlin-sdk v1 session described below (Cloud wallet sign-in, a
-relay, warrants, namespaces and contexts, `init(name)`, the v1 snake_case
-methods), so **they do not work against the ported contract**.
-
-They move when swift-sdk and kotlin-sdk carry a Calimero 1.0 client (the
-counterpart of mero-js's `CalimeroClient`: attestation, sealed requests,
-passkeys, orgs and app instances). Their code, unit tests and CI
-(`mero-pass-ios.yml`, `mero-pass-android.yml`, which run against fakes and the
-shared crypto vectors) are unchanged until then. The crypto is unchanged by the
-port, so a ported app will open the same vaults: `test-vectors/` still holds.
-Do not run `scripts/regenerate-client.sh` against the new `res/abi.json`: the
-generated v1 clients would no longer match the session they are used with.
-
 ## Delegated execution only
 
 Neither app runs or logs into a node. Both are built on the SDKs' `MeroAppSession`: the person

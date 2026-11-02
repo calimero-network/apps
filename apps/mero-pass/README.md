@@ -242,7 +242,7 @@ app/                React + Vite frontend
   src/lib/          deviceKey, recoveryKey, totp, health, portability, shareLink
                     (crypto and vaultSession live in packages/mero-pass, shared with mero-bot)
   src/pages/        landing, teams, team, vault, security, share
-mobile/             native iOS and Android apps, still on Calimero v1 (see mobile/README.md)
+mobile/             native iOS and Android apps (their Calimero 1.0 port is #699; see mobile/README.md)
 ```
 
 ## Develop
@@ -341,5 +341,6 @@ The frontend changed with it:
 - **Same:** every screen, the crypto, the vault session, device approval,
   recovery keys, rotation, share links, import/export, health, TOTP.
 
-The native mobile apps (`mobile/`) are unchanged and still speak v1: see
-[mobile/README.md](mobile/README.md).
+The native iOS and Android apps (`mobile/`) move to Calimero 1.0 in their own
+PR, #699, against this contract's component ABI; it depends on this port and
+lands right after it.
