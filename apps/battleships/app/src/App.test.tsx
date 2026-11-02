@@ -36,13 +36,16 @@ const STATE = {
 function views(method: string): unknown {
   switch (method) {
     case 'getPlayers':
-      return [
-        { account: 'acct-alice', player: 'acct-alice' },
-        { account: 'acct-bob', player: 'acct-bob' },
-      ];
+      return {
+        items: [
+          { account: 'acct-alice', player: 'acct-alice' },
+          { account: 'acct-bob', player: 'acct-bob' },
+        ],
+        next: null,
+      };
     case 'getMatches':
     case 'getHistory':
-      return [];
+      return { items: [], next: null };
     case 'getMatchState':
       return STATE;
     case 'getShots':

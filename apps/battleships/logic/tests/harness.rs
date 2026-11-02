@@ -228,7 +228,9 @@ fn placed() -> Game {
 fn summary(g: &mut Game) -> Value {
     let id = g.id.clone();
     let all = g.t.as_(CAROL).view("getMatches", json!({})).unwrap();
-    all.as_array()
+    assert_eq!(all["next"], Value::Null, "one page");
+    all["items"]
+        .as_array()
         .expect("matches")
         .iter()
         .find(|m| m["match_id"] == json!(id))
@@ -275,11 +277,14 @@ fn players_register_themselves_once() {
     let players = g.t.as_(CAROL).view("getPlayers", json!({})).unwrap();
     assert_eq!(
         players,
-        json!([
-            { "account": BOB, "player": BOB },
-            { "account": GUEST, "player": GUEST },
-            { "account": ALICE, "player": ALICE },
-        ])
+        json!({
+            "items": [
+                { "account": BOB, "player": BOB },
+                { "account": GUEST, "player": GUEST },
+                { "account": ALICE, "player": ALICE },
+            ],
+            "next": null,
+        })
     );
     let updates =
         g.t.events_for(CAROL)
@@ -316,10 +321,94 @@ fn a_finished_match_counts_once_in_history_and_stats() {
     );
     assert_eq!(stats(&mut g, CAROL), Value::Null);
     let history = g.t.as_(CAROL).view("getHistory", json!({})).unwrap();
+    assert_eq!(history["next"], Value::Null);
+    let history = history["items"].clone();
     assert_eq!(history.as_array().expect("history").len(), 1);
     assert_eq!(history[0]["match_id"], json!(g.id));
     assert_eq!(history[0]["winner"], json!(ALICE));
     assert_eq!(history[0]["loser"], json!(BOB));
+}
+
+#[test]
+fn lobby_views_answer_one_page_and_follow_the_cursor() {
+    let mut g = game();
+    g.t.as_(GUEST).call("registerPlayer", json!({})).unwrap();
+    let mut seen = Vec::new();
+    let mut cursor = Value::Null;
+    loop {
+        let mut args = json!({ "limit": 1 });
+        if !cursor.is_null() {
+            args["cursor"] = cursor.clone();
+        }
+        let page = g.t.as_(CAROL).view("getPlayers", args).unwrap();
+        let items = page["items"].as_array().expect("items").clone();
+        assert!(items.len() <= 1, "limit 1: {page}");
+        seen.extend(items.into_iter().map(|p| p["account"].clone()));
+        cursor = page["next"].clone();
+        if cursor.is_null() {
+            break;
+        }
+    }
+    assert_eq!(seen, vec![json!(BOB), json!(GUEST), json!(ALICE)]);
+
+    // A second match: both reads page the same way.
+    g.t.advance(1_000);
+    g.t.as_(BOB)
+        .call("createMatch", json!({ "player2": ALICE }))
+        .unwrap();
+    let first =
+        g.t.as_(CAROL)
+            .view("getMatches", json!({ "limit": 1 }))
+            .unwrap();
+    assert_eq!(first["items"].as_array().unwrap().len(), 1);
+    let rest =
+        g.t.as_(CAROL)
+            .view(
+                "getMatches",
+                json!({ "cursor": first["next"], "limit": 1000 }),
+            )
+            .unwrap();
+    assert_eq!(rest["items"].as_array().unwrap().len(), 1);
+    assert_eq!(rest["next"], Value::Null);
+    assert_ne!(first["items"][0]["match_id"], rest["items"][0]["match_id"]);
+    // A limit over 1,000 is read as 1,000, never refused.
+    let all =
+        g.t.as_(CAROL)
+            .view("getHistory", json!({ "limit": 5000 }))
+            .unwrap();
+    assert_eq!(all, json!({ "items": [], "next": null }));
+}
+
+#[test]
+fn the_active_match_is_the_newest_one_not_over() {
+    let mut g = placed();
+    let older = g.id.clone();
+    g.t.advance(1_000);
+    let newer =
+        g.t.as_(BOB)
+            .call("createMatch", json!({ "player2": ALICE }))
+            .unwrap();
+    for who in [ALICE, BOB] {
+        assert_eq!(
+            g.t.as_(who).view("getActiveMatchId", json!({})).unwrap(),
+            newer,
+            "{who}: the newer match"
+        );
+    }
+    // The older match is decided: the newer one is still the answer.
+    g.play_to_the_end();
+    g.reveal(ALICE, &ALICE_FLEET, &ALICE_SALT).expect("alice");
+    assert_eq!(
+        g.t.as_(ALICE).view("getActiveMatchId", json!({})).unwrap(),
+        newer
+    );
+    assert_eq!(summary(&mut g)["status"], json!("Finished"));
+    assert_eq!(
+        g.t.as_(CAROL)
+            .view("getWinner", json!({ "matchId": older }))
+            .unwrap(),
+        json!(ALICE)
+    );
 }
 
 // ── a match (v1's game service) ──────────────────────────────────────────────
@@ -635,7 +724,7 @@ fn a_match_both_players_cheated_in_is_void() {
     assert_eq!(summary(&mut g)["status"], json!("Active"));
     assert_eq!(
         g.t.as_(CAROL).view("getHistory", json!({})).unwrap(),
-        json!([])
+        json!({ "items": [], "next": null })
     );
 }
 
@@ -779,9 +868,7 @@ fn a_guest_plays_and_a_bystander_reads_only_the_lobby() {
         );
     }
     assert_eq!(
-        g.t.as_(CAROL)
-            .view("getMatches", json!({}))
-            .unwrap()
+        g.t.as_(CAROL).view("getMatches", json!({})).unwrap()["items"]
             .as_array()
             .unwrap()
             .len(),

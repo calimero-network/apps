@@ -56,6 +56,17 @@ loses to the player they lied to; a match both players cheated in is void. A
 defender who answers "miss" forever cannot stall the game: a fleet is 17
 cells, so an 84th miss on a 100-cell board is a lie on its face.
 
+**Why the commitment, and not private storage.** Core `1.0.0-rc.8` has no
+private (node-local) storage, and an instance's state is readable by the
+app's members through the node, so nothing secret may sit in it. v1 already
+kept boards off the contract for the same reason (an account playing through
+a relay had no private storage either), and the port keeps that design: what
+is stored before the reveal is the 32-byte commitment, and the 16-byte random
+salt makes it infeasible to recover the board from it by trying fleets. The
+board and salt live in the placing browser's storage (`app/src/lib/boardStore.ts`),
+so a fleet placed in one browser cannot be answered for or revealed from
+another, and clearing site data mid-match loses it.
+
 **One instance, one log.** v1 was two services: a lobby context per namespace
 and a game context per match, the game reporting its result to the lobby with
 a cross-context call. Here the lobby and every match are one app instance, so
@@ -125,9 +136,10 @@ them, the same answers and events, with these differences a client sees:
 | transport | JSON-RPC `execute` on your own node, a context id per service | `POST /apps/{app}/intents` (calls) and `/views` (reads) on any node of the cluster, an app id | one app per replicated log |
 | services | `lobby` (one context per namespace) + `game` (one context per match, `init(player1, player2, player2_account, lobby_context_id, match_id)`) | one contract; a lobby is an app instance in an org, a match is rows in it | the component runtime runs one component per bundle, and one instance needs no cross-context call |
 | `set_match_context_id` | linked a match to its game context (Pending → Active) | **removed** (`UnknownMethod`) | there is no game context; `createMatch` starts the match |
-| `on_match_finished` (`#[app::xcall(from_same_app)]`) | the game context reported the result to the lobby | **removed**; `revealBoard` records the result when the audit decides | the match is in the lobby's instance. (Component xcall, core#4816/#4820, landed after `1.0.0-rc.7`, the pinned tag, and is not in it.) |
+| `on_match_finished` (`#[app::xcall(from_same_app)]`) | the game context reported the result to the lobby | **removed**; `revealBoard` records the result when the audit decides | the match is in the lobby's instance. Core `1.0.0-rc.8` has component xcall (`env::xcall`, `env::xcall_call`), but it is not needed: v1's xcall only carried the result across the two-service split, and recording it in the deciding call is atomic, where an outbox delivery would have to be authenticated by the lobby and could arrive late |
 | `get_current_turn`, `get_winner` | no arguments (per game context) | take `matchId` | one instance holds every match |
-| `get_active_match_id` | the match the game context was created for | the caller's newest match not over yet (being played or awaiting a reveal), or `null` | no per-match context |
+| `get_active_match_id` | the match the game context was created for | the caller's newest match not over yet (being played or awaiting a reveal), or `null`; one row of an index of open matches (`openMatches`), not a scan | no per-match context |
+| `get_players`, `get_matches`, `get_history` | every row, as one list | **one page**: optional `cursor` and `limit` (default and largest 1,000), answer `{ items, next }`; read until `next` is `null` (the frontend's adapter in `src/battleships.ts` does, so the screens still get lists) | a view never reads a growing collection whole |
 | identities | a player is a context member's device key; `register_player` paired account → key; `player2_account` was a separate account | a player is an **account**; `registerPlayer` returns the caller's account and puts it on the roster; `getPlayers` answers `{account, player}` with both the account; `player2_account` equals `player2` | identity is an account (passkeys); there are no context identities |
 | match ids | `{player1 key}-{ms}-{nonce}` | `{player1 account}-{ms}-{nonce}` | the same |
 | `MatchSummary.context_id` | the linked game context | **removed** | no game context |
@@ -169,6 +181,11 @@ game state does not carry over: lobbies are created anew.
   (`scripts/`).
 
 ## Production
+
+The app uses none of `1.0.0-rc.8`'s blobs, full-text search, actions or
+outbound HTTP (v1 had no equivalent of any), so there are no `outbound` hosts
+in the manifest and nothing for an operator to approve or configure beyond the
+cluster.
 
 `pnpm -F battleships build` with `VITE_CALIMERO_CLUSTER` and
 `VITE_CALIMERO_MIN_RELEASE` set (see `app/.env.example`), then

@@ -49,10 +49,12 @@ describe('the client covers the contract', () => {
   it('sends each method the parameter names the ABI declares', async () => {
     const sent = new Map<string, string[]>();
     const record = (_app: string, method: string, args: unknown = {}) => {
-      sent.set(method, Object.keys(args as object).sort());
+      const keys = new Set([...(sent.get(method) ?? []), ...Object.keys(args as object)]);
+      sent.set(method, [...keys].sort());
       const result =
         method === 'getMatches' || method === 'getHistory' || method === 'getPlayers'
-          ? []
+          ? // two pages, so the adapter sends a cursor too
+            { items: [], next: 'cursor' in (args as object) ? null : 'c1' }
           : method === 'getMatchState'
             ? STATE
             : method === 'getShots' || method === 'getIncomingShots'
@@ -97,6 +99,24 @@ describe('the client covers the contract', () => {
 });
 
 describe('battleships', () => {
+  it('follows `next` through every page of a paged view', async () => {
+    const pages: Record<string, { items: unknown[]; next: string | null }> = {
+      '': { items: [{ account: 'a', player: 'a' }], next: 'c1' },
+      c1: { items: [{ account: 'b', player: 'b' }], next: 'c2' },
+      c2: { items: [{ account: 'c', player: 'c' }], next: null },
+    };
+    const view = vi.fn((_app: string, _method: string, args: { cursor?: string; limit?: number }) =>
+      Promise.resolve({ index: 1, result: pages[args.cursor ?? ''], events: [] }),
+    );
+    const b = battleships({ call: vi.fn(), view }, 'app-1');
+    expect((await b.getPlayers()).map((p) => p.account)).toEqual(['a', 'b', 'c']);
+    expect(view.mock.calls.map(([, , args]) => args)).toEqual([
+      { limit: 1000 },
+      { cursor: 'c1', limit: 1000 },
+      { cursor: 'c2', limit: 1000 },
+    ]);
+  });
+
   it('sends the reveal\'s bytes as base64url, and tracks the newest index', async () => {
     const call = vi.fn().mockResolvedValue({ index: 7, result: null, events: [] });
     const after = vi.fn();

@@ -165,6 +165,15 @@ export interface Battleships {
 
 type Transport = Pick<CalimeroClient, 'call' | 'view'>;
 
+/** The rows one page of a paged view asks for: the contract's largest page. */
+const PAGE = 1000;
+
+/** One page of a paged view: `next` is the following page's cursor, `null` on the last. */
+interface Page<T> {
+  items: T[];
+  next: string | null;
+}
+
 /**
  * The lobby at instance `app` through `client`. `after` runs after every
  * request (the session store syncs a refreshed session there).
@@ -189,16 +198,32 @@ export function battleships(client: Transport, app: string, after: () => void = 
       after();
     }
   };
+  /**
+   * Every row of a paged view: the contract answers one page
+   * (`{ items, next }`, at most 1,000 rows), and the screens want the list,
+   * so the adapter follows `next` until it is `null`.
+   */
+  const all = async <T>(method: 'getPlayers' | 'getMatches' | 'getHistory'): Promise<T[]> => {
+    const out: T[] = [];
+    let cursor: string | null = null;
+    do {
+      const args: Record<string, unknown> = cursor === null ? { limit: PAGE } : { cursor, limit: PAGE };
+      const page: Page<T> = await view<Page<T>>(method, args);
+      out.push(...page.items);
+      cursor = page.next;
+    } while (cursor !== null);
+    return out;
+  };
   return {
     registerPlayer: () => call('registerPlayer'),
-    getPlayers: () => view('getPlayers'),
+    getPlayers: () => all<PlayerEntry>('getPlayers'),
     createMatch: ({ player2 }) => call('createMatch', { player2 }),
-    getMatches: async () => (await view<WireMatchSummary[]>('getMatches')).map(toMatchSummary),
+    getMatches: async () => (await all<WireMatchSummary>('getMatches')).map(toMatchSummary),
     getPlayerStats: async ({ player }) => {
       const w = await view<WirePlayerStats | null>('getPlayerStats', { player });
       return w ? toPlayerStats(w) : null;
     },
-    getHistory: async () => (await view<WireMatchRecord[]>('getHistory')).map(toMatchRecord),
+    getHistory: async () => (await all<WireMatchRecord>('getHistory')).map(toMatchRecord),
     commitBoard: ({ match_id, commitment }) => call('commitBoard', { matchId: match_id, commitment }),
     proposeShot: ({ match_id, x, y }) => call('proposeShot', { matchId: match_id, x, y }),
     acknowledgeShot: ({ match_id, shot_id, hit }) =>

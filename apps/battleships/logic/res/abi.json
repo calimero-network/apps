@@ -149,9 +149,18 @@
       "allowSystem": false,
       "confirm": false,
       "kind": "view",
-      "params": [],
+      "params": [
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
+        ]
+      ],
       "public": false,
-      "returns": "list<MatchRecord>"
+      "returns": "HistoryPage"
     },
     "getIncomingShots": {
       "allowSystem": false,
@@ -183,9 +192,18 @@
       "allowSystem": false,
       "confirm": false,
       "kind": "view",
-      "params": [],
+      "params": [
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
+        ]
+      ],
       "public": false,
-      "returns": "list<MatchSummary>"
+      "returns": "MatchesPage"
     },
     "getPlayerStats": {
       "allowSystem": false,
@@ -204,9 +222,18 @@
       "allowSystem": false,
       "confirm": false,
       "kind": "view",
-      "params": [],
+      "params": [
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
+        ]
+      ],
       "public": false,
-      "returns": "list<PlayerEntry>"
+      "returns": "PlayersPage"
     },
     "getShots": {
       "allowSystem": false,
@@ -297,11 +324,22 @@
     "fields": {
       "history": "vector",
       "matches": "unorderedMap",
+      "openMatches": "set",
       "players": "set",
       "results": "unorderedMap",
       "reveals": "unorderedMap",
       "stats": "unorderedMap",
       "turns": "unorderedMap"
+    },
+    "search": {
+      "history": [],
+      "matches": [],
+      "openMatches": [],
+      "players": [],
+      "results": [],
+      "reveals": [],
+      "stats": [],
+      "turns": []
     },
     "version": 1
   },

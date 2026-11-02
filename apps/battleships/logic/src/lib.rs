@@ -13,6 +13,13 @@
 //! game context, and by one of its players?" checks have nothing left to
 //! check. (`setMatchContextId` is gone with the game contexts; see the README.)
 //!
+//! Core `1.0.0-rc.8` has cross-app calls (`env::xcall`, `env::xcall_call`),
+//! and they are deliberately not used: v1's xcall existed only to carry a
+//! result across its two-service split. With the match in the lobby's own
+//! instance the result is written by the call that decides it, atomically,
+//! instead of through an outbox delivery the lobby would have to authenticate
+//! (`Caller::App`) and that could arrive late or not at all.
+//!
 //! ## What v1 kept in storage write rules, as method checks
 //!
 //! v1 ran on every member's node and leaned on storage types every node
@@ -49,7 +56,6 @@ use battleships_rules::audit::{self, AuditFailure, FLEET_CELLS};
 use battleships_rules::board::{Cell, BOARD_SIZE};
 use calimero_app_sdk::prelude::*;
 use calimero_app_sdk::OrgRole;
-use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 /// Every cell of the opponent's board, once each: the most shots one player
@@ -170,6 +176,28 @@ pub struct ShotsView {
     pub shots: Vec<u8>,
 }
 
+/// One page of `getPlayers`: `next` is the cursor of the following page,
+/// `null` on the last one.
+#[derive(Debug, Clone, Serialize)]
+pub struct PlayersPage {
+    pub items: Vec<PlayerEntry>,
+    pub next: Option<String>,
+}
+
+/// One page of `getMatches`, as `PlayersPage`.
+#[derive(Debug, Clone, Serialize)]
+pub struct MatchesPage {
+    pub items: Vec<MatchSummary>,
+    pub next: Option<String>,
+}
+
+/// One page of `getHistory`, as `PlayersPage`.
+#[derive(Debug, Clone, Serialize)]
+pub struct HistoryPage {
+    pub items: Vec<MatchRecord>,
+    pub next: Option<String>,
+}
+
 /// The shot waiting for its defender's answer.
 #[derive(Debug, Clone, Serialize)]
 pub struct PendingShotView {
@@ -283,6 +311,11 @@ pub struct Battleships {
     history: Vector<String>,
     /// Account -> wins and losses, kept with `results`.
     stats: UnorderedMap<String, Stats>,
+    /// `(account, created_ms, match id)` for every match of the account's that
+    /// is not over (being played, or waiting for a reveal): the index
+    /// `getActiveMatchId` reads its newest row from. Written by `createMatch`
+    /// for both players, removed by the `revealBoard` that decides the match.
+    open_matches: Set<(String, u64, String)>,
 }
 
 // ── logic ───────────────────────────────────────────────────────────────────
@@ -309,22 +342,28 @@ impl Battleships {
         Ok(me)
     }
 
-    /// Every registered player, by account.
+    /// One page of registered players, by account (in account order): at
+    /// most `limit` (default and largest 1,000), from `cursor` (a previous
+    /// page's `next`; absent for the first page). Read pages until `next` is
+    /// `null`.
     #[app::view]
-    pub fn get_players(&self) -> app::Result<Vec<PlayerEntry>> {
-        let mut out = Vec::new();
-        let mut opts = FindOpts::default().limit(PAGE);
-        loop {
-            let page = self.players.page(opts)?;
-            out.extend(page.items.into_iter().map(|account| PlayerEntry {
-                player: account.clone(),
-                account,
-            }));
-            match page.next {
-                Some(next) => opts = FindOpts::default().limit(PAGE).cursor(next),
-                None => return Ok(out),
-            }
-        }
+    pub fn get_players(
+        &self,
+        cursor: Option<String>,
+        limit: Option<u32>,
+    ) -> app::Result<PlayersPage> {
+        let page = self.players.page(page_opts(cursor, limit))?;
+        Ok(PlayersPage {
+            items: page
+                .items
+                .into_iter()
+                .map(|account| PlayerEntry {
+                    player: account.clone(),
+                    account,
+                })
+                .collect(),
+            next: page.next,
+        })
     }
 
     /// Challenge `player2` (an account that has opened the lobby, still in
@@ -347,6 +386,9 @@ impl Battleships {
         if self.matches.contains(&id)? {
             app::bail!(Error::MatchIdCollision);
         }
+        self.open_matches.insert(&(me.clone(), now, id.clone()))?;
+        self.open_matches
+            .insert(&(player2.clone(), now, id.clone()))?;
         self.matches.insert(
             &id,
             &MatchEntry {
@@ -362,11 +404,18 @@ impl Battleships {
         Ok(id)
     }
 
-    /// Every match, oldest id first.
+    /// One page of matches, in match id order (`{creator}-{ms}-{nonce}`): at
+    /// most `limit` (default and largest 1,000), from `cursor` (a previous
+    /// page's `next`). Read pages until `next` is `null`.
     #[app::view]
-    pub fn get_matches(&self) -> app::Result<Vec<MatchSummary>> {
-        let mut out = Vec::new();
-        for (match_id, entry) in read_all(&self.matches, &[])? {
+    pub fn get_matches(
+        &self,
+        cursor: Option<String>,
+        limit: Option<u32>,
+    ) -> app::Result<MatchesPage> {
+        let page = self.matches.page(page_opts(cursor, limit))?;
+        let mut out = Vec::with_capacity(page.items.len());
+        for (match_id, entry) in page.items {
             let result = self.results.get(&match_id)?;
             let status = match (
                 &result,
@@ -386,7 +435,10 @@ impl Battleships {
                 created_ms: entry.created_ms,
             });
         }
-        Ok(out)
+        Ok(MatchesPage {
+            items: out,
+            next: page.next,
+        })
     }
 
     /// A player's record, or `None` before their first result.
@@ -399,24 +451,26 @@ impl Battleships {
         }))
     }
 
-    /// Every finished match, in the order the results were recorded (oldest
-    /// first).
+    /// One page of finished matches, in the order the results were recorded
+    /// (oldest first): at most `limit` (default and largest 1,000), from
+    /// `cursor` (a previous page's `next`). Read pages until `next` is `null`.
     #[app::view]
-    pub fn get_history(&self) -> app::Result<Vec<MatchRecord>> {
-        let mut out = Vec::new();
-        let mut opts = FindOpts::default().limit(PAGE);
-        loop {
-            let page = self.history.page(opts)?;
-            for match_id in page.items {
-                if let Some(record) = self.results.get(&match_id)? {
-                    out.push(record);
-                }
-            }
-            match page.next {
-                Some(next) => opts = FindOpts::default().limit(PAGE).cursor(next),
-                None => return Ok(out),
+    pub fn get_history(
+        &self,
+        cursor: Option<String>,
+        limit: Option<u32>,
+    ) -> app::Result<HistoryPage> {
+        let page = self.history.page(page_opts(cursor, limit))?;
+        let mut out = Vec::with_capacity(page.items.len());
+        for match_id in page.items {
+            if let Some(record) = self.results.get(&match_id)? {
+                out.push(record);
             }
         }
+        Ok(HistoryPage {
+            items: out,
+            next: page.next,
+        })
     }
 
     // ── a match ────────────────────────────────────────────────────────────
@@ -628,6 +682,12 @@ impl Battleships {
         if after.standing == before.standing {
             return Ok(());
         }
+        if matches!(after.standing, Standing::Won { .. } | Standing::Void) {
+            for player in &after.players {
+                self.open_matches
+                    .remove(&(player.clone(), entry.created_ms, match_id.clone()))?;
+            }
+        }
         match after.standing {
             Standing::Won { winner } => {
                 self.record_result(
@@ -707,27 +767,15 @@ impl Battleships {
     }
 
     /// The caller's newest match that is not over yet (being played, or
-    /// waiting for a reveal), or `None`. v1 answered the one match its game
-    /// context was for.
+    /// waiting for a reveal), or `None`: one row of the `openMatches` index.
+    /// v1 answered the one match its game context was for.
     #[app::view]
     pub fn get_active_match_id(&self) -> app::Result<Option<String>> {
         let me = me()?;
-        let mut newest: Option<(u64, String)> = None;
-        for (match_id, entry) in read_all(&self.matches, &[])? {
-            if entry.player1 != me && entry.player2 != me {
-                continue;
-            }
-            let standing = self.derive(&match_id, &entry)?.standing;
-            let open = matches!(standing, Standing::Playing | Standing::AwaitingReveal);
-            if open
-                && newest
-                    .as_ref()
-                    .is_none_or(|(at, _)| entry.created_ms >= *at)
-            {
-                newest = Some((entry.created_ms, match_id));
-            }
-        }
-        Ok(newest.map(|(_, id)| id))
+        let newest = self
+            .open_matches
+            .prefix(&[KeyPart::Str(me)], FindOpts::default().limit(1).reverse())?;
+        Ok(newest.items.into_iter().next().map(|(_, _, id)| id))
     }
 
     /// The player whose turn it is to shoot, or `None` once the match is over.
@@ -1031,20 +1079,12 @@ fn shots_grid(derived: &Derived, keep: impl Fn(&Turn) -> bool) -> ShotsView {
     }
 }
 
-/// Every entry of `map` under `prefix`, following the cursor to the end.
-fn read_all<K, V>(map: &UnorderedMap<K, V>, prefix: &[KeyPart]) -> app::Result<Vec<(K, V)>>
-where
-    K: ToKey + FromKey,
-    V: Serialize + DeserializeOwned,
-{
-    let mut out = Vec::new();
-    let mut opts = FindOpts::default().limit(PAGE);
-    loop {
-        let page = map.prefix(prefix, opts)?;
-        out.extend(page.items);
-        match page.next {
-            Some(next) => opts = FindOpts::default().limit(PAGE).cursor(next),
-            None => return Ok(out),
-        }
+/// The read options of a paged view: `limit` (default and largest `PAGE`)
+/// rows from `cursor`.
+fn page_opts(cursor: Option<String>, limit: Option<u32>) -> FindOpts {
+    let opts = FindOpts::default().limit(limit.unwrap_or(PAGE).min(PAGE));
+    match cursor {
+        Some(cursor) => opts.cursor(cursor),
+        None => opts,
     }
 }
