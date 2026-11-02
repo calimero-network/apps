@@ -1,6 +1,6 @@
 //! RECIPE: an append-ordered, author-owned feed on the component SDK.
 //! A complete app module: merge its state field, methods, error and event into
-//! an app's `lib.rs`. Compile-checked against core 1.0.0-rc.7, not built here.
+//! an app's `lib.rs`. Compile-checked against core 1.0.0-rc.8, not built here.
 //!
 //! v1 used `AuthoredVector<T>`: the store remembered who pushed each entry and
 //! refused anyone else's edit at merge time. On Calimero 1.0 every write is a

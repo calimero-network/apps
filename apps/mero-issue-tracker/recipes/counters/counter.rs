@@ -1,6 +1,6 @@
 //! RECIPE: a tally (`Counter`) and one-vote-per-person votes on the component
 //! SDK. A complete app module: merge its state fields, methods and error into
-//! an app's `lib.rs`. Compile-checked against core 1.0.0-rc.7, not built here.
+//! an app's `lib.rs`. Compile-checked against core 1.0.0-rc.8, not built here.
 //!
 //! Two different things, on purpose:
 //!
