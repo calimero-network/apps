@@ -23,7 +23,7 @@ final class SessionModel: ObservableObject {
             guard let self else { throw CancellationError() }
             return try await self.pendingApprovals(org: org)
         },
-        consent: { [weak self] request in await self?.requestConsent(request) })
+        consent: { [weak self] request, confirm in await self?.requestConsent(request, confirm: confirm) })
     /// Bumped whenever ``backend`` is rebuilt, so screens re-read.
     @Published private(set) var revision = 0
     @Published private(set) var isRestoring = false
@@ -128,8 +128,29 @@ final class SessionModel: ObservableObject {
     }
 
     /// Open the node's consent page in the system browser; the decision.
-    func requestConsent(_ request: @escaping (String) -> ConsentRequest) async -> ConsentResult? {
-        await client.requestConsent(request, callback: AppConfig.callback)
+    /// `confirm` runs first, with the node's answer: the screen shows its confirmation code.
+    func requestConsent(
+        _ request: @escaping (String) -> ConsentRequest, confirm: @escaping @MainActor (ConsentStarted) async -> Bool
+    ) async -> ConsentResult? {
+        await client.requestConsent(request, callback: AppConfig.callback, confirm: confirm)
+    }
+
+    /// Talk to what the Calimero Cloud field names: a cluster by name (its
+    /// nodes from the node directory) or a node by URL. `false`, with the
+    /// reason in the client's error, when it can't.
+    func connectCloud(_ input: String) async -> Bool {
+        switch ClusterTarget.parse(input) {
+        case .url(let url)?:
+            connect(nodeURL: url, allowMock: false)
+            return true
+        case .name(let name)?:
+            let ok = await client.connect(cluster: name)
+            rebuild()
+            return ok
+        case nil:
+            client.errorMessage = "Enter the cluster's name or a node address."
+            return false
+        }
     }
 
     /// Rebuild the backend from the client's current session. A no-op when
@@ -144,7 +165,7 @@ final class SessionModel: ObservableObject {
         if let cloud = client.cloud, let account = client.account {
             let app = CalimeroAppBackend(
                 client: cloud, account: account, packageName: ChatConstants.packageName,
-                packageVersion: client.config.packageVersion)
+                packageVersion: client.config.packageVersion, passkey: client.passkeyForNode())
             backend = CloudChatBackend(
                 app: app,
                 privateTeams: { org in

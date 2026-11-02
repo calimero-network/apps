@@ -110,13 +110,15 @@ final class WorkspacesModel: ObservableObject {
         do {
             let joined = try await backend.joinWorkspace(
                 namespaceId: invitation.namespaceId, invitation: invitation.invitation)
-            let name = invitation.workspaceName ?? ChatIdentity.short(invitation.namespaceId)
+            // A web link carries the token only: the node names the org it joined.
+            let org = joined.namespaceId.isEmpty ? invitation.namespaceId : joined.namespaceId
+            let name = invitation.workspaceName ?? (org.isEmpty ? "the workspace" : ChatIdentity.short(org))
             notice =
                 joined.published
                 ? "Joined \(name)."
                 : "The join to \(name) was sent but not published yet. Try again shortly."
             errorText = nil
-            return invitation.namespaceId
+            return org
         } catch {
             errorText = ChatErrorText.describe(error)
             return nil

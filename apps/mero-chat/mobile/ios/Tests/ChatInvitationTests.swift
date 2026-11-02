@@ -66,4 +66,13 @@ final class ChatInvitationTests: XCTestCase {
         XCTAssertNil(ChatInvitation.parse(json: #"{"invitation":{"nope":1}}"#))
         XCTAssertNil(ChatInvitation.parse(json: #"{"invitation":"","namespaceId":"o"}"#))
     }
+
+    /// The web app's link (#730) carries the org invite token alone.
+    func testTheWebAppsInviteLinkParses() throws {
+        let parsed = try XCTUnwrap(ChatInvitation.parse("https://chat.example.com/?invite=inv_abc123"))
+        XCTAssertEqual(parsed.invitation.token, "inv_abc123")
+        XCTAssertEqual(parsed.namespaceId, "")
+        XCTAssertEqual(ChatInvitation.parse("inv_abc123")?.invitation.token, "inv_abc123")
+        XCTAssertNil(ChatInvitation.parse("https://chat.example.com/?invite=nope"))
+    }
 }

@@ -1,6 +1,6 @@
 package network.calimero.chat.data
 
-import com.calimero.mero.admin.GroupContextEntry
+import com.calimero.mero.app.AppContextEntry
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -14,22 +14,22 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.longOrNull
 
-/** A namespace running chat. */
+/** An org running chat. */
 data class Workspace(
     val id: String,
     val name: String,
     val memberCount: Int = 0,
 )
 
-/** A context running chat: a channel, or a DM (same contract, `context_type: Dm`). */
+/** An app instance of chat: a channel, or a DM (same contract, `context_type: Dm`). */
 data class Channel(
     val contextId: String,
-    /** The group it lives in: its own subgroup in the web app's 1-group-per-channel model. */
+    /** The group it lives in: the org itself (an open channel or a DM), or a team (a private channel). */
     val groupId: String,
     val workspaceId: String,
     val name: String,
     val isDm: Boolean = false,
-    /** Whether the account is a direct member, i.e. can read and write. */
+    /** Whether the account reaches it, i.e. can read and write. */
     val joined: Boolean = true,
     val unread: Int = 0,
 )
@@ -51,7 +51,7 @@ class ChatRepository(
     /** Seconds since the epoch: what the contract's timestamps are in. */
     private val nowSecs: () -> Long = { System.currentTimeMillis() / MILLIS_PER_SECOND },
 ) {
-    /** The signed-in account as the contract names it (base58), or null. */
+    /** The signed-in account as the contract names it (the account id), or null. */
     val myUserId: String? get() = ChatIdentity.userIdOf(backend.accountId)
 
     // ---- workspaces ----------------------------------------------------------------------
@@ -59,7 +59,7 @@ class ChatRepository(
     suspend fun workspaces(): List<Workspace> =
         backend
             .listWorkspaces()
-            .map { ns -> Workspace(ns.namespaceId, ns.name?.ifEmpty { null } ?: "Workspace ${ns.namespaceId.take(SHORT_ID)}", ns.memberCount) }
+            .map { ns -> Workspace(ns.id, ns.name?.ifEmpty { null } ?: "Workspace ${ns.id.take(SHORT_ID)}", ns.memberCount) }
             .sortedBy { it.name.lowercase() }
 
     /**
@@ -83,7 +83,7 @@ class ChatRepository(
         return founded.copy(warning = listOfNotNull(founded.warning, general).joinToString(" ").ifEmpty { null })
     }
 
-    /** A shareable invitation link to [workspace], in the web app's format. */
+    /** A shareable invitation link to [workspace]: an org invite token (a passkey step-up). */
     suspend fun invitationLink(workspace: Workspace): String = ChatInvites.link(backend.createInvitation(workspace.id), workspace.name)
 
     suspend fun joinWorkspace(invitation: ChatInvitation): JoinedWorkspace = backend.joinWorkspace(invitation.namespaceId, invitation.invitation)
@@ -91,10 +91,10 @@ class ChatRepository(
     // ---- channels ------------------------------------------------------------------------
 
     /**
-     * The workspace's conversations, found the way the web app finds them: every subgroup under
-     * the namespace and the contexts in each (plus any context on the namespace root itself),
-     * named by the contract's `get_info` where the account can read it. DMs are told apart by
-     * `context_type` or by their subgroup's `DM_CONTEXT_` alias.
+     * The workspace's conversations: the org's own app instances (open channels and DMs, as the
+     * web app makes them) and those of each of its teams (private channels), named by the
+     * contract's `get_info` where the account can read it. DMs are told apart by `context_type` or
+     * by their `DM_CONTEXT_` name.
      */
     suspend fun channels(workspaceId: String): ChannelListing =
         coroutineScope {
@@ -104,7 +104,7 @@ class ChatRepository(
                 subgroups.map { sg ->
                     async { backend.listGroupContexts(sg.groupId).map { Triple(sg.groupId, sg.name, it) } }
                 }
-            val entries = (rootEntries.await() + subgroupEntries.awaitAll().flatten()).distinctBy { it.third.contextId }
+            val entries = (rootEntries.await() + subgroupEntries.awaitAll().flatten()).distinctBy { it.third.id }
             val described = entries.map { (groupId, groupName, entry) -> async { describe(workspaceId, groupId, groupName, entry) } }.awaitAll()
             ChannelListing(
                 channels = described.filterNot { it.isDm }.sortedBy { it.name.lowercase() },
@@ -116,9 +116,9 @@ class ChatRepository(
         workspaceId: String,
         groupId: String,
         groupName: String?,
-        entry: GroupContextEntry,
+        entry: AppContextEntry,
     ): Channel {
-        val contextId = entry.contextId
+        val contextId = entry.id
         val alias = groupName ?: entry.name.orEmpty()
         val joined = optional { backend.isMember(contextId) } ?: false
         val info = if (joined) optional { info(contextId) } else null
@@ -143,8 +143,9 @@ class ChatRepository(
     }
 
     /**
-     * Create a channel the web app's way (app/src/utils/createChannel.ts): its own subgroup under
-     * the namespace, then chat's context inside it, initialised with the creator's name.
+     * Create a channel the web app's way (`api/platform.ts`): an open channel is one app instance
+     * of chat in the org itself; a private one gets its own team that admits by invitation, with
+     * the instance inside it. Then the creator's name in it.
      */
     suspend fun createChannel(
         workspaceId: String,
@@ -153,13 +154,13 @@ class ChatRepository(
         username: String,
     ): Channel {
         val clean = name.trim().removePrefix("#")
-        val groupId = backend.createSubgroup(workspaceId, clean, public)
-        val contextId = backend.createContext(groupId, clean, ChatArgs.channelInit(clean, nowSecs(), username.trim()))
+        val groupId = if (public) workspaceId else backend.createSubgroup(workspaceId, clean, public = false)
+        val contextId = backend.createContext(groupId, clean, ChatArgs.channelInit(clean, username.trim()))
         if (username.isNotBlank()) optional { setProfile(contextId, username) }
         return Channel(contextId, groupId, workspaceId, clean)
     }
 
-    /** Join an open channel the account is not a direct member of yet, and register its name there. */
+    /** Join an open channel the account does not reach yet, and register its name there. */
     suspend fun joinChannel(
         channel: Channel,
         username: String,

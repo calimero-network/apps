@@ -62,11 +62,10 @@ final class ChatModelsTests: XCTestCase {
         XCTAssertEqual(try ChatJSON.decode(ChannelInfo.self, value, method: "get_info").kind, .dm)
     }
 
-    func testAnAccountsUserIdIsBase58OfItsBytes() throws {
-        let userId = try XCTUnwrap(ChatIdentity.userId(accountHex: ChatFixtures.account))
-        let bytes = try XCTUnwrap(InviteCodec.base58Decode(userId))
-        XCTAssertEqual(Hex.encode(bytes), ChatFixtures.account)
-        XCTAssertNil(ChatIdentity.userId(accountHex: "not-hex"))
+    /// The component contract names a caller by the node's account id, as it is.
+    func testAnAccountIsItsOwnUserId() throws {
+        XCTAssertEqual(ChatIdentity.userId(accountHex: ChatFixtures.account), ChatFixtures.account)
+        XCTAssertNil(ChatIdentity.userId(accountHex: " "))
     }
 
     func testTimestampsAreWholeSeconds() {

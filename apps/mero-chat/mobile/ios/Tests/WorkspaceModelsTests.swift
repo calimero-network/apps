@@ -50,15 +50,14 @@ final class WorkspaceModelsTests: XCTestCase {
             backend.log.filter { !$0.hasPrefix("list") },
             [
                 "foundWorkspace Team",
-                "createChannelGroup \(id) general open",
-                "createContext group-1 \(chatApp) general",
+                "createContext \(id) \(chatApp) general",
             ])
-        XCTAssertEqual(backend.createdContextInitArgs.first?["context_type"], "Channel")
+        XCTAssertEqual(backend.createdContextInitArgs.first?["contextType"], "Channel")
         XCTAssertEqual(backend.createdContextInitArgs.first?["name"], "general")
         // The creator's name in the new channel, as a warrant.
         let profile = backend.recording.calls("set_profile").first
         XCTAssertEqual(profile?.path, .execute)
-        XCTAssertEqual(profile?.contextId, "ctx-group-1")
+        XCTAssertEqual(profile?.contextId, "ctx-\(id)")
         XCTAssertEqual(profile?.args["username"], "alice")
         XCTAssertNil(model.notice)
     }

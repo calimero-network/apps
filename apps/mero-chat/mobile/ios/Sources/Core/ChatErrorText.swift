@@ -13,8 +13,8 @@ enum ChatErrorText {
         switch error {
         case let error as ChatError:
             return error.errorDescription ?? "\(error)"
-        case is ConfirmCancelled:
-            return "The passkey prompt was cancelled."
+        case is ConfirmCancelled, is PasskeyCancelled:
+            return "You dismissed the passkey prompt, so nothing changed."
         case is LoginRequired:
             return "Your session ended. Sign in again."
         case is ReleaseDeadlineError:
@@ -23,10 +23,12 @@ enum ChatErrorText {
             return "That approval request is out of date. Try again."
         case is NotFound:
             return "This isn't available to you (yet)."
-        case let error as UnavailableError:
-            return "Your cluster is unavailable right now (\(error.reason)). Try again shortly."
+        case is WrongNode:
+            return "This node runs a release your account hasn't approved. Try another node of the cluster."
+        case is UnavailableError:
+            return "Your cluster can't be reached right now. Try again shortly."
         case let error as AppError:
-            return error.message.isEmpty ? error.appCode : error.message
+            return appError(code: error.appCode, message: error.fields["message"]?.stringValue ?? error.message)
         case let error as CalimeroError:
             return error.message.isEmpty ? error.code : "\(error.message) (\(error.status))"
         case is SignedOutError, AccountError.notSignedIn:
@@ -37,8 +39,24 @@ enum ChatErrorText {
             return "Your cluster can't be reached (\(error.code.rawValue)). Check your connection and try again."
         case let error as TeeTrustError:
             return "The node could not be verified: \(error.message)"
+        case let error as DirectoryError:
+            return "No cluster called \"\(error.cluster)\" was found. Check the name, or paste a node address."
         default:
             return (error as? LocalizedError)?.errorDescription ?? "\(error)"
+        }
+    }
+
+    /// The contract's refusals (`logic/res/abi.json`: `Invalid`, `Forbidden`,
+    /// `NotFound`, `Banned`, each carrying v1's text in `message`): its own
+    /// words when it sent them, else words for the code.
+    static func appError(code: String, message: String?) -> String {
+        if let message, !message.isEmpty, code.isEmpty || message != "app error" { return message }
+        switch code {
+        case "Forbidden": return "You can't do that in this channel."
+        case "Banned": return "You've been removed from this channel."
+        case "NotFound": return "That message no longer exists."
+        case "Invalid": return "The channel refused that request."
+        default: return code.isEmpty ? "The channel refused that request." : code
         }
     }
 

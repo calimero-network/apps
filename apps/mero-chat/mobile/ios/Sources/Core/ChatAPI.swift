@@ -125,15 +125,16 @@ struct ChatAPI: Sendable {
         ["timestamp": .number(Double(timestamp))]
     }
 
-    /// `init(name, context_type, description, created_at, creator_username)`
-    /// for a new channel, as `utils/createChannel.ts` founds one.
-    static func channelInitArgs(name: String, createdAt: UInt64) -> JSONValue {
+    /// `init(name?, contextType?, description?, creatorUsername?)` for a new
+    /// channel, in the component ABI's names (the web's `initArgsFrom`). The
+    /// node passes them to the instance as they are, so they skip
+    /// ``ComponentChatContract``. `createdAt` comes from the log's clock.
+    static func channelInitArgs(name: String) -> JSONValue {
         [
             "name": .string(name),
-            "context_type": .string(ChannelKind.channel.rawValue),
+            "contextType": .string(ChannelKind.channel.rawValue),
             "description": "",
-            "created_at": .number(Double(createdAt)),
-            "creator_username": "",
+            "creatorUsername": "",
         ]
     }
 

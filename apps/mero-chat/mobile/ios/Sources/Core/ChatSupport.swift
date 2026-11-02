@@ -59,11 +59,12 @@ enum ChatJSON {
 
 /// How the contract names an account.
 enum ChatIdentity {
-    /// The contract's `UserId` for an account: base58 of the account's 32
-    /// bytes (`user_of` in lib.rs). `nil` when `accountHex` is not 64 hex.
+    /// How the contract names an account: on the component runtime the
+    /// caller is the node's account id as it is (v1 used base58 `UserId`s).
+    /// `nil` for an empty one.
     static func userId(accountHex: String) -> String? {
-        guard let bytes = try? Hex.decode(accountHex, label: "account", bytes: 32) else { return nil }
-        return InviteCodec.base58Encode(bytes)
+        let account = accountHex.trimmingCharacters(in: .whitespacesAndNewlines)
+        return account.isEmpty ? nil : account
     }
 
     /// A short form of an id for display.

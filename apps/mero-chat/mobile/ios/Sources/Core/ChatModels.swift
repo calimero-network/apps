@@ -346,6 +346,8 @@ struct FoundedWorkspace: Equatable, Sendable {
 
 /// The outcome of redeeming an invitation.
 struct JoinedWorkspace: Equatable, Sendable {
+    /// The org joined, as the node answered the redemption (`""` when it did not say).
+    var namespaceId = ""
     /// Whether the node accepted the redemption.
     let published: Bool
     /// The node that redeemed it.

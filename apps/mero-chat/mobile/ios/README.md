@@ -1,7 +1,8 @@
 # Mero Chat for iOS
 
 A native SwiftUI client for [Mero Chat](../../) on the same contract as the web
-app (`com.calimero.chat`, [`logic/src/lib.rs`](../../logic/src/lib.rs)), built on
+app (`com.calimero.chat`, the component ABI in
+[`logic/res/abi.json`](../../logic/res/abi.json), web port #730), built on
 [MeroKit / MeroKitUI](https://github.com/calimero-network/swift-sdk).
 
 ## On Calimero 1.0
@@ -14,31 +15,39 @@ runs over the SDK's `CalimeroAppBackend`:
 
 | What | How (SDK call) | Wire |
 | --- | --- | --- |
-| Sign in / create account | `MeroClient.connect(nodeURL:allowMock:)` + `signIn()` / `signUp(name:)` (a dev node: `signInOrSignUp`) | `/auth/passkey/{login,register}/{begin,finish}` |
+| Sign in / create account | `MeroClient.connect(cluster:)` (a cluster name, nodes from the node directory) or `connect(nodeURL:allowMock:)`, then `signIn()` / `signUp(name:)` (a dev node: `signInOrSignUp`) | `/auth/passkey/{login,register}/{begin,finish}` |
 | Session | `KeychainCloudSessionStore(service: "network.calimero.chat")`, `MeroClient.restore()` | session + refresh token in the Keychain, `/auth/refresh` |
-| Read a view (`get_messages`, `get_info`, `get_profiles`, `get_unread_count`) | `ContextContract.query` (`CloudContextContract`) | `POST /apps/{app}/views` |
-| Write (`send_message`, `edit_message`, `delete_message`, `update_reaction`, `set_profile`, `mark_as_read`) | `ContextContract.execute` | `POST /apps/{app}/intents` |
-| List workspaces / channels | `listNamespaces` / `listSubgroups` | the account's **orgs** running chat (`GET /auth/me`), their **teams** (`GET /orgs/{org}`) |
+| Read a view (`getMessages`, `getInfo`, `getProfiles`, `getUnreadCount`) | `ContextContract.query` through `ComponentChatContract` | a view on `/apps/{app}` |
+| Write (`sendMessage`, `editMessage`, `deleteMessage`, `updateReaction`, `setProfile`, `markAsRead`) | `ContextContract.execute` through `ComponentChatContract` | a call on `/apps/{app}` |
+| List workspaces / channels | `listNamespaces` / `listContextEntries(org)` + `listSubgroups` | the account's **orgs** running chat (`GET /auth/me`), the org's own app instances and its **teams** (`GET /orgs/{org}`) |
 | Create a workspace | `foundNamespace` (+ `#general`) | `POST /orgs` + org metadata `{name, package}` |
-| Create a channel | `createSubgroup` + `createContext` | `POST /orgs/{org}/teams {join: everyone \| invite}` + `POST /apps {package, org, access: team}` |
+| Create a channel | `createContext` (open), `createSubgroup` + `createContext` (private) | `POST /apps {package, org, access: org}`; private: `POST /orgs/{org}/teams {join: invite}` + `access: team` |
 | Join an open channel | `joinContext` | open teams inherit org membership; `GET /apps/{app}` checks it |
 | Invite | `createInvitation` | `POST /orgs/{org}/invites` → an invite token |
 | Join from an invitation | `joinNamespace` | `POST /invites/{token}/redeem` |
 | Live updates | `events(contextId:)` | `GET /apps/{app}/events` (sealed SSE); polling every 5 s once the stream ends |
 | Attachments and avatars | `uploadBlob` / `getBlob` | `/apps/{app}/blobs` |
-| Approvals (an update of Mero Chat, a node release) | `CalimeroClient.pendingApprovals(org:)` + `MeroClient.requestConsent` (`ApprovalsModel`) | `POST /consent/requests` → the node's consent page in the system browser → `GET /consent/{id}/result` |
+| Approvals (an update of Mero Chat, a node release) | `CalimeroClient.pendingApprovals(org:)` + `MeroClient.requestConsent(_:callback:confirm:)` (`ApprovalsModel`) | `POST /consent/requests` → the confirmation code on screen → the node's consent page in the system browser → `GET /consent/{id}/result` |
 
-Channels follow the web app's model, in 1.0 terms: a workspace is an **org**,
-each channel is a **team** in it with one **app instance** of chat (a team
-that only admits by invitation is a private channel); a DM is the same with a
-`DM_CONTEXT_…` name and `context_type: "Dm"`. History is paged with
+`ComponentChatContract` is the one place that knows the component ABI: the
+rest of the app keeps v1's method names and shapes (`send_message`,
+snake_case fields, numbers), and it sends camelCase names and arguments with
+every `u64` (`timestamp`, `start`) as a decimal string, and reads answers back
+the same way round, as the web's `src/api/meroChat.ts` does. A channel's
+`init` takes the ABI's names directly (`name`, `contextType`, `description`,
+`creatorUsername`). Accounts are the node's account ids, not base58 `UserId`s.
+
+Channels follow the web app's model, in 1.0 terms: a workspace is an **org**;
+an open channel is an **app instance** of chat in the org itself; a private
+channel gets its own **team** that admits by invitation, with the instance in
+it. A DM is an instance named `DM_CONTEXT_…` with `context_type: "Dm"`. History is paged with
 `get_messages(limit: 20, offset)` like the web app, ordered by each message's
 stable `index`, with `get_messages_from(start)` filling any gap after a burst.
 
 ### Sign-in
 
-- **Calimero Cloud**: enter the cluster's node URL (from
-  cloud.calimero.network; bake it in with `CalimeroClusterURL`), then **Sign in
+- **Calimero Cloud**: enter the cluster's name (its nodes come from the node
+  directory) or one of its node URLs (bake one in with `CalimeroClusterURL`), then **Sign in
   with passkey** or **Create an account**. The node's TDX attestation is
   verified (`CloudPolicy.production`). The device's passkey needs the
   cluster's relying party as an associated domain (`webcredentials:<rp-id>`,
@@ -54,16 +63,18 @@ stable `index`, with `get_messages_from(start)` filling any gap after a burst.
 token being `base58(deflate(json))` of
 `{"invitation":"inv_…","namespaceId":"…","name":"…"}` (the SDK's
 `OrgInvitation`, the same payload kotlin-sdk writes). The invite token
-is a bearer secret: anyone with the link can join until it expires. Pre-1.0
-links (signed group invitations) are refused; the web app's links interoperate
-again once it is ported to 1.0.
+is a bearer secret: anyone with the link can join until it expires. The web
+app's own link (`https://<its origin>/?invite=inv_…`) and a bare `inv_…` token
+open too: the node names the org when the token is redeemed. Pre-1.0 links
+(signed group invitations) are refused.
 
 ### Approvals
 
 Node releases and upgrades of an app instance are approved only on the node's
 own consent page. The workspace picker lists what waits for the signed-in
 person (updates of Mero Chat, node releases their org approves); **Review**
-opens the page in the system browser, which returns to `mero-chat://consent`.
+first shows the request's confirmation code, then opens the page in the system
+browser, which shows the same code and returns to `mero-chat://consent`.
 
 ## Design
 
@@ -135,7 +146,7 @@ in Xcode (Signing & Capabilities).
 ### The SDK pin
 
 `project.yml` pins the package by revision to
-`35148e4de782c065f777e80c592d9548acd645cd`, the head of the swift-sdk's
+`37c09f3f96e7d98440f6618eef8a0e83ddee8ebd`, the head of the swift-sdk's
 Calimero 1.0 port (calimero-network/swift-sdk#85, branch `feat/calimero-1.0`).
 It moves to that PR's merge commit (and then a release) once it lands.
 
@@ -143,7 +154,7 @@ It moves to that PR's merge commit (and then a release) once it lands.
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: 35148e4de782c065f777e80c592d9548acd645cd
+    revision: 37c09f3f96e7d98440f6618eef8a0e83ddee8ebd
 ```
 
 To bump it, change `revision`, run `xcodegen generate`, and let Xcode
@@ -168,8 +179,9 @@ builds the backend exactly as `SessionModel` does, and drives
 They skip themselves unless `MERO_E2E_NODE_URL` is set (optionally
 `MERO_E2E_NODES`, `MERO_E2E_PACKAGE_VERSION`), so the ordinary test run stays
 offline. xcodebuild forwards only `TEST_RUNNER_`-prefixed variables to the test
-process (`TEST_RUNNER_MERO_E2E_NODE_URL=http://127.0.0.1:2501`). They were
-ported from the 0.x relay rig and have not been run against a 1.0 node yet.
+process (`TEST_RUNNER_MERO_E2E_NODE_URL=http://127.0.0.1:2501`). They have not
+been run against a 1.0 node yet, and no CI job runs them (the old live relay
+job is gone: relays do not exist on 1.0).
 
 ## Pointing it at another environment
 

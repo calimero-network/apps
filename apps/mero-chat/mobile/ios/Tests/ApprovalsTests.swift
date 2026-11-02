@@ -49,24 +49,52 @@ final class ApprovalsTests: XCTestCase {
         XCTAssertTrue(items.isEmpty)
     }
 
-    func testLoadSkipsUnreadableScopesAndApproveOpensConsent() async throws {
+    func testLoadSkipsUnreadableScopesAndApproveShowsTheCodeThenOpensConsent() async throws {
         var requested: [ConsentRequest] = []
+        let started = try JSONDecoder().decode(
+            ConsentStarted.self, from: Data(#"{"requestId":"r1","url":"https://n/consent/r1","expiresAt":0,"code":"ABC-DEF"}"#.utf8))
         let model = ApprovalsModel(
             packageName: ChatConstants.packageName, appName: "Mero Chat",
             fetch: { org in
                 guard let org else { throw NotFound("no account report") }
                 return try Self.pending(org: org)
             },
-            consent: { build in
+            consent: { build, confirm in
                 requested.append(build("mero-chat://consent"))
+                guard await confirm(started) else { return nil }
                 return try? JSONDecoder().decode(
                     ConsentResult.self, from: Data(#"{"requestId":"r1","kind":"upgrade","status":"approved"}"#.utf8))
             })
         await model.load(orgs: ["org1"])
         XCTAssertEqual(model.items.count, 2)
-        let approved = await model.approve(model.items[0], orgs: ["org1"])
+        let approving = Task { await model.approve(model.items[0], orgs: ["org1"]) }
+        while model.code == nil { await Task.yield() }
+        XCTAssertEqual(model.code, "ABC-DEF")
+        model.continueToPage()
+        let approved = await approving.value
         XCTAssertTrue(approved)
+        XCTAssertNil(model.code)
         XCTAssertEqual(requested, [.upgrade(app: "app-1", toVersion: "1.2.0", returnTo: "mero-chat://consent")])
         XCTAssertNil(model.approving)
+    }
+
+    func testStoppingAtTheCodeOpensNothing() async throws {
+        let started = try JSONDecoder().decode(
+            ConsentStarted.self, from: Data(#"{"requestId":"r2","url":"https://n/consent/r2","expiresAt":0}"#.utf8))
+        let model = ApprovalsModel(
+            packageName: ChatConstants.packageName, appName: "Mero Chat",
+            fetch: { org in try Self.pending(org: org ?? "org1") },
+            consent: { _, confirm in
+                _ = await confirm(started)
+                return nil
+            })
+        await model.load(orgs: [])
+        let approving = Task { await model.approve(model.items[0], orgs: []) }
+        while model.code == nil { await Task.yield() }
+        XCTAssertEqual(model.code, confirmationCode("r2"))
+        model.cancelCode()
+        let approved = await approving.value
+        XCTAssertFalse(approved)
+        XCTAssertNil(model.error)
     }
 }

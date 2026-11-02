@@ -1,9 +1,9 @@
 package network.calimero.chat.app
 
-import com.calimero.mero.admin.GroupContextEntry
-import com.calimero.mero.admin.Namespace
-import com.calimero.mero.admin.SignedGroupOpenInvitation
-import com.calimero.mero.admin.SubgroupEntry
+import com.calimero.mero.app.AppContextEntry
+import com.calimero.mero.app.AppNamespace
+import com.calimero.mero.app.AppSubgroup
+import com.calimero.mero.app.OrgInvitation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.serialization.builtins.ListSerializer
@@ -27,7 +27,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 /**
  * One channel's contract, in memory, behind [ChatBackend] — `get_messages` with the contract's
  * end-counted `page_window`, `get_messages_from` by absolute index — for the view-model logic
- * (paging, catch-up, live/poll switching). The wire path itself is covered against FakeNode.
+ * (paging, catch-up, live/poll switching). The wire path itself is covered in `CloudBackendTest`.
  */
 class InMemoryChat(
     accountHex: String = "ab".repeat(32),
@@ -138,11 +138,11 @@ class InMemoryChat(
 
     // ---- not used by the channel model -------------------------------------------------------
 
-    override suspend fun listWorkspaces(): List<Namespace> = emptyList()
+    override suspend fun listWorkspaces(): List<AppNamespace> = emptyList()
 
-    override suspend fun listSubgroups(namespaceId: String): List<SubgroupEntry> = emptyList()
+    override suspend fun listSubgroups(namespaceId: String): List<AppSubgroup> = emptyList()
 
-    override suspend fun listGroupContexts(groupId: String): List<GroupContextEntry> = emptyList()
+    override suspend fun listGroupContexts(groupId: String): List<AppContextEntry> = emptyList()
 
     override suspend fun isMember(contextId: String): Boolean = true
 
@@ -162,14 +162,14 @@ class InMemoryChat(
 
     override suspend fun foundWorkspace(name: String): FoundWorkspace = error("unused")
 
-    override suspend fun createInvitation(namespaceId: String): SignedGroupOpenInvitation = error("unused")
+    override suspend fun createInvitation(namespaceId: String): OrgInvitation = error("unused")
 
     override suspend fun joinWorkspace(
         namespaceId: String,
-        invitation: SignedGroupOpenInvitation,
+        invitation: OrgInvitation,
     ): JoinedWorkspace = error("unused")
 
     companion object {
-        const val OTHER = "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin"
+        val OTHER: String = "cd".repeat(32)
     }
 }

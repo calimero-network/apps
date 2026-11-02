@@ -1,61 +1,62 @@
 package network.calimero.chat.data
 
-import com.calimero.mero.account.InvitationNotClaimableException
-import com.calimero.mero.account.JoinException
-import com.calimero.mero.account.JoinStep
-import com.calimero.mero.account.NoRelayException
-import com.calimero.mero.account.NotForAccountException
-import com.calimero.mero.http.ErrorKind
-import com.calimero.mero.http.classifyError
-import com.calimero.mero.relay.IntentRefusedException
+import com.calimero.mero.AppError
+import com.calimero.mero.CalimeroError
+import com.calimero.mero.ConfirmCancelled
+import com.calimero.mero.ConfirmRequired
+import com.calimero.mero.ConsentStale
+import com.calimero.mero.DirectoryError
+import com.calimero.mero.LoginRequired
+import com.calimero.mero.NotFound
+import com.calimero.mero.PasskeyCancelled
+import com.calimero.mero.ReleaseDeadlineError
+import com.calimero.mero.UnavailableError
+import com.calimero.mero.WrongNode
+import com.calimero.mero.app.PasskeyRequired
+import com.calimero.mero.app.SignedOutException
+import com.calimero.mero.tee.TeeTrustException
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import java.io.IOException
+import java.net.UnknownHostException
 
 /**
- * What to tell a person about [error], in words they can act on. The SDK's own refusals keep the
- * reason the relay or node gave, because that reason is usually the only useful part.
+ * What to tell a person about [error], in words they can act on: the node's typed 1.0 errors, and
+ * the contract's `APP_ERROR` codes (`Invalid`, `Forbidden`, `NotFound`, `Banned`), which carry v1's
+ * text in `message`. (Swift `ChatErrorText`.)
  */
 @Suppress("CyclomaticComplexMethod")
 fun describeChatError(error: Throwable): String =
     when (error) {
         is ChatNotReadyException -> error.message.orEmpty()
-        is NoRelayException ->
-            "No relay serves your account yet. Join a workspace from an invitation link, or create one."
-        is NotForAccountException -> "That needs a node of your own; it is not available for a Calimero account."
-        is IntentRefusedException ->
-            if (error.retryable) {
-                "The relay turned that down (${error.reason}). Try again."
-            } else {
-                "The relay turned that down: ${error.reason}"
-            }
-        is JoinException -> describeJoinFailure(error)
-        is InvitationNotClaimableException ->
-            if (error.notHosted) {
-                "No one could join with an invitation yet: the cloud is not hosting this workspace. Try again in a moment."
-            } else {
-                "No relay the cloud knows for this workspace would let an invitee in, so an invitation would not work."
-            }
-        else -> describeTransportError(error)
+        is ConfirmCancelled, is PasskeyCancelled -> "You dismissed the passkey prompt, so nothing changed."
+        is ConfirmRequired, is PasskeyRequired -> "That needs your passkey. Open the app and try again."
+        is LoginRequired, is SignedOutException -> "Your session ended. Sign in again."
+        is ReleaseDeadlineError -> "A newer node release needs approval before anything can change. Review it under Approvals."
+        is ConsentStale -> "That approval request is out of date. Try again."
+        is NotFound -> "This isn't available to you (yet)."
+        is WrongNode -> "This node runs a release your account hasn't approved. Try another node of the cluster."
+        is UnavailableError -> "Your cluster can't be reached right now. Try again shortly."
+        is AppError -> appErrorText(error.appCode, (error.fields["message"] as? JsonPrimitive)?.contentOrNull)
+        is CalimeroError -> error.nodeMessage.ifEmpty { error.code }
+        is DirectoryError -> "No cluster called \"${error.cluster}\" was found. Check the name, or paste a node address."
+        is TeeTrustException -> "The node could not be verified: ${error.message}"
+        is UnknownHostException -> "You're offline. Check your connection and try again."
+        is IOException -> "Your cluster can't be reached. Check your connection and try again."
+        else -> error.message ?: error.toString()
     }
 
-private fun describeJoinFailure(error: JoinException): String =
-    when (error.step) {
-        JoinStep.NO_CREDENTIAL -> "Sign in with your Calimero account first, then open the invitation again."
-        JoinStep.ADMITTERS_LOOKUP -> "Couldn't ask the Calimero cloud who can let you in. Check your connection and try again."
-        JoinStep.NO_NODES -> "No one is hosting this workspace right now, so there is nobody to let you in. Try again later."
-        JoinStep.NOT_INVITED -> "This invitation doesn't name anyone who can let you in any more. Ask for a new link."
-        JoinStep.INVITED_UNREACHABLE, JoinStep.NO_RELAY_URL ->
-            "The relay that can let you in isn't reachable yet. Try again in a moment."
-        JoinStep.SIGN -> "Couldn't sign the join on this device: ${error.message}"
-        JoinStep.ADMIT -> "The relay refused the join: ${error.message}"
-    }
-
-private fun describeTransportError(error: Throwable): String {
-    val c = classifyError(error)
-    return when (c.kind) {
-        ErrorKind.UNREACHABLE -> "Can't reach your relay. Check your connection and try again."
-        ErrorKind.UNAUTHORIZED -> "Your relay session lapsed. Sign out and sign in again if this keeps happening."
-        ErrorKind.FORBIDDEN -> "Not allowed: ${c.message}"
-        ErrorKind.NOT_FOUND -> "Not found on your relay yet. It may still be syncing; try again shortly."
-        ErrorKind.UNAVAILABLE, ErrorKind.RATE_LIMITED -> "Your relay is busy right now. Try again shortly."
-        else -> c.message.ifEmpty { error.toString() }
+/** The contract's refusal: its own words when it sent them, else words for the code. */
+fun appErrorText(
+    code: String,
+    message: String?,
+): String {
+    if (!message.isNullOrEmpty()) return message
+    return when (code) {
+        "Forbidden" -> "You can't do that in this channel."
+        "Banned" -> "You've been removed from this channel."
+        "NotFound" -> "That message no longer exists."
+        "Invalid", "" -> "The channel refused that request."
+        else -> code
     }
 }

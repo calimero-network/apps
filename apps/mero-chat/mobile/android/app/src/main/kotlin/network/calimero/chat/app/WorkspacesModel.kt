@@ -52,8 +52,8 @@ class WorkspacesModel(
             _state.update { it.copy(loading = true, error = null) }
             try {
                 val listed = repo.workspaces()
-                // A workspace founded a moment ago may not be in the relay's listing yet: keep
-                // showing it until it is.
+                // A workspace founded a moment ago may not be in the listing yet: keep showing it
+                // until it is.
                 justCreated.removeIf { created -> listed.any { it.id == created.id } }
                 val list = (listed + justCreated).sortedBy { it.name.lowercase() }
                 _state.update { it.copy(loading = false, loaded = true, workspaces = list) }
@@ -114,9 +114,9 @@ class WorkspacesModel(
                     it.copy(
                         notice =
                             if (joined.published) {
-                                "Joined $label. Its channels appear once your relay has synced them."
+                                "Joined $label."
                             } else {
-                                "Your relay accepted the join; it will show up shortly."
+                                "The join to $label was sent; it will show up shortly."
                             },
                     )
                 }

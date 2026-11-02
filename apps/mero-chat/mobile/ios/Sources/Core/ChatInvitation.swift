@@ -10,6 +10,10 @@ import MeroKit
 ///
 /// The invite token is a bearer secret the org's node minted
 /// (`POST /orgs/{org}/invites`); joining redeems it (`POST /invites/{token}/redeem`).
+/// The web app (#730) shares its own link instead, `https://<its origin>/?invite=inv_…`:
+/// the token alone. Those (and a bare `inv_…` token) parse too, with no org:
+/// the node names it when the token is redeemed.
+///
 /// Decoding takes the payload under an optional `data` envelope, the name
 /// under `name` (or the web app's `groupName` / `groupAlias`), and a link, a
 /// `calimero://` link or a bare token. A link naming another app is refused,
@@ -42,10 +46,27 @@ struct ChatInvitation: Sendable {
     /// Parse a pasted link, a deep link or a bare token. `nil` when nothing in
     /// it is a chat invitation.
     static func parse(_ input: String) -> ChatInvitation? {
-        guard let token = InviteLink.token(fromPasted: input, expectedSlug: ChatConstants.packageName),
-            let json = InviteCodec.decode(token: token)
-        else { return nil }
-        return parse(json: json)
+        if let token = InviteLink.token(fromPasted: input, expectedSlug: ChatConstants.packageName),
+            let json = InviteCodec.decode(token: token), let parsed = parse(json: json)
+        {
+            return parsed
+        }
+        return webToken(input).map {
+            ChatInvitation(invitation: OrgInvitation(namespaceId: "", token: $0), workspaceName: nil)
+        }
+    }
+
+    /// The token of the web app's link (`?invite=inv_…`), or a bare `inv_…` token.
+    static func webToken(_ input: String) -> String? {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let components = URLComponents(string: trimmed), components.scheme != nil {
+            let token = components.queryItems?.first(where: { $0.name == "invite" })?.value?
+                .trimmingCharacters(in: .whitespaces)
+            return token?.hasPrefix("inv_") == true ? token : nil
+        }
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_-."))
+        guard trimmed.hasPrefix("inv_"), trimmed.unicodeScalars.allSatisfy(allowed.contains) else { return nil }
+        return trimmed
     }
 
     /// Parse the decoded payload JSON.

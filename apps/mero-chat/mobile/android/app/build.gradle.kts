@@ -11,17 +11,6 @@ fun configString(name: String): String {
     return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 }
 
-// The wallet redirects to this URL; the manifest's intent filter is built from its scheme and host
-// so the two cannot drift apart.
-val enrolCallback: String = providers.gradleProperty("meroEnrolCallback").getOrElse("mero-chat://enrol").trim()
-val enrolScheme: String = enrolCallback.substringBefore("://")
-val enrolHost: String =
-    enrolCallback
-        .substringAfter("://")
-        .substringBefore('/')
-        .substringBefore('#')
-        .substringBefore('?')
-
 android {
     namespace = "network.calimero.chat"
     // The SDK modules compile against 34 (AGP 8.5.2's supported ceiling); stay in step with them.
@@ -34,12 +23,9 @@ android {
         versionCode = 1
         versionName = "0.1.0"
 
-        buildConfigField("String", "CLOUD_BASE_URL", configString("meroCloudUrl"))
-        buildConfigField("String", "WALLET_URL", configString("meroWalletUrl"))
-        buildConfigField("String", "REGISTRY_URL", configString("meroRegistryUrl"))
-        buildConfigField("String", "ENROL_CALLBACK_URL", "\"$enrolCallback\"")
-        manifestPlaceholders["enrolScheme"] = enrolScheme
-        manifestPlaceholders["enrolHost"] = enrolHost
+        // The Calimero Cloud cluster the sign-in field starts with: a cluster name (`eu-shared-1`)
+        // or a node URL, `-PmeroCluster=…`. Empty: the person types it.
+        buildConfigField("String", "CLUSTER", configString("meroCluster"))
     }
 
     buildTypes {

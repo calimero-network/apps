@@ -15,14 +15,13 @@ import network.calimero.chat.app.SessionStage
 @Composable
 fun MeroChatApp(
     vm: ChatAppViewModel,
-    onSignIn: () -> Unit,
     onShare: (title: String, text: String) -> Unit,
 ) {
     MeroChatTheme {
         val stage by vm.session.collectAsStateWithLifecycle()
         when (val s = stage) {
-            is SessionStage.SignedOut -> SignInScreen(busy = false, error = s.error, cancelled = s.cancelled, onSignIn = onSignIn, onCancel = {})
-            SessionStage.Connecting -> SignInScreen(busy = true, error = null, cancelled = false, onSignIn = onSignIn, onCancel = vm::cancelSignIn)
+            is SessionStage.SignedOut -> SignInScreen(vm, busy = false, error = s.error)
+            SessionStage.Connecting -> SignInScreen(vm, busy = true, error = null)
             is SessionStage.SignedIn -> SignedInNavigation(vm, s, onShare)
         }
     }
@@ -41,6 +40,7 @@ private fun SignedInNavigation(
             WorkspacesScreen(
                 model = vm.workspaces,
                 profile = vm.profile,
+                approvals = vm.approvals,
                 session = session,
                 onOpen = { ws ->
                     vm.channels(ws)

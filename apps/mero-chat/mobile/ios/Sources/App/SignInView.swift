@@ -3,7 +3,7 @@ import SwiftUI
 
 /// The landing page at phone width: a nav bar with the Mero Chat mark, the
 /// hero, a glimpse of a channel, what the app does, and sign-in pinned at the
-/// bottom: a Calimero 1.0 cluster's node URL and the device's passkey (or a
+/// bottom: a Calimero Cloud cluster (its name, or a node's URL) and the device's passkey (or a
 /// new account), or a development node (`merod local`) with mock attestation
 /// and a software passkey kept for it.
 struct SignInView: View {
@@ -183,7 +183,7 @@ struct SignInView: View {
             }
             switch mode {
             case .signIn, .create:
-                urlField("Cluster URL (from cloud.calimero.network)", text: $clusterURL)
+                urlField("Cluster name or node URL", text: $clusterURL)
                     .accessibilityIdentifier("signInClusterURL")
                 if mode == .create {
                     TextField("Your name", text: $name)
@@ -270,10 +270,10 @@ struct SignInView: View {
         Task {
             switch mode {
             case .signIn:
-                session.connect(nodeURL: clusterURL, allowMock: false)
+                guard await session.connectCloud(clusterURL) else { return }
                 await session.signIn()
             case .create:
-                session.connect(nodeURL: clusterURL, allowMock: false)
+                guard await session.connectCloud(clusterURL) else { return }
                 await session.signUp(name: trimmedName)
                 if session.displayName.isEmpty { session.displayName = trimmedName }
             case .development:

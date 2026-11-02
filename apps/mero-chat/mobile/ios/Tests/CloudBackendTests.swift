@@ -58,21 +58,32 @@ final class CloudBackendTests: XCTestCase {
         let joiner = InMemoryAppBackend(account: String(repeating: "cd", count: 32))
         joiner.joinRelayURL = "https://node.test"
         let joined = try await CloudChatBackend(app: joiner).joinWorkspace(namespaceId: org, invitation: invitation)
-        XCTAssertEqual(joined, JoinedWorkspace(published: true, nodeURL: "https://node.test"))
+        XCTAssertEqual(joined, JoinedWorkspace(namespaceId: org, published: true, nodeURL: "https://node.test"))
         XCTAssertEqual(joiner.log, ["joinNamespace \(org)"])
     }
 
+    /// Calls reach the app instance in the component ABI's names, and answers
+    /// come back in v1's shapes (``ComponentChatContract``).
     func testContractCallsGoThroughTheAppInstance() async throws {
         let app = seeded()
         app.recording.setHandler { call in
-            call.method == "get_channels" ? ["general": ["channel_type": "Public"]] : .null
+            call.method == "getInfo"
+                ? ["name": "general", "contextType": "Channel", "description": "", "createdAt": "1760000000", "creator": "x"]
+                : .null
         }
         let backend = CloudChatBackend(app: app)
-        let answer = try await backend.contract.query(contextId: "app-general", method: "get_channels", args: [:])
-        XCTAssertEqual(answer?["general"]?["channel_type"]?.stringValue, "Public")
-        _ = try await backend.contract.execute(contextId: "app-general", method: "send_message", args: ["text": "hi"])
+        let info = try await ChatAPI(contract: backend.contract).getInfo("app-general")
+        XCTAssertEqual(info.name, "general")
+        _ = try await backend.contract.execute(
+            contextId: "app-general", method: "send_message",
+            args: ChatAPI.sendMessageArgs(text: "hi", timestamp: 1_760_000_000, parentMessage: "m_1"))
+        XCTAssertEqual(app.recording.calls.map(\.method), ["getInfo", "sendMessage"])
         XCTAssertEqual(app.recording.calls.map(\.path), [.query, .execute])
         XCTAssertEqual(app.recording.calls.map(\.contextId), ["app-general", "app-general"])
+        let sent = app.recording.calls[1].args
+        XCTAssertEqual(sent["timestamp"], "1760000000")
+        XCTAssertEqual(sent["parentMessage"], "m_1")
+        XCTAssertEqual(sent["mentionsUsernames"], .array([]))
     }
 
     func testBlobsRoundTripThroughTheirAppInstance() async throws {

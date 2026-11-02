@@ -71,7 +71,7 @@ struct CloudChatBackend: ChatBackend {
     }
 
     var account: String { app.account }
-    var contract: any ChatContract { AppChatContract(inner: app.contract) }
+    var contract: any ChatContract { ComponentChatContract(inner: AppChatContract(inner: app.contract)) }
     var hasRelay: Bool { app.hasRelay }
     var canSubscribe: Bool { app.canSubscribe }
 
@@ -81,14 +81,20 @@ struct CloudChatBackend: ChatBackend {
         }
     }
 
+    /// The org's own instances (open channels and DMs, as the web makes
+    /// them), each as a listing of its own, then its teams (private channels).
     func listChannelGroups(namespaceId: String) async throws -> [ChannelGroupListing] {
+        let own = try await app.listContextEntries(groupId: namespaceId).map {
+            ChannelGroupListing(groupId: namespaceId, name: $0.name, contextIds: [$0.id])
+        }
         let subgroups = try await app.listSubgroups(namespaceId: namespaceId)
         let restricted = await privateTeams?(namespaceId) ?? []
-        return subgroups.map {
-            ChannelGroupListing(
-                groupId: $0.groupId, name: $0.name, contextIds: $0.contextIds,
-                isPrivate: restricted.contains($0.groupId))
-        }
+        return own
+            + subgroups.map {
+                ChannelGroupListing(
+                    groupId: $0.groupId, name: $0.name, contextIds: $0.contextIds,
+                    isPrivate: restricted.contains($0.groupId))
+            }
     }
 
     func isMember(contextId: String) async throws -> Bool {
@@ -118,7 +124,7 @@ struct CloudChatBackend: ChatBackend {
 
     func joinWorkspace(namespaceId: String, invitation: OrgInvitation) async throws -> JoinedWorkspace {
         let joined = try await app.joinNamespace(namespaceId: namespaceId, invitation: invitation)
-        return JoinedWorkspace(published: joined.published, nodeURL: joined.nodeURL)
+        return JoinedWorkspace(namespaceId: joined.namespaceId, published: joined.published, nodeURL: joined.nodeURL)
     }
 
     func uploadBlob(contextId: String, data: Data) async throws -> String {
