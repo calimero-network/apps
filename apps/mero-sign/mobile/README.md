@@ -7,10 +7,10 @@ sent.** Uploading documents, placing fields and the semantic search stay on the 
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+, PDFKit | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `37c09f3` (head of swift-sdk#85; in `ios/project.yml`, `ios/SignCore/Package.swift` and `Package.resolved`) |
-| Android | `android/` | Jetpack Compose + Material 3, minSdk 26, `PdfRenderer` + PdfBox-Android | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `61b65e9` (head of kotlin-sdk#68; `android/kotlin-sdk.ref`, composite build) |
+| iOS | `ios/` | SwiftUI, iOS 16+, PDFKit | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `v0.5.0` (in `ios/project.yml`, `ios/SignCore/Package.swift` and `Package.resolved`) |
+| Android | `android/` | Jetpack Compose + Material 3, minSdk 26, `PdfRenderer` + PdfBox-Android | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `v0.2.0` (`android/kotlin-sdk.ref`, composite build) |
 
-Both pins move to the SDK PRs' merge commits once they land.
+Both pins are SDK releases; bump them to the next release together.
 
 ## Calimero 1.0
 

@@ -7,9 +7,9 @@
 # The logic (generated contract client, private store and identity mapping,
 # PDF stamping, signature ink, view models) lives in the local SignCore
 # package, which builds and tests on macOS with `swift test --package-path SignCore`.
-# The swift-sdk is pinned by revision to the head of its Calimero 1.0 branch
-# (swift-sdk#85, `feat/calimero-1.0`); the pin moves to that PR's merge commit
-# once it lands. Keep it identical to SignCore/Package.swift (and Package.resolved).
+# The swift-sdk is pinned to its v0.5.0 release (Calimero 1.0); bump
+# `exactVersion` for a new release. Keep it identical to SignCore/Package.swift
+# (and Package.resolved).
 name: MeroSign
 
 options:
@@ -21,7 +21,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: 37c09f3f96e7d98440f6618eef8a0e83ddee8ebd
+    exactVersion: 0.5.0
   SignCore:
     path: SignCore
 
