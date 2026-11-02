@@ -1,78 +1,91 @@
 package network.calimero.sign.core
 
-import com.calimero.mero.admin.AdminSurface
-import com.calimero.mero.admin.SetGroupMetadataRequest
+import com.calimero.mero.AppSource
+import com.calimero.mero.CalimeroClient
 import com.calimero.mero.app.MeroAppBackend
+import com.calimero.mero.crypto.Hex
 
-/** A group's metadata record: its name and data map. */
-data class GroupRecord(
-    val name: String?,
-    val data: Map<String, String>,
+/** One app instance of Mero Sign the account reaches. (Swift `SignInstance`.) */
+data class SignInstance(
+    val appId: String,
+    val name: String,
+    /** The account that created it. */
+    val owner: String,
+    /** The organization it is in; null for an instance the account owns outright. */
+    val org: String?,
 )
 
 /**
- * What Mero Sign needs beyond `MeroAppBackend`: blobs (a document's PDF and every signed version,
- * the signature images), group metadata (the marker on the private store's namespace) and member
- * names. The app uses [BackendSignAdmin]; tests use a fake. (Swift `SignAdmin`.)
+ * What Mero Sign needs beyond `MeroAppBackend`, from the signed-in `CalimeroClient`, the same calls
+ * the web makes (`app/src/lib/agreements.ts`): blobs with their content type (the contract stores
+ * the 64-hex id), this app's instances, creating the library, and member names. The app uses
+ * [ClientSignAdmin]; tests use a fake. (Swift `SignAdmin`.)
  */
 interface SignAdmin {
-    /** Store bytes against a context the account is a member of. Returns the blob id. */
+    /** Store bytes as a blob of an app instance. Returns its id as 64 lowercase hex. */
     suspend fun uploadBlob(
         data: ByteArray,
+        contentType: String,
         contextId: String,
     ): String
 
-    /** A blob's bytes, read through the context that holds it. */
+    /** A blob's bytes, read through the instance that holds it. */
     suspend fun getBlob(
         blobId: String,
         contextId: String,
     ): ByteArray
 
-    suspend fun groupMetadata(groupId: String): GroupRecord?
+    /** Mero Sign's instances the account reaches. */
+    suspend fun instances(): List<SignInstance>
 
-    /** Replace a group's metadata record (name and data together). */
-    suspend fun setGroupMetadata(
-        groupId: String,
-        name: String?,
-        data: Map<String, String>,
-    )
+    /** Create an instance named [name] in [org] (or the account's own, in none). Returns its app id. */
+    suspend fun createInstance(
+        name: String,
+        org: String?,
+    ): String
 
-    /** The name a member set for themselves in a namespace. */
+    /** The name a member set for themselves in an organization. */
     suspend fun memberName(
         namespaceId: String,
         account: String,
     ): String?
 }
 
-/**
- * [SignAdmin] over the account's `MeroAppBackend` (blobs, metadata reads, member names) and, for the
- * one write the backend has no call for — a metadata record WITH a data map, the private store's
- * marker — the session's admin surface. (Swift `BackendSignAdmin`.)
- */
-class BackendSignAdmin(
+/** [SignAdmin] over the signed-in [CalimeroClient] and the account's backend. (Swift `ClientSignAdmin`.) */
+class ClientSignAdmin(
     private val backend: MeroAppBackend,
-    private val admin: AdminSurface?,
+    private val client: CalimeroClient?,
+    /** The app's package, or a bundle hash on a development cluster. */
+    private val applicationId: String = SignConstants.PACKAGE_NAME,
 ) : SignAdmin {
+    private fun signedIn(): CalimeroClient = client ?: throw SignModelException("You're signed out. Sign in again and retry.")
+
+    private val isBundle: Boolean get() = Hex.isHex32(applicationId)
+
     override suspend fun uploadBlob(
         data: ByteArray,
+        contentType: String,
         contextId: String,
-    ): String = backend.uploadBlob(contextId, data).blobId
+    ): String {
+        val id = SignIds.blobHex(signedIn().uploadBlob(contextId, data, contentType).id)
+        if (id.isEmpty()) throw SignModelException("Your cluster returned a blob id this app can't use.")
+        return id
+    }
 
     override suspend fun getBlob(
         blobId: String,
         contextId: String,
-    ): ByteArray = backend.getBlob(blobId, contextId)
+    ): ByteArray = signedIn().blobContent(contextId, blobId).data
 
-    override suspend fun groupMetadata(groupId: String): GroupRecord? = backend.groupMetadata(groupId)?.let { GroupRecord(it.name, it.data) }
-
-    override suspend fun setGroupMetadata(
-        groupId: String,
-        name: String?,
-        data: Map<String, String>,
-    ) {
-        val surface = admin ?: throw SignModelException("You're signed out. Sign in again and retry.")
-        surface.setGroupMetadata(groupId, SetGroupMetadataRequest(name = name, data = data))
+    override suspend fun instances(): List<SignInstance> {
+        val apps = if (isBundle) signedIn().listApps(bundle = applicationId) else signedIn().listApps(pkg = applicationId)
+        return apps.map { SignInstance(it.appId, it.name, it.owner, it.org) }
     }
+
+    override suspend fun createInstance(
+        name: String,
+        org: String?,
+    ): String = signedIn().createApp(name, if (isBundle) AppSource.Bundle(applicationId) else AppSource.Package(applicationId), org)
 
     override suspend fun memberName(
         namespaceId: String,

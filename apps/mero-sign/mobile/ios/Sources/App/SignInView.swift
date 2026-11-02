@@ -95,9 +95,17 @@ struct SignInView: View {
             .presentationDetents([.medium])
         }
         .sheet(isPresented: $choosingNode) {
-            NodeSheet(current: session.client.nodeURL ?? "", allowMock: session.client.allowMock) { url, allowMock in
+            NodeSheet(current: session.client.nodeURL ?? "", allowMock: session.client.allowMock) { target, allowMock in
                 choosingNode = false
-                session.connect(nodeURL: url, allowMock: allowMock)
+                if NodeSheet.isNodeURL(target) || allowMock {
+                    session.connect(nodeURL: target, allowMock: allowMock)
+                } else {
+                    // A Calimero Cloud cluster by name: its nodes come from the node directory.
+                    run {
+                        await session.client.connect(cluster: target)
+                        session.rebuild()
+                    }
+                }
             }
             .presentationDetents([.medium, .large])
         }
@@ -161,8 +169,8 @@ private struct NameSheet: View {
     }
 }
 
-/// The node to talk to: one of the cluster's nodes from Calimero Cloud's
-/// console, or a development cluster (`merod local`) with mock attestation.
+/// The cluster to talk to: a Calimero Cloud cluster by name, one of its nodes
+/// from the console, or a development node (`merod local`) with mock attestation.
 private struct NodeSheet: View {
     @Environment(\.dismiss) private var dismiss
     let submit: (_ url: String, _ allowMock: Bool) -> Void
@@ -177,15 +185,21 @@ private struct NodeSheet: View {
 
     private var trimmed: String { url.trimmingCharacters(in: .whitespacesAndNewlines) }
 
+    /// A node's address (`https://…`, a host with a dot or a port) rather than a cluster's name.
+    static func isNodeURL(_ value: String) -> Bool {
+        value.contains("://") || value.contains(".") || value.contains(":")
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             SheetBar(
-                title: "Your cluster", action: "Use", canAct: URL(string: trimmed)?.scheme != nil, busy: false,
+                title: "Your cluster", action: "Use", canAct: !trimmed.isEmpty && (!allowMock || Self.isNodeURL(trimmed)),
+                busy: false,
                 cancel: { dismiss() }, act: { submit(trimmed, allowMock) })
             VStack(alignment: .leading, spacing: 12) {
-                Text("Paste the address of a node in your workspace's cluster. The app checks the node's attestation before it sends anything.")
+                Text("Your workspace's cluster name, or the address of one of its nodes. The app checks the node's attestation before it sends anything.")
                     .font(.system(size: 15)).foregroundStyle(Palette.muted)
-                TextField("https://node.example.calimero.network", text: $url)
+                TextField("your-team, or https://node.your-team.calimero.network", text: $url)
                     .font(.system(size: 15, design: .monospaced))
                     .keyboardType(.URL)
                     .textInputAutocapitalization(.never)
@@ -194,7 +208,7 @@ private struct NodeSheet: View {
                     .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Palette.sunken))
                 Toggle(isOn: $allowMock) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Development cluster").font(.system(size: 15, weight: .semibold)).foregroundStyle(Palette.ink)
+                        Text("Development node").font(.system(size: 15, weight: .semibold)).foregroundStyle(Palette.ink)
                         Text("Trust mock attestation, as `merod local` serves. Never for a real cluster.")
                             .font(.system(size: 13)).foregroundStyle(Palette.muted)
                     }
@@ -283,12 +297,12 @@ struct InvitationSheet: View {
             await model.accept(
                 directory: {
                     guard let backend = session.backend else { return nil }
-                    let signAdmin = BackendSignAdmin(backend: backend, client: (backend as? CalimeroAppBackend)?.client)
+                    let signAdmin = ClientSignAdmin(
+                        backend: backend, client: (backend as? CalimeroAppBackend)?.client,
+                        applicationId: session.applicationId ?? SignConstants.packageName)
                     return AgreementDirectory(
-                        backend: backend,
-                        store: PrivateStore(
-                            backend: backend, admin: signAdmin, applicationId: session.applicationId,
-                            cache: DefaultsPrivateContextCache()))
+                        backend: backend, admin: signAdmin,
+                        store: PrivateStore(backend: backend, admin: signAdmin, cache: DefaultsPrivateContextCache()))
                 },
                 didJoin: { await session.didJoinNamespace() })
             if case .joined = model.stage { Haptics.success() } else { Haptics.failure() }

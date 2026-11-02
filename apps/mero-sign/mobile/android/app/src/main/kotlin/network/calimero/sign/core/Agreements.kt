@@ -5,11 +5,11 @@ import com.calimero.mero.app.MeroAppBackend
 import kotlinx.coroutines.delay
 import network.calimero.sign.generated.SignClient
 
-/** An agreement: a subgroup of a workspace (namespace) with one context. (Swift `AgreementRef`.) */
+/** An agreement: an app instance in a workspace (a Calimero organization). (Swift `AgreementRef`.) */
 data class AgreementRef(
     val namespaceId: String,
     val workspaceName: String,
-    /** The subgroup id. */
+    /** The app instance id (the same as [contextId]). */
     val agreementId: String,
     val name: String,
     val contextId: String,
@@ -29,48 +29,57 @@ data class SyncTiming(
 }
 
 /**
- * Workspaces and the agreements in them, and entering one the way the web app's invitation flow
- * does (`enterAgreement` + `settleIntoAgreement`). (Swift `AgreementDirectory`.)
+ * Workspaces and the agreements in them, and entering one the way the web app does
+ * (`app/src/lib/agreements.ts`: `listAgreements`, `enterAgreement`). (Swift `AgreementDirectory`.)
  */
 class AgreementDirectory(
     val backend: MeroAppBackend,
+    val admin: SignAdmin,
     val store: PrivateStore,
     val timing: SyncTiming = SyncTiming(),
 ) {
     fun client(contextId: String): SignClient = signClient(backend.contract, contextId)
 
-    /** The account's workspaces, without the personal namespace (`listWorkspaces`). */
-    suspend fun workspaces(): List<AppNamespace> =
-        backend
-            .listNamespaces()
-            .filterNot { store.isPersonal(it.id) }
-            .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { nameOf(it) })
+    /** The account's workspaces (organizations of this app), by name. */
+    suspend fun workspaces(): List<AppNamespace> = backend.listNamespaces().sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { nameOf(it) })
 
-    /** The agreements in a workspace that have a context. */
-    suspend fun agreements(workspace: AppNamespace): List<AgreementRef> =
-        backend.listSubgroups(workspace.id).mapNotNull { subgroup ->
-            val contextId = subgroup.contextIds.firstOrNull() ?: return@mapNotNull null
-            AgreementRef(workspace.id, nameOf(workspace), subgroup.groupId, agreementName(subgroup.name, subgroup.groupId), contextId)
-        }
+    /** The agreements in a workspace: Mero Sign's app instances in that organization, by name. */
+    suspend fun agreements(workspace: AppNamespace): List<AgreementRef> = refs(workspace, admin.instances())
 
-    suspend fun allAgreements(): List<AgreementRef> = workspaces().flatMap { attempt { agreements(it) }.getOrDefault(emptyList()) }
+    /** Every agreement in every workspace. */
+    suspend fun allAgreements(): List<AgreementRef> {
+        val workspaces = workspaces()
+        val instances = admin.instances()
+        return workspaces.flatMap { refs(it, instances) }
+    }
 
-    /** Enter an agreement's context, joining its open subgroup if needed, retried while it projects. */
+    private fun refs(
+        workspace: AppNamespace,
+        instances: List<SignInstance>,
+    ): List<AgreementRef> =
+        instances
+            .filter { it.org == workspace.id }
+            .map { AgreementRef(workspace.id, nameOf(workspace), it.appId, agreementName(it.name, it.appId), it.appId) }
+            .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+
+    /** Whether the account is on the agreement's roster (the web's `joined`). */
+    suspend fun isJoined(contextId: String): Boolean =
+        attempt { client(contextId).listParticipants() }.getOrNull()?.any { SignIds.same(it, backend.account) } ?: false
+
+    /** Check the account reaches the agreement: on Calimero 1.0 every workspace member does; nothing to join. */
     suspend fun enter(contextId: String) {
         repeat(maxOf(timing.enterAttempts, 1)) { attemptIndex ->
             if (attemptIndex > 0) delay(timing.delayMs)
             if (attempt { backend.isMember(contextId) }.getOrDefault(false)) return
-            if (attempt { backend.joinContext(contextId) }.isSuccess) return
         }
-        throw SignModelException(
-            "Your account isn't in that agreement yet. If you were just invited, the workspace may still be syncing — try again shortly.",
-        )
+        throw SignModelException("Your account can't open that agreement. Ask whoever invited you to check your workspace role.")
     }
 
     /**
-     * Everything after entering, as the web's `settleIntoAgreement`: wait for state, register as a
-     * participant, settle on the name, then record the agreement and the identity it was joined with
-     * in the private context (`join_shared_context` → `IdentityMapping`). Returns the name.
+     * Everything after entering, as the web's `enterAgreement`: read the name, register as a signer
+     * if not on the roster (a guest or a removed account is refused and may still read), then record
+     * the agreement and the identity it was joined with in the library (`joinSharedContext` →
+     * `IdentityMapping`). Returns the name.
      */
     suspend fun settle(
         contextId: String,
@@ -94,13 +103,14 @@ class AgreementDirectory(
     }
 
     internal suspend fun registerSelf(contextId: String) {
+        if (isJoined(contextId)) return
         repeat(maxOf(timing.registerAttempts, 1)) { attemptIndex ->
             if (attemptIndex > 0) delay(timing.delayMs)
             val result = attempt { client(contextId).registerSelfAsParticipant() }
             if (result.isSuccess) return
-            val text = SignErrorText.message(result.exceptionOrNull()!!)
-            if (text.contains("already registered", ignoreCase = true)) return
-            if (!SignErrorText.isSyncing(text)) return
+            val error = result.exceptionOrNull()!!
+            if (SignErrorText.isConflict(error) || SignErrorText.isForbidden(error)) return
+            if (!SignErrorText.isSyncing(error)) return
         }
     }
 

@@ -64,13 +64,21 @@ public enum ApprovalItem: Identifiable, Equatable, Sendable {
 @MainActor
 public final class ApprovalsModel: ObservableObject {
     public typealias Load = @MainActor (_ org: String?) async throws -> PendingApprovals
-    public typealias Consent = @MainActor (_ request: @escaping (String) -> ConsentRequest) async -> ConsentResult?
+    /// Ask for consent: `request` builds it for a `returnTo`, and `confirm`
+    /// runs with the node's answer before the page opens (show its code).
+    public typealias Consent = @MainActor (
+        _ request: @escaping (String) -> ConsentRequest, _ confirm: @escaping @MainActor (ConsentStarted) async -> Bool
+    ) async -> ConsentResult?
 
     @Published public private(set) var items: [ApprovalItem] = []
     /// The item whose consent page is open.
     @Published public private(set) var busy: String?
     /// The last decision or failure, in words.
     @Published public private(set) var message: String?
+    /// The confirmation code the consent page will show, waiting for the person
+    /// to open the page (``answerCode(_:)``). The screen shows it first.
+    @Published public private(set) var confirmationCode: String?
+    private var codeAnswer: CheckedContinuation<Bool, Never>?
 
     private let load: Load
     private let consent: Consent
@@ -97,7 +105,10 @@ public final class ApprovalsModel: ObservableObject {
     public func approve(_ item: ApprovalItem) async {
         busy = item.id
         defer { busy = nil }
-        let result = await consent { item.request(returnTo: $0) }
+        let result = await consent({ item.request(returnTo: $0) }) { [weak self] started in
+            guard let self else { return false }
+            return await self.confirm(code: started.code ?? MeroKit.confirmationCode(started.requestId))
+        }
         switch result?.status {
         case .approved?: message = "Approved."
         case .declined?: message = "Declined."
@@ -105,5 +116,22 @@ public final class ApprovalsModel: ObservableObject {
         case nil: message = "The consent page did not answer. Try again."
         }
         await refresh()
+    }
+
+    /// Show `code` and wait for ``answerCode(_:)``.
+    func confirm(code: String) async -> Bool {
+        answerCode(false)
+        return await withCheckedContinuation { continuation in
+            codeAnswer = continuation
+            confirmationCode = code
+        }
+    }
+
+    /// The person opened the page (`true`) or cancelled.
+    public func answerCode(_ open: Bool) {
+        let answer = codeAnswer
+        codeAnswer = nil
+        confirmationCode = nil
+        answer?.resume(returning: open)
     }
 }

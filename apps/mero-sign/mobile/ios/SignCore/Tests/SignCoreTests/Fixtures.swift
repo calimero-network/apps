@@ -57,22 +57,23 @@ final class Script: @unchecked Sendable {
     private func key(_ method: String, _ contextId: String?) -> String { "\(contextId ?? "*")|\(method)" }
 }
 
-/// ``SignAdmin`` in memory: blobs by id, group metadata, member names.
+/// ``SignAdmin`` in memory: blobs by id, Mero Sign's instances, member names.
 final class FakeSignAdmin: SignAdmin, @unchecked Sendable {
     private let lock = NSLock()
-    private(set) var blobs: [String: (data: Data, contextId: String)] = [:]
-    var metadata: [String: (name: String?, data: [String: String])] = [:]
+    private(set) var blobs: [String: (data: Data, contextId: String, contentType: String)] = [:]
+    var instanceList: [SignInstance] = []
     var names: [String: String] = [:]
-    private(set) var uploads: [(contextId: String, size: Int)] = []
+    private(set) var uploads: [(contextId: String, size: Int, contentType: String)] = []
+    private(set) var created: [(name: String, org: String?)] = []
     private var next = 0
 
-    func uploadBlob(_ data: Data, contextId: String) async throws -> String {
+    func uploadBlob(_ data: Data, contentType: String, contextId: String) async throws -> String {
         lock.lock()
         defer { lock.unlock() }
         next += 1
         let id = String(format: "%064x", next + 0xB10B)
-        blobs[id] = (data, contextId)
-        uploads.append((contextId, data.count))
+        blobs[id] = (data, contextId, contentType)
+        uploads.append((contextId, data.count, contentType))
         return id
     }
 
@@ -85,25 +86,33 @@ final class FakeSignAdmin: SignAdmin, @unchecked Sendable {
 
     func put(_ data: Data, id: String, contextId: String) {
         lock.lock()
-        blobs[id] = (data, contextId)
+        blobs[id] = (data, contextId, "application/pdf")
         lock.unlock()
     }
 
-    func groupMetadata(_ groupId: String) async throws -> (name: String?, data: [String: String])? {
+    func instances() async throws -> [SignInstance] {
         lock.lock()
         defer { lock.unlock() }
-        return metadata[groupId]
+        return instanceList
     }
 
-    func setGroupMetadata(_ groupId: String, name: String?, data: [String: String]) async throws {
+    func createInstance(name: String, org: String?) async throws -> String {
         lock.lock()
-        metadata[groupId] = (name, data)
-        lock.unlock()
+        defer { lock.unlock() }
+        created.append((name, org))
+        let id = String(repeating: "c\(created.count)", count: 32)
+        instanceList.append(SignInstance(appId: id, name: name, owner: IDs.me, org: org))
+        return id
     }
 
     func memberName(namespaceId: String, account: String) async throws -> String? {
         names[account]
     }
+}
+
+/// An `APP_ERROR` the contract answers with.
+func appError(_ code: String, _ message: String) -> AppError {
+    AppError("", details: ["code": .string(code), "fields": .object(["message": .string(message)])])
 }
 
 /// A one-page PDF, made with Core Graphics.
@@ -130,46 +139,47 @@ func samplePNG() -> Data {
     return ink.renderPNG(size: CGSize(width: 300, height: 100), scale: 2)!
 }
 
-/// The JSON `list_documents` answers with, ids as byte arrays like a node.
+/// The JSON `listDocuments` answers with: camelCase, accounts as strings, u64s as decimal strings.
 func documentJSON(
     id: String = "doc_1", name: String = "NDA.pdf", hash: String, status: String = "Pending",
-    blob: String = IDs.blob, required: [String] = [IDs.me, IDs.alice], uploadedAt: UInt64 = 1_788_952_411_519_000_000
+    blob: String = IDs.blob, required: [String] = [IDs.me, IDs.alice], uploadedAt: UInt64 = 1_788_952_411_519
 ) -> String {
     """
-    {"id":"\(id)","name":"\(name)","hash":"\(hash)","uploaded_by":\(bytes(IDs.alice)),"uploaded_at":\(uploadedAt),\
-    "status":"\(status)","pdf_blob_id":\(bytes(blob)),"size":1234,\
-    "required_signers":[\(required.map(bytes).joined(separator: ","))],"embeddings":null,"extracted_text":null,"chunks":null}
+    {"id":"\(id)","name":"\(name)","hash":"\(hash)","uploadedBy":"\(IDs.alice)","uploadedAt":"\(uploadedAt)",\
+    "status":"\(status)","pdfBlobId":"\(blob)","size":"1234",\
+    "requiredSigners":[\(required.map { "\"\($0)\"" }.joined(separator: ","))],"embeddings":null,"extractedText":null,"chunks":null}
     """
 }
 
-/// An id as the byte array a node may answer with.
-func bytes(_ hex: String) -> String {
-    let data = try! Hex.decode(hex, label: "id", bytes: 32)
-    return "[" + data.map(String.init).joined(separator: ",") + "]"
-}
+/// An id as the JSON string the contract answers with.
+func quoted(_ id: String) -> String { "\"\(id)\"" }
 
 func detailsJSON(participants: [(String, String)] = [(IDs.me, "Sign"), (IDs.alice, "Admin")], name: String = "Lease")
     -> String
 {
-    let rows = participants.map { "{\"user_id\":\(bytes($0.0)),\"permission_level\":\"\($0.1)\"}" }
+    let rows = participants.map { "{\"userId\":\"\($0.0)\",\"permissionLevel\":\"\($0.1)\"}" }
     return """
-        {"context_id":\(bytes(IDs.agreementContext)),"context_name":"\(name)","owner":\(bytes(IDs.alice)),\
-        "is_private":false,"participant_count":\(participants.count),"participants":[\(rows.joined(separator: ","))],\
-        "document_count":1,"created_at":1}
+        {"contextId":"\(IDs.agreementContext)","contextName":"\(name)","owner":"\(IDs.alice)",\
+        "isPrivate":false,"participantCount":"\(participants.count)","participants":[\(rows.joined(separator: ","))],\
+        "documentCount":"1","createdAt":"1"}
         """
 }
 
-/// A backend with one workspace holding one agreement the account is in.
+/// A backend with one workspace holding one agreement (an app instance in it) the account reaches.
 func seededBackend() -> InMemoryAppBackend {
     let backend = InMemoryAppBackend(account: IDs.me)
     backend.namespaces = [AppNamespace(id: IDs.workspace, name: "Acme", applicationId: backend.applicationId)]
-    backend.subgroups = [
-        IDs.workspace: [AppSubgroup(groupId: IDs.agreementGroup, name: "Lease", contextIds: [IDs.agreementContext])]
-    ]
     backend.members = [IDs.agreementContext]
     return backend
 }
 
+/// The admin that lists that agreement.
+func seededAdmin() -> FakeSignAdmin {
+    let admin = FakeSignAdmin()
+    admin.instanceList = [SignInstance(appId: IDs.agreementContext, name: "Lease", owner: IDs.alice, org: IDs.workspace)]
+    return admin
+}
+
 let agreementRef = AgreementRef(
-    namespaceId: IDs.workspace, workspaceName: "Acme", agreementId: IDs.agreementGroup, name: "Lease",
+    namespaceId: IDs.workspace, workspaceName: "Acme", agreementId: IDs.agreementContext, name: "Lease",
     contextId: IDs.agreementContext)

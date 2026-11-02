@@ -27,7 +27,6 @@ import androidx.compose.material.icons.outlined.Draw
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.FolderCopy
 import androidx.compose.material.icons.outlined.People
-import androidx.compose.material.icons.outlined.PortableWifiOff
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.Verified
 import androidx.compose.material3.CircularProgressIndicator
@@ -61,6 +60,7 @@ import network.calimero.sign.SignViewModel
 import network.calimero.sign.core.AgreementModel
 import network.calimero.sign.core.AgreementRow
 import network.calimero.sign.core.AgreementsModel
+import network.calimero.sign.core.ApprovalsModel
 import network.calimero.sign.core.DocumentEntry
 import network.calimero.sign.core.InboxBucket
 import network.calimero.sign.core.InboxModel
@@ -138,22 +138,6 @@ fun SectionLabel(
 }
 
 @Composable
-fun NoRelayBanner() {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(Palette.WaitSoft)
-            .padding(12.dp),
-        verticalAlignment = Alignment.Top,
-    ) {
-        Icon(Icons.Outlined.PortableWifiOff, contentDescription = null, tint = Palette.Wait)
-        Spacer(Modifier.width(10.dp))
-        Text("No relay serves your account yet. Open an invitation link you were sent to get one.", fontSize = 14.sp, color = Palette.Ink)
-    }
-}
-
-@Composable
 fun Loading() =
     Box(Modifier.fillMaxWidth().padding(top = 60.dp), contentAlignment = Alignment.Center) {
         CircularProgressIndicator(color = Palette.Ink)
@@ -212,6 +196,8 @@ fun InboxScreen(
     vm: SignViewModel,
     push: (Route) -> Unit,
     openInvitation: () -> Unit,
+    approvals: ApprovalsModel? = null,
+    refreshApprovals: suspend () -> Unit = {},
 ) {
     val phase by model.phase.collectAsState()
     val entries by model.entries.collectAsState()
@@ -221,13 +207,19 @@ fun InboxScreen(
     val opening by model.opening.collectAsState()
     val notice by model.notice.collectAsState()
     val scope = rememberCoroutineScope()
-    LaunchedEffect(model) { model.load() }
+    LaunchedEffect(model) {
+        model.load()
+        refreshApprovals()
+    }
 
     Column(Modifier.fillMaxSize().background(Palette.Ground)) {
         TopBar("Inbox") { AccountMenu(vm, openInvitation) }
         NoticeBanner(notice) { model.notice.value = null }
-        RefreshingColumn({ model.load() }) {
-            if (!model.hasRelay) NoRelayBanner()
+        RefreshingColumn({
+            model.load()
+            refreshApprovals()
+        }) {
+            approvals?.let { ApprovalsCard(it) }
             BucketPicker(bucket, { model.bucket.value = it }) { b -> entries.count { it.bucket == b } }
             when (val p = phase) {
                 LoadPhase.Loading -> Loading()
@@ -335,7 +327,6 @@ fun AgreementsScreen(
         }
         NoticeBanner(notice) { model.notice.value = null }
         RefreshingColumn({ model.load() }) {
-            if (!model.hasRelay) NoRelayBanner()
             when (val p = phase) {
                 LoadPhase.Loading -> Loading()
                 is LoadPhase.Failed -> ErrorState(p.message) { scope.launch { model.load() } }

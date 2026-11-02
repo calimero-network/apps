@@ -1,7 +1,7 @@
 package network.calimero.sign.core
 
-import com.calimero.mero.admin.SignedGroupOpenInvitation
 import com.calimero.mero.app.AppNamespace
+import com.calimero.mero.app.OrgInvitation
 import com.calimero.mero.invite.InviteCodec
 import com.calimero.mero.invite.InviteLink
 import kotlinx.coroutines.delay
@@ -9,107 +9,83 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.put
+import java.net.URI
+import java.net.URLDecoder
 
 /**
- * An invitation in the web app's format (`inviteCodec.ts`, `inviteLink.ts`), so a link minted on
- * either side opens on the other: `{"invitation", "contextId"?, "contextName"?, "workspaceName"?}`
- * as `base58(deflate(json))` in `https://links.calimero.network/com.calimero.mero-sign/join?invitation=…`.
- * The signed invitation grants the WORKSPACE; the fields beside it are hints. (Swift `SignInvitation`.)
+ * An invitation link: the SDK's [OrgInvitation] (the payload every Calimero 1.0 app shares), plus
+ * the workspace's name to show:
+ *
+ * - payload: `{"invitation": "inv_…", "namespaceId": "<workspace>", "contextId"?: "<agreement>", "name"?: "<agreement name>", "workspaceName"?: "…"}`
+ * - token: `base58(deflate(payload))`
+ * - link: `https://links.calimero.network/com.calimero.mero-sign/join?invitation=<token>`
+ *
+ * The web app's own links are read too: `https://<the web app>/?invite=inv_…&agreement=<app id>`
+ * (`app/src/lib/invites.ts`), and a bare `inv_…` token. They name no workspace; redeeming the token
+ * answers which one it was. The token admits to the WORKSPACE (a Calimero organization); the
+ * agreement and names are hints. (Swift `SignInvitation`.)
  */
 data class SignInvitation(
-    val invitation: SignedGroupOpenInvitation,
-    val contextId: String? = null,
-    val contextName: String? = null,
+    val invitation: OrgInvitation,
     val workspaceName: String? = null,
 ) {
-    /** The namespace it admits to: the hex of its SIGNED `group_id`. */
-    val namespaceId: String
-        get() =
-            when (val raw = invitation.invitation.raw["group_id"] ?: invitation.invitation.raw["groupId"]) {
-                is JsonArray -> raw.mapNotNull { (it as? JsonPrimitive)?.intOrNull }.joinToString("") { "%02x".format(it and 0xff) }
-                is JsonPrimitive -> raw.contentOrNull.orEmpty().lowercase()
-                else -> ""
-            }
+    /** The workspace it admits to; empty for a web link (the node answers it on redeem). */
+    val namespaceId: String get() = invitation.namespaceId
 
-    val title: String get() = contextName?.trimmedOrNull() ?: workspaceName?.trimmedOrNull() ?: "an agreement"
+    /** The agreement to open after joining, when the link names one. */
+    val contextId: String? get() = invitation.contextId?.trimmedOrNull()
 
-    fun token(): String =
-        InviteCodec.encode(
-            buildJsonObject {
-                put("invitation", invitation.raw)
-                contextId?.let { put("contextId", it) }
-                contextName?.trimmedOrNull()?.let { put("contextName", it) }
-                workspaceName?.trimmedOrNull()?.let { put("workspaceName", it) }
-            }.toString(),
-        )
+    /** The agreement's name, while it loads. */
+    val contextName: String? get() = invitation.name?.trimmedOrNull()
+
+    val title: String get() = contextName ?: workspaceName?.trimmedOrNull() ?: "an agreement"
+
+    fun token(): String {
+        val base = invitation.copy(contextId = contextId, name = contextName).toJson()
+        val payload = workspaceName?.trimmedOrNull()?.let { JsonObject(base + ("workspaceName" to JsonPrimitive(it))) } ?: base
+        return InviteCodec.encode(payload.toString())
+    }
 
     fun link(): String = InviteLink.invitation(token(), SignConstants.PACKAGE_NAME)
 
     companion object {
         private val json = Json { ignoreUnknownKeys = true }
 
-        /** A link (https or `calimero://`), a bare token, or raw JSON. Null for another app's link. */
+        /** A link (https or `calimero://`), the web app's `?invite=` link, a bare token, or raw JSON. Null for another app's link. */
         fun parse(input: String): SignInvitation? {
             val trimmed = input.trim()
-            if (trimmed.isEmpty()) return null
-            if (trimmed.startsWith("{")) return parseJson(trimmed)
-            // Another app's link is refused (`expectedSlug`).
-            val token = InviteLink.tokenFromPasted(trimmed, SignConstants.PACKAGE_NAME) ?: return null
-            return InviteCodec.decode(token)?.let(::parseJson)
+            return when {
+                trimmed.isEmpty() -> null
+                trimmed.startsWith("{") -> parseJson(trimmed)
+                trimmed.startsWith("inv_") && trimmed.none { it.isWhitespace() } -> SignInvitation(OrgInvitation("", trimmed))
+                // Another app's link is refused (`expectedSlug`).
+                else ->
+                    webInvite(trimmed)
+                        ?: InviteLink.tokenFromPasted(trimmed, SignConstants.PACKAGE_NAME)?.let(InviteCodec::decode)?.let(::parseJson)
+            }
         }
 
-        /** The decoded payload (the web's `parsePayload`). */
+        /** The web app's link: `?invite=<token>` and an optional `&agreement=<app id>`. */
+        internal fun webInvite(link: String): SignInvitation? {
+            val query = runCatching { URI(link).rawQuery }.getOrNull() ?: return null
+            val params =
+                query.split('&').associate {
+                    URLDecoder.decode(it.substringBefore('='), "UTF-8") to URLDecoder.decode(it.substringAfter('=', ""), "UTF-8")
+                }
+            val token = params["invite"]?.trimmedOrNull() ?: return null
+            return SignInvitation(OrgInvitation("", token, params["agreement"]?.trimmedOrNull()))
+        }
+
+        /** The decoded payload. Only an [OrgInvitation] (an `inv_…` token and its organization) is an invitation. */
         fun parseJson(text: String): SignInvitation? {
-            var inner: JsonElement = runCatching { json.parseToJsonElement(text) }.getOrNull() ?: return null
-            repeat(6) {
-                if (isEnvelope(inner)) return@repeat
-                inner = (inner as? JsonObject)?.get("data") ?: return@repeat
-            }
-            val obj = inner as? JsonObject ?: return null
-            val wrapped = unwrapSigned(obj["invitation"])
-            if (wrapped != null) {
-                return SignInvitation(
-                    invitation = signed(wrapped),
-                    contextId = (obj.string("contextId") ?: obj.string("context_id"))?.trimmedOrNull(),
-                    contextName =
-                        (obj.string("contextName") ?: obj.string("context_name") ?: obj.string("groupAlias") ?: obj.string("groupName"))
-                            ?.trimmedOrNull(),
-                    workspaceName = (obj.string("workspaceName") ?: obj.string("namespaceName"))?.trimmedOrNull(),
-                )
-            }
-            return if (isEnvelope(obj)) SignInvitation(signed(obj)) else null
+            val invitation = OrgInvitation.decodeJson(text) ?: return null
+            val extra = runCatching { json.parseToJsonElement(text) as? JsonObject }.getOrNull()
+            val workspaceName = (extra?.get("workspaceName") as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull?.trimmedOrNull()
+            return SignInvitation(invitation, workspaceName)
         }
-
-        private fun unwrapSigned(value: JsonElement?): JsonObject? {
-            var current = value
-            repeat(6) {
-                val obj = current as? JsonObject ?: return null
-                if (isEnvelope(obj)) return obj
-                current = obj["data"] ?: obj["invitation"]
-            }
-            return null
-        }
-
-        private fun isEnvelope(value: JsonElement): Boolean {
-            val obj = value as? JsonObject ?: return false
-            return obj["invitation"] is JsonObject && (obj.string("inviter_signature") != null || obj.string("inviterSignature") != null)
-        }
-
-        private fun signed(obj: JsonObject): SignedGroupOpenInvitation {
-            val camel = obj["inviterSignature"]
-            if (obj["inviter_signature"] != null || camel == null) return SignedGroupOpenInvitation(obj)
-            return SignedGroupOpenInvitation(JsonObject(obj.filterKeys { it != "inviterSignature" } + ("inviter_signature" to camel)))
-        }
-
-        private fun JsonObject.string(key: String): String? = (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull
     }
 }
 
@@ -175,14 +151,35 @@ class InvitationModel(
         }
         val title = invitation.title
         _stage.value = Stage.Joining(title, "Joining the workspace…")
-        val namespaceId = invitation.namespaceId
-        val joinError = attempt { current.backend.joinNamespace(namespaceId, invitation.invitation) }.exceptionOrNull()
+        var namespaceId = invitation.namespaceId
+        // The node answers the organization the token opened: a web link names none.
+        val joined0 = attempt { current.backend.joinNamespace(namespaceId, invitation.invitation) }
+        joined0
+            .getOrNull()
+            ?.namespaceId
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { namespaceId = it }
+        val joinError = joined0.exceptionOrNull()
         if (joinError != null) {
             val text = SignErrorText.message(joinError).lowercase()
             if (!(text.contains("already a member") || text.contains("already member") || text.contains("already joined"))) {
                 _stage.value = Stage.Failed(SignErrorText.describe(joinError))
                 return
             }
+        }
+        if (namespaceId.isEmpty()) {
+            invitation.contextId?.let { hint ->
+                attempt {
+                    current.admin
+                        .instances()
+                        .firstOrNull { it.appId == hint }
+                        ?.org
+                }.getOrNull()?.let { namespaceId = it }
+            }
+        }
+        if (namespaceId.isEmpty()) {
+            _stage.value = Stage.Failed("Joined, but the workspace isn't listed yet. Pull to refresh in Agreements.")
+            return
         }
         didJoin()
         val joined = directory()

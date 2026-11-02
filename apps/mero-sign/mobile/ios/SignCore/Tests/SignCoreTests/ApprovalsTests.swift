@@ -59,16 +59,22 @@ final class ApprovalsTests: XCTestCase {
                 if scope == "denied" { throw URLError(.userAuthenticationRequired) }
                 return scope == nil ? account : org
             },
-            consent: { build in
-                asked.append(build("mero-sign://enrol"))
-                return approved
+            consent: { build, confirm in
+                asked.append(build("mero-sign://consent"))
+                let started = try! self.decode(ConsentStarted.self, #"{"requestId":"r1","url":"https://n/consent","expiresAt":1,"code":"ABC-DEF"}"#)
+                return await confirm(started) ? approved : nil
             })
         await model.refresh(orgs: ["org1", "denied"])
         XCTAssertEqual(loads, [nil, "org1", "denied"])
         // The account's release, its upgrade, and the org's release (the same upgrade only once).
         XCTAssertEqual(model.items.count, 3)
-        await model.approve(model.items[0])
-        XCTAssertEqual(asked, [.release(scope: .account, version: "2.3.110", returnTo: "mero-sign://enrol")])
+        let approving = Task { await model.approve(model.items[0]) }
+        while model.confirmationCode == nil { await Task.yield() }
+        XCTAssertEqual(model.confirmationCode, "ABC-DEF", "the code shows before the page opens")
+        model.answerCode(true)
+        await approving.value
+        XCTAssertNil(model.confirmationCode)
+        XCTAssertEqual(asked, [.release(scope: .account, version: "2.3.110", returnTo: "mero-sign://consent")])
         XCTAssertEqual(model.message, "Approved.")
         XCTAssertNil(model.busy)
         XCTAssertEqual(loads.count, 6)

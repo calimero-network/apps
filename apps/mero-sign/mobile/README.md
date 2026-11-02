@@ -7,48 +7,55 @@ sent.** Uploading documents, placing fields and the semantic search stay on the 
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+, PDFKit | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `6c5f116` (in `ios/project.yml`, `ios/SignCore/Package.swift` and `Package.resolved`). **Calimero 1.0.** |
-| Android | `android/` | Jetpack Compose + Material 3, minSdk 26, `PdfRenderer` + PdfBox-Android | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `ea8ded7` (`android/kotlin-sdk.ref`, composite build) |
+| iOS | `ios/` | SwiftUI, iOS 16+, PDFKit | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `37c09f3` (head of swift-sdk#85; in `ios/project.yml`, `ios/SignCore/Package.swift` and `Package.resolved`) |
+| Android | `android/` | Jetpack Compose + Material 3, minSdk 26, `PdfRenderer` + PdfBox-Android | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `61b65e9` (head of kotlin-sdk#68; `android/kotlin-sdk.ref`, composite build) |
 
-The iOS pin is the head of swift-sdk's Calimero 1.0 branch (`feat/calimero-1.0`, swift-sdk#85); it
-moves to that PR's merge commit once it lands. The Android pin is the `main` merge commit of
-kotlin-sdk#67, and **the Android app still speaks the 0.x API** until kotlin-sdk is ported.
+Both pins move to the SDK PRs' merge commits once they land.
 
-## Through `MeroAppSession` / `MeroAppBackend`
+## Calimero 1.0
 
-Neither app runs a node. Everything goes through the SDKs' `MeroAppSession` / `MeroAppBackend`.
+Neither app runs a node. Both sign in with a **passkey** on the workspace's cluster (or create an
+account), over the sealed channel to an attested node, and lay things out exactly as the web app
+does (`app/src/lib/agreements.ts`, web port #726):
 
-- **iOS (Calimero 1.0):** the person signs in with a **passkey** on the workspace's cluster (or
-  creates an account), over the sealed channel to an attested node. Contract reads are
-  `/apps/{app}/views`, writes `/apps/{app}/intents`, blobs `/apps/{app}/blobs`, all through
-  swift-sdk's `CalimeroAppBackend`; the private store's marker is written to the organization's
-  metadata with the signed-in `CalimeroClient`. A workspace is a Calimero **organization**, an
-  agreement a **team** with one **app instance**, and invitations are org invite tokens.
-- **Android (0.x):** the wallet certifies the device key and everything goes through the account's
-  relay: relay queries, signed warrants, blobs through the agreement's context.
+| Mero Sign | Calimero 1.0 |
+| --- | --- |
+| workspace | organization |
+| agreement | app instance in the organization, `setup(isPrivate: false, contextName)` |
+| signature library | an app instance named `mero-sign:library` the account owns in no organization, `setup(isPrivate: true, contextName: "default")` |
+| invitation | org invite token |
 
-### Calimero 1.0 on iOS
+So a phone and a browser on the same account see the same agreements and share one library.
 
-- **The cluster** is `MeroNodeURL` in `ios/project.yml` (a node from Calimero Cloud's console, plus
-  `MeroNodes` for failover). Left empty, the sign-in screen asks for one.
-- **Development**: "Choose your cluster" (or "Change") on the sign-in screen takes any node URL and
-  a "Development cluster" switch, which trusts mock attestation (`allowMock`) as `merod local`
-  serves it (`cargo run -p merod -- local`, nodes on `http://127.0.0.1:2501-2503`). The app keeps a
-  soft passkey for that node and creates its account on the first sign-in. Or set `MeroNodeURL`
-  and `MeroAllowMock: "YES"` in `project.yml`.
-- **Invitation links** keep their URL; the payload is swift-sdk's `OrgInvitation`,
-  `{"invitation": "inv_…", "namespaceId": "<workspace>", "contextId"?: "<agreement>", "name"?: "<agreement name>"}`,
-  plus Mero Sign's `workspaceName`. Android and the web still use the 0.x signed invitation until
-  they are ported, so links do not cross between them and iOS yet.
+- **Sign-in**: a Calimero Cloud cluster by name (its nodes from the node directory, with failover)
+  or a node URL, then the passkey (iOS: "Choose your cluster"; Android: the sign-in screen). A
+  **development node** (`merod local`, mock attestation) gets a software passkey kept on the phone.
+  iOS: `MeroNodeURL` / `MeroAllowMock` in `project.yml`; Android: `meroCluster` / `meroDevNodeUrl` in
+  `android/gradle.properties` (debug builds allow cleartext to localhost and 10.0.2.2 only).
+- **The contract** is the component ABI (`../logic/res/abi.json`): camelCase methods, arguments and
+  answer fields, u64s as decimal strings in arguments, accounts as strings, blob ids as 64 hex,
+  timestamps in milliseconds, refusals as `APP_ERROR {code, fields}` (`NotFound`, `Forbidden`,
+  `Invalid`, `Conflict`). `SignClient` (Swift and Kotlin) is written from it; `ContractSurfaceTests` /
+  `ContractSurfaceTest` pin its names, parameters and number encoding to the ABI.
+- **Blobs** go through the signed-in client: `uploadBlob(app, bytes, contentType)` (`application/pdf`
+  for a signed version, `image/png` for a signature) and `blobContent(app, id)`; the contract stores
+  the hex id.
+- **Invitations**: the SDK's `OrgInvitation` links
+  (`links.calimero.network/com.calimero.mero-sign/join?invitation=…`, plus Mero Sign's
+  `workspaceName`), the web app's own `?invite=inv_…&agreement=<app id>` links (pasted), and a bare
+  `inv_…` token. Redeeming answers the workspace.
 - **Approvals**: when a node release or an app upgrade waits for the account (or a workspace it
-  owns), the Inbox shows it under "Needs your approval". "Review" opens the **node's consent page in
-  the system browser**; the page returns to `mero-sign://consent`. The app never approves by itself.
-- A real cluster's passkeys need the app to carry the `webcredentials:<rp-id>` Associated Domain of
-  that cluster; it is not set in `project.yml` yet.
+  owns), the Inbox shows it under "Needs your approval". "Review" shows the confirmation code first,
+  then opens the **node's consent page** (system browser / Custom Tab), which returns to
+  `mero-sign://consent`. The app never approves by itself.
+- On Android the Activity's passkey is handed to the session while it is on screen
+  (`MeroAppSession.passkey`), for passkey step-ups.
+- A real cluster's passkeys need the `webcredentials:<rp-id>` Associated Domain (iOS) or Digital
+  Asset Links (Android) of that cluster; neither is set yet.
 
 ## Screens
 
-1. **Sign in** — a passkey on iOS (Cloud sign-in on Android); says so when an invitation is waiting.
+1. **Sign in** — a passkey on your cluster, or a development node; says so when an invitation is waiting.
 2. **Inbox** (tab) — every document in every agreement you are in, in **To sign / Waiting /
    Completed**, with "New agreements" you can see but have not opened yet. Pull to refresh.
 3. **Agreements** (tab) — your workspaces and their agreements; opening one you have not entered
@@ -65,47 +72,27 @@ Neither app runs a node. Everything goes through the SDKs' `MeroAppSession` / `M
 
 ## What signing does (same as the web, in order)
 
-1. `whoami` for your **account**, then `has_consented(account, document)`.
-2. If not yet: `set_consent(document)` (no user argument; the contract records the caller).
+1. `whoami` for your **account**, then `hasConsented(account, document)`.
+2. If not yet: `setConsent(document)` (no user argument; the contract records the caller).
 3. The signature PNG is drawn onto the chosen page of the version you opened.
-4. The signed PDF is uploaded as a blob **into the agreement's context**, hashed (SHA-256, lowercase
-   hex), and `sign_document(document_id, base_hash, pdf_blob_id_str, file_size, new_hash)` is
-   called with `base_hash` = the version you opened (a stale one is refused; the app reloads and
-   asks you to sign the new version).
-5. `mark_participant_signed(document_id)`.
+4. The signed PDF is uploaded as a blob (`application/pdf`) of the **agreement's instance**, hashed
+   (SHA-256, lowercase hex), and `signDocument(documentId, baseHash, pdfBlobIdStr, fileSize,
+   newHash)` is called with `baseHash` = the version you opened (a stale one is refused with
+   `Conflict`; the app reloads and asks you to sign the new version).
+5. `markParticipantSigned(documentId)`.
 
-**Signature images** are stored exactly as the web stores them: a PNG of the whole pad, opaque
-white with black ink (`signature_pad`, `minWidth 2`, `maxWidth 4`), at the device's pixel ratio,
-uploaded into the **private** context and recorded with `create_signature("Signature N", blob hex,
-byte size)`.
+**Signature images** are stored as the web stores them: a PNG of the whole pad, opaque white with
+black ink, uploaded (`image/png`) into the **library** and recorded with `createSignature("Signature
+N", blob hex, byte size)`.
 
-## Identity mapping and the private context
+## Entering an agreement
 
-Exactly what the web does when a recipient opens an invitation (`joinWorkspaceFromInvitation` →
-`settleIntoAgreement`):
-
-1. Join the workspace the invitation names (iOS: redeem the org invite token; Android: the 0.x
-   signed namespace invitation).
-2. Find the agreement (the one the link hints at if it is in the workspace, else the only one).
-3. Enter it (join its open team / subgroup), wait while it answers "Uninitialized".
-4. `register_self_as_participant` ("Already registered" is fine).
-5. Settle the name (the contract's `context_name` wins).
-6. Ensure the **private context** and record the agreement there with
-   `join_shared_context(context_id, shared_identity, name)`, which writes the `IdentityMapping`.
-   The identity held in every agreement is the account itself (on 1.0 there are no devices; on
-   0.x the relay runs every context as the account), so the shared identity is the account — as
-   the web records it for an account session.
-
-The private context is found and created like the web's `DefaultContextService` /
-`ensurePersonalWorkspace` / `createPersonalContext`: a namespace (an organization on iOS) marked by
-its metadata record (`kind = "mero-sign:personal"`, never by name), a **restricted** "Private"
-subgroup (an invite-only team on iOS), a context (app instance)
-initialised `{is_private: true, context_name: "default"}`, confirmed with
-`is_default_private_context`. A phone and a browser on the same account share one library.
-
-Opening an agreement from the Agreements tab that you entered but never registered in runs the same
-settle step once. `get_shared_identity` / `resolve_private_identity` are not called on open or
-sign, by the web or here: the contract derives the signer from the caller's account.
+As the web's `enterAgreement`: every member of the workspace reaches its agreements, so there is
+nothing to join. Opening one you are not on the roster of registers you as a signer
+(`registerSelfAsParticipant`; `Conflict` and `Forbidden` (a guest) are fine, you can still read),
+settles on the contract's name, and records it in your library with `joinSharedContext(appId,
+account, name)`, which writes the `IdentityMapping`. On 1.0 the identity in every agreement is the
+account itself. An agreement counts as opened ("joined") once you are on its roster.
 
 ## Left out (and why)
 
@@ -113,7 +100,8 @@ sign, by the web or here: the contract derives the signer from the caller's acco
 - **Creating workspaces and agreements, inviting, changing roles, removing people, deleting
   documents** — admin work, done on the web. The apps show roles read-only.
 - **Live updates** — pull to refresh, and agreements that are still syncing are re-read every 10 s.
-- **Setting your display name** — names shown are the ones set on the web (namespace member names).
+- **Setting your display name** — names shown are the ones set on the web (org member metadata).
+- **Workspaces with no agreement yet** — the phones list organizations of this app (founded for it or running an instance), so a workspace created on the web shows once it has an agreement.
 
 ## How the signature goes into the PDF
 
@@ -138,32 +126,28 @@ page's existing content wrapped in `q … Q`. Form fields, links, annotations an
 ## Build and test (no simulator or emulator needed)
 
 ```bash
-# iOS logic: generated client, private store, identity mapping, stamping, ink, view models
+# iOS logic: the client against the ABI, the library, identity mapping, stamping, ink, view models
 swift test --package-path ios/SignCore
 # iOS app
-cd ios && xcodegen generate && open MeroSign.xcodeproj
+cd ios && xcodegen generate && xcodebuild build -scheme MeroSign -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO
 
 # Android
 cd android && ./scripts/fetch-sdk.sh
 ./gradlew ktlintCheck detekt testDebugUnitTest lint assembleDebug
 ```
 
-## Regenerate the contract client
+## The contract client
 
-Both clients are generated from `../logic/res/abi.json` with `abi-codegen`, using the SDKs' own
-`ContextContractCalling` (`--transport-import`). Fixed-size ids (`[u8; 32]`) arrive as
-`ContractBytes` (text or a byte array) and are turned into lowercase hex at the call sites.
-
-```bash
-ABI_CODEGEN=/path/to/abi-codegen/dist/cli.js ./scripts/regenerate-client.sh
-```
+No codegen targets a component ABI yet, so `SignClient` (Swift
+`ios/SignCore/Sources/SignCore/Generated/SignClient.swift`, Kotlin
+`android/.../generated/SignClient.kt`) is written from `../logic/res/abi.json`, one line per method.
+After a contract change, update both and the method table in the contract-surface tests.
 
 ## Callbacks
 
-iOS: the node's consent page returns to `mero-sign://consent` (`MeroSignCallbackScheme` in
-`ios/project.yml`). Android: sign-in returns to `mero-sign://enrol` (`meroEnrolCallback` in
-`android/gradle.properties`); the hosted wallet may only return to `https://` callbacks, so
-production sign-in then needs a verified https callback (App Links).
+The node's consent page returns to `mero-sign://consent` (iOS `MeroSignCallbackScheme` in
+`ios/project.yml`; Android `meroConsentCallback` in `android/gradle.properties`, also the manifest's
+intent filter).
 
 ## CI
 

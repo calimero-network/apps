@@ -6,14 +6,10 @@ import MeroKit
 public enum SignConstants {
     /// The registry package and invitation-link slug (`PACKAGE_NAME` on the web).
     public static let packageName = "com.calimero.mero-sign"
-    /// The metadata marker on the workspace organization that holds this
-    /// account's private store (`PERSONAL_KIND`). Found by marker, never by name.
-    public static let personalKind = "mero-sign:personal"
-    /// The personal organization's name (`PERSONAL_WORKSPACE_NAME`).
-    public static let personalWorkspaceName = "Personal"
-    /// The invite-only team the private app instance is in (`PERSONAL_GROUP_NAME`).
-    public static let personalGroupName = "Private"
-    /// The private app instance's `context_name` (`is_default_private_context` answers on it).
+    /// The name of the account's signature-library instance (`LIBRARY_NAME`):
+    /// owned by the account, in no organization.
+    public static let libraryName = "mero-sign:library"
+    /// The library's `contextName` (`isDefaultPrivateContext` answers on it).
     public static let privateContextName = "default"
     /// How often an open agreement is re-read when the node cannot stream events.
     public static let pollInterval: Duration = .seconds(10)
@@ -47,9 +43,11 @@ extension ContractBytes {
 
 /// Ids as the contract takes them back: 32 bytes, lowercase hex.
 public enum SignIds {
-    /// An account or context id, trimmed and lowercased.
+    /// An account or app id, trimmed; a 64-hex id lowercased. Any other id
+    /// is kept as the node spelled it, since it goes back to the contract.
     public static func hex(_ value: String) -> String {
-        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return Hex.is32(trimmed) ? trimmed.lowercased() : trimmed
     }
 
     public static func hex(_ value: ContractBytes) -> String { value.hex }
@@ -120,8 +118,12 @@ public enum SignErrorText {
             return "This node doesn't serve your workspace. Try another node of the cluster."
         case let error as UnavailableError:
             return "Your cluster is busy (\(error.reason)). Try again shortly."
+        case is ConfirmCancelled, is PasskeyCancelled:
+            return "The passkey prompt was cancelled, so nothing changed."
+        case is ConsentStale:
+            return "What you were approving changed in the meantime. Review it again under Needs your approval."
         case let error as AppError:
-            return error.message.isEmpty ? error.appCode : error.message
+            return appError(error)
         case let error as CalimeroError:
             return error.message.isEmpty ? error.code : error.message
         default:
@@ -145,9 +147,40 @@ public enum SignErrorText {
         return text.isEmpty ? "Something went wrong. Try again." : text
     }
 
+    /// The contract's own refusals (`422 APP_ERROR`, `{code, fields}`): `NotFound
+    /// {what, id}`, and `Invalid`, `Forbidden`, `Conflict` with v1's sentence in `message`.
+    public static func appError(_ error: AppError) -> String {
+        let message = error.fields["message"]?.stringValue.map(sentence)
+        switch error.appCode {
+        case "NotFound":
+            let what = error.fields["what"]?.stringValue ?? "item"
+            return "That \(what) isn't there any more. Pull to refresh."
+        case "Forbidden":
+            return message ?? "You can't do that in this agreement."
+        case "Conflict":
+            return message ?? "Someone changed this first. Pull to refresh and try again."
+        default:
+            return message ?? (error.message.isEmpty ? "The agreement refused this (\(error.appCode))." : error.message)
+        }
+    }
+
+    /// `already registered` as a sentence.
+    static func sentence(_ text: String) -> String {
+        guard let first = text.first else { return text }
+        let body = first.uppercased() + text.dropFirst()
+        return body.hasSuffix(".") ? body : body + "."
+    }
+
+    /// The contract's `Conflict` (already registered, already joined, a stale version).
+    public static func isConflict(_ error: Error) -> Bool { (error as? AppError)?.appCode == "Conflict" }
+
+    /// The contract's `Forbidden`.
+    public static func isForbidden(_ error: Error) -> Bool { (error as? AppError)?.appCode == "Forbidden" }
+
     /// The raw message of an error, for matching the contract's own words.
     public static func message(_ error: Error) -> String {
-        (error as? LocalizedError)?.errorDescription ?? "\(error)"
+        if let app = error as? AppError, let text = app.fields["message"]?.stringValue { return text }
+        return (error as? LocalizedError)?.errorDescription ?? "\(error)"
     }
 
     /// A freshly joined context answers "Uninitialized" until its first sync.

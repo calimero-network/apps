@@ -198,7 +198,7 @@ struct SignatureTile: View {
             .frame(height: 74)
             .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Palette.hairline, lineWidth: 0.5))
             Text(signature.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(Palette.ink)
-            Text(SignFormat.when(nanos: signature.createdAt)).font(.system(size: 12)).foregroundStyle(Palette.muted)
+            Text(SignFormat.when(millis: signature.createdAt)).font(.system(size: 12)).foregroundStyle(Palette.muted)
         }
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Palette.surface))

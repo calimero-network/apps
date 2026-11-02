@@ -6,16 +6,16 @@ import XCTest
 @testable import SignCore
 
 final class WireAndIdTests: XCTestCase {
-    func testIdsDecodeFromBytesOrTextAndBecomeHex() throws {
+    func testIdsDecodeFromTextAndU64sFromDecimalStrings() throws {
         let raw = """
-            {"signer":\(bytes(IDs.alice)), "signed_at":1788952411519000123}
+            {"signer":"\(IDs.alice)", "signedAt":"18446744073709551615"}
             """
         let decoded = try JSONDecoder().decode(DocumentSignature.self, from: Data(raw.utf8))
         XCTAssertEqual(decoded.signer.hex, IDs.alice)
-        // A nanosecond u64 past 2^53 survives digit for digit.
-        XCTAssertEqual(decoded.signedAt, 1_788_952_411_519_000_123)
+        // A u64 past 2^53 survives digit for digit.
+        XCTAssertEqual(decoded.signedAt, UInt64.max)
         let text = try JSONDecoder().decode(DocumentSignature.self, from: Data(
-            "{\"signer\":\"\(IDs.bob.uppercased())\",\"signed_at\":1}".utf8))
+            "{\"signer\":\"\(IDs.bob.uppercased())\",\"signedAt\":1}".utf8))
         XCTAssertEqual(text.signer.hex, IDs.bob)
         XCTAssertTrue(SignIds.same(decoded.signer, IDs.alice))
         let base58 = InviteCodec.base58Encode(try Hex.decode(IDs.blob, label: "b", bytes: 32))
@@ -49,7 +49,7 @@ final class WireAndIdTests: XCTestCase {
         XCTAssertEqual(SignFormat.initials(nil, id: IDs.alice), "A1")
         XCTAssertEqual(SignFormat.fileName("NDA", signed: true), "signed-NDA.pdf")
         XCTAssertEqual(SignFormat.tone(IDs.alice), SignFormat.tone(IDs.alice))
-        let date = SignFormat.date(nanos: 1_700_000_000_000_000_000)
+        let date = SignFormat.date(millis: 1_700_000_000_000)
         XCTAssertEqual(date.timeIntervalSince1970, 1_700_000_000, accuracy: 0.001)
     }
 }
@@ -164,6 +164,10 @@ final class InvitationCodecTests: XCTestCase {
             "Your cluster takes no new work until node release 2.3.110 is approved. Review it under Needs your approval.")
         XCTAssertEqual(SignErrorText.describe(NotFound("no such app")), "This isn't shared with you, or it was deleted.")
         XCTAssertEqual(SignErrorText.describe(LoginRequired("expired")), "Your session ended. Sign in again.")
+        XCTAssertEqual(SignErrorText.describe(appError("Forbidden", "only admins may do this")), "Only admins may do this.")
+        XCTAssertEqual(SignErrorText.describe(ConfirmCancelled()), "The passkey prompt was cancelled, so nothing changed.")
+        XCTAssertTrue(SignErrorText.describe(ConsentStale("")).contains("Review it again"))
+        XCTAssertTrue(SignErrorText.isConflict(appError("Conflict", "already registered")))
     }
 
 }

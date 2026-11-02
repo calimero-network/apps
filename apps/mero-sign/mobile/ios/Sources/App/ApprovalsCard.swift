@@ -12,8 +12,9 @@ extension ApprovalsModel {
                 guard let session else { throw CancellationError() }
                 return try await session.pendingApprovals(org: org)
             },
-            consent: { [weak session] build in
-                guard let session, let started = try? await session.requestConsent(build(session.callback.url))
+            consent: { [weak session] build, confirm in
+                guard let session,
+                    let started = try? await session.requestConsent(build(session.callback.url), confirm: confirm)
                 else { return nil }
                 // The page's return (handled by the session) answers at once; else ask the node.
                 if let result = session.consentResult, result.requestId == started.requestId { return result }
@@ -36,6 +37,23 @@ struct ApprovalsCard: View {
                         ForEach(Array(model.items.enumerated()), id: \.element.id) { index, item in
                             row(item)
                             if index < model.items.count - 1 { Divider().overlay(Palette.hairline).padding(.leading, 56) }
+                        }
+                        if let code = model.confirmationCode {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Confirmation code").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.muted)
+                                Text(code).font(.system(size: 26, weight: .semibold, design: .monospaced))
+                                    .foregroundStyle(Palette.ink)
+                                Text("The approval page will show this code. Approve only if it shows the same code.")
+                                    .font(.system(size: 13)).foregroundStyle(Palette.muted)
+                                HStack(spacing: 10) {
+                                    Button("Open the page") { model.answerCode(true) }
+                                        .buttonStyle(PrimaryButtonStyle())
+                                    Button("Cancel") { model.answerCode(false) }
+                                        .buttonStyle(SecondaryButtonStyle())
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(14)
                         }
                         if let message = model.message {
                             Text(message)

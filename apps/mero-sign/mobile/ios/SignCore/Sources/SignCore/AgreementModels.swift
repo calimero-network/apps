@@ -38,7 +38,7 @@ public final class AgreementsModel: ObservableObject {
                 let agreements = (try? await directory.agreements(in: workspace)) ?? []
                 var rows: [AgreementRow] = []
                 for agreement in agreements {
-                    let joined = (try? await directory.backend.isMember(contextId: agreement.contextId)) == true
+                    let joined = await directory.isJoined(agreement.contextId)
                     rows.append(AgreementRow(agreement: agreement, joined: joined))
                 }
                 out.append(WorkspaceSection(workspace: workspace, agreements: rows))

@@ -17,10 +17,10 @@ let package = Package(
         .library(name: "SignCore", targets: ["SignCore"]),
     ],
     dependencies: [
-        // The head of swift-sdk's Calimero 1.0 branch (swift-sdk#85); moves to its merge commit once it lands.
+        // The head of swift-sdk#85 (Calimero 1.0, core rc.7 parity); moves to its merge commit once it lands.
         .package(
             url: "https://github.com/calimero-network/swift-sdk",
-            revision: "6c5f1167d1e586f556f59c326de5f51d034e80dd"),
+            revision: "37c09f3f96e7d98440f6618eef8a0e83ddee8ebd"),
     ],
     targets: [
         .target(
@@ -28,9 +28,9 @@ let package = Package(
             dependencies: [
                 .product(name: "MeroKit", package: "swift-sdk"),
             ]),
-        // Sources/SignCore/Generated/SignClient.swift is generated from
-        // ../../logic/res/abi.json with `--transport-import MeroKit`, so it
-        // takes MeroKit's `ContextContractCalling` directly. Never edit it.
+        // Sources/SignCore/Generated/SignClient.swift is written from the
+        // component ABI (../../logic/res/abi.json) and takes MeroKit's
+        // `ContextContractCalling`; ContractSurfaceTests pins it to the ABI.
         .testTarget(
             name: "SignCoreTests",
             dependencies: [

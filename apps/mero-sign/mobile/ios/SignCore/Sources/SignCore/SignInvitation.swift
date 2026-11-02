@@ -8,6 +8,10 @@ import MeroKit
 /// - token: `base58(deflate(payload))`
 /// - link: `https://links.calimero.network/com.calimero.mero-sign/join?invitation=<token>`
 ///
+/// The web app's own links are read too: `https://<the web app>/?invite=inv_…&agreement=<app id>`
+/// (`app/src/lib/invites.ts`), and a bare `inv_…` token. They name no
+/// workspace; redeeming the token answers which one it was.
+///
 /// The invite token admits to the WORKSPACE (a Calimero organization).
 /// `contextId` (the agreement's app instance) and `name` are a hint for
 /// which agreement to open and what to call it while it loads, never
@@ -71,16 +75,30 @@ public struct SignInvitation: Sendable {
 
     // MARK: Decoding
 
-    /// A link (https or `calimero://`), a bare token, or raw JSON. Nil when it
-    /// holds no Mero Sign invitation, and for another app's link.
+    /// A link (https or `calimero://`), the web app's `?invite=` link, a bare
+    /// token, or raw JSON. Nil when it holds no Mero Sign invitation, and for
+    /// another app's link.
     public static func parse(_ input: String) -> SignInvitation? {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         if trimmed.hasPrefix("{") { return parse(json: trimmed) }
+        if trimmed.hasPrefix("inv_"), !trimmed.contains(where: \.isWhitespace) {
+            return SignInvitation(invitation: OrgInvitation(namespaceId: "", token: trimmed))
+        }
+        if let web = webInvite(trimmed) { return web }
         guard let token = InviteLink.token(fromPasted: trimmed, expectedSlug: SignConstants.packageName),
             let json = InviteCodec.decode(token: token)
         else { return nil }
         return parse(json: json)
+    }
+
+    /// The web app's link: `?invite=<token>` and an optional `&agreement=<app id>`.
+    static func webInvite(_ link: String) -> SignInvitation? {
+        guard let items = URLComponents(string: link)?.queryItems,
+            let token = items.first(where: { $0.name == "invite" })?.value?.signTrimmed
+        else { return nil }
+        let agreement = items.first(where: { $0.name == "agreement" })?.value?.signTrimmed
+        return SignInvitation(invitation: OrgInvitation(namespaceId: "", token: token, contextId: agreement))
     }
 
     /// The decoded payload. Only an ``OrgInvitation`` (an `inv_…` token and
@@ -159,15 +177,26 @@ public final class InvitationModel: ObservableObject {
         }
         let title = invitation.title
         stage = .joining(title: title, step: "Joining the workspace…")
-        let namespaceId = invitation.namespaceId
+        var namespaceId = invitation.namespaceId
         do {
-            _ = try await current.backend.joinNamespace(namespaceId: namespaceId, invitation: invitation.invitation)
+            // The node answers the organization the token opened: a web link names none.
+            let joined = try await current.backend.joinNamespace(namespaceId: namespaceId, invitation: invitation.invitation)
+            if !joined.namespaceId.isEmpty { namespaceId = joined.namespaceId }
         } catch {
             let text = SignErrorText.message(error).lowercased()
             if !(text.contains("already a member") || text.contains("already member") || text.contains("already joined")) {
                 stage = .failed(SignErrorText.describe(error))
                 return
             }
+        }
+        if namespaceId.isEmpty, let hint = invitation.contextId,
+            let org = try? await current.admin.instances().first(where: { $0.appId == hint })?.org
+        {
+            namespaceId = org
+        }
+        guard !namespaceId.isEmpty else {
+            stage = .failed("Joined, but the workspace isn't listed yet. Pull to refresh in Agreements.")
+            return
         }
         await didJoin()
         guard let joined = directory() else {

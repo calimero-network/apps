@@ -71,7 +71,7 @@ struct DocumentRowView: View {
     }
 
     private var subtitle: String {
-        let when = SignFormat.when(nanos: entry.document.uploadedAt)
+        let when = SignFormat.when(millis: entry.document.uploadedAt)
         return showAgreement ? "\(entry.agreement.name) · \(when)" : when
     }
 }

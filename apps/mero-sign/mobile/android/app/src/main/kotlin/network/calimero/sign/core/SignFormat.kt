@@ -10,16 +10,16 @@ import kotlin.math.abs
 
 /** Words and numbers as the screens show them. (Swift `SignFormat`.) */
 object SignFormat {
-    /** A contract timestamp (nanoseconds) as epoch milliseconds. */
-    fun millis(nanos: ULong): Long = (nanos / 1_000_000uL).toLong()
+    /** A contract timestamp (milliseconds since the epoch). */
+    fun millis(value: ULong): Long = value.toLong()
 
     /** "Today, 14:05", "Yesterday", or "12 Mar 2026". */
     fun whenText(
-        nanos: ULong,
+        millis: ULong,
         now: Long = System.currentTimeMillis(),
         locale: Locale = Locale.getDefault(),
     ): String {
-        val date = Date(millis(nanos))
+        val date = Date(millis(millis))
         val day = Calendar.getInstance().apply { time = date }
         val today = Calendar.getInstance().apply { timeInMillis = now }
 

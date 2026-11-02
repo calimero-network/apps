@@ -85,7 +85,7 @@ struct DocumentScreen: View {
                                 .fill(entry.isComplete ? Palette.goodSoft : Palette.sunken))
                     VStack(alignment: .leading, spacing: 6) {
                         Text(entry.document.name).font(Typeface.display(20)).foregroundStyle(Palette.ink)
-                        Text("\(entry.agreement.name) · \(SignFormat.when(nanos: entry.document.uploadedAt))")
+                        Text("\(entry.agreement.name) · \(SignFormat.when(millis: entry.document.uploadedAt))")
                             .font(.system(size: 13)).foregroundStyle(Palette.muted)
                         StatusPill(entry: entry)
                     }
@@ -158,7 +158,7 @@ struct DocumentScreen: View {
                                     if signer.isMe { Text("(you)").font(.system(size: 14)).foregroundStyle(Palette.muted) }
                                 }
                                 if let signedAt = signer.signedAt {
-                                    Text("Signed \(SignFormat.when(nanos: signedAt))").font(.system(size: 13))
+                                    Text("Signed \(SignFormat.when(millis: signedAt))").font(.system(size: 13))
                                         .foregroundStyle(Palette.muted)
                                 } else {
                                     Text(entry.isComplete ? "Not required" : "Hasn't signed yet").font(.system(size: 13))

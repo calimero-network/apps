@@ -62,12 +62,12 @@ final class AppServices: ObservableObject {
 
     init(session: MeroAppSession, backend: any MeroAppBackend) {
         self.backend = backend
-        self.admin = BackendSignAdmin(backend: backend, client: (backend as? CalimeroAppBackend)?.client)
-        let applicationId = session.applicationId
+        self.admin = ClientSignAdmin(
+            backend: backend, client: (backend as? CalimeroAppBackend)?.client,
+            applicationId: session.applicationId ?? SignConstants.packageName)
         approvals = ApprovalsModel(session: session)
-        store = PrivateStore(
-            backend: backend, admin: self.admin, applicationId: applicationId, cache: DefaultsPrivateContextCache())
-        directory = AgreementDirectory(backend: backend, store: store)
+        store = PrivateStore(backend: backend, admin: self.admin, cache: DefaultsPrivateContextCache())
+        directory = AgreementDirectory(backend: backend, admin: self.admin, store: store)
         names = NameDirectory(admin: self.admin)
         inbox = InboxModel(directory: directory)
         agreements = AgreementsModel(directory: directory)
