@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { TextureRef } from "../generated/MeroModelsClient";
+import type { TextureRef } from "../meroModels";
 import type { BlobStore } from "./blobs";
 
 export type ColorSpaceName = "srgb" | "linear";

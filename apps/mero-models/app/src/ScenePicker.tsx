@@ -1,92 +1,81 @@
-import { useState, type ReactNode } from "react";
-import {
-  setContextId,
-  useApplicationContexts,
-  useCreateContext,
-  useCreateNamespace,
-  useNamespacesForApplication,
-} from "@calimero-network/mero-react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import type { AppInfo, CalimeroClient } from "@calimero-network/mero-js";
+import { describeError, type AppSource } from "@calimero-apps/connect";
+import type { OpenedScene } from "./scene";
+import { createScene, listScenes, studiosOf } from "./scenes";
 import { IconCube, IconPlus } from "./ui/icons";
 
 /**
- * Choose which scene (context) to open, or make one.
+ * Choose which scene to open, or make one.
  *
- * Under `AppMode.MultiContext` the auth callback hands back tokens and an
- * application id and nothing else, so picking a context is the app's job.
- * A context lives inside a NAMESPACE (there is no bare-context path since
- * rc.21), so the two steps are shown separately, with a one-click "New scene"
- * that does both for a fresh node.
+ * A scene is one instance of this app (v1: a context), and it lives in an
+ * organization, the studio (v1: a namespace) whose members reach every scene
+ * in it. "New scene" makes both at once; a studio this account is already in
+ * takes another scene with "Add scene".
  */
-
-/** rc.25 renamed `groupId` -> `namespaceId`; read both. */
-function namespaceIdOf(ns: unknown): string | undefined {
-  const n = ns as { namespaceId?: string; groupId?: string; id?: string } | null;
-  return n?.namespaceId ?? n?.groupId ?? n?.id;
-}
-
-/** `init(name)` — the contract's only init argument. */
-function sceneInit(name: string): number[] {
-  return Array.from(new TextEncoder().encode(JSON.stringify({ name: name.trim() || "Untitled scene" })));
-}
-
-function shortId(id: string) {
-  return id.length > 16 ? `${id.slice(0, 8)}…${id.slice(-6)}` : id;
-}
-
-export function ScenePicker({ applicationId, children }: { applicationId: string | null; children?: ReactNode }) {
-  const { contexts: reported, loading, error, refetch } = useApplicationContexts(applicationId);
-  // ⚠️ With no application id the hook falls back to EVERY context on the node,
-  // other apps' included. "Cannot tell which are mine" is not "all are mine".
-  const contexts = applicationId ? reported.filter((c) => c.applicationId === applicationId) : [];
-  const { namespaces, loading: nsLoading, error: nsError, refetch: refetchNamespaces } = useNamespacesForApplication(applicationId);
-  const { createNamespace } = useCreateNamespace();
-  const { createContext } = useCreateContext();
-
+export function ScenePicker({
+  client,
+  source,
+  onOpen,
+  after,
+  children,
+}: {
+  client: Pick<CalimeroClient, "listApps" | "createApp" | "createOrg">;
+  source: AppSource;
+  onOpen: (scene: OpenedScene) => void;
+  /** Runs after each request (keeps the stored session current). */
+  after: () => void;
+  children?: ReactNode;
+}) {
+  const [scenes, setScenes] = useState<AppInfo[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
-  const [note, setNote] = useState<string | null>(null);
 
-  function open(id: string) {
-    setContextId(id);
-    // The provider reads the stored context on mount; a reload adopts it.
-    window.location.reload();
-  }
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      setScenes(await listScenes(client, source));
+      setError(null);
+    } catch (e) {
+      setError(describeError(e));
+    } finally {
+      setLoading(false);
+      after();
+    }
+  }, [client, source, after]);
 
-  async function makeIn(namespaceId: string) {
-    const ctx = await createContext({ applicationId: applicationId!, groupId: namespaceId, initializationParams: sceneInit(name) });
-    const id = (ctx as { contextId?: string } | null)?.contextId;
-    if (!id) throw new Error("context created but no contextId came back");
-    open(id);
-  }
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
-  async function run(key: string, fn: () => Promise<void>) {
-    if (!applicationId) return;
+  async function create(key: string, org: string | null) {
     setBusy(key);
     setFailed(null);
-    setNote(null);
     try {
-      await fn();
+      const scene = await createScene(client, source, name, org);
+      onOpen(scene);
     } catch (e) {
-      // A bare 500 from `POST /contexts` means `init` refused its params;
-      // core hides the reason, so at least show that it failed and where.
-      setFailed(e instanceof Error ? e.message : String(e));
+      setFailed(describeError(e));
     } finally {
       setBusy(null);
+      after();
     }
   }
 
-  const nsList = (namespaces ?? []) as unknown[];
+  const studios = studiosOf(scenes ?? []);
 
   return (
     <div className="lobby">
       <section className="lobby-hero">
         <div className="lobby-copy">
           <p className="eyebrow">Scenes</p>
-          <h1>Model together, on your own nodes</h1>
+          <h1>Model together, in one shared scene</h1>
           <p className="lede">
-            A scene is one Calimero context. Every member&apos;s node holds the whole model, edits replicate peer to peer,
-            and nothing is stored on a server.
+            A scene is one instance of Mero Models. Everyone in its studio sees every change as it lands, and the
+            meshes and textures live in the scene&apos;s own blobs.
           </p>
           <div className="new-scene">
             <input
@@ -96,14 +85,13 @@ export function ScenePicker({ applicationId, children }: { applicationId: string
               onChange={(e) => setName(e.target.value)}
               aria-label="Scene name"
               onKeyDown={(e) => {
-                if (e.key === "Enter") void createBoth();
+                if (e.key === "Enter" && busy === null) void create("new", null);
               }}
             />
-            <button className="large" onClick={() => void createBoth()} disabled={busy !== null || !applicationId} data-testid="new-scene">
-              <IconPlus /> {busy === "both" ? "Creating…" : "New scene"}
+            <button className="large" onClick={() => void create("new", null)} disabled={busy !== null} data-testid="new-scene">
+              <IconPlus /> {busy === "new" ? "Creating…" : "New scene"}
             </button>
           </div>
-          {note && <p className="hint">{note}</p>}
           {failed && <pre className="err">{failed}</pre>}
         </div>
         <div className="lobby-art" aria-hidden="true">
@@ -115,40 +103,31 @@ export function ScenePicker({ applicationId, children }: { applicationId: string
         <div className="card">
           <div className="card-head">
             <h2>Open a scene</h2>
-            <button
-              className="ghost small"
-              onClick={() => {
-                void refetch();
-                void refetchNamespaces();
-              }}
-              disabled={loading || nsLoading}
-            >
+            <button className="ghost small" onClick={() => void refresh()} disabled={loading}>
               Refresh
             </button>
           </div>
-          {loading && <p className="empty">Loading scenes…</p>}
-          {error && <pre className="err">{error.message}</pre>}
-          {!loading && !applicationId && (
-            <p className="empty">
-              Waiting for this session to say which application it is bound to. If it never does, install Mero Models on
-              the node first.
-            </p>
+          {loading && scenes === null && <p className="empty">Loading scenes…</p>}
+          {error && <pre className="err">{error}</pre>}
+          {scenes?.length === 0 && (
+            <p className="empty">No scenes yet. Start one above, or open an invitation link someone sent you.</p>
           )}
-          {!loading && applicationId && contexts.length === 0 && (
-            <p className="empty">No scenes on this node yet. Start one above, or open an invitation link someone sent you.</p>
-          )}
-          {contexts.length > 0 && (
+          {scenes && scenes.length > 0 && (
             <ul className="scene-list">
-              {contexts.map((c, i) => (
-                <li key={c.contextId}>
-                  <button className="scene-item" onClick={() => open(c.contextId)} data-testid="scene-item">
+              {scenes.map((s) => (
+                <li key={s.appId}>
+                  <button
+                    className="scene-item"
+                    onClick={() => onOpen({ appId: s.appId, name: s.name, org: s.org })}
+                    data-testid="scene-item"
+                  >
                     <span className="scene-icon" aria-hidden="true">
                       <IconCube size={22} />
                     </span>
                     <span className="scene-text">
-                      <span className="scene-title-row">Scene {i + 1}</span>
-                      <span className="mono scene-id" title={c.contextId}>
-                        {c.contextId}
+                      <span className="scene-title-row">{s.name || "Untitled scene"}</span>
+                      <span className="mono scene-id" title={s.appId}>
+                        {s.appId}
                       </span>
                     </span>
                     <span className="scene-open">Open</span>
@@ -163,45 +142,25 @@ export function ScenePicker({ applicationId, children }: { applicationId: string
           {children}
           <div className="card">
             <div className="card-head">
-              <h2>Namespaces</h2>
-              <button
-                className="ghost small"
-                disabled={busy !== null || !applicationId}
-                onClick={() =>
-                  void run("namespace", async () => {
-                    const ns = await createNamespace({ applicationId: applicationId! });
-                    const id = namespaceIdOf(ns);
-                    if (!id) throw new Error("namespace created but no id came back");
-                    await refetchNamespaces();
-                    setNote(`Namespace ${shortId(id)} created — add a scene to it.`);
-                  })
-                }
-              >
-                {busy === "namespace" ? "Creating…" : "Create namespace"}
-              </button>
+              <h2>Studios</h2>
             </div>
             <p className="hint">
-              A namespace is a studio and each scene in it is a project. People are invited to the namespace, so one link
-              opens every scene in it.
+              A studio is an organization and each scene in it is a project. People are invited to the studio, so one
+              link opens every scene in it.
             </p>
-            {nsLoading && <p className="empty">Loading namespaces…</p>}
-            {nsError && <pre className="err">{nsError.message}</pre>}
-            {nsList.length > 0 && (
+            {studios.length === 0 && <p className="empty">Your studios appear here once you have a scene.</p>}
+            {studios.length > 0 && (
               <ul className="ns-list">
-                {nsList.map((ns, i) => {
-                  const id = namespaceIdOf(ns);
-                  if (!id) return null;
-                  return (
-                    <li key={id ?? i}>
-                      <span className="mono ns-id" title={id}>
-                        {id}
-                      </span>
-                      <button className="ghost small" disabled={busy !== null} onClick={() => void run(id, () => makeIn(id))}>
-                        {busy === id ? "Creating…" : "Add scene"}
-                      </button>
-                    </li>
-                  );
-                })}
+                {studios.map((org) => (
+                  <li key={org}>
+                    <span className="mono ns-id" title={org}>
+                      {org}
+                    </span>
+                    <button className="ghost small" disabled={busy !== null} onClick={() => void create(org, org)}>
+                      {busy === org ? "Creating…" : "Add scene"}
+                    </button>
+                  </li>
+                ))}
               </ul>
             )}
           </div>
@@ -209,15 +168,4 @@ export function ScenePicker({ applicationId, children }: { applicationId: string
       </div>
     </div>
   );
-
-  async function createBoth() {
-    await run("both", async () => {
-      const ns = await createNamespace({ applicationId: applicationId! });
-      const id = namespaceIdOf(ns);
-      if (!id) throw new Error("namespace created but no id came back");
-      // Directly in the namespace, not a subgroup: the invite card mints a
-      // namespace invitation from the context's group, which must be the namespace.
-      await makeIn(id);
-    });
-  }
 }

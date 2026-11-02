@@ -27,7 +27,7 @@ import { decodeMesh } from "../../../app/src/editor/meshcodec";
 import { childrenIndex, isLight, type Environment, type MeshRef, type SceneObject } from "../../../app/src/editor/model";
 import { TextureCache } from "../../../app/src/editor/textures";
 import type { BlobStore } from "../../../app/src/editor/blobs";
-import type { TextureRef } from "../../../app/src/generated/MeroModelsClient";
+import type { TextureRef } from "../../../app/src/meroModels";
 
 interface ScenePayload {
   environment: Environment;

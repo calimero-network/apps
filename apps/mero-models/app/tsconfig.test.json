@@ -1,5 +1,5 @@
 {
-  "// note": "Unit tests. Node types on purpose: generated.test.ts and model.test.ts read the contract's ABI and source off disk.",
+  "// note": "Unit tests. Node types on purpose: meroModels.test.ts and model.test.ts read the contract's ABI and source off disk.",
   "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "./dist-types/test",
@@ -15,12 +15,12 @@
     "src/**/*.test.ts",
     "src/**/*.test.tsx",
     "src/test",
-    "src/generated",
-    "src/editor",
-    "src/useJoinFromInvitation.ts",
+    "src/*.ts",
+    "src/StudioPage.tsx",
+    "src/ScenePicker.tsx",
     "src/InviteCard.tsx",
-    "src/studio/SharePanel.tsx",
-    "src/ui/icons.tsx",
-    "src/utils"
+    "src/editor",
+    "src/studio",
+    "src/ui"
   ]
 }

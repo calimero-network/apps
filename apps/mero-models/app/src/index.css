@@ -46,23 +46,6 @@
   color-scheme: dark;
 }
 
-/* mero-react's connect button and its menu, on glass instead of Calimero lime.
-   `:root:root` because mero-react injects its own `:root` defaults at runtime,
-   after this stylesheet in a production build. */
-:root:root {
-  --mero-bg: var(--glass-surface-solid);
-  --mero-bg-secondary: var(--glass-surface-solid);
-  --mero-bg-tertiary: var(--glass-sunken);
-  --mero-text: var(--glass-ink);
-  --mero-text-secondary: var(--glass-muted);
-  --mero-accent: var(--glass-ink);
-  --mero-accent-hover: var(--glass-ink-2);
-  --mero-on-primary: var(--glass-on-ink);
-  --mero-border: var(--glass-line);
-  --mero-shadow: rgba(20, 26, 60, 0.18);
-  --mero-overlay: rgba(14, 18, 34, 0.32);
-}
-
 * {
   box-sizing: border-box;
 }

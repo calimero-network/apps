@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter.js";
 import { zipSync } from "fflate";
-import type { TextureRef } from "../generated/MeroModelsClient";
+import type { TextureRef } from "../meroModels";
 import { standardMaterial, type TextureLookup } from "./build";
 import { boxHull, convexHull } from "./collision";
 import { writeFbx, type FbxMesh } from "./fbx";

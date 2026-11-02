@@ -1,0 +1,395 @@
+[
+ {
+  "as": "@anonymous",
+  "op": "view",
+  "method": "getScene",
+  "args": {},
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "call",
+  "method": "join",
+  "args": {
+   "name": "Anon",
+   "now": "1727000000000"
+  },
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "eve",
+  "op": "view",
+  "method": "getObjects",
+  "args": {},
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "eve",
+  "op": "call",
+  "method": "join",
+  "args": {
+   "name": "Eve",
+   "now": "1727000000000"
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "join",
+  "args": {
+   "name": "Gus",
+   "now": "1727000000001"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "gus",
+  "op": "view",
+  "method": "myRole",
+  "args": {},
+  "expect": {
+   "ok": "viewer"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "putObjects",
+  "args": {
+   "objects": [
+    {
+     "id": "a",
+     "name": "A",
+     "kind": "cube",
+     "parent": "",
+     "position": {
+      "x": 0.0,
+      "y": 0.5,
+      "z": 0.0
+     },
+     "rotation": {
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0
+     },
+     "scale": {
+      "x": 1.0,
+      "y": 1.0,
+      "z": 1.0
+     },
+     "visible": true,
+     "material": {
+      "color": "#c8ccd4",
+      "metalness": 0.0,
+      "roughness": 0.6,
+      "opacity": 1.0,
+      "emissive": "#000000",
+      "wireframe": false,
+      "flat_shading": false,
+      "base_color_map": "",
+      "normal_map": "",
+      "normal_scale": 1.0,
+      "orm_map": "",
+      "emissive_map": ""
+     },
+     "segments": 32,
+     "intensity": 0.0,
+     "created_by": "",
+     "created_at": 0,
+     "updated_at": 0
+    }
+   ],
+   "now": "1727000000002"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "view only: ask the scene's admin for the editor role to change it"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "grantEditor",
+  "args": {
+   "member": "@gus"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the scene's admin can do that"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "grantEditor",
+  "args": {
+   "member": "@gus"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "putObjects",
+  "args": {
+   "objects": [
+    {
+     "id": "a",
+     "name": "A",
+     "kind": "cube",
+     "parent": "",
+     "position": {
+      "x": 0.0,
+      "y": 0.5,
+      "z": 0.0
+     },
+     "rotation": {
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0
+     },
+     "scale": {
+      "x": 1.0,
+      "y": 1.0,
+      "z": 1.0
+     },
+     "visible": true,
+     "material": {
+      "color": "#c8ccd4",
+      "metalness": 0.0,
+      "roughness": 0.6,
+      "opacity": 1.0,
+      "emissive": "#000000",
+      "wireframe": false,
+      "flat_shading": false,
+      "base_color_map": "",
+      "normal_map": "",
+      "normal_scale": 1.0,
+      "orm_map": "",
+      "emissive_map": ""
+     },
+     "segments": 32,
+     "intensity": 0.0,
+     "created_by": "",
+     "created_at": 0,
+     "updated_at": 0
+    }
+   ],
+   "now": "1727000000003"
+  },
+  "expect": {
+   "ok": [
+    "a"
+   ]
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "checkOut",
+  "args": {
+   "ids": [
+    "a"
+   ],
+   "hours": 1,
+   "now": "1727000000004"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "checkIn",
+  "args": {
+   "ids": [
+    "a"
+   ]
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "view only: ask the scene's admin for the editor role to change it"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "checkIn",
+  "args": {
+   "ids": [
+    "a"
+   ]
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "putObjects",
+  "args": {
+   "objects": [
+    {
+     "id": "b",
+     "name": "B",
+     "kind": "teapot",
+     "parent": "",
+     "position": {
+      "x": 0.0,
+      "y": 0.5,
+      "z": 0.0
+     },
+     "rotation": {
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0
+     },
+     "scale": {
+      "x": 1.0,
+      "y": 1.0,
+      "z": 1.0
+     },
+     "visible": true,
+     "material": {
+      "color": "#c8ccd4",
+      "metalness": 0.0,
+      "roughness": 0.6,
+      "opacity": 1.0,
+      "emissive": "#000000",
+      "wireframe": false,
+      "flat_shading": false,
+      "base_color_map": "",
+      "normal_map": "",
+      "normal_scale": 1.0,
+      "orm_map": "",
+      "emissive_map": ""
+     },
+     "segments": 32,
+     "intensity": 0.0,
+     "created_by": "",
+     "created_at": 0,
+     "updated_at": 0
+    }
+   ],
+   "now": "1727000000005"
+  },
+  "expect": {
+   "error": "Invalid",
+   "fields": {
+    "message": "unknown object kind \"teapot\""
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "putMesh",
+  "args": {
+   "mesh": {
+    "id": "a",
+    "blob_id": "ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB",
+    "size": 10,
+    "vertex_count": 3,
+    "triangle_count": 1,
+    "has_uvs": false,
+    "author": "",
+    "message": "",
+    "updated_at": 0
+   },
+   "now": "1727000000006"
+  },
+  "expect": {
+   "error": "Invalid",
+   "fields": {
+    "message": "\"ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB\" is not a blob id — expected 64 lowercase hex characters"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "putMesh",
+  "args": {
+   "mesh": {
+    "id": "a",
+    "blob_id": "abababababababababababababababababababababababababababababababab",
+    "size": 49545217,
+    "vertex_count": 3,
+    "triangle_count": 1,
+    "has_uvs": false,
+    "author": "",
+    "message": "",
+    "updated_at": 0
+   },
+   "now": "1727000000006"
+  },
+  "expect": {
+   "error": "Invalid",
+   "fields": {
+    "message": "a mesh blob is 1 byte to 49545216 bytes (47.25 MiB), got 49545217"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "listHistory",
+  "args": {
+   "asset_id": "a"
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "join",
+  "args": {
+   "name": "Owner",
+   "now": 5
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "noSuchMethod",
+  "args": {},
+  "expect": {
+   "error": "UnknownMethod"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "clearScene",
+  "args": {},
+  "expect": {
+   "error": "NotAView"
+  }
+ }
+]

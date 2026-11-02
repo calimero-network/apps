@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactElement } from "react";
-import type { TextureRef, VersionView } from "../generated/MeroModelsClient";
+import type { TextureRef, VersionView } from "../meroModels";
 import { cloneObject, MAP_SLOTS, MAX_TEXTURE_SIDE, newId, type MapSlot, type SceneObject } from "../editor/model";
 import { inspectImage } from "../editor/textures";
 import { messageOf } from "../editor/sync";

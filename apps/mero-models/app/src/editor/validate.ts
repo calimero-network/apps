@@ -1,4 +1,4 @@
-import type { TextureRef } from "../generated/MeroModelsClient";
+import type { TextureRef } from "../meroModels";
 import type { MeshShape } from "./geometry";
 import type { SceneObject } from "./model";
 

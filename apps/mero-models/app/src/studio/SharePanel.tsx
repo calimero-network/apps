@@ -1,19 +1,21 @@
 import { useCallback, useEffect, useState } from "react";
-import type { MemberView } from "../generated/MeroModelsClient";
-import { useModelsClient, useSpaceNames } from "../editor/hooks";
+import type { MemberView } from "../meroModels";
+import { useModelsClient } from "../editor/hooks";
 import { memberColor, shortId } from "../editor/model";
 import { chosenName, useEditor } from "../editor/store";
 import { messageOf } from "../editor/sync";
 import type { Peer } from "../editor/viewport";
 import { InviteCard } from "../InviteCard";
+import { useScene } from "../scene";
 import { IconClose } from "../ui/icons";
 
 /**
  * Who is in this scene, and who may change it.
  *
- * Everyone in the context can open the scene and look; the admin (whoever
- * created it) decides who may edit. The contract enforces that on every node,
- * so the toggle here is the real permission, not a UI hint.
+ * Everyone in the scene's organization can open the scene and look; an admin
+ * (whoever created it, or an admin of the organization) decides who may edit.
+ * The contract enforces that, so the toggle here is the real permission, not a
+ * UI hint.
  */
 export function SharePanel({
   contextId,
@@ -31,11 +33,11 @@ export function SharePanel({
   onClose: () => void;
 }) {
   const client = useModelsClient(contextId);
+  const scene = useScene();
   const me = useEditor((s) => s.me);
   const role = useEditor((s) => s.role);
-  const { nameOf: spaceNameOf } = useSpaceNames(contextId);
-  /** The scene name, else the namespace name, else the short id. */
-  const label = (m: MemberView) => chosenName(m.name) || spaceNameOf(m.id) || shortId(m.id);
+  /** The scene name, else the short id. */
+  const label = (m: MemberView) => chosenName(m.name) || shortId(m.id);
   const [members, setMembers] = useState<MemberView[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -158,11 +160,11 @@ export function SharePanel({
         {error && <pre className="err">{error}</pre>}
         <p className="hint">
           Anyone you invite can open the scene and watch it change. {role === "admin" ? "Tick Can edit" : "The admin ticks Can edit"} to let them
-          change it — every node enforces that, not just this screen.
+          change it — the contract enforces that, not just this screen.
         </p>
       </section>
 
-      <InviteCard contextId={contextId} />
+      <InviteCard client={scene.client} org={scene.org ?? null} passkey={scene.passkey} after={scene.after} />
     </div>
   );
 }
