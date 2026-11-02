@@ -23,9 +23,8 @@ consent page returns to `mero-updates://consent`.
 
 ## SDK pin
 
-`kotlin-sdk.ref` pins kotlin-sdk `61b65e9c0c87db8fbb2d3b2ce827603b0c84d5f9`, the head of
-kotlin-sdk#68 (the Calimero 1.0 port: `CalimeroClient`, `MeroAppSession`, `CalimeroAppBackend`,
-mero-testkit's `InMemoryAppBackend`). It moves to that PR's merge commit once it lands.
+`kotlin-sdk.ref` pins kotlin-sdk `v0.2.0` by its tag commit (the Calimero 1.0 release: `CalimeroClient`, `MeroAppSession`, `CalimeroAppBackend`,
+mero-testkit's `InMemoryAppBackend`). For a new release, set it to that tag's commit.
 `settings.gradle.kts` includes the checkout as a composite build.
 
 ## Layout

@@ -6,11 +6,11 @@ copy, icons (SF Symbols / Material, mapped) and flows.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | [`ios/`](ios/README.md) | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `37c09f3` (head of swift-sdk#85, Calimero 1.0) |
-| Android | [`android/`](android/README.md) | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `61b65e9` (head of kotlin-sdk#68, Calimero 1.0) |
+| iOS | [`ios/`](ios/README.md) | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `v0.5.0` (Calimero 1.0) |
+| Android | [`android/`](android/README.md) | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `v0.2.0` (Calimero 1.0) |
 
-**SDK pins.** Both pin the heads of the SDKs' Calimero 1.0 PRs: `ios/Core/Package.swift` and
-`ios/project.yml`, `android/kotlin-sdk.ref`. They move to the merge commits once those PRs land.
+**SDK pins.** Both pin the SDKs' Calimero 1.0 releases: `ios/Core/Package.swift` and
+`ios/project.yml`, `android/kotlin-sdk.ref` (the release tag's commit).
 
 ## How the apps reach Calimero
 
