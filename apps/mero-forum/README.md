@@ -14,7 +14,7 @@ development and to Calimero Cloud in production through mero-js's
 | `logic/tests/` | `harness.rs` (every method on core's wasmtime engine, `TestApp`), `scenarios.rs` (every `scenarios/*.json`) |
 | `logic/scenarios/` | `forum.json` (v1's merobox workflow), `access.json` (the org's gate, guests, forged writes); run by `cargo test` and on `merod local` |
 | `app/` | Vite + React frontend |
-| `mobile/` | native iOS and Android apps, **still v1** (see [Mobile](#mobile)) |
+| `mobile/` | native iOS and Android apps (see [Mobile](#mobile)) |
 
 ## The model
 
@@ -131,12 +131,10 @@ v1.
 
 ## Mobile
 
-`mobile/ios` and `mobile/android` are **unchanged and still v1**: they are built
-on the v1 Swift and Kotlin SDKs (`MeroAppSession`: relay, contexts, namespace
-invitations) and a client generated from the v1 ABI, and the pinned SDKs have no
-1.0 client to port them to yet. They work only against a v1 deployment of the
-app until those SDKs speak the 1.0 API. `mobile/scripts/regenerate-client.sh`
-refuses the component ABI meanwhile.
+The native iOS and Android apps move to Calimero 1.0 in #689, which calls this
+contract's component ABI (the same 17 methods, camelCase arguments and answers
+as `app/src/lib/forumApi.ts`) and lands after this port. This port leaves
+`mobile/` as it is on `main`.
 
 ## Production
 
