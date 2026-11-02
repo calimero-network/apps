@@ -1,45 +1,63 @@
-import { useState } from "react";
-import { useMero } from "@calimero-network/mero-react";
-import type { FormView, LinkView } from "./generated/FormsClient";
-import {
-  LINK_METHODS,
-  createAccessGrant,
-  revokeAccessGrant,
-  sha256Hex,
-  type OwnerNode,
-} from "./lib/accessGrants";
-import { NODE_VERIFIES_TURNSTILE, fetchCaptchaConfig } from "./lib/captcha";
+import { useEffect, useState } from "react";
+import type { FormView, LinkView } from "./formsApi";
+import { fetchCaptchaConfig } from "./lib/captcha";
 import { ago } from "./lib/fields";
 import { shortAccount } from "./lib/people";
-import { publicLinkUrl } from "./lib/publicLink";
+import {
+  newLinkToken,
+  publicFormOrigin,
+  publicLinkUrl,
+  sha256Hex,
+  toWorkspaceAccess,
+  type WorkspaceAccess,
+} from "./lib/publicLink";
 import { BASE } from "./route";
+import { useSignedIn } from "./sessionContext";
 import { useRead, type Workspace } from "./useWorkspace";
+
+/** How a form's links check a captcha: the contract's `captchaKey`. */
+type CaptchaMode = "none" | "turnstile" | "verifier";
+
+const captchaMode = (key: string): CaptchaMode => (key === "" ? "none" : key === "turnstile" ? "turnstile" : "verifier");
+
 
 /**
  * A form's public links: anyone with one answers the form in their browser,
  * signed in or not.
  *
- * Making a link is two things done together, as Mero Calendar's booking links
- * are: a core access grant on this teammate's node, naming only `link_form`
- * and `submit_via_link`, and a contract record keyed by the SHA-256 of the
- * grant's token. The visitor's browser calls this node with the token, so the
- * node must be reachable from the internet; an account session has no node of
- * its own and cannot make one.
+ * A link is a random token this browser makes; the contract records its
+ * SHA-256 (`createLink`), and the token goes only into the link's URL. A
+ * visitor's browser calls the workspace's two `#[app::public]` methods with
+ * it, anonymously, which the cluster lets through once the workspace's owner
+ * has opened it to public links (its access set to `public`).
  *
  * The form decides whether its links take responses (Public), how many each
  * may send per hour, and whether each response needs a captcha. The contract
- * enforces all three, so a visitor calling the node directly meets them too.
+ * enforces all three, so a visitor calling the cluster directly meets them too.
  */
 export function PublicLinks({
   form,
   workspace,
-  contextId,
+  appId,
 }: {
   form: FormView;
   workspace: Workspace;
-  contextId: string;
+  appId: string;
 }) {
-  const { mero, admin, nodeUrl, isDelegated } = useMero();
+  const { client, after } = useSignedIn();
+  const [access, setAccess] = useState<WorkspaceAccess | null>(null);
+  const [accessTick, setAccessTick] = useState(0);
+  useEffect(() => {
+    let live = true;
+    client
+      .getApp(appId)
+      .then((app) => live && setAccess(toWorkspaceAccess(app)))
+      .catch(() => live && setAccess(null))
+      .finally(after);
+    return () => {
+      live = false;
+    };
+  }, [client, appId, after, accessTick]);
   const links = useRead(workspace.client, workspace.version, (c) => c.listLinks({ form_id: form.id }), [form.id]);
   const me = useRead(workspace.client, 0, (c) => c.myAccount(), []);
   const [label, setLabel] = useState("");
@@ -48,21 +66,10 @@ export function PublicLinks({
   const [error, setError] = useState<string | null>(null);
   const [made, setMade] = useState<{ label: string; url: string } | null>(null);
   const [copied, setCopied] = useState(false);
-  const [notes, setNotes] = useState<string | null>(null);
-
-  const ownerNode: OwnerNode | null =
-    !isDelegated && nodeUrl && mero && "getTokenData" in mero && admin
-      ? {
-          nodeUrl,
-          token: () => mero.getTokenData()?.access_token ?? null,
-          refresh: () => admin.getNodeIdentity(),
-        }
-      : null;
 
   async function run(what: string, f: () => Promise<unknown>) {
     setBusy(what);
     setError(null);
-    setNotes(null);
     try {
       await f();
     } catch (e) {
@@ -78,45 +85,45 @@ export function PublicLinks({
   const saveCap = () =>
     run("cap", () => workspace.act((c) => c.setLinkCap({ form_id: form.id, per_hour: Number(cap) })));
 
-  // The team's own Turnstile keys, when set, have the contract check the
-  // token through the namespace's TEE; otherwise this deployment's verifier
-  // signs a pass.
-  const captchaSettings = useRead(workspace.client, workspace.version, (c) => c.captchaSettings(), []);
-  const setCaptcha = (on: boolean) =>
+  // `turnstile`: the contract checks the widget's token with Cloudflare from
+  // the visitor's own call, with the secret the node's operator holds.
+  // `verifier`: this deployment's verifier checks it and signs a pass; the
+  // form saves the verifier's public key.
+  const setCaptcha = (mode: CaptchaMode) =>
     run("captcha", async () => {
-      const key = !on
-        ? ""
-        : captchaSettings.data?.secret_set
-          ? NODE_VERIFIES_TURNSTILE
-          : (await fetchCaptchaConfig()).publicKey;
+      const key = mode === "none" ? "" : mode === "turnstile" ? "turnstile" : (await fetchCaptchaConfig()).publicKey;
       await workspace.act((c) => c.setCaptchaKey({ form_id: form.id, key }));
+    });
+
+  // Only the workspace's owner may change who reaches it (the cluster's rule).
+  const openToLinks = () =>
+    run("access", async () => {
+      if (
+        !window.confirm(
+          "Let anyone with a public link reach this workspace's form? Visitors reach only the two link " +
+            "methods; every other method still checks that the caller is in your organization.",
+        )
+      ) {
+        return;
+      }
+      try {
+        await client.setAccess(appId, { kind: "public" });
+      } finally {
+        after();
+      }
+      setAccessTick((n) => n + 1);
     });
 
   const createLink = () =>
     run("create", async () => {
-      if (!ownerNode) return;
       setMade(null);
       setCopied(false);
       const name = label.trim();
-      const grant = await createAccessGrant(ownerNode, contextId, {
-        methods: LINK_METHODS,
-        label: name ? `Mero Forms link · ${name}` : "Mero Forms link",
-      });
-      try {
-        const link = await sha256Hex(grant.token);
-        await workspace.act((c) =>
-          c.createLink({ form_id: form.id, link, grant_id: grant.grantId, label: name }),
-        );
-      } catch (e) {
-        // No record, no link: take the grant back rather than leave a token
-        // that reaches nothing the team can see.
-        await revokeAccessGrant(ownerNode, contextId, grant.grantId).catch(() => undefined);
-        throw e;
-      }
-      setMade({
-        label: name || "Public link",
-        url: publicLinkUrl(window.location.origin + BASE.slice(0, -1), { nodeUrl: ownerNode.nodeUrl, contextId, token: grant.token }),
-      });
+      const token = newLinkToken();
+      const link = await sha256Hex(token);
+      await workspace.act((c) => c.createLink({ form_id: form.id, link, label: name }));
+      const origin = publicFormOrigin(import.meta.env, window.location.origin + BASE.slice(0, -1));
+      setMade({ label: name || "Public link", url: publicLinkUrl(origin, { app: appId, token }) });
       setLabel("");
     });
 
@@ -125,17 +132,8 @@ export function PublicLinks({
       if (!window.confirm(`Delete "${link.label || "Public link"}"? Anyone who has it can no longer answer the form.`)) {
         return;
       }
-      // The record first: without it the contract refuses the link at once,
-      // wherever its grant lives.
-      const gone = await workspace.act((c) => c.deleteLink({ link: link.id }));
-      if (gone.created_by === me.data && ownerNode) {
-        await revokeAccessGrant(ownerNode, contextId, gone.grant_id).catch(() => undefined);
-      } else {
-        setNotes(
-          `The link no longer works. Its access grant stays on ${shortAccount(gone.created_by)}'s node, ` +
-            "where it reaches nothing, until they remove it.",
-        );
-      }
+      // Without its record the contract refuses the link at once.
+      await workspace.act((c) => c.deleteLink({ link: link.id }));
     });
 
   async function copy() {
@@ -170,21 +168,17 @@ export function PublicLinks({
           </span>
         </label>
         <label className="switch">
-          <input
-            type="checkbox"
-            aria-label="require a captcha"
-            checked={form.captcha_key !== ""}
+          <span>Captcha</span>
+          <select
+            aria-label="captcha"
+            value={captchaMode(form.captcha_key)}
             disabled={busy !== null}
-            onChange={(e) => void setCaptcha(e.target.checked)}
-          />
-          <span>
-            Require a captcha
-            {form.captcha_key === NODE_VERIFIES_TURNSTILE && " (checked with your team's keys)"}
-            {form.captcha_key !== "" &&
-              form.captcha_key !== NODE_VERIFIES_TURNSTILE &&
-              captchaSettings.data?.secret_set &&
-              " (turn off and on to use your team's keys)"}
-          </span>
+            onChange={(e) => void setCaptcha(e.target.value as CaptchaMode)}
+          >
+            <option value="none">None</option>
+            <option value="turnstile">Cloudflare Turnstile, checked by the workspace</option>
+            <option value="verifier">Cloudflare Turnstile, through this site&apos;s verifier</option>
+          </select>
         </label>
         <form
           className="row cap-row"
@@ -214,40 +208,43 @@ export function PublicLinks({
         </form>
       </div>
 
-      {ownerNode ? (
-        <form
-          className="row"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void createLink();
-          }}
-        >
-          <input
-            aria-label="public link label"
-            placeholder="Where you will share it (optional), e.g. newsletter"
-            maxLength={80}
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-          />
-          <button type="submit" disabled={busy !== null}>
-            {busy === "create" ? "Making the link…" : "Create public link"}
-          </button>
-        </form>
-      ) : (
-        <p className="note">
-          A link is served by the node that makes it, so visitors&apos; browsers call that node.
-          Sign in with a node (Calimero Desktop, a Calimero Cloud node or your own{" "}
-          <code>merod</code>) that is reachable from the internet to make one.
-        </p>
+      <form
+        className="row"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void createLink();
+        }}
+      >
+        <input
+          aria-label="public link label"
+          placeholder="Where you will share it (optional), e.g. newsletter"
+          maxLength={80}
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+        />
+        <button type="submit" disabled={busy !== null}>
+          {busy === "create" ? "Making the link…" : "Create public link"}
+        </button>
+      </form>
+      {access && !access.public && (
+        <div className="note" data-testid="links-closed">
+          <p>
+            Visitors who are not signed in cannot open links yet: this workspace is reachable by your
+            organization only.
+          </p>
+          {access.owner === me.data ? (
+            <button type="button" className="ghost" disabled={busy !== null} onClick={() => void openToLinks()}>
+              {busy === "access" ? "Opening…" : "Open the workspace to public links"}
+            </button>
+          ) : (
+            <p>Ask the workspace&apos;s owner ({shortAccount(access.owner)}) to open it to public links.</p>
+          )}
+        </div>
       )}
-      {ownerNode && (
-        <p className="note">
-          Visitors&apos; browsers call this node at <code>{ownerNode.nodeUrl}</code>, so it must be
-          reachable there from the internet and allow this app&apos;s origin.
-        </p>
-      )}
+      <p className="note">
+        A link reaches this form only, and only what a visitor needs: the questions and a response.
+      </p>
       {error && <pre className="err">{error}</pre>}
-      {notes && <p className="note">{notes}</p>}
 
       {made && (
         <div className="issued" data-testid="issued-link">
@@ -279,9 +276,9 @@ export function PublicLinks({
                   {l.responses} {l.responses === 1 ? "response" : "responses"}
                   {l.last_hour > 0 ? ` (${l.last_hour} in the last hour)` : ""}
                   {l.last_response_at ? ` · last ${ago(l.last_response_at)}` : " · none yet"} · made{" "}
-                  {ago(l.created_at)} on{" "}
+                  {ago(l.created_at)} by{" "}
                   <span className="mono" title={l.created_by}>
-                    {l.created_by === me.data ? "this node" : `${shortAccount(l.created_by)}'s node`}
+                    {l.created_by === me.data ? "you" : shortAccount(l.created_by)}
                   </span>
                 </div>
               </div>

@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { nodeBasename } from "@calimero-apps/node-served";
 
-/** The router base: `/{version}/` when a node serves the app, else `/`. */
+/**
+ * The router base: `/{version}/` when the cluster serves the app from its
+ * package's origin (core `app_host`: `GET /{version}/{path}`), else `/`.
+ */
 export const BASE = nodeBasename(new URL(window.location.href), "/");
 
 /** A pathname as the app sees it, without the node's version prefix. */

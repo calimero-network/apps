@@ -1,9 +1,16 @@
 # Mero Forms
 
 Forms with the questions you choose, the responses they collect, and a one-click
-hand-off of any response to [Mero CRM](../mero-crm). A workspace of forms is one
-Calimero context, replicated between the team's own nodes: there is no form
-service in the middle, and nobody outside the team can read a response.
+hand-off of any response to [Mero CRM](../mero-crm). A **component app** on
+Calimero 1.0: the contract runs on core's component SDK (`calimero-app-sdk`
+1.0.0-rc.8, `wasm32-wasip2`), the frontend talks to the cluster through mero-js
+`CalimeroClient` (`@calimero-apps/connect`), and local development runs on
+`merod local`. See [docs/COMPONENT-APPS.md](../../docs/COMPONENT-APPS.md).
+
+A workspace of forms is one **app instance** in an **organization**. The
+contract keeps its own **team** inside it (the admins, starting with the
+instance's owner, and the organization members they add), and only the team
+builds forms and reads responses.
 
 What using it looks like:
 
@@ -13,55 +20,65 @@ What using it looks like:
   and carry help text; questions reorder, duplicate and delete. Close a form to
   stop new responses.
 - **Collect responses** three ways: a public link anyone can open and answer
-  without signing in (below), a website's backend answering with a form key,
-  or a teammate entering one by hand from **Preview**. The contract checks
-  every answer against its question, so a stale or tampered website fails
-  loudly instead of storing junk.
+  without signing in, a website's backend answering with a form key, or a
+  member entering one by hand from **Preview**. The contract checks every
+  answer against its question, so a stale or tampered website fails loudly
+  instead of storing junk.
 - **Read them**: a summary of every choice question, a searchable table
   (New, All, In CRM, Archived), one response in full, CSV export.
 - **Send to CRM**: link a form to a Mero CRM pipeline once, map which question
   is the contact's name, email, phone and organization, then send a response
   (or all new ones). Each becomes a contact (reused when the email matches), a
   deal in the stage you chose, and a note on the deal with every answer.
-- **A team**: admins add namespace members to the team, or remove them.
-  Joining the namespace is not joining the team: a member who is not on it
-  sees "Waiting to be added to the team".
+- **A team**: admins add members of the organization to the team, or remove
+  them. Being in the organization is not being on the team: a member who is
+  not on it sees "Waiting to be added to the team". Guests of the
+  organization cannot join the team.
+
+## What the operator configures
+
+| Where | What | Why |
+| --- | --- | --- |
+| The node's outbound HTTP | allow `challenges.cloudflare.com` | a form whose captcha the workspace checks (`turnstile`) calls Cloudflare's `siteverify` from the contract |
+| The node's secrets, for `com.calimero.mero-forms` | `TURNSTILE_SECRET`: the secret of a Cloudflare Turnstile widget | the contract names it as `{{secret:TURNSTILE_SECRET}}`; the node fills it in and the app never sees it |
+| The workspace (its owner, once per release) | approve the manifest's `outbound` prefix `https://challenges.cloudflare.com/turnstile/v0/` | without it the check is refused, and so is every response that needs it |
+| The workspace (its owner) | access `public` (Connect → Public links → "Open the workspace to public links") | anonymous visitors of a public link reach the cluster only on a public instance |
+| The node's allowed origins (`origins`) | the origin public links open on, when it is not the bundle's own (e.g. `https://mero-forms.vercel.app`) | a bundle-served page's CSP allows scripts and frames from its own origin only, so Cloudflare's Turnstile widget cannot load there; a captcha'd public form is served from another origin, which the node must allow (CORS) |
+| The frontend build | `VITE_PUBLIC_FORM_ORIGIN` (where links open), `VITE_TURNSTILE_SITE_KEY` (the widget's public site key, unless an admin sets the team's own in Team → Captcha) | see `app/.env.example` |
+| The Vercel project (optional) | `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`, `CAPTCHA_SIGNING_SEED` | only for the verifier captcha (`app/api/captcha.ts`), the alternative to the workspace checking Turnstile itself |
+
+Mero CRM needs nothing from the operator: the hand-off is a cross-app call
+inside one organization.
 
 ## Form keys
 
-A form key is an account with a certified device and no node, bound to one
-form. An admin issues one from the form's **Connect** tab, all in the browser
-(`app/src/FormConnect.tsx`):
+A form key is a core **API key** of an admin's account, limited to this
+workspace and to two methods, `submitResponse` and `getForm`. An admin issues
+one from the form's **Connect** tab:
 
-1. mint the account and its device certificate in the tab
-   (`app/src/lib/formKey.ts`), so the secret exists nowhere until the admin
-   copies it;
-2. have the admin's node create an invitation to the workspace's namespace;
-3. present the new account's signed join to that node, which makes it a plain
-   member (`bootstrapFromInvitation`);
-4. register it in the contract (`register_form_key`), which binds it to this
-   form, labels it and keeps it off the team.
+1. the admin's client creates the key (`createApiKey`, approved with the
+   admin's passkey); the key's secret is shown once and kept nowhere else;
+2. the app registers the key's id in the contract (`registerFormKey`), which
+   binds it to this form, labels it and keeps it off the team.
 
 The app then shows, once:
 
 ```
-CALIMERO_CONTEXT_ID=…
+CALIMERO_APP_ID=…
 CALIMERO_FORM_ID=…
-CALIMERO_FORM_ACCOUNT=…
-CALIMERO_FORM_CREDENTIAL=…
-CALIMERO_FORM_DEVICE_SECRET=…
+CALIMERO_API_KEY=…
 ```
 
-The website's backend signs a warrant for `submit_response` with these and
-sends it to a relay with `RelayClient.execute` from `@calimero-network/mero-js`:
+The website's backend calls the cluster with mero-js `CalimeroClient`
+(`useApiKey(CALIMERO_API_KEY)`) and `submitResponse`:
 
 ```json
 {
-  "form_id": "<CALIMERO_FORM_ID>",
+  "formId": "<CALIMERO_FORM_ID>",
   "answers": [
-    { "field_id": "name", "values": ["Ada Lovelace"] },
-    { "field_id": "email", "values": ["ada@example.com"] },
-    { "field_id": "topic", "values": ["Cloud"] }
+    { "fieldId": "name", "values": ["Ada Lovelace"] },
+    { "fieldId": "email", "values": ["ada@example.com"] },
+    { "fieldId": "topic", "values": ["Cloud"] }
   ],
   "source": "/contact/"
 }
@@ -69,261 +86,251 @@ sends it to a relay with `RelayClient.execute` from `@calimero-network/mero-js`:
 
 One answer per question, under the question's id (shown on each question in
 **Edit**, and as a full example in **Connect**). A choice is one of its
-options; checkboxes any of them. The key can answer its form and nothing else:
-it cannot read responses, change a form or answer another one. Revoking removes
-its namespace membership (what lets it write) and then its registration.
-
-**The relay.** A website needs a node that relays for the namespace:
-
-- Make the namespace always-on in Calimero Desktop and Calimero Cloud's nodes
-  relay for it.
-- Or use a node of the team's own. An admin grants it `CAN_AUTHOR_ON_BEHALF`
-  from the Connect tab ("Let this node write for form keys"), its operator runs
-  it with `merod … init --delegated-access` (which serves the warrant route
-  without a node credential), and the site's `CALIMERO_RELAY_URL` points at it.
-
-calimero.network's contact page is wired this way: see "Contact form" in the
-[landing README](https://github.com/calimero-network/landing).
+options; checkboxes any of them. Inside the contract the caller is the key
+(`Caller::ApiKey`), so the key answers its own form and nothing else: the node
+refuses every other method, and the contract refuses another form and never
+counts the key as the admin it belongs to. Revoking deletes the key
+(`revokeApiKey`) and then its registration. A key lives at most a year (core's
+limit); issue a new one before it ends.
 
 ## Public links
 
-A public link lets anyone answer a form in their browser, signed in or not,
-like a Google Form. A teammate makes one from the form's **Connect** tab
-("Public links"); the visitor opens `https://mero-forms.vercel.app/f#n=…&c=…&t=…`
-and sees the form alone (`app/src/PublicForm.tsx`).
+A public link lets anyone answer a form in their browser, signed in or not.
+A teammate makes one from the form's **Connect** tab ("Public links"); the
+visitor opens `…/f#a=<workspace>&t=<token>` and sees the form alone
+(`app/src/PublicForm.tsx`).
 
-**A link is a core access grant, not a member's key.** Making one does two
-things, as Mero Calendar's booking links do (`app/src/PublicLinks.tsx`):
+**A link is a token.** Making one is one call: the teammate's browser draws 32
+random bytes, records their SHA-256 in the contract (`createLink`, with the
+form and a label), and puts the token itself only in the link's URL. A
+visitor's browser calls the workspace's two `#[app::public]` methods,
+`linkForm` (the questions) and `submitViaLink` (a response), with the token,
+anonymously. The contract opens a link only by its token: the id the team's
+list shows is not one. The fragment never reaches the server that serves the
+page, so the token reaches only the cluster.
 
-1. the teammate's node issues an access grant
-   (`POST /admin-api/contexts/:id/grants`) that names `link_form` and
-   `submit_via_link` and nothing else;
-2. the contract records the link under the SHA-256 of the grant's token
-   (`create_link`), with the form it is for and a label.
-
-The URL's fragment carries the node, the workspace and the token. A browser
-never sends the fragment to the server that serves the page, so the token
-reaches only the node, on its public `/grant-calls` route. The visitor is a
-member of nothing: no account, no key that could ever receive the workspace's
-data, and no call but those two. A grant call runs as the node that issued it,
-a teammate, so those two methods are the link's own: `submit_via_link` takes a
-response only through a link the contract knows, and the visitor never reaches
-`submit_response` or anything that reads responses.
+**Anonymous callers need a public workspace.** The cluster lets an anonymous
+caller reach an instance only when its access is `public`, and only its
+`public` methods. Only the instance's owner can change access, so Connect →
+Public links offers the owner "Open the workspace to public links" (and tells
+anyone else to ask the owner). On a public instance every signed-in account
+reaches the instance too, so every method that is not `public` checks the
+caller itself: an account (or API key) with a role in the workspace's
+organization, or the team, or an admin. Events go to the organization's
+members only (`Audience::Org`), never to everyone.
 
 **What the team controls, enforced by the contract:**
 
 - **Public.** Off by default. While off, every link shows the form but
   refuses responses; turning it back on brings them all back.
-- **An hourly cap per link** (30 by default), counted from the link's own
-  responses. Over it, the link is refused until the hour rolls over.
-- **A captcha**, optional, checked one of three ways. The `/f` page shows a
-  Cloudflare Turnstile widget either way.
-- **Checked by the node** (`set_captcha_key(form, "turnstile")`). The page
-  sends the widget's token as `submit_via_link`'s `captcha_token`, and the
-  contract asks Cloudflare's `siteverify` itself through the node
-  (`env::http_request`). The request names `{{secret:TURNSTILE_SECRET_KEY}}`,
-  which the node fills in from its operator's secrets, so the secret is in no
-  state and no response. Cloudflare accepts a token once. The token is checked
-  last, after the form, link and cap checks, so a refused response spends
-  none. It needs three things on the node that serves the link:
-  - its operator turned outbound requests on for `challenges.cloudflare.com`
-    and bound `TURNSTILE_SECRET_KEY` to `com.calimero.mero-forms`;
-  - the namespace approved `https://challenges.cloudflare.com/turnstile/v0/`,
-    the one prefix the manifest declares (offered when Mero Forms is installed
-    or upgraded; until then the response is refused, never stored unchecked);
-  - core 0.12.0-rc.1 or later.
-- **Checked with the team's own keys** (Team → Captcha, admins). The admin
-  enters the Turnstile site key and secret. The contract seals the secret to
-  the namespace's TEE (`env::seal_outbound_secret`) before storing it, so no
-  teammate's node and no page can read it, and only a TEE of the namespace can
-  fill it in, and only for `challenges.cloudflare.com`. Turning on "Require a
-  captcha" then sets `turnstile`, the public page shows the team's site key,
-  and the check names `{{sealed:…}}` in place of the operator's secret. The
-  node serving the link hands that one request to a TEE of the namespace,
-  which sends it and returns Cloudflare's answer, so the response is still
-  checked and stored in the same call. Without a TEE in the namespace the
-  secret is refused ("add a TEE node to the namespace"), and the card says so
-  first. When the namespace's TEEs change, the card asks for the keys again.
-  Needs the core release that adds sealed outbound secrets, the TEE nodes'
-  operators to allow `challenges.cloudflare.com`, and the namespace approval
-  above.
-- **Checked by a verifier** (`set_captcha_key(form, <ed25519 key>)`), for
-  nodes without the above. The app's own Vercel function (`app/api/captcha.ts`,
-  `app/src/lib/captchaVerifier.ts`) checks the solved widget with Cloudflare.
-  It then signs a pass, `mero-forms/captcha/v1|<form>|<link>|<nonce>|<expiry>`,
-  with an ed25519 key. The contract checks that signature with the host's
-  `ed25519_verify` against the key the form saved, and accepts each nonce once
-  and only until it expires (at most ten minutes ahead). The function sees the
-  form, the link and a random nonce, never the answers, and holds no key or
-  grant.
-- **Deleting a link** removes its record, which stops it at once, and revokes
-  its grant when the link was made on this node. A link made on a teammate's
-  node keeps a grant there that reaches nothing, until they remove it.
+- **An hourly cap per link** (30 by default), counted per clock hour. Over it,
+  the link is refused until the hour rolls over.
+- **A captcha**, optional, one of two kinds:
+  - **Checked by the workspace** (`setCaptchaKey(form, "turnstile")`). The page
+    shows Cloudflare's Turnstile widget (with the team's site key, else the
+    deployment's `VITE_TURNSTILE_SITE_KEY`) and sends the widget's token as
+    `submitViaLink`'s `captchaToken`. The contract sends it to
+    `https://challenges.cloudflare.com/turnstile/v0/siteverify` from that same
+    call (`env::fetch`), with the secret named as `{{secret:TURNSTILE_SECRET}}`.
+    It stores the response only when Cloudflare answers `success: true`: a
+    refused gate, an unreachable Cloudflare, an unreadable or negative answer
+    all refuse it, never pass it. The token is checked last, after the form,
+    the link, the cap and every answer, so a refused response spends none, and
+    the node records the exchange in the call's log entry, so a retry replays
+    it and never spends a token twice. Needs the operator's three settings
+    above.
+  - **Through a verifier** (`setCaptchaKey(form, <ed25519 key>)`), as before:
+    the app's own Vercel function (`app/api/captcha.ts`,
+    `app/src/lib/captchaVerifier.ts`) checks the solved widget with Cloudflare
+    and signs a pass, `mero-forms/captcha/v1|<form>|<link id>|<nonce>|<expiry>`,
+    which the contract checks itself and accepts once, until it expires (at
+    most ten minutes ahead).
+- **Deleting a link** removes its record, which stops it at once.
 
-**What a link needs:**
-
-- **Core 0.11.0 or later on the teammate's node.** Access grants are not in
-  0.11.0-rc.90.
-- **A node signed in, not a Calimero Cloud account session.** Core runs a
-  granted call as the node, so an account session cannot issue one.
-- **A node visitors' browsers can reach**, at the URL the app is connected
-  to, with CORS allowing the app's origin: a Calimero Cloud node, or your own
-  `merod` at a public address. Calimero Desktop on a laptop is not.
-- **For the captcha, three variables on the Vercel project:**
-  `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` from a Cloudflare Turnstile
-  widget, and `CAPTCHA_SIGNING_SEED`, 32 random bytes in hex
-  (`openssl rand -hex 32`). Changing the seed changes the key, so re-enable
-  "Require a captcha" on each form that uses it.
-
-A grant limits *which* methods may be called, not their arguments, and
-nothing in core limits how often the node's `/grant-calls` route is called:
-the hourly cap is the contract's, and a rate limit per IP belongs to the
-node's reverse proxy.
+The node does not yet enforce a `rate` on public methods, so the hourly cap
+per link is the limit; a rate limit per IP belongs to the node's reverse proxy.
 
 ## Sending to Mero CRM
 
-The hand-off runs in the browser of the teammate who clicks it
-(`app/src/useCrm.ts`), against the pipeline's own context, as that person. So
-they have to be a member of the pipeline, which lives in its own namespace:
-join it from Mero CRM's invite link. Keep it out of the forms workspace's
-namespace: Mero CRM lets every member write deals and contacts, and website
-form keys are members of the workspace's namespace.
+Send to CRM is one call to this workspace, `sendToCrm(id)` (team only), which
+hands the response to the form's Mero CRM pipeline **from the contract**: a
+synchronous cross-app call (`env::xcall_call`) to the pipeline's instance, then
+the deal it answers is recorded here in the same call, so the response reads
+"In CRM" for the whole team. The browser writes nothing to the CRM.
 
-How the pipeline is found and written to depends on how you signed in:
+- **Same organization.** Cross-app calls stay inside one organization, so the
+  pipeline must be a Mero CRM instance in the workspace's organization. The
+  Connect tab lists the Mero CRM instances your account reaches (by the
+  `com.calimero.mero-crm` package) and their stages; a pipeline's instance id
+  can be pasted there too (instances made from a dev bundle carry no package).
+- **Once.** A response already sent is refused before Mero CRM is asked;
+  two teammates sending at once are ordered by the log, so the second is
+  refused. When Mero CRM refuses, nothing is recorded and the error says why.
+- **Not atomic across apps.** Mero CRM commits its call before this one
+  records the deal; if this call failed after that (it only writes a few
+  rows), the deal would exist unrecorded. `externalRef` lets Mero CRM refuse a
+  second import of the same response.
+- `recordCrmDeal(id, crmContext, crmDeal)` stays, to record a deal made by
+  hand.
 
-- **A node** (Calimero Desktop or `merod`): the Connect tab lists the Mero CRM
-  pipelines this node has joined (by the `com.calimero.mero-crm` package among
-  its installed apps), and the hand-off writes through the node as its
-  identity in the pipeline.
-- **A Calimero Cloud account**: the Connect tab asks every Cloud relay the
-  account knows for its contexts (`listDelegatedContexts`) and keeps the Mero
-  CRM ones, matched by the application id the registry gives for that package.
-  The hand-off writes through the relay that serves the pipeline, under the
-  account's warrant, which may be a different relay from the one the workspace
-  is on. Mero CRM stamps who created each record in an entry only that account
-  owns, and core lets a relay sign such an entry on someone's behalf only when
-  it is an attested TEE relay (a `RelayTee`). Calimero Cloud's relays are; a
-  team's own node relaying for an account is not, and the error says so.
+**The method Mero CRM provides.** The forms contract calls `importFormResponse`
+on the pipeline's instance. Mero CRM is being ported to the component SDK in
+its own PR; this is the contract between the two (`CRM_IMPORT`, `CrmImport`,
+`CrmImported` in `logic/src/lib.rs`), taken from v1's browser hand-off
+(`listContacts` + `createContact` + `createDeal` + `addNote`, which it does in
+one call):
 
-When the list cannot be fetched (the registry or a relay is down), paste the
-pipeline's id into the Connect tab: it is tried directly.
+```rust
+/// One form response: reuse the contact with this email (or create one), a
+/// deal in `stageId` for them, and a note on the deal. For apps of the
+/// organization (Mero Forms), in one call of their own.
+#[app::allow(app = "*")]
+pub fn import_form_response(
+    &mut self,
+    stage_id: String,
+    contact: Contact,     // { name, email, phone, organization, jobTitle }
+    deal: Deal,           // { title, organization, source }
+    note: String,         // every answer, at most 10,000 characters
+    external_ref: String, // "mero-forms:<forms app id>:<response id>"
+) -> app::Result<Imported> // { contactId, dealId }
+```
 
-One send is: reuse the CRM contact with the same email or create one, create a
-deal in the chosen stage, add a note with every answer, then
-`record_crm_deal` here so the response reads "In CRM" for the whole team. Two
-apps' contexts share no transaction, so it is not atomic: if the last steps
-fail the deal exists and the error says so, and sending again makes a second
-deal. `record_crm_deal` refuses a response this node already knows was sent;
-two teammates sending the same response at the same moment from two nodes can
-still both create a deal.
+The values are clipped to Mero CRM's limits (names and titles 120 characters,
+the note 10,000) as v1's `crmPayload` did; `email` is empty when the form maps
+none (then a new contact is always created). The answer needs `dealId`;
+`contactId` is optional. `allow(app = "*")` is safe because the node only
+lets apps of the same organization make the call, and `env::caller()` is
+`Caller::App(<forms app id>)` inside it. Until Mero CRM ships the method, the
+hand-off answers "Mero CRM refused the hand-off: …" and records nothing.
 
-The link (pipeline, stage, field mapping) is stored on the form, so the whole
-team sends to the same place.
+## The contract
 
-## The contract in one table
+| State | What it holds |
+| --- | --- |
+| `forms: UnorderedMap<id, FormRow>` | Title, description, questions (at most 50, replaced whole on save), open, CRM link, public, the hourly cap, the captcha key. At most 200 forms |
+| `submissions: Table<Submission>` | Every response: form, `source`, `createdAt`, `submittedBy`, the link it came through. Indexed by `(formId, createdAt)`, read one page at a time. Inserted once; nothing writes it again |
+| `answers: UnorderedMap<responseId, Vec<Answer>>` | A response's answers (one per question the form had, at most 50), each with its question's id, label and kind at the time. Beside the record because a table record holds no list |
+| `formStats`, `linkStats`, `senderStats` | Counts kept with each write (responses, new ones, the last one, this hour's), so no read scans the responses |
+| `triage: UnorderedMap<id, ResponseState>` | Archived, and the CRM deal a response became |
+| `settings: UnorderedMap<key, String>` | The workspace's name, the Turnstile site key |
+| `formKeys: UnorderedMap<apiKeyId, FormKey>` | Which API keys are form keys, the form each may answer, and a label. At most 200 |
+| `links`, `formLinks` | Each public link by the SHA-256 of its token, and a form's links (at most 100 per form) |
+| `captchaSeen`, `captchaExpiry` | Verifier passes already spent, until they expire |
+| `admins: Set<account>`, `team: Set<account>` | The admins (the instance's owner) and the rest of the team (at most 1,000) |
 
-| State | Tier | Why |
-| --- | --- | --- |
-| `responses: UnorderedMap<id, LwwRegister<Response>>` | public, insert-only | The answers as sent, with each question's label at the time, `source`, `created_at`, `submitted_by` and the public link it came through. `submit_response` and `submit_via_link` refuse an existing id and nothing else writes it. |
-| `forms: SharedStorage<UnorderedMap<id, Form>>` | writers = the team | Title, description, questions, open, CRM link, and for public links: public, the hourly cap, the captcha key. Each part a register; the question list is replaced whole on save. |
-| `triage: SharedStorage<UnorderedMap<id, ResponseState>>` | writers = the team | Archived, and the CRM deal a response became. |
-| `settings: SharedStorage<UnorderedMap<key, LwwRegister<String>>>` | writers = the team | The workspace's name. |
-| `form_keys: SharedStorage<UnorderedMap<account, FormKey>>` | writers = the admins | Which members are form keys, the form each may answer, and a label. The register, not the grant: membership is the grant. |
-| `links: SharedStorage<UnorderedMap<sha256(token), Link>>` | writers = the team | Each public link: its form, label, access grant id and the teammate whose node holds the grant. Deleting the row stops the link. |
-| `captcha_seen: SharedStorage<UnorderedMap<nonce, expiry>>` | writers = the team | Captcha passes already spent, until they expire. |
-| `roles: AccessControl` | admins | The admins (the installer to start with) and the `team` role. Adding or removing a teammate rotates the writers of `forms`, `triage`, `settings`, `links` and `captcha_seen`. |
-
-**Why responses are not owned storage.** `WriteOnce` would make a response
-immutable for every node, but core lets only an attested TEE relay
-(`RelayTee`) sign an owned entry on a member's behalf. Owned responses would
-make every website response depend on Calimero Cloud's fleet, and a team's own
-node could never relay one. So insert-only is enforced by the contract, which
-binds honest nodes: a patched *member* node could overwrite a response. Every
-member node already holds every response, so that is a member misbehaving
-inside the boundary, not a way in.
-
-**A form changes; its responses don't.** Each stored answer carries its
-question's id, label and kind, so a response still reads correctly after a
-question is renamed or removed (the panel marks it "no longer on the form", and
-the CSV keeps it as a column). A form with responses can be closed but not
-deleted.
-
-Events carry ids only, never answers.
+A form changes; its responses don't. A form with responses can be closed but
+not deleted. Events carry ids only, never answers, and go to the
+organization's members. Errors are `Invalid`, `NotFound`, `Forbidden`,
+`Refused` and `Unsupported`, each with v1's message.
 
 ### Methods
 
 | Method | Who | Does |
 | --- | --- | --- |
-| `create_form(title, description)` / `update_form(form_id, title, description, fields)` | team | Make a form, replace its questions |
-| `set_form_open(form_id, open)` / `delete_form(form_id)` | team | Close or reopen; delete one with no responses |
-| `set_crm_link(form_id, link)` | team | Where its responses go in Mero CRM |
-| `get_form(form_id)` | any member | One form, so a website may read what it answers |
-| `list_forms()` / `field_kinds()` | team / anyone | Forms with response counts; the kinds of question |
-| `submit_response(form_id, answers, source)` | any member | Store a checked response; returns its id |
-| `list_responses(form_id)` / `get_response(id)` | team | Responses, newest first |
-| `set_archived(id, archived)` / `record_crm_deal(id, crm_context, crm_deal)` | team | Archive; mark sent to the CRM |
-| `list_team()` / `add_team_member(who)` / `remove_team_member(who)` | team / admin | The team |
-| `workspace_name()` / `set_workspace_name(name)` | anyone / team | The workspace's name |
-| `register_form_key(account, form_id, label)` / `forget_form_key(account)` / `list_form_keys()` | admin | The form key register, with each key's response count |
-| `set_form_public(form_id, public)` / `set_link_cap(form_id, per_hour)` / `set_captcha_key(form_id, key)` | team | Whether links take responses, how many per hour, and the captcha: a verifier's key, `turnstile` for the node to check, or empty for none |
-| `create_link(form_id, link, grant_id, label)` / `delete_link(link)` / `list_links(form_id)` | team | The public link register, with each link's response counts |
-| `link_form(link)` / `submit_via_link(link, answers, captcha, captcha_token)` | a link's grant | The two calls a public link may make: the questions, and a response with a verifier's pass or a Turnstile token |
-| `am_i_team()` / `am_i_admin()` / `my_account()` | anyone | Identity |
+| `createForm(title, description)` / `updateForm(formId, title, description, fields)` | team | Make a form, replace its questions |
+| `setFormOpen(formId, open)` / `deleteForm(formId)` | team | Close or reopen; delete one with no responses |
+| `setCrmLink(formId, link)` | team | Where its responses go in Mero CRM (`link.contextId` is the pipeline's instance id) |
+| `getForm(formId)` | anyone in the organization, a form key | One form, so a website may read what it answers |
+| `listForms()` / `fieldKinds()` | team / anyone signed in | Forms with response counts; the kinds of question |
+| `submitResponse(formId, answers, source)` | anyone in the organization, a form key | Store a checked response; returns its id |
+| `listResponses(formId, cursor, limit)` / `getResponse(id)` | team | One page of responses, newest first (`{ items, next }`, 100 by default, at most 1,000); one response |
+| `setArchived(id, archived)` | team | Archive, or bring back |
+| `sendToCrm(id)` / `recordCrmDeal(id, crmContext, crmDeal)` | team | Hand a response to Mero CRM and record the deal; record one made by hand |
+| `listTeam()` / `addTeamMember(who)` / `removeTeamMember(who)` | team / admin | The team |
+| `workspaceName()` / `setWorkspaceName(name)` | anyone in the organization / team | The workspace's name |
+| `registerFormKey(account, formId, label)` / `forgetFormKey(account)` / `listFormKeys()` | admin | The form key register (`account` is the API key's id), with each key's response count |
+| `setFormPublic(formId, public)` / `setLinkCap(formId, perHour)` / `setCaptchaKey(formId, key)` | team | Whether links take responses, how many per hour, and the captcha: `turnstile`, a verifier's key, or empty |
+| `createLink(formId, link, label)` / `deleteLink(link)` / `listLinks(formId)` | team | The public link register (`link` is the SHA-256 of the token), with each link's counts |
+| `linkForm(link)` / `submitViaLink(link, answers, captcha, captchaToken)` | anyone, signed in or not (`#[app::public]`) | The two calls a public link makes, with the token as `link` |
+| `setCaptchaSiteKey(siteKey)` / `setCaptchaSecret(siteKey, secret)` / `clearCaptchaSecret()` / `captchaSettings()` | admin / admin / admin / team | The Turnstile site key public pages show; a team-held secret is refused (see below) |
+| `amITeam()` / `amIAdmin()` / `myAccount()` | anyone signed in | Identity |
+
+## What changed in the port
+
+Every change a client sees, v1 → here.
+
+| | v1 (calimero-sdk 0.12, merobox, mero-react) | here (component SDK 1.0.0-rc.8, CalimeroClient) |
+| --- | --- | --- |
+| Names on the wire | `create_form`, `form_id`, snake_case records | `createForm`, `formId`, camelCase records; 64-bit numbers are decimal strings |
+| Timestamps | nanoseconds | milliseconds (the log's clock) |
+| A workspace | a context in a namespace | an app instance in an organization |
+| Joining | a namespace invitation link | an organization invite (`?invite=<token>&workspace=<app>`), approved with the inviter's passkey, redeemed after sign-in |
+| The team | `AccessControl` + `SharedStorage` writer sets, enforced by every node | `admins` / `team` sets, checked by each method against `env::caller()`; a seat ends when its holder leaves the organization |
+| Joining the team | any namespace member | a member (or admin) of the organization; guests are refused |
+| Who reads responses | every member node held them; `list_responses` only refused | only the team: the cluster runs the contract, and no method answers them to anyone else |
+| Reaching the workspace | namespace membership | the organization's role, checked by the contract (the instance may be public for links) |
+| Events | to every member node | to the organization's members, admins and owner (`Audience::Org`), never guests or anonymous visitors |
+| Form key | an account with a certified device and no node, joined to the namespace, writing through a relay by delegated execution | an API key of an admin's account, scoped to `submitResponse` and `getForm`, bound to the form by its id; no relay, no warrant, no namespace membership |
+| `submittedBy` | the form key's account, or the node that held a link's grant | the form key's id, the account, or `public` for an anonymous visitor of a link (the account, for a signed-in one) |
+| Public link | a node access grant (`/grant-calls`) on a teammate's node, which visitors' browsers had to reach; `link` was the SHA-256 of the grant's token | a random token; the contract keeps its SHA-256 and the two link methods are `#[app::public]`. `linkForm` and `submitViaLink` take the **token** as `link`; `createLink` takes its SHA-256 and no `grantId`; `LinkView` has no `grantId` |
+| Anonymous visitors | through the node's grant route | through a public instance (its owner opens it); no node needs to be public, and no passkey makes a link |
+| Hourly cap | a sliding hour, by scanning the responses | the clock hour, from stored counts |
+| Captcha: `turnstile` | the contract asked Cloudflare through the node (`env::http_request`, `{{secret:TURNSTILE_SECRET_KEY}}`) | the contract asks Cloudflare from the call (`env::fetch`, D76), the secret named `{{secret:TURNSTILE_SECRET}}`; refused on any failure; checked after the answers, so a wrong answer spends no token |
+| Captcha: the team's own secret | sealed to the namespace's TEE (`env::seal_outbound_secret`) | **not supported** (no TEE methods or sealed secrets in rc.8): `setCaptchaSecret` answers `Unsupported`, `captchaSettings` says no TEE; the team sets its public site key (`setCaptchaSiteKey`, new) and the operator holds the secret |
+| Captcha: verifier pass | checked with the host's `ed25519_verify` | checked in the contract (ed25519-dalek); `<link>` in the signed message is the link's id |
+| Responses | one map, every entry per read | a table indexed by form, `listResponses` answers one page (`{ items, next }`, new `cursor` and `limit` arguments); the frontend follows `next` |
+| Other lists | every entry | bounded: forms 200, links 100 per form, form keys 200, team 1,000 |
+| Send to CRM | the teammate's browser wrote a contact, a deal and a note to the pipeline, then `record_crm_deal`; not atomic, a refusal after the deal left it unrecorded | `sendToCrm(id)` (new): the contract hands the response to Mero CRM's `importFormResponse` in one cross-app call and records the deal in the same call; the pipeline must be in the workspace's organization |
+| Errors | strings | `Invalid` / `NotFound` / `Forbidden` / `Refused` / `Unsupported` with v1's message |
+| Sign-in | node login, Calimero Cloud account, desktop SSO | a passkey (sign in or sign up) |
+| Tests | `TestHost` + merobox two-node workflow + Playwright journey | `TestApp` harness (`tests/harness.rs`) + `scenarios/*.json` in the harness and on `merod local` |
+
+**Removed:** `logic/workflows/e2e.yml` (merobox), `logic/src/tests.rs`
+(`TestHost`), `logic/res/state-schema.json`,
+`logic/build-multi-service-bundle.sh` (the Mero CRM fixture the journey
+used), `app/src/generated/` (abi-codegen clients), the Playwright journey
+against merod (`app/e2e/forms.spec.ts`, its setup and helpers), the namespace
+invitation, desktop SSO and context picker code, and mero-react,
+mero-platform, abi-codegen and e2e-node.
+
+**Not ported, and why:** a team-held Turnstile secret (needs TEE methods and
+sealed secrets, which the component SDK at 1.0.0-rc.8 does not have; the
+operator's secret replaces it). v1 Mero Forms has no migrations, event
+handlers, private storage or CRDTs beyond plain records, so nothing else is
+missing. There is no mobile app.
 
 ## Run it
 
 ```bash
-cargo test -p mero-forms                           # contract tests, no node
-cargo mero bundle --manifest-path apps/mero-forms/logic/Cargo.toml \
-  --dev --app-version 0.0.0 \
-  --output apps/mero-forms/logic/dist/com.calimero.mero-forms.mpk
-apps/mero-forms/logic/build-multi-service-bundle.sh   # the Mero CRM bundle the journey uses
-pnpm -F mero-forms codegen                         # both ABIs -> src/generated
-pnpm -F mero-forms dev                             # http://localhost:5198
+rustup target add wasm32-wasip2
+cargo test --manifest-path apps/mero-forms/logic/Cargo.toml        # harness + scenarios
+cargo run --release --manifest-path tools/component-bundle/Cargo.toml -- build apps/mero-forms/logic
 
-pnpm -F mero-forms test                            # unit tests
-pnpm -F mero-forms test:e2e                        # Playwright against a real merod
-cd apps/mero-forms/logic && merobox bootstrap run workflows/e2e.yml   # two nodes
+pnpm dev:local mero-forms        # merod local + deploy + the app on http://localhost:5173
+pnpm merod-local e2e mero-forms  # the scenarios as real accounts on the cluster
+
+pnpm -F mero-forms lint typecheck test build
 ```
 
-The Playwright journey is the whole product path on one node, with a real Mero
-CRM pipeline beside it: build a form from a template and add a question, enter
-a response by hand, issue a form key, answer as a website through
-`RelayClient`, make a public link and answer it as a visitor with no session
-(paused until the form is public, through a stubbed captcha whose pass the
-contract really verifies, and refused over the hourly cap), read the summary
-and the response, link the pipeline, send the response, check the contact and
-deal in Mero CRM's own state, reload, delete the link and revoke the key. The
-link steps need a merod with access grants (core 0.11.0).
-
-`codegen` generates two clients: `FormsClient` from this contract, and
-`CrmClient` from `apps/mero-crm/logic/res/abi.json` for the hand-off.
+`merod local` runs on Linux (core's release binary). On `merod local` the
+Turnstile check needs the node's outbound settings and secret too; without
+them a `turnstile` form refuses every link response, as it should. The
+production build needs `VITE_CALIMERO_CLUSTER` and `VITE_CALIMERO_MIN_RELEASE`
+(see `app/.env.example`); the production frontend is the one packed into the
+bundle (`frontend-dir`).
 
 ## Layout
 
 ```
 logic/src/lib.rs            the contract
-logic/src/tests.rs          TestHost tests: questions, answers, keys, the team, writers
-logic/workflows/e2e.yml     merobox: two nodes, every method, the access rules
-logic/build-multi-service-bundle.sh   builds the Mero CRM fixture (CI's hook)
+logic/tests/harness.rs      TestApp tests: every method, keys, links, captchas (Turnstile through mock_http), the CRM hand-off (mock_app), access
+logic/scenarios/            neutral steps: run by cargo test and on merod local
+app/src/formsApi.ts         the typed adapter: v1's method names and shapes over CalimeroClient
+app/src/crmApi.ts           the Mero CRM stages the Connect tab lists
 app/src/FormsHome.tsx       templates and the form list
 app/src/FormView.tsx        one form: Responses, Edit, Preview, Connect
 app/src/FormBuilder.tsx     the question editor
 app/src/FormFill.tsx        the form as a respondent sees it
 app/src/Responses.tsx       summary, table, one response, Send to CRM
-app/src/FormConnect.tsx     form keys and the relay
-app/src/PublicLinks.tsx     public links: Public, the cap, the captcha, make and delete
-app/src/PublicForm.tsx      the form opened from a public link (`/f#…`)
+app/src/FormConnect.tsx     form keys
+app/src/PublicLinks.tsx     public links: Public, the cap, the captcha, the workspace's access, make and delete
+app/src/PublicForm.tsx      the form opened from a public link (`/f#…`), anonymously
+app/src/CaptchaCard.tsx     the team's Turnstile site key
 app/api/captcha.ts          the captcha verifier (a Vercel function)
 app/src/CrmSettings.tsx     the CRM pipeline, stage and field mapping
-app/src/useCrm.ts           finding pipelines (node or Cloud account) and sending a response
-app/src/lib/                pure, unit-tested: questions and answers, CRM mapping, form keys
-app/src/useWorkspace.ts     the generated client + re-read on sync events
-app/src/{ContextPicker,InviteCard,TeamCard,useJoinFromInvitation}.tsx, utils/
-                            login, workspace selection, team and invites
-app/e2e/                    Playwright against a native merod
+app/src/useCrm.ts           finding pipelines and sending a response (`sendToCrm`)
+app/src/lib/                pure, unit-tested: questions and answers, links, orgs
+app/src/session.ts          target -> client -> passkey sign-in/up (SessionStore)
+app/src/WorkspacePicker.tsx workspaces (app instances) in your organizations
+app/src/SignIn.tsx          the passkey sign-in and the invitation prompt
 ```
-
-The frontend is not deployed yet: `frontend` in `logic/Cargo.toml` names
-`https://mero-forms.vercel.app`, which needs a Vercel project with Root
-Directory `apps/mero-forms/app` (see [docs/VERCEL.md](../../docs/VERCEL.md)).

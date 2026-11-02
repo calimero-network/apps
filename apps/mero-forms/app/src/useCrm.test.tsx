@@ -1,69 +1,43 @@
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { FormView, ResponseView } from "./generated/FormsClient";
+import type { FormView, ResponseView } from "./formsApi";
 import type { Workspace } from "./useWorkspace";
 
 /**
- * The hand-off under a Calimero Cloud sign-in, with the session and its
- * relays mocked: no node, an account, and a pipeline served by a different
- * relay from the one this app's session is on.
+ * The hand-off with a mocked CalimeroClient: the signed-in account lists the
+ * Mero CRM instances (pipelines) it reaches, and the forms contract sends a
+ * response to one (`sendToCrm`); this page writes nothing to the CRM itself.
  */
 
-const ACCOUNT = "ac".repeat(32);
-const APP_RELAY = "https://relay-app.example";
-const CRM_RELAY = "https://relay-crm.example";
-const PIPELINE = "c1".repeat(32);
-const OTHER_CONTEXT = "d2".repeat(32);
-const CRM_APP = "a0".repeat(32);
+const PIPELINE = "crm-app-1";
 
-/** Every execute, by the relay it went through. */
-const calls: { relay: string; contextId: string; method: string; args: unknown }[] = [];
+/** Every call and view, in order. */
+const calls: { app: string; method: string; args: unknown }[] = [];
 let refuse: string | null = null;
 
-function relayClient(relay: string) {
-  return {
-    rpc: {
-      execute: vi.fn(async ({ contextId, method, argsJson }: { contextId: string; method: string; argsJson: unknown }) => {
-        calls.push({ relay, contextId, method, args: argsJson });
-        if (refuse && method === "create_contact") throw new Error(refuse);
-        switch (method) {
-          case "list_stages":
-            if (contextId !== PIPELINE) throw new Error("method not found");
-            return [{ id: "stage-lead", name: "Lead in", probability: 10, position: 0 }];
-          case "list_contacts":
-            return [];
-          case "create_contact":
-            return "contact-1";
-          case "create_deal":
-            return "deal-1";
-          default:
-            return null;
-        }
-      }),
-    },
-  };
-}
+const answer = (app: string, method: string, args: unknown) => {
+  calls.push({ app, method, args });
 
-const appClient = relayClient(APP_RELAY);
-const session = { account: ACCOUNT, credential: "cred", deviceSecret: "secret", relayUrl: APP_RELAY };
-const buildDelegatedClient = vi.fn((s: { relayUrl: string }) => relayClient(s.relayUrl));
+  const result = (() => {
+    switch (method) {
+      case "listStages":
+        if (app !== PIPELINE) throw new Error("UnknownMethod");
+        return [{ id: "stage-lead", name: "Lead in", probability: 10, position: "0" }];
+      default:
+        return null;
+    }
+  })();
+  return Promise.resolve({ index: 1, result, events: [] });
+};
 
-vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  useMero: () => ({ mero: appClient, admin: null, isDelegated: true }),
-}));
+const client = {
+  call: vi.fn(answer),
+  view: vi.fn(answer),
+  listApps: vi.fn(async () => [{ appId: PIPELINE, name: "Sales", owner: "o", org: "org", bundle: "b", package: "com.calimero.mero-crm", version: "1" }]),
+};
 
-vi.mock("@calimero-network/mero-js", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  readDelegatedSession: () => session,
-  buildDelegatedClient: (s: { relayUrl: string }) => buildDelegatedClient(s),
-  listDelegatedContexts: vi.fn(async () => [
-    { id: PIPELINE, applicationId: CRM_APP, relayUrl: CRM_RELAY },
-    { id: OTHER_CONTEXT, applicationId: "ff".repeat(32), relayUrl: APP_RELAY },
-  ]),
-  resolveApplicationIdFromRegistry: vi.fn(async () => ({ applicationId: CRM_APP, signerId: "s", version: "1.0.0" })),
-  relayForContext: (_account: string, contextId: string) => (contextId === PIPELINE ? CRM_RELAY : null),
-}));
+const signedIn = { client, after: () => {} };
+vi.mock("./sessionContext", () => ({ useSignedIn: () => signedIn }));
 
 const { usePipelines, useSendToCrm } = await import("./useCrm");
 
@@ -109,60 +83,60 @@ const response: ResponseView = {
 };
 
 function fakeWorkspace() {
-  const recorded: unknown[] = [];
-  const client = { recordCrmDeal: vi.fn(async (p: unknown) => recorded.push(p)) };
+  const sent: unknown[] = [];
+  const client = {
+    sendToCrm: vi.fn(async (p: { id: string }) => {
+      if (refuse) throw new Error(refuse);
+      sent.push(p);
+      return { ...response, crm_context: PIPELINE, crm_deal: "deal-1" };
+    }),
+  };
   const workspace = {
     client: client as unknown as Workspace["client"],
     version: 0,
     act: (async (fn: (c: typeof client) => Promise<unknown>) => fn(client)) as unknown as Workspace["act"],
   };
-  return { workspace, recorded };
+  return { workspace, sent };
 }
 
 beforeEach(() => {
   calls.length = 0;
   refuse = null;
-  buildDelegatedClient.mockClear();
 });
 afterEach(cleanup);
 
-describe("a Calimero Cloud sign-in", () => {
-  it("finds the account's Mero CRM pipelines on the relay that serves each", async () => {
+describe("the hand-off to Mero CRM", () => {
+  it("finds the account's Mero CRM pipelines by package", async () => {
     const { result } = renderHook(() => usePipelines(true));
     await waitFor(() => expect(result.current.pipelines).not.toBeNull());
     expect(result.current.pipelines).toEqual([
-      { contextId: PIPELINE, stages: [{ id: "stage-lead", name: "Lead in", probability: 10, position: 0 }], relayUrl: CRM_RELAY },
+      { contextId: PIPELINE, name: "Sales", stages: [{ id: "stage-lead", name: "Lead in", probability: 10, position: 0 }] },
     ]);
-    // The other app's context is not asked to be a pipeline.
-    expect(calls.some((c) => c.contextId === OTHER_CONTEXT)).toBe(false);
-    expect(calls.every((c) => c.relay === CRM_RELAY)).toBe(true);
+    expect(client.listApps).toHaveBeenCalledWith({ package: "com.calimero.mero-crm" });
   });
 
-  it("sends a response through the pipeline's relay, then records the deal in the workspace", async () => {
-    const { workspace, recorded } = fakeWorkspace();
+  it("sends a response from the contract, which records the deal, and writes nothing to the CRM itself", async () => {
+    const { workspace, sent } = fakeWorkspace();
     const { result } = renderHook(() => useSendToCrm(workspace));
     await expect(result.current(form, response)).resolves.toBe("deal-1");
-
-    const crmCalls = calls.filter((c) => c.contextId === PIPELINE);
-    expect(crmCalls.map((c) => c.method)).toEqual(["list_contacts", "create_contact", "create_deal", "add_note"]);
-    expect(crmCalls.every((c) => c.relay === CRM_RELAY)).toBe(true);
-    expect(buildDelegatedClient).toHaveBeenCalledWith(expect.objectContaining({ account: ACCOUNT, relayUrl: CRM_RELAY }));
-    expect(recorded).toEqual([{ id: "r1", crm_context: PIPELINE, crm_deal: "deal-1" }]);
+    expect(sent).toEqual([{ id: "r1" }]);
+    expect(calls.filter((c) => c.app === PIPELINE)).toEqual([]);
   });
 
-  it("explains a relay that may not write CRM records on the account's behalf", async () => {
-    refuse =
-      "relay refused the intent (HTTP 403): this node is not a RelayTee in this namespace, and only a RelayTee signs entries on a member's behalf";
-    const { workspace, recorded } = fakeWorkspace();
+  it("passes the contract's refusal on", async () => {
+    refuse = "Mero CRM refused the hand-off: no stage";
+    const { workspace, sent } = fakeWorkspace();
     const { result } = renderHook(() => useSendToCrm(workspace));
-    await expect(result.current(form, response)).rejects.toThrow(/only a Calimero Cloud relay can/);
-    expect(recorded).toEqual([]);
-    expect(calls.some((c) => c.method === "create_deal")).toBe(false);
+    await expect(result.current(form, response)).rejects.toThrow(/refused the hand-off/);
+    expect(sent).toEqual([]);
   });
 
-  it("tries a pasted pipeline id directly", async () => {
-    const { result } = renderHook(() => usePipelines(true, [PIPELINE]));
-    await waitFor(() => expect(result.current.pipelines?.length).toBe(1));
-    expect(result.current.pipelines![0]!.contextId).toBe(PIPELINE);
+  it("refuses a form with no pipeline before asking the contract", async () => {
+    const { workspace, sent } = fakeWorkspace();
+    const { result } = renderHook(() => useSendToCrm(workspace));
+    await expect(result.current({ ...form, crm: { ...form.crm, context_id: "" } }, response)).rejects.toThrow(
+      /not connected/,
+    );
+    expect(sent).toEqual([]);
   });
 });
