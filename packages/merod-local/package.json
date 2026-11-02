@@ -1,0 +1,25 @@
+{
+  "name": "@calimero-apps/merod-local",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local development and e2e for component apps on core's `merod local`: start the cluster, build and deploy an app, run its scenarios as real accounts. Replaces merobox for component apps.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "bin": {
+    "merod-local": "./src/cli.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@calimero-network/mero-js": "catalog:component"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

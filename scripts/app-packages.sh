@@ -55,7 +55,9 @@ case "${1:-}" in
     #     for it and skipping it is correct. It is still covered: the `frontend`
     #     job takes its dirs from scripts/ci-scope.py (`frontend_dirs`), not
     #     from this mapping.
-    #   * A logic/ that maps to nothing — an app whose Cargo.toml is missing,
+    #   * A COMPONENT app (logic/ depends on calimero-app-sdk): excluded from the
+    #     root workspace on purpose and covered by components.yml.
+    #   * A logic/ that maps to nothing else — an app whose Cargo.toml is missing,
     #     unpublished or lacks [package.metadata.calimero]. That one really is
     #     dropped from CI with nothing to notice, which is what the warning is
     #     for.
@@ -64,7 +66,11 @@ case "${1:-}" in
       | map(select(. as $d | ($apps | map(.dir) | index($d)) == null))
       | .[]
     ' <<<"$paths" | while read -r orphan; do
-      if [ -d "apps/$orphan/logic" ]; then
+      if [ -f "apps/$orphan/logic/Cargo.toml" ] && grep -Eq '^calimero-app-sdk[[:space:]]*=' "apps/$orphan/logic/Cargo.toml"; then
+        # A component app (calimero-app-sdk), excluded from the root workspace on
+        # purpose: .github/workflows/components.yml builds, tests and e2e-tests it.
+        echo "::notice::apps/$orphan is a component app — covered by the Components workflow, not this matrix" >&2
+      elif [ -d "apps/$orphan/logic" ]; then
         echo "::warning::apps/$orphan has a logic/ but is not a cargo package with [package.metadata.calimero] — not covered by this run" >&2
       else
         echo "::notice::apps/$orphan is frontend-only (no logic/) — no contract matrix applies; the frontend job covers it (via ci-scope.py frontend_dirs)" >&2

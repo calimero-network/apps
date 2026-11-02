@@ -118,6 +118,27 @@ Three projects stayed in their own repositories, and one was abandoned.
 | [mero-chat-pwa](https://github.com/calimero-network/mero-chat-pwa) | Installable PWA with offline support; still developed on its own. |
 | [mero-chat](https://github.com/calimero-network/mero-chat) | **Abandoned** 2026-08-19, stuck on rc.20 / mero-js 7 / mero-react 4. Superseded by `mero-chat-pwa`. Won't-fix; exclude it from fleet sweeps. |
 
+## Component apps (Calimero 1.0)
+
+Apps are moving, one PR each, to core's **component SDK** (`calimero-app-sdk`,
+a `calimero:app` component on the node's wasmtime runtime, pinned at
+`component-core-tag` in the root `Cargo.toml`), to **`merod local`** for local
+development instead of merobox, and to mero-js's **`CalimeroClient`** in the
+frontend: a Calimero Cloud cluster in production, the local nodes in
+development.
+
+```bash
+pnpm dev:local kv-store        # merod local + build + deploy + the app's dev server on :5173
+pnpm merod-local e2e kv-store  # the app's scenarios as real accounts on the cluster
+```
+
+[**`docs/COMPONENT-APPS.md`**](docs/COMPONENT-APPS.md) has the layout, the
+build and bundle tool (`tools/component-bundle`), local development
+(`packages/merod-local`), the frontend helper (`packages/connect`), CI
+(`.github/workflows/components.yml`), the v1 → component SDK migration guide
+and the porting checklist. Everything below describes the v1 apps, which keep
+building as they are until their own port.
+
 ## Anatomy of a Mero app
 
 Every app here has the same two halves, and the boundary between them is the ABI:
@@ -168,13 +189,23 @@ scripts/
   check-registry-sync.py    published wasm vs what this tree builds (manual)
   lockfile-fanout.py        which apps a lockfile change can actually affect
   vercel-ignore-build.py    Vercel skips an app's deploy when a push does not reach it
+  component-apps.sh         the component-app matrix (logic/ depends on calimero-app-sdk)
+  check-component-pins.py   every component crate pins component-core-tag
   tests/                    unit tests for the gates above
 
+tools/
+  component-bundle/         mero-component: build a component app, pack a signed .mpk
+
+packages/
+  connect/                  frontend: merod local in dev, Calimero Cloud in production
+  merod-local/              pnpm dev:local / merod-local: local cluster, deploy, e2e
+
 docs/
+  COMPONENT-APPS.md         component apps: build, merod local, Cloud, CI, migration guide
   SESSION-AND-INVITES.md    the login / desktop hand-off / invitation audit
   VERCEL.md                 one deploy convention for every app
 
-.github/workflows/          ci.yml · release.yml · publish-bundle.yml (reusable)
+.github/workflows/          ci.yml · components.yml · release.yml · publish-bundle.yml (reusable)
 
 Cargo.toml                  ONE SDK pin, the release profiles, and
                             [workspace.metadata.mero-apps] for fleet-wide values
