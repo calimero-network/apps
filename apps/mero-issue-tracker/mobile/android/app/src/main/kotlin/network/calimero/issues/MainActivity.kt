@@ -10,18 +10,28 @@ import network.calimero.issues.ui.IssuesApp
 
 /**
  * The one activity. Links arrive here, on the launch intent (cold start) or through
- * [onNewIntent], and go to the session: the wallet's sign-in redirect, or a workspace invitation
- * (`https://links.calimero.network/com.calimero.mero-issue-tracker/join?invitation=…`).
+ * [onNewIntent], and go to the view model: a workspace invitation
+ * (`https://links.calimero.network/com.calimero.mero-issue-tracker/join?invitation=…`), or the
+ * node's consent page sending the person back (`mero-issues://consent?request_id=…`).
+ *
+ * While it lives, its passkey (Credential Manager) approves the account's step-ups: inviting,
+ * member changes, leaving a workspace.
  */
 class MainActivity : ComponentActivity() {
     private val vm: IssuesAppViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        vm.attach(this)
         if (savedInstanceState == null) consume(intent)
         setContent {
-            IssuesApp(vm = vm, onSignIn = { vm.signIn(this) }, onShare = ::share)
+            IssuesApp(vm = vm, activity = this, onShare = ::share)
         }
+    }
+
+    override fun onDestroy() {
+        vm.attach(null)
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {

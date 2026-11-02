@@ -5,7 +5,7 @@ import android.content.SharedPreferences
 
 /**
  * What the app remembers on this device: the open workspace and repo, and the names of repos (a
- * repo's name is a context label the relay does not return, see README "SDK gaps").
+ * repo's name is a label the app keeps for itself, see README "SDK gaps").
  */
 interface TrackerStore {
     fun repoName(contextId: String): String?

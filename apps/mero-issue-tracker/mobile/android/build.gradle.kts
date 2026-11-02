@@ -7,8 +7,7 @@ plugins {
     alias(libs.plugins.detekt) apply false
 }
 
-// Same lint gates, versions and settings as the Kotlin SDK this app is built on. The contract
-// client under `generated/` is codegen output (see README "Regenerate"), so it is not linted.
+// Same lint gates, versions and settings as the Kotlin SDK this app is built on.
 subprojects {
     apply(plugin = "org.jlleitschuh.gradle.ktlint")
     apply(plugin = "io.gitlab.arturbosch.detekt")

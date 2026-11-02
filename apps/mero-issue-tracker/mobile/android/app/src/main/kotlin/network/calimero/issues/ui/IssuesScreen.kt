@@ -57,12 +57,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
+import network.calimero.issues.contract.IssueView
 import network.calimero.issues.core.IssueFilters
 import network.calimero.issues.core.IssuesModel
 import network.calimero.issues.core.LoadPhase
 import network.calimero.issues.core.Tracker
 import network.calimero.issues.core.TrackerFormat
-import network.calimero.issues.generated.IssueView
 
 /** The list: issues grouped by status, searchable, filtered by chips; swipe to close or reopen, long-press to move. */
 @OptIn(ExperimentalMaterial3Api::class)

@@ -3,8 +3,8 @@ package network.calimero.issues.core
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import network.calimero.issues.generated.IssueTrackerClient
-import network.calimero.issues.generated.IssueView
+import network.calimero.issues.contract.IssueTrackerClient
+import network.calimero.issues.contract.IssueView
 import kotlin.coroutines.cancellation.CancellationException
 
 /** The list's filters: the web app's Status / Priority / Assignee / Label chips. */

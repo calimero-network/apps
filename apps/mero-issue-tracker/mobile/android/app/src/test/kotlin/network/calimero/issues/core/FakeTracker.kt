@@ -10,10 +10,10 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.encodeToJsonElement
-import network.calimero.issues.generated.CommentView
-import network.calimero.issues.generated.IssueDetail
-import network.calimero.issues.generated.IssueView
-import network.calimero.issues.generated.RepoInfo
+import network.calimero.issues.contract.CommentView
+import network.calimero.issues.contract.IssueDetail
+import network.calimero.issues.contract.IssueView
+import network.calimero.issues.contract.RepoInfo
 
 /** The tracker contract in memory, behind `InMemoryAppBackend`'s recording contract. */
 class FakeTracker(
@@ -65,49 +65,49 @@ class FakeTracker(
         val board = issues.getOrPut(ctx) { mutableMapOf() }
 
         fun update(change: (IssueView) -> IssueView) {
-            board[s("issue_id")]?.let { board[it.id] = change(it) }
+            board[s("issueId")]?.let { board[it.id] = change(it) }
         }
         when (call.method) {
-            "list_issues" -> return json.encodeToJsonElement(board.values.sortedBy { it.createdAt })
-            "get_issue" -> {
-                val issue = board[s("issue_id")] ?: throw TrackerException("issue not found")
+            "listIssues" -> return json.encodeToJsonElement(board.values.sortedBy { it.createdAt })
+            "getIssue" -> {
+                val issue = board[s("issueId")] ?: throw TrackerException("issue not found")
                 return json.encodeToJsonElement(IssueDetail(issue, comments[ctx].orEmpty().filter { it.issueId == issue.id }))
             }
-            "get_repo_info" -> return json.encodeToJsonElement(RepoInfo(repoUrls[ctx].orEmpty()))
-            "set_repo_url" -> repoUrls[ctx] = s("url")
-            "create_issue" -> {
+            "getRepoInfo" -> return json.encodeToJsonElement(RepoInfo(repoUrls[ctx].orEmpty()))
+            "setRepoUrl" -> repoUrls[ctx] = s("url")
+            "createIssue" -> {
                 next += 1
                 val id = "issue-17000000000$next-abcdef$next"
                 val labels = (args["labels"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }.orEmpty().sorted()
                 board[id] =
                     IssueView(
-                        id, s("title"), s("summary"), s("impact"), s("repro"), s("resolution_criteria"), "Open", s("priority"),
+                        id, s("title"), s("summary"), s("impact"), s("repro"), s("resolutionCriteria"), "Open", s("priority"),
                         null, labels, account, (1_700_000_000_000L + next).toULong(),
                     )
                 return JsonPrimitive(id)
             }
-            "set_status" -> update { it.copy(status = s("status")) }
-            "set_priority" -> update { it.copy(priority = s("priority")) }
-            "set_assignee" -> update { it.copy(assignee = (args["assignee"] as? JsonPrimitive)?.contentOrNull) }
-            "set_summary" -> update { it.copy(summary = s("summary")) }
-            "set_impact" -> update { it.copy(impact = s("impact")) }
-            "set_repro" -> update { it.copy(repro = s("repro")) }
-            "set_resolution_criteria" -> update { it.copy(resolutionCriteria = s("resolution_criteria")) }
-            "add_label" -> update { if (s("label") in it.labels) it else it.copy(labels = (it.labels + s("label")).sorted()) }
-            "remove_label" -> update { it.copy(labels = it.labels - s("label")) }
-            "delete_issue" -> {
-                if (board[s("issue_id")]?.createdBy != account) throw TrackerException("only the author")
-                board.remove(s("issue_id"))
+            "setStatus" -> update { it.copy(status = s("status")) }
+            "setPriority" -> update { it.copy(priority = s("priority")) }
+            "setAssignee" -> update { it.copy(assignee = (args["assignee"] as? JsonPrimitive)?.contentOrNull) }
+            "setSummary" -> update { it.copy(summary = s("summary")) }
+            "setImpact" -> update { it.copy(impact = s("impact")) }
+            "setRepro" -> update { it.copy(repro = s("repro")) }
+            "setResolutionCriteria" -> update { it.copy(resolutionCriteria = s("resolutionCriteria")) }
+            "addLabel" -> update { if (s("label") in it.labels) it else it.copy(labels = (it.labels + s("label")).sorted()) }
+            "removeLabel" -> update { it.copy(labels = it.labels - s("label")) }
+            "deleteIssue" -> {
+                if (board[s("issueId")]?.createdBy != account) throw TrackerException("only the author")
+                board.remove(s("issueId"))
             }
-            "add_comment" -> {
+            "addComment" -> {
                 next += 1
                 val id = "comment-$next"
-                comments.getOrPut(ctx) { mutableListOf() } += CommentView(id, s("issue_id"), account, s("body"), next.toULong())
+                comments.getOrPut(ctx) { mutableListOf() } += CommentView(id, s("issueId"), account, s("body"), next.toULong())
                 return JsonPrimitive(id)
             }
-            "edit_comment" ->
-                comments[ctx]?.replaceAll { if (it.id == s("comment_id")) it.copy(body = s("new_body"), editedAt = 1u) else it }
-            "delete_comment" -> comments[ctx]?.removeAll { it.id == s("comment_id") }
+            "editComment" ->
+                comments[ctx]?.replaceAll { if (it.id == s("commentId")) it.copy(body = s("newBody"), editedAt = 1u) else it }
+            "deleteComment" -> comments[ctx]?.removeAll { it.id == s("commentId") }
         }
         return JsonNull
     }

@@ -1,5 +1,11 @@
 package network.calimero.issues.core
 
+import com.calimero.mero.AppError
+import com.calimero.mero.ConfirmCancelled
+import com.calimero.mero.LoginRequired
+import com.calimero.mero.WrongNode
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -58,5 +64,28 @@ class TrackerFormatTest {
     @Test fun `key truncation`() {
         assertEquals("abab…abab", TrackerFormat.truncateKey("ab".repeat(32)))
         assertEquals("Ana", TrackerFormat.truncateKey("Ana"))
+    }
+
+    @Test fun `contract refusals in words`() {
+        fun app(
+            code: String,
+            vararg fields: Pair<String, String>,
+        ) = AppError(
+            "refused",
+            buildJsonObject {
+                put("code", code)
+                put("fields", buildJsonObject { fields.forEach { (k, v) -> put(k, v) } })
+            },
+        )
+        assertEquals("Only the author may edit a comment.", TrackerFormat.errorText(app("Forbidden", "message" to "only the author may edit a comment")))
+        assertEquals("That issue no longer exists. It may have been deleted.", TrackerFormat.errorText(app("NotFound", "id" to "issue-1-ab")))
+        assertEquals("That comment no longer exists.", TrackerFormat.errorText(app("NotFound", "id" to "comment-1-ab")))
+        assertEquals("Title must be 1 to 64 characters.", TrackerFormat.errorText(app("Invalid", "message" to "title must be 1 to 64 characters")))
+    }
+
+    @Test fun `cluster errors in words`() {
+        assertEquals("The passkey prompt was cancelled.", TrackerFormat.errorText(ConfirmCancelled()))
+        assertEquals("Your session ended. Sign in again.", TrackerFormat.errorText(LoginRequired("expired")))
+        assertTrue(TrackerFormat.errorText(WrongNode("moved")).contains("Sign in again"))
     }
 }

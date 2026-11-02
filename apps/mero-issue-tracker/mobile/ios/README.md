@@ -5,7 +5,7 @@ SwiftUI, iOS 16+. See [`../README.md`](../README.md) for the screens, features a
 | Path | What |
 | --- | --- |
 | `project.yml` | XcodeGen spec (`MeroIssues.xcodeproj` is generated, not committed) |
-| `Core/` | SwiftPM package `IssueTrackerCore`: the generated client, `WorkspaceModel`, `IssuesModel`, `IssueDetailModel`, invitations, formatting, and their tests |
+| `Core/` | SwiftPM package `IssueTrackerCore`: the contract client, `WorkspaceModel`, `IssuesModel`, `IssueDetailModel`, invitations, formatting, and their tests |
 | `Sources/App/` | The SwiftUI app |
 
 ```bash
@@ -28,20 +28,20 @@ verified). The swift-sdk's `CalimeroAppBackend` maps the app layer onto the 1.0 
 
 | What | SDK | Wire |
 | --- | --- | --- |
-| Sign in / create account / restore / sign out | `MeroAppSession.connect(nodeURL:allowMock:)`, `signIn()` / `signUp(name:)` / `restore()` / `signOut()` | `/auth/passkey/{login,register}/{begin,finish}`, `/auth/refresh`; session in the Keychain (`network.calimero.issues`) |
+| Sign in / create account / restore / sign out | `MeroClient.connect(cluster:)` or `MeroAppSession.connect(nodeURL:allowMock:)`, `signIn()` / `signUp(name:)` / `restore()` / `signOut()` | `/auth/passkey/{login,register}/{begin,finish}`, `/auth/refresh`; session in the Keychain (`network.calimero.issues`) |
 | Workspaces | `listNamespaces()` / `foundNamespace(name:)` | the account's **orgs** running the tracker (`GET /auth/me`), `POST /orgs` + org metadata |
 | Repositories | `listContexts(groupId:)` / `createContext` | the org's **app instances** of `com.calimero.mero-issue-tracker` that are in no team (`POST /apps {access: org}`) |
-| Issues, comments, statuses | generated client over `contract.bound(to:)` | `POST /apps/{app}/views` (reads), `POST /apps/{app}/intents` (writes) |
+| Issues, comments, statuses | `IssueTrackerClient` (component ABI, camelCase) over `contract.bound(to:)` | `POST /apps/{app}/views` (reads), `POST /apps/{app}/intents` (writes) |
 | Live updates | `events(contextId:)`, polling as a fallback | `GET /apps/{app}/events` (sealed SSE) |
 | Invite / join | `createInvitation` / `joinNamespace` + `session.didJoinNamespace()` | `POST /orgs/{org}/invites` → invite token; `POST /invites/{token}/redeem` |
-| Approvals | `session.pendingApprovals(org:)` + `session.client.requestConsent(_:callback:)` (`ApprovalsModel`) | `POST /consent/requests` → the node's consent page in the system browser → `GET /consent/{id}/result` |
+| Approvals | `session.pendingApprovals(org:)` + `session.client.requestConsent(_:callback:confirm:)` (`ApprovalsModel`) | `POST /consent/requests` → the node's consent page in the system browser → `GET /consent/{id}/result` |
 
 In the app's words a **workspace** is a Calimero org and a **repository** an app instance.
 
 ### Sign-in
 
-- **Calimero Cloud**: enter the cluster's node URL (from cloud.calimero.network; bake it in with
-  `CalimeroClusterURL`), then **Sign in with passkey** or **Create an account**. The node's TDX
+- **Calimero Cloud**: enter the cluster's name (its nodes come from the node directory) or one of
+  its node URLs (from cloud.calimero.network; bake one in with `CalimeroClusterURL`), then **Sign in with passkey** or **Create an account**. The node's TDX
   attestation is verified (`CloudPolicy.production`). The device's passkey needs the cluster's
   relying party as an associated domain (`webcredentials:<rp-id>`, see `project.yml`).
 - **Development node**: a `merod local` node URL (default `http://localhost:2501`,
@@ -61,8 +61,9 @@ anyone holding the link can join until it expires. Pre-1.0 (signed group) links 
 
 Node releases and upgrades of an app instance are approved only on the node's own consent page.
 **Workspace → Needs your approval** lists what waits for the signed-in person (updates of the
-tracker, node releases their org approves); **Review** opens the page in the system browser, which
-returns to `mero-issues://consent`.
+tracker, node releases their org approves); **Review** first shows the request's confirmation
+code, then opens the page in the system browser, which shows the same code and returns to
+`mero-issues://consent`.
 
 ### Configuration
 
@@ -76,7 +77,7 @@ returns to `mero-issues://consent`.
 
 ### The SDK pin
 
-The swift-sdk is pinned by revision to `35148e4de782c065f777e80c592d9548acd645cd`, the head of its
+The swift-sdk is pinned by revision to `37c09f3f96e7d98440f6618eef8a0e83ddee8ebd`, the head of its
 Calimero 1.0 port (calimero-network/swift-sdk#85, branch `feat/calimero-1.0`), in `project.yml`,
 `Core/Package.swift` and `Core/Package.resolved`. It moves to that PR's merge commit once it lands;
 bump all three together.

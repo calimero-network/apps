@@ -25,7 +25,7 @@ class WorkspaceModelTest {
             val b = "2".repeat(64)
             fake.backend.namespaces = listOf(AppNamespace(a, "Alpha", "app"), AppNamespace(b, "Beta", "app"))
             fake.backend.rootContexts = mapOf(b to listOf("ctx-1"))
-            fake.backend.contract.execute("ctx-1", "set_repo_url", JsonObject(mapOf("url" to JsonPrimitive("https://github.com/acme/core"))))
+            fake.backend.contract.execute("ctx-1", "setRepoUrl", JsonObject(mapOf("url" to JsonPrimitive("https://github.com/acme/core"))))
             val store = MemoryTrackerStore().apply { activeWorkspace = b }
             val m = model(fake, store)
             m.load()

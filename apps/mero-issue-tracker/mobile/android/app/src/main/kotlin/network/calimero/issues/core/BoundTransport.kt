@@ -1,8 +1,8 @@
 package network.calimero.issues.core
 
 import com.calimero.mero.app.ContextContract
-import network.calimero.issues.generated.ContextContractCalling
-import network.calimero.issues.generated.IssueTrackerClient
+import network.calimero.issues.contract.ContextContractCalling
+import network.calimero.issues.contract.IssueTrackerClient
 import com.calimero.mero.app.ContextContractCalling as SdkContextContractCalling
 
 /**
@@ -23,7 +23,7 @@ class BoundTransport(
     ): String = bound.execute(method, argsJson)
 }
 
-/** The tracker contract in one repo (context), through the account's relay. */
+/** The tracker contract in one repo (app instance), through the account's cluster session. */
 fun issueTrackerClient(
     contract: ContextContract,
     contextId: String,

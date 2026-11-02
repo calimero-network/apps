@@ -48,12 +48,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
+import network.calimero.issues.contract.IssueView
 import network.calimero.issues.core.IssuesModel
 import network.calimero.issues.core.IssuesState
 import network.calimero.issues.core.LoadPhase
 import network.calimero.issues.core.Tracker
 import network.calimero.issues.core.TrackerFormat
-import network.calimero.issues.generated.IssueView
 
 /** The board: one column per status, swiped sideways one at a time. Cards move with "Move to…" (no dragging). */
 @Composable

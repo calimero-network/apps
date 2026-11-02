@@ -3,9 +3,9 @@ package network.calimero.issues.core
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import network.calimero.issues.generated.CommentView
-import network.calimero.issues.generated.IssueTrackerClient
-import network.calimero.issues.generated.IssueView
+import network.calimero.issues.contract.CommentView
+import network.calimero.issues.contract.IssueTrackerClient
+import network.calimero.issues.contract.IssueView
 import kotlin.coroutines.cancellation.CancellationException
 
 /** The Edit sheet's four sections. */
