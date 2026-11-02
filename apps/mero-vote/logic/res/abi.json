@@ -389,6 +389,21 @@
       "sealed": "unorderedMap",
       "transportKeys": "unorderedMap"
     },
+    "search": {
+      "aggregates": [],
+      "ballotBodies": [],
+      "ballots": [],
+      "closures": [],
+      "complaints": [],
+      "dealings": [],
+      "definitions": [],
+      "elections": [],
+      "names": [],
+      "partials": [],
+      "polls": [],
+      "sealed": [],
+      "transportKeys": []
+    },
     "version": 1
   },
   "world": "calimero:app@0.5.0"
