@@ -26,12 +26,13 @@ const client = {
 };
 const makeClient = vi.fn(async () => client);
 
-vi.mock("./sessionContext", () => ({
-  useSessionApi: () => ({
-    api: { session: { status: "signed-out", target: { kind: "local" } } },
-    deps: { makeClient },
-  }),
-}));
+// One value for every render, as the real provider's is: a new target each
+// render would re-run the page's load.
+const sessionValue = {
+  api: { session: { status: "signed-out", target: { kind: "local" } } },
+  deps: { makeClient },
+};
+vi.mock("./sessionContext", () => ({ useSessionApi: () => sessionValue }));
 vi.mock("./lib/captcha", () => ({
   fetchCaptchaConfig: vi.fn(async () => ({ siteKey: "verifier-site", publicKey: "k" })),
   requestPass: vi.fn(),
