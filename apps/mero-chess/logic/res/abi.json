@@ -267,6 +267,15 @@
       "roster": "vector",
       "table": "cell"
     },
+    "search": {
+      "acted": [],
+      "chairs": [],
+      "games": [],
+      "moves": [],
+      "players": [],
+      "roster": [],
+      "table": []
+    },
     "version": 1
   },
   "world": "calimero:app@0.5.0"
