@@ -1,41 +1,49 @@
 /**
- * useCrm — the data binding for one pipeline (one context).
+ * useCrm — the data binding for one pipeline (one app instance).
  *
- * The pipeline is small enough to hold whole: stages, every deal (open and
- * closed), people, activities, automations and settings are read together in
- * one round, and every view derives from that snapshot. That keeps the board,
- * the deal list, the to-do list and Insights consistent with each other by
+ * The pipeline is small enough to hold whole: stages, deals (open and closed),
+ * people, activities, automations and settings are read together in one
+ * round, and every view derives from that snapshot. That keeps the board, the
+ * deal list, the to-do list and Insights consistent with each other by
  * construction — they are all the same read.
  *
- *  - `useSubscription([contextId])` re-reads on every sync event, so a
- *    teammate's move appears on your board with no polling (debounced: a join
- *    replicates in a burst).
+ *  - Teammates' changes arrive on the app's event stream (`client.events`),
+ *    coalesced into one re-read, so a move appears on your board with no
+ *    polling.
  *  - Reads never overlap; a change during a read costs exactly one more read.
- *  - A context whose state has not replicated yet reports `warmingUp`, not an
- *    error (see utils/contextReadiness).
- *  - `act(fn)` runs any mutation through the typed client and then re-reads,
- *    so the UI never lags a write.
+ *  - `act(fn)` runs any mutation through the typed client (`crm.ts`) and then
+ *    re-reads, so the UI never lags a write.
+ *
+ * v1 waited for a joined context's state to replicate before its first read
+ * ("warming up"); an app on Calimero 1.0 is read from its log, so the first
+ * read answers.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useMero, useSubscription } from '@calimero-network/mero-react';
-import { useStreamReconnect } from './useStreamReconnect';
+import type { CalimeroClient } from '@calimero-network/mero-js';
+
 import {
-  CrmClient,
+  crm,
   type ActivityView,
   type AutomationView,
   type ContactView,
+  type Crm,
+  type CrmClient,
   type DealDetail,
   type DealView,
   type Settings,
   type StageView,
-} from '../generated/CrmClient';
-import { SYNC_COALESCE_MS, WARMUP_RETRY_MS, classifyReadError } from '../utils/contextReadiness';
+} from '../crm';
 
 export type { ActivityView, AutomationView, ContactView, DealDetail, DealView, Settings, StageView };
 
+/** How long a burst of events is gathered into one re-read. */
+export const EVENT_COALESCE_MS = 200;
+
 export interface UseCrmArgs {
-  contextId: string | null;
-  executorPublicKey: string | null;
+  client: CalimeroClient;
+  /** The pipeline: an app instance id, or null when none is open. */
+  appId: string | null;
+  after?: () => void;
 }
 
 export interface UseCrmReturn {
@@ -49,7 +57,6 @@ export interface UseCrmReturn {
   /** True once the first read has landed. */
   loaded: boolean;
   error: Error | null;
-  warmingUp: boolean;
   ready: boolean;
   /** Bumped after every successful read — a cheap "something changed" signal. */
   version: number;
@@ -61,8 +68,28 @@ export interface UseCrmReturn {
 
 const DEFAULT_SETTINGS: Settings = { currency: 'USD', rotting_days: 14 };
 
-export function useCrm({ contextId, executorPublicKey }: UseCrmArgs): UseCrmReturn {
-  const { mero } = useMero();
+/** Calls `onChange` (coalesced) for each event of `app` until the returned stop. */
+export function watchEvents(client: Pick<CalimeroClient, 'events'>, app: string, onChange: () => void): () => void {
+  const abort = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  void (async () => {
+    try {
+      // From the next event on: the first read already covers what came before.
+      for await (const _event of client.events(app, undefined, abort.signal)) {
+        clearTimeout(timer);
+        timer = setTimeout(onChange, EVENT_COALESCE_MS);
+      }
+    } catch {
+      // Stream closed (sign-out, pipeline left, network): the next write re-reads.
+    }
+  })();
+  return () => {
+    clearTimeout(timer);
+    abort.abort();
+  };
+}
+
+export function useCrm({ client, appId, after }: UseCrmArgs): UseCrmReturn {
   const [stages, setStages] = useState<StageView[]>([]);
   const [deals, setDeals] = useState<DealView[]>([]);
   const [contacts, setContacts] = useState<ContactView[]>([]);
@@ -72,37 +99,32 @@ export function useCrm({ contextId, executorPublicKey }: UseCrmArgs): UseCrmRetu
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<Error | null>(null);
-  const [warmingUp, setWarmingUp] = useState(false);
   const [version, setVersion] = useState(0);
 
   const inFlightRef = useRef(false);
   const pendingRef = useRef(false);
-  const warmingSinceRef = useRef<number | null>(null);
 
-  const client = useMemo(
-    () => (mero && contextId && executorPublicKey ? new CrmClient(mero, contextId) : null),
-    [mero, contextId, executorPublicKey],
-  );
+  const pipeline: Crm | null = useMemo(() => (appId ? crm(client, appId, after) : null), [client, appId, after]);
 
   // A pipeline switch must not show the previous pipeline's deals for a beat.
   useEffect(() => {
     setStages([]); setDeals([]); setContacts([]); setActivities([]); setAutomations([]);
     setSettings(DEFAULT_SETTINGS); setLoaded(false);
-  }, [contextId]);
+  }, [appId]);
 
   const refresh = useCallback(async () => {
-    if (!client) return;
+    if (!pipeline) return;
     if (inFlightRef.current) { pendingRef.current = true; return; }
     inFlightRef.current = true;
     setLoading(true);
     try {
       const [st, ds, cs, as, au, se] = await Promise.all([
-        client.listStages(),
-        client.listDeals({ status: null, stage_id: null, owner: null }),
-        client.listContacts(),
-        client.listActivities({ deal_id: null, done: null }),
-        client.listAutomations(),
-        client.getSettings(),
+        pipeline.listStages(),
+        pipeline.listDeals({ status: null, stage_id: null, owner: null }),
+        pipeline.listContacts(),
+        pipeline.listActivities({ deal_id: null, done: null }),
+        pipeline.listAutomations(),
+        pipeline.getSettings(),
       ]);
       setStages(st ?? []);
       setDeals(ds ?? []);
@@ -113,13 +135,8 @@ export function useCrm({ contextId, executorPublicKey }: UseCrmArgs): UseCrmRetu
       setLoaded(true);
       setVersion((v) => v + 1);
       setError(null);
-      setWarmingUp(false);
-      warmingSinceRef.current = null;
     } catch (err) {
-      const outcome = classifyReadError(err, warmingSinceRef.current);
-      warmingSinceRef.current = outcome.warmingSince;
-      setWarmingUp(outcome.warmingUp);
-      setError(outcome.error);
+      setError(err instanceof Error ? err : new Error(String(err)));
     } finally {
       inFlightRef.current = false;
       setLoading(false);
@@ -128,7 +145,7 @@ export function useCrm({ contextId, executorPublicKey }: UseCrmArgs): UseCrmRetu
         void refreshRef.current();
       }
     }
-  }, [client]);
+  }, [pipeline]);
 
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
@@ -136,43 +153,31 @@ export function useCrm({ contextId, executorPublicKey }: UseCrmArgs): UseCrmRetu
   useEffect(() => { void refresh(); }, [refresh]);
 
   useEffect(() => {
-    if (!warmingUp || !client) return;
-    const timer = setInterval(() => void refreshRef.current(), WARMUP_RETRY_MS);
-    return () => clearInterval(timer);
-  }, [warmingUp, client]);
-
-  const coalesceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => { if (coalesceRef.current) clearTimeout(coalesceRef.current); }, []);
-  useSubscription(contextId ? [contextId] : [], () => {
-    if (coalesceRef.current) clearTimeout(coalesceRef.current);
-    coalesceRef.current = setTimeout(() => {
-      coalesceRef.current = null;
-      void refreshRef.current();
-    }, SYNC_COALESCE_MS);
-  });
-  useStreamReconnect(() => { void refreshRef.current(); });
+    if (!appId) return;
+    return watchEvents(client, appId, () => void refreshRef.current());
+  }, [client, appId]);
 
   const act = useCallback(
     async <T,>(fn: (c: CrmClient) => Promise<T>): Promise<T> => {
-      if (!client) throw new Error('Pipeline not ready yet');
-      const result = await fn(client);
+      if (!pipeline) throw new Error('Pipeline not ready yet');
+      const result = await fn(pipeline);
       await refresh();
       return result;
     },
-    [client, refresh],
+    [pipeline, refresh],
   );
 
   const getDeal = useCallback(
     async (dealId: string) => {
-      if (!client) throw new Error('Pipeline not ready yet');
-      return client.getDeal({ deal_id: dealId });
+      if (!pipeline) throw new Error('Pipeline not ready yet');
+      return pipeline.getDeal({ deal_id: dealId });
     },
-    [client],
+    [pipeline],
   );
 
   return {
     stages, deals, contacts, activities, automations, settings,
-    loading, loaded, error, warmingUp, ready: client !== null, version,
+    loading, loaded, error, ready: pipeline !== null, version,
     refresh, act, getDeal,
   };
 }

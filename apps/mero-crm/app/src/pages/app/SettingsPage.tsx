@@ -126,7 +126,7 @@ function Account() {
         <div className="row">
           <div>
             <div className="name">Log out</div>
-            <div className="hint">Signs this browser out of your node. Your pipeline stays on it.</div>
+            <div className="hint">Signs this browser out. Your pipelines stay in the workspace.</div>
           </div>
           <Button onClick={signOut} data-testid="settings-logout-btn"><IconLogout size={14} /> Log out</Button>
         </div>

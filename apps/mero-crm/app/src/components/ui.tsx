@@ -1,7 +1,6 @@
 // Shared CRM view primitives: buttons, panels, chips and form controls that
 // every page composes, so the pages hold layout and behaviour rather than
 // re-deriving the same styled blocks.
-import React from 'react';
 import styled, { css } from 'styled-components';
 import { tokens as t, DUE_COLOR, HEALTH_COLOR } from '../theme';
 import { dueLabel, formatMoney, ACTIVITY_LABEL, type DealHealth } from '../utils/crm';

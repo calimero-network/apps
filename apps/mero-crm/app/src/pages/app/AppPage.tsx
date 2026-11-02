@@ -11,6 +11,7 @@ import { useToast } from "@calimero-network/mero-ui";
 import { tokens as t } from "../../theme";
 import { useWorkspace } from "../../hooks/useWorkspace";
 import { useCrm } from "../../hooks/useCrm";
+import { useSignedIn } from "../../sessionContext";
 import { makeAliases } from "../../hooks/useAliases";
 import { describeError } from "../../utils/errors";
 import Shell from "../../components/Shell";
@@ -30,24 +31,15 @@ import type { AppCtx, NewDealDefaults } from "./appContext";
  * with no name -> blocking alias gate.
  */
 export default function AppPage(): React.ReactElement | null {
+  const { client, after } = useSignedIn();
   const ws = useWorkspace();
   const toast = useToast();
 
-  // Two different ids, and they are NOT interchangeable since core rc.21.
-  //
-  // `currentUser` is the ACCOUNT writes are authorised as: the backend records
-  // created_by/author as the account's owner stamp and enforces delete against
-  // it, so every authorship and "is this mine" gate must use this one. It is
-  // the same account `selfMember` names (one person, every device), not the
-  // context executor key, which is per device.
-  const currentUser = ws.selfIdentity ?? "";
-  // `selfMember` is the namespace-member id, which is an ACCOUNT. Member
-  // metadata - the display names behind `aliases` - is stored and keyed by it,
-  // so every name lookup must use this one. It used to be safe to resolve a
-  // name from the executor key because the two coincided; rc.21 rekeyed group
-  // members from a signing PublicKey to an AccountId and they no longer do, so
-  // resolving the executor key just returns a truncated key forever.
-  const selfMember = ws.selfIdentity ?? "";
+  // The signed-in ACCOUNT: what the contract records as `created_by` and
+  // `author`, what member names are keyed by, and what every "is this mine"
+  // gate compares against.
+  const currentUser = ws.selfIdentity;
+  const selfMember = ws.selfIdentity;
 
   const aliases = useMemo(
     () =>
@@ -74,19 +66,12 @@ export default function AppPage(): React.ReactElement | null {
   const [searchQuery, setSearchQuery] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  const data = useCrm({
-    contextId: ws.contextId,
-    executorPublicKey: ws.executorPublicKey,
-  });
+  const data = useCrm({ client, appId: ws.activePipeline, after });
 
   // One toast per distinct problem, not one per failed read.
   //
-  // `data.error` is a fresh Error object on every failure, so this effect used
-  // to fire on each one — a burst of sync events during a join produced a burst
-  // of identical toasts. `useCrm` withholds the transient
-  // "context not initialized yet" case entirely (see utils/contextReadiness), so
-  // that burst no longer reaches here at all; this dedupe is the second line of
-  // defence, and it also stops a genuinely repeating failure from stacking up.
+  // `data.error` is a fresh Error object on every failure; this dedupe stops a
+  // repeating failure (a burst of events, each refetch failing) from stacking up.
   //
   // Keyed on the MESSAGE rather than the object: identical text is the same
   // problem as far as anyone reading it is concerned. Cleared when the error
@@ -223,7 +208,6 @@ export default function AppPage(): React.ReactElement | null {
     overdueActivities,
     contactsCount: data.contacts.length,
     membersCount,
-    teeMode: ws.teeMode,
     currentUser,
     currentUserLabel: selfMember ? aliases.resolve(selfMember) : "",
     currentUserHasAlias: selfMember ? aliases.hasAlias(selfMember) : false,
@@ -232,8 +216,6 @@ export default function AppPage(): React.ReactElement | null {
     onSelectNamespace: ws.selectNamespace,
     onNewNamespace: () => setShowCreateNs(true),
     pipelines: ws.pipelines,
-    pipelinesSyncing: ws.isSyncing,
-    onDismissPipelinesSyncing: ws.dismissSyncing,
     activePipeline: ws.activePipeline,
     onSelectPipeline: ws.selectPipeline,
     onAddPipeline: () => setShowAddPipeline(true),
@@ -259,19 +241,9 @@ export default function AppPage(): React.ReactElement | null {
     </>
   );
 
-  // Still resolving something that decides WHICH workspaces exist: hold off
-  // (mirrors App.tsx's isLoading guard) rather than flash the picker.
-  //  - `resolvingCallback`: an SSO callback context whose namespace is being
-  //    looked up, right before the desktop handoff lands;
-  //  - `resolvingApplicationId`: the node has not yet said which installed
-  //    application this app is, and the namespace list is scoped by it;
-  //  - `namespacesPending`: that list has not answered yet (on an account, the
-  //    id it is scoped by may not have landed either).
-  if (
-    !ws.activeNs &&
-    (ws.resolvingCallback || ws.resolvingApplicationId || ws.namespacesPending)
-  )
-    return null;
+  // The workspace list has not answered yet: hold off rather than flash the
+  // picker.
+  if (!ws.activeNs && ws.namespacesPending) return null;
 
   // No active namespace (none yet, or a stale/invalid prior choice): never
   // silently enter one, and never fall through to the Shell either - that

@@ -31,9 +31,9 @@ vi.mock('./appContext', () => ({
     ws: {
       selfIdentity: ME,
       activeNs: 'ns-1',
-      teeMode: null,
       roles: {
         roles,
+        orgRoles: roles,
         overrides: new Map(),
         defaultCapabilities: 0,
         canManageMembers,

@@ -1,8 +1,8 @@
 import React from "react";
 import styled from "styled-components";
-import type { Namespace } from "@calimero-network/mero-react";
+import type { Workspace as Namespace } from "../workspaces";
 import { tokens as t } from "../theme";
-import { APP_DISPLAY_NAME } from "../config";
+import { PRODUCT_NAME } from "../config";
 import { SelectMenu } from "./Dropdown";
 import { LogoMark } from "./icons";
 import ThemeToggle from "./ThemeToggle";
@@ -49,7 +49,7 @@ export default function NsEmptyState({
         <span className="mark">
           <LogoMark />
         </span>
-        <h1>Welcome to {APP_DISPLAY_NAME}</h1>
+        <h1>Welcome to {PRODUCT_NAME}</h1>
         {failed && !hasNamespaces ? (
           <p data-testid="ns-list-failed">
             Your workspaces could not be loaded. Try again before creating one,

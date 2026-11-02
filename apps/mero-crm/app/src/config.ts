@@ -1,72 +1,22 @@
-// Single source of truth for app naming, theme, and service identifiers.
-//
-// Vite imports JSON natively, so this is a thin typed re-export of
-// `studio.config.json` — edit *that* file when renaming services or
-// retheming, not strings scattered across components.
+/**
+ * The app's identity and look. These used to come from `studio.config.json`,
+ * v1 tooling's file (services, the registry version), which a component app
+ * does not use: the package id is the contract crate's
+ * `[package.metadata.calimero] package`, and a release's version is the
+ * registry's.
+ */
 
-import raw from '../../studio.config.json';
-
-export interface ServiceEntry {
-  /** Stable id from the spec, when present. Keys `requireService` lookups for
-   *  multi-service apps; single-service apps address the primary positionally. */
-  id?: string;
-  /** Wire name passed to `mero.admin.createContext({ serviceName })` and the
-   *  bundle manifest service entry. Must match the Cargo crate's domain
-   *  identity. The generated client lives at `src/api/<name>/`. */
-  name: string;
-  /** Cargo `[package].name` for this service. */
-  crate: string;
-}
-
-interface StudioConfig {
-  appName: string;
-  appVersion: string;
-  package: string;
-  /** Deployed frontend URL baked into the bundle manifest at build time. */
-  frontendUrl?: string;
-  metadata: {
-    name: string;
-    description: string;
-    author?: string;
-    /** Path the main page lives at — used by App.tsx routes. */
-    route: string;
-  };
-  theme: {
-    primaryColor: string;
-    accentColor: string;
-    style: string;
-  };
-  services: ServiceEntry[];
-}
-
-const config: StudioConfig = raw as StudioConfig;
-
-export const APP_NAME = config.appName;
-export const APP_ROUTE = config.metadata.route;
-export const APP_PACKAGE = config.package;
-export const APP_VERSION = config.appVersion;
-export const APP_DISPLAY_NAME = config.metadata.name;
-export const APP_DESCRIPTION = config.metadata.description;
-export const THEME = config.theme;
-
-/** All declared services, in config order. One generated client per entry. */
-export const SERVICES: ServiceEntry[] = config.services;
-
-/** The primary (first) service. Single-context apps have exactly one; the
- *  neutral foundation is single-context. Throws at startup if none declared so
- *  a misconfigured studio.config.json fails loudly instead of producing
- *  `undefined` downstream. */
-export const PRIMARY_SERVICE: ServiceEntry = (() => {
-  const svc = config.services[0];
-  if (!svc) throw new Error('studio.config.json: services[] is empty');
-  return svc;
-})();
-
-/** Look up a declared service by its spec `id`. Throws if absent. */
-export function requireService(id: string): ServiceEntry {
-  const svc = config.services.find((s) => s.id === id);
-  if (!svc) {
-    throw new Error(`studio.config.json: services[] missing entry for id="${id}"`);
-  }
-  return svc;
-}
+/** The package production instances are created from. */
+export const APP_PACKAGE = 'com.calimero.mero-crm';
+/** The app's name in stored keys (sessions, selections). */
+export const APP_NAME = 'mero-crm';
+/** Where the CRM lives inside the router. */
+export const APP_ROUTE = '/crm';
+export const PRODUCT_NAME = 'Mero CRM';
+export const APP_DESCRIPTION =
+  'A simple, private sales CRM — track your pipeline, work your deals, and never lose a follow-up';
+export const THEME = {
+  primaryColor: '#2563EB',
+  accentColor: '#F97316',
+  style: 'clean-modern',
+} as const;

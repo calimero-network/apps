@@ -1,56 +1,35 @@
 /**
- * Workspace roles and capabilities — who may do what in a namespace.
+ * Workspace roles and capabilities: who may do what in a workspace (an org).
  *
- * ── The model, which is NOT "a role is a bag of permissions" ─────────────────
+ * Core 1.0 keeps v1's three separate things, at the same bit values:
  *
- * Core keeps THREE separate things, and conflating any two of them is how a
- * promotion ends up granting nothing:
+ *   1. **the role**: `owner`, `admin`, `member` or `guest` on the org's member
+ *      row, written by `setMember` (a passkey step-up). `owner` and `admin`
+ *      hold every capability; `member` and `guest` do not.
+ *   2. **a per-member capability override**: `capabilities[account]`, written
+ *      by `setCapabilities(org, mask, passkey, { account })`.
+ *   3. **the org's `defaultCapabilities`**: what a member with no override gets,
+ *      written by `setCapabilities(org, mask, passkey)`.
  *
- *   1. **`role`** — a string on the group member row (`GroupMember.role`),
- *      written by `updateMemberRole`. `Admin` **bypasses the capability bitmask
- *      entirely**; `Member` does not.
- *   2. **The per-member capability OVERRIDE** — a bitmask written by
- *      `setMemberCapabilities`, read by `getMemberCapabilities`. It is a
- *      SEPARATE field: `updateMemberRole` does not touch it, and reading it back
- *      after a promote returns exactly what it was before. **`0` means "no
- *      override"**, not "no permissions" — a member with 0 falls back to the
- *      group default.
- *   3. **The group's `defaultCapabilities`** — what a member with no override
- *      gets, set by `setDefaultCapabilities`.
+ * The screens show two roles, Admin and Member: `owner` reads as Admin (it
+ * cannot be changed from here), `guest` as Member.
  *
- * All three are pinned by a live-node probe in this monorepo:
- * `apps/mero-drive/logic/workflows/probes/workflow-mero-drive-members.yml`,
- * which asserts the role round-trip leaves the override bitmask unchanged and
- * that non-preset bitmasks are stored verbatim. The role spellings below are the
- * ones it actually sends to a real node.
- *
- * The BITS are not redeclared here: `@calimero-network/mero-js` exports
- * `CAPABILITIES`, `hasCap`, `withCap` and `withoutCap`, mirroring core's
- * `MemberCapabilities`. Copying the numbers into the app would be one more place
- * to be wrong the next time core assigns a bit — core has bits 0..=9 today and
- * explicitly reserves the rest.
- *
- * ── Why promoting does NOT write capabilities ────────────────────────────────
- *
- * Because `Admin` bypasses the mask, writing `capabilities: 511` alongside the
- * role would grant nothing extra — and it would be actively harmful, because the
- * override PERSISTS through a later demote. Demote that person back to `Member`
- * and they would silently keep every bit an admin had. So promote/demote move
- * the ROLE and nothing else, and the override stays a deliberate, separate act.
- *
- * ── The two-systems trap ─────────────────────────────────────────────────────
- *
- * Namespace roles (here) and any in-contract role are different systems with
- * different principals. Everything in this file is keyed by a member's ACCOUNT —
- * `GroupMember.identity`, which is what `useNodeIdentity().identity.accountId`
- * returns for yourself. A context EXECUTOR key is also 64 hex and passing one
- * here type-checks and then authorises nobody.
+ * Everything here is keyed by ACCOUNT id.
  */
 
-import { CAPABILITIES, hasCap, withCap, withoutCap } from '@calimero-network/mero-js';
+import { ORG_CAPABILITIES } from '@calimero-network/mero-js';
 
-/** Core's `MemberCapabilities` bits, straight from the SDK. */
-export const CAP = CAPABILITIES;
+/** The org capability bits the screens use, under the names they were written with. */
+export const CAP = {
+  CAN_CREATE_CONTEXT: ORG_CAPABILITIES.CREATE_APP,
+  CAN_INVITE_MEMBERS: ORG_CAPABILITIES.INVITE_MEMBERS,
+  ...ORG_CAPABILITIES,
+} as const;
+
+const hasCap = (mask: number, bit: number): boolean => (mask & bit) === bit;
+const withCap = (mask: number, bit: number): number => mask | bit;
+const withoutCap = (mask: number, bit: number): number => mask & ~bit;
+const CAPABILITIES = ORG_CAPABILITIES;
 
 /**
  * Every bit core currently assigns — what an `Admin` effectively holds, because
@@ -89,7 +68,8 @@ export type WorkspaceRole = typeof ROLE_ADMIN | typeof ROLE_MEMBER;
  * allowed to use it.
  */
 export function isAdminRole(role: string | null | undefined): boolean {
-  return (role ?? '').trim().toLowerCase() === 'admin';
+  const r = (role ?? '').trim().toLowerCase();
+  return r === 'admin' || r === 'owner';
 }
 
 /** Normalise any spelling to the two roles this app offers. */

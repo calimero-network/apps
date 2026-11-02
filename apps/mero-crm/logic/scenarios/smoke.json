@@ -1,0 +1,607 @@
+[
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getSettings",
+  "args": {},
+  "expect": {
+   "ok": {
+    "currency": "USD",
+    "rotting_days": 14
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listStages",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "id": "stage-lead",
+     "name": "Lead in",
+     "probability": 10,
+     "position": 0
+    },
+    {
+     "id": "stage-qualified",
+     "name": "Qualified",
+     "probability": 25,
+     "position": 1
+    },
+    {
+     "id": "stage-meeting",
+     "name": "Meeting",
+     "probability": 40,
+     "position": 2
+    },
+    {
+     "id": "stage-proposal",
+     "name": "Proposal",
+     "probability": 60,
+     "position": 3
+    },
+    {
+     "id": "stage-negotiation",
+     "name": "Negotiation",
+     "probability": 80,
+     "position": 4
+    }
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setCurrency",
+  "args": {
+   "currency": "eur"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setRottingDays",
+  "args": {
+   "days": 7
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getSettings",
+  "args": {},
+  "expect": {
+   "ok": {
+    "currency": "EUR",
+    "rotting_days": 7
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addStage",
+  "args": {
+   "name": "Contract sent",
+   "probability": 90
+  },
+  "save": "new_stage"
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "updateStage",
+  "args": {
+   "stageId": "$new_stage",
+   "name": "Contract out",
+   "probability": 95
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "reorderStages",
+  "args": {
+   "stageIds": [
+    "$new_stage",
+    "stage-lead",
+    "stage-qualified",
+    "stage-meeting",
+    "stage-proposal",
+    "stage-negotiation"
+   ]
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listStages",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "id": "$new_stage",
+     "name": "Contract out",
+     "probability": 95,
+     "position": 0
+    },
+    {
+     "id": "stage-lead",
+     "name": "Lead in",
+     "probability": 10,
+     "position": 1
+    },
+    {
+     "id": "stage-qualified",
+     "name": "Qualified",
+     "probability": 25,
+     "position": 2
+    },
+    {
+     "id": "stage-meeting",
+     "name": "Meeting",
+     "probability": 40,
+     "position": 3
+    },
+    {
+     "id": "stage-proposal",
+     "name": "Proposal",
+     "probability": 60,
+     "position": 4
+    },
+    {
+     "id": "stage-negotiation",
+     "name": "Negotiation",
+     "probability": 80,
+     "position": 5
+    }
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addAutomation",
+  "args": {
+   "stageId": "stage-proposal",
+   "kind": "email",
+   "subject": "Send proposal",
+   "dueInDays": 1
+  },
+  "save": "auto"
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setAutomationEnabled",
+  "args": {
+   "automationId": "$auto",
+   "enabled": false
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setAutomationEnabled",
+  "args": {
+   "automationId": "$auto",
+   "enabled": true
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createContact",
+  "args": {
+   "name": "Ada Lovelace",
+   "email": "ada@example.com",
+   "phone": "",
+   "organization": "Analytical Engines",
+   "jobTitle": "CTO"
+  },
+  "save": "contact"
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "updateContact",
+  "args": {
+   "contactId": "$contact",
+   "name": "Ada Lovelace",
+   "email": "ada@example.com",
+   "phone": "+44 20 0000",
+   "organization": "Analytical Engines",
+   "jobTitle": "CTO"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createDeal",
+  "args": {
+   "title": "Analytical Engines 50 seats",
+   "value": "24000",
+   "organization": "Analytical Engines",
+   "contactId": "$contact",
+   "stageId": "stage-lead",
+   "owner": "alice",
+   "expectedClose": null,
+   "source": "Referral"
+  },
+  "save": "deal"
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "updateDeal",
+  "args": {
+   "dealId": "$deal",
+   "title": "Analytical Engines 50 seats",
+   "value": "30000",
+   "organization": "Analytical Engines",
+   "contactId": "$contact",
+   "owner": "alice",
+   "expectedClose": "1893456000000",
+   "source": "Referral"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "moveDeal",
+  "args": {
+   "dealId": "$deal",
+   "stageId": "stage-proposal"
+  },
+  "expect": {
+   "ok": null
+  },
+  "events": {
+   "bob": [
+    "SettingsChanged",
+    "SettingsChanged",
+    "StagesChanged",
+    "StagesChanged",
+    "StagesChanged",
+    "AutomationsChanged",
+    "AutomationsChanged",
+    "AutomationsChanged",
+    "ContactChanged",
+    "ContactChanged",
+    "DealCreated",
+    "DealUpdated",
+    "DealMoved",
+    "AutomationFired"
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listDeals",
+  "args": {
+   "status": "won",
+   "stageId": null,
+   "owner": null
+  },
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listDeals",
+  "args": {
+   "status": "open",
+   "stageId": "stage-lead",
+   "owner": null
+  },
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "addActivity",
+  "args": {
+   "dealId": "$deal",
+   "contactId": null,
+   "kind": "call",
+   "subject": "Pricing call",
+   "dueAt": "1893456000000",
+   "owner": "bob",
+   "note": ""
+  },
+  "save": "activity"
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "rescheduleActivity",
+  "args": {
+   "activityId": "$activity",
+   "dueAt": "1893542400000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setActivityDone",
+  "args": {
+   "activityId": "$activity",
+   "done": true
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deleteActivity",
+  "args": {
+   "activityId": "$activity"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deleteActivity",
+  "args": {
+   "activityId": "$activity"
+  },
+  "expect": {
+   "error": "NotFound",
+   "fields": {
+    "what": "activity",
+    "id": "$activity"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addNote",
+  "args": {
+   "dealId": "$deal",
+   "body": "Budget approved for Q3"
+  },
+  "save": "note"
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "deleteNote",
+  "args": {
+   "noteId": "$note"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the author may delete this note"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deleteNote",
+  "args": {
+   "noteId": "$note"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "markWon",
+  "args": {
+   "dealId": "$deal"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "reopenDeal",
+  "args": {
+   "dealId": "$deal"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "markLost",
+  "args": {
+   "dealId": "$deal",
+   "reason": "Price"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listDeals",
+  "args": {
+   "status": "open",
+   "stageId": null,
+   "owner": null
+  },
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deleteStage",
+  "args": {
+   "stageId": "$new_stage"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deleteAutomation",
+  "args": {
+   "automationId": "$auto"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listAutomations",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "deleteDeal",
+  "args": {
+   "dealId": "$deal"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the creator may delete this deal"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deleteDeal",
+  "args": {
+   "dealId": "$deal"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "deleteContact",
+  "args": {
+   "contactId": "$contact"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the creator may delete this contact"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deleteContact",
+  "args": {
+   "contactId": "$contact"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listDeals",
+  "args": {
+   "status": null,
+   "stageId": null,
+   "owner": null
+  },
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listContacts",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listActivities",
+  "args": {
+   "dealId": null,
+   "done": null
+  },
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getDeal",
+  "args": {
+   "dealId": "$deal"
+  },
+  "expect": {
+   "error": "NotFound",
+   "fields": {
+    "what": "deal",
+    "id": "$deal"
+   }
+  }
+ }
+]

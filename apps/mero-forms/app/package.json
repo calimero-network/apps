@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "test": "vitest run",
-    "codegen": "calimero-abi-codegen -i ../logic/res/abi.json -o src/generated --client-name FormsClient --import-path @calimero-network/mero-js && calimero-abi-codegen -i ../../mero-crm/logic/res/abi.json -o src/generated/crm --client-name CrmClient --import-path @calimero-network/mero-js",
+    "codegen": "calimero-abi-codegen -i ../logic/res/abi.json -o src/generated --client-name FormsClient --import-path @calimero-network/mero-js && calimero-abi-codegen -i src/fixtures/abi/mero-crm-v1.json -o src/generated/crm --client-name CrmClient --import-path @calimero-network/mero-js",
     "test:e2e": "playwright test",
     "icons": "node scripts/gen-icons.mjs"
   },
