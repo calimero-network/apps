@@ -7,9 +7,8 @@
 # The non-UI layer (generated contract client, the game bridge, view models) is the local SwiftPM
 # package in BlocksCore/, tested on macOS with `swift test --package-path BlocksCore` (no
 # simulator). The game page is ../game/assets/game, built by ../scripts/build-game.sh and copied
-# into the app as the `game` folder. The swift-sdk is pinned by revision to its main merge commit
-# of swift-sdk#84. Keep it equal to the
-# revision in BlocksCore/Package.swift.
+# into the app as the `game` folder. The swift-sdk is pinned to its v0.5.0 release. Keep it equal
+# to the version in BlocksCore/Package.swift.
 name: MeroBlocks
 
 options:
@@ -21,7 +20,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: 37c09f3f96e7d98440f6618eef8a0e83ddee8ebd
+    exactVersion: 0.5.0
   BlocksCore:
     path: BlocksCore
 

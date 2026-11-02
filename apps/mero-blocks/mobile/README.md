@@ -10,11 +10,11 @@ flows.
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
 | Game page | `game/` | TypeScript, the web app's engine + Vite + three.js | — |
-| iOS | `ios/` | SwiftUI + WKWebView, iOS 16+, XcodeGen | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `37c09f3` (swift-sdk#85), in `ios/project.yml` and `ios/BlocksCore/Package.swift` |
-| Android | `android/` | Jetpack Compose + Material 3 + WebView, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `61b65e9` (kotlin-sdk#68), composite build at the SHA in `android/kotlin-sdk.ref` |
+| iOS | `ios/` | SwiftUI + WKWebView, iOS 16+, XcodeGen | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `v0.5.0`, in `ios/project.yml` and `ios/BlocksCore/Package.swift` |
+| Android | `android/` | Jetpack Compose + Material 3 + WebView, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `v0.2.0` (not on Maven Central), composite build at the SHA in `android/kotlin-sdk.ref` |
 
-Both apps run on **Calimero 1.0**. The pins are the heads of the SDKs' 1.0 pull requests and move
-to their merge commits once they land (iOS: both `revision:` values; Android: `kotlin-sdk.ref`).
+Both apps run on **Calimero 1.0**. The pins are the SDKs' 1.0 releases, swift-sdk
+`v0.5.0` and kotlin-sdk `v0.2.0`. To bump, change both `exact` versions on iOS and `kotlin-sdk.ref` on Android.
 
 ## Calimero 1.0
 
