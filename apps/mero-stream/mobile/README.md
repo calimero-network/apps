@@ -1,18 +1,5 @@
 # Mero Stream: native mobile apps
 
-> **Status: on the v1 contract, not ported to the component runtime.** The web app and the
-> contract (`../logic`) moved to Calimero 1.0 (core's component SDK, `CalimeroClient`, passkey
-> accounts, orgs, the node's `/apps/{app}/presence` channel). These clients still speak the v1
-> contract through the v1 relay (`MeroAppSession`, namespaces, `set_ephemeral` presence with
-> 16 KiB slices, snake_case methods) with clients generated from the v1 ABI, which
-> `../logic/res/abi.json` no longer is. Porting them needs native clients for the 1.0 node API
-> (passkey sign-in, `/apps/{app}` calls and views, org invites, presence publish/stream), which the
-> pinned swift-sdk and kotlin-sdk do not have. Until they do, the apps keep their committed
-> generated clients and `scripts/regenerate-clients.sh` refuses to run against the component ABI.
-> The shared media framing (`../app/src/lib/ephemeralFrames.ts`) still defaults to the v1 slice
-> size, so the frame vectors these apps are tested against are unchanged; the web app passes the
-> 1.0 presence size (4 KiB) explicitly.
-
 Native iOS and Android clients for Mero Stream, next to the web frontend (`../app`) and the
 contract (`../logic`, package `com.calimero.mero-stream`). Both platforms have the same screens,
 copy, icons and flows.

@@ -944,7 +944,7 @@ export const APPS = {
       },
       {
         q: 'Why web only?',
-        a: 'It needs a browser with WebCodecs and a camera, and signs in with a passkey on the cluster that serves it. The native mobile apps are not ported to the 1.0 client yet.',
+        a: 'It needs a browser with WebCodecs and a camera, and signs in with a passkey on the cluster that serves it. The native iOS and Android apps follow in their own release.',
       },
     ],
   },

@@ -17,9 +17,9 @@ talks to **Calimero Cloud** in production and to the local nodes in development
 through mero-js's **`CalimeroClient`** (`@calimero-apps/connect`). See
 [docs/COMPONENT-APPS.md](../../docs/COMPONENT-APPS.md).
 
-**Web only.** The call needs a browser with WebCodecs (H.264) and a camera. The
-native iOS and Android apps in `mobile/` are not ported yet (see
-[Mobile](#mobile)).
+The web call needs a browser with WebCodecs (H.264) and a camera. The native
+iOS and Android apps in `mobile/` move to 1.0 in #698, which depends on this
+port (see [Mobile](#mobile)).
 
 ## Run it
 
@@ -244,12 +244,9 @@ capacity-ladder probe), the Docker dev-node scripts (`scripts/dev-node*.sh`,
 
 ## Mobile
 
-The native **iOS and Android** apps are **not ported**: they reach the contract
-through the v1 Swift and Kotlin SDKs (`MeroKit`, `mero-core`: relay sessions,
-namespaces, `set_ephemeral` presence) with a client generated from the v1 ABI.
-Neither SDK speaks the 1.0 API (passkeys, app instances, orgs, presence) yet, so
-they keep working against a v1 deployment until those SDKs do. Their
-regeneration script refuses the component ABI; see
+The native **iOS and Android** apps move to Calimero 1.0 in a separate PR,
+#698, which builds on this port's contract (`logic/res/abi.json`) and merges
+after it. Until then `mobile/` is as on `main`; see
 [mobile/README.md](mobile/README.md).
 
 ## Production
