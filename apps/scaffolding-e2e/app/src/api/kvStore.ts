@@ -64,7 +64,7 @@ export const whoami = () =>
  *
  * `whoami().account_id` is the same value and is what the rest of this UI uses.
  * This method exists only so the account accessor is spelled the same here as
- * in core's copy of this scaffold, which is what keeps a merobox scenario
+ * in core's copy of this scaffold, which is what keeps a scenario
  * portable between the two. It is exposed in the frontend so the contract-call
  * check sees a caller for it, and so the Test Runner can assert the two names
  * never start disagreeing.

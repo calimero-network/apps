@@ -851,7 +851,7 @@ const TESTS: TestCase[] = [
     fn: async (r) => {
       // Insert-after-remove on a set used to never converge across nodes
       // (fixed in rc.10). Single-node this only checks the tombstone is cleared
-      // locally; the merobox scenario is what checks convergence.
+      // locally; the scenarios (logic/scenarios) check it across accounts.
       eq(out<boolean>(await api.sortedTagAdd(`re_${r}`)), true);
       eq(out<boolean>(await api.sortedTagRemove(`re_${r}`)), true);
       eq(out<boolean>(await api.sortedTagContains(`re_${r}`)), false);
@@ -1057,7 +1057,7 @@ const TESTS: TestCase[] = [
       // Transferring away from this node would lock the cell for the rest of
       // the suite and cannot be undone from here, so this asserts the invariant
       // Ownable enforces instead: exactly one writer, and it is the owner.
-      // The cross-node transfer is what the merobox scenario covers.
+      // The transfer between accounts is what scenarios/access-control.json covers.
       eq(owner, me.account_id);
       eq(out<boolean>(await api.ownedIsOwner(me.account_id)), true);
       expectErr(await api.ownedTransfer("not-an-account"));
