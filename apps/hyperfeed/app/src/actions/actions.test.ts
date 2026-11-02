@@ -6,7 +6,18 @@ import type { Abi } from "../lens/validate";
 import { groupSets, modeOf, uncovered, validateActions } from "./actions";
 
 const APPS = path.resolve(__dirname, "../../../..");
-const abiOf = (app: string) => JSON.parse(readFileSync(path.join(APPS, app, "logic/res/abi.json"), "utf8")) as Abi;
+/**
+ * An app's ABI as these fixtures were written against: its v1 ABI. An app that
+ * moved to the component SDK has a component ABI (`abiVersion`, camelCase, no
+ * method list), which this v1 integration does not speak; its last v1 ABI is
+ * kept in `fixtures/v1-abi/<app>.json` until hyperfeed moves too.
+ */
+const v1AbiOf = (apps: string, app: string): Abi => {
+  const live = JSON.parse(readFileSync(path.join(apps, app, "logic/res/abi.json"), "utf8"));
+  if (!("abiVersion" in live)) return live as Abi;
+  return JSON.parse(readFileSync(path.join(__dirname, "..", "fixtures", "v1-abi", `${app}.json`), "utf8")) as Abi;
+};
+const abiOf = (app: string) => v1AbiOf(APPS, app);
 const fixture = (name: string) => JSON.parse(readFileSync(path.join(__dirname, "fixtures", `${name}.json`), "utf8")) as ActionDef[];
 
 describe("the shipped actions", () => {
