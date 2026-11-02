@@ -1,18 +1,45 @@
 # MeroDesign
 
-A collaborative design tool built on the Calimero p2p network. Think Figma — but your design data lives on your own nodes, shared only with the people you invite.
+A collaborative design tool on Calimero. Think Figma, but your design data is
+shared only with the people you invite. A component app on Calimero 1.0: the
+contract is on core's component SDK (`calimero-app-sdk`, `wasm32-wasip2`), local
+development runs on `merod local`, and the frontend talks to the local nodes in
+development and to Calimero Cloud in production through mero-js's
+`CalimeroClient` (`@calimero-apps/connect`). See
+[`docs/COMPONENT-APPS.md`](../../docs/COMPONENT-APPS.md).
+
+| | |
+|---|---|
+| `logic/` | the contract (a standalone crate: its own `[workspace]` and `Cargo.lock`); `GUIDE.md` is the agent guide the bundle carries |
+| `logic/tests/` | `harness.rs` (every method on core's wasmtime engine, `TestApp`), `scenarios.rs` (every `scenarios/*.json`) |
+| `logic/scenarios/` | `design.json` (v1's workflow tests), `access.json` (the org's gate, guests, roles, wire checks); run by `cargo test` and on `merod local` |
+| `app/` | React + TypeScript + Vite frontend (Fabric.js canvas) |
+| `mobile/` | native iOS and Android viewers, **still v1** (see [Mobile](#mobile)) |
 
 ## Features
 
 - Infinite canvas with pan and zoom
 - Shapes: rectangles, circles, lines, arrows, freehand paths
-- Images and SVGs — stored as blobs on the node
+- Images and SVGs, stored as blobs of the board (see [Images](#images-and-svgs))
 - Text elements with font controls
-- Multi-member projects — invite teammates via Calimero group invitations
+- Teams: invite teammates with a link; every member sees every board in the team
 - Export canvas to PNG or SVG
-- Screens + presentation mode (Figma-style "Present") — see below
-- Real-time sync via SSE (no central server)
-- White-label landing page with team (namespace) selector
+- Screens + presentation mode (Figma-style "Present"), see below
+- Live updates from the board's event stream
+
+## The model
+
+| | Calimero 1.0 | v1 |
+|---|---|---|
+| a team | an organization | a namespace |
+| a board | an instance of this app in the team's org | a subgroup and its context |
+| joining | an org invite link (`?invite=<token>`), redeemed after a passkey sign-in | a namespace invitation link, then joining each board's context and waiting for it to sync |
+| who you are | an account, signed in with a passkey | a node identity, signed in through the node (or the desktop app's SSO) |
+| your name in a team | org member metadata `{ name }` | namespace member metadata |
+
+Every member of a team (owner, admins, members, guests) reaches every board in
+it, including boards made later. Anyone else is refused before the contract runs
+(`404 NOT_FOUND` for an outsider, `401 UNAUTHENTICATED` for an anonymous caller).
 
 ## App layout
 
@@ -29,73 +56,42 @@ Every signed-in screen is one frame (`app/src/components/shell/DesignShell.tsx`)
 
 | URL | Screen |
 |---|---|
-| `/teams` | Resumes the team and board you had open last on this node (else the first team) |
+| `/teams` | Resumes the team and board you had open last on this cluster (else the first team) |
 | `/teams/:teamId/projects` | The team's home grid (`/teams/:teamId` redirects here) |
-| `/teams/:teamId/projects/:contextId` | A board |
-| `/boards/:contextId` | A board, its team looked up (the desktop app's deep link) |
+| `/teams/:teamId/projects/:boardId` | A board (its app instance id) |
+| `/boards/:boardId` | A board, its team looked up |
 | `…?settings=team` / `…?settings=board` | Settings open on any of the above |
 
 A new team or board opens as soon as it is created.
 
-## Architecture
-
-```
-MeroDesign/
-├── logic/          Rust WASM — board state, elements, membership (calimero-sdk)
-├── app/            React + TypeScript + Vite frontend (Fabric.js canvas)
-├── workflows/      merobox bootstrap workflows for dev / CI
-├── scripts/        Dev node scripts (start, stop, invite)
-└── .github/        CI workflows
-```
-
-## Quick Start
-
-### Prerequisites
-
-- Rust + `wasm32-unknown-unknown` target
-- Node 18+ and pnpm
-- `merod` + `meroctl` binaries
-- `merobox` (optional, for workflow tests)
+## Run it
 
 ```bash
-make setup       # check prereqs + build WASM + install frontend deps
-make dev-node    # start node1 + install app
-make dev         # start Vite dev server → http://localhost:5173
+rustup target add wasm32-wasip2
+# merod at component-core-tag (root Cargo.toml), once: see docs/COMPONENT-APPS.md
+pnpm dev:local mero-design     # merod local + the contract + the app on http://localhost:5173/
 ```
 
-### Two-node local stack
+Sign up with a passkey, create a team and a board, and draw. To try a second
+person, copy the team's **Invite** link into another browser profile.
+
+## Test it
 
 ```bash
-make start       # node1 + node2 (auto-invited) + frontend
-make stop        # tear everything down
+M=tools/component-bundle/Cargo.toml
+L=apps/mero-design/logic/Cargo.toml
+cargo fmt --manifest-path $L -- --check
+cargo clippy --manifest-path $L --all-targets -- -D warnings
+cargo clippy --manifest-path $L --target wasm32-wasip2 -- -D warnings
+cargo test --manifest-path $L                                     # harness + scenarios
+cargo run --release --manifest-path $M -- build apps/mero-design/logic   # res/abi.json
+pnpm merod-local e2e mero-design                                  # the scenarios on merod local
+pnpm -F mero-design lint && pnpm -F mero-design typecheck && pnpm -F mero-design test && pnpm -F mero-design build
 ```
 
-## Commands
-
-| Command | Description |
-|---|---|
-| `make setup` | Check prereqs, build logic, install deps |
-| `make build` | Build WASM + frontend production bundle |
-| `make dev` | Start Vite dev server |
-| `make start` | Two-node stack + frontend |
-| `make stop` | Stop all dev nodes |
-| `make test` | Unit + e2e tests |
-| `make workflows` | merobox workflow tests |
-| `make clean` | Remove all build artifacts |
-
-## Landing page media
-
-The landing page's two clips — the hero loop (`app/public/landing/hero.webm`)
-and the chaptered demo (`demo.webm`), each with a poster — are recorded from the
-real editor against the mocked node the e2e specs use. The teammate in them is
-driven through the app's own SSE event path, not drawn on:
-
-```bash
-cd app && pnpm landing:media
-```
-
-The chapter times shown beside the clip live in `scripts/landing/apps.config.mjs`
-at the repo root and must match `CHAPTERS` in `app/e2e/media/capture-landing-media.spec.ts`.
+The landing page's clips (`app/public/landing/*.webm` and their posters) are
+committed. They were recorded by a Playwright harness against v1's mocked node,
+which the port removed; record new ones by hand if the editor changes.
 
 ## Screens and presenting
 
@@ -169,20 +165,112 @@ occupied board asks once before it is replaced):
 presentation reads the live board, so a teammate's edit lands on the slide
 being shown.
 
-## Data Model
+## What changed in the port, and why
 
-Each **Project** is a Calimero context inside a **Team** (namespace/group). Members are invited the same way as in other Calimero apps. The canvas state (elements, layers, blobs) is stored in the WASM logic and synced across all member nodes via the Calimero p2p layer.
+### Storage
 
-## Owned keys are per owner (core 0.11.0-rc.57)
+| v1 (`calimero-storage`) | component SDK |
+|---|---|
+| `PermissionedStorage<IndexedMap<ElementId, Element>>`, `#[index] layer_index`, whole-record LWW by `updatedAt` | `elements: UnorderedMap<id, Element>` + `layers: Set<(layerIndex, id)>`, the paint order kept in step with every write; the later write wins |
+| `UserStorage<Member>` with a dedicated merge clock | `members: UnorderedMap<account, Member>`, written only for the caller |
+| `PermissionedStorage<UnorderedMap<CommentId, Comment>>` | `comments: UnorderedMap<id, Comment>` |
+| `PermissionedStorage<SortedMap<"{comment}/{created_at:020}/{reply}", CommentReply>>` | `replies: UnorderedMap<(comment, createdAt, reply), CommentReply>` |
+| `Authored<UnorderedMap<device, CursorState>>` | `cursors: UnorderedMap<account, CursorState>` |
+| `Ownable<LwwRegister<String>>` name and description, `Frozen` init values | `name`, `description`, `owner: Cell<String>` |
+| `AccessControl` (admin tier + the `editor` role), projected onto the writer sets | `admins`, `editors: Set<account>`, checked in each method |
 
-Since core 0.11.0-rc.57 every owned collection (`Authored…`, `WriteOnce`, `Moderated`,
-`ModeratedOnce`) is one namespace per account: two accounts writing one key hold two
-independent entries, and a key-only `get`, `contains`, `owner_of`, `owned_by_me` or `remove`
-acts on the CALLER's own entry only. This app was migrated:
+The write rules v1 enforced at merge on every node are checks in each method
+against `env::caller()`: only an editor (or admin) changes the canvas and
+comments, only an admin grants roles and clears the board, only the owner
+renames it or hands it on (`Forbidden` otherwise). v1's forged-write tests are
+the same calls made as another account (`tests/harness.rs`,
+`scenarios/access.json`).
 
-`get_cursors` labels each pointer with its entry's own owner (`entries_with_owners`); a
-key-only `owner_of` would only ever name the caller, so every other member's pointer
-would have been dropped.
+### What a client sees
+
+| | v1 | now |
+|---|---|---|
+| method names | `add_element`, `get_elements`, … | the same 37 methods, camelCase: `addElement`, `getElements`, … |
+| argument names | snake_case (`updated_at`, `stroke_width`, `comment_id`, `new_owner`) | camelCase (`updatedAt`, `strokeWidth`, `commentId`, `newOwner`) |
+| 64-bit arguments (`timestamp`, `updatedAt`, `createdAt`, and `x`/`y` of `updateElement`, `addComment`, `updateCursor`) | JSON numbers | **decimal strings** (`"1727000010000"`) |
+| answers (`Element`, `Member`, `Comment`, `CursorState`, `BoardInfo`, `MemberRole`) | v1's JSON | **unchanged**, numbers included: they are plain serde types, which the SDK does not rewrite. `ElementPatch` and `LabelUpdate` inside the batch calls keep v1's snake_case fields too |
+| `init` | `{ name, description }` | no arguments; the board's name is the app instance's, and the creator sets it on the board with `updateBoard` right after creating it |
+| `getBoard.name` | the init name until the owner renamed it | `""` until the owner set one (the client then shows the instance's name) |
+| `getElements` | the whole board | at most 1,000 elements; new `getElementsPage(cursor, limit)` reads a larger board page by page (the web client does) |
+| `getMembers`, `listRoles`, `getComments`, `getCursors` | everything | at most 1,000 each (a comment's replies too) |
+| `getElementsByIds` | any number of ids | at most 1,000 (`Invalid`) |
+| who edits | board admins and explicit editors | the same, plus every **owner and admin of the team's org** (v1's web client granted that board by board on promotion and revoked it on demotion; the contract reads org roles now) |
+| `grantEditor`, `transferOwnership` | any 64-hex account id | an account of the board's org, or the app's owner (`Invalid` otherwise) |
+| `getRole` | an id that is not 64 hex is a viewer | anything that names nobody with a grant is a viewer |
+| ownership | the board's creator | the app instance's owner at `init`; `transferOwnership` moves the board's owner and admin role, not the instance (its creator, or a team admin, still deletes it) |
+| pointers | one per device; `identity` the device key | one per account; `identity` = `account` |
+| blobs | `addElement` announced an image's blob to the context | the element stores the blob id as given (see [Images](#images-and-svgs)) |
+| concurrent edits | merged per record by `updatedAt`, the larger wins | one log orders every write; the later one wins whatever its `updatedAt` |
+| errors | `FunctionCallError` with a message string | `422 APP_ERROR`: `Forbidden { message }`, `Invalid { message }` (the messages are v1's) |
+| events | tuple payloads (`ElementAdded("id")`, `ElementsAdded(["a","b"])`, `LayerReordered()`) | the same event names with named fields: `{ id }`, `{ ids }`, `{ member }`, `{ identity }`, `{}` |
+| `#[app::destructive]`, `#[app::idempotent]` | method hints | not in the component SDK |
+| migrations | none | none |
+
+### Images and SVGs
+
+Core's component blobs (#4815: `BlobRef`, blobs a run can reference, a grant to
+download) landed on core `master` **after** the `1.0.0-rc.7` tag this repo pins,
+and a `1.0.0-rc.7` node answers every blob route of a component app with "blobs
+are not available to it yet (R8)". So, until `component-core-tag` moves to a
+release that has them:
+
+- the frontend uploads an image to the board's app instance
+  (`client.uploadBlob`) and reads it back with `client.downloadBlob`; the element
+  keeps the blob's hex id in `blobId`, and the contract stores it as a string;
+- on a `1.0.0-rc.7` cluster the upload is refused, so an added image is shown
+  only in the session that added it, and the app says so.
+
+When the pin moves: make `blobId` a `BlobRef` (its JSON is the same 64-hex id),
+because a release with #4815 forgets a blob nothing references after an hour.
+
+### Frontend
+
+- `MeroProvider`, the node login popup and desktop SSO, `useApplicationId`,
+  mero-platform deep links and invitation codecs, `@calimero-apps/names`, the
+  namespace / subgroup / context plumbing (`teamContexts.ts`, `appId.ts`) and
+  the SSE client are gone. The session is `@calimero-apps/connect`
+  (`src/session.ts`, `src/sessionContext.tsx`): passkey sign-in and sign-up, the
+  session stored per app and per target. The rest of the app reaches the client
+  through `src/api/client.ts`, as it reached v1's.
+- `src/api/meroDesign.ts` is the **one adapter**: the screens still call
+  `rpcCall(board, "update_element", { …, updated_at })` with v1's names, and it
+  renames methods and arguments and turns 64-bit arguments into strings.
+  `meroDesign.test.ts` checks it against the committed `logic/res/abi.json`.
+- `src/api/rpc.ts` maps teams to orgs (`/me`, `createOrg` + member defaults,
+  `deleteOrg`, `removeMember`, `setMember`, `invite` / `redeemInvite`, all but
+  `/me` and `redeemInvite` passkey step-ups), boards to instances (`listApps` by
+  the dev bundle or the package, `createApp(name, source, { org })`,
+  `deleteApp`), and names to org member metadata (`src/api/names.ts`).
+- Live updates are the instance's event stream (`client.events`), started after
+  the entry the page last read; a dropped stream reconnects and re-reads the board.
+- Gone with v1's plumbing: "Syncing…" while a joined team or board replicated,
+  the TEE badge, "Leave" for a board's subgroup. The invite dialog mints a link
+  on a click ("Create link"), because minting asks for your passkey. Deleting a
+  team is its owner's, for everyone; renaming a board is its owner's.
+- The Playwright suites (e2e, journey, landing media) and `scripts/` (v1's local
+  dev nodes) are removed: the end-to-end run is
+  `pnpm merod-local e2e mero-design`, and the screens are tested with a mocked
+  client (`App.test.tsx`).
+
+## Mobile
+
+`mobile/ios` and `mobile/android` are **unchanged and still v1**: they are built
+on the v1 Swift and Kotlin SDKs and a client generated from the v1 ABI, and the
+pinned SDKs have no 1.0 client to port them to yet. They work only against a v1
+deployment of the app until those SDKs speak the 1.0 API. Do not run
+`mobile/scripts/regenerate-client.sh` until then.
+
+## Production
+
+The production frontend is the one bundled into the `.mpk` (`frontend-dir`), so
+the cluster serves it from the package's own origin, where passkeys work. Build it
+with `VITE_CALIMERO_CLUSTER` and `VITE_CALIMERO_MIN_RELEASE` set (see
+`app/.env.example`); without them the production build refuses to connect.
 
 ## License
 

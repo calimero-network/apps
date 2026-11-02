@@ -1,74 +1,64 @@
 [package]
 name = "mero-design"
-description = "MeroDesign — collaborative design tool on Calimero"
-# NOT the release version. cargo requires a version field, but
-# .github/workflows/deploy-bundle.yml ignores it: the registry owns the number —
-# the check job takes the highest published appVersion and increments the patch
-# (0.0.1 when nothing is published yet). Bumping this changes nothing about what
-# gets released, so do not read a shipped version out of the tree; read it from
-# the registry or the workflow's run summary.
-version = "0.0.2"
+description = "MeroDesign — collaborative design tool on Calimero, on the component SDK"
+# NOT the release version: the release workflow takes the next appVersion from
+# the registry and passes it to `mero-component bundle --app-version`. Cargo
+# requires the field; bundling locally without --app-version uses it.
+version = "0.1.0"
 edition = "2021"
+authors = ["Calimero Limited <info@calimero.network>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/calimero-network/apps"
+publish = false
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+# A `calimero:app` component. No `rlib`: the tests run the BUILT component on
+# core's engine (tests/common/mod.rs), not the crate linked natively.
+crate-type = ["cdylib"]
 
-# Read by `cargo mero bundle` (core #3374): every field the node and the
-# registry render now has a producer here, so nothing hand-writes a
-# manifest.json. `appVersion` is deliberately absent — the deploy workflow
-# resolves it from the registry with `--bump patch`.
+# Core at `component-core-tag` (root Cargo.toml), the same tag for every core
+# crate; scripts/check-component-pins.py asserts it. A standalone crate cannot
+# inherit `[workspace.dependencies]`.
+[dependencies]
+calimero-app-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8" }
+serde = { version = "1", features = ["derive"] }
+
+# The harness (`TestApp`, `run_scenario`) and the builder the tests build this
+# crate with, for `cargo test` on the host only.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+calimero-app-sdk   = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8", features = ["testing"] }
+calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8" }
+serde_json = "1"
+
+# Read by `mero-component build | bundle` (tools/component-bundle), with the
+# keys `cargo mero bundle` reads for a v1 app.
 [package.metadata.calimero]
 package = "com.calimero.mero-design"
 name = "MeroDesign"
-description = "Collaborative design tool on the Calimero p2p network. Figma-style canvas, your data on your nodes."
+description = "Collaborative design tool on Calimero. Figma-style canvas, shared by the members of your organization."
 author = "Calimero"
-# The desktop resolves a deep link (calimero://<slug>/… and
-# https://links.calimero.network/<slug>/…) by Application.package, so the slug
-# IS the package id.
+# The slug IS the package id: deep links resolve by `Application.package`.
 slug = "com.calimero.mero-design"
-# Embedded into the manifest as a data: URI, which is what gives the app a real
-# icon in the registry and — via tauri-app's `ensure_app_launcher_icon` — in the
-# macOS Dock. The bundled icon is preferred over fetching the frontend's PWA
-# manifest because it is deterministic and works offline. Regenerate with
-# `node app/scripts/gen-icons.mjs`.
+# Embedded into the manifest as a data: URI, so the bundle carries its own
+# mark. Regenerate with `node app/scripts/gen-icons.mjs`.
 icon = "../app/public/icon-512.png"
 category = "art-design"
 tags = ["design", "collaboration", "canvas"]
 github = "https://github.com/calimero-network/mero-design"
-# Kept equal to the SDK tag above. "0.1.0" sat here for months — cargo-mero's
-# placeholder floor, not a claim anyone verified — while the contract called
-# host functions no runtime that old has, so the bundle advertised that it ran
-# on a node where it cannot even instantiate.
-min-runtime-version = "0.12.0-rc.3"
-# Doubles as the registered login callback origin, compared by exact origin:
-# the node's sign-in page hands tokens only to the frontend (or an alias) the
-# registry or the installed bundle declares for this package.
+# `component-min-runtime-version` in the root Cargo.toml: a node compares it
+# with its own release.
+min-runtime-version = "1.0.0-rc.8"
+# The listing's link, and an origin the node may send a person back to from
+# its consent page. NOT where the production frontend runs: a Cloud node trusts
+# passkey ceremonies only from frontends it serves from a bundle, so the
+# production frontend is the one packed below (docs/COMPONENT-APPS.md).
 frontend = "https://design.hyperfeed.me"
-# Also trusted for the login callback, never opened: the vercel.app origin Mero
-# Design was served at before, for nodes still opening a bundle that names it.
 frontend-aliases = ["https://mero-design.vercel.app"]
-# The built frontend `cargo mero bundle` packs, so the node serves it from the app's own origin.
+# The built frontend the bundle carries; the cluster serves it from the
+# package's own origin. Build it first: `pnpm -F mero-design build`.
 frontend-dir = "../app/dist"
 guide = "GUIDE.md"
 
-[dependencies]
-# No direct `borsh`: lib.rs reaches it through `calimero_sdk::borsh`, and the
-# 0.10.3 pins that used to sit here were unused AND a major behind the 1.8 the
-# SDK resolves — a second borsh in the tree whose derives would not have matched
-# the SDK's traits if anything had imported them.
-# Pin a real release tag, never `branch = "master"`: master rides unreleased
-# protocol work against nodes that run the release. All SDK crates must share
-# the exact same tag (the workspace version at a tag is 0.0.0).
-calimero-sdk = { workspace = true }
-calimero-storage = { workspace = true }
-calimero-storage-macros = { workspace = true }
-thiserror = "1.0.56"
-serde_json = "1.0.113"
-
-[dev-dependencies]
-# Enables register_crdt_merge + the native mock host so TestHost can drive
-# CRDT state (incl. the permissioned components) under `cargo test`.
-calimero-storage = { workspace = true, features = ["testing"] }
-
-# `[profile.*]` lives at the workspace root now. Cargo IGNORES a profile in a
-# member and then hard-errors on it, so this is not stylistic.
+# Standalone: excluded from the root workspace (root Cargo.toml), its own
+# Cargo.lock, as core's component apps are.
+[workspace]

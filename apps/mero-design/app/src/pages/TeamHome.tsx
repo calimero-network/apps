@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
+import { useAuth } from "../sessionContext";
 import ProjectThumbnail from "../components/ProjectThumbnail";
 import { EmptyBoardsArt } from "../components/Artwork";
 import { IconPlus, IconUserPlus } from "../components/HomeIcons";
@@ -23,7 +23,7 @@ import styles from "./TeamHome.module.css";
  */
 export default function TeamHome() {
   const { teamId, teams, boards, openBoard, openInvite, openSettings } = useShell();
-  const { nodeUrl } = useMero();
+  const { nodeUrl } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { showToast } = useToast();

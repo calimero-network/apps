@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
-import { useMero } from "@calimero-network/mero-react";
 import SettingsSection from "./SettingsSection";
-import { useIsGroupAdmin } from "../hooks/useIsGroupAdmin";
 import { IconClose } from "./HomeIcons";
 import type { Project } from "../types";
 import type { SettingsSection as Section } from "./shell/shellContext";
@@ -53,10 +51,9 @@ export default function SettingsPanel({
   onDeleteTeam,
   onLeaveTeam,
 }: Props) {
-  const { isDelegated } = useMero();
   const hasBoard = !!board || boardPending;
-  // The board's own admin (its subgroup's creator) may delete it too.
-  const isBoardAdmin = useIsGroupAdmin(board && board.groupId !== teamId ? board.groupId : null, account);
+  // The board's creator (its app instance's owner) may delete it too.
+  const isBoardAdmin = !!board?.owner && board.owner === account;
   const canDeleteBoard = isTeamAdmin === true || isBoardAdmin === true;
   const shown: Section = section === "board" && hasBoard ? "board" : "team";
 
@@ -113,7 +110,7 @@ export default function SettingsPanel({
             {/* Deleting a namespace is a node's own operation; an account's
                 relay has no form of it, so an account admin is offered
                 neither. */}
-            {isTeamAdmin === true && !isDelegated && (
+            {isTeamAdmin === true && (
               <div className={styles.danger}>
                 <div>
                   <strong>Delete team</strong>

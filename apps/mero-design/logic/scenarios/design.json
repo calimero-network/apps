@@ -1,0 +1,764 @@
+[
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "updateBoard",
+  "args": {
+   "name": "Test Board",
+   "description": "A test board"
+  },
+  "expect": {
+   "ok": null
+  },
+  "events": {
+   "bob": [
+    "BoardUpdated"
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getBoard",
+  "args": {},
+  "expect": {
+   "ok": {
+    "name": "Test Board",
+    "description": "A test board",
+    "elementCount": 0,
+    "memberCount": 0,
+    "owner": "@owner"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "join",
+  "args": {
+   "username": "Alice",
+   "avatar": null,
+   "timestamp": "1727000000000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getMembers",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "id": "@bob",
+     "username": "Alice",
+     "avatar": null,
+     "joinedAt": 1727000000000,
+     "usernameUpdatedAt": 1727000000000
+    }
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "myRole",
+  "args": {},
+  "expect": {
+   "ok": "viewer"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "addElement",
+  "args": {
+   "element": {
+    "id": "nope",
+    "data": {
+     "kind": "rect"
+    },
+    "x": 10,
+    "y": 20,
+    "width": 100,
+    "height": 50,
+    "rotation": 0,
+    "fill": "#ff0000",
+    "stroke": "#000000",
+    "strokeWidth": 1,
+    "opacity": 100,
+    "layerIndex": 0,
+    "createdBy": "",
+    "createdAt": 1727000000000,
+    "updatedAt": 1727000000000,
+    "shadowColor": null,
+    "shadowOffsetX": null,
+    "shadowOffsetY": null,
+    "shadowBlur": null,
+    "label": null
+   }
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "view-only: editor or admin access is required to modify this board"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addElement",
+  "args": {
+   "element": {
+    "id": "rect-1",
+    "data": {
+     "kind": "rect"
+    },
+    "x": 10,
+    "y": 20,
+    "width": 100,
+    "height": 50,
+    "rotation": 0,
+    "fill": "#ff0000",
+    "stroke": "#000000",
+    "strokeWidth": 1,
+    "opacity": 100,
+    "layerIndex": 0,
+    "createdBy": "",
+    "createdAt": 1727000000000,
+    "updatedAt": 1727000000000,
+    "shadowColor": null,
+    "shadowOffsetX": null,
+    "shadowOffsetY": null,
+    "shadowBlur": null,
+    "label": null
+   }
+  },
+  "expect": {
+   "ok": "rect-1"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addElement",
+  "args": {
+   "element": {
+    "id": "circle-1",
+    "data": {
+     "kind": "circle"
+    },
+    "x": 10,
+    "y": 20,
+    "width": 100,
+    "height": 50,
+    "rotation": 0,
+    "fill": "#0000ff",
+    "stroke": "#000000",
+    "strokeWidth": 1,
+    "opacity": 100,
+    "layerIndex": 1,
+    "createdBy": "",
+    "createdAt": 1727000000000,
+    "updatedAt": 1727000000000,
+    "shadowColor": null,
+    "shadowOffsetX": null,
+    "shadowOffsetY": null,
+    "shadowBlur": null,
+    "label": null
+   }
+  },
+  "expect": {
+   "ok": "circle-1"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addElement",
+  "args": {
+   "element": {
+    "id": "text-1",
+    "data": {
+     "kind": "text",
+     "content": "Hello MeroDesign",
+     "fontSize": 24,
+     "fontFamily": "sans-serif",
+     "bold": false,
+     "italic": false
+    },
+    "x": 10,
+    "y": 20,
+    "width": 100,
+    "height": 50,
+    "rotation": 0,
+    "fill": "#ff0000",
+    "stroke": "#000000",
+    "strokeWidth": 1,
+    "opacity": 100,
+    "layerIndex": 2,
+    "createdBy": "",
+    "createdAt": 1727000000000,
+    "updatedAt": 1727000000000,
+    "shadowColor": null,
+    "shadowOffsetX": null,
+    "shadowOffsetY": null,
+    "shadowBlur": null,
+    "label": null
+   }
+  },
+  "expect": {
+   "ok": "text-1"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getElements",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "id": "rect-1",
+     "data": {
+      "kind": "rect"
+     },
+     "x": 10,
+     "y": 20,
+     "width": 100,
+     "height": 50,
+     "rotation": 0,
+     "fill": "#ff0000",
+     "stroke": "#000000",
+     "strokeWidth": 1,
+     "opacity": 100,
+     "layerIndex": 0,
+     "createdBy": "@owner",
+     "createdAt": 1727000000000,
+     "updatedAt": 1727000000000,
+     "shadowColor": null,
+     "shadowOffsetX": null,
+     "shadowOffsetY": null,
+     "shadowBlur": null,
+     "label": null
+    },
+    {
+     "id": "circle-1",
+     "data": {
+      "kind": "circle"
+     },
+     "x": 10,
+     "y": 20,
+     "width": 100,
+     "height": 50,
+     "rotation": 0,
+     "fill": "#0000ff",
+     "stroke": "#000000",
+     "strokeWidth": 1,
+     "opacity": 100,
+     "layerIndex": 1,
+     "createdBy": "@owner",
+     "createdAt": 1727000000000,
+     "updatedAt": 1727000000000,
+     "shadowColor": null,
+     "shadowOffsetX": null,
+     "shadowOffsetY": null,
+     "shadowBlur": null,
+     "label": null
+    },
+    {
+     "id": "text-1",
+     "data": {
+      "kind": "text",
+      "content": "Hello MeroDesign",
+      "fontSize": 24,
+      "fontFamily": "sans-serif",
+      "bold": false,
+      "italic": false
+     },
+     "x": 10,
+     "y": 20,
+     "width": 100,
+     "height": 50,
+     "rotation": 0,
+     "fill": "#ff0000",
+     "stroke": "#000000",
+     "strokeWidth": 1,
+     "opacity": 100,
+     "layerIndex": 2,
+     "createdBy": "@owner",
+     "createdAt": 1727000000000,
+     "updatedAt": 1727000000000,
+     "shadowColor": null,
+     "shadowOffsetX": null,
+     "shadowOffsetY": null,
+     "shadowBlur": null,
+     "label": null
+    }
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getElement",
+  "args": {
+   "id": "rect-1"
+  },
+  "expect": {
+   "ok": {
+    "id": "rect-1",
+    "data": {
+     "kind": "rect"
+    },
+    "x": 10,
+    "y": 20,
+    "width": 100,
+    "height": 50,
+    "rotation": 0,
+    "fill": "#ff0000",
+    "stroke": "#000000",
+    "strokeWidth": 1,
+    "opacity": 100,
+    "layerIndex": 0,
+    "createdBy": "@owner",
+    "createdAt": 1727000000000,
+    "updatedAt": 1727000000000,
+    "shadowColor": null,
+    "shadowOffsetX": null,
+    "shadowOffsetY": null,
+    "shadowBlur": null,
+    "label": null
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "updateElement",
+  "args": {
+   "id": "rect-1",
+   "x": "200",
+   "y": null,
+   "width": null,
+   "height": null,
+   "rotation": null,
+   "fill": "#00ff00",
+   "stroke": null,
+   "strokeWidth": null,
+   "opacity": null,
+   "cornerRadius": null,
+   "updatedAt": "1727000010000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getElement",
+  "args": {
+   "id": "rect-1"
+  },
+  "expect": {
+   "ok": {
+    "id": "rect-1",
+    "data": {
+     "kind": "rect"
+    },
+    "x": 200,
+    "y": 20,
+    "width": 100,
+    "height": 50,
+    "rotation": 0,
+    "fill": "#00ff00",
+    "stroke": "#000000",
+    "strokeWidth": 1,
+    "opacity": 100,
+    "layerIndex": 0,
+    "createdBy": "@owner",
+    "createdAt": 1727000000000,
+    "updatedAt": 1727000010000,
+    "shadowColor": null,
+    "shadowOffsetX": null,
+    "shadowOffsetY": null,
+    "shadowBlur": null,
+    "label": null
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "updateTextStyle",
+  "args": {
+   "id": "text-1",
+   "content": "Updated text content",
+   "fontFamily": null,
+   "fontSize": null,
+   "bold": true,
+   "italic": null,
+   "textAlign": null,
+   "verticalAlign": null,
+   "updatedAt": "1727000020000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getElement",
+  "args": {
+   "id": "text-1"
+  },
+  "expect": {
+   "ok": {
+    "id": "text-1",
+    "data": {
+     "kind": "text",
+     "content": "Updated text content",
+     "fontSize": 24,
+     "fontFamily": "sans-serif",
+     "bold": true,
+     "italic": false
+    },
+    "x": 10,
+    "y": 20,
+    "width": 100,
+    "height": 50,
+    "rotation": 0,
+    "fill": "#ff0000",
+    "stroke": "#000000",
+    "strokeWidth": 1,
+    "opacity": 100,
+    "layerIndex": 2,
+    "createdBy": "@owner",
+    "createdAt": 1727000000000,
+    "updatedAt": 1727000020000,
+    "shadowColor": null,
+    "shadowOffsetX": null,
+    "shadowOffsetY": null,
+    "shadowBlur": null,
+    "label": null
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "grantEditor",
+  "args": {
+   "member": "@bob"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "myRole",
+  "args": {},
+  "expect": {
+   "ok": "editor"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "bringToFront",
+  "args": {
+   "id": "rect-1"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "sendToBack",
+  "args": {
+   "id": "text-1"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addElements",
+  "args": {
+   "elements": [
+    {
+     "id": "batch-a",
+     "data": {
+      "kind": "rect"
+     },
+     "x": 10,
+     "y": 20,
+     "width": 100,
+     "height": 50,
+     "rotation": 0,
+     "fill": "#ff0000",
+     "stroke": "#000000",
+     "strokeWidth": 1,
+     "opacity": 100,
+     "layerIndex": 10,
+     "createdBy": "",
+     "createdAt": 1727000000000,
+     "updatedAt": 1727000000000,
+     "shadowColor": null,
+     "shadowOffsetX": null,
+     "shadowOffsetY": null,
+     "shadowBlur": null,
+     "label": null
+    },
+    {
+     "id": "batch-b",
+     "data": {
+      "kind": "rect"
+     },
+     "x": 10,
+     "y": 20,
+     "width": 100,
+     "height": 50,
+     "rotation": 0,
+     "fill": "#ff0000",
+     "stroke": "#000000",
+     "strokeWidth": 1,
+     "opacity": 100,
+     "layerIndex": 11,
+     "createdBy": "",
+     "createdAt": 1727000000000,
+     "updatedAt": 1727000000000,
+     "shadowColor": null,
+     "shadowOffsetX": null,
+     "shadowOffsetY": null,
+     "shadowBlur": null,
+     "label": null
+    }
+   ]
+  },
+  "expect": {
+   "ok": [
+    "batch-a",
+    "batch-b"
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "updateElements",
+  "args": {
+   "patches": [
+    {
+     "id": "batch-a",
+     "fill": "#123456"
+    },
+    {
+     "id": "batch-b",
+     "fill": "#654321"
+    }
+   ],
+   "updatedAt": "1727000030000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "updateElementLabels",
+  "args": {
+   "labels": [
+    {
+     "id": "batch-a",
+     "label": "batch-label-a"
+    },
+    {
+     "id": "batch-b",
+     "label": "batch-label-b"
+    }
+   ],
+   "updatedAt": "1727000030001"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "updateElementLabel",
+  "args": {
+   "id": "rect-1",
+   "label": "single-label-rect",
+   "updatedAt": "1727000030002"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deleteElements",
+  "args": {
+   "ids": [
+    "batch-a",
+    "batch-b"
+   ]
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deleteElement",
+  "args": {
+   "id": "circle-1"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getBoard",
+  "args": {},
+  "expect": {
+   "ok": {
+    "name": "Test Board",
+    "description": "A test board",
+    "elementCount": 2,
+    "memberCount": 1,
+    "owner": "@owner"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "updateBoard",
+  "args": {
+   "name": "Renamed Board",
+   "description": null
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "updateBoard",
+  "args": {
+   "name": "Hijack",
+   "description": null
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the board's owner can do this"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "addComment",
+  "args": {
+   "id": "c1",
+   "x": "120",
+   "y": "90",
+   "content": "Bigger logo?",
+   "createdAt": "1727000040000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addReply",
+  "args": {
+   "commentId": "c1",
+   "replyId": "r1",
+   "content": "Agreed",
+   "createdAt": "1727000050000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getComments",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "id": "c1",
+     "x": 120,
+     "y": 90,
+     "content": "Bigger logo?",
+     "author": "@bob",
+     "createdAt": 1727000040000,
+     "replies": [
+      {
+       "id": "r1",
+       "content": "Agreed",
+       "author": "@owner",
+       "createdAt": 1727000050000
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "updateCursor",
+  "args": {
+   "x": "200",
+   "y": "150",
+   "updatedAt": "1727000060000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getCursors",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "identity": "@bob",
+     "account": "@bob",
+     "x": 200,
+     "y": 150,
+     "updatedAt": 1727000060000
+    }
+   ]
+  }
+ }
+]

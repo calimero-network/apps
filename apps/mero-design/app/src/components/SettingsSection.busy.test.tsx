@@ -30,18 +30,14 @@ vi.mock("../api/rpc", () => ({
   listGroupMembers: vi.fn().mockResolvedValue({ members: [], teeMembers: [] }),
   rpcCall: vi.fn().mockResolvedValue([]),
   updateMemberRole: vi.fn(),
-}));
-vi.mock("../api/teamContexts", () => ({ listTeamContexts: vi.fn().mockResolvedValue([]) }));
-const admin = {
+  removeTeamMember: vi.fn(),
   // The team's names are still loading: nothing re-renders the section while
   // the field's first effects wait for their task.
-  listGroupMembers: vi.fn(() => new Promise(() => {})),
-  setMemberMetadata: vi.fn().mockResolvedValue(undefined),
-};
-vi.mock("@calimero-network/mero-react", () => ({
-  useMero: () => ({ applicationId: "app-1", admin }),
-  useRemoveGroupMembers: () => ({ removeGroupMembers: vi.fn() }),
+  readTeam: vi.fn(() => new Promise(() => {})),
+  setTeamName: (...a: unknown[]) => admin.setMemberMetadata(...a),
 }));
+vi.mock("../api/client", () => ({ peekApi: () => ({}) }));
+const admin = { setMemberMetadata: vi.fn().mockResolvedValue(undefined) };
 vi.mock("../contexts/ToastContext", () => ({
   useToast: () => {
     // A slow render: longer than React's 5 ms time slice.
@@ -64,6 +60,6 @@ describe("SettingsSection – your name, on a busy machine", () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(screen.getByTestId("your-name-input")).toHaveValue("Sandi");
     fireEvent.click(screen.getByTestId("your-name-save"));
-    await vi.waitFor(() => expect(admin.setMemberMetadata).toHaveBeenCalledWith("ns1", self, { name: "Sandi" }));
+    await vi.waitFor(() => expect(admin.setMemberMetadata).toHaveBeenCalledWith("ns1", self, "Sandi"));
   });
 });

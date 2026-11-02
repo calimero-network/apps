@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { createNamespaceInvitation } from "../api/rpc";
+import { createTeamInvitation } from "../api/rpc";
 import { useToast } from "../contexts/ToastContext";
 import { extractErrorMessage } from "../utils/errorMessage";
-import { encodeInvitationObject, invitationLink } from "../utils/invitation";
+import { inviteLink as invitationLink } from "../utils/inviteLink";
 import { truncateMiddle } from "../utils/format";
-import { getStoredTeamName } from "../utils/teamName";
 import { InviteArt } from "./Artwork";
 import styles from "./InviteModal.module.css";
 
@@ -19,8 +18,9 @@ interface Props {
 /**
  * Invite people to the team: the top bar's Invite button opens this.
  *
- * The link is minted the moment the dialog opens, so inviting is one click to
- * copy, not "Invitations tab → Generate → Copy". Each copy hands out one
+ * Minting a link is an org invite, which the node asks your passkey to
+ * approve, so it starts from a click ("Create link") rather than on open: a
+ * browser shows a passkey prompt only for a user gesture. Each link is one
  * invitation; "New link" mints another for the next person.
  *
  * Rendered into `document.body`: the top bar that opens it is frosted glass,
@@ -32,8 +32,6 @@ export default function InviteModal({ teamId, teamName, onClose }: Props) {
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
-  // Strict mode mounts twice; one open mints one invitation.
-  const minted = useRef(false);
 
   const generate = useCallback(async () => {
     setError("");
@@ -41,25 +39,14 @@ export default function InviteModal({ teamId, teamName, onClose }: Props) {
     setInvitation("");
     setLoading(true);
     try {
-      const data = await createNamespaceInvitation(teamId);
-      if (data) {
-        // Embed the team name so the joiner doesn't render a raw ID (see teamName.ts).
-        const storedName = getStoredTeamName(teamId);
-        const payload = storedName ? { ...data, __teamName: storedName } : data;
-        setInvitation(encodeInvitationObject(payload));
-      }
+      const token = await createTeamInvitation(teamId);
+      if (token) setInvitation(token);
     } catch (err) {
-      setError(extractErrorMessage(err, "Failed to generate invitation. Check node connection."));
+      setError(extractErrorMessage(err, "Failed to create the invitation."));
     } finally {
       setLoading(false);
     }
   }, [teamId]);
-
-  useEffect(() => {
-    if (minted.current) return;
-    minted.current = true;
-    void generate();
-  }, [generate]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -74,8 +61,8 @@ export default function InviteModal({ teamId, teamName, onClose }: Props) {
 
   async function copy() {
     if (!invitation) return;
-    // Share the link, not the bare token: it opens the desktop app where
-    // installed and the published web build otherwise.
+    // Share the link, not the bare token: it opens this app, which asks them
+    // to sign in and join.
     try {
       await navigator.clipboard.writeText(invitationLink(invitation));
     } catch {
@@ -104,9 +91,8 @@ export default function InviteModal({ teamId, teamName, onClose }: Props) {
         <div className={styles.art}><InviteArt /></div>
 
         <p className={styles.desc}>
-          Send this invitation link to a teammate. Opening it launches the desktop
-          app where installed, and the web build otherwise, and asks them to join.
-          They will see every board in the team.
+          Send this invitation link to a teammate. Opening it asks them to sign in
+          with a passkey and join. They will see every board in the team.
         </p>
 
         {invitation ? (
@@ -122,7 +108,7 @@ export default function InviteModal({ teamId, teamName, onClose }: Props) {
         ) : (
           <div className={styles.tokenBox} aria-busy={loading}>
             <span className={styles.spinner} aria-hidden="true" />
-            <span className={styles.muted}>{loading ? "Creating a link…" : "No link yet"}</span>
+            <span className={styles.muted}>{loading ? "Approve with your passkey…" : "No link yet"}</span>
           </div>
         )}
 
@@ -136,7 +122,7 @@ export default function InviteModal({ teamId, teamName, onClose }: Props) {
             data-testid="generate-invite"
             title="Each link is one invitation; make another for the next person"
           >
-            New link
+            {invitation ? "New link" : "Create link"}
           </button>
           <button
             className={styles.primaryBtn}

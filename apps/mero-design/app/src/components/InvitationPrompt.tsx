@@ -1,92 +1,124 @@
-import { useMemo } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
-import {
-  InvitationDialog,
-  InvitationGate,
-  useInviteRedemption,
-  useMero,
-  type ParsedInvitation,
-} from "@calimero-network/mero-react";
-import { joinNamespace, listNamespaces } from "../api/rpc";
-import { useApplicationId } from "../hooks/useApplicationId";
-import { decodeInvitationObject } from "../utils/invitation";
-import { setStoredTeamName } from "../utils/teamName";
+import { CalimeroError } from "@calimero-network/mero-js";
+import { describeError } from "@calimero-apps/connect";
+import { redeemInvitation } from "../api/rpc";
+import { useSessionApi } from "../sessionContext";
+import { dropInvite, pendingInvite, type PendingInvite } from "../utils/inviteLink";
+import SignInModal from "./SignInModal";
+import styles from "./InviteModal.module.css";
 
 /**
- * Read a raw invitation token into the parts the join needs.
+ * "Join this team?" for an invitation that arrived as a link (`?invite=`,
+ * taken into storage before the first render, see `captureInvite`).
  *
- * Invitation shape:
- *   { invitation: { invitation: { group_id: [...] }, inviterSignature,
- *     applicationId }, __teamName? }
- * The join body must wrap the invitation struct (`outer`), NOT the whole
- * decoded token.
- */
-function parseTeamInvitation(raw: string): ParsedInvitation | null {
-  // Use the shared UTF-8-safe decoder so a Unicode __teamName (emoji,
-  // accents) round-trips correctly.
-  const invObj = decodeInvitationObject<Record<string, unknown>>(raw);
-  const outer = (invObj.invitation as Record<string, unknown>) ?? invObj;
-  const inner = (outer?.invitation as Record<string, unknown>) ?? outer;
-  const rawGroupId =
-    inner?.group_id ?? inner?.groupId ?? outer?.group_id ?? outer?.groupId;
-  const namespaceId = Array.isArray(rawGroupId)
-    ? (rawGroupId as number[])
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("")
-    : String(rawGroupId ?? "");
-  if (!namespaceId) return null;
-
-  // The inviter embeds the human team name so the joiner doesn't render a raw ID.
-  const teamName =
-    typeof invObj.__teamName === "string" ? invObj.__teamName.trim() : "";
-  if (teamName) setStoredTeamName(namespaceId, teamName);
-
-  return { namespaceId, invitation: outer, teamName: teamName || undefined };
-}
-
-/**
- * An invitation link opened this app: mero-react's `InvitationDialog`.
- *
- * Mounted once, above the routes, so a link opened on any page — the landing
- * page, a board, a team's home — is offered wherever the person is. Capture
- * is primed in `main.tsx` and buffers the invitation until the session can
- * join, so arriving before login loses nothing. It asks first: joining puts
- * this node into someone else's team, which a forwarded link must not do on
- * its own. Once joined it opens the team, as the team switcher would, and stays
- * on "Syncing…" until the shell's `useJoinSync` (DesignShell) sees the team's
- * board list come back from the node.
+ * Mounted once, above the routes, because a link can land on any page. It
+ * asks rather than joins: joining puts you in someone's organization, and a
+ * forwarded link or a refreshing background tab should not do that silently.
+ * Signed out, it offers the sign-in first; the token survives the sign-up.
+ * Signed in, Join redeems the org invite and opens the team. There is no
+ * "Syncing…" stage any more: nothing has to replicate before a new member can
+ * read the team's boards.
  */
 export default function InvitationPrompt() {
+  const { api } = useSessionApi();
   const navigate = useNavigate();
-  const { isAuthenticated, isLoading } = useMero();
-  const ensureAppId = useApplicationId();
+  const [invite, setInvite] = useState<PendingInvite | null>(() => pendingInvite());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [signingIn, setSigningIn] = useState(false);
+  const signedIn = api.session.status === "signed-in";
+  const ready = signedIn || api.session.status === "signed-out";
 
-  /** The two calls the standard join needs from this app. */
-  const redeemer = useMemo(
-    () => ({
-      join: async (namespaceId: string, invitation: unknown) => {
-        await joinNamespace(namespaceId, invitation);
-      },
-      memberships: async () => {
-        const items = await listNamespaces(await ensureAppId());
-        return items.map((n) => n.namespaceId);
-      },
-    }),
-    [ensureAppId],
-  );
+  useEffect(() => {
+    if (signedIn) setSigningIn(false);
+  }, [signedIn]);
 
-  const redemption = useInviteRedemption({
-    parse: parseTeamInvitation,
-    redeemer,
-    enabled: isAuthenticated && !isLoading,
-    onJoined: (namespaceId) => navigate(`/teams/${namespaceId}/projects`),
-  });
+  const dismiss = useCallback(() => {
+    dropInvite();
+    setInvite(null);
+    setError(null);
+  }, []);
+
+  const join = useCallback(async () => {
+    if (!signedIn || !invite) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const org = await redeemInvitation(invite.token);
+      dropInvite();
+      setInvite(null);
+      navigate(org ? `/teams/${org}/projects` : "/teams");
+    } catch (e) {
+      // A refusal (used, expired, revoked) can never succeed: drop it. Anything
+      // else (the cluster unreachable) is kept for another try.
+      if (e instanceof CalimeroError && e.status < 500) dropInvite();
+      setError(`The invitation could not be accepted: ${describeError(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  }, [signedIn, invite, navigate]);
+
+  if (!invite || !ready) return null;
 
   return (
     <>
-      {/* Logged out with a link opened: "you're invited" and the login, not the landing page. */}
-      <InvitationGate parse={parseTeamInvitation} noun="team" appName="Mero Design" />
-      <InvitationDialog redemption={redemption} noun="team" appName="Mero Design" />
+      {!signingIn &&
+        createPortal(
+          <div className={styles.overlay}>
+            <div
+              className={styles.modal}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="invitation-title"
+              data-testid="invitation-dialog"
+            >
+              <div className={styles.header}>
+                <h2 id="invitation-title" className={styles.title}>You&apos;re invited to Mero Design</h2>
+              </div>
+              <p className={styles.desc}>Joining gives you access to the team and every board in it.</p>
+              {error && (
+                <p className={styles.error} role="alert" data-testid="invitation-error">
+                  {error}
+                </p>
+              )}
+              <div className={styles.actions}>
+                <button
+                  type="button"
+                  className={styles.secondaryBtn}
+                  onClick={dismiss}
+                  disabled={busy}
+                  data-testid="invitation-dismiss"
+                >
+                  Not now
+                </button>
+                {signedIn ? (
+                  <button
+                    type="button"
+                    className={styles.primaryBtn}
+                    onClick={() => void join()}
+                    disabled={busy}
+                    data-testid="invitation-join"
+                  >
+                    {busy ? "Joining…" : "Join"}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className={styles.primaryBtn}
+                    onClick={() => setSigningIn(true)}
+                    data-testid="invitation-signin"
+                  >
+                    Sign in to join
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+      <SignInModal open={signingIn} onClose={() => setSigningIn(false)} />
     </>
   );
 }
