@@ -1,11 +1,10 @@
-// The game's `WorldApi` over the native bridge, on the wire the native shells
-// speak today: the v1 contract's snake_case methods with `now` as a number,
-// through the swift-sdk / kotlin-sdk v1 clients and the account relay.
+// The game's `WorldApi` over the native bridge, on the page's own bridge wire:
+// the snake_case method names with `now` as a number and whole lists, as the
+// page has always sent them. The native side (`Bridge.swift` / `Bridge.kt`)
+// maps each call onto the contract's component ABI: camelCase names, `u64`s as
+// decimal strings, paged reads followed to the end.
 //
-// The web build now talks to the component runtime (`app/src/net/blocks.ts`);
-// the native shells cannot yet (no component-runtime client in swift-sdk or
-// kotlin-sdk), so this keeps the page they bundle working unchanged until they
-// move. See `apps/mero-blocks/mobile/README.md`.
+// The web build calls the component ABI directly (`app/src/net/blocks.ts`).
 
 import type { BlockEntry, RemotePlayer, WorldApi } from "../../../app/src/net/sync";
 

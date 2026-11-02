@@ -20,7 +20,7 @@ apps/mero-blocks/
 │   ├── res/abi.json         the component's ABI (committed, diffed in CI)
 │   └── GUIDE.md             the agent guide the bundle carries
 ├── app/                     the game: vanilla TS + Three.js; @calimero-apps/connect + mero-js CalimeroClient
-└── mobile/                  native iOS/Android shells + the game page they bundle (still v1, see below)
+└── mobile/                  native iOS/Android shells + the game page they bundle (moving to 1.0 in #700)
 ```
 
 See [docs/COMPONENT-APPS.md](../../docs/COMPONENT-APPS.md) for how component
@@ -186,20 +186,19 @@ path with `nodeBasename`): that page comes from the shared generator template
 
 ## Mobile
 
-`mobile/` (native iOS and Android shells, the game in a WebView) is **not
-ported**: the shells sign in and call the contract through swift-sdk `MeroKit`
-and kotlin-sdk `mero-core` (v1 clients over the account relay), and neither SDK
-has a client for the component runtime yet. They keep speaking the v1 wire, so
-they need a v1 deployment of the package until those SDKs can talk to a
-cluster; porting them is a follow-up once they can.
+The native iOS and Android shells (`mobile/`, the game in a WebView) move to
+Calimero 1.0 in their own PR, #700, which depends on this one and merges right
+after it. Their clients call this contract's component ABI: camelCase methods,
+`u64`s as decimal strings, and the paged `getOverrides` / `getPlayers` followed
+to the end. This PR leaves the native code to #700.
 
-What did change: the game page they bundle shares the web engine and
-`net/sync.ts`, whose `SyncEngine` now takes a typed `WorldApi` instead of a raw
-`exec(method, args)`. `mobile/game/src/v1World.ts` implements it over the native
-bridge with the exact v1 calls (`set_blocks`, `get_overrides`, `get_players`,
-`join`, `heartbeat`, `leave`, `now` as a number), so the bridge protocol and the
-native code are unchanged; `mobile/game/assets/game/game.js` is rebuilt
-(`mobile/scripts/build-game.sh`).
+What this PR changes there is the game page the shells bundle. It shares the
+web engine and `net/sync.ts`, whose `SyncEngine` now takes a typed `WorldApi`
+instead of a raw `exec(method, args)`. `mobile/game/src/v1World.ts` implements
+it over the native bridge with the page's own bridge wire (`set_blocks`,
+`get_overrides`, `get_players`, `join`, `heartbeat`, `leave`, `now` as a number,
+whole lists), which #700's `BridgeRouter` maps onto the component ABI;
+`mobile/game/assets/game/game.js` is rebuilt (`mobile/scripts/build-game.sh`).
 
 ## Production
 

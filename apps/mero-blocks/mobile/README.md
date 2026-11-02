@@ -1,11 +1,5 @@
 # Mero Blocks — native mobile apps
 
-> **Status: still v1.** The web app and the contract moved to core's component runtime
-> (`../README.md`, "Mobile"); these shells did not. They sign in and call the contract through
-> swift-sdk `MeroKit` / kotlin-sdk `mero-core`, v1 clients over the account relay, and neither SDK
-> can talk to a component-runtime cluster yet. Until they can, the shells need a v1 deployment of
-> the package; the game page keeps the v1 bridge wire through `game/src/v1World.ts`.
-
 Native iOS and Android apps for Mero Blocks, next to the web frontend (`../app`) and the contract
 (`../logic`, package `com.calimero.mero-blocks`). The shell (sign-in, worlds, invitations, settings,
 the pause menu) is native; the game itself is the web app's three.js engine, bundled into the app
@@ -38,11 +32,11 @@ A native engine port is not worth it: the engine (`../app/src/engine`, `renderer
   page, no node login, no world picker (the app does those), no pointer lock or keyboard. It waits
   for the app's `start` message (world, player name, "me", sensitivity, safe-area insets), reads
   `world_meta`, generates the terrain, and runs the web build's game loop.
-- **The switch.** The web game talks to the contract only through `SyncEngine`, which takes a
-  `WorldApi` (`net/blocks.ts` → mero-js `CalimeroClient` on the web). The mobile entry hands it
-  `v1World(bridge.exec)` instead, so `join`, `heartbeat`, `set_blocks`, `get_overrides`,
-  `get_players` and `leave` all go to the app, with the v1 names and `now` as a number. The mobile
-  entry imports the web app's modules, and the web build does not include it.
+- **The switch.** The web game talks to the contract only through `SyncEngine`, which takes an
+  `exec(method, args)` function (`GameClient.exec` → mero-js on the web). The mobile entry hands it
+  `bridge.exec` instead, so `join`, `heartbeat`, `set_blocks`, `get_overrides`, `get_players` and
+  `leave` all go to the app. **The web app's source is unchanged**: the mobile entry imports its
+  modules, and the web build does not include it.
 - **The bridge** (`game/src/bridge.ts` ↔ `Bridge.swift` / `Bridge.kt`), JSON text both ways:
 
   ```
