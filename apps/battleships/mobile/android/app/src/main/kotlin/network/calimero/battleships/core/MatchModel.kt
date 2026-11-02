@@ -8,7 +8,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
-import network.calimero.battleships.generated.game.MatchStateView
 
 /**
  * One match, from placing the fleet to the audited result. (Swift `MatchModel`; the web app's
@@ -52,9 +51,9 @@ class MatchModel(
 
     enum class Outcome { WON, LOST, AUDITING, VOID }
 
-    /** The key the match names you by (`register_player`'s answer; the account on a relay). */
+    /** The account the match names you by (`registerPlayer`'s answer). */
     val me: String = me.lowercase()
-    private val game = GameApi(backend.app.contract, ref.contextId)
+    private val game = BattleshipsContract(backend.contract, ref.appId)
 
     private val _stage = MutableStateFlow<Stage>(Stage.Loading)
     val stage: StateFlow<Stage> = _stage.asStateFlow()
@@ -130,7 +129,6 @@ class MatchModel(
             }
             return when (state.endedBy) {
                 "sunk" -> if (state.loser.equals(me, true)) "Your fleet was sunk." else "Every ship of theirs is sunk."
-                "equivocation" -> "A player answered the same shot two ways."
                 "impossible_misses" -> "Too many misses to be true: a fleet was hidden."
                 else -> null
             }
@@ -168,14 +166,14 @@ class MatchModel(
         val mine: List<Int>
         val incoming: List<Int>
         try {
-            current = game.client.getMatchState(matchId)
+            current = game.getMatchState(matchId)
             mine =
-                game.client
+                game
                     .getShots(matchId)
                     .shots
                     .map { it.toInt() }
             incoming =
-                game.client
+                game
                     .getIncomingShots(matchId)
                     .shots
                     .map { it.toInt() }
@@ -183,9 +181,8 @@ class MatchModel(
             throw e
         } catch (e: Exception) {
             if (_state.value == null) {
-                // A context the relay has not synced yet, or one this account has not joined.
+                // A match the node has not applied yet (just created on another node).
                 _syncing.value = true
-                if (attempt { backend.app.isMember(ref.contextId) } == false) attempt { backend.app.joinContext(ref.contextId) }
                 if (_stage.value !is Stage.Failed) _stage.value = Stage.Loading
             } else {
                 notice.value = ErrorText.describe(e, "Couldn't refresh the match.")
@@ -195,7 +192,7 @@ class MatchModel(
         _syncing.value = false
         var latest = current
         _shots.value = mine
-        _turn.value = game.currentTurn()
+        _turn.value = attempt { game.getCurrentTurn(matchId) }
         if (latest.committed.none { it.equals(me, true) }) {
             _state.value = latest
             _stage.value = if (latest.standing == "playing") Stage.Placing else Stage.Finished
@@ -210,17 +207,17 @@ class MatchModel(
         }
         var answers = incoming
         if (answerPendingShot(latest, board.cells)) {
-            latest = attempt { game.client.getMatchState(matchId) } ?: latest
+            latest = attempt { game.getMatchState(matchId) } ?: latest
             answers = attempt {
-                game.client
+                game
                     .getIncomingShots(matchId)
                     .shots
                     .map { it.toInt() }
             } ?: answers
-            _turn.value = game.currentTurn()
+            _turn.value = attempt { game.getCurrentTurn(matchId) }
         }
         if (revealIfDue(latest, board)) {
-            latest = attempt { game.client.getMatchState(matchId) } ?: latest
+            latest = attempt { game.getMatchState(matchId) } ?: latest
         }
         _state.value = latest
         _ownBoard.value = BoardReading.overlay(board.cells, answers)
@@ -247,7 +244,10 @@ class MatchModel(
         if (state.standing != "playing" || !shot.target.equals(me, true) || answeredShot == shot.shotId) return false
         answeredShot = shot.shotId
         val hit = BoardReading.isHit(cells, Coordinate(shot.x.toInt(), shot.y.toInt()))
-        return attempt { game.client.acknowledgeShot(ref.matchId, shot.shotId, hit) }.let { answered ->
+        return attempt {
+            game.acknowledgeShot(ref.matchId, shot.shotId, hit)
+            true
+        }.let { answered ->
             if (answered == null) answeredShot = null
             answered != null
         }
@@ -262,7 +262,7 @@ class MatchModel(
         if (state.revealed.any { it.equals(me, true) } || state.auditFailed.any { it.equals(me, true) }) return false
         revealing = true
         return try {
-            attempt { game.reveal(ref.matchId, board.cells, board.saltBytes) } != null
+            attempt { game.revealBoard(ref.matchId, board.cells, board.saltBytes) } != null
         } finally {
             revealing = false
         }
@@ -274,8 +274,8 @@ class MatchModel(
      */
     suspend fun live() {
         coroutineScope {
-            if (backend.app.canSubscribe) {
-                launch { attempt { backend.app.events(ref.contextId).collect { refresh() } } }
+            if (backend.canSubscribe) {
+                launch { attempt { backend.events(ref.appId).collect { refresh() } } }
             }
             launch {
                 while (true) {
@@ -353,7 +353,7 @@ class MatchModel(
                 notice.value = "This device refused to keep your board, so it could not answer shots."
                 return false
             }
-            game.client.commitBoard(ref.matchId, board.commitment)
+            game.commitBoard(ref.matchId, board.commitment)
             refresh()
             return true
         } catch (e: CancellationException) {
@@ -379,7 +379,7 @@ class MatchModel(
         if (!isMyTurn || _busy.value) return
         _busy.value = true
         try {
-            game.client.proposeShot(ref.matchId, target.x.toUInt(), target.y.toUInt())
+            game.proposeShot(ref.matchId, target.x, target.y)
             _aim.value = null
             refresh()
         } catch (e: CancellationException) {

@@ -1,7 +1,10 @@
 package network.calimero.battleships.core
 
+import com.calimero.mero.AppError
+import com.calimero.mero.ConfirmCancelled
+import com.calimero.mero.LoginRequired
+import com.calimero.mero.app.AppMember
 import com.calimero.mero.app.AppNamespace
-import com.calimero.mero.app.MeroAppBackend
 import com.calimero.mero.invite.InviteCodec
 import com.calimero.mero.testkit.InMemoryAppBackend
 import com.calimero.mero.testkit.RecordedContractCall
@@ -14,7 +17,6 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.int
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
@@ -24,38 +26,6 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** [BattleshipsBackend] over the SDK's [InMemoryAppBackend], remembering the service each context runs. */
-class FakeBattleshipsBackend(
-    val memory: InMemoryAppBackend = InMemoryAppBackend(),
-) : BattleshipsBackend {
-    private val services = mutableMapOf<String, String>()
-    val created = mutableListOf<Triple<String, String, JsonElement>>()
-
-    override val app: MeroAppBackend get() = memory
-
-    override suspend fun createServiceContext(
-        groupId: String,
-        applicationId: String,
-        service: String,
-        name: String,
-        initArgs: JsonElement,
-    ): String {
-        val id = memory.createContext(groupId, applicationId, name, initArgs)
-        services[id] = service
-        created += Triple(service, groupId, initArgs)
-        return id
-    }
-
-    override suspend fun serviceName(contextId: String): String? = services[contextId]
-
-    fun setService(
-        service: String,
-        contextId: String,
-    ) {
-        services[contextId] = service
-    }
-}
-
 val ME = "ab".repeat(32)
 val RIVAL = "cd".repeat(32)
 val RIVAL_ACCOUNT = "ce".repeat(32)
@@ -64,152 +34,140 @@ fun str(value: String) = JsonPrimitive(value)
 
 fun obj(vararg pairs: Pair<String, JsonElement>) = JsonObject(mapOf(*pairs))
 
+/** A `MatchSummary` as the contract answers it: u64s as decimal strings. */
 fun summary(
     id: String,
-    contextId: String? = null,
+    status: String = "Active",
 ) = obj(
     "match_id" to str(id),
     "player1" to str(ME),
     "player2" to str(RIVAL),
-    "player2_account" to str(RIVAL_ACCOUNT),
-    "status" to str("Active"),
-    "context_id" to (contextId?.let { str(it) } ?: JsonNull),
+    "player2_account" to str(RIVAL),
+    "status" to str(status),
     "winner" to JsonNull,
-    "created_ms" to JsonPrimitive(1),
+    "created_ms" to str("1700000000000"),
 )
 
 val RecordedContractCall.obj: JsonObject get() = args.jsonObject
 
 class LobbyModelTest {
     @Test
-    fun `creating a lobby founds it and starts the lobby service`() =
+    fun `creating a lobby founds an org and one instance of the package`() =
         runTest {
-            val backend = FakeBattleshipsBackend()
-            val model = LobbiesModel(backend, null)
+            val backend = InMemoryAppBackend()
+            val model = LobbiesModel(backend, Battleships.PACKAGE_NAME)
             val lobby = model.create("  Harbour  ")
             assertEquals("Harbour", lobby.name)
-            assertTrue("foundNamespace Harbour" in backend.memory.log)
-            assertEquals(listOf("lobby"), backend.created.map { it.first })
-            assertEquals(lobby.id, backend.created.first().second)
+            assertTrue("foundNamespace Harbour" in backend.log)
+            assertTrue("createContext ${lobby.id} ${Battleships.PACKAGE_NAME} Harbour" in backend.log)
+            assertEquals(1, backend.rootContexts[lobby.id]?.size)
             assertEquals(listOf(lobby.id), model.lobbies.value.map { it.id })
         }
 
     @Test
     fun `a lobby needs a name`() =
         runTest {
-            val backend = FakeBattleshipsBackend()
+            val backend = InMemoryAppBackend()
             try {
                 LobbiesModel(backend, null).create(" ")
             } catch (e: BattleshipsException) {
                 assertEquals("Give the lobby a name.", ErrorText.describe(e))
             }
-            assertTrue(backend.memory.log.isEmpty())
+            assertTrue(backend.log.isEmpty())
         }
 
     @Test
-    fun `the lobby context is found by its service not by being first`() =
+    fun `loading reads the lobby instance with camelCase views`() =
         runTest {
-            val backend = FakeBattleshipsBackend()
+            val backend = InMemoryAppBackend()
             val ns = AppNamespace("aa01", "Harbour", "app")
-            backend.memory.namespaces = listOf(ns)
-            backend.memory.rootContexts = mapOf("aa01" to listOf("game-ctx", "lobby-ctx"))
-            backend.setService("game", "game-ctx")
-            backend.setService("lobby", "lobby-ctx")
-            backend.memory.recording.handler = { call ->
+            backend.namespaces = listOf(ns)
+            backend.rootContexts = mapOf("aa01" to listOf("lobby-app"))
+            backend.groupMembers = mapOf("aa01" to listOf(AppMember(RIVAL, "Member", "Rafael")))
+            backend.recording.handler = { call ->
                 when (call.method) {
-                    "register_player" -> str(ME)
-                    "get_matches" -> JsonArray(listOf(summary("m1", "game-ctx")))
-                    "get_players" ->
+                    "registerPlayer" -> str(ME)
+                    "getMatches" -> JsonArray(listOf(summary("m1")))
+                    "getPlayers" ->
                         JsonArray(
                             listOf(
                                 obj("account" to str(ME), "player" to str(ME)),
-                                obj("account" to str(RIVAL_ACCOUNT), "player" to str(RIVAL)),
+                                obj("account" to str(RIVAL), "player" to str(RIVAL)),
                             ),
                         )
-                    "get_player_stats" -> obj("wins" to JsonPrimitive(2), "losses" to JsonPrimitive(1), "games_played" to JsonPrimitive(3))
-                    "get_history" -> JsonArray(emptyList())
+                    "getPlayerStats" -> {
+                        assertEquals(ME, call.obj["player"]?.jsonPrimitive?.content)
+                        obj("wins" to str("2"), "losses" to str("1"), "games_played" to str("3"))
+                    }
+                    "getHistory" ->
+                        JsonArray(
+                            listOf(obj("match_id" to str("m0"), "winner" to str(ME), "loser" to str(RIVAL), "finished_ms" to str("1700000000001"))),
+                        )
                     else -> JsonNull
                 }
             }
             val model = LobbyModel(backend, ns, syncAttempts = 1, syncDelayMs = 0)
             model.load()
             assertEquals(LoadPhase.Loaded, model.phase.value)
-            assertEquals("lobby-ctx", model.lobbyContextId.value)
-            assertTrue("joins the lobby when not a member", "joinContext lobby-ctx" in backend.memory.log)
+            assertEquals("lobby-app", model.appId.value)
+            val register = backend.recording.calls("registerPlayer").first()
+            assertEquals("lobby-app", register.contextId)
+            assertEquals(RecordedContractCall.Path.EXECUTE, register.path)
             assertEquals(
-                "lobby-ctx",
-                backend.memory.recording
-                    .calls("register_player")
+                RecordedContractCall.Path.QUERY,
+                backend.recording
+                    .calls("getMatches")
                     .first()
-                    .contextId,
+                    .path,
             )
             assertEquals(listOf(RIVAL), model.opponents().map { it.player })
             assertEquals(listOf("m1"), model.myMatches().map { it.matchId })
-            assertEquals(2uL, model.stats.value?.wins)
-            assertEquals("game-ctx", model.ref(model.myMatches().first())?.contextId)
+            assertEquals(1_700_000_000_000uL, model.myMatches().first().createdMs)
+            assertEquals(PlayerStatsView(2uL, 1uL, 3uL), model.stats.value)
+            assertEquals(
+                1_700_000_000_001uL,
+                model.history.value
+                    .first()
+                    .finishedMs,
+            )
+            assertEquals("names come from the org's member metadata", "Rafael", model.displayName(RIVAL))
+            assertEquals(MatchRef("aa01", "lobby-app", "m1", RIVAL), model.ref(model.myMatches().first()))
         }
 
     @Test
-    fun `challenging creates the game context beside the lobby`() =
+    fun `challenging creates the match in the lobby instance`() =
         runTest {
-            val backend = FakeBattleshipsBackend()
+            val backend = InMemoryAppBackend()
             val ns = AppNamespace("aa01", "Harbour", "app-id")
-            backend.memory.rootContexts = mapOf("aa01" to listOf("lobby-ctx"))
-            backend.setService("lobby", "lobby-ctx")
-            backend.memory.recording.handler = { call ->
+            backend.rootContexts = mapOf("aa01" to listOf("lobby-app"))
+            backend.recording.handler = { call ->
                 when (call.method) {
-                    "register_player" -> str(ME)
-                    "create_match" -> str("m9")
-                    "get_matches" -> JsonArray(listOf(summary("m9")))
+                    "registerPlayer" -> str(ME)
+                    "createMatch" -> str("m9")
+                    "getMatches" -> JsonArray(listOf(summary("m9", "Pending")))
                     else -> JsonNull
                 }
             }
             val model = LobbyModel(backend, ns, syncAttempts = 1, syncDelayMs = 0)
             model.load()
             val ref = model.challenge(RIVAL)!!
-            assertEquals("m9", ref.matchId)
-            assertEquals(listOf("game"), backend.created.map { it.first })
-            assertEquals("the game sits in the lobby's group, for the xcall", "aa01", backend.created.first().second)
-            assertEquals(
-                obj(
-                    "player1" to str(ME),
-                    "player2" to str(RIVAL),
-                    "player2_account" to str(RIVAL_ACCOUNT),
-                    "lobby_context_id" to str("lobby-ctx"),
-                    "match_id" to str("m9"),
-                ),
-                backend.created.first().third,
-            )
-            val recorded =
-                backend.memory.recording
-                    .calls("set_match_context_id")
-                    .first()
-            assertEquals(ref.contextId, recorded.obj["context_id"]?.jsonPrimitive?.content)
-            assertEquals(
-                RIVAL,
-                backend.memory.recording
-                    .calls("create_match")
-                    .first()
-                    .obj["player2"]
-                    ?.jsonPrimitive
-                    ?.content,
-            )
+            assertEquals(MatchRef("aa01", "lobby-app", "m9", RIVAL), ref)
+            val created = backend.recording.calls("createMatch").first()
+            assertEquals(obj("player2" to str(RIVAL)), created.args)
+            assertEquals("lobby-app", created.contextId)
+            assertTrue("no instance per match on 1.0", backend.log.none { it.startsWith("createContext") })
         }
 
     @Test
-    fun `a challenge to something that is not a key is refused locally`() =
+    fun `a challenge to no one is refused locally`() =
         runTest {
-            val backend = FakeBattleshipsBackend()
-            backend.memory.rootContexts = mapOf("aa01" to listOf("lobby-ctx"))
+            val backend = InMemoryAppBackend()
+            backend.rootContexts = mapOf("aa01" to listOf("lobby-app"))
             val model = LobbyModel(backend, AppNamespace("aa01", null, "a"), syncAttempts = 1, syncDelayMs = 0)
             model.load()
-            assertNull(model.challenge("nope"))
-            assertEquals("That is not a valid player key.", model.notice.value)
-            assertTrue(
-                backend.memory.recording
-                    .calls("create_match")
-                    .isEmpty(),
-            )
+            assertNull(model.challenge("  "))
+            assertEquals("That is not a valid player.", model.notice.value)
+            assertTrue(backend.recording.calls("createMatch").isEmpty())
         }
 }
 
@@ -229,7 +187,7 @@ class FakeGame {
     @Synchronized
     fun handle(call: RecordedContractCall): JsonElement? =
         when (call.method) {
-            "get_match_state" ->
+            "getMatchState" ->
                 obj(
                     "standing" to str(standing),
                     "committed" to JsonArray(committed.map { str(it) }),
@@ -249,20 +207,20 @@ class FakeGame {
                     "audit_failed" to JsonArray(emptyList()),
                     "winner" to (winner?.let { str(it) } ?: JsonNull),
                 )
-            "get_shots" -> grid(shots)
-            "get_incoming_shots" -> grid(incoming)
-            "get_current_turn" -> turn?.let { str(it) } ?: JsonNull
-            "commit_board" -> {
+            "getShots" -> grid(shots)
+            "getIncomingShots" -> grid(incoming)
+            "getCurrentTurn" -> turn?.let { str(it) } ?: JsonNull
+            "commitBoard" -> {
                 committed += ME
                 JsonNull
             }
-            "acknowledge_shot" -> {
+            "acknowledgeShot" -> {
                 pending?.let { incoming[(it[2] as Int) * 10 + (it[1] as Int)] = if (call.obj["hit"]!!.jsonPrimitive.boolean) 2 else 3 }
                 pending = null
                 turn = ME
                 str("ok")
             }
-            "propose_shot" -> {
+            "proposeShot" -> {
                 val x = call.obj["x"]!!.jsonPrimitive.int
                 val y = call.obj["y"]!!.jsonPrimitive.int
                 shots[y * 10 + x] = 4
@@ -270,7 +228,7 @@ class FakeGame {
                 turn = RIVAL
                 JsonNull
             }
-            "reveal_board" -> {
+            "revealBoard" -> {
                 revealed += ME
                 JsonNull
             }
@@ -282,11 +240,10 @@ class MatchModelTest {
     private fun model(
         game: FakeGame,
         store: InMemoryBoardStore = InMemoryBoardStore(),
-    ): Pair<MatchModel, FakeBattleshipsBackend> {
-        val backend = FakeBattleshipsBackend()
-        backend.memory.members = setOf("game-ctx")
-        backend.memory.recording.handler = { game.handle(it) }
-        val ref = MatchRef("aa01", "lobby-ctx", "m1", "game-ctx", RIVAL)
+    ): Pair<MatchModel, InMemoryAppBackend> {
+        val backend = InMemoryAppBackend()
+        backend.recording.handler = { game.handle(it) }
+        val ref = MatchRef("aa01", "lobby-app", "m1", RIVAL)
         return MatchModel(ref, ME, backend, store) to backend
     }
 
@@ -325,16 +282,16 @@ class MatchModelTest {
             val stored = store.load(ME, "m1")!!
             assertEquals(model.layout.value.cells, stored.cells)
             val commit =
-                backend.memory.recording
-                    .calls("commit_board")
+                backend.recording
+                    .calls("commitBoard")
                     .first()
             assertEquals(stored.commitment, commit.obj["commitment"]?.jsonPrimitive?.content)
             assertEquals(stored.commitment, Commitment.compute(stored.cells, stored.saltBytes))
             // Nothing but the commitment left the device: no call carries the salt or the cells.
-            backend.memory.recording.calls.forEach { call ->
+            backend.recording.calls.forEach { call ->
                 val text = call.args.toString()
                 assertFalse(stored.salt in text)
-                assertFalse("board_bytes" in text)
+                assertFalse("boardBytes" in text)
             }
             assertEquals(MatchModel.Stage.Waiting, model.stage.value)
         }
@@ -347,8 +304,8 @@ class MatchModelTest {
             model.shuffle()
             assertFalse(model.deploy())
             assertTrue(
-                backend.memory.recording
-                    .calls("commit_board")
+                backend.recording
+                    .calls("commitBoard")
                     .isEmpty(),
             )
         }
@@ -365,11 +322,12 @@ class MatchModelTest {
             val (model, backend) = model(game, store)
             model.refresh()
             val answer =
-                backend.memory.recording
-                    .calls("acknowledge_shot")
+                backend.recording
+                    .calls("acknowledgeShot")
                     .first()
             assertTrue(answer.obj["hit"]!!.jsonPrimitive.boolean)
-            assertEquals(3, answer.obj["shot_id"]!!.jsonPrimitive.int)
+            assertEquals(3, answer.obj["shotId"]!!.jsonPrimitive.int)
+            assertEquals("m1", answer.obj["matchId"]!!.jsonPrimitive.content)
             assertEquals(MatchModel.Stage.Battle, model.stage.value)
             assertEquals(Cell.HIT, model.ownBoard.value[1])
             assertTrue(model.isMyTurn)
@@ -387,14 +345,14 @@ class MatchModelTest {
             model.tapTarget(Coordinate(4, 6))
             assertEquals(Coordinate(4, 6), model.aim.value)
             assertTrue(
-                backend.memory.recording
-                    .calls("propose_shot")
+                backend.recording
+                    .calls("proposeShot")
                     .isEmpty(),
             )
             model.tapTarget(Coordinate(4, 6))
             val shot =
-                backend.memory.recording
-                    .calls("propose_shot")
+                backend.recording
+                    .calls("proposeShot")
                     .first()
             assertEquals(4, shot.obj["x"]!!.jsonPrimitive.int)
             assertEquals(6, shot.obj["y"]!!.jsonPrimitive.int)
@@ -413,15 +371,14 @@ class MatchModelTest {
             val (model, backend) = model(game, store)
             model.refresh()
             val reveal =
-                backend.memory.recording
-                    .calls("reveal_board")
+                backend.recording
+                    .calls("revealBoard")
                     .first()
-            assertEquals(
-                "the salt goes as 16 numbers, as the contract's [u8; 16] reads it",
-                Vectors.aliceSalt,
-                reveal.obj["salt"]!!.jsonArray.map { it.jsonPrimitive.int },
-            )
-            assertEquals(Commitment.boardBytes(Vectors.alice.cells), reveal.obj["board_bytes"]!!.jsonArray.map { it.jsonPrimitive.int })
+            assertEquals("lobby-app", reveal.contextId)
+            val salt = reveal.obj["salt"]!!.jsonPrimitive.content
+            assertEquals("the salt goes as base64url", Vectors.aliceSalt, Base64Url.decode(salt))
+            assertFalse("unpadded", "=" in salt)
+            assertEquals(Commitment.boardBytes(Vectors.alice.cells), Base64Url.decode(reveal.obj["boardBytes"]!!.jsonPrimitive.content))
             assertEquals(MatchModel.Stage.Finished, model.stage.value)
             assertEquals(MatchModel.Outcome.AUDITING, model.outcome)
             game.standing = "won"
@@ -430,8 +387,8 @@ class MatchModelTest {
             assertEquals(MatchModel.Outcome.WON, model.outcome)
             assertEquals(
                 "revealed once", 1,
-                backend.memory.recording
-                    .calls("reveal_board")
+                backend.recording
+                    .calls("revealBoard")
                     .size,
             )
         }
@@ -461,29 +418,41 @@ class InvitationTest {
     }
 
     @Test
-    fun `the token is the shape the web reader takes`() {
-        val token = LobbyInvitation(InMemoryAppBackend.invitation(ns), "Harbour").token()
+    fun `the token is the SDK's link shape`() {
+        val invite = InMemoryAppBackend.invitation(ns)
+        val token = LobbyInvitation(invite, "Harbour").token()
         val value = Json.parseToJsonElement(InviteCodec.decode(token)!!).jsonObject
-        val first = value["invitations"]!!.jsonArray.first().jsonObject
-        assertEquals("readLobbyInvitation reads the namespace from here", ns, first["groupId"]!!.jsonPrimitive.content)
-        assertNotNull(first["invitation"]!!.jsonObject["inviter_signature"])
+        assertEquals(invite.token, value["invitation"]!!.jsonPrimitive.content)
+        assertEquals("OrgInvitation reads the org here", ns, value["namespaceId"]!!.jsonPrimitive.content)
+        assertEquals("Harbour", value["name"]!!.jsonPrimitive.content)
+        assertEquals(
+            ns,
+            com.calimero.mero.app.OrgInvitation
+                .decode(token)
+                ?.namespaceId,
+        )
         assertEquals("Harbour", value["__lobbyName"]!!.jsonPrimitive.content)
     }
 
     @Test
-    fun `reads the single shape and refuses other apps`() {
-        val json = InMemoryAppBackend.invitation(ns).raw.toString()
+    fun `reads raw json and refuses other apps and pre-1_0 invitations`() {
+        val json = """{"invitation":"inv_abc","namespaceId":"$ns"}"""
         assertEquals(ns, LobbyInvitation.parse(json)?.namespaceId)
+        assertEquals("inv_abc", LobbyInvitation.parse(json)?.invitation?.token)
         val token = InviteCodec.encode(json)
         assertNull(LobbyInvitation.parse("https://links.calimero.network/com.calimero.chat/join?invitation=$token"))
         assertNotNull(LobbyInvitation.parse("calimero://com.calimero.battleships/join?invitation=$token"))
         assertNull(LobbyInvitation.parse("hello"))
+        assertNull(
+            "a 1.0 cluster cannot redeem a signed group invitation",
+            LobbyInvitation.parse("""{"invitation":{"group_id":[1,2]},"inviter_signature":"ff"}"""),
+        )
     }
 
     @Test
     fun `joining redeems the namespace`() =
         runTest {
-            val backend = InMemoryAppBackend().apply { hasRelay = false }
+            val backend = InMemoryAppBackend()
             val model = InvitationModel()
             assertTrue(model.open(LobbyInvitation(InMemoryAppBackend.invitation(ns), "Harbour").link()))
             assertEquals(InvitationModel.Stage.Confirm("Harbour"), model.stage.value)
@@ -491,20 +460,39 @@ class InvitationTest {
             model.accept({ backend }, { joined = true })
             assertTrue(joined)
             assertEquals(InvitationModel.Stage.Joined(ns, "Harbour"), model.stage.value)
-            assertTrue(backend.hasRelay)
+            assertTrue(backend.log.any { it.startsWith("joinNamespace $ns") })
         }
 }
 
 class ErrorTextTest {
+    private fun appError(
+        code: String,
+        message: String? = null,
+    ) = AppError(
+        "refused",
+        obj("code" to str(code), "fields" to (message?.let { obj("message" to str(it)) } ?: obj())),
+    )
+
     @Test
-    fun `reads the contract error out of its bytes`() {
-        val body = """{"kind":"Invalid","data":"not your turn"}""".toByteArray().joinToString(", ") { it.toString() }
-        assertEquals("It is not your turn yet.", ErrorText.describe(IllegalStateException("rpc failed: [$body]")))
-        assertTrue(ErrorText.isFinished(IllegalStateException("""{"kind":"Finished","data":""}""")))
+    fun `app errors in words`() {
+        assertEquals("This match is already finished.", ErrorText.describe(appError("Finished")))
+        assertTrue(ErrorText.isFinished(appError("Finished")))
+        assertEquals("Not your turn.", ErrorText.describe(appError("Invalid", "not your turn")))
+        assertTrue(ErrorText.isOpponentNotReady(appError("Invalid", "opponent must place ships first")))
+        assertEquals("That board does not match the fleet you deployed.", ErrorText.describe(appError("CommitmentMismatch")))
     }
 
     @Test
-    fun `offline is said plainly`() {
-        assertEquals("You're offline. Check your connection and try again.", ErrorText.describe(java.net.UnknownHostException("relay")))
+    fun `every contract error has words`() {
+        listOf("AlreadyCommitted", "CommitmentMismatch", "Finished", "Forbidden", "Invalid", "MatchIdCollision", "NotFound").forEach {
+            assertNotNull(it, ErrorText.appErrors[it])
+        }
+    }
+
+    @Test
+    fun `transport errors are said plainly`() {
+        assertEquals("You're offline. Check your connection and try again.", ErrorText.describe(java.net.UnknownHostException("node")))
+        assertEquals("Your session ended. Sign in again.", ErrorText.describe(LoginRequired("expired")))
+        assertEquals("You dismissed the passkey sheet, so nothing changed.", ErrorText.describe(ConfirmCancelled()))
     }
 }

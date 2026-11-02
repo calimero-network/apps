@@ -1,5 +1,6 @@
 package network.calimero.battleships.ui
 
+import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.slideInHorizontally
@@ -19,13 +20,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.outlined.Drafts
-import androidx.compose.material.icons.outlined.HowToReg
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -34,7 +36,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -51,12 +52,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.calimero.mero.app.AppNamespace
-import com.calimero.mero.app.MeroAppBackend
-import com.calimero.mero.compose.DelegatedAppBackend
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.JsonElement
 import network.calimero.battleships.BattleshipsViewModel
-import network.calimero.battleships.core.AdminBattleshipsBackend
+import network.calimero.battleships.core.Battleships
 import network.calimero.battleships.core.BattleshipsBackend
 import network.calimero.battleships.core.InvitationModel
 import network.calimero.battleships.core.LobbiesModel
@@ -64,11 +62,12 @@ import network.calimero.battleships.core.LobbyModel
 import network.calimero.battleships.core.MatchModel
 import network.calimero.battleships.core.MatchRef
 
-/** A match, who you are in it, and its lobby (for a rematch). (iOS `MatchRoute`.) */
+/** A match, who you are in it, its lobby (for a rematch), and the opponent's name there. (iOS `MatchRoute`.) */
 data class MatchRoute(
     val ref: MatchRef,
     val me: String,
     val lobby: AppNamespace,
+    val opponentName: String? = null,
 )
 
 /** Where the person is. The stack's top is on screen; Back pops it. (iOS: the NavigationStack path.) */
@@ -112,7 +111,7 @@ class Navigator(
         stack.addAll(routes)
     }
 
-    fun lobbies(): LobbiesModel = models.getOrPut(Route.Lobbies) { LobbiesModel(backend, vm.session.applicationId) } as LobbiesModel
+    fun lobbies(): LobbiesModel = models.getOrPut(Route.Lobbies) { LobbiesModel(backend, Battleships.PACKAGE_NAME) } as LobbiesModel
 
     fun lobby(route: Route.Lobby): LobbyModel = models.getOrPut(route) { LobbyModel(backend, route.lobby) } as LobbyModel
 
@@ -120,61 +119,34 @@ class Navigator(
         models.getOrPut(route) { MatchModel(route.match.ref, route.match.me, backend, vm.boards) } as MatchModel
 }
 
-/** The bundle's two services need the admin's `serviceName`, which the SDK's backend exposes as `admin`. */
-private fun battleshipsBackend(backend: MeroAppBackend): BattleshipsBackend =
-    if (backend is DelegatedAppBackend) AdminBattleshipsBackend(backend, backend.admin) else PlainBackend(backend)
-
-/** A backend with no admin to name services through: contexts get the bundle's default service. */
-private class PlainBackend(
-    override val app: MeroAppBackend,
-) : BattleshipsBackend {
-    override suspend fun createServiceContext(
-        groupId: String,
-        applicationId: String,
-        service: String,
-        name: String,
-        initArgs: JsonElement,
-    ): String = app.createContext(groupId, applicationId, name, initArgs)
-
-    override suspend fun serviceName(contextId: String): String? = null
-}
-
 /** Signed out: the sign-in screen. Signed in: the lobbies, and everything under them. */
 @Composable
 fun BattleshipsApp(
     vm: BattleshipsViewModel,
-    onSignIn: () -> Unit,
+    activity: Context,
 ) {
     BattleshipsTheme {
-        val backend by vm.session.backend.collectAsState()
-        val revision by vm.session.revision.collectAsState()
-        val restoring by vm.session.isRestoring.collectAsState()
+        val backend by vm.backend.collectAsState()
+        val revision by vm.revision.collectAsState()
+        val restoring by vm.restoring.collectAsState()
         val stage by vm.invitation.stage.collectAsState()
-        val pending by vm.session.pendingInvitation.collectAsState()
-
-        LaunchedEffect(pending) {
-            pending?.let {
-                vm.invitation.open(it)
-                vm.session.dismissPendingInvitation()
-            }
-        }
 
         val current = backend
         Box(Modifier.fillMaxSize().background(Palette.Ground)) {
             when {
                 current != null ->
                     key(revision) {
-                        val nav = remember { Navigator(battleshipsBackend(current), vm) }
-                        Stack(nav, vm)
+                        val nav = remember { Navigator(current, vm) }
+                        Stack(nav, vm, activity)
                         if (stage != InvitationModel.Stage.Idle) {
                             InvitationSheet(vm) { namespaceId, title ->
-                                nav.reset(listOf(Route.Lobby(AppNamespace(namespaceId, title, vm.session.applicationId.orEmpty()))))
+                                nav.reset(listOf(Route.Lobby(AppNamespace(namespaceId, title, Battleships.PACKAGE_NAME))))
                             }
                         }
                     }
                 restoring ->
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Palette.Ink) }
-                else -> SignInScreen(vm, (stage as? InvitationModel.Stage.Confirm)?.title, onSignIn)
+                else -> SignInScreen(vm, (stage as? InvitationModel.Stage.Confirm)?.title, activity)
             }
         }
     }
@@ -184,6 +156,7 @@ fun BattleshipsApp(
 private fun Stack(
     nav: Navigator,
     vm: BattleshipsViewModel,
+    activity: Context,
 ) {
     val top = nav.stack.last()
     BackHandler(enabled = nav.stack.size > 1) { nav.pop() }
@@ -204,6 +177,7 @@ private fun Stack(
                 LobbiesScreen(
                     model = nav.lobbies(),
                     vm = vm,
+                    activity = activity,
                     open = { nav.push(Route.Lobby(it)) },
                     openInvitation = { vm.invitation.open(it) },
                 )
@@ -215,25 +189,24 @@ private fun Stack(
     }
 }
 
-/** The front door: what Battleships is, and one way in. */
+/** The front door: what Battleships is, and the way in (Calimero Cloud or a development node). */
 @Composable
 private fun SignInScreen(
     vm: BattleshipsViewModel,
     invitedTo: String?,
-    onSignIn: () -> Unit,
+    activity: Context,
 ) {
-    val state by vm.session.client.state
-        .collectAsState()
     Column(
         Modifier
             .fillMaxSize()
             .background(Palette.Ground)
             .statusBarsPadding()
             .navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.height(40.dp))
         Box(Modifier.size(84.dp).clip(RoundedCornerShape(24.dp)).background(Palette.Lime), contentAlignment = Alignment.Center) {
             Icon(Icons.Filled.GpsFixed, contentDescription = null, tint = Palette.Ink, modifier = Modifier.size(40.dp))
         }
@@ -261,14 +234,8 @@ private fun SignInScreen(
                 Text("You're invited to “$invitedTo”. Sign in to accept.", fontSize = 15.sp, fontWeight = FontWeight.Medium, color = Palette.Ink)
             }
         }
-        Spacer(Modifier.weight(1f))
-        state.error?.let {
-            Text(it, fontSize = 14.sp, color = Palette.Danger, textAlign = TextAlign.Center)
-            Spacer(Modifier.height(12.dp))
-        }
-        PrimaryButton("Sign in with Calimero", onSignIn, icon = Icons.Outlined.HowToReg)
-        Spacer(Modifier.height(12.dp))
-        Text("You'll approve this device in your Calimero wallet.", fontSize = 13.sp, color = Palette.Muted)
+        Spacer(Modifier.height(32.dp))
+        CloudSignInPanel(vm, activity)
     }
 }
 
@@ -286,7 +253,7 @@ private fun InvitationSheet(
 
     fun accept() =
         scope.launch {
-            vm.invitation.accept({ vm.session.backend.value }, { vm.session.didJoinNamespace() })
+            vm.invitation.accept({ vm.backend.value }, { vm.didJoinNamespace() })
         }
 
     ModalBottomSheet(onDismissRequest = { if (!joining) vm.invitation.reset() }, sheetState = sheet, containerColor = Palette.Surface) {
@@ -315,12 +282,6 @@ private fun InvitationSheet(
                 is InvitationModel.Stage.Joining -> {
                     CircularProgressIndicator(color = Palette.Ink, modifier = Modifier.padding(top = 12.dp))
                     Text("Joining “${current.title}”…", fontFamily = Display, fontWeight = FontWeight.SemiBold, fontSize = 22.sp, color = Palette.Ink)
-                    Text(
-                        "This can take up to a minute when no other player is online.",
-                        fontSize = 15.sp,
-                        color = Palette.Muted,
-                        textAlign = TextAlign.Center,
-                    )
                 }
                 is InvitationModel.Stage.Joined -> {
                     SheetHeader(Icons.Filled.Check, Palette.Lime, Palette.Ink, "You're in “${current.title}”")

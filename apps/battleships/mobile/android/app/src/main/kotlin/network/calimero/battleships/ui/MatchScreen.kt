@@ -108,7 +108,7 @@ fun MatchScreen(
     var waters by remember { mutableStateOf(Waters.THEIRS) }
     var rematching by remember { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
-    val opponentName = Names.player(route.ref.opponent, route.me)
+    val opponentName = route.opponentName ?: Names.player(route.ref.opponent, route.me)
     val enemySunk = model.enemySunk(shots)
     val ownSunk = model.ownSunk(ownBoard)
     val myTurn = turn != null && state != null && model.isMyTurn
@@ -123,8 +123,8 @@ fun MatchScreen(
         rematching = true
         scope.launch {
             try {
-                val ref = MatchMaker.create(model.backend, route.lobby, route.ref.lobbyContextId, route.ref.opponent)
-                rematched(MatchRoute(ref, route.me, route.lobby))
+                val ref = MatchMaker.create(model.backend, route.lobby, route.ref.appId, route.ref.opponent)
+                rematched(MatchRoute(ref, route.me, route.lobby, route.opponentName))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -250,8 +250,8 @@ fun MatchScreen(
                 DetailsDisclosure(
                     listOf(
                         "Match" to route.ref.matchId,
-                        "Match context" to route.ref.contextId,
-                        "Lobby context" to route.ref.lobbyContextId,
+                        "Lobby app" to route.ref.appId,
+                        "Organization" to route.ref.namespaceId,
                         "You play as" to route.me,
                         "Opponent" to route.ref.opponent,
                         "Your commitment" to (model.stored?.commitment ?: ""),

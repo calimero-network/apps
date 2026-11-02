@@ -64,10 +64,10 @@ import kotlinx.coroutines.launch
 import network.calimero.battleships.core.ErrorText
 import network.calimero.battleships.core.LoadPhase
 import network.calimero.battleships.core.LobbyModel
+import network.calimero.battleships.core.MatchRecord
+import network.calimero.battleships.core.MatchStatus
+import network.calimero.battleships.core.MatchSummary
 import network.calimero.battleships.core.Names
-import network.calimero.battleships.generated.lobby.MatchRecord
-import network.calimero.battleships.generated.lobby.MatchStatus
-import network.calimero.battleships.generated.lobby.MatchSummary
 import java.text.DateFormat
 import java.util.Date
 
@@ -96,7 +96,8 @@ fun LobbyScreen(
     val me by model.me.collectAsState()
     val challenging by model.challenging.collectAsState()
     val notice by model.notice.collectAsState()
-    val lobbyContextId by model.lobbyContextId.collectAsState()
+    val appId by model.appId.collectAsState()
+    val names by model.names.collectAsState()
     val scope = rememberCoroutineScope()
     var tab by remember { mutableStateOf(LobbyTab.MATCHES) }
     var choosing by remember { mutableStateOf(false) }
@@ -128,7 +129,7 @@ fun LobbyScreen(
         scope.launch {
             model.challenge(player)?.let { ref ->
                 choosing = false
-                openMatch(MatchRoute(ref, model.me.value, model.namespace))
+                openMatch(MatchRoute(ref, model.me.value, model.namespace, model.displayName(ref.opponent)))
             }
         }
     }
@@ -138,7 +139,7 @@ fun LobbyScreen(
 
     Column(Modifier.fillMaxSize().background(Palette.Ground)) {
         TopBar(model.name, back) {
-            IconButton(onClick = ::invite, enabled = !inviting && lobbyContextId != null) {
+            IconButton(onClick = ::invite, enabled = !inviting && appId != null) {
                 if (inviting) {
                     CircularProgressIndicator(Modifier.size(18.dp), color = Palette.Ink, strokeWidth = 2.dp)
                 } else {
@@ -192,8 +193,8 @@ fun LobbyScreen(
                                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                             mine.forEach { match ->
                                                 val ref = model.ref(match)
-                                                MatchRow(match, model.opponent(match), me, enabled = ref != null) {
-                                                    ref?.let { openMatch(MatchRoute(it, me, model.namespace)) }
+                                                MatchRow(match, model.opponent(match), me, names, enabled = ref != null) {
+                                                    ref?.let { openMatch(MatchRoute(it, me, model.namespace, model.displayName(it.opponent))) }
                                                 }
                                             }
                                         }
@@ -202,7 +203,7 @@ fun LobbyScreen(
                                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                         PlayerRow("You", me, isYou = true, busy = false, challenge = null)
                                         opponents.forEach { entry ->
-                                            PlayerRow(Names.player(entry.player, me), entry.player, false, challenging == entry.player) {
+                                            PlayerRow(Names.player(entry.player, me, names), entry.player, false, challenging == entry.player) {
                                                 challenge(entry.player)
                                             }
                                         }
@@ -222,7 +223,7 @@ fun LobbyScreen(
                                         if (sorted.isEmpty()) {
                                             EmptyState(Icons.Outlined.Schedule, "No results yet", "Finished matches in this lobby show up here.")
                                         } else {
-                                            sorted.forEach { HistoryRow(it, me) }
+                                            sorted.forEach { HistoryRow(it, me, names) }
                                         }
                                     }
                             }
@@ -242,7 +243,6 @@ fun LobbyScreen(
         ChallengeSheet(
             model = model,
             opponents = opponents,
-            me = me,
             challenging = challenging,
             close = { choosing = false },
             challenge = ::challenge,
@@ -262,6 +262,7 @@ private fun MatchRow(
     match: MatchSummary,
     opponent: String,
     me: String,
+    names: Map<String, String>,
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
@@ -270,7 +271,7 @@ private fun MatchRow(
         when (won) {
             true -> Icons.Filled.EmojiEvents
             false -> Icons.Outlined.Flag
-            null -> if (match.contextId == null) Icons.Outlined.HourglassEmpty else Icons.Filled.GpsFixed
+            null -> if (match.status == MatchStatus.Pending) Icons.Outlined.HourglassEmpty else Icons.Filled.GpsFixed
         }
     val tone =
         when (won) {
@@ -283,7 +284,7 @@ private fun MatchRow(
             SymbolTile(icon, tone = tone, size = 44.dp)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text("vs ${Names.player(opponent, me)}", fontFamily = Display, fontWeight = FontWeight.SemiBold, fontSize = 17.sp, color = Palette.Ink)
+                Text("vs ${Names.player(opponent, me, names)}", fontFamily = Display, fontWeight = FontWeight.SemiBold, fontSize = 17.sp, color = Palette.Ink)
                 Text(formatMs(match.createdMs), fontSize = 13.sp, color = Palette.Muted)
             }
             when (won) {
@@ -291,7 +292,7 @@ private fun MatchRow(
                 false -> Badge("Lost", BadgeTone.NEUTRAL)
                 null ->
                     when {
-                        match.contextId == null -> Badge("Setting up", BadgeTone.PENDING)
+                        match.status == MatchStatus.Pending -> Badge("Deploying", BadgeTone.PENDING)
                         match.status == MatchStatus.Finished -> Badge("Over", BadgeTone.NEUTRAL)
                         else -> Badge("In play", BadgeTone.NEUTRAL)
                     }
@@ -347,6 +348,7 @@ private fun StatTile(
 private fun HistoryRow(
     result: MatchRecord,
     me: String,
+    names: Map<String, String>,
 ) {
     val mine =
         when {
@@ -356,9 +358,9 @@ private fun HistoryRow(
         }
     val title =
         when (mine) {
-            true -> "You beat ${Names.player(result.loser, me)}"
-            false -> "${Names.player(result.winner, me)} beat you"
-            null -> "${Names.player(result.winner, me)} beat ${Names.player(result.loser, me)}"
+            true -> "You beat ${Names.player(result.loser, me, names)}"
+            false -> "${Names.player(result.winner, me, names)} beat you"
+            null -> "${Names.player(result.winner, me, names)} beat ${Names.player(result.loser, me, names)}"
         }
     val icon =
         when (mine) {
@@ -383,8 +385,7 @@ private fun HistoryRow(
 @Composable
 private fun ChallengeSheet(
     model: LobbyModel,
-    opponents: List<network.calimero.battleships.generated.lobby.PlayerEntry>,
-    me: String,
+    opponents: List<network.calimero.battleships.core.PlayerEntry>,
     challenging: String?,
     close: () -> Unit,
     challenge: (String) -> Unit,
@@ -404,7 +405,7 @@ private fun ChallengeSheet(
                 } else {
                     SectionLabel("Challenge")
                     opponents.forEach { entry ->
-                        PlayerRow(Names.player(entry.player, me), entry.player, false, challenging == entry.player) { challenge(entry.player) }
+                        PlayerRow(model.displayName(entry.player), entry.player, false, challenging == entry.player) { challenge(entry.player) }
                     }
                     notice?.let { Text(it, fontSize = 14.sp, color = Palette.Danger) }
                 }
