@@ -25,6 +25,7 @@ import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Business
 import androidx.compose.material.icons.outlined.Drafts
+import androidx.compose.material.icons.outlined.Verified
 import androidx.compose.material.icons.outlined.ViewWeek
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -77,6 +78,7 @@ fun WorkspacesScreen(
     var joining by remember { mutableStateOf(false) }
     var addingTo by remember { mutableStateOf<Workspace?>(null) }
     var menu by remember { mutableStateOf(false) }
+    var approvals by remember { mutableStateOf(false) }
     LaunchedEffect(model) { model.load() }
 
     Scaffold(
@@ -89,7 +91,15 @@ fun WorkspacesScreen(
                     Box {
                         IconButton(onClick = { menu = true }) { Icon(Icons.Outlined.AccountCircle, contentDescription = "Account") }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                            vm.session.account?.let { DropdownMenuItem(text = { Text("Signed in as ${Account.short(it)}") }, onClick = {}, enabled = false) }
+                            vm.account?.let { DropdownMenuItem(text = { Text("Signed in as ${Account.short(it)}") }, onClick = {}, enabled = false) }
+                            DropdownMenuItem(
+                                text = { Text("Approvals") },
+                                leadingIcon = { Icon(Icons.Outlined.Verified, contentDescription = null) },
+                                onClick = {
+                                    menu = false
+                                    approvals = true
+                                },
+                            )
                             DropdownMenuItem(
                                 text = { Text("Sign out", color = Palette.danger) },
                                 leadingIcon = { Icon(Icons.AutoMirrored.Outlined.Logout, contentDescription = null, tint = Palette.danger) },
@@ -130,11 +140,7 @@ fun WorkspacesScreen(
                                 EmptyState(
                                     Icons.Outlined.Business,
                                     "No workspaces yet",
-                                    if (model.hasRelay) {
-                                        "Start one for your team, or open an invitation link someone sent you."
-                                    } else {
-                                        "Your account has no relay yet. Join a workspace with an invitation link first."
-                                    },
+                                    "Start one for your team, or open an invitation link someone sent you.",
                                 )
                             }
                         }
@@ -142,7 +148,7 @@ fun WorkspacesScreen(
                 }
                 item {
                     Column(Modifier.padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        if (model.hasRelay) PrimaryButton("New workspace", onClick = { creating = true }, icon = Icons.Outlined.Add)
+                        PrimaryButton("New workspace", onClick = { creating = true }, icon = Icons.Outlined.Add)
                         SecondaryButton("Join with an invitation", onClick = { joining = true }, icon = Icons.Outlined.Drafts, modifier = Modifier.fillMaxWidth())
                     }
                 }
@@ -152,6 +158,7 @@ fun WorkspacesScreen(
     if (creating) NewWorkspaceSheet(model, onDismiss = { creating = false }) { vm.open(it) }
     addingTo?.let { ws -> AddPipelineSheet(model, ws, onDismiss = { addingTo = null }) { vm.open(it) } }
     if (joining) JoinSheet(vm, model, onDismiss = { joining = false })
+    if (approvals) ApprovalsSheet(vm, orgs = workspaces.map { it.id to it.title }, onDismiss = { approvals = false })
 }
 
 @Composable
@@ -345,7 +352,7 @@ fun InvitationSheet(
     val scope = rememberCoroutineScope()
     CrmSheet(
         invitation?.workspaceName?.let { "Join $it?" } ?: "Join this workspace?",
-        onDismiss = { vm.session.dismissPendingInvitation() },
+        onDismiss = { vm.dismissPendingInvitation() },
         action = if (busy) "Joining…" else "Join workspace",
         busy = busy,
         enabled = invitation != null,
@@ -355,7 +362,7 @@ fun InvitationSheet(
             val inv = invitation ?: return@CrmSheet
             scope.launch {
                 val id = model.join(inv) ?: return@launch
-                vm.session.dismissPendingInvitation()
+                vm.dismissPendingInvitation()
                 vm.didJoin()
                 vm.open(model.workspace(id)?.pipelines?.singleOrNull())
             }

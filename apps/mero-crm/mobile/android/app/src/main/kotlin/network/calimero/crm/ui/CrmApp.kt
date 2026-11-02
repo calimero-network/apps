@@ -14,7 +14,8 @@ import network.calimero.crm.app.WorkspacesModel
 
 /** What the screens need from the activity. */
 class Platform(
-    val signIn: () -> Unit,
+    /** Sign in on a Calimero Cloud cluster (name or node URL) with the device's passkey; `create` makes an account named `name`. */
+    val signIn: (cluster: String, create: Boolean, name: String) -> Unit,
     val share: (title: String, text: String) -> Unit,
     val copy: (label: String, text: String) -> Unit,
     val open: (url: String) -> Unit,
@@ -27,16 +28,16 @@ fun CrmApp(
     platform: Platform,
 ) {
     CrmTheme {
-        val backend by vm.session.backend.collectAsState()
-        val revision by vm.session.revision.collectAsState()
+        val backend by vm.backend.collectAsState()
+        val revision by vm.revision.collectAsState()
         val open by vm.openPipeline.collectAsState()
-        val pending by vm.session.pendingInvitation.collectAsState()
+        val pending by vm.pendingInvitation.collectAsState()
         Box(Modifier.fillMaxSize().background(Palette.background)) {
             val current = backend
             if (current == null) {
                 SignInScreen(vm, platform)
             } else {
-                val workspaces = remember(current, revision) { WorkspacesModel(current, vm.session.applicationId, vm.names) }
+                val workspaces = remember(current, revision) { WorkspacesModel(current, vm.applicationId, vm.names) }
                 val pipeline = open
                 if (pipeline == null) {
                     WorkspacesScreen(vm, workspaces)

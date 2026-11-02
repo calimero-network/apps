@@ -109,13 +109,13 @@ class Script {
     fun answer(call: RecordedContractCall): JsonElement? {
         failRead?.let { if (call.path == RecordedContractCall.Path.QUERY) throw it }
         return when (call.method) {
-            "list_stages" -> Json.encodeToJsonElement(ListSerializer(StageView.serializer()), stages)
-            "list_deals" -> Json.encodeToJsonElement(ListSerializer(DealView.serializer()), deals)
-            "list_contacts" -> Json.encodeToJsonElement(ListSerializer(ContactView.serializer()), contacts)
-            "list_activities" -> Json.encodeToJsonElement(ListSerializer(ActivityView.serializer()), activities)
-            "list_automations" -> Json.encodeToJsonElement(ListSerializer(AutomationView.serializer()), emptyList())
-            "get_settings" -> Json.encodeToJsonElement(Settings.serializer(), settings)
-            "create_deal", "create_contact", "add_activity", "add_note", "add_stage" -> JsonPrimitive("new-${call.method}")
+            "listStages" -> Json.encodeToJsonElement(ListSerializer(StageView.serializer()), stages)
+            "listDeals" -> Json.encodeToJsonElement(ListSerializer(DealView.serializer()), deals)
+            "listContacts" -> Json.encodeToJsonElement(ListSerializer(ContactView.serializer()), contacts)
+            "listActivities" -> Json.encodeToJsonElement(ListSerializer(ActivityView.serializer()), activities)
+            "listAutomations" -> Json.encodeToJsonElement(ListSerializer(AutomationView.serializer()), emptyList())
+            "getSettings" -> Json.encodeToJsonElement(Settings.serializer(), settings)
+            "createDeal", "createContact", "addActivity", "addNote", "addStage" -> JsonPrimitive("new-${call.method}")
             else -> JsonNull
         }
     }

@@ -18,7 +18,7 @@ subprojects {
         ignoreFailures.set(false)
         filter {
             exclude { entry -> entry.file.path.contains("/build/") }
-            // The contract client is generated from logic/res/abi.json (see README): not hand-formatted.
+            // The contract client is written from logic/res/abi.json, one line per method (see README).
             exclude { entry -> entry.file.path.contains("/generated/") }
         }
     }

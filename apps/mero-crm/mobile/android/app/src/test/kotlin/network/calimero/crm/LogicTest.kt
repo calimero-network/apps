@@ -1,8 +1,21 @@
 package network.calimero.crm
 
+import com.calimero.mero.AppError
+import com.calimero.mero.ConfirmCancelled
+import com.calimero.mero.ConsentStale
+import com.calimero.mero.LoginRequired
+import com.calimero.mero.ReleaseDeadlineError
+import com.calimero.mero.UnavailableError
+import com.calimero.mero.WrongNode
+import com.calimero.mero.app.OrgInvitation
 import com.calimero.mero.invite.InviteCodec
 import com.calimero.mero.invite.InviteLink
 import com.calimero.mero.testkit.InMemoryAppBackend
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import network.calimero.crm.core.Account
 import network.calimero.crm.core.ActivityBucket
 import network.calimero.crm.core.ActivityKind
@@ -13,6 +26,7 @@ import network.calimero.crm.core.DealDraft
 import network.calimero.crm.core.DealField
 import network.calimero.crm.core.DueLabel
 import network.calimero.crm.core.DueTone
+import network.calimero.crm.core.ErrorText
 import network.calimero.crm.core.ForecastMonth
 import network.calimero.crm.core.HealthLevel
 import network.calimero.crm.core.Insights
@@ -204,7 +218,7 @@ class LogicTest {
     }
 
     @Test
-    fun `invitation round-trips in the web format and refuses other apps`() {
+    fun `invitation round-trips in the SDK link shape and refuses other apps`() {
         val ns = "12".repeat(32)
         val signed = InMemoryAppBackend.invitation(ns)
         val link = CrmInvitation(signed, "Acme Inc").link()
@@ -215,8 +229,14 @@ class LogicTest {
         val token = InviteLink.tokenFromPasted(link)!!
         assertNotNull(CrmInvitation.parse(token))
         val json = InviteCodec.decode(token)!!
-        assertTrue(json.contains("\"kind\":\"namespace\""))
-        assertTrue(json.contains("\"groupAlias\":\"Acme Inc\""))
+        val value = Json.parseToJsonElement(json).jsonObject
+        assertEquals(signed.token, value["invitation"]?.jsonPrimitive?.content)
+        assertEquals(ns, value["namespaceId"]?.jsonPrimitive?.content)
+        assertEquals("Acme Inc", value["name"]?.jsonPrimitive?.content)
+        assertEquals("Acme Inc", OrgInvitation.decode(token)?.name)
+        assertEquals(signed.token, parsed.invitation.token)
+        val pre10 = """{"invitation":{"invitation":{"group_id":[1]},"inviter_signature":"ff"},"groupId":"12"}"""
+        assertNull(CrmInvitation.parseJson(pre10))
         assertNull(CrmInvitation.parse(link.replace("com.calimero.mero-crm", "com.calimero.chat")))
         assertNull(CrmInvitation.parse("not a link"))
     }
@@ -234,5 +254,25 @@ class LogicTest {
         assertNull(d.closeMs(utc))
         val close = d.copy(expectedClose = LocalDate.of(2026, 10, 28)).closeMs(utc)!!
         assertEquals(12, Instant.ofEpochMilli(close.toLong()).atZone(utc).hour)
+    }
+
+    @Test
+    fun `calimero refusals read as plain words`() {
+        fun app(
+            code: String,
+            vararg fields: Pair<String, String>,
+        ) = AppError(
+            "app error",
+            JsonObject(mapOf("code" to JsonPrimitive(code), "fields" to JsonObject(fields.associate { it.first to JsonPrimitive(it.second) }))),
+        )
+        assertEquals("Only the creator may delete this deal.", ErrorText.describe(app("Forbidden", "message" to "only the creator may delete this deal")))
+        assertTrue(ErrorText.describe(app("NotFound", "what" to "deal", "id" to "d9")).startsWith("That deal no longer exists."))
+        assertEquals("Note must not be empty.", ErrorText.describe(app("Invalid", "message" to "note must not be empty")))
+        assertEquals("The passkey prompt was cancelled, so nothing changed.", ErrorText.describe(ConfirmCancelled()))
+        assertEquals("Your session ended. Sign in again.", ErrorText.describe(LoginRequired("expired")))
+        assertTrue(ErrorText.describe(ReleaseDeadlineError("", JsonObject(mapOf("release" to JsonPrimitive("1.4.0"))))).contains("1.4.0"))
+        assertTrue(ErrorText.describe(ConsentStale("")).contains("review it again"))
+        assertTrue(ErrorText.describe(WrongNode("")).contains("node"))
+        assertTrue(ErrorText.describe(UnavailableError("TIMEOUT", "")).contains("timeout"))
     }
 }

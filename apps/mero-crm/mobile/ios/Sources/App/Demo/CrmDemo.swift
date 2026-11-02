@@ -108,32 +108,32 @@ enum CrmDemo {
 
             switch call.method {
             // Reads
-            case "list_stages":
+            case "listStages":
                 return try DemoReply.json(p.stages.sorted { $0.position < $1.position })
-            case "list_deals":
+            case "listDeals":
                 let status = call.string("status")
-                let stage = call.string("stage_id")
+                let stage = call.string("stageId")
                 let owner = call.string("owner")
                 let rows = p.deals
                     .filter { status == nil || $0.status == status }
                     .filter { stage == nil || $0.stageId == stage }
                     .filter { owner == nil || $0.owner == owner }
                 return try DemoReply.json(rows.map { view($0, p) })
-            case "list_contacts":
+            case "listContacts":
                 return try DemoReply.json(p.contacts.map { view($0, p) })
-            case "list_activities":
-                let dealId = call.string("deal_id")
+            case "listActivities":
+                let dealId = call.string("dealId")
                 let done = call.args["done"] as? Bool
                 let rows = p.activities
                     .filter { dealId == nil || $0.dealId == dealId }
                     .filter { done == nil || $0.done == done }
                 return try DemoReply.json(rows.map { activityView($0, p) })
-            case "list_automations":
+            case "listAutomations":
                 return try DemoReply.json(p.automations)
-            case "get_settings":
+            case "getSettings":
                 return try DemoReply.json(p.settings)
-            case "get_deal":
-                guard let id = call.string("deal_id"), let d = p.deals.first(where: { $0.id == id }) else {
+            case "getDeal":
+                guard let id = call.string("dealId"), let d = p.deals.first(where: { $0.id == id }) else {
                     throw DemoContractError("Deal not found")
                 }
                 let detail = DealDetail(
@@ -143,43 +143,43 @@ enum CrmDemo {
                 return try DemoReply.json(detail)
 
             // Deals
-            case "create_deal":
+            case "createDeal":
                 let id = mint("deal")
-                let stageId = call.string("stage_id") ?? p.stages.first?.id ?? ""
+                let stageId = call.string("stageId") ?? p.stages.first?.id ?? ""
                 p.deals.append(
                     DealRecord(
                         id: id, title: call.string("title") ?? "", value: u64(call, "value") ?? 0,
-                        organization: call.string("organization") ?? "", contactId: call.string("contact_id"),
+                        organization: call.string("organization") ?? "", contactId: call.string("contactId"),
                         owner: call.string("owner") ?? CrmDemo.me, stageId: stageId, status: "open", lostReason: "",
-                        expectedClose: u64(call, "expected_close"), source: call.string("source") ?? "",
+                        expectedClose: u64(call, "expectedClose"), source: call.string("source") ?? "",
                         stageEnteredAt: nowMs, closedAt: nil, createdBy: CrmDemo.me, createdAt: nowMs))
                 fireAutomations(&p, dealId: id, stageId: stageId, nowMs: nowMs)
                 return try DemoReply.json(id)
-            case "update_deal":
-                if let id = call.string("deal_id"), let i = p.deals.firstIndex(where: { $0.id == id }) {
+            case "updateDeal":
+                if let id = call.string("dealId"), let i = p.deals.firstIndex(where: { $0.id == id }) {
                     p.deals[i].title = call.string("title") ?? p.deals[i].title
                     p.deals[i].value = u64(call, "value") ?? p.deals[i].value
                     p.deals[i].organization = call.string("organization") ?? p.deals[i].organization
-                    p.deals[i].contactId = call.string("contact_id")
+                    p.deals[i].contactId = call.string("contactId")
                     p.deals[i].owner = call.string("owner")
-                    p.deals[i].expectedClose = u64(call, "expected_close")
+                    p.deals[i].expectedClose = u64(call, "expectedClose")
                     p.deals[i].source = call.string("source") ?? p.deals[i].source
                 }
-            case "move_deal":
-                if let id = call.string("deal_id"), let stageId = call.string("stage_id"),
+            case "moveDeal":
+                if let id = call.string("dealId"), let stageId = call.string("stageId"),
                     let i = p.deals.firstIndex(where: { $0.id == id }), p.deals[i].stageId != stageId
                 {
                     p.deals[i].stageId = stageId
                     p.deals[i].stageEnteredAt = nowMs
                     fireAutomations(&p, dealId: id, stageId: stageId, nowMs: nowMs)
                 }
-            case "mark_won", "mark_lost", "reopen_deal":
-                if let id = call.string("deal_id"), let i = p.deals.firstIndex(where: { $0.id == id }) {
+            case "markWon", "markLost", "reopenDeal":
+                if let id = call.string("dealId"), let i = p.deals.firstIndex(where: { $0.id == id }) {
                     switch call.method {
-                    case "mark_won":
+                    case "markWon":
                         p.deals[i].status = "won"
                         p.deals[i].closedAt = nowMs
-                    case "mark_lost":
+                    case "markLost":
                         p.deals[i].status = "lost"
                         p.deals[i].lostReason = call.string("reason") ?? ""
                         p.deals[i].closedAt = nowMs
@@ -189,110 +189,110 @@ enum CrmDemo {
                         p.deals[i].closedAt = nil
                     }
                 }
-            case "delete_deal":
-                let id = call.string("deal_id")
+            case "deleteDeal":
+                let id = call.string("dealId")
                 p.deals.removeAll { $0.id == id }
                 p.activities.removeAll { $0.dealId == id }
                 p.notes.removeAll { $0.dealId == id }
 
             // Activities and notes
-            case "add_activity":
+            case "addActivity":
                 let id = mint("activity")
                 p.activities.append(
                     ActivityView(
-                        id: id, dealId: call.string("deal_id"), contactId: call.string("contact_id"),
+                        id: id, dealId: call.string("dealId"), contactId: call.string("contactId"),
                         kind: call.string("kind") ?? "task", subject: call.string("subject") ?? "",
-                        dueAt: u64(call, "due_at") ?? nowMs, done: false, owner: call.string("owner") ?? CrmDemo.me,
+                        dueAt: u64(call, "dueAt") ?? nowMs, done: false, owner: call.string("owner") ?? CrmDemo.me,
                         note: call.string("note") ?? "", createdBy: CrmDemo.me, createdAt: nowMs))
                 return try DemoReply.json(id)
-            case "set_activity_done":
-                if let id = call.string("activity_id"), let i = p.activities.firstIndex(where: { $0.id == id }) {
+            case "setActivityDone":
+                if let id = call.string("activityId"), let i = p.activities.firstIndex(where: { $0.id == id }) {
                     let done = call.args["done"] as? Bool ?? true
                     p.activities[i].done = done
                     p.activities[i].doneAt = done ? nowMs : nil
                 }
-            case "reschedule_activity":
-                if let id = call.string("activity_id"), let i = p.activities.firstIndex(where: { $0.id == id }),
-                    let due = u64(call, "due_at")
+            case "rescheduleActivity":
+                if let id = call.string("activityId"), let i = p.activities.firstIndex(where: { $0.id == id }),
+                    let due = u64(call, "dueAt")
                 {
                     p.activities[i].dueAt = due
                 }
-            case "delete_activity":
-                let id = call.string("activity_id")
+            case "deleteActivity":
+                let id = call.string("activityId")
                 p.activities.removeAll { $0.id == id }
-            case "add_note":
+            case "addNote":
                 let id = mint("note")
                 p.notes.append(
                     NoteView(
-                        id: id, dealId: call.string("deal_id") ?? "", author: CrmDemo.me, body: call.string("body") ?? "",
+                        id: id, dealId: call.string("dealId") ?? "", author: CrmDemo.me, body: call.string("body") ?? "",
                         createdAt: nowMs))
                 return try DemoReply.json(id)
-            case "delete_note":
-                let id = call.string("note_id")
+            case "deleteNote":
+                let id = call.string("noteId")
                 p.notes.removeAll { $0.id == id }
 
             // People
-            case "create_contact":
+            case "createContact":
                 let id = mint("contact")
                 p.contacts.append(
                     ContactRecord(
                         id: id, name: call.string("name") ?? "", email: call.string("email") ?? "",
                         phone: call.string("phone") ?? "", organization: call.string("organization") ?? "",
-                        jobTitle: call.string("job_title") ?? "", createdBy: CrmDemo.me, createdAt: nowMs))
+                        jobTitle: call.string("jobTitle") ?? "", createdBy: CrmDemo.me, createdAt: nowMs))
                 return try DemoReply.json(id)
-            case "update_contact":
-                if let id = call.string("contact_id"), let i = p.contacts.firstIndex(where: { $0.id == id }) {
+            case "updateContact":
+                if let id = call.string("contactId"), let i = p.contacts.firstIndex(where: { $0.id == id }) {
                     p.contacts[i].name = call.string("name") ?? p.contacts[i].name
                     p.contacts[i].email = call.string("email") ?? p.contacts[i].email
                     p.contacts[i].phone = call.string("phone") ?? p.contacts[i].phone
                     p.contacts[i].organization = call.string("organization") ?? p.contacts[i].organization
-                    p.contacts[i].jobTitle = call.string("job_title") ?? p.contacts[i].jobTitle
+                    p.contacts[i].jobTitle = call.string("jobTitle") ?? p.contacts[i].jobTitle
                 }
-            case "delete_contact":
-                let id = call.string("contact_id")
+            case "deleteContact":
+                let id = call.string("contactId")
                 p.contacts.removeAll { $0.id == id }
                 for i in p.deals.indices where p.deals[i].contactId == id { p.deals[i].contactId = nil }
 
             // Pipeline setup
-            case "add_stage":
+            case "addStage":
                 let id = mint("stage")
                 let position = UInt32((p.stages.map(\.position).max() ?? 0) + 1)
                 p.stages.append(
                     StageView(id: id, name: call.string("name") ?? "", probability: u32(call, "probability"), position: position))
                 return try DemoReply.json(id)
-            case "update_stage":
-                if let id = call.string("stage_id"), let i = p.stages.firstIndex(where: { $0.id == id }) {
+            case "updateStage":
+                if let id = call.string("stageId"), let i = p.stages.firstIndex(where: { $0.id == id }) {
                     p.stages[i].name = call.string("name") ?? p.stages[i].name
                     p.stages[i].probability = u32(call, "probability")
                 }
-            case "delete_stage":
-                let id = call.string("stage_id")
+            case "deleteStage":
+                let id = call.string("stageId")
                 if p.deals.contains(where: { $0.stageId == id && $0.status == "open" }) {
                     throw DemoContractError("Move this stage's open deals first")
                 }
                 p.stages.removeAll { $0.id == id }
-            case "reorder_stages":
-                for (n, id) in (call.strings("stage_ids") ?? []).enumerated() {
+            case "reorderStages":
+                for (n, id) in (call.strings("stageIds") ?? []).enumerated() {
                     if let i = p.stages.firstIndex(where: { $0.id == id }) { p.stages[i].position = UInt32(n) }
                 }
-            case "set_currency":
+            case "setCurrency":
                 p.settings.currency = call.string("currency") ?? p.settings.currency
-            case "set_rotting_days":
+            case "setRottingDays":
                 p.settings.rottingDays = u32(call, "days")
-            case "add_automation":
+            case "addAutomation":
                 let id = mint("automation")
                 p.automations.append(
                     AutomationView(
-                        id: id, stageId: call.string("stage_id") ?? "", kind: call.string("kind") ?? "task",
-                        subject: call.string("subject") ?? "", dueInDays: u32(call, "due_in_days"), enabled: true,
+                        id: id, stageId: call.string("stageId") ?? "", kind: call.string("kind") ?? "task",
+                        subject: call.string("subject") ?? "", dueInDays: u32(call, "dueInDays"), enabled: true,
                         createdBy: CrmDemo.me, createdAt: nowMs))
                 return try DemoReply.json(id)
-            case "set_automation_enabled":
-                if let id = call.string("automation_id"), let i = p.automations.firstIndex(where: { $0.id == id }) {
+            case "setAutomationEnabled":
+                if let id = call.string("automationId"), let i = p.automations.firstIndex(where: { $0.id == id }) {
                     p.automations[i].enabled = call.args["enabled"] as? Bool ?? true
                 }
-            case "delete_automation":
-                let id = call.string("automation_id")
+            case "deleteAutomation":
+                let id = call.string("automationId")
                 p.automations.removeAll { $0.id == id }
             default:
                 break
@@ -352,7 +352,8 @@ enum CrmDemo {
             return DemoIds.hex("\(kind):new:\(next)")
         }
 
-        private func u64(_ call: DemoCall, _ key: String) -> UInt64? { (call.args[key] as? NSNumber)?.uint64Value }
+        /// A u64 argument: a decimal string, as the contract takes it.
+        private func u64(_ call: DemoCall, _ key: String) -> UInt64? { (call.args[key] as? String).flatMap { UInt64($0) } }
         private func u32(_ call: DemoCall, _ key: String) -> UInt32 { (call.args[key] as? NSNumber)?.uint32Value ?? 0 }
     }
 

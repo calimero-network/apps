@@ -1,19 +1,31 @@
 package network.calimero.crm.core
 
-import com.calimero.mero.account.NoRelayException
+import com.calimero.mero.AppError
+import com.calimero.mero.CalimeroError
+import com.calimero.mero.ConfirmCancelled
+import com.calimero.mero.ConfirmRequired
+import com.calimero.mero.ConsentStale
+import com.calimero.mero.LoginRequired
+import com.calimero.mero.NotFound
+import com.calimero.mero.PasskeyCancelled
+import com.calimero.mero.ReleaseDeadlineError
+import com.calimero.mero.UnavailableError
+import com.calimero.mero.WrongNode
 import com.calimero.mero.app.MeroAppBackend
-import com.calimero.mero.http.AuthRevokedException
-import com.calimero.mero.http.NetworkException
+import com.calimero.mero.app.PasskeyRequired
+import com.calimero.mero.app.SignedOutException
 import com.calimero.mero.invite.InviteCodec
-import com.calimero.mero.relay.IntentRefusedException
+import com.calimero.mero.tee.TeeTrustException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import network.calimero.crm.generated.ContextContractCalling
 import network.calimero.crm.generated.CrmClient
 import java.io.IOException
 
-/** The client for one pipeline (one context), over the account's relay. */
+/** The client for one pipeline (one app instance), over the account's node session. */
 fun crmClient(
     backend: MeroAppBackend,
     contextId: String,
@@ -90,17 +102,52 @@ sealed class CrmException(
 
 /** Words a person can act on, for any failure the app sees. */
 object ErrorText {
+    @Suppress("CyclomaticComplexMethod")
     fun describe(error: Throwable): String =
         when (error) {
-            is NoRelayException -> "No relay serves your account yet. Join a workspace with an invitation link first."
-            is IntentRefusedException -> "The relay refused this (${error.status}): ${error.reason}"
-            is NetworkException -> "The relay can't be reached: ${error.message}"
-            is AuthRevokedException -> "Your session was revoked. Sign out and sign in again."
+            is SignedOutException -> "You're signed out. Sign in again."
+            is ConfirmCancelled, is PasskeyCancelled -> "The passkey prompt was cancelled, so nothing changed."
+            is PasskeyRequired, is ConfirmRequired -> "This needs your passkey. Sign in again on this phone and retry."
+            is LoginRequired -> "Your session ended. Sign in again."
+            is WrongNode -> "This node can't serve your account right now. Try again, or sign in to another node of your cluster."
+            is ReleaseDeadlineError ->
+                if (error.release.isEmpty()) {
+                    "Your cluster is waiting for a node release to be approved. Open Approvals to review it."
+                } else {
+                    "Your cluster is waiting for node release ${error.release} to be approved. Open Approvals to review it."
+                }
+            is ConsentStale -> "What you were approving changed in the meantime. Open Approvals and review it again."
+            is AppError -> appError(error)
+            is UnavailableError -> "The cluster is busy (${error.reason}). Try again in a moment."
+            is NotFound -> "This pipeline isn't there any more, or you're no longer a member of its workspace."
+            is CalimeroError -> error.nodeMessage.ifEmpty { "The node refused this (${error.code})." }
+            is TeeTrustException -> "The node could not be verified: ${error.message}"
             is SerializationException ->
                 "The pipeline answered in a shape this app does not read. It may run a different version of Mero CRM."
-            is IOException -> "The relay can't be reached. Check your connection and try again."
+            is IOException -> "The cluster can't be reached. Check your connection and try again."
             else -> error.message ?: error.toString()
         }
+
+    /** The contract's own refusals (`422 APP_ERROR`, `{code, fields}`): `NotFound {what, id}`, `Invalid {message}`, `Forbidden {message}`. */
+    fun appError(error: AppError): String {
+        val message = (error.fields["message"] as? JsonPrimitive)?.contentOrNull?.let(::sentence)
+        return when (error.appCode) {
+            "NotFound" -> {
+                val what = (error.fields["what"] as? JsonPrimitive)?.contentOrNull ?: "item"
+                "That $what no longer exists. Someone may have deleted it; pull to refresh."
+            }
+            "Invalid" -> message ?: "The pipeline refused this input."
+            "Forbidden" -> message ?: "Only whoever created this may do that."
+            else -> message ?: error.nodeMessage.ifEmpty { "The pipeline refused this (${error.appCode})." }
+        }
+    }
+
+    /** `only the creator may…` as a sentence. */
+    fun sentence(text: String): String {
+        if (text.isEmpty()) return text
+        val body = text.replaceFirstChar { it.uppercase() }
+        return if (body.endsWith(".")) body else "$body."
+    }
 
     /**
      * The two transient failures a context reports while its state is still replicating to this

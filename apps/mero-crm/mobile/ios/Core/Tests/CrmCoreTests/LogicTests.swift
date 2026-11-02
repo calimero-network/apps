@@ -208,4 +208,23 @@ final class LogicTests: XCTestCase {
         d.expectedClose = now
         XCTAssertEqual(utc.component(.hour, from: Days.date(d.closeMs(utc)!)), 12)
     }
+
+    func testCalimeroRefusalsReadAsPlainWords() {
+        let forbidden = AppError(
+            "app error",
+            details: ["code": .string("Forbidden"), "fields": .object(["message": .string("only the creator may delete this deal")])])
+        XCTAssertEqual(ErrorText.describe(forbidden), "Only the creator may delete this deal.")
+        let missing = AppError(
+            "", details: ["code": .string("NotFound"), "fields": .object(["what": .string("deal"), "id": .string("d9")])])
+        XCTAssertTrue(ErrorText.describe(missing).hasPrefix("That deal no longer exists."))
+        let invalid = AppError(
+            "", details: ["code": .string("Invalid"), "fields": .object(["message": .string("note must not be empty")])])
+        XCTAssertEqual(ErrorText.describe(invalid), "Note must not be empty.")
+        XCTAssertEqual(ErrorText.describe(ConfirmCancelled()), "The passkey prompt was cancelled, so nothing changed.")
+        XCTAssertEqual(ErrorText.describe(LoginRequired("expired")), "Your session ended. Sign in again.")
+        XCTAssertTrue(ErrorText.describe(ReleaseDeadlineError("", details: ["release": .string("1.4.0")])).contains("1.4.0"))
+        XCTAssertTrue(ErrorText.describe(ConsentStale("")).contains("review it again"))
+        XCTAssertTrue(ErrorText.describe(WrongNode("")).contains("node"))
+        XCTAssertTrue(ErrorText.describe(UnavailableError(code: "TIMEOUT", message: "")).contains("timeout"))
+    }
 }
