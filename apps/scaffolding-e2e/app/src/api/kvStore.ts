@@ -1,21 +1,58 @@
-import { rpcRaw } from "./rpc";
+import { rpcRaw, snake, type RpcEnvelope } from "./rpc";
 
-// Every section displays what the node returned, so these return the JSON-RPC
-// envelope (`{ result: { output, logs } }` or `{ error }`) rather than a bare
-// value — that is what `ResultBox` renders and what the Test Runner asserts on.
+// The typed adapter every section calls: v1's method names and argument names,
+// v1's result shapes. `rpc.ts` maps names, kinds and 64-bit integers onto the
+// component ABI; this file maps the few RECORD results back to v1's shape, so
+// the screens read `file.uploaded_at` (a number) as before although the wire
+// says `uploadedAt: "1730000000000"`.
 //
-// The executor public key used to be passed with every call. It is not any more:
-// the node derives the caller from the bearer token, which is the only version it
-// would trust. `whoami` is how the UI learns both halves of its own identity.
-function call<A extends Record<string, unknown>, R>(method: string, argsJson: A) {
-  return rpcRaw<R>(method, argsJson);
+// Every section displays what came back, so these return the envelope
+// (`{ result: { output } }` or `{ error }`) rather than a bare value — that is
+// what `ResultBox` renders and what the Test Runner asserts on.
+
+/** Record fields that are 64-bit integers, decimal strings on the wire. */
+const INT_FIELDS = new Set(["size", "uploaded_at", "registered_at", "channel_count", "group_count", "member_count"]);
+
+/** One record from the wire: camelCase keys to snake_case, integer fields to numbers. */
+export function v1Record(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(v1Record);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([k, v]) => {
+      const key = snake(k);
+      return [key, INT_FIELDS.has(key) && typeof v === "string" ? Number(v) : v];
+    }),
+  );
 }
 
-/** Both halves of the caller's identity — see the contract's `whoami`. */
+/** The methods whose result is a record (or a list of records), not a user-keyed map. */
+const RECORD_RESULTS = new Set([
+  "whoami",
+  "list_files",
+  "get_file",
+  "search_files",
+  "ws_get_info",
+  "ws_list_channels",
+  "ws_list_groups",
+  "ws_list_members",
+]);
+
+async function call<A extends Record<string, unknown>, R>(method: string, argsJson: A): Promise<RpcEnvelope<R>> {
+  const envelope = await rpcRaw<R>(method, argsJson);
+  if (RECORD_RESULTS.has(method) && envelope.result) {
+    return { result: { output: v1Record(envelope.result.output) as R } };
+  }
+  return envelope;
+}
+
+/**
+ * The caller's identity — see the contract's `whoami`. 1.0 runs a method for
+ * the account, so `device_id` is the account too (an API key's id for an
+ * API-key caller).
+ */
 export interface Identity {
-  /** This installation, 64 hex characters. What `authored_*` reports as an owner. */
   device_id: string;
-  /** The person, 64 hex chars. What the `shared_*` writer set is keyed by. */
+  /** The account: what every writer set, owner and role is keyed by. */
   account_id: string;
 }
 
@@ -27,7 +64,7 @@ export const whoami = () =>
  *
  * `whoami().account_id` is the same value and is what the rest of this UI uses.
  * This method exists only so the account accessor is spelled the same here as
- * in core's copy of this scaffold, which is what keeps a merobox scenario
+ * in core's copy of this scaffold, which is what keeps a scenario
  * portable between the two. It is exposed in the frontend so the contract-call
  * check sees a caller for it, and so the Test Runner can assert the two names
  * never start disagreeing.
@@ -176,6 +213,13 @@ export const getFile = (file_id: string) =>
 export const getBlobIdHex = (file_id: string) =>
   call<{ file_id: string }, string>("get_blob_id_hex", { file_id });
 
+/**
+ * A time-limited download grant for a file's blob (rc.8 `BlobRef::grant`):
+ * `GET /apps/{app}/blobs/{blob_id}?grant=<grant>` downloads it, signed in or not.
+ */
+export const fileDownloadGrant = (file_id: string, ttl_seconds: number) =>
+  call<{ file_id: string; ttl_seconds: number }, string>("file_download_grant", { file_id, ttl_seconds });
+
 export const searchFiles = (query: string) =>
   call<{ query: string }, FileRecord[]>("search_files", { query });
 
@@ -184,6 +228,14 @@ export const incrementGCounter = (key: string) =>
 
 export const getGCounter = (key: string) =>
   call<{ key: string }, number>("get_g_counter", { key });
+
+/** v1's alias of `incrementGCounter`, kept in the contract. */
+export const incrementCounter = (key: string) =>
+  call<{ key: string }, number>("increment_counter", { key });
+
+/** v1's alias of `getGCounter`. */
+export const getCounter = (key: string) =>
+  call<{ key: string }, number>("get_counter", { key });
 
 export const incrementPnCounter = (key: string) =>
   call<{ key: string }, number>("increment_pn_counter", { key });
@@ -404,6 +456,14 @@ export const wsPingChannel = (target_context_id: string) =>
  */
 export const wsPingCount = () =>
   call<Record<string, never>, number>("ws_ping_count", {});
+
+/**
+ * The pong receiver. It accepts another APP as its caller only, so calling it
+ * from here (as an account) is refused with `Invalid` — the call exists to show
+ * that refusal.
+ */
+export const wsPong = (from_context: string) =>
+  call<{ from_context: string }, void>("ws_pong", { from_context });
 
 // AuthoredMap
 export const authoredInsert = (key: string, value: string) =>

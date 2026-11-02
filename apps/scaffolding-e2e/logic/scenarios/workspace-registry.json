@@ -1,0 +1,365 @@
+[
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "wsGetInfo",
+  "args": {},
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "wsRegisterChannel",
+  "args": {
+   "contextId": "ctx-general",
+   "name": "general",
+   "topic": "t"
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "wsInit",
+  "args": {
+   "name": "Acme"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "wsInit",
+  "args": {
+   "name": "   "
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "wsInit",
+  "args": {
+   "name": "Acme"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "wsInit",
+  "args": {
+   "name": "Again"
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "wsMyRole",
+  "args": {},
+  "expect": {
+   "ok": "admin"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "wsMyRole",
+  "args": {},
+  "expect": {
+   "ok": ""
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "wsRegisterChannel",
+  "args": {
+   "contextId": "ctx-general",
+   "name": "general",
+   "topic": "t"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "wsSetMemberRole",
+  "args": {
+   "identity": "@bob",
+   "role": "member"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "wsSetMemberRole",
+  "args": {
+   "identity": "@carol",
+   "role": "read-only"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "wsSetMemberRole",
+  "args": {
+   "identity": "@carol",
+   "role": "boss"
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "wsSetMemberRole",
+  "args": {
+   "identity": "@owner",
+   "role": "member"
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "wsSetMemberRole",
+  "args": {
+   "identity": "@carol",
+   "role": "member"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "wsGetMemberRole",
+  "args": {
+   "identity": "@bob"
+  },
+  "expect": {
+   "ok": "member"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "wsRegisterChannel",
+  "args": {
+   "contextId": "ctx-general",
+   "name": "general",
+   "topic": "everything"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "wsRegisterChannel",
+  "args": {
+   "contextId": "ctx-random",
+   "name": "random",
+   "topic": "off-topic"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "wsRegisterChannel",
+  "args": {
+   "contextId": "ctx-x",
+   "name": "x",
+   "topic": "x"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "wsRegisterChannel",
+  "args": {
+   "contextId": "ctx-general",
+   "name": "mine",
+   "topic": "t"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "wsRegisterChannel",
+  "args": {
+   "contextId": "ctx-general",
+   "name": "general",
+   "topic": "renamed"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "wsRegisterGroup",
+  "args": {
+   "groupId": "grp-eng",
+   "name": "Engineering",
+   "description": "builders"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "view",
+  "method": "wsGetInfo",
+  "args": {},
+  "expect": {
+   "ok": {
+    "name": "Acme",
+    "admin": "@owner",
+    "channelCount": "2",
+    "groupCount": "1",
+    "memberCount": "3"
+   }
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "wsPingChannel",
+  "args": {
+   "targetContextId": "ctx-random"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "wsPingCount",
+  "args": {},
+  "expect": {
+   "ok": "0"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "wsPong",
+  "args": {
+   "fromContext": "ctx-random"
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "wsUnregisterChannel",
+  "args": {
+   "contextId": "ctx-general"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "wsUnregisterChannel",
+  "args": {
+   "contextId": "ctx-general"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "wsUnregisterChannel",
+  "args": {
+   "contextId": "ctx-general"
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "wsUnregisterGroup",
+  "args": {
+   "groupId": "grp-eng"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "wsSetMemberRole",
+  "args": {
+   "identity": "@bob",
+   "role": "admin"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "wsSetMemberRole",
+  "args": {
+   "identity": "@carol",
+   "role": "member"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "wsSetMemberRole",
+  "args": {
+   "identity": "@bob",
+   "role": "member"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "wsSetMemberRole",
+  "args": {
+   "identity": "@carol",
+   "role": "read-only"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "wsGetInfo",
+  "args": {},
+  "expect": {
+   "ok": {
+    "name": "Acme",
+    "admin": "@owner",
+    "channelCount": "1",
+    "groupCount": "0",
+    "memberCount": "3"
+   }
+  }
+ }
+]

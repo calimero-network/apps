@@ -1,0 +1,475 @@
+[
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "authoredInsert",
+  "args": {
+   "key": "doc1",
+   "value": "by owner"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "authoredInsert",
+  "args": {
+   "key": "doc1",
+   "value": "by bob"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "authoredInsert",
+  "args": {
+   "key": "doc1",
+   "value": "again"
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "authoredGetBy",
+  "args": {
+   "owner": "@owner",
+   "key": "doc1"
+  },
+  "expect": {
+   "ok": "by owner"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "authoredGetBy",
+  "args": {
+   "owner": "@bob",
+   "key": "doc1"
+  },
+  "expect": {
+   "ok": "by bob"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "authoredLen",
+  "args": {},
+  "expect": {
+   "ok": "2"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "authoredUpdate",
+  "args": {
+   "key": "doc1",
+   "value": "edited by bob"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "authoredGetBy",
+  "args": {
+   "owner": "@bob",
+   "key": "doc1"
+  },
+  "expect": {
+   "ok": "edited by bob"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "authoredGetBy",
+  "args": {
+   "owner": "@owner",
+   "key": "doc1"
+  },
+  "expect": {
+   "ok": "by owner"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "authoredUpdate",
+  "args": {
+   "key": "doc1",
+   "value": "x"
+  },
+  "expect": {
+   "error": "NotFound"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "authoredRemove",
+  "args": {
+   "key": "doc1"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "authoredRemove",
+  "args": {
+   "key": "doc1"
+  },
+  "expect": {
+   "ok": "by owner"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "authoredGet",
+  "args": {
+   "key": "doc1"
+  },
+  "expect": {
+   "ok": "edited by bob"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "authoredGetOwner",
+  "args": {
+   "key": "doc1"
+  },
+  "expect": {
+   "ok": "@bob"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "authoredOwners",
+  "args": {
+   "key": "doc1"
+  },
+  "expect": {
+   "ok": {
+    "items": [
+     "@bob"
+    ],
+    "next": null
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "authoredEntries",
+  "args": {},
+  "expect": {
+   "ok": {
+    "items": {
+     "doc1": "edited by bob"
+    },
+    "next": null
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "authoredLen",
+  "args": {},
+  "expect": {
+   "ok": "1"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "authoredVecPush",
+  "args": {
+   "value": "first"
+  },
+  "expect": {
+   "ok": "0"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "authoredVecPush",
+  "args": {
+   "value": "second"
+  },
+  "expect": {
+   "ok": "1"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "authoredVecGetOwner",
+  "args": {
+   "index": "1"
+  },
+  "expect": {
+   "ok": "@bob"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "authoredVecUpdate",
+  "args": {
+   "index": "1",
+   "value": "hijack"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "authoredVecUpdate",
+  "args": {
+   "index": "1",
+   "value": "second, edited"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "authoredVecGet",
+  "args": {
+   "index": "1"
+  },
+  "expect": {
+   "ok": "second, edited"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "authoredVecRemove",
+  "args": {
+   "index": "0"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "authoredVecRemove",
+  "args": {
+   "index": "0"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "authoredVecGet",
+  "args": {
+   "index": "0"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "authoredVecEntries",
+  "args": {},
+  "expect": {
+   "ok": {
+    "items": [
+     "second, edited"
+    ],
+    "next": null
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "authoredVecLen",
+  "args": {},
+  "expect": {
+   "ok": "2"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "authoredVecUpdate",
+  "args": {
+   "index": "9",
+   "value": "x"
+  },
+  "expect": {
+   "error": "NotFound"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "sharedGetWriters",
+  "args": {},
+  "expect": {
+   "ok": {
+    "items": [
+     "@owner"
+    ],
+    "next": null
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "sharedIsFrozen",
+  "args": {},
+  "expect": {
+   "ok": false
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "sharedSet",
+  "args": {
+   "value": "v1"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "sharedSet",
+  "args": {
+   "value": "from bob"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "sharedAddWriter",
+  "args": {
+   "accountHex": "@bob"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "sharedIsWriter",
+  "args": {
+   "accountHex": "@bob"
+  },
+  "expect": {
+   "ok": true
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "sharedSet",
+  "args": {
+   "value": "from bob"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "view",
+  "method": "sharedGet",
+  "args": {},
+  "expect": {
+   "ok": "from bob"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "sharedRotateWriters",
+  "args": {
+   "accountHexes": []
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "sharedRotateWriters",
+  "args": {
+   "accountHexes": [
+    "@carol"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "sharedGetWriters",
+  "args": {},
+  "expect": {
+   "ok": {
+    "items": [
+     "@carol"
+    ],
+    "next": null
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "sharedSet",
+  "args": {
+   "value": "revoked"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "sharedSet",
+  "args": {
+   "value": "revoked"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "sharedSet",
+  "args": {
+   "value": "from carol"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "sharedGet",
+  "args": {},
+  "expect": {
+   "ok": "from carol"
+  }
+ }
+]

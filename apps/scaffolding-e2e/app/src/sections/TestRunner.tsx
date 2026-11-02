@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import * as api from "../api/kvStore";
+import { getConnection } from "../lib/calimero";
 
 
 // Node wraps WASM errors as: { error: { name, cause: { info: { message } } } }
@@ -71,10 +72,6 @@ function contains(haystack: string, needle: string): void {
     throw new Error(`"${haystack}" does not contain "${needle}"`);
 }
 
-function matches(val: string, re: RegExp, what: string): void {
-  if (typeof val !== "string" || !re.test(val))
-    throw new Error(`expected ${what}, got ${JSON.stringify(val)}`);
-}
 
 
 type Status = "idle" | "running" | "pass" | "fail";
@@ -89,31 +86,18 @@ interface TestCase {
 const TESTS: TestCase[] = [
   {
     id: "whoami-shape",
-    name: "whoami returns a 64-hex device id and a 64-hex account id",
+    name: "whoami names the signed-in account",
     group: "Identity",
     fn: async () => {
+      // 1.0 runs a method for the ACCOUNT: there is no per-installation id in
+      // an app run, so `device_id` is the account again for a passkey session
+      // (an API key's id for an API-key caller). v1's check that the two
+      // differ is gone with the device identity it guarded.
       const me = out<api.Identity>(await api.whoami());
-      // ⚠️ This assertion got WEAKER at core 0.11.0-rc.27, which removed base58
-      // and writes every id as hex (core#3691). It used to be the thing that
-      // caught a regression returning one id where the other belongs — the
-      // device key was base58 and the account 64-hex, so a swap failed here
-      // rather than as a silent permission failure over in Shared Storage.
-      // Both are now 64 hex characters and NO shape check can separate them.
-      // What is left is that neither is empty and neither is the other.
-      matches(me.device_id, /^[0-9a-f]{64}$/, "a 64-hex device id");
-      matches(me.account_id, /^[0-9a-f]{64}$/, "a 64-hex account id");
-      // Safe to assert, not a guess: both ids are content addresses, and
-      // `DeviceId::mint` is `domain_hash(DEVICE_ID_DOMAIN, account_id ‖ nonce)`
-      // (core, primitives/src/identity.rs). Equality would be a SHA-256
-      // preimage collision. So this only ever fires on a contract that returns
-      // one id for both — which is the regression the base58-vs-hex shape check
-      // used to catch for free, and this is all that is left of it.
-      if (me.device_id === me.account_id) {
-        throw new Error(
-          "device_id and account_id are identical — since rc.27 they are the " +
-            "same shape, so a contract returning one for both now looks correct",
-        );
-      }
+      notEmpty(me.account_id, "expected an account id");
+      eq(me.device_id, me.account_id);
+      const signedIn = getConnection()?.accountId;
+      if (signedIn) eq(me.account_id, signedIn);
     },
   },
   {
@@ -141,7 +125,7 @@ const TESTS: TestCase[] = [
       // name honest.
       const scalar = out<string>(await api.myAccount());
       const pair = out<api.Identity>(await api.whoami());
-      matches(scalar, /^[0-9a-f]{64}$/, "a 64-hex account id");
+      notEmpty(scalar, "expected an account id");
       eq(scalar, pair.account_id);
     },
   },
@@ -150,24 +134,9 @@ const TESTS: TestCase[] = [
     name: "tracing_probe runs and commits its KV write",
     group: "Identity",
     fn: async () => {
-      // What this CANNOT assert, and why:
-      //
-      // The log lines are the interesting part of `tracing_probe`, and they are
-      // not observable from here. `crates/server/src/execute.rs` writes the
-      // execution outcome's logs to the NODE's own log
-      // (`info!("execution log {i}| {}", log)`) and then returns
-      // `ExecutionResponse::new(Some(returns))` — the value and nothing else.
-      // There is no `logs` field on the JSON-RPC reply for any client to read,
-      // which is why merobox rejects `result.logs` outright.
-      //
-      // So the level-filtering behaviour is asserted where it is visible: in
-      // `workflows/host-logging.yml`, by grepping the container log, and
-      // upstream in core's `crates/runtime/tests/tracing_logs.rs`.
-      //
-      // What IS observable is that the call ran and its side effect committed —
-      // the KV write is what drives `calimero_storage`'s own instrumentation, so
-      // if it did not land, the log assertions in the workflow would be testing
-      // a call that did nothing.
+      // The log lines are not observable from here: the node writes a run's
+      // log to its own log, and the call's answer carries the value only.
+      // What IS observable is that the call ran and its KV write committed.
       noErr(await api.tracingProbe(false));
       eq(out<string | null>(await api.kvGet("probe_key")), "probe_value");
     },
@@ -882,7 +851,7 @@ const TESTS: TestCase[] = [
     fn: async (r) => {
       // Insert-after-remove on a set used to never converge across nodes
       // (fixed in rc.10). Single-node this only checks the tombstone is cleared
-      // locally; the merobox scenario is what checks convergence.
+      // locally; the scenarios (logic/scenarios) check it across accounts.
       eq(out<boolean>(await api.sortedTagAdd(`re_${r}`)), true);
       eq(out<boolean>(await api.sortedTagRemove(`re_${r}`)), true);
       eq(out<boolean>(await api.sortedTagContains(`re_${r}`)), false);
@@ -1088,7 +1057,7 @@ const TESTS: TestCase[] = [
       // Transferring away from this node would lock the cell for the rest of
       // the suite and cannot be undone from here, so this asserts the invariant
       // Ownable enforces instead: exactly one writer, and it is the owner.
-      // The cross-node transfer is what the merobox scenario covers.
+      // The transfer between accounts is what scenarios/access-control.json covers.
       eq(owner, me.account_id);
       eq(out<boolean>(await api.ownedIsOwner(me.account_id)), true);
       expectErr(await api.ownedTransfer("not-an-account"));

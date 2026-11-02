@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from "react";
 import { ResultBox } from "../components/ResultBox";
-import { getNodeUrl } from "../lib/mero";
+import { getNodeUrl } from "../lib/calimero";
 import * as api from "../api/kvStore";
 import { useAutoRefresh } from "../hooks/useAutoRefresh";
 import { SyncBar } from "../components/SyncBar";
@@ -39,6 +39,7 @@ export function BlobStorage() {
   const deleteCall = useCall();
   const getCall = useCall();
   const getBlobCall = useCall();
+  const grantCall = useCall();
   const searchCall = useCall();
 
   const poll = useCallback(async () => {
@@ -66,7 +67,7 @@ export function BlobStorage() {
 
   async function handleUpload() {
     if (!selectedFile) return;
-    setUploadProgress({ text: "Uploading to node blob store…", ok: true });
+    setUploadProgress({ text: "Uploading to the instance's blob store…", ok: true });
     let blobId: string;
     try {
       blobId = await uploadBlobToNode(selectedFile);
@@ -123,15 +124,15 @@ export function BlobStorage() {
       <div className="section-header">
         <h2 className="section-title">Blob Storage</h2>
         <p className="section-desc">
-          Upload files to the node's blob store, register their metadata to the context,
-          and share them between nodes.
+          Upload files to the instance&apos;s blob store, register their metadata in the contract,
+          and share them between accounts.
         </p>
       </div>
 
       <div style={{ background: "rgba(165,255,17,0.06)", border: "1px solid rgba(165,255,17,0.2)", borderRadius: 8, padding: "12px 16px", marginBottom: 20, fontSize: 13, color: "var(--color-text-muted)", lineHeight: 1.6 }}>
-        <strong style={{ color: "var(--color-brand-600)" }}>Cross-node sharing:</strong>{" "}
-        Upload on Node A → file metadata syncs to Node B via CRDT → Node B can download the blob from its own store.
-        Open a second tab with <code>?node=http://localhost:2529</code> to see this in action.
+        <strong style={{ color: "var(--color-brand-600)" }}>Sharing:</strong>{" "}
+        A blob belongs to the instance, and every node of the cluster serves it: the record the contract
+        keeps is all another account needs. The contract holds a reference to the blob (a BlobRef), so the node keeps it until the record is deleted, and it checks the id and size against the node's own record of the upload; it never reads the bytes.
       </div>
 
       {/* Live file list */}
@@ -301,7 +302,9 @@ export function BlobStorage() {
 
         {/* Get by ID card */}
         <div className="method-card">
-          <div className="method-name">get_file(file_id) / get_blob_id_hex(file_id)</div>
+          <div className="method-name">
+            get_file(file_id) / get_blob_id_hex(file_id) / file_download_grant(file_id, ttl_seconds)
+          </div>
           <div className="method-inputs">
             <input
               className="form-control"
@@ -325,9 +328,18 @@ export function BlobStorage() {
             >
               {getBlobCall.loading ? "..." : "get_blob_id"}
             </button>
+            <button
+              className="btn-calimero-outline"
+              disabled={grantCall.loading}
+              title="A one-hour grant: GET /apps/{app}/blobs/{blob_id}?grant=<grant> downloads it, signed in or not"
+              onClick={() => grantCall.run(() => api.fileDownloadGrant(fileId, 3600))}
+            >
+              {grantCall.loading ? "..." : "download_grant (1h)"}
+            </button>
           </div>
           <ResultBox result={getCall.result} />
           <ResultBox result={getBlobCall.result} />
+          <ResultBox result={grantCall.result} />
         </div>
 
         {/* Delete card */}

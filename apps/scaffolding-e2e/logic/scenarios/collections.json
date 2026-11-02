@@ -1,0 +1,793 @@
+[
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "incrementGCounter",
+  "args": {
+   "key": "visits"
+  },
+  "expect": {
+   "ok": "1"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "incrementGCounter",
+  "args": {
+   "key": "visits"
+  },
+  "expect": {
+   "ok": "2"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "incrementCounter",
+  "args": {
+   "key": "visits"
+  },
+  "expect": {
+   "ok": "3"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getGCounter",
+  "args": {
+   "key": "visits"
+  },
+  "expect": {
+   "ok": "3"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getCounter",
+  "args": {
+   "key": "visits"
+  },
+  "expect": {
+   "ok": "3"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getGCounter",
+  "args": {
+   "key": "nope"
+  },
+  "expect": {
+   "error": "NotFound"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "incrementPnCounter",
+  "args": {
+   "key": "balance"
+  },
+  "expect": {
+   "ok": "1"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "decrementPnCounter",
+  "args": {
+   "key": "balance"
+  },
+  "expect": {
+   "ok": "0"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "decrementPnCounter",
+  "args": {
+   "key": "balance"
+  },
+  "expect": {
+   "ok": "-1"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getPnCounter",
+  "args": {
+   "key": "balance"
+  },
+  "expect": {
+   "ok": "-1"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setRegister",
+  "args": {
+   "key": "status",
+   "value": "active"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setRegister",
+  "args": {
+   "key": "status",
+   "value": "paused"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getRegister",
+  "args": {
+   "key": "status"
+  },
+  "expect": {
+   "ok": "paused"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getRegister",
+  "args": {
+   "key": "nope"
+  },
+  "expect": {
+   "error": "NotFound"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setMetadata",
+  "args": {
+   "outerKey": "user1",
+   "innerKey": "name",
+   "value": "Alice"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setMetadata",
+  "args": {
+   "outerKey": "user1",
+   "innerKey": "role",
+   "value": "admin"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getMetadata",
+  "args": {
+   "outerKey": "user1",
+   "innerKey": "name"
+  },
+  "expect": {
+   "ok": "Alice"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getMetadata",
+  "args": {
+   "outerKey": "user1",
+   "innerKey": "role"
+  },
+  "expect": {
+   "ok": "admin"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getMetadata",
+  "args": {
+   "outerKey": "user1",
+   "innerKey": "x"
+  },
+  "expect": {
+   "error": "NotFound",
+   "fields": {
+    "key": "x"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getMetadata",
+  "args": {
+   "outerKey": "user9",
+   "innerKey": "x"
+  },
+  "expect": {
+   "error": "NotFound",
+   "fields": {
+    "key": "user9"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "pushMetric",
+  "args": {
+   "value": "100"
+  },
+  "expect": {
+   "ok": "1"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "pushMetric",
+  "args": {
+   "value": "200"
+  },
+  "expect": {
+   "ok": "2"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getMetric",
+  "args": {
+   "index": "0"
+  },
+  "expect": {
+   "ok": "100"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getMetric",
+  "args": {
+   "index": "1"
+  },
+  "expect": {
+   "ok": "200"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getMetric",
+  "args": {
+   "index": "2"
+  },
+  "expect": {
+   "error": "NotFound"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "metricsLen",
+  "args": {},
+  "expect": {
+   "ok": "2"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addTag",
+  "args": {
+   "key": "post1",
+   "tag": "rust"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "addTag",
+  "args": {
+   "key": "post1",
+   "tag": "wasm"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "addTag",
+  "args": {
+   "key": "post1",
+   "tag": "rust"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "hasTag",
+  "args": {
+   "key": "post1",
+   "tag": "rust"
+  },
+  "expect": {
+   "ok": true
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "hasTag",
+  "args": {
+   "key": "post1",
+   "tag": "go"
+  },
+  "expect": {
+   "ok": false
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "hasTag",
+  "args": {
+   "key": "post9",
+   "tag": "go"
+  },
+  "expect": {
+   "error": "NotFound"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getTagCount",
+  "args": {
+   "key": "post1"
+  },
+  "expect": {
+   "ok": "2"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "sortedSet",
+  "args": {
+   "key": "b",
+   "value": "2"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "sortedSet",
+  "args": {
+   "key": "a",
+   "value": "1"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "sortedSet",
+  "args": {
+   "key": "d",
+   "value": "4"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "sortedSet",
+  "args": {
+   "key": "c",
+   "value": "3"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "sortedKeys",
+  "args": {},
+  "expect": {
+   "ok": {
+    "items": [
+     "a",
+     "b",
+     "c",
+     "d"
+    ],
+    "next": null
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "sortedRange",
+  "args": {
+   "start": "b",
+   "end": "d"
+  },
+  "expect": {
+   "ok": {
+    "items": {
+     "b": "2",
+     "c": "3"
+    },
+    "next": null
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "sortedRange",
+  "args": {
+   "start": "d",
+   "end": "b"
+  },
+  "expect": {
+   "ok": {
+    "items": {},
+    "next": null
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "sortedLastKey",
+  "args": {},
+  "expect": {
+   "ok": "d"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "sortedGet",
+  "args": {
+   "key": "c"
+  },
+  "expect": {
+   "ok": "3"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "sortedRemove",
+  "args": {
+   "key": "d"
+  },
+  "expect": {
+   "ok": true
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "sortedRemove",
+  "args": {
+   "key": "d"
+  },
+  "expect": {
+   "ok": false
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "sortedLastKey",
+  "args": {},
+  "expect": {
+   "ok": "c"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "sortedLen",
+  "args": {},
+  "expect": {
+   "ok": "3"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "sortedTagAdd",
+  "args": {
+   "tag": "zeta"
+  },
+  "expect": {
+   "ok": true
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "sortedTagAdd",
+  "args": {
+   "tag": "alpha"
+  },
+  "expect": {
+   "ok": true
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "sortedTagAdd",
+  "args": {
+   "tag": "mid"
+  },
+  "expect": {
+   "ok": true
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "sortedTagAdd",
+  "args": {
+   "tag": "mid"
+  },
+  "expect": {
+   "ok": false
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "sortedTagsAll",
+  "args": {},
+  "expect": {
+   "ok": {
+    "items": [
+     "alpha",
+     "mid",
+     "zeta"
+    ],
+    "next": null
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "sortedTagsRange",
+  "args": {
+   "start": "b",
+   "end": "z"
+  },
+  "expect": {
+   "ok": {
+    "items": [
+     "mid"
+    ],
+    "next": null
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "sortedTagsLast",
+  "args": {},
+  "expect": {
+   "ok": "zeta"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "sortedTagRemove",
+  "args": {
+   "tag": "zeta"
+  },
+  "expect": {
+   "ok": true
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "sortedTagContains",
+  "args": {
+   "tag": "zeta"
+  },
+  "expect": {
+   "ok": false
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "sortedTagAdd",
+  "args": {
+   "tag": "zeta"
+  },
+  "expect": {
+   "ok": true
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "sortedTagContains",
+  "args": {
+   "tag": "zeta"
+  },
+  "expect": {
+   "ok": true
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "rgaIsEmpty",
+  "args": {},
+  "expect": {
+   "ok": true
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "rgaGetTitle",
+  "args": {},
+  "expect": {
+   "ok": "Untitled Document"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "rgaInsertText",
+  "args": {
+   "position": "0",
+   "text": "Hello"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "rgaAppendText",
+  "args": {
+   "text": " World"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "view",
+  "method": "rgaGetText",
+  "args": {},
+  "expect": {
+   "ok": "Hello World"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "rgaGetLength",
+  "args": {},
+  "expect": {
+   "ok": "11"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "rgaInsertText",
+  "args": {
+   "position": "5",
+   "text": ","
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "rgaGetText",
+  "args": {},
+  "expect": {
+   "ok": "Hello, World"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "rgaDeleteText",
+  "args": {
+   "start": "5",
+   "end": "6"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "rgaGetText",
+  "args": {},
+  "expect": {
+   "ok": "Hello World"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "rgaInsertText",
+  "args": {
+   "position": "99",
+   "text": "x"
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "rgaSetTitle",
+  "args": {
+   "newTitle": "My Doc"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "rgaGetTitle",
+  "args": {},
+  "expect": {
+   "ok": "My Doc"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "rgaSetTitle",
+  "args": {
+   "newTitle": ""
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "rgaClear",
+  "args": {}
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "rgaIsEmpty",
+  "args": {},
+  "expect": {
+   "ok": true
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "rgaGetText",
+  "args": {},
+  "expect": {
+   "ok": ""
+  }
+ }
+]

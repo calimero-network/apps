@@ -1,0 +1,387 @@
+[
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "whoami",
+  "args": {},
+  "expect": {
+   "ok": {
+    "deviceId": "@owner",
+    "accountId": "@owner"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "myAccount",
+  "args": {},
+  "expect": {
+   "ok": "@bob"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setUserSimple",
+  "args": {
+   "value": "Node1 Profile"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getUserSimple",
+  "args": {},
+  "expect": {
+   "ok": "Node1 Profile"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getUserSimpleFor",
+  "args": {
+   "accountHex": "@owner"
+  },
+  "expect": {
+   "ok": "Node1 Profile"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setUserSimple",
+  "args": {
+   "value": "Node2 Profile"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getUserSimpleFor",
+  "args": {
+   "accountHex": "@bob"
+  },
+  "expect": {
+   "ok": "Node2 Profile"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getUserSimple",
+  "args": {},
+  "expect": {
+   "ok": "Node1 Profile"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getUserSimpleFor",
+  "args": {
+   "accountHex": "@carol"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setUserNested",
+  "args": {
+   "key": "favorite_color",
+   "value": "blue"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getUserNested",
+  "args": {
+   "key": "favorite_color"
+  },
+  "expect": {
+   "ok": "blue"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getUserNested",
+  "args": {
+   "key": "favorite_color"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setUserNested",
+  "args": {
+   "key": "favorite_color",
+   "value": "green"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getUserNested",
+  "args": {
+   "key": "favorite_color"
+  },
+  "expect": {
+   "ok": "blue"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addFrozen",
+  "args": {
+   "value": "immutable data"
+  },
+  "save": "frozen_hash"
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getFrozen",
+  "args": {
+   "hashHex": "$frozen_hash"
+  },
+  "expect": {
+   "ok": "immutable data"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "addFrozen",
+  "args": {
+   "value": "immutable data"
+  },
+  "expect": {
+   "ok": "$frozen_hash"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getFrozen",
+  "args": {
+   "hashHex": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "expect": {
+   "error": "FrozenNotFound"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getFrozen",
+  "args": {
+   "hashHex": "not-hex"
+  },
+  "expect": {
+   "error": "NotFound",
+   "fields": {
+    "key": "dehex error"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addSecret",
+  "args": {
+   "gameId": "game1",
+   "secret": "my_secret_123"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "mySecrets",
+  "args": {},
+  "expect": {
+   "ok": {
+    "items": {
+     "game1": "my_secret_123"
+    },
+    "next": null
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "mySecrets",
+  "args": {},
+  "expect": {
+   "ok": {
+    "items": {},
+    "next": null
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "games",
+  "args": {},
+  "expect": {
+   "ok": {
+    "items": {
+     "game1": "b77f68a3acbc9173be96f05789c679ec229b852b7f07d435eb04030ff72f06f5"
+    },
+    "next": null
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "addGuess",
+  "args": {
+   "gameId": "game1",
+   "guess": "wrong"
+  },
+  "expect": {
+   "ok": false
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "addGuess",
+  "args": {
+   "gameId": "game1",
+   "guess": "my_secret_123"
+  },
+  "expect": {
+   "ok": true
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addGuess",
+  "args": {
+   "gameId": "nope",
+   "guess": "x"
+  },
+  "expect": {
+   "error": "NoHash"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "uploadFile",
+  "args": {
+   "name": "bad",
+   "blobIdStr": "xyz",
+   "size": "1",
+   "mimeType": "text/plain"
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "uploadFile",
+  "args": {
+   "name": "Report.TXT",
+   "blobIdStr": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "size": "11",
+   "mimeType": "text/plain"
+  },
+  "expect": {
+   "error": "NotFound",
+   "fields": {
+    "key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getFile",
+  "args": {
+   "fileId": "file_missing"
+  },
+  "expect": {
+   "error": "NotFound"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deleteFile",
+  "args": {
+   "fileId": "file_missing"
+  },
+  "expect": {
+   "error": "NotFound"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "fileDownloadGrant",
+  "args": {
+   "fileId": "file_missing",
+   "ttlSeconds": 60
+  },
+  "expect": {
+   "error": "NotFound"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listFiles",
+  "args": {},
+  "expect": {
+   "ok": {
+    "items": [],
+    "next": null
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listFiles",
+  "args": {
+   "limit": 0
+  },
+  "expect": {
+   "ok": {
+    "items": [],
+    "next": null
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "searchFiles",
+  "args": {
+   "query": ""
+  },
+  "expect": {
+   "ok": {
+    "items": [],
+    "next": null
+   }
+  }
+ }
+]

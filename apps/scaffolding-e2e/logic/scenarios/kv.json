@@ -1,0 +1,336 @@
+[
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "set",
+  "args": {
+   "key": "greeting",
+   "value": "Hello, World!"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "set",
+  "args": {
+   "key": "count",
+   "value": "42"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "get",
+  "args": {
+   "key": "greeting"
+  },
+  "expect": {
+   "ok": "Hello, World!"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "set",
+  "args": {
+   "key": "from_node2",
+   "value": "Cross-node value"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "get",
+  "args": {
+   "key": "from_node2"
+  },
+  "expect": {
+   "ok": "Cross-node value"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "view",
+  "method": "get",
+  "args": {
+   "key": "greeting"
+  },
+  "expect": {
+   "ok": "Hello, World!"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "set",
+  "args": {
+   "key": "from_node3",
+   "value": "Hello from node3"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "get",
+  "args": {
+   "key": "from_node3"
+  },
+  "expect": {
+   "ok": "Hello from node3"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "entries",
+  "args": {},
+  "expect": {
+   "ok": {
+    "items": {
+     "count": "42",
+     "from_node2": "Cross-node value",
+     "from_node3": "Hello from node3",
+     "greeting": "Hello, World!"
+    },
+    "next": null
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getResult",
+  "args": {
+   "key": "greeting"
+  },
+  "expect": {
+   "ok": "Hello, World!"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getResult",
+  "args": {
+   "key": "nope"
+  },
+  "expect": {
+   "error": "NotFound",
+   "fields": {
+    "key": "nope"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "len",
+  "args": {},
+  "expect": {
+   "ok": "4"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "remove",
+  "args": {
+   "key": "count"
+  },
+  "expect": {
+   "ok": "42"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "get",
+  "args": {
+   "key": "count"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "carol",
+  "op": "view",
+  "method": "get",
+  "args": {
+   "key": "count"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "remove",
+  "args": {
+   "key": "count"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getHandlerExecutionCount",
+  "args": {},
+  "expect": {
+   "ok": "0"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setWithHandler",
+  "args": {
+   "key": "handler_test",
+   "value": "initial"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setWithHandler",
+  "args": {
+   "key": "handler_test",
+   "value": "updated"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "view",
+  "method": "get",
+  "args": {
+   "key": "handler_test"
+  },
+  "expect": {
+   "ok": "updated"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "removeWithHandler",
+  "args": {
+   "key": "handler_test"
+  },
+  "expect": {
+   "ok": "updated"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "set",
+  "args": {
+   "key": "clear_test_1",
+   "value": "value1"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "set",
+  "args": {
+   "key": "clear_test_2",
+   "value": "value2"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "clearWithHandler",
+  "args": {}
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getHandlerExecutionCount",
+  "args": {},
+  "expect": {
+   "ok": "4"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "view",
+  "method": "len",
+  "args": {},
+  "expect": {
+   "ok": "0"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "insertHandler",
+  "args": {
+   "key": "k",
+   "value": "v"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "updateHandler",
+  "args": {
+   "key": "k",
+   "value": "v"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "removeHandler",
+  "args": {
+   "key": "k"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "clearHandler",
+  "args": {}
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getHandlerExecutionCount",
+  "args": {},
+  "expect": {
+   "ok": "8"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "set",
+  "args": {
+   "key": "a",
+   "value": "1"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "clear",
+  "args": {}
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "entries",
+  "args": {},
+  "expect": {
+   "ok": {
+    "items": {},
+    "next": null
+   }
+  }
+ }
+]

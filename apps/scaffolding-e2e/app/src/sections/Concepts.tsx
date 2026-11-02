@@ -6,9 +6,9 @@ export function Concepts() {
       <div className="section-header">
         <h2 className="section-title">How Calimero Works</h2>
         <p className="section-desc">
-          A comprehensive reference for every concept behind the Calimero
-          peer-to-peer application platform. Read this before touching the other
-          sections.
+          A reference for every concept behind Calimero 1.0 as this bench uses
+          it: accounts, organizations, app instances and the log that orders
+          every write. Read this before touching the other sections.
         </p>
       </div>
 
@@ -24,7 +24,7 @@ export function Concepts() {
         <StorageTable />
       </SectionBlock>
 
-      <SectionBlock title="Two-Node Testing Guide">
+      <SectionBlock title="Two-Account Testing Guide">
         <TwoNodeGuide />
       </SectionBlock>
 
@@ -126,75 +126,75 @@ function ArchDiagram() {
       {/* Row 1: Frontends */}
       <div style={{ display: "flex", gap: 80, justifyContent: "center" }}>
         <div style={frontendStyle}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#60a5fa" }}>Frontend A</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#60a5fa" }}>Account A</div>
           <div style={{ fontSize: 10, color: "var(--color-text-muted)", fontFamily: "monospace", marginTop: 2 }}>
-            ?node=:2528
+            passkey · browser profile 1
           </div>
         </div>
         <div style={frontendStyle}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#60a5fa" }}>Frontend B</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#60a5fa" }}>Account B</div>
           <div style={{ fontSize: 10, color: "var(--color-text-muted)", fontFamily: "monospace", marginTop: 2 }}>
-            ?node=:2529
+            passkey · browser profile 2
           </div>
         </div>
       </div>
 
       {/* Row 2: Arrows down to nodes */}
       <div style={{ display: "flex", gap: 80, justifyContent: "center", margin: "2px 0" }}>
-        <ArchVertArrow label="JSON-RPC / WS" />
-        <ArchVertArrow label="JSON-RPC / WS" />
+        <ArchVertArrow label="CalimeroClient · HTTPS" />
+        <ArchVertArrow label="CalimeroClient · HTTPS" />
       </div>
 
       {/* Row 3: Nodes with Context inside */}
       <div style={{ display: "flex", alignItems: "center", gap: 0, justifyContent: "center" }}>
-        {/* Node A */}
+        {/* The leader */}
         <div style={nodeStyle}>
           <div style={{ fontSize: 12, fontWeight: 700, color: "var(--color-brand-600)", letterSpacing: 0.3 }}>
-            NODE A
+            LEADER
           </div>
           <div style={{ fontSize: 10, color: "var(--color-text-muted)", fontFamily: "monospace", marginTop: -6 }}>
-            merod :2528
+            merod local :2501
           </div>
-          {/* Context inside Node A */}
+          {/* The instance on the leader */}
           <div style={contextStyle}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--color-brand-600)" }}>Context</div>
-            <div style={{ fontSize: 10, color: "var(--color-text-muted)", marginTop: 2 }}>WASM runtime + state</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--color-brand-600)" }}>App instance</div>
+            <div style={{ fontSize: 10, color: "var(--color-text-muted)", marginTop: 2 }}>component + state</div>
           </div>
           <div style={{ fontSize: 10, color: "var(--color-text-muted)", display: "flex", gap: 8 }}>
             <span>blobs</span>
             <span>·</span>
-            <span>private storage</span>
+            <span>presence</span>
           </div>
         </div>
 
         {/* CRDT sync arrow between nodes */}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "0 18px" }}>
           <span style={{ fontSize: 10, fontWeight: 600, color: "var(--color-brand-600)", letterSpacing: 0.3 }}>
-            CRDT sync
+            one log
           </span>
-          <span style={{ fontSize: 10, color: "var(--color-text-muted)", fontStyle: "italic" }}>gossipsub P2P</span>
+          <span style={{ fontSize: 10, color: "var(--color-text-muted)", fontStyle: "italic" }}>replicated, leader-ordered</span>
           <span style={{ fontSize: 16, color: "var(--color-brand-600)", letterSpacing: -3 }}>
             &#8592;&#8212;&#8212;&#8194;&#8212;&#8212;&#8594;
           </span>
         </div>
 
-        {/* Node B */}
+        {/* A follower */}
         <div style={nodeStyle}>
           <div style={{ fontSize: 12, fontWeight: 700, color: "var(--color-brand-600)", letterSpacing: 0.3 }}>
-            NODE B
+            FOLLOWER
           </div>
           <div style={{ fontSize: 10, color: "var(--color-text-muted)", fontFamily: "monospace", marginTop: -6 }}>
-            merod :2529
+            merod local :2502
           </div>
-          {/* Context inside Node B */}
+          {/* The instance on a follower */}
           <div style={contextStyle}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--color-brand-600)" }}>Context</div>
-            <div style={{ fontSize: 10, color: "var(--color-text-muted)", marginTop: 2 }}>WASM runtime + state</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--color-brand-600)" }}>App instance</div>
+            <div style={{ fontSize: 10, color: "var(--color-text-muted)", marginTop: 2 }}>component + state</div>
           </div>
           <div style={{ fontSize: 10, color: "var(--color-text-muted)", display: "flex", gap: 8 }}>
             <span>blobs</span>
             <span>·</span>
-            <span>private storage</span>
+            <span>presence</span>
           </div>
         </div>
       </div>
@@ -214,8 +214,9 @@ function ArchDiagram() {
           lineHeight: 1.6,
         }}
       >
-        Each node runs its own Context instance locally. CRDT sync merges state
-        between nodes automatically — no central server, no conflict resolution needed.
+        The leader runs every call and appends it to the app&apos;s log; the other
+        nodes apply the same log. A write is visible to every account at once, and
+        a later write simply replaces an earlier one: there is nothing to merge.
       </div>
     </div>
   );
@@ -268,67 +269,67 @@ const GLOSSARY_ITEMS: {
   definition: string;
 }[] = [
   {
-    term: "Node",
+    term: "Cluster / node",
     tag: "Infrastructure",
     tagColor: "#3b82f6",
     definition:
-      "A running merod process. Hosts one or more contexts. Each developer runs their own node locally or on a server. There is no shared infrastructure — every participant owns their node.",
+      "A set of merod nodes that serve apps together: `merod local` runs three in one process (127.0.0.1:2501-2503) for development, Calimero Cloud runs attested ones in production. The client fails over between them; you never pick one.",
   },
   {
-    term: "Context",
-    tag: "Core",
-    tagColor: "var(--color-brand-600)",
-    definition:
-      "A live instance of a WASM application. Has its own replicated CRDT state. Multiple nodes join the same context to share state. Identified by a hex context ID (32-byte Ed25519 public key).",
-  },
-  {
-    term: "Namespace / Group",
-    tag: "Membership",
-    tagColor: "#8b5cf6",
-    definition:
-      "Organizational layer above contexts. A namespace owns groups; groups own contexts. Joining a namespace grants eligibility to join any context inside it, removing the need for per-context invitations. Used for access control and discovery.",
-  },
-  {
-    term: "Device / Account",
+    term: "Account / passkey",
     tag: "Auth",
     tagColor: "#f59e0b",
     definition:
-      "Two different identities, and app code has to know which it holds. A device is one installation: an Ed25519 keypair, what a context membership is tied to and what the CRDT layer uses as a replica id — env::device_id(). An account is the person, and is the only thing that authorizes anything (the SharedStorage writer set is keyed by it) — env::account_id(). One account can have several devices. env::executor_id() used to be both and no longer exists. ⚠️ Since core 0.11.0-rc.27 removed base58, BOTH are 64 hex characters — the encoding used to tell them apart and no longer does, so passing a device key where an account belongs now fails silently as a permission that authorizes nobody. Call whoami to see both of yours.",
+      "You are an account, and your passkey is how you sign in: client.signUp / signIn. A method runs FOR the account (env::caller()), which is the only authorization subject here: writer sets, owners, roles and per-user storage are all keyed by it. There is no separate device id in an app run — whoami answers the account twice.",
   },
   {
-    term: "CRDT",
-    tag: "Sync",
+    term: "Organization",
+    tag: "Membership",
+    tagColor: "#8b5cf6",
+    definition:
+      "Who reaches an app instance: its owner, admins, members and guests (v1's namespace). An invitation is an org invite, approved with the inviter's passkey and redeemed after sign-in. Anyone outside the org is refused (404) before the app runs; an anonymous caller gets 401.",
+  },
+  {
+    term: "App instance",
+    tag: "Core",
+    tagColor: "var(--color-brand-600)",
+    definition:
+      "A live instance of the app (v1's context), created from the dev bundle (merod local) or the published package (production), privately or in an org. Every section here calls one instance: client.call(app, method, args) for a logged call, client.view(...) for a read.",
+  },
+  {
+    term: "The log",
+    tag: "Ordering",
     tagColor: "#06b6d4",
     definition:
-      "Conflict-free Replicated Data Type. Data structures that merge automatically when two nodes have concurrent writes. No conflicts, no coordination needed, no central authority. The node daemon handles merge logic transparently.",
+      "The cluster's leader runs each call and appends it to the instance's replicated log, so every write has one order and every node applies the same one. v1's CRDTs existed to merge concurrent writes made on different nodes; with one order there is nothing to merge, so the collections here are plain data structures (a later write replaces an earlier one). Text stays a sequence CRDT (Fugue) because editors send edits typed against a stale view.",
   },
   {
     term: "Ephemeral presence",
     tag: "Transient",
     tagColor: "#a855f7",
     definition:
-      "Transient state that never persists: cursors, typing indicators, who is online. It gossips node-to-node encrypted, runs NO WASM and adds NOTHING to the DAG, and it expires — the node keeps a 7 second TTL per author. Deliberately not a CRDT: the store is N independent single-writer registers keyed by author, so two authors never merge, they sit side by side. The write/read shape follows from that — mero.ephemeral.set(contextId, state) takes no author because you can only write your own slot (the node resolves it from its owned context identity, so a client cannot publish as someone else), while subscribe(contextId, handler) yields everyone's. Subscribing replays the context's current presence to that connection before any live deltas; a replayed entry carries ageMs and a live one does not, which is how you tell them apart without the two machines agreeing on a clock. Reach for it when the data is worthless a second later — and for anything you would be upset to lose, use a CRDT collection instead.",
+      "Transient state that never persists: cursors, typing indicators, who is online. The node keeps it in memory per instance; it runs no app code and adds nothing to the log. Deliberately not a CRDT: N single-writer slots keyed by author. publishPresence(app, seq, state) takes no author — you can only write your own slot — while presenceStream(app) yields everyone's, a snapshot first and then each change.",
   },
   {
     term: "xcall",
-    tag: "Cross-Context",
+    tag: "Cross-App",
     tagColor: "#ec4899",
     definition:
-      "Cross-context call. Lets one context invoke a method on another context, potentially on a different node. Fire-and-forget — the call is queued by the local node and delivered asynchronously. Enables multi-context application workflows.",
+      "A call from one app instance to another, within one organization. ws_ping_channel sends one with env::xcall: it is queued with the call's log entry and delivered after it commits, so success means queued, not delivered. The target's ws_pong is marked allow(app = \"*\"), sees Caller::App and checks that the sender is the app it claims; watch ws_ping_count on the target.",
   },
   {
     term: "Blob",
     tag: "Files",
     tagColor: "#16a34a",
     definition:
-      "A file stored on the node. Identified by its SHA-256 hash (hex encoded). Metadata (name, size, MIME type) replicates via CRDT to all peers. The blob bytes themselves stay on the originating node until a peer explicitly fetches them (lazy replication).",
+      "A file in an instance's blob store, uploaded with client.uploadBlob(app, bytes) and served by every node of the cluster. The contract keeps a record of it (name, size, MIME type, blob id) and a BlobRef, which keeps the blob on the node while the record exists; it can read the node's metadata and hand out a download grant, never the bytes. File names are full-text indexed for search_files.",
   },
   {
-    term: "Private Storage",
-    tag: "Local Only",
+    term: "Secrets game",
+    tag: "Per account",
     tagColor: "#ef4444",
     definition:
-      "Node-local state marked #[app::private]. Never replicated to any peer. Used for secrets in commit-reveal schemes — e.g., store a secret locally, publish only its hash to the shared CRDT state, then reveal the secret later.",
+      "v1 kept the secret node-local (#[app::private]), which 1.0 has no equivalent of. Here the secret is the setter's own entry in the app's state, which only my_secrets of the same account returns, and only its SHA-256 is public. It is hidden from other accounts by the methods, not from the node operator.",
   },
 ];
 
@@ -417,51 +418,51 @@ const STORAGE_ROWS: {
 }[] = [
   {
     type: "KV Store",
-    scope: "Context",
+    scope: "Instance",
     replicates: "All nodes",
-    merge: "Last-Write-Wins",
+    merge: "Later write wins (one log)",
     useCase: "Shared settings, app state",
   },
   {
     type: "User Storage",
-    scope: "Per-identity",
+    scope: "Per account",
     replicates: "All nodes",
-    merge: "LWW per identity",
+    merge: "Only the account writes its own",
     useCase: "Per-user preferences",
   },
   {
     type: "Frozen Storage",
-    scope: "Context",
+    scope: "Instance",
     replicates: "All nodes",
-    merge: "Immutable (SHA256 key)",
+    merge: "Immutable (SHA-256 address)",
     useCase: "Audit logs, signed content",
   },
   {
-    type: "Private Storage",
-    scope: "This node only",
-    replicates: "Never",
-    merge: "N/A",
-    useCase: "Secrets, commit-reveal",
+    type: "Secrets",
+    scope: "Per account",
+    replicates: "All nodes",
+    merge: "Read back only by its setter",
+    useCase: "Commit-reveal",
   },
   {
     type: "Blob",
-    scope: "Node + metadata",
-    replicates: "Metadata yes, bytes lazy",
-    merge: "Metadata LWW",
+    scope: "Instance blob store + record",
+    replicates: "Record yes, bytes served by the cluster",
+    merge: "Record replaced as a whole",
     useCase: "File sharing",
   },
   {
-    type: "CRDT Counters",
-    scope: "Context",
+    type: "Counters",
+    scope: "Instance",
     replicates: "All nodes",
-    merge: "G-counter or PN-counter",
+    merge: "Every increment counts (one log)",
     useCase: "Event counts, scores",
   },
   {
-    type: "RGA Document",
-    scope: "Context",
+    type: "Text document",
+    scope: "Instance",
     replicates: "All nodes",
-    merge: "Position-aware merge",
+    merge: "Fugue: edits land where sent",
     useCase: "Collaborative text",
   },
 ];
@@ -609,113 +610,66 @@ const TWO_NODE_STEPS: {
 }[] = [
   {
     n: 1,
-    title: "Run the setup script (recommended)",
+    title: "Start merod local and this app",
     body: (
       <>
         <p style={{ margin: "0 0 8px" }}>
-          The easiest way to get two nodes running is the bundled{" "}
-          <code>setup.sh</code> script. It starts both nodes, authenticates
-          them, creates the namespace, installs the app bundle, and wires up
-          the context — no browser required.
+          One command starts the cluster (three nodes in one process), builds and
+          uploads the component, and runs this frontend on{" "}
+          <code>http://localhost:5173</code>:
         </p>
-        <CodeBlock>{`./setup.sh`}</CodeBlock>
+        <CodeBlock>{`pnpm dev:local scaffolding-e2e`}</CodeBlock>
         <p style={{ margin: "8px 0 0" }}>
-          Re-run with <code>--clean</code> to wipe state and start fresh.
-          Uses hardcoded credentials (<code>admin</code> /{" "}
-          <code>calimero1234</code>) that can be overridden via{" "}
-          <code>CALIMERO_ADMIN_USER</code> / <code>CALIMERO_ADMIN_PASS</code>.
-          Pass <code>--merobox</code> to use <code>merobox</code> instead of{" "}
-          <code>merod</code> for node startup.
+          <code>merod local</code> is Linux-only at core 1.0.0-rc.8. Its state is
+          kept in <code>.merod-local/</code>; <code>--fresh</code> starts over.
         </p>
       </>
     ),
   },
   {
     n: 2,
-    title: "Or start nodes manually",
+    title: "Account A: sign up and create a shared instance",
     body: (
-      <>
-        <p style={{ margin: "0 0 8px" }}>
-          If you prefer manual control, run each node in a separate terminal
-          using <code>merod</code>:
-        </p>
-        <CodeBlock>{`merod --home ~/.merod-a --server-port 2428 --swarm-port 2528
-merod --home ~/.merod-b --server-port 2429 --swarm-port 2529`}</CodeBlock>
-        <p style={{ margin: "8px 0 8px" }}>
-          Or use <code>merobox</code> (wraps Docker or runs natively with{" "}
-          <code>--no-docker</code>):
-        </p>
-        <CodeBlock>{`merobox run --no-docker --home ~/.merod-a --server-port 2428 --swarm-port 2528
-merobox run --no-docker --home ~/.merod-b --server-port 2429 --swarm-port 2529`}</CodeBlock>
-        <p style={{ margin: "8px 0 0" }}>
-          Then go through the Setup Wizard in each tab to authenticate,
-          create a namespace, install the bundle, and join the context.
-        </p>
-      </>
+      <p style={{ margin: 0 }}>
+        Sign up with a passkey, then create an instance with &ldquo;shared&rdquo;
+        ticked: it gets an organization of its own. Claim the workspace in Setup.
+      </p>
     ),
   },
   {
     n: 3,
-    title: "Open Tab A — connect to Node A",
+    title: "Invite account B",
     body: (
-      <>
-        <p style={{ margin: "0 0 8px" }}>
-          Open the app in your browser with the node URL for Node A:
-        </p>
-        <CodeBlock>{`http://localhost:5173?node=http://localhost:2428`}</CodeBlock>
-        <p style={{ margin: "8px 0 0" }}>
-          Authenticate and create or select a context. You can also use the{" "}
-          <strong>+ Open Node B tab</strong> button in the top bar to open a
-          pre-filled second tab automatically.
-        </p>
-      </>
+      <p style={{ margin: 0 }}>
+        In Setup, create an invitation link (your passkey approves it) and open it
+        in a second browser profile, where account B signs up. The invitation is
+        redeemed after sign-in and the instance appears in B&apos;s list.
+      </p>
     ),
   },
   {
     n: 4,
-    title: "Open Tab B — connect to Node B",
+    title: "Watch writes arrive",
     body: (
-      <>
-        <p style={{ margin: "0 0 8px" }}>
-          Open a second tab pointing at Node B:
-        </p>
-        <CodeBlock>{`http://localhost:5173?node=http://localhost:2429`}</CodeBlock>
-        <p style={{ margin: "8px 0 0" }}>Authenticate as a different identity.</p>
-      </>
+      <p style={{ margin: 0 }}>
+        Set a key as A and read it as B: the write is in the log, so B reads it at
+        once. Try the rules too: B cannot write the shared or owned cell until A
+        grants it, and every refusal answers <code>Forbidden</code>.
+      </p>
     ),
   },
   {
     n: 5,
-    title: "Join the same context (if not already done by setup.sh)",
+    title: "Run the automated suites",
     body: (
       <>
         <p style={{ margin: "0 0 8px" }}>
-          If you ran <code>setup.sh</code> this is already done — skip ahead.
-          For manual setup:
+          &ldquo;Run All Tests&rdquo; runs the in-app suite against the open
+          instance. The contract&apos;s scenarios run as real accounts on the
+          cluster with:
         </p>
-        <p style={{ margin: "0 0 8px" }}>
-          On Tab A: go to Setup Wizard → Generate Invitation → copy the
-          link.
-        </p>
-        <p style={{ margin: "0 0 8px" }}>
-          On Tab B: open the link and accept the prompt — it joins the
-          namespace and the context.
-        </p>
-        <p style={{ margin: 0 }}>
-          Both tabs now share the same context ID and state root.
-        </p>
+        <CodeBlock>{`pnpm merod-local e2e scaffolding-e2e`}</CodeBlock>
       </>
-    ),
-  },
-  {
-    n: 6,
-    title: "Test cross-node sync",
-    body: (
-      <p style={{ margin: 0 }}>
-        Go to KV Operations on Tab A and set a key. Switch to Tab B and
-        click Refresh — the value appears within 1–3 seconds. This is CRDT
-        gossipsub replication in action.
-      </p>
     ),
   },
 ];
@@ -738,9 +692,8 @@ function TwoNodeGuide() {
           lineHeight: 1.65,
         }}
       >
-        The most important test you can run: two nodes, one context, watching
-        state propagate. The fastest path is <code>./setup.sh</code> which
-        handles everything automatically — or follow the manual steps below.
+        The most important test you can run: two accounts, one instance, each
+        on whichever node the client picked, watching every write arrive.
       </p>
       <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
         {TWO_NODE_STEPS.map((step, i) => (
@@ -826,36 +779,41 @@ const ID_FORMATS: {
   description: string;
 }[] = [
   {
-    label: "Context ID",
-    encoding: "hex",
-    size: "32 bytes",
-    description: "Identifies a context instance. Derived from the context's Ed25519 public key.",
-  },
-  {
-    label: "Device Key",
-    encoding: "hex",
-    size: "32 bytes",
-    description:
-      "Ed25519 public key identifying one installation, and what the CRDT layer uses as the replica id. Never an authorization subject — that is the account. NOT sent with a call: it used to travel as executorPublicKey, but the node reads the caller from the bearer token and ignores anything passed alongside, so this app does not send it (see the assertion in api/rpc.test.ts).",
+    label: "Instance ID",
+    encoding: "opaque string",
+    size: "—",
+    description: "Identifies an app instance (v1's context id). client.listApps() lists the ones your account reaches; the context bar copies the open one.",
   },
   {
     label: "Account ID",
-    encoding: "hex",
-    size: "32 bytes",
+    encoding: "opaque string",
+    size: "—",
     description:
-      "Identifies a person, and is the only thing that authorizes anything: writer sets, entry ownership and group membership are all keyed by it. One account can hold several device keys. ⚠️ Until core 0.11.0-rc.27 this was hex while a device key was base58, so the two could never be confused on sight. rc.27 made every id hex (core#3691), so an account and a device key are now the same 64 characters and only their provenance tells them apart — call whoami.",
+      "Identifies a person, and is the only thing that authorizes anything: writer sets, owners, roles and per-user storage are keyed by it. whoami (or the bottom of the sidebar) tells you yours.",
   },
   {
-    label: "Group ID",
-    encoding: "hex",
-    size: "variable",
-    description: "Identifies a namespace group. Used in invitation and membership management.",
+    label: "Organization ID",
+    encoding: "opaque string",
+    size: "—",
+    description: "Identifies the organization a shared instance lives in. Invitations are made into it.",
   },
   {
     label: "Blob ID",
     encoding: "hex",
     size: "32 bytes",
-    description: "SHA-256 hash of the blob content. Content-addressed — the same file always has the same ID.",
+    description: "SHA-256 of the blob's content, 64 hex characters. Content-addressed — the same file always has the same id.",
+  },
+  {
+    label: "Frozen hash",
+    encoding: "hex",
+    size: "32 bytes",
+    description: "SHA-256 of the stored (CBOR) value: the address add_frozen returns. Not the SHA-256 of the raw string, as it was in v1.",
+  },
+  {
+    label: "64-bit integers",
+    encoding: "decimal string",
+    size: "—",
+    description: "A u64/i64 travels as a decimal string (\"3\"), so it never loses precision in JSON. This frontend's adapter turns them back into numbers.",
   },
 ];
 

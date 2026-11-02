@@ -1,3743 +1,2090 @@
 {
-  "schema_version": "wasm-abi/1",
-  "types": {
-    "ChannelRecord": {
-      "kind": "record",
-      "doc": "A channel in the workspace directory: another Calimero **context**, made\ndiscoverable by registering its id here.\n\n`registered_at` exists for the same reason `FileRecord::uploaded_at` does —\n`impl_atomic_lww_leaf!` needs a field to order concurrent writes by, and\nthis is a whole-record value, not a struct of independently mergeable CRDT\nfields. Two members registering the same context id concurrently converge on\nthe later write rather than on a field-by-field mixture of the two.",
-      "fields": [
-        {
-          "name": "context_id",
-          "type": {
-            "kind": "string"
-          },
-          "doc": "The target context, 64 hex characters. The map key as well as a field,\nso a listing needs no zip with its keys."
-        },
-        {
-          "name": "name",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "topic",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "created_by",
-          "type": {
-            "kind": "string"
-          },
-          "doc": "The ACCOUNT that registered it, 64 hex. Listings fill it from the\nentry's owner stamp, never from the stored bytes, which the writer\nchose."
-        },
-        {
-          "name": "registered_at",
-          "type": {
-            "kind": "u64"
-          }
-        }
-      ]
+  "abiVersion": 1,
+  "errors": {
+    "Forbidden": {
+      "message": "string"
     },
-    "E2eKvStore": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "kv_items",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "kind": "string"
-              }
-            },
-            "crdt_type": "unordered_map"
-          },
-          "doc": "Public replicated KV map"
-        },
-        {
-          "name": "handler_counter",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "counter"
-          },
-          "doc": "Counter for handler executions (CRDT G-Counter - grow only)"
-        },
-        {
-          "name": "user_items_simple",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "kind": "string"
-              }
-            }
-          },
-          "doc": "Simple user-owned data (e.g., profile name)"
-        },
-        {
-          "name": "user_items_nested",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "NestedMap"
-            }
-          },
-          "doc": "Nested user-owned data (e.g., user's private KV store)"
-        },
-        {
-          "name": "frozen_items",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "kind": "string"
-            }
-          },
-          "doc": "Content-addressed immutable storage"
-        },
-        {
-          "name": "acl",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "kind": "bool"
-            },
-            "crdt_type": "shared_storage"
-          },
-          "doc": "Named-role registry. Its backing writer set IS the admin tier, so\n\"who may grant a role\" and \"who may rotate the admins\" are the same\nauthenticated question — there is no separate admin bookkeeping to drift."
-        },
-        {
-          "name": "acl_doc",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "shared_storage",
-            "inner_type": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "kind": "string"
-              }
-            }
-          },
-          "doc": "Capability-guarded document. Its per-account `OpMask` map is PROJECTED\nfrom `acl`'s roles by `acl_project`; it is deliberately not a second\nsource of truth, which is why nothing here writes the map directly."
-        },
-        {
-          "name": "owned_doc",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "shared_storage",
-            "inner_type": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "kind": "string"
-              }
-            }
-          },
-          "doc": "Single-owner cell. `SharedStorage` above is a flat writer SET; this is\nthe degenerate case with one writer plus a real transfer operation, and\n`Ownable` enforces the at-most-one invariant that `SharedStorage` does\nnot."
-        },
-        {
-          "name": "games",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "kind": "string"
-              }
-            },
-            "crdt_type": "unordered_map"
-          },
-          "doc": "Maps game_id -> SHA256(secret) hex"
-        },
-        {
-          "name": "files",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "FileRecord"
-            },
-            "crdt_type": "unordered_map"
-          },
-          "doc": "File metadata records"
-        },
-        {
-          "name": "crdt_counters",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "counter"
-            },
-            "crdt_type": "unordered_map"
-          },
-          "doc": "Map of G-Counters (grow-only, concurrent increments should sum)\nCounter<false> = GCounter (default)"
-        },
-        {
-          "name": "crdt_pn_counters",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "counter"
-            },
-            "crdt_type": "unordered_map"
-          },
-          "doc": "Map of PN-Counters (supports decrement, concurrent inc/dec should merge correctly)\nCounter<true> = PNCounter (allows decrement)"
-        },
-        {
-          "name": "crdt_registers",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "kind": "string"
-              }
-            },
-            "crdt_type": "unordered_map"
-          },
-          "doc": "Map of LWW registers (latest timestamp wins)"
-        },
-        {
-          "name": "crdt_metadata",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "kind": "map",
-              "key": {
-                "kind": "string"
-              },
-              "value": {
-                "kind": "record",
-                "fields": [],
-                "crdt_type": "lww_register",
-                "inner_type": {
-                  "kind": "string"
-                }
-              },
-              "crdt_type": "unordered_map"
-            },
-            "crdt_type": "unordered_map"
-          },
-          "doc": "Nested maps (field-level merge)"
-        },
-        {
-          "name": "crdt_metrics",
-          "type": {
-            "kind": "list",
-            "items": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "counter"
-            },
-            "crdt_type": "vector"
-          },
-          "doc": "Vector of G-Counters (element-wise merge)"
-        },
-        {
-          "name": "crdt_tags",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "kind": "list",
-              "items": {
-                "kind": "string"
-              },
-              "crdt_type": "unordered_set"
-            },
-            "crdt_type": "unordered_map"
-          },
-          "doc": "Map of sets (union merge)"
-        },
-        {
-          "name": "sorted_items",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "kind": "string"
-              }
-            },
-            "crdt_type": "sorted_map"
-          },
-          "doc": "Key-ordered map."
-        },
-        {
-          "name": "sorted_tags",
-          "type": {
-            "kind": "list",
-            "items": {
-              "kind": "string"
-            },
-            "crdt_type": "sorted_set"
-          },
-          "doc": "Element-ordered set — the `SortedSet` counterpart of `sorted_items`,\nthrough the same host index path."
-        },
-        {
-          "name": "rga_document",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "replicated_growable_array"
-          },
-          "doc": "Collaborative text document"
-        },
-        {
-          "name": "rga_edit_count",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "counter"
-          },
-          "doc": "Edit count for document (G-Counter)"
-        },
-        {
-          "name": "rga_metadata",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "kind": "string"
-              }
-            },
-            "crdt_type": "unordered_map"
-          },
-          "doc": "Document metadata (title, owner)"
-        },
-        {
-          "name": "authored_items",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "kind": "string"
-              }
-            },
-            "crdt_type": "authored_map"
-          },
-          "doc": "Per-owner keyspace (core rc.57): each account holds its own entry at a\nkey, and only that account edits or removes it."
-        },
-        {
-          "name": "authored_vec",
-          "type": {
-            "kind": "list",
-            "items": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "kind": "string"
-              }
-            },
-            "crdt_type": "authored_vector"
-          },
-          "doc": "Append-only vector with per-slot ownership; only the pusher can update/tombstone their slot"
-        },
-        {
-          "name": "shared_data",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "shared_storage",
-            "inner_type": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "kind": "string"
-              }
-            }
-          },
-          "doc": "Group-writable single value; writers rotate at runtime"
-        },
-        {
-          "name": "ws_claim",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "shared_storage",
-            "inner_type": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "$ref": "WsClaim"
-              }
-            }
-          },
-          "doc": "Name and admin. Writers are the workspace admins: the context creator\nfirst, then whoever an admin grants `admin`. Every node checks a write\nagainst them, so a patched member cannot claim or rename it."
-        },
-        {
-          "name": "ws_roles",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "shared_storage",
-            "inner_type": {
-              "kind": "map",
-              "key": {
-                "kind": "string"
-              },
-              "value": {
-                "kind": "record",
-                "fields": [],
-                "crdt_type": "lww_register",
-                "inner_type": {
-                  "kind": "string"
-                }
-              },
-              "crdt_type": "unordered_map"
-            }
-          },
-          "doc": "identity -> role, in a writer-set cell with the same writers as\n`ws_claim`: every entry is guarded by it, so a patched member cannot\ngrant itself `admin` or demote the real one. `LwwRegister` values so\ntwo admins changing one member's role concurrently converge."
-        },
-        {
-          "name": "ws_channels",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "ChannelRecord"
-            },
-            "crdt_type": "authored_map"
-          },
-          "doc": "context_id -> channel. Keyed by the context id so a re-register of the\nsame context updates rather than duplicates. Each entry is owned by\nthe account that registered it; the workspace admins moderate, so an\nadmin may remove anyone's entry and nobody else may."
-        },
-        {
-          "name": "ws_groups",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "WsGroupRecord"
-            },
-            "crdt_type": "authored_map"
-          },
-          "doc": "group_id -> group, owned and moderated as `ws_channels`."
-        },
-        {
-          "name": "ws_pings",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "counter"
-          },
-          "doc": "Pongs received via `xcall`. Grow-only: a pong is an event that happened,\nand no node can un-happen another node's."
-        }
-      ]
+    "FrozenNotFound": {
+      "hash": "string"
     },
-    "Event_AdminGranted": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "account",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "by",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
+    "Invalid": {
+      "message": "string"
     },
-    "Event_AdminRevoked": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "account",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "by",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_AuthoredInserted": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "value",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "owner",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_AuthoredRemoved": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_AuthoredUpdated": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "value",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_AuthoredVecPushed": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "index",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "value",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "owner",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_AuthoredVecRemoved": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "index",
-          "type": {
-            "kind": "u32"
-          }
-        }
-      ]
-    },
-    "Event_AuthoredVecUpdated": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "index",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "value",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_CapabilitiesProjected": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "accounts",
-          "type": {
-            "kind": "u32"
-          }
-        }
-      ]
-    },
-    "Event_ChannelPinged": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "to_context",
-          "type": {
-            "kind": "bytes",
-            "size": 32
-          }
-        },
-        {
-          "name": "by",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_ChannelRegistered": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "context_id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "name",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "by",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_ChannelUnregistered": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "context_id",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_FileDeleted": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "name",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_FileUploaded": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "name",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "size",
-          "type": {
-            "kind": "u64"
-          }
-        },
-        {
-          "name": "uploader",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_FrozenAdded": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "hash",
-          "type": {
-            "kind": "bytes",
-            "size": 32
-          }
-        },
-        {
-          "name": "value",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_GCounterIncremented": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "value",
-          "type": {
-            "kind": "u64"
-          }
-        }
-      ]
-    },
-    "Event_GroupRegistered": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "group_id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "name",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "by",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_GroupUnregistered": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "group_id",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_Guessed": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "game_id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "success",
-          "type": {
-            "kind": "bool"
-          }
-        },
-        {
-          "name": "by",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_Inserted": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "value",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_MemberRoleSet": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "identity",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "role",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "by",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_MetadataSet": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "outer_key",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "inner_key",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "value",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_MetricPushed": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "value",
-          "type": {
-            "kind": "u64"
-          }
-        }
-      ]
-    },
-    "Event_OwnershipTransferred": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "from",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "to",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_PnCounterChanged": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "value",
-          "type": {
-            "kind": "i64"
-          }
-        },
-        {
-          "name": "operation",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_PongReceived": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "from_context",
-          "type": {
-            "kind": "bytes",
-            "size": 32
-          }
-        },
-        {
-          "name": "count",
-          "type": {
-            "kind": "u64"
-          }
-        }
-      ]
-    },
-    "Event_RegisterSet": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "value",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_Removed": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_RoleGranted": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "role",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "account",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "by",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_RoleRevoked": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "role",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "account",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "by",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_SecretSet": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "game_id",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_SharedSet": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "value",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "by",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_SharedWriterAdded": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "writer",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_SharedWritersRotated": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "writers",
-          "type": {
-            "kind": "list",
-            "items": {
-              "kind": "string"
-            }
-          }
-        }
-      ]
-    },
-    "Event_TagAdded": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "tag",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_TextDeleted": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "start",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "end",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "editor",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_TextInserted": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "position",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "text",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "editor",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_TitleChanged": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "old_title",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "new_title",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "editor",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_Updated": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "value",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_UserNestedSet": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "account_id",
-          "type": {
-            "kind": "bytes",
-            "size": 32
-          }
-        },
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "value",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_UserSimpleSet": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "account_id",
-          "type": {
-            "kind": "bytes",
-            "size": 32
-          },
-          "doc": "The ACCOUNT whose slot was written — `UserStorage` is keyed by\naccount since rc.21, so a device id here would name a slot nobody\ncan read back."
-        },
-        {
-          "name": "value",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_WorkspaceInitialized": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "name",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "admin",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "FileRecord": {
-      "kind": "record",
-      "doc": "File record for blob metadata. Atomic whole-record LWW by `uploaded_at`\n(see `impl_atomic_lww_leaf!`); not a struct of CRDT fields, so no `Mergeable`\nderive.",
-      "fields": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "name",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "blob_id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "size",
-          "type": {
-            "kind": "u64"
-          }
-        },
-        {
-          "name": "mime_type",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "uploaded_by",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "uploaded_at",
-          "type": {
-            "kind": "u64"
-          }
-        }
-      ]
-    },
-    "Identity": {
-      "kind": "record",
-      "doc": "What `whoami` returns — see that method for why both halves exist.",
-      "fields": [
-        {
-          "name": "device_id",
-          "type": {
-            "kind": "string"
-          },
-          "doc": "This installation, 64 hex characters."
-        },
-        {
-          "name": "account_id",
-          "type": {
-            "kind": "string"
-          },
-          "doc": "The person, 64 hex characters. The writer-set key."
-        }
-      ]
-    },
-    "MemberRecord": {
-      "kind": "record",
-      "doc": "A workspace member and the role the app grants them.",
-      "fields": [
-        {
-          "name": "identity",
-          "type": {
-            "kind": "string"
-          },
-          "doc": "Whatever the caller passed to `ws_set_member_role`. Free-form on\npurpose: see `ws_set_member_role` for why this is NOT an `AccountId`."
-        },
-        {
-          "name": "role",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "NestedMap": {
-      "kind": "record",
-      "doc": "Nested map type for user storage.",
-      "fields": [
-        {
-          "name": "map",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "kind": "string"
-              }
-            },
-            "crdt_type": "unordered_map"
-          }
-        }
-      ]
-    },
-    "WorkspaceInfo": {
-      "kind": "record",
-      "doc": "Summary of the workspace, for the header card.",
-      "fields": [
-        {
-          "name": "name",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "admin",
-          "type": {
-            "kind": "string"
-          },
-          "doc": "The ACCOUNT that ran `ws_init`, 64 hex."
-        },
-        {
-          "name": "channel_count",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "group_count",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "member_count",
-          "type": {
-            "kind": "u32"
-          }
-        }
-      ]
-    },
-    "WsClaim": {
-      "kind": "record",
-      "doc": "The workspace claim: its name and the account that made it. Written once,\nby `ws_init`, into a writer-set cell whose writers are the admins.",
-      "fields": [
-        {
-          "name": "name",
-          "type": {
-            "kind": "string"
-          },
-          "doc": "Empty is the \"not claimed\" sentinel — `ws_init` rejects an empty name."
-        },
-        {
-          "name": "admin",
-          "type": {
-            "kind": "string"
-          },
-          "doc": "The account that ran `ws_init`, 64 hex."
-        }
-      ]
-    },
-    "WsGroupRecord": {
-      "kind": "record",
-      "doc": "A group in the workspace directory — the app-level mirror of a node subgroup.",
-      "fields": [
-        {
-          "name": "group_id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "name",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "description",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "created_by",
-          "type": {
-            "kind": "string"
-          },
-          "doc": "As `ChannelRecord::created_by`: read from the owner stamp."
-        },
-        {
-          "name": "registered_at",
-          "type": {
-            "kind": "u64"
-          }
-        }
-      ]
+    "NoHash": {},
+    "NotFound": {
+      "key": "string"
     }
   },
-  "methods": [
-    {
-      "name": "acl_admins",
-      "doc": "Every admin, as 64-hex account ids.",
-      "params": [],
-      "returns": {
-        "kind": "list",
-        "items": {
-          "kind": "string"
-        }
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "acl_capabilities",
-      "doc": "The projected map: account -> the operations it may perform on `acl_doc`.\n\nThis, not `acl_members_of`, is what a merge check reads. Comparing the\ntwo is how you see an un-projected grant.",
-      "params": [],
-      "returns": {
-        "kind": "map",
-        "key": {
-          "kind": "string"
-        },
-        "value": {
-          "kind": "list",
-          "items": {
-            "kind": "string"
-          }
-        }
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "acl_doc_get",
-      "params": [],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "acl_doc_set",
-      "doc": "Write the guarded document. Requires `WRITE` in the PROJECTED map.",
-      "params": [
-        {
-          "name": "value",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "acl_grant",
-      "params": [
-        {
-          "name": "role",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "account_hex",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "acl_grant_admin",
-      "doc": "Add an admin. Admin-only, and enforced at merge as a writer-set rotation\nrather than by the fail-fast guard alone.",
-      "params": [
-        {
-          "name": "account_hex",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "acl_has_role",
-      "params": [
-        {
-          "name": "role",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "account_hex",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "bool"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "acl_is_admin",
-      "doc": "Whether `account_hex` is an admin.",
-      "params": [
-        {
-          "name": "account_hex",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "bool"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "acl_members_of",
-      "params": [
-        {
-          "name": "role",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "list",
-        "items": {
-          "kind": "string"
-        }
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "acl_my_roles",
-      "doc": "The CALLER's roles, resolved by account.",
-      "params": [],
-      "returns": {
-        "kind": "list",
-        "items": {
-          "kind": "string"
-        }
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "acl_project",
-      "doc": "Push the role registry onto `acl_doc`'s capability map.\n\nMust be re-run after ANY grant, revoke, or admin change: the registry\nwrite and this projection are separate signed actions, and only the map\nis consulted at merge. Admins are always given `FULL` by `project_onto`\nso a projection can never lock them out of the document they administer.",
-      "params": [],
-      "returns": {
-        "kind": "u32"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "acl_revoke",
-      "doc": "Revoke a role.\n\nA revoke stores `false` rather than deleting the entry, so membership\nstays a plain last-writer-wins boolean with no tombstone — which is why\nre-granting after a revoke converges, unlike the set-tombstone case.",
-      "params": [
-        {
-          "name": "role",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "account_hex",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "acl_revoke_admin",
-      "doc": "Remove an admin.\n\nRemoving yourself is permitted and is not reversible from your side —\nthere is no separate owner above this tier to appeal to. Emptying the set\nentirely would leave the registry unwritable forever, so that is refused.",
-      "params": [
-        {
-          "name": "account_hex",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "acl_roles",
-      "doc": "The roles this app recognises, and the capability each confers.\n\n`AccessControl` stores a role only as `role\\0member` keys, so it cannot\nenumerate role names — the list is app state, and this method is how a\nclient learns it instead of hard-coding it.",
-      "params": [],
-      "returns": {
-        "kind": "map",
-        "key": {
-          "kind": "string"
-        },
-        "value": {
-          "kind": "list",
-          "items": {
-            "kind": "string"
-          }
-        }
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "add_frozen",
-      "params": [
-        {
-          "name": "value",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "add_guess",
-      "params": [
-        {
-          "name": "game_id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "guess",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "bool"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "add_secret",
-      "params": [
-        {
-          "name": "game_id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "secret",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "add_tag",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "tag",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "authored_entries",
-      "params": [],
-      "returns": {
-        "kind": "map",
-        "key": {
-          "kind": "string"
-        },
-        "value": {
-          "kind": "string"
-        }
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "authored_get",
-      "doc": "The value at `key` of whoever holds it: the lowest account's, if\nseveral do, the same pick on every node. Keys are per owner, so a\nkey-only `get` would read the CALLER's own entry only.",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "authored_get_by",
-      "doc": "`owner`'s own value at `key` (`owner` is a 64-hex account id).",
-      "params": [
-        {
-          "name": "owner",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "authored_get_owner",
-      "doc": "The account `authored_get` reads `key` from: the lowest holder.",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "authored_insert",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "value",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "authored_len",
-      "params": [],
-      "returns": {
-        "kind": "u32"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "authored_owners",
-      "doc": "Every account holding an entry at `key`, ascending.",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "list",
-        "items": {
-          "kind": "string"
-        }
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "authored_remove",
-      "doc": "Removes the CALLER's own entry at `key`: keys are per owner, so\nanother account's entry at the same key is theirs and stays.",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "authored_update",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "value",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "authored_vec_entries",
-      "params": [],
-      "returns": {
-        "kind": "list",
-        "items": {
-          "kind": "string"
-        }
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "authored_vec_get",
-      "params": [
-        {
-          "name": "index",
-          "type": {
-            "kind": "u32"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "authored_vec_get_owner",
-      "params": [
-        {
-          "name": "index",
-          "type": {
-            "kind": "u32"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "authored_vec_len",
-      "params": [],
-      "returns": {
-        "kind": "u32"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "authored_vec_push",
-      "params": [
-        {
-          "name": "value",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "u32"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "authored_vec_remove",
-      "params": [
-        {
-          "name": "index",
-          "type": {
-            "kind": "u32"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "authored_vec_update",
-      "params": [
-        {
-          "name": "index",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "value",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "clear",
-      "params": [],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "clear_handler",
-      "params": [],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating",
-      "handler": true
-    },
-    {
-      "name": "clear_with_handler",
-      "doc": "Clear with handler trigger (for testing event-driven handlers)",
-      "params": [],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "decrement_pn_counter",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "i64"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "delete_file",
-      "params": [
-        {
-          "name": "file_id",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "entries",
-      "params": [],
-      "returns": {
-        "kind": "map",
-        "key": {
-          "kind": "string"
-        },
-        "value": {
-          "kind": "string"
-        }
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "games",
-      "params": [],
-      "returns": {
-        "kind": "map",
-        "key": {
-          "kind": "string"
-        },
-        "value": {
-          "kind": "string"
-        }
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "get",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "get_blob_id_hex",
-      "params": [
-        {
-          "name": "file_id",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "get_counter",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "u64"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "get_file",
-      "params": [
-        {
-          "name": "file_id",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "$ref": "FileRecord"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "get_frozen",
-      "params": [
-        {
-          "name": "hash_hex",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "get_g_counter",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "u64"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "get_handler_execution_count",
-      "params": [],
-      "returns": {
-        "kind": "u64"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "get_metadata",
-      "params": [
-        {
-          "name": "outer_key",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "inner_key",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "get_metric",
-      "params": [
-        {
-          "name": "index",
-          "type": {
-            "kind": "u32"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "u64"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "get_pn_counter",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "i64"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "get_register",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "get_result",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "get_tag_count",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "u64"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "get_user_nested",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "get_user_simple",
-      "params": [],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "get_user_simple_for",
-      "doc": "Read another user's slot of `UserStorage`, addressed by ACCOUNT.\n\nTakes the ACCOUNT id, not the device key: rc.21 rekeyed `UserStorage`\nfrom `UnorderedMap<PublicKey, T>` to `UnorderedMap<AccountId, T>`, so a\ndevice key now names a slot nobody writes to and this would answer\n`None` forever rather than failing. Get the value from `whoami`, the\nsame way `shared_add_writer` does.",
-      "params": [
-        {
-          "name": "account_hex",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "has_tag",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "tag",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "bool"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "increment_counter",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "u64"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "increment_g_counter",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "u64"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "increment_pn_counter",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "i64"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "init",
-      "params": [],
-      "returns": {
-        "kind": "unit"
-      }
-    },
-    {
-      "name": "insert_handler",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "value",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating",
-      "handler": true
-    },
-    {
-      "name": "len",
-      "params": [],
-      "returns": {
-        "kind": "u32"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "list_files",
-      "params": [],
-      "returns": {
-        "kind": "list",
-        "items": {
-          "$ref": "FileRecord"
-        }
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "metrics_len",
-      "params": [],
-      "returns": {
-        "kind": "u32"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "my_account",
-      "doc": "This node's account on its own, hex-encoded.\n\n`whoami` already returns this value as one half of an `Identity`, and a\nmerobox workflow can capture it directly (`result.output.account_id` —\n`sorted-collections.yml` does exactly that), so this method adds no\ncapability. It exists for one reason: **it is the name core's own copy\nof this scaffold uses** (`apps/scaffolding-e2e`).\n\nThe two scaffolds have drifted apart once already. Keeping the account\naccessor spelled the same in both is what lets a scenario written\nagainst one run unchanged against the other, which is the only cheap\ndefence against drifting again.\n\nKeep both names. `whoami` is the better call — one round trip for both\nhalves of an identity — and nothing here should be rewritten to use\nthis one.",
-      "params": [],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "my_secrets",
-      "params": [],
-      "returns": {
-        "kind": "map",
-        "key": {
-          "kind": "string"
-        },
-        "value": {
-          "kind": "string"
-        }
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "owned_get",
-      "params": [],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "owned_is_owner",
-      "params": [
-        {
-          "name": "account_hex",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "bool"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "owned_owner",
-      "doc": "The owner, or `None`.\n\n`Ownable` holds at most one writer by construction. A malformed\nmulti-writer cell answers `None` rather than picking one, so this can\nnever report a non-deterministic owner.",
-      "params": [],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "owned_set",
-      "params": [
-        {
-          "name": "value",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "owned_transfer",
-      "doc": "Hand ownership to `account_hex`. Owner-only, and one-way: the previous\nowner is no longer a writer once this lands, so there is no undo.",
-      "params": [
-        {
-          "name": "account_hex",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "push_metric",
-      "params": [
-        {
-          "name": "value",
-          "type": {
-            "kind": "u64"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "u32"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "remove",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "remove_handler",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating",
-      "handler": true
-    },
-    {
-      "name": "remove_with_handler",
-      "doc": "Remove with handler trigger (for testing event-driven handlers)",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "rga_append_text",
-      "params": [
-        {
-          "name": "text",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "rga_clear",
-      "params": [],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "rga_delete_text",
-      "params": [
-        {
-          "name": "start",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "end",
-          "type": {
-            "kind": "u32"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "rga_get_length",
-      "params": [],
-      "returns": {
-        "kind": "u32"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "rga_get_text",
-      "params": [],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "rga_get_title",
-      "params": [],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "rga_insert_text",
-      "params": [
-        {
-          "name": "position",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "text",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "rga_is_empty",
-      "params": [],
-      "returns": {
-        "kind": "bool"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "rga_set_title",
-      "params": [
-        {
-          "name": "new_title",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "search_files",
-      "params": [
-        {
-          "name": "query",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "list",
-        "items": {
-          "$ref": "FileRecord"
-        }
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "set",
-      "doc": "Basic KV set without handlers",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "value",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "set_metadata",
-      "params": [
-        {
-          "name": "outer_key",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "inner_key",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "value",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "set_register",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "value",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "set_user_nested",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "value",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "set_user_simple",
-      "params": [
-        {
-          "name": "value",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "set_with_handler",
-      "doc": "KV set with handler triggers (for testing event-driven handlers)",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "value",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "shared_add_writer",
-      "params": [
-        {
-          "name": "account_hex",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "shared_get",
-      "params": [],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "shared_get_writers",
-      "doc": "The writer set, as 64-hex-character account ids.\n\nThese are `AccountId`s (people), NOT the device keys the rest of this\ncontract reports — core 0.11 made the account the only authorization\nsubject. `whoami` returns the caller's own, which is what you feed back\ninto `shared_add_writer`.",
-      "params": [],
-      "returns": {
-        "kind": "list",
-        "items": {
-          "kind": "string"
-        }
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "shared_is_frozen",
-      "params": [],
-      "returns": {
-        "kind": "bool"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "shared_is_writer",
-      "params": [
-        {
-          "name": "account_hex",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "bool"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "shared_rotate_writers",
-      "doc": "Replace the whole writer set in one rotation.\n\n`shared_add_writer` can only ever union a key in, so nothing in this app\ncould REMOVE a writer — which left the interesting half of the writer set\nuntested: retroactive revocation, and two nodes rotating concurrently to\nsets that disagree on membership.\n\nThe caller must be a current writer, and passing a set that excludes\nthemselves is allowed and permanent as far as this method is concerned —\nit is how revocation is tested, and there is no way back in.",
-      "params": [
-        {
-          "name": "account_hexes",
-          "type": {
-            "kind": "list",
-            "items": {
-              "kind": "string"
-            }
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "shared_set",
-      "params": [
-        {
-          "name": "value",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "sorted_get",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "sorted_keys",
-      "doc": "All keys in ascending order (index-backed).",
-      "params": [],
-      "returns": {
-        "kind": "list",
-        "items": {
-          "kind": "string"
-        }
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "sorted_last_key",
-      "doc": "The largest key (a reverse seek, not a scan).",
-      "params": [],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "sorted_len",
-      "params": [],
-      "returns": {
-        "kind": "u32"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "sorted_range",
-      "doc": "Entries whose keys fall in `[start, end)`, ascending. Half-open, like\nevery Rust range — `end` is NOT returned.",
-      "params": [
-        {
-          "name": "start",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "end",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "map",
-        "key": {
-          "kind": "string"
-        },
-        "value": {
-          "kind": "string"
-        }
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "sorted_remove",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "bool"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "sorted_set",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "value",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "sorted_tag_add",
-      "doc": "Insert `tag`; `true` if it was newly added.",
-      "params": [
-        {
-          "name": "tag",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "bool"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "sorted_tag_contains",
-      "params": [
-        {
-          "name": "tag",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "bool"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "sorted_tag_remove",
-      "doc": "Remove `tag`; `true` if it was present.\n\n⚠️ `UnorderedSet` used to never converge on insert-after-remove; that was\nfixed in rc.10, and the sorted variant shares the tombstone machinery.\nThe e2e re-adds a removed tag for exactly that reason.",
-      "params": [
-        {
-          "name": "tag",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "bool"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "sorted_tags_all",
-      "doc": "All elements in ascending order (index-backed).",
-      "params": [],
-      "returns": {
-        "kind": "list",
-        "items": {
-          "kind": "string"
-        }
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "sorted_tags_last",
-      "doc": "The largest element (a reverse seek).",
-      "params": [],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "sorted_tags_range",
-      "doc": "Elements in `[start, end)`, ascending.",
-      "params": [
-        {
-          "name": "start",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "end",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "list",
-        "items": {
-          "kind": "string"
-        }
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "tracing_probe",
-      "doc": "Drives the host-backed `tracing` subscriber, and reports what came back.\n\n`app::log!` reaches the execution outcome on its own. The `tracing`\nmacros do not, unless the SDK's `tracing` feature is on — it installs a\nsubscriber that forwards them to the same host log. That feature is off\nby default because the subscriber costs wasm size, so whether it is\nwired up is a per-app build decision, and this is the call that proves\nthis build made it.\n\nThree things are being tested at once, which is why the KV insert is\nhere and not incidental:\n\n* this crate's own `tracing::info!`/`warn!` arrive;\n* `calimero-storage`'s internal instrumentation arrives too — the insert\n  is what makes the storage crate emit, and it only shows up if the\n  subscriber is process-wide rather than scoped to this crate;\n* `set_log_level` actually retunes the filter at runtime.\n\n⚠️ The SDK's default level is **WARN**, not INFO — deliberately, because\n`calimero_storage` logs routine operations at INFO and an INFO default\nfloods every execution. So at the default level this emits the WARN line\nonly: the info AND debug lines are both filtered out inside the guest and\nnever reach the outcome at all. With `debug = true` the debug line\nappears, and so does the storage crate's own output. That difference is\nthe assertion; a probe that only ever ran at one level could not tell a\nworking filter from a subscriber that was never installed.\n\n⚠️ WHERE THE LINES GO. Not into this call's response. The node collects\nthem into the execution outcome and writes them to ITS OWN log\n(`crates/server/src/execute.rs`: `info!(\"execution log {i}| {}\", log)`);\nthe JSON-RPC reply carries the return value and nothing else. So no RPC\nclient — not the frontend, not merobox's `result.logs` — can observe\nthem. Grep the node's log for `execution log`.",
-      "params": [
-        {
-          "name": "debug",
-          "type": {
-            "kind": "bool"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "update_handler",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "value",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating",
-      "handler": true
-    },
-    {
-      "name": "upload_file",
-      "params": [
-        {
-          "name": "name",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "blob_id_str",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "size",
-          "type": {
-            "kind": "u64"
-          }
-        },
-        {
-          "name": "mime_type",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "whoami",
-      "doc": "Both halves of the caller's identity, as the rest of this API spells\nthem.\n\ncore 0.11 split one `executor_id` into two things, and app code has to\nknow which one it is holding:\n\n* `device_id` — this installation. The CRDT replica id, and what the\n  node's group-membership listing calls `identity`. 64 hex characters,\n  like every other id since core 0.11.0-rc.27 removed base58.\n* `account_id` — the person. The only authorization subject: the\n  `shared_*` writer set is keyed by it. 64 hex characters.\n\nNothing on the wire maps one to the other, so a writer-set grant cannot\nbe built from a membership listing alone — the account holder has to\nhand over the value this method returns.",
-      "params": [],
-      "returns": {
-        "$ref": "Identity"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "ws_get_info",
-      "doc": "Name, admin and the three counts behind the header card.\n\nErrors — rather than returning an empty summary — while unclaimed, so a\ncaller cannot mistake \"no workspace here\" for \"an empty workspace\".",
-      "params": [],
-      "returns": {
-        "$ref": "WorkspaceInfo"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "ws_get_member_role",
-      "doc": "`identity`'s role, or the empty string if they have none.",
-      "params": [
-        {
-          "name": "identity",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "ws_init",
-      "doc": "Claim the workspace: name it and record the caller as its admin.\n\nOnly a workspace admin may — initially the context creator, the sole\nwriter of `ws_claim` from `init`. A claim by anyone else is refused by\nstorage, on every node, rather than by the check below: \"first caller\nwins\" read off a public register is a race a patched node always wins.\nThere is no transfer — this is a scaffold, and a role-transfer flow\nwould be the interesting part of a different example.",
-      "params": [
-        {
-          "name": "name",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "ws_list_channels",
-      "doc": "The directory. Readable by anyone the node admitted, member or not —\na listing is how a new member finds out what to join.",
-      "params": [],
-      "returns": {
-        "kind": "list",
-        "items": {
-          "$ref": "ChannelRecord"
-        }
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "ws_list_groups",
-      "params": [],
-      "returns": {
-        "kind": "list",
-        "items": {
-          "$ref": "WsGroupRecord"
-        }
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "ws_list_members",
-      "params": [],
-      "returns": {
-        "kind": "list",
-        "items": {
-          "$ref": "MemberRecord"
-        }
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "ws_my_role",
-      "doc": "The CALLER's role, resolved by account. Empty string if they have none —\nincluding the case where a role was granted under their device key\ninstead; see `ws_set_member_role`.",
-      "params": [],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "ws_ping_channel",
-      "doc": "Ping another context in the directory, via `xcall` to its `ws_pong`.\n\nFire-and-forget by design: `env::xcall` only QUEUES the call, so a\nsuccessful return here means \"queued\", never \"delivered\". Whether the\nnode then dispatches it or denies it is invisible from inside the\ncontract — watch `ws_ping_count` on the target, not the result of this.\n\nThe TYPE is `ContextId`, not `String`, so the SDK does the decode and a\nmalformed id fails at the boundary rather than here. It was called\n`target_context_id_b58` until rc.27 removed base58; the suffix named an\nencoding that no longer exists, and a parameter name is part of the ABI,\nso leaving it would have every caller spell out the wrong one forever.",
-      "params": [
-        {
-          "name": "target_context_id",
-          "type": {
-            "kind": "bytes",
-            "size": 32
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "ws_ping_count",
-      "doc": "Pongs received. The only way to observe that a `ws_ping_channel`\nactually landed.",
-      "params": [],
-      "returns": {
-        "kind": "u64"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "ws_pong",
-      "doc": "Receive a ping from another context.\n\n`#[app::xcall(from_same_app)]` is the trust boundary and the node\nenforces it: a context running a DIFFERENT application is rejected\nbefore this body runs. The checks below are what is left over for the\napp — rejecting a direct call (which carries no origin) and refusing a\ncaller whose self-reported `from_context` disagrees with the origin the\nnode set.\n\nNot in the frontend's API surface, and it cannot be: a direct call is\nexactly what this rejects.",
-      "params": [
-        {
-          "name": "from_context",
-          "type": {
-            "kind": "bytes",
-            "size": 32
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating",
-      "xcall_callable": true,
-      "xcall_callers": "same_app"
-    },
-    {
-      "name": "ws_register_channel",
-      "doc": "Add a context to the directory, or update the entry for one the caller\nregistered. Any member may register; `read-only` may not (an app-level\ncheck). A context someone else registered is theirs: storage refuses\nthe overwrite, so it can only be removed by them or an admin.",
-      "params": [
-        {
-          "name": "context_id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "name",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "topic",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "ws_register_group",
-      "doc": "Add or update a group; ownership as `ws_register_channel`.",
-      "params": [
-        {
-          "name": "group_id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "name",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "description",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "ws_set_member_role",
-      "doc": "Grant `identity` a workspace role. Admin only — and enforced by\nstorage: `ws_roles`' writers are the admins.\n\n`identity` is a free-form `String`, not an `AccountId`, and that is not\nlaziness: the UI grants roles to node identities it read from the admin\nAPI's group-membership listing, which reports DEVICE keys, while\n`caller_account()` is an ACCOUNT. Since rc.27 both render as 64 hex\ncharacters, not even a shape check can tell them apart. Nothing on the\nwire maps one to the other (see `whoami`), so this map has to hold\nwhichever of the two the operator pasted. The consequence is explicit\nrather than hidden:\n**only a role granted under the caller's own `account_id` is a role that\n`ws_my_role` will ever return** — everything else is a directory entry.\nThis is the app-level mirror of the writer-set trap in `shared_*`.\n\nGranting or taking away `admin` also rotates the admin set — the\nwriters of `ws_claim` and `ws_roles`, and both directories' moderators\n— for an identity that parses as an account. That set, not the role\nstring, is what storage enforces.",
-      "params": [
-        {
-          "name": "identity",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "role",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "ws_unregister_channel",
-      "doc": "Remove a channel: its registrant or a workspace admin (a moderator of\nthe directory) may, and storage refuses anyone else.",
-      "params": [
-        {
-          "name": "context_id",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "ws_unregister_group",
-      "params": [
-        {
-          "name": "group_id",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
+  "events": {
+    "AdminGranted": {
+      "account": "string",
+      "by": "string"
+    },
+    "AdminRevoked": {
+      "account": "string",
+      "by": "string"
+    },
+    "AuthoredInserted": {
+      "key": "string",
+      "owner": "string",
+      "value": "string"
+    },
+    "AuthoredRemoved": {
+      "key": "string"
+    },
+    "AuthoredUpdated": {
+      "key": "string",
+      "value": "string"
+    },
+    "AuthoredVecPushed": {
+      "index": "u64",
+      "owner": "string",
+      "value": "string"
+    },
+    "AuthoredVecRemoved": {
+      "index": "u64"
+    },
+    "AuthoredVecUpdated": {
+      "index": "u64",
+      "value": "string"
+    },
+    "CapabilitiesProjected": {
+      "accounts": "u64"
+    },
+    "ChannelPinged": {
+      "by": "string",
+      "toContext": "string"
+    },
+    "ChannelRegistered": {
+      "by": "string",
+      "contextId": "string",
+      "name": "string"
+    },
+    "ChannelUnregistered": {
+      "contextId": "string"
+    },
+    "Cleared": {},
+    "FileDeleted": {
+      "id": "string",
+      "name": "string"
+    },
+    "FileUploaded": {
+      "id": "string",
+      "name": "string",
+      "size": "u64",
+      "uploader": "string"
+    },
+    "FrozenAdded": {
+      "hash": "string",
+      "value": "string"
+    },
+    "GCounterIncremented": {
+      "key": "string",
+      "value": "u64"
+    },
+    "GroupRegistered": {
+      "by": "string",
+      "groupId": "string",
+      "name": "string"
+    },
+    "GroupUnregistered": {
+      "groupId": "string"
+    },
+    "Guessed": {
+      "by": "string",
+      "gameId": "string",
+      "success": "bool"
+    },
+    "Inserted": {
+      "key": "string",
+      "value": "string"
+    },
+    "MemberRoleSet": {
+      "by": "string",
+      "identity": "string",
+      "role": "string"
+    },
+    "MetadataSet": {
+      "innerKey": "string",
+      "outerKey": "string",
+      "value": "string"
+    },
+    "MetricPushed": {
+      "value": "u64"
+    },
+    "OwnershipTransferred": {
+      "from": "string",
+      "to": "string"
+    },
+    "PnCounterChanged": {
+      "key": "string",
+      "operation": "string",
+      "value": "i64"
+    },
+    "PongReceived": {
+      "count": "u64",
+      "fromContext": "string"
+    },
+    "RegisterSet": {
+      "key": "string",
+      "value": "string"
+    },
+    "Removed": {
+      "key": "string"
+    },
+    "RoleGranted": {
+      "account": "string",
+      "by": "string",
+      "role": "string"
+    },
+    "RoleRevoked": {
+      "account": "string",
+      "by": "string",
+      "role": "string"
+    },
+    "SecretSet": {
+      "gameId": "string"
+    },
+    "SharedSet": {
+      "by": "string",
+      "value": "string"
+    },
+    "SharedWriterAdded": {
+      "writer": "string"
+    },
+    "SharedWritersRotated": {
+      "writers": "list<string>"
+    },
+    "TagAdded": {
+      "key": "string",
+      "tag": "string"
+    },
+    "TextDeleted": {
+      "editor": "string",
+      "end": "u64",
+      "start": "u64"
+    },
+    "TextInserted": {
+      "editor": "string",
+      "position": "u64",
+      "text": "string"
+    },
+    "TitleChanged": {
+      "editor": "string",
+      "newTitle": "string",
+      "oldTitle": "string"
+    },
+    "Updated": {
+      "key": "string",
+      "value": "string"
+    },
+    "UserNestedSet": {
+      "accountId": "string",
+      "key": "string",
+      "value": "string"
+    },
+    "UserSimpleSet": {
+      "accountId": "string",
+      "value": "string"
+    },
+    "WorkspaceInitialized": {
+      "admin": "string",
+      "name": "string"
     }
-  ],
-  "events": [
-    {
-      "name": "AdminGranted",
-      "payload": {
-        "$ref": "Event_AdminGranted"
-      }
+  },
+  "methods": {
+    "aclAdmins": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
+        ]
+      ],
+      "public": false,
+      "returns": "Listing<Vec<String>>"
     },
-    {
-      "name": "AdminRevoked",
-      "payload": {
-        "$ref": "Event_AdminRevoked"
-      }
+    "aclCapabilities": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
+        ]
+      ],
+      "public": false,
+      "returns": "Listing<BTreeMap<String,Vec<String>>>"
     },
-    {
-      "name": "AuthoredInserted",
-      "payload": {
-        "$ref": "Event_AuthoredInserted"
-      }
+    "aclDocGet": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "string"
     },
-    {
-      "name": "AuthoredRemoved",
-      "payload": {
-        "$ref": "Event_AuthoredRemoved"
-      }
+    "aclDocSet": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "value",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "AuthoredUpdated",
-      "payload": {
-        "$ref": "Event_AuthoredUpdated"
-      }
+    "aclGrant": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "role",
+          "string"
+        ],
+        [
+          "accountHex",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "AuthoredVecPushed",
-      "payload": {
-        "$ref": "Event_AuthoredVecPushed"
-      }
+    "aclGrantAdmin": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "accountHex",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "AuthoredVecRemoved",
-      "payload": {
-        "$ref": "Event_AuthoredVecRemoved"
-      }
+    "aclHasRole": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "role",
+          "string"
+        ],
+        [
+          "accountHex",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "bool"
     },
-    {
-      "name": "AuthoredVecUpdated",
-      "payload": {
-        "$ref": "Event_AuthoredVecUpdated"
-      }
+    "aclIsAdmin": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "accountHex",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "bool"
     },
-    {
-      "name": "CapabilitiesProjected",
-      "payload": {
-        "$ref": "Event_CapabilitiesProjected"
-      },
-      "doc": "The role registry was pushed onto `acl_doc`'s capability map. Separate\nfrom the grant events because it is a separate signed action — a grant\nthat has not been projected yet confers nothing on the document."
+    "aclMembersOf": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "role",
+          "string"
+        ],
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
+        ]
+      ],
+      "public": false,
+      "returns": "Listing<Vec<String>>"
     },
-    {
-      "name": "ChannelPinged",
-      "payload": {
-        "$ref": "Event_ChannelPinged"
-      }
+    "aclMyRoles": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "list<string>"
     },
-    {
-      "name": "ChannelRegistered",
-      "payload": {
-        "$ref": "Event_ChannelRegistered"
-      }
+    "aclProject": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [],
+      "public": false,
+      "returns": "u64"
     },
-    {
-      "name": "ChannelUnregistered",
-      "payload": {
-        "$ref": "Event_ChannelUnregistered"
-      }
+    "aclRevoke": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "role",
+          "string"
+        ],
+        [
+          "accountHex",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "Cleared"
+    "aclRevokeAdmin": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "accountHex",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "FileDeleted",
-      "payload": {
-        "$ref": "Event_FileDeleted"
-      }
+    "aclRoles": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "BTreeMap<String,Vec<String>>"
     },
-    {
-      "name": "FileUploaded",
-      "payload": {
-        "$ref": "Event_FileUploaded"
-      }
+    "addFrozen": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "value",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "string"
     },
-    {
-      "name": "FrozenAdded",
-      "payload": {
-        "$ref": "Event_FrozenAdded"
-      }
+    "addGuess": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "gameId",
+          "string"
+        ],
+        [
+          "guess",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "bool"
     },
-    {
-      "name": "GCounterIncremented",
-      "payload": {
-        "$ref": "Event_GCounterIncremented"
-      }
+    "addSecret": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "gameId",
+          "string"
+        ],
+        [
+          "secret",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "GroupRegistered",
-      "payload": {
-        "$ref": "Event_GroupRegistered"
-      }
+    "addTag": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "key",
+          "string"
+        ],
+        [
+          "tag",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "GroupUnregistered",
-      "payload": {
-        "$ref": "Event_GroupUnregistered"
-      }
+    "authoredEntries": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
+        ]
+      ],
+      "public": false,
+      "returns": "Listing<BTreeMap<String,String>>"
     },
-    {
-      "name": "Guessed",
-      "payload": {
-        "$ref": "Event_Guessed"
-      }
+    "authoredGet": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "key",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "option<string>"
     },
-    {
-      "name": "Inserted",
-      "payload": {
-        "$ref": "Event_Inserted"
-      }
+    "authoredGetBy": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "owner",
+          "string"
+        ],
+        [
+          "key",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "option<string>"
     },
-    {
-      "name": "MemberRoleSet",
-      "payload": {
-        "$ref": "Event_MemberRoleSet"
-      }
+    "authoredGetOwner": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "key",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "option<string>"
     },
-    {
-      "name": "MetadataSet",
-      "payload": {
-        "$ref": "Event_MetadataSet"
-      }
+    "authoredInsert": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "key",
+          "string"
+        ],
+        [
+          "value",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "MetricPushed",
-      "payload": {
-        "$ref": "Event_MetricPushed"
-      }
+    "authoredLen": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "u64"
     },
-    {
-      "name": "OwnershipTransferred",
-      "payload": {
-        "$ref": "Event_OwnershipTransferred"
-      }
+    "authoredOwners": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "key",
+          "string"
+        ],
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
+        ]
+      ],
+      "public": false,
+      "returns": "Listing<Vec<String>>"
     },
-    {
-      "name": "PnCounterChanged",
-      "payload": {
-        "$ref": "Event_PnCounterChanged"
-      }
+    "authoredRemove": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "key",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "option<string>"
     },
-    {
-      "name": "PongReceived",
-      "payload": {
-        "$ref": "Event_PongReceived"
-      }
+    "authoredUpdate": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "key",
+          "string"
+        ],
+        [
+          "value",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "RegisterSet",
-      "payload": {
-        "$ref": "Event_RegisterSet"
-      }
+    "authoredVecEntries": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
+        ]
+      ],
+      "public": false,
+      "returns": "Listing<Vec<String>>"
     },
-    {
-      "name": "Removed",
-      "payload": {
-        "$ref": "Event_Removed"
-      }
+    "authoredVecGet": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "index",
+          "u64"
+        ]
+      ],
+      "public": false,
+      "returns": "option<string>"
     },
-    {
-      "name": "RoleGranted",
-      "payload": {
-        "$ref": "Event_RoleGranted"
-      }
+    "authoredVecGetOwner": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "index",
+          "u64"
+        ]
+      ],
+      "public": false,
+      "returns": "option<string>"
     },
-    {
-      "name": "RoleRevoked",
-      "payload": {
-        "$ref": "Event_RoleRevoked"
-      }
+    "authoredVecLen": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "u64"
     },
-    {
-      "name": "SecretSet",
-      "payload": {
-        "$ref": "Event_SecretSet"
-      }
+    "authoredVecPush": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "value",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "u64"
     },
-    {
-      "name": "SharedSet",
-      "payload": {
-        "$ref": "Event_SharedSet"
-      }
+    "authoredVecRemove": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "index",
+          "u64"
+        ]
+      ],
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "SharedWriterAdded",
-      "payload": {
-        "$ref": "Event_SharedWriterAdded"
-      }
+    "authoredVecUpdate": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "index",
+          "u64"
+        ],
+        [
+          "value",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "SharedWritersRotated",
-      "payload": {
-        "$ref": "Event_SharedWritersRotated"
-      },
-      "doc": "The writer set was REPLACED. Distinct from `SharedWriterAdded` on\npurpose: a rotation can drop writers, and a listener that only ever sees\n\"added\" events would build a set that never shrinks."
+    "clear": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [],
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "TagAdded",
-      "payload": {
-        "$ref": "Event_TagAdded"
-      }
+    "clearHandler": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [],
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "TextDeleted",
-      "payload": {
-        "$ref": "Event_TextDeleted"
-      }
+    "clearWithHandler": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [],
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "TextInserted",
-      "payload": {
-        "$ref": "Event_TextInserted"
-      }
+    "decrementPnCounter": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "key",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "i64"
     },
-    {
-      "name": "TitleChanged",
-      "payload": {
-        "$ref": "Event_TitleChanged"
-      }
+    "deleteFile": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "fileId",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "Updated",
-      "payload": {
-        "$ref": "Event_Updated"
-      }
+    "entries": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
+        ]
+      ],
+      "public": false,
+      "returns": "Listing<BTreeMap<String,String>>"
     },
-    {
-      "name": "UserNestedSet",
-      "payload": {
-        "$ref": "Event_UserNestedSet"
-      }
+    "fileDownloadGrant": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "fileId",
+          "string"
+        ],
+        [
+          "ttlSeconds",
+          "u32"
+        ]
+      ],
+      "public": false,
+      "returns": "string"
     },
-    {
-      "name": "UserSimpleSet",
-      "payload": {
-        "$ref": "Event_UserSimpleSet"
-      }
+    "games": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
+        ]
+      ],
+      "public": false,
+      "returns": "Listing<BTreeMap<String,String>>"
     },
-    {
-      "name": "WorkspaceInitialized",
-      "payload": {
-        "$ref": "Event_WorkspaceInitialized"
-      }
+    "get": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "key",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "option<string>"
+    },
+    "getBlobIdHex": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "fileId",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "string"
+    },
+    "getCounter": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "key",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "u64"
+    },
+    "getFile": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "fileId",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "FileRecord"
+    },
+    "getFrozen": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "hashHex",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "string"
+    },
+    "getGCounter": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "key",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "u64"
+    },
+    "getHandlerExecutionCount": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "u64"
+    },
+    "getMetadata": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "outerKey",
+          "string"
+        ],
+        [
+          "innerKey",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "string"
+    },
+    "getMetric": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "index",
+          "u64"
+        ]
+      ],
+      "public": false,
+      "returns": "u64"
+    },
+    "getPnCounter": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "key",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "i64"
+    },
+    "getRegister": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "key",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "string"
+    },
+    "getResult": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "key",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "string"
+    },
+    "getTagCount": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "key",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "u64"
+    },
+    "getUserNested": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "key",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "option<string>"
+    },
+    "getUserSimple": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "option<string>"
+    },
+    "getUserSimpleFor": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "accountHex",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "option<string>"
+    },
+    "hasTag": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "key",
+          "string"
+        ],
+        [
+          "tag",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "bool"
+    },
+    "incrementCounter": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "key",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "u64"
+    },
+    "incrementGCounter": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "key",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "u64"
+    },
+    "incrementPnCounter": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "key",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "i64"
+    },
+    "init": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "init",
+      "params": [],
+      "public": false,
+      "returns": null
+    },
+    "insertHandler": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "key",
+          "string"
+        ],
+        [
+          "value",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "len": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "u64"
+    },
+    "listFiles": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
+        ]
+      ],
+      "public": false,
+      "returns": "Listing<Vec<FileRecord>>"
+    },
+    "metricsLen": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "u64"
+    },
+    "myAccount": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "string"
+    },
+    "mySecrets": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
+        ]
+      ],
+      "public": false,
+      "returns": "Listing<BTreeMap<String,String>>"
+    },
+    "ownedGet": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "string"
+    },
+    "ownedIsOwner": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "accountHex",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "bool"
+    },
+    "ownedOwner": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "option<string>"
+    },
+    "ownedSet": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "value",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "ownedTransfer": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "accountHex",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "pushMetric": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "value",
+          "u64"
+        ]
+      ],
+      "public": false,
+      "returns": "u64"
+    },
+    "remove": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "key",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "option<string>"
+    },
+    "removeHandler": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "key",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "removeWithHandler": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "key",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "option<string>"
+    },
+    "rgaAppendText": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "text",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "rgaClear": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [],
+      "public": false,
+      "returns": null
+    },
+    "rgaDeleteText": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "start",
+          "u64"
+        ],
+        [
+          "end",
+          "u64"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "rgaGetLength": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "u64"
+    },
+    "rgaGetText": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "string"
+    },
+    "rgaGetTitle": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "string"
+    },
+    "rgaInsertText": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "position",
+          "u64"
+        ],
+        [
+          "text",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "rgaIsEmpty": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "bool"
+    },
+    "rgaSetTitle": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "newTitle",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "searchFiles": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "query",
+          "string"
+        ],
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
+        ]
+      ],
+      "public": false,
+      "returns": "Listing<Vec<FileRecord>>"
+    },
+    "set": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "key",
+          "string"
+        ],
+        [
+          "value",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "setMetadata": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "outerKey",
+          "string"
+        ],
+        [
+          "innerKey",
+          "string"
+        ],
+        [
+          "value",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "setRegister": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "key",
+          "string"
+        ],
+        [
+          "value",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "setUserNested": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "key",
+          "string"
+        ],
+        [
+          "value",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "setUserSimple": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "value",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "setWithHandler": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "key",
+          "string"
+        ],
+        [
+          "value",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "sharedAddWriter": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "accountHex",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "sharedGet": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "string"
+    },
+    "sharedGetWriters": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
+        ]
+      ],
+      "public": false,
+      "returns": "Listing<Vec<String>>"
+    },
+    "sharedIsFrozen": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "bool"
+    },
+    "sharedIsWriter": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "accountHex",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "bool"
+    },
+    "sharedRotateWriters": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "accountHexes",
+          "list<string>"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "sharedSet": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "value",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "sortedGet": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "key",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "option<string>"
+    },
+    "sortedKeys": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
+        ]
+      ],
+      "public": false,
+      "returns": "Listing<Vec<String>>"
+    },
+    "sortedLastKey": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "option<string>"
+    },
+    "sortedLen": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "u64"
+    },
+    "sortedRange": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "start",
+          "string"
+        ],
+        [
+          "end",
+          "string"
+        ],
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
+        ]
+      ],
+      "public": false,
+      "returns": "Listing<BTreeMap<String,String>>"
+    },
+    "sortedRemove": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "key",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "bool"
+    },
+    "sortedSet": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "key",
+          "string"
+        ],
+        [
+          "value",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "sortedTagAdd": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "tag",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "bool"
+    },
+    "sortedTagContains": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "tag",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "bool"
+    },
+    "sortedTagRemove": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "tag",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "bool"
+    },
+    "sortedTagsAll": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
+        ]
+      ],
+      "public": false,
+      "returns": "Listing<Vec<String>>"
+    },
+    "sortedTagsLast": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "option<string>"
+    },
+    "sortedTagsRange": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "start",
+          "string"
+        ],
+        [
+          "end",
+          "string"
+        ],
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
+        ]
+      ],
+      "public": false,
+      "returns": "Listing<Vec<String>>"
+    },
+    "tracingProbe": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "debug",
+          "bool"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "updateHandler": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "key",
+          "string"
+        ],
+        [
+          "value",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "uploadFile": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "name",
+          "string"
+        ],
+        [
+          "blobIdStr",
+          "string"
+        ],
+        [
+          "size",
+          "u64"
+        ],
+        [
+          "mimeType",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "string"
+    },
+    "whoami": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "Identity"
+    },
+    "wsGetInfo": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "WorkspaceInfo"
+    },
+    "wsGetMemberRole": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "identity",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "string"
+    },
+    "wsInit": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "name",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "wsListChannels": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
+        ]
+      ],
+      "public": false,
+      "returns": "Listing<Vec<ChannelRecord>>"
+    },
+    "wsListGroups": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
+        ]
+      ],
+      "public": false,
+      "returns": "Listing<Vec<WsGroupRecord>>"
+    },
+    "wsListMembers": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
+        ]
+      ],
+      "public": false,
+      "returns": "Listing<Vec<MemberRecord>>"
+    },
+    "wsMyRole": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "string"
+    },
+    "wsPingChannel": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "targetContextId",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "wsPingCount": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "u64"
+    },
+    "wsPong": {
+      "allowApps": [
+        "*"
+      ],
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "fromContext",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "wsRegisterChannel": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "contextId",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "topic",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "wsRegisterGroup": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "groupId",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "description",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "wsSetMemberRole": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "identity",
+          "string"
+        ],
+        [
+          "role",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "wsUnregisterChannel": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "contextId",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "wsUnregisterGroup": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "groupId",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
     }
-  ],
-  "state_root": "E2eKvStore",
-  "state_version": 1
+  },
+  "state": {
+    "fields": {
+      "aclAdmins": "set",
+      "aclCaps": "unorderedMap",
+      "aclDoc": "cell",
+      "aclRoles": "set",
+      "authoredItems": "unorderedMap",
+      "authoredVec": "vector",
+      "fileBlobs": "unorderedMap",
+      "files": "table",
+      "frozenItems": "frozen",
+      "gCounters": "unorderedMap",
+      "games": "unorderedMap",
+      "handlerCounter": "counter",
+      "kvItems": "unorderedMap",
+      "metadata": "unorderedMap",
+      "metrics": "vector",
+      "ownedDoc": "cell",
+      "ownedOwner": "cell",
+      "pnCounters": "unorderedMap",
+      "registers": "unorderedMap",
+      "rgaDocument": "text",
+      "rgaEditCount": "counter",
+      "rgaMetadata": "unorderedMap",
+      "secrets": "unorderedMap",
+      "sharedData": "cell",
+      "sharedWriters": "set",
+      "sortedItems": "unorderedMap",
+      "sortedTags": "set",
+      "tagCounts": "unorderedMap",
+      "tags": "set",
+      "userItemsNested": "unorderedMap",
+      "userItemsSimple": "perUser",
+      "wsAdmins": "set",
+      "wsChannels": "unorderedMap",
+      "wsClaim": "cell",
+      "wsGroups": "unorderedMap",
+      "wsPings": "counter",
+      "wsRoles": "unorderedMap"
+    },
+    "search": {
+      "aclAdmins": [],
+      "aclCaps": [],
+      "aclDoc": [],
+      "aclRoles": [],
+      "authoredItems": [],
+      "authoredVec": [],
+      "fileBlobs": [],
+      "files": [
+        "name"
+      ],
+      "frozenItems": [],
+      "gCounters": [],
+      "games": [],
+      "handlerCounter": [],
+      "kvItems": [],
+      "metadata": [],
+      "metrics": [],
+      "ownedDoc": [],
+      "ownedOwner": [],
+      "pnCounters": [],
+      "registers": [],
+      "rgaDocument": [],
+      "rgaEditCount": [],
+      "rgaMetadata": [],
+      "secrets": [],
+      "sharedData": [],
+      "sharedWriters": [],
+      "sortedItems": [],
+      "sortedTags": [],
+      "tagCounts": [],
+      "tags": [],
+      "userItemsNested": [],
+      "userItemsSimple": [],
+      "wsAdmins": [],
+      "wsChannels": [],
+      "wsClaim": [],
+      "wsGroups": [],
+      "wsPings": [],
+      "wsRoles": []
+    },
+    "version": 1
+  },
+  "world": "calimero:app@0.5.0"
 }
