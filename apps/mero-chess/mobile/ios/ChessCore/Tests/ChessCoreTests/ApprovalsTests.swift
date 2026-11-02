@@ -50,25 +50,63 @@ final class ApprovalsTests: XCTestCase {
         XCTAssertTrue(items.isEmpty)
     }
 
-    func testLoadSkipsUnreadableScopesAndApproveOpensConsent() async throws {
-        var requested: [ConsentRequest] = []
-        let model = ApprovalsModel(
+    static let started = try! JSONDecoder().decode(
+        ConsentStarted.self,
+        from: Data(#"{"requestId":"r1","url":"https://node/consent/r1","expiresAt":0,"code":"ABC-123"}"#.utf8))
+
+    private func model(requested: @escaping (ConsentRequest) -> Void) -> ApprovalsModel {
+        ApprovalsModel(
             packageName: ChessConstants.packageName, appName: "Mero Chess",
             fetch: { org in
                 guard let org else { throw NotFound("no account report") }
                 return try Self.pending(org: org)
             },
-            consent: { build in
-                requested.append(build("mero-chess://consent"))
+            consent: { build, confirm in
+                guard await confirm(Self.started) else {
+                    return try? JSONDecoder().decode(
+                        ConsentResult.self, from: Data(#"{"requestId":"r1","kind":"upgrade","status":"pending"}"#.utf8))
+                }
+                requested(build("mero-chess://consent"))
                 return try? JSONDecoder().decode(
                     ConsentResult.self, from: Data(#"{"requestId":"r1","kind":"upgrade","status":"approved"}"#.utf8))
             })
+    }
+
+    private func waitForConfirmation(_ model: ApprovalsModel) async {
+        for _ in 0..<200 where model.confirmation == nil { await Task.yield() }
+    }
+
+    func testLoadSkipsUnreadableScopesAndApproveShowsTheCodeThenOpensConsent() async throws {
+        var requested: [ConsentRequest] = []
+        let model = model { requested.append($0) }
         await model.load(orgs: ["org1"])
         XCTAssertEqual(model.items.count, 2)
-        let approved = await model.approve(model.items[0], orgs: ["org1"])
+        let item = model.items[0]
+        let approving = Task { await model.approve(item, orgs: ["org1"]) }
+        await waitForConfirmation(model)
+        XCTAssertEqual(model.confirmation?.code, "ABC-123", "the code shows before the page opens")
+        XCTAssertEqual(model.confirmation?.title, item.title)
+        XCTAssertTrue(requested.isEmpty)
+        model.answer(true)
+        let approved = await approving.value
         XCTAssertTrue(approved)
         XCTAssertEqual(requested, [.upgrade(app: "app-1", toVersion: "1.2.0", returnTo: "mero-chess://consent")])
         XCTAssertNil(model.approving)
+        XCTAssertNil(model.confirmation)
+    }
+
+    func testCancellingTheCodeKeepsThePageClosed() async throws {
+        var requested: [ConsentRequest] = []
+        let model = model { requested.append($0) }
+        await model.load(orgs: ["org1"])
+        let item = model.items[0]
+        let approving = Task { await model.approve(item, orgs: ["org1"]) }
+        await waitForConfirmation(model)
+        model.answer(false)
+        let approved = await approving.value
+        XCTAssertFalse(approved)
+        XCTAssertTrue(requested.isEmpty)
+        XCTAssertNil(model.error, "cancelling is not an error")
     }
 
     func testClusterErrorsInWords() {
@@ -77,5 +115,15 @@ final class ApprovalsTests: XCTestCase {
         XCTAssertTrue(
             ChessText.error(ReleaseDeadlineError("deadline passed")).contains("needs approval"))
         XCTAssertEqual(ChessText.error(LoginRequired("expired")), "Your session ended. Sign in again.")
+        XCTAssertTrue(ChessText.error(WrongNode("wrong node")).contains("doesn't serve your account"))
+        XCTAssertTrue(ChessText.error(ConsentStale("stale")).contains("out of date"))
+    }
+
+    func testContractRefusalsAreWordedByTheirCode() {
+        let refusal = AppError("app refused", details: ["code": .string("NotYourMove"), "fields": .object([:])])
+        XCTAssertEqual(ChessText.error(refusal), "it is not your move")
+        let illegal = AppError(
+            "app refused", details: ["code": .string("IllegalMove"), "fields": .object(["uci": .string("e2e5")])])
+        XCTAssertEqual(ChessText.error(illegal), "that move is not legal in this position")
     }
 }

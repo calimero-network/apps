@@ -41,9 +41,9 @@ struct RootView: View {
                     guard let session else { throw CancellationError() }
                     return try await session.pendingApprovals(org: org)
                 },
-                consent: { [weak session] request in
+                consent: { [weak session] request, confirm in
                     guard let session else { return nil }
-                    return await session.client.requestConsent(request, callback: session.callback)
+                    return await session.client.requestConsent(request, callback: session.callback, confirm: confirm)
                 }))
     }
 
@@ -81,6 +81,9 @@ struct RootView: View {
         .onChange(of: session.pendingInvitation) { _ in pickUpInvitation() }
         .onChange(of: session.isSignedIn) { _ in pickUpInvitation() }
         .onChange(of: didRestore) { _ in pickUpInvitation() }
+        .sheet(item: Binding(get: { approvals.confirmation }, set: { if $0 == nil { approvals.answer(false) } })) {
+            ConsentCodeSheet(confirmation: $0) { approvals.answer($0) }
+        }
         .sheet(item: $joining) { invitation in
             JoinSheet(invitation: invitation) {
                 guard let backend = session.backend else { throw ChessError.noRelay }

@@ -1,7 +1,8 @@
 import Foundation
-import MeroChessGenerated
 import MeroKit
 import MeroKitTestSupport
+
+@testable import ChessCore
 
 enum Fixtures {
     static let me = String(repeating: "ab", count: 32)

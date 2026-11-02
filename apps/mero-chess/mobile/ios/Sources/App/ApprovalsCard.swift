@@ -48,3 +48,50 @@ struct ApprovalsCard: View {
         }
     }
 }
+
+/// Before the node's consent page opens: the confirmation code it will show too, so the person can
+/// check the page is the request the app made. "Continue" opens the page in the system browser.
+struct ConsentCodeSheet: View {
+    let confirmation: ApprovalsModel.Confirmation
+    let onAnswer: (Bool) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Image(systemName: "checkmark.shield")
+                .font(.system(size: 22, weight: .medium)).foregroundStyle(Theme.ink)
+                .frame(width: 44, height: 44)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.limeSoft))
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Check the code").font(Theme.heading(22)).foregroundStyle(Theme.ink)
+                Text(confirmation.title).font(Theme.body(15, .semibold)).foregroundStyle(Theme.ink2)
+            }
+            if let code = confirmation.code {
+                Text(code)
+                    .font(.system(size: 32, weight: .semibold, design: .monospaced)).foregroundStyle(Theme.ink)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Theme.surface))
+                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.line, lineWidth: 1))
+                    .accessibilityIdentifier("consent.code")
+                Text("Your node's approval page opens next and shows this same code. Approve only if they match.")
+                    .font(Theme.body(14)).foregroundStyle(Theme.muted)
+            } else {
+                Text("Your node's approval page opens next. Approve there with your passkey.")
+                    .font(Theme.body(14)).foregroundStyle(Theme.muted)
+            }
+            Spacer(minLength: 0)
+            Button("Continue") {
+                Haptics.tap()
+                onAnswer(true)
+            }
+            .buttonStyle(PrimaryButtonStyle())
+            .accessibilityIdentifier("consent.continue")
+            Button("Cancel") { onAnswer(false) }
+                .buttonStyle(SecondaryButtonStyle())
+        }
+        .padding(24)
+        .background(Theme.ground.ignoresSafeArea())
+        .presentationDetents([.medium])
+        .interactiveDismissDisabled(false)
+    }
+}

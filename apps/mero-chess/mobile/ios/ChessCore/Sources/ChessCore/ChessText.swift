@@ -1,5 +1,4 @@
 import Foundation
-import MeroChessGenerated
 import MeroKit
 
 /// The app's fixed values, shared with the web app and the contract's bundle.
@@ -100,8 +99,8 @@ public enum ChessText {
 }
 
 extension ChessText {
-    /// The Calimero 1.0 node's typed errors, in words. A contract refusal (`AppError`) keeps its
-    /// own words.
+    /// The Calimero 1.0 node's typed errors, in words. A contract refusal (`APP_ERROR {code, fields}`)
+    /// is worded by its code, as the web app words it (``ChessContract/messages``).
     static func cluster(_ error: Error) -> String? {
         switch error {
         case is ConfirmCancelled: return "The passkey prompt was cancelled."
@@ -110,9 +109,12 @@ extension ChessText {
             return "A newer node release needs approval before anything can change. Review it under Tables."
         case is ConsentStale: return "That approval request is out of date. Try again."
         case is NotFound: return "This table isn't available to you (yet)."
+        case is WrongNode: return "This node doesn't serve your account. Sign in again to reach your cluster."
         case let error as UnavailableError:
             return "Your cluster is unavailable right now (\(error.reason)). Try again shortly."
+        case is SignedOutError: return "You're signed out. Sign in again."
         case let error as AppError:
+            if let text = ChessContract.message(appCode: error.appCode) { return text }
             let text = error.message.isEmpty ? error.appCode : error.message
             return text.isEmpty ? nil : text
         default: return nil

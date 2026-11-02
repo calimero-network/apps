@@ -1,4 +1,3 @@
-import MeroChessGenerated
 import MeroKit
 import MeroKitTestSupport
 import XCTest
@@ -137,7 +136,7 @@ final class TableModelTests: XCTestCase {
         await model.resign()
         await model.rematch()
         let methods = backend.recording.calls.filter { $0.path == .execute }.map(\.method)
-        XCTAssertEqual(methods, ["accept_draw", "decline_draw", "offer_draw", "claim_draw", "resign", "rematch"])
+        XCTAssertEqual(methods, ["acceptDraw", "declineDraw", "offerDraw", "claimDraw", "resign", "rematch"])
     }
 
     func testBlackSeesTheBoardFromBlacksSideButBothChairsDoNotFlip() async {
@@ -225,7 +224,8 @@ final class LobbyModelTests: XCTestCase {
         XCTAssertEqual(backend.rootContexts[ref.namespaceId!], [ref.contextId], "directly in the namespace")
         guard case .object(let initArgs)? = backend.initArgs[ref.contextId] else { return XCTFail("no init args") }
         XCTAssertEqual(initArgs["title"], .string("Sunday"))
-        XCTAssertNotNil(initArgs["now"])
+        guard case .string(let now)? = initArgs["now"] else { return XCTFail("now is a decimal string") }
+        XCTAssertNotNil(UInt64(now))
     }
 
     func testCreateInAnExistingClub() async throws {

@@ -55,6 +55,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.calimero.mero.app.MeroAppBackend
 import kotlinx.coroutines.launch
+import network.calimero.chess.app.ApprovalsModel
 import network.calimero.chess.app.ChessInvitation
 import network.calimero.chess.app.ChessText
 import network.calimero.chess.app.LobbyModel
@@ -68,6 +69,8 @@ fun LobbyScreen(
     backend: MeroAppBackend,
     applicationId: String?,
     account: String,
+    approvals: ApprovalsModel,
+    consentReturned: Int,
     onOpen: (TableRef) -> Unit,
     onJoin: (ChessInvitation) -> Unit,
     onShare: (String) -> Unit,
@@ -83,7 +86,17 @@ fun LobbyScreen(
     var actionError by remember { mutableStateOf<String?>(null) }
     var refreshing by remember { mutableStateOf(false) }
 
-    LaunchedEffect(model) { model.load() }
+    LaunchedEffect(model) {
+        model.load()
+        approvals.load(
+            model.state.value.clubs
+                .map { it.id },
+        )
+    }
+    // The consent page sent the person back: what waits has changed.
+    LaunchedEffect(consentReturned) {
+        if (consentReturned > 0) approvals.load(state.clubs.map { it.id })
+    }
 
     fun invite(ref: TableRef) {
         scope.launch {
@@ -139,6 +152,10 @@ fun LobbyScreen(
                 scope.launch {
                     refreshing = true
                     model.load()
+                    approvals.load(
+                        model.state.value.clubs
+                            .map { it.id },
+                    )
                     refreshing = false
                 }
             },
@@ -157,6 +174,7 @@ fun LobbyScreen(
                         }
                     }
                 }
+                item { ApprovalsCard(approvals) }
                 when {
                     !state.loaded ->
                         item {
@@ -169,7 +187,7 @@ fun LobbyScreen(
                             EmptyState(
                                 piece = "wN",
                                 title = "Join your first table",
-                                text = "Your account has no relay yet. Open an invitation link someone sent you, or paste it here.",
+                                text = "You're not connected to your cluster. Sign in again, or open an invitation link someone sent you.",
                                 action = "Join with a link",
                             ) { pasting = true }
                         }

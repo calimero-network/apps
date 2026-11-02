@@ -10,7 +10,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import network.calimero.chess.generated.MoveView
+import network.calimero.chess.contract.MoveView
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -181,7 +181,7 @@ class TableModelTest {
                 backend.recording.calls
                     .filter { it.path == RecordedContractCall.Path.EXECUTE }
                     .map { it.method }
-            assertEquals(listOf("accept_draw", "decline_draw", "offer_draw", "claim_draw", "resign", "rematch"), methods)
+            assertEquals(listOf("acceptDraw", "declineDraw", "offerDraw", "claimDraw", "resign", "rematch"), methods)
         }
 
     @Test
@@ -286,7 +286,8 @@ class LobbyModelTest {
             assertEquals("directly in the namespace", listOf(ref.contextId), backend.rootContexts[ref.namespaceId])
             val init = backend.initArgs[ref.contextId] as JsonObject
             assertEquals(JsonPrimitive("Sunday"), init["title"])
-            assertNotNull(init["now"])
+            val now = init["now"] as JsonPrimitive
+            assertTrue("now is a decimal string", now.isString && now.content.toULongOrNull() != null)
         }
 
     @Test
@@ -333,5 +334,27 @@ class LobbyModelTest {
         assertNull(ChessInvitation.parse(link.replace("com.calimero.mero-chess", "com.calimero.chat")))
         assertNull(ChessInvitation.parse("hello"))
         assertNotNull(ChessInvitation.parse(link))
+    }
+
+    @Test
+    fun `an object shaped or pre 1_0 invitation is refused`() {
+        assertNull(ChessInvitation.parseJson("""{"invitation":{"orgId":"n","token":"inv_x"},"namespaceId":"n","contextId":"c"}"""))
+        assertNull(
+            ChessInvitation.parseJson(
+                """{"invitation":{"invitation":{"group_id":[1]},"inviter_signature":"5a"},"namespaceId":"n","contextId":"c"}""",
+            ),
+        )
+    }
+
+    @Test
+    fun `the link carries the sdk payload`() {
+        val invitation = InMemoryAppBackend.invitation(club)
+        val link = ChessInvitation(invitation, club, "c9").link()
+        val parsed =
+            com.calimero.mero.app.OrgInvitation
+                .parse(link, ChessConstants.PACKAGE_NAME)!!
+        assertEquals(invitation.token, parsed.token)
+        assertEquals(club, parsed.namespaceId)
+        assertEquals("c9", parsed.contextId)
     }
 }

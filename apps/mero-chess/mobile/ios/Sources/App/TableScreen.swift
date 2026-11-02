@@ -472,8 +472,8 @@ private struct TableDetailsSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    DetailRow(label: "Table (context)", value: model.contextId)
-                    DetailRow(label: "Club (namespace)", value: model.namespaceId ?? "Unknown")
+                    DetailRow(label: "App instance", value: model.contextId)
+                    DetailRow(label: "Organization", value: model.namespaceId ?? "Unknown")
                     DetailRow(label: "You, as the contract sees you", value: model.view?.me ?? "—")
                     if let view = model.view {
                         DetailRow(label: "Position (FEN)", value: view.fen)

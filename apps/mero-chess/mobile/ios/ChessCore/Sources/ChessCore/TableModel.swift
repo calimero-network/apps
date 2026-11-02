@@ -1,5 +1,4 @@
 import Foundation
-import MeroChessGenerated
 import MeroKit
 
 /// A promotion the player has started and not yet chosen a piece for.

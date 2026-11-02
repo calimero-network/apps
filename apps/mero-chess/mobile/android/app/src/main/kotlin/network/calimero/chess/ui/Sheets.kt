@@ -250,8 +250,8 @@ fun JoinSheet(
             style = Type.body(15, color = ChessColors.Ink2),
         )
         Disclosure("Details") {
-            DetailRow("Club (namespace)", invitation.namespaceId)
-            DetailRow("Table (context)", invitation.contextId)
+            DetailRow("Organization", invitation.namespaceId)
+            DetailRow("App instance", invitation.contextId)
         }
         error?.let { ErrorBanner(it) { error = null } }
         PrimaryButton(onClick = { scope.launch { attempt({ busy = it }, { error = it }) { onJoin() } } }, enabled = !busy) {

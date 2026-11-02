@@ -1,7 +1,22 @@
 package network.calimero.chess.app
 
-import network.calimero.chess.generated.SeatView
-import network.calimero.chess.generated.TableView
+import com.calimero.mero.AppError
+import com.calimero.mero.ConfirmCancelled
+import com.calimero.mero.ConfirmRequired
+import com.calimero.mero.ConsentStale
+import com.calimero.mero.LoginRequired
+import com.calimero.mero.NotFound
+import com.calimero.mero.PasskeyCancelled
+import com.calimero.mero.ReleaseDeadlineError
+import com.calimero.mero.UnavailableError
+import com.calimero.mero.WrongNode
+import com.calimero.mero.app.PasskeyRequired
+import com.calimero.mero.app.SignedOutException
+import com.calimero.mero.tee.TeeTrustException
+import network.calimero.chess.contract.ChessContract
+import network.calimero.chess.contract.SeatView
+import network.calimero.chess.contract.TableView
+import java.io.IOException
 
 /** The app's fixed values, shared with the web app and the contract's bundle. (Swift `ChessConstants`.) */
 object ChessConstants {
@@ -68,8 +83,29 @@ object ChessText {
     /** A readable short form of an id nobody named. */
     fun shortId(id: String): String = if (id.length > 12) "${id.take(6)}…${id.takeLast(4)}" else id
 
-    /** An error as one sentence. A contract refusal is already written for a player, so it is shown as it came. */
-    fun error(error: Throwable): String = error.message?.takeIf { it.isNotBlank() } ?: "Something went wrong talking to the relay."
+    /**
+     * An error as one sentence: the Calimero 1.0 node's typed errors in words, and a contract refusal
+     * (`APP_ERROR {code, fields}`) worded by its code, as the web app words it ([ChessContract.MESSAGES]).
+     */
+    fun error(error: Throwable): String =
+        cluster(error) ?: error.message?.takeIf { it.isNotBlank() } ?: "Something went wrong talking to your cluster."
+
+    private fun cluster(error: Throwable): String? =
+        when (error) {
+            is ConfirmCancelled, is PasskeyCancelled -> "The passkey prompt was cancelled."
+            is PasskeyRequired, is ConfirmRequired -> "This needs your passkey. Open the app and try again."
+            is LoginRequired -> "Your session ended. Sign in again."
+            is ReleaseDeadlineError -> "A newer node release needs approval before anything can change. Review it under Tables."
+            is ConsentStale -> "That approval request is out of date. Try again."
+            is NotFound -> "This table isn't available to you (yet)."
+            is WrongNode -> "This node doesn't serve your account. Sign in again to reach your cluster."
+            is UnavailableError -> "Your cluster is unavailable right now (${error.reason}). Try again shortly."
+            is SignedOutException -> "You're signed out. Sign in again."
+            is AppError -> ChessContract.message(error.appCode) ?: error.message?.takeIf { it.isNotBlank() } ?: error.appCode.ifEmpty { null }
+            is TeeTrustException -> "Your cluster's node could not be verified: ${error.message}"
+            is IOException -> "Can't reach your cluster. Check your connection and try again."
+            else -> null
+        }
 
     private val REASONS =
         mapOf(

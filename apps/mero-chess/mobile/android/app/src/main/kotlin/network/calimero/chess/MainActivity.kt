@@ -11,8 +11,12 @@ import network.calimero.chess.ui.MeroChessApp
 
 /**
  * The one activity. Links arrive here, on the launch intent (cold start) or through [onNewIntent],
- * and go to [ChessAppViewModel.handleLink]: the wallet's sign-in redirect, or a table invitation
+ * and go to [ChessAppViewModel.handleLink]: the node's consent page sending the person back
+ * (`mero-chess://consent?request_id=…&result=…`), or a table invitation
  * (`https://links.calimero.network/com.calimero.mero-chess/join?invitation=…`).
+ *
+ * While it lives, its passkey (Credential Manager) approves the account's step-ups (inviting,
+ * member changes): [ChessAppViewModel.attach].
  */
 class MainActivity : ComponentActivity() {
     private val vm: ChessAppViewModel by viewModels()
@@ -20,10 +24,20 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        vm.attach(this)
         if (savedInstanceState == null) consume(intent)
         setContent {
-            MeroChessApp(vm = vm, onSignIn = { vm.signIn(this) }, onShare = ::share)
+            MeroChessApp(
+                vm = vm,
+                onCloud = { cluster, create, name -> vm.signInCloud(this, cluster, create, name) },
+                onShare = ::share,
+            )
         }
+    }
+
+    override fun onDestroy() {
+        vm.attach(null)
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {

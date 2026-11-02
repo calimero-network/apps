@@ -1,5 +1,4 @@
 import Foundation
-import MeroChessGenerated
 import MeroKit
 
 /// A table to open: its app instance (context) and the org ("club", namespace) it lives in.
@@ -149,7 +148,7 @@ public final class LobbyModel: ObservableObject {
         }
         let contextId = try await backend.createContext(
             groupId: namespaceId, applicationId: applicationId, name: name,
-            initArgs: .object(["title": .string(name), "now": .number(Double(nowMillis()))]))
+            initArgs: ChessContract.initArgs(title: name, now: nowMillis()))
         let ref = TableRef(contextId: contextId, namespaceId: namespaceId)
         tables.insert(TableEntry(ref: ref, clubName: clubs.first { $0.id == namespaceId }?.name ?? name), at: 0)
         return ref

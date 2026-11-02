@@ -164,8 +164,8 @@ struct JoinSheet: View {
             .font(Theme.body(15)).foregroundStyle(Theme.ink2)
             DisclosureGroup("Details") {
                 VStack(spacing: 12) {
-                    DetailRow(label: "Club (namespace)", value: invitation.namespaceId)
-                    DetailRow(label: "Table (context)", value: invitation.contextId)
+                    DetailRow(label: "Organization", value: invitation.namespaceId)
+                    DetailRow(label: "App instance", value: invitation.contextId)
                 }
                 .padding(.top, 8)
             }
