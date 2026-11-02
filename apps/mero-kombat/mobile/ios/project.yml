@@ -5,11 +5,11 @@
 #   open MeroKombat.xcodeproj
 #
 # The non-UI layer (typed contract client, view models, the game bridge, the fight pad's input
-# mapping, presence) is the local SwiftPM package in KombatCore/, tested on macOS with
-# `swift test --package-path KombatCore` (no simulator). The game itself is the web app's engine,
-# built by ../scripts/build-web.sh into Resources/Game and shipped in the app bundle.
-# The swift-sdk is pinned by revision to the head of swift-sdk#85 (Calimero 1.0); it moves to the
-# merge commit once that lands. Keep it equal to the revision in KombatCore/Package.swift.
+# mapping, presence) is the local SwiftPM package in KombatCore/, tested on macOS with `swift
+# test --package-path KombatCore` (no simulator). The game itself is the web app's engine, built
+# by ../scripts/build-web.sh into Resources/Game and shipped in the app bundle. The swift-sdk is
+# pinned to its v0.5.0 release (Calimero 1.0). Keep it equal to the version in
+# KombatCore/Package.swift.
 name: MeroKombat
 
 options:
@@ -21,7 +21,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: 37c09f3f96e7d98440f6618eef8a0e83ddee8ebd
+    exactVersion: 0.5.0
   KombatCore:
     path: KombatCore
 
