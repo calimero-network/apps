@@ -1,15 +1,19 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSubscription } from '@calimero-network/mero-react';
-import type { SubscriptionEventData } from '@calimero-network/mero-react';
-import { useStreamReconnect } from './useStreamReconnect';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { CalimeroClient } from '@calimero-network/mero-js';
 import type { AllGameEvents } from '../types/events';
 import { isLobbyEvent } from '../types/events';
 
 export interface UseGameSubscriptionsOptions {
-  /** Primary context to subscribe to (Match context when in-game, Lobby otherwise). */
-  contextId: string;
-  /** Optional second context so Lobby events keep flowing while in a Match. */
-  lobbyContextId?: string;
+  /** The client to stream with, once signed in. */
+  client: Pick<CalimeroClient, 'events'> | null;
+  /** The lobby's app instance: every lobby and match event comes from it. */
+  appId: string | null;
+  /**
+   * The log index to stream from: one past the newest answer this page has
+   * read, so the stream does not replay the lobby's history.
+   */
+  fromIndex: () => number;
+  /** The open match; its events pass, other matches' do not. */
   matchId?: string;
   onBoardUpdate?: () => void;
   onTurnUpdate?: () => void;
@@ -18,22 +22,11 @@ export interface UseGameSubscriptionsOptions {
 
 export interface UseGameSubscriptionsReturn {
   isSubscribed: boolean;
-  isConnecting: boolean;
   lastEvent: AllGameEvents | null;
-  error: string | null;
-  events: AllGameEvents[];
-  subscribe: () => void;
-  unsubscribe: () => void;
 }
 
-// mero-react 6 widened the subscription callback to
-// `SseEventData | GroupMembershipEventData | GroupMigrationEventData`, and only
-// the first carries a `contextId`. This hook only ever needed the payload, so it
-// reads `data` when the variant has it and ignores the rest — a membership or
-// migration event is simply not a game event.
-function eventPayload(event: SubscriptionEventData): unknown {
-  return 'data' in event ? (event as { data: unknown }).data : undefined;
-}
+/** How long to wait before opening the stream again after it closed. */
+const RECONNECT_MS = 2_000;
 
 type GameEventRefreshMode = 'none' | 'debounced' | 'immediate';
 
@@ -105,12 +98,8 @@ function toGameEvent(
       return { type: 'MatchListUpdated', id };
     case 'PlayerStatsUpdated':
       return { type: 'PlayerStatsUpdated', id };
-    case 'MatchIdCollision': {
-      const attempted_id =
-        typeof payload.attempted_id === 'string' ? payload.attempted_id : '';
-      if (!attempted_id) return null;
-      return { type: 'MatchIdCollision', id: attempted_id, attempted_id };
-    }
+    case 'PlayersUpdated':
+      return { type: 'PlayersUpdated', id };
     case 'BoardCommitted': {
       const player = typeof payload.player === 'string' ? payload.player : '';
       const commitment =
@@ -213,17 +202,17 @@ export function getGameEventEffects(event: AllGameEvents): {
     case 'Winner':
     case 'MatchEnded':
       return { board: 'debounced', turn: 'none' };
+    // RevealRequested: the match just ended on the answers, and the board
+    // refresh is what reveals this device's board; a reveal from the other
+    // side changes the standing. Neither waits for the debounce.
     case 'ShotProposed':
     case 'ShotFired':
-    // The match just ended on the answers: the board refresh is what reveals
-    // this device's board, and a reveal from the other side changes the
-    // standing, so neither waits for the debounce.
     case 'RevealRequested':
     case 'BoardRevealed':
       return { board: 'immediate', turn: 'immediate' };
     case 'MatchListUpdated':
     case 'PlayerStatsUpdated':
-    case 'MatchIdCollision':
+    case 'PlayersUpdated':
     case 'BoardCommitted':
     case 'AuditPassed':
     case 'AuditFailed':
@@ -236,149 +225,89 @@ export function getGameEventEffects(event: AllGameEvents): {
 }
 
 /**
- * Build the deduplicated list of context ids to subscribe to.
+ * The lobby's event stream (`client.events`), delivered as typed game events.
  *
- * When a separate `lobbyContextId` is provided (e.g. while the player is
- * inside a Match context), both contexts are subscribed so Lobby-level
- * events (match list updates, stats) keep flowing alongside Match events.
+ * v1 subscribed to two contexts (the lobby and the open match's game
+ * context). A lobby is one app instance now, so one stream carries both;
+ * match events are filtered to the open match by their `id`. When the stream
+ * closes it is opened again from the newest index read, after re-reading the
+ * boards and turn once, so nothing that happened in between is missed.
  */
-function buildContextIds(
-  contextId: string,
-  lobbyContextId: string | undefined,
-  isEnabled: boolean,
-): string[] {
-  if (!isEnabled) return [];
-
-  const ids: string[] = [];
-  if (contextId) ids.push(contextId);
-  if (lobbyContextId && lobbyContextId !== contextId) ids.push(lobbyContextId);
-  return ids;
-}
-
 export function useGameSubscriptions({
-  contextId,
-  lobbyContextId,
+  client,
+  appId,
+  fromIndex,
   matchId,
   onBoardUpdate,
   onTurnUpdate,
   onGameEvent,
 }: UseGameSubscriptionsOptions): UseGameSubscriptionsReturn {
   const [isSubscribed, setIsSubscribed] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
   const [lastEvent, setLastEvent] = useState<AllGameEvents | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [events, setEvents] = useState<AllGameEvents[]>([]);
-  const [isEnabled, setIsEnabled] = useState(true);
 
-  const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The handlers change on every render of the match page; the stream must not.
+  const handlers = useRef({ onBoardUpdate, onTurnUpdate, onGameEvent, matchId, fromIndex });
+  handlers.current = { onBoardUpdate, onTurnUpdate, onGameEvent, matchId, fromIndex };
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const debouncedBoardUpdate = useMemo(() => {
-    return () => {
-      if (debounceTimeoutRef.current) {
-        clearTimeout(debounceTimeoutRef.current);
+  const deliver = useMemo(
+    () => (kind: string, data: unknown) => {
+      const h = handlers.current;
+      const event = toGameEvent(kind, data);
+      if (!event || !matchesActiveMatch(h.matchId, event)) return;
+      setLastEvent(event);
+      const effects = getGameEventEffects(event);
+      if (effects.board === 'immediate') {
+        h.onBoardUpdate?.();
+      } else if (effects.board === 'debounced') {
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        debounceRef.current = setTimeout(() => handlers.current.onBoardUpdate?.(), 300);
       }
-
-      debounceTimeoutRef.current = setTimeout(() => {
-        onBoardUpdate?.();
-      }, 300);
-    };
-  }, [onBoardUpdate]);
-
-  const eventCallback = useCallback(
-    (event: SubscriptionEventData) => {
-      try {
-        const gameEvents = parseSubscriptionEvents(eventPayload(event)).filter((gameEvent) =>
-          matchesActiveMatch(matchId, gameEvent),
-        );
-        if (gameEvents.length === 0) {
-          return;
-        }
-
-        setEvents((previousEvents) => [...previousEvents, ...gameEvents]);
-        setLastEvent(gameEvents[gameEvents.length - 1]);
-        setError(null);
-
-        for (const gameEvent of gameEvents) {
-          const effects = getGameEventEffects(gameEvent);
-          if (effects.board === 'immediate') {
-            onBoardUpdate?.();
-          } else if (effects.board === 'debounced') {
-            debouncedBoardUpdate();
-          }
-
-          if (effects.turn === 'immediate') {
-            onTurnUpdate?.();
-          }
-
-          onGameEvent?.(gameEvent);
-        }
-      } catch (callbackError) {
-        console.error('Error in subscription callback:', callbackError);
-        setError('Error processing game event');
-      }
+      if (effects.turn === 'immediate') h.onTurnUpdate?.();
+      h.onGameEvent?.(event);
     },
-    [
-      debouncedBoardUpdate,
-      matchId,
-      onBoardUpdate,
-      onGameEvent,
-      onTurnUpdate,
-    ],
-  );
-
-  const subscribe = useCallback(() => {
-    setIsEnabled(true);
-  }, []);
-
-  const unsubscribe = useCallback(() => {
-    setIsEnabled(false);
-    setIsSubscribed(false);
-    setIsConnecting(false);
-  }, []);
-
-  const contextIds = useMemo(
-    () => buildContextIds(contextId, lobbyContextId, isEnabled),
-    [contextId, lobbyContextId, isEnabled],
+    [],
   );
 
   useEffect(() => {
-    if (contextIds.length === 0) {
+    if (!client || !appId) {
       setIsSubscribed(false);
-      setIsConnecting(false);
-      return;
+      return undefined;
     }
-
-    setError(null);
-    setIsConnecting(true);
-    setIsSubscribed(true);
-    setIsConnecting(false);
-  }, [contextIds]);
-
-  useSubscription(contextIds, eventCallback);
-
-  // A shot or a turn taken while the stream was down sends no event we will
-  // ever see, so re-read both once it is back.
-  useStreamReconnect(() => {
-    if (contextIds.length === 0) return;
-    onBoardUpdate?.();
-    onTurnUpdate?.();
-  });
-
-  useEffect(() => {
-    return () => {
-      if (debounceTimeoutRef.current) {
-        clearTimeout(debounceTimeoutRef.current);
+    const abort = new AbortController();
+    void (async () => {
+      let first = true;
+      while (!abort.signal.aborted) {
+        if (!first) {
+          // Whatever happened while the stream was down: read it once.
+          handlers.current.onBoardUpdate?.();
+          handlers.current.onTurnUpdate?.();
+        }
+        first = false;
+        try {
+          const from = handlers.current.fromIndex() + 1;
+          setIsSubscribed(true);
+          for await (const e of client.events(appId, from, abort.signal)) deliver(e.kind, e.data);
+        } catch {
+          // Closed: sign-out, the lobby left, the network. Opened again below.
+        }
+        setIsSubscribed(false);
+        if (abort.signal.aborted) return;
+        await new Promise((resolve) => setTimeout(resolve, RECONNECT_MS));
       }
+    })();
+    return () => {
+      abort.abort();
+      setIsSubscribed(false);
     };
-  }, []);
+  }, [client, appId, deliver]);
 
-  return {
-    isSubscribed,
-    isConnecting,
-    lastEvent,
-    error,
-    events,
-    subscribe,
-    unsubscribe,
-  };
+  useEffect(
+    () => () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    },
+    [],
+  );
+
+  return { isSubscribed, lastEvent };
 }

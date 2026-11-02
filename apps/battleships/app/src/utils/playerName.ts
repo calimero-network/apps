@@ -2,12 +2,12 @@
 export const formatKey = (k: string) => `${k.slice(0, 8)}…${k.slice(-4)}`;
 
 export interface PlayerNameSources {
-  /** account id -> player key, as recorded in the lobby contract. */
+  /** account id -> the id it plays as (the account itself since the 1.0 port). */
   playerByAccount: Record<string, string>;
   /** This node's account, and the player key it plays under. */
   selfIdentity: string | null;
   executorPublicKey: string | null;
-  /** The namespace name for an account, if it has one. */
+  /** The name an account set in the lobby's organization, if it has one. */
   nameOf?: (account: string) => string | undefined;
 }
 
@@ -19,12 +19,12 @@ export function accountForPlayerKey(key: string, s: PlayerNameSources): string |
 }
 
 /**
- * What to call the player behind `key`: the name its account set for the
- * namespace, else the shortened key.
+ * What to call the player behind `key`: the name its account set in the
+ * lobby's organization, else the shortened id.
  *
- * Matches and history record PLAYER keys (context identities), while names
- * are kept per ACCOUNT, so the key goes through the lobby's `register_player`
- * map first.
+ * Matches and history record the id a player plays as, names are kept per
+ * account; since the 1.0 port the two are the same id, and the map is the
+ * identity.
  */
 export function playerName(key: string, s: PlayerNameSources): string {
   const account = accountForPlayerKey(key, s);

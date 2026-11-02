@@ -42,7 +42,12 @@ members  = [
 # nothing here globs over `tools/`, so it needs no entry.
 #
 # See docs/COMPONENT-APPS.md.
-exclude = []
+exclude = [
+  "apps/battleships/logic",
+  # The contract's own rules crate is a member of ITS workspace; the
+  # `apps/*/logic/crates/*` glob above would claim it too.
+  "apps/battleships/logic/crates/rules",
+]
 
 [workspace.package]
 edition    = "2021"

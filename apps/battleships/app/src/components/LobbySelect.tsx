@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Input } from '@calimero-network/mero-ui';
 
 interface LobbyRecord {
+  /** The lobby's app instance id. */
   namespaceId: string;
   lobbyContextId: string | null;
-  applicationId: string;
   alias?: string | null;
 }
 
@@ -25,16 +25,15 @@ interface LobbySelectProps {
   onEnter: () => void;
 }
 
-// Stop "Securing channel…" from sticking forever if upstream context
-// resolution silently fails (no contexts under the namespace, peer
-// unreachable, etc.). After this window we drop the pending state so
+// Stop "Securing channel…" from sticking forever if opening the lobby
+// silently fails (the cluster unreachable, etc.). After this window we drop the pending state so
 // the user can try again instead of needing a page refresh.
 const PENDING_ENTER_TIMEOUT_MS = 20_000;
 
 type ViewMode = 'list' | 'cards';
 
 const LOBBY_INFO_TOOLTIP =
-  'Each lobby is a Calimero namespace — a private group bound to one application. ' +
+  'Each lobby is a Battleships app instance in an organization of its own. ' +
   'Members in the same lobby can challenge each other to matches.';
 
 export default function LobbySelect({
@@ -76,7 +75,7 @@ export default function LobbySelect({
     const timer = setTimeout(() => {
       setPendingEnterNs((current) => {
         if (current !== pendingEnterNs) return current;
-        setPendingError("Couldn't open that lobby — its context didn't come online in time. Try again or pick another.");
+        setPendingError("Couldn't open that lobby in time. Try again or pick another.");
         return null;
       });
     }, PENDING_ENTER_TIMEOUT_MS);
@@ -141,7 +140,7 @@ export default function LobbySelect({
                 </button>
               </div>
               <span className="console-hint">
-                Names are local labels — the lobby ID is what travels with invitations.
+                The name is the lobby's, for everyone you invite.
               </span>
             </form>
           </div>

@@ -191,7 +191,7 @@ describe('getGameEventEffects', () => {
 describe('isLobbyEvent / isMatchEvent', () => {
   const lobbyEvents: AllGameEvents[] = [
     { type: 'MatchCreated', id: 'x' },
-    { type: 'MatchIdCollision', id: 'x', attempted_id: 'x' },
+    { type: 'PlayersUpdated', id: '' },
     { type: 'MatchListUpdated', id: '' },
     { type: 'PlayerStatsUpdated', id: '' },
   ];
@@ -234,7 +234,7 @@ describe('isLobbyEvent / isMatchEvent', () => {
   });
 });
 
-describe('CRDT-migration event parsers', () => {
+describe('commit-reveal event parsers', () => {
   it('parses BoardCommitted with id, player, commitment', () => {
     expect(
       parseSubscriptionEvent({
@@ -282,19 +282,6 @@ describe('CRDT-migration event parsers', () => {
       id: 'm-1',
       player: 'pk-1',
       reason: 'shot_inconsistent',
-    });
-  });
-
-  it('maps MatchIdCollision attempted_id into the GameEvent.id slot', () => {
-    expect(
-      parseSubscriptionEvent({
-        event_type: 'MatchIdCollision',
-        attempted_id: 'pk1-pk2-12345',
-      }),
-    ).toEqual({
-      type: 'MatchIdCollision',
-      id: 'pk1-pk2-12345',
-      attempted_id: 'pk1-pk2-12345',
     });
   });
 

@@ -1,0 +1,18 @@
+[package]
+name        = "battleships-rules"
+description = "The rules of Battleships, with no SDK: the board, the fleet, the board commitment and the audit every reader runs at match end."
+version     = "0.0.1"
+edition     = "2021"
+authors     = ["Calimero Limited <info@calimero.network>"]
+license     = "MIT OR Apache-2.0"
+repository  = "https://github.com/calimero-network/apps"
+publish     = false
+
+# A member of the contract's own workspace (../../Cargo.toml), not the root one:
+# the contract is a standalone component crate, so this crate builds with it for
+# both the host (its unit tests, and the harness building boards) and
+# wasm32-wasip2 (the component). v1's `battleships-types` (GameError, PublicKey)
+# and the game service's pure modules, without the v1 SDK's derives.
+
+[dependencies]
+sha2 = "0.10.8"

@@ -43,40 +43,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
-name = "battleships"
-version = "0.3.3"
-dependencies = [
- "battleships-types",
- "calimero-sdk",
- "calimero-storage",
- "calimero-storage-macros",
- "hex",
-]
-
-[[package]]
-name = "battleships-game"
-version = "0.3.2"
-dependencies = [
- "battleships-types",
- "calimero-sdk",
- "calimero-storage",
- "calimero-storage-macros",
- "hex",
- "sha2 0.10.9",
-]
-
-[[package]]
-name = "battleships-types"
-version = "0.1.0"
-dependencies = [
- "borsh",
- "calimero-sdk",
- "hex",
- "serde",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "bitflags"
 version = "2.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

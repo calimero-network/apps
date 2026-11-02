@@ -11,28 +11,27 @@
 import { ArrowUpRight, ExternalLink, EyeOff, LockCheck, Target } from '@calimero-network/mero-icons';
 
 import Animation from './animation';
-import LoginPopup from './loginPopup';
 import type { LandingConfig } from './landingTypes';
 
 export const CONFIG: LandingConfig = {
   name: "Battleships",
   packageId: "com.calimero.battleships",
-  tagline: "Two-player Battleships over Calimero: a lobby service for matchmaking and a game service per match, with commit-reveal ship placement.",
+  tagline: "Two-player Battleships: a lobby of matches and stats, and every match played with commit-reveal boards that stay on the player's device.",
   dir: "battleships",
   markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
-  availability: "web+desktop",
+  availability: "web",
   tint: "#38bdf8",
-  trust: ["Boards never leave your device", "Commit-reveal placement", "Node or account"],
+  trust: ["Boards never leave your device", "Commit-reveal placement", "No passwords"],
   explainer: [
-    "Turn-based Battleships for two players, where the interesting part is not the game — it is the trust model. Your fleet lives on your own device and nowhere else: not on your opponent’s node, not on yours, and not on the relay if you play from an account.",
-    "Placement is commit-reveal: you commit to a board up front and reveal it at the end, so neither side can quietly move a ship after seeing where the shots are going. A lobby service handles matchmaking and a separate game service runs each match.",
+    "Turn-based Battleships for two players, where the interesting part is not the game — it is the trust model. Your fleet lives on your own device and nowhere else: not with your opponent, not on the cluster, not in the app.",
+    "Placement is commit-reveal: you commit to a board up front and reveal it at the end, so neither side can quietly move a ship after seeing where the shots are going. A lobby is one app instance that pairs players, runs every match and keeps the record.",
   ],
   features: [
     {
       icon: EyeOff,
       title: "A board your opponent cannot read",
-      body: "Ships live in your browser’s storage. The contract holds only a hash of them, so there is no copy on any node to inspect.",
+      body: "Ships live in your browser’s storage. The contract holds only a hash of them, so there is no copy anywhere to inspect.",
     },
     {
       icon: LockCheck,
@@ -41,18 +40,18 @@ export const CONFIG: LandingConfig = {
     },
     {
       icon: Target,
-      title: "Matchmaking without a server",
-      body: "A lobby service pairs players and a game service runs each match, both inside the same bundle.",
+      title: "Matchmaking without a game server",
+      body: "The lobby pairs players and runs each match in the same contract, one log ordering every shot.",
     },
     {
       icon: ArrowUpRight,
-      title: "Results reported back",
-      body: "A finished match tells the lobby who won through a cross-context call, so history survives the game.",
+      title: "Results recorded with the game",
+      body: "The call that decides a match records its winner, history and stats in the lobby at once.",
     },
     {
       icon: ExternalLink,
       title: "Invite by link",
-      body: "Recursive namespace invitations. Play from a node you run, or from a Calimero account through its relay.",
+      body: "One link joins the lobby’s organization. Sign in with a passkey: no password, no email.",
     },
   ],
   animation: Animation,
@@ -61,12 +60,12 @@ export const CONFIG: LandingConfig = {
       id: "concepts",
       heading: "The words, and what they mean here",
       paragraphs: [
-        "Battleships is two Calimero applications in one bundle: a lobby that pairs players and keeps the record, and a game that runs a single match. They talk to each other with a cross-context call rather than sharing state.",
+        "Battleships is one Calimero app: a lobby that pairs players, runs every match and keeps the record. The cluster’s log orders every shot, and the contract that runs each one is the referee.",
       ],
       concepts: [
-        { term: "Namespace", def: "A lobby. You create one, invite the people you want to play against, and every match you play together is recorded in it." },
-        { term: "Context", def: "One match. It is created when a game starts and holds only that game — the shots fired, whose turn it is, and the result." },
-        { term: "Board on the device", def: "Where your fleet lives: in this browser’s storage, keyed by you and the match. The contract records only its hash, so no node — yours, your opponent’s, or a relay — has a copy to inspect at any point in the game." },
+        { term: "Organization", def: "Who is in the lobby. You create one with the lobby, invite the people you want to play against, and every match you play together is recorded in it." },
+        { term: "Lobby", def: "One app instance. It holds the players, every match — the shots fired, whose turn it is, the result — and everyone’s record." },
+        { term: "Board on the device", def: "Where your fleet lives: in this browser’s storage, keyed by you and the match. The contract records only its hash, so nobody — your opponent, the cluster, the app — has a copy to inspect at any point in the game." },
         { term: "Commit-reveal", def: "You commit to a board layout before the first shot and reveal it at the end. The commitment is what stops either side quietly moving a ship after seeing where the shots land." },
       ],
     },
@@ -74,8 +73,8 @@ export const CONFIG: LandingConfig = {
       id: "start",
       heading: "Getting started",
       steps: [
-        { title: "Connect", body: "Press Connect to node — the Calimero desktop app bundles one, or enter your own node’s URL — or sign in with a Calimero account to play through its relay." },
-        { title: "Create or join a lobby", body: "A new lobby is a namespace you own. Joining someone else’s means opening their invite link." },
+        { title: "Sign in", body: "Sign in with a passkey, or create an account with a new one. There is no password and no email." },
+        { title: "Create or join a lobby", body: "A new lobby creates an organization and the lobby in it. Joining someone else’s means opening their invite link." },
         { title: "Place your fleet", body: "Drag ships onto your grid. The board is saved on this device and only its commitment is sent before play begins." },
         { title: "Take turns", body: "Fire at a square; your opponent’s app answers hit or miss from the board on their device. When one fleet is gone, both boards are revealed and audited, and the lobby records who won." },
       ],
@@ -84,43 +83,34 @@ export const CONFIG: LandingConfig = {
       id: "sharing",
       heading: "Playing with someone else",
       paragraphs: [
-        "Invitations are links, scoped to the lobby you created. There is no email address and no sign-up: opening the link and connecting — a node, or an account — is the whole of joining.",
-        "An invitation carries the namespace and the permissions it grants. Because it is recursive, a player you invite to the lobby can be added to the matches inside it without a second invitation for each game.",
+        "Invitations are links into the lobby’s organization, approved with your passkey. There is no email address: opening the link and signing in is the whole of joining.",
+        "Everyone in the organization can challenge everyone else who has opened the lobby, without a second invitation for each game.",
       ],
     },
     {
       id: "storage",
       heading: "What is stored, and where",
       bullets: [
-        "The lobby stores a map of matches, a per-player win/loss record, and a history of finished matches. All of it replicates to lobby members.",
-        "Each match stores its own shots and turn order in its own context, and nothing else.",
+        "The lobby stores the players, the matches, a per-player win/loss record and a history of finished matches, in one app instance.",
+        "Each match stores the two commitments, the shots and their answers, and at the end the two revealed boards.",
         "Your fleet placement lives in this browser’s storage and nowhere else until the match ends. The contract holds its hash, then the reveal. Clearing site data mid-match loses the board — and with it the ability to answer shots or reveal.",
-      ],
-    },
-    {
-      id: "offline",
-      heading: "Offline, and what happens when you reconnect",
-      paragraphs: [
-        "Your node holds the whole state, so the app keeps working with no network — every change is written locally and queued.",
-        "When your node reaches a peer again, the two exchange changes and merge them. Merging is CRDT-based, not last-write-wins-by-clock, so two people editing different things at the same time both keep their work. Where two people genuinely changed the same single value, the later write wins on that one value and nothing else is lost.",
       ],
     },
     {
       id: "trouble",
       heading: "When something looks wrong",
       concepts: [
-        { term: "The opponent’s shots are not arriving", def: "Both nodes must be reachable to each other. Check the connection indicator; on two nodes on one machine, confirm they were started with peer discovery enabled." },
-        { term: "The invite link does nothing", def: "An invitation is tied to the lobby that minted it and expires. Ask for a fresh one rather than reusing an old link." },
+        { term: "The opponent’s shots are not arriving", def: "Check the Live indicator on the match. A closed event stream reopens on its own, and the match is re-read every few seconds either way." },
+        { term: "The invite link does nothing", def: "An invitation is used once and expires. Ask for a fresh one rather than reusing an old link." },
         { term: "You cannot see the other player’s board", def: "That is the design, not a fault. It is revealed at the end of the match." },
         { term: "Your board is not on this device", def: "You placed the fleet in another browser, or this one cleared its storage. Shots can only be answered, and the board only revealed, from where it was placed." },
       ],
     },
   ],
   previewSteps: [
-    { title: "Two grids, one private", body: "Your fleet on the left, their water on the right. Yours is drawn from this device’s storage; no node holds it." },
-    { title: "A shot is taken", body: "Firing writes to the match context. Both nodes converge on the same grid without a referee deciding who shot first." },
+    { title: "Two grids, one private", body: "Your fleet on the left, their water on the right. Yours is drawn from this device’s storage; nobody else holds it." },
+    { title: "A shot is taken", body: "Firing is a call the lobby’s log orders, so there is exactly one shot per turn." },
     { title: "Hit or miss comes back", body: "Their app answers from the board on their device. The answer is on record, and the reveal at the end is replayed against it." },
-    { title: "The lobby records it", body: "When a fleet is gone, the match reports the result back to the lobby as a cross-context call." },
+    { title: "The lobby records it", body: "When a fleet is gone and the boards pass the audit, the same call records the winner in the lobby." },
   ],
-  loginPopup: LoginPopup,
 };
