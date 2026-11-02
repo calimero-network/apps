@@ -1,5 +1,4 @@
 import { useState, useCallback, useRef } from "react";
-import { getNodeUrl } from "../lib/calimero";
 import * as api from "../api/kvStore";
 import { useAutoRefresh } from "../hooks/useAutoRefresh";
 import { SyncBar } from "../components/SyncBar";
@@ -76,9 +75,7 @@ export function FileShareDemo() {
       const blobRes = await api.getBlobIdHex(file.id);
       const blobId = (blobRes as { result?: { output?: string } })?.result?.output;
       if (!blobId) throw new Error("Could not get blob ID");
-      const nodeUrl = getNodeUrl();
-      if (!nodeUrl) throw new Error("Node URL not set");
-      await downloadBlobFrom(nodeUrl, blobId, file.name, file.mime_type);
+      await downloadBlobFrom(blobId, file.name, file.mime_type);
     } catch (err) {
       alert(`Download failed: ${String(err)}`);
     } finally {

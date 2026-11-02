@@ -34,8 +34,3 @@ export function getConnection(): Connection | null {
 export function getContextId(): string | null {
   return current?.appId ?? null;
 }
-
-/** The node the client is using now (it fails over across the cluster's nodes). */
-export function getNodeUrl(): string | null {
-  return current?.client.nodeUrl ?? null;
-}

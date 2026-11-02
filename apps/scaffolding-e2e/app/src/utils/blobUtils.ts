@@ -33,7 +33,7 @@ export async function uploadBlobToNode(file: File): Promise<string> {
 }
 
 /** Downloads blob `blobId` of the open instance and saves it as `filename`. */
-export async function downloadBlobFrom(_nodeUrl: string, blobId: string, filename: string, mimeType: string) {
+export async function downloadBlobFrom(blobId: string, filename: string, mimeType: string) {
   const conn = getConnection();
   if (!conn) throw new Error("No app instance open");
   let bytes: Uint8Array;
