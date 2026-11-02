@@ -21,9 +21,17 @@ const BOB: &str = "bob";
 const CAROL: &str = "carol";
 const GUEST: &str = "gus";
 
-/// A 64-hex blob id, distinct per `n`.
-fn blob(n: u8) -> String {
-    format!("{n:02x}").repeat(32)
+/// Uploads a blob of `size` bytes (at least 8), distinct per `n`, as a client
+/// would before `putMesh`/`putTexture`, and answers its id.
+fn up(t: &mut TestApp, n: u64, size: usize) -> String {
+    let mut bytes = vec![0_u8; size.max(8)];
+    bytes[..8].copy_from_slice(&n.to_le_bytes());
+    t.upload_blob(&bytes, "application/octet-stream")
+}
+
+/// A well-formed blob id no upload produced.
+fn never_uploaded() -> String {
+    "ab".repeat(32)
 }
 
 fn org() -> Org {
@@ -88,9 +96,9 @@ fn mesh(id: &str, blob_id: &str, size: u64) -> Value {
     })
 }
 
-fn texture(id: &str, name: &str, blob_id: &str) -> Value {
+fn texture(id: &str, name: &str, blob_id: &str, size: u64) -> Value {
     json!({
-        "id": id, "name": name, "blob_id": blob_id, "size": 524288, "width": 2048, "height": 2048,
+        "id": id, "name": name, "blob_id": blob_id, "size": size, "width": 2048, "height": 2048,
         "mime": "image/png", "color_space": "srgb", "author": "", "message": "", "updated_at": 0
     })
 }
@@ -100,7 +108,14 @@ fn put(t: &mut TestApp, who: &str, objects: Value, at: u64) -> Result<Value, Fai
         .call("putObjects", json!({ "objects": objects, "now": now(at) }))
 }
 
+/// The rows of one page (`{ items, next }`).
+fn items(v: &Value) -> Value {
+    assert!(v.get("next").is_some(), "not a page: {v}");
+    v["items"].clone()
+}
+
 fn ids(v: &Value) -> Vec<String> {
+    let v = if v.is_object() { &v["items"] } else { v };
     v.as_array()
         .unwrap()
         .iter()
@@ -108,10 +123,33 @@ fn ids(v: &Value) -> Vec<String> {
         .collect()
 }
 
+/// A view's whole answer, following `next` page by page.
+fn all(t: &mut TestApp, who: &str, method: &str, mut args: Value) -> Vec<Value> {
+    let mut out = Vec::new();
+    loop {
+        let page = ok(t.as_(who).view(method, args.clone()));
+        out.extend(items(&page).as_array().unwrap().iter().cloned());
+        match page["next"].as_str() {
+            Some(next) => args["cursor"] = json!(next),
+            None => return out,
+        }
+    }
+}
+
+fn put_mesh(t: &mut TestApp, who: &str, mesh: Value, at: u64) -> Result<Value, Failure> {
+    t.as_(who)
+        .call("putMesh", json!({ "mesh": mesh, "now": now(at) }))
+}
+
+fn put_texture(t: &mut TestApp, who: &str, texture: Value, at: u64) -> Result<Value, Failure> {
+    t.as_(who)
+        .call("putTexture", json!({ "texture": texture, "now": now(at) }))
+}
+
 // ── objects ─────────────────────────────────────────────────────────────────
 
 #[test]
-fn objects_are_written_read_in_creation_order_and_keep_their_creator() {
+fn objects_are_written_read_in_id_order_and_keep_their_creator() {
     let mut t = app();
     let written = ok(put(
         &mut t,
@@ -121,8 +159,7 @@ fn objects_are_written_read_in_creation_order_and_keep_their_creator() {
     ));
     assert_eq!(written, json!(["b", "a"]));
     ok(put(&mut t, OWNER, json!([object("c", "point_light")]), 20));
-    let all = ok(t.as_(BOB).view("getObjects", json!({})));
-    // Same creation time orders by id.
+    let all = items(&ok(t.as_(BOB).view("getObjects", json!({}))));
     assert_eq!(ids(&all), ["a", "b", "c"]);
     assert_eq!(all[0]["created_by"], json!(OWNER));
     assert_eq!(all[0]["created_at"], json!(common::T0 + 10));
@@ -158,7 +195,7 @@ fn every_editors_write_survives_and_one_object_holds_the_later_write_whole() {
     second["position"]["y"] = json!(2.0);
     ok(put(&mut t, OWNER, json!([first]), 2));
     ok(put(&mut t, BOB, json!([second.clone()]), 2));
-    let all = ok(t.as_(CAROL).view("getObjects", json!({})));
+    let all = items(&ok(t.as_(CAROL).view("getObjects", json!({}))));
     assert_eq!(ids(&all), ["bobs", "mine", "shared"]);
     let shared = &all[2];
     assert_eq!(shared["position"], second["position"]);
@@ -166,7 +203,10 @@ fn every_editors_write_survives_and_one_object_holds_the_later_write_whole() {
 }
 
 #[test]
-fn a_missing_parent_or_a_loop_reads_as_a_root() {
+fn parents_are_stored_as_written_and_resolved_by_the_reader() {
+    // v1 resolved missing parents and loops inside `get_objects`. The answer
+    // is paged now, so the reader resolves once it holds every page (the
+    // frontend's adapter, `meroModels.ts`; pinned by `meroModels.test.ts`).
     let mut t = app();
     ok(put(
         &mut t,
@@ -180,7 +220,7 @@ fn a_missing_parent_or_a_loop_reads_as_a_root() {
         ]),
         1,
     ));
-    let all = ok(t.as_(OWNER).view("getObjects", json!({})));
+    let all = items(&ok(t.as_(OWNER).view("getObjects", json!({}))));
     let parent = |id: &str| {
         all.as_array()
             .unwrap()
@@ -189,15 +229,9 @@ fn a_missing_parent_or_a_loop_reads_as_a_root() {
             .unwrap()["parent"]
             .clone()
     };
-    assert_eq!(parent("a"), json!(""));
-    assert_eq!(parent("b"), json!(""));
-    assert_eq!(parent("orphan"), json!(""));
+    assert_eq!(parent("a"), json!("b"));
+    assert_eq!(parent("orphan"), json!("gone"));
     assert_eq!(parent("leaf"), json!("root"));
-    // As stored, by id.
-    let raw = ok(t
-        .as_(OWNER)
-        .view("getObjectsByIds", json!({ "ids": ["a"] })));
-    assert_eq!(raw[0]["parent"], json!("b"));
 }
 
 #[test]
@@ -218,7 +252,10 @@ fn malformed_objects_are_refused_and_nothing_is_written() {
             "Invalid"
         );
     }
-    assert_eq!(ok(t.as_(OWNER).view("getObjects", json!({}))), json!([]));
+    assert_eq!(
+        ok(t.as_(OWNER).view("getObjects", json!({}))),
+        json!({ "items": [], "next": null })
+    );
 
     // Out-of-range numbers are clamped, not refused.
     let mut wild = object("w", "cube");
@@ -226,7 +263,7 @@ fn malformed_objects_are_refused_and_nothing_is_written() {
     wild["segments"] = json!(1000);
     wild["name"] = json!("   ");
     ok(put(&mut t, OWNER, json!([wild]), 1));
-    let w = &ok(t.as_(OWNER).view("getObjects", json!({})))[0];
+    let w = &items(&ok(t.as_(OWNER).view("getObjects", json!({}))))[0];
     assert_eq!(w["material"]["metalness"], json!(1.0));
     assert_eq!(w["segments"], json!(128));
     assert_eq!(w["name"], json!("cube"));
@@ -237,11 +274,11 @@ fn malformed_objects_are_refused_and_nothing_is_written() {
 }
 
 #[test]
-fn a_scene_holds_at_most_2000_objects() {
+fn a_scene_holds_at_most_2000_objects_read_in_pages() {
     let mut t = app();
     for batch in 0..10 {
         let objs: Vec<Value> = (0..200)
-            .map(|i| object(&format!("o{batch}-{i}"), "cube"))
+            .map(|i| object(&format!("o{batch}-{i:03}"), "cube"))
             .collect();
         ok(put(&mut t, OWNER, json!(objs), 1));
     }
@@ -252,13 +289,26 @@ fn a_scene_holds_at_most_2000_objects() {
             .contains("at most 2000")
     );
     // Rewriting one that exists is fine.
-    ok(put(&mut t, OWNER, json!([object("o0-0", "sphere")]), 2));
+    ok(put(&mut t, OWNER, json!([object("o0-000", "sphere")]), 2));
+
+    // One page is at most 1,000 rows; `limit` asks for fewer; `next` reads on.
+    let first = ok(t.as_(OWNER).view("getObjects", json!({ "limit": 5000 })));
+    assert_eq!(items(&first).as_array().unwrap().len(), 1000);
+    assert!(first["next"].is_string());
+    let small = ok(t.as_(OWNER).view("getObjects", json!({ "limit": 3 })));
+    assert_eq!(ids(&small), ["o0-000", "o0-001", "o0-002"]);
+    let after = ok(t
+        .as_(OWNER)
+        .view("getObjects", json!({ "cursor": small["next"], "limit": 1 })));
+    assert_eq!(ids(&after), ["o0-003"]);
+    let every = all(&mut t, OWNER, "getObjects", json!({}));
+    assert_eq!(every.len(), 2000);
     assert_eq!(
-        ok(t.as_(OWNER).view("getObjects", json!({})))
-            .as_array()
-            .unwrap()
-            .len(),
-        2000
+        code(
+            t.as_(OWNER)
+                .view("getObjects", json!({ "cursor": "not-a-cursor" }))
+        ),
+        "Storage"
     );
 }
 
@@ -271,10 +321,8 @@ fn deleting_objects_drops_their_meshes_and_check_outs_but_keeps_history() {
         json!([object("m", "mesh"), object("n", "cube")]),
         1,
     ));
-    ok(t.as_(OWNER).call(
-        "putMesh",
-        json!({ "mesh": mesh("m", &blob(1), 180), "now": now(2) }),
-    ));
+    let b1 = up(&mut t, 1, 180);
+    ok(put_mesh(&mut t, OWNER, mesh("m", &b1, 180), 2));
     ok(t.as_(OWNER).call(
         "checkOut",
         json!({ "ids": ["m"], "hours": 1, "now": now(3) }),
@@ -284,14 +332,21 @@ fn deleting_objects_drops_their_meshes_and_check_outs_but_keeps_history() {
         json!({ "ids": ["m", "gone"], "now": now(4) }),
     ));
     assert_eq!(ids(&ok(t.as_(OWNER).view("getObjects", json!({})))), ["n"]);
-    assert_eq!(ok(t.as_(OWNER).view("listMeshes", json!({}))), json!([]));
     assert_eq!(
-        ok(t.as_(OWNER).view("listLocks", json!({ "now": now(5) }))),
+        items(&ok(t.as_(OWNER).view("listMeshes", json!({})))),
+        json!([])
+    );
+    assert_eq!(
+        items(&ok(t
+            .as_(OWNER)
+            .view("listLocks", json!({ "now": now(5) })))),
         json!([])
     );
     let history = ok(t.as_(OWNER).view("listHistory", json!({ "assetId": "m" })));
     assert_eq!(history.as_array().unwrap().len(), 1);
     assert_eq!(history[0]["current"], json!(false));
+    // The history row still refers to the blob, so the node keeps it.
+    assert_eq!(t.blob_refs(&b1), 1);
 }
 
 // ── meshes, textures, history ───────────────────────────────────────────────
@@ -300,25 +355,20 @@ fn deleting_objects_drops_their_meshes_and_check_outs_but_keeps_history() {
 fn meshes_are_references_with_a_numbered_history_and_restores() {
     let mut t = app();
     ok(put(&mut t, OWNER, json!([object("m", "mesh")]), 1));
-    ok(t.as_(OWNER).call(
-        "putMesh",
-        json!({ "mesh": mesh("m", &blob(1), 180), "now": now(10) }),
-    ));
-    ok(t.as_(OWNER).call(
-        "putMesh",
-        json!({ "mesh": mesh("m", &blob(2), 200), "now": now(5) }),
-    ));
-    let meshes = ok(t.as_(BOB).view("listMeshes", json!({})));
-    assert_eq!(meshes[0]["blob_id"], json!(blob(2)));
+    let b1 = up(&mut t, 1, 180);
+    let b2 = up(&mut t, 2, 200);
+    ok(put_mesh(&mut t, OWNER, mesh("m", &b1, 180), 10));
+    ok(put_mesh(&mut t, OWNER, mesh("m", &b2, 200), 5));
+    let meshes = items(&ok(t.as_(BOB).view("listMeshes", json!({}))));
+    assert_eq!(meshes[0]["blob_id"], json!(b2));
     assert_eq!(meshes[0]["author"], json!(OWNER));
     // The slow clock still moved the stamp forward.
     assert_eq!(meshes[0]["updated_at"], json!(common::T0 + 11));
 
     // Restore v1: write its blob again.
-    let mut restore = mesh("m", &blob(1), 180);
+    let mut restore = mesh("m", &b1, 180);
     restore["message"] = json!("Restored v1");
-    ok(t.as_(OWNER)
-        .call("putMesh", json!({ "mesh": restore, "now": now(20) })));
+    ok(put_mesh(&mut t, OWNER, restore, 20));
     let history = ok(t.as_(BOB).view("listHistory", json!({ "assetId": "m" })));
     let rows = history.as_array().unwrap();
     assert_eq!(rows.len(), 3);
@@ -340,6 +390,37 @@ fn meshes_are_references_with_a_numbered_history_and_restores() {
         ok(t.as_(OWNER).view("getScene", json!({})))["mesh_count"],
         json!(1)
     );
+    // Retention: b1 is named by the mesh and by two history rows, b2 by one row.
+    assert_eq!(t.blob_refs(&b1), 3);
+    assert_eq!(t.blob_refs(&b2), 1);
+}
+
+#[test]
+fn a_reference_names_a_blob_the_scene_holds_with_its_real_size() {
+    let mut t = app();
+    // A well-formed id no upload produced: refused, not stored (the host would
+    // trap a run that stores it).
+    let refused = put_mesh(&mut t, OWNER, mesh("m", &never_uploaded(), 10), 1);
+    assert!(message(refused.clone()).contains("upload the mesh first"));
+    assert_eq!(code(refused), "Invalid");
+    assert_eq!(
+        code(put_texture(
+            &mut t,
+            OWNER,
+            texture("t", "T", &never_uploaded(), 10),
+            1
+        )),
+        "Invalid"
+    );
+    // The size is the node's, not the client's claim.
+    let b = up(&mut t, 7, 100);
+    assert!(message(put_mesh(&mut t, OWNER, mesh("m", &b, 99), 2)).contains("is 100 bytes, not 99"));
+    assert_eq!(
+        code(put_texture(&mut t, OWNER, texture("t", "T", &b, 101), 2)),
+        "Invalid"
+    );
+    ok(put_mesh(&mut t, OWNER, mesh("m", &b, 100), 3));
+    assert_eq!(t.blob_refs(&b), 2);
 }
 
 #[test]
@@ -347,62 +428,50 @@ fn a_blob_is_at_most_47_25_mib_and_named_by_lowercase_hex() {
     let mut t = app();
     // The largest blob a node keeps: (64 MiB − 1 MiB) / 4 × 3.
     let max = 49_545_216_u64;
-    ok(t.as_(OWNER).call(
-        "putMesh",
-        json!({ "mesh": mesh("m", &blob(1), max), "now": now(1) }),
-    ));
-    assert!(message(t.as_(OWNER).call(
-        "putMesh",
-        json!({ "mesh": mesh("m", &blob(1), max + 1), "now": now(2) })
-    ))
-    .contains("47.25 MiB"));
-    for bad in ["AB".repeat(32), "ab".repeat(31), "zz".repeat(32)] {
+    let big_blob = up(&mut t, 1, max as usize);
+    ok(put_mesh(&mut t, OWNER, mesh("m", &big_blob, max), 1));
+    assert!(
+        message(put_mesh(&mut t, OWNER, mesh("m", &big_blob, max + 1), 2)).contains("47.25 MiB")
+    );
+    let small = up(&mut t, 2, 10);
+    for bad in [small.to_uppercase(), "ab".repeat(31), "zz".repeat(32)] {
         assert_eq!(
-            code(t.as_(OWNER).call(
-                "putMesh",
-                json!({ "mesh": mesh("m", &bad, 10), "now": now(3) })
-            )),
+            code(put_mesh(&mut t, OWNER, mesh("m", &bad, 10), 3)),
             "Invalid"
         );
     }
-    let mut big = mesh("m", &blob(1), 10);
+    let mut big = mesh("m", &small, 10);
     big["vertex_count"] = json!(4_000_001);
-    assert_eq!(
-        code(
-            t.as_(OWNER)
-                .call("putMesh", json!({ "mesh": big, "now": now(4) }))
-        ),
-        "Invalid"
-    );
-    let mut tex = texture("t", "Albedo", &blob(3));
-    tex["size"] = json!(max + 1);
-    assert_eq!(
-        code(
-            t.as_(OWNER)
-                .call("putTexture", json!({ "texture": tex, "now": now(5) }))
-        ),
-        "Invalid"
-    );
+    assert_eq!(code(put_mesh(&mut t, OWNER, big, 4)), "Invalid");
+    let tex = texture("t", "Albedo", &small, max + 1);
+    assert_eq!(code(put_texture(&mut t, OWNER, tex, 5)), "Invalid");
 }
 
 #[test]
-fn textures_are_listed_by_name_versioned_and_deleted() {
+fn textures_are_listed_versioned_and_deleted() {
     let mut t = app();
-    ok(t.as_(OWNER).call(
-        "putTexture",
-        json!({ "texture": texture("t2", "Zinc", &blob(1)), "now": now(1) }),
+    let (b1, b2, b3) = (up(&mut t, 1, 64), up(&mut t, 2, 64), up(&mut t, 3, 64));
+    ok(put_texture(
+        &mut t,
+        OWNER,
+        texture("t2", "Zinc", &b1, 64),
+        1,
     ));
-    ok(t.as_(OWNER).call(
-        "putTexture",
-        json!({ "texture": texture("t1", "Albedo", &blob(2)), "now": now(2) }),
+    ok(put_texture(
+        &mut t,
+        OWNER,
+        texture("t1", "Albedo", &b2, 64),
+        2,
     ));
-    ok(t.as_(OWNER).call(
-        "putTexture",
-        json!({ "texture": texture("t1", "Albedo", &blob(3)), "now": now(3) }),
+    ok(put_texture(
+        &mut t,
+        OWNER,
+        texture("t1", "Albedo", &b3, 64),
+        3,
     ));
-    let list = ok(t.as_(BOB).view("listTextures", json!({})));
+    let list = items(&ok(t.as_(BOB).view("listTextures", json!({}))));
     assert_eq!(ids(&list), ["t1", "t2"]);
-    assert_eq!(list[0]["blob_id"], json!(blob(3)));
+    assert_eq!(list[0]["blob_id"], json!(b3));
     assert_eq!(list[0]["author"], json!(OWNER));
     let history = ok(t.as_(BOB).view("listHistory", json!({ "assetId": "t1" })));
     assert_eq!(history.as_array().unwrap().len(), 2);
@@ -410,19 +479,17 @@ fn textures_are_listed_by_name_versioned_and_deleted() {
     assert_eq!(history[1]["a"], json!(2048));
     assert_eq!(history[1]["current"], json!(true));
 
+    let b4 = up(&mut t, 4, 64);
     for (field, value) in [
         ("mime", json!("image/gif")),
         ("color_space", json!("cmyk")),
         ("width", json!(0)),
         ("height", json!(16_385)),
     ] {
-        let mut bad = texture("t3", "Bad", &blob(4));
+        let mut bad = texture("t3", "Bad", &b4, 64);
         bad[field] = value;
         assert_eq!(
-            code(
-                t.as_(OWNER)
-                    .call("putTexture", json!({ "texture": bad, "now": now(4) }))
-            ),
+            code(put_texture(&mut t, OWNER, bad, 4)),
             "Invalid",
             "{field}"
         );
@@ -442,11 +509,8 @@ fn textures_are_listed_by_name_versioned_and_deleted() {
 fn the_history_view_keeps_the_newest_500() {
     let mut t = app();
     for i in 0..503_u64 {
-        let id = format!("{:064x}", i + 1);
-        ok(t.as_(OWNER).call(
-            "putMesh",
-            json!({ "mesh": mesh("m", &id, 10), "now": now(i) }),
-        ));
+        let b = up(&mut t, i, 10);
+        ok(put_mesh(&mut t, OWNER, mesh("m", &b, 10), i));
     }
     let history = ok(t.as_(OWNER).view("listHistory", json!({ "assetId": "m" })));
     let rows = history.as_array().unwrap();
@@ -490,7 +554,7 @@ fn a_check_out_holds_others_off_until_it_is_released_or_lapses() {
         "Locked"
     );
 
-    let locks = ok(t.as_(BOB).view("listLocks", json!({ "now": now(5) })));
+    let locks = items(&ok(t.as_(BOB).view("listLocks", json!({ "now": now(5) }))));
     assert_eq!(locks[0]["holder"], json!(BOB));
     assert_eq!(locks[0]["mine"], json!(true));
     assert_eq!(locks[0]["expires_at"], json!(common::T0 + 2 + 3_600_000));
@@ -499,7 +563,9 @@ fn a_check_out_holds_others_off_until_it_is_released_or_lapses() {
         "checkOut",
         json!({ "ids": ["a"], "hours": 500, "now": now(10) }),
     ));
-    let locks = ok(t.as_(OWNER).view("listLocks", json!({ "now": now(11) })));
+    let locks = items(&ok(t
+        .as_(OWNER)
+        .view("listLocks", json!({ "now": now(11) }))));
     assert_eq!(locks[0]["since"], json!(common::T0 + 2));
     assert_eq!(locks[0]["mine"], json!(false));
     // 168 hours at most.
@@ -512,7 +578,9 @@ fn a_check_out_holds_others_off_until_it_is_released_or_lapses() {
     let later = 10 + 168 * 3_600_000 + 1;
     ok(put(&mut t, OWNER, json!([object("a", "torus")]), later));
     assert_eq!(
-        ok(t.as_(OWNER).view("listLocks", json!({ "now": now(later) }))),
+        items(&ok(t
+            .as_(OWNER)
+            .view("listLocks", json!({ "now": now(later) })))),
         json!([])
     );
 }
@@ -536,7 +604,7 @@ fn only_the_holder_or_an_admin_checks_an_asset_in() {
     // The org's admin breaks the rest.
     ok(t.as_(ADA).call("checkIn", json!({ "ids": ["b"] })));
     assert_eq!(
-        ok(t.as_(BOB).view("listLocks", json!({ "now": now(2) }))),
+        items(&ok(t.as_(BOB).view("listLocks", json!({ "now": now(2) })))),
         json!([])
     );
     assert_eq!(
@@ -602,18 +670,25 @@ fn members_join_under_a_name_and_are_listed_with_their_role() {
     // A rename keeps the join time.
     ok(t.as_(BOB)
         .call("join", json!({ "name": "Robert", "now": now(9) })));
+    // In account id order (the adapter sorts by join time).
     let members = ok(t.as_(CAROL).view("getMembers", json!({})));
     assert_eq!(
         members,
-        json!([
+        json!({ "items": [
             { "id": BOB, "name": "Robert", "role": "viewer", "joined_at": common::T0 + 5 },
             { "id": GUEST, "name": "Guest", "role": "viewer", "joined_at": common::T0 + 6 },
             { "id": OWNER, "name": "Owner", "role": "admin", "joined_at": common::T0 + 7 },
-        ])
+        ], "next": null })
     );
     assert_eq!(
         ok(t.as_(OWNER).view("getScene", json!({})))["member_count"],
         json!(3)
+    );
+    let two = ok(t.as_(CAROL).view("getMembers", json!({ "limit": 2 })));
+    assert_eq!(ids(&two), [BOB, GUEST]);
+    assert_eq!(
+        all(&mut t, CAROL, "getMembers", json!({ "limit": 2 })).len(),
+        3
     );
 }
 
@@ -629,11 +704,9 @@ fn the_owner_and_org_admins_grant_and_revoke_the_editor_role() {
         code(put(&mut t, BOB, json!([object("a", "cube")]), 1)),
         "Forbidden"
     );
+    let b = up(&mut t, 1, 10);
     assert_eq!(
-        code(t.as_(BOB).call(
-            "putMesh",
-            json!({ "mesh": mesh("a", &blob(1), 10), "now": now(1) })
-        )),
+        code(put_mesh(&mut t, BOB, mesh("a", &b, 10), 1)),
         "Forbidden"
     );
     assert_eq!(
@@ -670,17 +743,12 @@ fn the_owner_and_org_admins_grant_and_revoke_the_editor_role() {
 }
 
 #[test]
-fn an_admin_clears_the_scene() {
+fn an_admin_clears_the_scene_and_its_blobs_are_released() {
     let mut t = app();
     ok(put(&mut t, OWNER, json!([object("m", "mesh")]), 1));
-    ok(t.as_(OWNER).call(
-        "putMesh",
-        json!({ "mesh": mesh("m", &blob(1), 10), "now": now(2) }),
-    ));
-    ok(t.as_(OWNER).call(
-        "putTexture",
-        json!({ "texture": texture("t", "T", &blob(2)), "now": now(3) }),
-    ));
+    let (b1, b2) = (up(&mut t, 1, 10), up(&mut t, 2, 64));
+    ok(put_mesh(&mut t, OWNER, mesh("m", &b1, 10), 2));
+    ok(put_texture(&mut t, OWNER, texture("t", "T", &b2, 64), 3));
     ok(t.as_(OWNER).call(
         "checkOut",
         json!({ "ids": ["m"], "hours": 1, "now": now(4) }),
@@ -700,14 +768,16 @@ fn an_admin_clears_the_scene() {
         json!([])
     );
     assert_eq!(
-        ok(t.as_(OWNER).view("listLocks", json!({ "now": now(5) }))),
+        items(&ok(t
+            .as_(OWNER)
+            .view("listLocks", json!({ "now": now(5) })))),
         json!([])
     );
+    // Nothing refers to the blobs any more: the node may collect them.
+    assert_eq!((t.blob_refs(&b1), t.blob_refs(&b2)), (0, 0));
     // A new version starts from 1 again.
-    ok(t.as_(OWNER).call(
-        "putMesh",
-        json!({ "mesh": mesh("m", &blob(3), 10), "now": now(6) }),
-    ));
+    let b3 = up(&mut t, 3, 10);
+    ok(put_mesh(&mut t, OWNER, mesh("m", &b3, 10), 6));
     assert_eq!(
         ok(t.as_(OWNER).view("listHistory", json!({ "assetId": "m" })))[0]["number"],
         json!(1)
@@ -765,7 +835,7 @@ fn wire_errors() {
     ok(t.as_(OWNER)
         .call("join", json!({ "name": "A", "now": "5" })));
     assert_eq!(
-        ok(t.as_(OWNER).view("getMembers", json!({})))[0]["joined_at"],
+        items(&ok(t.as_(OWNER).view("getMembers", json!({}))))[0]["joined_at"],
         json!(5)
     );
 }

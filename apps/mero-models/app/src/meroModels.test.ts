@@ -2,7 +2,16 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
-import { CALLS, MeroModelsClient, VIEWS, type Environment, type MeshRef, type TextureRef } from "./meroModels";
+import {
+  CALLS,
+  MeroModelsClient,
+  VIEWS,
+  resolveParents,
+  type Environment,
+  type MeshRef,
+  type SceneObject,
+  type TextureRef,
+} from "./meroModels";
 import { clientTransport, tooLarge } from "./editor/blobs";
 import { MAX_BLOB_BYTES, makeObject } from "./editor/model";
 
@@ -10,6 +19,9 @@ import { MAX_BLOB_BYTES, makeObject } from "./editor/model";
 const abi = JSON.parse(readFileSync(resolve(__dirname, "../../logic/res/abi.json"), "utf8")) as {
   methods: Record<string, { kind: string; params: Array<[string, string]> }>;
 };
+
+/** The views that answer one page (`{ items, next }`); the adapter follows `next`. */
+const PAGED = new Set(["getObjects", "listMeshes", "listTextures", "listLocks", "getMembers"]);
 
 const byKind = (kind: string) =>
   Object.entries(abi.methods)
@@ -54,7 +66,8 @@ describe("the client covers the contract", () => {
     const sent = new Map<string, string[]>();
     const record = (_app: string, method: string, args: unknown = {}) => {
       sent.set(method, Object.keys(args as object).sort());
-      return Promise.resolve({ index: 1, result: null, events: [] });
+      const result = PAGED.has(method) ? { items: [], next: null } : null;
+      return Promise.resolve({ index: 1, result, events: [] });
     };
     const c = new MeroModelsClient({ call: vi.fn(record), view: vi.fn(record) }, "app-1");
     const now = 1;
@@ -83,8 +96,68 @@ describe("the client covers the contract", () => {
     ]);
     for (const [name, method] of Object.entries(abi.methods)) {
       if (method.kind === "init") continue;
-      expect(sent.get(name), name).toEqual(method.params.map(([p]) => p).sort());
+      // Optional parameters (a page's `cursor` and `limit`) may be left out.
+      const required = method.params.filter(([, ty]) => !ty.startsWith("option<")).map(([p]) => p);
+      const all = method.params.map(([p]) => p);
+      const got = sent.get(name) ?? [];
+      expect(got.filter((p) => !all.includes(p)), name).toEqual([]);
+      expect(required.filter((p) => !got.includes(p)), name).toEqual([]);
     }
+    expect([...PAGED].every((m) => abi.methods[m]?.params.some(([p]) => p === "cursor"))).toBe(true);
+  });
+});
+
+describe("paged views", () => {
+  const obj = (id: string, parent: string, created_at: number) =>
+    ({ id, parent, created_at }) as unknown as SceneObject;
+
+  it("follows `next` to the last page and answers v1's order", async () => {
+    const pages: Record<string, { items: unknown[]; next: string | null }> = {
+      "": { items: [obj("b", "", 2), obj("c", "", 1)], next: "k1" },
+      k1: { items: [obj("a", "", 2)], next: null },
+    };
+    const view = vi.fn((_app: string, _m: string, args: { cursor?: string }) =>
+      Promise.resolve({ index: 1, result: pages[args.cursor ?? ""] }),
+    );
+    const c = new MeroModelsClient({ call: vi.fn(), view }, "app-1");
+    // Creation time, then id.
+    expect((await c.getObjects()).map((o) => o.id)).toEqual(["c", "a", "b"]);
+    expect(view).toHaveBeenNthCalledWith(1, "app-1", "getObjects", {});
+    expect(view).toHaveBeenNthCalledWith(2, "app-1", "getObjects", { cursor: "k1" });
+  });
+
+  it("orders members oldest first and textures by name", async () => {
+    const view = vi.fn((_app: string, method: string) =>
+      Promise.resolve({
+        index: 1,
+        result:
+          method === "getMembers"
+            ? { items: [{ id: "z", joined_at: 1 }, { id: "a", joined_at: 2 }], next: null }
+            : { items: [{ id: "1", name: "Zinc" }, { id: "2", name: "Albedo" }], next: null },
+      }),
+    );
+    const c = new MeroModelsClient({ call: vi.fn(), view }, "app-1");
+    expect((await c.getMembers()).map((m) => m.id)).toEqual(["z", "a"]);
+    expect((await c.listTextures()).map((t) => t.name)).toEqual(["Albedo", "Zinc"]);
+  });
+
+  it("resolves a missing parent or a loop to a root, as v1's contract did", () => {
+    const out = resolveParents([
+      obj("a", "b", 0),
+      obj("b", "a", 0),
+      obj("orphan", "gone", 0),
+      obj("root", "", 0),
+      obj("leaf", "root", 0),
+      obj("deep", "leaf", 0),
+    ]);
+    expect(Object.fromEntries(out.map((o) => [o.id, o.parent]))).toEqual({
+      a: "",
+      b: "",
+      orphan: "",
+      root: "",
+      leaf: "root",
+      deep: "leaf",
+    });
   });
 });
 

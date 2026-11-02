@@ -353,6 +353,31 @@
  },
  {
   "as": "owner",
+  "op": "call",
+  "method": "putMesh",
+  "args": {
+   "mesh": {
+    "id": "a",
+    "blob_id": "abababababababababababababababababababababababababababababababab",
+    "size": 10,
+    "vertex_count": 3,
+    "triangle_count": 1,
+    "has_uvs": false,
+    "author": "",
+    "message": "",
+    "updated_at": 0
+   },
+   "now": "1727000000006"
+  },
+  "expect": {
+   "error": "Invalid",
+   "fields": {
+    "message": "abababababababababababababababababababababababababababababababab is not one of this scene's blobs: upload the mesh first"
+   }
+  }
+ },
+ {
+  "as": "owner",
   "op": "view",
   "method": "listHistory",
   "args": {

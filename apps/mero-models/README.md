@@ -13,7 +13,6 @@ enforced by the contract. It runs on core's component runtime (Calimero 1.0):
 apps/mero-models/
 ├── logic/                     Rust → wasm32-wasip2: a `calimero:app` component, its own workspace
 │   ├── src/lib.rs             #[app::state] objects, mesh/texture refs, history, check-outs, roles
-│   ├── src/blob.rs            BlobRef: a blob reference stored the way core counts references
 │   ├── tests/harness.rs       TestApp on core's engine: every method, role and limit
 │   ├── tests/scenarios.rs     every scenarios/*.json in the harness
 │   ├── scenarios/             neutral steps, also run on merod local (`pnpm merod-local e2e`)
@@ -66,12 +65,12 @@ mints an invite link to the studio (approved with your passkey); tick **Can
 edit** beside someone to let them build. A second browser profile (another
 passkey account) opens the link, signs in and sees every scene in the studio.
 
-**Meshes and textures need core after `1.0.0-rc.7`.** They are the scene's
-blobs, and component apps got blobs in core #4815, which landed after the
-`1.0.0-rc.7` tag this repo pins (`component-core-tag`). On an rc.7 node the
-blob routes answer `409 NOT_SUPPORTED`, so primitives, materials, lights,
-hierarchy, check-outs and roles work, and saving a mesh or a texture does not.
-See [Blobs](#blobs-and-large-models).
+Meshes and textures are the scene's own blobs (core #4815, in `1.0.0-rc.8`, the
+`component-core-tag` this app pins); see [Blobs](#blobs-and-large-models).
+
+**Nothing for an operator to configure.** The app makes no outbound HTTP calls
+(its manifest declares no `outbound` prefixes) and needs no secrets; it uses
+no cross-app calls, actions or search.
 
 ## Using it
 
@@ -112,7 +111,12 @@ The design:
   people dragging the same cube end with the later write — never a cube that
   took its position from one and its colour from the other.
 - **The hierarchy is the reader's.** Every reader resolves a missing parent or
-  a loop to the root, the same way (`resolve_parents`, mirrored in `model.ts`).
+  a loop to the root, the same way, once it holds every page of `getObjects`
+  (`resolveParents` in `src/meroModels.ts`, as v1's contract did in `get_objects`).
+- **Lists are read in pages.** `getObjects`, `listMeshes`, `listTextures`,
+  `listLocks` and `getMembers` answer one page (`{ items, next }`, at most 1,000
+  rows, in key order); `src/meroModels.ts` follows `next` and puts the rows back
+  in v1's order, so the screens see v1's answers.
 - **Heavy data is blobs; state is references.** A mesh's vertices and a
   texture's pixels are the scene's own blobs (`POST /apps/{app}/blobs`), named
   by their SHA-256. State holds a small reference, every save also adds a
@@ -172,14 +176,15 @@ most 64 MiB, with 1 MiB kept for the rest: `(64 MiB − 1 MiB) / 4 × 3` (core's
   collects the blobs an hour later. A scene holds at most 100,000 blobs (core's
   per-app quota).
 
-The contract stores each blob id as a `BlobRef` (`logic/src/blob.rs`): CBOR tag
-51,739 around the blob's SHA-256, exactly the bytes core's
-`calimero_app_sdk::BlobRef` writes. A node with core #4815 counts those
-references and keeps the blobs they name; the pinned SDK (`1.0.0-rc.7`) has no
-`BlobRef` yet, so the app writes the tag itself, and moving to the SDK's type
-when the pin moves changes neither stored state nor the wire. Not used yet:
-`BlobRef::info` (the node's own record of the size, to check a reference's
-`size`) and `BlobRef::grant` (download links for someone not signed in).
+The contract stores each blob id as the SDK's `BlobRef` (CBOR tag 51,739
+around the blob's SHA-256 in state, the hex id on the wire), so the host counts
+the references and keeps the blobs they name. Before storing one, `putMesh` and
+`putTexture` ask the node about the blob (`BlobRef::info`): a blob the scene
+does not hold (never uploaded, or deleted) is `Invalid` ("upload the mesh
+first") instead of a trapped run, and the `size` the client sends must be the
+size the node recorded at upload. Not used: `BlobRef::grant` (download links
+for someone not signed in); every reader of a scene is signed in and downloads
+with `CalimeroClient.downloadBlob`.
 
 ## Limits
 
@@ -218,7 +223,7 @@ in UDIM tiles.
 
 ```bash
 M=tools/component-bundle/Cargo.toml
-cargo test --manifest-path apps/mero-models/logic/Cargo.toml           # harness + scenarios + BlobRef encoding
+cargo test --manifest-path apps/mero-models/logic/Cargo.toml           # harness + scenarios
 cargo run --release --manifest-path $M -- build apps/mero-models/logic  # res/mero_models.wasm + res/abi.json
 pnpm -F mero-models lint && pnpm -F mero-models typecheck && pnpm -F mero-models test && pnpm -F mero-models build
 pnpm merod-local e2e mero-models                                        # the scenarios on merod local
@@ -226,15 +231,18 @@ pnpm merod-local e2e mero-models                                        # the sc
 
 `tests/harness.rs` runs the contract on core's real engine as named accounts:
 objects (order, creators, stamps, the 2,000 cap, validation and clamping), the
-hierarchy rule, meshes and textures with their numbered history and restores,
-the 47.25 MiB blob cap and the blob id form, check-outs (holding, extending,
+parents as stored, paging (`limit`, `next`, a bad cursor), meshes and textures
+with their numbered history and restores, the blob checks (a blob the scene
+does not hold, a size that is not the node's, the 47.25 MiB cap, the id form)
+and retention (how many stored values name each blob, before and after
+`clearScene`), check-outs (holding, extending,
 lapsing, releasing, an admin breaking one), the environment, members, the
 roles (the owner and the org's admins as admins, editors granted and revoked,
 viewers refused), `clearScene`, and the access and wire checks. The scenarios
-(`edit-a-scene.json`, the merobox workflow; `access.json`) run in the harness
-and on `merod local`. They never name a blob: a JSON step cannot upload one,
-and a node with blob support refuses a reference to a blob the scene does not
-hold, so meshes and textures are covered by the harness only.
+(`edit-a-scene.json`, v1's two-node workflow; `access.json`) run in the harness
+and on `merod local`. A JSON step cannot upload a blob, so they name blobs only
+to be refused (an id the scene does not hold, a size over the cap); storing a
+reference is covered by the harness, which uploads.
 
 `pnpm -F mero-models test` covers the editor (geometry, the cage tools and
 modifiers, examples, store, sync), the contract client against
@@ -251,23 +259,26 @@ The same methods, arguments, answers and events, with these differences a client
 | argument names | `asset_id` | `assetId`; v1 names are `BadArgs` | the same |
 | `now` | a number | a decimal string (`"1727000000000"`) | a `u64` parameter travels as a decimal string (D20); `src/meroModels.ts` converts |
 | answers | snake_case fields, numbers | unchanged: snake_case fields, timestamps and sizes as JSON numbers | the records are plain serde structs |
+| list views | `get_objects`, `list_meshes`, `list_textures`, `list_locks`, `get_members` answer every row, in v1's order (creation, name, join time), parents resolved | one page each, `{ items, next }`, at most 1,000 rows, in key order (id, asset id, account id), parents as stored; each takes `cursor` and `limit` | a view's answer must stay bounded; `src/meroModels.ts` follows `next`, restores v1's order and resolves parents |
 | `init` | `init(name)`: the scene's first name | `init()`; the scene is named by its instance (`createApp(name, …)`), and `getScene.name` is `""` until an editor renames it | the harness and the node run `init` with no arguments; the studio shows the instance's name |
 | errors | a message (`app::bail!`) | `422 APP_ERROR` `{ code, fields: { message } }` with `code` `Forbidden` (role), `Invalid` (an argument), `Locked` (someone else's check-out) | `#[app::error]`'s wire shape |
 | events | tuple payloads (`ObjectsChanged(["a"])`, `MeshChanged("m")`) | named fields: `ObjectsChanged { ids }`, `ObjectsDeleted { ids }`, `MeshChanged { id }`, `TextureChanged { id }`, `TexturesDeleted { ids }`, `LocksChanged { ids }`, `MemberChanged { member }`, `RoleChanged { member }`, `EnvironmentChanged`, `SceneCleared` | component events carry named fields; the client only uses them as a nudge to re-read |
 | admins | the context's creator | the instance's owner (its creator), **and** the organization's admins and owner | the org's roles; an org admin can already delete the instance |
 | `grantEditor` | any account id | an account in the scene's organization (`Invalid` otherwise) | catches a typo |
 | blob ids | 64 hex characters, either case | 64 **lowercase** hex characters: the `id` an upload answers | core's `BlobRef` form |
-| blob size | at most 512 MiB | at most 47.25 MiB | one sealed request ([above](#blobs-and-large-models)) |
+| blob size | at most 512 MiB, as the writer claims | at most 47.25 MiB, and exactly the size the node recorded at upload | one sealed request ([above](#blobs-and-large-models)); `BlobRef::info` |
+| an unknown blob | stored; readers failed to fetch it | `Invalid`, nothing stored | the host keeps only blobs the app holds |
 | blob sharing | uploaded with the context id and announced to every member's node (`blob_announce_to_context`) | the scene's own blobs; the cluster stores them and serves any member | one cluster per app |
 | blob lifetime | kept on the nodes that held them | kept while a mesh, texture or history row refers to them, then one hour | host-tracked retention (core #4815) |
 | history keys | `"<asset>/<stamp>/<author>/<blob>"` (two devices could write the same millisecond) | `(asset, number)`, numbered in log order | one log orders every write |
 | check-outs and roles | enforced by every node at merge (`PermissionedStorage` capability maps) | checked in each method | only the methods write |
 | `#[app::destructive]` on `deleteObjects`, `clearScene`, `deleteTextures` | a hint to clients | gone | the component SDK has no such marker (`clearScene` stays admin-only) |
 | `getMembers` ids | the `UserStorage` slot's account | the account that called `join` | the same, from `env::caller()` |
+| `Member` merge | a custom `Mergeable` (clock, then name) | a plain record, replaced by the next `join` | one log; there is nothing to merge |
 | transport | JSON-RPC `execute` on your own node, a context id | `POST /apps/{app}/intents` and `/views` on any node of the cluster, an app id | one app per replicated log |
 
 v1's convergence test (`tests/converge.rs`), its `TestHost` tests
-(`src/tests.rs`, now `tests/harness.rs`) and its two-node merobox workflow
+(`src/tests.rs`, now `tests/harness.rs`) and its two-node workflow
 (`logic/workflows/edit-a-scene.yml`, now `scenarios/edit-a-scene.json`) are
 gone: under one log there is nothing to converge.
 

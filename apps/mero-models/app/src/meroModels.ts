@@ -169,6 +169,41 @@ export interface MemberView {
 /** What the adapter needs of a signed-in `CalimeroClient`. */
 export type MethodClient = Pick<CalimeroClient, "call" | "view">;
 
+/** One page of a list view: `next` is the cursor of the following page, `null` after the last. */
+export interface Page<T> {
+  items: T[];
+  next: string | null;
+}
+
+/**
+ * Clear every `parent` that names a missing object or sits on a loop: the
+ * contract's v1 `resolve_parents`, which ran inside `get_objects`. The view is
+ * paged now, so the reader resolves once it holds every page, and every reader
+ * of the same rows draws the same tree.
+ */
+export function resolveParents(objects: SceneObject[]): SceneObject[] {
+  const parentOf = new Map(objects.map((o) => [o.id, o.parent]));
+  return objects.map((o) => {
+    if (!o.parent) return o;
+    const seen = new Set([o.id]);
+    let at = o.parent;
+    for (;;) {
+      if (!at) return o;
+      if (seen.has(at)) break;
+      seen.add(at);
+      const next = parentOf.get(at);
+      if (next === undefined) break;
+      at = next;
+    }
+    return { ...o, parent: "" };
+  });
+}
+
+/** Code-point order, as the contract's `String` sort was. */
+function cmp(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 /** A u64 parameter: a canonical decimal string (D20). */
 function u64(n: number): string {
   return String(Math.max(0, Math.trunc(n)));
@@ -204,6 +239,22 @@ export class MeroModelsClient {
     }
   }
 
+  /**
+   * Every row of a paged view, following `next`. Each list is bounded by the
+   * contract (2,000 objects, 1,000 textures) or by who joined; one page is at
+   * most 1,000 rows.
+   */
+  private async pages<T>(method: (typeof VIEWS)[number], args: Record<string, unknown> = {}): Promise<T[]> {
+    const out: T[] = [];
+    let cursor: string | null = null;
+    do {
+      const page: Page<T> = await this.view<Page<T>>(method, cursor === null ? args : { ...args, cursor });
+      out.push(...page.items);
+      cursor = page.next;
+    } while (cursor !== null);
+    return out;
+  }
+
   getScene(): Promise<SceneInfo> {
     return this.view("getScene");
   }
@@ -212,8 +263,11 @@ export class MeroModelsClient {
     return this.call("setEnvironment", { environment: params.environment, now: u64(params.now) });
   }
 
-  getObjects(): Promise<SceneObject[]> {
-    return this.view("getObjects");
+  /** Every object, ordered by creation then id, parents resolved (v1's answer). */
+  async getObjects(): Promise<SceneObject[]> {
+    const all = await this.pages<SceneObject>("getObjects");
+    all.sort((a, b) => a.created_at - b.created_at || cmp(a.id, b.id));
+    return resolveParents(all);
   }
 
   getObjectsByIds(params: { ids: string[] }): Promise<SceneObject[]> {
@@ -236,16 +290,19 @@ export class MeroModelsClient {
     return this.call("putMesh", { mesh: params.mesh, now: u64(params.now) });
   }
 
+  /** Every mesh's current reference, ordered by id. */
   listMeshes(): Promise<MeshRef[]> {
-    return this.view("listMeshes");
+    return this.pages("listMeshes");
   }
 
   putTexture(params: { texture: TextureRef; now: number }): Promise<void> {
     return this.call("putTexture", { texture: params.texture, now: u64(params.now) });
   }
 
-  listTextures(): Promise<TextureRef[]> {
-    return this.view("listTextures");
+  /** Every texture, ordered by name then id (v1's answer). */
+  async listTextures(): Promise<TextureRef[]> {
+    const all = await this.pages<TextureRef>("listTextures");
+    return all.sort((a, b) => cmp(a.name, b.name) || cmp(a.id, b.id));
   }
 
   deleteTextures(params: { ids: string[]; now: number }): Promise<void> {
@@ -264,16 +321,19 @@ export class MeroModelsClient {
     return this.call("checkIn", { ids: params.ids });
   }
 
+  /** Every check-out live at `now`, ordered by asset id. */
   listLocks(params: { now: number }): Promise<LockView[]> {
-    return this.view("listLocks", { now: u64(params.now) });
+    return this.pages("listLocks", { now: u64(params.now) });
   }
 
   join(params: { name: string; now: number }): Promise<void> {
     return this.call("join", { name: params.name, now: u64(params.now) });
   }
 
-  getMembers(): Promise<MemberView[]> {
-    return this.view("getMembers");
+  /** Everyone who joined, oldest first (v1's answer). */
+  async getMembers(): Promise<MemberView[]> {
+    const all = await this.pages<MemberView>("getMembers");
+    return all.sort((a, b) => a.joined_at - b.joined_at || cmp(a.id, b.id));
   }
 
   grantEditor(params: { member: string }): Promise<void> {

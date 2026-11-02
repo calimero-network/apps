@@ -21,9 +21,11 @@
 //! own blobs (`POST /apps/{app}/blobs`), and state holds a small [`MeshRef`]
 //! or [`TextureRef`]: the blob id, its size and what is in it. Moving an
 //! object never touches its mesh; replacing a mesh is one new blob and one
-//! small record. Stored rows hold the id as a [`BlobRef`], core's typed
-//! reference, so a node that tracks blob references keeps every blob a row
-//! names (see `src/blob.rs`).
+//! small record. Stored rows hold the id as a [`BlobRef`], the SDK's typed
+//! reference (core#4815), so the host keeps every blob a row names. A write
+//! checks the blob with [`BlobRef::info`] first: a reference to a blob the app
+//! does not hold is `Invalid` (the host would otherwise trap the run), and the
+//! `size` the client claims must be the size the node recorded at upload.
 //!
 //! **One blob is at most [`MAX_BLOB_BYTES`] (47.25 MiB).** A blob reaches the
 //! other nodes base64-encoded inside one sealed request of at most 64 MiB, with
@@ -66,16 +68,11 @@
 //! decimal string, the error shape, event payloads) is listed in
 //! `apps/mero-models/README.md`, "What changed in the port".
 
-mod blob;
-
 use std::collections::{BTreeMap, BTreeSet};
 
 use calimero_app_sdk::prelude::*;
 use calimero_app_sdk::OrgRole;
-use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-
-pub use blob::BlobRef;
 
 // ── Limits ────────────────────────────────────────────────────────────────────
 
@@ -83,8 +80,8 @@ pub use blob::BlobRef;
 /// drag is one call; bounding it bounds a single log entry.
 pub const MAX_BATCH: usize = 200;
 
-/// Objects one scene may hold. Every read returns the whole list, so this is
-/// what keeps a read cheap.
+/// Objects one scene may hold. A client reads them all (in pages) to draw the
+/// scene and resolve its hierarchy, so this is what keeps that read cheap.
 pub const MAX_OBJECTS: u64 = 2_000;
 
 /// Vertices one mesh may carry. The vertices live in a blob, so this bounds
@@ -412,6 +409,15 @@ pub struct MemberView {
     pub joined_at: u64,
 }
 
+/// One page of a list view: at most `limit` rows (1,000 at most, the default)
+/// in key order, and the cursor of the next page (`null` after the last one).
+/// Pass `next` back as `cursor` to read on.
+#[derive(Serialize, Clone, Debug)]
+pub struct ListPage<T> {
+    pub items: Vec<T>,
+    pub next: Option<String>,
+}
+
 // ── State ─────────────────────────────────────────────────────────────────────
 
 #[app::state(version = 1)]
@@ -529,17 +535,21 @@ impl MeroModels {
 
     // ── Objects ───────────────────────────────────────────────────────────
 
-    /// Every object in the scene (at most 2,000), with each `parent` resolved: a
-    /// missing parent or a loop reads as `""`. Ordered by creation, then id.
+    /// One page of the scene's objects (a scene holds at most 2,000), in id
+    /// order, with `parent` as stored. The hierarchy is the reader's: once every
+    /// page is read, a parent that is missing or sits on a loop reads as `""`
+    /// (the frontend's adapter does this, as [`resolve_parents`] does).
     #[app::view]
-    pub fn get_objects(&self) -> app::Result<Vec<SceneObject>> {
-        let mut out: Vec<SceneObject> = read_all(&self.objects)?
-            .into_iter()
-            .map(|(_, o)| o)
-            .collect();
-        out.sort_by(|a, b| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)));
-        resolve_parents(&mut out);
-        Ok(out)
+    pub fn get_objects(
+        &self,
+        cursor: Option<String>,
+        limit: Option<u32>,
+    ) -> app::Result<ListPage<SceneObject>> {
+        let page = self.objects.page(page_opts(cursor, limit))?;
+        Ok(ListPage {
+            items: page.items.into_iter().map(|(_, o)| o).collect(),
+            next: page.next,
+        })
     }
 
     /// Several objects by id, in the order asked; unknown ids are left out. Parents
@@ -693,12 +703,17 @@ impl MeroModels {
         Ok(())
     }
 
-    /// Every mesh's current reference, ordered by id. A client compares each
-    /// `blob_id` with what it holds and downloads only the blobs it lacks.
+    /// One page of every mesh's current reference, in id order. A client compares
+    /// each `blob_id` with what it holds and downloads only the blobs it lacks.
     #[app::view]
-    pub fn list_meshes(&self) -> app::Result<Vec<MeshRef>> {
-        // Keys are read in order, so this is ordered by id.
-        Ok(read_all(&self.meshes)?
+    pub fn list_meshes(
+        &self,
+        cursor: Option<String>,
+        limit: Option<u32>,
+    ) -> app::Result<ListPage<MeshRef>> {
+        let page = self.meshes.page(page_opts(cursor, limit))?;
+        let items = page
+            .items
             .into_iter()
             .map(|(id, r)| MeshRef {
                 id,
@@ -711,7 +726,11 @@ impl MeroModels {
                 message: r.message,
                 updated_at: r.updated_at,
             })
-            .collect())
+            .collect();
+        Ok(ListPage {
+            items,
+            next: page.next,
+        })
     }
 
     // ── Textures ──────────────────────────────────────────────────────────
@@ -763,10 +782,17 @@ impl MeroModels {
         Ok(())
     }
 
-    /// Every texture's current reference, ordered by name, then id.
+    /// One page of every texture's current reference (a scene holds at most
+    /// 1,000), in id order; the frontend's adapter orders them by name.
     #[app::view]
-    pub fn list_textures(&self) -> app::Result<Vec<TextureRef>> {
-        let mut out: Vec<TextureRef> = read_all(&self.textures)?
+    pub fn list_textures(
+        &self,
+        cursor: Option<String>,
+        limit: Option<u32>,
+    ) -> app::Result<ListPage<TextureRef>> {
+        let page = self.textures.page(page_opts(cursor, limit))?;
+        let items = page
+            .items
             .into_iter()
             .map(|(id, t)| TextureRef {
                 id,
@@ -782,8 +808,10 @@ impl MeroModels {
                 updated_at: t.updated_at,
             })
             .collect();
-        out.sort_by(|a, b| (&a.name, &a.id).cmp(&(&b.name, &b.id)));
-        Ok(out)
+        Ok(ListPage {
+            items,
+            next: page.next,
+        })
     }
 
     /// Delete textures. Editors only. Materials that name a deleted texture simply
@@ -899,11 +927,20 @@ impl MeroModels {
         Ok(())
     }
 
-    /// Every check-out still live at `now` (the caller's clock), ordered by asset id.
+    /// One page of check-outs, in asset id order, keeping those still live at
+    /// `now` (the caller's clock): a page can hold fewer than `limit` rows and
+    /// still have a `next`.
     #[app::view]
-    pub fn list_locks(&self, now: u64) -> app::Result<Vec<LockView>> {
+    pub fn list_locks(
+        &self,
+        now: u64,
+        cursor: Option<String>,
+        limit: Option<u32>,
+    ) -> app::Result<ListPage<LockView>> {
         let me = me()?;
-        Ok(read_all(&self.locks)?
+        let page = self.locks.page(page_opts(cursor, limit))?;
+        let items = page
+            .items
             .into_iter()
             .map(|(_, l)| l)
             .filter(|l| l.expires_at > now)
@@ -914,7 +951,11 @@ impl MeroModels {
                 since: l.since,
                 expires_at: l.expires_at,
             })
-            .collect())
+            .collect();
+        Ok(ListPage {
+            items,
+            next: page.next,
+        })
     }
 
     // ── Members ───────────────────────────────────────────────────────────
@@ -940,20 +981,28 @@ impl MeroModels {
         Ok(())
     }
 
-    /// Everyone who has joined, with their effective role, oldest first.
+    /// One page of everyone who has joined, with their effective role, in
+    /// account id order; the frontend's adapter orders them oldest first.
     #[app::view]
-    pub fn get_members(&self) -> app::Result<Vec<MemberView>> {
-        let mut out = Vec::new();
-        for (account, m) in read_all(&self.members)? {
-            out.push(MemberView {
+    pub fn get_members(
+        &self,
+        cursor: Option<String>,
+        limit: Option<u32>,
+    ) -> app::Result<ListPage<MemberView>> {
+        let page = self.members.page(page_opts(cursor, limit))?;
+        let mut items = Vec::with_capacity(page.items.len());
+        for (account, m) in page.items {
+            items.push(MemberView {
                 role: self.role_label(&account)?,
                 id: account,
                 name: m.name,
                 joined_at: m.joined_at,
             });
         }
-        out.sort_by(|a, b| (a.joined_at, &a.id).cmp(&(b.joined_at, &b.id)));
-        Ok(out)
+        Ok(ListPage {
+            items,
+            next: page.next,
+        })
     }
 
     // ── Roles ─────────────────────────────────────────────────────────────
@@ -1123,21 +1172,12 @@ fn me() -> app::Result<String> {
     }
 }
 
-/// Every entry of `map`, following the cursor to the end, in key order.
-fn read_all<K, V>(map: &UnorderedMap<K, V>) -> app::Result<Vec<(K, V)>>
-where
-    K: ToKey + FromKey,
-    V: Serialize + DeserializeOwned,
-{
-    let mut out = Vec::new();
-    let mut opts = FindOpts::default().limit(PAGE);
-    loop {
-        let page = map.page(opts)?;
-        out.extend(page.items);
-        match page.next {
-            Some(next) => opts = FindOpts::default().limit(PAGE).cursor(next),
-            None => return Ok(out),
-        }
+/// One page's options: at most `limit` rows (default and cap [`PAGE`]), from `cursor`.
+fn page_opts(cursor: Option<String>, limit: Option<u32>) -> FindOpts {
+    let opts = FindOpts::default().limit(limit.unwrap_or(PAGE).min(PAGE));
+    match cursor {
+        Some(cursor) => opts.cursor(cursor),
+        None => opts,
     }
 }
 
@@ -1306,6 +1346,25 @@ fn require_blob_size(what: &str, size: u64) -> app::Result<()> {
     Ok(())
 }
 
+/// The blob is one the app holds (uploaded, not deleted) and is `size` bytes, as
+/// the node recorded it at upload. Checked before storing a reference: the host
+/// traps a run that stores a reference to a blob the app does not hold, and the
+/// editor sizes its download progress and cache by `size`.
+fn require_held(what: &str, blob: BlobRef, size: u64) -> app::Result<()> {
+    let Some(info) = blob.info() else {
+        return Err(invalid(&format!(
+            "{blob} is not one of this scene's blobs: upload the {what} first"
+        )));
+    };
+    if info.size != size {
+        return Err(invalid(&format!(
+            "the {what} blob {blob} is {} bytes, not {size}",
+            info.size
+        )));
+    }
+    Ok(())
+}
+
 fn validate_mesh_ref(mesh: &MeshRef) -> app::Result<BlobRef> {
     if mesh.id.is_empty() || mesh.id.len() > 64 {
         return Err(invalid("a mesh id is 1 to 64 characters"));
@@ -1324,6 +1383,7 @@ fn validate_mesh_ref(mesh: &MeshRef) -> app::Result<BlobRef> {
         )));
     }
     require_blob_size("mesh", mesh.size)?;
+    require_held("mesh", blob, mesh.size)?;
     Ok(blob)
 }
 
@@ -1351,6 +1411,7 @@ fn validate_texture_ref(texture: &mut TextureRef) -> app::Result<BlobRef> {
     if !["srgb", "linear"].contains(&texture.color_space.as_str()) {
         return Err(invalid("a texture's colour space is srgb or linear"));
     }
+    require_held("texture", blob, texture.size)?;
     texture.name = clean_name(&texture.name, "Texture");
     texture.message = clean_name(&texture.message, "");
     Ok(blob)

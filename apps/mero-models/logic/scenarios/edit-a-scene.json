@@ -13,6 +13,25 @@
  },
  {
   "as": "owner",
+  "op": "view",
+  "method": "getMembers",
+  "args": {},
+  "expect": {
+   "ok": {
+    "items": [
+     {
+      "id": "@owner",
+      "name": "Ada",
+      "role": "admin",
+      "joined_at": 1727000000000
+     }
+    ],
+    "next": null
+   }
+  }
+ },
+ {
+  "as": "owner",
   "op": "call",
   "method": "putObjects",
   "args": {
@@ -353,15 +372,18 @@
    "now": "1727000000006"
   },
   "expect": {
-   "ok": [
-    {
-     "asset_id": "fin",
-     "holder": "@bob",
-     "since": 1727000000005,
-     "expires_at": 1727028800005,
-     "mine": false
-    }
-   ]
+   "ok": {
+    "items": [
+     {
+      "asset_id": "fin",
+      "holder": "@bob",
+      "since": 1727000000005,
+      "expires_at": 1727028800005,
+      "mine": false
+     }
+    ],
+    "next": null
+   }
   }
  },
  {
@@ -458,29 +480,10 @@
    "now": "1727000000009"
   },
   "expect": {
-   "ok": []
-  }
- },
- {
-  "as": "owner",
-  "op": "view",
-  "method": "getMembers",
-  "args": {},
-  "expect": {
-   "ok": [
-    {
-     "id": "@owner",
-     "name": "Ada",
-     "role": "admin",
-     "joined_at": 1727000000000
-    },
-    {
-     "id": "@bob",
-     "name": "Bea",
-     "role": "editor",
-     "joined_at": 1727000000003
-    }
-   ]
+   "ok": {
+    "items": [],
+    "next": null
+   }
   }
  },
  {
@@ -585,49 +588,52 @@
   "method": "getObjects",
   "args": {},
   "expect": {
-   "ok": [
-    {
-     "id": "body",
-     "name": "Body",
-     "kind": "cube",
-     "parent": "",
-     "position": {
-      "x": 0.0,
-      "y": 0.5,
-      "z": 0.0
-     },
-     "rotation": {
-      "x": 0.0,
-      "y": 0.0,
-      "z": 0.0
-     },
-     "scale": {
-      "x": 1.0,
-      "y": 1.0,
-      "z": 1.0
-     },
-     "visible": true,
-     "material": {
-      "color": "#c8ccd4",
-      "metalness": 0.0,
-      "roughness": 0.6,
-      "opacity": 1.0,
-      "emissive": "#000000",
-      "wireframe": false,
-      "flat_shading": false,
-      "base_color_map": "",
-      "normal_map": "",
-      "normal_scale": 1.0,
-      "orm_map": "",
-      "emissive_map": ""
-     },
-     "segments": 32,
-     "intensity": 0.0,
-     "created_by": "@owner",
-     "created_at": 1727000000001,
-     "updated_at": 1727000000001
-    }
-   ]
+   "ok": {
+    "items": [
+     {
+      "id": "body",
+      "name": "Body",
+      "kind": "cube",
+      "parent": "",
+      "position": {
+       "x": 0.0,
+       "y": 0.5,
+       "z": 0.0
+      },
+      "rotation": {
+       "x": 0.0,
+       "y": 0.0,
+       "z": 0.0
+      },
+      "scale": {
+       "x": 1.0,
+       "y": 1.0,
+       "z": 1.0
+      },
+      "visible": true,
+      "material": {
+       "color": "#c8ccd4",
+       "metalness": 0.0,
+       "roughness": 0.6,
+       "opacity": 1.0,
+       "emissive": "#000000",
+       "wireframe": false,
+       "flat_shading": false,
+       "base_color_map": "",
+       "normal_map": "",
+       "normal_scale": 1.0,
+       "orm_map": "",
+       "emissive_map": ""
+      },
+      "segments": 32,
+      "intensity": 0.0,
+      "created_by": "@owner",
+      "created_at": 1727000000001,
+      "updated_at": 1727000000001
+     }
+    ],
+    "next": null
+   }
   }
  },
  {
@@ -657,7 +663,10 @@
   "method": "getObjects",
   "args": {},
   "expect": {
-   "ok": []
+   "ok": {
+    "items": [],
+    "next": null
+   }
   }
  }
 ]

@@ -120,17 +120,35 @@
       "allowSystem": false,
       "confirm": false,
       "kind": "view",
-      "params": [],
+      "params": [
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
+        ]
+      ],
       "public": false,
-      "returns": "list<MemberView>"
+      "returns": "ListPage<MemberView>"
     },
     "getObjects": {
       "allowSystem": false,
       "confirm": false,
       "kind": "view",
-      "params": [],
+      "params": [
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
+        ]
+      ],
       "public": false,
-      "returns": "list<SceneObject>"
+      "returns": "ListPage<SceneObject>"
     },
     "getObjectsByIds": {
       "allowSystem": false,
@@ -212,26 +230,52 @@
         [
           "now",
           "u64"
+        ],
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
         ]
       ],
       "public": false,
-      "returns": "list<LockView>"
+      "returns": "ListPage<LockView>"
     },
     "listMeshes": {
       "allowSystem": false,
       "confirm": false,
       "kind": "view",
-      "params": [],
+      "params": [
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
+        ]
+      ],
       "public": false,
-      "returns": "list<MeshRef>"
+      "returns": "ListPage<MeshRef>"
     },
     "listTextures": {
       "allowSystem": false,
       "confirm": false,
       "kind": "view",
-      "params": [],
+      "params": [
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
+        ]
+      ],
       "public": false,
-      "returns": "list<TextureRef>"
+      "returns": "ListPage<TextureRef>"
     },
     "myRole": {
       "allowSystem": false,
@@ -334,6 +378,17 @@
       "meshes": "unorderedMap",
       "objects": "unorderedMap",
       "textures": "unorderedMap"
+    },
+    "search": {
+      "editors": [],
+      "environment": [],
+      "history": [],
+      "historyLen": [],
+      "locks": [],
+      "members": [],
+      "meshes": [],
+      "objects": [],
+      "textures": []
     },
     "version": 1
   },
