@@ -6,8 +6,8 @@ and the matching Material icons) and behaviour.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `37c09f3` (head of `feat/calimero-1.0`, PR #85; moves to its merge commit once it lands). **Calimero 1.0.** |
-| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `61b65e9` (head of PR #68, Calimero 1.0; moves to its merge commit once it lands), composite build from `android/kotlin-sdk.ref`. **Calimero 1.0.** |
+| iOS | `ios/` | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `v0.5.0`. **Calimero 1.0.** |
+| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `v0.2.0` (Calimero 1.0), composite build from `android/kotlin-sdk.ref`. **Calimero 1.0.** |
 
 **Both apps run on Calimero 1.0**, with the same screens and flows. On iOS the pin lives in `ios/project.yml` and `ios/PixartCore/Package.swift` (keep them
 equal); on Android, `android/kotlin-sdk.ref`.
