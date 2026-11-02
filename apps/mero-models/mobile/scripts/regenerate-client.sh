@@ -17,6 +17,14 @@ else
   codegen=(npx --yes @calimero-network/abi-codegen)
 fi
 
+# The contract is a component now (calimero:abi, `abiVersion` 1 with camelCase
+# methods); abi-codegen reads v1 ABIs only, and the native apps still speak the
+# v1 contract through the v1 relay. See ../README.md.
+if grep -q '"abiVersion"' "$abi"; then
+  echo "regenerate-client.sh: $abi is a component ABI; the native apps stay on the v1 contract (see mobile/README.md)" >&2
+  exit 1
+fi
+
 "${codegen[@]}" -i "$abi" -o "$here/ios/ModelsCore/Sources/ModelsCore/Generated" \
   --target swift --client-name ModelsClient --transport-import MeroKit
 "${codegen[@]}" -i "$abi" -o "$here/android/app/src/main/kotlin/network/calimero/models/generated" \

@@ -1,5 +1,15 @@
 # Mero Models: native mobile apps
 
+> **Status: on the v1 contract, not ported to the component runtime.** The web app and the
+> contract (`../logic`) moved to Calimero 1.0 (core's component SDK, `CalimeroClient`, passkey
+> accounts, orgs, the scene's own blobs). These viewers still speak the v1 contract through the v1
+> relay (`MeroAppSession`, namespaces, contexts, snake_case methods, context blobs) with clients
+> written against the v1 ABI, which `../logic/res/abi.json` no longer is. Porting them needs native
+> clients for the 1.0 node API (passkey sign-in, `/apps/{app}` calls and views, org invites, the
+> event stream, `/apps/{app}/blobs`), which the pinned swift-sdk and kotlin-sdk do not have. Until
+> they do, the apps keep their committed generated clients and `scripts/regenerate-client.sh`
+> refuses to run against the component ABI.
+
 Native iOS and Android viewers for Mero Models, next to the web studio (`../app`) and the contract
 (`../logic`, package `com.calimero.mero-models`). They have the same screens, copy, icons (SF
 Symbols and the matching Material icons) and behaviour, and they draw the 3D viewport with the
