@@ -29,9 +29,9 @@ include(":app")
 // ---------------------------------------------------------------------------
 //
 // The delegated-execution layer this app is built on (Cloud sign-in, relay intents, founding,
-// direct admission) is only on the SDK's default branch, not in a published release yet. So the
-// SDK is included as a build and its modules replace the `network.calimero:*` coordinates the app
-// declares. Which checkout:
+// direct admission) is in kotlin-sdk v0.2.0, which is published to GitHub Packages but not yet to
+// Maven Central. So the SDK is included as a build and its modules replace the `network.calimero:*`
+// coordinates the app declares. Which checkout:
 //   1. `-PmeroKotlinSdkDir=/path` (or `meroKotlinSdkDir=` in ~/.gradle/gradle.properties),
 //   2. the `MERO_KOTLIN_SDK_DIR` environment variable,
 //   3. `.sdk/kotlin-sdk`, the checkout `scripts/fetch-sdk.sh` makes at the SHA in `kotlin-sdk.ref`.

@@ -6,12 +6,12 @@ icons (SF Symbols on iOS, Material Icons on Android) and flows.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen | swift-sdk `37c09f3` (head of swift-sdk#85, the Calimero 1.0 port) |
-| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | kotlin-sdk `61b65e9` (head of kotlin-sdk#68, the Calimero 1.0 port), composite build |
+| iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen | swift-sdk `v0.5.0` |
+| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | kotlin-sdk `v0.2.0` (not on Maven Central), composite build |
 
-The pins move to the SDK PRs' merge commits once they land. To bump them, change `revision:` in
+The pins are SDK releases. To bump them, change `exactVersion` / `exact:` in
 `ios/project.yml` and `ios/ForumCore/Package.swift` (keep the two identical), and
-`android/kotlin-sdk.ref`.
+`android/kotlin-sdk.ref` (the new tag's commit).
 
 ## Calimero 1.0
 

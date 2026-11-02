@@ -3,7 +3,7 @@
 // with `swift test` (no simulator): the typed contract client, the
 // invitation codec, formatting, and the view models the SwiftUI screens bind.
 //
-// The swift-sdk pin must match the one in ../project.yml (one revision for both).
+// The swift-sdk pin must match the one in ../project.yml (one version for both).
 import PackageDescription
 
 let package = Package(
@@ -16,10 +16,10 @@ let package = Package(
         .library(name: "ForumCore", targets: ["ForumCore"]),
     ],
     dependencies: [
-        // swift-sdk's Calimero 1.0 port (swift-sdk#85) at 37c09f3; moves to its merge commit once it lands.
+        // swift-sdk release v0.5.0 (Calimero 1.0).
         .package(
             url: "https://github.com/calimero-network/swift-sdk",
-            revision: "37c09f3f96e7d98440f6618eef8a0e83ddee8ebd"),
+            exact: "0.5.0"),
     ],
     targets: [
         .target(
