@@ -63,7 +63,7 @@ enum Fixtures {
         backend.subgroups = [team: [AppSubgroup(groupId: group, name: "poster", contextIds: [project])]]
         if memberOfProject { backend.members = [project] }
         let answers = Answers([
-            "get_layers": layers, "get_document": document, "get_members": members, "my_role": "\"\(role)\"",
+            "getLayers": layers, "getDocument": document, "getMembers": members, "myRole": "\"\(role)\"",
         ])
         backend.recording.setRawHandler { call in Data(answers.answer(call.method).utf8) }
         return (backend, answers)

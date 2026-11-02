@@ -32,7 +32,7 @@ class PixartClient(private val transport: ContextContractCalling) {
      */
     suspend fun addLayer(layer: Layer): String {
         val args = json.encodeToString(AddLayerArgs.serializer(), AddLayerArgs(layer))
-        val response = transport.execute("add_layer", args)
+        val response = transport.execute("addLayer", args)
         return json.decodeFromString(serializer<String>(), response)
     }
 
@@ -45,7 +45,7 @@ class PixartClient(private val transport: ContextContractCalling) {
      */
     suspend fun bringToFront(id: String, updatedAt: ULong) {
         val args = json.encodeToString(BringToFrontArgs.serializer(), BringToFrontArgs(id, updatedAt))
-        transport.execute("bring_to_front", args)
+        transport.execute("bringToFront", args)
     }
 
     /**
@@ -54,7 +54,7 @@ class PixartClient(private val transport: ContextContractCalling) {
      * View (`read_only`): sent with `query`.
      */
     suspend fun canEdit(): Boolean {
-        val response = transport.query("can_edit", "{}")
+        val response = transport.query("canEdit", "{}")
         return json.decodeFromString(serializer<Boolean>(), response)
     }
 
@@ -64,7 +64,7 @@ class PixartClient(private val transport: ContextContractCalling) {
      * Write (`mutating`): sent with `execute`.
      */
     suspend fun clearLayers() {
-        transport.execute("clear_layers", "{}")
+        transport.execute("clearLayers", "{}")
     }
 
     /**
@@ -74,7 +74,7 @@ class PixartClient(private val transport: ContextContractCalling) {
      */
     suspend fun deleteLayer(id: String) {
         val args = json.encodeToString(DeleteLayerArgs.serializer(), DeleteLayerArgs(id))
-        transport.execute("delete_layer", args)
+        transport.execute("deleteLayer", args)
     }
 
     /**
@@ -88,7 +88,7 @@ class PixartClient(private val transport: ContextContractCalling) {
      * View (`read_only`): sent with `query`.
      */
     suspend fun getCursors(): List<CursorState> {
-        val response = transport.query("get_cursors", "{}")
+        val response = transport.query("getCursors", "{}")
         return json.decodeFromString(serializer<List<CursorState>>(), response)
     }
 
@@ -98,7 +98,7 @@ class PixartClient(private val transport: ContextContractCalling) {
      * View (`read_only`): sent with `query`.
      */
     suspend fun getDocument(): DocumentInfo {
-        val response = transport.query("get_document", "{}")
+        val response = transport.query("getDocument", "{}")
         return json.decodeFromString(serializer<DocumentInfo>(), response)
     }
 
@@ -109,7 +109,7 @@ class PixartClient(private val transport: ContextContractCalling) {
      */
     suspend fun getLayer(id: String): Layer? {
         val args = json.encodeToString(GetLayerArgs.serializer(), GetLayerArgs(id))
-        val response = transport.query("get_layer", args)
+        val response = transport.query("getLayer", args)
         return json.decodeFromString(serializer<Layer?>(), response)
     }
 
@@ -122,7 +122,7 @@ class PixartClient(private val transport: ContextContractCalling) {
      * View (`read_only`): sent with `query`.
      */
     suspend fun getLayers(): List<Layer> {
-        val response = transport.query("get_layers", "{}")
+        val response = transport.query("getLayers", "{}")
         return json.decodeFromString(serializer<List<Layer>>(), response)
     }
 
@@ -135,7 +135,7 @@ class PixartClient(private val transport: ContextContractCalling) {
      * View (`read_only`): sent with `query`.
      */
     suspend fun getMembers(): List<Member> {
-        val response = transport.query("get_members", "{}")
+        val response = transport.query("getMembers", "{}")
         return json.decodeFromString(serializer<List<Member>>(), response)
     }
 
@@ -146,7 +146,7 @@ class PixartClient(private val transport: ContextContractCalling) {
      */
     suspend fun getRole(member: String): String {
         val args = json.encodeToString(GetRoleArgs.serializer(), GetRoleArgs(member))
-        val response = transport.query("get_role", args)
+        val response = transport.query("getRole", args)
         return json.decodeFromString(serializer<String>(), response)
     }
 
@@ -157,7 +157,7 @@ class PixartClient(private val transport: ContextContractCalling) {
      */
     suspend fun grantEditor(member: String) {
         val args = json.encodeToString(GrantEditorArgs.serializer(), GrantEditorArgs(member))
-        transport.execute("grant_editor", args)
+        transport.execute("grantEditor", args)
     }
 
     /**
@@ -190,7 +190,7 @@ class PixartClient(private val transport: ContextContractCalling) {
      * View (`read_only`): sent with `query`.
      */
     suspend fun listRoles(): List<MemberRole> {
-        val response = transport.query("list_roles", "{}")
+        val response = transport.query("listRoles", "{}")
         return json.decodeFromString(serializer<List<MemberRole>>(), response)
     }
 
@@ -203,7 +203,7 @@ class PixartClient(private val transport: ContextContractCalling) {
      */
     suspend fun moveLayer(id: String, parentId: String? = null, layerIndex: UInt, updatedAt: ULong) {
         val args = json.encodeToString(MoveLayerArgs.serializer(), MoveLayerArgs(id, parentId, layerIndex, updatedAt))
-        transport.execute("move_layer", args)
+        transport.execute("moveLayer", args)
     }
 
     /**
@@ -221,7 +221,7 @@ class PixartClient(private val transport: ContextContractCalling) {
      */
     suspend fun moveLayers(moves: List<ContractTuple2<String, String>>, updatedAt: ULong) {
         val args = json.encodeToString(MoveLayersArgs.serializer(), MoveLayersArgs(moves, updatedAt))
-        transport.execute("move_layers", args)
+        transport.execute("moveLayers", args)
     }
 
     /**
@@ -230,7 +230,7 @@ class PixartClient(private val transport: ContextContractCalling) {
      * View (`read_only`): sent with `query`.
      */
     suspend fun myRole(): String {
-        val response = transport.query("my_role", "{}")
+        val response = transport.query("myRole", "{}")
         return json.decodeFromString(serializer<String>(), response)
     }
 
@@ -244,7 +244,7 @@ class PixartClient(private val transport: ContextContractCalling) {
      */
     suspend fun reorderLayers(order: List<ContractTuple2<String, UInt>>, updatedAt: ULong) {
         val args = json.encodeToString(ReorderLayersArgs.serializer(), ReorderLayersArgs(order, updatedAt))
-        transport.execute("reorder_layers", args)
+        transport.execute("reorderLayers", args)
     }
 
     /**
@@ -254,7 +254,7 @@ class PixartClient(private val transport: ContextContractCalling) {
      */
     suspend fun revokeEditor(member: String) {
         val args = json.encodeToString(RevokeEditorArgs.serializer(), RevokeEditorArgs(member))
-        transport.execute("revoke_editor", args)
+        transport.execute("revokeEditor", args)
     }
 
     /**
@@ -268,7 +268,7 @@ class PixartClient(private val transport: ContextContractCalling) {
      */
     suspend fun sendToBack(id: String, updatedAt: ULong) {
         val args = json.encodeToString(SendToBackArgs.serializer(), SendToBackArgs(id, updatedAt))
-        transport.execute("send_to_back", args)
+        transport.execute("sendToBack", args)
     }
 
     /**
@@ -280,7 +280,7 @@ class PixartClient(private val transport: ContextContractCalling) {
      */
     suspend fun transferOwnership(newOwner: String) {
         val args = json.encodeToString(TransferOwnershipArgs.serializer(), TransferOwnershipArgs(newOwner))
-        transport.execute("transfer_ownership", args)
+        transport.execute("transferOwnership", args)
     }
 
     /**
@@ -292,7 +292,7 @@ class PixartClient(private val transport: ContextContractCalling) {
      */
     suspend fun updateAdjustments(id: String, brightness: Int? = null, contrast: Int? = null, saturation: Int? = null, hue: Int? = null, exposure: Int? = null, blur: UInt? = null, invert: Boolean? = null, curves: String? = null, updatedAt: ULong) {
         val args = json.encodeToString(UpdateAdjustmentsArgs.serializer(), UpdateAdjustmentsArgs(id, brightness, contrast, saturation, hue, exposure, blur, invert, curves, updatedAt))
-        transport.execute("update_adjustments", args)
+        transport.execute("updateAdjustments", args)
     }
 
     /**
@@ -305,7 +305,7 @@ class PixartClient(private val transport: ContextContractCalling) {
      */
     suspend fun updateCursor(x: Long, y: Long, updatedAt: ULong) {
         val args = json.encodeToString(UpdateCursorArgs.serializer(), UpdateCursorArgs(x, y, updatedAt))
-        transport.execute("update_cursor", args)
+        transport.execute("updateCursor", args)
     }
 
     /**
@@ -318,7 +318,7 @@ class PixartClient(private val transport: ContextContractCalling) {
      */
     suspend fun updateDocument(name: String? = null, description: String? = null, width: UInt? = null, height: UInt? = null, background: String? = null) {
         val args = json.encodeToString(UpdateDocumentArgs.serializer(), UpdateDocumentArgs(name, description, width, height, background))
-        transport.execute("update_document", args)
+        transport.execute("updateDocument", args)
     }
 
     /**
@@ -331,7 +331,7 @@ class PixartClient(private val transport: ContextContractCalling) {
      */
     suspend fun updateLayer(id: String, name: String? = null, visible: Boolean? = null, locked: Boolean? = null, opacity: UInt? = null, blendMode: String? = null, x: Long? = null, y: Long? = null, width: UInt? = null, height: UInt? = null, rotation: Int? = null, scaleX: Int? = null, scaleY: Int? = null, fill: String? = null, updatedAt: ULong) {
         val args = json.encodeToString(UpdateLayerArgs.serializer(), UpdateLayerArgs(id, name, visible, locked, opacity, blendMode, x, y, width, height, rotation, scaleX, scaleY, fill, updatedAt))
-        transport.execute("update_layer", args)
+        transport.execute("updateLayer", args)
     }
 
     /**
@@ -344,7 +344,7 @@ class PixartClient(private val transport: ContextContractCalling) {
      */
     suspend fun updateLayerContent(id: String, blobId: String, width: UInt, height: UInt, updatedAt: ULong) {
         val args = json.encodeToString(UpdateLayerContentArgs.serializer(), UpdateLayerContentArgs(id, blobId, width, height, updatedAt))
-        transport.execute("update_layer_content", args)
+        transport.execute("updateLayerContent", args)
     }
 
     /**
@@ -356,7 +356,7 @@ class PixartClient(private val transport: ContextContractCalling) {
      */
     suspend fun updateLayerMask(id: String, maskBlobId: String? = null, updatedAt: ULong) {
         val args = json.encodeToString(UpdateLayerMaskArgs.serializer(), UpdateLayerMaskArgs(id, maskBlobId, updatedAt))
-        transport.execute("update_layer_mask", args)
+        transport.execute("updateLayerMask", args)
     }
 
     /**
@@ -366,7 +366,7 @@ class PixartClient(private val transport: ContextContractCalling) {
      */
     suspend fun updateMemberUsername(username: String, timestamp: ULong) {
         val args = json.encodeToString(UpdateMemberUsernameArgs.serializer(), UpdateMemberUsernameArgs(username, timestamp))
-        transport.execute("update_member_username", args)
+        transport.execute("updateMemberUsername", args)
     }
 
     /**
@@ -378,7 +378,7 @@ class PixartClient(private val transport: ContextContractCalling) {
      */
     suspend fun updateText(id: String, content: String? = null, fontFamily: String? = null, fontSize: UInt? = null, color: String? = null, bold: Boolean? = null, italic: Boolean? = null, align: String? = null, updatedAt: ULong) {
         val args = json.encodeToString(UpdateTextArgs.serializer(), UpdateTextArgs(id, content, fontFamily, fontSize, color, bold, italic, align, updatedAt))
-        transport.execute("update_text", args)
+        transport.execute("updateText", args)
     }
 
     /**
@@ -397,7 +397,7 @@ class PixartClient(private val transport: ContextContractCalling) {
      */
     suspend fun updateTransform(id: String, rotation: Int? = null, scaleX: Int? = null, scaleY: Int? = null, skewX: Int? = null, skewY: Int? = null, flipH: Boolean? = null, flipV: Boolean? = null, warp: String? = null, updatedAt: ULong) {
         val args = json.encodeToString(UpdateTransformArgs.serializer(), UpdateTransformArgs(id, rotation, scaleX, scaleY, skewX, skewY, flipH, flipV, warp, updatedAt))
-        transport.execute("update_transform", args)
+        transport.execute("updateTransform", args)
     }
 
     @Serializable
@@ -408,7 +408,7 @@ class PixartClient(private val transport: ContextContractCalling) {
     @Serializable
     private data class BringToFrontArgs(
         val id: String,
-        @SerialName("updated_at") val updatedAt: ULong,
+        @Serializable(with = U64String::class) val updatedAt: ULong,
     )
 
     @Serializable
@@ -443,27 +443,27 @@ class PixartClient(private val transport: ContextContractCalling) {
     private data class JoinArgs(
         val username: String,
         val avatar: String? = null,
-        val timestamp: ULong,
+        @Serializable(with = U64String::class) val timestamp: ULong,
     )
 
     @Serializable
     private data class MoveLayerArgs(
         val id: String,
-        @SerialName("parent_id") val parentId: String? = null,
-        @SerialName("layer_index") val layerIndex: UInt,
-        @SerialName("updated_at") val updatedAt: ULong,
+        val parentId: String? = null,
+        val layerIndex: UInt,
+        @Serializable(with = U64String::class) val updatedAt: ULong,
     )
 
     @Serializable
     private data class MoveLayersArgs(
         val moves: List<ContractTuple2<String, String>>,
-        @SerialName("updated_at") val updatedAt: ULong,
+        @Serializable(with = U64String::class) val updatedAt: ULong,
     )
 
     @Serializable
     private data class ReorderLayersArgs(
         val order: List<ContractTuple2<String, UInt>>,
-        @SerialName("updated_at") val updatedAt: ULong,
+        @Serializable(with = U64String::class) val updatedAt: ULong,
     )
 
     @Serializable
@@ -474,12 +474,12 @@ class PixartClient(private val transport: ContextContractCalling) {
     @Serializable
     private data class SendToBackArgs(
         val id: String,
-        @SerialName("updated_at") val updatedAt: ULong,
+        @Serializable(with = U64String::class) val updatedAt: ULong,
     )
 
     @Serializable
     private data class TransferOwnershipArgs(
-        @SerialName("new_owner") val newOwner: String,
+        val newOwner: String,
     )
 
     @Serializable
@@ -493,14 +493,14 @@ class PixartClient(private val transport: ContextContractCalling) {
         val blur: UInt? = null,
         val invert: Boolean? = null,
         val curves: String? = null,
-        @SerialName("updated_at") val updatedAt: ULong,
+        @Serializable(with = U64String::class) val updatedAt: ULong,
     )
 
     @Serializable
     private data class UpdateCursorArgs(
-        val x: Long,
-        val y: Long,
-        @SerialName("updated_at") val updatedAt: ULong,
+        @Serializable(with = I64String::class) val x: Long,
+        @Serializable(with = I64String::class) val y: Long,
+        @Serializable(with = U64String::class) val updatedAt: ULong,
     )
 
     @Serializable
@@ -519,65 +519,65 @@ class PixartClient(private val transport: ContextContractCalling) {
         val visible: Boolean? = null,
         val locked: Boolean? = null,
         val opacity: UInt? = null,
-        @SerialName("blend_mode") val blendMode: String? = null,
-        val x: Long? = null,
-        val y: Long? = null,
+        val blendMode: String? = null,
+        @Serializable(with = I64String::class) val x: Long? = null,
+        @Serializable(with = I64String::class) val y: Long? = null,
         val width: UInt? = null,
         val height: UInt? = null,
         val rotation: Int? = null,
-        @SerialName("scale_x") val scaleX: Int? = null,
-        @SerialName("scale_y") val scaleY: Int? = null,
+        val scaleX: Int? = null,
+        val scaleY: Int? = null,
         val fill: String? = null,
-        @SerialName("updated_at") val updatedAt: ULong,
+        @Serializable(with = U64String::class) val updatedAt: ULong,
     )
 
     @Serializable
     private data class UpdateLayerContentArgs(
         val id: String,
-        @SerialName("blob_id") val blobId: String,
+        val blobId: String,
         val width: UInt,
         val height: UInt,
-        @SerialName("updated_at") val updatedAt: ULong,
+        @Serializable(with = U64String::class) val updatedAt: ULong,
     )
 
     @Serializable
     private data class UpdateLayerMaskArgs(
         val id: String,
-        @SerialName("mask_blob_id") val maskBlobId: String? = null,
-        @SerialName("updated_at") val updatedAt: ULong,
+        val maskBlobId: String? = null,
+        @Serializable(with = U64String::class) val updatedAt: ULong,
     )
 
     @Serializable
     private data class UpdateMemberUsernameArgs(
         val username: String,
-        val timestamp: ULong,
+        @Serializable(with = U64String::class) val timestamp: ULong,
     )
 
     @Serializable
     private data class UpdateTextArgs(
         val id: String,
         val content: String? = null,
-        @SerialName("font_family") val fontFamily: String? = null,
-        @SerialName("font_size") val fontSize: UInt? = null,
+        val fontFamily: String? = null,
+        val fontSize: UInt? = null,
         val color: String? = null,
         val bold: Boolean? = null,
         val italic: Boolean? = null,
         val align: String? = null,
-        @SerialName("updated_at") val updatedAt: ULong,
+        @Serializable(with = U64String::class) val updatedAt: ULong,
     )
 
     @Serializable
     private data class UpdateTransformArgs(
         val id: String,
         val rotation: Int? = null,
-        @SerialName("scale_x") val scaleX: Int? = null,
-        @SerialName("scale_y") val scaleY: Int? = null,
-        @SerialName("skew_x") val skewX: Int? = null,
-        @SerialName("skew_y") val skewY: Int? = null,
-        @SerialName("flip_h") val flipH: Boolean? = null,
-        @SerialName("flip_v") val flipV: Boolean? = null,
+        val scaleX: Int? = null,
+        val scaleY: Int? = null,
+        val skewX: Int? = null,
+        val skewY: Int? = null,
+        val flipH: Boolean? = null,
+        val flipV: Boolean? = null,
         val warp: String? = null,
-        @SerialName("updated_at") val updatedAt: ULong,
+        @Serializable(with = U64String::class) val updatedAt: ULong,
     )
 
     private companion object {

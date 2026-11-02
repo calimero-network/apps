@@ -33,27 +33,18 @@ import network.calimero.pixart.core.InvitationModel
 
 /** Restoring → a splash. Signed out → sign in. Signed in → teams, projects, an artwork. */
 @Composable
-fun MeroPixartApp(
-    vm: PixartAppViewModel,
-    onSignIn: () -> Unit,
-) {
+fun MeroPixartApp(vm: PixartAppViewModel) {
     PixartMaterialTheme {
         val restored by vm.restored.collectAsState()
-        val restoring by vm.session.isRestoring.collectAsState()
-        val backend by vm.session.backend.collectAsState()
-        val revision by vm.session.revision.collectAsState()
-        val auth by vm.session.client.state
-            .collectAsState()
+        val backend by vm.backend.collectAsState()
+        val revision by vm.revision.collectAsState()
         val stage by vm.invitation.stage.collectAsState()
 
+        val current = backend
         when {
-            !restored || restoring -> Splash("Restoring your session…")
-            auth.isDelegated && backend != null ->
-                key(revision) {
-                    SignedIn(vm, backend!!)
-                }
-            auth.isDelegated -> Splash("Connecting to your relay…") { SecondaryButton(onClick = vm::signOut, fullWidth = false) { Text("Sign out") } }
-            else -> SignInScreen(auth = auth, onSignIn = onSignIn, onCancel = { vm.session.cancelSignIn() })
+            !restored -> Splash("Restoring your session…")
+            current != null -> key(revision) { SignedIn(vm, current) }
+            else -> SignInScreen(vm)
         }
 
         InvitationPrompt(stage, onJoin = vm::acceptInvitation, onDismiss = vm.invitation::reset)
@@ -116,7 +107,7 @@ private fun SignedIn(
         composable("teams") {
             TeamsScreen(
                 backend = backend,
-                session = vm.session,
+                vm = vm,
                 onSignOut = vm::signOut,
                 onOpen = { team -> nav.navigate("team/${team.id}?name=${Uri.encode(team.name)}") },
             )

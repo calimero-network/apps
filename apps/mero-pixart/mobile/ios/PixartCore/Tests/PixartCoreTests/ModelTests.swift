@@ -31,7 +31,7 @@ final class ModelTests: XCTestCase {
         XCTAssertEqual(model.projects[0].name, "Poster")
         XCTAssertEqual(model.projects[0].width, 4)
         XCTAssertEqual(model.projects[0].layerCount, 1)
-        XCTAssertEqual(backend.recording.calls("get_document").first?.path, .query)
+        XCTAssertEqual(backend.recording.calls("getDocument").first?.path, .query)
     }
 
     func testAThumbnailIsComposited() async {
@@ -104,7 +104,7 @@ final class ModelTests: XCTestCase {
             backend: backend, teamId: Fixtures.team, contextId: Fixtures.project, blobs: BlobStore(loader: NoBlobs()))
         await model.open()
         XCTAssertEqual(model.image?.pixel(0, 0).1, 255)
-        answers.set("get_layers", "[" + Fixtures.layerJSON("a", kind: "fill", fill: "#000000") + "]")
+        answers.set("getLayers", "[" + Fixtures.layerJSON("a", kind: "fill", fill: "#000000") + "]")
         await model.refresh()
         XCTAssertEqual(model.layers.count, 1)
         XCTAssertEqual(model.image?.pixel(0, 0).1, 0)

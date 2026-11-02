@@ -72,7 +72,7 @@ class ModelTest {
             assertEquals(
                 RecordedContractCall.Path.QUERY,
                 backend.recording
-                    .calls("get_document")
+                    .calls("getDocument")
                     .first()
                     .path,
             )
@@ -81,7 +81,7 @@ class ModelTest {
     @Test
     fun `a thumbnail is composited`() =
         runTest {
-            val backend = Fixtures.backend(mutableMapOf("get_layers" to "[" + Fixtures.layerJson("a", blob = "px") + "]"))
+            val backend = Fixtures.backend(mutableMapOf("getLayers" to "[" + Fixtures.layerJson("a", blob = "px") + "]"))
             val (store, asked) = blobs(mapOf("px" to "4x4"))
             val model = ProjectsModel(backend, Fixtures.team, store, raster, StandardTestDispatcher(testScheduler))
             model.load()
@@ -95,7 +95,7 @@ class ModelTest {
     @Test
     fun `opening joins then composites`() =
         runTest {
-            val backend = Fixtures.backend(mutableMapOf("get_layers" to "[" + Fixtures.layerJson("a", blob = "px") + "]"), memberOfProject = false)
+            val backend = Fixtures.backend(mutableMapOf("getLayers" to "[" + Fixtures.layerJson("a", blob = "px") + "]"), memberOfProject = false)
             val (store, _) = blobs(mapOf("px" to "4x4"))
             val model = ArtworkModel(backend, Fixtures.team, Fixtures.project, "", store, raster, StandardTestDispatcher(testScheduler))
             model.open()
@@ -110,7 +110,7 @@ class ModelTest {
     @Test
     fun `hiding is local and never written`() =
         runTest {
-            val backend = Fixtures.backend(mutableMapOf("get_layers" to "[" + Fixtures.layerJson("a", kind = "fill") + "]"))
+            val backend = Fixtures.backend(mutableMapOf("getLayers" to "[" + Fixtures.layerJson("a", kind = "fill") + "]"))
             val model = ArtworkModel(backend, Fixtures.team, Fixtures.project, "", BlobStore(NoBlobs, raster), raster, StandardTestDispatcher(testScheduler))
             model.open()
             assertEquals("a", (model.image.value as FakeRaster).label)
@@ -126,7 +126,7 @@ class ModelTest {
     @Test
     fun `a missing blob is counted`() =
         runTest {
-            val backend = Fixtures.backend(mutableMapOf("get_layers" to "[" + Fixtures.layerJson("a", blob = "gone") + "]"))
+            val backend = Fixtures.backend(mutableMapOf("getLayers" to "[" + Fixtures.layerJson("a", blob = "gone") + "]"))
             val model = ArtworkModel(backend, Fixtures.team, Fixtures.project, "", BlobStore(NoBlobs, raster), raster, StandardTestDispatcher(testScheduler))
             model.open()
             assertEquals(1, model.missing.value)
@@ -136,7 +136,7 @@ class ModelTest {
     @Test
     fun `export is a png of what this phone shows`() =
         runTest {
-            val backend = Fixtures.backend(mutableMapOf("get_layers" to "[" + Fixtures.layerJson("a", kind = "fill") + "]"))
+            val backend = Fixtures.backend(mutableMapOf("getLayers" to "[" + Fixtures.layerJson("a", kind = "fill") + "]"))
             val model = ArtworkModel(backend, Fixtures.team, Fixtures.project, "", BlobStore(NoBlobs, raster), raster, StandardTestDispatcher(testScheduler))
             model.open()
             model.toggle("a")
@@ -146,34 +146,39 @@ class ModelTest {
     @Test
     fun `refresh picks up a new layer`() =
         runTest {
-            val table = mutableMapOf("get_layers" to "[]")
+            val table = mutableMapOf("getLayers" to "[]")
             val backend = Fixtures.backend(table)
             val model = ArtworkModel(backend, Fixtures.team, Fixtures.project, "", BlobStore(NoBlobs, raster), raster, StandardTestDispatcher(testScheduler))
             model.open()
             assertEquals("", (model.image.value as FakeRaster).label)
-            table["get_layers"] = "[" + Fixtures.layerJson("a", kind = "fill") + "]"
+            table["getLayers"] = "[" + Fixtures.layerJson("a", kind = "fill") + "]"
             model.refresh()
             assertEquals(1, model.layers.value.size)
             assertEquals("a", (model.image.value as FakeRaster).label)
         }
 
-    private val signedJson =
-        """{"invitation":{"inviter_identity":[1,2],"group_id":[170,170],"expiration_timestamp":9,"secret_salt":[3]},"inviter_signature":"sig"}"""
+    /** The link payload (kotlin-sdk's `OrgInvitation`) for an org invite token. */
+    private val payloadJson = """{"invitation":"inv_abc","namespaceId":"aaaa","name":"Studio"}"""
 
     @Test
-    fun `the web's invitation payload parses`() {
-        val inv = PixartInvitation.parseJson("""{"invitation":$signedJson,"groupName":"g","__teamName":"Studio"}""")!!
+    fun `the link payload parses`() {
+        val inv = PixartInvitation.parseJson(payloadJson)!!
         assertEquals("aaaa", inv.namespaceId)
         assertEquals("Studio", inv.title)
     }
 
     @Test
     fun `an invitation link round trips and other apps are refused`() {
-        val inv = PixartInvitation.parseJson("""{"invitation":$signedJson}""")!!
-        val link = inv.copy(teamName = "Studio").link()
+        val inv = PixartInvitation.parseJson("""{"invitation":"inv_abc","namespaceId":"aaaa"}""")!!
+        val link = PixartInvitation.of(inv.invitation, "Studio").link()
         assertTrue(link.contains("com.calimero.mero-pixart/join?invitation="))
         assertEquals("Studio", PixartInvitation.parse(link)?.teamName)
         assertNull(PixartInvitation.parse(link.replace("mero-pixart", "mero-chat")))
+    }
+
+    @Test
+    fun `a pre-1_0 signed invitation is refused`() {
+        assertNull(PixartInvitation.parseJson("""{"invitation":{"invitation":{"group_id":[170,170]},"inviter_signature":"sig"}}"""))
     }
 
     @Test
@@ -181,7 +186,7 @@ class ModelTest {
         runTest {
             val backend = Fixtures.backend()
             val model = InvitationModel()
-            val inv = PixartInvitation.parseJson("""{"invitation":$signedJson,"__teamName":"Studio"}""")!!
+            val inv = PixartInvitation.parseJson(payloadJson)!!
             assertTrue(model.open(inv.link()))
             assertEquals(InvitationModel.Stage.Confirm("Studio"), model.stage.value)
             var joined = false

@@ -70,11 +70,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.calimero.mero.app.MeroAppBackend
-import com.calimero.mero.compose.MeroAppSession
 import kotlinx.coroutines.launch
 import network.calimero.pixart.app.BitmapRaster
 import network.calimero.pixart.app.Compositor
 import network.calimero.pixart.app.LoadState
+import network.calimero.pixart.app.PixartAppViewModel
 import network.calimero.pixart.app.ProjectSummary
 import network.calimero.pixart.app.ProjectsModel
 import network.calimero.pixart.app.Team
@@ -87,13 +87,14 @@ import network.calimero.pixart.core.PixartFormat
 @Composable
 fun TeamsScreen(
     backend: MeroAppBackend,
-    session: MeroAppSession,
+    vm: PixartAppViewModel,
     onSignOut: () -> Unit,
     onOpen: (Team) -> Unit,
 ) {
     val model = remember(backend) { TeamsModel(backend) }
     val teams by model.teams.collectAsState()
     val state by model.state.collectAsState()
+    LaunchedEffect(teams) { vm.approvals.refresh(teams.map { it.id }) }
     val scope = rememberCoroutineScope()
     var refreshing by remember { mutableStateOf(false) }
     var showAccount by remember { mutableStateOf(false) }
@@ -139,6 +140,7 @@ fun TeamsScreen(
                             )
                         }
                     else -> {
+                        approvalsSection(vm.approvals)
                         item { SectionLabel("Teams") }
                         items(teams, key = { it.id }) { team -> TeamRow(team) { onOpen(team) } }
                     }
@@ -147,7 +149,8 @@ fun TeamsScreen(
         }
     }
 
-    if (showAccount) AccountSheet(session = session, onDismiss = { showAccount = false }, onSignOut = onSignOut)
+    if (showAccount) AccountSheet(vm = vm, account = backend.account, onDismiss = { showAccount = false }, onSignOut = onSignOut)
+    ApprovalCodeDialog(vm.approvals)
 }
 
 @Composable
@@ -180,27 +183,35 @@ private fun TeamRow(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AccountSheet(
-    session: MeroAppSession,
+    vm: PixartAppViewModel,
+    account: String,
     onDismiss: () -> Unit,
     onSignOut: () -> Unit,
 ) {
     var confirm by remember { mutableStateOf(false) }
+    val nodeUrl by vm.nodeUrl.collectAsState()
+    val allowMock by vm.allowMock.collectAsState()
+    val host = nodeUrl?.let { runCatching { java.net.URI(it).host }.getOrNull() ?: it }
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = PixartTheme.ground) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
             Text("Account", style = PixartTheme.heading(17), modifier = Modifier.align(Alignment.CenterHorizontally))
             Row(Modifier.fillMaxWidth().card(), verticalAlignment = Alignment.CenterVertically) {
-                Avatar(session.account.orEmpty(), "Me", 44.dp)
+                Avatar(account, "Me", 44.dp)
                 Spacer(Modifier.width(12.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text("Signed in", style = PixartTheme.heading(17))
                     Text(
-                        if (session.hasRelay) "Connected through your relay" else "No relay serves this account yet",
+                        when {
+                            host == null -> "Not connected to a cluster"
+                            allowMock -> "Development cluster at $host"
+                            else -> "Connected to $host"
+                        },
                         style = PixartTheme.body(14, color = PixartTheme.muted),
                     )
                 }
             }
             DetailsDisclosure(
-                listOf("Account" to (session.account ?: "—"), "Application" to (session.applicationId ?: "—")),
+                listOf("Account" to account, "Package" to PixartFormat.PACKAGE_NAME, "Node" to (nodeUrl ?: "—")),
                 Modifier.fillMaxWidth().card(),
             )
             SecondaryButton(onClick = { confirm = true }) {

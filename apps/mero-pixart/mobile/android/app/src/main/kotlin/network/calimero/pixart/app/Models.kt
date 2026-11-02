@@ -194,8 +194,8 @@ class ProjectsModel(
 
     /** A link that invites someone to this team, in the web's format. */
     suspend fun inviteLink(teamName: String): String {
-        val signed = backend.createInvitation(teamId)
-        return PixartInvitation(signed, teamName.trim().ifEmpty { null }).link()
+        val minted = backend.createInvitation(teamId)
+        return PixartInvitation.of(minted, teamName).link()
     }
 
     companion object {
@@ -310,7 +310,7 @@ class ArtworkModel(
         }
     }
 
-    /** Follow the project until cancelled: the relay's events when it streams them, polling otherwise (and after a stream ends). */
+    /** Follow the project until cancelled: the node's events when it streams them, polling otherwise (and after a stream ends). */
     suspend fun live() {
         if (backend.canSubscribe) {
             attempt { backend.events(contextId).collect { refresh() } }
@@ -406,7 +406,7 @@ class ArtworkModel(
         /** An export is at most this many. */
         const val EXPORT_SIDE = 8192.0
 
-        /** How often to re-read when the relay cannot stream events. */
+        /** How often to re-read when the node cannot stream events. */
         const val POLL_MS = 5_000L
     }
 }

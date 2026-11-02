@@ -59,8 +59,8 @@ final class ApprovalsTests: XCTestCase {
                 if scope == "denied" { throw URLError(.userAuthenticationRequired) }
                 return scope == nil ? account : org
             },
-            consent: { build in
-                asked.append(build("mero-pixart://enrol"))
+            consent: { build, _ in
+                asked.append(build("mero-pixart://consent"))
                 return approved
             })
         await model.refresh(orgs: ["org1", "denied"])
@@ -68,9 +68,30 @@ final class ApprovalsTests: XCTestCase {
         // The account's release, its upgrade, and the org's release (the same upgrade only once).
         XCTAssertEqual(model.items.count, 3)
         await model.approve(model.items[0])
-        XCTAssertEqual(asked, [.release(scope: .account, version: "2.3.110", returnTo: "mero-pixart://enrol")])
+        XCTAssertEqual(asked, [.release(scope: .account, version: "2.3.110", returnTo: "mero-pixart://consent")])
         XCTAssertEqual(model.message, "Approved.")
         XCTAssertNil(model.busy)
         XCTAssertEqual(loads.count, 6)
+    }
+
+    func testTheConfirmationCodeWaitsForThePerson() async throws {
+        let started = try decode(
+            ConsentStarted.self, #"{"requestId":"r1","url":"https://node/consent/r1","expiresAt":0,"code":"ABC-DEF"}"#)
+        var opened = false
+        let model = ApprovalsModel(
+            load: { _ in try self.pending() },
+            consent: { _, confirm in
+                opened = await confirm(started)
+                return nil
+            })
+        await model.refresh()
+        let approving = Task { await model.approve(model.items[0]) }
+        while model.confirmationCode == nil { await Task.yield() }
+        XCTAssertEqual(model.confirmationCode, "ABC-DEF")
+        model.answerCode(false)
+        await approving.value
+        XCTAssertFalse(opened)
+        XCTAssertNil(model.confirmationCode)
+        XCTAssertNil(model.message)
     }
 }

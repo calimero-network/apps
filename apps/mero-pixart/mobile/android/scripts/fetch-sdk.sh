@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Check out the Calimero Kotlin SDK at the commit pinned in ../kotlin-sdk.ref, into ../.sdk/kotlin-sdk.
 #
-# settings.gradle.kts includes that checkout as a composite build (the delegated-execution layer
+# settings.gradle.kts includes that checkout as a composite build (the Calimero 1.0 layer
 # the app uses is not in a published SDK release yet). Idempotent: an existing checkout already at
 # the pinned commit is left alone; one at another commit is moved to it.
 #

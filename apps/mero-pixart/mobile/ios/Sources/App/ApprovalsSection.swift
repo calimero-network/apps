@@ -12,8 +12,9 @@ extension ApprovalsModel {
                 guard let session else { throw CancellationError() }
                 return try await session.pendingApprovals(org: org)
             },
-            consent: { [weak session] build in
-                guard let session, let started = try? await session.requestConsent(build(session.callback.url))
+            consent: { [weak session] build, confirm in
+                guard let session,
+                    let started = try? await session.requestConsent(build(session.callback.url), confirm: confirm)
                 else { return nil }
                 // The page's return (handled by the session) answers at once; else ask the node.
                 if let result = session.consentResult, result.requestId == started.requestId { return result }
@@ -61,6 +62,16 @@ struct ApprovalsSection: View {
                 }
             } header: {
                 SectionLabel("Needs your approval")
+            }
+            .alert(
+                "Check the code",
+                isPresented: Binding(
+                    get: { model.confirmationCode != nil }, set: { if !$0 { model.answerCode(false) } })
+            ) {
+                Button("Cancel", role: .cancel) { model.answerCode(false) }
+                Button("Continue") { model.answerCode(true) }
+            } message: {
+                Text("Your node\u{2019}s approval page will show the code \(model.confirmationCode ?? ""). Continue only if it matches.")
             }
         }
     }

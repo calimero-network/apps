@@ -10,7 +10,7 @@ import network.calimero.pixart.ui.MeroPixartApp
 
 /**
  * The one activity. Links arrive here, on the launch intent (cold start) or through
- * [onNewIntent], and go to [PixartAppViewModel.handleLink]: the wallet's sign-in redirect, or a
+ * [onNewIntent], and go to [PixartAppViewModel.handleLink]: the node's consent page coming back, a
  * project link (`https://links.calimero.network/com.calimero.mero-pixart/project?team=…&project=…`), or a team
  * invitation, which the session holds for the person to confirm.
  */
@@ -19,10 +19,16 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        vm.attach(this)
         if (savedInstanceState == null) consume(intent)
         setContent {
-            MeroPixartApp(vm = vm, onSignIn = { vm.session.signIn(this) })
+            MeroPixartApp(vm = vm)
         }
+    }
+
+    override fun onDestroy() {
+        vm.attach(null)
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {

@@ -95,9 +95,17 @@ struct SignInView: View {
             .presentationDetents([.medium])
         }
         .sheet(isPresented: $showNode) {
-            NodeSheet(current: client.nodeURL ?? "", allowMock: client.allowMock) { url, allowMock in
+            NodeSheet(current: client.nodeURL ?? "", allowMock: client.allowMock) { target, allowMock in
                 showNode = false
-                session.connect(nodeURL: url, allowMock: allowMock)
+                if allowMock || NodeSheet.isNodeURL(target) {
+                    session.connect(nodeURL: target, allowMock: allowMock)
+                } else {
+                    // A cluster name: its nodes come from the node directory.
+                    Task {
+                        await client.connect(cluster: target)
+                        session.rebuild()
+                    }
+                }
             }
             .presentationDetents([.medium, .large])
         }
@@ -163,8 +171,9 @@ private struct CreateAccountSheet: View {
     }
 }
 
-/// The node to talk to: one of the cluster's nodes from Calimero Cloud's
-/// console, or a development cluster (`merod local`) with mock attestation.
+/// The cluster to talk to: its name (`eu-shared-1`, looked up in the node
+/// directory), one of its nodes from Calimero Cloud's console, or a development
+/// cluster (`merod local`) with mock attestation.
 private struct NodeSheet: View {
     let submit: (_ url: String, _ allowMock: Bool) -> Void
     @State private var url: String
@@ -179,13 +188,18 @@ private struct NodeSheet: View {
 
     private var trimmed: String { url.trimmingCharacters(in: .whitespacesAndNewlines) }
 
+    /// Whether `value` names a node (`https://…`, a host with a dot or a port) rather than a cluster.
+    static func isNodeURL(_ value: String) -> Bool {
+        value.contains("://") || value.contains(".") || value.contains(":")
+    }
+
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Paste the address of a node in your team's cluster. The app checks the node's attestation before it sends anything.")
+                Text("Enter your team's cluster name, or paste the address of one of its nodes. The app checks the node's attestation before it sends anything.")
                     .font(Theme.body(15))
                     .foregroundStyle(Theme.muted)
-                TextField("https://node.example.calimero.network", text: $url)
+                TextField("Cluster name or node URL", text: $url)
                     .font(Theme.body(15))
                     .keyboardType(.URL)
                     .textInputAutocapitalization(.never)
@@ -201,12 +215,12 @@ private struct NodeSheet: View {
                 }
                 .tint(Theme.ink)
                 .card(padding: 14)
-                Button("Use this node") {
+                Button("Use this cluster") {
                     Haptics.tap()
                     submit(trimmed, allowMock)
                 }
                 .buttonStyle(PrimaryButtonStyle())
-                .disabled(URL(string: trimmed)?.scheme == nil)
+                .disabled(trimmed.isEmpty || (allowMock && URL(string: trimmed)?.scheme == nil))
                 Spacer()
             }
             .padding(16)

@@ -59,18 +59,26 @@ public enum ApprovalItem: Identifiable, Equatable, Sendable {
 
 /// What waits for this account's approval, and asking for it on the node's
 /// consent page. The app wires `load` to `MeroAppSession.pendingApprovals(org:)`
-/// and `consent` to `MeroAppSession.requestConsent(_:)`, which opens the page
-/// in the system browser.
+/// and `consent` to `MeroAppSession.requestConsent(_:confirm:)`, which opens the
+/// page in the system browser. Before it opens, the request's confirmation code
+/// waits in ``confirmationCode`` for the person to continue (``answerCode(_:)``);
+/// the page shows the same code.
 @MainActor
 public final class ApprovalsModel: ObservableObject {
     public typealias Load = @MainActor (_ org: String?) async throws -> PendingApprovals
-    public typealias Consent = @MainActor (_ request: @escaping (String) -> ConsentRequest) async -> ConsentResult?
+    public typealias Confirm = @MainActor (ConsentStarted) async -> Bool
+    public typealias Consent = @MainActor (
+        _ request: @escaping (String) -> ConsentRequest, _ confirm: @escaping Confirm
+    ) async -> ConsentResult?
 
     @Published public private(set) var items: [ApprovalItem] = []
     /// The item whose consent page is open.
     @Published public private(set) var busy: String?
     /// The last decision or failure, in words.
     @Published public private(set) var message: String?
+    /// The confirmation code of the request about to open, waiting for ``answerCode(_:)``.
+    @Published public private(set) var confirmationCode: String?
+    private var codeAnswer: CheckedContinuation<Bool, Never>?
 
     private let load: Load
     private let consent: Consent
@@ -97,7 +105,17 @@ public final class ApprovalsModel: ObservableObject {
     public func approve(_ item: ApprovalItem) async {
         busy = item.id
         defer { busy = nil }
-        let result = await consent { item.request(returnTo: $0) }
+        var declined = false
+        let result = await consent({ item.request(returnTo: $0) }) { [weak self] started in
+            guard let self, let code = started.code, !code.isEmpty else { return true }
+            let proceed = await self.askCode(code)
+            declined = !proceed
+            return proceed
+        }
+        if declined {
+            message = nil
+            return
+        }
         switch result?.status {
         case .approved?: message = "Approved."
         case .declined?: message = "Declined."
@@ -105,5 +123,21 @@ public final class ApprovalsModel: ObservableObject {
         case nil: message = "The consent page did not answer. Try again."
         }
         await refresh()
+    }
+
+    /// Continue to the consent page (`true`) or stop (`false`) after seeing ``confirmationCode``.
+    public func answerCode(_ proceed: Bool) {
+        confirmationCode = nil
+        let answer = codeAnswer
+        codeAnswer = nil
+        answer?.resume(returning: proceed)
+    }
+
+    private func askCode(_ code: String) async -> Bool {
+        codeAnswer?.resume(returning: false)
+        return await withCheckedContinuation { continuation in
+            codeAnswer = continuation
+            confirmationCode = code
+        }
     }
 }
