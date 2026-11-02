@@ -18,9 +18,27 @@ let utc: Calendar = {
 let fixedNow = utc.date(from: DateComponents(year: 2026, month: 10, day: 28, hour: 12))!
 let nowMs = Format.ms(fixedNow)
 
+/// `value` as the component contract answers it: camelCase keys, and every
+/// `u64` field (``ComponentWire/u64Fields``) a decimal string.
 func json<T: Encodable>(_ value: T) -> JSONValue {
     let data = try! JSONEncoder().encode(value)
-    return try! JSONDecoder().decode(JSONValue.self, from: data)
+    let wire = contractWire(try! JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]))
+    return try! JSONDecoder().decode(
+        JSONValue.self, from: try! JSONSerialization.data(withJSONObject: wire, options: [.fragmentsAllowed]))
+}
+
+private func contractWire(_ value: Any) -> Any {
+    if let list = value as? [Any] { return list.map(contractWire) }
+    guard let object = value as? [String: Any] else { return value }
+    var out: [String: Any] = [:]
+    for (key, v) in object {
+        if ComponentWire.u64Fields.contains(key), let n = v as? NSNumber {
+            out[ComponentWire.camel(key)] = n.stringValue
+        } else {
+            out[ComponentWire.camel(key)] = contractWire(v)
+        }
+    }
+    return out
 }
 
 func card(
@@ -71,33 +89,33 @@ final class FakeAudience: @unchecked Sendable {
 
     func answer(_ call: RecordedContractCall) -> JSONValue? {
         switch call.method {
-        case "get_me": return json(meView)
-        case "get_overview": return json(overview)
-        case "list_categories": return json(categories)
-        case "list_posts":
+        case "getMe": return json(meView)
+        case "getOverview": return json(overview)
+        case "listCategories": return json(categories)
+        case "listPosts":
             let kind = call.args["kind"]?.stringValue
-            let category = call.args["category_id"]?.stringValue
+            let category = call.args["categoryId"]?.stringValue
             var items = kind == "question" ? questions : posts
             if let category { items = items.filter { $0.categoryId == category } }
             if let limit = call.args["limit"]?.intValue { items = Array(items.prefix(limit)) }
             return json(PostPage(items: items, nextCursor: nil))
-        case "get_post":
-            return postViews[call.args["post_id"]?.stringValue ?? ""].map(json) ?? .null
-        case "list_comments": return json(comments)
-        case "list_drafts": return json(drafts)
-        case "list_metrics": return json(series)
-        case "list_people": return json(people)
-        case "get_engagement": return json([EngagementRow]())
-        case "list_asks":
+        case "getPost":
+            return postViews[call.args["postId"]?.stringValue ?? ""].map(json) ?? .null
+        case "listComments": return json(comments)
+        case "listDrafts": return json(drafts)
+        case "listMetrics": return json(series)
+        case "listPeople": return json(people)
+        case "getEngagement": return json([EngagementRow]())
+        case "listAsks":
             let status = call.args["status"]?.stringValue
             return json(asks.filter { status == nil || $0.status == status })
-        case "list_contributions": return json(contributions)
-        case "get_settings": return json(settings)
-        case "save_draft": return .string(call.args["draft_id"]?.stringValue ?? "draft-1")
-        case "publish_update": return "post-new"
-        case "ask_question": return "q-new"
-        case "add_comment": return "c-new"
-        case "create_category": return "cat-new"
+        case "listContributions": return json(contributions)
+        case "getSettings": return json(settings)
+        case "saveDraft": return .string(call.args["draftId"]?.stringValue ?? "draft-1")
+        case "publishUpdate": return "post-new"
+        case "askQuestion": return "q-new"
+        case "addComment": return "c-new"
+        case "createCategory": return "cat-new"
         default: return .null
         }
     }

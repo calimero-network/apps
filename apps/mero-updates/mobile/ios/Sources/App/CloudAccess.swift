@@ -5,12 +5,14 @@ import SwiftUI
 // Calimero 1.0 sign-in and approvals, shared by the native apps (the same file in each; only
 // `CloudStyle.app`, in Theme.swift, differs).
 //
-// - Cloud: a node URL of the person's cluster (from the cloud.calimero.network console; prefilled
-//   from `MeroNodeURL`), then the device's passkey: sign in, or create an account.
+// - Cloud: the person's cluster by name (its nodes come from the Calimero node directory) or one
+//   of its node URLs (from the cloud.calimero.network console; prefilled from `MeroNodeURL`), then
+//   the device's passkey: sign in, or create an account.
 // - Development: a `merod local` node (`MeroDevNodeURL`, `http://localhost:2501` by default) with
 //   mock attestation allowed (`allowMock`) and a software passkey the SDK keeps for that node.
 // - Approvals: releases and upgrades waiting for the person's decision, approved on the node's
-//   own consent page in the system browser (an app's session cannot approve anything itself).
+//   own consent page in the system browser (an app's session cannot approve anything itself),
+//   after the app showed the request's confirmation code, which the page shows too.
 
 /// The colours the shared sign-in and approvals views use, set per app in Theme.swift.
 struct CloudStyle {
@@ -54,7 +56,7 @@ struct CloudSignInPanel: View {
                     .accessibilityIdentifier("signIn.error")
             }
             if CloudSettings.clusterURL == nil {
-                field("Cluster URL", text: $clusterURL, placeholder: "https://node.your-cluster.calimero.network")
+                field("Cluster", text: $clusterURL, placeholder: "Cluster name or node URL")
                     .keyboardType(.URL)
                     .accessibilityIdentifier("signIn.cluster")
             }
@@ -75,14 +77,12 @@ struct CloudSignInPanel: View {
                 .accessibilityIdentifier("signIn.connect")
             } else if creating {
                 primary(title: "Create account", symbol: "person.badge.key", enabled: canUseCluster && !trimmed(name).isEmpty) {
-                    connectCluster()
-                    await session.signUp(name: trimmed(name))
+                    if await connectCluster() { await session.signUp(name: trimmed(name)) }
                 }
                 .accessibilityIdentifier("signIn.create")
             } else {
                 primary(title: "Sign in with passkey", symbol: "person.badge.key", enabled: canUseCluster) {
-                    connectCluster()
-                    await session.signIn()
+                    if await connectCluster() { await session.signIn() }
                 }
                 .accessibilityIdentifier("signIn.passkey")
             }
@@ -108,8 +108,17 @@ struct CloudSignInPanel: View {
 
     private var canUseCluster: Bool { !trimmed(clusterURL).isEmpty }
 
-    private func connectCluster() {
-        session.connect(nodeURL: trimmed(clusterURL), allowMock: false)
+    /// A node URL as given; a bare name through the node directory (`false`, with the reason in
+    /// the client's `errorMessage`, when the directory knows no such cluster).
+    private func connectCluster() async -> Bool {
+        let input = trimmed(clusterURL)
+        if input.contains("://") || input.contains(".") || input.contains(":") {
+            session.connect(nodeURL: input, allowMock: false)
+            return true
+        }
+        guard await session.client.connect(cluster: input) else { return false }
+        session.rebuild()
+        return true
     }
 
     private func trimmed(_ value: String) -> String { value.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -176,6 +185,7 @@ struct ApprovalsSheet: View {
     @State private var loading = true
     @State private var error: String?
     @State private var deciding: String?
+    @StateObject private var code = ConfirmationCode()
 
     struct Section: Identifiable {
         let id: String
@@ -232,6 +242,12 @@ struct ApprovalsSheet: View {
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .task { await load() }
             .refreshable { await load() }
+            .alert("Confirmation code", isPresented: code.isShowing, presenting: code.shown) { _ in
+                Button("Open approval page") { code.answer(true) }
+                Button("Cancel", role: .cancel) { code.answer(false) }
+            } message: { shown in
+                Text("Your node's approval page will show \(shown). Approve only if it shows the same code.")
+            }
         }
         .tint(style.ink)
     }
@@ -256,7 +272,9 @@ struct ApprovalsSheet: View {
                         deciding = key
                         Task {
                             do {
-                                _ = try await session.requestConsent(request(session.callback.url))
+                                _ = try await session.requestConsent(request(session.callback.url)) { started in
+                                    await code.ask(started.code ?? confirmationCode(started.requestId))
+                                }
                             } catch {
                                 self.error = MeroClient.describe(error)
                             }
@@ -293,5 +311,33 @@ struct ApprovalsSheet: View {
         } catch {
             self.error = MeroClient.describe(error)
         }
+    }
+}
+
+/// The consent request's confirmation code, shown before the consent page opens: the page shows
+/// the same code, so the person can check it is the request the app made.
+@MainActor
+final class ConfirmationCode: ObservableObject {
+    @Published private(set) var shown: String?
+    private var waiting: CheckedContinuation<Bool, Never>?
+
+    /// Show `code` and wait for ``answer(_:)``: `true` opens the page.
+    func ask(_ code: String) async -> Bool {
+        waiting?.resume(returning: false)
+        return await withCheckedContinuation { continuation in
+            waiting = continuation
+            shown = code
+        }
+    }
+
+    func answer(_ proceed: Bool) {
+        shown = nil
+        let continuation = waiting
+        waiting = nil
+        continuation?.resume(returning: proceed)
+    }
+
+    var isShowing: Binding<Bool> {
+        Binding(get: { self.shown != nil }, set: { if !$0 && self.shown != nil { self.answer(false) } })
     }
 }
