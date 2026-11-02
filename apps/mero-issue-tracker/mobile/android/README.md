@@ -28,5 +28,5 @@ Package `network.calimero.issues`.
   `https://links.calimero.network/com.calimero.mero-issue-tracker/join?…` and
   `calimero://com.calimero.mero-issue-tracker/join?…`.
 
-`kotlin-sdk.ref` pins the head of the SDK's Calimero 1.0 port (calimero-network/kotlin-sdk#68,
-`61b65e9`); it moves to that PR's merge commit once it lands.
+`kotlin-sdk.ref` pins the commit of the kotlin-sdk `v0.2.0` release (Calimero 1.0, `1e3f27c`); to bump
+it, put the new tag's commit there.

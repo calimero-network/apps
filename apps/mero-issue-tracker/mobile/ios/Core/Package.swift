@@ -11,11 +11,11 @@ let package = Package(
         .library(name: "IssueTrackerCore", targets: ["IssueTrackerCore"])
     ],
     dependencies: [
-        // The head of swift-sdk's Calimero 1.0 port (PR #85, feat/calimero-1.0);
-        // keep in step with `packages.MeroKit.revision` in ../project.yml.
+        // swift-sdk release v0.5.0 (Calimero 1.0); keep in step with
+        // `packages.MeroKit.exactVersion` in ../project.yml.
         .package(
             url: "https://github.com/calimero-network/swift-sdk",
-            revision: "37c09f3f96e7d98440f6618eef8a0e83ddee8ebd")
+            exact: "0.5.0")
     ],
     targets: [
         .target(

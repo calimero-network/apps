@@ -7,12 +7,11 @@ Symbols, mapped one to one) and flows.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | [`ios/`](ios/README.md) | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `37c09f3` (head of PR #85, Calimero 1.0) |
-| Android | [`android/`](android/README.md) | Compose + Material3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `61b65e9` (head of PR #68, Calimero 1.0) |
+| iOS | [`ios/`](ios/README.md) | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `v0.5.0` |
+| Android | [`android/`](android/README.md) | Compose + Material3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `v0.2.0` (not on Maven Central) |
 
-The pins are the heads of the SDKs' Calimero 1.0 PRs (`ios/project.yml`, `ios/Core/Package.swift`,
-`ios/Core/Package.resolved`, `android/kotlin-sdk.ref`). They move to the merge commits once those
-PRs land.
+The pins are the SDKs' Calimero 1.0 releases (`ios/project.yml`, `ios/Core/Package.swift`,
+`ios/Core/Package.resolved`, `android/kotlin-sdk.ref`).
 
 ## On Calimero 1.0
 
