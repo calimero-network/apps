@@ -11,7 +11,6 @@
 import { BarChart, Clock, Refresh, Shield, Target, Zap } from '@calimero-network/mero-icons';
 
 import Animation from './animation';
-import LoginPopup from './loginPopup';
 import type { LandingConfig } from './landingTypes';
 
 export const CONFIG: LandingConfig = {
@@ -21,13 +20,13 @@ export const CONFIG: LandingConfig = {
   dir: "mero-crm",
   markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
-  availability: "web+desktop",
+  availability: "web",
   tint: "#2dd4bf",
   themeStorageKey: "mero-crm:theme",
-  trust: ["Pipeline on your nodes", "Built-in deal assistant", "No per-seat vendor"],
+  trust: ["Private to your team", "Built-in deal assistant", "No per-seat vendor"],
   explainer: [
     "A sales CRM with only the parts that close deals: a visual pipeline, deals with a value and a next step, the people behind them, and a to-do list that puts overdue follow-ups first. Everything a tool like Pipedrive is used for day to day, without the forty menus around it.",
-    "The pipeline lives in a Calimero context your team shares, replicated between your own nodes. Your customer list is the most sensitive thing a sales team owns, and here there is no vendor holding a copy of it.",
+    "The pipeline lives in a workspace your team owns, held on attested Calimero nodes. Your customer list is the most sensitive thing a sales team owns, and here there is no vendor reading a copy of it.",
   ],
   features: [
     {
@@ -58,7 +57,7 @@ export const CONFIG: LandingConfig = {
     {
       icon: Shield,
       title: "Your customers stay yours",
-      body: "The pipeline replicates between your team’s nodes. There is no vendor database to breach or to price you out of.",
+      body: "The pipeline is held on attested nodes for your workspace alone. There is no vendor database to mine or to price you out of.",
     },
   ],
   animation: Animation,
@@ -70,10 +69,10 @@ export const CONFIG: LandingConfig = {
         "The model is deliberately small: a pipeline of stages, deals moving through them, the people behind the deals, and the activities that move them forward.",
       ],
       concepts: [
-        { term: "Namespace", def: "Your sales team. Its members are the people who can see and work the pipelines." },
-        { term: "Pipeline", def: "One sales process — say New business or Renewals — and one Calimero context. It holds its stages, deals, people, activities, notes and automations." },
+        { term: "Workspace", def: "Your sales team: an organization whose members are the people who can see and work its pipelines." },
+        { term: "Pipeline", def: "One sales process — say New business or Renewals — and one app in the workspace. It holds its stages, deals, people, activities, notes and automations." },
         { term: "Stage", def: "A column of the pipeline with a win probability. The probability is what turns a pipeline total into a weighted forecast." },
-        { term: "Deal", def: "An opportunity with a value, an owner, a contact person and an expected close date. Every field is its own register, so two people editing different fields never collide." },
+        { term: "Deal", def: "An opportunity with a value, an owner, a contact person and an expected close date." },
         { term: "Activity", def: "A call, meeting, task, email or deadline, due on a date. The earliest open one is the deal’s next step." },
         { term: "Rotting", def: "An open deal nobody has touched for longer than the pipeline allows (14 days by default). It is flagged on the board." },
         { term: "Automation", def: "A rule of the form “when a deal enters this stage, schedule this activity”. It runs inside the contract, so it fires whoever moves the deal." },
@@ -83,7 +82,7 @@ export const CONFIG: LandingConfig = {
       id: "start",
       heading: "Getting started",
       steps: [
-        { title: "Connect a node", body: "Press Connect to node and pick your node in the popup." },
+        { title: "Sign in", body: "Press Sign in and use a passkey, or create an account with a new one." },
         { title: "Create a workspace and a pipeline", body: "A workspace for the team, then a pipeline with its currency. It starts with five stages you can rename, reorder and re-weight in Settings." },
         { title: "Add your deals", body: "Press N anywhere. Only a title is required; the value accepts shorthand like 12k." },
         { title: "Work the board", body: "Drag deals forward, schedule the next step on each, and let the Activities list tell you what is due today." },
@@ -102,18 +101,10 @@ export const CONFIG: LandingConfig = {
       id: "storage",
       heading: "What is stored, and where",
       bullets: [
-        "Stages, deals, people, activities, notes and automations, each in its own map keyed by id, in the pipeline’s context.",
-        "Every mutable field as its own last-writer-wins register; edits only write the fields that changed, so a teammate’s concurrent edit to another field survives.",
-        "Money as whole units of the pipeline currency, never floats, so every node computes identical totals.",
+        "Stages, deals, people, activities, notes and automations, each in its own table keyed by id, with indexes by stage, owner, status, contact and deal.",
+        "All of it in one app on attested Calimero nodes, which apply every change in one ordered log: two people editing the same deal leave the later edit.",
+        "Money as whole units of the pipeline currency, never floats.",
         "Only a deal’s creator can delete it, and only a note’s author can delete the note — enforced in the contract, not the UI.",
-      ],
-    },
-    {
-      id: "offline",
-      heading: "Offline, and what happens when you reconnect",
-      paragraphs: [
-        "Your node holds the whole state, so the app keeps working with no network — every change is written locally and queued.",
-        "When your node reaches a peer again, the two exchange changes and merge them. Merging is CRDT-based, not last-write-wins-by-clock, so two people editing different things at the same time both keep their work. Where two people genuinely changed the same single value, the later write wins on that one value and nothing else is lost.",
       ],
     },
     {
@@ -122,15 +113,14 @@ export const CONFIG: LandingConfig = {
       concepts: [
         { term: "A stage will not delete", def: "It still has open deals. Move them to another stage, or close them, first." },
         { term: "A deal cannot be dragged", def: "Closed deals leave the board. Reopen it from its page to put it back in the stage it closed from." },
-        { term: "A teammate’s move has not shown up", def: "Their node is behind or offline. The board catches up on sync without any action." },
+        { term: "You cannot delete a deal", def: "Only the person who created it may delete it. Anyone in the workspace may move, edit, win or lose it." },
       ],
     },
   ],
   previewSteps: [
-    { title: "A pipeline of stages", body: "Five columns, each with its count, value and weighted forecast — replicated to every member, with no server hosting it." },
-    { title: "A deal moves", body: "The stage is one register on the deal. Moving it collides with nothing else on the card." },
+    { title: "A pipeline of stages", body: "Five columns, each with its count, value and weighted forecast: the board every member of the workspace sees." },
+    { title: "A deal moves", body: "A move is one call; the board updates for everyone watching." },
     { title: "A follow-up appears", body: "Entering Proposal fired an automation, and the owner now has “Send the proposal” due tomorrow." },
     { title: "The assistant flags a deal", body: "No activity in three weeks and a slipped close date: the card is marked rotting, with the next step one click away." },
   ],
-  loginPopup: LoginPopup,
 };

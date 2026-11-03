@@ -1,102 +1,66 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
-import { useApi } from "../api/useApi";
+import { messageOf } from "../api/pixart";
+import { useSignedIn } from "../api/sessionContext";
+import { createTeam as createOrgTeam, listTeams, ownsTeam, type Team } from "../api/teams";
 import Logo from "../components/Logo";
 import SettingsModal from "../components/SettingsModal";
 import { useToast } from "../contexts/ToastContext";
-import { extractErrorMessage } from "../utils/errorMessage";
 import { setStoredTeamName, teamLabel } from "../utils/teamName";
 import { clearLastVisit, forgetTeam, pickRemembered, readLastVisit, shouldResume } from "../utils/lastVisit";
-import { selfIsGroupAdmin } from "../api/selfRole";
-import type { Team } from "../types";
 import styles from "./TeamsPage.module.css";
 
-/** What `createNamespace` answers on an account: founding also asks the cloud to host (HA). */
-type CreatedNamespace = { namespaceId?: string; haEnabled?: boolean; haError?: string };
-
+/**
+ * The teams this account is in: Calimero organizations (v1: namespaces of
+ * this app). Orgs are the platform's teams, so one made in another Calimero
+ * 1.0 app is listed too and can hold projects.
+ */
 export default function TeamsPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { showToast } = useToast();
-  const { logout, nodeUrl } = useMero();
-  // The session-aware API (see api/useApi): the node's own admin on a node
-  // login, the account admin on a delegated session. Shared by list/create/join
-  // so namespaces are always scoped to (and created under) the right app.
-  const api = useApi();
-  const { admin, isDelegated } = api;
+  const { client, accountId, passkey, after, targetKey, signOut } = useSignedIn();
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
-  // The node has answered the list (empty or not). A failed read has not, and
+  // The cluster has answered the list (empty or not). A failed read has not, and
   // must not forget a team it simply could not see.
   const [listed, setListed] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [settingsTeam, setSettingsTeam] = useState<Team | null>(null);
-  // Whether this session is an Admin of each team, by team id. Absent while
-  // unknown: the menu then offers neither Delete nor Leave rather than guessing.
-  const [adminOf, setAdminOf] = useState<Record<string, boolean>>({});
   const menuRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function loadTeams() {
-      const appId = await api.ensureAppId();
-      // On an account the id is the registry's, and lands after sign-in.
-      // Unscoped until then, the list is every namespace the account has,
-      // other apps' included, shown here as teams. Stay loading: `api`
-      // changes when the id lands, and this runs again.
-      if (!appId && api.isDelegated) return;
-      api.listNamespaces(appId)
-        .then((items) => {
-          if (cancelled) return;
-          setTeams(items.map((n) => ({
-            groupId: n.namespaceId ?? "",
-            name: n.name ?? "",
-          })));
-          setListed(true);
-        })
-        .catch(() => { if (!cancelled) setTeams([]); })
-        .finally(() => { if (!cancelled) setLoading(false); });
+  const loadTeams = useCallback(async () => {
+    try {
+      setTeams(await listTeams(client));
+      setListed(true);
+    } catch {
+      /* the last answer stays; the next poll tries again */
+    } finally {
+      setLoading(false);
+      after();
     }
-    loadTeams();
+  }, [client, after]);
+
+  useEffect(() => {
+    void loadTeams();
     const id = setInterval(loadTeams, 30_000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, [api]);
+    return () => clearInterval(id);
+  }, [loadTeams]);
 
   // Resume the team open last (utils/lastVisit) when this is the default
-  // landing, not a visit you chose, and this node still lists it. Anything
-  // else settles here: a remembered team the node no longer lists is
-  // forgotten, and the entry is replaced so Back or a reload to it is a
-  // plain visit to the list.
+  // landing, not a visit you chose, and the cluster still lists it. Anything
+  // else settles here: a remembered team no longer listed is forgotten, and
+  // the entry is replaced so Back or a reload to it is a plain visit to the list.
   const resume = shouldResume(location);
-  const remembered = readLastVisit(nodeUrl).team;
+  const remembered = readLastVisit(targetKey).team;
   const resumeTo = resume && listed ? pickRemembered(teams.map((t) => t.groupId), remembered) : null;
   useEffect(() => {
     if (!resume || loading || resumeTo) return;
-    if (listed && remembered) forgetTeam(nodeUrl, remembered);
+    if (listed && remembered) forgetTeam(targetKey, remembered);
     navigate(location.pathname + location.search, { replace: true, state: null });
-  }, [resume, loading, listed, resumeTo, remembered, nodeUrl, navigate, location.pathname, location.search]);
-
-  // An Admin deletes a team; anyone else leaves it. Asked of each team's own
-  // member listing, by the account this session runs as. Keyed on the ids, so
-  // the 30s list poll does not re-ask while the teams stay the same.
-  const teamIds = teams.map((t) => t.groupId).join(",");
-  useEffect(() => {
-    const ids = teamIds ? teamIds.split(",") : [];
-    if (ids.length === 0) return;
-    let cancelled = false;
-    (async () => {
-      let self = "";
-      try { self = (await api.getNodeIdentity()).accountId ?? ""; } catch { /* unknown: no admin controls */ }
-      const entries = await Promise.all(
-        ids.map(async (id) => [id, await selfIsGroupAdmin(admin, id, self)] as const),
-      );
-      if (!cancelled) setAdminOf(Object.fromEntries(entries));
-    })();
-    return () => { cancelled = true; };
-  }, [teamIds, api, admin]);
+  }, [resume, loading, listed, resumeTo, remembered, targetKey, navigate, location.pathname, location.search]);
 
   // Close menu on outside click
   useEffect(() => {
@@ -114,66 +78,52 @@ export default function TeamsPage() {
     if (!name) return;
     setCreating(true);
     try {
-      const applicationId = await api.ensureAppId();
-      if (!applicationId) {
-        showToast("Select or install the Mero PixArt application first.");
-        return;
-      }
-      // Body is EXACTLY `applicationId` + `name`: `CreateNamespaceApiRequest`
-      // is `deny_unknown_fields`, so an extra key is a 400 for the whole
-      // create. On an account this founds through the relay with the
-      // provider's package, and also asks the cloud to host the namespace so
-      // invitees can find it — `haError` says why when it could not.
-      const data = (await admin.createNamespace({ applicationId, name })) as CreatedNamespace;
-      const id = data.namespaceId ?? "";
-      // Cache the name so it survives even if the server later returns no name,
-      // and so it can be embedded in invitations for joiners.
-      if (id) setStoredTeamName(id, name);
-      setTeams((prev) => [...prev, { groupId: id, name }]);
+      const { groupId, warning } = await createOrgTeam(client, name, passkey);
+      setStoredTeamName(groupId, name);
+      setTeams((prev) => [...prev, { groupId, name, role: "owner" }]);
       setNewName("");
-      if (data.haError) {
-        // Said now, where it can be acted on, rather than at invite time.
-        showToast(`Team created, but it is not hosted yet: ${data.haError}`);
-      }
+      if (warning) showToast(warning);
     } catch (err) {
-      showToast(extractErrorMessage(err, "Could not create team."));
+      showToast(`Could not create team: ${messageOf(err)}`);
     } finally {
       setCreating(false);
+      after();
     }
   }
 
-  // Admin only, and a node's own operation: deleting a namespace has no account
-  // form, so the control is hidden on a delegated session rather than offered
-  // and refused. The card goes only once the node has accepted the delete.
+  /** The team's owner deletes it (a passkey step-up), with its projects. */
   async function deleteTeam(teamId: string) {
     setMenuOpenId(null);
     try {
-      await admin.deleteNamespace(teamId);
+      await client.deleteOrg(teamId, passkey());
     } catch (err) {
-      showToast(extractErrorMessage(err, "Could not delete team."));
+      showToast(`Could not delete team: ${messageOf(err)}`);
       return;
+    } finally {
+      after();
     }
     setTeams((prev) => prev.filter((t) => t.groupId !== teamId));
-    forgetTeam(nodeUrl, teamId);
+    forgetTeam(targetKey, teamId);
   }
 
-  // Not an admin: leave the team. Works on a node and on an account alike.
+  /** Anyone else leaves it: removes their own membership (a passkey step-up). */
   async function leaveTeam(teamId: string) {
     setMenuOpenId(null);
     try {
-      await admin.leaveNamespace(teamId);
+      await client.removeMember(teamId, accountId, passkey());
     } catch (err) {
-      showToast(extractErrorMessage(err, "Could not leave team."));
+      showToast(`Could not leave team: ${messageOf(err)}`);
       return;
+    } finally {
+      after();
     }
     setTeams((prev) => prev.filter((t) => t.groupId !== teamId));
-    forgetTeam(nodeUrl, teamId);
+    forgetTeam(targetKey, teamId);
   }
 
-  function handleLogout() {
-    // Before `logout()`, which drops the node URL the entry is keyed by.
-    clearLastVisit(nodeUrl);
-    logout();
+  async function handleLogout() {
+    clearLastVisit(targetKey);
+    await signOut();
     navigate("/");
   }
 
@@ -184,7 +134,7 @@ export default function TeamsPage() {
       <header className={styles.header}>
         <span className={styles.logo}><Logo size={24} /> Mero PixArt</span>
         <div className={styles.headerRight}>
-          <button className="mp-btn mp-btn--ghost" onClick={handleLogout}>Logout</button>
+          <button className="mp-btn mp-btn--ghost" onClick={() => void handleLogout()}>Logout</button>
         </div>
       </header>
 
@@ -239,12 +189,13 @@ export default function TeamsPage() {
                     <button className={styles.dropdownItem} onClick={() => { setMenuOpenId(null); setSettingsTeam(t); }}>
                       Settings
                     </button>
-                    {adminOf[t.groupId] === true && !isDelegated && (
+                    {/* The owner deletes, anyone else leaves. */}
+                    {ownsTeam(t.role) && (
                       <button className={`${styles.dropdownItem} ${styles.dropdownDanger}`} onClick={() => deleteTeam(t.groupId)}>
                         Delete
                       </button>
                     )}
-                    {adminOf[t.groupId] === false && (
+                    {!ownsTeam(t.role) && (
                       <button className={`${styles.dropdownItem} ${styles.dropdownDanger}`} onClick={() => leaveTeam(t.groupId)}>
                         Leave
                       </button>
@@ -261,6 +212,7 @@ export default function TeamsPage() {
         <SettingsModal
           type="team"
           id={settingsTeam.groupId}
+          namespaceId={settingsTeam.groupId}
           name={teamLabel(settingsTeam.groupId, settingsTeam.name)}
           onClose={() => setSettingsTeam(null)}
         />

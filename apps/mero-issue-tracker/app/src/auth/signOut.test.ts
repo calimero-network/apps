@@ -14,7 +14,7 @@ class FakeStorage implements Storage {
 }
 
 beforeEach(() => {
-  (globalThis as any).localStorage = new FakeStorage();
+  Object.defineProperty(globalThis, 'localStorage', { value: new FakeStorage(), configurable: true });
 });
 
 describe('signOut', () => {

@@ -4,7 +4,7 @@ import { STLExporter } from "three/examples/jsm/exporters/STLExporter.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
-import type { TextureRef } from "../generated/MeroModelsClient";
+import type { TextureRef } from "../meroModels";
 import { buildScene, type TextureLookup } from "./build";
 import { decimateToFit, makeShape, shapeCenter, shapeFromGeometry, transformShape, vertexCount, type MeshShape } from "./geometry";
 import {

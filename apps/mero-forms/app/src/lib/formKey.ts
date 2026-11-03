@@ -1,75 +1,62 @@
-import {
-  generateAccountRoot,
-  mintDeviceId,
-  signDeviceCert,
-  signerFromSecret,
-  verifyDeviceCredential,
-} from "@calimero-network/mero-js";
-import nacl from "tweetnacl";
+import type { CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
 
 /**
- * A website form's key: an account of its own, with one certified device.
+ * A website form's key: a core API key of the admin's account, limited to
+ * this workspace (app instance) and to the two methods a website needs.
  *
- * The website's backend holds `deviceSecret` and signs a warrant for each
- * response; a relay runs `submit_response` as `account` (delegated execution).
- * See the README, "Form keys".
- *
- * Minted entirely in this tab and never sent anywhere but to the admin who
- * copies it. Two secrets a full account would keep are thrown away on
- * purpose, because a form never needs them:
- *
- * - the account ROOT, which certifies new devices. Rotating a form key means
- *   minting a new one, never re-certifying this one, so the root has no use
- *   after the one certificate below and nobody should be able to steal it.
- * - the device's key-delivery (X25519) secret, which group keys are delivered
- *   to. The form never decrypts state: the relay runs the method inside its
- *   TEE. Without this secret the key can sign a response and read nothing, even
- *   if every value on the website's server leaks.
+ * v1 minted an account with a certified device and no node, made it a member
+ * of the namespace, and the website signed a warrant a relay executed. On
+ * Calimero 1.0 there are no relays and no warrants: delegation is a scoped
+ * API key, approved with the admin's passkey. The contract registers the key
+ * by its id (`registerFormKey`), which binds it to one form and keeps it off
+ * the team, so the key can answer that form and nothing else.
  */
-export interface FormIdentity {
-  /** The account, 64 hex: what joins the namespace and what responses are stamped with. */
-  account: string;
-  /** Its `AccountProof<DeviceCert>`, hex: proves the device belongs to the account. */
-  credential: string;
-  /** The device's ed25519 signing secret, hex. The one real secret. */
-  deviceSecret: string;
+
+/** The contract methods a form key may call. */
+export const FORM_KEY_METHODS = ["submitResponse", "getForm"] as const;
+
+/** The longest an API key lives (core's `MAX_API_KEY_TTL`). */
+export const MAX_KEY_SECS = 365 * 24 * 3600;
+
+export interface IssuedKey {
+  /** The API key's id: what the contract registers. */
+  keyId: string;
+  /** The key itself, shown once. */
+  key: string;
 }
 
-const hex = (bytes: Uint8Array) => Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+/** Create the key: a passkey step-up. */
+export async function createFormKey(
+  client: Pick<CalimeroClient, "createApiKey">,
+  appId: string,
+  label: string,
+  passkey: PasskeyProvider,
+): Promise<IssuedKey> {
+  const created = await client.createApiKey(
+    {
+      label: `Mero Forms key: ${label}`.slice(0, 128),
+      apps: [appId],
+      methods: [...FORM_KEY_METHODS],
+      ttlSecs: MAX_KEY_SECS,
+    },
+    passkey,
+  );
+  return { keyId: created.keyId, key: created.key };
+}
 
-export async function mintFormIdentity(): Promise<FormIdentity> {
-  const root = await generateAccountRoot();
-
-  const deviceSecret = hex(crypto.getRandomValues(new Uint8Array(32)));
-  const signPublicKey = (await signerFromSecret(deviceSecret)).publicKey;
-  const kemPublicKey = hex(nacl.box.keyPair().publicKey);
-
-  const device = await mintDeviceId(root.accountId, crypto.getRandomValues(new Uint8Array(16)));
-  const credential = await signDeviceCert({
-    rootSecret: root.secret,
-    device,
-    signPublicKey,
-    kemPublicKey,
-    deviceEpoch: 1,
+/** Revoke a key; one already gone is fine. */
+export async function revokeKey(client: Pick<CalimeroClient, "revokeApiKey">, keyId: string): Promise<void> {
+  await client.revokeApiKey(keyId).catch((err: { status?: number }) => {
+    if (err?.status !== 404) throw err;
   });
-
-  const checked = await verifyDeviceCredential(credential);
-  if (checked.account !== root.accountId) {
-    throw new Error("the device certificate does not name the account it was minted for");
-  }
-  return { account: root.accountId, credential, deviceSecret };
 }
 
 /**
  * The environment variables the website's backend reads, as one block to
- * paste. Names match `api/contact.ts` in calimero-network/landing.
+ * paste. The backend makes a mero-js `CalimeroClient` for the same cluster,
+ * calls `useApiKey(CALIMERO_API_KEY)`, and calls `submitResponse` on
+ * `CALIMERO_APP_ID`.
  */
-export function envBlock(identity: FormIdentity, contextId: string, formId: string): string {
-  return [
-    `CALIMERO_CONTEXT_ID=${contextId}`,
-    `CALIMERO_FORM_ID=${formId}`,
-    `CALIMERO_FORM_ACCOUNT=${identity.account}`,
-    `CALIMERO_FORM_CREDENTIAL=${identity.credential}`,
-    `CALIMERO_FORM_DEVICE_SECRET=${identity.deviceSecret}`,
-  ].join("\n");
+export function envBlock(issued: IssuedKey, appId: string, formId: string): string {
+  return [`CALIMERO_APP_ID=${appId}`, `CALIMERO_FORM_ID=${formId}`, `CALIMERO_API_KEY=${issued.key}`].join("\n");
 }

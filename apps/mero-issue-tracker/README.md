@@ -1,8 +1,11 @@
 # mero-issue-tracker
 
-A peer-to-peer issue tracker built on [Calimero](https://calimero.network).
-The board and every issue live in a Calimero context and replicate directly
-between team members' nodes: no central server, no shared database.
+A private, real-time issue board for a small engineering team, on
+[Calimero](https://calimero.network) 1.0: a contract on core's **component
+SDK** (`calimero-app-sdk`, a `calimero:app` WebAssembly component on the
+node's wasmtime runtime), developed on **`merod local`**, with a frontend on
+mero-js's **`CalimeroClient`** that talks to a **Calimero Cloud** cluster in
+production and to the local nodes in development.
 
 Issues use a structured format built for handing bugs to a coding agent:
 
@@ -12,295 +15,183 @@ Issues use a structured format built for handing bugs to a coding agent:
 - **Resolution criteria** - what "fixed" must satisfy.
 
 Plus status, priority, assignee, labels, and a per-issue comment thread.
+Two surfaces make it agent-friendly: a **Copy fix prompt** button on each
+issue, and an **MCP server** (`mcp/`) that lets an agent create, list, read,
+comment on, triage and assign issues.
 
-Two extra surfaces make it agent-friendly:
-
-- **Copy fix prompt** - each issue has a button (and an MCP tool) that renders a
-  ready-to-paste prompt filled with the four sections, so you can drop a tracked
-  bug straight into a coding-agent session.
-- **MCP server** (`mcp/`) - a stdio [Model Context Protocol](https://modelcontextprotocol.io)
-  server that lets an agent create, list, read, comment on, and assign issues,
-  and fetch the fix prompt, by talking to a local node.
-
-## Quickstart: use it from Claude Code
-
-Most people just want to file and manage issues from a Claude Code session.
-You need a running Calimero node with the app installed and a workspace joined
-(see the app), then paste this prompt into Claude Code - it gets your token and
-registers the MCP server for you:
-
-```text
-Set up the mero-issue-tracker MCP server for me.
-
-It is on npm as @calimero-network/mero-issue-tracker-mcp and runs over stdio;
-register it with `claude mcp add issue-tracker --scope user -- npx -y
-@calimero-network/mero-issue-tracker-mcp`, passing these as --env values:
-
-- CALIMERO_NODE_URL: my local node's URL (ask me; it is often
-  http://localhost:2428, but confirm the port).
-- TRACKER_NAMESPACE: my workspace name exactly as it appears in the app's
-  workspace switcher (ask me).
-- TRACKER_REPO: my default repo name (ask me; optional, skip if I only have
-  one repo).
-- CALIMERO_AUTH_TOKEN: my node access token. To get it, tell me to open the
-  app tab, open the browser devtools console, and run:
-  JSON.parse(localStorage.getItem('mero-tokens')).access_token
-  then paste the result back to you. This token expires about hourly; if tools
-  later return 401, re-run `claude mcp add` (or `claude mcp remove issue-tracker
-  -s user` then add again) with a fresh token.
-
-After registering, run `claude mcp get issue-tracker` and confirm it shows
-Connected, then list the repos in the tracker to verify it works end to end.
+```
+apps/mero-issue-tracker/
+├── logic/                   a standalone crate (own [workspace] + Cargo.lock)
+│   ├── src/lib.rs           issues, comments, labels (Tables), the repo URL (Cell)
+│   ├── tests/harness.rs     TestApp: every method on core's real engine
+│   ├── tests/scenarios.rs   every scenarios/*.json in the harness
+│   ├── scenarios/           smoke, permissions (+ .org.json): harness AND merod local
+│   ├── res/abi.json         the component's ABI (committed, diffed in CI)
+│   └── GUIDE.md             the agent guide the bundle carries
+├── app/                     Vite + React; @calimero-apps/connect + mero-js CalimeroClient
+├── mcp/                     the stdio MCP server (mero-js CalimeroClient + an API key)
+├── recipes/                 reference modules for other patterns (1.0 client + component SDK)
+└── mobile/                  native iOS/Android apps (ported in #691; see below)
 ```
 
-Then just talk to it: "list the repos in the tracker", "file an issue in repo
-core: ...", "move ISS-3 to In progress", "get the fix prompt for ISS-3". Full
-tool and env reference is under [MCP setup](#mcp-setup) below and in
-`mcp/README.md`.
+See [docs/COMPONENT-APPS.md](../../docs/COMPONENT-APPS.md) for how component
+apps are built, run and tested in this repo.
 
-## Layout
+## The model
 
-| Path   | What |
-| ------ | ---- |
-| `logic/` | Rust WASM backend: the issue schema, statuses, priorities, labels, comments, and `list_issues` filters. Built into a signed `.mpk` bundle. |
-| `app/`   | React (Vite) frontend in the fleet's light glass look (with a light/dark switch in the top bar): list, board, filters, routed issue detail, members, aliases, and Log out. On a phone the nav opens as a drawer from the top bar. |
-| `mcp/`   | The stdio MCP server (see `mcp/README.md`). |
+| | what it is |
+|---|---|
+| **workspace** | an organization (`createOrg`); its members are the team |
+| **repository** | an instance of this app in the organization (`createApp(name, source, { org })`), named after the repo, holding its issues and its GitHub URL |
+| **invitation** | an org invite (`invite(org, 'member', passkey)`, a passkey step-up), shared as a link to this frontend; the invitee signs in and confirms |
+| **member names** | org member metadata `{ name }` (Members -> Set my alias) |
+| **roles** | the org's: owner and admins hold every capability; members get the workspace default (add repos, invite), which admins change per member |
 
-## Prerequisites
+Every member of the workspace may read and triage every issue. Only a
+comment's author may edit or delete it, and only an issue's creator may delete
+it; the contract checks both against the caller and answers `Forbidden`.
 
-- Node 22 (`.nvmrc`) and `pnpm`.
-- Rust with the `wasm32-unknown-unknown` target (`rustup target add wasm32-unknown-unknown`).
-- `cargo mero` on `PATH`, for the bundle build. Grab the prebuilt binary from a [core release](https://github.com/calimero-network/core/releases) (`cargo-mero_<target>.tar.gz`, 0.11.0-rc.19 or later) and put it on `PATH`, or `cargo install --path tools/cargo-mero` from a core checkout.
-- A Calimero node. For local runs a `merod` binary or [`merobox`](https://github.com/calimero-network/merobox) (Docker) works; the e2e harness provisions its own nodes (see below).
-
-## Setup
+## Run it
 
 ```bash
-pnpm install                    # workspace deps (app + mcp)
-./scripts/setup-cargo-mero.sh   # install the pinned cargo-mero (checksum-verified)
-pnpm logic:build                # compile the wasm + ABI and sign the .mpk bundle
-pnpm app:codegen                # regenerate the typed client from the ABI (logic/crates/*/res/abi.json)
+pnpm install                              # once, at the repo root
+rustup target add wasm32-wasip2           # once
+pnpm dev:local mero-issue-tracker         # merod local + build + deploy + http://localhost:5173/
 ```
 
-`scripts/setup-cargo-mero.sh` pins the cargo-mero release and CI installs the
-same one through `.github/actions/setup-cargo-mero`, so local and CI builds are
-produced by the same tool.
-The pin moves together with the SDK tags in `logic/Cargo.toml`: the tool refuses
-a bundle whose SDK emits no `__calimero_abi`.
+`merod` at the pinned core release must be on the `PATH` (or in `MEROD_BIN`);
+`pnpm dev:local` prints how to get it when it is missing. In the browser:
+**create an account** (a passkey), **create a workspace**, **add a repository**,
+file issues. **Invite** someone from the Members page; a second browser profile
+with its own passkey opening that link is a second member.
 
-`pnpm logic:build` runs `cargo mero bundle`, which compiles each service, embeds
-its ABI, records a SHA-256 per artifact, and signs the manifest.
-It writes `logic/dist/network.calimero.mero-issue-tracker.mpk` - named after the
-package, with the version inside the manifest.
-Re-run `pnpm app:codegen` whenever the logic's public methods change.
+## Use it from Claude Code (MCP)
 
-A node verifies the manifest signature and then checks each artifact against the
-digest the manifest records, so a bundle whose bytes changed after signing is
-refused at install.
-
-Bump `appVersion` in `studio.config.json` before publishing: the registry rejects
-a version it already has, and `pnpm logic:build` passes that value straight
-through to the manifest.
-
-### Signing keys
-
-The registry decides who may publish a new version from the bundle's `signerId`,
-not from who is logged in, so every build of this app has to be signed with the
-same key that published it.
-
-`pnpm logic:build` signs with `$STUDIO_DEV_SIGNING_KEY`, falling back to
-`~/.calimero-studio/studio-dev-signing.key.json`. Create that key once and keep
-it - losing it means the registry will no longer accept your versions of this
-package:
-
-```bash
-cargo mero key generate --output ~/.calimero-studio/studio-dev-signing.key.json
-```
-
-Set `$MERO_SIGN_KEY_FILE` to a production key file to sign with that instead.
-The release workflow does exactly this, from the `MERO_SIGN_KEY` organization
-secret.
-
-Do not build a bundle you intend to publish with `cargo mero bundle --dev`. That
-flag signs with a well-known key shared by every developer, so the registry sees
-an identity that does not own the package and refuses the upload.
-
-## Releasing
-
-`.github/workflows/deploy-bundle.yml` publishes to the
-[Calimero App Registry](https://apps.calimero.network) on every push to `main`.
-Bumping `appVersion` in `studio.config.json` IS the release: the workflow asks
-the registry whether that exact version exists and stops when it does, so an
-ordinary merge costs one short check job and nothing else.
-
-Because the registry answers the question, re-runs, reverts and squashed merges
-all behave - unlike a diff against the previous commit.
-A manual `workflow_dispatch` run takes a version input, but it is only checked
-against `studio.config.json` rather than overriding it.
-Every release records the core commit its SDK deps resolved to in the run
-summary, and an optional `core_rev` dispatch input fails the release when that
-commit is not the one you expected.
-
-Publishing needs two organization secrets: `MERO_SIGN_KEY` (the full JSON of the
-production signing key) and `CALIMERO_REGISTRY_API_KEY` (from the registry
-Organizations page, under CLI Access).
-The registry pins the signer per package, so the workflow refuses to publish
-when the key's `signerId` differs from the one already on record.
-
-## Run the app
-
-1. Start a Calimero node and install the built bundle on it (via the node's
-   admin API / Calimero Studio, or a `merobox` workflow like
-   `test/smoke.workflow.yml`).
-2. Start the frontend:
+1. In the app, open **Members -> Agent key** and create a key (your passkey
+   approves it). It shows the environment the server needs, once.
+2. Register the server with those values:
 
    ```bash
-   pnpm app:dev        # vite dev server on http://localhost:5173
+   claude mcp add issue-tracker --scope user \
+     --env CALIMERO_TARGET=cloud --env CALIMERO_CLUSTER=<cluster> \
+     --env CALIMERO_MIN_RELEASE=<release> --env CALIMERO_API_KEY=<key> \
+     --env TRACKER_WORKSPACE=<workspace id> --env TRACKER_REPO=<repo name> \
+     -- npx -y @calimero-network/mero-issue-tracker-mcp
    ```
 
-3. Open the app, authenticate against your node, create or join a workspace
-   (namespace), then add a repo. Repo names come from "Add repo" - that's
-   the context alias the MCP server resolves by name.
+   (Against `pnpm dev:local`, the key's environment says `CALIMERO_TARGET=local`
+   and names the dev bundle.)
+3. Talk to it: "list the repos in the tracker", "file an issue in repo core:
+   ...", "move ISS-3 to In progress", "get the fix prompt for ISS-3".
 
-## MCP setup
+`mcp/README.md` has every tool and variable. The key acts for your account:
+issues and comments the agent files are yours, and it may delete only what
+you may.
 
-The MCP server (`mcp/`) lets a coding agent (Claude Code) create, list, read,
-comment on, and assign issues, and fetch the fix prompt, by talking directly
-to your local node. This is the quickstart; `mcp/README.md` has the full
-tool and env-var reference.
+## Test it
 
-### Prerequisites
+| | what it covers | needs a node |
+|---|---|---|
+| `cargo test --manifest-path apps/mero-issue-tracker/logic/Cargo.toml` | v1's `TestHost` tests method for method; v1's storage write rules (`Authored`) as the same calls made by other accounts; v1's convergence test under one log; access, API keys, wire checks, list sizes; and every `scenarios/*.json` | no |
+| `pnpm -F mero-issue-tracker test` | the methods the UI calls are exactly the committed ABI's, with its parameter names; the wire-to-view mapping; sign-in, the remembered workspace and its repos, the invitation prompt (mocked client); roles, names, search, fix prompt | no |
+| `cd mcp && npm test` | the MCP tools' requests (method names, call vs view, arguments), workspace/repo resolution, config | no |
+| `pnpm merod-local e2e mero-issue-tracker` | every `scenarios/*.json` on `merod local`: real accounts with passkeys, an org per scenario, each account on a different node, event streams | yes |
 
-- A local Calimero node running (`merod`), reachable at `CALIMERO_NODE_URL`.
-- The app installed on that node and a workspace (namespace) created or
-  joined through the app - the MCP server resolves repos inside it, it does
-  not create them.
-- At least one repo added via "Add repo" in the app.
+The scenarios are ported from the v1 smoke workflow (`logic/workflows/smoke.yml`, removed):
+`smoke.json` walks it as two accounts (node 1 is `owner`, node 2 is `bob`):
+repo URL, an issue, status, priority, assignee, labels, a comment, the
+non-author edit refused, the author's edit and delete, and every event bob
+hears. `permissions.json` adds what v1 kept in storage: only the creator
+deletes an issue (not the app owner, not an admin), only the author edits or
+deletes a comment, triage is shared (a guest moves an issue), outsiders and
+anonymous callers never reach the app.
 
-### Fastest setup: let Claude Code do it
+## What changed in the port, and why
 
-Paste the prompt from [Quickstart](#quickstart-use-it-from-claude-code) into a
-Claude Code session; it collects your token and registers the server for you.
-Prefer to do it by hand? See below.
+Same methods, same arguments, same answers and events, renamed to the
+component ABI's conventions. What a client sees differently:
 
-### Register the server manually
+| | v1 (`calimero-sdk`, wasmer) | now (component SDK) | why |
+|---|---|---|---|
+| method names | `create_issue`, `set_status`, `list_issues`, `get_issue`, `get_status_counts`, `set_repo_url`, `get_repo_info`, `add_label`, `remove_label`, `add_comment`, `edit_comment`, `delete_comment`, `delete_issue`, `set_summary`, `set_impact`, `set_repro`, `set_resolution_criteria`, `set_priority`, `set_assignee` | the same in camelCase: `createIssue`, `setStatus`, `listIssues`, … | the ABI names methods in camelCase |
+| argument names | `issue_id`, `resolution_criteria`, `comment_id`, `new_body` | `issueId`, `resolutionCriteria`, `commentId`, `newBody` | and arguments too |
+| result fields | `resolution_criteria`, `created_by`, `created_at`, `issue_id`, `edited_at`, `repo_url` | `resolutionCriteria`, `createdBy`, `createdAt`, `issueId`, `editedAt`, `repoUrl` | results are camelCase |
+| `createdAt`, `editedAt`, status `count` | numbers | decimal strings (`"1700000000000"`) | `u64` travels as a decimal string |
+| event fields | `IssueCreated { id, created_by }`, `CommentAdded { id, issue_id }` | `IssueCreated { id, createdBy }`, `CommentAdded { id, issueId }` (the other events unchanged) | event data is camelCase |
+| events | emitted with the write, to the context | after the write, to everyone the app reaches (`Audience::All`) | an event describes a write that happened |
+| errors | `{"kind":"NotFound","data":"issue-…"}`, `Invalid`, `Forbidden` with a message string | `422 APP_ERROR` `{ code: "NotFound", fields: { id } }`, `{ code: "Invalid", fields: { message } }`, `{ code: "Forbidden", fields: { message } }`; the messages are v1's | `#[app::error]`'s wire shape |
+| reads | any method | `listIssues`, `getIssue`, `getStatusCounts`, `getRepoInfo` are views; a write called as a view is `NotAView` | a view is answered without touching the log |
+| `listIssues` | every match | at most the first 1,000 matches, oldest first | multi-row reads are pages |
+| `getIssue` comments | every comment | at most the first 1,000, oldest first | the same |
+| `deleteIssue` | removed the issue, its labels and the deleter's own comments; other people's comments stayed in storage, unreachable | removes the issue, its labels and its whole thread | nothing unreachable is left behind; what a client saw is the same |
+| who wrote it | an `Authored` owner stamp each node checked on a peer's write | `createdBy` / `author` fields, set from `env::caller()` and checked in the method | one leader applies every write: the method is the check |
+| a triage row removed by a patched node | read as a fresh `Open` issue | cannot happen: no write skips the method | the same |
+| concurrent triage | `LwwRegister`s merged by timestamp | the log orders the calls; the later one holds | no CRDT merge under one log |
+| labels | could not contain `\u{1}` (the index key separator) | any 1-64 characters | labels are keyed `(issueId, label)` |
+| who may call | any member of the workspace | any owner, admin, member or guest of the workspace's org; anonymous `401`, others `404`; an API key acts as its account | the org is the access boundary |
+| an omitted `Option` argument | `null` | `null` (still optional); unknown keys and wrong types are `BadArgs` | the generated dispatcher |
+| the bundle | `services/issue-tracker.wasm`, a context created with `serviceName` | one `app.wasm`; instances created from the package | a component bundle is one app |
 
-The easiest way, no clone required - add to `.mcp.json` at the repo root:
+The frontend changed with it, and keeps its screens: the landing page, the
+list, the board, the routed issue detail, filters, search, My Issues, the
+members table with roles and permissions, aliases, the fix prompt, the
+light/dark theme. Behind them:
 
-```json
-{
-  "mcpServers": {
-    "issue-tracker": {
-      "command": "npx",
-      "args": ["-y", "@calimero-network/mero-issue-tracker-mcp"],
-      "env": {
-        "CALIMERO_NODE_URL": "http://localhost:2428",
-        "TRACKER_NAMESPACE": "my-team",
-        "TRACKER_REPO": "core"
-      }
-    }
-  }
-}
+- **gone**: mero-react's `MeroProvider` and node login popup, the generated
+  `IssueTrackerClient` and its codegen, the desktop SSO hand-off, the v1
+  invitation link codec (deflate + base58 payload, `links.calimero.network`),
+  namespace/context/alias plumbing, the "syncing"/"warming up" states of a
+  joined context, TEE node badges (every 1.0 node is attested before the
+  client sends it anything), `studio.config.json`, the Playwright suites that
+  drove v1 nodes (Docker, `merod` 0.x), and `vite-plugin-node-polyfills`;
+- **new**: `src/session.ts` + `src/sessionContext.tsx` (target -> client ->
+  passkey sign-in/up, the stored session), `src/workspaces.ts` (orgs, app
+  instances, invites, member names), `src/tracker.ts` (the contract by method
+  name, mapped onto the shapes the screens render; a test pins its method list
+  to `logic/res/abi.json`), a passkey sign-in dialog as the landing page's
+  connect action, the invitation prompt after sign-in, and **Members -> Agent
+  key** for the MCP server;
+- **URLs**: the app still lives at `/issue-tracker` (`/issue-tracker/board`,
+  `/issue-tracker/issues/:id`, `/issue-tracker/members`); an invitation is
+  `/?invite=<token>`.
+
+`mobile/`, the native iOS and Android apps, moves to Calimero 1.0 in its own PR,
+#691, which is built against this contract's ABI. Until #691 merges,
+`mobile/` holds the v1 apps.
+
+## Production
+
+`vite build` connects to a Calimero Cloud cluster by name, and refuses to start
+without two variables set where the bundle's frontend is built:
+
+```
+VITE_CALIMERO_CLUSTER=<cluster name in the cloud's node directory>
+VITE_CALIMERO_MIN_RELEASE=<lowest mero-tee release a node may run>
 ```
 
-The package is published to npm, so `npx` fetches and runs it - no clone, no
-build. Or register it with the CLI instead of hand-editing `.mcp.json`:
+An operator's own attested node is reached by URL instead:
+`VITE_CALIMERO_TARGET=node`, `VITE_CALIMERO_NODES=<its https URLs>` and the same
+release floor. The target is fixed by the build: nobody picks a node or a
+cluster at sign-in. The Agent key's environment follows the build's target
+(`CALIMERO_TARGET=local`, `cloud` or `node`).
+
+The production frontend is the one **packed into the `.mpk`** (`frontend-dir`),
+which the cluster serves from the package's own origin: a Cloud node trusts
+passkey ceremonies only from its own origins and from frontends it serves from
+a bundle. On that page the client takes the cluster's nodes from
+`/.well-known/calimero.json`, and instances are created from the package
+(`com.calimero.mero-issue-tracker`). The `frontend` link in `logic/Cargo.toml`
+and the Vercel project (`app/vercel.json`) stay as the listing's link.
 
 ```bash
-claude mcp add issue-tracker --scope project \
-  --env CALIMERO_NODE_URL=http://localhost:2428 \
-  --env TRACKER_NAMESPACE=my-team \
-  --env TRACKER_REPO=core \
-  --env CALIMERO_AUTH_TOKEN=<token from the app, see env table below> \
-  -- npx -y @calimero-network/mero-issue-tracker-mcp
+pnpm -F mero-issue-tracker build
+cargo run --release --manifest-path tools/component-bundle/Cargo.toml -- \
+  bundle apps/mero-issue-tracker/logic --key <production key> --app-version <x.y.z>
 ```
 
-Contributors only (running an unpublished local build): clone the repo,
-`pnpm install`, `pnpm --filter @calimero-network/mero-issue-tracker-mcp build`,
-and set the command to `node /abs/path/to/issue-tracker/mcp/dist/index.js`
-(a bare `npx`/global bin may not resolve if your MCP client launches with a
-restricted PATH, e.g. some GUI launchers).
+The package id stays `com.calimero.mero-issue-tracker`, but a 1.0 cluster
+starts from no v1 data: v1 workspaces, repos and issues are not migrated.
 
-### Env vars
-
-| Var | Meaning |
-| --- | --- |
-| `CALIMERO_NODE_URL` | Base URL of your local node (default `http://localhost:2428`). |
-| `CALIMERO_AUTH_TOKEN` | Bearer token for a node with auth enabled. Get it from the app: open devtools console on the app tab and run `JSON.parse(localStorage.getItem('mero-tokens')).access_token`. It expires roughly hourly - re-run the one-liner and update `.mcp.json` when calls start 401ing. |
-| `TRACKER_NAMESPACE` | The workspace name as created/joined in the app (or its namespace id). |
-| `TRACKER_REPO` | Default repo name, used when a tool call omits `repo`. Optional - omit it if the workspace has (or will only ever have) one repo. |
-| `TRACKER_CONTEXT` | Advanced: pins a single context id/alias directly, bypassing namespace/repo resolution. Rarely needed. |
-| `TRACKER_SERVICE` | Service name passed to `createContext` by `add_repo` (default `issue-tracker`). |
-
-### Tools
-
-- `create_issue` - file a new issue (`title`, `summary`, `impact`, `repro`,
-  `resolution_criteria`, optional `priority`/`labels`/`repo`).
-- `list_issues` - list issues, optionally filtered by `status`/`assignee`/`label`/`repo`.
-- `get_issue` - fetch one issue by `id`, optional `repo`.
-- `add_comment` - comment on `issue_id`, optional `repo`.
-- `assign_issue` - set the assignee on `issue_id`, optional `repo`.
-- `set_status` - move `issue_id` to a status (Open, In progress, Blocked, Done), optional `repo`.
-- `set_priority` - set the priority (low, medium, high, urgent) on `issue_id`, optional `repo`.
-- `delete_issue` - delete `issue_id`, optional `repo`. Author-gated (only the issue's creator may delete it) and cascade-deletes its comments and labels.
-- `get_fix_prompt` - render a ready-to-paste fix prompt for `id`, optional `repo`.
-- `list_repos` - list every repo in the namespace with its name and `repo_url`.
-- `add_repo` - onboard a new repo (`name`, `github_url`): creates a context
-  in `TRACKER_NAMESPACE`, sets its `repo_url`, and aliases it by name.
-  Requires `TRACKER_NAMESPACE`; rejects a name that already exists.
-
-Every tool above except `add_repo` takes an optional `repo` param (the repo
-name). Pass it explicitly when managing more than one repo; without it the
-server falls back to `TRACKER_REPO`, then the namespace's only repo, else it
-errors.
-
-### Example prompts
-
-- "List the repos in the issue tracker."
-- "File an issue in repo core: login fails with a 500 when the session token is expired."
-- "Move ISS-42 to In progress and set its priority to high."
-- "Get the fix prompt for ISS-42."
-- "Show me all open, high-priority issues assigned to me in repo core."
-
-### Troubleshooting
-
-- **401 Unauthorized** - `CALIMERO_AUTH_TOKEN` is stale; re-copy it from
-  `mero-tokens` in the app's localStorage.
-- **"No repos found"** - either no repo has been added in the app yet, or
-  `TRACKER_NAMESPACE` doesn't match a real workspace name; the error lists
-  what repos/namespaces actually exist, use one of those.
-- **Title rejected as too long at 64 characters** - the logic caps issue
-  titles at 64 characters; the error text is "invalid input: title must be at
-  most 64 characters"; shorten the title.
-- A live round-trip check against a real node is in `mcp/scripts/smoke.mjs`.
-
-## Tests
-
-```bash
-pnpm --filter ./app test                                          # app unit tests (vitest)
-pnpm --filter @calimero-network/mero-issue-tracker-mcp test       # MCP server tests (node:test)
-```
-
-End-to-end (Playwright) spins up merod nodes, installs the bundle, and drives
-the real UI across peers. It needs a `merod` binary (set `MEROD_BINARY` or put
-it on `PATH`) and the bundle built first:
-
-```bash
-pnpm logic:build
-MEROD_BINARY=/path/to/merod pnpm --filter ./app test:e2e
-```
-
-`NODE_COUNT` (1-3, default 3) controls how many peers the harness starts.
-
-## Owned keys are per owner (core 0.11.0-rc.57)
-
-Since core 0.11.0-rc.57 every owned collection (`Authored…`, `WriteOnce`, `Moderated`,
-`ModeratedOnce`) is one namespace per account: two accounts writing one key hold two
-independent entries, and a key-only `get`, `contains`, `owner_of`, `owned_by_me` or `remove`
-acts on the CALLER's own entry only. This app was migrated:
-
-An issue is read through the header of the **lowest account** holding its id (the same
-pick on every node), and `created_by` names whoever that is — the stamp is never
-reattributed. A comment's author is matched among its id's holders. Deleting an issue or
-editing/deleting a comment acts on the caller's own entry and answers `Forbidden` when
-only someone else holds it. Test: `nobody_else_can_remove_or_reattribute_an_issue_in_storage`.
+⚠️ Known gap: mero-js checks a Cloud node's release against
+`cloud.calimero.network` mirrors, which the served page's CSP does not list
+(docs/COMPONENT-APPS.md, "What the component SDK does not have yet").

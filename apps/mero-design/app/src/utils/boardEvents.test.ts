@@ -47,3 +47,17 @@ describe("collectBoardChanges", () => {
     expect(c.fetch).toEqual([]);
   });
 });
+
+describe("collectBoardChanges on the component's event stream", () => {
+  const live = (kind: string, data: unknown) => ({ events: [{ kind, data }] });
+
+  it("reads the ids out of the contract's named fields", () => {
+    expect(collectBoardChanges(live("ElementsAdded", { ids: ["a", "b"] })).fetch).toEqual(["a", "b"]);
+    expect(collectBoardChanges(live("ElementUpdated", { id: "c" })).fetch).toEqual(["c"]);
+    expect(collectBoardChanges(live("ElementsDeleted", { ids: ["d"] })).remove).toEqual(["d"]);
+    expect(collectBoardChanges(live("CommentDeleted", { id: "k" })).removedComments).toEqual(["k"]);
+    expect(collectBoardChanges(live("LayerReordered", {})).layers).toBe(true);
+    const role = collectBoardChanges(live("RoleUpdated", { member: "bob" }));
+    expect([role.role, role.members]).toEqual([true, true]);
+  });
+});

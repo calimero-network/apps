@@ -1,136 +1,112 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  InvitationDialog,
-  InvitationGate,
-  useInviteRedemption,
-  useMero,
-  type ParsedInvitation,
-  type RedeemOutcome,
-} from "@calimero-network/mero-react";
-import { invitedNamespaceOf, redeemInvite } from "../lib/groups";
-import { decodeInvite, type AudienceInvitePayload } from "../lib/inviteCodec";
-import { setActiveAudience, setAudienceName } from "../lib/session";
+import { describeError } from "@calimero-apps/connect";
+
+import { useDialogOpen } from "../hooks/useDialogOpen";
+import { setActiveAudience } from "../lib/active";
+import { dropInvite, joinedOrg, pendingInvite, type PendingInvite } from "../lib/companies";
+import { useMaybeSignedIn } from "../lib/sessionContext";
+import styles from "./InviteModal.module.css";
+import { UserPlusIcon, XIcon } from "./icons";
 
 /**
- * "Join X?" for an invitation that arrived as a link: mero-react's
- * `InvitationDialog`, which asks, joins, and stays up on "Syncing…" until the
- * joined company's data has reached this node.
+ * "Join this company?" for an invitation that arrived as a link
+ * (`?invite=<token>`, captured in `main.tsx`), once there is a session.
  *
- * ── Why this is mounted at the APP level, not on a page ──────────────────────
- *
- * Because a link can land anywhere. The first version put this on the spaces
- * page, which is wrong in a way that had already bitten once: someone with a
- * stored context is redirected to `/live` on boot, so the spaces page never
- * mounts, so the invitation was never shown. That is the same shape as the bug
- * where audience links pointed at a route with no redemption code — a handler that
- * only exists on one route is a handler that misses.
- *
- * ── Why it asks rather than joins ────────────────────────────────────────────
- *
- * Joining is a state change: it puts you in someone's namespace and, for an audience
- * invitation, walks you into a live call. Doing that on page load makes a
- * forwarded link, or a background tab that refreshes, join silently. Decoding is
- * pure and local, so the scope can be shown first and the join needs a click.
- *
- * The join is this app's own (`redeemInvite`): an audience invitation also
- * enters the audience's context. The syncing stage ends when the page it lands
- * on has read the company: AudiencesPage's audience list, or UpdatesPage's
- * feed for an audience invitation, each through `useJoinSync`.
+ * Mounted at the app level, above the router, because a link can land on any
+ * route. It asks rather than joins: joining is a state change, and a forwarded
+ * link or a background tab that refreshes must not join silently. Joining
+ * redeems the org invite; an audience link (`&audience=<id>`) then opens that
+ * audience, a company link the company's audience list.
  */
-interface UpdatesInvitation extends ParsedInvitation {
-  payload: AudienceInvitePayload;
-}
-
 export default function InvitationPrompt() {
-  // The session-aware admin: on an account the raw client's join route is the
-  // relay's node route and answers 403. `redeemInvite` takes only the admin.
-  const { admin, nodeUrl } = useMero();
+  const signedIn = useMaybeSignedIn();
   const navigate = useNavigate();
-  const [status, setStatus] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLDialogElement | null>(null);
+  const [invite, setInvite] = useState<PendingInvite | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const parse = useCallback((token: string): UpdatesInvitation | null => {
-    const payload = decodeInvite(token);
-    if (!payload) return null;
-    return {
-      namespaceId: invitedNamespaceOf(payload),
-      invitation: payload.invitation,
-      teamName: payload.audienceName ?? payload.groupAlias,
-      payload,
-    };
+  useEffect(() => {
+    setInvite(signedIn ? pendingInvite() : null);
+  }, [signedIn]);
+  useDialogOpen(dialogRef, !!invite);
+
+  const dismiss = useCallback(() => {
+    dropInvite();
+    setInvite(null);
+    setError(null);
   }, []);
 
-  const redeem = useCallback(
-    async ({
-      payload,
-      namespaceId,
-    }: UpdatesInvitation): Promise<RedeemOutcome> => {
-      if (!admin) {
-        return {
-          status: "failed",
-          namespaceId: null,
-          message: "No node connection yet. Reconnect and try again.",
-          reason: "node-unreachable",
-          retryable: true,
-        };
+  const join = useCallback(async () => {
+    if (!signedIn || !invite) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const redeemed = await signedIn.client.redeemInvite(invite.token);
+      signedIn.after();
+      const org = joinedOrg(redeemed);
+      dropInvite();
+      setInvite(null);
+      if (org && invite.audience) {
+        setActiveAudience(invite.audience, org);
+        navigate("/a");
+      } else {
+        navigate(org ? `/companies/${org}` : "/companies");
       }
-      try {
-        const { outcome, landed } = await redeemInvite(
-          admin,
-          payload,
-          setStatus,
-        );
-        if (!landed) return outcome;
-        let joinedId = namespaceId;
-        if (landed.kind === "audience") {
-          if (landed.audienceName)
-            setAudienceName(landed.contextId, landed.audienceName);
-          // The audience's company becomes the active one, which is what
-          // UpdatesPage's `useJoinSync` watches.
-          joinedId = landed.namespaceId ?? namespaceId;
-          setActiveAudience(
-            landed.contextId,
-            landed.identity,
-            joinedId,
-            nodeUrl,
-          );
-          navigate("/a");
-        } else if (landed.kind === "namespace") {
-          joinedId = landed.namespaceId;
-          navigate(`/companies/${landed.namespaceId}`);
-        } else {
-          navigate("/companies");
-        }
-        return {
-          status: "joined",
-          namespaceId: joinedId,
-          teamName: payload.audienceName ?? payload.groupAlias,
-        };
-      } finally {
-        setStatus(null);
-      }
-    },
-    [admin, navigate, nodeUrl],
-  );
+    } catch (e) {
+      setError(describeError(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [signedIn, invite, navigate]);
 
-  const redemption = useInviteRedemption({ parse, redeem, enabled: !!admin });
-  const payload = redemption.parsed?.payload;
-
+  if (!invite) return null;
   return (
-    <>
-      {/* Logged out with a link opened: "you're invited" and the login, not the landing page. */}
-      <InvitationGate parse={parse} noun="company" appName="Mero Updates" />
-      <InvitationDialog
-        redemption={redemption}
-        noun="company"
-        appName="Mero Updates"
-        status={status}
-        detail={
-          payload?.audienceName
-            ? "Joining takes you straight into that audience."
-            : "Joining gives you access to the space and every audience in it."
-        }
-      />
-    </>
+    <dialog
+      ref={dialogRef}
+      className={styles.dialog}
+      onClose={() => !busy && dismiss()}
+      aria-labelledby="invitation-title"
+      data-testid="invitation-dialog"
+    >
+      <div className={styles.body}>
+        <header className={styles.head}>
+          <span className={styles.tile} aria-hidden>
+            <UserPlusIcon size={18} />
+          </span>
+          <div className={styles.headText}>
+            <h2 className={styles.title} id="invitation-title">
+              Join this company?
+            </h2>
+            <p className={styles.scope}>
+              {invite.audience
+                ? "Joining takes you straight into the audience you were invited to."
+                : "Joining gives you access to the company and every audience in it."}
+            </p>
+          </div>
+          <button type="button" className={styles.close} onClick={dismiss} aria-label="Close" disabled={busy}>
+            <XIcon size={16} />
+          </button>
+        </header>
+        <button
+          type="button"
+          className={styles.primary}
+          onClick={() => void join()}
+          disabled={busy}
+          data-testid="invitation-join"
+        >
+          {busy ? "Joining…" : "Join"}
+        </button>
+        <button type="button" className="secondary" onClick={dismiss} disabled={busy}>
+          Not now
+        </button>
+        {error && (
+          <p className="error" role="alert">
+            {error}
+          </p>
+        )}
+      </div>
+    </dialog>
   );
 }

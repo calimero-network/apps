@@ -1,39 +1,27 @@
 /**
- * The report's shape, shared by the page (which writes it) and the Playwright
- * runner (which reads it off `window.__conformance`). Imports nothing, so the
- * runner's project can include it without the browser code around it.
+ * The report's shape, shared by the page (which shows it) and the cluster run
+ * (which writes it to `test-results/conformance-report.json`). Imports nothing.
  */
 
-/** Which connection a session holds. */
-export type Mode = 'node' | 'account';
+/** Who made the call: account A (the run's subject), account B (a second member), or another caller. */
+export type Who = "A" | "B" | "outsider" | "anonymous" | "apiKey";
 
 /**
  * What a row may come out as. `ok` is a call that resolved and whose result
- * passed the row's check; the two named refusals are mero-react's
- * (`NotForAccountError`: the call has no account form; `NoRelayError`: the
- * account holds no relay yet). `NotDirectMember` is core's own refusal to let a
- * member who only inherits leave a subgroup (`LeaveGroupNotDirectMember`, 409),
- * which a node gets exactly as an account does. `AdminOnly` is a route core
- * admits only for a node's admin, refused to an app's token on a node (a row
- * opts in to it; a 403 is never read as it otherwise). Anything else — an HTTP 403, a refused intent,
- * a wrong value read back — is `error` or `mismatch`, and is never expected.
+ * passed the row's check. A named refusal is the node's API code
+ * (`NOT_FOUND`, `CONFIRM_REQUIRED`, `FORBIDDEN`, `UNAUTHENTICATED`,
+ * `NO_REGISTRY`, …) or, for an app's own refusal, `APP_ERROR:<appCode>`; a
+ * trap is `TRAP`. Anything else — an unexpected status, a wrong value read
+ * back, a timeout — is `error` or `mismatch`, and is never expected.
  */
-export type Outcome = 'ok' | 'NotForAccountError' | 'NoRelayError' | 'NotDirectMember' | 'AdminOnly' | 'error' | 'mismatch' | 'blocked';
-
-/** What a row expects, per mode of the session running it. */
-export type Expected = 'ok' | 'NotForAccountError' | 'NoRelayError' | 'NotDirectMember' | 'AdminOnly';
+export type Outcome = string;
 
 export interface Row {
-  /** e.g. `Namespaces / createNamespace`. */
+  /** e.g. `Orgs / createOrg`. */
   readonly name: string;
   readonly area: string;
-  /** The run this row belongs to: the PRIMARY session's mode. */
-  readonly run: Mode;
-  /** The mode of the session that made the call (a second session is always an account). */
-  readonly mode: Mode;
-  /** `primary` or `second`. */
-  readonly session: 'primary' | 'second';
-  readonly expected: Expected;
+  readonly who: Who;
+  readonly expected: Outcome;
   readonly actual: Outcome;
   readonly pass: boolean;
   /** The error text, for anything but `ok`. */
@@ -43,17 +31,12 @@ export interface Row {
   readonly ms: number;
 }
 
-export interface ConformanceApi {
-  /** True once a session is connected and its admin is usable. */
-  readonly ready: boolean;
-  readonly mode: Mode | null;
+export interface Report {
+  readonly summary: { rows: number; passed: number; failed: number };
   readonly rows: readonly Row[];
-  /** Run one phase of the matrix; resolves with what later phases need. */
-  run(phase: string, input?: unknown): Promise<unknown>;
 }
 
-declare global {
-  interface Window {
-    __conformance?: ConformanceApi;
-  }
+export function report(rows: readonly Row[]): Report {
+  const passed = rows.filter((r) => r.pass).length;
+  return { summary: { rows: rows.length, passed, failed: rows.length - passed }, rows };
 }

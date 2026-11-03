@@ -9,21 +9,15 @@
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "test": "vitest run",
-    "codegen": "calimero-abi-codegen -i ../logic/res/abi.json -o src/generated --client-name MeroModelsClient --import-path @calimero-network/mero-js",
-    "icons": "node scripts/gen-icons.mjs",
-    "test:e2e": "playwright test",
-    "test:journey": "playwright test -c playwright.journey.config.ts"
+    "lint": "eslint .",
+    "icons": "node scripts/gen-icons.mjs"
   },
   "dependencies": {
+    "@calimero-apps/connect": "workspace:*",
     "@calimero-apps/glass": "workspace:*",
-    "@calimero-apps/names": "workspace:*",
     "@calimero-apps/node-served": "workspace:*",
     "@calimero-network/mero-icons": "catalog:",
-    "@calimero-network/mero-js": "catalog:",
-    "@calimero-network/mero-platform": "catalog:",
-    "@calimero-network/mero-platform-react": "catalog:",
-    "@calimero-network/mero-react": "catalog:",
-    "bs58": "catalog:",
+    "@calimero-network/mero-js": "catalog:component",
     "fflate": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
@@ -32,9 +26,7 @@
     "zustand": "catalog:"
   },
   "devDependencies": {
-    "@calimero-apps/e2e-node": "workspace:*",
-    "@calimero-network/abi-codegen": "catalog:",
-    "@playwright/test": "catalog:",
+    "@eslint/js": "catalog:",
     "@testing-library/jest-dom": "catalog:",
     "@testing-library/react": "catalog:",
     "@types/node": "catalog:",
@@ -42,9 +34,13 @@
     "@types/react-dom": "catalog:",
     "@types/three": "^0.185.4",
     "@vitejs/plugin-react": "catalog:",
+    "eslint": "catalog:",
+    "eslint-plugin-react-hooks": "catalog:",
+    "eslint-plugin-react-refresh": "catalog:",
+    "globals": "catalog:",
     "jsdom": "catalog:",
-    "tweetnacl": "^1.0.3",
     "typescript": "catalog:",
+    "typescript-eslint": "catalog:",
     "vite": "catalog:",
     "vitest": "catalog:"
   }

@@ -1,28 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
-import { useApplicationId } from "../hooks/useApplicationId";
+import { describeError } from "@calimero-apps/connect";
 import { useToast } from "../contexts/ToastContext";
 import {
-  createSpaceNamespace,
-  deleteSpace,
-  leaveSpace,
-  listSpaceNamespaces,
-  mintNamespaceInvite,
-  selfIsGroupAdmin,
+  createCompany,
+  inviteLink,
+  listCompanies,
+  mintInvite,
   type NamespaceRow,
-} from "../lib/groups";
-import { useSelfAccount } from "../lib/updates";
+} from "../lib/companies";
+import { describeTarget } from "../lib/session";
+import { useSignedIn } from "../lib/sessionContext";
 import InviteModal from "../components/InviteModal";
 import { useDialogOpen } from "../hooks/useDialogOpen";
-import { hostingProblem } from "../lib/hosting";
 import AppHeader from "../components/AppHeader";
 import LogoutButton from "../components/LogoutButton";
 import {
   AlertIcon,
   ChevronRightIcon,
   CopyIcon,
-  InfoIcon,
   LayersIcon,
   LogOutIcon,
   MoreIcon,
@@ -33,153 +29,70 @@ import {
 import styles from "./CompaniesPage.module.css";
 
 /**
- * Spaces = NAMESPACES. One level up from where this page used to sit.
- *
- * It used to list contexts and name each one a "space", which collapsed two
- * distinct things into one and left no audience for audiences: creating a space made a
- * namespace plus a context and nothing could ever add a second audience to it. The
- * model that actually matches Calimero, and what the two-node suite proves:
- *
- *   Namespace ("space")  ← you invite people HERE
- *     └── Subgroup ("audience") + Context   ← one board   → /companies/:id
- *
- * So: this page creates namespaces and invites to namespaces. Audiences live on
- * AudiencesPage. Joining is not done here: an invitation reaches the app only as
- * an opened link, and the app-level `InvitationPrompt` takes it from there.
+ * Companies = ORGANIZATIONS. Each holds audiences (instances of this app),
+ * listed on AudiencesPage. People are invited to a company, once, and can then
+ * read every audience in it. Joining is not done here: an invitation reaches the
+ * app as an opened link, and the app-level `InvitationPrompt` redeems it.
  */
 export default function CompaniesPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  // `admin`, never `mero.admin`: the session-aware admin. On a node login it is
-  // the node's own client; on an account (delegated) session it is the account
-  // admin, which carries creates and joins through the relay. The raw client's
-  // admin is the relay's NODE route there, and an account's token gets 403 from
-  // every write on it — which is how this page used to sit on "Creating…".
-  const { admin, isDelegated, nodeUrl } = useMero();
+  const { client, accountId, target, source, passkey, after } = useSignedIn();
   const { showToast } = useToast();
-  // Resolved from the NODE by package (or the registry, for an account) — see
-  // lib/appId and hooks/useApplicationId.
-  const { appId, resolving: resolvingAppId, notInstalled } = useApplicationId();
-  // Which spaces nobody can be invited to, and why — see lib/hosting. Learned
-  // from the create call (`haError`) or from a refused mint, and re-read after
-  // either so the Invite buttons update without a reload.
-  const [hostingVersion, setHostingVersion] = useState(0);
-  const hostingNote = useCallback(
-    (namespaceId: string) => hostingProblem(namespaceId),
-    // The version is the dependency on purpose: the store is outside React.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [hostingVersion],
-  );
-  const nodeLabel = (() => {
-    if (!nodeUrl) return "";
-    try {
-      const u = new URL(nodeUrl);
-      return u.port ? `${u.hostname}:${u.port}` : u.hostname;
-    } catch {
-      return nodeUrl;
-    }
-  })();
+  const where = describeTarget(target);
 
   const [namespaces, setNamespaces] = useState<NamespaceRow[]>([]);
   const [listing, setListing] = useState(true);
   const [name, setName] = useState("");
 
-  // One key names the action in flight ("create", `invite:<id>`), instead of a
-  // single `busy` boolean. With a boolean, clicking Invite disabled Create and
-  // every row, and all of them read "Working…" — indistinguishable from
-  // the page having locked up.
+  // One key names the action in flight ("create", `invite:<id>`), so clicking
+  // Invite on one row does not read as the whole page locking up.
   const [pending, setPending] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [invite, setInvite] = useState<{ id: string; code: string } | null>(
-    null,
-  );
-  // The space pending deletion. A confirm step rather than `confirm()`, because
-  // this takes every audience in the space with it and the sentence has to say so.
-  // Which card's menu is open. mero-design keys this by id and closes on an
-  // outside click via a ref on the OPEN card only — same shape here.
+  const [invite, setInvite] = useState<{ id: string; code: string } | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [pendingDelete, setPendingDelete] = useState<NamespaceRow | null>(null);
   const deleteDialogRef = useRef<HTMLDialogElement | null>(null);
-  // Whether this account is an Admin of each company, by id. An Admin deletes
-  // it; anyone else leaves it. Absent while unknown: the menu then offers
-  // neither rather than guessing.
-  const selfAccount = useSelfAccount();
-  const [adminOf, setAdminOf] = useState<Record<string, boolean>>({});
 
-  /**
-   * Run one action under its own key, with step status wired to `onStatus`.
-   * Clears the previous outcome first: leaving a stale "Joined ✓" above a fresh
-   * spinner reads as if the new action had already finished.
-   */
-  const run = useCallback(
-    async (
-      key: string,
-      fn: (onStatus: (m: string) => void) => Promise<void>,
-    ) => {
-      setPending(key);
-      setError(null);
+  const run = useCallback(async (key: string, fn: (onStatus: (m: string) => void) => Promise<void>) => {
+    setPending(key);
+    setError(null);
+    setStatus(null);
+    try {
+      await fn(setStatus);
+    } catch (e) {
+      setError(describeError(e));
+    } finally {
+      after();
+      setPending(null);
       setStatus(null);
-      try {
-        await fn(setStatus);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
-      } finally {
-        setPending(null);
-        setStatus(null);
-      }
-    },
-    [],
-  );
+    }
+  }, [after]);
 
   const load = useCallback(
     async (showSpinner = true) => {
-      if (!admin || !appId) {
-        setListing(false);
-        return;
-      }
       if (showSpinner) setListing(true);
       try {
-        setNamespaces(await listSpaceNamespaces(admin, appId));
+        setNamespaces(await listCompanies(client, source));
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Could not load companies.");
+        setError(describeError(e));
       } finally {
+        after();
         setListing(false);
       }
     },
-    [admin, appId],
+    [client, source, after],
   );
 
-  // Keyed on the navigation too. Accepting an invitation whose company cannot
-  // be placed yet lands on `/companies` — possibly this page, which React
-  // Router does not remount — so without the key the joined company would be
-  // missing from the list until a full reload.
+  // Keyed on the navigation too: a joined company lands on this page, which
+  // React Router does not remount.
   useEffect(() => {
     void load();
   }, [load, location.key]);
 
-  const spaceIds = namespaces.map((n) => n.namespaceId).join(",");
-  useEffect(() => {
-    const ids = spaceIds ? spaceIds.split(",") : [];
-    if (!admin || !selfAccount || ids.length === 0) return;
-    let cancelled = false;
-    void Promise.all(
-      ids.map(
-        async (id) =>
-          [id, await selfIsGroupAdmin(admin, id, selfAccount)] as const,
-      ),
-    ).then((entries) => {
-      if (!cancelled) setAdminOf(Object.fromEntries(entries));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [admin, selfAccount, spaceIds]);
-
-  // Close an open card menu on an outside click. The ref is attached to the
-  // OPEN card only (see the grid below), so this compares against one node
-  // rather than tracking every card.
+  // Close an open card menu on an outside click.
   useEffect(() => {
     if (!menuOpenId) return;
     const onDown = (e: MouseEvent) => {
@@ -190,88 +103,55 @@ export default function CompaniesPage() {
   }, [menuOpenId]);
 
   const create = useCallback(() => {
-    const spaceName = name.trim();
-    if (!spaceName || !admin) return;
-    if (!appId) {
-      setError(
-        "Missing application id — reopen Mero Updates from the desktop app.",
-      );
-      return;
-    }
+    const companyName = name.trim();
+    if (!companyName) return;
     void run("create", async (onStatus) => {
-      const created = await createSpaceNamespace(
-        admin,
-        { applicationId: appId, name: spaceName },
-        onStatus,
-      );
+      onStatus("Creating the company — approve with your passkey…");
+      const created = await createCompany(client, companyName, passkey);
       setName("");
-      onStatus("Refreshing your companies…");
-      await load(false);
-      setHostingVersion((v) => v + 1);
-      if (!created.haEnabled) {
-        // The space exists and the founder can use it; what will NOT work is
-        // inviting, and the person is told now — on this screen, right after
-        // creating — rather than by a failed Invite on the next page.
-        showToast(
-          created.haError ??
-            "This company is not hosted yet — nobody can be invited to it.",
-          "error",
-        );
-      }
-      // Straight into the new namespace: it has no audiences yet, and making one is
-      // the only useful next step.
+      if (created.warning) showToast(created.warning, "error");
+      // Straight into it: it has no audiences yet, and making one is the next step.
       navigate(`/companies/${created.namespaceId}`);
     });
-  }, [name, admin, appId, run, load, navigate, showToast]);
+  }, [name, client, passkey, run, navigate, showToast]);
 
-  const mintInvite = useCallback(
+  const inviteTo = useCallback(
     (ns: NamespaceRow) => {
-      if (!admin) return;
       void run(`invite:${ns.namespaceId}`, async (onStatus) => {
-        try {
-          const code = await mintNamespaceInvite(
-            admin,
-            { namespaceId: ns.namespaceId, namespaceName: ns.name },
-            onStatus,
-          );
-          setInvite({ id: ns.namespaceId, code });
-          showToast(`Invite ready for “${ns.name}”.`);
-        } finally {
-          // A refused mint records the space as unhosted (lib/groups); a
-          // successful one clears nothing, but re-reading is cheap and keeps
-          // the buttons honest either way.
-          setHostingVersion((v) => v + 1);
-        }
+        onStatus("Approve the invitation with your passkey…");
+        const token = await mintInvite(client, ns.namespaceId, passkey());
+        setInvite({ id: ns.namespaceId, code: inviteLink(token) });
+        showToast(`Invite ready for “${ns.name}”.`);
       });
     },
-    [admin, run, showToast],
+    [client, passkey, run, showToast],
   );
 
   const removeSpace = useCallback(
     (ns: NamespaceRow) => {
-      if (!admin) return;
       setPendingDelete(null);
       void run(`delete:${ns.namespaceId}`, async (onStatus) => {
-        await deleteSpace(admin, { namespaceId: ns.namespaceId }, onStatus);
+        onStatus("Approve the deletion with your passkey…");
+        await client.deleteOrg(ns.namespaceId, passkey());
         onStatus("Refreshing your companies…");
         await load(false);
         showToast(`Deleted \u201c${ns.name}\u201d.`);
       });
     },
-    [admin, run, load, showToast],
+    [client, passkey, run, load, showToast],
   );
 
   const exitSpace = useCallback(
     (ns: NamespaceRow) => {
-      if (!admin) return;
       void run(`leave:${ns.namespaceId}`, async (onStatus) => {
-        await leaveSpace(admin, { namespaceId: ns.namespaceId }, onStatus);
+        onStatus("Approve leaving with your passkey…");
+        await client.removeMember(ns.namespaceId, accountId, passkey());
         onStatus("Refreshing your companies…");
         await load(false);
         showToast(`Left \u201c${ns.name}\u201d.`);
       });
     },
-    [admin, run, load, showToast],
+    [client, accountId, passkey, run, load, showToast],
   );
 
   useDialogOpen(deleteDialogRef, !!pendingDelete);
@@ -289,12 +169,10 @@ export default function CompaniesPage() {
         crumbs={[{ label: "Companies", icon: <LayersIcon size={14} /> }]}
         right={
           <>
-            {nodeLabel && (
-              <span className={styles.nodeTag} title={nodeUrl ?? undefined}>
-                <span className={styles.nodeDot} aria-hidden />
-                {nodeLabel}
-              </span>
-            )}
+            <span className={styles.nodeTag} title={where}>
+              <span className={styles.nodeDot} aria-hidden />
+              {where}
+            </span>
             <LogoutButton />
           </>
         }
@@ -330,7 +208,7 @@ export default function CompaniesPage() {
             <button
               className={styles.btn}
               onClick={create}
-              disabled={pending === "create" || !name.trim() || !appId}
+              disabled={pending === "create" || !name.trim()}
               data-testid="create-space"
             >
               {pending !== "create" && <PlusIcon size={16} />}
@@ -352,14 +230,6 @@ export default function CompaniesPage() {
           </p>
         )}
 
-        {notInstalled && (
-          <p className={styles.notice}>
-            <InfoIcon size={16} />
-            Mero Updates is not installed on this node. Install it from the
-            marketplace, then reload — companies are listed per application.
-          </p>
-        )}
-
         <div className={styles.sectionHead}>
           <h2 className={styles.sectionTitle}>Companies</h2>
           {!listing && namespaces.length > 0 && (
@@ -367,14 +237,14 @@ export default function CompaniesPage() {
           )}
         </div>
 
-        {listing || resolvingAppId ? (
+        {listing ? (
           <div className={styles.grid} aria-busy="true">
             <div className={styles.skeleton} />
             <div className={styles.skeleton} />
             <div className={styles.skeleton} />
           </div>
         ) : namespaces.length === 0 ? (
-          !notInstalled && (
+          (
             <div className={styles.emptyCard} data-testid="spaces-empty">
               <span className={styles.emptyTile} aria-hidden>
                 <LayersIcon size={20} />
@@ -433,23 +303,16 @@ export default function CompaniesPage() {
                     role="menu"
                     onKeyDown={(e) => e.key === "Escape" && setMenuOpenId(null)}
                   >
-                    {/* Gated on hosting: a space the cloud refused to host
-                        cannot be invited to, and the button says why instead
-                        of failing on the click. */}
                     <button
                       className={styles.dropdownItem}
                       onClick={() => {
                         setMenuOpenId(null);
-                        mintInvite(ns);
+                        inviteTo(ns);
                       }}
-                      disabled={!!hostingNote(ns.namespaceId)}
-                      title={hostingNote(ns.namespaceId) ?? undefined}
                       data-testid="invite-btn"
                     >
                       <UserPlusIcon size={15} />
-                      {hostingNote(ns.namespaceId)
-                        ? "Invite (not hosted yet)"
-                        : "Invite"}
+                      Invite
                     </button>
                     <button
                       className={styles.dropdownItem}
@@ -461,11 +324,8 @@ export default function CompaniesPage() {
                       <CopyIcon size={15} />
                       Copy company ID
                     </button>
-                    {/* An Admin deletes, anyone else leaves. Deleting a
-                        namespace is a node's own operation — the account
-                        admin refuses it by name (NotForAccountError) — so it
-                        is hidden there rather than shown-and-failing. */}
-                    {adminOf[ns.namespaceId] === true && !isDelegated && (
+                    {/* The owner deletes; anyone else leaves. */}
+                    {ns.role === "owner" && (
                       <>
                         <div className={styles.dropdownSep} />
                         <button
@@ -481,7 +341,7 @@ export default function CompaniesPage() {
                         </button>
                       </>
                     )}
-                    {adminOf[ns.namespaceId] === false && (
+                    {ns.role !== "owner" && (
                       <>
                         <div className={styles.dropdownSep} />
                         <button
@@ -508,7 +368,7 @@ export default function CompaniesPage() {
         )}
       </main>
 
-      {/* A confirm step rather than `window.confirm`: deleting a space deletes
+      {/* A confirm step rather than `window.confirm`: deleting a company deletes
           every audience in it, for everyone, and a native dialog has no room to
           say so. */}
       <dialog
@@ -529,8 +389,7 @@ export default function CompaniesPage() {
             {pendingDelete?.audienceCount === 1 ? "" : "s"}
           </strong>{" "}
           inside it will be deleted, with every update, reply and ask in them.
-          This happens for everyone in the company, not just on this node, and
-          it cannot be undone.
+          This happens for everyone in the company, and it cannot be undone.
         </p>
         <div className={styles.confirmRow}>
           <button

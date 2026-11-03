@@ -1,788 +1,672 @@
 /**
- * The matrix: every admin and RPC method an app makes, grouped into phases the
- * runner interleaves across two sessions.
+ * The 1.0 matrix: every call a component app's client (mero-js `CalimeroClient`)
+ * makes, on a 1.0 cluster, with one row per check.
  *
- * The PRIMARY session is the run's subject — a node in the node run, account A
- * in the account run — and does the same calls in both. The SECOND session is
- * always account B: it joins what the primary made, reads what the primary
- * wrote (the author checks), writes something the primary reads back, and
- * leaves. A row's expectation is per mode of the session that makes the call;
- * mero-react's `NODE_ONLY` calls are expected to be refused by name for an
- * account, and nothing else may fail.
+ * The 0.x matrix ran every admin and RPC call mero-react makes twice, once on
+ * a node connection and once on an account behind a relay, because the two
+ * paths differed. On 1.0 there is one path: every person is an account with a
+ * passkey, every node of the cluster serves every account, and requests are
+ * sealed to an attested node. So there is one run, with two accounts on
+ * different nodes, and the "mode" axis becomes WHO calls: account A (the run's
+ * subject, which founds everything), account B (invited into A's org, reads
+ * what A wrote and writes for A to read), an outsider, an anonymous client and
+ * an API key. A row expects `ok`, or a refusal the node names (`NOT_FOUND`,
+ * `CONFIRM_REQUIRED`, `FORBIDDEN`, an app's own `APP_ERROR:<code>`, …); a bare
+ * failure, a wrong value read back or a timeout never passes.
  *
- *   p:start     identity, (account: first join), namespace, groups, contexts, RPC writes
- *   [runner]    node run only: the rig seats the relay in the new namespace as a
- *               RelayTee, which is what lets an account be admitted to it
- *   p:invite    createNamespaceInvitation
- *   s:join      B joins, joins contexts and an open subgroup, reads the primary's writes, writes
- *   p:members   the primary sees B and B's write, manages B in a restricted group
- *   [runner]    node run only: the rig installs the 0.0.1 bundle on the node
- *   p:upgrade   upgradeGroup and the status reads (refused by name on an account)
- *   s:upgraded  node run only: B reads through the upgraded namespace
- *   s:leave     B leaves a context (refused on an account), a group it was added to
- *               (and is refused a subgroup it only inherits), the namespace
- *   p:teardown  detach, delete context, delete groups, delete namespace
+ * Phases, in order (README "The 1.0 matrix" maps each to its 0.x rows):
  *
- * Woven through those, the areas that span both sessions:
- *
- *   Blobs       p:start uploads, reads the info and the bytes back; s:join
- *               downloads the primary's blob through the context; p:members deletes it
- *   Events      p:invite and s:join subscribe to the main context; each session
- *               then writes, and the other's subscription must hear it
- *   Presence    the same shape: each publishes, the other must see it
- *   Aliases, TEE policy, devices, node-only
- *               p:start and p:members: ok on a node, refused by name on an account
- *   Upgrades    p:upgrade (after the rig installs 0.0.1 on the node) upgrades the
- *               namespace and reads its status; s:upgraded reads through it
+ *   accounts   signUp A and B on different nodes, me, signIn on a third node,
+ *              refresh, attestation, usage, passkey label/add/remove
+ *   packages   uploadBundle, uploadPackage x2 (+ a forged one refused),
+ *              packages, package, installPackage (NO_REGISTRY: dev cluster)
+ *   orgs       createOrg, getOrg, setOrgMetadata, teams (open, invite-only,
+ *              moved), updateTeam, setCapabilities, invite, B redeems
+ *   apps       createApp (bundle, package, team), listApps, getApp,
+ *              setAppMetadata, appStorage, appAbi, aliases
+ *   calls      one write and read-back per storage kind as A; B reads A's
+ *              writes and writes its own; idempotency, stale views, the
+ *              passkey step-up, typed errors and a trap
+ *   access     outsider, anonymous, public access, accounts access, team
+ *              access, API keys (read-only refused a write)
+ *   members    setMember (promote, demote), team rows and capabilities,
+ *              member metadata
+ *   live       events and presence, each account hearing the other
+ *   blobs      upload, info, list, download (A, then B), refused to another
+ *              app, delete
+ *   upgrades   upgradeApp (step-up), upgradeOrg + upgradeRun +
+ *              retryUpgradeRun, releaseRules, pendingApprovals, appsReport,
+ *              approveRelease, approveOutbound
+ *   teardown   transferApp, B leaves the org, deleteApp, deleteTeam,
+ *              uninstallPackage, deleteOrg, signOut, signOutEverywhere
  */
-import type { AdminApiClient } from '@calimero-network/mero-react';
-import { ADMIN_ONLY, adminOnly, assert, Blocked, check, eventually, need, NODE_ONLY, NOT_DIRECT_MEMBER, OK, short, type RowContext } from './check';
-import { EventLog, PresenceLog, type Streams } from './listen';
-import type { Mode } from './types';
+import {
+  ORG_CAPABILITIES,
+  orgCapabilities,
+  type CalimeroClient,
+  type CloudEvent,
+  type PasskeyProvider,
+} from "@calimero-network/mero-js";
 
-/** What a phase reaches the session through; always the CURRENT admin and client. */
-export interface Session extends RowContext {
-  admin(): AdminApiClient;
-  /** `rpc.execute` on the current client. */
-  execute(contextId: string, method: string, args?: Record<string, unknown>): Promise<unknown>;
-  /** The current client's event stream and presence, as `useSubscription` and `useEphemeral` read them. */
-  streams(): Streams;
-  /** Wait until the session is connected again, after a call that reconnects it (an account's join). */
-  settle(previousAdmin: AdminApiClient | null): Promise<void>;
+import { OK, appError, assert, check, eventually as waitFor, need, short, sleep, untilRefused as refusedWithin, type Recorder } from "./check";
+import { PACKAGE, contract } from "./contract";
+import { publisher, signedMpk, variant } from "./mpk";
+import type { Row, Who } from "./types";
+
+/** What the matrix runs on. The page and the cluster run each make one. */
+export interface MatrixEnv {
+  /** A new client whose first node is node `i` (mod the cluster's size), with no session. */
+  client(i: number): Promise<CalimeroClient>;
+  /** A fresh passkey the cluster trusts (a software one in the run and the page). */
+  passkey(): PasskeyProvider;
+  /** The built component (`logic/res/conformance.wasm`). */
+  wasm: Uint8Array;
+  /** Called with every row as it is recorded. */
+  onRow?(row: Row): void;
+  /** A suffix for this run's names (package, org, apps, aliases). */
+  tag?: string;
+  /** The `minRuntimeVersion` the matrix's packages declare. */
+  minRuntimeVersion?: string;
+  /** How long a row waits for what lands a moment later (default 20 s). */
+  patienceMs?: number;
 }
 
-/** State a primary run carries between its phases. */
-interface Primary {
+interface Person {
+  who: Who;
+  client: CalimeroClient;
+  passkey: PasskeyProvider;
   account?: string;
-  myAccount?: string;
-  deviceId?: string;
-  namespaceId?: string;
-  namespaceIsRig?: boolean;
-  groups: { restricted?: string; open?: string; inherit?: string; reparent?: string; leave?: string };
-  contexts: { main?: string; inOpen?: string; detach?: string };
-  values: { public?: string; user?: string; authoredKey?: string; presence?: string };
-  blob?: { id?: string; text: string };
 }
 
-const primaries = new Map<Session, Primary>();
-function primary(s: Session): Primary {
-  let p = primaries.get(s);
-  if (!p) {
-    p = { groups: {}, contexts: {}, values: {} };
-    primaries.set(s, p);
-  }
-  return p;
-}
+const lower = (x: unknown) => String(x ?? "").toLowerCase();
+const enc = new TextEncoder();
+const sameBytes = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((x, i) => x === b[i]);
 
-/** The subscriptions a session holds open between phases. */
-interface Listening {
-  events?: EventLog;
-  presence?: PresenceLog;
-}
-const listening = new Map<Session, Listening>();
-function listeners(s: Session): Listening {
-  let l = listening.get(s);
-  if (!l) {
-    l = {};
-    listening.set(s, l);
-  }
-  return l;
-}
-
-const encoder = new TextEncoder();
-function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
-  return a.length === b.length && a.every((x, i) => x === b[i]);
-}
-/** The version the rig's second bundle carries (`--app-version`, rig/up.sh). */
-export const UPGRADE_VERSION = '0.0.1';
-
-const lower = (x: unknown) => String(x ?? '').toLowerCase();
-const tag = () => Math.random().toString(36).slice(2, 8);
-const memberIds = (r: { members?: Array<{ identity: string }> } | Array<{ identity: string }>) =>
-  (Array.isArray(r) ? r : (r.members ?? [])).map((m) => lower(m.identity));
-const contextIds = (r: { contexts?: Array<{ id: string }> }) => (r.contexts ?? []).map((c) => c.id);
-const namespaceIds = (r: Array<{ namespaceId: string }>) => r.map((n) => n.namespaceId);
-const subgroupIds = (r: Array<{ groupId: string }>) => r.map((g) => g.groupId);
-
-export interface StartInput {
-  readonly applicationId: string;
-  readonly rigNamespaceId: string;
-  /** The rig's invitation to its namespace: how an account gets its first relay. */
-  readonly rigInvitation: unknown;
-}
-
-export interface StartOutput {
-  readonly namespaceId: string | null;
-  readonly namespaceIsRig: boolean;
-  readonly primaryAccount: string | null;
-  readonly primaryMyAccount: string | null;
-  readonly contexts: Primary['contexts'];
-  readonly groups: Primary['groups'];
-  readonly values: Primary['values'];
-  /** The primary's blob in the main context, and the text it holds. */
-  readonly blob: { id: string | null; text: string } | null;
-}
-
-async function start(s: Session, input: StartInput): Promise<StartOutput> {
-  const p = primary(s);
-  const A = 'Identity';
-  const N = 'Namespaces';
-  const G = 'Groups';
-  const C = 'Contexts';
-  const R = 'RPC writes';
-
-  const identity = await check(s, A, 'getNodeIdentity', OK, () => s.admin().getNodeIdentity(), (v) => v);
-  p.account = identity?.accountId ? lower(identity.accountId) : undefined;
-  p.deviceId = identity?.deviceId ?? undefined;
-
-  // The account's first relay comes from an invitation: before it, the account
-  // is a member of nothing. A target that names its relay and the relay's
-  // executor account instead (the cloud shows both) skips the join, and the
-  // account founds its namespace on that relay directly.
-  if (s.mode === 'account' && input.rigInvitation) {
-    const before = s.admin();
-    await check(s, N, 'joinNamespace (rig invitation, first relay)', OK, async () => {
-      const r = await before.joinNamespace(input.rigNamespaceId, { invitation: input.rigInvitation as never });
-      await s.settle(before);
-      return r;
-    }, (v) => v);
-  }
-
-  // A founding can succeed and the application step after it fail ("founded
-  // <id> but could not give it its application"): the namespace exists, so the
-  // rows that do not need the application still run on it.
-  let foundedWithoutApp: string | undefined;
-  const created = await check(s, N, 'createNamespace', OK, async () => {
+/** Listen to `app`'s events from `from` until `stop()`, keeping what arrives. */
+function listen(
+  stream: (signal: AbortSignal) => AsyncGenerator<CloudEvent>,
+): { seen: CloudEvent[]; failed: () => unknown; stop(): void } {
+  const seen: CloudEvent[] = [];
+  const abort = new AbortController();
+  let failure: unknown;
+  void (async () => {
     try {
-      return await s.admin().createNamespace({ applicationId: input.applicationId, name: `conformance-${tag()}` });
+      for await (const event of stream(abort.signal)) seen.push(event);
     } catch (e) {
-      foundedWithoutApp = /founded ([0-9a-f]{64})/.exec(String((e as Error)?.message))?.[1];
-      throw e;
+      if (!abort.signal.aborted) failure = e;
     }
-  }, (v) => {
-    // An account's founding also asks the cloud to host the namespace (HA),
-    // best-effort; its outcome rides along as extra fields. Spelled out so a
-    // long haError is not cut off with the id.
-    const ha = v as { namespaceId: string; haEnabled?: boolean; haError?: string };
-    if (ha.haEnabled === undefined) return v;
-    return `${short(ha.namespaceId, 12)} haEnabled=${ha.haEnabled}${ha.haError ? ` haError: ${ha.haError}` : ''}`;
-  });
-  p.namespaceId = created?.namespaceId ?? foundedWithoutApp;
-  p.namespaceIsRig = false;
-  if (!p.namespaceId && input.rigNamespaceId) {
-    // The rest still says something on the rig's own namespace; teardown leaves it alone.
-    p.namespaceId = input.rigNamespaceId;
-    p.namespaceIsRig = true;
-  }
-  if (!p.namespaceId) {
-    // No namespace at all, and none to fall back on: every later row would call
-    // a route with an empty id and report the refusal as the finding. Stop here;
-    // the runner skips the phases that need one.
-    return { namespaceId: null, namespaceIsRig: false, primaryAccount: p.account ?? null, primaryMyAccount: p.myAccount ?? null, contexts: p.contexts, groups: p.groups, values: p.values, blob: null };
-  }
-  const ns = p.namespaceId;
-
-  await check(s, N, 'listNamespaces', OK, () =>
-    eventually(() => s.admin().listNamespaces(), (r) => namespaceIds(r).includes(ns), `listNamespaces lists ${ns.slice(0, 8)}`),
-    (r) => `${r.length} namespaces`);
-  await check(s, N, 'listNamespacesForApplication', OK, () =>
-    eventually(() => s.admin().listNamespacesForApplication(input.applicationId), (r) => namespaceIds(r).includes(ns), 'the namespace is listed for its application'),
-    (r) => `${r.length} namespaces`);
-  await check(s, N, 'getGroupInfo', OK, () => s.admin().getGroupInfo(ns), (v) => v);
-
-  const group = (name: string, visibility: 'open' | 'restricted') =>
-    check(s, G, `createGroupInNamespace (${visibility}, ${name})`, OK, async () =>
-      (await s.admin().createGroupInNamespace(ns, { groupName: `${name}-${tag()}`, visibility })).groupId, (v) => v);
-  p.groups.restricted = await group('restricted', 'restricted');
-  p.groups.open = await group('open', 'open');
-  p.groups.inherit = await group('inherit', 'open');
-  p.groups.reparent = await group('reparent', 'restricted');
-  p.groups.leave = await group('leave', 'restricted');
-
-  const made = Object.values(p.groups).filter(Boolean) as string[];
-  await check(s, G, 'listSubgroups', OK, () =>
-    eventually(() => s.admin().listSubgroups(ns), (r) => made.every((g) => subgroupIds(r).includes(g)), 'every subgroup made is listed'),
-    (r) => `${r.length} subgroups`);
-  await check(s, G, 'listGroupMembers', OK, async () => {
-    const r = await s.admin().listGroupMembers(ns);
-    assert(memberIds(r).includes(need(p.account, 'the session account')), `the session's own account ${p.account} is not a member of its namespace`);
-    return r;
-  }, (r) => `${memberIds(r).length} members`);
-  await check(s, G, 'getMemberCapabilities (self)', OK, () => s.admin().getMemberCapabilities(ns, need(p.account, 'the session account')), (v) => v);
-  await check(s, G, 'setDefaultCapabilities', OK, () =>
-    s.admin().setDefaultCapabilities(need(p.groups.restricted, 'a restricted group'), { defaultCapabilities: 231 }));
-  await check(s, G, 'setSubgroupVisibility', OK, () =>
-    s.admin().setSubgroupVisibility(need(p.groups.reparent, 'a group to change'), { subgroupVisibility: 'open' }));
-  await check(s, G, 'setGroupMetadata', OK, () =>
-    s.admin().setGroupMetadata(need(p.groups.restricted, 'a restricted group'), { name: `renamed-${tag()}` }));
-  await check(s, G, 'setMemberMetadata (self)', OK, () =>
-    s.admin().setMemberMetadata(ns, need(p.account, 'the session account'), { name: `primary-${s.mode}` }));
-  await check(s, G, 'reparentGroup', OK, () =>
-    s.admin().reparentGroup(need(p.groups.reparent, 'a group to move'), { newParentId: need(p.groups.restricted, 'a new parent') }), (v) => v);
-
-  const context = (name: string, groupId: string | undefined) =>
-    check(s, C, `createContext (${name})`, OK, async () =>
-      (await s.admin().createContext({ applicationId: input.applicationId, groupId: need(groupId, `a group for ${name}`), name: `${name}-${tag()}` })).contextId, (v) => v);
-  p.contexts.main = await context('in the namespace', ns);
-  p.contexts.inOpen = await context('in an open subgroup', p.groups.open);
-  p.contexts.detach = await context('to detach', ns);
-  const ctx = p.contexts.main;
-
-  await check(s, C, 'getContexts', OK, () =>
-    eventually(() => s.admin().getContexts(), (r) => contextIds(r).includes(need(ctx, 'a context')), 'the new context is listed'),
-    (r) => `${contextIds(r).length} contexts`);
-  await check(s, C, 'getContext', OK, () => s.admin().getContext(need(ctx, 'a context')), (v) => ({ id: v.id, applicationId: v.applicationId }));
-  await check(s, C, 'getContextGroup', OK, async () => {
-    const g = await s.admin().getContextGroup(need(ctx, 'a context'));
-    const id = typeof g === 'string' ? g : (g as { groupId?: string } | null)?.groupId ?? JSON.stringify(g);
-    assert(lower(id).includes(lower(ns)), `the context's group is ${id}, not the namespace ${ns}`);
-    return g;
-  }, (v) => v);
-  await check(s, A, 'getContextIdentitiesOwned', OK, async () => {
-    const r = await s.admin().getContextIdentitiesOwned(need(ctx, 'a context'));
-    const ids = (r as { identities?: string[] }).identities ?? [];
-    assert(ids.length > 0, 'owns no identity in a context it created');
-    return r;
-  }, (v) => v);
-  await check(s, C, 'setContextMetadata', OK, () =>
-    s.admin().setContextMetadata(ns, need(ctx, 'a context'), { name: `renamed-${tag()}` }));
-  await check(s, C, 'syncContext', OK, () => s.admin().syncContext(need(ctx, 'a context')));
-
-  // RPC writes: one per storage kind, read back by the same session.
-  const my = await check(s, R, 'my_account', OK, async () => String(await s.execute(need(ctx, 'a context'), 'my_account')), (v) => v);
-  p.myAccount = my;
-  await check(s, A, 'my_account is the session account', OK, async () => {
-    assert(lower(need(my, 'my_account')) === need(p.account, 'the session account'), `the contract runs as ${my}, the session is ${p.account}`);
-  });
-
-  p.values.public = `pub-${s.mode}-${tag()}`;
-  await check(s, R, 'public: set', OK, () => s.execute(need(ctx, 'a context'), 'set', { key: 'conformance', value: p.values.public }));
-  await check(s, R, 'public: get', OK, async () => {
-    const v = await s.execute(need(ctx, 'a context'), 'get', { key: 'conformance' });
-    assert(v === p.values.public, `read ${String(v)}, wrote ${p.values.public}`);
-    return v;
-  }, (v) => v);
-
-  p.values.user = `user-${s.mode}-${tag()}`;
-  await check(s, R, 'user: set_user_simple', OK, () => s.execute(need(ctx, 'a context'), 'set_user_simple', { value: p.values.user }));
-  await check(s, R, 'user: get_user_simple', OK, async () => {
-    const v = await s.execute(need(ctx, 'a context'), 'get_user_simple');
-    assert(v === p.values.user, `read ${String(v)}, wrote ${p.values.user}`);
-    return v;
-  }, (v) => v);
-
-  const frozenValue = `frozen-${s.mode}-${tag()}`;
-  const hash = await check(s, R, 'frozen: add_frozen', OK, async () => String(await s.execute(need(ctx, 'a context'), 'add_frozen', { value: frozenValue })), (v) => v);
-  await check(s, R, 'frozen: get_frozen', OK, async () => {
-    const v = await s.execute(need(ctx, 'a context'), 'get_frozen', { hash_hex: need(hash, 'a frozen hash') });
-    assert(v === frozenValue, `read ${String(v)}, wrote ${frozenValue}`);
-    return v;
-  }, (v) => v);
-
-  p.values.authoredKey = `primary-${s.mode}`;
-  await check(s, R, 'authored map: authored_insert', OK, () =>
-    s.execute(need(ctx, 'a context'), 'authored_insert', { key: p.values.authoredKey, value: 'by the primary' }));
-  await check(s, R, 'authored map: owner is the caller', OK, async () => {
-    const owner = await s.execute(need(ctx, 'a context'), 'authored_get_owner', { key: p.values.authoredKey });
-    assert(lower(owner) === lower(need(my, 'my_account')), `owned by ${String(owner)}, written by ${my}`);
-    return owner;
-  }, (v) => v);
-
-  await check(s, R, 'authored vector: authored_vec_push', OK, () => s.execute(need(ctx, 'a context'), 'authored_vec_push', { value: 'by the primary' }), (v) => v);
-  await check(s, R, 'authored vector: owner is the caller', OK, async () => {
-    const owner = await s.execute(need(ctx, 'a context'), 'authored_vec_get_owner', { index: 0 });
-    assert(lower(owner) === lower(need(my, 'my_account')), `owned by ${String(owner)}, written by ${my}`);
-    return owner;
-  }, (v) => v);
-
-  // The context's creator is its shared value's only writer (init's caller).
-  const shared = `shared-${s.mode}-${tag()}`;
-  await check(s, R, 'shared: shared_set (as the init caller)', OK, () => s.execute(need(ctx, 'a context'), 'shared_set', { value: shared }));
-  await check(s, R, 'shared: shared_get', OK, async () => {
-    const v = await s.execute(need(ctx, 'a context'), 'shared_get');
-    assert(v === shared, `read ${String(v)}, wrote ${shared}`);
-    return v;
-  }, (v) => v);
-
-  await blobs(s, p);
-  await nodeOnlyCalls(s, p, input);
-
-  return {
-    namespaceId: p.namespaceId ?? null,
-    namespaceIsRig: Boolean(p.namespaceIsRig),
-    primaryAccount: p.account ?? null,
-    primaryMyAccount: p.myAccount ?? null,
-    contexts: p.contexts,
-    groups: p.groups,
-    values: p.values,
-    blob: p.blob ? { id: p.blob.id ?? null, text: p.blob.text } : null,
-  };
+  })();
+  return { seen, failed: () => failure, stop: () => abort.abort() };
 }
 
-/**
- * Upload, then read back. Announced to the main context: core holds a blob for
- * the context it was uploaded with, and that is also what lets another member
- * find it there (s:join downloads it).
- */
-async function blobs(s: Session, p: Primary): Promise<void> {
-  const B = 'Blobs';
-  const ctx = p.contexts.main;
-  // Big enough to be more than one read of the stream, small enough to be quick.
-  const text = `blob-${s.mode}-${tag()}:${'conformance '.repeat(400)}`;
-  const bytes = encoder.encode(text);
-  p.blob = { text };
-  const up = await check(s, B, 'uploadBlob (announced to the main context)', OK, async () => {
-    const r = await s.admin().uploadBlob({ data: bytes, contextId: need(ctx, 'a context') });
+async function heardWithin(
+  log: { seen: CloudEvent[]; failed: () => unknown },
+  ok: (e: CloudEvent) => boolean,
+  what: string,
+  timeoutMs: number,
+): Promise<CloudEvent> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const hit = log.seen.find(ok);
+    if (hit) return hit;
+    const failure = log.failed();
+    if (failure) throw failure;
+    if (Date.now() > deadline) {
+      throw Object.assign(new Error(`${what}: not heard in ${timeoutMs} ms (heard ${short(log.seen.map((e) => e.kind))})`), {
+        name: "Mismatch",
+      });
+    }
+    await sleep(100);
+  }
+}
+
+/** Runs the whole matrix and resolves with every row; never rejects for a failed row. */
+export async function runMatrix(env: MatrixEnv): Promise<Row[]> {
+  const rows: Row[] = [];
+  const rec: Recorder = {
+    record(row) {
+      rows.push(row);
+      env.onRow?.(row);
+    },
+  };
+  const tag = env.tag ?? Math.random().toString(36).slice(2, 8);
+  const patience = env.patienceMs ?? 20_000;
+  const eventually = <T>(fn: () => Promise<T>, ok: (v: T) => boolean, what: string, ms = patience) => waitFor(fn, ok, what, ms);
+  const untilRefused = (fn: () => Promise<unknown>, what: string) => refusedWithin(fn, what, patience);
+  const heard = (log: Parameters<typeof heardWithin>[0], ok: (e: CloudEvent) => boolean, what: string) => heardWithin(log, ok, what, patience);
+  const pkg = `${PACKAGE}.run-${tag}`;
+
+  const A: Person = { who: "A", client: await env.client(0), passkey: env.passkey() };
+  const B: Person = { who: "B", client: await env.client(1), passkey: env.passkey() };
+  const C: Person = { who: "outsider", client: await env.client(2), passkey: env.passkey() };
+  const row = <T>(p: Person | Who, area: string, name: string, expected: string, fn: () => Promise<T>, show?: (v: T) => unknown) =>
+    check(rec, typeof p === "string" ? p : p.who, area, name, expected, fn, show);
+
+  // ── accounts ──────────────────────────────────────────────────────────────
+  const ACC = "Accounts";
+  for (const p of [A, B, C]) {
+    const s = await row(p, ACC, "signUp", OK, () => p.client.signUp(p.passkey, `conformance-${p.who}-${tag}`), (s) => s.accountId);
+    p.account = s?.accountId;
+  }
+  const me = await row(A, ACC, "me", OK, async () => {
+    const m = await A.client.me();
+    assert(m.accountId === need(A.account, "A's account"), `me() is ${short(m.accountId)}, signed up as ${A.account}`);
+    return m;
+  }, (m) => ({ accountId: m.accountId, via: m.via }));
+  const elsewhere = await env.client(2);
+  await row(A, ACC, "signIn (the same passkey, another node)", OK, async () => {
+    const s = await elsewhere.signIn(A.passkey);
+    assert(s.accountId === need(A.account, "A's account"), `signed in as ${s.accountId}, not ${A.account}`);
+    return s;
+  }, (s) => s.accountId);
+  // The refresh token is single-use, so a refresh must hand back a new one
+  // (the session token itself may be re-issued unchanged within a second).
+  await row(A, ACC, "refresh (a new single-use refresh token)", OK, async () => {
+    const before = need(A.client.session, "A's session").refreshToken;
+    const s = await A.client.refresh();
+    assert(s.refreshToken !== before, "the refresh token did not change");
+    assert(s.accountId === A.account, `refreshed as ${short(s.accountId)}`);
+    return s;
+  }, (s) => ({ expiresAt: s.expiresAt }));
+  await row(A, ACC, "attestation", OK, () => A.client.attestation(), (d) => ({ mock: (d as { mock?: unknown }).mock }));
+  await row(A, ACC, "usage", OK, () => A.client.usage(), (u) => Object.keys(u));
+  await row(A, ACC, "labelPasskey", OK, () =>
+    A.client.labelPasskey(need(me?.passkeyId as string | undefined, "A's passkey id"), "conformance"));
+  const device = env.passkey();
+  // Approving with the passkey being added answers a challenge the node never
+  // issued to it: refused before anything is written.
+  await row(A, ACC, "addPasskey (approved by the new passkey itself)", "UNKNOWN_CHALLENGE", () => A.client.addPasskey(device, device));
+  const cred = await row(A, ACC, "addPasskey (approved by the account's passkey)", OK, () => A.client.addPasskey(device, A.passkey), (c) => c);
+  await row(A, ACC, "signIn (the added passkey)", OK, async () => {
+    const s = await (await env.client(1)).signIn(device);
+    assert(s.accountId === A.account, `the added passkey signs in as ${s.accountId}`);
+    return s;
+  }, (s) => s.accountId);
+  await row(A, ACC, "removePasskey (without the step-up)", "CONFIRM_REQUIRED", () =>
+    A.client.delete(`auth/passkeys/${need(cred, "the added passkey")}`));
+  await row(A, ACC, "removePasskey", OK, () => A.client.removePasskey(need(cred, "the added passkey"), A.passkey));
+
+  // ── packages ──────────────────────────────────────────────────────────────
+  const PKG = "Packages";
+  const bundle = await row(A, PKG, "uploadBundle (the component, raw)", OK, () => A.client.uploadBundle(env.wasm), (h) => h);
+  const key = await publisher();
+  const floor = env.minRuntimeVersion ?? "1.0.0-rc.8";
+  await row(A, PKG, "uploadPackage (not a package)", "BAD_PACKAGE", () => A.client.uploadPackage(new Uint8Array([1, 2, 3])));
+  for (const version of ["0.0.0", "0.0.1"]) {
+    await row(A, PKG, `uploadPackage (${version})`, OK, async () => {
+      const r = await A.client.uploadPackage(await signedMpk(pkg, version, variant(env.wasm, `${tag}-${version}`), key, floor));
+      assert(r.package === pkg && r.version === version && r.signerId === key.signerId, `installed ${short(r)}`);
+      return r;
+    }, (r) => ({ version: r.version, signerId: r.signerId }));
+  }
+  await row(A, PKG, "uploadPackage (another key, the same package)", "FORBIDDEN", async () =>
+    A.client.uploadPackage(await signedMpk(pkg, "0.0.2", variant(env.wasm, `${tag}-forged`), await publisher(), floor)));
+  await row(A, PKG, "packages", OK, async () => {
+    const list = await A.client.packages();
+    assert(list.some((p) => p.package === pkg), `${pkg} is not listed`);
+    return list;
+  }, (l) => `${l.length} packages`);
+  await row(A, PKG, "package", OK, async () => {
+    const p = await A.client.package(pkg);
+    assert(p.latest === "0.0.1", `latest is ${p.latest}`);
+    return p;
+  }, (p) => ({ latest: p.latest, versions: p.versions.map((v) => v.version) }));
+  await row(A, PKG, "installPackage (a development cluster has no registry)", "NO_REGISTRY", () =>
+    A.client.installPackage(pkg, "0.0.1"));
+
+  // ── orgs and teams ────────────────────────────────────────────────────────
+  const ORG = "Orgs";
+  const TEAM = "Teams";
+  const org = await row(A, ORG, "createOrg", OK, () => A.client.createOrg(`conformance-${tag}`), (o) => o);
+  const orgId = () => need(org, "an org");
+  await row(A, ORG, "getOrg", OK, async () => {
+    const o = await A.client.getOrg(orgId());
+    assert(o.orgId === org, `getOrg answers ${short(o.orgId)}`);
+    assert(Object.hasOwn((o.members ?? {}) as object, need(A.account, "A's account")), "A is not a member of its own org");
+    return o;
+  }, (o) => ({ members: Object.keys((o.members ?? {}) as object).length, releaseApprovers: o.releaseApprovers.length }));
+  await row(A, ORG, "setOrgMetadata", OK, () => A.client.setOrgMetadata(orgId(), { name: `Conformance ${tag}` }));
+  const open = await row(A, TEAM, "createTeam (open)", OK, () => A.client.createTeam(orgId(), `open-${tag}`, "everyone"), (t) => t);
+  const closed = await row(A, TEAM, "createTeam (invite-only)", OK, () => A.client.createTeam(orgId(), `closed-${tag}`, "invite"), (t) => t);
+  const moved = await row(A, TEAM, "createTeam (to move)", OK, () => A.client.createTeam(orgId(), `moved-${tag}`, "invite"), (t) => t);
+  await row(A, TEAM, "getTeam", OK, async () => {
+    const t = await A.client.getTeam(orgId(), need(closed, "a team"));
+    assert(t.teamId === closed, `getTeam answers ${short(t.teamId)}`);
+    return t;
+  }, (t) => ({ name: t.name, join: t.join }));
+  await row(A, TEAM, "updateTeam (name, metadata)", OK, async () => {
+    await A.client.updateTeam(orgId(), need(closed, "a team"), { name: `renamed-${tag}`, metadata: { colour: "teal" } });
+    const t = await A.client.getTeam(orgId(), need(closed, "a team"));
+    assert(t.name === `renamed-${tag}`, `the team is called ${short(t.name)}`);
+  });
+  await row(A, TEAM, "updateTeam (parent: move under another team)", OK, async () => {
+    await A.client.updateTeam(orgId(), need(moved, "a team to move"), { parent: need(closed, "a parent") });
+    const t = await A.client.getTeam(orgId(), need(moved, "a team to move"));
+    assert(t.parent === closed, `the team's parent is ${short(t.parent)}`);
+  });
+  await row(A, TEAM, "updateTeam (join: everyone)", OK, () => A.client.updateTeam(orgId(), need(moved, "a team"), { join: "everyone" }));
+  await row(A, ORG, "setCapabilities (the org's default, approved)", OK, () =>
+    A.client.setCapabilities(orgId(), orgCapabilities("CREATE_APP", "INVITE_MEMBERS", "JOIN_OPEN_TEAMS"), A.passkey));
+  await row(A, ORG, "invite (without the step-up)", "CONFIRM_REQUIRED", () =>
+    A.client.post(`orgs/${orgId()}/invites`, { role: "member" }));
+  const invite = await row(A, ORG, "invite (member)", OK, () => A.client.invite(orgId(), "member", A.passkey), () => "a token");
+  await row(B, ORG, "redeemInvite", OK, () => B.client.redeemInvite(need(invite, "an invite")), (r) => r);
+  // A one-use invite is gone once redeemed: the system log rejects the redemption.
+  await row(B, ORG, "redeemInvite (again: one use)", "REJECTED", () => B.client.redeemInvite(need(invite, "an invite")));
+  await row(B, ORG, "getOrg (second account)", OK, async () => {
+    const o = await eventually(() => B.client.getOrg(orgId()), (o) => Object.hasOwn((o.members ?? {}) as object, need(B.account, "B's account")), "B listed as a member");
+    return o;
+  }, (o) => Object.keys((o.members ?? {}) as object).length);
+  await row(C, ORG, "getOrg (an outsider)", "NOT_FOUND", () => C.client.getOrg(orgId()));
+  await row(B, ORG, "setMemberMetadata (its own)", OK, () => B.client.setMemberMetadata(orgId(), need(B.account, "B's account"), { title: "second" }));
+  await row(A, ORG, "setMemberMetadata (another member's, cleared)", OK, () => A.client.setMemberMetadata(orgId(), need(B.account, "B's account"), null));
+  await row(A, ORG, "invite (guest, a team, one use, an hour)", OK, () =>
+    A.client.invite(orgId(), "guest", A.passkey, [need(closed, "a team")], { ttlSecs: 3600, uses: 1 }), () => "a token");
+
+  // ── apps ──────────────────────────────────────────────────────────────────
+  const APPS = "Apps";
+  const app = await row(A, APPS, "createApp (a bundle, in the org)", OK, () =>
+    A.client.createApp(`main-${tag}`, need(bundle, "a bundle"), { org: orgId() }), (a) => a);
+  const appId = () => need(app, "the main app");
+  const fromPkg = await row(A, APPS, "createApp (a package release, in the org)", OK, () =>
+    A.client.createApp(`pkg-${tag}`, { package: pkg, version: "0.0.0" }, { org: orgId() }), (a) => a);
+  const forRun = await row(A, APPS, "createApp (a package release, for the org run)", OK, () =>
+    A.client.createApp(`run-${tag}`, { package: pkg, version: "0.0.0" }, { org: orgId() }), (a) => a);
+  const inOpen = await row(A, APPS, "createApp (the open team's)", OK, () =>
+    A.client.createApp(`open-${tag}`, need(bundle, "a bundle"), { org: orgId(), access: { kind: "team", team: need(open, "the open team") } }), (a) => a);
+  const inClosed = await row(A, APPS, "createApp (the invite-only team's)", OK, () =>
+    A.client.createApp(`closed-${tag}`, need(bundle, "a bundle"), { org: orgId(), access: { kind: "team", team: need(closed, "the invite-only team") } }), (a) => a);
+  const own = await row(A, APPS, "createApp (A's own, no org)", OK, () => A.client.createApp(`own-${tag}`, need(bundle, "a bundle")), (a) => a);
+  await row(A, APPS, "listApps", OK, async () => {
+    const list = await A.client.listApps();
+    for (const id of [app, fromPkg, own]) assert(list.some((x) => x.appId === id), `${short(id)} is not listed`);
+    return list;
+  }, (l) => `${l.length} apps`);
+  await row(A, APPS, "listApps ({ bundle })", OK, async () => {
+    const list = await A.client.listApps({ bundle: need(bundle, "a bundle") });
+    assert(list.some((x) => x.appId === app), "the main app is not listed by its bundle");
+    return list;
+  }, (l) => `${l.length} apps`);
+  await row(A, APPS, "listApps ({ package })", OK, async () => {
+    const list = await A.client.listApps({ package: pkg });
+    const mine = list.find((x) => x.appId === fromPkg);
+    assert(mine?.version === "0.0.0", `the package's app is listed at ${short(mine)}`);
+    return list;
+  }, (l) => `${l.length} apps`);
+  await row(B, APPS, "listApps (second account: the org's apps)", OK, async () => {
+    const list = await eventually(() => B.client.listApps(), (l) => l.some((x) => x.appId === app), "the org's app listed for B");
+    assert(!list.some((x) => x.appId === own), "B is shown A's own app");
+    return list;
+  }, (l) => `${l.length} apps`);
+  await row(A, APPS, "getApp", OK, async () => {
+    const a = await A.client.getApp(appId());
+    assert(a.owner === A.account && a.org === org, `getApp: owner ${short(a.owner)}, org ${short(a.org)}`);
+    return a;
+  }, (a) => ({ owner: short(a.owner, 12), org: short(a.org, 12) }));
+  await row(A, APPS, "setAppMetadata", OK, () => A.client.setAppMetadata(appId(), { title: `Conformance ${tag}` }));
+  await row(A, APPS, "appAbi", OK, async () => {
+    const r = await A.client.appAbi(appId());
+    const methods = ((r.abi as { methods?: object } | undefined)?.methods ?? {}) as Record<string, unknown>;
+    assert("confirmedSet" in methods && "myAccount" in methods, `the ABI lists ${short(Object.keys(methods))}`);
+    return r;
+  }, (r) => ({ bundle: r.bundle }));
+  const ALIAS = "Aliases";
+  const alias = `conformance-${tag}`;
+  await row(A, ALIAS, "setAlias", OK, () => A.client.setAlias(alias, appId()));
+  await row(A, ALIAS, "alias", OK, async () => {
+    const r = await A.client.alias(alias);
+    assert(r === app, `${alias} names ${short(r)}`);
+    return r;
+  }, (r) => r);
+  await row(A, ALIAS, "aliases", OK, async () => {
+    const r = await A.client.aliases();
+    assert(r[alias] === app, `the listing has ${alias} as ${short(r[alias])}`);
+    return r;
+  }, (r) => `${Object.keys(r).length} aliases`);
+  await row(A, ALIAS, "deleteAlias", OK, async () => {
+    await A.client.deleteAlias(alias);
+    const r = await A.client.aliases();
+    assert(!(alias in r), `${alias} is still listed`);
+  });
+  await row(B, ALIAS, "alias (another account's name)", "NOT_FOUND", () => B.client.alias(alias));
+
+  // ── calls ─────────────────────────────────────────────────────────────────
+  const CALL = "Calls";
+  // Built per row, so a missing app blocks the row instead of stopping the matrix.
+  const a = () => contract(A.client, appId());
+  const b = () => contract(B.client, appId());
+  // Opened before anything is written, so every write below is heard (live).
+  const aHears = listen((signal) => A.client.events(appId(), 0, signal));
+  const bHears = listen((signal) => B.client.events(appId(), 0, signal));
+
+  const first = await row(A, CALL, "call (set, with an idempotency key)", OK, () =>
+    A.client.call(appId(), "set", { key: "conformance", value: `pub-${tag}` }, `set-${tag}`), (r) => ({ index: r.index, events: r.events.map((e) => e.kind) }));
+  await row(A, CALL, "call (the same key again: answered once)", OK, async () => {
+    const r = await A.client.call(appId(), "set", { key: "conformance", value: "other" }, `set-${tag}`);
+    assert(r.index === first?.index, `a retry was applied again at ${r.index} (first ${first?.index})`);
+    assert((await a().get("conformance")) === `pub-${tag}`, "the retry's arguments were applied");
+    return r;
+  }, (r) => r.index);
+  await row(A, CALL, "view (get)", OK, async () => {
+    const v = await a().get("conformance");
+    assert(v === `pub-${tag}`, `read ${short(v)}`);
+    return v;
+  }, (v) => v);
+  await row(B, CALL, "view (stale, at least the write's index, another node)", OK, async () => {
+    const r = await B.client.view(appId(), "get", { key: "conformance" }, { stale: true, minIndex: need(first, "the write").index });
+    assert(r.result === `pub-${tag}`, `read ${short(r.result)}`);
+    return r;
+  }, (r) => r.result);
+  await row(A, CALL, "view (len: a u64 as a decimal string)", OK, async () => {
+    const n = await a().len();
+    assert(n === 1, `len is ${n}`);
+    return n;
+  }, (n) => n);
+  const myA = await row(A, CALL, "myAccount", OK, async () => {
+    const m = await a().myAccount();
+    assert(m === A.account, `the contract runs as ${m}, the session is ${A.account}`);
+    return m;
+  }, (m) => m);
+  const myB = await row(B, CALL, "myAccount (second account)", OK, async () => {
+    const m = await b().myAccount();
+    assert(m === B.account, `the contract runs as ${m}, the session is ${B.account}`);
+    return m;
+  }, (m) => m);
+  await row(A, CALL, "user: setUserSimple", OK, () => a().setUserSimple(`user-${tag}`));
+  await row(A, CALL, "user: getUserSimple", OK, async () => {
+    const v = await a().getUserSimple();
+    assert(v === `user-${tag}`, `read ${short(v)}`);
+    return v;
+  }, (v) => v);
+  await row(B, CALL, "user: getUserSimple (B wrote none)", OK, async () => {
+    const v = await b().getUserSimple();
+    assert(v === null, `B reads ${short(v)}`);
+    return v;
+  });
+  await row(B, CALL, "user: getUserSimpleFor (A's slot)", OK, async () => {
+    const v = await b().getUserSimpleFor(need(myA, "A's account"));
+    assert(v === `user-${tag}`, `read ${short(v)}`);
+    return v;
+  }, (v) => v);
+  const hash = await row(A, CALL, "frozen: addFrozen", OK, () => a().addFrozen(`frozen-${tag}`), (h) => h);
+  await row(B, CALL, "frozen: getFrozen (A's)", OK, async () => {
+    const v = await b().getFrozen(need(hash, "a frozen hash"));
+    assert(v === `frozen-${tag}`, `read ${short(v)}`);
+    return v;
+  }, (v) => v);
+  await row(A, CALL, "frozen: getFrozen (no such hash)", appError("FrozenNotFound"), () => a().getFrozen("0".repeat(64)));
+  await row(A, CALL, "authored map: authoredInsert", OK, () => a().authoredInsert("primary", "by A"));
+  await row(B, CALL, "authored map: A's entry names A", OK, async () => {
+    const owner = await b().authoredGetOwner("primary");
+    assert(owner === need(myA, "A's account"), `owned by ${short(owner)}`);
+    return owner;
+  }, (o) => o);
+  await row(B, CALL, "authored map: authoredUpdate (A's entry)", appError("NotAuthor"), () => b().authoredUpdate("primary", "by B"));
+  await row(B, CALL, "authored map: authoredInsert (second account)", OK, () => b().authoredInsert("second", "by B"));
+  await row(A, CALL, "authored map: B's entry names B", OK, async () => {
+    const owner = await a().authoredGetOwner("second");
+    assert(owner === need(myB, "B's account"), `owned by ${short(owner)}`);
+    return owner;
+  }, (o) => o);
+  await row(A, CALL, "authored map: authoredUpdate, authoredRemove (its own)", OK, async () => {
+    await a().authoredUpdate("primary", "edited by A");
+    assert((await a().authoredGet("primary")) === "edited by A", "the update did not land");
+    const removed = await a().authoredRemove("primary");
+    assert(removed === "edited by A", `removed ${short(removed)}`);
+  });
+  const pushed = await row(A, CALL, "authored vector: authoredVecPush", OK, () => a().authoredVecPush(`item-${tag}`), (i) => i);
+  await row(B, CALL, "authored vector: A's item names A", OK, async () => {
+    const owner = await b().authoredVecGetOwner(need(pushed, "a pushed index"));
+    assert(owner === need(myA, "A's account"), `owned by ${short(owner)}`);
+    assert((await b().authoredVecLen()) === 1, "the vector does not hold one item");
+    return owner;
+  }, (o) => o);
+  await row(B, CALL, "authored vector: authoredVecUpdate (A's item)", appError("NotItemOwner"), () =>
+    b().authoredVecUpdate(need(pushed, "a pushed index"), "by B"));
+  await row(A, CALL, "shared: sharedSet (the owner, the one writer)", OK, () => a().sharedSet(`shared-${tag}`));
+  await row(B, CALL, "shared: sharedSet by a non-writer is refused", appError("NotAWriter"), () => b().sharedSet("not a writer"));
+  await row(B, CALL, "shared: the refused write did not land", OK, async () => {
+    const v = await b().sharedGet();
+    assert(v === `shared-${tag}`, `the shared value is ${short(v)}`);
+    return v;
+  }, (v) => v);
+  await row(A, CALL, "shared: sharedAddWriter, then B writes", OK, async () => {
+    await a().sharedAddWriter(need(myB, "B's account"));
+    await b().sharedSet(`shared-by-B-${tag}`);
+    assert((await a().sharedGet()) === `shared-by-B-${tag}`, "B's write as a writer did not land");
+    assert((await a().sharedGetWriters()).length === 2, "the writer set is not two accounts");
+  });
+  await row(A, CALL, "callConfirmed (without the passkey)", "CONFIRM_REQUIRED", () => a().confirmedSet("confirmed", "1"));
+  await row(A, CALL, "callConfirmed", OK, async () => {
+    const r = await a().confirmedSet("confirmed", "1", A.passkey);
+    assert((await a().get("confirmed")) === "1", "the confirmed write did not land");
+    return r;
+  }, (r) => r.index);
+  await row(B, CALL, "callConfirmed (B's passkey, B's own call)", OK, () => b().confirmedSet("confirmed", "2", B.passkey), (r) => r.index);
+  await row(A, CALL, "an app error (getResult, a missing key)", appError("NotFound"), () => a().getResult("missing"));
+  await row(A, CALL, "a trap (getUnchecked, a missing key)", "TRAP", () => a().getUnchecked("missing"));
+  await row(A, CALL, "malformed arguments", appError("BadArgs"), () => A.client.call(appId(), "set", { key: "k" }));
+  await row(A, CALL, "an unknown method (v0's snake_case name)", appError("UnknownMethod"), () => A.client.view(appId(), "my_account", {}));
+  await row(A, CALL, "a call made as a view", appError("NotAView"), () => A.client.view(appId(), "set", { key: "k", value: "v" }));
+
+  // ── access ────────────────────────────────────────────────────────────────
+  const ACCESS = "Access";
+  const anonymous = await env.client(0);
+  await row(C, ACCESS, "view (an outsider)", "NOT_FOUND", () => C.client.view(appId(), "get", { key: "conformance" }));
+  await row(C, ACCESS, "call (an outsider)", "NOT_FOUND", () => C.client.call(appId(), "set", { key: "x", value: "y" }));
+  await row("anonymous", ACCESS, "view (no session)", "UNAUTHENTICATED", () => anonymous.view(appId(), "get", { key: "conformance" }));
+  await row(B, ACCESS, "the open team's app (reached by inheritance)", OK, () =>
+    eventually(() => B.client.view(need(inOpen, "the open team's app"), "myAccount", {}), () => true, "the open team's app"), (r) => r.result);
+  await row(B, ACCESS, "the invite-only team's app (not a member yet)", "NOT_FOUND", () =>
+    B.client.view(need(inClosed, "the invite-only team's app"), "myAccount", {}));
+  await row(C, ACCESS, "A's own app (an outsider)", "NOT_FOUND", () => C.client.view(need(own, "A's own app"), "get", { key: "k" }));
+  await row(A, ACCESS, "setAccess (accounts: the outsider)", OK, () =>
+    A.client.setAccess(need(own, "A's own app"), { kind: "accounts", accounts: [need(C.account, "the outsider's account")] }));
+  await row(C, ACCESS, "A's own app (an account it names)", OK, () =>
+    eventually(() => C.client.view(need(own, "A's own app"), "myAccount", {}), () => true, "access by account"), (r) => r.result);
+  await row(A, ACCESS, "setAccess (public)", OK, () => A.client.setAccess(need(own, "A's own app"), { kind: "public" }));
+  await row("anonymous", ACCESS, "a public method of a public app (no session)", OK, async () => {
+    await contract(A.client, need(own, "A's own app")).set("open", "to anyone");
+    const r = await eventually(() => anonymous.view(need(own, "A's own app"), "publicGet", { key: "open" }), (r) => r.result === "to anyone", "the public read");
+    return r;
+  }, (r) => r.result);
+  await row("anonymous", ACCESS, "a method that is not public (no session)", "UNAUTHENTICATED", () =>
+    anonymous.view(need(own, "A's own app"), "get", { key: "open" }));
+  const KEYS = "API keys";
+  await row(A, KEYS, "createApiKey (without the step-up)", "CONFIRM_REQUIRED", () => A.client.post("auth/apikeys", { label: "conformance" }));
+  const apiKey = await row(A, KEYS, "createApiKey (read-only, one app)", OK, () =>
+    A.client.createApiKey({ label: `conformance-${tag}`, apps: [appId()], readOnly: true }, A.passkey), (k) => k.keyId);
+  await row(A, KEYS, "listApiKeys", OK, async () => {
+    const list = await A.client.listApiKeys();
+    assert(list.some((k) => k.keyId === apiKey?.keyId), "the new key is not listed");
+    return list;
+  }, (l) => `${l.length} keys`);
+  const agent = await env.client(2);
+  if (apiKey) agent.useApiKey(apiKey.key);
+  await row("apiKey", KEYS, "view (a read-only key)", OK, async () => {
+    const r = await agent.view(appId(), "myAccount", {});
+    assert(r.result === A.account, `the key acts as ${short(r.result)}`);
+    return r;
+  }, (r) => r.result);
+  await row("apiKey", KEYS, "call (a read-only key)", "FORBIDDEN", () => agent.call(appId(), "set", { key: "agent", value: "x" }));
+  await row(A, KEYS, "revokeApiKey", OK, async () => {
+    await A.client.revokeApiKey(need(apiKey?.keyId, "an API key"));
+    const list = await A.client.listApiKeys();
+    assert(!list.some((k) => k.keyId === apiKey?.keyId), "the key is still listed");
+  });
+
+  // ── members ───────────────────────────────────────────────────────────────
+  const MEM = "Members";
+  const bAcc = () => need(B.account, "B's account");
+  await row(A, MEM, "setMember (promote to admin)", OK, async () => {
+    await A.client.setMember(orgId(), bAcc(), "admin", A.passkey);
+    await eventually(() => A.client.getOrg(orgId()), (o) => lower((o.members as Record<string, unknown>)[bAcc()]) === "admin", "B as admin");
+  });
+  await row(A, MEM, "setMember (back to member)", OK, () => A.client.setMember(orgId(), bAcc(), "member", A.passkey));
+  await row(A, MEM, "setTeamMember (the invite-only team)", OK, () =>
+    A.client.setTeamMember(orgId(), need(closed, "the invite-only team"), bAcc(), A.passkey, { role: "member" }));
+  await row(B, MEM, "the invite-only team's app (now a member)", OK, () =>
+    eventually(() => B.client.view(need(inClosed, "the invite-only team's app"), "myAccount", {}), () => true, "the team's app"), (r) => r.result);
+  await row(A, MEM, "setTeamMember (lead, capabilities)", OK, () =>
+    A.client.setTeamMember(orgId(), need(closed, "the invite-only team"), bAcc(), A.passkey, { lead: true, capabilities: ORG_CAPABILITIES.MANAGE_MEMBERS }));
+  await row(A, MEM, "setCapabilities (a member, on a team)", OK, () =>
+    A.client.setCapabilities(orgId(), orgCapabilities("CREATE_APP"), A.passkey, { account: bAcc(), team: need(closed, "a team") }));
+  await row(A, MEM, "setTeamMember (read-only)", OK, () =>
+    A.client.setTeamMember(orgId(), need(closed, "the invite-only team"), bAcc(), A.passkey, { role: "readOnly", lead: false }));
+  await row(B, MEM, "a read-only member's write is refused", "FORBIDDEN", () =>
+    untilRefused(() => B.client.call(need(inClosed, "the team's app"), "set", { key: "ro", value: "x" }), "B's write as read-only"));
+  await row(A, MEM, "removeTeamMember", OK, () => A.client.removeTeamMember(orgId(), need(closed, "the invite-only team"), bAcc(), A.passkey));
+  await row(A, MEM, "setCapabilities (a member, org-wide)", OK, () =>
+    A.client.setCapabilities(orgId(), orgCapabilities("JOIN_OPEN_TEAMS"), A.passkey, { account: bAcc() }));
+
+  // ── live: events and presence ─────────────────────────────────────────────
+  const LIVE = "Events";
+  await row(A, LIVE, "events (A hears its own first write)", OK, () =>
+    heard(aHears, (e) => e.kind === "Inserted" && (e.data as { key?: string })?.key === "conformance", "A's Inserted"), (e) => e.kind);
+  await row(A, LIVE, "events (A hears B's write)", OK, () =>
+    heard(aHears, (e) => e.kind === "AuthoredInserted" && (e.data as { owner?: string })?.owner === B.account, "B's AuthoredInserted"), (e) => e.kind);
+  await row(B, LIVE, "events (B hears A's write)", OK, () =>
+    heard(bHears, (e) => e.kind === "UserSimpleSet" && (e.data as { account?: string })?.account === A.account, "A's UserSimpleSet"), (e) => e.kind);
+  await row(B, LIVE, "events (replayed from index 0 on a new stream)", OK, async () => {
+    const ac = new AbortController();
+    const firstEvent = await B.client.events(appId(), 0, ac.signal).next();
+    ac.abort();
+    assert(firstEvent.value?.kind === "Inserted", `the first event replayed is ${short(firstEvent.value?.kind)}`);
+    return firstEvent.value;
+  }, (e) => e?.kind);
+  aHears.stop();
+  bHears.stop();
+  const PRES = "Presence";
+  await row(A, PRES, "publishPresence", OK, () => A.client.publishPresence(appId(), 1, enc.encode(`here-${tag}`)));
+  const stateHex = Array.from(enc.encode(`here-${tag}`), (x) => x.toString(16).padStart(2, "0")).join("");
+  await row(B, PRES, "presence (A is present)", OK, () =>
+    eventually(() => B.client.presence(appId()), (l) => l.some((p) => p.account === A.account && p.state === stateHex), "A's presence"),
+  (l) => `${l.length} present`);
+  await row(B, PRES, "presenceStream (a snapshot first)", OK, async () => {
+    const ac = new AbortController();
+    const firstEvent = await B.client.presenceStream(appId(), ac.signal).next();
+    ac.abort();
+    assert(firstEvent.value?.kind === "snapshot", `the stream opens with ${short(firstEvent.value?.kind)}`);
+    return firstEvent.value;
+  }, (e) => e?.kind);
+  await row(A, PRES, "publishPresence (retract)", OK, async () => {
+    await A.client.publishPresence(appId(), 2, null);
+    await eventually(() => B.client.presence(appId()), (l) => !l.some((p) => p.account === A.account && p.state !== null), "A's presence retracted");
+  });
+
+  // ── blobs ─────────────────────────────────────────────────────────────────
+  // A component app's blobs are its own host records since core 1.0.0-rc.8
+  // (R8, core #4815); rc.7 refused them by name (`409 NOT_SUPPORTED`). Set
+  // BLOBS back to that code to check a node without them: the round trip below
+  // runs only once an upload succeeds.
+  const BLOB = "Blobs";
+  const BLOBS = OK;
+  const bytes = enc.encode(`blob-${tag}:${"conformance ".repeat(400)}`);
+  const up = await row(A, BLOB, "uploadBlob (a component app)", BLOBS, async () => {
+    const r = await A.client.uploadBlob(appId(), bytes);
     assert(r.size === bytes.length, `stored ${r.size} bytes of ${bytes.length}`);
     return r;
-  }, (v) => v);
-  p.blob.id = up?.blobId;
-  await check(s, B, 'getBlobInfo', OK, async () => {
-    const info = await s.admin().getBlobInfo(need(p.blob?.id, 'an uploaded blob'), { contextId: need(ctx, 'a context') });
-    assert(info.size === bytes.length, `info says ${info.size} bytes, uploaded ${bytes.length}`);
-    return info;
-  }, (v) => v);
-  await check(s, B, 'getBlob (the bytes match)', OK, async () => {
-    const got = new Uint8Array(await s.admin().getBlob(need(p.blob?.id, 'an uploaded blob'), { contextId: need(ctx, 'a context') }));
-    assert(sameBytes(got, bytes), `read ${got.length} bytes that are not the ${bytes.length} uploaded`);
-    return got.length;
-  }, (n) => `${n} bytes`);
-}
-
-/**
- * The calls mero-react lists as `NODE_ONLY` (account-admin.ts) that a node can
- * make without breaking the rig, and the reads beside them that are not on that
- * list — which an account must therefore answer as a node does. Each node call
- * undoes itself: an alias is created, read and deleted.
- */
-async function nodeOnlyCalls(s: Session, p: Primary, input: StartInput): Promise<void> {
-  const ctx = p.contexts.main;
-  const AL = 'Aliases';
-  // Created by a node and refused to an account, so on an account the reads
-  // below look up a name nobody made: a node answers that with no value.
-  const aliasOf = (kind: string) => `conf-${kind}-${s.mode}-${tag()}`;
-  const aliases = [
-    {
-      kind: 'context',
-      target: ctx,
-      create: (alias: string, id: string) => s.admin().createContextAlias({ alias, contextId: id }),
-      lookup: (alias: string) => s.admin().lookupContextAlias(alias),
-      list: () => s.admin().listContextAliases(),
-      remove: (alias: string) => s.admin().deleteContextAlias(alias),
-    },
-    {
-      kind: 'application',
-      target: input.applicationId,
-      create: (alias: string, id: string) => s.admin().createApplicationAlias({ alias, applicationId: id }),
-      lookup: (alias: string) => s.admin().lookupApplicationAlias(alias),
-      list: () => s.admin().listApplicationAliases(),
-      remove: (alias: string) => s.admin().deleteApplicationAlias(alias),
-    },
-    {
-      // An account's identity carries no device id; its create is refused
-      // before the id is read, so the zero id never reaches a node.
-      kind: 'device',
-      target: s.mode === 'account' ? '0'.repeat(64) : p.deviceId,
-      create: (alias: string, id: string) => s.admin().createDeviceAlias({ alias, deviceId: id }),
-      lookup: (alias: string) => s.admin().lookupDeviceAlias(alias),
-      list: () => s.admin().listDeviceAliases(),
-      remove: (alias: string) => s.admin().deleteDeviceAlias(alias),
-    },
-  ];
-  for (const a of aliases) {
-    const alias = aliasOf(a.kind);
-    const made = await check(s, AL, `create${cap(a.kind)}Alias`, NODE_ONLY, async () => {
-      await a.create(alias, need(a.target, `a ${a.kind} id`));
-      return true;
-    });
-    // Reading an alias is as much a node's own as writing one: refused by name
-    // for an account (mero-react 9.6.3).
-    await check(s, AL, `lookup${cap(a.kind)}Alias`, NODE_ONLY, async () => {
-      const r = await a.lookup(alias);
-      if (made) assert(lower(r?.value) === lower(a.target), `${alias} names ${String(r?.value)}, not ${a.target}`);
-      else assert(!r?.value, `${alias} was never created, yet names ${String(r?.value)}`);
+  }, (r) => ({ blobId: r.blobId, size: r.size }));
+  await row(A, BLOB, "listBlobs (a component app)", BLOBS, async () => {
+    const r = await A.client.listBlobs(appId());
+    if (up) assert(r.some((x) => x.id === up.id), "the uploaded blob is not listed");
+    return r;
+  }, (r) => `${r.length} blobs`);
+  if (up) {
+    await row(A, BLOB, "blobInfo", OK, async () => {
+      const r = await A.client.blobInfo(appId(), up.blobId);
+      assert(r.size === bytes.length && r.id === up.id, `info: ${short(r)}`);
       return r;
-    }, (v) => v);
-    await check(s, AL, `list${cap(a.kind)}Aliases`, NODE_ONLY, async () => {
-      const r = await a.list();
-      if (made) assert(lower(r[alias]) === lower(a.target), `the listing has ${alias} as ${String(r[alias])}`);
-      else assert(!(alias in r), `${alias} was never created, yet is listed`);
-      return r;
-    }, (v) => `${Object.keys(v).length} aliases`);
-    await check(s, AL, `delete${cap(a.kind)}Alias`, NODE_ONLY, () => a.remove(alias));
+    }, (r) => r);
+    await row(A, BLOB, "downloadBlob (by its hex id)", OK, async () => {
+      const got = await A.client.downloadBlob(appId(), up.id);
+      assert(sameBytes(got, bytes), `read ${got.length} bytes that are not the ${bytes.length} uploaded`);
+      return got.length;
+    }, (n) => `${n} bytes`);
+    await row(B, BLOB, "downloadBlob (second account)", OK, async () => {
+      const got = await B.client.downloadBlob(appId(), up.blobId);
+      assert(sameBytes(got, bytes), `read ${got.length} bytes that are not the ${bytes.length} uploaded`);
+      return got.length;
+    }, (n) => `${n} bytes`);
+    await row(A, BLOB, "downloadBlob (through another app)", "NOT_FOUND", () => A.client.downloadBlob(need(own, "another app"), up.blobId));
+    await row(A, BLOB, "deleteBlob", OK, () => A.client.deleteBlob(appId(), up.blobId));
+    await row(A, BLOB, "blobInfo (deleted)", "NOT_FOUND", () => A.client.blobInfo(appId(), up.blobId));
   }
 
-  const D = 'Devices';
-  // Devices are the wallet's: core maps the route to `admin` alone, so an app's
-  // token is refused on a node, and mero-react refuses an account by name.
-  await check(s, D, 'listAccountDevices', ADMIN_ONLY, async () => {
-    const r = await adminOnly(() => s.admin().listAccountDevices());
-    assert(r.some((d) => d.isSelf), 'lists no device as this node\'s own');
+  // ── upgrades, releases ────────────────────────────────────────────────────
+  const UP = "Upgrades";
+  await row(A, UP, "upgradeApp (without the step-up)", "CONFIRM_REQUIRED", () => A.client.upgradeApp(need(fromPkg, "the package's app"), { version: "0.0.1" }));
+  await row(A, UP, "upgradeApp (0.0.1)", OK, async () => {
+    const pkgApp = contract(A.client, need(fromPkg, "the package's app"));
+    await pkgApp.set("before", "the upgrade");
+    const r = await A.client.upgradeApp(need(fromPkg, "the package's app"), { version: "0.0.1" }, A.passkey);
+    assert(r.status === "ok", `the upgrade is ${short(r)}`);
+    assert((await pkgApp.get("before")) === "the upgrade", "the state did not survive the upgrade");
     return r;
-  }, (v) => `${v.length} devices`);
-  // The node form is not staged: the owner account's one device is the node's
-  // own, and revoking it would cut the rig's owner off. An account is refused
-  // before anything is sent, so the id is never used.
-  if (s.mode === 'account') {
-    await check(s, D, 'revokeAccountDevice', NODE_ONLY, () =>
-      s.admin().revokeAccountDevice(need(p.namespaceId, 'a namespace'), { deviceId: '0'.repeat(64) }));
-  }
-
-  const X = 'Node-only';
-  await check(s, X, 'generateContextIdentity', NODE_ONLY, async () => {
-    const r = await s.admin().generateContextIdentity();
-    assert(/^[0-9a-zA-Z]{32,}$/.test(r.publicKey ?? ''), `no public key in ${short(r)}`);
+  }, (r) => r.status);
+  await row(A, UP, "listApps (the upgraded app at 0.0.1)", OK, async () => {
+    const l = await A.client.listApps({ package: pkg });
+    const x = l.find((y) => y.appId === fromPkg);
+    assert(x?.version === "0.0.1", `listed at ${short(x?.version)}`);
+    return x;
+  }, (x) => x?.version);
+  const run = await row(A, UP, "upgradeOrg (the package, 0.0.1)", OK, () =>
+    A.client.upgradeOrg(orgId(), { package: pkg, version: "0.0.1" }, A.passkey), (r) => ({ runId: r.runId, apps: r.apps.length }));
+  await row(A, UP, "upgradeRun (until it finishes)", OK, async () => {
+    const r = await eventually(() => A.client.upgradeRun(orgId(), need(run?.runId, "an upgrade run")), (r) => r.finished, "the run finished", patience + 10_000);
+    assert(Object.keys(r.failed).length === 0, `failed: ${short(r.failed)}`);
+    assert(r.done.includes(need(forRun, "the run's app")), `the run upgraded ${short(r.done)}`);
     return r;
-  }, (v) => v);
-  await check(s, X, 'createGroupInvitation (a restricted subgroup)', NODE_ONLY, () =>
-    s.admin().createGroupInvitation(need(p.groups.restricted, 'a restricted group')), (v) => Object.keys(v));
-}
-
-const cap = (x: string) => x[0]!.toUpperCase() + x.slice(1);
-
-async function invite(s: Session): Promise<{ invitation: unknown; presence: string | null }> {
-  const p = primary(s);
-  const ns = p.namespaceId;
-  const r = await check(s, 'Namespaces', 'createNamespaceInvitation', OK, async () => {
-    const id = need(ns, 'a namespace');
-    if (s.mode === 'account') return s.admin().createNamespaceInvitation(id);
-    // A node's invitation names the admins unless told otherwise, and an
-    // account with no node can only be admitted by a relay — so a node inviting
-    // an account names its relays, as mero-react's account admin does for an
-    // account. mero-js's request type has no `admitters` yet; the route does.
-    const relays = ((await s.admin().listGroupMembers(id)).members ?? [])
-      .filter((m) => m.role === 'RelayTee')
-      .map((m) => lower(m.identity));
-    if (relays.length === 0) throw new Blocked('the namespace has no RelayTee member to name as admitter');
-    return s.admin().createNamespaceInvitation(id, { admitters: relays } as never);
-  }, (v) => ({ admitters: (v as { invitation?: { invitation?: { admitters?: unknown } } }).invitation?.invitation?.admitters }));
-  await listen(s, need(p.contexts.main, 'a context'), p);
-  return { invitation: (r as { invitation?: unknown } | undefined)?.invitation ?? null, presence: p.values.presence ?? null };
-}
-
-/**
- * Subscribe to the main context's events and presence, and publish this
- * session's presence there. Before the other session acts, so what it does is
- * heard live; presence is also replayed to a later subscriber, so the order
- * does not decide whether the other session sees it.
- */
-async function listen(s: Session, ctx: string, p: { values: { presence?: string } }): Promise<void> {
-  const l = listeners(s);
-  // Presence first. Both ride the client's one event stream, and the node
-  // replays a context's presence once, to the subscription that first names the
-  // context: a presence listener attached after the events subscription would
-  // never be seeded (`SseClient.subscribe` skips a context it already holds),
-  // so a slot published before this session arrived would never be seen.
-  await check(s, 'Presence', `subscribe (${s.session})`, OK, async () => {
-    l.presence = PresenceLog.open(s.streams().presence, ctx);
+  }, (r) => ({ done: r.done.length, failed: Object.keys(r.failed).length }));
+  await row(A, UP, "retryUpgradeRun (nothing failed: nothing to run)", OK, async () => {
+    const r = await A.client.retryUpgradeRun(orgId(), need(run?.runId, "an upgrade run"), A.passkey);
+    assert(r.apps.length === 0 && r.runId !== run?.runId, `the retry: ${short(r)}`);
+    return r;
+  }, (r) => r.apps.length);
+  const REL = "Releases";
+  await row(A, REL, "releaseRules", OK, () => A.client.releaseRules(), (r) => Object.keys(r));
+  await row(A, REL, "pendingApprovals (the org)", OK, () => A.client.pendingApprovals(orgId()), (r) => Object.keys(r));
+  await row(A, REL, "appsReport (the org)", OK, () => A.client.appsReport(orgId()), (r) => Object.keys(r));
+  await row(A, REL, "approveRelease (the org, then the account; withdrawn)", OK, async () => {
+    await A.client.approveRelease(orgId(), "2.3.200", A.passkey);
+    await A.client.approveRelease(null, "2.3.200", A.passkey);
+    await A.client.approveRelease(null, "2.3.200", A.passkey, false);
   });
-  await check(s, 'Events', `subscribe (${s.session}, the main context)`, OK, async () => {
-    l.events = await EventLog.open(s.streams().events, ctx);
+  await row(A, REL, "approveOutbound (the package's declared prefixes, then none)", OK, async () => {
+    await A.client.approveOutbound(orgId(), pkg, A.passkey);
+    await A.client.approveOutbound(orgId(), pkg, A.passkey, { prefixes: [], replace: true });
   });
-  p.values.presence = `${s.session}-${s.run}-${tag()}`;
-  await check(s, 'Presence', `publish (${s.session})`, OK, () => s.streams().presence.set(ctx, { who: p.values.presence }));
-}
+  await row(B, REL, "approveRelease (a member without APPROVE_RELEASES)", "FORBIDDEN", () =>
+    B.client.approveRelease(orgId(), "2.3.200", B.passkey));
 
-export interface JoinInput {
-  readonly start: StartOutput;
-  readonly invitation: unknown;
-  /** The presence the primary published (its `p:invite` output). */
-  readonly primaryPresence?: string | null;
-}
-
-export interface JoinOutput {
-  readonly account: string | null;
-  readonly myAccount: string | null;
-  /** What the second session wrote for the primary's event subscription, and published as presence. */
-  readonly eventMarker: string | null;
-  readonly presence: string | null;
-}
-
-async function secondJoin(s: Session, input: JoinInput): Promise<JoinOutput> {
-  const { start: st } = input;
-  const ns = st.namespaceId;
-  const ctx = st.contexts.main;
-  const id = await check(s, 'Identity', 'getNodeIdentity (second session)', OK, () => s.admin().getNodeIdentity(), (v) => v);
-  const account = id?.accountId ? lower(id.accountId) : null;
-
-  const before = s.admin();
-  await check(s, 'Namespaces', 'joinNamespace (second session, the primary\'s invitation)', OK, async () => {
-    const r = await before.joinNamespace(need(ns, 'a namespace'), { invitation: need(input.invitation, 'an invitation') as never });
-    await s.settle(before);
-    return r;
-  }, (v) => v);
-  await check(s, 'Namespaces', 'listNamespaces (second session)', OK, () =>
-    eventually(() => s.admin().listNamespaces(), (r) => namespaceIds(r).includes(need(ns, 'a namespace')), 'the joined namespace is listed'),
-    (r) => `${r.length} namespaces`);
-  await check(s, 'Contexts', 'joinContext (in the namespace)', OK, () => s.admin().joinContext(need(ctx, 'a context')), (v) => v);
-  await check(s, 'Identity', 'getContextIdentitiesOwned (second session)', OK, async () => {
-    const r = await eventually(() => s.admin().getContextIdentitiesOwned(need(ctx, 'a context')),
-      (v) => ((v as { identities?: string[] }).identities ?? []).length > 0, 'owns an identity in the joined context');
-    return r;
-  }, (v) => v);
-
-  const R = 'RPC writes';
-  await check(s, R, 'public: get (written by the primary)', OK, () =>
-    eventually(() => s.execute(need(ctx, 'a context'), 'get', { key: 'conformance' }), (v) => v === st.values.public, 'the primary\'s public write'), (v) => v);
-  await check(s, R, 'user: get_user_simple_for (the primary\'s slot)', OK, () =>
-    eventually(() => getUserSimpleFor(s, need(ctx, 'a context'), need(st.primaryMyAccount, 'the primary\'s account')),
-      (v) => v === st.values.user, 'the primary\'s user value'), (v) => v);
-  await check(s, R, 'authored map: the primary\'s entry names the primary', OK, () =>
-    eventually(() => s.execute(need(ctx, 'a context'), 'authored_get_owner', { key: need(st.values.authoredKey, 'an authored key') }),
-      (v) => lower(v) === lower(st.primaryMyAccount), 'the primary as author'), (v) => v);
-  const my = await check(s, R, 'my_account (second session)', OK, async () => String(await s.execute(need(ctx, 'a context'), 'my_account')), (v) => v);
-  await check(s, R, 'authored map: authored_insert (second session)', OK, () =>
-    s.execute(need(ctx, 'a context'), 'authored_insert', { key: 'second', value: 'by the second session' }));
-  // The second session is not in the shared value's writer set (only the
-  // context's creator is), so the contract refuses the write. The caller must be
-  // told: a refusal reported as success is a write the app believes happened.
-  await check(s, R, 'shared: shared_set by a non-writer is refused', OK, async () => {
-    const attempt = `not-a-writer-${s.run}`;
-    let returned: unknown;
-    try {
-      returned = await s.execute(need(ctx, 'a context'), 'shared_set', { value: attempt });
-    } catch (e) {
-      return `refused: ${(e as Error).message}`.slice(0, 120);
-    }
-    const now = await s.execute(need(ctx, 'a context'), 'shared_get');
-    throw new Error(
-      now === attempt
-        ? 'a session outside the writer set wrote the shared value'
-        : `the call resolved (returned ${JSON.stringify(returned)}) though the write did not land (the value is still ${JSON.stringify(now)}): a refused write was reported as success`,
-    );
-  }, (v) => v);
-
-  await check(s, 'Contexts', 'joinContext (in an open subgroup)', OK, () => s.admin().joinContext(need(st.contexts.inOpen, 'a context in an open subgroup')), (v) => v);
-  await check(s, 'Groups', 'joinSubgroupInheritance (open subgroup)', OK, () => s.admin().joinSubgroupInheritance(need(st.groups.inherit, 'an open subgroup')), (v) => v);
-
-  // Another member's blob, found through the context it was announced to.
-  await check(s, 'Blobs', 'getBlob (the primary\'s, through the shared context)', OK, async () => {
-    const want = encoder.encode(need(st.blob?.text, 'the primary\'s blob'));
-    const got = new Uint8Array(await eventually(
-      () => s.admin().getBlob(need(st.blob?.id, 'the primary\'s blob id'), { contextId: need(ctx, 'a context') }),
-      () => true, 'the primary\'s blob'));
-    assert(sameBytes(got, want), `read ${got.length} bytes that are not the primary's ${want.length}`);
-    return got.length;
-  }, (n) => `${n} bytes`);
-
-  // Events and presence: listen, see the primary's presence, then write and
-  // publish for the primary to hear (p:members).
-  const mine = { values: {} as { presence?: string } };
-  await listen(s, need(ctx, 'a context'), mine);
-  await check(s, 'Presence', 'the primary\'s presence is seen (second session)', OK, () =>
-    need(listeners(s).presence, 'a presence subscription').waitFor(need(input.primaryPresence, 'the primary\'s presence'), 'the primary\'s presence'),
-  (e) => ({ author: e.author, account: e.account, state: e.state }));
-  const eventMarker = `event-second-${s.run}-${tag()}`;
-  await check(s, 'Events', 'set (second session, for the primary\'s subscription)', OK, () =>
-    s.execute(need(ctx, 'a context'), 'set', { key: 'event-second', value: eventMarker }));
-  return { account, myAccount: my ?? null, eventMarker, presence: mine.values.presence ?? null };
-}
-
-export interface MembersInput {
-  readonly secondAccount: string | null;
-  readonly secondMyAccount: string | null;
-  readonly secondEventMarker: string | null;
-  readonly secondPresence: string | null;
-}
-
-async function members(s: Session, input: MembersInput): Promise<{ eventMarker: string }> {
-  const p = primary(s);
-  const ns = p.namespaceId;
-  const b = input.secondAccount;
-  const G = 'Groups';
-  await check(s, G, 'listGroupMembers lists the second session', OK, () =>
-    eventually(() => s.admin().listGroupMembers(need(ns, 'a namespace')), (r) => memberIds(r).includes(lower(need(b, 'the second account'))), 'the second account is a member'),
-    (r) => `${memberIds(r).length} members`);
-  await check(s, 'RPC writes', 'authored map: the second session\'s entry names it', OK, () =>
-    eventually(() => s.execute(need(p.contexts.main, 'a context'), 'authored_get_owner', { key: 'second' }),
-      (v) => lower(v) === lower(input.secondMyAccount), 'the second session as author'), (v) => v);
-  const g1 = p.groups.restricted;
-  await check(s, G, 'addGroupMembers', OK, () =>
-    s.admin().addGroupMembers(need(g1, 'a restricted group'), { members: [{ identity: need(b, 'the second account'), role: 'Member' }] } as never));
-  await check(s, G, 'updateMemberRole', OK, () => s.admin().updateMemberRole(need(g1, 'a restricted group'), need(b, 'the second account'), { role: 'Admin' }));
-  await check(s, G, 'setMemberCapabilities', OK, () => s.admin().setMemberCapabilities(need(g1, 'a restricted group'), need(b, 'the second account'), { capabilities: 7 }));
-  await check(s, G, 'getMemberCapabilities (another member)', OK, () =>
-    eventually(() => s.admin().getMemberCapabilities(need(g1, 'a restricted group'), need(b, 'the second account')), (r) => r.capabilities === 7, 'the capabilities just set'), (v) => v);
-  await check(s, G, 'removeGroupMembers', OK, () => s.admin().removeGroupMembers(need(g1, 'a restricted group'), { members: [need(b, 'the second account')] }));
-  await check(s, G, 'addGroupMembers (a group the second session leaves)', OK, () =>
-    s.admin().addGroupMembers(need(p.groups.leave, 'a group to leave'), { members: [{ identity: need(b, 'the second account'), role: 'Member' }] } as never));
-
-  // What the second session did while this one listened, then a write for its
-  // subscription to hear (s:leave).
-  const ctx = p.contexts.main;
-  await check(s, 'Events', 'the second session\'s write is heard (primary)', OK, () =>
-    need(listeners(s).events, 'an event subscription').waitFor(need(input.secondEventMarker, 'the second session\'s write'), 'the second session\'s set'),
-  (e) => ({ type: (e as { type?: string }).type }));
-  await check(s, 'Presence', 'the second session\'s presence is seen (primary)', OK, () =>
-    need(listeners(s).presence, 'a presence subscription').waitFor(need(input.secondPresence, 'the second session\'s presence'), 'the second session\'s presence'),
-  (e) => ({ author: e.author, account: e.account, state: e.state }));
-  const eventMarker = `event-primary-${s.run}-${tag()}`;
-  await check(s, 'Events', 'set (primary, for the second session\'s subscription)', OK, () =>
-    s.execute(need(ctx, 'a context'), 'set', { key: 'event-primary', value: eventMarker }));
-
-  // The second session has downloaded the blob (s:join), so it can go.
-  await check(s, 'Blobs', 'deleteBlob', NODE_ONLY, async () => {
-    const r = await s.admin().deleteBlob(need(p.blob?.id, 'an uploaded blob'));
-    assert(r.deleted, `not deleted: ${short(r)}`);
-    return r;
-  }, (v) => v);
-
-  await teePolicy(s, p);
-  return { eventMarker };
-}
-
-/**
- * Read the namespace's TEE admission policy and set it back unchanged: the rig's
- * relay is admitted under it (rig.py relay-join), so a different policy would
- * be the conformance run breaking its own rig.
- */
-async function teePolicy(s: Session, p: Primary): Promise<void> {
-  const T = 'TEE policy';
-  const ns = p.namespaceId;
-  const policy = await check(s, T, 'getTeeAdmissionPolicy', NODE_ONLY, async () => {
-    const r = await s.admin().getTeeAdmissionPolicy(need(ns, 'a namespace'));
-    assert(r.enabled !== false && r.acceptMock, `the namespace's policy is not the rig's (mock, relay mode): ${short(r)}`);
-    return r;
-  }, (v) => v);
-  // An account is refused before the request is built, so the rig's own policy
-  // stands in for the one it could not read.
-  const same = policy ?? {
-    allowedMrtd: ['0'.repeat(96)], allowedRtmr0: [], allowedRtmr1: ['0'.repeat(96)], allowedRtmr2: ['0'.repeat(96)],
-    allowedRtmr3: ['0'.repeat(96)], allowedTcbStatuses: [], acceptMock: true, mode: 'relay' as const,
-  };
-  await check(s, T, 'setTeeAdmissionPolicy (the policy it holds, unchanged)', NODE_ONLY, async () => {
-    await s.admin().setTeeAdmissionPolicy(need(ns, 'a namespace'), {
-      allowedMrtd: same.allowedMrtd, allowedRtmr0: same.allowedRtmr0, allowedRtmr1: same.allowedRtmr1,
-      allowedRtmr2: same.allowedRtmr2, allowedRtmr3: same.allowedRtmr3, allowedTcbStatuses: same.allowedTcbStatuses,
-      acceptMock: same.acceptMock, ...(same.mode ? { mode: same.mode } : {}),
-    });
-    const after = await eventually(() => s.admin().getTeeAdmissionPolicy(need(ns, 'a namespace')),
-      (r) => r.acceptMock === same.acceptMock && r.mode === same.mode && short(r.allowedMrtd) === short(same.allowedMrtd), 'the policy read back');
-    return after;
-  }, (v) => ({ mode: v.mode, acceptMock: v.acceptMock }));
-}
-
-export interface UpgradeInput {
-  /** The application the namespace is upgraded to: the 0.0.1 bundle the rig installed on the node. */
-  readonly targetApplicationId: string;
-}
-
-/**
- * The namespace, cascaded to its subgroups, onto the rig's 0.0.1 bundle; the
- * upgrade, migration and cascade status reads; and the main context read after
- * it (the bundle changes no state layout, so the value written in p:start must
- * still be there). `upgradeGroup` is `NODE_ONLY` for an account; the three
- * status reads are an account's too since core rc.76 (#4392), and on an
- * account, which upgraded nothing, they only have to answer.
- */
-async function upgrade(s: Session, input: UpgradeInput): Promise<{ upgraded: boolean }> {
-  const p = primary(s);
-  const U = 'Upgrades';
-  const ns = p.namespaceId;
-  const up = await check(s, U, `upgradeGroup (the namespace, cascade, to ${UPGRADE_VERSION})`, NODE_ONLY, () =>
-    s.admin().upgradeGroup(need(ns, 'a namespace'), { targetApplicationId: input.targetApplicationId, cascade: true }), (v) => v);
-  // Polled on a node, where the upgrade is under way; an account upgraded nothing.
-  const poll = <T>(read: () => Promise<T>, ok: (v: T) => boolean, what: string) =>
-    s.mode === 'account' ? read() : eventually(read, ok, what, 60_000);
-  await check(s, U, 'getGroupUpgradeStatus', OK, () =>
-    poll(() => s.admin().getGroupUpgradeStatus(need(ns, 'a namespace')),
-      (r) => r?.toVersion === UPGRADE_VERSION && !/fail/i.test(r.status), `the namespace upgrading to ${UPGRADE_VERSION}`), (v) => v);
-  // An account that administers the namespace reads it through the relay since
-  // core rc.77 (#4400) checks the caller, not the relay.
-  await check(s, U, 'getMigrationStatus', OK, () =>
-    poll(() => s.admin().getMigrationStatus(need(ns, 'a namespace')), (r) => r.rollup.failed === 0, 'a migration rollup with no failures'),
-  (v) => (v ? { targetVersion: v.targetVersion, expectedMembers: v.expectedMembers, rollup: v.rollup } : v));
-  await check(s, U, 'getCascadeStatus', OK, () =>
-    poll(() => s.admin().getCascadeStatus(need(ns, 'a namespace')), (r) => r.length > 0, 'a cascade snapshot per group'),
-  (v) => (Array.isArray(v) ? v.map((e) => ({ group: e.groupId.slice(0, 8), status: e.upgrade.status, to: e.upgrade.toVersion })) : v));
-  if (!up) return { upgraded: false };
-  await check(s, U, 'the main context reads its state after the upgrade', OK, () =>
-    eventually(() => s.execute(need(p.contexts.main, 'a context'), 'get', { key: 'conformance' }), (v) => v === p.values.public, 'the value written before the upgrade'),
-  (v) => v);
-  return { upgraded: true };
-}
-
-/** The second session's next call into the upgraded namespace: its node migrates and serves the same state. */
-async function secondUpgraded(s: Session, input: JoinInput): Promise<void> {
-  const st = input.start;
-  await check(s, 'Upgrades', 'a second session reads state after the upgrade', OK, () =>
-    eventually(() => s.execute(need(st.contexts.main, 'a context'), 'get', { key: 'conformance' }), (v) => v === st.values.public, 'the primary\'s value, after the upgrade', 60_000),
-  (v) => v);
-}
-
-export interface LeaveInput extends JoinInput {
-  /** What the primary wrote for this session's event subscription (p:members). */
-  readonly primaryEventMarker?: string | null;
-}
-
-async function secondLeave(s: Session, input: LeaveInput): Promise<void> {
-  const st = input.start;
-  await check(s, 'Events', 'the primary\'s write is heard (second session)', OK, () =>
-    need(listeners(s).events, 'an event subscription').waitFor(need(input.primaryEventMarker, 'the primary\'s write'), 'the primary\'s set'),
-  (e) => ({ type: (e as { type?: string }).type }));
-  stopListening(s);
-  // A node's leaveContext is a local opt-out that publishes nothing; an account
-  // has nothing local, so mero-react refuses it by name.
-  await check(s, 'Contexts', 'leaveContext (the open subgroup\'s context)', NODE_ONLY, () => s.admin().leaveContext(need(st.contexts.inOpen, 'a context in an open subgroup')));
-  // Joining an Open subgroup by inheritance records the join and adds no direct
-  // row, so leaving that subgroup is refused, on a node exactly as here: the
-  // membership is anchored in the parent.
-  await check(s, 'Groups', 'leaveGroup (a subgroup it only inherits)', NOT_DIRECT_MEMBER, () => s.admin().leaveGroup(need(st.groups.inherit, 'the subgroup joined by inheritance')));
-  await check(s, 'Groups', 'leaveGroup (a group it was added to)', OK, () => s.admin().leaveGroup(need(st.groups.leave, 'the group the second session was added to')));
-  await check(s, 'Namespaces', 'leaveNamespace', OK, () => s.admin().leaveNamespace(need(st.namespaceId, 'a namespace')));
-}
-
-/** Close what `listen` opened. Presence is not retracted: the node sweeps a slot 7 s after its last refresh. */
-function stopListening(s: Session) {
-  const l = listening.get(s);
-  l?.events?.stop();
-  l?.presence?.stop();
-  listening.delete(s);
-}
-
-async function teardown(s: Session): Promise<void> {
-  const p = primary(s);
-  const ns = p.namespaceId;
-  stopListening(s);
-  await check(s, 'Contexts', 'detachContextFromGroup', OK, () => s.admin().detachContextFromGroup(need(ns, 'a namespace'), need(p.contexts.detach, 'a context to detach')));
-  await check(s, 'Contexts', 'deleteContext', NODE_ONLY, () => s.admin().deleteContext(need(p.contexts.main, 'a context')), (v) => v);
-  await check(s, 'Groups', 'deleteGroup (the moved subgroup)', OK, () => s.admin().deleteGroup(need(p.groups.reparent, 'the moved group')), (v) => v);
-  await check(s, 'Groups', 'deleteGroup', OK, () => s.admin().deleteGroup(need(p.groups.restricted, 'a restricted group')), (v) => v);
-  await check(s, 'Namespaces', 'deleteNamespace', NODE_ONLY, () => {
-    if (p.namespaceIsRig) throw new Blocked('createNamespace failed, and the rig\'s own namespace is not deleted');
-    return s.admin().deleteNamespace(need(ns, 'a namespace'));
-  }, (v) => v);
-}
-
-export const PHASES: Record<string, (s: Session, input: never) => Promise<unknown>> = {
-  'p:start': start,
-  'p:invite': invite,
-  's:join': secondJoin,
-  'p:members': members,
-  'p:upgrade': upgrade,
-  's:upgraded': secondUpgraded,
-  's:leave': secondLeave,
-  'p:teardown': teardown,
-};
-
-export type { Mode };
-
-/**
- * scaffolding-e2e exists twice and the two copies name this argument
- * differently: core's (what the rig and CI bundle) takes `user_key`, the apps
- * repo's (what the registry publishes, so what a hosted relay installs) takes
- * `account_hex`. Both refuse an unknown field, so ask the published name first
- * and fall back only on that exact refusal.
- */
-async function getUserSimpleFor(
-  s: { execute: (ctx: string, method: string, args?: Record<string, unknown>) => Promise<unknown> },
-  ctx: string,
-  account: string,
-): Promise<unknown> {
-  try {
-    return await s.execute(ctx, 'get_user_simple_for', { account_hex: account });
-  } catch (e) {
-    if (!/unknown field `account_hex`/.test(String((e as Error)?.message ?? e))) throw e;
-    return s.execute(ctx, 'get_user_simple_for', { user_key: account });
+  // ── teardown ──────────────────────────────────────────────────────────────
+  const END = "Teardown";
+  await row(A, END, "transferApp (to B, an org member)", OK, async () => {
+    await A.client.transferApp(need(inOpen, "the open team's app"), bAcc(), A.passkey);
+    const x = await B.client.getApp(need(inOpen, "the open team's app"));
+    assert(x.owner === B.account, `owned by ${short(x.owner)}`);
+    return x;
+  }, (x) => short(x.owner, 12));
+  await row(B, END, "removeMember (B leaves the org)", OK, () => B.client.removeMember(orgId(), bAcc(), B.passkey));
+  await row(B, END, "the org's app after leaving", "NOT_FOUND", () =>
+    untilRefused(() => B.client.view(appId(), "get", { key: "conformance" }), "B's read after leaving"));
+  for (const [what, id] of [["the main app", app], ["the package's app", fromPkg], ["the run's app", forRun], ["the invite-only team's app", inClosed], ["A's own app", own]] as const) {
+    await row(A, END, `deleteApp (${what})`, OK, () => A.client.deleteApp(need(id, what)));
   }
+  await row(A, END, "getApp (deleted)", "NOT_FOUND", () => A.client.getApp(appId()));
+  await row(A, END, "deleteTeam (moves with its sub-team)", OK, () => A.client.deleteTeam(orgId(), need(closed, "a team")));
+  await row(A, END, "getTeam (deleted)", "NOT_FOUND", () => A.client.getTeam(orgId(), need(moved, "the moved team")));
+  await row(A, END, "deleteOrg (without the step-up)", "CONFIRM_REQUIRED", () => A.client.delete(`orgs/${orgId()}`));
+  await row(A, END, "deleteOrg", OK, () => A.client.deleteOrg(orgId(), A.passkey));
+  await row(A, END, "getOrg (deleted)", "NOT_FOUND", () => A.client.getOrg(orgId()));
+  await row(A, END, "uninstallPackage", OK, async () => {
+    await A.client.uninstallPackage(pkg);
+    const list = await A.client.packages();
+    assert(!list.some((p) => p.package === pkg), `${pkg} is still installed`);
+  });
+  await row(B, END, "signOut", OK, () => B.client.signOut());
+  await row(B, END, "me (signed out)", "UNAUTHENTICATED", () => B.client.me());
+  await row(A, END, "signOutEverywhere", OK, () => A.client.signOutEverywhere());
+  await row(A, END, "me (another device, after signOutEverywhere)", "UNAUTHENTICATED", () => elsewhere.me());
+  return rows;
 }

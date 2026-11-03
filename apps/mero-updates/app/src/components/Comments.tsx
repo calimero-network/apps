@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import type { CommentView } from "../generated/UpdatesClient";
+import type { CommentView } from "../lib/updatesClient";
 import { usePersonLabel, timeAgo, useLive, useSelfAccount, useUpdatesClient } from "../lib/updates";
 import { Avatar } from "./bits";
 import { MessageIcon, SendIcon } from "./icons";

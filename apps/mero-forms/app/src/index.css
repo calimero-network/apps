@@ -744,3 +744,19 @@ select {
   .responses th:nth-child(3), .responses td:nth-child(3) { display: none; }
   .q-foot { align-items: flex-start; }
 }
+
+/* ── sign-in and invitation dialogs ─────────────────────────────────────── */
+.dialog {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 0;
+  width: min(420px, calc(100vw - 32px));
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
+}
+.dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
+.dialog-body { display: grid; gap: 12px; padding: 22px; }
+.dialog-body h2 { margin: 0; }
+.dialog-body input { width: 100%; }
+.dialog-body button { width: 100%; justify-content: center; }
