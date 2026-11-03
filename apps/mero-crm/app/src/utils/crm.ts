@@ -20,7 +20,7 @@ import type {
   DealDetail,
   DealView,
   StageView,
-} from '../generated/CrmClient';
+} from '../crm';
 
 export const DAY_MS = 86_400_000;
 

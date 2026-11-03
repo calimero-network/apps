@@ -1,54 +1,125 @@
 /**
- * Mounts the node picker once, and lets anything below it open the picker.
+ * The passkey sign-in dialog, mounted once. Replaces v1's node picker: on
+ * Calimero 1.0 the frontend already knows its cluster (merod local in dev,
+ * the Cloud cluster in production) and the account is a passkey, so the only
+ * choices are signing in with one or creating an account with a new one.
  *
- * mero-react does not expose an "open the login modal" call — by design. The
- * app owns the modal's open state and renders `LoginModal` itself, which is
- * exactly what mero-design's landing page does:
- *
- *     const { connectToNode } = useMero();
- *     <LoginModal isOpen onClose onConnect={(url) => { onClose(); connectToNode(url); }} />
- *
- * Mero Sign has THREE places that need to open it — the landing CTA, the
- * signed-out app route, and the header — so the modal is mounted once here and
- * they call `openLogin()`, rather than each keeping its own copy of the state
- * and its own `LoginModal`.
+ * Opened by `useCalimero().login()` from the landing CTA, the signed-out app
+ * routes and the header.
  */
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  useState,
-  type ReactNode,
-} from 'react';
-import { LoginModal, useMero } from '@calimero-network/mero-react';
+import { useEffect, useState } from 'react';
 
-const OpenLogin = createContext<() => void>(() => {});
+import { describeTarget } from '../session';
+import { useSessionApi } from '../sessionContext';
+import { pendingInvite } from './invites';
+import styles from '../pages/app/AgreementsPage.module.css';
 
-/** Open the node picker. A no-op above `LoginGate`, never a crash. */
-export function useOpenLogin(): () => void {
-  return useContext(OpenLogin);
-}
+export function SignInModal() {
+  const { api, signInOpen, closeSignIn } = useSessionApi();
+  const [name, setName] = useState('');
+  const invited = pendingInvite() !== null;
 
-export function LoginGate({ children }: { children: ReactNode }) {
-  const { connectToNode } = useMero();
-  const [open, setOpen] = useState(false);
-  const openLogin = useCallback(() => setOpen(true), []);
-  const value = useMemo(() => openLogin, [openLogin]);
+  useEffect(() => {
+    if (signInOpen && api.session.status === 'signed-in') closeSignIn();
+  }, [signInOpen, api.session.status, closeSignIn]);
+
+  if (!signInOpen) return null;
+
+  const where =
+    api.session.status === 'signed-out' || api.session.status === 'signed-in'
+      ? describeTarget(api.session.target)
+      : null;
 
   return (
-    <OpenLogin.Provider value={value}>
-      {children}
-      <LoginModal
-        isOpen={open}
-        onClose={() => setOpen(false)}
-        onConnect={(url) => {
-          // Closed first: `connectToNode` navigates away to the node's sign-in,
-          // and a modal still mounted over a page that is leaving flashes.
-          setOpen(false);
-          connectToNode(url);
-        }}
-      />
-    </OpenLogin.Provider>
+    <div
+      className={styles.modalBackdrop}
+      onClick={() => !api.busy && closeSignIn()}
+    >
+      <div
+        className={styles.modal}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="signin-title"
+        data-testid="signin-modal"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className={styles.modalTitle} id="signin-title">
+          {invited ? "You're invited" : 'Sign in to Mero Sign'}
+        </h2>
+        <p className={styles.modalDesc}>
+          {invited
+            ? 'Sign in, or create an account, to join the workspace you were invited to. '
+            : ''}
+          Accounts are passkeys: nothing to remember, nothing to leak.
+          {where ? ` Connected to ${where}.` : ''}
+        </p>
+
+        {api.session.status === 'connecting' && (
+          <p className={styles.hint}>Connecting…</p>
+        )}
+        {api.session.status === 'unconfigured' && (
+          <p className={styles.error} role="alert">
+            {api.session.message}
+          </p>
+        )}
+
+        {api.session.status === 'signed-out' && (
+          <>
+            <div className={styles.modalRow}>
+              <button
+                type="button"
+                className={styles.btn}
+                data-testid="signin-passkey"
+                disabled={api.busy}
+                onClick={() => void api.signIn()}
+              >
+                {api.busy ? 'Waiting for your passkey…' : 'Sign in with a passkey'}
+              </button>
+            </div>
+            <p className={styles.hint}>New here? Create an account.</p>
+            <div className={styles.createRow}>
+              <input
+                className={styles.input}
+                placeholder="Your name…"
+                aria-label="Your name"
+                data-testid="signup-name"
+                value={name}
+                maxLength={64}
+                disabled={api.busy}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && name.trim()) void api.signUp(name.trim());
+                }}
+              />
+              <button
+                type="button"
+                className={styles.btnGhost}
+                data-testid="signup-passkey"
+                disabled={api.busy || !name.trim()}
+                onClick={() => void api.signUp(name.trim())}
+              >
+                Create an account
+              </button>
+            </div>
+          </>
+        )}
+
+        {api.error && (
+          <p className={styles.error} role="alert" data-testid="signin-error">
+            {api.error}
+          </p>
+        )}
+        <div className={styles.modalRow}>
+          <button
+            type="button"
+            className={styles.btnGhost}
+            disabled={api.busy}
+            onClick={closeSignIn}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

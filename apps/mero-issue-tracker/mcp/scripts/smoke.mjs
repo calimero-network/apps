@@ -7,11 +7,13 @@
 // list_issues -> get_issue (verify the sections survive) -> add_comment ->
 // get_fix_prompt (verify the template is filled with the issue's content).
 //
-// Requires a running node with the tracker context provisioned. Configure via
-// the same env vars the server reads:
-//   CALIMERO_NODE_URL   base URL of the node (default http://localhost:2428)
-//   TRACKER_CONTEXT     context id or alias  (required)
-//   CALIMERO_AUTH_TOKEN bearer token         (if the node enforces auth)
+// Requires a cluster (`pnpm merod-local up`, or a Cloud cluster) with a repo of
+// the tracker. Configure via the same env vars the server reads:
+//   CALIMERO_API_KEY    an API key acting for your account (required; the app:
+//                       Members -> "Agent key")
+//   TRACKER_APP         the repo's app instance id (or TRACKER_WORKSPACE +
+//                       TRACKER_REPO)
+//   CALIMERO_TARGET     local (default: the three merod local nodes) or cloud
 //
 // Usage: node mcp/scripts/smoke.mjs
 
@@ -22,8 +24,8 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MCP_DIR = path.resolve(__dirname, '..');
 
-if (!process.env.TRACKER_CONTEXT) {
-  console.error('TRACKER_CONTEXT is required (context id or alias).');
+if (!process.env.CALIMERO_API_KEY || !(process.env.TRACKER_APP || process.env.TRACKER_WORKSPACE)) {
+  console.error('CALIMERO_API_KEY and TRACKER_APP (or TRACKER_WORKSPACE) are required.');
   process.exit(2);
 }
 
@@ -115,8 +117,9 @@ async function main() {
 
   const detail = await callTool('get_issue', { id });
   const issue = detail.issue;
-  for (const f of ['summary', 'impact', 'repro', 'resolution_criteria']) {
-    assert(issue[f] === fields[f], `section ${f} did not round-trip: got ${JSON.stringify(issue[f])}`);
+  // The tool takes snake_case; get_issue answers the contract's camelCase.
+  for (const [f, wire] of [['summary', 'summary'], ['impact', 'impact'], ['repro', 'repro'], ['resolution_criteria', 'resolutionCriteria']]) {
+    assert(issue[wire] === fields[f], `section ${f} did not round-trip: got ${JSON.stringify(issue[wire])}`);
   }
   assert(issue.title === fields.title, 'title did not round-trip');
   console.log('get_issue -> four sections round-tripped intact');

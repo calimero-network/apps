@@ -1,0 +1,300 @@
+[
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getStatusCounts",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "status": "Open",
+     "count": "0"
+    },
+    {
+     "status": "In progress",
+     "count": "0"
+    },
+    {
+     "status": "Blocked",
+     "count": "0"
+    },
+    {
+     "status": "Done",
+     "count": "0"
+    }
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setRepoUrl",
+  "args": {
+   "url": "https://github.com/calimero-network/apps"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getRepoInfo",
+  "args": {},
+  "expect": {
+   "ok": {
+    "repoUrl": "https://github.com/calimero-network/apps"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createIssue",
+  "args": {
+   "title": "Flaky CI",
+   "summary": "The e2e job fails intermittently.",
+   "impact": "Merges are blocked.",
+   "repro": "Re-run the e2e job on main.",
+   "resolutionCriteria": "Ten consecutive green runs.",
+   "priority": "high",
+   "labels": [
+    "ci"
+   ]
+  },
+  "save": "issue"
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getStatusCounts",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "status": "Open",
+     "count": "1"
+    },
+    {
+     "status": "In progress",
+     "count": "0"
+    },
+    {
+     "status": "Blocked",
+     "count": "0"
+    },
+    {
+     "status": "Done",
+     "count": "0"
+    }
+   ]
+  },
+  "events": {
+   "bob": [
+    "RepoUrlChanged",
+    "IssueCreated"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setStatus",
+  "args": {
+   "issueId": "$issue",
+   "status": "In progress"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getStatusCounts",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "status": "Open",
+     "count": "0"
+    },
+    {
+     "status": "In progress",
+     "count": "1"
+    },
+    {
+     "status": "Blocked",
+     "count": "0"
+    },
+    {
+     "status": "Done",
+     "count": "0"
+    }
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listIssues",
+  "args": {
+   "status": "Open",
+   "assignee": null,
+   "label": null
+  },
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setPriority",
+  "args": {
+   "issueId": "$issue",
+   "priority": "urgent"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setAssignee",
+  "args": {
+   "issueId": "$issue",
+   "assignee": "alice"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listIssues",
+  "args": {
+   "status": null,
+   "assignee": "nobody",
+   "label": null
+  },
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addLabel",
+  "args": {
+   "issueId": "$issue",
+   "label": "flaky"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "removeLabel",
+  "args": {
+   "issueId": "$issue",
+   "label": "ci"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listIssues",
+  "args": {
+   "status": null,
+   "assignee": null,
+   "label": "ci"
+  },
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addComment",
+  "args": {
+   "issueId": "$issue",
+   "body": "Seen again on main."
+  },
+  "save": "comment"
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "editComment",
+  "args": {
+   "commentId": "$comment",
+   "newBody": "hijacked"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the author may edit this comment"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "editComment",
+  "args": {
+   "commentId": "$comment",
+   "newBody": "Seen twice on main."
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deleteComment",
+  "args": {
+   "commentId": "$comment"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "deleteComment",
+  "args": {
+   "commentId": "$comment"
+  },
+  "expect": {
+   "error": "NotFound",
+   "fields": {
+    "id": "$comment"
+   }
+  },
+  "events": {
+   "bob": [
+    "RepoUrlChanged",
+    "IssueCreated",
+    "IssueStatusChanged",
+    "IssuePriorityChanged",
+    "IssueAssigneeChanged",
+    "IssueLabelsChanged",
+    "IssueLabelsChanged",
+    "CommentAdded",
+    "CommentEdited",
+    "CommentDeleted"
+   ]
+  }
+ }
+]

@@ -1,12 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  adminsMissingDocumentAccess,
   canEditDocument,
   effectiveDocumentRole,
 } from "./documentRoles";
 
 const ACCOUNT = "a".repeat(64);
-const ACCOUNT_2 = "c".repeat(64);
 
 describe("effectiveDocumentRole", () => {
   it("reports the granted role", () => {
@@ -38,57 +36,15 @@ describe("canEditDocument", () => {
   });
 });
 
-describe("adminsMissingDocumentAccess", () => {
-  it("names a team admin who is only a viewer on the document", () => {
-    // The reported case: the row reads Admin and the person still cannot edit,
-    // because the two role systems never spoke to each other.
-    expect(
-      adminsMissingDocumentAccess([{ identity: ACCOUNT, role: "Admin" }], {
-        [ACCOUNT]: "viewer",
-      }),
-    ).toEqual([ACCOUNT]);
+describe("team owners and admins", () => {
+  it("edit a document whose roster has not seen them", () => {
+    expect(effectiveDocumentRole({}, "a", "admin")).toBe("editor");
+    expect(effectiveDocumentRole({}, "a", "owner")).toBe("editor");
+    expect(canEditDocument({}, "a", "member")).toBe(false);
+    expect(canEditDocument({}, "a", "guest")).toBe(false);
   });
 
-  it("names a team admin the document has never heard from", () => {
-    // Unlike mero-design, this app CAN grant to someone who has never opened
-    // the document — a member id is an account, so the grant is a parse, not a
-    // lookup. So an absent entry is actionable here, not a reason to skip.
-    expect(
-      adminsMissingDocumentAccess([{ identity: ACCOUNT, role: "Admin" }], {}),
-    ).toEqual([ACCOUNT]);
-  });
-
-  it("leaves an admin who already has access alone", () => {
-    expect(
-      adminsMissingDocumentAccess([{ identity: ACCOUNT, role: "Admin" }], {
-        [ACCOUNT]: "editor",
-      }),
-    ).toEqual([]);
-    expect(
-      adminsMissingDocumentAccess([{ identity: ACCOUNT, role: "Admin" }], {
-        [ACCOUNT]: "admin",
-      }),
-    ).toEqual([]);
-  });
-
-  it("never touches a plain member", () => {
-    expect(
-      adminsMissingDocumentAccess([{ identity: ACCOUNT, role: "Member" }], {
-        [ACCOUNT]: "viewer",
-      }),
-    ).toEqual([]);
-    expect(adminsMissingDocumentAccess([{ identity: ACCOUNT, role: "Member" }], {})).toEqual([]);
-  });
-
-  it("returns every admin that needs one", () => {
-    expect(
-      adminsMissingDocumentAccess(
-        [
-          { identity: ACCOUNT, role: "Admin" },
-          { identity: ACCOUNT_2, role: "Admin" },
-        ],
-        { [ACCOUNT]: "viewer" },
-      ),
-    ).toEqual([ACCOUNT, ACCOUNT_2]);
+  it("keep the document's own answer when it has one", () => {
+    expect(effectiveDocumentRole({ a: "admin" }, "a", "member")).toBe("admin");
   });
 });

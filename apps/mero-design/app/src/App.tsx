@@ -1,6 +1,5 @@
-import { type ReactNode } from "react";
-import { Routes, Route, Navigate, useParams } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
+import { useState, type ReactNode } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useParams } from "react-router-dom";
 import LandingPage from "./pages/landing/LandingPage";
 import DesignShell from "./components/shell/DesignShell";
 import TeamIndex from "./pages/TeamIndex";
@@ -8,15 +7,18 @@ import TeamHome from "./pages/TeamHome";
 import BoardResolver from "./pages/BoardResolver";
 import CanvasPage from "./pages/CanvasPage";
 import { ToastProvider } from "./contexts/ToastContext";
-import { ApiBinder } from "./api/ApiBinder";
 import InvitationPrompt from "./components/InvitationPrompt";
+import SignInModal from "./components/SignInModal";
+import type { SessionDeps } from "./session";
+import { SessionProvider, useAuth } from "./sessionContext";
+import { nodeBasename } from "./utils/servedByNode";
 
 /** Every path the shared landing page serves. See src/pages/landing. */
 const LANDING_PATHS = ['/', '/docs', '/preview'];
 
 
 function RequireAuth({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isLoading } = useMero();
+  const { isAuthenticated, isLoading } = useAuth();
   if (isLoading) return null; // wait for the auth probe; avoids a flash to /login
   if (!isAuthenticated) return <Navigate to="/" replace />;
   return <>{children}</>;
@@ -24,21 +26,11 @@ function RequireAuth({ children }: { children: ReactNode }) {
 
 
 /**
- * An authenticated visitor has no business on the marketing page.
- *
- * ⚠️ THIS IS THE STEP THAT CARRIES YOU INTO THE APP. The SSO callback returns
- * to wherever login started — `connectToNode` uses `window.location.href` as
- * the callback URL — which for a visitor who pressed Connect on the landing
- * page is `/`. Without this guard the tokens land, `isAuthenticated` flips
- * true, and the router renders the landing page again: you log in successfully
- * and end up exactly where you started.
- *
- * The app used to get this from a `RedirectIfAuthed` wrapped around its
- * `/login` route. Deleting that page took the redirect with it; the landing
- * routes need the same guard, because they are now where login begins and ends.
+ * An authenticated visitor has no business on the marketing page: a passkey
+ * sign-in on `/` (or a session restored on load) carries you into the app.
  */
 function RedirectIfAuthed({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isLoading } = useMero();
+  const { isAuthenticated, isLoading } = useAuth();
   if (isLoading) return null; // the auth probe is still in flight
   // `/teams` goes on by itself to the team and board open last (TeamIndex).
   if (isAuthenticated) return <Navigate to="/teams" replace />;
@@ -55,11 +47,25 @@ function BoardRoute() {
   return <CanvasPage key={projectId} />;
 }
 
-export default function App() {
+/** The landing page with the passkey sign-in as its connect action. */
+function Landing() {
+  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+  const [signingIn, setSigningIn] = useState(false);
   return (
-    // ApiBinder publishes the session's clients (rpc / admin / events) to the
-    // plain-function data layer in src/api — see api/client.tsx.
-    <ApiBinder>
+    <>
+      <LandingPage
+        onConnect={() => setSigningIn(true)}
+        isAuthenticated={isAuthenticated}
+        onOpenApp={() => navigate("/teams")}
+      />
+      <SignInModal open={signingIn} onClose={() => setSigningIn(false)} />
+    </>
+  );
+}
+
+function AppRoutes() {
+  return (
     <ToastProvider>
       {/* Above the routes: an invitation link can open this app on any page. */}
       <InvitationPrompt />
@@ -78,10 +84,10 @@ export default function App() {
             element={
               landingPath === '/' ? (
                 <RedirectIfAuthed>
-                  <LandingPage />
+                  <Landing />
                 </RedirectIfAuthed>
               ) : (
-                <LandingPage />
+                <Landing />
               )
             }
           />
@@ -110,6 +116,17 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </ToastProvider>
-    </ApiBinder>
+  );
+}
+
+export default function App({ deps }: { deps?: SessionDeps } = {}) {
+  return (
+    // SessionProvider connects (merod local in dev, the Cloud cluster in
+    // production) and binds the signed-in client for the data layer in src/api.
+    <SessionProvider deps={deps}>
+      <BrowserRouter basename={nodeBasename()}>
+        <AppRoutes />
+      </BrowserRouter>
+    </SessionProvider>
   );
 }

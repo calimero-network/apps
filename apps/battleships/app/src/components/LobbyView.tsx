@@ -1,13 +1,14 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Input } from '@calimero-network/mero-ui';
 import { ShieldCheck } from '@calimero-network/mero-icons';
 import CopyButton from './CopyButton';
-import type { MatchSummary, MatchRecord, PlayerStatsView } from '../generated/lobby/LobbyClient';
+import type { MatchSummary, MatchRecord, PlayerStatsView } from '../battleships';
 import { formatKey, playerName } from '../utils/playerName';
 
 interface GroupMember {
   identity: string;
   role: string;
+  name?: string;
 }
 
 type HistoryFilter = 'all' | 'mine';
@@ -16,12 +17,12 @@ interface LobbyViewProps {
   lobbyAlias?: string | null;
   isAdmin: boolean;
   members: GroupMember[];
-  /** TEE nodes admitted to the lobby's group; never part of `members`. */
+  /** v1: TEE nodes admitted to the namespace. An organization has none, so this stays empty. */
   teeMembers?: GroupMember[];
   membersLoading: boolean;
-  /** Player keys in this lobby — what `create_match` accepts. */
+  /** Accounts that have opened this lobby: what `createMatch` accepts. */
   playerKeys: string[];
-  /** account id -> player key, as recorded in the lobby contract. */
+  /** account id -> the id it plays as (the account itself). */
   playerByAccount: Record<string, string>;
   /** Fill the challenge field from a player row. */
   onChallengePlayer: (key: string) => void;
@@ -42,17 +43,17 @@ interface LobbyViewProps {
 
   // Match list
   matches: MatchSummary[];
-  onOpenGame: (matchId: string, contextId: string) => void;
+  onOpenGame: (matchId: string) => void;
 
   // Player record + match history (lobby-wide, sourced from getPlayerStats /
-  // getHistory on the lobby context — see useBattleshipsLobby + match page).
+  // getHistory on the lobby instance — see useBattleshipsLobby + match page).
   playerStats: PlayerStatsView | null;
   history: MatchRecord[];
   currentUser: string | null;
 
-  /** The namespace name for an account (`useMemberNames().nameOf`). */
+  /** The name an account set in the lobby's organization. */
   nameOf?: (account: string) => string | undefined;
-  /** Publish your name for the namespace. Omitted, the name field is hidden. */
+  /** Set your name in the lobby's organization. Omitted, the name field is hidden. */
   onSaveName?: (name: string) => void;
 }
 
@@ -65,7 +66,7 @@ const formatTs = (ms: number) => new Date(ms).toLocaleString(undefined, {
 });
 
 export default function LobbyView({
-  lobbyAlias, isAdmin, members, teeMembers = [], membersLoading, playerKeys, playerByAccount,
+  lobbyAlias, isAdmin, members, teeMembers = [], membersLoading, playerByAccount,
   onChallengePlayer, selfIdentity, executorPublicKey,
   inviteLoading, invitationJson, onCreateInvitation, onDismissInvitation,
   player2, creatingMatch, onPlayer2Change, onCreateMatch,
@@ -82,56 +83,20 @@ export default function LobbyView({
   const [matchTab, setMatchTab] = useState<'matches' | 'record' | 'history'>('matches');
 
   /**
-   * Who to list as a player.
-   *
-   * ⚠️ YOUR OWN KEY IS INCLUDED WITHOUT WAITING FOR THE LOOKUP. This node knows
-   * its own executor key from the client it built, so gating the row on a round
-   * trip is what made the whole section — your key included — disappear behind
-   * "2 members online" when the context identities came back empty.
-   *
-   * De-duplicated, because once the lookup does answer, your key is in it too.
-   */
-  /**
-   * The player key for a member row.
-   *
-   * The contract map is the answer: each member records its own account ->
-   * player key pairing with `register_player`, and contract state reaches every
-   * node. Nothing else does — group membership is keyed by ACCOUNT and syncs,
-   * context identities ARE the player keys and do not (a joining node lists
-   * only its own, and never catches up), and no node-side API relates the two.
-   *
-   * ⚠️ THE FALLBACK BELOW IS A TWO-PLAYER SPECIAL CASE, AND IT USED TO BE THE
-   * WHOLE IMPLEMENTATION. It only fires when there is exactly one other member
-   * and exactly one other known key, so at three members it resolved NOBODY and
-   * every row read "hasn't opened the lobby yet" — on the creator's node too,
-   * which held all three keys but could not say whose they were. It is kept
-   * only so a lobby whose context still runs a build without `register_player`
-   * behaves as it did before, and it is now unreachable whenever the map has
-   * the row.
+   * The id a member row challenges with: their account, once they have opened
+   * the lobby (`registerPlayer`, which the contract's `getPlayers` lists). Your
+   * own row has it without waiting for the read.
    */
   const playerKeyForMember = useCallback(
     (identity: string): string | null => {
       const recorded = playerByAccount[identity];
       if (recorded) return recorded;
       if (identity === selfIdentity) return executorPublicKey ?? null;
-      const others = members.filter((m) => m.identity !== selfIdentity);
-      const otherKeys = playerKeys.filter((k) => k !== executorPublicKey);
-      if (others.length === 1 && otherKeys.length === 1) return otherKeys[0] ?? null;
       return null;
     },
-    [executorPublicKey, members, playerByAccount, playerKeys, selfIdentity],
+    [executorPublicKey, playerByAccount, selfIdentity],
   );
 
-  const shownPlayers = useMemo(() => {
-    const seen = new Set<string>();
-    const out: string[] = [];
-    for (const key of [executorPublicKey, ...playerKeys]) {
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      out.push(key);
-    }
-    return out;
-  }, [executorPublicKey, playerKeys]);
 
   // Newest first, then optionally restricted to matches involving the
   // current user. Memoized so a re-render from sibling state changes
@@ -172,16 +137,11 @@ export default function LobbyView({
         <div className="naval-card-body">
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             <span className="mono-sm">
-              {members.length} member{members.length !== 1 ? 's' : ''} online
+              {members.length} member{members.length !== 1 ? 's' : ''}
             </span>
 
-            {/* ⚠️ DRIVEN BY THE GROUP MEMBER LIST, NOT BY CONTEXT IDENTITIES.
-                `/admin-api/groups/{id}/members` returns every member with their
-                role on BOTH nodes — it is the same data the admin dashboard
-                shows. Context identities do not: a node that joined a context
-                lists only its own, so a list built from those showed one row on
-                the member's node and looked broken. The roster comes from the
-                group; the challengeable key is attached where it is known. */}
+            {/* The roster is the lobby organization's member list; the
+                challengeable id is attached once a member has opened the lobby. */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
               <span className="info-label">Members</span>
               {membersLoading && members.length === 0 && (
@@ -297,12 +257,12 @@ export default function LobbyView({
           >
             <Input
               type="text"
-              placeholder="Opponent's player key"
+              placeholder="Opponent's account"
               value={player2}
               onChange={(e) => onPlayer2Change(e.target.value)}
             />
             {/* Same control, same colour story as Create and Join: inert
-                until there is an opponent key to challenge. */}
+                until there is an opponent to challenge. */}
             <button
               type="submit"
               className="btn-deploy"
@@ -363,7 +323,10 @@ export default function LobbyView({
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   {matches.map((m) => {
-                    const canOpen = m.status === 'Active' && !!m.context_id;
+                    // Your own matches, until they are won: a pending one is
+                    // where you deploy your fleet.
+                    const mine = m.player1 === currentUser || m.player2 === currentUser;
+                    const canOpen = mine && m.status !== 'Finished';
                     return (
                       <div key={m.match_id} className="match-item" data-testid="match-item">
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
@@ -387,9 +350,9 @@ export default function LobbyView({
                           type="button"
                           className="lobby-row-cta"
                           disabled={!canOpen}
-                          onClick={() => canOpen && onOpenGame(m.match_id, m.context_id!)}
+                          onClick={() => canOpen && onOpenGame(m.match_id)}
                         >
-                          {canOpen ? 'Open' : m.status === 'Pending' ? 'Pending' : 'Ended'}
+                          {canOpen ? 'Open' : m.status === 'Finished' ? 'Ended' : m.status}
                         </button>
                       </div>
                     );

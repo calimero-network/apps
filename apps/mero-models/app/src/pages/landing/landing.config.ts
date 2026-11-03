@@ -11,22 +11,21 @@
 import { CloudX, Cube3D, LockCheck, Target, Upload } from '@calimero-network/mero-icons';
 
 import Animation from './animation';
-import LoginPopup from './loginPopup';
 import type { LandingConfig } from './landingTypes';
 
 export const CONFIG: LandingConfig = {
   name: "Mero Models",
   packageId: "com.calimero.mero-models",
-  tagline: "Blender-style 3D modelling with no server. A scene is a Calimero context: objects, meshes and materials replicate peer to peer between the members' own nodes, and everyone edits the same model at once.",
+  tagline: "Blender-style 3D modelling, shared. A scene is a Calimero app instance: objects, meshes and materials are edited by everyone in it at once, and the heavy data lives in the app's own blobs.",
   dir: "mero-models",
   markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
-  availability: "web+desktop",
+  availability: "web",
   tint: "#818cf8",
-  trust: ["No server holds your models", "Editing enforced by the contract", "FBX · glTF · OBJ · STL out, with LODs and collision"],
+  trust: ["Only your studio reaches your models", "Editing enforced by the contract", "FBX · glTF · OBJ · STL out, with LODs and collision"],
   explainer: [
-    "A Blender-style modeller in the browser: add primitives, move, rotate and scale them with a gizmo, model in quads with loop cuts, bevels, insets, extrusions and a modifier stack, unwrap UVs, bake and paint PBR textures with smart materials, export game-ready FBX or glTF with LODs and collision, give things materials and lights, and export the result as glTF, OBJ or STL. A scene is a Calimero context, and it replicates between its members’ own nodes.",
-    "Everyone in the scene sees every change as it lands, and sees each other: what the others have selected and where they are looking from streams over ephemeral presence, which never touches storage. Who may change the model is decided by the scene’s admin and enforced by the contract on every node.",
+    "A Blender-style modeller in the browser: add primitives, move, rotate and scale them with a gizmo, model in quads with loop cuts, bevels, insets, extrusions and a modifier stack, unwrap UVs, bake and paint PBR textures with smart materials, export game-ready FBX or glTF with LODs and collision, give things materials and lights, and export the result as glTF, OBJ or STL. A scene is a Calimero app instance in your studio’s organization.",
+    "Everyone in the scene sees every change as it lands, and sees each other: what the others have selected and where they are looking from streams over presence, which is never stored. Who may change the model is decided by the scene’s admin and enforced by the contract.",
   ],
   features: [
     {
@@ -36,8 +35,8 @@ export const CONFIG: LandingConfig = {
     },
     {
       icon: CloudX,
-      title: "No server holds the model",
-      body: "A scene is a context. Every member’s node keeps the whole scene, and edits travel peer to peer.",
+      title: "Your studio holds the model",
+      body: "A scene is an app instance in your organization. Only its members reach it, and every edit is ordered by one log.",
     },
     {
       icon: Target,
@@ -47,46 +46,46 @@ export const CONFIG: LandingConfig = {
     {
       icon: LockCheck,
       title: "Editors, enforced",
-      body: "Anyone invited can watch; only editors the admin names can change the scene, and every node refuses anyone else’s write.",
+      body: "Anyone invited can watch; only editors the admin names can change the scene, and the contract refuses anyone else’s write.",
     },
     {
       icon: Upload,
       title: "Production assets, versioned",
-      body: "Meshes and PBR textures live in blobs on your nodes. Every save is a version you can restore, and an asset can be checked out so nobody else changes it while you work. glTF, OBJ and STL in and out.",
+      body: "Meshes and PBR textures live in the scene’s own blobs. Every save is a version you can restore, and an asset can be checked out so nobody else changes it while you work. glTF, OBJ and STL in and out.",
     },
   ],
   overview: {
-    headline: "A 3D modeller where the scene lives on your nodes.",
+    headline: "A 3D modeller where the scene belongs to your studio.",
     comparison: {
-      heading: "Collaborative 3D, without the cloud in the middle",
+      heading: "Collaborative 3D, without a vendor in the middle",
       sub: "Primitives, meshes, materials and lights in a viewport you already know how to drive. The difference is who holds the model.",
       themLabel: "A typical cloud 3D tool",
       rows: [
-        { label: "Where the model lives", them: "In the vendor’s cloud", us: "On every member’s own node, nobody else’s" },
-        { label: "Editing together", them: "Through the vendor’s servers", us: "Peer to peer, merging as a CRDT" },
-        { label: "Who may change it", them: "Whatever the vendor’s backend allows", us: "Editors the scene’s admin names, enforced on every node" },
-        { label: "Getting your work out", them: "An export button, while the service lasts", us: "glTF, OBJ and STL out of the box, and the scene is already on your disk" },
-        { label: "If the service goes away", them: "Your models may go with it", us: "Your node still has every object and every vertex" },
+        { label: "Where the model lives", them: "In the vendor’s cloud", us: "In your studio’s own app instance, which only its members reach" },
+        { label: "Editing together", them: "Through the vendor’s servers", us: "Every change ordered by one log, and seen by everyone at once" },
+        { label: "Who may change it", them: "Whatever the vendor’s backend allows", us: "Editors the scene’s admin names, enforced by the contract" },
+        { label: "Getting your work out", them: "An export button, while the service lasts", us: "glTF, OBJ and STL out of the box, and every version kept" },
+        { label: "Signing in", them: "An email and a password", us: "A passkey: nothing to remember, nothing to leak" },
       ],
     },
-    closing: { title: "Start a scene", body: "Connect a node, or install the desktop app that bundles one, then send the people you build with the link." },
+    closing: { title: "Start a scene", body: "Sign in with a passkey, start a scene, then send the people you build with an invitation to your studio." },
   },
   faq: [
     {
       q: "What happens when two people move the same object?",
-      a: "Each object is one record, and the merge keeps one person’s write whole — the same one on every node. You never end up with a cube that took its position from one person and its colour from the other.",
+      a: "Each object is one record, and one log orders every write: the object ends as the later write, whole. You never end up with a cube that took its position from one person and its colour from the other.",
     },
     {
       q: "How big can a model be?",
-      a: "A single mesh can be up to 4 million vertices and 8 million triangles, and a texture up to 16,384 pixels a side. Vertices and pixels live in content-addressed blobs on the members’ nodes, not in the replicated state, so a heavy asset is one upload. A scene holds up to 2,000 objects.",
+      a: "A single mesh can be up to 4 million vertices and 8 million triangles, and a texture up to 16,384 pixels a side, as long as each one encodes to at most 47.25 MiB: a blob travels inside one sealed request. Meshes are compressed, so that is a few million vertices; split anything larger into several objects. A scene holds up to 2,000 objects.",
     },
     {
       q: "Can someone I invite change my scene?",
-      a: "Not unless you let them. An invitation lets someone open the scene and watch; the scene’s admin ticks Can edit for the people who may change it, and the contract enforces that on every node, not just in the app.",
+      a: "Not unless you let them. An invitation lets someone open the scene and watch; the scene’s admin ticks Can edit for the people who may change it, and the contract enforces that, not just the app.",
     },
     {
       q: "Does moving the camera send anything?",
-      a: "Only presence: where you are looking from and what you have selected, over the node’s ephemeral channel. It is never stored and never a transaction. Moving an object is a transaction, sent once when you let go.",
+      a: "Only presence: where you are looking from and what you have selected. It is never stored and never a call. Moving an object is a call, sent once when you let go.",
     },
   ],
   animation: Animation,
@@ -95,31 +94,31 @@ export const CONFIG: LandingConfig = {
       id: "concepts",
       heading: "The words, and what they mean here",
       paragraphs: [
-        "A 3D scene is a Calimero context. There is no server keeping the model: every member’s own node runs the contract, holds every object and every vertex, and replicates changes to the others.",
+        "A 3D scene is a Calimero app instance in your studio’s organization. Only the studio’s members reach it, every change goes through the contract, and one log orders them all.",
       ],
       concepts: [
-        { term: "Namespace", def: "A studio. You create one, invite the people you build with, and every scene inside it is open to them without another invitation." },
-        { term: "Context", def: "A scene. It holds the objects, their meshes, the world settings and who may edit." },
+        { term: "Studio", def: "An organization. You create one with your first scene, invite the people you build with, and every scene inside it is open to them without another invitation." },
+        { term: "Scene", def: "An app instance. It holds the objects, their meshes and textures, the world settings and who may edit." },
         { term: "Object", def: "One thing in the outliner: a primitive, a mesh, a light or an empty, with a transform, a material and a parent." },
         { term: "Mesh", def: "The polygon cage of an edited or imported shape — quads and n-gons, UVs, hard edges and its modifiers — stored as a versioned blob apart from the object, so moving it never rewrites them." },
-        { term: "Editor", def: "Someone the scene’s admin has allowed to change it. Everyone else in the namespace can open the scene and watch." },
+        { term: "Editor", def: "Someone the scene’s admin has allowed to change it. Everyone else in the studio can open the scene and watch." },
       ],
     },
     {
       id: "start",
       heading: "Getting started",
       steps: [
-        { title: "Connect a node", body: "Press Connect to node. The Calimero desktop app bundles one; if you run your own, enter its URL in the same popup." },
-        { title: "Start a scene", body: "Name it and press New scene. That creates a namespace you own and a scene inside it, with you as its admin." },
+        { title: "Sign in", body: "Sign in with a passkey, or create an account with a new one. There is no password and no email." },
+        { title: "Start a scene", body: "Name it and press New scene. That creates a studio you own and a scene inside it, with you as its admin." },
         { title: "Build", body: "Shift+A adds a primitive. Drag the gizmo to move it; G, R and S switch between move, rotate and scale, Tab models the mesh — 1, 2 and 3 pick vertices, edges or faces; E, I, Ctrl+B and Ctrl+R extrude, inset, bevel and loop-cut — and Ctrl+Z undoes. Mark seams and press U to unwrap, then Bake & texture paints a smart material onto it. Add → Examples loads finished assets built the same way." },
-        { title: "Invite", body: "Share mints a link. Whoever opens it can watch at once; tick Can edit beside their name to let them build too." },
+        { title: "Invite", body: "Share mints a link, approved with your passkey. Whoever opens it can watch at once; tick Can edit beside their name to let them build too." },
       ],
     },
     {
       id: "sharing",
       heading: "Building with someone else",
       paragraphs: [
-        "Invitations are links. There is no account and no sign-up: opening the link and connecting a node is the whole of joining.",
+        "Invitations are links. Opening one and signing in with a passkey is the whole of joining: the invitation makes you a member of the studio.",
         "The others in the scene appear as coloured avatars. Their selections are outlined in their colour, their camera is a small marker in the viewport, and clicking an avatar takes you to their view.",
       ],
     },
@@ -127,21 +126,13 @@ export const CONFIG: LandingConfig = {
       id: "storage",
       heading: "What is stored, and where",
       bullets: [
-        "One record per object: its name, kind, parent, position, rotation, scale, visibility, material and light settings. Two people changing the same object resolve to one of their writes, whole.",
-        "Meshes and textures as content-addressed blobs on the members’ nodes — up to 4 million vertices a mesh, 16,384 pixels a side a texture. State holds only a reference to each: the blob id, its size and what is in it.",
+        "One record per object: its name, kind, parent, position, rotation, scale, visibility, material and light settings. Two people changing the same object end with the later write, whole.",
+        "Meshes and textures as the scene’s own blobs — up to 4 million vertices a mesh, 16,384 pixels a side a texture, and at most 47.25 MiB each once encoded. State holds only a reference to each: the blob id, its size and what is in it.",
         "Every version of every mesh and texture, in order, with who saved it and an optional note. Restoring writes the old blob again as a new version, so nothing is ever copied.",
-        "Check-outs: who holds which asset, and until when. While one is live, every honest node refuses anyone else’s change to that asset.",
+        "Check-outs: who holds which asset, and until when. While one is live, the contract refuses anyone else’s change to that asset.",
         "The scene’s name, background and ambient light, and each member’s display name.",
-        "Who may edit, as a role the admin grants. The scene’s collections enforce it on every node, so a viewer’s write is refused everywhere, not just in their app.",
-        "Not stored: cameras and selections. They stream over ephemeral presence and vanish when you leave.",
-      ],
-    },
-    {
-      id: "offline",
-      heading: "Offline, and what happens when you reconnect",
-      paragraphs: [
-        "Your node holds the whole state, so the app keeps working with no network — every change is written locally and queued.",
-        "When your node reaches a peer again, the two exchange changes and merge them. Merging is CRDT-based, not last-write-wins-by-clock, so two people editing different things at the same time both keep their work. Where two people genuinely changed the same single value, the later write wins on that one value and nothing else is lost.",
+        "Who may edit, as a role the admin grants, checked by the contract on every write.",
+        "Not stored: cameras and selections. They stream over presence and vanish when you leave.",
       ],
     },
     {
@@ -149,18 +140,17 @@ export const CONFIG: LandingConfig = {
       heading: "When something looks wrong",
       concepts: [
         { term: "Your edit is refused", def: "You are a viewer. The admin can tick Can edit beside your name in Share." },
-        { term: "An object jumped back", def: "Someone else moved it at the same moment, and their write is the one every node kept. Move it again." },
+        { term: "An object jumped back", def: "Someone else moved it at the same moment, and theirs was the later write. Move it again." },
         { term: "An object is read-only", def: "Someone else has it checked out — the outliner shows a lock and Properties says who. It frees itself when they check it in or the check-out lapses; an admin can release it." },
-        { term: "A mesh shows as a grey box", def: "Its blob is still downloading from the other members’ nodes. Big meshes take a moment the first time; after that they are cached by your browser." },
-        { term: "The invite link does nothing", def: "An invitation is tied to the namespace that minted it. Ask for a fresh one rather than reusing an old link." },
+        { term: "A mesh is refused as too large", def: "One mesh or texture is at most 47.25 MiB once encoded. Decimate it, split it into several objects, or use a smaller image." },
+        { term: "The invite link does nothing", def: "An invitation is redeemed once, after you sign in. Ask for a fresh one rather than reusing an old link." },
       ],
     },
   ],
   previewSteps: [
-    { title: "A scene that is a context", body: "Objects, meshes and materials replicated between members’ own nodes. Nothing in the middle, and nothing to host." },
+    { title: "A scene in your studio", body: "Objects, meshes and materials in one app instance only your studio’s members reach." },
     { title: "Edit like a modeller", body: "Primitives, a gizmo, edit mode with extrude, and the shortcuts you already know." },
-    { title: "Together, live", body: "Every change lands on every node as it is made, and you can see where the others are looking." },
+    { title: "Together, live", body: "Every change reaches everyone as it is made, and you can see where the others are looking." },
     { title: "Out in standard formats", body: "glTF, OBJ and STL, whenever you want them." },
   ],
-  loginPopup: LoginPopup,
 };

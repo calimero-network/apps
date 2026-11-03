@@ -1,123 +1,96 @@
-//! RECIPE — CRDT counters (likes / tallies) and one-vote-per-person votes.
-//! Reference snippet; merge into a service `#[app::state]` + `#[app::logic]`.
-//! Not compiled as-is.
+//! RECIPE: a tally (`Counter`) and one-vote-per-person votes on the component
+//! SDK. A complete app module: merge its state fields, methods and error into
+//! an app's `lib.rs`. Compile-checked against core 1.0.0-rc.8, not built here.
 //!
 //! Two different things, on purpose:
 //!
-//! * A **counter** (`GCounter` / `PNCounter`) merges concurrent increments
-//!   without losing any, which is what a view count or a "likes" tally needs.
-//!   It does NOT know who incremented it: every call adds one, every device has
-//!   its own slot, and a plain counter field is writable by any member — a
-//!   patched node can set it to anything. Use it only where nobody gains by
-//!   inflating it.
-//! * A **vote** must be one per person and must not be forgeable. That is a row
-//!   per `(item, account)` in an `Authored` map, owned by the voter, and a
-//!   tally that counts a row only when its key names its owner — see `score`.
+//! * A **counter** counts calls: every `like` adds one. v1's `GCounter` /
+//!   `PNCounter` merged per-device slots; one leader orders every write here, so
+//!   `Counter` is a stored integer kept with `Store::add` (`add` takes a
+//!   negative delta for v1's `PNCounter`). It still does not know who called,
+//!   so use it only where nobody gains by inflating it.
+//! * A **vote** is one per person: a row keyed `(item, account)`, the account
+//!   being `env::caller()`'s, so a second vote replaces the first and nobody
+//!   votes for someone else. A maintained count and a sum make `score` cheap.
+//!   v1 needed `Authored<IndexedMap>` owner stamps for this; here the key is the
+//!   check.
 
-use calimero_sdk::app;
-use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
-use calimero_sdk::types::Error as AppError;
-use calimero_sdk::{env, AccountId};
-use calimero_storage::collections::{Authored, GCounter, IndexedMap};
-// GCounter = Counter<false> (increment-only); PNCounter = Counter<true> (inc + dec).
+use calimero_app_sdk::env::Caller;
+use calimero_app_sdk::prelude::*;
 
-/// One account's vote on one item: +1, -1, or 0 for retracted. The voter is
-/// the entry's owner stamp, never a field.
-#[derive(BorshSerialize, BorshDeserialize, app::Indexed)]
-#[borsh(crate = "calimero_sdk::borsh")]
+/// One account's vote on one item: +1 or -1.
+#[derive(Record)]
+#[table(key = ["item_id", "account"], index(by_item = ["item_id"]), count(per_item = ["item_id"]))]
 pub struct Vote {
-    #[index]
     pub item_id: String,
-    pub value: i8,
+    pub account: String,
+    pub value: i64,
 }
 
-// ── add to the service state ───────────────────────────────────────────────
-// #[app::state]
-// pub struct TallyState {
-//     // total likes across everything (monotonic, honest-peer tally)
-//     total_likes: GCounter,
-//     // "<item_id>|<account>" -> that account's vote, owned by the voter
-//     votes: Authored<IndexedMap<String, Vote>>,
-// }
-//
-// In #[app::init]:
-//     total_likes: GCounter::new(),
-//     votes: Authored::new(),
-
-fn caller() -> String {
-    AccountId::from(env::account_id()).to_string()
+#[app::state(version = 1)]
+pub struct Tally {
+    likes: Counter,
+    votes: Table<Vote>,
+    /// item -> the sum of its votes, kept with every vote.
+    scores: UnorderedMap<String, i64>,
 }
 
-fn vote_key(item_id: &str, account: &str) -> String {
-    format!("{item_id}|{account}")
-}
+#[app::logic]
+impl Tally {
+    #[app::init]
+    pub fn init() -> app::Result<Self> {
+        Ok(Self::load())
+    }
 
-impl TallyState {
-    /// Increment the global like tally (caller's contribution merges CRDT-safe).
+    /// One more like; answers the new total.
     pub fn like(&mut self) -> app::Result<u64> {
-        self.total_likes
-            .increment()
-            .map_err(|e| AppError::msg(format!("total_likes.increment: {e}")))?;
-        self.total_likes
-            .value()
-            .map_err(|e| AppError::msg(format!("total_likes.value: {e}")))
+        Ok(self.likes.increment()?)
     }
 
+    #[app::view]
     pub fn total_likes(&self) -> app::Result<u64> {
-        self.total_likes
-            .value()
-            .map_err(|e| AppError::msg(format!("total_likes.value: {e}")))
+        Ok(self.likes.get()?)
     }
 
-    /// Up (+1), down (-1) or retract (0) a vote on an item. Idempotent per
-    /// account: voting again replaces the caller's own row.
-    pub fn vote(&mut self, item_id: String, value: i8) -> app::Result<()> {
+    /// The caller's vote on `item_id`: `1`, `-1`, or `0` to retract it.
+    pub fn vote(&mut self, item_id: String, value: i64) -> app::Result<()> {
         if !(-1..=1).contains(&value) {
-            app::bail!(AppError::msg("vote must be -1, 0 or 1"));
+            return Err(Error::BadVote { value }.into());
         }
-        let key = vote_key(&item_id, &caller());
-        let vote = Vote { item_id, value };
-        // Only the owner may update a row, on every node, so a row already at
-        // this key is either the caller's own or a squatter's, which storage
-        // refuses to let the caller overwrite.
-        let exists = self
-            .votes
-            .contains(&key)
-            .map_err(|e| AppError::msg(format!("votes.contains: {e}")))?;
-        if exists {
-            self.votes.update(&key, vote)
+        let account = match env::caller() {
+            Caller::Account(a) | Caller::ApiKey { account: a, .. } => a,
+            Caller::Public | Caller::System | Caller::App(_) => return Err(AppError::login_required()),
+        };
+        let key = (item_id.clone(), account.clone());
+        let previous = self.votes.get(&key)?.map_or(0, |v| v.value);
+        if value == 0 {
+            let _removed = self.votes.remove(&key)?;
         } else {
-            self.votes.insert(key, vote)
+            self.votes.upsert(Vote {
+                item_id: item_id.clone(),
+                account,
+                value,
+            })?;
         }
-        .map_err(|e| AppError::msg(format!("votes.write: {e}")))?;
+        let score = self.scores.get(&item_id)?.unwrap_or(0) - previous + value;
+        let _old = self.scores.insert(&item_id, &score)?;
         Ok(())
     }
 
-    /// Net score for an item (0 if never voted). A seek on the `item_id` index.
-    ///
-    /// A row counts only when its key is `vote_key(item, owner)` and its value
-    /// is a real vote: a patched node can write any row under its own stamp,
-    /// but only one key names it, so it still gets one vote.
+    /// The sum of `item_id`'s votes: one read.
+    #[app::view]
     pub fn score(&self, item_id: String) -> app::Result<i64> {
-        let mut score = 0i64;
-        for (key, vote) in self
-            .votes
-            .query("item_id")
-            .eq(&item_id)
-            .entries()
-            .map_err(|e| AppError::msg(format!("votes.query: {e}")))?
-        {
-            let Some(owner) = self
-                .votes
-                .owner_of(&key)
-                .map_err(|e| AppError::msg(format!("votes.owner_of: {e}")))?
-            else {
-                continue;
-            };
-            if key == vote_key(&item_id, &owner.to_string()) && (-1..=1).contains(&vote.value) {
-                score += i64::from(vote.value);
-            }
-        }
-        Ok(score)
+        Ok(self.scores.get(&item_id)?.unwrap_or(0))
     }
+
+    /// How many accounts voted on `item_id`: a maintained count.
+    #[app::view]
+    pub fn voters(&self, item_id: String) -> app::Result<u64> {
+        Ok(self.votes.count("perItem", &[KeyPart::Str(item_id)])?)
+    }
+}
+
+#[app::error]
+pub enum Error {
+    BadVote { value: i64 },
 }
