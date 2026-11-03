@@ -1,12 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import {
-  JOIN_SYNC_POLL_MS,
-  useContextGroup,
-  useJoinSync,
-  useMero,
-} from "@calimero-network/mero-react";
-import { publishMemberName, useMemberNames } from "@calimero-apps/names";
-import type { Member, PollSummary } from "./generated/MeroVoteClient";
+import type { Member, PollSummary } from "./meroVote";
 import { CreatePoll } from "./CreatePoll";
 import { PollDetail } from "./PollDetail";
 import { errText, short, useLiveRefresh, useMeroVote } from "./useMeroVote";
@@ -31,32 +24,24 @@ export function PhaseBadge({ phase }: { phase: PollSummary["phase"] }) {
 }
 
 /**
- * Everything inside one context: who you are, who else is here, the polls.
+ * Everything inside one voting group: who you are, who else is here, the polls.
  *
  * The roster is how the app learns account ids. A creator names trustees and
- * voters by ACCOUNT, and the only place an account id appears is the member's
- * own signed slot — which `set_name` creates.
+ * voters by ACCOUNT, and the roster lists every account that set a name here
+ * (`setName`).
  *
  * It owns the two columns: the polls in the main one, and who you are, who
  * else is here and `side` (the invite card) beside them.
  */
 export function VotePanel({
   contextId,
-  joinedNamespace = null,
   side,
 }: {
+  /** The voting group: the app instance's id. */
   contextId: string;
-  /** The namespace, when the context was just joined in this page. */
-  joinedNamespace?: string | null;
   side?: ReactNode;
 }) {
   const client = useMeroVote(contextId);
-  const { admin } = useMero();
-  // `ContextPicker` creates contexts directly in the namespace, so the
-  // context's group IS the namespace (see `InviteCard`) — where the name a
-  // person set for every app on it lives.
-  const { groupId: namespaceId } = useContextGroup(contextId);
-  const { nameOf } = useMemberNames(admin, namespaceId);
   const [me, setMe] = useState<string | null>(null);
   const [roster, setRoster] = useState<Member[]>([]);
   const [polls, setPolls] = useState<PollSummary[]>([]);
@@ -83,46 +68,13 @@ export function VotePanel({
   useEffect(() => void refresh(), [refresh]);
   useLiveRefresh(contextId, () => void refresh());
 
-  // Ends the invitation dialog's "Syncing…" for a context just joined: `tick`
-  // moves on the first read of the polls that came back, none included. A
-  // context whose state has not arrived yet fails the read (it does not come
-  // back empty), so a read that succeeds is the context having arrived, even
-  // with no polls in it. This app's contexts live directly in the namespace
-  // (see ContextPicker), so the context's group is the namespace that was
-  // joined.
-  const { isSyncing } = useJoinSync({
-    namespaceId: joinedNamespace ?? namespaceId,
-    settled: tick > 0,
-  });
-
-  // A failed read is retried by the next live event, and a context that has
-  // not synced sends none, so while the gate is up re-read on a timer.
-  useEffect(() => {
-    if (!isSyncing) return;
-    const timer = setInterval(() => void refresh(), JOIN_SYNC_POLL_MS);
-    return () => clearInterval(timer);
-  }, [isSyncing, refresh]);
-
   const names = new Map(roster.map((m) => [m.account, m.name]));
   const myName = me ? names.get(me) : undefined;
-  // The roster name, else the name this person set for the namespace, else the
-  // short id: someone who never joined this roster is still not a key.
-  const label = (account: string) => names.get(account) || nameOf(account) || short(account);
-  const spaceName = me ? nameOf(me) : undefined;
-
-  // Offer the namespace name as the roster name, so joining is one click.
-  useEffect(() => {
-    if (me && !myName && spaceName) setName((n) => n || spaceName);
-  }, [me, myName, spaceName]);
+  // The roster name, else the short id.
+  const label = (account: string) => names.get(account) || short(account);
 
   async function saveName() {
     if (!client || !name.trim()) return;
-    // The namespace-wide name too, so every app on it shows this name.
-    // Best-effort: the roster name is what was asked for, and a refusal here
-    // must not report it as failed.
-    if (admin && namespaceId && me) {
-      void publishMemberName(admin, namespaceId, me, name.trim()).catch(() => undefined);
-    }
     try {
       await client.setName({ name: name.trim() });
       setName("");
@@ -161,7 +113,6 @@ export function VotePanel({
           <CreatePoll
             contextId={contextId}
             me={me}
-            selfName={spaceName}
             roster={roster}
             onCancel={() => setCreating(false)}
             onCreated={(id) => {
@@ -177,7 +128,7 @@ export function VotePanel({
                 <span className="eyebrow">Voting group</span>
                 <h2>Polls</h2>
                 <p>
-                  {polls.length} poll{polls.length === 1 ? "" : "s"} in this context. Ballots are encrypted in each
+                  {polls.length} poll{polls.length === 1 ? "" : "s"} in this group. Ballots are encrypted in each
                   voter&apos;s browser; every member can audit the count.
                 </p>
               </div>
@@ -222,7 +173,7 @@ export function VotePanel({
                 </span>
                 <strong>No polls yet</strong>
                 <p>
-                  No polls in this context yet. Start one with <strong className="text">New poll</strong> — ballots are
+                  No polls in this group yet. Start one with <strong className="text">New poll</strong> — ballots are
                   encrypted in each voter&apos;s browser.
                 </p>
               </div>
