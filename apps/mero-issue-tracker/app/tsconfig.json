@@ -1,25 +1,15 @@
 {
-  "compilerOptions": {
-    "target": "ESNext",
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true,
-    "strict": true,
-    "forceConsistentCasingInFileNames": true,
-    "noFallthroughCasesInSwitch": true,
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "noEmit": true,
-    "outDir": "build",
-    "jsx": "react-jsx",
-    "paths": {
-      "@/*": ["./src/*"]
+  "// note": "Solution file — references only. Type check with `tsc -b`; `tsc --noEmit` on a solution file checks NOTHING and exits 0.",
+  "files": [],
+  "references": [
+    {
+      "path": "./tsconfig.app.json"
+    },
+    {
+      "path": "./tsconfig.test.json"
+    },
+    {
+      "path": "./tsconfig.node.json"
     }
-  },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "custom.d.ts"],
-  "exclude": ["node_modules", "build", "src/**/*.test.ts"]
+  ]
 }

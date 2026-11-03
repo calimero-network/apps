@@ -53,16 +53,6 @@
     "set_nickname",
     "vote_comment"
   ],
-  "mero-issue-tracker": [
-    "delete_issue",
-    "get_repo_info",
-    "get_status_counts",
-    "set_impact",
-    "set_repo_url",
-    "set_repro",
-    "set_resolution_criteria",
-    "set_summary"
-  ],
   "mero-pixart": [
     "can_edit",
     "clear_layers",
