@@ -1,0 +1,456 @@
+{
+  "abiVersion": 1,
+  "errors": {
+    "FrozenNotFound": {
+      "hashHex": "string"
+    },
+    "NotAWriter": {
+      "account": "string"
+    },
+    "NotAnAccount": {},
+    "NotAuthor": {
+      "key": "string"
+    },
+    "NotFound": {
+      "key": "string"
+    },
+    "NotItemOwner": {
+      "index": "u64"
+    }
+  },
+  "events": {
+    "AuthoredInserted": {
+      "key": "string",
+      "owner": "string",
+      "value": "string"
+    },
+    "AuthoredRemoved": {
+      "key": "string"
+    },
+    "AuthoredUpdated": {
+      "key": "string",
+      "value": "string"
+    },
+    "AuthoredVecPushed": {
+      "index": "u64",
+      "owner": "string",
+      "value": "string"
+    },
+    "AuthoredVecUpdated": {
+      "index": "u64",
+      "value": "string"
+    },
+    "FrozenAdded": {
+      "hash": "string",
+      "value": "string"
+    },
+    "Inserted": {
+      "key": "string",
+      "value": "string"
+    },
+    "Removed": {
+      "key": "string"
+    },
+    "SharedSet": {
+      "by": "string",
+      "value": "string"
+    },
+    "SharedWriterAdded": {
+      "writer": "string"
+    },
+    "Updated": {
+      "key": "string",
+      "value": "string"
+    },
+    "UserSimpleSet": {
+      "account": "string",
+      "value": "string"
+    }
+  },
+  "methods": {
+    "addFrozen": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "value",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "string"
+    },
+    "authoredGet": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "key",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "option<string>"
+    },
+    "authoredGetOwner": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "key",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "option<string>"
+    },
+    "authoredInsert": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "key",
+          "string"
+        ],
+        [
+          "value",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "authoredRemove": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "key",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "option<string>"
+    },
+    "authoredUpdate": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "key",
+          "string"
+        ],
+        [
+          "value",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "authoredVecGet": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "index",
+          "u64"
+        ]
+      ],
+      "public": false,
+      "returns": "option<string>"
+    },
+    "authoredVecGetOwner": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "index",
+          "u64"
+        ]
+      ],
+      "public": false,
+      "returns": "option<string>"
+    },
+    "authoredVecLen": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "u64"
+    },
+    "authoredVecPush": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "value",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "u64"
+    },
+    "authoredVecUpdate": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "index",
+          "u64"
+        ],
+        [
+          "value",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "confirmedSet": {
+      "allowSystem": false,
+      "confirm": true,
+      "kind": "call",
+      "params": [
+        [
+          "key",
+          "string"
+        ],
+        [
+          "value",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "get": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "key",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "option<string>"
+    },
+    "getFrozen": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "hashHex",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "string"
+    },
+    "getResult": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "key",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "string"
+    },
+    "getUnchecked": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "key",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "string"
+    },
+    "getUserSimple": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "option<string>"
+    },
+    "getUserSimpleFor": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "account",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "option<string>"
+    },
+    "init": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "init",
+      "params": [],
+      "public": false,
+      "returns": null
+    },
+    "len": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "u64"
+    },
+    "myAccount": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "string"
+    },
+    "publicGet": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "key",
+          "string"
+        ]
+      ],
+      "public": true,
+      "returns": "option<string>"
+    },
+    "remove": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "key",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "option<string>"
+    },
+    "set": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "key",
+          "string"
+        ],
+        [
+          "value",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "setUserSimple": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "value",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "sharedAddWriter": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "account",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "sharedGet": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "option<string>"
+    },
+    "sharedGetWriters": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "list<string>"
+    },
+    "sharedSet": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "value",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    }
+  },
+  "state": {
+    "fields": {
+      "authored": "unorderedMap",
+      "authoredVec": "vector",
+      "frozen": "frozen",
+      "items": "unorderedMap",
+      "shared": "cell",
+      "user": "perUser",
+      "writers": "set"
+    },
+    "search": {
+      "authored": [],
+      "authoredVec": [],
+      "frozen": [],
+      "items": [],
+      "shared": [],
+      "user": [],
+      "writers": []
+    },
+    "version": 1
+  },
+  "world": "calimero:app@0.5.0"
+}

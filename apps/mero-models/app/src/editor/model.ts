@@ -4,7 +4,7 @@ import type {
   MeshRef,
   SceneObject,
   Vec3,
-} from "../generated/MeroModelsClient";
+} from "../meroModels";
 
 export type { Environment, Material, MeshRef, SceneObject, Vec3 };
 
@@ -55,6 +55,12 @@ export const MAX_VERTICES = 4_000_000;
 export const MAX_TRIANGLES = 8_000_000;
 export const MAX_TEXTURE_SIDE = 16_384;
 export const MAX_LOCK_HOURS = 168;
+/**
+ * The largest mesh or texture blob: 47.25 MiB, the largest blob a node keeps
+ * (it travels base64-encoded inside one 64 MiB sealed request, with 1 MiB for
+ * the rest). The contract refuses a reference to anything larger.
+ */
+export const MAX_BLOB_BYTES = 49_545_216;
 /** Edit mode draws every vertex; past this many it stops being usable in a browser. */
 export const EDIT_MAX_VERTICES = 250_000;
 

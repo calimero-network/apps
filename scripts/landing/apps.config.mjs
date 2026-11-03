@@ -115,55 +115,59 @@ export const APPS = {
     ],
   },
   'mero-models': {
-    e2eDir: 'e2e',
-    availability: 'web+desktop',
+    // A component app (calimero-app-sdk, merod local, CalimeroClient): no
+    // Playwright, so no generated landing spec. docs/COMPONENT-APPS.md.
+    e2eDir: null,
+    availability: 'web',
+    // Passes its own passkey sign-in to the landing page as `onConnect`.
+    ownConnect: true,
     overview: {
-      headline: 'A 3D modeller where the scene lives on your nodes.',
+      headline: 'A 3D modeller where the scene belongs to your studio.',
       comparison: {
-        heading: 'Collaborative 3D, without the cloud in the middle',
+        heading: 'Collaborative 3D, without a vendor in the middle',
         sub: 'Primitives, meshes, materials and lights in a viewport you already know how to drive. The difference is who holds the model.',
         themLabel: 'A typical cloud 3D tool',
         rows: [
-          { label: 'Where the model lives', them: 'In the vendor’s cloud', us: 'On every member’s own node, nobody else’s' },
-          { label: 'Editing together', them: 'Through the vendor’s servers', us: 'Peer to peer, merging as a CRDT' },
-          { label: 'Who may change it', them: 'Whatever the vendor’s backend allows', us: 'Editors the scene’s admin names, enforced on every node' },
-          { label: 'Getting your work out', them: 'An export button, while the service lasts', us: 'glTF, OBJ and STL out of the box, and the scene is already on your disk' },
-          { label: 'If the service goes away', them: 'Your models may go with it', us: 'Your node still has every object and every vertex' },
+          { label: 'Where the model lives', them: 'In the vendor\u2019s cloud', us: 'In your studio\u2019s own app instance, which only its members reach' },
+          { label: 'Editing together', them: 'Through the vendor\u2019s servers', us: 'Every change ordered by one log, and seen by everyone at once' },
+          { label: 'Who may change it', them: 'Whatever the vendor\u2019s backend allows', us: 'Editors the scene\u2019s admin names, enforced by the contract' },
+          { label: 'Getting your work out', them: 'An export button, while the service lasts', us: 'glTF, OBJ and STL out of the box, and every version kept' },
+          { label: 'Signing in', them: 'An email and a password', us: 'A passkey: nothing to remember, nothing to leak' },
         ],
       },
       closing: {
         title: 'Start a scene',
-        body: 'Connect a node, or install the desktop app that bundles one, then send the people you build with the link.',
+        body: 'Sign in with a passkey, start a scene, then send the people you build with an invitation to your studio.',
       },
     },
-    trust: ['No server holds your models', 'Editing enforced by the contract', 'FBX · glTF · OBJ · STL out, with LODs and collision'],
+    trust: ['Only your studio reaches your models', 'Editing enforced by the contract', 'FBX \u00b7 glTF \u00b7 OBJ \u00b7 STL out, with LODs and collision'],
     explainer: [
-      'A Blender-style modeller in the browser: add primitives, move, rotate and scale them with a gizmo, model in quads with loop cuts, bevels, insets, extrusions and a modifier stack, unwrap UVs, bake and paint PBR textures with smart materials, export game-ready FBX or glTF with LODs and collision, give things materials and lights, and export the result as glTF, OBJ or STL. A scene is a Calimero context, and it replicates between its members’ own nodes.',
-      'Everyone in the scene sees every change as it lands, and sees each other: what the others have selected and where they are looking from streams over ephemeral presence, which never touches storage. Who may change the model is decided by the scene’s admin and enforced by the contract on every node.',
+      'A Blender-style modeller in the browser: add primitives, move, rotate and scale them with a gizmo, model in quads with loop cuts, bevels, insets, extrusions and a modifier stack, unwrap UVs, bake and paint PBR textures with smart materials, export game-ready FBX or glTF with LODs and collision, give things materials and lights, and export the result as glTF, OBJ or STL. A scene is a Calimero app instance in your studio\u2019s organization.',
+      'Everyone in the scene sees every change as it lands, and sees each other: what the others have selected and where they are looking from streams over presence, which is never stored. Who may change the model is decided by the scene\u2019s admin and enforced by the contract.',
     ],
     features: [
       { icon: 'Cube3D', title: 'A real modeller', body: 'Primitives, meshes, hierarchy, a transform gizmo with snapping, edit mode with extrude and merge, undo and redo, and the shortcuts you already know.' },
-      { icon: 'CloudX', title: 'No server holds the model', body: 'A scene is a context. Every member’s node keeps the whole scene, and edits travel peer to peer.' },
+      { icon: 'CloudX', title: 'Your studio holds the model', body: 'A scene is an app instance in your organization. Only its members reach it, and every edit is ordered by one log.' },
       { icon: 'Target', title: 'Live together', body: 'See who is in the scene, what they have selected and where their camera is, and jump to their view with one click.' },
-      { icon: 'LockCheck', title: 'Editors, enforced', body: 'Anyone invited can watch; only editors the admin names can change the scene, and every node refuses anyone else’s write.' },
-      { icon: 'Upload', title: 'Production assets, versioned', body: 'Meshes and PBR textures live in blobs on your nodes. Every save is a version you can restore, and an asset can be checked out so nobody else changes it while you work. glTF, OBJ and STL in and out.' },
+      { icon: 'LockCheck', title: 'Editors, enforced', body: 'Anyone invited can watch; only editors the admin names can change the scene, and the contract refuses anyone else\u2019s write.' },
+      { icon: 'Upload', title: 'Production assets, versioned', body: 'Meshes and PBR textures live in the scene\u2019s own blobs. Every save is a version you can restore, and an asset can be checked out so nobody else changes it while you work. glTF, OBJ and STL in and out.' },
     ],
     faq: [
       {
         q: 'What happens when two people move the same object?',
-        a: 'Each object is one record, and the merge keeps one person’s write whole — the same one on every node. You never end up with a cube that took its position from one person and its colour from the other.',
+        a: 'Each object is one record, and one log orders every write: the object ends as the later write, whole. You never end up with a cube that took its position from one person and its colour from the other.',
       },
       {
         q: 'How big can a model be?',
-        a: 'A single mesh can be up to 4 million vertices and 8 million triangles, and a texture up to 16,384 pixels a side. Vertices and pixels live in content-addressed blobs on the members’ nodes, not in the replicated state, so a heavy asset is one upload. A scene holds up to 2,000 objects.',
+        a: 'A single mesh can be up to 4 million vertices and 8 million triangles, and a texture up to 16,384 pixels a side, as long as each one encodes to at most 47.25 MiB: a blob travels inside one sealed request. Meshes are compressed, so that is a few million vertices; split anything larger into several objects. A scene holds up to 2,000 objects.',
       },
       {
         q: 'Can someone I invite change my scene?',
-        a: 'Not unless you let them. An invitation lets someone open the scene and watch; the scene’s admin ticks Can edit for the people who may change it, and the contract enforces that on every node, not just in the app.',
+        a: 'Not unless you let them. An invitation lets someone open the scene and watch; the scene\u2019s admin ticks Can edit for the people who may change it, and the contract enforces that, not just the app.',
       },
       {
         q: 'Does moving the camera send anything?',
-        a: 'Only presence: where you are looking from and what you have selected, over the node’s ephemeral channel. It is never stored and never a transaction. Moving an object is a transaction, sent once when you let go.',
+        a: 'Only presence: where you are looking from and what you have selected. It is never stored and never a call. Moving an object is a call, sent once when you let go.',
       },
     ],
   },
@@ -403,26 +407,30 @@ export const APPS = {
 
   'mero-design': {
     displayName: 'Mero Design',
-    e2eDir: 'e2e',
-    availability: 'web+desktop',
-    trust: ['Live collaboration', 'Infinite canvas', 'Files on your nodes'],
+    // A component app (calimero-app-sdk, merod local, CalimeroClient): no
+    // Playwright, so no generated landing spec. docs/COMPONENT-APPS.md.
+    e2eDir: null,
+    availability: 'web',
+    // Passes its own passkey sign-in to the landing page as `onConnect`.
+    ownConnect: true,
+    trust: ['Live collaboration', 'Infinite canvas', 'No passwords'],
     explainer: [
-      'A collaborative design tool in the shape of Figma — an infinite canvas with shapes, text and images that several people can work on at once. The difference is where the file lives: in a Calimero context on your infrastructure, shared only with the teammates you invite.',
-      'There is no central server holding your designs, which means no vendor with a copy, no seat-based access model, and nothing to migrate off if you change your mind.',
+      'A collaborative design tool in the shape of Figma — an infinite canvas with shapes, text and images that several people can work on at once. The difference is who can read the file: a Calimero app instance shared only with the members of your team.',
+      'There is no vendor holding your designs, which means no seat-based access model, and nothing to migrate off if you change your mind.',
     ],
     features: [
       { icon: 'Grid', title: 'Infinite canvas', body: 'Pan and zoom, with multi-select and grouping. Frames and groups ride the same element model.' },
       { icon: 'Cube', title: 'A full shape set', body: 'Rectangles, circles, lines, arrows and freehand paths, with fill, stroke and corner controls.' },
-      { icon: 'CloudUpload', title: 'Images and SVGs', body: 'Dropped straight onto the canvas and stored as blobs on your node, not on a CDN.' },
+      { icon: 'CloudUpload', title: 'Images and SVGs', body: 'Dropped straight onto the canvas and stored as blobs of the board, not on a CDN.' },
       { icon: 'FileText', title: 'Text with font controls', body: 'Real text elements with family, size and weight, not shapes that happen to look like words.' },
       { icon: 'Download', title: 'Export to PNG or SVG', body: 'Your work leaves in a format anything can open. No lock-in on the way out.' },
-      { icon: 'Refresh', title: 'Live collaboration', body: 'See teammates’ cursors, notes and edits the moment they make them. Changes sync peer to peer, with no central server deciding who edited what.' },
+      { icon: 'Refresh', title: 'Live collaboration', body: 'See teammates’ cursors, notes and edits the moment they make them, every change ordered by one log.' },
     ],
     overview: {
       // Same line calimero.network uses for design, so the two pages agree.
-      headline: 'Your canvas. Your pixels. Your nodes.',
-      // Recorded from the real app by `pnpm landing:media` in apps/mero-design/app.
-      // The chapter times match CHAPTERS in e2e/media/capture-landing-media.spec.ts.
+      headline: 'Your canvas. Your pixels. Your team.',
+      // Recorded from the real app (v1) by a Playwright harness the component
+      // port removed; the clips stay as they are.
       showcase: {
         heading: 'From a note to a new design, together',
         sub: 'Recorded from the real editor on the bundled Web design starter — nothing staged, nothing mocked up.',
@@ -430,10 +438,10 @@ export const APPS = {
           src: '/landing/demo.webm',
           poster: '/landing/demo-poster.jpg',
           chapters: [
-            { at: 0, title: 'Open a board', body: 'The design is on your node, and Ada from your team is already in it.' },
+            { at: 0, title: 'Open a board', body: 'The board belongs to your team, and Ada is already in it.' },
             { at: 3, title: 'Leave a note', body: 'Drop a sticky note where the feedback belongs.' },
             { at: 9, title: 'Point at it', body: 'Draw an arrow — it docks to the button it is about.' },
-            { at: 14, title: 'Ada changes it, live', body: 'Her cursor comes over and the button turns green on your screen. No refresh, no server in the middle.' },
+            { at: 14, title: 'Ada changes it, live', body: 'Her cursor comes over and the button turns green on your screen. No refresh.' },
             { at: 19, title: 'Present it', body: 'Hit Present. Ada’s change is already in the slide.' },
           ],
         },
@@ -443,28 +451,26 @@ export const APPS = {
         sub: 'Everything you expect from a collaborative canvas. The difference is who holds the file.',
         themLabel: 'A typical cloud design tool',
         rows: [
-          { label: 'Where the file lives', them: 'On the vendor’s servers', us: 'On your node, and the nodes of the people you invite' },
-          { label: 'Who can read it', them: 'The vendor, and whoever it grants access', us: 'Only members of the board’s namespace' },
+          { label: 'Where the file lives', them: 'On the vendor’s servers', us: 'In your team’s app instance on Calimero' },
+          { label: 'Who can read it', them: 'The vendor, and whoever it grants access', us: 'Only members of the board’s team' },
           { label: 'Adding a collaborator', them: 'Another seat on the monthly bill', us: 'An invite. The app is open source and free' },
-          { label: 'Working offline', them: 'Usually needs a connection', us: 'Full editing; changes merge when you reconnect' },
-          { label: 'If the vendor goes away', them: 'Your files may go with it', us: 'Your node still has every board' },
+          { label: 'If the vendor goes away', them: 'Your files may go with it', us: 'The app is open source: run it on your own cluster' },
         ],
       },
       collaboration: {
-        heading: 'Live collaboration, with no server in the middle',
-        sub: 'Everyone on a board sees each other’s cursors and edits as they happen, and two people can change it at the same moment without either losing work — because of how a board is stored.',
+        heading: 'Live collaboration, every change in order',
+        sub: 'Everyone on a board sees each other’s cursors and edits as they happen, and two people can change it at the same moment without either losing work.',
         points: [
           { title: 'Every element is its own record', body: 'Two people editing different shapes never queue behind each other.' },
-          { title: 'Every property is its own value', body: 'One person moves a shape while another recolours it, and both changes land.' },
-          { title: 'Presence stays out of the file', body: 'Cursors travel separately, so they can never rewrite the artwork.' },
-          { title: 'Offline is a normal state', body: 'Keep drawing with no network. Your node merges the changes when it reaches a peer again.' },
+          { title: 'One log orders every write', body: 'Edits land in the order they were made; the last write to one shape wins, and nothing else is touched.' },
+          { title: 'Presence stays out of the artwork', body: 'Cursors are their own records, so they can never rewrite a shape.' },
         ],
         roles: [
           { name: 'Owner', can: 'Names the board, grants and revokes roles, and can hand ownership on.' },
           { name: 'Editor', can: 'Draws, moves and edits elements, and comments.' },
           { name: 'Viewer', can: 'Follows the board live without changing it.' },
         ],
-        rolesNote: 'Permissions are checked when changes merge, not only hidden in the interface — a rename from a non-owner is refused, wherever it came from.',
+        rolesNote: 'Permissions are checked by the board itself, not only hidden in the interface — a rename from a non-owner is refused, wherever it came from.',
       },
       audiences: {
         heading: 'Made for teams whose designs are nobody else’s business',
@@ -472,7 +478,7 @@ export const APPS = {
           {
             label: 'Product teams',
             title: 'Design the roadmap without handing it to a vendor',
-            body: 'Unreleased screens and flows stay on your team’s own nodes until the day you ship them.',
+            body: 'Unreleased screens and flows stay with your team until the day you ship them.',
             uses: ['UI screens', 'Design systems', 'HTML handoff'],
           },
           {
@@ -485,7 +491,7 @@ export const APPS = {
             label: 'Regulated & public sector',
             title: 'Live collaboration on infrastructure you already control',
             body: 'For finance, health and government work that cannot leave your own servers, without giving up working together in real time.',
-            uses: ['Self-hosted nodes', 'Owner, editor and viewer roles', 'Works offline'],
+            uses: ['Self-hosted clusters', 'Owner, editor and viewer roles', 'Passkey sign-in'],
           },
           {
             label: 'Open-source communities',
@@ -497,20 +503,19 @@ export const APPS = {
       },
       openSource: {
         license: 'MIT',
-        // Checked against apps/mero-design/Makefile: `make dev` is the whole stack
-        // (two nodes, invite, then the app), not the frontend alone.
+        // `pnpm dev:local` is the whole stack: merod local, the contract, the app.
         commands: [
           '# fork calimero-network/apps on GitHub, then',
           'git clone https://github.com/<you>/apps',
-          'cd apps/apps/mero-design',
-          'make setup   # check tools, build, install',
-          'make dev     # 2 local nodes + app on :5173',
+          'cd apps',
+          'pnpm install',
+          'pnpm dev:local mero-design   # merod local + the app on :5173',
         ],
       },
       alwaysOn: true,
       closing: {
         title: 'Start your first board',
-        body: 'Connect a node, or install the desktop app that bundles one, then invite the people you design with.',
+        body: 'Sign in with a passkey, create a team, then invite the people you design with.',
       },
     },
   },
@@ -581,15 +586,19 @@ export const APPS = {
 
   'mero-crm': {
     displayName: 'Mero CRM',
+    // A component app (Calimero 1.0): sign-in is the app's own passkey modal,
+    // handed to the landing page as `onConnect`; there is no mero-react popup.
+    ownConnect: true,
     e2eDir: 'e2e',
     // Same light/dark key as the app shell (src/theme.ts), so the landing
     // choice carries through sign-in.
     themeStorageKey: 'mero-crm:theme',
-    availability: 'web+desktop',
-    trust: ['Pipeline on your nodes', 'Built-in deal assistant', 'No per-seat vendor'],
+    // Calimero 1.0 is reached from the browser (passkeys); no desktop node hand-off.
+    availability: 'web',
+    trust: ['Private to your team', 'Built-in deal assistant', 'No per-seat vendor'],
     explainer: [
       'A sales CRM with only the parts that close deals: a visual pipeline, deals with a value and a next step, the people behind them, and a to-do list that puts overdue follow-ups first. Everything a tool like Pipedrive is used for day to day, without the forty menus around it.',
-      'The pipeline lives in a Calimero context your team shares, replicated between your own nodes. Your customer list is the most sensitive thing a sales team owns, and here there is no vendor holding a copy of it.',
+      'The pipeline lives in a workspace your team owns, held on attested Calimero nodes. Your customer list is the most sensitive thing a sales team owns, and here there is no vendor reading a copy of it.',
     ],
     features: [
       { icon: 'Target', title: 'Visual pipeline', body: 'Drag deals between stages, or onto Won and Lost. Every column shows its count, value and weighted forecast.' },
@@ -597,7 +606,7 @@ export const APPS = {
       { icon: 'Clock', title: 'Never miss a follow-up', body: 'Calls, meetings, tasks and deadlines, grouped by overdue, today and upcoming. Idle deals are flagged as rotting.' },
       { icon: 'Refresh', title: 'Automations', body: 'When a deal enters a stage, the follow-up is scheduled for its owner automatically.' },
       { icon: 'BarChart', title: 'Insights', body: 'Open and weighted pipeline, win rate, sales cycle, forecast by close month, and why deals are lost.' },
-      { icon: 'Shield', title: 'Your customers stay yours', body: 'The pipeline replicates between your team’s nodes. There is no vendor database to breach or to price you out of.' },
+      { icon: 'Shield', title: 'Your customers stay yours', body: 'The pipeline is held on attested nodes for your workspace alone. There is no vendor database to mine or to price you out of.' },
     ],
   },
 

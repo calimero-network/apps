@@ -21,27 +21,6 @@
     "save_draft",
     "set_member_role"
   ],
-  "mero-design": [
-    "add_comment",
-    "add_reply",
-    "can_edit",
-    "clear_comments",
-    "clear_elements",
-    "delete_comment",
-    "delete_reply",
-    "get_comments",
-    "get_cursors",
-    "get_role",
-    "grant_editor",
-    "list_roles",
-    "my_role",
-    "revoke_editor",
-    "set_layer_index",
-    "transfer_ownership",
-    "update_cursor",
-    "update_member_username",
-    "update_shadow"
-  ],
   "mero-docs": [
     "comment_schema_version",
     "delete_comment",
