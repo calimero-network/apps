@@ -1,0 +1,327 @@
+[
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "worldMeta",
+  "args": {},
+  "expect": {
+   "error": "NoWorld"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setTiles",
+  "args": {
+   "edits": [
+    {
+     "x": 1,
+     "y": 1,
+     "t": 1
+    }
+   ],
+   "now": 1752264000
+  },
+  "expect": {
+   "error": "NoWorld"
+  }
+ },
+ {
+  "as": "ada",
+  "op": "call",
+  "method": "createWorld",
+  "args": {
+   "name": "admin's",
+   "seed": 1,
+   "now": 1752264000
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "createWorld",
+  "args": {
+   "name": "bob's",
+   "seed": 2,
+   "now": 1752264000
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createWorld",
+  "args": {
+   "name": "surface",
+   "seed": 42,
+   "now": 1752264000
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createWorld",
+  "args": {
+   "name": "again",
+   "seed": 7,
+   "now": 1752264001
+  },
+  "expect": {
+   "error": "WorldExists"
+  }
+ },
+ {
+  "as": "ada",
+  "op": "view",
+  "method": "worldMeta",
+  "args": {},
+  "expect": {
+   "ok": {
+    "name": "surface",
+    "seed": 42,
+    "createdAt": 1752264000
+   }
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "setTiles",
+  "args": {
+   "edits": [
+    {
+     "x": 7,
+     "y": 7,
+     "t": 1
+    }
+   ],
+   "now": 1752264002
+  },
+  "expect": {
+   "ok": 1
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "heartbeat",
+  "args": {
+   "t": {
+    "name": "Gus",
+    "x": 10,
+    "y": 60,
+    "dir": 1,
+    "sel": 0,
+    "action": "idle"
+   },
+   "now": 1752264003
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "view",
+  "method": "getOverrides",
+  "args": {},
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "call",
+  "method": "setTiles",
+  "args": {
+   "edits": [
+    {
+     "x": 7,
+     "y": 7,
+     "t": 0
+    }
+   ],
+   "now": 1752264004
+  },
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "call",
+  "method": "setTiles",
+  "args": {
+   "edits": [
+    {
+     "x": 7,
+     "y": 7,
+     "t": 0
+    }
+   ],
+   "now": 1752264004
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "view",
+  "method": "getPlayers",
+  "args": {
+   "now": 1752264004
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "heartbeat",
+  "args": {
+   "t": {
+    "name": "Gus",
+    "x": 999,
+    "y": 0,
+    "dir": 1,
+    "sel": 0,
+    "action": "idle"
+   },
+   "now": 1752264005
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "leave",
+  "args": {
+   "now": 1752264006,
+   "id": "@gus"
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "leave",
+  "args": {
+   "now": 1752264006
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getPlayers",
+  "args": {
+   "now": 1752264007
+  },
+  "expect": {
+   "ok": [
+    {
+     "id": "@gus",
+     "name": "Gus",
+     "x": 10.0,
+     "y": 60.0,
+     "dir": 1.0,
+     "sel": 0,
+     "action": "idle",
+     "online": true
+    },
+    {
+     "id": "@bob",
+     "name": "Gus",
+     "x": 999.0,
+     "y": 0.0,
+     "dir": 1.0,
+     "sel": 0,
+     "action": "idle",
+     "online": false
+    }
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setTiles",
+  "args": {
+   "edits": [
+    {
+     "x": 7,
+     "y": 7,
+     "t": 1
+    }
+   ],
+   "now": "1"
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "op": "removeMember",
+  "args": "bob"
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setTiles",
+  "args": {
+   "edits": [
+    {
+     "x": 7,
+     "y": 7,
+     "t": 0
+    }
+   ],
+   "now": 1752264008
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getOverrides",
+  "args": {},
+  "expect": {
+   "ok": {
+    "items": [
+     {
+      "k": "7,7",
+      "t": 1
+     }
+    ],
+    "next": null
+   }
+  },
+  "events": {
+   "ada": [
+    "Initialized",
+    "TilesChanged",
+    "PlayerJoined",
+    "PlayerJoined",
+    "PlayerLeft"
+   ]
+  }
+ }
+]

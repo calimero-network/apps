@@ -1,396 +1,119 @@
-// Session bootstrap for BOTH auth paths:
-//  - Desktop SSO: tauri-app opens the game with a full hash
-//      #node_url=…&access_token=…&refresh_token=…&app-id=…&context_id=…
-//      &executor_public_key=…&expires_at=…&dev_mode=1
-//    → capture everything and auto-enter the world (zero clicks).
-//  - Web login: we redirected to {node}/auth/login and came back with
-//      #access_token=…&refresh_token=…&application_id=…&context_id=…
-//      &context_identity=…[&node_url=…]
-//    (mero-js parseAuthCallback format; node_url may be absent — we stashed
-//    it before redirecting, see auth.ts takePendingNodeUrl).
-//  - Account (Cloud): the wallet certified a device key this app generated
-//    (see account.ts). The credential + relay live in mero-js's own delegated
-//    session store; this module records only that the session IS an account
-//    one (`kind: "account"`) plus the game-level coordinates. Every data call
-//    then goes through transport.ts, which switches on `kind`.
-// App-id resolution prefers hash > stored > env (the mero-chat SSO-strip lesson).
+// The connection: which cluster (merod local in dev, a Calimero Cloud cluster
+// in production, both through @calimero-apps/connect), the mero-js
+// CalimeroClient for it, and the passkey session kept per app and target.
+//
+// This replaces v1's two transports (a node login with bearer tokens, or a
+// wallet-enrolled device key writing through a relay), the desktop SSO hash
+// and the node-auth redirect: an account is a passkey, on every target.
 
+import { browserPasskey, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
 import {
-  AuthRevokedError,
-  clearDelegatedCredential,
-  clearDelegatedSession,
-  createAuthApiClientFromHttpClient,
-  createBrowserHttpClient,
-  readDelegatedSession,
-  type DelegatedAccountSession,
-} from "@calimero-network/mero-js";
-import { isServedByNode } from "@calimero-apps/node-served";
-import { takePendingNodeUrl } from "./auth";
+  SessionStore,
+  createClient,
+  resolveTarget,
+  targetKey,
+  withServedNodes,
+  type ConnectEnv,
+  type KeyValueStorage,
+  type Target,
+} from "@calimero-apps/connect";
 
-const STORE_KEY = "mt-session";
-const TOKENS_KEY = "mero-tokens";
+/** The app's name in stored keys. */
+export const APP = "merraria";
 
-/** Which transport a session rides: a node the player logged into, or an
- *  account (Cloud) writing through its relay. */
-export type SessionKind = "node" | "account";
-
-export interface Session {
-  /** absent on sessions stored before the account path existed → node */
-  kind?: SessionKind;
-  nodeUrl: string | null;
-  contextId: string | null;
-  applicationId: string | null;
-  executorPublicKey: string | null;
-  devMode: boolean;
-  /** governance coordinates of the current world (set on create/invite-join;
-   *  resolved lazily otherwise) — needed to mint invites */
-  namespaceId?: string | null;
-  groupId?: string | null;
-  /** human name of the current world — travels inside invites as the
-   *  namespace alias (the curb groupAlias/groupName pattern) */
-  worldName?: string | null;
+/** What a connection is built from: the real ones in the app, fakes in tests. */
+export interface ConnectDeps {
+  env: ConnectEnv;
+  makeClient: (target: Target) => Promise<CalimeroClient>;
+  passkey: () => PasskeyProvider;
+  storage?: KeyValueStorage;
+  /** The cluster's node list when this page is served by it (production). */
+  servedNodes?: () => Promise<string[] | null>;
 }
 
-export type CaptureResult =
-  | "none" // no usable hash; session possibly restored from storage
-  | "partial" // credentials captured but no context yet (web callback)
-  | "full"; // credentials + context — straight into the game
-
-let session: Session = {
-  nodeUrl: null,
-  contextId: null,
-  applicationId: null,
-  executorPublicKey: null,
-  devMode: false,
+export const defaultDeps: ConnectDeps = {
+  env: import.meta.env,
+  makeClient: (target) => createClient(target),
+  passkey: browserPasskey,
 };
 
-function persist(): void {
-  try {
-    localStorage.setItem(STORE_KEY, JSON.stringify(session));
-  } catch {
-    /* storage full/unavailable — session just won't survive refresh */
-  }
-}
+export class Connection {
+  constructor(
+    readonly client: CalimeroClient,
+    readonly target: Target,
+    readonly sessions: SessionStore,
+    private readonly passkey: () => PasskeyProvider,
+    readonly storage: KeyValueStorage | undefined,
+  ) {}
 
-function restore(): void {
-  try {
-    const raw = localStorage.getItem(STORE_KEY);
-    if (raw) session = { ...session, ...JSON.parse(raw) };
-  } catch {
-    /* corrupt stored session — start clean */
-  }
-}
-
-/** Parse the SSO / auth-callback hash. Always restores stored state first. */
-export function captureSessionFromHash(): CaptureResult {
-  restore();
-  const hash = window.location.hash;
-  if (!hash || hash.length < 2) return "none";
-  const p = new URLSearchParams(hash.slice(1));
-  const accessToken = p.get("access_token");
-  if (!accessToken) return "none";
-
-  // node url: hash > the one stashed before the web-login redirect > stored
-  // A page the node serves talks to that origin only; the hash names the bare host, which its CSP refuses.
-  const pendingNodeUrl = takePendingNodeUrl();
-  const nodeUrl = isServedByNode(new URL(window.location.href))
-    ? window.location.origin
-    : (p.get("node_url") ?? pendingNodeUrl ?? session.nodeUrl);
-  if (!nodeUrl) return "none";
-  session.kind = "node";
-  session.nodeUrl = nodeUrl;
-
-  session.contextId = p.get("context_id") || session.contextId;
-  // tolerate both spellings (tauri sends app-id, auth callback application_id)
-  const appId = (p.get("application_id") ?? p.get("app-id") ?? "").trim();
-  if (appId) session.applicationId = appId;
-  // desktop names it executor_public_key, the auth callback context_identity
-  session.executorPublicKey =
-    p.get("executor_public_key") ?? p.get("context_identity") ?? session.executorPublicKey;
-  session.devMode = p.get("dev_mode") === "1";
-  persist();
-
-  localStorage.setItem(
-    TOKENS_KEY,
-    JSON.stringify({
-      access_token: accessToken,
-      refresh_token: p.get("refresh_token") ?? "",
-      expires_at: p.get("expires_at") ?? "",
-    }),
-  );
-
-  // we own the page (no MeroProvider) — safe to strip
-  window.history.replaceState({}, "", window.location.pathname + window.location.search);
-  return session.contextId ? "full" : "partial";
-}
-
-export function getSession(): Session {
-  return session;
-}
-
-/** merge fields chosen after login (world picker, resolved app id) */
-export function updateSession(patch: Partial<Session>): void {
-  session = { ...session, ...patch };
-  persist();
-}
-
-interface StoredTokens {
-  access_token?: string;
-  refresh_token?: string;
-  expires_at?: string | number;
-}
-
-function readTokens(): StoredTokens | null {
-  try {
-    const raw = localStorage.getItem(TOKENS_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as StoredTokens;
-  } catch {
-    return null;
-  }
-}
-
-/** Stored expiry as an ms epoch, or null when we have no usable stamp. */
-function expiryMs(raw: StoredTokens["expires_at"]): number | null {
-  let exp = Number(raw);
-  if (!Number.isFinite(exp) || exp <= 0) return null;
-  if (exp < 1e12) exp *= 1000; // tolerate seconds-based stamps
-  return exp;
-}
-
-/**
- * A refresh token was replayed (or the family was already revoked). This is
- * terminal: the node has torn down every token in the family, so there is
- * nothing left to refresh and no way back except a fresh login.
- */
-function onAuthRevoked(reason: string): void {
-  console.warn(`[session] auth revoked (${reason}) — clearing session, re-login required`);
-  clearSession();
-}
-
-/** In-flight refresh, so concurrent callers in THIS tab never double-spend. */
-let refreshInFlight: Promise<void> | null = null;
-
-/**
- * Serialize across tabs too. Web Locks is the only cross-tab mutex a browser
- * gives us; where it is missing (jsdom, older browsers) we still have the
- * in-tab single-flight above, and the re-read inside the critical section keeps
- * a loser from replaying a consumed token.
- */
-async function withTokenLock(fn: () => Promise<void>): Promise<void> {
-  const locks = typeof navigator !== "undefined" ? navigator.locks : undefined;
-  if (!locks?.request) return fn();
-  return locks.request("merraria-token-refresh", fn);
-}
-
-/**
- * The SSO hash (or a stored session) can carry an already-expired access token —
- * the desktop may have been idle for hours before opening the game. Refresh it
- * BEFORE going online so desktop opens never bounce through auth or silently
- * fall back to offline.
- *
- * Refresh tokens are SINGLE-USE (core#3083): every POST /auth/refresh consumes
- * the presented refresh token and mints a new one. Presenting a consumed one is
- * read as theft — 401 `x-auth-error: token_reuse` — and the node revokes the
- * ENTIRE token family, logging out every holder. That makes two things fatal
- * that used to look harmless:
- *
- *   - Refreshing "early". The endpoint rejects a still-valid access token
- *     ("Access token still valid"), so the old 30s skew burned a request for
- *     nothing. We now refresh only once the token has ACTUALLY expired.
- *   - Two concurrent refreshes. Two tabs (or two callers) POSTing the same
- *     refresh token means the second is a reuse. Hence the single-flight +
- *     Web Lock, and the re-read of the store INSIDE the critical section: a
- *     caller that lost the race adopts the bundle the winner just stored
- *     instead of replaying the one it read on the way in.
- *
- * Transport failures stay best-effort (tokens untouched, caller degrades to
- * offline); a reuse/revocation is terminal and forces a re-login.
- */
-/**
- * `fetchFn` is for tests. Left out, mero-js binds the browser's own — a bare
- * `fetch` handed over as a value is invoked as a plain function, and browsers
- * throw "Illegal invocation" on that (the tests inject their own, which is
- * why they never saw it).
- */
-export async function ensureFreshToken(fetchFn?: typeof fetch): Promise<void> {
-  if (sessionKind() !== "node" || !session.nodeUrl) return;
-  if (refreshInFlight) return refreshInFlight;
-
-  const run = withTokenLock(() => refreshIfExpired(fetchFn)).finally(() => {
-    refreshInFlight = null;
-  });
-  refreshInFlight = run;
-  return run;
-}
-
-async function refreshIfExpired(fetchFn?: typeof fetch): Promise<void> {
-  if (!session.nodeUrl) return;
-
-  // Re-read INSIDE the guard — another tab (or an earlier caller) may have
-  // rotated the bundle while we were queued on the lock. Acting on the tokens
-  // we read before the lock is exactly how a consumed token gets replayed.
-  const tokens = readTokens();
-  if (!tokens?.access_token || !tokens.refresh_token) return;
-
-  const exp = expiryMs(tokens.expires_at);
-  if (exp === null) return; // no expiry info — assume valid
-  if (Date.now() < exp) return; // still valid — the node rejects an early refresh
-
-  // mero-js's auth client over a bare HTTP transport: no bearer, no automatic
-  // 401 refresh hook (this IS the refresh), just `POST {node}/auth/refresh`
-  // with the mero-js request shape. `fetchFn` stays injectable for tests.
-  const auth = createAuthApiClientFromHttpClient(
-    createBrowserHttpClient({ baseUrl: session.nodeUrl, ...(fetchFn ? { fetch: fetchFn } : {}) }),
-    { baseUrl: session.nodeUrl },
-  );
-  let refreshed: { access_token?: string; refresh_token?: string; expires_at?: string | number };
-  try {
-    const res = await auth.refreshToken({
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token,
-    });
-    // `{data: {...}}` on current nodes; tolerate an un-nested bundle too
-    refreshed = ((res as { data?: unknown })?.data ?? res) as typeof refreshed;
-  } catch (err) {
-    // 401 token_reuse: we replayed a consumed refresh token and the node just
-    // revoked the family. 403 token_revoked: the family was already gone.
-    // mero-js tells those two apart from every other failure for us. Either
-    // way no token we hold is live — clear them and force a re-login rather
-    // than silently carrying on with credentials that can never work.
-    // Everything else (node unreachable, "still valid", malformed body) is
-    // best-effort: tokens untouched, the caller's online path degrades.
-    if (err instanceof AuthRevokedError) onAuthRevoked(err.reason);
-    return;
+  /** The signed-in account, or null. */
+  get accountId(): string | null {
+    return this.client.session?.accountId ?? null;
   }
 
-  if (refreshed?.access_token && refreshed?.refresh_token) {
-    localStorage.setItem(
-      TOKENS_KEY,
-      JSON.stringify({
-        access_token: refreshed.access_token,
-        refresh_token: refreshed.refresh_token,
-        expires_at: refreshed.expires_at ?? Date.now() + 3600_000,
-      }),
-    );
-  }
-}
-
-export function getAccessToken(): string | null {
-  try {
-    const raw = localStorage.getItem(TOKENS_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw).access_token ?? null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Which transport the current session rides, or null when there is none.
- *
- * `node` needs a node url (the token check is `isAuthenticated`'s job);
- * `account` needs the delegated session mero-js keeps for this tab — a
- * stored `kind: "account"` whose credential is gone (new tab, cleared site
- * data) is no session at all, and says so rather than pretending.
- */
-export function sessionKind(): SessionKind | null {
-  if (session.kind === "account") return readDelegatedSession() ? "account" : null;
-  return session.nodeUrl ? "node" : null;
-}
-
-/** the delegated (account) session, when this IS an account session */
-export function getAccountSession(): DelegatedAccountSession | null {
-  return session.kind === "account" ? readDelegatedSession() : null;
-}
-
-/**
- * Adopt an account session: the delegated record is already saved by
- * account.ts (mero-js store); this marks the game session as riding it and
- * drops every node-only field so nothing from an earlier node login leaks.
- */
-export function adoptAccountSession(patch: Partial<Session> = {}): void {
-  session = {
-    ...session,
-    kind: "account",
-    nodeUrl: null,
-    devMode: false,
-    ...patch,
+  /** Keeps the stored session current: the client swaps the single-use refresh token on a 401. */
+  readonly sync = (): void => {
+    this.sessions.sync(this.client);
   };
-  try {
-    localStorage.removeItem(TOKENS_KEY);
-  } catch {
-    /* nothing to clear */
+
+  async signIn(): Promise<string> {
+    const { accountId } = await this.client.signIn(this.passkey());
+    this.sync();
+    return accountId;
   }
-  persist();
-}
 
-/** logged in — into a node, or as an account (may still need to pick a world) */
-export function isAuthenticated(): boolean {
-  const kind = sessionKind();
-  if (kind === "account") return true;
-  return kind === "node" && Boolean(getAccessToken());
-}
-
-/** ready to play online right now */
-export function hasConnection(): boolean {
-  return isAuthenticated() && Boolean(session.contextId);
-}
-
-export function clearSession(): void {
-  session = {
-    nodeUrl: null,
-    contextId: null,
-    applicationId: null,
-    executorPublicKey: null,
-    devMode: false,
-  };
-  try {
-    localStorage.removeItem(STORE_KEY);
-    localStorage.removeItem(TOKENS_KEY);
-  } catch {
-    /* nothing to clear */
+  async signUp(name: string): Promise<string> {
+    const { accountId } = await this.client.signUp(this.passkey(), name);
+    this.sync();
+    return accountId;
   }
-  // The account too: logging out of an account and leaving its device
-  // certificate behind would silently re-authenticate the next visitor.
-  clearDelegatedSession();
-  clearDelegatedCredential();
+
+  async signOut(): Promise<void> {
+    try {
+      await this.client.signOut();
+    } catch {
+      // Already expired or unreachable: forgetting it here is what matters.
+    }
+    this.sessions.clear();
+  }
+
+  /** The passkey prompt for a step-up (making an invitation). */
+  approver(): PasskeyProvider {
+    return this.passkey();
+  }
+
+  /** "merod local (3 nodes)" / "Calimero Cloud eu-shared-1". */
+  describe(): string {
+    return describeTarget(this.target);
+  }
+
+  /** A stored key scoped to this target and the signed-in account. */
+  scopedKey(name: string): string | null {
+    const account = this.accountId;
+    return account ? `${APP}:${name}:${targetKey(this.target)}:${account}` : null;
+  }
 }
 
 /**
- * Forget which world we were in, WITHOUT logging out.
- *
- * A stored `contextId` outlives the node that issued it — a node reset, a
- * reinstall, or opening the same account on a second device all leave a
- * context this node holds no identity for. Booting straight into it is how the
- * game ends up showing
- *
- *   Could not reach the shared world (rpc world_meta: No owned identity found
- *   for this context)
- *
- * with no way out but clearing site data. Dropping these five fields returns
- * the player to the world picker with their login intact.
+ * Connects to the local nodes (dev) or the Cloud cluster (production) and
+ * restores a stored session. Throws `ConfigError` for a production build with
+ * no cluster or release floor (see .env.example).
  */
-export function clearWorld(): void {
-  session = {
-    ...session,
-    contextId: null,
-    executorPublicKey: null,
-    namespaceId: null,
-    groupId: null,
-    worldName: null,
-  };
-  persist();
+export async function connect(deps: ConnectDeps = defaultDeps): Promise<Connection> {
+  const target = await withServedNodes(resolveTarget(deps.env), deps.servedNodes);
+  const client = await deps.makeClient(target);
+  const sessions = new SessionStore(APP, target, deps.storage);
+  sessions.restore(client);
+  return new Connection(client, target, sessions, deps.passkey, deps.storage);
 }
 
-/** for tests */
-export function resetSession(): void {
-  session = {
-    nodeUrl: null,
-    contextId: null,
-    applicationId: null,
-    executorPublicKey: null,
-    devMode: false,
-  };
-  refreshInFlight = null;
+export function describeTarget(target: Target): string {
+  return target.kind === "local"
+    ? `merod local (${target.nodes.length} node${target.nodes.length === 1 ? "" : "s"})`
+    : `Calimero Cloud ${target.cluster}`;
+}
+
+/** `ab12…ef90` for a long account id. */
+export function shortAccount(id: string): string {
+  return id.length > 14 ? `${id.slice(0, 6)}…${id.slice(-4)}` : id;
 }

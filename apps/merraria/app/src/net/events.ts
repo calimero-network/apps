@@ -1,44 +1,29 @@
-// SSE event decoding. Two payload shapes exist in the wild:
-//  (a) StateMutation: { newRoot, events: [{ kind: "BlocksChanged", data: u8[] }] }
-//      (mero-design decodes this — data bytes are JSON of the variant payload)
-//  (b) tagged enum:   { "BlocksChanged": <payload> }
-//      (mero-meet's useSubscription sees this)
-// Decode both so we work across node versions.
+// The app's events, as `client.events(app, from)` yields them: `{ id, kind,
+// data }`. The contract's events are tuple variants, so `data` is `{ "0":
+// <account> }` (`TilesChanged`, `PlayerJoined`, `PlayerLeft`) or nothing
+// (`Initialized`). An event is a nudge to re-read state, never the state.
 
 export interface GameEvent {
   kind: string;
-  value: unknown;
+  /** the account the event names, when it names one */
+  value: string | null;
 }
 
-export function decodeSseEvents(data: unknown): GameEvent[] {
-  if (data == null || typeof data !== "object") return [];
-  const obj = data as Record<string, unknown>;
+export function toGameEvent(event: { kind: string; data: unknown }): GameEvent {
+  const data = event.data;
+  const named =
+    data !== null && typeof data === "object" && typeof (data as Record<string, unknown>)["0"] === "string"
+      ? ((data as Record<string, unknown>)["0"] as string)
+      : null;
+  return { kind: event.kind, value: named };
+}
 
-  // shape (a): StateMutation with byte-encoded event payloads
-  if (Array.isArray(obj.events)) {
-    const out: GameEvent[] = [];
-    for (const ev of obj.events as Array<Record<string, unknown>>) {
-      if (!ev || typeof ev.kind !== "string") continue;
-      let value: unknown = null;
-      if (Array.isArray(ev.data)) {
-        try {
-          const text = new TextDecoder().decode(new Uint8Array(ev.data as number[]));
-          value = text ? JSON.parse(text) : null;
-        } catch {
-          value = null;
-        }
-      } else if (ev.data !== undefined) {
-        value = ev.data;
-      }
-      out.push({ kind: ev.kind, value });
-    }
-    return out;
-  }
-
-  // shape (b): { "VariantName": payload } — exactly one key
-  const keys = Object.keys(obj);
-  if (keys.length === 1 && /^[A-Z]/.test(keys[0])) {
-    return [{ kind: keys[0], value: obj[keys[0]] }];
-  }
-  return [];
+/**
+ * The log index an event id carries. Event ids start with the index of the
+ * entry that emitted them (`"<index>:<seq>"`); anything else
+ * gives null, and the stream is then resumed from the last index known.
+ */
+export function indexOf(id: string): number | null {
+  const m = /^(\d+)/.exec(id);
+  return m ? Number(m[1]) : null;
 }
