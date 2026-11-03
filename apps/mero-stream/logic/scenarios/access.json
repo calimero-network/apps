@@ -1,0 +1,371 @@
+[
+ {
+  "as": "@anonymous",
+  "op": "view",
+  "method": "getStats",
+  "args": {},
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "call",
+  "method": "join",
+  "args": {
+   "username": "x",
+   "now": "1"
+  },
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "view",
+  "method": "getStats",
+  "args": {},
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "call",
+  "method": "join",
+  "args": {
+   "username": "x",
+   "now": "1"
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "encodeFrame",
+  "args": {
+   "raw": "ABEiM0RVZneImaq7zN3u_w",
+   "width": 4,
+   "height": 4,
+   "track": 0,
+   "now": "1"
+  },
+  "expect": {
+   "error": "NotJoined"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "postChunk",
+  "args": {
+   "dataB64": "AAAAAWf//oA=",
+   "track": 0,
+   "isKeyframe": true,
+   "codec": "avc1.42001f",
+   "width": 640,
+   "height": 480,
+   "timestampUs": "0",
+   "now": "1"
+  },
+  "expect": {
+   "error": "NotJoined"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "pruneFrames",
+  "args": {
+   "beforeSeq": "1"
+  },
+  "expect": {
+   "error": "NotJoined"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "join",
+  "args": {
+   "username": "Alice",
+   "now": "1000"
+  },
+  "expect": {
+   "ok": {
+    "memberId": "@owner",
+    "username": "Alice",
+    "joinedAt": "1000",
+    "updatedAt": "1000"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "join",
+  "args": {
+   "username": "Bob",
+   "now": "1001"
+  },
+  "expect": {
+   "ok": {
+    "memberId": "@bob",
+    "username": "Bob",
+    "joinedAt": "1001",
+    "updatedAt": "1001"
+   }
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "join",
+  "args": {
+   "username": "Gus",
+   "now": "1002"
+  },
+  "expect": {
+   "ok": {
+    "memberId": "@gus",
+    "username": "Gus",
+    "joinedAt": "1002",
+    "updatedAt": "1002"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "renameStream",
+  "args": {
+   "name": "hijacked"
+  },
+  "expect": {
+   "error": "NotOwner"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "renameStream",
+  "args": {
+   "name": "room"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "isMemberAdmin",
+  "args": {
+   "member": "@owner"
+  },
+  "expect": {
+   "ok": true
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "isMemberAdmin",
+  "args": {
+   "member": "@bob"
+  },
+  "expect": {
+   "ok": false
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "postChunk",
+  "args": {
+   "dataB64": "AAAAAWf//oA=",
+   "track": 0,
+   "isKeyframe": true,
+   "codec": "avc1.42001f",
+   "width": 640,
+   "height": 480,
+   "timestampUs": "0",
+   "now": "1000"
+  },
+  "expect": {
+   "ok": "1"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "encodeFrame",
+  "args": {
+   "raw": "ABEiM0RVZneImaq7zN3u_w",
+   "width": 4,
+   "height": 4,
+   "track": 0,
+   "now": "1001"
+  },
+  "expect": {
+   "ok": "1"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "pruneChunks",
+  "args": {
+   "beforeSeq": "18446744073709551615"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "pruneFrames",
+  "args": {
+   "beforeSeq": "18446744073709551615"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getChunks",
+  "args": {
+   "cursors": []
+  },
+  "expect": {
+   "ok": [
+    {
+     "seq": "1",
+     "from": "@owner",
+     "track": 0,
+     "isKeyframe": true,
+     "codec": "avc1.42001f",
+     "width": 640,
+     "height": 480,
+     "timestampUs": "0",
+     "dataB64": "AAAAAWf//oA=",
+     "createdAt": "1000"
+    }
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "frameChecksum",
+  "args": {
+   "seq": "1"
+  },
+  "expect": {
+   "ok": "5954774151269662453"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "postChunk",
+  "args": {
+   "dataB64": "AAAAAUHAgA==",
+   "track": 0,
+   "isKeyframe": true,
+   "codec": "avc1.42001f",
+   "width": 640,
+   "height": 480,
+   "timestampUs": "0",
+   "now": "1003"
+  },
+  "expect": {
+   "ok": "1"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "view",
+  "method": "getChunks",
+  "args": {
+   "cursors": [
+    {
+     "from": "@owner",
+     "afterSeq": "1"
+    }
+   ]
+  },
+  "expect": {
+   "ok": [
+    {
+     "seq": "1",
+     "from": "@gus",
+     "track": 0,
+     "isKeyframe": true,
+     "codec": "avc1.42001f",
+     "width": 640,
+     "height": 480,
+     "timestampUs": "0",
+     "dataB64": "AAAAAUHAgA==",
+     "createdAt": "1003"
+    }
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "encodeFrame",
+  "args": {
+   "raw": [
+    0,
+    17
+   ],
+   "width": 1,
+   "height": 2,
+   "track": 0,
+   "now": "1"
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "join",
+  "args": {
+   "username": "x",
+   "now": 1
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "join",
+  "args": {
+   "username": "x",
+   "now": "1"
+  },
+  "expect": {
+   "error": "NotAView"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "nope",
+  "args": {},
+  "expect": {
+   "error": "UnknownMethod"
+  }
+ }
+]

@@ -7,8 +7,8 @@ import {
   useState,
 } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { useMero } from '@calimero-network/mero-react';
-import { useMemberNames } from '@calimero-apps/names';
+import { useCalimero } from '../../calimero';
+import { useMemberNames } from '../../lib/names';
 
 import AppShell, { InRail } from '../../components/AppShell';
 import DeviceApprovals from '../../components/DeviceApprovals';
@@ -21,8 +21,7 @@ import SecretForm from '../../components/SecretForm';
 import ShareModal from '../../components/ShareModal';
 import VaultPeople from '../../components/VaultPeople';
 import { KeyIcon, PlusIcon } from '../../components/icons';
-import type { AuditView } from '../../generated/MeroPassClient';
-import { useApplicationId } from '../../hooks/useApplicationId';
+import { type AuditView, toAudit } from '../../lib/vaultApi';
 import { useShellNav } from '../../hooks/useShellNav';
 import { useVaultSession } from '../../hooks/useVaultSession';
 import { CLIPBOARD_CLEAR_MS, copySecret } from '../../lib/clipboard';
@@ -46,7 +45,11 @@ import {
   confirmationCode,
 } from '@calimero-network/mero-pass';
 import { rememberVault } from '../../lib/lastVisit';
-import { findVaultByContext, mintVaultInvite } from '../../lib/vaults';
+import {
+  findVaultByContext,
+  listTeams,
+  mintVaultInvite,
+} from '../../lib/vaults';
 import shell from '../../styles/shell.module.css';
 import ItemDetail from './ItemDetail';
 import ItemList, { KindIcon, SearchBox } from './ItemList';
@@ -60,8 +63,10 @@ interface Found {
   vaultName: string;
   teamName: string;
   personal: boolean;
-  /** Invite-only: an account cannot mint its invitation (see `inviteMember`). */
+  /** Invite-only: only the vault's own team reaches it. */
   restricted: boolean;
+  /** The invite-only vault's team, which its invitation names. */
+  team: string | null;
 }
 
 const ROLE_TEXT: Record<string, string> = {
@@ -107,12 +112,9 @@ export default function VaultPage() {
 function VaultBody() {
   const { vaultId } = useParams<{ vaultId: string }>();
   const contextId = vaultId ?? null;
-  // `admin`, never `mero.admin`: the session-aware client (see `lib/vaults`
-  // `AdminLike`). `isDelegated` hides the invitation to an invite-only vault:
-  // that needs a subgroup invitation, which only a node can mint today.
-  const { admin, isDelegated, nodeUrl } = useMero();
+  const { client: calimero, source, passkey, after, where } = useCalimero();
+  const nodeUrl = where;
   const { closeNav } = useShellNav();
-  const { appId } = useApplicationId();
   const client = useVaultClient(contextId);
   const vaultName = useVaultName(contextId);
 
@@ -135,7 +137,7 @@ function VaultBody() {
     retry,
   } = useVaultSession(contextId, team);
   // Names people set for the team, for every "by" and "account" line below.
-  const { nameOf } = useMemberNames(admin, found?.namespaceId);
+  const { nameOf } = useMemberNames(calimero, found?.namespaceId ?? null);
 
   const [view, setView] = useState<View>({ type: 'all' });
   const [query, setQuery] = useState('');
@@ -157,11 +159,24 @@ function VaultBody() {
   const searchRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    if (!admin || !appId || !contextId) return;
+    if (!calimero || !contextId) return;
     let cancelled = false;
-    findVaultByContext(admin, appId, contextId)
-      .then((f) => {
+    const conn = { client: calimero, source };
+    Promise.all([findVaultByContext(conn, contextId), listTeams(conn)])
+      .then(([v, teams]) => {
         if (cancelled) return;
+        const f: Found | null = v
+          ? {
+              namespaceId: v.namespaceId,
+              vaultId: v.vaultId,
+              vaultName: v.name,
+              teamName:
+                teams.find((t) => t.namespaceId === v.namespaceId)?.name ?? '',
+              personal: v.personal,
+              restricted: v.restricted,
+              team: v.team,
+            }
+          : null;
         setFound(f);
         // Where you were last (`lib/lastVisit`): only a vault this node found
         // in one of its teams, so a stale link is never resumed into.
@@ -171,7 +186,7 @@ function VaultBody() {
     return () => {
       cancelled = true;
     };
-  }, [admin, appId, contextId, nodeUrl]);
+  }, [calimero, source, contextId, nodeUrl]);
 
   const tool = view.type === 'tool' ? view.tool : null;
 
@@ -179,7 +194,7 @@ function VaultBody() {
     if (tool !== 'activity' || !client) return;
     void client
       .getAuditLogs()
-      .then(setEvents)
+      .then((logs) => setEvents(logs.map(toAudit)))
       .catch(() => setEvents([]));
   }, [tool, client, secrets]);
 
@@ -280,22 +295,15 @@ function VaultBody() {
     });
 
   const inviteMember = async () => {
-    if (!admin || !found) return;
+    if (!calimero || !found) return;
     setError(null);
     setMinting(true);
     try {
-      const restricted =
-        String(
-          (await admin.getSubgroupVisibility(found.vaultId)) ?? '',
-        ).toLowerCase() === 'restricted';
-      const code = await mintVaultInvite(admin, {
-        namespaceId: found.namespaceId,
-        vaultId: found.vaultId,
-        vaultName: found.vaultName,
-        teamName: found.teamName,
-        contextId,
-        restricted,
-      });
+      const restricted = found.restricted;
+      const code = await mintVaultInvite(
+        { client: calimero, source, passkey, after },
+        { namespaceId: found.namespaceId, team: found.team },
+      );
       setInvite({
         code,
         scope: `Opens ${found.vaultName}`,
@@ -319,7 +327,7 @@ function VaultBody() {
 
   const heading =
     view.type === 'kind'
-      ? CATEGORIES.find((c) => c.id === view.kind)?.label ?? 'Items'
+      ? (CATEGORIES.find((c) => c.id === view.kind)?.label ?? 'Items')
       : view.type === 'tag'
         ? `Tagged “${view.tag}”`
         : 'All items';
@@ -367,7 +375,7 @@ function VaultBody() {
           </p>
         </div>
         <div className={styles.barActions}>
-          {found && !personal && !(isDelegated && found.restricted) && (
+          {found && !personal && (
             <button
               type="button"
               className={shell.btnGhost}
@@ -432,8 +440,8 @@ function VaultBody() {
           data-testid="no-identity"
         >
           <span className={styles.stripText}>
-            This node does not hold an identity in this vault yet. Open it from
-            its <Link to="/teams">team</Link> to join.
+            You do not reach this vault. Ask someone in its{' '}
+            <Link to="/teams">team</Link> for an invitation.
           </span>
         </div>
       )}
@@ -538,12 +546,8 @@ function VaultBody() {
                   items={trashed}
                   canWrite={canWrite}
                   canPurge={role === 'admin'}
-                  onRestore={(s) =>
-                    void run(() => client!.restoreSecret({ id: s.id }))
-                  }
-                  onPurge={(s) =>
-                    void run(() => client!.purgeSecret({ id: s.id }))
-                  }
+                  onRestore={(s) => void run(() => client!.restoreSecret(s.id))}
+                  onPurge={(s) => void run(() => client!.purgeSecret(s.id))}
                 />
               )}
               {tool === 'people' && client && (
@@ -625,7 +629,7 @@ function VaultBody() {
                     onShare={() => setSharing(current)}
                     onTrash={() =>
                       void run(async () => {
-                        await client!.trashSecret({ id: current.id });
+                        await client!.trashSecret(current.id);
                         setSelected(null);
                       })
                     }

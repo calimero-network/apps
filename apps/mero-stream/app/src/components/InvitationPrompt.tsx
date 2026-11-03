@@ -1,134 +1,107 @@
-import { useCallback, useState } from "react";
+import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  InvitationDialog,
-  InvitationGate,
-  useInviteRedemption,
-  useMero,
-  type ParsedInvitation,
-  type RedeemOutcome,
-} from "@calimero-network/mero-react";
-import { redeemInvite } from "../lib/groups";
-import {
-  decodeInvite,
-  groupIdOfInvite,
-  type StreamInvitePayload,
-} from "../lib/inviteCodec";
-import { setActiveRoom, setRoomName } from "../lib/session";
+import { describeError } from "@calimero-apps/connect";
+import { useConn } from "../hooks/useConn";
+import { useDialogOpen } from "../hooks/useDialogOpen";
+import { setActiveRoom } from "../lib/session";
+import { dropInvite, pendingInvite, type PendingInvite } from "../lib/streams";
+import { UserPlusIcon, XIcon } from "./icons";
+import styles from "./InviteModal.module.css";
 
 /**
- * "Join X?" for an invitation that arrived as a link: mero-react's
- * `InvitationDialog`, which asks, joins, and stays up on "Syncing…" until the
- * stream's data has reached this node.
+ * "Join X?" for an invitation link that was opened (captured off the URL by
+ * `captureInvite` before the app rendered, and kept through the sign-in).
  *
- * ── Why this is mounted at the APP level, not on a page ──────────────────────
- *
- * Because a link can land anywhere. The first version put this on the streams
- * page, which is wrong in a way that had already bitten once: someone with a
- * stored context is redirected to `/live` on boot, so the streams page never
- * mounts, so the invitation was never shown. That is the same shape as the bug
- * where room links pointed at a route with no redemption code — a handler that
- * only exists on one route is a handler that misses.
- *
- * ── Why it asks rather than joins ────────────────────────────────────────────
- *
- * Joining is a state change: it puts you in someone's namespace and, for a room
- * invitation, walks you into a live call. Doing that on page load makes a
- * forwarded link, or a background tab that refreshes, join silently. Decoding is
- * pure and local, so the scope can be shown first and the join needs a click.
- *
- * The join is this app's own (`redeemInvite`): a room invitation also enters
- * the room's context, and where it lands depends on which. The syncing stage
- * ends when the landing page reads the stream: RoomsPage's room list, or the
- * call's first read of its room.
+ * Mounted at the app level because a link can land on any route. It asks
+ * rather than joins: joining puts you in someone's stream and, for a room
+ * link, into a live call. v1 redeemed a namespace invitation and then joined
+ * the room's context; here it is one org invitation (`redeemInvite`), after
+ * which every room of the stream is reachable.
  */
-interface StreamInvitation extends ParsedInvitation {
-  payload: StreamInvitePayload;
-}
-
 export default function InvitationPrompt() {
-  // The session-aware admin: on an account the raw client's join route is the
-  // relay's node route and answers 403. `redeemInvite` takes only the admin.
-  const { admin } = useMero();
+  const conn = useConn();
   const navigate = useNavigate();
-  const [status, setStatus] = useState<string | null>(null);
+  const [invite, setInvite] = useState<PendingInvite | null>(() => pendingInvite());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const ref = useRef<HTMLDialogElement | null>(null);
+  const open = !!conn && !!invite;
+  useDialogOpen(ref, open);
 
-  const parse = useCallback((token: string): StreamInvitation | null => {
-    const payload = decodeInvite(token);
-    if (!payload) return null;
-    return {
-      namespaceId: groupIdOfInvite(payload),
-      invitation: payload.invitation,
-      teamName: payload.roomName ?? payload.groupAlias,
-      payload,
-    };
-  }, []);
+  const dismiss = () => {
+    dropInvite();
+    setInvite(null);
+  };
 
-  const redeem = useCallback(
-    async ({ payload }: StreamInvitation): Promise<RedeemOutcome> => {
-      if (!admin) {
-        return {
-          status: "failed",
-          namespaceId: null,
-          message: "No node connection yet. Reconnect and try again.",
-          reason: "node-unreachable",
-          retryable: true,
-        };
+  const join = async () => {
+    if (!conn || !invite) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await conn.client.redeemInvite(invite.token);
+      conn.after();
+      dropInvite();
+      setInvite(null);
+      if (invite.room) {
+        setActiveRoom(invite.room, invite.stream);
+        navigate("/live");
+      } else if (invite.stream) {
+        navigate(`/streams/${invite.stream}`);
+      } else {
+        navigate("/streams");
       }
-      try {
-        // A failed join comes back as its outcome, already carrying whether
-        // the invitation is worth keeping; the hook acks or keeps it by that.
-        const { outcome, landed } = await redeemInvite(
-          admin,
-          payload,
-          setStatus,
-        );
-        if (!landed) return outcome;
-        // The stream the landing page reads, so its `useJoinSync` clears the
-        // flag the dialog is waiting on. The join's own id is the fallback for
-        // a code that named no destination.
-        let namespaceId = outcome.namespaceId;
-        if (landed.kind === "room") {
-          if (landed.roomName) setRoomName(landed.contextId, landed.roomName);
-          setActiveRoom(landed.contextId, landed.identity, landed.namespaceId);
-          namespaceId = landed.namespaceId ?? namespaceId;
-          navigate("/live");
-        } else if (landed.kind === "namespace") {
-          namespaceId = landed.namespaceId;
-          navigate(`/streams/${landed.namespaceId}`);
-        } else {
-          navigate("/streams");
-        }
-        return {
-          status: outcome.status,
-          namespaceId,
-          teamName: payload.roomName ?? payload.groupAlias,
-        };
-      } finally {
-        setStatus(null);
-      }
-    },
-    [admin, navigate],
-  );
+    } catch (e) {
+      setError(describeError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
 
-  const redemption = useInviteRedemption({ parse, redeem, enabled: !!admin });
-  const payload = redemption.parsed?.payload;
-
+  if (!open) return null;
   return (
-    <>
-      {/* Logged out with a link opened: "you're invited" and the login, not the landing page. */}
-      <InvitationGate parse={parse} noun="stream" appName="Mero Stream" />
-      <InvitationDialog
-        redemption={redemption}
-        noun="stream"
-        appName="Mero Stream"
-        status={status}
-        detail={
-          payload?.roomName
+    <dialog
+      ref={ref}
+      className={styles.dialog}
+      onClose={dismiss}
+      data-testid="invitation-prompt"
+    >
+      <div className={styles.body}>
+        <header className={styles.head}>
+          <span className={styles.headIcon} aria-hidden="true">
+            <UserPlusIcon size={18} />
+          </span>
+          <h2 className={styles.title}>
+            Join {invite?.name ? `“${invite.name}”` : "this stream"}?
+          </h2>
+          <button
+            type="button"
+            className={styles.close}
+            onClick={dismiss}
+            aria-label="Not now"
+          >
+            <XIcon size={18} />
+          </button>
+        </header>
+        <p className={styles.scope}>
+          {invite?.room
             ? "Joining takes you straight into that call."
-            : "Joining gives you access to the stream and every room in it."
-        }
-      />
-    </>
+            : "Joining gives you access to the stream and every room in it."}
+        </p>
+        <button
+          type="button"
+          className={styles.primary}
+          onClick={() => void join()}
+          disabled={busy}
+          data-testid="invitation-join"
+        >
+          {busy ? "Joining…" : "Join"}
+        </button>
+        {error && (
+          <p className={styles.hint} role="alert" data-testid="invitation-error">
+            {error}
+          </p>
+        )}
+      </div>
+    </dialog>
   );
 }

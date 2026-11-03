@@ -16,10 +16,10 @@ let package = Package(
         .library(name: "PassCore", targets: ["PassCore", "PassGenerated"]),
     ],
     dependencies: [
-        // The main merge commit of swift-sdk#84.
+        // swift-sdk v0.5.0 (Calimero 1.0); keep it equal to `exactVersion` in ../project.yml.
         .package(
             url: "https://github.com/calimero-network/swift-sdk",
-            revision: "c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f"),
+            exact: "0.5.0"),
     ],
     targets: [
         // `node abi-codegen -i ../../logic/res/abi.json --target swift --client-name PassClient`.
