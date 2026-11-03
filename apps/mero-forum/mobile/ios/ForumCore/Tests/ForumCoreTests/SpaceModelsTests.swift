@@ -55,51 +55,33 @@ final class ForumsModelTests: XCTestCase {
         ForumsModel(backend: backend, namespaceId: ns, spaceName: "Design", applicationId: backend.applicationId)
     }
 
-    func testListsForumsWithMembership() async {
+    func testListsTheAppInstancesInTheSpace() async {
         let (backend, _) = makeBackend()
-        backend.subgroups = [
-            ns: [
-                AppSubgroup(groupId: "g2", name: "Random", contextIds: ["c2"]),
-                AppSubgroup(groupId: "g1", name: "General", contextIds: ["c1"]),
-                AppSubgroup(groupId: "g3", name: nil, contextIds: []),
-            ]
-        ]
-        backend.members = ["c1"]
+        backend.rootContexts = [ns: ["c2", "c1", "c3"]]
+        backend.contextNames = ["c1": "General", "c2": "Random"]
         let forums = model(backend)
         await forums.load()
-        XCTAssertEqual(forums.forums.map(\.name), ["Forum g3", "General", "Random"])
-        XCTAssertEqual(forums.forums.first { $0.id == "g1" }?.joined, true)
-        XCTAssertEqual(forums.forums.first { $0.id == "g2" }?.joined, false)
-        XCTAssertNil(forums.forums.first { $0.id == "g3" }?.contextId)
+        XCTAssertEqual(forums.forums.map(\.name), ["Forum c3", "General", "Random"])
+        XCTAssertEqual(forums.forums.first { $0.name == "General" }?.contextId, "c1")
+        XCTAssertTrue(forums.forums.allSatisfy(\.joined), "every member of the org reaches its instances")
     }
 
-    func testCreateMakesAnOpenSubgroupAndAContextWithNoInitArgs() async throws {
+    func testCreateMakesAnAppInstanceInTheOrgWithNoInitArgs() async throws {
         let (backend, _) = makeBackend()
         let forums = model(backend)
         let ref = try await forums.create(name: "General")
         XCTAssertEqual(ref.forumName, "General")
-        XCTAssertTrue(backend.publicSubgroups.contains(ref.forumId))
+        XCTAssertEqual(ref.forumId, ref.contextId, "a forum is its app instance")
+        XCTAssertEqual(backend.rootContexts[ns], [ref.contextId], "directly in the org, in no team")
+        XCTAssertTrue(backend.publicSubgroups.isEmpty)
         XCTAssertEqual(backend.initArgs[ref.contextId], .object([:]))
-        XCTAssertEqual(forums.forums.first?.joined, true)
     }
 
-    func testEnterJoinsAnOpenForumFirst() async throws {
+    func testEnterOpensWithoutJoining() async throws {
         let (backend, _) = makeBackend()
-        let forums = model(backend)
-        let ref = try await forums.enter(ForumRow(id: "g1", name: "General", contextId: "c1", joined: false))
+        let ref = try await model(backend).enter(ForumRow(id: "c1", name: "General", contextId: "c1", joined: true))
         XCTAssertEqual(ref.contextId, "c1")
-        XCTAssertTrue(backend.log.contains("joinContext c1"))
-        XCTAssertTrue(backend.members.contains("c1"))
-    }
-
-    func testEnterRefusesAForumStillSyncing() async {
-        let (backend, _) = makeBackend()
-        do {
-            _ = try await model(backend).enter(ForumRow(id: "g1", name: "General", contextId: nil, joined: false))
-            XCTFail("expected a refusal")
-        } catch {
-            XCTAssertEqual(error as? ForumModelError, .message("This forum is still syncing. Try again in a moment."))
-        }
+        XCTAssertFalse(backend.log.contains { $0.hasPrefix("joinContext") })
     }
 
     func testInvitesParseBack() async throws {
@@ -159,6 +141,6 @@ final class InvitationModelTests: XCTestCase {
         let model = InvitationModel()
         model.open(try ForumInvitation(invitation: InMemoryAppBackend.invitation(namespaceId: ns)).token())
         await model.accept(backend: { backend }, didJoin: {})
-        XCTAssertEqual(model.stage, .failed("The relay took too long to answer. Try again."))
+        XCTAssertEqual(model.stage, .failed("Your cluster took too long to answer. Try again."))
     }
 }

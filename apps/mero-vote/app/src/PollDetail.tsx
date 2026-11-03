@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { AuditReport, PollView } from "./generated/MeroVoteClient";
+import type { AuditReport, PollView } from "./meroVote";
 import { ballotToWire, castBallot, decodePoint, secureRng } from "./crypto/protocol";
 import { AuditPanel } from "./AuditPanel";
 import { PhaseBadge } from "./VotePanel";
@@ -122,7 +122,7 @@ export function PollDetail({
         // Forget the plaintext: nothing in this tab should outlive the vote.
         setSelection(def.options.map(() => false));
       },
-      "Ballot cast. It left this browser encrypted — your node and every other member see only ciphertexts and proofs.",
+      "Ballot cast. It left this browser encrypted — the node and every other member see only ciphertexts and proofs.",
     );
   }
 
@@ -304,13 +304,12 @@ export function PollDetail({
             <Callout tone={myCounted ? "success" : "warning"} icon={myCounted ? <CheckIcon size={18} /> : undefined}>
               {myCounted
                 ? `Your ballot ${short(view.my_digest)} is in the counted set.`
-                : `Your latest ballot ${short(view.my_digest)} is NOT in the counted set — it reached the creator's node after the seal.`}
+                : `Your latest ballot ${short(view.my_digest)} is NOT in the counted set.`}
             </Callout>
           )}
           {phase === "Closing" && (
             <Callout tone="info" icon={<ClockIcon size={18} />}>
-              Closing: nodes refuse new ballots as soon as they see the close, but ballots cast before that are still
-              arriving. {isCreator ? "Seal once everyone's nodes have caught up." : "The creator seals the count next."}
+              Closing: new ballots are refused. {isCreator ? "Seal the count next." : "The creator seals the count next."}
             </Callout>
           )}
           {isCreator && phase === "Voting" && (
@@ -327,7 +326,7 @@ export function PollDetail({
           )}
           {isCreator && phase === "Closing" && (
             <div className="creator-bar">
-              <span className="empty">Freezes the ballots your node holds now.</span>
+              <span className="empty">Freezes every ballot cast so far.</span>
               <button
                 className="danger"
                 onClick={() => void act("seal", () => client!.sealPoll({ poll_id: pollId }), "Count sealed. Trustees can now decrypt the totals.")}

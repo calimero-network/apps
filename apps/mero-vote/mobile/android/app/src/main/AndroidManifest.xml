@@ -20,19 +20,19 @@
             </intent-filter>
 
             <!--
-              Calimero Cloud sign-in: the wallet redirects to the enrolment callback
-              (BuildConfig.ENROL_CALLBACK_URL, default mero-vote://enrol). Scheme and host come
-              from the `meroEnrolCallback` Gradle property.
+              The node's consent page sends the person back here
+              (BuildConfig.CONSENT_CALLBACK_URL, default mero-vote://consent). Scheme and host come
+              from the `meroConsentCallback` Gradle property.
             -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="${enrolScheme}" android:host="${enrolHost}" />
+                <data android:scheme="${consentScheme}" android:host="${consentHost}" />
             </intent-filter>
 
             <!--
-              Invitations, as the web app shares them:
+              Invitations, as the SDK spells them:
               https://links.calimero.network/com.calimero.mero-vote/join?invitation=…
               Not autoVerify: links.calimero.network does not publish this app's assetlinks.json.
             -->

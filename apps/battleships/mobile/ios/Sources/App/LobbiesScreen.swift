@@ -12,6 +12,7 @@ struct LobbiesScreen: View {
     @State private var creating = false
     @State private var joining = false
     @State private var confirmSignOut = false
+    @State private var approvals = false
 
     init(
         backend: any BattleshipsBackend, applicationId: String?, openInvitation: @escaping (String) -> Void,
@@ -33,6 +34,9 @@ struct LobbiesScreen: View {
                     Menu {
                         if let account = DemoMode.backend?.account ?? session.account {
                             Text("Signed in as \(Names.short(account))")
+                        }
+                        if DemoMode.backend == nil {
+                            Button { approvals = true } label: { Label("Approvals", systemImage: "checkmark.seal") }
                         }
                         Button(role: .destructive) { confirmSignOut = true } label: {
                             Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
@@ -71,6 +75,9 @@ struct LobbiesScreen: View {
                     openInvitation(raw)
                 }
                 .presentationDetents([.medium])
+            }
+            .sheet(isPresented: $approvals) {
+                ApprovalsSheet(style: .app, orgs: model.lobbies.map { ($0.id, Names.lobby($0)) })
             }
             .confirmationDialog("Sign out of Battleships?", isPresented: $confirmSignOut, titleVisibility: .visible) {
                 Button("Sign out", role: .destructive) { Task { await session.signOut() } }

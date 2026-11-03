@@ -1,13 +1,19 @@
 package network.calimero.kombat.app
 
-import com.calimero.mero.ephemeral.RawCodec
-import com.calimero.mero.presence.RelayPresenceClient
+import com.calimero.mero.CalimeroClient
+import com.calimero.mero.CloudEvent
+import com.calimero.mero.crypto.Hex
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.flow.flatMapConcat
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * The fight's presence channel: this fighter's slices out, the opponent's in, as JSON text the page
@@ -25,29 +31,48 @@ interface PresenceChannel {
 }
 
 /**
- * Presence through the account's relay ([RelayPresenceClient]): each slice is a statement the device
- * key signs and the relay gossips. A phone has no node, so this is the only path.
+ * Presence on a Calimero 1.0 cluster: the arena app instance's presence (`POST /apps/{app}/presence`,
+ * read off `/apps/{app}/presence/stream`). One entry per account and device, newest `seq` wins, at
+ * most 4 KiB, gone 7 s after its last refresh. Nothing is stored. (Swift `CalimeroPresenceChannel`.)
  */
-class RelayPresenceChannel(
-    private val client: RelayPresenceClient,
+class CalimeroPresenceChannel(
+    private val client: CalimeroClient,
     private val contextId: String,
 ) : PresenceChannel {
-    override suspend fun publish(sliceJson: String) = client.set(contextId, sliceJson.encodeToByteArray(), RawCodec)
+    private val seq = AtomicLong(0)
+
+    override suspend fun publish(sliceJson: String) = client.publishPresence(contextId, seq.incrementAndGet(), sliceJson.encodeToByteArray())
 
     override suspend fun retract() {
-        runCatching { client.set(contextId, null, RawCodec) }
+        runCatching { client.publishPresence(contextId, seq.incrementAndGet(), null) }
     }
 
-    override fun slices(): Flow<String> =
-        client
-            .subscribe(contextId, RawCodec)
-            .filter { !it.removed }
-            .mapNotNull { it.state?.decodeToString() }
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    override fun slices(): Flow<String> = client.presenceStream(contextId).flatMapConcat { slices(it).asFlow() }
+
+    companion object {
+        /**
+         * The slices one stream event carries: a `snapshot` (an array of entries) or one `presence`
+         * diff. Entries without state (someone left) carry no slice.
+         */
+        fun slices(event: CloudEvent): List<String> {
+            val entries =
+                when (val data = event.data) {
+                    is JsonArray -> data.toList()
+                    is JsonObject -> listOf(data)
+                    else -> emptyList()
+                }
+            return entries.mapNotNull { entry ->
+                val hex = ((entry as? JsonObject)?.get("state") as? JsonPrimitive)?.contentOrNull ?: return@mapNotNull null
+                runCatching { Hex.decodeUnsized(hex, "presence state").decodeToString() }.getOrNull()
+            }
+        }
+    }
 }
 
 /**
  * The web app's publishing rule, natively: one slice in flight at a time, and while one is, only the
- * newest waits behind it. At 15 slices a second a slow relay drops stale frames instead of queueing
+ * newest waits behind it. At 15 slices a second a slow node drops stale frames instead of queueing
  * them, so the opponent always sees where this fighter is NOW. (Swift `SlicePublisher`.)
  */
 class SlicePublisher(

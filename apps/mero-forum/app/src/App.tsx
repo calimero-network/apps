@@ -1,6 +1,6 @@
-import { type ReactNode } from "react";
-import { Navigate, Route, Routes, useLocation } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
+import { useState, type ReactNode } from "react";
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { nodeBasename } from "@calimero-apps/node-served";
 
 import FeedPage from "./pages/FeedPage";
 import PostPage from "./pages/PostPage";
@@ -8,29 +8,35 @@ import LandingPage from "./pages/landing/LandingPage";
 import SpacesPage from "./pages/SpacesPage";
 import ForumsPage from "./pages/ForumsPage";
 import InvitationPrompt from "./components/InvitationPrompt";
+import SignInModal from "./components/SignInModal";
 import { ToastProvider } from "./contexts/ToastContext";
 import { useStoredForum } from "./lib/storedForum";
+import type { SessionDeps } from "./session";
+import { SessionProvider, useSessionApi } from "./sessionContext";
+
+/** Signed in, signed out, or still connecting (restoring a stored session). */
+function useAuth(): { isAuthenticated: boolean; isLoading: boolean } {
+  const { api } = useSessionApi();
+  return {
+    isAuthenticated: api.session.status === "signed-in",
+    isLoading: api.session.status === "connecting",
+  };
+}
 
 /** Every path the shared landing page serves. See src/pages/landing. */
 const LANDING_PATHS = ["/", "/docs", "/preview"];
 
 /**
- * Gate every contract-backed route.
+ * Gate every contract-backed route. Two conditions, in order, because they
+ * need different screens:
+ *   not signed in  -> the landing page (sign in with a passkey)
+ *   signed in, no forum -> the space picker (create or open one)
  *
- * ⚠️ This is the fix for the reported `FunctionCallError`. The feed used to be
- * the app's `/` route and rendered unauthenticated: `useForumClient()` returned
- * null, every read failed, and the composer's only possible outcome was a
- * throw. Nothing on the page explained it or offered a way out.
- *
- * Two conditions, in order, because they need different screens:
- *   not authenticated  -> /login  (connect a node)
- *   authenticated, no forum -> the setup screen (create or join one)
- *
- * `isLoading` returns null rather than redirecting, so the auth probe does not
- * flash the login screen at someone who is already signed in.
+ * `isLoading` returns null rather than redirecting, so restoring a stored
+ * session does not flash the landing page at someone already signed in.
  */
 function RequireForum({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isLoading } = useMero();
+  const { isAuthenticated, isLoading } = useAuth();
   const location = useLocation();
   const forum = useStoredForum();
 
@@ -39,13 +45,9 @@ function RequireForum({ children }: { children: ReactNode }) {
     return <Navigate to="/" replace state={{ from: location.pathname }} />;
   }
   // No forum chosen yet -> the space picker, which is where one is created or
-  // joined. This used to be a `SetupPage` that could make exactly ONE forum,
-  // because the app modelled "a namespace with one context inside it" and had
-  // no way to express a second. Spaces and forums are separate screens now.
-  //
-  // And the stored forum must be one THIS node holds: it is remembered across
-  // reloads and node switches, so it can name a context deleted, left, or on
-  // another node. `checking` renders nothing until the node has answered.
+  // opened. And the stored forum must be one this account still reaches: it is
+  // remembered across reloads, so it can name a forum deleted or a space left.
+  // `checking` renders nothing until the cluster has answered.
   if (forum === "checking") return null;
   if (forum === "none") return <Navigate to="/spaces" replace />;
   return <>{children}</>;
@@ -53,7 +55,7 @@ function RequireForum({ children }: { children: ReactNode }) {
 
 /** Signed in, but not yet inside a forum: the picker screens. */
 function RequireAuth({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isLoading } = useMero();
+  const { isAuthenticated, isLoading } = useAuth();
   const location = useLocation();
   if (isLoading) return null;
   if (!isAuthenticated) {
@@ -62,25 +64,12 @@ function RequireAuth({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-/**
- * An authenticated visitor has no business on the marketing page.
- *
- * ⚠️ THIS IS THE STEP THAT CARRIES YOU INTO THE APP. The SSO callback returns
- * to wherever login started — `connectToNode` uses `window.location.href` as
- * the callback URL — which for a visitor who pressed Connect on the landing
- * page is `/`. Without this guard the tokens land, `isAuthenticated` flips
- * true, and the router renders the landing page again: you log in successfully
- * and end up exactly where you started.
- *
- * The app used to get this from a `RedirectIfAuthed` wrapped around its
- * `/login` route. Deleting that page took the redirect with it; the landing
- * routes need the same guard, because they are now where login begins and ends.
- */
+/** An authenticated visitor has no business on the marketing page: into the app. */
 function RedirectIfAuthed({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isLoading } = useMero();
-  // Into the remembered forum only once this node has confirmed it holds it.
+  const { isAuthenticated, isLoading } = useAuth();
+  // Into the remembered forum only once the cluster has confirmed it.
   const forum = useStoredForum();
-  if (isLoading) return null; // the auth probe is still in flight
+  if (isLoading) return null;
   if (isAuthenticated) {
     if (forum === "checking") return null;
     return <Navigate to={forum === "open" ? "/f" : "/spaces"} replace />;
@@ -88,7 +77,24 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-export default function App() {
+/** The landing page with the passkey sign-in as its connect action. */
+function Landing() {
+  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+  const [signingIn, setSigningIn] = useState(false);
+  return (
+    <>
+      <LandingPage
+        onConnect={() => setSigningIn(true)}
+        isAuthenticated={isAuthenticated}
+        onOpenApp={() => navigate("/spaces")}
+      />
+      <SignInModal open={signingIn} onClose={() => setSigningIn(false)} />
+    </>
+  );
+}
+
+function AppRoutes() {
   // ToastProvider and InvitationPrompt sit ABOVE the router: a toast raised by
   // an action that navigates would unmount with its page, and an invitation
   // link can land on any route, so a prompt mounted on one page shows nothing
@@ -112,10 +118,10 @@ export default function App() {
             element={
               landingPath === "/" ? (
                 <RedirectIfAuthed>
-                  <LandingPage />
+                  <Landing />
                 </RedirectIfAuthed>
               ) : (
-                <LandingPage />
+                <Landing />
               )
             }
           />
@@ -125,11 +131,9 @@ export default function App() {
           already pressed to get there. The path stays as a redirect so a
           bookmark lands on the front door instead of a blank route. */}
         <Route path="/login" element={<Navigate to="/" replace />} />
-        {/* Spaces (namespaces) hold forums; a forum is a subgroup plus the
-          context that IS the discussion. An invitation is a NAMESPACE
-          invitation, so with one namespace per forum every invite was to a
-          single thread — there was no "invite someone to the space once and
-          they can read every forum in it". */}
+        {/* Spaces (organizations) hold forums (app instances). An invitation
+          is an org invitation: invite someone to the space once and they can
+          read every forum in it. */}
         <Route
           path="/spaces"
           element={
@@ -170,5 +174,15 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </ToastProvider>
+  );
+}
+
+export default function App({ deps }: { deps?: SessionDeps } = {}) {
+  return (
+    <SessionProvider deps={deps}>
+      <BrowserRouter basename={nodeBasename(new URL(window.location.href), "/")}>
+        <AppRoutes />
+      </BrowserRouter>
+    </SessionProvider>
   );
 }

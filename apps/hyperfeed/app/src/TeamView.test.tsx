@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { TeamView } from "./TeamView";
 import { DemoBackend } from "./demo";
 import { useFeed, type Feed } from "./useFeed";
-import type { FeedItem } from "./generated/HyperfeedClient";
+import type { FeedItem } from "./hyperfeedTypes";
 
 function Harness({
   backend,

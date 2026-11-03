@@ -1,11 +1,25 @@
 package network.calimero.pixart.core
 
+import com.calimero.mero.AppError
+import com.calimero.mero.CalimeroError
+import com.calimero.mero.ConfirmCancelled
+import com.calimero.mero.ConsentStale
+import com.calimero.mero.LoginRequired
+import com.calimero.mero.NotFound
+import com.calimero.mero.PasskeyCancelled
+import com.calimero.mero.ReleaseDeadlineError
+import com.calimero.mero.UnavailableError
+import com.calimero.mero.WrongNode
 import com.calimero.mero.app.MeroAppBackend
+import com.calimero.mero.app.SignedOutException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import network.calimero.pixart.generated.PixartClient
 import java.io.IOException
 import java.net.URI
@@ -18,8 +32,7 @@ import kotlin.math.min
 fun MeroAppBackend.pixartClient(contextId: String): PixartClient = PixartClient(contract.bound(contextId))
 
 /**
- * Bytes stored as blobs on a project's context. `MeroAppBackend` has no blob call yet, so the app reads
- * them through the signed-in client's admin surface (`getBlob(blobId, contextId)`).
+ * Bytes stored as blobs on a project's app instance, read through the signed-in backend (`MeroAppBackend.getBlob(blobId, contextId)`, `/apps/{app}/blobs` on the node).
  */
 fun interface BlobLoading {
     suspend fun blob(
@@ -214,15 +227,39 @@ object PixartFormat {
         return cleaned.ifEmpty { "artwork" } + ".png"
     }
 
-    /** Words a person can act on, from an error. */
-    fun errorText(error: Throwable): String {
-        val text = error.message ?: error.toString()
-        return when {
-            error::class.simpleName == "NoRelayException" || "no relay" in text.lowercase() ->
-                "Your account has no relay yet. Join a team from an invitation link, or try again shortly."
-            error is java.net.UnknownHostException || error is java.net.ConnectException ->
-                "You're offline. Check your connection and try again."
-            else -> text
+    /** Words a person can act on, from an error. (Swift `PixartFormat.errorText`.) */
+    @Suppress("CyclomaticComplexMethod")
+    fun errorText(error: Throwable): String =
+        when (error) {
+            is ReleaseDeadlineError -> {
+                val release = if (error.release.isEmpty()) "a node release" else "node release ${error.release}"
+                "Your cluster takes no new work until $release is approved. Review it under Needs your approval."
+            }
+            is NotFound -> "This isn't shared with you, or it was deleted."
+            is LoginRequired, is SignedOutException -> "Your session ended. Sign in again."
+            is WrongNode -> "This node doesn't serve your team. Try another node of the cluster."
+            is UnavailableError -> "Your cluster is busy (${error.reason}). Try again shortly."
+            is PasskeyCancelled, is ConfirmCancelled -> "You cancelled the passkey prompt, so nothing changed."
+            is ConsentStale -> "That approval expired. Start it again."
+            is AppError -> appErrorText(error.appCode, error.fields, error.nodeMessage)
+            is CalimeroError -> error.nodeMessage.ifEmpty { error.code }
+            is java.net.UnknownHostException, is java.net.ConnectException -> "You're offline. Check your connection and try again."
+            else -> error.message ?: error.toString()
+        }
+
+    /** The contract's refusal (`APP_ERROR {code, fields}`: `ViewOnly`, `OwnerOnly`, `Invalid { message }`) in plain words. */
+    fun appErrorText(
+        code: String,
+        fields: JsonObject,
+        message: String,
+    ): String {
+        val own = (fields["message"] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull?.trim()
+        if (!own.isNullOrEmpty()) return own
+        return when (code) {
+            "ViewOnly" -> "You can view this project, but not edit it."
+            "OwnerOnly" -> "Only the project's owner can do that."
+            "Invalid" -> "That change isn't accepted."
+            else -> message.ifEmpty { code.ifEmpty { "The project refused that change." } }
         }
     }
 }

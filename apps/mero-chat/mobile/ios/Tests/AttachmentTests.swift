@@ -63,14 +63,14 @@ final class AttachmentTests: XCTestCase {
     func testAFailedUploadSendsNothingAndSaysWhy() async {
         let (model, backend) = makeModel()
         await model.loadInitial()
-        backend.blobFailure = AccountError.intentRefused(reason: "not a member", retryable: false, status: 403)
+        backend.blobFailure = CalimeroError(status: 403, code: "FORBIDDEN", message: "not a member")
         let file = PendingAttachment(name: "a.txt", mimeType: "text/plain", data: Data([1]))
 
         let sent = await model.send("hi", attachments: [file])
 
         XCTAssertFalse(sent)
         XCTAssertTrue(backend.recording.calls("send_message").isEmpty)
-        XCTAssertEqual(model.errorText, "The relay refused this (403): not a member")
+        XCTAssertEqual(model.errorText, "not a member (403)")
     }
 
     func testABlobIsReadThroughTheChannelOnceThenFromTheCache() async throws {

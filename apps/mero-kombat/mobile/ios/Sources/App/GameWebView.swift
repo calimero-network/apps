@@ -8,7 +8,7 @@ import WebKit
 /// The bridge is two calls: the page posts JSON strings to the `meroBridge` message handler
 /// (``BridgeInbound``), and the host's messages run as `window.meroGame.receive(…)`
 /// (``BridgeOutbound/script``). Contract calls never leave the app through the page: they come
-/// here and go out through the generated client.
+/// here and go out through the typed client.
 struct GameWebView: UIViewRepresentable {
     let host: GameHost
 

@@ -58,7 +58,7 @@ final class TeamsModelTests: XCTestCase {
         }
     }
 
-    func testRelaylessAccountListsNothing() async {
+    func testDisconnectedAccountListsNothing() async {
         let backend = Fixture.backend()
         backend.hasRelay = false
         let model = TeamsModel(backend: backend, names: NameBook(store: MemoryStore()))
@@ -122,36 +122,30 @@ final class CalendarsModelTests: XCTestCase {
 @MainActor
 final class CalendarModelTests: XCTestCase {
     func makeModel(
-        _ backend: InMemoryAppBackend, store: PrivateEventStore = PrivateEventStore(store: MemoryStore()),
-        names: NameBook = NameBook(store: MemoryStore())
+        _ backend: InMemoryAppBackend, names: NameBook = NameBook(store: MemoryStore())
     ) -> CalendarModel {
         CalendarModel(
-            backend: backend, team: Fixture.team, calendar: Fixture.calendar, names: names, privateStore: store,
+            backend: backend, team: Fixture.team, calendar: Fixture.calendar, names: names,
             math: Fixture.math, today: Fixture.date(28))
     }
 
-    func testLoadMergesSharedAndThisDevicesPrivateEvents() async {
+    func testLoadMergesSharedAndPrivateEvents() async {
+        let utc = "GMT+0000 (Coordinated Universal Time)"
         let shared = Fixture.eventJSON(
-            id: "s1", title: "Review", owner: Fixture.bob,
-            start: "Wed Oct 28 2026 10:00:00 GMT+0000 (Coordinated Universal Time)",
-            end: "Wed Oct 28 2026 11:00:00 GMT+0000 (Coordinated Universal Time)", peers: [Fixture.me])
+            id: "s1", title: "Review", owner: Fixture.bob, start: "Wed Oct 28 2026 10:00:00 \(utc)",
+            end: "Wed Oct 28 2026 11:00:00 \(utc)", peers: [Fixture.me])
+        let mine = Fixture.eventJSON(
+            id: "p1", title: "Dentist", owner: Fixture.me, start: "Wed Oct 28 2026 08:00:00 \(utc)",
+            end: "Wed Oct 28 2026 09:00:00 \(utc)", isPrivate: true)
         let backend = Fixture.backend { call in
             switch call.method {
-            case "get_events": return .array([shared])
-            case "get_members": return .array([Fixture.member(Fixture.bob, "Bob")])
+            case "getEvents": return .array([shared])
+            case "getPrivateEvents": return .array([mine])
+            case "getMembers": return .array([Fixture.member(Fixture.bob, "Bob")])
             default: return nil
             }
         }
-        let store = PrivateEventStore(store: MemoryStore())
-        let key = PrivateEventStore.key(account: Fixture.me, namespaceId: Fixture.teamId)
-        store.add(
-            key: key, contextId: Fixture.contextId,
-            event: CalendarItem(id: "", title: "Dentist", owner: Fixture.me, start: Fixture.date(28, 8), end: Fixture.date(28, 9)))
-        store.add(
-            key: key, contextId: "other",
-            event: CalendarItem(id: "", title: "Elsewhere", owner: Fixture.me, start: Fixture.date(28, 8), end: Fixture.date(28, 9)))
-
-        let model = makeModel(backend, store: store)
+        let model = makeModel(backend)
         await model.reload()
         XCTAssertEqual(model.events.map(\.title), ["Dentist", "Review"])
         XCTAssertEqual(model.events.map(\.isPrivate), [true, false])
@@ -160,12 +154,11 @@ final class CalendarModelTests: XCTestCase {
         XCTAssertEqual(model.displayName(Fixture.bob), "Bob")
         XCTAssertFalse(model.canEdit(model.events[1]))
         XCTAssertTrue(model.canEdit(model.events[0]))
-        // The private list is the device's: `get_private_events` is never asked (a relay has none).
-        XCTAssertTrue(backend.recording.calls("get_private_events").isEmpty)
-        XCTAssertEqual(backend.recording.calls("get_events").first?.path, .query)
+        XCTAssertEqual(backend.recording.calls("getEvents").first?.path, .query)
+        XCTAssertEqual(backend.recording.calls("getPrivateEvents").first?.path, .query)
     }
 
-    func testAPrivateOrPeerlessEventStaysOnTheDevice() async throws {
+    func testAPrivateEventGoesToCreatePrivateEventAndAPeerlessOneToCreateEvent() async throws {
         let backend = Fixture.backend()
         let model = makeModel(backend)
         var draft = EventDraft.new(on: Fixture.date(28), now: Fixture.date(1, month: 1), math: Fixture.math)
@@ -174,33 +167,34 @@ final class CalendarModelTests: XCTestCase {
         draft.title = "Dentist"
         draft.setPrivate(true)
         try await model.save(draft)
-        XCTAssertTrue(backend.recording.calls("create_event").isEmpty)
-        XCTAssertTrue(backend.recording.calls("create_private_event").isEmpty)
-        XCTAssertEqual(Set(model.events.map(\.title)), ["Focus", "Dentist"])
-        XCTAssertTrue(model.events.allSatisfy { $0.isPrivate && $0.isLocal })
+        // The contract keeps a peerless `createEvent` private itself.
+        XCTAssertEqual(backend.recording.calls("createEvent").count, 1)
+        let call = try XCTUnwrap(backend.recording.calls("createPrivateEvent").first)
+        XCTAssertEqual((call.sent["eventData"] as? [String: Any])?["title"] as? String, "Dentist")
     }
 
-    func testASharedEventGoesToCreateEventWithHexPeersAndTheWebDateString() async throws {
+    func testASharedEventGoesToCreateEventWithAccountPeersAndTheWebDateString() async throws {
         let backend = Fixture.backend()
         let model = makeModel(backend)
         var draft = EventDraft.new(on: Fixture.date(28), now: Fixture.date(1, month: 1), math: Fixture.math)
         draft.title = "Planning"
         draft.togglePeer(Fixture.bob)
         try await model.save(draft)
-        let call = try XCTUnwrap(backend.recording.calls("create_event").first)
+        let call = try XCTUnwrap(backend.recording.calls("createEvent").first)
         XCTAssertEqual(call.path, .execute)
-        let event = try XCTUnwrap(call.sent["event_data"] as? [String: Any])
+        let event = try XCTUnwrap(call.sent["eventData"] as? [String: Any])
         XCTAssertEqual(event["peers"] as? [String], [Fixture.bob])
         XCTAssertEqual(event["event_type"] as? String, "event")
         XCTAssertEqual(EventTime.parse(event["start"] as? String ?? ""), Fixture.date(28, 9))
         XCTAssertTrue((event["start"] as? String ?? "").contains(" GMT"))
-        XCTAssertNotNil(call.sent["timestamp"] as? NSNumber)
+        // The log is the clock: no client timestamp.
+        XCTAssertNil(call.sent["timestamp"])
+        XCTAssertEqual(Set(call.sent.keys), ["eventData"])
     }
 
-    func testEditingAndDeletingSharedAndLocalEvents() async throws {
+    func testEditingAndDeletingSharedAndPrivateEvents() async throws {
         let backend = Fixture.backend()
-        let store = PrivateEventStore(store: MemoryStore())
-        let model = makeModel(backend, store: store)
+        let model = makeModel(backend)
 
         let shared = CalendarItem(
             id: "s1", title: "Sync", owner: Fixture.me, start: Fixture.date(28, 9), end: Fixture.date(28, 10),
@@ -208,31 +202,28 @@ final class CalendarModelTests: XCTestCase {
         var edit = EventDraft.editing(shared)
         edit.title = "Sync (moved)"
         try await model.save(edit)
-        let update = try XCTUnwrap(backend.recording.calls("update_event").first)
-        XCTAssertEqual(update.sent["event_id"] as? String, "s1")
-        XCTAssertEqual((update.sent["event_data"] as? [String: Any])?["title"] as? String, "Sync (moved)")
+        let update = try XCTUnwrap(backend.recording.calls("updateEvent").first)
+        XCTAssertEqual(update.sent["eventId"] as? String, "s1")
+        XCTAssertEqual((update.sent["eventData"] as? [String: Any])?["title"] as? String, "Sync (moved)")
 
         try await model.delete(shared)
-        XCTAssertEqual(backend.recording.calls("delete_event").first?.sent["event_id"] as? String, "s1")
+        XCTAssertEqual(backend.recording.calls("deleteEvent").first?.sent["eventId"] as? String, "s1")
 
-        // A device-local event that gains a teammate is promoted to the contract.
-        var draft = EventDraft.new(on: Fixture.date(28), now: Fixture.date(1, month: 1), math: Fixture.math)
-        draft.title = "Lunch"
-        try await model.save(draft)
-        let local = try XCTUnwrap(model.events.first { $0.title == "Lunch" })
-        var share = EventDraft.editing(local)
+        // A private event that gains a teammate is promoted by `updatePrivateEvent`.
+        let lunch = CalendarItem(
+            id: "p1", title: "Lunch", owner: Fixture.me, start: Fixture.date(28, 12), end: Fixture.date(28, 13),
+            isPrivate: true)
+        var share = EventDraft.editing(lunch)
         share.setPrivate(false)
         share.togglePeer(Fixture.carol)
         try await model.save(share)
-        XCTAssertEqual(backend.recording.calls("create_event").count, 1)
-        XCTAssertFalse(model.events.contains { $0.id == local.id })
+        let promote = try XCTUnwrap(backend.recording.calls("updatePrivateEvent").first)
+        XCTAssertEqual(promote.sent["eventId"] as? String, "p1")
+        XCTAssertEqual((promote.sent["eventData"] as? [String: Any])?["peers"] as? [String], [Fixture.carol])
 
-        // And a local one is deleted from the device only.
-        try await model.save(draft)
-        let again = try XCTUnwrap(model.events.first { $0.title == "Lunch" })
-        try await model.delete(again)
-        XCTAssertEqual(backend.recording.calls("delete_event").count, 1)
-        XCTAssertFalse(model.events.contains { $0.id == again.id })
+        try await model.delete(lunch)
+        XCTAssertEqual(backend.recording.calls("deletePrivateEvent").first?.sent["eventId"] as? String, "p1")
+        XCTAssertEqual(backend.recording.calls("deleteEvent").count, 1)
     }
 
     func testFirstOpenAsksForANameThenRegistersIt() async {
@@ -243,13 +234,13 @@ final class CalendarModelTests: XCTestCase {
         XCTAssertTrue(model.needsName)
         await model.setName(" Ana ")
         XCTAssertFalse(model.needsName)
-        XCTAssertEqual(backend.recording.calls("set_username").first?.sent["username"] as? String, "Ana")
+        XCTAssertEqual(backend.recording.calls("setUsername").first?.sent["username"] as? String, "Ana")
         XCTAssertEqual(names.lastUsername, "Ana")
 
         let second = makeModel(backend, names: names)
         await second.start()
         XCTAssertFalse(second.needsName)
-        XCTAssertEqual(backend.recording.calls("set_username").count, 2)
+        XCTAssertEqual(backend.recording.calls("setUsername").count, 2)
     }
 
     func testValidationIsSaidBeforeAnythingIsSent() async {
@@ -269,11 +260,11 @@ final class CalendarModelTests: XCTestCase {
         let model = makeModel(backend)
         let live = Task { await model.runLive() }
         defer { live.cancel() }
-        for _ in 0..<50 where backend.recording.calls("get_events").isEmpty {
+        for _ in 0..<50 where backend.recording.calls("getEvents").isEmpty {
             backend.emit(AppContextEvent(contextId: Fixture.contextId, kind: "StateMutation"))
             try await Task.sleep(for: .milliseconds(20))
         }
-        XCTAssertFalse(backend.recording.calls("get_events").isEmpty)
+        XCTAssertFalse(backend.recording.calls("getEvents").isEmpty)
     }
 
     func testNavigation() {

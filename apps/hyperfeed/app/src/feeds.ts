@@ -1,8 +1,15 @@
 import { timeLabel } from "./format";
 
+import type { AppInfo, CalimeroClient } from "@calimero-network/mero-js";
+import type { AppSource } from "@calimero-apps/connect";
+
 /**
- * Your feeds on this node, told apart: by name, and by how much each holds
+ * Your feeds on the cluster, told apart: by name, and by how much each holds
  * and when it last moved, so an old or empty one can be found and deleted.
+ *
+ * A feed is an app instance of Hyperfeed (v1's context), in an organization of
+ * its own (v1's namespace): you own it, and the cloud agents you let work it
+ * are invited into that organization.
  */
 
 /** What the switcher says about one feed. */
@@ -11,14 +18,6 @@ export interface FeedFacts {
   rows: number | null;
   /** When anything in it last happened (ms); 0 when nothing has. */
   at: number;
-}
-
-/** The node calls deleting a feed takes. */
-export interface FeedAdmin {
-  getContextGroup(contextId: string): Promise<string | null>;
-  deleteContext(contextId: string): Promise<unknown>;
-  listGroupContexts(groupId: string): Promise<{ contextId: string }[]>;
-  deleteNamespace(namespaceId: string): Promise<unknown>;
 }
 
 const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -51,60 +50,8 @@ export function orderFeeds(ids: string[], current: string, facts: Record<string,
   return [...ids].sort((a, b) => rank(a) - rank(b) || (facts[b]?.at ?? 0) - (facts[a]?.at ?? 0));
 }
 
-/**
- * Delete a feed: its context, then its namespace once nothing else is in it.
- * A feed is made in a namespace of its own, so that is the usual case; a
- * namespace still holding another context is left alone. Resolves to whether
- * the namespace went too.
- *
- * ⚠️ The context delete is tolerated when the feed is alone in its namespace.
- * The namespace delete only UNREGISTERS its contexts (their data stays), so
- * the context goes first wherever it can — but `DELETE /admin-api/contexts/:id`
- * needs `context:delete`, which an app's grant set signed in from a browser
- * may not carry. A refusal there must not leave the feed undeletable: the
- * namespace still goes, and the feed with it out of every listing.
- */
-export async function deleteFeed(admin: FeedAdmin, contextId: string): Promise<{ namespace: boolean }> {
-  const group = await admin.getContextGroup(contextId).catch(() => null);
-  const inGroup = group ? await admin.listGroupContexts(group).catch(() => null) : null;
-  const alone = !!group && !!inGroup && inGroup.every((c) => c.contextId === contextId);
-  if (!alone) {
-    await admin.deleteContext(contextId);
-    return { namespace: false };
-  }
-  await admin.deleteContext(contextId).catch(() => {});
-  await admin.deleteNamespace(group);
-  return { namespace: true };
-}
-
-/**
- * A feed's name is its namespace's: what `list_namespaces`, meroctl and the
- * admin dashboard show. A feed has a namespace of its own, so one listing of
- * the app's namespaces names every feed. Creating and renaming set the
- * context's name too.
- */
-
 /** The longest name a feed takes. */
 export const NAME_MAX = 64;
-
-/** One feed's name, and the namespace it is in; `name` is null for a feed made unnamed. */
-export interface FeedName {
-  name: string | null;
-  namespace: string | null;
-}
-
-type Metadata = { name: string | null; data: Record<string, string> } | null;
-
-/** The node calls naming feeds takes. */
-export interface NamesAdmin {
-  getContextsForApplication(applicationId: string): Promise<{ contexts: { id: string; groupId?: string }[] }>;
-  listNamespacesForApplication(applicationId: string): Promise<{ namespaceId: string; name?: string }[]>;
-  getContextGroup(contextId: string): Promise<string | null>;
-  getGroupMetadata(groupId: string): Promise<Metadata>;
-  setGroupMetadata(groupId: string, request: { name?: string; data?: Record<string, string> }): Promise<unknown>;
-  getContextMetadata(groupId: string, contextId: string): Promise<Metadata>;
-  setContextMetadata(groupId: string, contextId: string, request: { name?: string; data?: Record<string, string> }): Promise<unknown>;
-}
 
 /** What is wrong with a name, or null when it will do. */
 export function nameProblem(name: string): string | null {
@@ -133,34 +80,67 @@ export function feedLabel(name: string | null | undefined, id: string): string {
   return `${name || "Unnamed feed"} · ${hint(id)}`;
 }
 
-/** Every feed's name, in two calls however many feeds there are. */
-export async function readFeedNames(admin: NamesAdmin, applicationId: string): Promise<Record<string, FeedName>> {
-  const [{ contexts }, namespaces] = await Promise.all([
-    admin.getContextsForApplication(applicationId),
-    admin.listNamespacesForApplication(applicationId),
-  ]);
-  const names = new Map(namespaces.map((n) => [n.namespaceId, n.name?.trim() || null]));
-  const out: Record<string, FeedName> = {};
-  for (const c of contexts) {
-    // An older node lists contexts without their group: ask for it.
-    const namespace = c.groupId ?? (await admin.getContextGroup(c.id).catch(() => null));
-    out[c.id] = { name: (namespace && names.get(namespace)) || null, namespace };
-  }
-  return out;
+/** The feeds this account reaches: instances of the dev bundle, or of the package. */
+export async function listFeeds(client: Pick<CalimeroClient, "listApps">, source: AppSource): Promise<AppInfo[]> {
+  const filter = typeof source === "string" ? { bundle: source } : { package: source.package };
+  const apps = await client.listApps(filter);
+  return [...apps].sort((a, b) => a.name.localeCompare(b.name) || a.appId.localeCompare(b.appId));
 }
 
 /**
- * Rename a feed: its namespace and its context. Setting a record replaces
- * its data, so what is there is passed back.
+ * Make a feed named `name`: an organization of its own first (where cloud
+ * agents are invited), then the instance in it. Answers its app id.
  */
-export async function renameFeed(admin: NamesAdmin, contextId: string, namespace: string | null, name: string): Promise<void> {
+export async function createFeed(
+  client: Pick<CalimeroClient, "createApp" | "createOrg">,
+  source: AppSource,
+  name: string,
+): Promise<string> {
   const problem = nameProblem(name);
   if (problem) throw new Error(problem);
-  const n = name.trim();
-  const group = namespace ?? (await admin.getContextGroup(contextId));
-  if (!group) throw new Error("This feed's namespace could not be found.");
-  const ns = await admin.getGroupMetadata(group).catch(() => null);
-  await admin.setGroupMetadata(group, { name: n, data: ns?.data ?? {} });
-  const ctx = await admin.getContextMetadata(group, contextId).catch(() => null);
-  await admin.setContextMetadata(group, contextId, { name: n, data: ctx?.data ?? {} });
+  const org = await client.createOrg(name.trim());
+  return client.createApp(name.trim(), source, { org });
+}
+
+/**
+ * Delete a feed: its app instance, with everything in it. The organization it
+ * was made in stays (deleting one is a passkey step-up of its own, from the
+ * cluster's console).
+ */
+export async function deleteFeed(client: Pick<CalimeroClient, "deleteApp">, app: string): Promise<void> {
+  await client.deleteApp(app);
+}
+
+/** Every feed's name: the one set in its metadata (a rename), else the one it was created with. */
+export async function readFeedNames(
+  client: Pick<CalimeroClient, "getApp">,
+  feeds: Pick<AppInfo, "appId" | "name">[],
+): Promise<Record<string, string | null>> {
+  const out: Record<string, string | null> = {};
+  await Promise.all(
+    feeds.map(async (f) => {
+      const meta = await client
+        .getApp(f.appId)
+        .then((a) => (a.metadata ?? null) as { name?: unknown } | null)
+        .catch(() => null);
+      const renamed = typeof meta?.name === "string" ? meta.name.trim() : "";
+      out[f.appId] = renamed || f.name.trim() || null;
+    }),
+  );
+  return out;
+}
+
+/** Rename a feed: its metadata's `name`, keeping whatever else the metadata holds. */
+export async function renameFeed(
+  client: Pick<CalimeroClient, "getApp" | "setAppMetadata">,
+  app: string,
+  name: string,
+): Promise<void> {
+  const problem = nameProblem(name);
+  if (problem) throw new Error(problem);
+  const meta = await client
+    .getApp(app)
+    .then((a) => (a.metadata ?? {}) as Record<string, unknown>)
+    .catch(() => ({}));
+  await client.setAppMetadata(app, { ...(typeof meta === "object" && meta ? meta : {}), name: name.trim() });
 }

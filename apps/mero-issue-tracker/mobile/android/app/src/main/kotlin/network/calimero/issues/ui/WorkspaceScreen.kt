@@ -25,6 +25,8 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.PersonAdd
+import androidx.compose.material.icons.outlined.Upgrade
+import androidx.compose.material.icons.outlined.VerifiedUser
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -45,7 +47,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
+import network.calimero.issues.core.ApprovalsModel
 import network.calimero.issues.core.TrackerFormat
 import network.calimero.issues.core.WorkspaceModel
 import network.calimero.issues.core.WorkspaceState
@@ -55,17 +59,35 @@ import network.calimero.issues.core.WorkspaceState
 fun WorkspaceScreen(
     workspace: WorkspaceModel,
     ws: WorkspaceState,
+    approvals: ApprovalsModel,
     openSheet: (TrackerSheet) -> Unit,
     signOut: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     var confirmSignOut by remember { mutableStateOf(false) }
+    val pending by approvals.items.collectAsStateWithLifecycle()
+    val approving by approvals.approving.collectAsStateWithLifecycle()
+    val approvalError by approvals.error.collectAsStateWithLifecycle()
+    val code by approvals.confirmationCode.collectAsStateWithLifecycle()
     LazyColumn(
         Modifier.fillMaxSize().statusBarsPadding(),
         contentPadding = PaddingValues(Palette.gutter),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item { Text("Workspace", fontSize = 28.sp, fontWeight = FontWeight.SemiBold, color = Palette.ink, modifier = Modifier.padding(bottom = 8.dp)) }
+        if (pending.isNotEmpty() || approvalError != null) {
+            item {
+                Group("Needs your approval") {
+                    approvalError?.let { Box(Modifier.padding(vertical = 10.dp)) { ErrorLine(it) } }
+                    pending.forEachIndexed { index, item ->
+                        if (index > 0 || approvalError != null) HorizontalDivider(color = Palette.line)
+                        ApprovalRow(item, busy = approving == item.id, enabled = approving == null) {
+                            scope.launch { approvals.approve(item) }
+                        }
+                    }
+                }
+            }
+        }
         ws.activeWorkspace?.let { ns ->
             item {
                 Group(null) {
@@ -146,12 +168,27 @@ fun WorkspaceScreen(
             val rows =
                 buildList {
                     add("Account" to workspace.account)
-                    add("Relay" to if (workspace.hasRelay) "Connected" else "None yet")
-                    ws.activeWorkspaceId?.let { add("Workspace (namespace)" to it) }
-                    ws.activeRepoId?.let { add("Repository (context)" to it) }
+                    add("Cluster" to if (workspace.hasRelay) "Connected" else "Not connected")
+                    ws.activeWorkspaceId?.let { add("Workspace (organization)" to it) }
+                    ws.activeRepoId?.let { add("Repository (app instance)" to it) }
                 }
             Box(Modifier.padding(top = 12.dp)) { DetailsDisclosure(rows) }
         }
+    }
+    code?.let { shown ->
+        AlertDialog(
+            onDismissRequest = { approvals.answerConfirmation(false) },
+            title = { Text("Confirmation code") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(shown, fontFamily = FontFamily.Monospace, fontSize = 26.sp, fontWeight = FontWeight.SemiBold, color = Palette.ink)
+                    Text("Your node's approval page will show this code. Approve only if it shows the same code.", color = Palette.text2)
+                }
+            },
+            confirmButton = { TextButton(onClick = { approvals.answerConfirmation(true) }) { Text("Open approval page", color = Palette.ink) } },
+            dismissButton = { TextButton(onClick = { approvals.answerConfirmation(false) }) { Text("Cancel", color = Palette.text2) } },
+            containerColor = Palette.surface,
+        )
     }
     if (confirmSignOut) {
         AlertDialog(
@@ -200,5 +237,31 @@ private fun ActionRow(
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(14.dp))
         Text(title, fontSize = 16.sp, color = tint)
+    }
+}
+
+/** One thing to approve, with "Review" (the node's consent page in a Custom Tab). */
+@Composable
+private fun ApprovalRow(
+    item: ApprovalsModel.Item,
+    busy: Boolean,
+    enabled: Boolean,
+    review: () -> Unit,
+) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.Top) {
+        Box(
+            Modifier.size(32.dp).clip(RoundedCornerShape(9.dp)).background(Palette.lime.copy(alpha = 0.35f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            val icon = if (item.kind is ApprovalsModel.Item.Kind.Upgrade) Icons.Outlined.Upgrade else Icons.Outlined.VerifiedUser
+            Icon(icon, contentDescription = null, tint = Palette.ink, modifier = Modifier.size(18.dp))
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(item.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Palette.ink)
+            Text(item.detail, fontSize = 13.sp, color = Palette.text3)
+        }
+        Spacer(Modifier.width(10.dp))
+        PrimaryButton("Review", review, modifier = Modifier, enabled = enabled, busy = busy)
     }
 }
