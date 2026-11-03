@@ -558,11 +558,23 @@ jobs:
           key: cargo-native-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: cargo-native-${{ runner.os }}-
 
-      - run: cargo fmt --all -- --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
+      # Once the last v1 app moves to the component SDK the root workspace has
+      # no members, and `cargo fmt --all` / `clippy --workspace` fail on an
+      # empty virtual manifest. Component apps are covered by components.yml.
+      - id: ws
+        name: Count root workspace members
+        run: |
+          n=$(cargo metadata --no-deps --format-version 1 | jq '.workspace_members | length')
+          echo "members=$n" >> "$GITHUB_OUTPUT"
+          [ "$n" != 0 ] || echo "::notice::the root workspace has no members; every app is a component app (components.yml)"
+      - if: steps.ws.outputs.members != '0'
+        run: cargo fmt --all -- --check
+      - if: steps.ws.outputs.members != '0'
+        run: cargo clippy --workspace --all-targets -- -D warnings
       # Covers every app's TestHost tests and tests/converge.rs in one
       # invocation, sharing the compiled SDK.
-      - run: cargo test --workspace
+      - if: steps.ws.outputs.members != '0'
+        run: cargo test --workspace
 
   wasm:
     name: Build WASM (${{ matrix.app }})
