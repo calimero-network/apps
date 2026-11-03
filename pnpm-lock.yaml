@@ -2333,12 +2333,12 @@ importers:
 
   apps/mero-stream/app:
     dependencies:
+      '@calimero-apps/connect':
+        specifier: workspace:*
+        version: link:../../../packages/connect
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
-      '@calimero-apps/names':
-        specifier: workspace:*
-        version: link:../../../packages/names
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
@@ -2346,23 +2346,11 @@ importers:
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
-        specifier: 'catalog:'
-        version: 26.11.0
-      '@calimero-network/mero-platform':
-        specifier: 'catalog:'
-        version: 0.1.0
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 10.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: catalog:component
+        version: 28.0.0
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      bs58:
-        specifier: 'catalog:'
-        version: 6.0.0
-      fflate:
-        specifier: 'catalog:'
-        version: 0.8.3
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -2372,19 +2360,10 @@ importers:
       react-router-dom:
         specifier: ^7.15.1
         version: 7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      zustand:
-        specifier: ^5.0.14
-        version: 5.0.15(@types/react@19.2.18)(immer@9.0.21)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
     devDependencies:
-      '@calimero-apps/e2e-node':
-        specifier: workspace:*
-        version: link:../../../packages/e2e-node
       '@eslint/js':
         specifier: ^9.25.0
         version: 9.39.5
-      '@playwright/test':
-        specifier: 'catalog:'
-        version: 1.62.1
       '@testing-library/dom':
         specifier: ^10.4.1
         version: 10.4.1
