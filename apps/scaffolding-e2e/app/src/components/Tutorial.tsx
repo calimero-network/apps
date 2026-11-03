@@ -10,65 +10,57 @@ interface Step {
 const STEPS: Step[] = [
   {
     selector: '[data-tutorial="node-url"]',
-    title: "Node URL",
+    title: "Where you are connected",
     description:
-      "This shows which merod node you're connected to. Click it to change the URL — useful when switching between Node A and Node B.",
+      "The target this build connects to: merod local's three nodes in development, a Calimero Cloud cluster in production. It is fixed when the app starts; calls fail over between the nodes on their own.",
     pad: 8,
   },
   {
-    selector: '[data-tutorial="open-node-b"]',
-    title: "Connecting a Second Node",
-    description:
-      "Click to get the Node B URL. You can open it in an incognito window, a different browser, or run a second frontend on port 5174 with its own VITE_NODE_URL.",
-    pad: 6,
-  },
-  {
     selector: '[data-tutorial="ctx-id"]',
-    title: "Context ID",
+    title: "App instance",
     description:
-      "The active context running inside your node. All operations — KV, CRDT, storage — run against this context. Click to copy the ID.",
+      "The instance of this app every section calls (v1's context). Click to copy its id, for instance to register it as a channel in the Workspace Manager.",
     pad: 6,
   },
   {
     selector: '[data-tutorial="ctx-select"]',
-    title: "Switch Active Context",
+    title: "Change instance",
     description:
-      "This dropdown appears when your node has more than one context. Each entry shows a context ID prefix and its app ID. Selecting one switches all operations — KV, CRDT, storage — to that context. Use this to toggle between different running instances of your app.",
+      "Back to the list of instances your account reaches, where you can open another or create a new one.",
     pad: 6,
   },
   {
     selector: '[data-tutorial="nav-concepts"]',
     title: "How It Works",
     description:
-      "Start here. Explains Calimero's architecture: what a context is, how nodes sync, and how the frontend connects.",
+      "Start here. Explains the 1.0 model: accounts and passkeys, organizations, app instances and the one log that orders every write.",
     pad: 6,
   },
   {
     selector: '[data-tutorial="nav-setup"]',
-    title: "Setup Wizard",
+    title: "Setup",
     description:
-      "Step-by-step guide to create a namespace, install the app bundle, create a context, and invite a second node. Run this first on a fresh install.",
+      "The open instance, an invitation link for a second account, and the workspace claim. Run this first on a fresh instance.",
     pad: 6,
   },
   {
     selector: '[data-tutorial="nav-kv"]',
     title: "KV Operations",
     description:
-      "Test key-value reads and writes stored inside the context's WASM runtime. Changes persist between sessions and replicate to other nodes.",
+      "Key-value reads and writes in the app's state. Every write is ordered by the cluster's log, so every member reads it at once.",
     pad: 6,
   },
   {
     selector: '[data-tutorial="nav-counters"]',
-    title: "CRDT Sync",
+    title: "Collections",
     description:
-      "Conflict-free Replicated Data Types. Counters, registers, sets, and maps in this section sync automatically between Node A and Node B without conflicts.",
+      "v1's CRDT types as the component SDK's collections: counters, registers, sets, nested maps and a vector. One log orders every write, so there is nothing to merge.",
     pad: 6,
   },
   {
     selector: '[data-tutorial="logout"]',
-    title: "Logout",
-    description:
-      "Disconnects from the current node and returns you to the connect screen. Your node keeps running in the background.",
+    title: "Sign out",
+    description: "Ends this session. Your passkey signs you in again.",
     pad: 6,
   },
 ];

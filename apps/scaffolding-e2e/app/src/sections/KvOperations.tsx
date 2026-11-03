@@ -51,7 +51,7 @@ export function KvOperations() {
         <h2 className="section-title">KV Operations</h2>
         <p className="section-desc">
           Basic key-value store: set, get, list, remove, clear. Entries auto-refresh every 3 s —
-          write a key on Node A and watch it appear here on Node B.
+          write a key as one account and watch it appear here for another: every write goes through the cluster's log.
         </p>
       </div>
 

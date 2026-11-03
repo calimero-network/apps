@@ -1,18 +1,12 @@
 import { useState } from "react";
-import { useMero } from "@calimero-network/mero-react";
-import type { FormView, LinkView } from "./generated/FormsClient";
-import {
-  LINK_METHODS,
-  createAccessGrant,
-  revokeAccessGrant,
-  sha256Hex,
-  type OwnerNode,
-} from "./lib/accessGrants";
-import { NODE_VERIFIES_TURNSTILE, fetchCaptchaConfig } from "./lib/captcha";
+import type { FormView, LinkView } from "./formsApi";
+import { fetchCaptchaConfig } from "./lib/captcha";
 import { ago } from "./lib/fields";
+import { revokeKey } from "./lib/formKey";
 import { shortAccount } from "./lib/people";
-import { publicLinkUrl } from "./lib/publicLink";
+import { LINK_METHODS, publicLinkUrl, sha256Hex } from "./lib/publicLink";
 import { BASE } from "./route";
+import { useSignedIn } from "./sessionContext";
 import { useRead, type Workspace } from "./useWorkspace";
 
 /**
@@ -20,26 +14,26 @@ import { useRead, type Workspace } from "./useWorkspace";
  * signed in or not.
  *
  * Making a link is two things done together, as Mero Calendar's booking links
- * are: a core access grant on this teammate's node, naming only `link_form`
- * and `submit_via_link`, and a contract record keyed by the SHA-256 of the
- * grant's token. The visitor's browser calls this node with the token, so the
- * node must be reachable from the internet; an account session has no node of
- * its own and cannot make one.
+ * are: a core API key of this teammate's account, limited to this workspace
+ * and to `linkForm` and `submitViaLink` (a passkey step-up), and a contract
+ * record keyed by the SHA-256 of the key. The visitor's browser calls the
+ * cluster with the key, so there is no node of the teammate's that has to be
+ * reachable.
  *
  * The form decides whether its links take responses (Public), how many each
  * may send per hour, and whether each response needs a captcha. The contract
- * enforces all three, so a visitor calling the node directly meets them too.
+ * enforces all three, so a visitor calling the cluster directly meets them too.
  */
 export function PublicLinks({
   form,
   workspace,
-  contextId,
+  appId,
 }: {
   form: FormView;
   workspace: Workspace;
-  contextId: string;
+  appId: string;
 }) {
-  const { mero, admin, nodeUrl, isDelegated } = useMero();
+  const { client, passkey, after } = useSignedIn();
   const links = useRead(workspace.client, workspace.version, (c) => c.listLinks({ form_id: form.id }), [form.id]);
   const me = useRead(workspace.client, 0, (c) => c.myAccount(), []);
   const [label, setLabel] = useState("");
@@ -49,15 +43,6 @@ export function PublicLinks({
   const [made, setMade] = useState<{ label: string; url: string } | null>(null);
   const [copied, setCopied] = useState(false);
   const [notes, setNotes] = useState<string | null>(null);
-
-  const ownerNode: OwnerNode | null =
-    !isDelegated && nodeUrl && mero && "getTokenData" in mero && admin
-      ? {
-          nodeUrl,
-          token: () => mero.getTokenData()?.access_token ?? null,
-          refresh: () => admin.getNodeIdentity(),
-        }
-      : null;
 
   async function run(what: string, f: () => Promise<unknown>) {
     setBusy(what);
@@ -78,44 +63,41 @@ export function PublicLinks({
   const saveCap = () =>
     run("cap", () => workspace.act((c) => c.setLinkCap({ form_id: form.id, per_hour: Number(cap) })));
 
-  // The team's own Turnstile keys, when set, have the contract check the
-  // token through the namespace's TEE; otherwise this deployment's verifier
-  // signs a pass.
-  const captchaSettings = useRead(workspace.client, workspace.version, (c) => c.captchaSettings(), []);
+  // The captcha is a pass this deployment's verifier signs: the form saves
+  // the verifier's public key. (v1 could also have the contract check the
+  // token itself with the team's keys; this Calimero release cannot.)
   const setCaptcha = (on: boolean) =>
     run("captcha", async () => {
-      const key = !on
-        ? ""
-        : captchaSettings.data?.secret_set
-          ? NODE_VERIFIES_TURNSTILE
-          : (await fetchCaptchaConfig()).publicKey;
+      const key = on ? (await fetchCaptchaConfig()).publicKey : "";
       await workspace.act((c) => c.setCaptchaKey({ form_id: form.id, key }));
     });
 
   const createLink = () =>
     run("create", async () => {
-      if (!ownerNode) return;
       setMade(null);
       setCopied(false);
       const name = label.trim();
-      const grant = await createAccessGrant(ownerNode, contextId, {
-        methods: LINK_METHODS,
-        label: name ? `Mero Forms link · ${name}` : "Mero Forms link",
-      });
+      const key = await client.createApiKey(
+        {
+          label: (name ? `Mero Forms link · ${name}` : "Mero Forms link").slice(0, 128),
+          apps: [appId],
+          methods: [...LINK_METHODS],
+        },
+        passkey(),
+      );
+      after();
       try {
-        const link = await sha256Hex(grant.token);
-        await workspace.act((c) =>
-          c.createLink({ form_id: form.id, link, grant_id: grant.grantId, label: name }),
-        );
+        const link = await sha256Hex(key.key);
+        await workspace.act((c) => c.createLink({ form_id: form.id, link, grant_id: key.keyId, label: name }));
       } catch (e) {
-        // No record, no link: take the grant back rather than leave a token
-        // that reaches nothing the team can see.
-        await revokeAccessGrant(ownerNode, contextId, grant.grantId).catch(() => undefined);
+        // No record, no link: take the key back rather than leave one that
+        // reaches nothing the team can see.
+        await revokeKey(client, key.keyId).catch(() => undefined);
         throw e;
       }
       setMade({
         label: name || "Public link",
-        url: publicLinkUrl(window.location.origin + BASE.slice(0, -1), { nodeUrl: ownerNode.nodeUrl, contextId, token: grant.token }),
+        url: publicLinkUrl(window.location.origin + BASE.slice(0, -1), { app: appId, token: key.key }),
       });
       setLabel("");
     });
@@ -125,15 +107,15 @@ export function PublicLinks({
       if (!window.confirm(`Delete "${link.label || "Public link"}"? Anyone who has it can no longer answer the form.`)) {
         return;
       }
-      // The record first: without it the contract refuses the link at once,
-      // wherever its grant lives.
+      // The record first: without it the contract refuses the link at once.
       const gone = await workspace.act((c) => c.deleteLink({ link: link.id }));
-      if (gone.created_by === me.data && ownerNode) {
-        await revokeAccessGrant(ownerNode, contextId, gone.grant_id).catch(() => undefined);
+      if (gone.created_by === me.data) {
+        await revokeKey(client, gone.grant_id).catch(() => undefined);
+        after();
       } else {
         setNotes(
-          `The link no longer works. Its access grant stays on ${shortAccount(gone.created_by)}'s node, ` +
-            "where it reaches nothing, until they remove it.",
+          `The link no longer works. Its API key stays on ${shortAccount(gone.created_by)}'s account, ` +
+            "where it reaches nothing, until they revoke it.",
         );
       }
     });
@@ -177,14 +159,7 @@ export function PublicLinks({
             disabled={busy !== null}
             onChange={(e) => void setCaptcha(e.target.checked)}
           />
-          <span>
-            Require a captcha
-            {form.captcha_key === NODE_VERIFIES_TURNSTILE && " (checked with your team's keys)"}
-            {form.captcha_key !== "" &&
-              form.captcha_key !== NODE_VERIFIES_TURNSTILE &&
-              captchaSettings.data?.secret_set &&
-              " (turn off and on to use your team's keys)"}
-          </span>
+          <span>Require a captcha</span>
         </label>
         <form
           className="row cap-row"
@@ -214,38 +189,28 @@ export function PublicLinks({
         </form>
       </div>
 
-      {ownerNode ? (
-        <form
-          className="row"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void createLink();
-          }}
-        >
-          <input
-            aria-label="public link label"
-            placeholder="Where you will share it (optional), e.g. newsletter"
-            maxLength={80}
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-          />
-          <button type="submit" disabled={busy !== null}>
-            {busy === "create" ? "Making the link…" : "Create public link"}
-          </button>
-        </form>
-      ) : (
-        <p className="note">
-          A link is served by the node that makes it, so visitors&apos; browsers call that node.
-          Sign in with a node (Calimero Desktop, a Calimero Cloud node or your own{" "}
-          <code>merod</code>) that is reachable from the internet to make one.
-        </p>
-      )}
-      {ownerNode && (
-        <p className="note">
-          Visitors&apos; browsers call this node at <code>{ownerNode.nodeUrl}</code>, so it must be
-          reachable there from the internet and allow this app&apos;s origin.
-        </p>
-      )}
+      <form
+        className="row"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void createLink();
+        }}
+      >
+        <input
+          aria-label="public link label"
+          placeholder="Where you will share it (optional), e.g. newsletter"
+          maxLength={80}
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+        />
+        <button type="submit" disabled={busy !== null}>
+          {busy === "create" ? "Making the link…" : "Create public link"}
+        </button>
+      </form>
+      <p className="note">
+        A link is an API key of your account that reaches this form only. Making one asks for your
+        passkey.
+      </p>
       {error && <pre className="err">{error}</pre>}
       {notes && <p className="note">{notes}</p>}
 
@@ -279,9 +244,9 @@ export function PublicLinks({
                   {l.responses} {l.responses === 1 ? "response" : "responses"}
                   {l.last_hour > 0 ? ` (${l.last_hour} in the last hour)` : ""}
                   {l.last_response_at ? ` · last ${ago(l.last_response_at)}` : " · none yet"} · made{" "}
-                  {ago(l.created_at)} on{" "}
+                  {ago(l.created_at)} by{" "}
                   <span className="mono" title={l.created_by}>
-                    {l.created_by === me.data ? "this node" : `${shortAccount(l.created_by)}'s node`}
+                    {l.created_by === me.data ? "you" : shortAccount(l.created_by)}
                   </span>
                 </div>
               </div>

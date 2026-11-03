@@ -1,0 +1,10 @@
+{
+  "// note": "Unit tests and the cluster run (cluster/). Node types on purpose: they read logic/res/abi.json and the built component off disk.",
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist-types/test",
+    "tsBuildInfoFile": "./dist-types/test.tsbuildinfo",
+    "types": ["node", "vite/client"]
+  },
+  "include": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/test", "src/**/*.ts", "src/**/*.tsx", "cluster"]
+}

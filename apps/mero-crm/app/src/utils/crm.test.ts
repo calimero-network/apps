@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { DealView, StageView } from '../generated/CrmClient';
+import type { DealView, StageView } from '../crm';
 import {
   DAY_MS,
   bucketActivities,

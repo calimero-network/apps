@@ -10,7 +10,7 @@
  *   3. A non-zero override REPLACES the default; it is not OR'd with it.
  *
  * The behaviour is pinned against live nodes by
- * `apps/mero-drive/logic/workflows/probes/workflow-mero-drive-members.yml`
+ * `apps/mero-docs/logic/workflows/workflow-mero-docs-members.yml`
  * (role round-trip leaves the override untouched; bitmasks stored verbatim).
  * These tests pin this app's reading of it.
  */
@@ -37,14 +37,14 @@ import {
 
 describe('role spelling', () => {
   it('recognises an admin whatever case the node or another app wrote', () => {
-    for (const spelling of ['Admin', 'admin', 'ADMIN', '  Admin  ']) {
+    for (const spelling of ['Admin', 'admin', 'ADMIN', '  Admin  ', 'owner']) {
       expect(isAdminRole(spelling)).toBe(true);
       expect(normaliseRole(spelling)).toBe(ROLE_ADMIN);
     }
   });
 
   it('treats everything else, including absent, as an ordinary member', () => {
-    for (const spelling of ['Member', 'member', '', null, undefined, 'owner']) {
+    for (const spelling of ['Member', 'member', 'guest', '', null, undefined, 'Owner of nothing']) {
       expect(isAdminRole(spelling)).toBe(false);
       expect(normaliseRole(spelling)).toBe(ROLE_MEMBER);
     }
@@ -151,7 +151,7 @@ describe('describeCapabilities', () => {
 
   it('is empty for a mask that permits nothing this app exposes', () => {
     expect(describeCapabilities(0)).toEqual([]);
-    expect(describeCapabilities(CAP.CAN_JOIN_OPEN_SUBGROUPS)).toEqual([]);
+    expect(describeCapabilities(CAP.JOIN_OPEN_TEAMS)).toEqual([]);
   });
 });
 

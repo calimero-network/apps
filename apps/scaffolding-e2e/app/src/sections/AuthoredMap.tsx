@@ -174,7 +174,7 @@ export function AuthoredMap() {
         <div className="method-card">
           <div className="method-name">authored_get_owner(key)</div>
           <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 10 }}>
-            Returns the 64-hex account id of the member that owns this entry — an account (a person), not a device key. Since core rc.27 both are 64 hex characters, so the value cannot be told apart by shape.
+            Returns the account that owns this entry (the lowest account, when several hold the key).
           </p>
           <div className="method-inputs">
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -206,7 +206,7 @@ export function AuthoredMap() {
           <div className="method-inputs">
             <input
               className="form-control"
-              placeholder="owner account id (64 hex)"
+              placeholder="owner account id"
               value={byOwner}
               onChange={(e) => setByOwner(e.target.value)}
             />

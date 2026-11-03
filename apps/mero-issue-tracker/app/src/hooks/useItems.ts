@@ -1,31 +1,22 @@
 /**
- * useIssues — data binding for the shared issue board (mero-react v4).
+ * useIssues: the active repository's board.
  *
- * The canonical Calimero pattern:
- *  - `useWorkspace()` resolves the shared context + executor identity.
- *  - the generated `IssueTrackerClient` wraps `mero.rpc.execute`.
- *  - `useSubscription([contextId])` re-fetches on every sync event, so issues,
- *    counts, and comments from other peers appear live with no polling.
- *
- * The board reads `issues` (server-filtered via list_issues) + `counts`
- * (get_status_counts), and every mutation refetches so the UI never lags.
+ * Reads go through the typed `tracker` client (`listIssues` filtered on the
+ * node, `getStatusCounts` from the contract's maintained counts); every write
+ * refetches. Changes by teammates arrive on the app's event stream
+ * (`client.events`), coalesced into one refetch. v1 waited for a joined
+ * context's state to sync before its first read ("warming up"); an app on
+ * Calimero 1.0 is read from its log, so the first read answers.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useMero, useSubscription } from '@calimero-network/mero-react';
-import { useStreamReconnect } from './useStreamReconnect';
-import {
-  IssueTrackerClient,
-  IssueView,
-  CommentView,
-  IssueDetail,
-} from '../generated/IssueTrackerClient';
-import {
-  SYNC_COALESCE_MS,
-  WARMUP_RETRY_MS,
-  classifyReadError,
-} from '../utils/contextReadiness';
+import type { CalimeroClient } from '@calimero-network/mero-js';
+
+import { tracker, type CommentView, type IssueDetail, type IssueView, type Tracker } from '../tracker';
 
 export type { IssueView, CommentView, IssueDetail };
+
+/** How long a burst of events is gathered into one refetch. */
+export const EVENT_COALESCE_MS = 200;
 
 export interface IssueFilters {
   status: string;
@@ -34,9 +25,11 @@ export interface IssueFilters {
 }
 
 export interface UseIssuesArgs {
-  contextId: string | null;
-  executorPublicKey: string | null;
+  client: CalimeroClient;
+  /** The repository: an app instance id, or null when none is open. */
+  appId: string | null;
   filters: IssueFilters;
+  after?: () => void;
 }
 
 export interface UseIssuesReturn {
@@ -44,13 +37,6 @@ export interface UseIssuesReturn {
   counts: Record<string, number>;
   loading: boolean;
   error: Error | null;
-  /**
-   * The context exists but its state has not synced yet — a join in progress.
-   * NOT an error: callers should show "syncing", never a failure. It clears on
-   * the first successful read, or is promoted into `error` if it never does
-   * (see WARMUP_GRACE_MS).
-   */
-  warmingUp: boolean;
   ready: boolean;
   refresh: () => Promise<void>;
   createIssue: (
@@ -78,43 +64,47 @@ export interface UseIssuesReturn {
   deleteComment: (commentId: string) => Promise<void>;
 }
 
-export function useIssues({
-  contextId,
-  executorPublicKey,
-  filters,
-}: UseIssuesArgs): UseIssuesReturn {
-  const { mero } = useMero();
+/** Calls `onChange` (coalesced) for each event of `app` until the returned stop. */
+export function watchEvents(client: Pick<CalimeroClient, 'events'>, app: string, onChange: () => void): () => void {
+  const abort = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  void (async () => {
+    try {
+      // From the next event on: the first read already covers what came before.
+      for await (const _event of client.events(app, undefined, abort.signal)) {
+        clearTimeout(timer);
+        timer = setTimeout(onChange, EVENT_COALESCE_MS);
+      }
+    } catch {
+      // Stream closed (sign-out, repo left, network): the next write refetches.
+    }
+  })();
+  return () => {
+    clearTimeout(timer);
+    abort.abort();
+  };
+}
+
+export function useIssues({ client, appId, filters, after }: UseIssuesArgs): UseIssuesReturn {
   const [issues, setIssues] = useState<IssueView[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
-  const [warmingUp, setWarmingUp] = useState(false);
 
-  // One read at a time. A join delivers a burst of sync events and the reads
-  // they trigger otherwise overlap, each racing the others to set state.
-  // `pendingRef` remembers that something changed while a read was in flight, so
-  // the burst costs one extra read rather than one per event.
   const inFlightRef = useRef(false);
   const pendingRef = useRef(false);
-  // When the context was FIRST seen un-initialised, so a warm-up that never
-  // finishes can be promoted to a real error instead of hiding forever.
-  const warmingSinceRef = useRef<number | null>(null);
 
-  // Memoized typed client — null until the context + identity resolve.
-  const client = useMemo(
-    () =>
-      mero && contextId && executorPublicKey
-        ? new IssueTrackerClient(mero, contextId)
-        : null,
-    [mero, contextId, executorPublicKey],
+  const board: Tracker | null = useMemo(
+    () => (appId ? tracker(client, appId, after) : null),
+    [client, appId, after],
   );
 
   const { status, assignee, label } = filters;
 
   const refresh = useCallback(async () => {
-    if (!client) return;
+    if (!board) return;
+    // One read at a time; a request that arrives meanwhile runs once after it.
     if (inFlightRef.current) {
-      // Coalesce: whatever prompted this will be covered by the re-run below.
       pendingRef.current = true;
       return;
     }
@@ -122,29 +112,14 @@ export function useIssues({
     setLoading(true);
     try {
       const [list, statusCounts] = await Promise.all([
-        client.listIssues({
-          status: status || null,
-          assignee: assignee || null,
-          label: label || null,
-        }),
-        client.getStatusCounts(),
+        board.listIssues({ status: status || null, assignee: assignee || null, label: label || null }),
+        board.getStatusCounts(),
       ]);
       setIssues(list);
-      setCounts(
-        Object.fromEntries(statusCounts.map((c) => [c.status, c.count])),
-      );
+      setCounts(Object.fromEntries(statusCounts.map((c) => [c.status, c.count])));
       setError(null);
-      setWarmingUp(false);
-      warmingSinceRef.current = null;
     } catch (err) {
-      // The suppression rule itself lives in `utils/contextReadiness` as a pure
-      // function: a transient "still syncing" failure is withheld while a join
-      // is plausibly in progress, and promoted to a real error if it never
-      // clears. Everything else is reported at once, unchanged.
-      const outcome = classifyReadError(err, warmingSinceRef.current);
-      warmingSinceRef.current = outcome.warmingSince;
-      setWarmingUp(outcome.warmingUp);
-      setError(outcome.error);
+      setError(err instanceof Error ? err : new Error(String(err)));
     } finally {
       inFlightRef.current = false;
       setLoading(false);
@@ -153,194 +128,40 @@ export function useIssues({
         void refreshRef.current();
       }
     }
-  }, [client, status, assignee, label]);
+  }, [board, status, assignee, label]);
 
-  // Latest `refresh`, for the timers and the coalescing re-run above — both need
-  // to call it without being re-created (and re-scheduled) on every render.
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
+
+  useEffect(() => {
+    setIssues([]);
+    setCounts({});
+  }, [board]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
-  // Keep trying while the context is warming up. Sync events alone are not
-  // enough: the last one can arrive BEFORE the state is readable, and then
-  // nothing would ever ask again and the board would sit empty.
   useEffect(() => {
-    if (!warmingUp || !client) return;
-    const timer = setInterval(() => void refreshRef.current(), WARMUP_RETRY_MS);
-    return () => clearInterval(timer);
-  }, [warmingUp, client]);
+    if (!appId) return;
+    return watchEvents(client, appId, () => void refreshRef.current());
+  }, [client, appId]);
 
-  // Live updates: re-fetch on any sync event for this context (local or remote).
-  //
-  // DEBOUNCED. A join replicates in a burst, and reading once per event meant
-  // ~20 reads against a context that was not ready — the cause of the toast
-  // storm rather than its symptom. One settled read answers the whole burst.
-  const coalesceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () => () => { if (coalesceRef.current) clearTimeout(coalesceRef.current); },
-    [],
-  );
-  useSubscription(contextId ? [contextId] : [], () => {
-    if (coalesceRef.current) clearTimeout(coalesceRef.current);
-    coalesceRef.current = setTimeout(() => {
-      coalesceRef.current = null;
-      void refreshRef.current();
-    }, SYNC_COALESCE_MS);
-  });
-  // …and after the stream reconnects: nothing replays what changed while it was down.
-  useStreamReconnect(() => { void refreshRef.current(); });
-
-  const createIssue = useCallback(
-    async (
-      title: string,
-      summary: string,
-      impact: string,
-      repro: string,
-      resolutionCriteria: string,
-      priority: string,
-      labels: string[],
-    ) => {
-      if (!client) return;
-      await client.createIssue({
-        title,
-        summary,
-        impact,
-        repro,
-        resolution_criteria: resolutionCriteria,
-        priority,
-        labels,
-      });
+  const write = useCallback(
+    async (op: (t: Tracker) => Promise<unknown>) => {
+      if (!board) return;
+      await op(board);
       await refresh();
     },
-    [client, refresh],
-  );
-
-  const setStatus = useCallback(
-    async (issueId: string, next: string) => {
-      if (!client) return;
-      await client.setStatus({ issue_id: issueId, status: next });
-      await refresh();
-    },
-    [client, refresh],
-  );
-
-  const setSummary = useCallback(
-    async (issueId: string, next: string) => {
-      if (!client) return;
-      await client.setSummary({ issue_id: issueId, summary: next });
-      await refresh();
-    },
-    [client, refresh],
-  );
-
-  const setImpact = useCallback(
-    async (issueId: string, next: string) => {
-      if (!client) return;
-      await client.setImpact({ issue_id: issueId, impact: next });
-      await refresh();
-    },
-    [client, refresh],
-  );
-
-  const setRepro = useCallback(
-    async (issueId: string, next: string) => {
-      if (!client) return;
-      await client.setRepro({ issue_id: issueId, repro: next });
-      await refresh();
-    },
-    [client, refresh],
-  );
-
-  const setResolutionCriteria = useCallback(
-    async (issueId: string, next: string) => {
-      if (!client) return;
-      await client.setResolutionCriteria({ issue_id: issueId, resolution_criteria: next });
-      await refresh();
-    },
-    [client, refresh],
-  );
-
-  const setPriority = useCallback(
-    async (issueId: string, next: string) => {
-      if (!client) return;
-      await client.setPriority({ issue_id: issueId, priority: next });
-      await refresh();
-    },
-    [client, refresh],
-  );
-
-  const setAssignee = useCallback(
-    async (issueId: string, next: string | null) => {
-      if (!client) return;
-      await client.setAssignee({ issue_id: issueId, assignee: next });
-      await refresh();
-    },
-    [client, refresh],
-  );
-
-  const addLabel = useCallback(
-    async (issueId: string, lbl: string) => {
-      if (!client) return;
-      await client.addLabel({ issue_id: issueId, label: lbl });
-      await refresh();
-    },
-    [client, refresh],
-  );
-
-  const removeLabel = useCallback(
-    async (issueId: string, lbl: string) => {
-      if (!client) return;
-      await client.removeLabel({ issue_id: issueId, label: lbl });
-      await refresh();
-    },
-    [client, refresh],
+    [board, refresh],
   );
 
   const getIssue = useCallback(
     async (issueId: string) => {
-      if (!client) throw new Error('Workspace not ready');
-      return client.getIssue({ issue_id: issueId });
+      if (!board) throw new Error('No repository is open');
+      return board.getIssue(issueId);
     },
-    [client],
-  );
-
-  const deleteIssue = useCallback(
-    async (issueId: string) => {
-      if (!client) return;
-      await client.deleteIssue({ issue_id: issueId });
-      await refresh();
-    },
-    [client, refresh],
-  );
-
-  const addComment = useCallback(
-    async (issueId: string, body: string) => {
-      if (!client) return;
-      await client.addComment({ issue_id: issueId, body });
-      await refresh();
-    },
-    [client, refresh],
-  );
-
-  const editComment = useCallback(
-    async (commentId: string, newBody: string) => {
-      if (!client) return;
-      await client.editComment({ comment_id: commentId, new_body: newBody });
-      await refresh();
-    },
-    [client, refresh],
-  );
-
-  const deleteComment = useCallback(
-    async (commentId: string) => {
-      if (!client) return;
-      await client.deleteComment({ comment_id: commentId });
-      await refresh();
-    },
-    [client, refresh],
+    [board],
   );
 
   return {
@@ -348,23 +169,23 @@ export function useIssues({
     counts,
     loading,
     error,
-    warmingUp,
-    ready: client !== null,
+    ready: board !== null,
     refresh,
-    createIssue,
-    setStatus,
-    setSummary,
-    setImpact,
-    setRepro,
-    setResolutionCriteria,
-    setPriority,
-    setAssignee,
-    addLabel,
-    removeLabel,
+    createIssue: (title, summary, impact, repro, resolutionCriteria, priority, labels) =>
+      write((t) => t.createIssue({ title, summary, impact, repro, resolutionCriteria, priority, labels })),
+    setStatus: (id, next) => write((t) => t.setStatus(id, next)),
+    setSummary: (id, next) => write((t) => t.setSummary(id, next)),
+    setImpact: (id, next) => write((t) => t.setImpact(id, next)),
+    setRepro: (id, next) => write((t) => t.setRepro(id, next)),
+    setResolutionCriteria: (id, next) => write((t) => t.setResolutionCriteria(id, next)),
+    setPriority: (id, next) => write((t) => t.setPriority(id, next)),
+    setAssignee: (id, next) => write((t) => t.setAssignee(id, next)),
+    addLabel: (id, l) => write((t) => t.addLabel(id, l)),
+    removeLabel: (id, l) => write((t) => t.removeLabel(id, l)),
     getIssue,
-    deleteIssue,
-    addComment,
-    editComment,
-    deleteComment,
+    deleteIssue: (id) => write((t) => t.deleteIssue(id)),
+    addComment: (id, body) => write((t) => t.addComment(id, body)),
+    editComment: (id, body) => write((t) => t.editComment(id, body)),
+    deleteComment: (id) => write((t) => t.deleteComment(id)),
   };
 }

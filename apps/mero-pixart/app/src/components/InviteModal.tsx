@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { useApi } from "../api/useApi";
+import { messageOf } from "../api/pixart";
+import { useSignedIn } from "../api/sessionContext";
+import { inviteLink, inviteToken } from "../api/teams";
 import { useToast } from "../contexts/ToastContext";
-import { extractErrorMessage } from "../utils/errorMessage";
-import { encodeInvitationObject, invitationLink } from "../utils/invitation";
 import { truncateMiddle } from "../utils/format";
-import { getStoredTeamName } from "../utils/teamName";
 import styles from "./InviteModal.module.css";
 
 interface Props {
@@ -14,7 +13,7 @@ interface Props {
 
 export default function InviteModal({ teamId, onClose }: Props) {
   const { showToast } = useToast();
-  const { admin } = useApi();
+  const { client, passkey, after } = useSignedIn();
   const [invitation, setInvitation] = useState("");
   const [loading, setLoading] = useState(false);
   const [copying, setCopying] = useState(false);
@@ -29,31 +28,23 @@ export default function InviteModal({ teamId, onClose }: Props) {
     setError("");
     setLoading(true);
     try {
-      // The session-aware admin: on an account the invitation is signed by the
-      // account itself (and checked against the routing its claimant will
-      // use), where the raw node route is a 403.
-      const data = (await admin.createNamespaceInvitation(teamId)) as unknown as Record<string, unknown>;
-      if (data) {
-        // Embed the team name so the joiner doesn't render a raw ID (see teamName.ts).
-        const teamName = getStoredTeamName(teamId);
-        const payload = teamName ? { ...data, __teamName: teamName } : data;
-        setInvitation(encodeInvitationObject(payload));
-      }
+      // An org invite, approved with this account's passkey. The link is all
+      // there is to share: opening it (and signing in) joins the team.
+      const token = await inviteToken(client, teamId, passkey());
+      setInvitation(inviteLink(token));
     } catch (err) {
-      const msg = extractErrorMessage(err, "Failed to generate invitation. Check node connection.");
+      const msg = `Failed to generate invitation: ${messageOf(err)}`;
       setError(msg);
       showToast(msg);
     } finally {
       setLoading(false);
+      after();
     }
   }
 
   async function copy() {
     if (!invitation || copying) return;
-    // Share the canonical link, not the bare token: it opens the desktop app
-    // where installed and the web build otherwise, so the recipient does not have
-    // to know what to do with an opaque string.
-    await navigator.clipboard.writeText(invitationLink(invitation));
+    await navigator.clipboard.writeText(invitation);
     showToast("Invitation link copied to clipboard.", "success");
     // Brief loader, then reset to the "generate" state so each share is fresh.
     setCopying(true);
@@ -78,8 +69,7 @@ export default function InviteModal({ teamId, onClose }: Props) {
 
         <p className={styles.desc}>
           Generate an invitation link and share it with your teammate. Opening it
-          launches the desktop app where installed, and the web build otherwise,
-          and asks them to join this team.
+          and signing in with a passkey joins this team. Each link works once.
         </p>
 
         {invitation ? (
@@ -93,9 +83,9 @@ export default function InviteModal({ teamId, onClose }: Props) {
               <code
                 className={styles.token}
                 data-testid="invite-token"
-                title={invitationLink(invitation)}
+                title={invitation}
               >
-                {truncateMiddle(invitationLink(invitation), 28, 10)}
+                {truncateMiddle(invitation, 28, 10)}
               </code>
               <button className="mp-btn" onClick={copy} data-testid="copy-invite">
                 Copy

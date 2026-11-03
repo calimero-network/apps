@@ -3,5 +3,6 @@ import type { Tokens } from './theme';
 
 // Make `props.theme` in styled-components resolve to the app token set.
 declare module 'styled-components' {
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type -- module augmentation
   export interface DefaultTheme extends Tokens {}
 }
