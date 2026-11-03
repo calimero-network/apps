@@ -1,0 +1,150 @@
+[
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "set",
+  "args": {
+   "key": "alpha",
+   "value": "from-owner"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "set",
+  "args": {
+   "key": "beta",
+   "value": "from-bob"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "get",
+  "args": {
+   "key": "beta"
+  },
+  "expect": {
+   "ok": "from-bob"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "get",
+  "args": {
+   "key": "alpha"
+  },
+  "expect": {
+   "ok": "from-owner"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "len",
+  "args": {},
+  "expect": {
+   "ok": "2"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "set",
+  "args": {
+   "key": "contended",
+   "value": "written-by-owner"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "set",
+  "args": {
+   "key": "contended",
+   "value": "written-by-bob"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "get",
+  "args": {
+   "key": "contended"
+  },
+  "expect": {
+   "ok": "written-by-bob"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "get",
+  "args": {
+   "key": "contended"
+  },
+  "expect": {
+   "ok": "written-by-bob"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "len",
+  "args": {},
+  "expect": {
+   "ok": "3"
+  },
+  "events": {
+   "carol": [
+    "Inserted",
+    "Inserted",
+    "Inserted",
+    "Updated"
+   ]
+  }
+ },
+ {
+  "as": "carol",
+  "op": "view",
+  "method": "entries",
+  "args": {},
+  "expect": {
+   "ok": {
+    "alpha": "from-owner",
+    "beta": "from-bob",
+    "contended": "written-by-bob"
+   }
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "set",
+  "args": {
+   "key": "gamma",
+   "value": "from-carol"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "get",
+  "args": {
+   "key": "gamma"
+  },
+  "expect": {
+   "ok": "from-carol"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "len",
+  "args": {},
+  "expect": {
+   "ok": "4"
+  }
+ }
+]

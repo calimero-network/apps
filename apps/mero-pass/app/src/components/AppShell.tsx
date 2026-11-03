@@ -6,9 +6,8 @@ import {
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { nodeBasename } from '../lib/servedByNode';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { useMero } from '@calimero-network/mero-react';
+import { useCalimero } from '../calimero';
 import { Lock, LockUnlock } from '@calimero-network/mero-icons';
 
 import { useSignOut } from '../auth/signOut';
@@ -170,18 +169,13 @@ export default function AppShell({
 function Rail({ slotRef }: { slotRef: (el: HTMLElement | null) => void }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const { nodeUrl } = useMero();
+  const { where } = useCalimero();
   const unlocked = useDeviceUnlocked();
   const [minutes] = useAutoLockMinutes();
   const signOut = useSignOut();
 
-  // The host only: a scheme and a path are noise here.
-  let host = '';
-  try {
-    host = nodeUrl ? new URL(nodeUrl).host : '';
-  } catch {
-    host = nodeUrl ?? '';
-  }
+  // Where this session is: merod local, or the Cloud cluster.
+  const host = where;
 
   const inVaults =
     pathname === '/teams' ||
@@ -197,7 +191,7 @@ function Rail({ slotRef }: { slotRef: (el: HTMLElement | null) => void }) {
         data-testid="brand"
       >
         <img
-          src={`${nodeBasename()}favicon.svg`}
+          src={`${import.meta.env.BASE_URL}favicon.svg`}
           alt=""
           width={32}
           height={32}
@@ -267,12 +261,12 @@ function Rail({ slotRef }: { slotRef: (el: HTMLElement | null) => void }) {
 
         <div className={frame.me}>
           <span className={frame.avatar} aria-hidden="true">
-            {(host[0] ?? 'n').toUpperCase()}
+            {(host[0] ?? 'c').toUpperCase()}
           </span>
           <span className={frame.meText}>
             <span className={frame.meName}>Signed in</span>
-            <span className={frame.meNode} title={nodeUrl ?? ''}>
-              {host || 'this node'}
+            <span className={frame.meNode} title={host}>
+              {host || 'Calimero'}
             </span>
           </span>
           <button
