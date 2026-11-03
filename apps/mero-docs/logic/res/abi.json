@@ -1033,6 +1033,18 @@
       "tags": "unorderedMap",
       "views": "unorderedMap"
     },
+    "search": {
+      "blocks": [],
+      "commentDocs": [],
+      "commentTotal": [],
+      "comments": [],
+      "docTags": [],
+      "docs": [],
+      "managers": [],
+      "slots": [],
+      "tags": [],
+      "views": []
+    },
     "version": 1
   },
   "world": "calimero:app@0.5.0"
