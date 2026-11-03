@@ -1,0 +1,735 @@
+[
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "myAccount",
+  "args": {},
+  "expect": {
+   "ok": "@owner"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "myAccount",
+  "args": {},
+  "expect": {
+   "ok": "@bob"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "amIAdmin",
+  "args": {},
+  "expect": {
+   "ok": true
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "amITeam",
+  "args": {},
+  "expect": {
+   "ok": false
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "fieldKinds",
+  "args": {},
+  "expect": {
+   "ok": [
+    "text",
+    "paragraph",
+    "email",
+    "phone",
+    "number",
+    "url",
+    "date",
+    "choice",
+    "checkboxes"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createForm",
+  "args": {
+   "title": "Contact",
+   "description": "Say hello"
+  },
+  "save": "form"
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "updateForm",
+  "args": {
+   "formId": "$form",
+   "title": "Contact",
+   "description": "Say hello",
+   "fields": [
+    {
+     "id": "name",
+     "kind": "text",
+     "label": "Name",
+     "help": "",
+     "required": true,
+     "options": []
+    },
+    {
+     "id": "email",
+     "kind": "email",
+     "label": "Email",
+     "help": "",
+     "required": true,
+     "options": []
+    },
+    {
+     "id": "topic",
+     "kind": "choice",
+     "label": "Topic",
+     "help": "",
+     "required": true,
+     "options": [
+      "Cloud",
+      "Desktop",
+      "Other"
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setWorkspaceName",
+  "args": {
+   "name": "Marketing"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createForm",
+  "args": {
+   "title": "Throwaway",
+   "description": ""
+  },
+  "save": "tmp"
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deleteForm",
+  "args": {
+   "formId": "$tmp"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getForm",
+  "args": {
+   "formId": "$tmp"
+  },
+  "expect": {
+   "error": "NotFound"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getForm",
+  "args": {
+   "formId": "$form"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "workspaceName",
+  "args": {},
+  "expect": {
+   "ok": "Marketing"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "submitResponse",
+  "args": {
+   "formId": "$form",
+   "answers": [
+    {
+     "fieldId": "name",
+     "values": [
+      "Ada"
+     ]
+    },
+    {
+     "fieldId": "email",
+     "values": [
+      "ada@example.com"
+     ]
+    },
+    {
+     "fieldId": "topic",
+     "values": [
+      "Premium"
+     ]
+    }
+   ],
+   "source": "/contact/"
+  },
+  "expect": {
+   "error": "Invalid",
+   "fields": {
+    "message": "Topic must be one of the options"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "submitResponse",
+  "args": {
+   "formId": "$form",
+   "answers": [
+    {
+     "fieldId": "name",
+     "values": [
+      "Ada"
+     ]
+    },
+    {
+     "fieldId": "email",
+     "values": [
+      "ada@example.com"
+     ]
+    },
+    {
+     "fieldId": "topic",
+     "values": [
+      "Cloud"
+     ]
+    }
+   ],
+   "source": "/contact/"
+  },
+  "save": "r1"
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listResponses",
+  "args": {
+   "formId": "$form"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the team may do this"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setFormOpen",
+  "args": {
+   "formId": "$form",
+   "open": false
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the team may do this"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getResponse",
+  "args": {
+   "id": "$r1"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addTeamMember",
+  "args": {
+   "who": "@bob"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "amITeam",
+  "args": {},
+  "expect": {
+   "ok": true
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "amIAdmin",
+  "args": {},
+  "expect": {
+   "ok": false
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listTeam",
+  "args": {}
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setArchived",
+  "args": {
+   "id": "$r1",
+   "archived": true
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setArchived",
+  "args": {
+   "id": "$r1",
+   "archived": false
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "recordCrmDeal",
+  "args": {
+   "id": "$r1",
+   "crmContext": "crm-app",
+   "crmDeal": "deal-1"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "recordCrmDeal",
+  "args": {
+   "id": "$r1",
+   "crmContext": "crm-app",
+   "crmDeal": "deal-2"
+  },
+  "expect": {
+   "error": "Refused",
+   "fields": {
+    "message": "this response was already sent to the CRM"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setCrmLink",
+  "args": {
+   "formId": "$form",
+   "link": {
+    "contextId": "crm-app",
+    "stageId": "lead",
+    "nameField": "name",
+    "emailField": "email",
+    "phoneField": "",
+    "organizationField": "",
+    "titleField": ""
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deleteForm",
+  "args": {
+   "formId": "$form"
+  },
+  "expect": {
+   "error": "Refused",
+   "fields": {
+    "message": "this form has responses; close it instead of deleting it"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "registerFormKey",
+  "args": {
+   "account": "key-site",
+   "formId": "$form",
+   "label": "site"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only an admin may do this"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "registerFormKey",
+  "args": {
+   "account": "key-site",
+   "formId": "$form",
+   "label": "site"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addTeamMember",
+  "args": {
+   "who": "key-site"
+  },
+  "expect": {
+   "error": "Refused",
+   "fields": {
+    "message": "a form key cannot join the team"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "forgetFormKey",
+  "args": {
+   "account": "key-site"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "listFormKeys",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createLink",
+  "args": {
+   "formId": "$form",
+   "link": "abababababababababababababababababababababababababababababababab",
+   "grantId": "key-link",
+   "label": "newsletter"
+  }
+ },
+ {
+  "as": "cy",
+  "op": "view",
+  "method": "linkForm",
+  "args": {
+   "link": "abababababababababababababababababababababababababababababababab"
+  }
+ },
+ {
+  "as": "cy",
+  "op": "call",
+  "method": "submitViaLink",
+  "args": {
+   "link": "abababababababababababababababababababababababababababababababab",
+   "answers": [
+    {
+     "fieldId": "name",
+     "values": [
+      "Visitor"
+     ]
+    },
+    {
+     "fieldId": "email",
+     "values": [
+      "ada@example.com"
+     ]
+    },
+    {
+     "fieldId": "topic",
+     "values": [
+      "Cloud"
+     ]
+    }
+   ],
+   "captcha": null,
+   "captchaToken": null
+  },
+  "expect": {
+   "error": "Refused",
+   "fields": {
+    "message": "this form is not taking responses from links"
+   }
+  }
+ },
+ {
+  "as": "cy",
+  "op": "call",
+  "method": "setFormPublic",
+  "args": {
+   "formId": "$form",
+   "public": true
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the team may do this"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setFormPublic",
+  "args": {
+   "formId": "$form",
+   "public": true
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setLinkCap",
+  "args": {
+   "formId": "$form",
+   "perHour": 1
+  }
+ },
+ {
+  "as": "cy",
+  "op": "call",
+  "method": "submitViaLink",
+  "args": {
+   "link": "abababababababababababababababababababababababababababababababab",
+   "answers": [
+    {
+     "fieldId": "name",
+     "values": [
+      "Visitor"
+     ]
+    },
+    {
+     "fieldId": "email",
+     "values": [
+      "ada@example.com"
+     ]
+    },
+    {
+     "fieldId": "topic",
+     "values": [
+      "Cloud"
+     ]
+    }
+   ],
+   "captcha": null,
+   "captchaToken": null
+  },
+  "save": "r2"
+ },
+ {
+  "as": "cy",
+  "op": "call",
+  "method": "submitViaLink",
+  "args": {
+   "link": "abababababababababababababababababababababababababababababababab",
+   "answers": [
+    {
+     "fieldId": "name",
+     "values": [
+      "Again"
+     ]
+    },
+    {
+     "fieldId": "email",
+     "values": [
+      "ada@example.com"
+     ]
+    },
+    {
+     "fieldId": "topic",
+     "values": [
+      "Cloud"
+     ]
+    }
+   ],
+   "captcha": null,
+   "captchaToken": null
+  },
+  "expect": {
+   "error": "Refused",
+   "fields": {
+    "message": "this link has taken as many responses as it may this hour; try again later"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setCaptchaKey",
+  "args": {
+   "formId": "$form",
+   "key": "turnstile"
+  },
+  "expect": {
+   "error": "Unsupported"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setCaptchaSecret",
+  "args": {
+   "siteKey": "0x4AAA",
+   "secret": "s"
+  },
+  "expect": {
+   "error": "Unsupported"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "captchaSettings",
+  "args": {},
+  "expect": {
+   "ok": {
+    "siteKey": "",
+    "secretSet": false,
+    "teeAvailable": false,
+    "needsResealing": false
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "clearCaptchaSecret",
+  "args": {}
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setCaptchaKey",
+  "args": {
+   "formId": "$form",
+   "key": "1111111111111111111111111111111111111111111111111111111111111111"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "listLinks",
+  "args": {
+   "formId": "$form"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deleteLink",
+  "args": {
+   "link": "abababababababababababababababababababababababababababababababab"
+  }
+ },
+ {
+  "as": "cy",
+  "op": "view",
+  "method": "linkForm",
+  "args": {
+   "link": "abababababababababababababababababababababababababababababababab"
+  },
+  "expect": {
+   "error": "Refused",
+   "fields": {
+    "message": "this link no longer works"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "listForms",
+  "args": {}
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setFormOpen",
+  "args": {
+   "formId": "$form",
+   "open": false
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "submitResponse",
+  "args": {
+   "formId": "$form",
+   "answers": [
+    {
+     "fieldId": "name",
+     "values": [
+      "Late"
+     ]
+    },
+    {
+     "fieldId": "email",
+     "values": [
+      "ada@example.com"
+     ]
+    },
+    {
+     "fieldId": "topic",
+     "values": [
+      "Cloud"
+     ]
+    }
+   ],
+   "source": ""
+  },
+  "expect": {
+   "error": "Refused",
+   "fields": {
+    "message": "this form is closed"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "removeTeamMember",
+  "args": {
+   "who": "@bob"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listForms",
+  "args": {},
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the team may do this"
+   }
+  }
+ }
+]

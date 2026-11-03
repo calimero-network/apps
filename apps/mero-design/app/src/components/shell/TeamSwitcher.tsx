@@ -49,12 +49,12 @@ export default function TeamSwitcher({ currentName }: { currentName: string }) {
     if (!name || busy) return;
     setBusy(true);
     try {
-      const { id, haError } = await teams.createTeam(name);
+      const { id, warning } = await teams.createTeam(name);
       setOpen(false);
       if (id) openTeam(id);
       // Say it now, not at invite time: an unhosted team's invitations cannot
       // be claimed, and "link this account in the wallet" is the fix.
-      if (haError) showToast(`Team created, but it is not hosted yet: ${haError}`);
+      if (warning) showToast(warning);
     } catch (err) {
       showToast(extractErrorMessage(err, "Could not create team."));
     } finally {

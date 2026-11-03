@@ -4,11 +4,8 @@ import { NavLink, useLocation } from "react-router-dom";
 import { tokens as t } from "../theme";
 import { APP_ROUTE } from "../config";
 import AvatarGlyph from "./AvatarGlyph";
-import TeeBadge from "./TeeBadge";
 import { SelectMenu } from "./Dropdown";
-import type { PipelineEntry } from "../hooks/useWorkspace";
-import type { TeeMode } from "../utils/tee";
-import type { Namespace } from "@calimero-network/mero-react";
+import type { PipelineEntry, Workspace } from "../workspaces";
 import {
   IconBoard,
   IconMembers,
@@ -21,10 +18,9 @@ import {
   IconPlus,
 } from "./icons";
 import { useSignOut } from "../auth/signOut";
-import { JoinSyncBanner } from "@calimero-network/mero-react";
 import { nodeBasename } from "@calimero-apps/node-served";
 
-/** The product name as people say it (studio.config's `metadata.name` is the
+/** The product name as people say it (the package slug is
  *  package slug, `mero-crm`); matches index.html's <title>. */
 const PRODUCT_NAME = "Mero CRM";
 
@@ -33,19 +29,14 @@ export interface SidebarProps {
   overdueActivities: number;
   contactsCount: number;
   membersCount: number;
-  /** Relay / Replica when a TEE node backs the workspace; shown as a shield. */
-  teeMode?: TeeMode | null;
   currentUser: string;
   currentUserLabel: string;
   currentUserHasAlias: boolean;
-  namespaces: Namespace[];
+  namespaces: Workspace[];
   activeNs: string | null;
   onSelectNamespace: (id: string) => void;
   onNewNamespace: () => void;
   pipelines: PipelineEntry[];
-  /** A workspace joined this session whose pipelines have not arrived yet. */
-  pipelinesSyncing?: boolean;
-  onDismissPipelinesSyncing?: () => void;
   activePipeline: string | null;
   onSelectPipeline: (id: string) => void;
   onAddPipeline: () => void;
@@ -71,7 +62,6 @@ export default function Sidebar({
   overdueActivities,
   contactsCount,
   membersCount,
-  teeMode = null,
   currentUser,
   currentUserLabel,
   currentUserHasAlias,
@@ -80,8 +70,6 @@ export default function Sidebar({
   onSelectNamespace,
   onNewNamespace,
   pipelines,
-  pipelinesSyncing,
-  onDismissPipelinesSyncing,
   activePipeline,
   onSelectPipeline,
   onAddPipeline,
@@ -153,14 +141,7 @@ export default function Sidebar({
             </button>
           </div>
           <div className="pipelines-list">
-            {pipelinesSyncing ? (
-              <JoinSyncBanner
-                show
-                what="pipelines"
-                onDismiss={onDismissPipelinesSyncing}
-                style={{ margin: "4px 4px 8px", fontSize: 12 }}
-              />
-            ) : pipelines.length === 0 ? (
+            {pipelines.length === 0 ? (
               <span className="pipelines-empty">No pipelines yet</span>
             ) : (
               pipelines.map((r) => (
@@ -268,7 +249,6 @@ export default function Sidebar({
             {membersCount} {membersCount === 1 ? "peer" : "peers"}{" "}
             <span className="mid">·</span> synced
           </span>
-          <TeeBadge mode={teeMode} compact />
         </div>
         <div className="me-row">
           <AvatarGlyph

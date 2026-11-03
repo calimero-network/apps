@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { z } from 'zod';
 import type { Config } from './config.ts';
-import type { ResolvedTarget } from './rpc.ts';
+import type { Client, ResolvedTarget } from './node.ts';
 import {
   createIssueShape,
   listIssuesShape,
@@ -29,20 +29,42 @@ import {
   createServer,
 } from './index.ts';
 
-const cfg: Config = { nodeUrl: 'http://localhost:2428', contextRaw: 'ctx', serviceName: 'issue-tracker' };
-const target: ResolvedTarget = { contextId: 'ctx-1' };
+const cfg: Config = {
+  target: { kind: 'local', nodes: ['http://127.0.0.1:2501'] },
+  apiKey: 'key',
+  workspaceRaw: 'Platform',
+  source: { package: 'com.calimero.mero-issue-tracker' },
+};
+const target: ResolvedTarget = { appId: 'app-1' };
 
-function withFetch<T>(impl: typeof fetch, run: () => Promise<T>): Promise<T> {
-  const original = globalThis.fetch;
-  globalThis.fetch = impl;
-  return run().finally(() => {
-    globalThis.fetch = original;
-  });
+interface Sent {
+  kind: 'call' | 'view';
+  app: string;
+  method: string;
+  args: unknown;
 }
 
-function jsonrpcOk(output: unknown): typeof fetch {
-  return (async () =>
-    new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { output } }), { status: 200 })) as typeof fetch;
+/** A client that records what it is sent and answers from `results` by method name. */
+function fakeClient(results: Record<string, unknown> = {}, apps: Array<{ appId: string; name: string; org: string | null }> = []) {
+  const sent: Sent[] = [];
+  const created: Array<{ name: string; source: unknown; options: unknown }> = [];
+  const answer = (kind: Sent['kind']) => async (app: string, method: string, args?: unknown) => {
+    sent.push({ kind, app, method, args });
+    const r = results[method];
+    return { index: 1, result: typeof r === 'function' ? (r as (a: string) => unknown)(app) : (r ?? null), events: [] };
+  };
+  const client = {
+    call: answer('call'),
+    view: answer('view'),
+    me: async () => ({ orgs: [{ orgId: 'org-1', name: 'Platform', role: 'owner' }] }),
+    listApps: async () =>
+      apps.map((a) => ({ ...a, owner: 'acct', bundle: 'b', package: 'com.calimero.mero-issue-tracker', version: '1' })),
+    createApp: async (name: string, source: unknown, options: unknown) => {
+      created.push({ name, source, options });
+      return 'app-new';
+    },
+  } as unknown as Client;
+  return { client, sent, created };
 }
 
 // ---- Schema validation ----
@@ -149,201 +171,6 @@ test('get_fix_prompt schema requires a non-empty id', () => {
   assert.equal(schema.safeParse({ id: 'issue-1' }).success, true);
 });
 
-// ---- Request shaping ----
-
-test('createIssue calls create_issue with all seven fields', async () => {
-  let captured: unknown;
-  await withFetch(
-    (async (_url: string | URL, init?: RequestInit) => {
-      captured = JSON.parse(String(init?.body)).params.argsJson;
-      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { output: 'issue-1' } }), { status: 200 });
-    }) as typeof fetch,
-    () =>
-      createIssue(cfg, target, {
-        title: 'Bug',
-        summary: 'S',
-        impact: 'I',
-        repro: 'R',
-        resolution_criteria: 'C',
-        priority: 'high',
-        labels: ['ui'],
-      }),
-  );
-  assert.deepEqual(captured, {
-    title: 'Bug',
-    summary: 'S',
-    impact: 'I',
-    repro: 'R',
-    resolution_criteria: 'C',
-    priority: 'high',
-    labels: ['ui'],
-  });
-});
-
-test('listIssues sends null for omitted filters (matches the nullable rpc signature)', async () => {
-  let captured: unknown;
-  let method: unknown;
-  await withFetch(
-    (async (_url: string | URL, init?: RequestInit) => {
-      const params = JSON.parse(String(init?.body)).params;
-      method = params.method;
-      captured = params.argsJson;
-      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { output: [] } }), { status: 200 });
-    }) as typeof fetch,
-    () => listIssues(cfg, target, { status: 'open' }),
-  );
-  assert.equal(method, 'list_issues');
-  assert.deepEqual(captured, { status: 'open', assignee: null, label: null });
-});
-
-test('getIssue maps tool arg "id" to rpc arg "issue_id"', async () => {
-  let params: any;
-  await withFetch(
-    (async (_url: string | URL, init?: RequestInit) => {
-      params = JSON.parse(String(init?.body)).params;
-      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { output: {} } }), { status: 200 });
-    }) as typeof fetch,
-    () => getIssue(cfg, target, { id: 'issue-9' }),
-  );
-  assert.equal(params.method, 'get_issue');
-  assert.deepEqual(params.argsJson, { issue_id: 'issue-9' });
-});
-
-test('addComment forwards issue_id and body to add_comment', async () => {
-  let params: any;
-  await withFetch(
-    (async (_url: string | URL, init?: RequestInit) => {
-      params = JSON.parse(String(init?.body)).params;
-      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { output: 'comment-1' } }), {
-        status: 200,
-      });
-    }) as typeof fetch,
-    () => addComment(cfg, target, { issue_id: 'issue-9', body: 'looks good' }),
-  );
-  assert.equal(params.method, 'add_comment');
-  assert.deepEqual(params.argsJson, { issue_id: 'issue-9', body: 'looks good' });
-});
-
-test('assignIssue calls set_assignee with issue_id and assignee', async () => {
-  let params: any;
-  await withFetch(
-    (async (_url: string | URL, init?: RequestInit) => {
-      params = JSON.parse(String(init?.body)).params;
-      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }), { status: 200 });
-    }) as typeof fetch,
-    () => assignIssue(cfg, target, { issue_id: 'issue-9', assignee: 'alice.near' }),
-  );
-  assert.equal(params.method, 'set_assignee');
-  assert.deepEqual(params.argsJson, { issue_id: 'issue-9', assignee: 'alice.near' });
-});
-
-test('setStatus calls set_status with issue_id and status', async () => {
-  let params: any;
-  await withFetch(
-    (async (_url: string | URL, init?: RequestInit) => {
-      params = JSON.parse(String(init?.body)).params;
-      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }), { status: 200 });
-    }) as typeof fetch,
-    () => setStatus(cfg, target, { issue_id: 'issue-9', status: 'In progress' }),
-  );
-  assert.equal(params.method, 'set_status');
-  assert.deepEqual(params.argsJson, { issue_id: 'issue-9', status: 'In progress' });
-});
-
-test('setPriority calls set_priority with issue_id and priority', async () => {
-  let params: any;
-  await withFetch(
-    (async (_url: string | URL, init?: RequestInit) => {
-      params = JSON.parse(String(init?.body)).params;
-      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }), { status: 200 });
-    }) as typeof fetch,
-    () => setPriority(cfg, target, { issue_id: 'issue-9', priority: 'urgent' }),
-  );
-  assert.equal(params.method, 'set_priority');
-  assert.deepEqual(params.argsJson, { issue_id: 'issue-9', priority: 'urgent' });
-});
-
-test('deleteIssue calls delete_issue with issue_id', async () => {
-  let params: any;
-  await withFetch(
-    (async (_url: string | URL, init?: RequestInit) => {
-      params = JSON.parse(String(init?.body)).params;
-      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }), { status: 200 });
-    }) as typeof fetch,
-    () => deleteIssue(cfg, target, { issue_id: 'issue-9' }),
-  );
-  assert.equal(params.method, 'delete_issue');
-  assert.deepEqual(params.argsJson, { issue_id: 'issue-9' });
-});
-
-test('deleteIssue resolves against the repo passed in target (repo override)', async () => {
-  let params: any;
-  const otherTarget: ResolvedTarget = { contextId: 'ctx-2' };
-  await withFetch(
-    (async (_url: string | URL, init?: RequestInit) => {
-      params = JSON.parse(String(init?.body)).params;
-      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }), { status: 200 });
-    }) as typeof fetch,
-    () => deleteIssue(cfg, otherTarget, { issue_id: 'issue-9' }),
-  );
-  assert.equal(params.contextId, 'ctx-2');
-});
-
-test('getFixPrompt fetches the issue then builds the filled prompt', async () => {
-  const prompt = await withFetch(
-    jsonrpcOk({
-      issue: {
-        id: 'issue-9',
-        title: 'Bug',
-        summary: 'S',
-        impact: 'I',
-        repro: 'R',
-        resolution_criteria: 'C',
-      },
-      comments: [],
-    }),
-    () => getFixPrompt(cfg, target, { id: 'issue-9' }),
-  );
-  assert.match(prompt, /Issue issue-9: Bug/);
-  assert.match(prompt, /## Summary\nS/);
-  assert.match(prompt, /## Resolution criteria\nC/);
-});
-
-test('getFixPrompt includes the Repository line filled from get_repo_info', async () => {
-  const prompt = await withFetch(
-    (async (_url: string | URL, init?: RequestInit) => {
-      const { method, argsJson } = JSON.parse(String(init?.body)).params;
-      if (method === 'get_issue') {
-        return new Response(
-          JSON.stringify({
-            jsonrpc: '2.0',
-            id: 1,
-            result: {
-              output: {
-                issue: {
-                  id: argsJson.issue_id,
-                  title: 'Bug',
-                  summary: 'S',
-                  impact: 'I',
-                  repro: 'R',
-                  resolution_criteria: 'C',
-                },
-                comments: [],
-              },
-            },
-          }),
-          { status: 200 },
-        );
-      }
-      return new Response(
-        JSON.stringify({ jsonrpc: '2.0', id: 1, result: { output: { repo_url: 'https://github.com/acme/frontend' } } }),
-        { status: 200 },
-      );
-    }) as typeof fetch,
-    () => getFixPrompt(cfg, target, { id: 'issue-9' }),
-  );
-  assert.match(prompt, /Issue issue-9: Bug\nRepository: https:\/\/github\.com\/acme\/frontend\n/);
-});
 
 test('get_issue schema accepts an optional repo param', () => {
   const schema = z.object(getIssueShape);
@@ -365,143 +192,126 @@ test('add_repo schema requires name and an http(s) github_url', () => {
   assert.equal(schema.safeParse({ name: 'frontend', github_url: 'https://github.com/acme/frontend' }).success, true);
 });
 
-// ---- listRepos (list_repos tool) ----
+// ---- Request shaping: ABI names (camelCase), calls vs views ----
 
-test('listRepos fetches repo_url per repo via get_repo_info on each repo\'s own context', async () => {
-  const namespaceRepos = [
-    { contextId: 'ctx-1', name: 'frontend' },
-    { contextId: 'ctx-2', name: 'backend' },
-  ];
-  const result = await withFetch(
-    (async (url: string | URL, init?: RequestInit) => {
-      const u = String(url);
-      const { contextId } = JSON.parse(String(init?.body)).params;
-      const repoUrl = contextId === 'ctx-1' ? 'https://github.com/acme/frontend' : 'https://github.com/acme/backend';
-      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { output: { repo_url: repoUrl } } }), {
-        status: 200,
-      });
-    }) as typeof fetch,
-    () => listRepos(cfg, namespaceRepos),
-  );
-  assert.deepEqual(result, [
-    { name: 'frontend', repo_url: 'https://github.com/acme/frontend' },
-    { name: 'backend', repo_url: 'https://github.com/acme/backend' },
+test('createIssue calls createIssue with all seven fields, camelCase', async () => {
+  const { client, sent } = fakeClient({ createIssue: 'issue-1' });
+  const id = await createIssue(client, target, {
+    title: 'Bug',
+    summary: 'S',
+    impact: 'I',
+    repro: 'R',
+    resolution_criteria: 'C',
+    priority: 'high',
+    labels: ['ui'],
+  });
+  assert.equal(id, 'issue-1');
+  assert.deepEqual(sent, [
+    {
+      kind: 'call',
+      app: 'app-1',
+      method: 'createIssue',
+      args: { title: 'Bug', summary: 'S', impact: 'I', repro: 'R', resolutionCriteria: 'C', priority: 'high', labels: ['ui'] },
+    },
   ]);
 });
 
-// ---- addRepo (add_repo tool) ----
-
-const nsCfg: Config = { nodeUrl: 'http://localhost:2428', namespaceRaw: 'my-team', serviceName: 'issue-tracker' };
-
-/** A mock fetch covering add_repo's full call graph; `existingContexts` seeds the duplicate check. */
-function addRepoFetch(
-  existingContexts: Array<{ contextId: string; name?: string }> = [],
-  opts: { aliasFails?: boolean } = {},
-): { impl: typeof fetch; calls: string[] } {
-  const calls: string[] = [];
-  const impl = (async (url: string | URL, init?: RequestInit) => {
-    const u = String(url);
-    calls.push(`${init?.method ?? 'GET'} ${u}`);
-    if (u.endsWith('/admin-api/namespaces')) {
-      return new Response(
-        JSON.stringify({ data: [{ namespaceId: 'ns-1', name: 'my-team', targetApplicationId: 'app-1' }] }),
-        { status: 200 },
-      );
-    }
-    if (u.includes('/contexts') && u.includes('/admin-api/groups/')) {
-      return new Response(JSON.stringify({ data: existingContexts }), { status: 200 });
-    }
-    if (u.includes('/alias/list/context')) {
-      return new Response(JSON.stringify({ data: { aliases: [] } }), { status: 200 });
-    }
-    if (u.endsWith('/admin-api/contexts') && init?.method === 'POST') {
-      return new Response(
-        JSON.stringify({ data: { contextId: 'ctx-new', memberPublicKey: 'member-key' } }),
-        { status: 200 },
-      );
-    }
-    if (u.endsWith('/jsonrpc')) {
-      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }), { status: 200 });
-    }
-    if (u.endsWith('/admin-api/alias/create/context')) {
-      return opts.aliasFails
-        ? new Response('boom', { status: 500 })
-        : new Response(JSON.stringify({ data: {} }), { status: 200 });
-    }
-    throw new Error(`unexpected fetch: ${u}`);
-  }) as typeof fetch;
-  return { impl, calls };
-}
-
-test('addRepo creates the context, sets repo_url, aliases it, and returns the new repo', async () => {
-  const { impl, calls } = addRepoFetch();
-  let setRepoUrlParams: any;
-  const wrapped = (async (url: string | URL, init?: RequestInit) => {
-    if (String(url).endsWith('/jsonrpc')) setRepoUrlParams = JSON.parse(String(init?.body)).params;
-    return impl(url, init);
-  }) as typeof fetch;
-
-  const result = await withFetch(wrapped, () =>
-    addRepo(nsCfg, { name: 'frontend', github_url: 'https://github.com/acme/frontend' }),
-  );
-
-  assert.deepEqual(result, { contextId: 'ctx-new', name: 'frontend', url: 'https://github.com/acme/frontend' });
-  assert.equal(setRepoUrlParams.method, 'set_repo_url');
-  assert.deepEqual(setRepoUrlParams.argsJson, { url: 'https://github.com/acme/frontend' });
-  assert.equal(setRepoUrlParams.contextId, 'ctx-new');
-  assert.deepEqual(Object.keys(setRepoUrlParams).sort(), ['argsJson', 'contextId', 'method']);
-  assert.ok(calls.some((c) => c === 'POST http://localhost:2428/admin-api/contexts'));
-  assert.ok(calls.some((c) => c.endsWith('/admin-api/alias/create/context')));
+test('listIssues is a view and sends null for omitted filters', async () => {
+  const { client, sent } = fakeClient({ listIssues: [] });
+  await listIssues(client, target, { status: 'Open' });
+  assert.deepEqual(sent, [
+    { kind: 'view', app: 'app-1', method: 'listIssues', args: { status: 'Open', assignee: null, label: null } },
+  ]);
 });
 
-test('addRepo rejects a duplicate repo name without calling createContext', async () => {
-  const { impl, calls } = addRepoFetch([{ contextId: 'ctx-1', name: 'frontend' }]);
+test('the issue tools send issueId, and each to its own method', async () => {
+  const { client, sent } = fakeClient({ getIssue: { issue: {}, comments: [] } });
+  await getIssue(client, target, { id: 'i-1' });
+  await addComment(client, target, { issue_id: 'i-1', body: 'hi' });
+  await assignIssue(client, target, { issue_id: 'i-1', assignee: 'bob' });
+  await setStatus(client, target, { issue_id: 'i-1', status: 'Done' });
+  await setPriority(client, target, { issue_id: 'i-1', priority: 'low' });
+  await deleteIssue(client, target, { issue_id: 'i-1' });
+  assert.deepEqual(
+    sent.map((s) => [s.kind, s.method, s.args]),
+    [
+      ['view', 'getIssue', { issueId: 'i-1' }],
+      ['call', 'addComment', { issueId: 'i-1', body: 'hi' }],
+      ['call', 'setAssignee', { issueId: 'i-1', assignee: 'bob' }],
+      ['call', 'setStatus', { issueId: 'i-1', status: 'Done' }],
+      ['call', 'setPriority', { issueId: 'i-1', priority: 'low' }],
+      ['call', 'deleteIssue', { issueId: 'i-1' }],
+    ],
+  );
+});
+
+test('getFixPrompt fills the template from getIssue and getRepoInfo', async () => {
+  const { client } = fakeClient({
+    getIssue: {
+      issue: {
+        id: 'issue-7',
+        title: 'Login broken',
+        summary: 'Clicking login does nothing',
+        impact: 'Nobody can sign in',
+        repro: 'Click login',
+        resolutionCriteria: 'Login works',
+      },
+      comments: [],
+    },
+    getRepoInfo: { repoUrl: 'https://github.com/acme/web' },
+  });
+  const prompt = await getFixPrompt(client, target, { id: 'issue-7' });
+  for (const part of ['issue-7', 'Login broken', 'Clicking login does nothing', 'Nobody can sign in', 'Click login', 'Login works']) {
+    assert.ok(prompt.includes(part), part);
+  }
+  assert.ok(prompt.includes('Repository: https://github.com/acme/web'));
+});
+
+test('listRepos reads repo_url from each repo app', async () => {
+  const { client, sent } = fakeClient({ getRepoInfo: (app: string) => ({ repoUrl: `https://x/${app}` }) });
+  const repos = await listRepos(client, [
+    { appId: 'a-1', name: 'web' },
+    { appId: 'a-2', name: 'api' },
+  ]);
+  assert.deepEqual(repos, [
+    { name: 'web', repo_url: 'https://x/a-1' },
+    { name: 'api', repo_url: 'https://x/a-2' },
+  ]);
+  assert.deepEqual(sent.map((s) => s.app), ['a-1', 'a-2']);
+});
+
+test('addRepo creates an instance in the workspace org and sets its repo_url', async () => {
+  const { client, sent, created } = fakeClient({}, [{ appId: 'a-1', name: 'web', org: 'org-1' }]);
+  const out = await addRepo(client, cfg, { name: 'api', github_url: 'https://github.com/acme/api' });
+  assert.deepEqual(out, { appId: 'app-new', name: 'api', url: 'https://github.com/acme/api' });
+  assert.deepEqual(created, [{ name: 'api', source: { package: 'com.calimero.mero-issue-tracker' }, options: { org: 'org-1' } }]);
+  assert.deepEqual(sent, [
+    { kind: 'call', app: 'app-new', method: 'setRepoUrl', args: { url: 'https://github.com/acme/api' } },
+  ]);
+});
+
+test('addRepo refuses a name the workspace already has, creating nothing', async () => {
+  const { client, created } = fakeClient({}, [{ appId: 'a-1', name: 'web', org: 'org-1' }]);
+  await assert.rejects(addRepo(client, cfg, { name: 'web', github_url: 'https://x' }), /already exists/);
+  assert.equal(created.length, 0);
+});
+
+test('addRepo needs a workspace (TRACKER_APP pins one repo)', async () => {
+  const { client } = fakeClient();
   await assert.rejects(
-    () => withFetch(impl, () => addRepo(nsCfg, { name: 'frontend', github_url: 'https://github.com/acme/frontend' })),
-    /"frontend" already exists/,
+    addRepo(client, { ...cfg, workspaceRaw: undefined, appRaw: 'app-1' }, { name: 'x', github_url: 'https://x' }),
+    /TRACKER_WORKSPACE/,
   );
-  assert.ok(!calls.some((c) => c.endsWith('/admin-api/contexts') && c.startsWith('POST')));
-});
-
-test('addRepo rejects when TRACKER_NAMESPACE is unset (context-pin mode)', async () => {
-  const pinCfg: Config = { nodeUrl: 'http://localhost:2428', contextRaw: 'ctx', serviceName: 'issue-tracker' };
-  let fetchCalled = false;
-  await assert.rejects(
-    () =>
-      withFetch(
-        (async () => {
-          fetchCalled = true;
-          throw new Error('should not be called');
-        }) as typeof fetch,
-        () => addRepo(pinCfg, { name: 'frontend', github_url: 'https://github.com/acme/frontend' }),
-      ),
-    /TRACKER_NAMESPACE/,
-  );
-  assert.equal(fetchCalled, false);
-});
-
-test('addRepo succeeds even when alias creation fails (best-effort)', async () => {
-  const { impl } = addRepoFetch([], { aliasFails: true });
-  const result = await withFetch(impl, () =>
-    addRepo(nsCfg, { name: 'frontend', github_url: 'https://github.com/acme/frontend' }),
-  );
-  assert.deepEqual(result, { contextId: 'ctx-new', name: 'frontend', url: 'https://github.com/acme/frontend' });
 });
 
 // ---- Server construction ----
 
-test('createServer builds without resolving context (no network call)', () => {
-  let fetchCalled = false;
-  const original = globalThis.fetch;
-  globalThis.fetch = (async () => {
-    fetchCalled = true;
-    throw new Error('should not be called at construction time');
-  }) as typeof fetch;
-  try {
-    const server = createServer(cfg);
-    assert.ok(server);
-    assert.equal(fetchCalled, false);
-  } finally {
-    globalThis.fetch = original;
-  }
+test('createServer builds without connecting (no client until a tool runs)', () => {
+  let connected = false;
+  const server = createServer(cfg, async () => {
+    connected = true;
+    return fakeClient().client;
+  });
+  assert.ok(server);
+  assert.equal(connected, false);
 });

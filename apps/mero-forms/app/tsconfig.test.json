@@ -1,37 +1,36 @@
 {
-  "// note": "Unit tests. Node types on purpose: generated.test.ts reads logic/res/abi.json off disk to assert the client covers the contract.",
+  "// note": "Unit tests. Node types on purpose: formsApi.test.ts reads logic/res/abi.json off disk to assert the adapter covers the contract.",
   "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "./dist-types/test",
     "tsBuildInfoFile": "./dist-types/test.tsbuildinfo",
-    "types": ["node", "vite/client"]
+    "types": [
+      "node",
+      "vite/client"
+    ]
   },
   "// include": "Tests plus everything they import: tsc -b will not let a test reference a file the project does not list.",
   "include": [
     "src/**/*.test.ts",
     "src/**/*.test.tsx",
     "src/test",
-    "src/generated",
-    "src/useJoinFromInvitation.ts",
-    "src/ContextPicker.tsx",
-    "src/FormConnect.tsx",
-    "src/PublicLinks.tsx",
-    "src/PublicForm.tsx",
-    "src/CrmSettings.tsx",
-    "src/useCrm.ts",
-    "src/useWorkspace.ts",
-    "src/route.ts",
-    "src/FormView.tsx",
-    "src/FormBuilder.tsx",
-    "src/FormFill.tsx",
-    "src/FormsHome.tsx",
-    "src/Responses.tsx",
-    "src/TeamCard.tsx",
+    "src/*.ts",
+    "src/lib",
     "src/CaptchaCard.tsx",
-    "src/InviteCard.tsx",
+    "src/CrmSettings.tsx",
+    "src/FormBuilder.tsx",
+    "src/FormConnect.tsx",
+    "src/FormFill.tsx",
+    "src/FormView.tsx",
+    "src/FormsHome.tsx",
+    "src/PublicForm.tsx",
+    "src/PublicLinks.tsx",
+    "src/Responses.tsx",
+    "src/SignIn.tsx",
+    "src/TeamCard.tsx",
+    "src/WorkspacePicker.tsx",
     "src/names.tsx",
-    "src/ui.tsx",
-    "src/utils",
-    "src/lib"
+    "src/sessionContext.tsx",
+    "src/ui.tsx"
   ]
 }
