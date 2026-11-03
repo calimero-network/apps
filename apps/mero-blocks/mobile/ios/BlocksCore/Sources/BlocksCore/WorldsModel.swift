@@ -1,7 +1,8 @@
 import Foundation
 import MeroKit
 
-/// A world to open: its context, the namespace it is the only world of, and its open subgroup.
+/// A world to open: its app instance and the organization it is the only world of. `groupId` is
+/// kept for links from the earlier 1.0 build (a world's team); new worlds have none.
 public struct WorldRef: Hashable, Sendable, Identifiable {
     public let contextId: String
     public let namespaceId: String
@@ -20,17 +21,16 @@ public struct WorldRef: Hashable, Sendable, Identifiable {
 /// One row of the world list.
 public struct WorldEntry: Identifiable, Equatable, Sendable {
     public let ref: WorldRef
-    /// Players online now, once read (`get_players`).
+    /// Players online now, once read (`getPlayers`).
     public var online: Int?
     public var id: String { ref.contextId }
 }
 
 /// The worlds this account is in, and making, joining, sharing and leaving them.
 ///
-/// The web app's model (`app/src/net/admin.ts` `createWorld`): every world is its OWN namespace,
-/// named after the world, with one open subgroup and the world's context in it. Invitations are
-/// namespace invitations, so one link admits to exactly one world, and the open subgroup lets the
-/// invitee join the context by inheritance.
+/// The web app's model (`app/src/net/worlds.ts` `createWorld`): every world is its OWN
+/// organization, named after the world, with the world's app instance in it. Invitations are org
+/// invites, so one link admits to exactly one world, and the org grants its app instance.
 @MainActor
 public final class WorldsModel: ObservableObject {
     @Published public private(set) var worlds: [WorldEntry] = []
@@ -78,22 +78,21 @@ public final class WorldsModel: ObservableObject {
         await loadOnline()
     }
 
-    /// The worlds in one namespace: the context of each subgroup, else any in its root (a
-    /// curb-style namespace with no subgroup).
+    /// The worlds in one organization: its app instances (the web's), else those in its teams
+    /// (worlds the earlier 1.0 build made).
     private func refs(in namespace: AppNamespace) async throws -> [WorldRef] {
-        var out: [WorldRef] = []
-        for subgroup in try await backend.listSubgroups(namespaceId: namespace.id) {
-            let name = subgroup.name ?? namespace.name ?? BlocksConstants.defaultWorldName
-            for contextId in subgroup.contextIds {
-                out.append(WorldRef(contextId: contextId, namespaceId: namespace.id, groupId: subgroup.groupId, name: name))
-            }
+        let fallback = namespace.name ?? BlocksConstants.defaultWorldName
+        var out = try await backend.listContextEntries(groupId: namespace.id).map {
+            WorldRef(contextId: $0.id, namespaceId: namespace.id, groupId: nil, name: $0.name ?? fallback)
         }
         if out.isEmpty {
-            for contextId in try await backend.listContexts(groupId: namespace.id) {
-                out.append(
-                    WorldRef(
-                        contextId: contextId, namespaceId: namespace.id, groupId: nil,
-                        name: namespace.name ?? BlocksConstants.defaultWorldName))
+            for subgroup in try await backend.listSubgroups(namespaceId: namespace.id) {
+                for contextId in subgroup.contextIds {
+                    out.append(
+                        WorldRef(
+                            contextId: contextId, namespaceId: namespace.id, groupId: subgroup.groupId,
+                            name: subgroup.name ?? fallback))
+                }
             }
         }
         return out
@@ -122,33 +121,31 @@ public final class WorldsModel: ObservableObject {
         }
     }
 
-    /// A new world: its own namespace, an open subgroup, and the context with the contract's
-    /// `init` arguments (`name`, `seed`, `now`).
+    /// A new world: its own organization and the app instance in it, with the contract's `init`
+    /// arguments (`name`, `seed`, `now`; u64 as decimal strings), as the web's `createWorld`.
     public func create(name rawName: String, seed: UInt64?) async throws -> WorldRef {
-        guard backend.hasRelay else { throw BlocksError.noRelay }
+        guard backend.hasRelay else { throw BlocksError.signedOut }
         guard let applicationId, !applicationId.isEmpty else { throw BlocksError.noApplication }
         let name = BlocksText.worldName(rawName)
         let seed = seed ?? UInt64.random(in: BlocksConstants.seedRange)
         let founded = try await backend.foundNamespace(name: name)
-        let groupId = try await backend.createSubgroup(namespaceId: founded.namespaceId, name: name, isPublic: true)
         let contextId = try await backend.createContext(
-            groupId: groupId, applicationId: applicationId, name: name,
-            initArgs: .object(["name": .string(name), "seed": .number(Double(seed)), "now": .number(Double(nowSeconds()))]))
-        let ref = WorldRef(contextId: contextId, namespaceId: founded.namespaceId, groupId: groupId, name: name)
+            groupId: founded.namespaceId, applicationId: applicationId, name: name,
+            initArgs: .object([
+                "name": .string(name), "seed": .string(String(seed % 4_294_967_296)), "now": .string(String(nowSeconds())),
+            ]))
+        let ref = WorldRef(contextId: contextId, namespaceId: founded.namespaceId, groupId: nil, name: name)
         worlds.insert(WorldEntry(ref: ref, online: 0), at: 0)
-        if !founded.haEnabled {
-            notice =
-                "The cloud is not hosting this world yet\(founded.haError.map { " (\($0))" } ?? ""). You can play, but friends may not be able to join while you are offline."
-        }
         return ref
     }
 
-    /// Redeem an invitation: join the world's namespace. `didJoin` runs after (the session
-    /// reconnects to the admitting relay there when the account had none). The world's context
-    /// is joined when it is opened (``GameModel/prepare()``).
+    /// Redeem an invitation: redeem its token, joining the world's organization. `didJoin` runs
+    /// after (the session re-reads what the account sees). The world's app instance is entered
+    /// when it is opened (``GameModel/prepare()``).
     public func join(_ invitation: BlocksInvitation, didJoin: () async -> Void) async throws -> WorldRef {
-        let namespaceId = invitation.namespaceId
-        _ = try await backend.joinNamespace(namespaceId: namespaceId, invitation: invitation.invitation)
+        let joined = try await backend.joinNamespace(namespaceId: invitation.namespaceId, invitation: invitation.invitation)
+        // The node names the organization the token opened (a web link carries none).
+        let namespaceId = joined.namespaceId.isEmpty ? invitation.namespaceId : joined.namespaceId
         await didJoin()
         let name = invitation.name ?? BlocksConstants.defaultWorldName
         if let contextId = invitation.contextId {
@@ -160,13 +157,14 @@ public final class WorldsModel: ObservableObject {
         return first
     }
 
-    /// A link that admits someone to `ref`'s world.
+    /// A link that admits someone to `ref`'s world. Minting it asks for the passkey (the node's step-up).
     public func inviteLink(_ ref: WorldRef) async throws -> String {
-        let signed = try await backend.createInvitation(namespaceId: ref.namespaceId)
-        return try BlocksInvitation(invitation: signed, name: ref.name, contextId: ref.contextId, groupId: ref.groupId).link()
+        let invitation = try await backend.createInvitation(namespaceId: ref.namespaceId)
+        return try BlocksInvitation(invitation: invitation, name: ref.name, contextId: ref.contextId, groupId: ref.groupId)
+            .link()
     }
 
-    /// Leave a world: leave its namespace, which is that world alone.
+    /// Leave a world: leave its organization, which is that world alone.
     public func leave(_ ref: WorldRef) async throws {
         try await backend.leaveNamespace(namespaceId: ref.namespaceId)
         worlds.removeAll { $0.id == ref.contextId }

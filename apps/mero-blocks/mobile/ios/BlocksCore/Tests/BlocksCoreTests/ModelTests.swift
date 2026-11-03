@@ -9,17 +9,23 @@ enum Fixtures {
     static let me = String(repeating: "ab", count: 32)
     static let device = String(repeating: "de", count: 32)
 
-    /// A token minted by the web app's own `encodeInvite` (app/src/net/inviteCodec.ts:
-    /// `bs58(deflateSync(JSON, { level: 9 }))`) for `{invitation, groupAlias: "Lime Valley",
-    /// contextId: "c"×64, groupId: "b"×64}`, around the swift-sdk's chat vector invitation
-    /// (group id = bytes 1…32).
-    static let webToken =
+    /// A 0.x token minted by the web app's own `encodeInvite` (app/src/net/inviteCodec.ts) around
+    /// a signed group invitation. Calimero 1.0 refuses it.
+    static let legacyWebToken =
         "7AFNTiMbuC1rQX6sQZrCxrz8XFBVKtQDKdMiR8LFqwvyQgcAA4XhtpgMvEfNRGNdS7wfvMbvXHUkin1Muc2rvHvWw5doEVRkA8kqvekckd8i44TAFRo2"
         + "nqu393v5Nvqibt9sAPcedipQwZ2U8xTfFZ5R3hnbRikgPQ7edPWzNAiw3fsy7ngpq1SM4JzhEctVt25vA6JtmiA85u34vQBgJd9Dkuie2K2MwAwSQx"
         + "NgiogEagrqbWuetiedN5u8iCdUfcsicugJi1irX9ZRoD7ZnDHyCCUMPsfjV6e5HhUEMik45vMjZ2B5iCrmVj1HvNUboqgDh6UL5VNZ3cmbFkHC9bGMgi"
     static let webNamespace = (1...32).map { String(format: "%02x", $0) }.joined()
 
-    static func meta() -> JSONValue { .object(["name": "Lime Valley", "seed": 1337, "createdAt": 1_730_000_000]) }
+    /// A 1.0 link token: the org invite for `webNamespace`, the world's app instance ("c"×64) and
+    /// team ("b"×64), named "Lime Valley".
+    static let webToken = try! InviteCodec.encode(
+        [
+            "invitation": "inv_lime", "namespaceId": .string(webNamespace), "contextId": .string(String(repeating: "c", count: 64)),
+            "name": "Lime Valley", "groupId": .string(String(repeating: "b", count: 64)),
+        ] as JSONValue)
+
+    static func meta() -> JSONValue { .object(["name": "Lime Valley", "seed": "1337", "createdAt": "1730000000"]) }
 }
 
 final class InvitationTests: XCTestCase {
@@ -37,30 +43,63 @@ final class InvitationTests: XCTestCase {
 
     func testRefusesAnotherAppsLinkAndJunk() {
         XCTAssertNil(BlocksInvitation.parse(InviteLink.invitation(token: Fixtures.webToken, slug: "com.calimero.chat")))
+        XCTAssertNil(BlocksInvitation.parse(Fixtures.legacyWebToken), "a pre-1.0 signed invitation")
         XCTAssertNil(BlocksInvitation.parse("hello"))
         XCTAssertNil(BlocksInvitation.parse(""))
     }
 
-    /// What the phone mints, the web app reads: its `parsePayload` wants `invitation` with a
-    /// signature, the name under `groupAlias`, and `contextId` / `groupId` strings.
-    func testMintsTheWebAppsPayload() throws {
+    /// What the phone mints is an ``OrgInvitation`` any 1.0 client reads, plus the world's team.
+    func testMintsTheOrgInvitationPayload() throws {
         let original = try XCTUnwrap(BlocksInvitation.parse(Fixtures.webToken))
         let minted = BlocksInvitation(
             invitation: original.invitation, name: "Ana's world", contextId: "ctx-1", groupId: "grp-1")
         let json = try XCTUnwrap(InviteCodec.decode(token: try minted.token()))
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
-        XCTAssertEqual(object["groupAlias"] as? String, "Ana's world")
+        XCTAssertEqual(object["invitation"] as? String, "inv_lime")
+        XCTAssertEqual(object["namespaceId"] as? String, Fixtures.webNamespace)
+        XCTAssertEqual(object["name"] as? String, "Ana's world")
         XCTAssertEqual(object["contextId"] as? String, "ctx-1")
         XCTAssertEqual(object["groupId"] as? String, "grp-1")
-        let signed = try XCTUnwrap(object["invitation"] as? [String: Any])
-        XCTAssertNotNil(signed["inviter_signature"] ?? signed["inviterSignature"])
-        XCTAssertNotNil(signed["invitation"] as? [String: Any])
+        XCTAssertEqual(OrgInvitation.decode(try minted.token())?.contextId, "ctx-1")
 
         let back = try XCTUnwrap(BlocksInvitation.parse(try minted.link()))
         XCTAssertEqual(back.name, "Ana's world")
         XCTAssertEqual(back.contextId, "ctx-1")
         XCTAssertEqual(back.namespaceId, Fixtures.webNamespace)
     }
+
+    func testTheWebFrontendsLinkOpens() throws {
+        let invitation = try XCTUnwrap(BlocksInvitation.parse("https://blocks.example/?invite=inv_lime"))
+        XCTAssertEqual(invitation.invitation.token, "inv_lime")
+        XCTAssertNil(invitation.contextId)
+        XCTAssertNil(BlocksInvitation.parse("https://blocks.example/?invite=nope"))
+    }
+
+    func testTheContractsRefusalsReadAsWords() {
+        XCTAssertEqual(
+            BlocksText.error(AppError("refused", details: ["code": "TooManyEdits", "fields": ["got": 600, "max": 512]])),
+            "Too many block changes at once (at most 512). Try again.")
+        XCTAssertEqual(BlocksText.error(ConfirmCancelled()), "The passkey prompt was cancelled. Nothing changed.")
+        XCTAssertEqual(BlocksText.error(ConsentStale("stale")), "That approval is out of date. Refresh and review it again.")
+    }
+
+    /// The methods the phone calls, as the component ABI (`logic/res/abi.json`) names them.
+    func testTheClientCallsTheComponentSurface() {
+        XCTAssertEqual(
+            Set(BlocksClient.methods.keys),
+            ["worldMeta", "getOverrides", "getPlayers", "overrideCount", "join", "heartbeat", "leave", "setBlocks"])
+        XCTAssertEqual(BlocksClient.methods["getPlayers"], ["now", "cursor", "limit"])
+        XCTAssertEqual(Set(BridgeRouter.names.values), Set(BlocksClient.methods.keys))
+    }
+
+    func testTheNodesErrorsReadAsWords() {
+        XCTAssertEqual(
+            BlocksText.error(ReleaseDeadlineError("deadline", details: ["release": "2.3.110"])),
+            "Your cluster takes no new work until node release 2.3.110 is approved. Review it under Needs your approval.")
+        XCTAssertEqual(BlocksText.error(NotFound("no such app")), "This isn't shared with you, or it was deleted.")
+        XCTAssertEqual(BlocksText.error(LoginRequired("expired")), "Your session ended. Sign in again.")
+    }
+
 }
 
 @MainActor
@@ -77,11 +116,13 @@ final class WorldsModelTests: XCTestCase {
         XCTAssertEqual(ref.name, "Lime Valley")
         let log = backend.log
         XCTAssertEqual(log.first, "foundNamespace Lime Valley")
-        XCTAssertTrue(log.contains("createSubgroup \(ref.namespaceId) Lime Valley open"), "\(log)")
-        XCTAssertEqual(ref.groupId.map { backend.publicSubgroups.contains($0) }, true)
+        // The app instance sits in the world's organization itself: no team.
+        XCTAssertTrue(log.contains("createContext \(ref.namespaceId) \(backend.applicationId) Lime Valley"), "\(log)")
+        XCTAssertNil(ref.groupId)
+        XCTAssertTrue(backend.publicSubgroups.isEmpty)
         guard case .object(let args)? = backend.initArgs[ref.contextId] else { return XCTFail("no init args") }
         XCTAssertEqual(args["name"], .string("Lime Valley"))
-        XCTAssertEqual(args["seed"], .number(4242))
+        XCTAssertEqual(args["seed"], .string("4242"))
         XCTAssertNotNil(args["now"])
         XCTAssertEqual(model.worlds.first?.ref, ref)
     }
@@ -90,25 +131,21 @@ final class WorldsModelTests: XCTestCase {
         let model = WorldsModel(backend: backend, applicationId: backend.applicationId)
         let ref = try await model.create(name: "   ", seed: nil)
         XCTAssertEqual(ref.name, "overworld")
-        guard case .object(let args)? = backend.initArgs[ref.contextId], case .number(let seed)? = args["seed"] else {
+        guard case .object(let args)? = backend.initArgs[ref.contextId], case .string(let seed)? = args["seed"] else {
             return XCTFail("no seed")
         }
-        XCTAssertTrue(BlocksConstants.seedRange.contains(UInt64(seed)))
-    }
-
-    func testSaysWhenTheCloudWillNotHostTheWorld() async throws {
-        backend.haEnabled = false
-        let model = WorldsModel(backend: backend, applicationId: backend.applicationId)
-        _ = try await model.create(name: "Solo", seed: 1)
-        XCTAssertNotNil(model.notice)
+        XCTAssertTrue(BlocksConstants.seedRange.contains(UInt64(seed) ?? 0))
     }
 
     func testListsEveryWorldWithWhoIsPlaying() async throws {
         backend.recording.setHandler { call in
-            call.method == "get_players"
-                ? .array([
-                    .object(["id": "a", "name": "A", "x": 0, "y": 0, "z": 0, "yaw": 0, "pitch": 0, "sel": 0, "online": true]),
-                    .object(["id": "b", "name": "B", "x": 0, "y": 0, "z": 0, "yaw": 0, "pitch": 0, "sel": 0, "online": false]),
+            call.method == "getPlayers"
+                ? .object([
+                    "items": .array([
+                        .object(["id": "a", "name": "A", "x": 0, "y": 0, "z": 0, "yaw": 0, "pitch": 0, "sel": 0, "online": true]),
+                        .object(["id": "b", "name": "B", "x": 0, "y": 0, "z": 0, "yaw": 0, "pitch": 0, "sel": 0, "online": false]),
+                    ]),
+                    "next": .null,
                 ]) : .null
         }
         let creator = WorldsModel(backend: backend, applicationId: backend.applicationId)
@@ -120,10 +157,10 @@ final class WorldsModelTests: XCTestCase {
         XCTAssertNil(model.error)
         XCTAssertEqual(Set(model.worlds.map(\.ref)), [one, two])
         XCTAssertEqual(model.worlds.map(\.online), [1, 1])
-        XCTAssertEqual(backend.recording.calls("get_players").first?.path, .query)
+        XCTAssertEqual(backend.recording.calls("getPlayers").first?.path, .query)
     }
 
-    func testWithNoRelayThereIsNothingToList() async {
+    func testSignedOutThereIsNothingToList() async {
         backend.hasRelay = false
         let model = WorldsModel(backend: backend, applicationId: backend.applicationId)
         await model.load()
@@ -132,9 +169,9 @@ final class WorldsModelTests: XCTestCase {
         XCTAssertFalse(model.hasRelay)
         do {
             _ = try await model.create(name: "x", seed: 1)
-            XCTFail("created with no relay")
+            XCTFail("created while signed out")
         } catch {
-            XCTAssertEqual(error as? BlocksError, .noRelay)
+            XCTAssertEqual(error as? BlocksError, .signedOut)
         }
     }
 
@@ -147,8 +184,7 @@ final class WorldsModelTests: XCTestCase {
         XCTAssertNil(model.error)
     }
 
-    func testJoinsFromTheWebAppsInvitation() async throws {
-        backend.hasRelay = false
+    func testJoinsFromAnInvitation() async throws {
         let invitation = try XCTUnwrap(BlocksInvitation.parse(Fixtures.webToken))
         let model = WorldsModel(backend: backend, applicationId: backend.applicationId)
         var didJoin = false
@@ -158,7 +194,6 @@ final class WorldsModelTests: XCTestCase {
         XCTAssertEqual(ref.namespaceId, Fixtures.webNamespace)
         XCTAssertEqual(ref.name, "Lime Valley")
         XCTAssertEqual(backend.log, ["joinNamespace \(Fixtures.webNamespace)"])
-        XCTAssertTrue(backend.hasRelay, "the admitting relay is the account's now")
     }
 
     func testInvitesWithALinkForThatWorld() async throws {
@@ -191,7 +226,7 @@ final class GameModelTests: XCTestCase {
 
     override func setUp() async throws {
         backend = InMemoryAppBackend(account: Fixtures.me)
-        backend.recording.setHandler { call in call.method == "world_meta" ? Fixtures.meta() : .null }
+        backend.recording.setHandler { call in call.method == "worldMeta" ? Fixtures.meta() : .null }
         sent = []
     }
 
@@ -245,8 +280,8 @@ final class GameModelTests: XCTestCase {
         XCTAssertEqual(answer["id"] as? Int, 1)
         XCTAssertEqual(answer["ok"] as? Bool, true)
         XCTAssertEqual((answer["result"] as? [String: Any])?["seed"] as? Int, 1337)
-        XCTAssertEqual(backend.recording.calls("world_meta").first?.contextId, world.contextId)
-        XCTAssertEqual(backend.recording.calls("world_meta").first?.path, .query)
+        XCTAssertEqual(backend.recording.calls("worldMeta").first?.contextId, world.contextId)
+        XCTAssertEqual(backend.recording.calls("worldMeta").first?.path, .query)
 
         await model.receive(#"{"id":2,"op":"execute","method":"init","args":{"name":"x","seed":1,"now":1}}"#)
         let refused = try object(sent.last)

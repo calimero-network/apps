@@ -1,13 +1,11 @@
 package network.calimero.forum.core
 
 import com.calimero.mero.app.AppNamespace
-import com.calimero.mero.app.AppSubgroup
 import com.calimero.mero.testkit.InMemoryAppBackend
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -65,76 +63,43 @@ class ForumsModelTest {
     private fun model(backend: InMemoryAppBackend) = ForumsModel(backend, NS, "Design", backend.applicationId)
 
     @Test
-    fun `lists forums with membership`() =
+    fun `lists the app instances in the space`() =
         runTest {
             val (backend, _) = makeBackend()
-            backend.subgroups =
-                mapOf(
-                    NS to
-                        listOf(
-                            AppSubgroup("g2", "Random", listOf("c2")),
-                            AppSubgroup("g1", "General", listOf("c1")),
-                            AppSubgroup("g3", null, emptyList()),
-                        ),
-                )
-            backend.members = setOf("c1")
+            backend.rootContexts = mapOf(NS to listOf("c2", "c1", "c3"))
+            backend.contextNames = mapOf("c1" to "General", "c2" to "Random")
             val forums = model(backend)
             forums.load()
-            assertEquals(listOf("Forum g3", "General", "Random"), forums.forums.value.map { it.name })
-            assertTrue(
+            assertEquals(listOf("Forum c3", "General", "Random"), forums.forums.value.map { it.name })
+            assertEquals(
+                "c1",
                 forums.forums.value
-                    .first { it.id == "g1" }
-                    .joined,
-            )
-            assertFalse(
-                forums.forums.value
-                    .first { it.id == "g2" }
-                    .joined,
-            )
-            assertNull(
-                forums.forums.value
-                    .first { it.id == "g3" }
+                    .first { it.name == "General" }
                     .contextId,
             )
+            assertTrue("every member of the org reaches its instances", forums.forums.value.all { it.joined })
         }
 
     @Test
-    fun `create makes an open subgroup and a context with no init args`() =
+    fun `create makes an app instance in the org with no init args`() =
         runTest {
             val (backend, _) = makeBackend()
             val forums = model(backend)
             val ref = forums.create("General")
             assertEquals("General", ref.forumName)
-            assertTrue(ref.forumId in backend.publicSubgroups)
+            assertEquals("a forum is its app instance", ref.contextId, ref.forumId)
+            assertEquals("directly in the org", listOf(ref.contextId), backend.rootContexts[NS])
+            assertTrue(backend.publicSubgroups.isEmpty())
             assertEquals(JsonObject(emptyMap()), backend.initArgs[ref.contextId])
-            assertTrue(
-                forums.forums.value
-                    .first()
-                    .joined,
-            )
         }
 
     @Test
-    fun `enter joins an open forum first`() =
-        runTest {
-            val (backend, _) = makeBackend()
-            val ref = model(backend).enter(ForumRow("g1", "General", "c1", joined = false))
-            assertEquals("c1", ref.contextId)
-            assertTrue("joinContext c1" in backend.log)
-            assertTrue("c1" in backend.members)
-        }
-
-    @Test
-    fun `enter refuses a forum still syncing`() =
-        runTest {
-            val (backend, _) = makeBackend()
-            try {
-                model(backend).enter(ForumRow("g1", "General", null, joined = false))
-                fail("expected a refusal")
-            } catch (e: ForumModelException) {
-                assertEquals("This forum is still syncing. Try again in a moment.", e.message)
-            }
-        }
+    fun `enter opens without joining`() {
+        val (backend, _) = makeBackend()
+        val ref = model(backend).enter(ForumRow("c1", "General", "c1", joined = true))
+        assertEquals("c1", ref.contextId)
+        assertFalse(backend.log.any { it.startsWith("joinContext") })
+    }
 
     @Test
     fun `invites parse back`() =
@@ -197,6 +162,6 @@ class InvitationModelTest {
             val model = InvitationModel()
             model.open(ForumInvitation(InMemoryAppBackend.invitation(NS)).token())
             model.accept(backend = { backend }, didJoin = {})
-            assertEquals(InvitationModel.Stage.Failed("The relay took too long to answer. Try again."), model.stage.value)
+            assertEquals(InvitationModel.Stage.Failed("Your cluster took too long to answer. Try again."), model.stage.value)
         }
 }

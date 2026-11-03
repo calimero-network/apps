@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { AuditReport, MeroVoteClient } from "./generated/MeroVoteClient";
+import type { AuditReport, MeroVoteClient } from "./meroVote";
 import { verifyTranscript, type LocalAudit } from "./crypto/verify";
 import { errText, short } from "./useMeroVote";
 import {
@@ -16,10 +16,11 @@ import { Callout, CopyButton, IconTile } from "./ui";
 /**
  * The result, and three ways of trusting it:
  *
- *  1. Your node re-verified every proof to produce it (`get_result`).
+ *  1. The contract verified every proof when it was submitted, and re-derives
+ *     the key, the receipts and the counts from them (`getResult`).
  *  2. This browser can re-verify it again from the raw transcript, with an
  *     independent implementation, and compare.
- *  3. The transcript digest can be published outside the context and recorded
+ *  3. The transcript digest can be published outside the group and recorded
  *     here, so people outside it can hold the result to that digest.
  */
 export function AuditPanel({
@@ -181,14 +182,18 @@ export function AuditPanel({
           <div className="grow">
             <h2>Audit</h2>
             <div className="meta">
-              Your node recomputed all of this from the frozen ballots just now. Nothing here is a stored conclusion.
+              The contract recomputed all of this from the sealed ballots just now. Re-verify it in this browser
+              below: that re-checks every proof without trusting the node.
             </div>
           </div>
         </div>
         {report.verified ? (
           <Callout tone="success">
             <strong>Every check passed</strong>
-            <p>The node re-verified every proof, from the key ceremony to the decryption.</p>
+            <p>
+              Every proof was verified when it was submitted, and the key, the receipts and the counts check out
+              from the key ceremony to the decryption.
+            </p>
           </Callout>
         ) : (
           <Callout tone="danger">
@@ -199,8 +204,7 @@ export function AuditPanel({
         <CheckList checks={report.checks} />
         {report.uncounted.length > 0 && (
           <Callout tone="warning">
-            Not in the sealed count: {report.uncounted.map(label).join(", ")} — their ballot reached this node after
-            the seal, or the creator left it out.
+            Not in the sealed count: {report.uncounted.map(label).join(", ")} — their ballot is not among the sealed ones.
           </Callout>
         )}
         {report.transcript_digest && (
@@ -250,7 +254,7 @@ export function AuditPanel({
             <div className="grow">
               <h2>Public anchor</h2>
               {!report.anchor && (
-                <div className="meta">Hold the result to a digest published outside this context.</div>
+                <div className="meta">Hold the result to a digest published outside this group.</div>
               )}
             </div>
           </div>
@@ -272,7 +276,7 @@ export function AuditPanel({
           ) : (
             <>
               <p className="hint">
-                Publish the transcript digest somewhere outside this context — a transaction memo, a signed git tag, a
+                Publish the transcript digest somewhere outside this group — a transaction memo, a signed git tag, a
                 post — then record where. Anyone given the transcript can then check it against that public digest.
               </p>
               <div className="row">

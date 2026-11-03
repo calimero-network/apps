@@ -7,14 +7,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.JsonObject
 
-/** A world to open: its context, and where it lives. */
+/** A world to open: its app instance, and where it lives. */
 data class WorldRef(
     val contextId: String,
     val namespaceId: String,
-    /** The open subgroup the world is in (null for a world directly in its namespace). */
+    /** The team the world is in (null for a world directly in its organization, as new ones are). */
     val groupId: String?,
     val name: String,
 )
@@ -38,10 +37,9 @@ data class WorldsState(
  * The worlds: every world this account is in, and creating, joining and inviting to them.
  * (Swift `WorldsModel`.)
  *
- * As on the web (`app/src/net/admin.ts`), a world is its own namespace named after it, an open
- * subgroup inside that, and the context (the world state) in the subgroup. One namespace per world
- * keeps an invitation's scope to exactly one world, and the subgroup being open is what lets an
- * invited player join it.
+ * As on the web (`app/src/net/worlds.ts`), a world is an app instance in an organization of its own,
+ * named after it: one organization per world keeps an invitation's scope to exactly one world.
+ * Worlds an earlier build put in an open team of their organization are still listed and opened.
  */
 class WorldsModel(
     private val backend: MeroAppBackend,
@@ -68,7 +66,7 @@ class WorldsModel(
         }
     }
 
-    /** The worlds in one namespace: its subgroups' contexts, then any directly in it. */
+    /** The worlds in one organization: its teams' app instances, then any directly in it. */
     private suspend fun worldsIn(namespace: AppNamespace): List<WorldEntry> {
         val name = namespace.name?.trim()?.takeIf { it.isNotEmpty() }
         val seen = mutableSetOf<String>()
@@ -85,32 +83,29 @@ class WorldsModel(
         return entries
     }
 
-    /** A new world: its namespace, its open subgroup, and the context, initialised with `{name, seed, now}` (the contract's `init`). */
+    /**
+     * A new world, as the web app makes one: its organization, the app instance in it (the
+     * contract's `init()` takes nothing), then `createWorld(name, seed, now)`, which only the
+     * creator may run.
+     */
     suspend fun create(
         name: String,
-        seed: ULong,
+        seed: UInt,
     ): WorldRef {
-        if (!backend.hasRelay) throw MerrariaException(MerrariaException.Kind.NO_RELAY)
+        if (!backend.hasRelay) throw MerrariaException(MerrariaException.Kind.SIGNED_OUT)
         if (applicationId.isNullOrEmpty()) throw MerrariaException(MerrariaException.Kind.NO_APPLICATION)
         val title = name.trim().ifEmpty { MerrariaConstants.DEFAULT_WORLD_NAME }.take(MerrariaConstants.MAX_WORLD_NAME)
         val namespaceId = backend.foundNamespace(title).namespaceId
-        val groupId = backend.createSubgroup(namespaceId, title, isPublic = true)
-        val initArgs =
-            buildJsonObject {
-                put("name", JsonPrimitive(title))
-                put("seed", JsonPrimitive(seed.toLong()))
-                put("now", JsonPrimitive(nowSeconds().toLong()))
-            }
-        val contextId = backend.createContext(groupId, applicationId, title, initArgs)
-        val ref = WorldRef(contextId, namespaceId, groupId, title)
+        val contextId = backend.createContext(namespaceId, applicationId, title, JsonObject(emptyMap()))
+        backend.merraria(contextId).createWorld(title, seed, nowSeconds())
+        val ref = WorldRef(contextId, namespaceId, null, title)
         _state.update { it.copy(worlds = listOf(WorldEntry(ref, 1)) + it.worlds) }
         return ref
     }
 
     /**
-     * Redeem an invitation: join the namespace, then the world (its open subgroup's context).
-     * [didJoin] runs in between (the session reconnects to the admitting relay there when the account
-     * had none).
+     * Redeem an invitation: redeem its token (joining the organization), then enter the world.
+     * [didJoin] runs in between (the session re-reads what the account sees).
      */
     suspend fun join(
         invitation: WorldInvitation,
@@ -135,13 +130,13 @@ class WorldsModel(
         return WorldRef(contextId, namespaceId, groupId, invitation.worldName ?: MerrariaConstants.DEFAULT_WORLD_NAME)
     }
 
-    /** Join the world's context if this account is not in it yet (an invited player joins it through the open subgroup). */
+    /** Make sure this account reaches the world's app instance (an invited player inherits it through the organization). */
     suspend fun ensureMember(contextId: String) {
         if (backend.isMember(contextId)) return
         backend.joinContext(contextId)
     }
 
-    /** A link that admits someone to [ref]'s namespace and opens that world. */
+    /** A link that admits someone to [ref]'s organization and opens that world. */
     suspend fun inviteLink(ref: WorldRef): String = inviteLink(backend, ref)
 
     fun dismissError() = _state.update { it.copy(error = null) }
@@ -151,8 +146,8 @@ class WorldsModel(
             backend: MeroAppBackend,
             ref: WorldRef,
         ): String {
-            val signed = backend.createInvitation(ref.namespaceId)
-            return WorldInvitation(signed, ref.name, ref.contextId, ref.groupId).link()
+            val minted = backend.createInvitation(ref.namespaceId)
+            return WorldInvitation.of(minted, ref.name, ref.contextId, ref.groupId).link()
         }
     }
 }

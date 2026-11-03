@@ -4,9 +4,10 @@ import { useEffect, useState } from "react";
 import { FeedView } from "./FeedView";
 import { DemoBackend } from "./demo";
 import { useFeed } from "./useFeed";
-import { nodeBackend } from "./backend";
+import { clusterBackend } from "./backend";
 import { checkpointByline, checkpointSections, prHref, type CheckpointView } from "./checkpoint";
-import type { CheckpointInput, HyperfeedClient } from "./generated/HyperfeedClient";
+import type { CheckpointInput } from "./hyperfeedTypes";
+import type { HyperfeedClient } from "./hyperfeed";
 
 const NOW = 1_800_000_000_000;
 
@@ -67,18 +68,11 @@ describe("the demo keeps checkpoints as the contract does", () => {
   });
 });
 
-describe("the node backend", () => {
-  it("reads a feed made before checkpoints as having none", async () => {
-    const client = {
-      checkpoint: () => Promise.reject({ type: "FunctionCallError", data: 'method "checkpoint" not found' }),
-    } as unknown as HyperfeedClient;
-    const backend = nodeBackend(client, { execute: async () => undefined as never });
-    expect(await backend.checkpoint!("c1")).toBeNull();
-  });
-
+describe("the cluster backend", () => {
   it("reads no checkpoint as null", async () => {
     const client = { checkpoint: () => Promise.resolve(null) } as unknown as HyperfeedClient;
-    expect(await nodeBackend(client, { execute: async () => undefined as never }).checkpoint!("c1")).toBeNull();
+    const apps = { call: async () => undefined, view: async () => undefined };
+    expect(await clusterBackend(client, apps).checkpoint!("c1")).toBeNull();
   });
 });
 

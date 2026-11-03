@@ -75,7 +75,7 @@ struct EventEditor: View {
                     } footer: {
                         Text(
                             draft.canTogglePrivate
-                                ? "Only on this device. A private event never leaves your phone."
+                                ? "Only you see a private event, on any device you sign in on."
                                 : "Shared events can't be made private again.")
                     }
 
@@ -115,7 +115,7 @@ struct EventEditor: View {
                     Section {
                         DetailsDisclosure(rows: [
                             ("Event id", original.id),
-                            ("Owner", original.isLocal ? "This device" : original.owner),
+                            ("Owner", original.owner),
                         ])
                     }
                 }

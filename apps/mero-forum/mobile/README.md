@@ -6,30 +6,51 @@ icons (SF Symbols on iOS, Material Icons on Android) and flows.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen | swift-sdk `c9ca1a0` (`main`, merge of swift-sdk#84) |
-| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | kotlin-sdk `ea8ded7` (`main`, merge of kotlin-sdk#67), composite build |
+| iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen | swift-sdk `v0.5.0` |
+| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | kotlin-sdk `v0.2.0` (not on Maven Central), composite build |
 
-The SDK pins are the `main` merge commits of the app-session PRs. To bump them, change
-`revision:` in `ios/project.yml` and `ios/ForumCore/Package.swift` (keep the two identical), and
-`android/kotlin-sdk.ref`.
+The pins are SDK releases. To bump them, change `exactVersion` / `exact:` in
+`ios/project.yml` and `ios/ForumCore/Package.swift` (keep the two identical), and
+`android/kotlin-sdk.ref` (the new tag's commit).
 
-## Delegated execution only
+## Calimero 1.0
 
-Neither app runs or logs into a node. Both are built on the SDKs' `MeroAppSession`: the person
-signs in with their Calimero account (the wallet certifies this device's key), the Cloud manager
-names the account's relay, and everything goes through that relay. Views go through the relay's
-account-scoped query, writes are warrants the device key signs. Spaces are namespaces founded
-through the relay; a forum is an open subgroup with one context running the contract, as on the
-web. Live updates come from `MeroAppBackend.events(contextId)`, with a 10-second poll when the
-relay cannot stream.
+Both apps talk to a Calimero 1.0 cluster through the SDKs' `MeroAppSession` / `MeroAppBackend`,
+over the sealed channel to an attested node:
+
+- **Sign-in**: Calimero Cloud, by cluster name (`eu-shared-1`, its nodes read from the Cloud
+  directory) or by a node URL, then the device's passkey ("Create an account" registers a new one);
+  or a **Development node** (`merod local`, mock attestation allowed, a software passkey kept on
+  the device).
+- **Spaces are organizations; a forum is an app instance of Mero Forum directly in the org**, as
+  on the web (`createApp(name, source, { org })`). Every member of the org reaches its forums, so
+  there is nothing to join and nothing waits to sync.
+- **The contract** is the component port's (`../logic/res/abi.json`, web PR #715): camelCase
+  methods and arguments (`createPost`, `postId`, `commentId`), camelCase answers with
+  `createdAt` / `editedAt` / `score` / `commentCount` as decimal strings. Refusals are
+  `APP_ERROR` `NotFound {what, id}`, `Forbidden {message}`, `Invalid {message}`, shown in plain
+  words. The typed client (`ForumContract.swift` / `contract/ForumClient.kt`) is written by hand
+  from the ABI, as the web app's `src/lib/forumApi.ts` is (no client is generated from a
+  component ABI yet); `ContractTests` checks its method lists against the committed ABI.
+- **Invitations** are org invite links: the SDK's payload
+  (`{invitation: "inv_…", namespaceId, contextId?, name, kind, forumId, forumName}`, in
+  `https://links.calimero.network/com.calimero.mero-forum/join?invitation=…` or `calimero://`),
+  redeemed with `POST /invites/{token}/redeem`. The web app's 1.0 link (`?invite=inv_…&forum=<app>`)
+  opens too. Pre-1.0 links are refused.
+- **Approvals**: newer Mero Forum releases and node releases that wait for the person show on
+  Spaces. "Review" first shows the node's confirmation code, then opens the consent page in the
+  system browser (Custom Tab on Android), which returns to `mero-forum://consent`.
+- **Live updates** from `MeroAppBackend.events(contextId)`, with a 10-second poll when the stream
+  is down.
 
 ## Screens
 
-1. **Sign in**: what Mero Forum is, and "Sign in with Calimero". An invitation that arrived while
-   signed out is named here.
-2. **Spaces**: your spaces as cards; New space, Join with a link, Account (name, account id
+1. **Sign in**: what Mero Forum is, Calimero Cloud (cluster name or URL, passkey sign-in or
+   create an account) or a development node. An invitation that arrived while signed out is named
+   here.
+2. **Spaces**: what waits for approval, your spaces as cards; New space, Join with a link, Account (name, account id
    behind Details, Sign out). Pull to refresh.
-3. **Space**: its forums (Joined, or Open to join on the way in); New forum; Invite people (whole
+3. **Space**: its forums; New forum; Invite people (whole
    space), or long-press a forum to invite people straight into it.
 4. **Forum timeline**: Latest / Top tabs; each post with avatar, name, `@handle` (short account
    id), age, title and text, and an action row (replies, up/score/down, share); a lime compose
@@ -43,11 +64,10 @@ relay cannot stream.
 
 ## Features vs the web app
 
-Same as the web: spaces, forums (create, list, join open ones), feed with Latest/Top and cursor
+Same as the web: spaces, forums (create, list), feed with Latest/Top and cursor
 paging, posts, replies, votes on both, deleting your own, your display name (`set_nickname`,
-kept on the device and pushed to each forum like the web's localStorage), invitation links in the
-web's format both ways (`https://links.calimero.network/com.calimero.mero-forum/join?invitation=…`,
-`calimero://…`, and the web's older `?invite=` links).
+kept on the device and pushed to each forum like the web's localStorage), org invitation links
+(the SDK's, and the web's `?invite=` links).
 
 Beyond the web UI (the contract has them, the web app does not expose them): editing posts and
 replies, moderation (moderators remove anyone's post or reply; moderators add and remove
@@ -63,19 +83,6 @@ Left out, and why:
 - **Copy link to a post.** The web's post links point at the web build's own URL; the apps share
   the post's text instead.
 
-## Generated contract client
-
-The contract calls are generated, never hand-written: `ios/ForumCore/Sources/ForumGenerated/ForumClient.swift`
-and `android/app/src/main/kotlin/network/calimero/forum/generated/ForumClient.kt`, from
-`../logic/res/abi.json` with mero-devtools-js's abi-codegen. Regenerate both after a contract change:
-
-```sh
-ABI_CODEGEN=/path/to/abi-codegen/dist/cli.js ./scripts/regenerate-client.sh
-```
-
-Each generated file declares its own `ContextContractCalling`; `ForumTransport` (both platforms)
-adapts the SDK's `contract.bound(contextId)` to it.
-
 ## Build and test
 
 iOS:
@@ -86,7 +93,7 @@ swift test --package-path ForumCore      # logic and view-model tests, on macOS
 xcodegen generate && open MeroForum.xcodeproj
 ```
 
-The logic (generated client, view models, invitation codec, formatting) is the local `ForumCore`
+The logic (typed contract client, view models, invitation codec, formatting) is the local `ForumCore`
 SwiftPM package, so it builds and tests on macOS with no simulator; the SwiftUI app target links it.
 
 Android:
@@ -102,17 +109,16 @@ The view-model tests on both platforms run against the SDKs' fakes (`InMemoryApp
 
 ## Configuration
 
-- **Sign-in callback**: `mero-forum://enrol` (iOS `MeroForumCallbackScheme` in `project.yml`,
-  Android `meroEnrolCallback` in `gradle.properties`). The hosted wallet currently returns only to
-  `https://` callbacks, so production sign-in needs that wallet change or a verified https
-  callback, as for Mero Chat.
-- **Environment**: empty values use the SDK defaults (hosted Cloud manager, wallet, registry).
-  iOS: `MeroCloudBaseURL`, `MeroWalletURL`, `MeroRegistryURL` in `project.yml`. Android:
-  `-PmeroCloudUrl=… -PmeroWalletUrl=… -PmeroRegistryUrl=…`.
+- **Consent callback**: `mero-forum://consent` (iOS `MeroForumCallbackScheme` in `project.yml`,
+  Android `meroConsentCallback` in `gradle.properties`; the manifest filter follows it).
+- **Defaults**: the prefilled cluster and development node: iOS `CalimeroClusterURL` /
+  `DefaultNodeURL` in `project.yml`; Android `meroCluster` / `meroDevNodeUrl`. Passkey sign-in on
+  a real cluster needs the cluster's relying party as an associated domain (iOS) or Digital Asset
+  Links (Android).
 - **Font**: Power Grotesk, converted from the web app's `app/public/fonts/powerGrotesk` WOFF2 files.
 
 ## CI
 
 `.github/workflows/mero-forum-ios.yml` (macOS: `swift test` on ForumCore, then XcodeGen and an
-unsigned simulator build) and `.github/workflows/mero-forum-android.yml` (fetch the SDK, ktlint,
+unsigned build) and `.github/workflows/mero-forum-android.yml` (fetch the SDK, ktlint,
 detekt, unit tests, Android lint, `assembleDebug`), each path-filtered to its folder.

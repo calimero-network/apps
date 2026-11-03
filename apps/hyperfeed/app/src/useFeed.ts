@@ -16,7 +16,7 @@ import type {
   SettingsView,
   SituationView,
   WatchView,
-} from "./generated/HyperfeedClient";
+} from "./hyperfeedTypes";
 import type { NameLink } from "./links";
 import { fillReplyCall } from "./lens/lens";
 import type { ActionMode, AgentMode, Decision, FeedBackend, Filter, NotificationMode } from "./backend";

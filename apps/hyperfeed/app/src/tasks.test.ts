@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { FeedItem } from "./generated/HyperfeedClient";
+import type { FeedItem } from "./hyperfeedTypes";
 import { taskCandidates, taskOf, taskStatus } from "./tasks";
 
 const NOW = new Date(2026, 9, 10, 15, 0).getTime();

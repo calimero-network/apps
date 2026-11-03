@@ -48,8 +48,8 @@ public final class InvitationModel: ObservableObject {
         return true
     }
 
-    /// Join. `backend` is read again after `didJoin`, which may hand the
-    /// session the admitting relay.
+    /// Join: redeem the org invite token. `backend` is read again after
+    /// `didJoin`, which re-reads what the account sees.
     public func accept(
         backend: @escaping @MainActor () -> (any MeroAppBackend)?,
         didJoin: @escaping @MainActor () async -> Void
@@ -59,9 +59,10 @@ public final class InvitationModel: ObservableObject {
             return
         }
         stage = .joining(title: invitation.title)
-        let namespaceId = invitation.namespaceId
+        var namespaceId = invitation.namespaceId
         do {
-            _ = try await current.joinNamespace(namespaceId: namespaceId, invitation: invitation.invitation)
+            let joined = try await current.joinNamespace(namespaceId: namespaceId, invitation: invitation.invitation)
+            if !joined.namespaceId.isEmpty { namespaceId = joined.namespaceId }
         } catch {
             let text = "\(error)".lowercased()
             if !(text.contains("already a member") || text.contains("already member") || text.contains("already joined")) {

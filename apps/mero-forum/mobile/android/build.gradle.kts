@@ -18,8 +18,6 @@ subprojects {
         ignoreFailures.set(false)
         filter {
             exclude { entry -> entry.file.path.contains("/build/") }
-            // The contract client is generated (README "Regenerate the contract client").
-            exclude { entry -> entry.file.path.contains("/generated/") }
         }
     }
 
@@ -28,9 +26,5 @@ subprojects {
         config.setFrom(rootProject.file("config/detekt/detekt.yml"))
         parallel = true
         source.setFrom(files("src/main/kotlin", "src/test/kotlin"))
-    }
-
-    tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
-        exclude("**/generated/**")
     }
 }

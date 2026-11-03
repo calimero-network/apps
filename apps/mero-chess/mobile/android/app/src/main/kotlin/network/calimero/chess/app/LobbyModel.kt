@@ -10,9 +10,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
-import network.calimero.chess.generated.TableView
+import network.calimero.chess.contract.ChessContract
+import network.calimero.chess.contract.TableView
 
 /** A table to open: its context and the namespace ("club") it lives in. */
 data class TableRef(
@@ -141,12 +140,7 @@ class LobbyModel(
         val applicationId = applicationId?.takeIf { it.isNotEmpty() } ?: throw ChessException(ChessException.Kind.NO_APPLICATION)
         val name = title.trim().take(64).ifEmpty { ChessConstants.DEFAULT_TITLE }
         val namespaceId = clubId ?: backend.foundNamespace(name).namespaceId
-        val initArgs =
-            buildJsonObject {
-                put("title", name)
-                put("now", nowMillis().toLong())
-            }
-        val contextId = backend.createContext(namespaceId, applicationId, name, initArgs)
+        val contextId = backend.createContext(namespaceId, applicationId, name, ChessContract.initArgs(name, nowMillis()))
         val ref = TableRef(contextId, namespaceId)
         val clubName =
             _state.value.clubs
@@ -158,8 +152,8 @@ class LobbyModel(
 
     /**
      * Redeem an invitation: join its namespace, which admits to every table directly in it.
-     * [didJoin] runs after (the session reconnects to the admitting relay there when the account had
-     * none). The table may take a moment to sync; the table screen polls until it reads.
+     * [didJoin] runs after (the session re-reads what the account sees). The table may take a moment
+     * to appear; the table screen polls until it reads.
      */
     suspend fun join(
         invitation: ChessInvitation,

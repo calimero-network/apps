@@ -67,16 +67,13 @@ class ChatArgsTest {
         assertJson("{}", ChatArgs.none())
     }
 
+    /** The component `init`'s names, as the web's `initArgsFrom` sends them. */
     @Test
-    fun `a channel is initialised with init's five arguments, as UTF-8 JSON bytes`() {
-        val init = ChatArgs.channelInit("général", 1_760_900_000, "droid")
+    fun `a channel is initialised with the component init's arguments`() {
         assertJson(
-            """{"name":"général","context_type":"Channel","description":"","created_at":1760900000,"creator_username":"droid"}""",
-            init,
+            """{"name":"général","contextType":"Channel","description":"","creatorUsername":"droid"}""",
+            ChatArgs.channelInit("général", "droid"),
         )
-        val bytes = initBytes(init)
-        assertEquals(init.toString(), ByteArray(bytes.size) { bytes[it].toByte() }.toString(Charsets.UTF_8))
-        assert(bytes.all { it in 0..255 })
     }
 
     @Test

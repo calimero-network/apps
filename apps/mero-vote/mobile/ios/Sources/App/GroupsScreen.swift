@@ -24,17 +24,6 @@ struct GroupsScreen: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 12) {
-                if !model.hasRelay {
-                    HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: "antenna.radiowaves.left.and.right.slash")
-                        Text("Your account has no relay yet. Join a voting group from an invitation link to get one.")
-                            .font(.system(size: 14))
-                    }
-                    .foregroundStyle(Palette.ink)
-                    .padding(14)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Palette.limeSoft))
-                }
                 switch model.phase {
                 case .loading:
                     ForEach(0..<3, id: \.self) { _ in SkeletonCard() }
@@ -279,7 +268,7 @@ struct JoinSheet: View {
                     }
                     .buttonStyle(SecondaryButtonStyle(compact: true))
                 }
-                Text("Links look like links.calimero.network/com.calimero.mero-vote/join?invitation=…")
+                Text("An invite link from the Mero Vote app or the web app works here.")
                     .font(.system(size: 13)).foregroundStyle(Palette.muted)
                 if let error {
                     Text(error).font(.system(size: 14)).foregroundStyle(Palette.danger)
@@ -307,6 +296,7 @@ struct JoinSheet: View {
 struct AccountSheet: View {
     @EnvironmentObject private var session: MeroAppSession
     @Environment(\.dismiss) private var dismiss
+    @State private var approvals = false
 
     var body: some View {
         NavigationStack {
@@ -323,6 +313,11 @@ struct AccountSheet: View {
                     .padding(.vertical, 6)
                 } footer: {
                     Text("You set the name others see inside each voting group, from its Members page.")
+                }
+                Section {
+                    Button { approvals = true } label: { Label("Approvals", systemImage: "checkmark.seal") }
+                } footer: {
+                    Text("Node releases and app updates waiting for you, approved on your cluster's consent page.")
                 }
                 Section {
                     DetailsDisclosure(rows: [
@@ -342,6 +337,7 @@ struct AccountSheet: View {
                 }
             }
             .voteNavigation("Account")
+            .sheet(isPresented: $approvals) { ApprovalsSheet(style: .app) }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }

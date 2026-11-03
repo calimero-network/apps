@@ -5,32 +5,30 @@ A native Jetpack Compose (Material 3) client for Mero Chat, the `com.calimero.ch
 [`../../app`](../../app), so people on Android and on the web share the same workspaces, channels
 and messages. It is built on the Calimero Kotlin SDK (`mero-core` + `mero-compose`).
 
-## Delegated execution only
+## On Calimero 1.0
 
-The phone runs no node, and the app has no node-login screen, admin password or "node URL"
-setting. It signs in with a Calimero account, and the account's hosted relay works on its behalf:
+The phone runs no node. It signs in with a passkey on a Calimero 1.0 cluster and talks to it over
+the SDK's sealed channel (kotlin-sdk `v0.2.0`). Contract calls use the component ABI that the web port
+(#730) ships in `../../logic/res/abi.json`.
 
 | What | How | SDK |
 |---|---|---|
-| Sign in | The Calimero wallet (passkey, in a Custom Tab) certifies a key this device generated; the certificate comes back on the enrolment callback | `MeroClient.signInWithCloud` / `handleEnrolmentCallback` |
-| Find the relay | The cloud manager's account relay list | `CloudAccount.findRelay` (`getAccountRelays`) |
-| Persist the session | Keys, session and warrant nonces in Keystore-backed EncryptedSharedPreferences; restored on launch | `MeroClient.create` / `restore` |
-| Read (views) | `POST /admin-api/contexts/{ctx}/query` as the account, over the relay session | `RelayClient.query` (`RelayClient.call` until the relay is attested) |
-| Write | A warrant signed by the device key, `POST /admin-api/contexts/{ctx}/intents`. Never `/jsonrpc` | `RelayClient.execute` |
-| Create a workspace | Found a namespace running chat through the relay, then create `#general` | `MeroClient.foundNamespace` |
-| Create a channel | Its own subgroup (root governance op), then chat's context in it with a creation warrant (`/groups/{g}/context-intents`), in the web app's one-group-per-channel model | account admin `createGroupInNamespace`, `createContext` |
-| Invite | An invitation signed by this device, shared as the web app's link | `MeroClient.createNamespaceInvitation` |
-| Join | Direct admission at a relay the invitation names (`POST /admin-api/namespaces/{id}/admit`) | `MeroClient.joinWithInvitation` |
-| Live updates | The relay's event stream (SSE over the relay session) for the open channel. Before the relay is attested there is no stream, so the channel polls every 5 s | `Mero.events` |
-
-A brand-new account belongs to nothing, so no relay serves it yet. The app then asks the person to
-open an invitation link; joining gives the account its relay.
+| Sign in | **Calimero Cloud**: the cluster's name (nodes from the node directory) or a node's URL, then the device's passkey (Credential Manager) or a new account. **Development node**: a `merod local` URL with mock attestation, and a software passkey kept on the device | `CalimeroClient.connect(CalimeroConnectOptions(cluster=…))`, `MeroAppSession.signIn` / `signUp` |
+| Persist the session | Kept in Keystore-backed encrypted preferences with the node it lives on; restored on launch | `EncryptedSessionStore`, `MeroAppSession.restore` |
+| Read and write | Views and calls on `/apps/{app}`, sealed. `ComponentChatContract` maps v1's names and shapes to the ABI's: camelCase, `u64`s as decimal strings | `MeroAppBackend.contract` |
+| Create a workspace | Found an org for chat, then `#general` | `foundNamespace` |
+| Create a channel | An open channel is an app instance of chat in the org itself, as the web makes them. A private one gets its own team that admits by invitation | `createContext`, `createSubgroup` |
+| Invite | An org invite token (a passkey step-up: the Activity's `PlatformPasskey` is the session's `passkey` while it lives) | `createInvitation` |
+| Join | Redeem the token (`POST /invites/{token}/redeem`) | `joinNamespace` |
+| Approvals | Releases and Mero Chat upgrades that wait for the account show under Approvals. Review shows the request's confirmation code first, then opens the node's consent page in a Custom Tab, which returns to `mero-chat://consent` | `pendingApprovals`, `MeroAppSession.requestConsent` |
+| Live updates | The app instance's event stream for the open channel, with polling as the fallback | `MeroAppBackend.events` |
 
 ## Features
 
-- Sign in with a Calimero account, stay signed in across launches, sign out.
-- Workspaces: list the account's namespaces running chat, create one, join one from an
-  invitation link (opened from a browser or chat app, or pasted), share an invitation link.
+- Sign in with a passkey (Calimero Cloud or a development node), stay signed in across launches,
+  sign out.
+- Workspaces: list the account's orgs running chat, create one, join one from an invitation link
+  (opened from a browser or chat app, or pasted), share an invitation link. Approvals.
 - Channels per workspace: list (joined, open-but-not-joined, unread counts), create (public or
   private), join an open channel on first open. DMs the web app created appear under "Direct
   messages" and open like channels.
@@ -39,10 +37,11 @@ open an invitation link; joining gives the account its relay.
   your own messages, reactions (`update_reaction`), your name in a channel (`set_profile`),
   `mark_as_read` on open.
 
-Invitation links use the web app's format, so a link from either side opens on the other:
-`https://links.calimero.network/com.calimero.chat/join?invitation=<base58(deflate(payload))>`
-with the payload `{"invitation": <signed invitation>, "groupAlias": "<workspace name>"}`. The app
-also accepts the `calimero://com.calimero.chat/join?invitation=…` form and bare tokens.
+Invitation links are the SDKs' `OrgInvitation`:
+`https://links.calimero.network/com.calimero.chat/join?invitation=<base58(deflate(payload))>` with
+the payload `{"invitation": "inv_…", "namespaceId": "<org>", "name": "<workspace>"}`. The app also
+accepts `calimero://com.calimero.chat/join?invitation=…`, the web app's own link
+(`https://<its origin>/?invite=inv_…`) and a bare `inv_…` token.
 
 ## Build and run
 
@@ -63,7 +62,8 @@ The gates CI runs (`.github/workflows/mero-chat-android.yml`):
 
 ### The SDK pin
 
-The delegated layer the app uses is only on the SDK's default branch, not in a published release,
+The Calimero 1.0 layer the app uses is kotlin-sdk `v0.2.0` (`kotlin-sdk.ref` pins its tag commit,
+`1e3f27c`). That release is not on Maven Central,
 so the SDK is built from source as a Gradle composite build: `settings.gradle.kts` includes the
 checkout and substitutes it for the `network.calimero:mero-core` / `mero-compose` /
 `mero-testkit` coordinates the app declares. Which checkout:
@@ -80,87 +80,36 @@ The SDK is built in the same Gradle invocation, so the Android Gradle Plugin and
 every bump. Once the SDK is on Maven Central, drop the `includeBuild` block and give the three
 catalog entries a real version.
 
-### Pointing it at another environment
+### Pointing it at a cluster
 
-All optional; empty means the SDK's defaults (the hosted Calimero cloud, wallet and app registry).
-Pass them with `-P` or put them in `gradle.properties`:
+The cluster is chosen on the sign-in screen. `-PmeroCluster=<name or URL>` prefills the Calimero
+Cloud field. A development node from the emulator is `http://10.0.2.2:2501` (`merod local`).
 
-| Property | What |
-|---|---|
-| `meroCloudUrl` | Cloud manager base URL (relay discovery, routing, hosting) |
-| `meroWalletUrl` | Wallet enrolment page |
-| `meroRegistryUrl` | App registry that resolves `com.calimero.chat` to its application id |
-| `meroEnrolCallback` | Where the wallet sends the person back. Default `mero-chat://enrol`; the manifest's intent filter is generated from its scheme and host |
-
-```bash
-./gradlew installDebug -PmeroCloudUrl=https://cloud.staging.example -PmeroWalletUrl=https://wallet.staging.example/account-enroll
-```
-
-**Sign-in callback.** The SDK README notes that the hosted wallet currently redirects only to
-`https://` callbacks; app-scheme callbacks such as `mero-chat://enrol` need a pending mero-wallet
-change. Until then, production sign-in needs an https App Link: set `meroEnrolCallback` to that
-URL, publish `assetlinks.json` for `network.calimero.chat` on its host, and add an `autoVerify`
-intent filter for it in `app/src/main/AndroidManifest.xml`.
+A real cluster's passkeys need Digital Asset Links between the app and the cluster's relying
+party; they are not set up yet.
 
 ## Layout
 
 ```
 app/src/main/kotlin/network/calimero/chat/
   data/   contract wire models (ChatWire), argument builders (ChatContract), invitation links,
-          error copy, ChatBackend + MeroChatBackend (the SDK adapter), ChatRepository, MessageWindow
+          error copy, ChatBackend + MeroChatBackend (the SDK adapter), ComponentChatContract,
+          ChatRepository, MessageWindow
   app/    view models as plain state holders (WorkspacesModel, ChannelsModel, ChannelModel),
-          SessionStage, ProfileStore, and the Android ChatAppViewModel that owns the MeroClient
+          ApprovalsModel, SessionStage, ProfileStore, and the Android ChatAppViewModel that owns the
+          MeroAppSession
   ui/     Compose screens and the NavHost
 app/src/test/   unit tests; fixtures/ holds contract outputs in the shape serde writes them
 ```
 
 ## Tests
 
-`./gradlew testDebugUnitTest` runs JVM tests against the SDK's test support: the real `MeroClient`
-signed in through a mock wallet, talking to mero-testkit's `FakeNode`/`FakeCloud` (cloud manager +
-hosted relay on MockWebServer). They cover the argument object of every method against the web
-app's, result parsing from contract-shaped fixtures, paging (newest page, older windows by index,
-gap catch-up), that views go to `/query` and writes to `/intents` as warrants (and nothing to
-`/jsonrpc`), channel creation through `context-intents`, founding, invitation links in both
-directions, and joining by direct admission.
-
-### Live tests (a real relay)
-
-`app/src/test/kotlin/network/calimero/chat/live/` runs the app's own view models and repository
-against a real relay: a merod with delegated access, device-key login and a mock TEE, with the
-chat bundle installed, booted by `../e2e/run-relay.sh`. There is no cloud or wallet in that rig,
-so each test mints its accounts offline (an account root certifying the device's key, handed to
-`MeroClient` as the wallet's redirect) and an in-process fake answers only the Calimero Cloud's
-routing questions (which relay serves an account, who admits for a namespace). Everything else
-goes to the relay.
-
-- **Founder:** found a workspace (real mock attestation), `#general` and a second channel, send,
-  read back and page through `/query`, edit, react and un-react, delete, set the profile name,
-  unread after opening.
-- **Invite and join:** a second, brand-new account opens the founder's invitation link and joins by
-  direct admission at the relay's `/admit`, lists the workspace and `#general`, reads the founder's
-  message, replies, and the founder reads the reply. The invitee cannot edit the founder's message:
-  the model refuses, and the contract's refusal reaches the app's error text.
-- **Live update:** the founder's open channel gets the invitee's message over the relay's event
-  stream (polling is set an hour apart, so only the stream can deliver it).
-
-They skip themselves unless `MERO_E2E_RELAY_URL` and `MERO_E2E_APP_ID` are set, or
-`mobile/e2e/.relay.env` exists (run-relay.sh writes it and `--stop` removes it), so
-`testDebugUnitTest` stays offline. To run them:
-
-```sh
-cd ../e2e && MEROD_BIN=/path/to/merod ./run-relay.sh   # a merod built with --features mock-attestation
-cd ../android && ./gradlew :app:testDebugUnitTest --tests 'network.calimero.chat.live.*'
-../e2e/run-relay.sh --stop
-```
-
-The test rig logs in to the relay as its admin (`dev` / `dev-password`, relay.yml's; override with
-`MERO_E2E_RELAY_ADMIN_USER` / `_PASSWORD`) only to learn the relay's account, which a real cloud
-would name. CI: `.github/workflows/mero-chat-android-live.yml`.
-
-**SDK pin:** `kotlin-sdk.ref` is the merge of calimero-network/kotlin-sdk#26, which signs namespace
-ops at schema 25. The live tests caught the SDK still signing at 24, which a relay on core rc.85+
-refuses (`schema version mismatch: expected 25, got 24`).
+`./gradlew testDebugUnitTest` runs JVM tests against mero-testkit's `InMemoryAppBackend`. They
+cover the argument object of every method, the component ABI's wire (names, `u64` strings, answers
+back in v1's shapes), result parsing from contract-shaped fixtures, paging (newest page, older
+windows by index, gap catch-up), channel creation in the org and in a private team, founding,
+invitation links (the SDKs' and the web's), redeeming, approvals with the confirmation code, and
+error copy.
 
 ## Not supported yet
 

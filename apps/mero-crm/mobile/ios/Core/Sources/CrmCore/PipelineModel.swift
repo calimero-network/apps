@@ -46,7 +46,7 @@ public final class PipelineModel: ObservableObject {
     /// How long a burst of events is coalesced into one read.
     public var coalesce: Duration = .milliseconds(250)
     public var warmupRetry: Duration = .milliseconds(1500)
-    /// When the relay cannot stream events, how often to re-read.
+    /// When the node cannot stream events, how often to re-read.
     public var pollInterval: Duration = .seconds(20)
 
     private var pending = false
@@ -118,7 +118,7 @@ public final class PipelineModel: ObservableObject {
     }
 
     /// Load, then keep the snapshot live until cancelled: re-read on the
-    /// context's events (or on a timer when the relay cannot stream), and retry
+    /// context's events (or on a timer when the node cannot stream), and retry
     /// while the context is still syncing.
     public func run() async {
         await load()

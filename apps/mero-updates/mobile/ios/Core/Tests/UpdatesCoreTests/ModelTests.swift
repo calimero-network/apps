@@ -71,7 +71,7 @@ final class CompaniesModelTests: XCTestCase {
         let model = CompaniesModel(backend: fake.backend)
         let company = await model.create(name: "X")
         XCTAssertNil(company)
-        XCTAssertEqual(model.error?.hasPrefix("The relay can't be reached"), true)
+        XCTAssertEqual(model.error?.hasPrefix("The cluster can't be reached"), true)
     }
 }
 
@@ -155,13 +155,13 @@ final class AudienceModelTests: XCTestCase {
         let model = await fake.audienceModel()
         let before = model.version
         try await model.setProfile(name: " Ana ", firm: " Fund ")
-        let call = try XCTUnwrap(fake.recording.calls("set_profile").first)
+        let call = try XCTUnwrap(fake.recording.calls("setProfile").first)
         XCTAssertEqual(call.path, .execute)
         XCTAssertEqual(call.contextId, "ctx-1")
         XCTAssertEqual(call.args["name"]?.stringValue, "Ana")
         XCTAssertEqual(call.args["firm"]?.stringValue, "Fund")
         XCTAssertGreaterThan(model.version, before)
-        XCTAssertEqual(fake.recording.calls("get_me").first?.path, .query)
+        XCTAssertEqual(fake.recording.calls("getMe").first?.path, .query)
     }
 
     func testMutingSendsTheWholeMutedSet() async throws {
@@ -172,9 +172,9 @@ final class AudienceModelTests: XCTestCase {
         ]
         let model = await fake.audienceModel()
         try await model.toggleMuted(fake.categories[1])
-        XCTAssertEqual(fake.recording.calls("set_muted_categories").last?.args["category_ids"], ["a", "b"])
+        XCTAssertEqual(fake.recording.calls("setMutedCategories").last?.args["categoryIds"], ["a", "b"])
         try await model.toggleMuted(fake.categories[0])
-        XCTAssertEqual(fake.recording.calls("set_muted_categories").last?.args["category_ids"], [])
+        XCTAssertEqual(fake.recording.calls("setMutedCategories").last?.args["categoryIds"], [])
     }
 
     func testAskAndOfferWrites() async throws {
@@ -186,12 +186,12 @@ final class AudienceModelTests: XCTestCase {
         try await model.setAskStatus(askId: "ask", resolved: true)
         try await model.setTeammate(ana, on: true)
         try await model.setTeammate(ana, on: false)
-        XCTAssertEqual(fake.recording.calls("offer_help").first?.args["note"]?.stringValue, "I know them")
-        XCTAssertEqual(fake.recording.calls("set_offer_status").first?.args["status"]?.stringValue, "accepted")
-        XCTAssertEqual(fake.recording.calls("set_ask_status").first?.args["status"]?.stringValue, "resolved")
-        XCTAssertEqual(fake.recording.calls("withdraw_offer").count, 1)
-        XCTAssertEqual(fake.recording.calls("add_teammate").count, 1)
-        XCTAssertEqual(fake.recording.calls("remove_teammate").count, 1)
+        XCTAssertEqual(fake.recording.calls("offerHelp").first?.args["note"]?.stringValue, "I know them")
+        XCTAssertEqual(fake.recording.calls("setOfferStatus").first?.args["status"]?.stringValue, "accepted")
+        XCTAssertEqual(fake.recording.calls("setAskStatus").first?.args["status"]?.stringValue, "resolved")
+        XCTAssertEqual(fake.recording.calls("withdrawOffer").count, 1)
+        XCTAssertEqual(fake.recording.calls("addTeammate").count, 1)
+        XCTAssertEqual(fake.recording.calls("removeTeammate").count, 1)
     }
 
     func testEventsBumpTheVersion() async throws {
@@ -221,18 +221,18 @@ final class FeedModelTests: XCTestCase {
         XCTAssertEqual(model.posts.map(\.id), ["p1", "p2"])
         XCTAssertEqual(model.drafts.map(\.id), ["d1"])
         XCTAssertEqual(model.setupSteps.map(\.done), [true, false, false, false])
-        XCTAssertEqual(fake.recording.calls("list_posts").last?.args["kind"]?.stringValue, "update")
-        XCTAssertEqual(fake.recording.calls("list_posts").last?.args["limit"]?.intValue, 100)
+        XCTAssertEqual(fake.recording.calls("listPosts").last?.args["kind"]?.stringValue, "update")
+        XCTAssertEqual(fake.recording.calls("listPosts").last?.args["limit"]?.intValue, 100)
 
         await model.select(category: "c1")
-        XCTAssertEqual(fake.recording.calls("list_posts").last?.args["category_id"]?.stringValue, "c1")
+        XCTAssertEqual(fake.recording.calls("listPosts").last?.args["categoryId"]?.stringValue, "c1")
         XCTAssertEqual(model.posts.map(\.id), ["p1"])
         await model.select(category: "c1")
         XCTAssertNil(model.category)
 
         await model.discard(model.drafts[0])
         XCTAssertTrue(model.drafts.isEmpty)
-        XCTAssertEqual(fake.recording.calls("delete_draft").first?.args["draft_id"]?.stringValue, "d1")
+        XCTAssertEqual(fake.recording.calls("deleteDraft").first?.args["draftId"]?.stringValue, "d1")
     }
 
     func testInvestorsDoNotReadDrafts() async {
@@ -240,7 +240,7 @@ final class FeedModelTests: XCTestCase {
         fake.meView = MeView(account: ana, name: "Ana", firm: "", isAdmin: false, isTeam: false, muted: [])
         let model = FeedModel(audience: await fake.audienceModel())
         await model.load()
-        XCTAssertTrue(fake.recording.calls("list_drafts").isEmpty)
+        XCTAssertTrue(fake.recording.calls("listDrafts").isEmpty)
     }
 }
 
@@ -252,8 +252,8 @@ final class PostModelTests: XCTestCase {
         let model = PostModel(postId: "p1", audience: await fake.audienceModel())
         await model.load()
         await model.load()
-        XCTAssertEqual(fake.recording.calls("mark_read").count, 1)
-        XCTAssertEqual(fake.recording.calls("mark_read").first?.path, .execute)
+        XCTAssertEqual(fake.recording.calls("markRead").count, 1)
+        XCTAssertEqual(fake.recording.calls("markRead").first?.path, .execute)
     }
 
     func testReactionsAreOptimistic() async {
@@ -291,13 +291,13 @@ final class PostModelTests: XCTestCase {
         XCTAssertEqual(model.replyPlaceholder, "Add to the question…")
 
         try await model.reply(" Thanks ", to: "c1")
-        let call = try XCTUnwrap(fake.recording.calls("add_comment").first)
-        XCTAssertEqual(call.args["parent_id"]?.stringValue, "c1")
+        let call = try XCTUnwrap(fake.recording.calls("addComment").first)
+        XCTAssertEqual(call.args["parentId"]?.stringValue, "c1")
         XCTAssertEqual(call.args["body"]?.stringValue, "Thanks")
         try await model.edit(fake.comments[1], body: "Edited")
-        XCTAssertEqual(fake.recording.calls("edit_comment").first?.args["comment_id"]?.stringValue, "c2")
+        XCTAssertEqual(fake.recording.calls("editComment").first?.args["commentId"]?.stringValue, "c2")
         await model.delete(fake.comments[1])
-        XCTAssertEqual(fake.recording.calls("delete_comment").first?.args["comment_id"]?.stringValue, "c2")
+        XCTAssertEqual(fake.recording.calls("deleteComment").first?.args["commentId"]?.stringValue, "c2")
     }
 
     func testTeamAnswersAndDeletes() async {
@@ -306,11 +306,11 @@ final class PostModelTests: XCTestCase {
         let model = PostModel(postId: "q1", audience: await fake.audienceModel())
         await model.load()
         await model.toggleAnswered()
-        XCTAssertEqual(fake.recording.calls("set_question_status").first?.args["status"]?.stringValue, "answered")
+        XCTAssertEqual(fake.recording.calls("setQuestionStatus").first?.args["status"]?.stringValue, "answered")
         let ok = await model.delete()
         XCTAssertTrue(ok)
         XCTAssertTrue(model.deleted)
-        XCTAssertEqual(fake.recording.calls("delete_post").first?.args["post_id"]?.stringValue, "q1")
+        XCTAssertEqual(fake.recording.calls("deletePost").first?.args["postId"]?.stringValue, "q1")
     }
 
     func testKpiDeltasComeFromTheSeries() async {
@@ -341,19 +341,19 @@ final class ComposerModelTests: XCTestCase {
         XCTAssertEqual(model.state?.metrics.map(\.name), ["MRR"])
         model.update { $0.title = "Oct"; $0.sections[0].body = "Shipped" }
         for _ in 0..<50 where model.draftId == nil { try await Task.sleep(for: .milliseconds(20)) }
-        let save = try XCTUnwrap(fake.recording.calls("save_draft").first)
+        let save = try XCTUnwrap(fake.recording.calls("saveDraft").first)
         XCTAssertEqual(save.path, .execute)
-        XCTAssertNil(save.args["draft_id"]?.stringValue)
+        XCTAssertNil(save.args["draftId"]?.stringValue)
         XCTAssertEqual(ComposerState.parse(save.args["payload"]?.stringValue ?? "")?.title, "Oct")
         XCTAssertEqual(model.draftId, "draft-1")
 
         let id = await model.publish()
         XCTAssertEqual(id, "post-new")
-        let input = try XCTUnwrap(fake.recording.calls("publish_update").first?.args["input"])
+        let input = try XCTUnwrap(fake.recording.calls("publishUpdate").first?.args["input"])
         XCTAssertEqual(input["title"]?.stringValue, "Oct")
         XCTAssertEqual(input["sections"]?.arrayValue?.count, 1)
         XCTAssertEqual(input["metrics"]?.arrayValue?.count, 0)
-        XCTAssertEqual(fake.recording.calls("delete_draft").first?.args["draft_id"]?.stringValue, "draft-1")
+        XCTAssertEqual(fake.recording.calls("deleteDraft").first?.args["draftId"]?.stringValue, "draft-1")
     }
 
     func testResumesADraft() async {
@@ -378,11 +378,11 @@ final class ComposerModelTests: XCTestCase {
         XCTAssertEqual(model.state?.title, "Sept")
         model.update { $0.title = "September" }
         try await Task.sleep(for: .milliseconds(50))
-        XCTAssertTrue(fake.recording.calls("save_draft").isEmpty)
+        XCTAssertTrue(fake.recording.calls("saveDraft").isEmpty)
         XCTAssertNil(model.draftStatus())
         let id = await model.publish()
         XCTAssertEqual(id, "p1")
-        XCTAssertEqual(fake.recording.calls("edit_update").first?.args["post_id"]?.stringValue, "p1")
+        XCTAssertEqual(fake.recording.calls("editUpdate").first?.args["postId"]?.stringValue, "p1")
     }
 
     func testReuseLatestAndThanks() async {
@@ -425,7 +425,7 @@ final class TabModelTests: XCTestCase {
         XCTAssertEqual(model.asks.map(\.id), ["a1"])
         await model.show(status: "resolved")
         XCTAssertEqual(model.asks.map(\.id), ["a2"])
-        XCTAssertEqual(fake.recording.calls("list_contributions").last?.args["since"]?.intValue, 0)
+        XCTAssertEqual(fake.recording.calls("listContributions").last?.args["since"]?.stringValue, "0")  // a u64 argument goes as a decimal string
     }
 
     func testQuestionsAskAndFilter() async {
@@ -437,9 +437,9 @@ final class TabModelTests: XCTestCase {
         XCTAssertEqual(model.shown.map(\.id), ["q1"])
         let id = await model.ask(title: " Runway? ", body: " after hires ")
         XCTAssertEqual(id, "q-new")
-        let call = fake.recording.calls("ask_question").first
+        let call = fake.recording.calls("askQuestion").first
         XCTAssertEqual(call?.args["title"]?.stringValue, "Runway?")
-        XCTAssertNil(call?.args["category_id"]?.stringValue)
+        XCTAssertNil(call?.args["categoryId"]?.stringValue)
         let none = await model.ask(title: "  ", body: "")
         XCTAssertNil(none)
     }
@@ -451,9 +451,9 @@ final class TabModelTests: XCTestCase {
         await model.load()
         XCTAssertEqual(model.team.map(\.account), [me])
         XCTAssertEqual(model.investors.map(\.account), [ana])
-        XCTAssertEqual(fake.recording.calls("get_engagement").count, 1)
+        XCTAssertEqual(fake.recording.calls("getEngagement").count, 1)
         await model.toggleTeam(model.investors[0])
-        XCTAssertEqual(fake.recording.calls("add_teammate").first?.args["account"]?.stringValue, ana)
+        XCTAssertEqual(fake.recording.calls("addTeammate").first?.args["account"]?.stringValue, ana)
         XCTAssertEqual(
             PeopleModel.engagementLine(fake.people[1], now: fixedNow),
             "Read 1/2 (50%) · last read Jan 1, 1970 · 0 replies · 0 offers")
@@ -469,12 +469,12 @@ final class TabModelTests: XCTestCase {
         model.companyName = " Acme Inc "
         let saved = await model.save()
         XCTAssertTrue(saved)
-        XCTAssertEqual(fake.recording.calls("set_settings").first?.args["company_name"]?.stringValue, "Acme Inc")
-        XCTAssertEqual(fake.recording.calls("set_settings").first?.args["cadence_days"]?.intValue, 14)
+        XCTAssertEqual(fake.recording.calls("setSettings").first?.args["companyName"]?.stringValue, "Acme Inc")
+        XCTAssertEqual(fake.recording.calls("setSettings").first?.args["cadenceDays"]?.intValue, 14)
         _ = await model.addStarters()
-        XCTAssertEqual(fake.recording.calls("create_category").count, 4)
+        XCTAssertEqual(fake.recording.calls("createCategory").count, 4)
         _ = await model.archiveCategory("c")
-        XCTAssertEqual(fake.recording.calls("archive_category").first?.args["category_id"]?.stringValue, "c")
+        XCTAssertEqual(fake.recording.calls("archiveCategory").first?.args["categoryId"]?.stringValue, "c")
     }
 
     func testNeverSavedSettingsOfferMonthly() async {
