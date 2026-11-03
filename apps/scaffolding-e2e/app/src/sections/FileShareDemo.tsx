@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from "react";
-import { getNodeUrl } from "../lib/mero";
+import { getNodeUrl } from "../lib/calimero";
 import * as api from "../api/kvStore";
 import { useAutoRefresh } from "../hooks/useAutoRefresh";
 import { SyncBar } from "../components/SyncBar";
@@ -91,8 +91,8 @@ export function FileShareDemo() {
       <div className="section-header">
         <h2 className="section-title">File Share Demo</h2>
         <p className="section-desc">
-          Upload a file from this node and watch its metadata replicate to every other node in the
-          context via CRDT. Any node can then download the blob from its own local store.
+          Upload a file to this instance&apos;s blob store and record it in the contract. Every member
+          sees the record at once and downloads the bytes from the instance, through any node.
         </p>
       </div>
 
@@ -109,7 +109,8 @@ export function FileShareDemo() {
         }}
       >
         <strong style={{ color: "var(--color-brand-600)" }}>How it works:</strong>{" "}
-        Upload on Node A → metadata syncs to Node B via CRDT → Node B downloads from its own blob store
+        <code>client.uploadBlob(app, bytes)</code> → <code>upload_file(name, blob_id, …)</code> records it →
+        another account lists it and calls <code>client.downloadBlob(app, id)</code>
       </div>
 
       <div className="method-card" style={{ marginBottom: 20 }}>
@@ -257,9 +258,8 @@ export function FileShareDemo() {
           lineHeight: 1.6,
         }}
       >
-        Open a second tab with{" "}
-        <code>?node=http://localhost:2529</code> to see this file appear and download
-        it from Node B's blob store.
+        Sign in as a second account in another browser profile (invite it from Setup) to see this
+        file appear and download it there.
       </div>
     </div>
   );

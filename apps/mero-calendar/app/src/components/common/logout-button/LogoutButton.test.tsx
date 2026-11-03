@@ -8,11 +8,15 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const logout = vi.fn();
+const logout = vi.fn(async () => {});
 
-vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  useMero: () => ({ logout }),
+vi.mock("../../../api/sessionContext", () => ({
+  useSessionApi: () => ({
+    api: {
+      session: { status: "signed-in", target: { kind: "local", nodes: ["http://127.0.0.1:2501"] } },
+      signOut: logout,
+    },
+  }),
 }));
 
 import LogoutButton from "./LogoutButton";
@@ -40,11 +44,11 @@ describe("LogoutButton", () => {
     expect(btn.textContent).toContain("Log out");
   });
 
-  it("clears the session through mero-react and lands on the landing page", () => {
+  it("signs out and lands on the landing page", async () => {
     renderAt("/teams/t/calendar/c");
     fireEvent.click(screen.getByTestId("logout-btn"));
     expect(logout).toHaveBeenCalledTimes(1);
-    expect(screen.getByText("landing")).toBeTruthy();
+    expect(await screen.findByText("landing")).toBeTruthy();
     expect(screen.queryByTestId("logout-btn")).toBeNull();
   });
 });

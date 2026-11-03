@@ -1,0 +1,233 @@
+[
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "initProject",
+  "args": {
+   "name": "Locked"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createSheet",
+  "args": {
+   "name": "S"
+  },
+  "save": "sid"
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "setCell",
+  "args": {
+   "sheetId": "$sid",
+   "rowId": "0",
+   "colId": "0",
+   "rawValue": "guest"
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "view",
+  "method": "listSheets",
+  "args": {},
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "call",
+  "method": "createSheet",
+  "args": {
+   "name": "X"
+  },
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "view",
+  "method": "listSheets",
+  "args": {},
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "call",
+  "method": "createSheet",
+  "args": {
+   "name": "X"
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "join",
+  "args": {
+   "nickname": "Bob"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "protectRange",
+  "args": {
+   "sheetId": "$sid",
+   "topRowId": "",
+   "leftColId": "",
+   "bottomRowId": "",
+   "rightColId": "",
+   "description": "",
+   "editors": []
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only an owner can manage protected ranges"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setRole",
+  "args": {
+   "memberId": "@bob",
+   "role": "owner"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only an owner can change roles"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "protectRange",
+  "args": {
+   "sheetId": "$sid",
+   "topRowId": "",
+   "leftColId": "",
+   "bottomRowId": "",
+   "rightColId": "",
+   "description": "Locked",
+   "editors": []
+  },
+  "save": "prot"
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setCell",
+  "args": {
+   "sheetId": "$sid",
+   "rowId": "1",
+   "colId": "1",
+   "rawValue": "x"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "B2 is in a protected range (\"Locked\")"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "deleteSheet",
+  "args": {
+   "sheetId": "$sid"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "this sheet is protected (\"Locked\")"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "removeProtection",
+  "args": {
+   "id": "$prot"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setCell",
+  "args": {
+   "sheetId": "$sid",
+   "rowId": "1",
+   "colId": "1",
+   "rawValue": "x"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "list_sheets",
+  "args": {},
+  "expect": {
+   "error": "UnknownMethod"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setCell",
+  "args": {
+   "sheet_id": "$sid",
+   "row_id": "0",
+   "col_id": "0",
+   "raw_value": "1"
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "setCell",
+  "args": {
+   "sheetId": "$sid",
+   "rowId": "0",
+   "colId": "0",
+   "rawValue": "1"
+  },
+  "expect": {
+   "error": "NotAView"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getActivity",
+  "args": {
+   "since": 0,
+   "limit": 1
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ }
+]

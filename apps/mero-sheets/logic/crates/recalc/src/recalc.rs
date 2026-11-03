@@ -1,6 +1,6 @@
 //! Pure recalculation engine: workbook inputs -> computed values.
 
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::formula;
 
@@ -79,10 +79,10 @@ pub fn sheet_closure<E>(
     env: &formula::Env,
     requested_sheet: &str,
     mut raw_values_of: impl FnMut(&str) -> Result<Vec<String>, E>,
-) -> Result<HashSet<String>, E> {
+) -> Result<BTreeSet<String>, E> {
     // BFS over the sheet reference graph from the requested sheet. The `closure`
     // set doubles as the visited set, so cross-sheet cycles terminate.
-    let mut closure: HashSet<String> = HashSet::new();
+    let mut closure: BTreeSet<String> = BTreeSet::new();
     closure.insert(requested_sheet.to_string());
     let mut queue: Vec<String> = vec![requested_sheet.to_string()];
     while let Some(sheet) = queue.pop() {
@@ -102,7 +102,7 @@ pub fn sheet_closure<E>(
 
 pub struct WorkbookInputs {
     pub cells: BTreeMap<CellRef, String>,
-    pub sheet_ids: HashSet<String>,
+    pub sheet_ids: BTreeSet<String>,
     /// The clock and named ranges formulas see.
     pub env: formula::Env,
 }
@@ -198,7 +198,7 @@ mod tests {
             .collect()
     }
 
-    fn closure_of(cells: &BTreeMap<CellRef, String>, sheet: &str) -> HashSet<String> {
+    fn closure_of(cells: &BTreeMap<CellRef, String>, sheet: &str) -> BTreeSet<String> {
         sheet_closure(&formula::Env::default(), sheet, |s| {
             Ok::<_, ()>(
                 cells

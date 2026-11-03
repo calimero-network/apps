@@ -1,200 +1,162 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import {
-  setContextId,
-  setContextIdentity,
-  getContextIdentity,
-  useMero,
-} from "@calimero-network/mero-react";
-import { useMyName } from "@calimero-apps/names";
 
-import { accountId, loadAccountId } from "../../api/identity";
-import { bindSession } from "../../api/session";
+import { bindCalendar } from "../../api/binding";
+import type { Owner } from "../../api/booking";
+import { readOrg } from "../../api/teams";
+import { useSignedIn } from "../../api/sessionContext";
+import { TeamScopeContext } from "../../api/teamScope";
 import { rememberCalendar } from "../../utils/lastVisit";
 import { ClientApiDataSource } from "../../api/dataSource/ClientApiDataSource";
 import Calendar from "../../components/calendar/Calendar";
 import UsernameModal from "../../components/common/modals/username-modal/UsernameModal";
 import BookingLinksModal from "../../components/common/modals/booking-links-modal/BookingLinksModal";
-import type { OwnerNode } from "../../api/accessGrants";
 
 import "../../common.scss";
-import { useActions, useModal, useSse } from "../../hooks";
+import { useActions, useAppEvents, useModal } from "../../hooks";
 
-// localStorage key for a per-context display name the user picked once.
-const nameKey = (ctx: string) => `mc-username-${ctx}`;
+/** The calendar username this browser last set in a calendar. */
+const nameKey = (app: string) => `mc-username-${app}`;
 
+/** How long a burst of events waits before one re-read. */
+const COALESCE_MS = 250;
+
+/** This frontend's base URL, where `/book` lives (relative builds run under a node's `/{version}/`). */
+function frontendBase(): string {
+  const { origin, pathname } = window.location;
+  const at = pathname.indexOf("/teams/");
+  return origin + (at >= 0 ? pathname.slice(0, at) : "");
+}
+
+/**
+ * One calendar: an app instance (v1: a context) in a team's org.
+ *
+ * What v1 had to do before the first read is gone: no context to join, no
+ * context identity to pick, no node session to bind. The page binds the
+ * signed-in client and the instance for the data layer, reads events and
+ * members, and follows the instance's event stream.
+ */
 export default function CalendarPage() {
   const navigate = useNavigate();
   const { teamId, contextId } = useParams<{ teamId: string; contextId: string }>();
+  const { client, accountId, passkey, after, targetKey } = useSignedIn();
   const { getEvents, getMembers } = useActions();
   const { openErrorModal } = useModal();
-  // `admin`, not `mero.admin`: the session-aware client. On an account its
-  // `getNodeIdentity` is the ACCOUNT and its `getContextIdentitiesOwned` is the
-  // account too — where the relay's own routes would name the relay.
-  const { admin, nodeUrl, mero, isDelegated } = useMero();
   const [ready, setReady] = useState(false);
   const [showBookingLinks, setShowBookingLinks] = useState(false);
   const [askUsername, setAskUsername] = useState(false);
-  const setupDone = useRef(false);
+  const [teamNames, setTeamNames] = useState<Map<string, string>>(new Map());
+  const setupFor = useRef<string | null>(null);
 
-  // Remember this calendar for the next open (utils/lastVisit). Not under the
-  // desktop's placeholder team `t` (see index.tsx), which names no real team.
   useEffect(() => {
-    if (teamId && teamId !== "t" && contextId) {
-      rememberCalendar(nodeUrl, teamId, contextId);
-    }
-  }, [nodeUrl, teamId, contextId]);
+    if (teamId && contextId) rememberCalendar(targetKey, teamId, contextId);
+  }, [targetKey, teamId, contextId]);
 
-  // ── Activate the context + identity, register a username, load data ─────────
-  // The rest of the data layer reads the *active* context from getContextId()
-  // and the executor from getContextIdentity(), so this is the one place that
-  // wires them up. Everything downstream (redux thunks, SSE) needs no contextId.
+  // The names members set on the team, for people with no calendar username.
+  useEffect(() => {
+    if (!teamId) return;
+    let live = true;
+    readOrg(client, teamId)
+      .then((org) => live && setTeamNames(org.names))
+      .catch(() => {})
+      .finally(after);
+    return () => {
+      live = false;
+    };
+  }, [client, teamId, after]);
+
   useEffect(() => {
     if (!contextId) {
-      // Back to the team's calendar picker when we know the team, since that is
-      // where a missing context is actually chosen; only a URL with no team at
-      // all sends you all the way out to the teams list.
       navigate(teamId ? `/teams/${teamId}` : "/teams");
       return;
     }
-    if (!admin) return; // the session is still connecting; run once it is
-    if (setupDone.current) return;
-    setupDone.current = true;
+    if (setupFor.current === contextId) return;
+    setupFor.current = contextId;
+    bindCalendar({ client, app: contextId, after });
 
     (async () => {
-      setContextId(contextId);
-      // The team keys an account's device-local private store (api/privateStore).
-      bindSession({ namespaceId: teamId ?? "" });
-
-      // Who we are, for the OWNERSHIP checks (Edit / Delete / view-only). This
-      // is the ACCOUNT and is a different value from the context signing key
-      // resolved just below — see api/identity for why conflating them silently
-      // hid Edit and Delete from every event's owner. Resolved before the
-      // calendar is revealed so the first render already knows what it owns.
-      await loadAccountId(admin);
-
-      // Resolve the public key this session owns in the context and make it the
-      // executor identity. Failure is non-fatal — fall back to whatever's stored.
-      try {
-        const res = (await admin.getContextIdentitiesOwned(contextId)) as
-          | { identities?: string[] }
-          | string[];
-        const ids = Array.isArray(res) ? res : (res.identities ?? []);
-        const pk = ids[0];
-        if (pk) setContextIdentity(pk);
-      } catch {
-        /* keep existing identity */
-      }
-
-      // Register a display name once per context so peers see a real name
-      // instead of a 44-char key. If we've never set one, prompt for it.
       const stored = localStorage.getItem(nameKey(contextId));
       if (stored) {
-        try {
-          await new ClientApiDataSource().setUsername(stored);
-        } catch {
-          /* best-effort */
-        }
+        // Best effort, and only when it differs: every rename is an event to
+        // everyone in the calendar.
+        const data = new ClientApiDataSource();
+        const mine = (await data.getMembers()).data?.find((m) => m.id === accountId);
+        if (mine?.username !== stored) await data.setUsername(stored);
       } else {
         setAskUsername(true);
       }
-
-      // Load events + members, then reveal the calendar.
       try {
         await Promise.all([getEvents(), getMembers()]);
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : "Failed to load calendar.";
+        const message = error instanceof Error ? error.message : "Failed to load calendar.";
         openErrorModal({ message, errorType: "appError" });
       }
       setReady(true);
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contextId, admin]);
+  }, [contextId, teamId, client, accountId, after, navigate, getEvents, getMembers, openErrorModal]);
 
-  // ── Live updates: re-fetch events + members on every context mutation ───────
-  // …and on every reconnect: whatever changed while the stream was down
-  // arrives as no event at all.
-  const refreshCalendar = () => {
-    getEvents();
-    getMembers();
-  };
-  useSse(contextId ?? null, refreshCalendar, refreshCalendar);
+  useEffect(() => () => bindCalendar({ app: "" }), []);
+
+  // Every event only means "read again": coalesce a burst into one read.
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refreshCalendar = useCallback(() => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      getEvents();
+      getMembers();
+    }, COALESCE_MS);
+  }, [getEvents, getMembers]);
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+  }, []);
+  useAppEvents(client, contextId ?? null, refreshCalendar, refreshCalendar);
 
   async function handleUsernameSubmit(name: string) {
     const trimmed = name.trim();
     if (trimmed && contextId) {
       localStorage.setItem(nameKey(contextId), trimmed);
-      try {
-        await new ClientApiDataSource().setUsername(trimmed);
-        getMembers();
-      } catch {
-        /* best-effort */
-      }
-      // And as this person's name on the team, so every calendar and every
-      // other app on it shows the name too. Best-effort: the calendar name
-      // above is already set either way.
-      if (trimmed !== myName.name) void myName.setName(trimmed).catch(() => {});
+      await new ClientApiDataSource().setUsername(trimmed);
+      getMembers();
     }
     setAskUsername(false);
   }
 
-  // Someone who already named themselves on the team is not asked again on
-  // every new calendar: the team name becomes their calendar username.
-  // One name per TEAM: asked for only when the team has none for you, and
-  // only once the team's names have loaded.
-  const myName = useMyName(admin, teamId, accountId());
-  const myTeamName = myName.name;
+  // A name already set on the team is used without asking.
+  const myTeamName = teamNames.get(accountId) ?? "";
   useEffect(() => {
     if (askUsername && myTeamName) void handleUsernameSubmit(myTeamName);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [askUsername, myTeamName]);
 
-  // Default a name suggestion: the team name, else the active identity (short
-  // pubkey).
-  const defaultName = (() => {
-    if (myTeamName) return myTeamName;
-    const pk = getContextIdentity() ?? "";
-    return pk ? `user-${pk.slice(0, 6)}` : "";
-  })();
+  const defaultName = myTeamName || (accountId ? `user-${accountId.slice(0, 6)}` : "");
 
-  // Booking links need this node: a link's guest calls it directly, under an
-  // access grant it issues. An account has no node of its own to issue one.
-  const ownerNode: OwnerNode | null =
-    !isDelegated && nodeUrl && mero && "getTokenData" in mero && admin
-      ? {
-          nodeUrl,
-          token: () => mero.getTokenData()?.access_token ?? null,
-          refresh: () => admin.getNodeIdentity(),
-        }
-      : null;
+  const owner: Owner | null = useMemo(
+    () => (contextId ? { client, app: contextId, passkey, after } : null),
+    [client, contextId, passkey, after],
+  );
+  const scope = useMemo(() => ({ names: teamNames }), [teamNames]);
 
   return (
-    <div data-testid="calendar-container">
-      {askUsername && myName.ready && !myTeamName && (
-        <UsernameModal
-          defaultName={defaultName}
-          onSubmit={handleUsernameSubmit}
-          onSkip={() => setAskUsername(false)}
-        />
-      )}
-      {ready && (
-        <Calendar
-          // One level up is the team's OTHER calendars, not the teams list. A
-          // team can hold several, so jumping straight out made switching
-          // between two calendars a two-step trip through an unrelated page.
-          onBack={teamId ? () => navigate(`/teams/${teamId}`) : undefined}
-          onOpenBookingLinks={ownerNode ? () => setShowBookingLinks(true) : undefined}
-        />
-      )}
-      {showBookingLinks && ownerNode && mero && contextId && (
-        <BookingLinksModal
-          node={ownerNode}
-          rpc={mero.rpc}
-          contextId={contextId}
-          onClose={() => setShowBookingLinks(false)}
-        />
-      )}
-    </div>
+    <TeamScopeContext.Provider value={scope}>
+      <div data-testid="calendar-container">
+        {askUsername && !myTeamName && (
+          <UsernameModal
+            defaultName={defaultName}
+            onSubmit={handleUsernameSubmit}
+            onSkip={() => setAskUsername(false)}
+          />
+        )}
+        {ready && (
+          <Calendar
+            onBack={teamId ? () => navigate(`/teams/${teamId}`) : undefined}
+            onOpenBookingLinks={owner ? () => setShowBookingLinks(true) : undefined}
+          />
+        )}
+        {showBookingLinks && owner && (
+          <BookingLinksModal owner={owner} base={frontendBase()} onClose={() => setShowBookingLinks(false)} />
+        )}
+      </div>
+    </TeamScopeContext.Provider>
   );
 }

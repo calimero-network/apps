@@ -1,73 +1,30 @@
 /**
- * Everything Mero Sign used to reach for in `@calimero-network/calimero-client`,
- * on mero-js instead.
+ * The signed-in session, for the services and data sources that are not React
+ * components (they never receive the client as a prop), plus the blob calls
+ * and the `{ data, error }` result shape the call sites branch on.
  *
- * ── Why the old SDK had to go entirely ──────────────────────────────────────
- *
- * Its provider ships a hardcoded connect screen ("Select your Calimero node
- * type to continue… Using default local node: http://node1.127.0.0.1.nip.io")
- * that no prop removes, and its `apiClient` still sends bodies core stopped
- * accepting — `protocol` on `createContext`, `executorPublicKey` on JSON-RPC.
- * Both are unknown fields against `deny_unknown_fields`, i.e. a 400 for the
- * whole call at rc.41.
- *
- * Keeping it "just for the data layer" was not an option either: the two SDKs
- * store the session in different places (mero-react writes the `mero-tokens`
- * blob, calimero-client writes `access_token`/`refresh_token`), so signing in
- * through one leaves the other signed out. It is one SDK or the other.
- *
- * ── What this module is ─────────────────────────────────────────────────────
- *
- * A thin, TYPED surface for the four node calls and two blob calls the app
- * actually made, so the call sites change an import rather than their logic.
- * It is deliberately not a general-purpose wrapper — anything new should call
- * `session.admin` directly.
+ * On Calimero 1.0 there is no node to log into: the frontend knows its
+ * cluster (merod local in dev, the Cloud cluster in production, see
+ * `@calimero-apps/connect`), the account is a passkey, and every agreement and
+ * the private signature library is an APP INSTANCE the account reaches. The
+ * session is registered once, from `SessionBridge` under the provider.
  */
-import type {
-  AdminApiClient,
-  ExecuteTransport,
+import {
+  AppError,
+  CalimeroError,
+  type CalimeroClient,
+  type PasskeyProvider,
 } from '@calimero-network/mero-js';
+import { describeError, type AppSource, type Target } from '@calimero-apps/connect';
 
-/**
- * What this app needs from a session: the admin API to write against and the
- * contract RPC. On a node both are the node's own client; on an account,
- * mero-react's account admin and the relay transport. See `useMero().admin`.
- */
-export interface SignClient {
-  admin: AdminApiClient;
-  rpc: ExecuteTransport;
-}
+import { MeroSignApp } from './meroSign';
 
-/** The session's {@link SignClient}, from `useMero()`'s `mero` and `admin`. */
-export function signClientOf(
-  mero: { readonly rpc: ExecuteTransport } | null,
-  admin: AdminApiClient | null,
-): SignClient | null {
-  return mero && admin ? { admin, rpc: mero.rpc } : null;
-}
-
-/**
- * The old SDK's result shape, kept because ~20 call sites branch on it.
- *
- * `{ data, error }` rather than throwing. Reproduced rather than replaced
- * because rewriting every `if (result.error)` into a try/catch is a large,
- * mechanical diff through code that signs documents, and this migration is
- * already changing the SDK underneath all of it.
- */
 export type ErrorResponse = { code?: number; message: string };
 
 /**
- * ⚠️ `ApiResponse<T>` IS ITSELF A PROMISE, and a discriminated union.
- *
- * Copied from the old SDK exactly (`ResponseData<D>` in
- * `lib/types/api-response.d.ts`), because ~20 call sites declare
- * `async foo(): ApiResponse<Bar>` — legal only because the alias already
- * includes `Promise`. Defining it as a plain object here produced 82 type
- * errors of the form "the return type of an async function must be the global
- * Promise<T>", which is the compiler noticing the same thing.
- *
- * The union is load-bearing too: `data` is `null` on the error arm, not
- * `undefined`, and call sites assign `{ data: null, error }` directly.
+ * `ApiResponse<T>` is itself a promise, and a discriminated union: `data` is
+ * `null` on the error arm. Kept from v1 because the services and screens
+ * branch on `result.error`.
  */
 export type ResponseData<D> =
   | { data: D; error?: null }
@@ -75,304 +32,142 @@ export type ResponseData<D> =
 
 export type ApiResponse<T> = Promise<ResponseData<T>>;
 
-/** Run a call and return the old SDK's `{data, error}` instead of throwing. */
-async function wrap<T>(run: () => Promise<T>): ApiResponse<T> {
+/** What a signed-in service needs. */
+export interface SignSession {
+  client: CalimeroClient;
+  accountId: string;
+  target: Target;
+  /** Where instances come from: the dev bundle, or the package in production. */
+  source: AppSource;
+  passkey: () => PasskeyProvider;
+  /** Run after each request: keeps the stored session current. */
+  after: () => void;
+}
+
+let current: SignSession | null = null;
+
+/** Called by `SessionBridge` whenever the session changes. */
+export function setSignSession(session: SignSession | null): void {
+  current = session;
+}
+
+/** The signed-in session; throws when there is none. */
+export function signSession(): SignSession {
+  if (!current) throw new Error('Sign in first.');
+  return current;
+}
+
+export function maybeSignSession(): SignSession | null {
+  return current;
+}
+
+/** The contract on one app instance (an agreement, or the private library). */
+export function meroSignApp(appId: string): MeroSignApp {
+  const s = signSession();
+  return new MeroSignApp(s.client, appId, s.after);
+}
+
+/**
+ * The blob routes of a component app answer `409 NOT_SUPPORTED` on core
+ * releases before component blobs (core#4815): the contract stores blob ids,
+ * but the node will not hold the bytes. Said in words the person can act on.
+ */
+export const BLOBS_UNSUPPORTED =
+  'This cluster cannot store files for Mero Sign yet: its Calimero release ' +
+  'predates blobs for component apps (core#4815). Documents and signature ' +
+  'images need a cluster on a newer release.';
+
+/** One line for the UI: the contract's own sentence where it gave one. */
+export function errorMessage(e: unknown): string {
+  if (e instanceof AppError) {
+    const message = e.fields?.message;
+    if (typeof message === 'string' && message) return message;
+    if (e.appCode === 'NotFound') {
+      const what = typeof e.fields?.what === 'string' ? e.fields.what : 'item';
+      return `That ${what} was not found.`;
+    }
+  }
+  if (e instanceof CalimeroError && e.code === 'NOT_SUPPORTED') {
+    return BLOBS_UNSUPPORTED;
+  }
+  return describeError(e);
+}
+
+/** Run a request and answer `{ data, error }` instead of throwing. */
+export async function wrap<T>(run: () => Promise<T>): ApiResponse<T> {
   try {
     return { data: await run(), error: null };
   } catch (e) {
-    // The HTTP status rides along as `code` (mero-js's `HTTPError.status`), so
-    // a caller that has to tell "the node refused" from "the node was not
-    // there" still can — see `api/invitationJoin`.
     const status = (e as { status?: unknown } | null)?.status;
     return {
       error: {
-        message: e instanceof Error ? e.message : String(e),
+        message: errorMessage(e),
         ...(typeof status === 'number' ? { code: status } : {}),
       },
     };
   }
 }
 
-export interface NodeApi {
-  getContext(contextId: string): ApiResponse<unknown>;
-  getContexts(): ApiResponse<unknown>;
-  getInstalledApplications(): ApiResponse<unknown>;
-  /**
-   * Join a namespace from an open invitation.
-   *
-   * ⚠️ The old `contextInviteByOpenInvitation` named a CONTEXT. Since the
-   * workspace/agreement model an invitation grants NAMESPACE membership and
-   * the agreement is reached by inheritance from there — which is how every
-   * other app in this repo works, and the only shape that lets one invitation
-   * cover more than a single document. See `lib/agreements`.
-   */
-  joinFromInvitation(
-    namespaceId: string,
-    invitation: unknown,
-  ): ApiResponse<JoinNamespaceResult>;
-  /**
-   * Mint an open invitation. Kept under its old name and argument order so the
-   * pages compile unchanged.
-   *
-   * ⚠️ The grant is NAMESPACE membership now, not membership of one context —
-   * the agreement is reached by inheritance from there. That is what lets a
-   * single invitation cover a workspace, and it is how every other app in this
-   * repo works. `validForBlocks` is accepted and ignored: core clamps an open
-   * invitation to 24 hours regardless.
-   */
-  contextInviteByOpenInvitation(
-    namespaceId: string,
-    executorPublicKey?: string,
-    validForBlocks?: number,
-  ): ApiResponse<ContextInviteByOpenInvitationResponse>;
-  /**
-   * Redeem one.
-   *
-   * ⚠️ NAMESPACE FIRST. The old signature was `(invitation, publicKey?)`,
-   * from when an invitation named a context and the node worked out the rest.
-   * `joinNamespace` takes the namespace in the PATH, so it has to be supplied
-   * — and it is not optional: the previous code sent `''` and the node has no
-   * namespace by that name.
-   */
-  joinContextByOpenInvitation(
-    namespaceId: string,
-    invitation: unknown,
-  ): ApiResponse<JoinNamespaceResult>;
-  /** This node's identity. */
-  createNewIdentity(): ApiResponse<NodeIdentity>;
-}
-
-/** An open invitation, as minted by the node and carried in a link. */
-export interface SignedOpenInvitation {
-  invitation?: unknown;
-  inviterSignature?: string;
-  [k: string]: unknown;
-}
-
-/** The node's own identity, as the invitation flow reads it. */
-export interface NodeIdentity {
-  accountId?: string;
-  publicKey?: string;
-}
-
-/** What joining a namespace resolves to. */
-export interface JoinContextResponse {
-  contextId?: string;
-  memberPublicKey?: string;
-}
-
-/**
- * What `joinNamespace` ACTUALLY answers.
- *
- * ⚠️ THERE IS NO `contextId` IN IT, and that is the shape of the whole
- * invitation flow. Joining a namespace makes you a member of the workspace; it
- * does not put you in any of its agreements — those are subgroups, and you
- * enter one by inheritance afterwards (`enterAgreement` in `lib/agreements`).
- * Code that reads `contextId` off this response gets `undefined` and reports
- * "the node accepted the invitation but did not say which context it joined",
- * which is true and is not the node's fault.
- */
-export interface JoinNamespaceResult {
-  namespaceId: string;
-  groupId?: string;
-  memberIdentity: string;
-  memberAccount: string;
-  groupName?: string;
-}
-
-/** What the old `contextInviteByOpenInvitation` resolved to. */
-export interface ContextInviteByOpenInvitationResponse {
-  contextId?: string;
-  memberPublicKey?: string;
-}
-
-export function nodeApi(session: SignClient): NodeApi {
-  return {
-    getContext: (contextId) => wrap(() => session.admin.getContext(contextId)),
-    getContexts: () => wrap(() => session.admin.getContexts()),
-    getInstalledApplications: () =>
-      wrap(() => session.admin.listApplications()),
-    joinFromInvitation: join,
-    contextInviteByOpenInvitation: (namespaceId) =>
-      wrap(async () => {
-        const res = await session.admin.createNamespaceInvitation(
-          namespaceId,
-          {},
-        );
-        return res as ContextInviteByOpenInvitationResponse;
-      }),
-    joinContextByOpenInvitation: (namespaceId, invitation) =>
-      wrap(async () => join_(namespaceId, invitation)),
-    createNewIdentity: () =>
-      wrap(async () => {
-        const id = await session.admin.getNodeIdentity();
-        return { accountId: id?.accountId, publicKey: id?.publicKey };
-      }),
-  };
-
-  function join(namespaceId: string, invitation: unknown) {
-    return wrap(() => join_(namespaceId, invitation));
-  }
-
-  /**
-   * ⚠️ THE INVITATION IS A FIELD, NOT THE BODY. `JoinNamespaceRequest` is
-   * `{invitation, groupName?}`, and every core request body is
-   * `deny_unknown_fields` — so posting the bare `SignedGroupOpenInvitation`
-   * sends `{invitation: {...}, inviter_signature: ...}` at the top level, which
-   * is a 400 naming `inviter_signature` for the whole call. The two are easy to
-   * confuse because the signed object has a field of its own called
-   * `invitation`.
-   */
-  async function join_(
-    namespaceId: string,
-    invitation: unknown,
-  ): Promise<JoinNamespaceResult> {
-    const res = await session.admin.joinNamespace(namespaceId, {
-      invitation: invitation as Parameters<
-        AdminApiClient['joinNamespace']
-      >[1]['invitation'],
-    });
-    return res as JoinNamespaceResult;
-  }
-}
+// ── blobs ────────────────────────────────────────────────────────────────────
 
 export interface BlobApi {
   /**
-   * @param contextId announce the blob to this context, so peers can fetch it.
-   *   ⚠️ REQUIRED, and not only in practice. On a node a blob uploaded
-   *   without one is reachable only on the node that stored it, which reads
-   *   as "the document uploaded fine and the other signer cannot open it".
-   *   Through a relay an ACCOUNT's blob request without a context is refused
-   *   outright (400): the relay scopes blobs to a context the account is a
-   *   member of. `''` was being sent from two screens; it is refused here,
-   *   in words, before it reaches the wire.
+   * Stores `file` in app instance `appId` (`POST /apps/{app}/blobs`) and
+   * answers its id as 64 lowercase hex digits, the form the contract takes.
    */
   uploadBlob(
     file: Blob,
     onProgress: ((pct: number) => void) | undefined,
-    contextId: string,
+    appId: string,
   ): ApiResponse<{ blobId: string; size: number }>;
-  /**
-   * Resolves to the BYTES, not a `{data, error}` envelope — the call sites hand
-   * the result straight to `new Blob([...])`. The old client behaved the same
-   * way and the difference is invisible until a PDF renders as `[object
-   * Object]`.
-   */
-  downloadBlob(blobId: string, contextId: string): Promise<Blob>;
+  /** The bytes of blob `blobId` in app instance `appId`. */
+  downloadBlob(blobId: string, appId: string): Promise<Blob>;
 }
 
-/** The sentence a blob call without a context fails with. */
+/** The sentence a blob call without an instance fails with. */
 export const BLOB_NEEDS_CONTEXT =
-  'A blob belongs to a context, and none was given. For a signature that is ' +
-  'your private store; for a document it is the agreement.';
+  'A file belongs to an agreement or to your signature library, and none ' +
+  'was given.';
 
-function requireContext(contextId: string | null | undefined): string {
-  const id = (contextId ?? '').trim();
+function requireApp(appId: string | null | undefined): string {
+  const id = (appId ?? '').trim();
   if (!id) throw new Error(BLOB_NEEDS_CONTEXT);
   return id;
 }
 
-export function blobApi(session: SignClient): BlobApi {
-  return {
-    async uploadBlob(file, onProgress, contextId) {
-      // mero-js streams the body and reports no progress events. The callback
-      // is kept in the signature so call sites are unchanged, and driven to
-      // 100% on completion rather than faked mid-flight — a progress bar that
-      // invents intermediate values is worse than one that jumps.
-      const res = await wrap(async () =>
-        session.admin.uploadBlob({
-          data: file,
-          contextId: requireContext(contextId),
-        }),
-      );
-      if (res.data) onProgress?.(100);
-      return res as Awaited<ApiResponse<{ blobId: string; size: number }>>;
-    },
-    // A Blob, not the raw ArrayBuffer: every call site hands the result
-    // straight to `FileReader.readAsDataURL`, which needs one. Returning the
-    // buffer type-checks in some positions and renders a PDF as
-    // `[object Object]`.
-    downloadBlob: async (blobId, contextId) =>
-      new Blob([
-        await session.admin.getBlob(blobId, {
-          contextId: requireContext(contextId),
-        }),
-      ]),
-  };
-}
-
-// ── The module-level singletons the old SDK exported ────────────────────────
-//
-// `apiClient` and `blobClient` are reached from services and data sources that
-// are not React components and never receive a `mero` instance — so the shape
-// is preserved and the instance is registered once, from inside the provider.
-//
-// ⚠️ It throws rather than returning an error when unset. A null client that
-// answers `{error}` is indistinguishable from a node that refused, and this
-// app has already shipped one failure that read as the other.
-
-let instance: SignClient | null = null;
-
-/** Called once, from under `MeroProvider`. See `lib/MeroBridge`. */
-export function setMeroInstance(mero: SignClient | null): void {
-  instance = mero;
-}
-
-function required(): SignClient {
-  if (!instance) {
-    throw new Error(
-      'No node connection yet. This call ran before the app finished connecting.',
-    );
-  }
-  return instance;
-}
-
-export const apiClient = {
-  node: (): NodeApi => nodeApi(required()),
-};
-
-/**
- * `session.admin`, for the code that needs the real namespace/subgroup surface
- * rather than the six-method shim above.
- *
- * The shim exists so ~20 call sites through the signing path did not have to
- * change when the SDK did. The workspace model is new code and has no such
- * debt, so it calls the SDK directly — see the note at the top of this file.
- */
-export function adminApi(): AdminApiClient {
-  return required().admin;
-}
-
-/**
- * The live mero-js instance, for the generated contract client.
- *
- * `lib/signClient` needs the whole SDK rather than `admin` alone, because a
- * generated client issues JSON-RPC. Throws rather than returning null for the
- * reason at the top of this section: a null client that answers `{error}` is
- * indistinguishable from a node that refused.
- */
-export function meroInstance(): SignClient {
-  return required();
-}
-
 export const blobClient: BlobApi = {
-  uploadBlob: (file, onProgress, contextId) =>
-    blobApi(required()).uploadBlob(file, onProgress, contextId),
-  downloadBlob: (blobId, contextId) =>
-    blobApi(required()).downloadBlob(blobId, contextId),
+  async uploadBlob(file, onProgress, appId) {
+    const res = await wrap(async () => {
+      const s = signSession();
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      try {
+        const up = await s.client.uploadBlob(requireApp(appId), bytes);
+        return { blobId: up.id.toLowerCase(), size: up.size };
+      } finally {
+        s.after();
+      }
+    });
+    // mero-js reports no progress events: 100% on completion, nothing invented.
+    if (res.data) onProgress?.(100);
+    return res;
+  },
+  async downloadBlob(blobId, appId) {
+    const s = signSession();
+    try {
+      const bytes = await s.client.downloadBlob(requireApp(appId), blobId);
+      return new Blob([bytes as BlobPart]);
+    } catch (e) {
+      throw new Error(errorMessage(e));
+    } finally {
+      s.after();
+    }
+  },
 };
 
-// ── Session accessors ───────────────────────────────────────────────────────
-//
-// The old SDK kept the "current" context and executor in `localStorage` and
-// exported these four. Reproduced verbatim, under the SAME keys, so a person
-// who was mid-session when this shipped is not silently logged out of their
-// last agreement.
+// ── the open agreement ───────────────────────────────────────────────────────
 
-const CONTEXT_ID_KEY = 'context-id';
-const EXECUTOR_KEY = 'executor-public-key';
+const AGREEMENT_KEY = 'agreementContextID';
 
-/** A read that cannot throw: storage is blocked outright in some browsers. */
 function read(key: string): string | null {
   try {
     return localStorage.getItem(key);
@@ -380,43 +175,15 @@ function read(key: string): string | null {
     return null;
   }
 }
-function write(key: string, value: string): void {
+
+/** The agreement (app instance) this browser has open. */
+export const getContextId = (): string | null => read(AGREEMENT_KEY);
+export const setContextId = (contextId: string): void => {
   try {
-    localStorage.setItem(key, value);
+    localStorage.setItem(AGREEMENT_KEY, contextId);
   } catch {
-    /* a private window is not a reason to fail a call */
+    /* remembered for this page only */
   }
-}
+};
 
-export const getContextId = (): string | null => read(CONTEXT_ID_KEY);
-export const setContextId = (contextId: string): void =>
-  write(CONTEXT_ID_KEY, contextId);
-export const getExecutorPublicKey = (): string | null => read(EXECUTOR_KEY);
-export const setExecutorPublicKey = (key: string): void =>
-  write(EXECUTOR_KEY, key);
-
-// ── There is no JSON-RPC shim here any more ─────────────────────────────────
-//
-// This block held `rpcClient`, `RpcQueryParams`, `RpcResult`, `RpcConfig`,
-// `getAuthConfig`, `getContextSpecificAuthConfig` and `getAppEndpointKey` — a
-// reimplementation of the OLD SDK's surface on top of mero-js, kept so that
-// `ClientApiDataSource`'s ~1,500 lines of hand-written RPC did not have to
-// change when the SDK did.
-//
-// It has no callers left. Every contract call goes through the generated
-// `MeroSignClient`, which is where the method names and argument shapes come
-// from the ABI rather than from strings in this repo. The shim's own comments
-// recorded what it was papering over — `executorPublicKey` accepted and
-// silently dropped, an envelope re-wrapped as `{result:{output}}` because the
-// call sites unwrapped it that way — and all of that goes with it.
-//
-// ⚠️ `getAppEndpointKey` went too, and it was not merely unused: it had been
-// reduced to `return null`, and the app header still called it to show which node
-// the session was on. That readout had been blank ever since. The URL lives on
-// `useMero().nodeUrl`.
-
-/**
- * Re-exported so the two components that imported `useCalimero` from the SDK
- * keep one import line. The implementation is `lib/useCalimero`, on mero-react.
- */
 export { useCalimero } from './useCalimero';

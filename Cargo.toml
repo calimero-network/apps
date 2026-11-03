@@ -63,6 +63,16 @@ exclude = [
   "apps/mero-design/logic",
   "apps/mero-crm/logic",
   "apps/conformance/logic",
+  "apps/scaffolding-e2e/logic",
+  "apps/mero-sign/logic",
+  "apps/battleships/logic",
+  "apps/battleships/logic/crates/rules",
+  "apps/mero-sheets/logic",
+  "apps/mero-sheets/logic/crates/recalc",
+  "apps/mero-sheets/logic/crates/recalc-wasm",
+  "apps/mero-sheets/logic/crates/types",
+  "apps/mero-calendar/logic",
+  "apps/mero-chat/logic",
   "apps/merraria/logic",
 ]
 

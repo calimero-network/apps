@@ -15,6 +15,7 @@ const APPS = path.resolve(__dirname, "../../../..");
 const FROZEN_V1: Record<string, string> = {
   "mero-vote": path.join(__dirname, "../fixtures/abi/mero-vote-v1.json"),
   "mero-updates": path.join(__dirname, "../fixtures/abi/mero-updates-v1.json"),
+  "mero-chat": path.join(__dirname, "../fixtures/abi/mero-chat-v1.json"),
 };
 const abiOf = (app: string) =>
   JSON.parse(readFileSync(FROZEN_V1[app] ?? path.join(APPS, app, "logic/res/abi.json"), "utf8")) as Abi;

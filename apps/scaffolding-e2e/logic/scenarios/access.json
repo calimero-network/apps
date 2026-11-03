@@ -1,0 +1,212 @@
+[
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "set",
+  "args": {
+   "key": "g",
+   "value": "guest"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "get",
+  "args": {
+   "key": "g"
+  },
+  "expect": {
+   "ok": "guest"
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "view",
+  "method": "get",
+  "args": {
+   "key": "g"
+  },
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "call",
+  "method": "clear",
+  "args": {},
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "view",
+  "method": "get",
+  "args": {
+   "key": "g"
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "call",
+  "method": "set",
+  "args": {
+   "key": "m",
+   "value": "v"
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "set",
+  "args": {
+   "key": "g"
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "set",
+  "args": {
+   "key": "g",
+   "value": "v",
+   "extra": true
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "pushMetric",
+  "args": {
+   "value": 5
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "setUserSimple",
+  "args": {
+   "value": "guest profile"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getUserSimpleFor",
+  "args": {
+   "accountHex": "@gus"
+  },
+  "expect": {
+   "ok": "guest profile"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "sharedSet",
+  "args": {
+   "value": "x"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "ownedSet",
+  "args": {
+   "value": "x"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "aclGrantAdmin",
+  "args": {
+   "accountHex": "@bob"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "aclGrantAdmin",
+  "args": {
+   "accountHex": "@mallory"
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "wsInit",
+  "args": {
+   "name": "w"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "wsPong",
+  "args": {
+   "fromContext": "x"
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "op": "removeMember",
+  "args": "bob"
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "get",
+  "args": {
+   "key": "g"
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "len",
+  "args": {},
+  "expect": {
+   "ok": "1"
+  }
+ }
+]

@@ -1,159 +1,153 @@
 # Mero Calendar
 
-A collaborative, peer-to-peer calendar built on the [Calimero](https://calimero.network)
-network. Shared team calendars and truly private events — your schedule lives on
-your own nodes, shared only with the people you invite.
+Shared team calendars, private events and booking links on
+[Calimero](https://calimero.network) 1.0. The contract is on core's
+**component SDK** (`calimero-app-sdk`, a `calimero:app` WebAssembly component on
+the node's wasmtime runtime), developed on **`merod local`**, with a frontend on
+mero-js's **`CalimeroClient`** that talks to a **Calimero Cloud** cluster in
+production and to the local nodes in development.
 
-- **Teams = namespaces.** A team is a Calimero namespace; everyone in the team
-  shares **one** calendar context. Invite teammates with a code, and events sync
-  P2P between your nodes.
-- **Shared events** are owner-gated for writes: only an event's owner can edit
-  or delete it, and every node enforces that. The calendar view lists only the
-  events you own or were invited to (as a peer), but that is a filter, not
-  privacy: every shared event replicates to every member of the team context,
-  and any member can read it from their own node. Anything confidential belongs
-  in a private event.
-- **Private events** use the SDK's `#[app::private]` node-local storage — they
-  live only on your node and are **never** replicated to anyone else.
-- **Display names**, light/dark themes, and a refreshed, accessible color palette
-  for events.
+- **Teams are organizations.** A team is a Calimero org; the people in it are
+  exactly the people you invited. A team holds any number of calendars, each an
+  instance of this app in the org, which every member reaches.
+- **Shared events** have invitees. Only an event's owner can edit or delete it,
+  and only its owner and its invitees can read it: the contract answers nobody
+  else.
+- **Private events** have nobody else in them. They are the owner's own rows:
+  every method that reads them reads only the caller's. An event created with no
+  invitees is private; naming its first invitee later makes it shared (same id).
+  Sharing is one-way: removing every invitee does not make it private again.
+- **Booking links**: a link someone with no account opens to book one meeting
+  with you, then reschedule or cancel it. Its token is an API key of your
+  account limited to this calendar and the five booking methods; the meeting
+  lands in your calendar as a private event.
+- **Display names** per calendar, light/dark themes, and an accessible palette.
+
+```
+apps/mero-calendar/
+├── logic/                   a standalone crate (own [workspace] + Cargo.lock)
+│   ├── src/lib.rs           state, methods, events, errors
+│   ├── src/booking.rs       booking links: types, validation, slots, time parsing
+│   ├── tests/harness.rs     TestApp: the built component on core's real engine
+│   ├── tests/scenarios.rs   every scenarios/*.json in the harness
+│   ├── scenarios/           logic, members, private-events, private-routing, booking, access
+│   └── res/abi.json         the component's ABI (committed, diffed in CI)
+├── app/                     Vite + React; @calimero-apps/connect + mero-js CalimeroClient
+└── mobile/                  native iOS / Android apps; their move to Calimero 1.0 is #682, which follows this port
+```
+
+See [docs/COMPONENT-APPS.md](../../docs/COMPONENT-APPS.md) for how component
+apps are built, run and tested in this repo.
+
+## Run it
+
+```bash
+pnpm install                     # once, at the repo root
+rustup target add wasm32-wasip2  # once
+pnpm dev:local mero-calendar     # merod local + build + deploy + http://localhost:5173/
+```
+
+`merod` at the pinned core release must be on the `PATH` (or in `MEROD_BIN`);
+`pnpm dev:local` prints how to get it when it is missing. In the browser,
+**create an account** (a passkey), **create a team**, a **calendar** in it, and
+events. **Invite** from a team's menu: a second browser profile with its own
+passkey and the invitation link is a second member. **Booking links** are in the
+calendar's sidebar; open one in a private window to book as a guest.
+
+## Test it
+
+| | what it covers | needs a node |
+|---|---|---|
+| `cargo test --manifest-path apps/mero-calendar/logic/Cargo.toml` | v1's `TestHost` tests method for method; v1's storage write rules as method checks (forged owners, another account's private rows, a peer editing an owner's event); booking through an API key acting for its owner; access and wire checks; the booking slot rules (unit tests in `src/booking.rs`); every `scenarios/*.json`, on core's wasmtime engine | no |
+| `pnpm -F mero-calendar test` | the methods the UI calls are exactly the committed ABI's, with its parameter names; the adapter's conversions and messages; booking links (API key + record); the booking page; teams, calendars and invitations (mocked client); member names | no |
+| `pnpm merod-local e2e mero-calendar` | every `scenarios/*.json` on `merod local`: real accounts with passkeys, an org per scenario, each account on a different node, event streams | yes |
+
+The scenarios are the six merobox workflows, ported: `logic.json`
+(`logic-test.yml`), `members.json` (`e2e.yml` and `integration-setup.yml`),
+`private-events.json`, `private-routing.json` and `booking.json`. Joins, syncs
+and waits are gone (one log, nothing to replicate); what they asserted about
+leaks is now asserted about access: another account's private event is
+`NotFound` to it, a peer's edit is `Forbidden`. A bookable slot depends on the
+cluster's clock, which a scenario cannot set, so booking, rescheduling and
+cancelling a slot are in the harness; `booking.json` covers the rest of the
+link's life. `access.json` adds what merobox could not express: anonymous
+callers and accounts outside the org refused, a guest's own calendar, a removed
+member, typed errors, malformed arguments.
+
+## What changed in the port, and why
+
+Every change a client sees:
+
+| | v1 (`calimero-sdk`, merobox, mero-react) | now |
+|---|---|---|
+| methods | `get_events`, `create_event`, … | the same methods, camelCase on the wire (`getEvents`, `createEvent`, …), arguments too (`eventData`, `eventId`, `linkId`, `fromMs`, …) |
+| `timestamp` arguments | `set_username`, `create_event`, `create_private_event`, `update_event`, `update_private_event` took the client's clock | gone: the app's log is the clock (`env::time_now()`); v1 needed the client clock only for its last-writer-wins merges |
+| ids | event ids base64 of 16 random bytes; members a 64-hex `UserId` | event ids from the log (`env::unique_id()`, e.g. `1.4.0`); accounts are the node's account ids, as strings |
+| shared events | an `Authored<IndexedMap>` every member's node held; `get_events` was only a view filter | a `Table` (index `byOwner`) with peers beside it and an invitations set; `getEvents` answers only the caller's own and invited events, and nobody else can read them at all |
+| private events | `#[app::private]` storage on the owner's node, never replicated; on an account (relay) kept in the browser instead | per-owner rows in the app's state on the cluster (sealed, on attested nodes), read only by the owner's own calls, for every session. They are no longer node-local, and whoever may upgrade the app (the org's owner, or a holder of `MANAGE_APPLICATION`) could install code that reads them |
+| members | `UserStorage<Member>` with an LWW clock | a map keyed by account; `setUsername` writes only the caller's row |
+| events (notifications) | `CalendarEventCreated(id)` … as tuple payloads, to every node | the same names with named fields (`{ id }`, `{ account }`); a shared event's go to its owner and its peers (before and after the change), member events to everyone the app reaches (guests included); private events emit none, as before |
+| errors | `{ kind, data }` with `NotFound(key)`, `Forbidden`, and strings | typed: `NotFound { id }`, `Forbidden`, `Invalid { message }` (v1's message), `LinkExists`, `AlreadyBooked`, `LinkCancelled`, `LinkExpired`, `NotBooked`, `SlotUnavailable`; the frontend shows v1's messages |
+| 64-bit numbers | JSON numbers | decimal strings (`"1783296000000"`): `joinedAt`, `usernameUpdatedAt`, every `…Ms` field, `getAvailableSlots`' answer, and `fromMs` / `toMs` / `startMs` / `expiresAtMs` arguments. The frontend converts them back |
+| lists | every entry | a page: `getEvents` (1,000 owned + 1,000 invited), `getPrivateEvents`, `getMembers`, `listBookingLinks` (1,000 each) |
+| booking links | the token is a node access grant; the guest calls the owner's node's `/grant-calls`; the link names the node | the token is a core API key of the owner's account (`createApiKey`, a passkey step-up) limited to this calendar and the five guest methods; the guest's browser calls the cluster with it; the link is `/book#a=<calendar>&t=<key>`. A link without an expiry ends with its key, after a year at most |
+| booking slots | computed at the node's current time | `bookSlot` / `rescheduleBooking` check at the time they are logged, as before; `getAvailableSlots` and `getBookingPage` are views, whose clock is the time of the app's last logged run, so near "now" they can offer a slot `bookSlot` then refuses (`SlotUnavailable`) |
+| peers | any `UserId` | 1 to 100 account ids of at most 256 bytes, de-duplicated, order kept |
+| guests (org role) | no such role | an org guest reaches the app and keeps a calendar of its own, as any v1 context member could |
+| teams | a namespace of this app, one subgroup + context per calendar, names in group/context metadata | an org (`createOrg`, members may create calendars and invite), calendars are app instances (`createApp(name, …, { org })`) carrying their names; orgs are the platform's teams, so one made in another 1.0 app is listed and can hold calendars |
+| team roles | core `Admin` / `Member` + a capability mask | org roles: the owner deletes the team, owner and admins manage members and delete calendars, a calendar's creator deletes it too; anyone else leaves the team |
+| invitations | a signed namespace invitation in a deflate+base58 link, a confirm dialog, desktop deep links | an org invite token in `?invite=` (a passkey step-up to make), redeemed after sign-in |
+| sign-in | a node login or a Calimero account (wallet), `MeroProvider` | passkeys through `@calimero-apps/connect`: local nodes in dev, the Cloud cluster in production |
+| live updates | SSE on the context, join-sync banners | the app's event stream (`client.events`); nothing to join or sync |
+| migrations | none in this app | none (the component SDK has no migrations yet) |
+
+Removed: the merobox workflows (`logic/workflows/`), v1's `TestHost` tests and
+`res/state-schema.json`, `src/types/id.rs`, the Makefile and `scripts/`
+(merod-in-Docker dev nodes, invites, workflow runner), the Playwright suites
+(mocked, integration, journey, screenshots) that drove merobox or merod 0.x,
+mero-react / mero-platform, the access-grant client, the desktop SSO hand-off,
+the v1 invitation codec and prompt, the device-local private store, the
+application-id resolver and the namespace/context admin helpers.
+`app/e2e/marketing-landing.spec.ts` stays: `scripts/landing` generates it for
+every app.
+
+## Production
+
+`vite build` connects to a Calimero Cloud cluster by name, and refuses to start
+without two variables set where the bundle's frontend is built:
+
+```
+VITE_CALIMERO_CLUSTER=<cluster name in the cloud's node directory>
+VITE_CALIMERO_MIN_RELEASE=<lowest mero-tee release a node may run>
+```
+
+The production frontend is the one **packed into the `.mpk`** (`frontend-dir`),
+which the cluster serves from the package's own origin: a Cloud node trusts
+passkey ceremonies only from its own origins and from frontends it serves from a
+bundle, so a copy on another origin cannot sign in. Instances are created from
+the package (`com.calimero.mero-calendar`). The `frontend` link in
+`logic/Cargo.toml` and the Vercel project (`app/vercel.json`) stay as the
+listing's link; they are not where people sign in.
+
+```bash
+pnpm -F mero-calendar build
+cargo run --release --manifest-path tools/component-bundle/Cargo.toml -- \
+  bundle apps/mero-calendar/logic --key <production key> --app-version <x.y.z>
+```
+
+⚠️ Known gap: mero-js checks a Cloud node's release against
+`cloud.calimero.network` mirrors, which the served page's CSP does not list
+(docs/COMPONENT-APPS.md, "What the component SDK does not have yet").
+
+## Theme and Log out
+
 - **Light by default.** The sun/moon toggle in every signed-in top bar (and on
   the landing page) switches to dark; the choice is kept in `localStorage`
   under `mc-theme` (`app/src/providers/ThemeProvider`), and an inline script in
-  `app/index.html` applies it before the first paint. **Log out** ends each
-  top bar (`app/src/components/common/logout-button/LogoutButton.tsx`): it
-  calls mero-react's `logout()` and returns to the landing page.
-
-## Booking links
-
-Calendly-style booking for people with no account. From a calendar, **Booking
-links** makes a link with a length, weekly hours, how far ahead and how soon
-someone may book. Whoever opens it (`/book#…`) sees the open times in their own
-time zone, books **one** meeting, and can later reschedule or cancel it with the
-same link. A cancelled link is spent.
-
-- **The key is a core access grant.** Making a link issues one
-  (`POST /admin-api/contexts/:id/grants`) naming only the five guest methods
-  (`get_booking_page`, `get_available_slots`, `book_slot`,
-  `reschedule_booking`, `cancel_booking`). The guest calls the node's public
-  `POST /admin-api/contexts/:id/grant-calls` with the token and reaches nothing
-  else in the calendar. Deleting the link revokes the grant.
-- **Everything lives on the owner's node, privately.** Links, guests' names and
-  emails, and the booked meetings are `#[app::private]` state and never
-  replicate; a booking shows up as a private event in the owner's calendar.
-  The contract keys a link by the SHA-256 of its token and keeps no secret.
-- **Your node must be reachable from the guest's browser**, at the URL you are
-  connected to, and its CORS must allow this app's origin. An account session
-  (no node of its own) cannot make booking links.
-- **Weekly hours use the UTC offset your browser has when you make the link.**
-  A daylight-saving change shifts them by an hour until the link is re-made.
-
-## Architecture
-
-| Layer | Path | Stack |
-|-------|------|-------|
-| Contract ("logic") | `logic/` | Rust → WASM, `calimero-sdk` / `calimero-storage` `0.11.0-rc.25` |
-| Frontend ("app") | `app/` | React 19 + Vite 6, `@calimero-network/mero-react` + `mero-js` + `mero-ui` |
-
-The contract keeps shared events in synced CRDT state (an owner-stamped
-`Authored<IndexedMap>`, indexed by owner and peers), members + usernames in
-per-account `UserStorage` slots, and private events in node-local
-`#[app::private]` storage. The frontend talks to a node over JSON-RPC (`execute`) and subscribes to
-state changes over SSE.
-
-## Prerequisites
-
-- Rust + `wasm32-unknown-unknown` target (pinned by `logic/rust-toolchain.toml`)
-- [`cargo-mero`](https://github.com/calimero-network/core/tree/master/tools/cargo-mero),
-  pinned to the same core tag as the SDK — the ABI emitter is versioned with core:
-  ```bash
-  cargo install --git https://github.com/calimero-network/core --tag 0.11.0-rc.25 cargo-mero
-  ```
-- Node 20+ and `pnpm`
-- A local [`merod`](https://github.com/calimero-network/core) node for development
-- `merobox` + Docker for the workflow/integration tests (optional)
-
-## Quick start
-
-```bash
-# Build the contract and install frontend deps
-make setup
-
-# Start a local node (builds the WASM, installs the app, creates a team calendar)
-make dev-node
-
-# Run the frontend (http://localhost:5174)
-make frontend
-```
-
-Or the full two-node P2P stack in one shot:
-
-```bash
-make dev          # node1 + node2 + invite + frontend
-```
-
-Open the app, connect your node, create or join a team, and start scheduling.
-
-## Build
-
-```bash
-make logic-build     # logic/src → logic/res/{mero_calendar.wasm,abi.json,state-schema.json}
-make app-build       # frontend → app/dist
-make build           # both
-make bundle          # dev-signed .mpk → logic/dist/ (fine locally, refused by the registry)
-make bundle-release  # publishable .mpk, signed with $MERO_SIGN_KEY_FILE
-make publish         # push a built .mpk to the App Registry (needs $CALIMERO_API_KEY)
-```
-
-`cargo mero` reads the bundle manifest — package, slug, icon, tags, links,
-`minRuntimeVersion` — straight out of `[package.metadata.calimero]` in
-`logic/Cargo.toml`; there is no hand-written `manifest.json` to keep in sync.
-The release version is not taken from that file either: `--bump patch` asks the
-registry for the highest published `appVersion` and increments it.
-
-## Test
-
-```bash
-make logic-test-rust   # Rust unit tests (cargo test)
-make unit              # frontend unit tests (vitest), incl. ThemeProvider and LogoutButton
-make e2e               # Playwright mocked e2e (no node needed), incl. theme.spec.ts
-make logic-test        # merobox single-node contract workflow (needs Docker)
-make workflows         # merobox two-node sync workflow (needs Docker)
-make integration       # Playwright integration tests against a running node
-```
-
-The contract is covered by Rust `TestHost` unit tests and a merobox
-`logic-test.yml` workflow; the frontend has mocked Playwright specs (CI) and
-integration specs that run against a real merobox-bootstrapped node.
-
-## Project layout
-
-```
-logic/                Rust smart contract (the calendar state machine)
-  src/lib.rs          contract: events, members, private events + #[cfg(test)] tests
-  Cargo.toml          SDK pins + [package.metadata.calimero] bundle manifest
-  build.sh            shim over `cargo mero build`, kept for scripts/dev-node.sh
-app/                  React frontend
-  src/api/            contract (mero.rpc), admin (useMero().admin), session, privateStore, dataSource, appId
-  src/pages/          landing, login, teams, calendar
-  src/components/      calendar views + shared UI
-workflows/            merobox workflow tests (e2e, integration-setup, logic-test)
-scripts/              dev-node / dev-node2 / dev-invite / workflows runner
-.github/workflows/    CI (unit + e2e + rust), integration, merobox, release
-```
-
-## Owned keys are per owner (core 0.11.0-rc.57)
-
-Since core 0.11.0-rc.57 every owned collection (`Authored…`, `WriteOnce`, `Moderated`,
-`ModeratedOnce`) is one namespace per account: two accounts writing one key hold two
-independent entries, and a key-only `get`, `contains`, `owner_of`, `owned_by_me` or `remove`
-acts on the CALLER's own entry only. This app was migrated:
-
-`get_events` reads each event as its claimed owner's **own** entry (`get_by(owner, id)`)
-and keeps rows apart by `(id, owner)`, so an event two accounts hold at one id is two
-events, each with its owner. `update_event` / `delete_event` act on the caller's own
-event and answer `Forbidden` when only someone else holds the id. Test:
-`one_event_id_two_owners_are_two_events`.
+  `app/index.html` applies it before the first paint.
+- **Log out** ends each top bar
+  (`app/src/components/common/logout-button/LogoutButton.tsx`): it signs out on
+  the cluster, forgets the stored session and returns to the landing page.
 
 ## License
 

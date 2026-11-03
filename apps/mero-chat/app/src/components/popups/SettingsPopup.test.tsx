@@ -22,10 +22,8 @@ const {
   session: { isDelegated: false },
 }));
 
-vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  useMero: () => ({ logout: mockLogout }),
-  getNodeUrl: vi.fn(),
+vi.mock("../../api/calimero", () => ({
+  useCalimero: () => ({ logout: mockLogout }),
   getContextId: vi.fn(),
   getContextIdentity: vi.fn(),
 }));

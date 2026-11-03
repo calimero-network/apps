@@ -1,16 +1,19 @@
 /**
  * Game event types emitted by the Battleships contract.
  *
- * Events are split into two categories matching the contract's context model:
- * - **Lobby events** arrive on the shared Lobby context (match list, stats).
- * - **Match events** arrive on a per-game Match context (shots, ships, winner).
+ * Events are split into two categories, as v1's two services emitted them:
+ * - **Lobby events** concern the lobby (match list, players, stats) and reach
+ *   everyone in it.
+ * - **Match events** concern one match (shots, ships, winner), carry its id,
+ *   and reach its two players.
+ * Both come over the lobby instance's one event stream now.
  */
 
 export type LobbyEventType =
   | 'MatchCreated'
-  | 'MatchIdCollision'
   | 'MatchListUpdated'
-  | 'PlayerStatsUpdated';
+  | 'PlayerStatsUpdated'
+  | 'PlayersUpdated';
 
 export type MatchEventType =
   | 'ShipsPlaced'
@@ -77,16 +80,12 @@ export interface PlayerStatsUpdatedEvent extends GameEvent {
   type: 'PlayerStatsUpdated';
 }
 
-/** Lobby-side: `create_match` lost the composed-id uniqueness race. */
-export interface MatchIdCollisionEvent extends GameEvent {
-  type: 'MatchIdCollision';
-  /** The colliding `{p1}-{p2}-{ms}` id the caller tried to create. */
-  attempted_id: string;
-  /** Echoed into `id` for compatibility with the GameEvent base shape. */
-  id: string;
+/** Someone opened the lobby for the first time: the roster changed. */
+export interface PlayersUpdatedEvent extends GameEvent {
+  type: 'PlayersUpdated';
 }
 
-/** A player published their SHA256 board commitment to UserStorage. */
+/** A player's SHA256 board commitment was recorded. */
 export interface BoardCommittedEvent extends GameEvent {
   type: 'BoardCommitted';
   id: string;
@@ -129,9 +128,9 @@ export interface AuditFailedEvent extends GameEvent {
 
 export type LobbyEvent =
   | MatchCreatedEvent
-  | MatchIdCollisionEvent
   | MatchListUpdatedEvent
-  | PlayerStatsUpdatedEvent;
+  | PlayerStatsUpdatedEvent
+  | PlayersUpdatedEvent;
 
 export type MatchEvent =
   | ShipsPlacedEvent
@@ -149,9 +148,9 @@ export type AllGameEvents = LobbyEvent | MatchEvent;
 
 const LOBBY_EVENT_TYPES: ReadonlySet<string> = new Set<LobbyEventType>([
   'MatchCreated',
-  'MatchIdCollision',
   'MatchListUpdated',
   'PlayerStatsUpdated',
+  'PlayersUpdated',
 ]);
 
 export function isLobbyEvent(event: AllGameEvents): event is LobbyEvent {
