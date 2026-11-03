@@ -8,7 +8,6 @@ import {
   useState,
 } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { useSubscription } from "@calimero-network/mero-react";
 
 import SessionMenu from "./SessionMenu";
 import ThemeToggle from "./ThemeToggle";
@@ -29,21 +28,21 @@ import {
   UsersIcon,
   XIcon,
 } from "./icons";
-import { useStreamReconnect } from "../hooks/useStreamReconnect";
 import type {
   CategoryView,
   MeView,
   Overview,
-} from "../generated/UpdatesClient";
+} from "../lib/updatesClient";
 import {
   RevisionContext,
+  useAudienceEvents,
   useAudienceContextId,
   useLive,
   usePublishSpaceName,
   useSpaceName,
   useUpdatesClient,
 } from "../lib/updates";
-import { getActiveNamespaceId, getAudienceName, setUsername } from "../lib/session";
+import { getActiveNamespaceId, getAudienceName, setUsername } from "../lib/active";
 
 /** What every page inside an audience needs, loaded once by the shell. */
 interface AudienceData {
@@ -70,8 +69,8 @@ const BUMP_DEBOUNCE_MS = 250;
 /**
  * The frame around every audience page, and the owner of LIVE state.
  *
- * Every contract event for this context — a peer's update replicating in, an
- * investor's reaction, a read receipt — and every stream reconnect bumps one
+ * Every contract event of this audience — a published update, an investor's
+ * reaction, a read receipt — and every stream reconnect bumps one
  * revision counter, and every `useLive` read below re-runs. That is what makes
  * the conversation two-way in practice: a founder sees the reply land without
  * refreshing.
@@ -92,10 +91,9 @@ export default function AudienceShell() {
     if (timer.current) clearTimeout(timer.current);
   }, []);
 
-  const contextIds = useMemo(() => (contextId ? [contextId] : []), [contextId]);
-  useSubscription(contextIds, bump);
-  // Events missed while the stream was down are gone for good; re-read.
-  useStreamReconnect(bump);
+  // Every event of this instance, and every reconnect of the stream (events
+  // missed while it was down are re-read, not replayed), bumps the revision.
+  useAudienceEvents(contextId, bump);
 
   const revisionValue = useMemo(() => ({ revision, bump }), [revision, bump]);
 

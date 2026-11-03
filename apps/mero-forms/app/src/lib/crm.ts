@@ -1,5 +1,5 @@
-import type { CrmLink, FormView, ResponseView } from "../generated/FormsClient";
-import type { ContactView } from "../generated/crm/CrmClient";
+import type { CrmLink, FormView, ResponseView } from "../formsApi";
+import type { ContactView } from "../crmApi";
 import { answerText, valueOf } from "./fields";
 
 /** Mero CRM's own limits: names and titles, and a note's body. */
