@@ -62,7 +62,8 @@ struct RootView: View {
     @ObservedObject var session: MeroAppSession
     @ObservedObject var router: Router
     @State private var didRestore = false
-    @State private var invitationNotice = false
+    @State private var invitationPrompt = false
+    @State private var joinError: String?
 
     var body: some View {
         Group {
@@ -74,7 +75,7 @@ struct RootView: View {
                 SignedInView(session: session, router: router, backend: backend)
                     .id(session.revision)
             } else if session.isSignedIn {
-                Splash(text: "Connecting to your relay…") {
+                Splash(text: "Connecting to your cluster…") {
                     Button("Sign out") { Task { await session.signOut() } }
                         .buttonStyle(SecondaryButtonStyle(fullWidth: false))
                 }
@@ -87,13 +88,36 @@ struct RootView: View {
             if !DemoMode.isOn { await session.restore() }
             didRestore = true
         }
-        .onChange(of: session.pendingInvitation) { pending in
-            if pending != nil { invitationNotice = true }
-        }
-        .alert("Open the invitation on the web", isPresented: $invitationNotice) {
-            Button("OK") { session.dismissPendingInvitation() }
+        .onChange(of: session.pendingInvitation) { _ in promptIfReady() }
+        .onChange(of: session.revision) { _ in promptIfReady() }
+        .alert("Join this workspace?", isPresented: $invitationPrompt) {
+            Button("Join") { Task { await join() } }
+            Button("Not now", role: .cancel) { session.dismissPendingInvitation() }
         } message: {
-            Text("This app reads workspaces you are already in. Accept the invitation in Mero Docs on the web or desktop, and the workspace appears here.")
+            Text("You were invited to a Mero Docs workspace. Its folders and documents appear here once you join.")
+        }
+        .alert(
+            "Couldn't join", isPresented: Binding(get: { joinError != nil }, set: { if !$0 { joinError = nil } })
+        ) {
+            Button("OK") { joinError = nil }
+        } message: {
+            Text(joinError ?? "")
+        }
+    }
+
+    /// An invitation link waits until someone is signed in, then asks.
+    private func promptIfReady() {
+        invitationPrompt = !DemoMode.isOn && session.pendingInvitation != nil && session.backend != nil
+    }
+
+    /// Redeem the org invite token (`POST /invites/{token}/redeem`); the workspace list reloads.
+    private func join() async {
+        do {
+            _ = try await session.redeemPendingInvitation()
+            Haptics.success()
+        } catch {
+            session.dismissPendingInvitation()
+            joinError = DocsFormat.errorText(error)
         }
     }
 }
@@ -123,7 +147,7 @@ private struct SignedInView: View {
                                 folderName: models.model(
                                     Workspace(id: target.workspaceId, name: "", memberCount: 0), backend: backend
                                 ).folder(target.folderId)?.name ?? "",
-                                title: title, blobs: DemoMode.blobs ?? SessionBlobs(admin: session.client.admin), recents: models.recents),
+                                title: title, blobs: DemoMode.blobs ?? SessionBlobs(backend: backend), recents: models.recents),
                             focusBlock: target.blockId)
                     }
                 }
