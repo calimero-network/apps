@@ -186,6 +186,61 @@ def pnpm_importers(section_lines: list[str]) -> dict[str, list[str]]:
     return importers
 
 
+def pnpm_entries(section_lines: list[str]) -> dict[str, list[str]]:
+    """{entry key: its block} out of `packages:` or `snapshots:`."""
+    entries: dict[str, list[str]] = {}
+    current = None
+    for line in section_lines:
+        if not line.strip():
+            continue
+        stripped = line.lstrip()
+        indent = len(line) - len(stripped)
+        if indent == 0:
+            continue  # the section key itself
+        if indent == 2:
+            current = stripped.rstrip(":").strip().strip("'\"")
+            # `name@1.0.0: {}` keeps its (empty) body on the key line.
+            entries[current] = [stripped] if not stripped.endswith(":") else []
+        elif current is not None:
+            entries[current].append(line)
+    return entries
+
+
+def _pnpm_name_version(key: str) -> tuple[str, str]:
+    """`name@version(peers)` → (name, `version(peers)`); scoped names keep their `@`."""
+    plain = key.split("(", 1)[0]
+    name = plain.rsplit("@", 1)[0]
+    return name, key[len(name) + 1:]
+
+
+def _pnpm_references(sections: dict[str, list[str]]) -> set[tuple[str, str]]:
+    """Every (name, version) an importer or a snapshot's dependency list names.
+
+    Importers spell a dependency as a `name:` block holding `version: v`;
+    snapshots as `name: v` under `dependencies:` / `optionalDependencies:`.
+    """
+    refs: set[tuple[str, str]] = set()
+    for key in ("importers", "snapshots"):
+        last_name = None
+        for line in sections.get(key, []):
+            stripped = line.strip()
+            if not stripped or ":" not in stripped:
+                continue
+            if stripped.endswith(":"):
+                last_name = stripped[:-1].strip().strip("'\"")
+                continue
+            field, value = stripped.split(":", 1)
+            field = field.strip().strip("'\"")
+            value = value.strip().strip("'\"")
+            if not value or field == "specifier":
+                continue
+            if key == "importers" and field == "version" and last_name:
+                refs.add((last_name, value))
+            elif key == "snapshots":
+                refs.add((field, value))
+    return refs
+
+
 def pnpm_fanout(base: str, head: str) -> list[str]:
     before = pnpm_sections(base)
     after = pnpm_sections(head)
@@ -194,11 +249,28 @@ def pnpm_fanout(base: str, head: str) -> list[str]:
         if before.get(key) != after.get(key):
             return [ALL]
 
-    for key in PNPM_SHARED_MAPS:
-        # A removed or rewritten line here is a version other importers could
-        # have been resolving. Additions alone are a new app's new packages.
-        if set(before.get(key, [])) - set(after.get(key, [])):
-            return [ALL]
+    # `catalogs:` keeps one block per catalog, so it is compared by line: a
+    # removed or rewritten line is a pin that moved (see PNPM_SHARED_MAPS).
+    if set(before.get("catalogs", [])) - set(after.get("catalogs", [])):
+        return [ALL]
+
+    # `packages:` and `snapshots:` are compared by ENTRY. One rewritten in
+    # place (same `name@version(peers)` key, other content) is a version other
+    # importers resolve through. One that is added is a new app's package. One
+    # that is removed is fine only if nothing left in the lockfile still names
+    # that exact version: porting an app drops the last user of its old v1
+    # dependencies, and that must not cover every app, while the Sass case
+    # (a peer key renamed under importers that still point at it) still must.
+    head_refs = _pnpm_references(after)
+    for key in ("packages", "snapshots"):
+        b_entries = pnpm_entries(before.get(key, []))
+        a_entries = pnpm_entries(after.get(key, []))
+        for k, v in b_entries.items():
+            if k in a_entries:
+                if a_entries[k] != v:
+                    return [ALL]
+            elif _pnpm_name_version(k) in head_refs:
+                return [ALL]
 
     before_imp = pnpm_importers(before.get("importers", []))
     after_imp = pnpm_importers(after.get("importers", []))
