@@ -1,7 +1,20 @@
 package network.calimero.issues.core
 
-import com.calimero.mero.account.NoRelayException
-import network.calimero.issues.generated.IssueView
+import com.calimero.mero.AppError
+import com.calimero.mero.ConfirmCancelled
+import com.calimero.mero.ConsentStale
+import com.calimero.mero.LoginRequired
+import com.calimero.mero.NotFound
+import com.calimero.mero.PasskeyCancelled
+import com.calimero.mero.ReleaseDeadlineError
+import com.calimero.mero.UnavailableError
+import com.calimero.mero.WrongNode
+import com.calimero.mero.app.PasskeyRequired
+import com.calimero.mero.app.SignedOutException
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import network.calimero.issues.contract.IssueView
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
@@ -20,7 +33,7 @@ object Tracker {
     /** What a new issue starts at, as on the web. */
     const val DEFAULT_PRIORITY = "high"
 
-    /** How often to re-read while the relay's event stream is not available, in ms. */
+    /** How often to re-read while the node's event stream is not available, in ms. */
     const val POLL_INTERVAL_MS = 5_000L
 }
 
@@ -138,15 +151,47 @@ object TrackerFormat {
     }
 
     /** Plain words for a failure. */
+    @Suppress("CyclomaticComplexMethod")
     fun errorText(error: Throwable): String =
         when (error) {
-            is NoRelayException -> "No relay serves this account yet. Join a workspace from an invitation link to get one."
             is TrackerException -> error.message.orEmpty()
-            is SocketTimeoutException -> "The relay took too long to answer. Try again."
+            is SignedOutException -> "You're signed out. Sign in again to reach your cluster."
+            is ConfirmCancelled, is PasskeyCancelled -> "The passkey prompt was cancelled."
+            is PasskeyRequired -> "This needs your passkey. Open the app again and retry."
+            is LoginRequired -> "Your session ended. Sign in again."
+            is ReleaseDeadlineError -> "A newer node release needs approval before anything can change. Review it under Workspace."
+            is ConsentStale -> "That approval request is out of date. Try again."
+            is NotFound -> "This isn't available to you (yet)."
+            is WrongNode -> "That node can't serve this workspace. Sign in again to reach your cluster."
+            is UnavailableError -> "Your cluster is unavailable right now (${error.reason}). Try again shortly."
+            is AppError -> appErrorText(error.appCode, error.fields)
+            is SocketTimeoutException -> "Your cluster took too long to answer. Try again."
             is UnknownHostException -> "You are offline. Check your connection and try again."
             is IOException -> error.message?.takeIf { it.isNotBlank() } ?: "You are offline. Check your connection and try again."
             else -> error.message?.takeIf { it.isNotBlank() } ?: "Something went wrong. Try again."
         }
+
+    /** The contract's refusals (`422 APP_ERROR`): `NotFound { id }`, `Invalid { message }`, `Forbidden { message }`. */
+    fun appErrorText(
+        code: String,
+        fields: JsonObject,
+    ): String {
+        fun field(key: String) = (fields[key] as? JsonPrimitive)?.contentOrNull?.trim().orEmpty()
+        val message = field("message")
+        return when (code) {
+            "NotFound" ->
+                if (field("id").startsWith("comment-")) "That comment no longer exists." else "That issue no longer exists. It may have been deleted."
+            "Forbidden" -> if (message.isEmpty()) "You aren't allowed to do that here." else sentence(message)
+            "Invalid" -> if (message.isEmpty()) "Check what you entered and try again." else sentence(message)
+            else -> if (message.isEmpty()) "The tracker refused that ($code)." else sentence(message)
+        }
+    }
+
+    /** [text] with a capital first letter and a full stop. */
+    private fun sentence(text: String): String {
+        val s = text.replaceFirstChar { it.uppercase() }
+        return if (s.endsWith(".")) s else "$s."
+    }
 }
 
 /** A failure the app words itself. */
