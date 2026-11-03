@@ -840,17 +840,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mero-crm"
-version = "0.1.0"
-dependencies = [
- "calimero-sdk",
- "calimero-storage",
- "calimero-storage-macros",
- "hex",
- "serial_test",
-]
-
-[[package]]
 name = "mero-docs"
 version = "10.1.3"
 dependencies = [
