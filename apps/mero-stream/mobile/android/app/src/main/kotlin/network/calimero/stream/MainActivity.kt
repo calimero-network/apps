@@ -18,7 +18,7 @@ import network.calimero.stream.ui.StreamApp
 
 /**
  * The one activity. Links arrive here, on the launch intent (cold start) or through [onNewIntent],
- * and go to the session: the wallet's sign-in redirect, or an invitation.
+ * and go to the session: the node's consent page coming back, or an invitation.
  */
 class MainActivity : ComponentActivity() {
     private val vm: StreamViewModel by viewModels()
@@ -27,14 +27,22 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         if (savedInstanceState == null) consume(intent)
+        // The passkey that approves step-ups (inviting) needs this Activity; held only while it lives.
+        vm.attach(this)
         val platform =
             Platform(
                 signIn = { vm.signIn(this) },
+                signUp = { vm.signUp(this, it) },
                 share = ::share,
                 copy = ::copy,
                 openSettings = ::openSettings,
             )
         setContent { StreamApp(vm, platform) }
+    }
+
+    override fun onDestroy() {
+        vm.attach(null)
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {

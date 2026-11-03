@@ -15,7 +15,7 @@ final class TeamsModelTests: XCTestCase {
         XCTAssertEqual(fake.backend.log.first, "foundNamespace Platform")
         XCTAssertEqual(team.name, "Platform")
         XCTAssertEqual(fake.backend.rootContexts[team.namespaceId], [team.contextId])
-        let rename = try XCTUnwrap(fake.recording.calls("set_team_name").first)
+        let rename = try XCTUnwrap(fake.recording.calls("setTeamName").first)
         XCTAssertEqual(rename.path, .execute)
         XCTAssertEqual(rename.contextId, team.contextId)
         XCTAssertEqual(rename.args["name"]?.stringValue, "Platform")
@@ -42,7 +42,7 @@ final class TeamsModelTests: XCTestCase {
         XCTAssertNil(model.error)
     }
 
-    func testRelaylessAccountHasNoTeamsAndNoError() async {
+    func testDisconnectedAccountHasNoTeamsAndNoError() async {
         let fake = FakeTeam()
         fake.backend.hasRelay = false
         let model = TeamsModel(backend: fake.backend, applicationId: nil)
@@ -55,8 +55,7 @@ final class TeamsModelTests: XCTestCase {
     func testJoinRedeemsTheNamespaceAndOpensTheNamedTeam() async throws {
         let fake = FakeTeam()
         let ns = String(repeating: "cd", count: 32)
-        let invitation = StandupInvitation(
-            invitation: InMemoryAppBackend.invitation(namespaceId: ns), namespaceId: ns, contextId: "ctx-9")
+        let invitation = StandupInvitation(invitation: InMemoryAppBackend.invitation(namespaceId: ns), contextId: "ctx-9")
         let model = TeamsModel(backend: fake.backend, applicationId: "app")
         let joined = await model.join(invitation)
         let team = try XCTUnwrap(joined)
@@ -70,7 +69,7 @@ final class TeamsModelTests: XCTestCase {
         let model = TeamsModel(backend: fake.backend, applicationId: "app")
         let team = await model.create(name: "X")
         XCTAssertNil(team)
-        XCTAssertEqual(model.error?.hasPrefix("The relay can't be reached"), true)
+        XCTAssertEqual(model.error?.hasPrefix("Your cluster can't be reached"), true)
     }
 }
 
@@ -84,7 +83,7 @@ final class TeamModelTests: XCTestCase {
         XCTAssertTrue(team.needsName)
         XCTAssertEqual(team.name(of: me, ""), "You")
         try? await team.setMyName(" Fran ")
-        XCTAssertEqual(fake.recording.calls("set_name").last?.args["name"]?.stringValue, "Fran")
+        XCTAssertEqual(fake.recording.calls("setName").last?.args["name"]?.stringValue, "Fran")
         XCTAssertFalse(team.needsName)
     }
 
@@ -134,9 +133,9 @@ final class BoardModelTests: XCTestCase {
             update(me, day: "2026-10-28", done: "mine"),
         ]
         fake.members = [
-            ["account": .string(ana), "name": "Ana", "last_day": "2026-10-28"],
-            ["account": .string(bo), "name": "Bo", "last_day": "2026-10-20"],
-            ["account": .string(me), "name": "", "last_day": "2026-10-28"],
+            ["account": .string(ana), "name": "Ana", "lastDay": "2026-10-28"],
+            ["account": .string(bo), "name": "Bo", "lastDay": "2026-10-20"],
+            ["account": .string(me), "name": "", "lastDay": "2026-10-28"],
         ]
         let team = await fake.teamModel()
         let board = BoardModel(team: team, now: { fixedNow }, calendar: utc)
@@ -148,15 +147,15 @@ final class BoardModelTests: XCTestCase {
         XCTAssertTrue(board.summary(of: "2026-10-28").blocked)
         XCTAssertEqual(board.draft, UpdateDraft(done: "mine"))
         XCTAssertNil(board.carriedFrom)
-        let filter = try? XCTUnwrap(fake.recording.calls("list_decisions").first)
-        XCTAssertEqual(filter?.args["from_day"]?.stringValue, "2026-10-28")
-        XCTAssertNil(filter?.args["search"], "optional arguments are omitted, not null")
+        let filter = try? XCTUnwrap(fake.recording.calls("listDecisions").first)
+        XCTAssertEqual(filter?.args["fromDay"]?.stringValue, "2026-10-28")
+        XCTAssertEqual(filter?.args["search"], .null, "optional arguments are written as null, as the web app sends them")
     }
 
     func testCarriesYourLastUpdateForward() async {
         let fake = FakeTeam()
         fake.days["2026-10-26"] = [update(me, day: "2026-10-26", done: "old", next: "ship it", blockers: "review")]
-        fake.members = [["account": .string(me), "name": "Me", "last_day": "2026-10-26"]]
+        fake.members = [["account": .string(me), "name": "Me", "lastDay": "2026-10-26"]]
         let team = await fake.teamModel()
         let board = BoardModel(team: team, now: { fixedNow }, calendar: utc)
         await board.load()
@@ -174,7 +173,7 @@ final class BoardModelTests: XCTestCase {
         XCTAssertEqual(board.day, "2026-10-27")
         let before = team.version
         try await board.post(UpdateDraft(done: "d", next: "n", blockers: ""))
-        let post = try XCTUnwrap(fake.recording.calls("post_update").first)
+        let post = try XCTUnwrap(fake.recording.calls("postUpdate").first)
         XCTAssertEqual(post.path, .execute)
         XCTAssertEqual(post.args, ["day": "2026-10-27", "done": "d", "next": "n", "blockers": ""])
         XCTAssertGreaterThan(team.version, before)
@@ -199,12 +198,12 @@ final class BoardModelTests: XCTestCase {
         let u = try XCTUnwrap(board.others.first)
         try await board.offerHelp(on: u, note: " pairing ")
         XCTAssertEqual(
-            fake.recording.calls("offer_help").first?.args,
+            fake.recording.calls("offerHelp").first?.args,
             ["day": "2026-10-28", "author": .string(ana), "note": "pairing"])
         try await board.withdrawHelp(on: u)
-        XCTAssertEqual(fake.recording.calls("withdraw_help").count, 1)
+        XCTAssertEqual(fake.recording.calls("withdrawHelp").count, 1)
         try await board.withdraw()
-        XCTAssertEqual(fake.recording.calls("clear_update").first?.args, ["day": "2026-10-28"])
+        XCTAssertEqual(fake.recording.calls("clearUpdate").first?.args, ["day": "2026-10-28"])
     }
 }
 
@@ -216,7 +215,7 @@ final class WeekModelTests: XCTestCase {
         let team = await fake.teamModel()
         let week = WeekModel(team: team, now: { fixedNow }, calendar: utc)
         await week.load()
-        XCTAssertEqual(fake.recording.calls("get_week").first?.args, ["start": "2026-10-26"])
+        XCTAssertEqual(fake.recording.calls("getWeek").first?.args, ["start": "2026-10-26"])
         XCTAssertEqual(week.people.map(\.name), ["Ana"])
         XCTAssertTrue(week.markdown.hasPrefix("# Platform — week of Oct 26 – Nov 1"))
         await week.shift(by: 1)
@@ -247,9 +246,10 @@ final class DecisionsModelTests: XCTestCase {
         model.search = " rel "
         model.standingOnly = true
         await model.showOlder()
-        let last = fake.recording.calls("list_decisions").last
+        let last = fake.recording.calls("listDecisions").last
         XCTAssertEqual(
-            last?.args, ["search": "rel", "tag": "infra", "standing_only": true, "limit": 50])
+            last?.args,
+            ["search": "rel", "tag": "infra", "fromDay": .null, "standingOnly": true, "cursor": .null, "limit": 50])
     }
 
     func testLogsADecisionWithItsNotes() async throws {
@@ -264,17 +264,17 @@ final class DecisionsModelTests: XCTestCase {
         draft.with = [bo, ana]
         let id = try await model.log(draft)
         XCTAssertEqual(id, "new-decision")
-        let call = try XCTUnwrap(fake.recording.calls("log_decision").first)
+        let call = try XCTUnwrap(fake.recording.calls("logDecision").first)
         XCTAssertEqual(call.path, .execute)
         XCTAssertEqual(
             call.args,
             [
                 "title": "Release weekly", "decision": "Every Monday", "rationale": "", "supersedes": "d1",
-                "tags": ["infra", "release-process"], "with": [.string(ana), .string(bo)], "from_day": "2026-10-27",
+                "tags": ["infra", "release-process"], "with": [.string(ana), .string(bo)], "fromDay": "2026-10-27",
             ])
     }
 
-    func testOptionalArgumentsAreOmitted() async throws {
+    func testAbsentOptionalArgumentsAreNull() async throws {
         let fake = FakeTeam()
         let team = await fake.teamModel()
         let model = DecisionsModel(team: team, calendar: utc)
@@ -282,8 +282,9 @@ final class DecisionsModelTests: XCTestCase {
         draft.title = "T"
         draft.decision = "D"
         try await model.log(draft)
-        let args = try XCTUnwrap(fake.recording.calls("log_decision").first?.args)
-        XCTAssertNil(args["supersedes"])
-        XCTAssertNil(args["from_day"])
+        let args = try XCTUnwrap(fake.recording.calls("logDecision").first?.args)
+        // The component contract refuses unknown keys; absent options go as null, as the web app sends them.
+        XCTAssertEqual(args["supersedes"], .null)
+        XCTAssertEqual(args["fromDay"], .null)
     }
 }

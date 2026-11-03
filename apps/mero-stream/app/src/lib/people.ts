@@ -102,3 +102,15 @@ export function buildRoster(args: {
 export function shortId(memberId: string): string {
   return `${memberId.slice(0, 8)}…`;
 }
+
+/**
+ * An account id shortened for display: head and tail. (v1 took this from
+ * `@calimero-apps/names`, whose other helpers read namespace metadata the
+ * component runtime does not have; stream names are org member metadata now,
+ * see lib/streams.ts.)
+ */
+export function shortAccount(id: string | null | undefined, head = 6, tail = 4): string {
+  const s = id?.trim() ?? "";
+  if (!s) return "unknown";
+  return s.length <= head + tail + 1 ? s : `${s.slice(0, head)}…${s.slice(-tail)}`;
+}

@@ -41,7 +41,7 @@ class VaultModel(
     private val events: (() -> Flow<AppContextEvent>)? = null,
 ) {
     sealed interface Phase {
-        /** Opening; [notice] says what the relay is still doing while it retries. */
+        /** Opening; [notice] says what the cluster is still doing while it retries. */
         data class Opening(
             val notice: String?,
         ) : Phase
@@ -130,7 +130,7 @@ class VaultModel(
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────────────────────
 
-    /** Open the session, retrying while the relay is still joining or syncing the vault, then read it once. */
+    /** Open the session, retrying while the cluster is still setting up the vault, then read it once. */
     suspend fun open(): Boolean {
         var delayMs = 2_000L
         while (currentCoroutineContext().isActive) {
@@ -151,7 +151,7 @@ class VaultModel(
         return false
     }
 
-    /** Open, then keep the vault fresh until cancelled: live events when the relay streams, a poll otherwise and while waiting. */
+    /** Open, then keep the vault fresh until cancelled: live events when the node streams, a poll otherwise and while waiting. */
     suspend fun run() {
         if (!open()) return
         val stream = events
@@ -307,7 +307,7 @@ class VaultModel(
     suspend fun invite(backend: MeroAppBackend): String = TeamModel.vaultInvite(backend, ref)
 
     companion object {
-        /** The model for a vault over the account's relay. */
+        /** The model for a vault over the account's session. */
         fun over(
             ref: VaultRef,
             backend: MeroAppBackend,

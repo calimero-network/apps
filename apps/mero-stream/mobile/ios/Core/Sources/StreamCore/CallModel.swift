@@ -31,7 +31,7 @@ public struct CallStats: Equatable, Sendable {
 /// the context's ephemeral presence, exactly as the web's `useLiveStream`:
 ///
 /// - **Send.** The platform encoder hands over H.264 Annex-B access units;
-///   each is framed (``LiveFrames``) into ≤16 KiB slices and published one at a
+///   each is framed (``LiveFrames``) into ≤4 KiB slices and published one at a
 ///   time. Audio (µ-law, track 1) rides the same channel.
 /// - **Receive.** Every slice in the context is parsed and reassembled per
 ///   sender and track; video passes a per-sender keyframe gate before it
@@ -42,7 +42,7 @@ public struct CallStats: Equatable, Sendable {
 public final class CallModel: ObservableObject {
     public nonisolated static let peerTimeoutMs: UInt64 = 6_000
     public nonisolated static let keyframeIntervalMs: UInt64 = 2_000
-    /// A phone publishes each slice as a signed relay POST, so it starts lower
+    /// A phone publishes each slice as a presence POST to the node, so it starts lower
     /// than the web's 25 fps / 1.5 Mbps; the shared split applies on top.
     public nonisolated static let baseEncoding = Encoding(fps: 15, bitrate: 1_000_000)
     public nonisolated static let joinRetryDelaysMs: [UInt64] = [500, 1_000, 2_000, 3_000, 5_000]
@@ -58,6 +58,9 @@ public final class CallModel: ObservableObject {
     @Published public private(set) var joined = false
     @Published public private(set) var joinFailed: String?
     @Published public private(set) var members: [Member] = []
+    /// Names people set for the whole stream (organization member metadata), by account:
+    /// a tile's name when the room has none for that person.
+    @Published public private(set) var streamNames: [String: String] = [:]
     @Published public private(set) var peers: [RemotePeer] = []
     @Published public private(set) var speaking: Set<String> = []
     @Published public private(set) var slots: SlotView = .empty
@@ -142,9 +145,16 @@ public final class CallModel: ObservableObject {
 
     /// Everyone in the room: the contract's members plus anyone sending.
     public var people: [Person] {
-        People.roster(
-            members: members.map { ($0.memberId, $0.username) }, liveIds: Set(peers.map(\.id)), me: me,
-            selfName: displayName, selfLive: isLive)
+        let known = Set(members.map(\.memberId))
+        var named = members.map { member -> (id: String, name: String) in
+            let own = member.username.trimmingCharacters(in: .whitespaces)
+            return (member.memberId, own.isEmpty ? (streamNames[member.memberId] ?? "") : own)
+        }
+        for id in peers.map(\.id) where !known.contains(id) {
+            if let name = streamNames[id] { named.append((id, name)) }
+        }
+        return People.roster(
+            members: named, liveIds: Set(peers.map(\.id)), me: me, selfName: displayName, selfLive: isLive)
     }
 
     public var degraded: Bool { slots.occupied >= Slots.degradedFromBroadcasters }
@@ -204,6 +214,7 @@ public final class CallModel: ObservableObject {
                 joined = true
                 joinFailed = nil
                 await refreshMembers()
+                await refreshStreamNames()
                 return
             } catch {
                 let delay = Self.joinRetryDelaysMs[min(attempt, Self.joinRetryDelaysMs.count - 1)]
@@ -217,7 +228,9 @@ public final class CallModel: ObservableObject {
         }
     }
 
-    /// Change your name in this room: re-join with it (the contract's join is idempotent).
+    /// Change your name in this room: re-join with it (the contract's join is
+    /// idempotent), and publish it for the whole stream (the organization's
+    /// member metadata, as the web does), best effort.
     public func rename(_ next: String) async {
         let trimmed = next.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -229,6 +242,17 @@ public final class CallModel: ObservableObject {
         } catch {
             self.error = ErrorText.describe(error)
         }
+        try? await backend.setMemberName(groupId: room.namespaceId, name: trimmed)
+    }
+
+    /// The stream-wide names, best effort.
+    public func refreshStreamNames() async {
+        guard let list = try? await backend.listMembers(groupId: room.namespaceId) else { return }
+        var names: [String: String] = [:]
+        for member in list {
+            if let name = member.name?.trimmingCharacters(in: .whitespaces), !name.isEmpty { names[member.identity] = name }
+        }
+        streamNames = names
     }
 
     /// Try joining again after it gave up.
@@ -344,7 +368,7 @@ public final class CallModel: ObservableObject {
         Task { [weak self] in await self?.pump(channel) }
     }
 
-    /// One slice at a time, in order: the relay drops a slice whose seq is
+    /// One slice at a time, in order: the node drops a slice whose seq is
     /// below one it has already applied, so concurrent publishes would race.
     private func pump(_ channel: any MediaChannel) async {
         defer { pumping = false }
