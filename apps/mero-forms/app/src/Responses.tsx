@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import type { FormView, ResponseView } from "./generated/FormsClient";
+import type { FormView, ResponseView } from "./formsApi";
 import { isLinked } from "./lib/crm";
-import { ago, answerText, fromNanos, headline, isNew, toCsv, valueOf } from "./lib/fields";
+import { ago, answerText, fromMillis, headline, isNew, toCsv, valueOf } from "./lib/fields";
 import { shortAccount } from "./lib/people";
 import { PersonName } from "./names";
 import { Icon } from "./ui";
@@ -143,7 +143,7 @@ export function Responses({
                         {valueOf(r, f.id) || <span className="dim">—</span>}
                       </td>
                     ))}
-                    <td className="nowrap" title={fromNanos(r.created_at).toLocaleString()}>
+                    <td className="nowrap" title={fromMillis(r.created_at).toLocaleString()}>
                       {ago(r.created_at)}
                     </td>
                     <td>
@@ -265,7 +265,7 @@ function ResponsePanel({
           <div>
             <h2>{headline(response)}</h2>
             <div className="meta">
-              Received {ago(response.created_at)} · {fromNanos(response.created_at).toLocaleString()}
+              Received {ago(response.created_at)} · {fromMillis(response.created_at).toLocaleString()}
               {response.source && (
                 <>
                   {" "}

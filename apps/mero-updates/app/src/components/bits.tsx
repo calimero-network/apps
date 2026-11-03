@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import type { CategoryView, ReactionCount } from "../generated/UpdatesClient";
+import type { CategoryView, ReactionCount } from "../lib/updatesClient";
 import { initials } from "../lib/people";
 import { REACTIONS, parseMetric, usePersonLabel } from "../lib/updates";
 import { deltaDir } from "./delta";

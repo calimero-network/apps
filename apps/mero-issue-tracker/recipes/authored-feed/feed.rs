@@ -1,129 +1,131 @@
-//! RECIPE — append-ordered, author-owned feed using `AuthoredVector<T>`.
-//! Reference snippet; merge the field into a service `#[app::state]` and the
-//! methods into its `#[app::logic]` impl. Not compiled as-is.
+//! RECIPE: an append-ordered, author-owned feed on the component SDK.
+//! A complete app module: merge its state field, methods, error and event into
+//! an app's `lib.rs`. Compile-checked against core 1.0.0-rc.8, not built here.
+//!
+//! v1 used `AuthoredVector<T>`: the store remembered who pushed each entry and
+//! refused anyone else's edit at merge time. On Calimero 1.0 every write is a
+//! method run by the app's leader, so the author is a field, set from
+//! `env::caller()` on push and checked against it on edit and delete. A
+//! `Vector` keeps insertion order, so the feed needs no sorting.
 
-use calimero_sdk::app;
-use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
-use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::types::Error as AppError;
-use calimero_storage::collections::AuthoredVector;
-use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::Mergeable;
-use calimero_storage::env as storage_env;
+use calimero_app_sdk::env::Caller;
+use calimero_app_sdk::prelude::*;
 
-// `Default` is what `tombstone` overwrites an entry with: an empty post.
-#[derive(Debug, Clone, Default, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+/// The most entries one `getFeed` answers.
+pub const PAGE: u64 = 1000;
+
+/// One entry. `deleted` keeps the position (a tombstone), so later entries keep
+/// their indexes.
+#[derive(Record)]
+#[table(key = "id")]
 pub struct Post {
-    pub text: String,
-    pub created_ms: u64,
-    pub edited: bool,
-}
-
-// AuthoredVector<Post> requires Post: Mergeable. Author-conflict handling lives
-// in AuthoredVector itself; this value-merge is a deterministic LWW tiebreak
-// (edited wins, then longer text) and is not hit on the normal write path.
-impl Mergeable for Post {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        if (other.edited, other.text.len()) > (self.edited, self.text.len()) {
-            self.text = other.text.clone();
-            self.edited = other.edited;
-        }
-        Ok(())
-    }
-}
-
-/// One feed row as the UI renders it. `author` is read from the entry's owner
-/// stamp, which a patched node cannot forge — never from a field in `Post`.
-#[derive(Debug, Clone, Serialize)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct FeedEntry {
-    pub index: usize,
+    /// `env::unique_id()`: stable across edits.
+    pub id: String,
+    /// The account that pushed it: the only one who may edit or delete it.
     pub author: String,
-    pub post: Post,
+    pub text: String,
+    /// Unix milliseconds.
+    pub created_at: u64,
+    pub edited_at: Option<u64>,
+    pub deleted: bool,
 }
 
-// ── add to the service state ───────────────────────────────────────────────
-// #[app::state(emits = ...)]
-// pub struct FeedState {
-//     posts: AuthoredVector<Post>,
-//     // ...other fields
-// }
-//
-// In #[app::init]:
-//     posts: AuthoredVector::new_with_field_name("feed:posts"),
+#[app::state(version = 1)]
+pub struct Feed {
+    posts: Vector<Post>,
+}
 
-// ── methods on the #[app::logic] impl ──────────────────────────────────────
-impl FeedState {
-    /// Append a post. The caller is recorded as the entry's author, so only
-    /// they can later edit/delete it. Returns the new entry index.
-    pub fn post(&mut self, text: String) -> app::Result<usize> {
-        if text.is_empty() || text.len() > 4096 {
-            app::bail!(AppError::msg("post must be 1-4096 bytes"));
-        }
-        let _ = self
-            .posts
-            .push(Post { text, created_ms: storage_env::time_now(), edited: false })
-            .map_err(|e| AppError::msg(format!("posts.push: {e}")))?;
-        // `push` returns the entry's id; its position is the last slot.
-        let len = self.feed_len()?;
-        Ok(len - 1)
+#[app::logic]
+impl Feed {
+    #[app::init]
+    pub fn init() -> app::Result<Self> {
+        Ok(Self::load())
     }
 
-    /// Edit your own post. AuthoredVector::update rejects non-authors with
-    /// ActionNotAllowed (surface it as a friendly error in real code).
-    pub fn edit_post(&mut self, index: usize, text: String) -> app::Result<()> {
-        let mut post = self
-            .posts
-            .get(index)
-            .map_err(|e| AppError::msg(format!("posts.get: {e}")))?
-            .ok_or_else(|| AppError::msg("post not found"))?;
-        post.text = text;
-        post.edited = true;
-        self.posts
-            .update(index, post)
-            .map_err(|e| AppError::msg(format!("posts.update: {e}")))?;
+    /// Appends a post as the caller; answers its index.
+    pub fn post(&mut self, text: String) -> app::Result<u64> {
+        let author = account()?;
+        let index = self.posts.push(&Post {
+            id: env::unique_id(),
+            author,
+            text,
+            created_at: env::time_now(),
+            edited_at: None,
+            deleted: false,
+        })?;
+        env::emit(Event::Posted { index }, Audience::All)?;
+        Ok(index)
+    }
+
+    /// Replaces a post's text: its author only (`Forbidden` for anyone else).
+    pub fn edit_post(&mut self, index: u64, text: String) -> app::Result<()> {
+        let mut p = self.mine(index)?;
+        p.text = text;
+        p.edited_at = Some(env::time_now());
+        let _old = self.posts.set(index, &p)?;
+        env::emit(Event::Edited { index }, Audience::All)?;
         Ok(())
     }
 
-    /// Remove your own post (author-only; leaves a tombstone, preserving order).
-    pub fn delete_post(&mut self, index: usize) -> app::Result<()> {
-        self.posts
-            .tombstone(index)
-            .map_err(|e| AppError::msg(format!("posts.tombstone: {e}")))?;
+    /// Tombstones a post: its author only.
+    pub fn delete_post(&mut self, index: u64) -> app::Result<()> {
+        let mut p = self.mine(index)?;
+        p.text.clear();
+        p.deleted = true;
+        let _old = self.posts.set(index, &p)?;
+        env::emit(Event::Deleted { index }, Audience::All)?;
         Ok(())
     }
 
-    /// Read the feed in insertion order (paginated), each post paired with
-    /// its author via `owner_of`. Reads only the requested slots, and skips
-    /// tombstones (an empty post).
-    pub fn get_feed(&self, offset: usize, limit: usize) -> app::Result<Vec<FeedEntry>> {
-        let len = self.feed_len()?;
-        let mut page = Vec::with_capacity(limit.min(len));
-        for index in offset..(offset.saturating_add(limit)).min(len) {
-            let Some(post) = self
-                .posts
-                .get(index)
-                .map_err(|e| AppError::msg(format!("posts.get: {e}")))?
-            else {
-                continue;
-            };
-            if post.text.is_empty() {
-                continue;
+    /// `limit` posts from position `offset`, oldest first, tombstones skipped
+    /// (at most 1,000 positions read).
+    #[app::view]
+    pub fn get_feed(&self, offset: u64, limit: u64) -> app::Result<Vec<Post>> {
+        let end = offset.saturating_add(limit.min(PAGE)).min(self.posts.len()?);
+        let mut out = Vec::new();
+        for i in offset..end {
+            if let Some(p) = self.posts.get(i)? {
+                if !p.deleted {
+                    out.push(p);
+                }
             }
-            let author = self
-                .posts
-                .owner_of(index)
-                .map_err(|e| AppError::msg(format!("posts.owner_of: {e}")))?
-                .map(|a| a.to_string())
-                .unwrap_or_default();
-            page.push(FeedEntry { index, author, post });
         }
-        Ok(page)
+        Ok(out)
     }
 
-    pub fn feed_len(&self) -> app::Result<usize> {
-        self.posts.len().map_err(|e| AppError::msg(format!("posts.len: {e}")))
+    /// Positions in the feed, tombstones included: a stored count.
+    #[app::view]
+    pub fn feed_len(&self) -> app::Result<u64> {
+        Ok(self.posts.len()?)
+    }
+
+    fn mine(&self, index: u64) -> app::Result<Post> {
+        let Some(p) = self.posts.get(index)? else {
+            return Err(Error::NotFound { index }.into());
+        };
+        if p.author != account()? {
+            return Err(Error::NotAuthor { index }.into());
+        }
+        Ok(p)
+    }
+}
+
+#[app::error]
+pub enum Error {
+    NotFound { index: u64 },
+    NotAuthor { index: u64 },
+}
+
+#[app::event]
+pub enum Event {
+    Posted { index: u64 },
+    Edited { index: u64 },
+    Deleted { index: u64 },
+}
+
+fn account() -> app::Result<String> {
+    match env::caller() {
+        Caller::Account(a) | Caller::ApiKey { account: a, .. } => Ok(a),
+        Caller::Public | Caller::System | Caller::App(_) => Err(AppError::login_required()),
     }
 }

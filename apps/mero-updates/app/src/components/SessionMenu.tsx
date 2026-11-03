@@ -1,46 +1,32 @@
-import { useMero } from "@calimero-network/mero-react";
-
 import { useSignOut } from "../auth/signOut";
-import type { MeView } from "../generated/UpdatesClient";
+import { describeTarget } from "../lib/session";
+import { useMaybeSignedIn } from "../lib/sessionContext";
+import type { MeView } from "../lib/updatesClient";
 import { usePersonLabel } from "../lib/updates";
 import { Avatar } from "./bits";
 import styles from "./SessionMenu.module.css";
 import { LogOutIcon } from "./icons";
 
 /**
- * Who you are, which node you are on, and the way out: the foot of the
+ * Who you are, which cluster you are on, and the way out: the foot of the
  * audience sidebar (and of the phone nav drawer, which is the same element).
  *
- * There was no logout anywhere in this app at first. `useMero()` has exposed
- * `logout()` all along; nothing called it, so the only way to leave a session
- * was to clear site data by hand. That also made the app impossible to test as
- * a second person on one machine.
- *
- * The node URL is shown deliberately: with several dev nodes on one machine,
- * "which node am I on" is the first question when something looks empty.
+ * The cluster is shown deliberately: local nodes in development, a Calimero
+ * Cloud cluster in production; "where am I" is the first question when
+ * something looks empty.
  */
 export default function SessionMenu({ me, roleLabel }: { me: MeView | null; roleLabel: string | null }) {
   const personLabel = usePersonLabel();
-  const { nodeUrl } = useMero();
+  const signedIn = useMaybeSignedIn();
   const signOut = useSignOut();
-
-  const host = (() => {
-    if (!nodeUrl) return null;
-    try {
-      const u = new URL(nodeUrl);
-      // Port included: two dev nodes differ only by it.
-      return u.port ? `${u.hostname}:${u.port}` : u.hostname;
-    } catch {
-      return nodeUrl;
-    }
-  })();
+  const host = signedIn ? describeTarget(signedIn.target) : null;
 
   const name = me ? personLabel(me.name, me.account) : "Connecting…";
 
   return (
     <div className={styles.root}>
       {host && (
-        <span className={styles.node} title={nodeUrl ?? undefined} data-testid="session-node">
+        <span className={styles.node} title={host} data-testid="session-node">
           <span className={styles.dot} aria-hidden />
           <span className={styles.nodeText}>{host}</span>
         </span>
@@ -67,7 +53,7 @@ export default function SessionMenu({ me, roleLabel }: { me: MeView | null; role
         className={styles.logout}
         onClick={signOut}
         data-testid="logout"
-        title="Sign out of this node"
+        title="Sign out"
       >
         <LogOutIcon size={15} />
         Log out
