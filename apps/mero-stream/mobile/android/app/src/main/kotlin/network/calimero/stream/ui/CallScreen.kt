@@ -655,7 +655,7 @@ private fun DetailsSheet(
             item { SectionLabel("Why it can be choppy") }
             item {
                 Text(
-                    "Video is H.264 carried on the room's ephemeral presence in ≤16 KiB slices, so nothing about the call is stored. " +
+                    "Video is H.264 carried on the room's presence in ≤4 KiB slices, so nothing about the call is stored. " +
                         "With ${Slots.DEGRADED_FROM_BROADCASTERS} people on camera, each stream gets about ${Slots.DEGRADED_DELIVERY_PERCENT}% of its frames through: " +
                         "frame rate and bitrate are shared, and that is measured, not something the app can tune away. One person on camera at a time is smooth.",
                     fontSize = 14.sp,
@@ -667,10 +667,9 @@ private fun DetailsSheet(
                 Spacer(Modifier.width(1.dp))
                 DetailsDisclosure(
                     listOf(
-                        "Room ID" to target.room.id,
-                        "Context ID" to target.contextId,
-                        "Stream ID" to target.stream.id,
-                        "Your device key" to model.me,
+                        "Room (app instance) ID" to target.contextId,
+                        "Stream (organization) ID" to target.stream.id,
+                        "Your account" to model.me,
                     ),
                     platform.copy,
                 )

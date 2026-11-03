@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { shortAccount } from '@calimero-apps/names';
+import { shortAccount } from '../lib/names';
 
 import {
   type DeviceRecord,
