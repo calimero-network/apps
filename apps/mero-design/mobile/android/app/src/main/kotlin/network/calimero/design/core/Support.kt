@@ -1,7 +1,28 @@
 package network.calimero.design.core
 
-import com.calimero.mero.app.BoundContextContract
+import com.calimero.mero.AppError
+import com.calimero.mero.ConfirmCancelled
+import com.calimero.mero.ConsentStale
+import com.calimero.mero.LoginRequired
+import com.calimero.mero.NotFound
+import com.calimero.mero.NotLeader
+import com.calimero.mero.PasskeyCancelled
+import com.calimero.mero.ReleaseDeadlineError
+import com.calimero.mero.UnavailableError
+import com.calimero.mero.WrongNode
+import com.calimero.mero.app.ContextContract
 import com.calimero.mero.app.MeroAppBackend
+import com.calimero.mero.app.SignedOutException
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.longOrNull
+import kotlinx.serialization.json.put
 import network.calimero.design.generated.ContextContractCalling
 import network.calimero.design.generated.DesignClient
 import java.io.IOException
@@ -14,30 +35,108 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
- * The generated client declares its own `ContextContractCalling` (JSON strings in and out), with
- * the same two calls as the SDK's [BoundContextContract]; this hands one to the other.
+ * The generated client (from v1's ABI) still types every element, member, comment and cursor: the
+ * component contract answers those shapes unchanged. Only the request differs, so this is the ONE
+ * place v1's wire is mapped onto the component's (the web app's `src/api/meroDesign.ts`; Swift
+ * `ComponentTransport`):
+ *
+ * - method and argument names are camelCase (`add_comment` -> `addComment`, `comment_id` -> `commentId`);
+ * - 64-bit integer ARGUMENTS travel as decimal strings (`timestamp`, `updatedAt`, `createdAt`, and
+ *   `x`/`y` of `addComment`, `updateElement`, `updateCursor`);
+ * - `get_elements` answers at most 1,000 elements, so it is read page by page through
+ *   `getElementsPage` and handed back whole, as v1 answered it.
  */
-private class BoundTransport(
-    private val bound: BoundContextContract,
+class ComponentTransport(
+    private val contract: ContextContract,
+    private val appId: String,
 ) : ContextContractCalling {
     override suspend fun query(
         method: String,
         argsJson: String,
-    ): String = bound.query(method, argsJson)
+    ): String {
+        if (method == "get_elements") return allElements()
+        val (name, args) = wire(method, argsJson)
+        return (contract.query(appId, name, args) ?: JsonNull).toString()
+    }
 
     override suspend fun execute(
         method: String,
         argsJson: String,
-    ): String = bound.execute(method, argsJson)
+    ): String {
+        val (name, args) = wire(method, argsJson)
+        return (contract.execute(appId, name, args) ?: JsonNull).toString()
+    }
+
+    /** Every element in paint order, read a page at a time. */
+    private suspend fun allElements(): String {
+        val items = mutableListOf<JsonElement>()
+        var cursor: String? = null
+        do {
+            val args =
+                buildJsonObject {
+                    put("cursor", cursor)
+                    put("limit", ELEMENT_PAGE)
+                }
+            val page = contract.query(appId, "getElementsPage", args) as? JsonObject
+            (page?.get("items") as? JsonArray)?.let { items.addAll(it) }
+            cursor = (page?.get("nextCursor") as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull?.takeIf { it.isNotEmpty() }
+        } while (cursor != null)
+        return JsonArray(items).toString()
+    }
+
+    companion object {
+        /** Elements per `getElementsPage` read (the contract's largest page). */
+        const val ELEMENT_PAGE = 1_000
+
+        /** Arguments that are 64-bit integers on every method that takes them. */
+        private val INT64_ARGS = setOf("timestamp", "updated_at", "created_at")
+
+        /** Methods whose `x` / `y` are 64-bit (`i64`) too. */
+        private val INT64_POINTS = setOf("add_comment", "update_element", "update_cursor")
+
+        /** Optional arguments the generated client may leave out: the contract is sent `null`. */
+        private val OPTIONAL_ARGS =
+            mapOf("join" to listOf("avatar"), "update_board" to listOf("name", "description"), "get_elements_page" to listOf("cursor"))
+
+        private val json = Json { ignoreUnknownKeys = true }
+
+        /** The component's method name and arguments for a v1 call. */
+        fun wire(
+            method: String,
+            argsJson: String,
+        ): Pair<String, JsonObject> {
+            val decoded = if (argsJson.isBlank()) JsonObject(emptyMap()) else json.parseToJsonElement(argsJson) as? JsonObject
+            val out = mutableMapOf<String, JsonElement>()
+            decoded?.forEach { (key, value) ->
+                val int64 = key in INT64_ARGS || (method in INT64_POINTS && (key == "x" || key == "y"))
+                out[camel(key)] = if (int64) decimal(value) else value
+            }
+            OPTIONAL_ARGS[method].orEmpty().forEach { out.putIfAbsent(camel(it), JsonNull) }
+            return camel(method) to JsonObject(out)
+        }
+
+        /** `add_comment` -> `addComment`. */
+        fun camel(snake: String): String {
+            val parts = snake.split('_').filter { it.isNotEmpty() }
+            if (parts.isEmpty()) return snake
+            return parts.first() + parts.drop(1).joinToString("") { it.replaceFirstChar { c -> c.uppercase() } }
+        }
+
+        /** A 64-bit integer as the contract takes it: a decimal string (`null` stays `null`). */
+        private fun decimal(value: JsonElement): JsonElement {
+            val primitive = value as? JsonPrimitive ?: return value
+            if (primitive.isString) return value
+            return primitive.longOrNull?.let { JsonPrimitive(it.toString()) }
+                ?: primitive.contentOrNull?.toDoubleOrNull()?.let { JsonPrimitive(it.toLong().toString()) }
+                ?: value
+        }
+    }
 }
 
-/** The generated client over this backend's contract, bound to [contextId]. */
-fun MeroAppBackend.designClient(contextId: String): DesignClient = DesignClient(BoundTransport(contract.bound(contextId)))
+/** The generated client over this backend's contract, bound to the board's app instance. */
+fun MeroAppBackend.designClient(contextId: String): DesignClient = DesignClient(ComponentTransport(contract, contextId))
 
-/**
- * Image bytes stored as blobs on the board's context. `MeroAppBackend` has no blob call yet, so the
- * app reads them through the signed-in client's admin surface (`getBlob(blobId, contextId)`).
- */
+/** Image bytes stored as blobs on the board's app instance (`GET /apps/{app}/blobs/{id}`). */
 fun interface BlobLoading {
     suspend fun blob(
         id: String,
@@ -159,15 +258,32 @@ object DesignFormat {
     }
 
     /** Words a person can act on, from an error. */
-    fun errorText(error: Throwable): String {
-        val text = error.message ?: error.toString()
-        return when {
-            "view-only" in text -> "You have view-only access to this board. Ask an admin for edit access to comment."
-            error::class.simpleName == "NoRelayException" || "no relay" in text.lowercase() ->
-                "Your account has no relay yet. Join a team from an invitation link, or try again shortly."
-            error is java.net.UnknownHostException || error is java.net.ConnectException ->
+    @Suppress("CyclomaticComplexMethod")
+    fun errorText(error: Throwable): String =
+        when (error) {
+            is AppError -> appText(error)
+            is ConfirmCancelled, is PasskeyCancelled -> "The passkey prompt was cancelled."
+            is LoginRequired -> "Your session ended. Sign in again."
+            is SignedOutException -> "You're signed out. Sign in again to see your boards."
+            is ReleaseDeadlineError -> "A newer node release needs approval before anything can change. Review it on the Teams screen."
+            is ConsentStale -> "That approval request is out of date. Try again."
+            is NotFound -> "This isn't available to you (yet)."
+            is WrongNode, is NotLeader -> "Your cluster is busy right now. Try again shortly."
+            is UnavailableError -> "Your cluster is unavailable right now (${error.reason}). Try again shortly."
+            is java.net.UnknownHostException, is java.net.ConnectException, is IOException ->
                 "You're offline. Check your connection and try again."
-            else -> text
+            else -> error.message ?: error.toString()
+        }
+
+    /** The contract's refusals: `Forbidden {message}` / `Invalid {message}`. */
+    private fun appText(error: AppError): String {
+        val message = (error.fields["message"] as? JsonPrimitive)?.contentOrNull?.trim().orEmpty()
+        val lowered = message.lowercase()
+        return when {
+            "view-only" in lowered || "editor" in lowered -> "You have view-only access to this board. Ask an admin for edit access to comment."
+            message.isNotEmpty() -> message.replaceFirstChar { it.uppercase() }
+            error.appCode == "Forbidden" -> "You don't have access to do that on this board."
+            else -> "That isn't allowed on this board."
         }
     }
 }
