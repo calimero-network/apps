@@ -1,211 +1,225 @@
 # Mero Chess
 
-Two-player chess where the board is not hosted anywhere.
+Two-player chess with the referee in the contract.
 
-A table is a Calimero context: two seats and a list of moves, replicated between
-the players' own nodes. The **rules live in the contract** — legal moves, check,
-mate, castling, en passant, promotion, and every one of the draws — so the node
-you are talking to is the referee, and so is theirs.
+A table is a Calimero **app instance** on the 1.0 runtime: a contract on core's
+**component SDK** (`calimero-app-sdk`, a `calimero:app` WebAssembly component
+on the node's wasmtime runtime), developed on **`merod local`**, with a
+frontend on mero-js's **`CalimeroClient`** that talks to a **Calimero Cloud**
+cluster in production and to the local nodes in development. There is no game
+server: every move is one contract call, ordered by the table's log, and the
+**rules live in the contract** (legal moves, check, mate, castling, en passant,
+promotion, and every one of the draws), so the contract is the referee.
 
 ```
 apps/mero-chess/
-├── logic/                  Rust → WASM. The whole backend.
-│   ├── src/lib.rs          #[app::state], #[app::logic], #[app::event] — seats, moves, endings
-│   ├── src/board.rs        position, move application, FEN
-│   ├── src/movegen.rs      legal moves, check, mate, the terminal conditions
-│   ├── src/notation.rs     UCI (the wire) and SAN (what a person reads)
-│   ├── src/game.rs         replaying a move list into a position
-│   ├── src/tests.rs        TestHost tests: who may sit, who may move, what ends a game
-│   ├── tests/perft.rs      the standard perft positions — proof the movegen is right
-│   ├── res/                abi.json + state-schema.json, emitted by `cargo mero build`
-│   └── workflows/          merobox e2e: two real nodes playing a game
-└── app/                    Vite + React + TypeScript
-    └── src/generated/      the typed client — generated, committed, diffed in CI
+├── logic/                   a standalone crate (own [workspace] + Cargo.lock)
+│   ├── src/lib.rs           #[app::state], #[app::logic], #[app::event], #[app::error]: seats, moves, endings
+│   ├── src/board.rs         position, move application, FEN
+│   ├── src/movegen.rs       legal moves, check, mate, the terminal conditions
+│   ├── src/notation.rs      UCI (the wire) and SAN (what a person reads)
+│   ├── src/game.rs          replaying a move list into a position
+│   ├── src/perft.rs         the standard perft positions: proof the movegen is right
+│   ├── tests/harness.rs     TestApp: the built component on core's real engine
+│   ├── tests/scenarios.rs   every scenarios/*.json in the harness
+│   ├── scenarios/           play-a-game, access (+ .org.json): harness AND merod local
+│   └── res/abi.json         the component's ABI (committed, diffed in CI)
+├── app/                     Vite + React; @calimero-apps/connect + mero-js CalimeroClient
+│   └── src/chess.ts         the contract's methods, typed (tested against res/abi.json)
+├── docs/trust-model.md      the v1 trust model, kept as a worked example (see below)
+└── mobile/                  native iOS / Android apps (moved to 1.0 in #686: see below)
 ```
+
+See [docs/COMPONENT-APPS.md](../../docs/COMPONENT-APPS.md) for how component
+apps are built, run and tested in this repo.
 
 ## Run it
 
 ```bash
-pnpm install                       # once, at the repo root
-cargo mero build -p mero-chess     # emits res/mero_chess.wasm + res/abi.json
-pnpm -F mero-chess codegen         # regenerates src/generated from that ABI
-pnpm -F mero-chess dev             # http://localhost:5173
+pnpm install                     # once, at the repo root
+rustup target add wasm32-wasip2  # once
+pnpm dev:local mero-chess        # merod local + build + deploy + http://localhost:5173/
 ```
 
-Install the bundle on a node, open the app, and use **Choose a table** — under
-`AppMode.MultiContext` the auth callback returns tokens and an application id
-and nothing else, so picking a table is the app's job. Invite the other player
-with the link the table mints; they take the free seat.
+`merod` at the pinned core release must be on the `PATH` (or in `MEROD_BIN`);
+`pnpm dev:local` prints how to get it when it is missing. In the browser,
+**create an account** (a passkey), press **New table**, take a seat, and
+**Create invite link** for your opponent. A second browser profile with its own
+passkey that opens the link is the other player.
 
 **On your own?** Take both chairs. The contract allows one account to hold White
-and Black on purpose — pass-and-play is how chess works when the other person is
-in the room, and it is the only way to use the app before anyone else has a node.
+and Black on purpose: pass-and-play is how chess works when the other person is
+in the room.
 
-## The design, in three decisions
+## The design
 
-**Moves are stored; a board never is.** State is
-`WriteOnce<SortedMap<"<author>/<game>/<ply>/<nonce>", MoveRecord>>`, and every
-position in the app is derived by replaying it. A move, once written, cannot be
-edited or removed by anyone — its author included — and every node enforces
-that on apply. A stored board could not converge; it would merge field by field
-into a position no game ever reached.
+**One log, one game.** Every call is applied by the cluster's leader in log
+order, so `play` checks the move (whose turn, both chairs taken, legal in the
+position) and stores it in the same run. Two people cannot both take a ply: the
+first call plays, the second is refused because the turn has passed.
 
-A ply is decided by being the ONLY legal move its author wrote there. Two
-different legal moves at one ply is **equivocation**, and the player who wrote
-them loses the game: rows cannot be taken back, so choosing between them by
-their clock — a value their author sets — would let a player file a backdated
-second move at an old ply and rewrite the game from there.
+**Moves are stored; the position is replayed.** State is the move list keyed by
+`(game, ply)`, and every read replays it from the initial array (at most 600
+plies). That is what lets the contract see threefold and fivefold repetition,
+which need every position the game has been through.
 
-The record carries the move, its author's clock (display only) and the
-opponent its author saw. Which game a move belongs to, which ply it is, who
-played it and how it reads in notation are all the reader's arithmetic, from the
-key, the owner stamp and the replay.
-
-**The contract hands out the legal moves.** `table()` returns the position AND
-every legal move in it, so the frontend contains no chess engine at all — it
+**The contract hands out the legal moves.** `table` returns the position AND
+every legal move in it, so the frontend contains no chess engine at all: it
 highlights the squares the contract named. The board therefore cannot offer a
-move the node would refuse, and a modified client cannot play one.
+move the contract would refuse, and a modified client cannot play one.
 
-**Results are derived, not written.** Checkmate, stalemate, insufficient
-material, fivefold repetition and the seventy-five-move rule are properties of
-the move list, computed on read. Only an ending a *person* causes — a
-resignation, an agreed draw, a claimed one — is stored, and even that is
-re-checked before it counts. So the result can never disagree with the moves,
-and the losing node reaches the verdict itself.
-
+**Results come from the rules.** Checkmate, stalemate, insufficient material,
+fivefold repetition and the seventy-five-move rule are seen by `play` the moment
+the move that causes them is played. Only an ending a *person* causes (a
+resignation, an agreed draw, a claimed one) is its own call, and that call is
+checked before it is written: a resignation must lose, an agreement needs the
+opponent's offer standing in this position, a claimed draw must be available.
 Threefold repetition and the fifty-move rule are **claims**, as they are in the
-rules of chess: the table offers a button, and the game goes on until someone
-presses it. Fivefold and seventy-five moves are automatic.
+rules of chess; fivefold and seventy-five moves are automatic.
 
-## What holds against a node that does not run this code
+## Trust
 
-A peer's node folds an incoming delta into storage — verify the author's
-signature, authorize them at their causal cut, apply the actions. It does **not**
-execute this contract, and membership is the default write boundary, so a
-patched node can put whatever bytes it likes into any entity it may write. The
-checks inside `play` bind only the node that runs them. Two rules follow, and
-they shape every read in `lib.rs`:
-
-**Nothing is trusted that can be derived.** The position, the SAN, the ply
-ordering, the result and the current game index are all recomputed on read. A
-forged row is inert: it sits in storage and in the root hash, and no honest node
-folds it into a position. That is quarantine at interpretation, not prevention
-at write — the write cannot be prevented, because nothing re-executes at receive
-time.
-
-**Everything else is owned, and written once.** Every row a player writes lives
-in a `WriteOnce` map (presence alone in the player's own `UserStorage` slot), whose
-entries carry a `StorageType::User { owner }` stamp and, for `WriteOnce`, an
-immutable rule — nobody edits or removes the row, its owner included. Core
-verifies a per-action signature against that owner inside
-`Interface::apply_action` on every receive path — an unsigned remote `User`
-action is refused outright — so a member cannot author a row as someone else.
-Keys name their author, and the reader reads that author's own entry by name
-(`get_by`): since core 0.11.0-rc.57 keys are per owner, so a row anyone else
-files under an author's key is a separate entry of theirs and is never read,
-and a key-only `get`/`owner_of` would only ever answer for the caller. A key
-also carries a per-write nonce, so a player's own rows never collide.
+v1 ran the contract on each player's own node, and a peer's node folded deltas
+into storage without running it, so v1 stored only per-author, write-once
+claims and re-derived everything on read ([`docs/trust-model.md`](docs/trust-model.md)
+is that design, and the defects it fixed, written up for anyone building a v1
+app). Under one log every write IS this code, so the guarantees are method
+checks against `env::caller()`:
 
 | attempt | what stops it |
 |---|---|
-| an illegal move | the replay re-validates every move in the position it would be played in |
-| a row that describes a different game than the one it is in | there is nothing on it to lie with: the ply, the notation and the attribution are all the reader's arithmetic |
-| a move authored for the other player | they cannot sign as that account; the key/stamp mismatch drops the row |
-| moving twice, or slotting a row in at any ply | the ply sequence is the reader's arithmetic, and each ply expects one specific author |
-| taking a move back, or filing a backdated second one | rows are write-once; two different legal moves at one ply lose the game for their author |
-| un-resigning by playing on, or withdrawing an agreed draw | a valid ending pins the game at its ply, so later moves are never reached; an agreement needs only the offer, so a later refusal from either side changes nothing |
-| a forged resignation, draw or result | endings are re-derived: a resignation must lose, an agreement needs the offer it answered, a claimed draw must be available in that position |
-| a rematch that erases a live game | the game index is counted, not read: it advances only past a finished game, claimed by a seat holder |
-| seat theft | claims are per-claimant rows only their author can write; once each player has moved naming the other, that pair holds the chairs whatever anyone files later, and a chair someone has played from cannot be given up |
-| relabelling the table | the title and creation date are `Frozen` at init |
-| burying the table under junk rows | every map is a `SortedMap` keyed by author first, so a read seeks the two players' rows and never loads rows filed under anybody else's name |
+| an illegal move, or one that is not UCI | `play` refuses it (`IllegalMove`, `BadMove`) |
+| a move for the player to move, by anyone else | `play` writes only as the caller, and only the side to move may (`NotYourMove`) |
+| moving twice, or out of turn | the same check: it is no longer your turn |
+| taking a move back, or rewriting an old ply | there is no method that edits or removes a move |
+| un-resigning by playing on, or withdrawing an agreed draw | the game is over: `play`, offers and declines are refused (`GameOver`, `NoDrawOffer`) |
+| a resignation, draw or result for somebody else | endings are written only by a seated player, as themselves, and only when they hold (`NotSeated`, `NoDrawOffer`, `NoDrawToClaim`) |
+| a rematch that erases a live game | `rematch` needs a finished game and a seated caller (`GameNotFinished`, `NotSeated`) |
+| seat theft | a chair someone holds is theirs (`SeatTaken`); one they have played from cannot be given up (`AlreadyPlayed`) |
+| relabelling the table | the title and creation date are written by `init` and nothing else |
 
-What remains:
+Who reaches a table is its organization's business: members, admins, guests and
+the owner. Anyone who reaches it may take a free chair and play; everyone else
+watches. Events go to everyone the table reaches (`Audience::All`), guests
+included, which is what keeps a guest's board (player or spectator) current.
 
-- A player can **stall**, and because `stand` is refused once they have played,
-  a member who sits down and walks away leaves that table unusable — griefing
-  rather than a breach (a table is a context; another costs nothing), and an
-  abandon rule is the honest fix.
-- **Seats before both players have moved.** Until each player has moved naming
-  the other, a chair goes to its earliest claim, and `claimed_at` is the
-  claimant's own clock — so a patched member can still displace a seated player
-  who has not yet played. The same holds for a table one person plays alone,
-  and against two members colluding to confirm a pair of their own.
-- **Two devices, one instant.** Two devices of one account writing two
-  different moves at the same millisecond land on the same key with different
-  bytes, which a write-once entry refuses to reconcile.
-
-**[`docs/trust-model.md`](docs/trust-model.md) is the long version**, and it is
-written for someone building their own app rather than for someone reading this
-one: what the storage tiers (`Public`, `Authored`, `Shared`, `Permissioned`,
-`Frozen`) actually enforce and when to reach for each, the fourteen defects this
-app shipped and fixed with the exploit for each one, and a checklist to run over
-your own `#[app::state]`. If you are not sure how to use permissions and data
-models on Calimero, start there.
+What remains: a player can still **stall** (stop moving, or sit down and walk
+away before the first move; `stand` is allowed until then). There is no clock.
 
 ## Test it
 
 | | what it covers | needs a node |
 |---|---|---|
-| `cargo test -p mero-chess` | the rules, the contract, perft, forged rows written straight into storage, and two replicas converging on concurrent writes | no |
-| `pnpm -F mero-chess test` | the board helpers and the generated client vs the ABI | no |
-| `pnpm -F mero-chess test:e2e` | the UI playing a whole game against a real node | a local `merod` |
-| `merobox bootstrap run workflows/play-a-game.yml` | two real nodes across five games: a mate, a declined offer then an agreed draw, a claimed threefold, a resignation, a chair given up | yes (Docker) |
+| `cargo test --manifest-path apps/mero-chess/logic/Cargo.toml` | the rules (`board`/`movegen`/`notation`/`game` unit tests and perft), v1's `TestHost` tests method for method (seats, turns, mate, stalemate, promotion, resignation, draw offers, threefold and fivefold, rematches, pass-and-play, spectators, presence, events), the permission checks that replace v1's owner stamps and forged-row tests, access and wire checks, and every `scenarios/*.json`, on core's wasmtime engine | no |
+| `pnpm -F mero-chess test` | the board helpers; the methods the UI calls are exactly the committed ABI's, with its parameter names; the adapter from the new answers to the screens' shapes; sign-in, the lobby, tables, seats, moves, refusals, invitations, session restore (mocked client) | no |
+| `pnpm merod-local e2e mero-chess` | every `scenarios/*.json` on `merod local`: real accounts with passkeys, an org per scenario, each account on a different node, event streams | yes |
 
-**`tests/perft.rs` is the one worth knowing about.** Counting the leaf nodes of
+**`src/perft.rs` is the one worth knowing about.** Counting the leaf nodes of
 the move tree from the five standard positions is the only test that catches the
-whole class of bugs unit tests miss — a castling right that survives a rook
+whole class of bugs unit tests miss: a castling right that survives a rook
 capture, an en-passant capture that exposes the king, a promotion that generates
-one move instead of four. Each changes the count by a knowable amount and
-nothing else notices. The expected numbers are the published ones, so a wrong
-generator cannot agree with them by construction.
+one move instead of four. The expected numbers are the published ones, so a
+wrong generator cannot agree with them by construction. (It moved from
+`tests/perft.rs` into the crate: a component crate is a `cdylib` only, so an
+integration test cannot link its modules.)
 
-`tests/converge.rs` covers the case neither of the others can reach: two
-replicas writing **at the same instant** without having seen each other — two
-people reaching for the same chair, one person moving from two devices, both
-players resigning together — asserted by root-hash equality plus invariants on
-the merged value. A merobox scenario is a sequence, so nothing in it is ever
-genuinely concurrent.
+`play-a-game.json` is v1's two-node Docker workflow (`play-a-game.yml`), with
+two accounts instead of two nodes, across five games: a refused claim on a taken
+seat, the scholar's mate with a refused out-of-turn move and a refused move into
+the finished game, a rematch with the colours swapped and presence read at once
+and long after, a declined offer then an agreed draw, a claimed threefold, a
+resignation, and a refused `stand` and seat theft at the end, with the record
+read back. `access.json` adds what that workflow never could: anonymous callers
+and accounts outside the org refused, a guest playing, a spectator refused when
+it tries to move, take a seat, offer, accept, decline or claim a draw, resign or
+rematch for a player, typed errors with their fields.
 
-The byzantine tests at the bottom of `src/tests.rs` cover the other half. They
-write rows directly into the contract's maps under another account — which is
-what a patched node does — and assert no reader is fooled: a move written for
-the player to move by somebody else, a row at a ply the game has not reached, a
-squatted key, a forged resignation, a draw agreed with nobody, a seat claimed on
-another player's behalf, a rematch claimed by a spectator.
+## What changed in the port, and why
 
-They are in-crate rather than a `converge_app` suite because that harness cannot
-carry authored entries at all — *"`Shared` / `Authored` / `User` / `Frozen`
-storage need the node's signing identity … test those with merobox workflows"* —
-which is why `logic/workflows/play-a-game.yml` now carries the weight of proving
-authored state replicates between real nodes. The forgery path itself (a patched
-node emitting a delta) has no automated coverage here; it is enforced by core's
-`Interface::apply_action`, which core tests directly.
+Same methods, same arguments (in camelCase), same answers and events, with these
+differences a client sees:
 
-## The contract's surface
+| | v1 (`calimero-sdk`, wasmer, a context) | now (component SDK, an app instance) | why |
+|---|---|---|---|
+| transport | JSON-RPC `execute` on your own node, a context id | `POST /apps/{app}/intents` (calls) and `/views` (reads) on any node of the cluster, an app id | one app per replicated log |
+| `init` | `init(title, now)`, both required | `init(title?, now?)`: `title` defaults to `"Chess"`, `createdAt` is `"0"` without `now`; the frontend passes both as `initArgs` | the harness and `merod-local e2e` create apps without init arguments |
+| method names | `offer_draw`, `accept_draw`, `decline_draw`, `claim_draw` | `offerDraw`, `acceptDraw`, `declineDraw`, `claimDraw` (the rest are one word) | the ABI names methods in camelCase |
+| `now` arguments | numbers | decimal strings (`"1700000000000"`) | `u64` travels as a decimal string (D20) |
+| result field names | `created_at`, `side_to_move`, `legal_moves`, `claimable_draw`, `my_color`, `my_turn`, `draw_offer_from`, `games_played`, `started_at` | `createdAt`, `sideToMove`, `legalMoves`, `claimableDraw`, `myColor`, `myTurn`, `drawOfferFrom`, `gamesPlayed`, `startedAt` | camelCase like every component app's wire (the frontend converts them back in one place, `src/chess.ts`) |
+| `u64` result fields | numbers (`created_at`, `moves[].at`, `started_at`) | decimal strings | D20 |
+| `me`, `member`, `by`, `players[].id`, `white`/`black` in `history` | the hex public key of the caller's account | the caller's **account id** | identity is an account (passkeys), not a node key |
+| `players` order | sorted by id | in the order each player first announced themselves | a stable order that does not depend on how account ids sort |
+| reads | any method | `table` and `history` are views (`#[app::view]`); calling a write as a view is `NotAView` | a view is answered without touching the log |
+| refusals | `app::bail!("that seat is taken")`: an untyped error string | `422 APP_ERROR` `{ code, fields }`: `UnknownSeat {seat}`, `SeatTaken`, `NotSeated`, `AlreadyPlayed`, `GameOver`, `MoveLimit`, `WaitingForOpponent`, `NotYourMove`, `BadMove {uci}`, `IllegalMove {uci}`, `NoDrawOffer`, `NoDrawToClaim`, `GameNotFinished`, and new `GameLimit`; the UI shows v1's messages for them | `#[app::error]`'s wire shape |
+| `NotSeated` | six messages ("you are not seated", "only a seated player can resign / offer / accept / decline / claim / start a rematch") | one code | one condition |
+| `NoDrawOffer` | "there is no draw offer to accept" / "…to decline" | one code | one condition |
+| who holds a chair | the earliest claim by its author's clock, locked once both players had moved naming each other | the first `sit` in log order; it is yours until you `stand` (allowed only before you have played here and before the game has a move) | one log orders claims, so nobody can backdate one |
+| `equivocation` | a reason a game could end with: a player who wrote two different moves at one ply lost | gone: a ply takes one move, the second call is refused | one log |
+| two rematch calls for the same game | both rows counted as one new game | the second is refused (`GameNotFinished`): the first already started the next game | the first call changed the state the second sees |
+| more than 1,024 games | rematch rows past the 1,024th were ignored by every read | `rematch` refused with `GameLimit` | refuse instead of writing what nobody reads |
+| SAN | recomputed by every reader from the replay | computed by `play` and stored with the move | under one log the stored SAN is the one `play` computed |
+| `history` of a finished game | the players read from the chairs now | the players who held the chairs when it ended | a finished game names who played it |
+| events | to the context's members; `Initialized()` and `PlayerJoined(id)` were tuple variants | to everyone the table reaches (`Audience::All`, guests included); `Initialized` has no payload and `PlayerJoined` names its field (`PlayerJoined { member }`) | component events have named fields |
+| who may call | any member of the context | any member, admin or guest of the table's org, and the owner; anonymous `401`, others `404` | the org is the access boundary |
+| malformed arguments | depends on the decoder | `BadArgs` (unknown keys refused, every parameter required) | the generated dispatcher |
+| `online` | presence row written within 30 s of the reader's `now` | unchanged | |
 
-| method | what it does |
-|---|---|
-| `table(now)` | the whole table in one read: position, legal moves, seats, status, result, scoresheet |
-| `history()` | every game played at this table, with its result |
-| `join(name, now)` / `heartbeat(now)` | presence, so the other player's dot is honest |
-| `sit(seat, name, now)` / `stand(now)` | take or leave a chair (leaving only before you have played at this table) |
-| `play(uci, now)` | play a move; returns its SAN |
-| `resign(now)` | hand the game to the other side |
-| `offer_draw(now)` / `accept_draw(now)` / `decline_draw(now)` | a draw offer, good only for the position it was made in |
-| `claim_draw(now)` | threefold repetition or the fifty-move rule |
-| `rematch(now)` | the next game, with the colours swapped |
+The frontend changed with it: mero-react's provider, the node login, the
+context picker, the namespace invitations and their deep-link codec
+(`links.calimero.network/…/join?invitation=…`), the desktop SSO hand-off, the
+`@calimero-apps/names` namespace-wide names, the generated `MeroChessClient` and
+the Playwright suites that drove a merod 0.x node are gone. It now resolves its
+target from the build (`@calimero-apps/connect`: `merod local` under `vite`, a
+Cloud cluster under `vite build`), signs in with a **passkey**, lists and
+creates **tables** (app instances: v1's contexts) in **organizations** (v1's
+namespaces: "New table" makes both, "Add table" puts another table in one you
+have), invites an opponent with an **org invite link** that also names the
+table (making it is approved with your passkey; opening it after signing in
+redeems it and opens the table), re-reads the table on the table's **event
+stream** (and a 6-second poll for presence), and calls the contract by method
+name through `src/chess.ts`, whose method list a test checks against
+`logic/res/abi.json` and which converts the answers back to the shapes the
+screens were written against, so the board, the seats, the game card and the
+scoresheet are unchanged. A seat with no name given shows a short account id
+(v1 fell back to the name its holder set for the namespace; an org has no such
+record yet). A refused call's message now stays on screen until dismissed (v1's
+re-read after every call cleared it at once).
 
-Moves cross the wire as **UCI** (`e2e4`, `e7e8q`) because it is unambiguous
-without a position; **SAN** (`Nf3`, `exd6`, `Qxf7#`) is computed once, by the
-node that played the move, and stored alongside it — it depends on the position,
-so two clients recomputing it could word the same move differently.
+The v1 contract's storage migrations: there were none in this app, and the
+component SDK has none (`#[app::migrate]` is not in this version), so a v1
+table's state does not carry over: a component table starts empty.
 
-## Invitations and deep links
+## Mobile
 
-The `encodeInvitationPayload` family, ported from kv-store: a namespace
-invitation plus the ids needed to open the table inside it, deflated and base58
-encoded into `https://links.calimero.network/com.calimero.mero-chess/join?invitation=…`.
-The deep link is captured before React mounts (see `src/main.tsx`) so it survives
-the login reload, and redeeming it always asks first — following a link must not
-join you to someone else's namespace on your behalf.
+The native **iOS and Android** apps (`mobile/`) move to Calimero 1.0 in their
+own PR, #686, which depends on this one and merges right after it. They call
+this component ABI: the same method names, parameters and camelCase answers as
+the web frontend (the table above). This PR leaves `mobile/` as it is on `main`.
+
+## Production
+
+`vite build` connects to a Calimero Cloud cluster by name, and refuses to start
+without two variables set where the bundle's frontend is built:
+
+```
+VITE_CALIMERO_CLUSTER=<cluster name in the cloud's node directory>
+VITE_CALIMERO_MIN_RELEASE=<lowest mero-tee release a node may run>
+```
+
+The production frontend is the one **packed into the `.mpk`** (`frontend-dir`),
+which the cluster serves from the package's own origin: a Cloud node trusts
+passkey ceremonies only from its own origins and from frontends it serves from a
+bundle, so a copy on another origin cannot sign in. Instances are created from
+the package (`com.calimero.mero-chess`). The `frontend` link in
+`logic/Cargo.toml` and the Vercel project (`app/vercel.json`) stay as the
+listing's link; they are not where people sign in.
+
+```bash
+pnpm -F mero-chess build
+cargo run --release --manifest-path tools/component-bundle/Cargo.toml -- \
+  bundle apps/mero-chess/logic --key <production key> --app-version <x.y.z>
+```
+
+⚠️ Known gap: mero-js checks a Cloud node's release against
+`cloud.calimero.network` mirrors, which the served page's CSP does not list
+(docs/COMPONENT-APPS.md, "What the component SDK does not have yet").

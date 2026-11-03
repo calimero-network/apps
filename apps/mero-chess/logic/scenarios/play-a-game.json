@@ -1,0 +1,757 @@
+[
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "sit",
+  "args": {
+   "seat": "white",
+   "name": "Node One",
+   "now": "1700000001000"
+  },
+  "expect": {
+   "ok": null
+  },
+  "events": {
+   "bob": [
+    "Initialized",
+    "Seated"
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "sit",
+  "args": {
+   "seat": "black",
+   "name": "Node Two",
+   "now": "1700000002000"
+  },
+  "expect": {
+   "ok": null
+  },
+  "events": {
+   "owner": [
+    "Initialized",
+    "Seated",
+    "Seated"
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "sit",
+  "args": {
+   "seat": "white",
+   "name": "Node Two",
+   "now": "1700000003000"
+  },
+  "expect": {
+   "error": "SeatTaken",
+   "fields": {}
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "play",
+  "args": {
+   "uci": "e2e4",
+   "now": "1700000011000"
+  },
+  "expect": {
+   "ok": "e4"
+  },
+  "events": {
+   "bob": [
+    "Initialized",
+    "Seated",
+    "Seated",
+    "Moved"
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "play",
+  "args": {
+   "uci": "e7e5",
+   "now": "1700000012000"
+  },
+  "expect": {
+   "ok": "e5"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "play",
+  "args": {
+   "uci": "f1c4",
+   "now": "1700000013000"
+  },
+  "expect": {
+   "ok": "Bc4"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "play",
+  "args": {
+   "uci": "b8c6",
+   "now": "1700000014000"
+  },
+  "expect": {
+   "ok": "Nc6"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "play",
+  "args": {
+   "uci": "d1h5",
+   "now": "1700000015000"
+  },
+  "expect": {
+   "ok": "Qh5"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "play",
+  "args": {
+   "uci": "g8f6",
+   "now": "1700000016000"
+  },
+  "expect": {
+   "ok": "Nf6"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "play",
+  "args": {
+   "uci": "d7d6",
+   "now": "1700000017000"
+  },
+  "expect": {
+   "error": "NotYourMove",
+   "fields": {}
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "play",
+  "args": {
+   "uci": "h5f7",
+   "now": "1700000018000"
+  },
+  "expect": {
+   "ok": "Qxf7#"
+  },
+  "events": {
+   "bob": [
+    "Initialized",
+    "Seated",
+    "Seated",
+    "Moved",
+    "Moved",
+    "Moved",
+    "Moved",
+    "Moved",
+    "Moved",
+    "Moved",
+    "GameEnded"
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "play",
+  "args": {
+   "uci": "e8f7",
+   "now": "1700000019000"
+  },
+  "expect": {
+   "error": "GameOver",
+   "fields": {}
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "history",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "index": 0,
+     "startedAt": "0",
+     "result": "1-0",
+     "reason": "checkmate",
+     "plies": 7,
+     "white": "@owner",
+     "black": "@bob"
+    }
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "rematch",
+  "args": {
+   "now": "1700000030000"
+  },
+  "expect": {
+   "ok": 1
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "history",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "index": 0,
+     "startedAt": "0",
+     "result": "1-0",
+     "reason": "checkmate",
+     "plies": 7,
+     "white": "@owner",
+     "black": "@bob"
+    },
+    {
+     "index": 1,
+     "startedAt": "1700000030000",
+     "result": "*",
+     "reason": "",
+     "plies": 0,
+     "white": "@bob",
+     "black": "@owner"
+    }
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "heartbeat",
+  "args": {
+   "now": "1700000040000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "heartbeat",
+  "args": {
+   "now": "1700000041000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "table",
+  "args": {
+   "now": "1700000042000"
+  },
+  "expect": {
+   "ok": {
+    "title": "Chess",
+    "createdAt": "0",
+    "game": 1,
+    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    "sideToMove": "white",
+    "moves": [],
+    "legalMoves": [
+     "a2a3",
+     "a2a4",
+     "b1a3",
+     "b1c3",
+     "b2b3",
+     "b2b4",
+     "c2c3",
+     "c2c4",
+     "d2d3",
+     "d2d4",
+     "e2e3",
+     "e2e4",
+     "f2f3",
+     "f2f4",
+     "g1f3",
+     "g1h3",
+     "g2g3",
+     "g2g4",
+     "h2h3",
+     "h2h4"
+    ],
+    "status": "inProgress",
+    "result": "*",
+    "reason": "",
+    "check": false,
+    "claimableDraw": "",
+    "white": {
+     "seat": "black",
+     "member": "@bob",
+     "name": "Node Two",
+     "online": true
+    },
+    "black": {
+     "seat": "white",
+     "member": "@owner",
+     "name": "Node One",
+     "online": true
+    },
+    "me": "@owner",
+    "myColor": "black",
+    "myTurn": false,
+    "drawOfferFrom": "",
+    "players": [
+     {
+      "id": "@owner",
+      "name": "Node One",
+      "online": true,
+      "color": "black"
+     },
+     {
+      "id": "@bob",
+      "name": "Node Two",
+      "online": true,
+      "color": "white"
+     }
+    ],
+    "gamesPlayed": 2
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "table",
+  "args": {
+   "now": "1700000200000"
+  },
+  "expect": {
+   "ok": {
+    "title": "Chess",
+    "createdAt": "0",
+    "game": 1,
+    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    "sideToMove": "white",
+    "moves": [],
+    "legalMoves": [
+     "a2a3",
+     "a2a4",
+     "b1a3",
+     "b1c3",
+     "b2b3",
+     "b2b4",
+     "c2c3",
+     "c2c4",
+     "d2d3",
+     "d2d4",
+     "e2e3",
+     "e2e4",
+     "f2f3",
+     "f2f4",
+     "g1f3",
+     "g1h3",
+     "g2g3",
+     "g2g4",
+     "h2h3",
+     "h2h4"
+    ],
+    "status": "inProgress",
+    "result": "*",
+    "reason": "",
+    "check": false,
+    "claimableDraw": "",
+    "white": {
+     "seat": "black",
+     "member": "@bob",
+     "name": "Node Two",
+     "online": false
+    },
+    "black": {
+     "seat": "white",
+     "member": "@owner",
+     "name": "Node One",
+     "online": false
+    },
+    "me": "@owner",
+    "myColor": "black",
+    "myTurn": false,
+    "drawOfferFrom": "",
+    "players": [
+     {
+      "id": "@owner",
+      "name": "Node One",
+      "online": false,
+      "color": "black"
+     },
+     {
+      "id": "@bob",
+      "name": "Node Two",
+      "online": false,
+      "color": "white"
+     }
+    ],
+    "gamesPlayed": 2
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "offerDraw",
+  "args": {
+   "now": "1700000051000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "acceptDraw",
+  "args": {
+   "now": "1700000052000"
+  },
+  "expect": {
+   "error": "NoDrawOffer",
+   "fields": {}
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "declineDraw",
+  "args": {
+   "now": "1700000053000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "acceptDraw",
+  "args": {
+   "now": "1700000054000"
+  },
+  "expect": {
+   "error": "NoDrawOffer",
+   "fields": {}
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "play",
+  "args": {
+   "uci": "g1f3",
+   "now": "1700000055000"
+  },
+  "expect": {
+   "ok": "Nf3"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "offerDraw",
+  "args": {
+   "now": "1700000056000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "acceptDraw",
+  "args": {
+   "now": "1700000057000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "play",
+  "args": {
+   "uci": "e7e5",
+   "now": "1700000058000"
+  },
+  "expect": {
+   "error": "GameOver",
+   "fields": {}
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "rematch",
+  "args": {
+   "now": "1700000070000"
+  },
+  "expect": {
+   "ok": 2
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "play",
+  "args": {
+   "uci": "g1f3",
+   "now": "1700000071000"
+  },
+  "expect": {
+   "ok": "Nf3"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "play",
+  "args": {
+   "uci": "g8f6",
+   "now": "1700000072000"
+  },
+  "expect": {
+   "ok": "Nf6"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "play",
+  "args": {
+   "uci": "f3g1",
+   "now": "1700000073000"
+  },
+  "expect": {
+   "ok": "Ng1"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "play",
+  "args": {
+   "uci": "f6g8",
+   "now": "1700000074000"
+  },
+  "expect": {
+   "ok": "Ng8"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "play",
+  "args": {
+   "uci": "g1f3",
+   "now": "1700000075000"
+  },
+  "expect": {
+   "ok": "Nf3"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "play",
+  "args": {
+   "uci": "g8f6",
+   "now": "1700000076000"
+  },
+  "expect": {
+   "ok": "Nf6"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "play",
+  "args": {
+   "uci": "f3g1",
+   "now": "1700000077000"
+  },
+  "expect": {
+   "ok": "Ng1"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "play",
+  "args": {
+   "uci": "f6g8",
+   "now": "1700000078000"
+  },
+  "expect": {
+   "ok": "Ng8"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "claimDraw",
+  "args": {
+   "now": "1700000079000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "rematch",
+  "args": {
+   "now": "1700000090000"
+  },
+  "expect": {
+   "ok": 3
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "claimDraw",
+  "args": {
+   "now": "1700000091000"
+  },
+  "expect": {
+   "error": "NoDrawToClaim",
+   "fields": {}
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "resign",
+  "args": {
+   "now": "1700000092000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "rematch",
+  "args": {
+   "now": "1700000100000"
+  },
+  "expect": {
+   "ok": 4
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "stand",
+  "args": {
+   "now": "1700000101000"
+  },
+  "expect": {
+   "error": "AlreadyPlayed",
+   "fields": {}
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "sit",
+  "args": {
+   "seat": "white",
+   "name": "Node Two",
+   "now": "1700000102000"
+  },
+  "expect": {
+   "error": "SeatTaken",
+   "fields": {}
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "history",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "index": 0,
+     "startedAt": "0",
+     "result": "1-0",
+     "reason": "checkmate",
+     "plies": 7,
+     "white": "@owner",
+     "black": "@bob"
+    },
+    {
+     "index": 1,
+     "startedAt": "1700000030000",
+     "result": "1/2-1/2",
+     "reason": "agreement",
+     "plies": 1,
+     "white": "@bob",
+     "black": "@owner"
+    },
+    {
+     "index": 2,
+     "startedAt": "1700000070000",
+     "result": "1/2-1/2",
+     "reason": "threefold",
+     "plies": 8,
+     "white": "@owner",
+     "black": "@bob"
+    },
+    {
+     "index": 3,
+     "startedAt": "1700000090000",
+     "result": "1-0",
+     "reason": "resignation",
+     "plies": 0,
+     "white": "@bob",
+     "black": "@owner"
+    },
+    {
+     "index": 4,
+     "startedAt": "1700000100000",
+     "result": "*",
+     "reason": "",
+     "plies": 0,
+     "white": "@owner",
+     "black": "@bob"
+    }
+   ]
+  }
+ }
+]

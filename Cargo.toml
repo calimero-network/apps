@@ -75,6 +75,7 @@ exclude = [
   "apps/mero-chat/logic",
   "apps/merraria/logic",
   "apps/mero-docs/logic",
+  "apps/mero-chess/logic",
 ]
 
 [workspace.package]

@@ -26,7 +26,9 @@ want = sorted(
     for a in apps
     for p in glob.glob(f"apps/{a}/logic/workflows/*.yml", root_dir=ROOT)
 )
-assert want, "no scenarios found - the glob is wrong"
+# Once every app is a component app the root workspace has none, and so no
+# v1 scenarios; the synthetic cases below still pin the glob.
+assert want or not apps, "no scenarios found - the glob is wrong"
 assert sorted((e["app"], e["workflow"]) for e in got) == want, (got, want)
 assert not any("probes" in e["workflow"] for e in got)
 assert run([]) == []

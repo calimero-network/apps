@@ -1,0 +1,355 @@
+[
+ {
+  "as": "@anonymous",
+  "op": "view",
+  "method": "table",
+  "args": {
+   "now": "1700000001000"
+  },
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "call",
+  "method": "sit",
+  "args": {
+   "seat": "white",
+   "name": "",
+   "now": "1700000001000"
+  },
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "view",
+  "method": "table",
+  "args": {
+   "now": "1700000001000"
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "call",
+  "method": "sit",
+  "args": {
+   "seat": "white",
+   "name": "M",
+   "now": "1700000001000"
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "sit",
+  "args": {
+   "seat": "purple",
+   "name": "Bob",
+   "now": "1700000002000"
+  },
+  "expect": {
+   "error": "UnknownSeat",
+   "fields": {
+    "seat": "purple"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "sit",
+  "args": {
+   "seat": "white",
+   "name": "Bob",
+   "now": "1700000002000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "play",
+  "args": {
+   "uci": "e2e4",
+   "now": "1700000003000"
+  },
+  "expect": {
+   "error": "WaitingForOpponent",
+   "fields": {}
+  }
+ },
+ {
+  "as": "cy",
+  "op": "call",
+  "method": "resign",
+  "args": {
+   "now": "1700000003000"
+  },
+  "expect": {
+   "error": "NotSeated",
+   "fields": {}
+  }
+ },
+ {
+  "as": "cy",
+  "op": "call",
+  "method": "stand",
+  "args": {
+   "now": "1700000003000"
+  },
+  "expect": {
+   "error": "NotSeated",
+   "fields": {}
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "sit",
+  "args": {
+   "seat": "black",
+   "name": "Gus",
+   "now": "1700000004000"
+  },
+  "expect": {
+   "ok": null
+  },
+  "events": {
+   "gus": [
+    "Initialized",
+    "Seated",
+    "Seated"
+   ]
+  }
+ },
+ {
+  "as": "cy",
+  "op": "call",
+  "method": "play",
+  "args": {
+   "uci": "e2e4",
+   "now": "1700000005000"
+  },
+  "expect": {
+   "error": "NotYourMove",
+   "fields": {}
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "play",
+  "args": {
+   "uci": "e2e4",
+   "now": "1700000005000"
+  },
+  "expect": {
+   "error": "NotYourMove",
+   "fields": {}
+  }
+ },
+ {
+  "as": "cy",
+  "op": "call",
+  "method": "sit",
+  "args": {
+   "seat": "white",
+   "name": "Usurper",
+   "now": "1700000005000"
+  },
+  "expect": {
+   "error": "SeatTaken",
+   "fields": {}
+  }
+ },
+ {
+  "as": "cy",
+  "op": "call",
+  "method": "offerDraw",
+  "args": {
+   "now": "1700000005000"
+  },
+  "expect": {
+   "error": "NotSeated",
+   "fields": {}
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "play",
+  "args": {
+   "uci": "e2e5",
+   "now": "1700000006000"
+  },
+  "expect": {
+   "error": "IllegalMove",
+   "fields": {
+    "uci": "e2e5"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "play",
+  "args": {
+   "uci": "nonsense",
+   "now": "1700000006000"
+  },
+  "expect": {
+   "error": "BadMove",
+   "fields": {
+    "uci": "nonsense"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "play",
+  "args": {
+   "uci": "e2e4",
+   "now": "1700000006000"
+  },
+  "expect": {
+   "ok": "e4"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "stand",
+  "args": {
+   "now": "1700000007000"
+  },
+  "expect": {
+   "error": "AlreadyPlayed",
+   "fields": {}
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "offerDraw",
+  "args": {
+   "now": "1700000007000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "cy",
+  "op": "call",
+  "method": "acceptDraw",
+  "args": {
+   "now": "1700000008000"
+  },
+  "expect": {
+   "error": "NotSeated",
+   "fields": {}
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "acceptDraw",
+  "args": {
+   "now": "1700000008000"
+  },
+  "expect": {
+   "error": "NoDrawOffer",
+   "fields": {}
+  }
+ },
+ {
+  "as": "cy",
+  "op": "call",
+  "method": "declineDraw",
+  "args": {
+   "now": "1700000008000"
+  },
+  "expect": {
+   "error": "NotSeated",
+   "fields": {}
+  }
+ },
+ {
+  "as": "cy",
+  "op": "call",
+  "method": "claimDraw",
+  "args": {
+   "now": "1700000008000"
+  },
+  "expect": {
+   "error": "NotSeated",
+   "fields": {}
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "resign",
+  "args": {
+   "now": "1700000009000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "cy",
+  "op": "call",
+  "method": "rematch",
+  "args": {
+   "now": "1700000010000"
+  },
+  "expect": {
+   "error": "NotSeated",
+   "fields": {}
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "resign",
+  "args": {
+   "now": "1700000010000"
+  },
+  "expect": {
+   "error": "GameOver",
+   "fields": {}
+  }
+ },
+ {
+  "as": "cy",
+  "op": "view",
+  "method": "history",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "index": 0,
+     "startedAt": "0",
+     "result": "1-0",
+     "reason": "resignation",
+     "plies": 1,
+     "white": "@bob",
+     "black": "@gus"
+    }
+   ]
+  }
+ }
+]

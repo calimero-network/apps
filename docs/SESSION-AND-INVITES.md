@@ -208,8 +208,7 @@ the data, so those retry: mero-pixart's `readProjectWithJoinRetry`
 (`api/joinCalendar.ts`, opening a calendar) retry every 3 s for up to 90 s
 while the namespace is just-joined, else 20 s; mero-docs' `redeemInvite`
 retries a folder join every 3 s for up to 90 s, stopping at once on a final
-refusal (expired, revoked, a 4xx); mero-chess's `joinContextWithRetry` is the
-same pattern for its game context.
+refusal (expired, revoked, a 4xx).
 
 Its test ids are `invite-prompt` (with `data-stage`), `invite-accept`,
 `invite-decline`, `invite-continue`, `invite-done`, `invite-retry` and

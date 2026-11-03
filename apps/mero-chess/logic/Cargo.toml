@@ -1,81 +1,67 @@
 [package]
 name = "mero-chess"
-description = "Calimero chess table — seats, moves and the rules, replicated as CRDT state"
-# NOT the release version. Cargo requires a version field; the release workflow
-# ignores it, because the REGISTRY owns the number: it takes the highest
-# published appVersion for this package and increments the patch (0.0.1 when
-# nothing is published). Bumping this changes nothing about what ships, so never
-# read a shipped version out of the tree.
+description = "Calimero chess table — seats, moves and the rules, on the component SDK"
+# NOT the release version: the release workflow takes the next appVersion from
+# the registry and passes it to `mero-component bundle --app-version`. Cargo
+# requires the field; bundling locally without --app-version uses it.
 version = "0.0.1"
-edition.workspace    = true
-authors.workspace    = true
-license.workspace    = true
-repository.workspace = true
+edition = "2021"
+authors = ["Calimero Limited <info@calimero.network>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/calimero-network/apps"
 publish = false
 
 [lib]
-# `cdylib` for the wasm the node loads. `rlib` as well so `cargo test` can link
-# the crate — without it `tests/perft.rs` cannot `use mero_chess::board`.
-crate-type = ["cdylib", "rlib"]
+# A `calimero:app` component. No `rlib`: the tests run the BUILT component on
+# core's engine (tests/common/mod.rs), not the crate linked natively. The rules'
+# own unit tests (and perft) are `#[cfg(test)]` modules inside the crate.
+crate-type = ["cdylib"]
 
-# Read by `cargo mero build` / `cargo mero bundle`. Every field the node and the
-# registry render has a producer here, so nothing hand-writes a manifest.json.
+# Core at `component-core-tag` (root Cargo.toml), the same tag for every core
+# crate; scripts/check-component-pins.py asserts it. A standalone crate cannot
+# inherit `[workspace.dependencies]`.
+[dependencies]
+calimero-app-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8" }
+# The stored records and the view structs are plain serde values.
+serde = { version = "1", features = ["derive"] }
+
+# The harness (`TestApp`, `run_scenario`) and the builder the tests build this
+# crate with, for `cargo test` on the host only.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+calimero-app-sdk   = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8", features = ["testing"] }
+calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8" }
+serde_json = "1"
+
+# Read by `mero-component bundle` (tools/component-bundle), with the keys
+# `cargo mero bundle` reads for a v1 app.
 #
-# `appVersion` is deliberately absent — the release workflow resolves it from
-# the registry and passes `--app-version`.
-#
-# NOTE: none of this can be inherited from the workspace. `[package.metadata]`
-# is not on cargo's inheritable list, so `min-runtime-version.workspace = true`
-# resolves to the literal `{"workspace": true}`. `scripts/check-app-metadata.sh`
-# asserts the fleet-wide values match `[workspace.metadata.mero-apps]` instead.
+# ⚠️ Keep the dependency tables ABOVE this one and nothing but `[workspace]`
+# after it: `scripts/landing/generate.mjs` reads this table with a lookahead
+# that only ends at the NEXT table header, so the calimero table must be
+# followed by one.
 [package.metadata.calimero]
 package = "com.calimero.mero-chess"
 name = "Mero Chess"
-description = "Two-player chess with no game server. A table is a Calimero context: the move list replicates as CRDT state and the rules — legal moves, check, mate, the draws — run inside the contract on both players' own nodes."
+description = "Two-player chess with no game server. A table is a Calimero app instance: every move is a transaction the cluster orders in one log, and the rules — legal moves, check, mate, the draws — run inside the contract."
 author = "Calimero"
-# The slug IS the package id: the desktop and links.calimero.network resolve a
-# deep link by `Application.package`, so these must never drift apart.
+# The slug IS the package id: deep links resolve by `Application.package`.
 slug = "com.calimero.mero-chess"
-# ⚠️ REQUIRED. `cargo mero bundle` refuses to run without an icon decision — a
-# path, "default", or --no-icon — and it fails at BUNDLE time, which a pull
-# request never reaches. A missing icon is therefore a green PR that breaks the
-# moment it merges.
 icon = "../app/public/icon-512.png"
 category = "games"
-tags = ["game", "chess", "two-player", "crdt"]
+tags = ["game", "chess", "two-player"]
 github = "https://github.com/calimero-network/apps"
-# Asserted equal to [workspace.metadata.mero-apps] in CI.
-min-runtime-version = "0.12.0-rc.3"
-# Doubles as this app's registered redirect URI: the auth frontend treats the
-# registry-declared frontend origin as the only callback it will authorize, and
-# compares it by EXACT ORIGIN. Get it wrong and hosted login breaks *after*
-# credentials are accepted, while local and desktop login keep working (loopback
-# is always trusted).
-#
-# Written without a trailing slash: an origin is scheme + host (+ port) and
-# nothing else, and `window.location.origin` never carries one.
-#
-# ⚠️ This resolves to nothing until the Vercel project exists — Root Directory
-# `apps/mero-chess/app`, project named `mero-chess` so the domain matches.
+# `component-min-runtime-version` in the root Cargo.toml: a node compares it
+# with its own release.
+min-runtime-version = "1.0.0-rc.8"
+# The listing's link, and an origin the node may send a person back to from
+# its consent page. NOT where the production frontend runs: a Cloud node trusts
+# passkey ceremonies only from frontends it serves from a bundle, so the
+# production frontend is the one packed below (docs/COMPONENT-APPS.md).
 frontend = "https://mero-chess.vercel.app"
-# The built frontend `cargo mero bundle` packs, so the node serves it from the app's own origin.
+# The built frontend the bundle carries; the cluster serves it from the
+# package's own origin. Build it first: `pnpm -F mero-chess build`.
 frontend-dir = "../app/dist"
 
-# ⚠️ The dependency tables come AFTER this one deliberately: do not move this to
-# the end of the file. `scripts/landing/generate.mjs` reads this table with
-# `/^\[package\.metadata\.calimero\]$([\s\S]*?)(?=^\[|\Z)/m`, and `\Z` is not a
-# JavaScript escape — it matches the literal letter Z. So the lookahead only
-# ends at the NEXT table, and a calimero table with nothing after it does not
-# match at all: the landing generator then fails with "no
-# [package.metadata.calimero] table with a package id found" for a file that
-# plainly has one.
-[dependencies]
-calimero-sdk.workspace           = true
-calimero-storage.workspace       = true
-calimero-storage-macros.workspace = true
-
-[dev-dependencies]
-# The `testing` feature enables the native mock host, which is what lets
-# `TestHost` and `converge_app` drive real CRDT state under `cargo test` with no
-# node and no wasm.
-calimero-storage = { workspace = true, features = ["testing"] }
+# Standalone: excluded from the root workspace (root Cargo.toml), its own
+# Cargo.lock, as core's component apps are.
+[workspace]

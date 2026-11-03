@@ -1,53 +1,55 @@
-import type { ReactNode } from "react";
-import {
-  clearContextId,
-  useContextGroup,
-  useJoinSync,
-} from "@calimero-network/mero-react";
+import { useMemo, type ReactNode } from "react";
+import type { CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
 import { ChessBoard } from "./ChessBoard";
-import type { GameSummary, TableView } from "./generated/MeroChessClient";
+import type { GameSummary, TableView } from "./chess";
 import { InviteCard } from "./InviteCard";
 import { GameCard, Moves, PastGames, PlayerBar, type TableActions } from "./TablePanel";
-import { useAnnounce, useChessTable, usePastGames } from "./useChess";
+import { useAnnounce, useChessTable, usePastGames, type TableConn } from "./useChess";
 import { useSeatNames } from "./useSeatNames";
 import { materialFromSquares, piecesFromFen, type PieceColor } from "./utils/board";
+
+/** The table a `TablePage` shows: the instance, its name, and its organization. */
+export interface OpenTable {
+  appId: string;
+  name: string;
+  org: string | null;
+}
 
 /**
  * One chess table: the board, who is at it, and the link that brings someone
  * else to it.
  *
- * Everything on this page is derived from a single `table()` read — see
- * `useChessTable`. Nothing here decides a rule, computes a position or works
+ * Everything on this page comes from a single `table()` read (see
+ * `useChessTable`). Nothing here decides a rule, computes a position or works
  * out whose turn it is; the contract answers all three and this renders the
  * answer.
  */
-export function TablePage({ contextId }: { contextId: string }) {
-  const table = useChessTable(contextId);
-  // Seats named from the namespace when the table has no name for them.
-  const names = useSeatNames(contextId, table.view);
+export function TablePage({
+  client,
+  table: opened,
+  after,
+  passkey,
+  onLeave,
+}: {
+  client: CalimeroClient;
+  table: OpenTable;
+  /** Runs after each request (keeps the stored session current). */
+  after: () => void;
+  passkey: () => PasskeyProvider;
+  /** Back to the lobby. */
+  onLeave: () => void;
+}) {
+  const conn = useMemo<TableConn>(() => ({ client, appId: opened.appId, after }), [client, opened.appId, after]);
+  const table = useChessTable(conn);
+  // Seats named by the name given at the table, else a short account id.
+  const names = useSeatNames(table.view);
   const name = names.name;
-  useAnnounce(contextId, name);
-
-  // After a join, the invitation dialog waits on this: the first `table()`
-  // read that comes back, an empty board and no players included, is the
-  // table having arrived. A read that fails is retried by the hook's own poll.
-  // Tables live directly in their namespace (see `ContextPicker`), so the
-  // context's group is the namespace that was joined.
-  const { groupId: namespaceId } = useContextGroup(contextId);
-  useJoinSync({ namespaceId, settled: table.view !== null });
-
-  function switchTable() {
-    // A reload rather than local state: the provider reads the stored context
-    // on mount, so reloading is what makes the provider and the UI agree
-    // instead of duplicating that logic here.
-    clearContextId();
-    window.location.reload();
-  }
+  useAnnounce(conn, name);
 
   const view = names.view;
   // Re-read the record only when the table says it could have changed: a game
   // ending, or a rematch starting. See `usePastGames`.
-  const past = usePastGames(contextId, `${view?.games_played ?? 0}:${view?.result ?? ""}`);
+  const past = usePastGames(conn, `${view?.games_played ?? 0}:${view?.result ?? ""}`);
 
   return (
     <TableScreen
@@ -55,16 +57,13 @@ export function TablePage({ contextId }: { contextId: string }) {
       past={past}
       error={table.error}
       onDismissError={table.dismissError}
-      onSwitchTable={switchTable}
+      onSwitchTable={onLeave}
       onMove={(uci) => void table.play(uci)}
-      invite={<InviteCard contextId={contextId} />}
+      invite={<InviteCard client={client} table={opened} passkey={passkey} after={after} />}
       busy={table.busy}
       name={name}
       onNameChange={names.changeName}
-      onSit={(seat) => {
-        names.publish(name);
-        void table.sit(seat, name);
-      }}
+      onSit={(seat) => void table.sit(seat, name)}
       onStand={() => void table.stand()}
       onResign={() => void table.resign()}
       onOfferDraw={() => void table.offerDraw()}
@@ -83,7 +82,7 @@ export interface TableScreenProps extends TableActions {
   onDismissError: () => void;
   onSwitchTable: () => void;
   onMove: (uci: string) => void;
-  /** The invite card — a slot, because it reads the node on its own. */
+  /** The invite card: a slot, because it talks to the cluster on its own. */
   invite: ReactNode;
 }
 
