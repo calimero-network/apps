@@ -1,0 +1,107 @@
+[
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "join",
+  "args": {
+   "name": "laptop",
+   "now": "1000",
+   "device": "laptop"
+  },
+  "save": "laptop"
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "join",
+  "args": {
+   "name": "phone",
+   "now": "1000",
+   "device": "phone"
+  },
+  "save": "phone"
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getPlayers",
+  "args": {
+   "now": "1001"
+  },
+  "expect": {
+   "ok": {
+    "items": [
+     "$laptop",
+     "$phone"
+    ],
+    "next": null
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "worldStats",
+  "args": {},
+  "expect": {
+   "ok": {
+    "overrides": "0",
+    "players": "2"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setBlocks",
+  "args": {
+   "edits": [
+    {
+     "x": 1,
+     "y": 2,
+     "z": 3,
+     "b": 4
+    }
+   ],
+   "now": "1002",
+   "device": "phone"
+  },
+  "expect": {
+   "ok": 1
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "leave",
+  "args": {
+   "now": "1003",
+   "device": "phone"
+  },
+  "expect": {
+   "ok": null
+  },
+  "events": {
+   "owner": [
+    "Initialized",
+    "PlayerJoined",
+    "PlayerJoined",
+    "BlocksChanged",
+    "PlayerLeft"
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "join",
+  "args": {
+   "name": "laptop",
+   "now": "1004",
+   "device": "laptop"
+  },
+  "expect": {
+   "ok": "$laptop"
+  }
+ }
+]

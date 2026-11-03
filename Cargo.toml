@@ -53,6 +53,7 @@ exclude = [
   # `apps/*/logic/crates/*` glob above would claim it too.
   "apps/mero-vote/logic/crates/crypto",
   "apps/mero-kombat/logic",
+  "apps/mero-blocks/logic",
 ]
 
 [workspace.package]
