@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  bytesCodec,
   decodeFragment,
   encodeFragments,
   EPHEMERAL_MAX_BYTES,
@@ -10,6 +9,7 @@ import {
   MAX_PENDING_FRAMES,
   maxPayloadBytes,
   nextMsgSeq,
+  PRESENCE_MAX_BYTES,
   type LiveFrame,
 } from "./ephemeralFrames";
 
@@ -429,16 +429,23 @@ describe("nextMsgSeq", () => {
   });
 });
 
-describe("bytesCodec", () => {
-  it("round-trips bytes through the wire's number[] form", () => {
-    const bytes = payload(256);
-    const wire = bytesCodec.encode(bytes);
-    expect(Array.isArray(wire)).toBe(true);
-    expect(bytesCodec.decode(wire)).toEqual(bytes);
+describe("1.0 presence slices (4 KiB)", () => {
+  it("fragments to the node's presence cap and reassembles", () => {
+    const bytes = payload(40_000, 3);
+    const slices = encodeFragments(frame({ bytes }), PRESENCE_MAX_BYTES);
+    for (const s of slices) expect(s.length).toBeLessThanOrEqual(PRESENCE_MAX_BYTES);
+    expect(slices.length).toBe(
+      Math.ceil(bytes.length / maxPayloadBytes(CODEC, PRESENCE_MAX_BYTES)),
+    );
+    const r = new FrameReassembler();
+    let out = null;
+    for (const s of slices) out = r.push("peer", decodeFragment(s)!) ?? out;
+    expect(out?.bytes).toEqual(bytes);
   });
 
-  it("passes 0 and 255 through unchanged", () => {
-    const bytes = new Uint8Array([0, 255, 0, 255]);
-    expect(bytesCodec.decode(bytesCodec.encode(bytes))).toEqual(bytes);
+  it("keeps v1's 16 KiB slice as the default (the native apps' vectors)", () => {
+    expect(maxPayloadBytes(CODEC)).toBe(
+      maxPayloadBytes(CODEC, PRESENCE_MAX_BYTES) + (16_384 - 4_096),
+    );
   });
 });

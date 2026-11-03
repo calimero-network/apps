@@ -1,0 +1,234 @@
+[
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "updateIfExists",
+  "args": {
+   "key": "absent",
+   "value": "nope"
+  },
+  "expect": {
+   "ok": false
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "len",
+  "args": {},
+  "expect": {
+   "ok": "0"
+  },
+  "events": {
+   "bob": []
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "set",
+  "args": {
+   "key": "greeting",
+   "value": "hello"
+  },
+  "expect": {
+   "ok": null
+  },
+  "events": {
+   "bob": [
+    "Inserted"
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "get",
+  "args": {
+   "key": "greeting"
+  },
+  "expect": {
+   "ok": "hello"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "get",
+  "args": {
+   "key": "nothing_here"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "updateIfExists",
+  "args": {
+   "key": "greeting",
+   "value": "hei"
+  },
+  "expect": {
+   "ok": true
+  },
+  "events": {
+   "owner": [
+    "Inserted",
+    "Updated"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getResult",
+  "args": {
+   "key": "greeting"
+  },
+  "expect": {
+   "ok": "hei"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "getOrInsert",
+  "args": {
+   "key": "greeting",
+   "value": "SHOULD_NOT_WIN"
+  },
+  "expect": {
+   "ok": "hei"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "getOrInsert",
+  "args": {
+   "key": "fresh",
+   "value": "inserted"
+  },
+  "expect": {
+   "ok": "inserted"
+  },
+  "events": {
+   "bob": [
+    "Inserted",
+    "Updated",
+    "Inserted"
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "entries",
+  "args": {},
+  "expect": {
+   "ok": {
+    "fresh": "inserted",
+    "greeting": "hei"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getUnchecked",
+  "args": {
+   "key": "greeting"
+  },
+  "expect": {
+   "ok": "hei"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "len",
+  "args": {},
+  "expect": {
+   "ok": "2"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "remove",
+  "args": {
+   "key": "fresh"
+  },
+  "expect": {
+   "ok": "inserted"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "remove",
+  "args": {
+   "key": "fresh"
+  },
+  "expect": {
+   "ok": null
+  },
+  "events": {
+   "bob": [
+    "Inserted",
+    "Updated",
+    "Inserted",
+    "Removed"
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "entries",
+  "args": {},
+  "expect": {
+   "ok": {
+    "greeting": "hei"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "clear",
+  "args": {},
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "clear",
+  "args": {},
+  "expect": {
+   "ok": null
+  },
+  "events": {
+   "owner": [
+    "Inserted",
+    "Updated",
+    "Inserted",
+    "Removed",
+    "Cleared"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "len",
+  "args": {},
+  "expect": {
+   "ok": "0"
+  }
+ }
+]

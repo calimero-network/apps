@@ -5,8 +5,8 @@ import StandupCore
 
 /// Mero Standup's demo: three teams, the open one with six people, two weeks
 /// of standups, a couple of live blockers with offers of help, and a decision
-/// log reaching back two months. The contract answers `get_day`, `get_week`,
-/// `current_blockers`, `list_decisions`, ... from them in the generated
+/// log reaching back two months. The contract answers `getDay`, `getWeek`,
+/// `currentBlockers`, `listDecisions`, ... from them in the generated
 /// client's wire shape, and writes change the fixtures, so the tour can post
 /// an update and log a decision and see both.
 enum StandupDemo {
@@ -95,22 +95,22 @@ enum StandupDemo {
             switch call.method {
             case "whoami":
                 return try DemoReply.json(me)
-            case "get_name":
+            case "getName":
                 return try DemoReply.json(team.names[call.string("account") ?? ""] ?? "")
-            case "team_name":
+            case "teamName":
                 return try DemoReply.json(team.name)
-            case "set_name":
+            case "setName":
                 team.names[me] = call.string("name") ?? ""
-            case "set_team_name":
+            case "setTeamName":
                 team.name = call.string("name") ?? ""
             case "members":
                 return try DemoReply.json(members(team))
-            case "get_day":
+            case "getDay":
                 return try DemoReply.json(day(call.string("day") ?? "", team))
-            case "get_week":
+            case "getWeek":
                 let start = call.string("start") ?? ""
                 return try DemoReply.json((0..<7).map { day(Days.shift(start, by: $0), team) })
-            case "list_days":
+            case "listDays":
                 let before = call.string("before")
                 let limit = call.int("limit") ?? 30
                 let all = team.updates.keys.sorted(by: >).filter { before == nil || $0 < before! }
@@ -122,25 +122,25 @@ enum StandupDemo {
                     .filter { $0.updates > 0 }
                 let page = Array(all.prefix(limit))
                 return try DemoReply.json(DayPage(days: page, nextCursor: all.count > limit ? page.last?.day : nil))
-            case "current_blockers":
+            case "currentBlockers":
                 return try DemoReply.json(blockers(team))
-            case "post_update":
+            case "postUpdate":
                 let d = call.string("day") ?? Days.today()
                 let old = team.updates[d]?[me]
                 team.updates[d, default: [:]][me] = Entry(
                     done: call.string("done") ?? "", next: call.string("next") ?? "", blockers: call.string("blockers") ?? "",
                     createdAt: old.map { $0.cleared ? now : $0.createdAt } ?? now, editedAt: now)
-            case "clear_update":
+            case "clearUpdate":
                 team.updates[call.string("day") ?? ""]?[me]?.cleared = true
-            case "offer_help":
+            case "offerHelp":
                 let key = "\(call.string("day") ?? "")|\(call.string("author") ?? "")"
                 var offers = team.helps[key] ?? []
                 offers.removeAll { $0.helper == me }
                 offers.append(Offer(helper: me, note: call.string("note") ?? "", at: now))
                 team.helps[key] = offers
-            case "withdraw_help":
+            case "withdrawHelp":
                 team.helps["\(call.string("day") ?? "")|\(call.string("author") ?? "")"]?.removeAll { $0.helper == me }
-            case "list_decisions":
+            case "listDecisions":
                 var items = team.decisions.sorted { $0.createdAt > $1.createdAt }
                 if let search = call.string("search")?.lowercased(), !search.isEmpty {
                     items = items.filter {
@@ -148,15 +148,15 @@ enum StandupDemo {
                     }
                 }
                 if let tag = call.string("tag") { items = items.filter { $0.tags.contains(tag) } }
-                if let from = call.string("from_day") { items = items.filter { $0.fromDay == from } }
-                if (call.args["standing_only"] as? Bool) == true {
+                if let from = call.string("fromDay") { items = items.filter { $0.fromDay == from } }
+                if (call.args["standingOnly"] as? Bool) == true {
                     items = items.filter { supersededBy($0, team).isEmpty }
                 }
                 let limit = call.int("limit") ?? 25
                 let page = Array(items.prefix(limit))
                 return try DemoReply.json(
                     DecisionPage(items: page.map { view($0, team) }, nextCursor: items.count > limit ? page.last?.id : nil))
-            case "get_decision":
+            case "getDecision":
                 guard let found = team.decisions.first(where: { $0.id == call.string("id") }) else {
                     throw DemoContractError("no such decision")
                 }
@@ -167,14 +167,14 @@ enum StandupDemo {
                 let out = counts.sorted { ($0.value, $1.key) > ($1.value, $0.key) }
                     .map { TagCount(tag: $0.key, count: UInt32($0.value)) }
                 return try DemoReply.json(out)
-            case "log_decision":
+            case "logDecision":
                 next += 1
                 let id = DemoIds.hex("decision:new:\(next)")
                 team.decisions.append(
                     Logged(
                         id: id, author: me, title: call.string("title") ?? "", decision: call.string("decision") ?? "",
                         rationale: call.string("rationale") ?? "", supersedes: call.string("supersedes") ?? "", createdAt: now,
-                        tags: call.strings("tags") ?? [], with: call.strings("with") ?? [], fromDay: call.string("from_day") ?? ""))
+                        tags: call.strings("tags") ?? [], with: call.strings("with") ?? [], fromDay: call.string("fromDay") ?? ""))
                 return try DemoReply.json(id)
             default:
                 break
@@ -271,7 +271,7 @@ private enum Seed {
         // Today: four teammates in, Lukas and you not yet.
         core.updates[today] = [
             p(daniel): .init(
-                done: "Cursor pagination for `list_decisions` is up for review (#412)\n- same cursor shape as `list_days`\n- old clients keep working, they just get one page",
+                done: "Cursor pagination for `listDecisions` is up for review (#412)\n- same cursor shape as `listDays`\n- old clients keep working, they just get one page",
                 next: "Load test it against the 50k-decision fixture before we merge",
                 blockers: "", createdAt: ago(2 * 3600 + 40 * 60), editedAt: ago(2 * 3600 + 40 * 60)),
             p(priya): .init(
@@ -310,7 +310,7 @@ private enum Seed {
             ],
             daniel: [
                 ("Cursor format agreed with Sofia: opaque, base64 of the last id",
-                 "Cursor pagination for `list_decisions`", ""),
+                 "Cursor pagination for `listDecisions`", ""),
                 ("Fixed the decision search being case-sensitive on tags", "Agree the cursor format with Sofia", ""),
                 ("API docs for the v2 contract methods are live", "Fix tag search", ""),
                 ("Removed the last v1-only code path from the client", "API docs for v2", ""),
@@ -390,7 +390,7 @@ private enum Seed {
               "Manual renewals lapsed twice this quarter. cert-manager already runs in production, so it costs nothing new.",
               ["infra", "security"], [lukas], fromDay: past[0]),
             d("cursors", me, 4 * day, "Cursor pagination for every list method",
-              "Every list method takes an opaque `cursor` and returns `next_cursor`. Offsets are gone.",
+              "Every list method takes an opaque `cursor` and returns `nextCursor`. Offsets are gone.",
               "Offsets skip or repeat items when teammates' updates sync in mid-scroll. Cursors don't.",
               ["api"], [daniel]),
             d("same-day", ines, 9 * day, "iOS and Android ship on the same day",

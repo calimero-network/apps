@@ -1,262 +1,169 @@
 {
-  "schema_version": "wasm-abi/1",
-  "types": {
-    "Event_Inserted": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "value",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_Removed": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_Updated": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "value",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "KvStore": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "items",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "kind": "string"
-              }
-            },
-            "crdt_type": "unordered_map"
-          }
-        }
-      ]
+  "abiVersion": 1,
+  "errors": {
+    "NotFound": {
+      "key": "string"
     }
   },
-  "methods": [
-    {
-      "name": "clear",
-      "params": [],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
+  "events": {
+    "Cleared": {},
+    "Inserted": {
+      "key": "string",
+      "value": "string"
     },
-    {
-      "name": "entries",
-      "params": [],
-      "returns": {
-        "kind": "map",
-        "key": {
-          "kind": "string"
-        },
-        "value": {
-          "kind": "string"
-        }
-      },
-      "intent": "read_only"
+    "Removed": {
+      "key": "string"
     },
-    {
-      "name": "get",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "get_or_insert",
-      "doc": "Gets a value, inserting it if it doesn't exist.\n\nThis demonstrates the `entry` API combined with `or_insert`.\nWe pattern match to check existence for the event, then use the convenience method.",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "value",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "get_result",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "get_unchecked",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "init",
-      "params": [],
-      "returns": {
-        "kind": "unit"
-      }
-    },
-    {
-      "name": "len",
-      "params": [],
-      "returns": {
-        "kind": "u32"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "remove",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "set",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "value",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "update_if_exists",
-      "doc": "Updates a value only if the key already exists, using in-place mutation.\n\nThis demonstrates the `get_mut` API which allows modifying the value\nwithout a read-modify-write cycle. The change is automatically persisted\nwith a new timestamp when the guard is dropped.",
-      "params": [
-        {
-          "name": "key",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "value",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "bool"
-      },
-      "intent": "mutating"
+    "Updated": {
+      "key": "string",
+      "value": "string"
     }
-  ],
-  "events": [
-    {
-      "name": "Cleared"
+  },
+  "methods": {
+    "clear": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [],
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "Inserted",
-      "payload": {
-        "$ref": "Event_Inserted"
-      }
+    "entries": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "BTreeMap<String,String>"
     },
-    {
-      "name": "Removed",
-      "payload": {
-        "$ref": "Event_Removed"
-      }
+    "get": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "key",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "option<string>"
     },
-    {
-      "name": "Updated",
-      "payload": {
-        "$ref": "Event_Updated"
-      }
+    "getOrInsert": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "key",
+          "string"
+        ],
+        [
+          "value",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "string"
+    },
+    "getResult": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "key",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "string"
+    },
+    "getUnchecked": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "key",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "string"
+    },
+    "init": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "init",
+      "params": [],
+      "public": false,
+      "returns": null
+    },
+    "len": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "u64"
+    },
+    "remove": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "key",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "option<string>"
+    },
+    "set": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "key",
+          "string"
+        ],
+        [
+          "value",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "updateIfExists": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "key",
+          "string"
+        ],
+        [
+          "value",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "bool"
     }
-  ],
-  "state_root": "KvStore",
-  "state_version": 1
+  },
+  "state": {
+    "fields": {
+      "items": "unorderedMap"
+    },
+    "search": {
+      "items": []
+    },
+    "version": 1
+  },
+  "world": "calimero:app@0.5.0"
 }
