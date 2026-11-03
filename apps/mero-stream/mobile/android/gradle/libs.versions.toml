@@ -18,12 +18,12 @@ ktlint = "12.1.1"
 detekt = "1.23.7"
 # Unreleased: replaced by the included kotlin-sdk build (settings.gradle.kts). The number only
 # has to be well-formed.
-meroSdk = "0.1.0"
+meroSdk = "0.2.0"
 
 [libraries]
-mero-core = { module = "network.calimero:mero-core", version.ref = "meroSdk" }
-mero-compose = { module = "network.calimero:mero-compose", version.ref = "meroSdk" }
-mero-testkit = { module = "network.calimero:mero-testkit", version.ref = "meroSdk" }
+mero-core = { module = "com.calimero.mero:mero-core", version.ref = "meroSdk" }
+mero-compose = { module = "com.calimero.mero:mero-compose", version.ref = "meroSdk" }
+mero-testkit = { module = "com.calimero.mero:mero-testkit", version.ref = "meroSdk" }
 
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }

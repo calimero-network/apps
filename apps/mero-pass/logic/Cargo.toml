@@ -1,65 +1,63 @@
 [package]
-name        = "mero-pass"
-description = "Secret management app for sharing secrets between members"
-version     = "0.1.0"
-edition.workspace    = true
-authors.workspace    = true
-license.workspace    = true
-repository.workspace = true
+name = "mero-pass"
+description = "Mero Pass: one end-to-end encrypted vault, on the component SDK"
+# NOT the release version: the release workflow takes the next appVersion from
+# the registry and passes it to `mero-component bundle --app-version`. Cargo
+# requires the field; bundling locally without --app-version uses it.
+version = "0.0.1"
+edition = "2021"
+authors = ["Calimero Limited <info@calimero.network>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/calimero-network/apps"
+publish = false
 
 [lib]
-# `rlib` added alongside cdylib so TestHost unit tests can link the crate. This
-# contract has no tests at all today — part of the punch list.
-crate-type = ["cdylib", "rlib"]
+# A `calimero:app` component. No `rlib`: the tests run the BUILT component on
+# core's engine (tests/common/mod.rs), not the crate linked natively.
+crate-type = ["cdylib"]
 
-# NEW. The standalone repo had no [package.metadata.calimero], so this app was
-# never bundled by cargo-mero and never published — the registry has nothing
-# under any mero-pass id. So this is a FIRST publish: no installed copies and no
-# invite links to orphan.
+# Core at `component-core-tag` (root Cargo.toml), the same tag for every core
+# crate; scripts/check-component-pins.py asserts it. A standalone crate cannot
+# inherit `[workspace.dependencies]`.
+[dependencies]
+calimero-app-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8" }
+# The result shapes that carry a list or a map (`SecretView.fields`) are plain
+# serde structs: a `Record` cannot hold one.
+serde = { version = "1", features = ["derive"] }
+
+# The harness (`TestApp`, `run_scenario`) and the builder the tests build this
+# crate with, for `cargo test` on the host only.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+calimero-app-sdk   = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8", features = ["testing"] }
+calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8" }
+serde_json = "1"
+
+# Read by `mero-component bundle` (tools/component-bundle), with the keys
+# `cargo mero bundle` reads for a v1 app.
 [package.metadata.calimero]
-package     = "com.calimero.mero-pass"
-name        = "MeroPass"
-description = "A peer-to-peer secret manager: keep credentials in a vault on your own nodes and share them with namespace members."
-author      = "Calimero"
-slug        = "com.calimero.mero-pass"
-# `cargo mero bundle` refuses to run without an icon DECISION, and it fails at
-# BUNDLE time — after a green PR, on the release run. No PNG in the repo.
-# A real icon, not the "default" placeholder. This is what gives the app an
-# icon in the registry and — via tauri-app's `ensure_app_launcher_icon`, which
-# pulls the manifest's largest PNG through sips/iconutil — in the macOS Dock.
+package = "com.calimero.mero-pass"
+name = "MeroPass"
+description = "A secret manager for teams: vaults end-to-end encrypted in the browser, shared with your organization's members on attested Calimero nodes."
+author = "Calimero"
+# The slug IS the package id: deep links resolve by `Application.package`.
+slug = "com.calimero.mero-pass"
 # Regenerate with `node app/scripts/gen-icons.mjs`.
-icon        = "../app/public/icon-512.png"
+icon = "../app/public/icon-512.png"
 category = "security"
-tags        = ["secrets", "passwords", "security"]
-github      = "https://github.com/calimero-network/apps"
-min-runtime-version = "0.12.0-rc.3"
-frontend    = "https://mero-pass.vercel.app"
-# The built frontend `cargo mero bundle` packs, so the node serves it from the app's own origin.
+tags = ["secrets", "passwords", "security"]
+github = "https://github.com/calimero-network/apps"
+# `component-min-runtime-version` in the root Cargo.toml: a node compares it
+# with its own release.
+min-runtime-version = "1.0.0-rc.8"
+# The listing's link, and an origin the node may send a person back to from
+# its consent page. NOT where the production frontend runs: a Cloud node trusts
+# passkey ceremonies only from frontends it serves from a bundle, so the
+# production frontend is the one packed below (docs/COMPONENT-APPS.md).
+frontend = "https://mero-pass.vercel.app"
+# The built frontend the bundle carries; the cluster serves it from the
+# package's own origin. Build it first: `pnpm -F mero-pass build`.
 frontend-dir = "../app/dist"
 
-[dependencies]
-thiserror               = { workspace = true }
-# `fresh_id` renders 16 random bytes from the host. Not decorative: the previous
-# scheme keyed a secret by its creation millisecond, and `insert` is an upsert.
-hex                     = { workspace = true }
-# WAS `branch = "master"` resolved around 2025-11 — it rides unreleased protocol
-# work against nodes running a release, and silently drifts between builds. The
-# workspace pins one real release tag for the whole fleet.
-calimero-sdk            = { workspace = true }
-calimero-storage        = { workspace = true }
-calimero-storage-macros = { workspace = true }
-
-# NOTE: build.rs and its [build-dependencies] on calimero-wasm-abi are GONE.
-# Core deleted all 60 per-app ABI build scripts (#3319) and derives the ABI from
-# the type system (#3364); `cargo mero build` is the emitter now. Keeping the
-# build script would fail to resolve calimero-wasm-abi at the workspace tag.
-#
-# NOTE: no [profile.*] — cargo ignores profiles in a workspace member and
-# `cargo mero build` then fails with `profile 'app-release' is not defined`.
-
-[dev-dependencies]
-# Enables the native mock host so TestHost can drive contract state under
-# `cargo test`. This contract shipped with no tests at all; the ones added
-# alongside cover the vault operations, the audit trail, and the two bugs the
-# port fixed (millisecond-collided ids, device-vs-account authorship).
-calimero-storage = { workspace = true, features = ["testing"] }
+# Standalone: excluded from the root workspace (root Cargo.toml), its own
+# Cargo.lock, as core's component apps are.
+[workspace]
