@@ -359,7 +359,7 @@ public final class SpreadsheetModel: ObservableObject {
     static func errorText(_ error: Error) -> String {
         let text = SheetsFormat.errorText(error)
         if text.range(of: "uninitiali", options: .caseInsensitive) != nil {
-            return "This spreadsheet has not reached the relay yet. It syncs from a member who is online."
+            return "This spreadsheet isn't ready yet. Try again in a moment."
         }
         return text
     }

@@ -14,10 +14,12 @@ import network.calimero.updates.app.AudienceModel
 import network.calimero.updates.app.CompaniesModel
 import network.calimero.updates.app.CompanyModel
 import network.calimero.updates.app.UpdatesViewModel
+import network.calimero.updates.core.UpdatesInvitation
 
 /** What the screens need from the activity. */
 class Platform(
-    val signIn: () -> Unit,
+    /** Sign in (or, with `create`, sign up as `name`) to a Calimero Cloud cluster with the device's passkey. */
+    val signInCloud: (cluster: String, create: Boolean, name: String) -> Unit,
     val share: (title: String, text: String) -> Unit,
     val copy: (label: String, text: String) -> Unit,
 )
@@ -29,8 +31,8 @@ fun UpdatesApp(
     platform: Platform,
 ) {
     UpdatesTheme {
-        val backend by vm.session.backend.collectAsState()
-        val revision by vm.session.revision.collectAsState()
+        val backend by vm.backend.collectAsState()
+        val revision by vm.revision.collectAsState()
         val audience by vm.audience.collectAsState()
         val company by vm.company.collectAsState()
         Box(Modifier.fillMaxSize().background(Palette.background)) {
@@ -47,7 +49,7 @@ fun UpdatesApp(
                     }
                 route != null ->
                     key(route, revision) {
-                        val model = remember(current, route) { CompanyModel(route.company, current, vm.session.applicationId, route.justJoined) }
+                        val model = remember(current, route) { CompanyModel(route.company, current, UpdatesInvitation.PACKAGE_NAME, route.justJoined) }
                         BackHandler { vm.openCompany(null) }
                         CompanyScreen(vm, model, platform)
                     }

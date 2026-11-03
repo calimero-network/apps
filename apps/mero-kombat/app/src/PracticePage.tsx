@@ -10,7 +10,7 @@ import type { Button } from "./game/input";
 import { rememberFighter, storedFighter } from "./useArena";
 
 /**
- * Practice against the CPU — no node, no transactions. The same engine, the
+ * Practice against the CPU — no cluster, no transactions. The same engine, the
  * same fighters; just nobody on the other side of the network.
  */
 export function PracticePage() {
@@ -76,8 +76,8 @@ export function PracticePage() {
             </div>
             <p className="hint flush">
               Nothing here is a transaction. In a real arena every punch, kick, jump and block you finish is a
-              contract call on your node, gossiped to your opponent&apos;s — and the health bars are what the
-              contract derives from them.
+              contract call the arena&apos;s log orders — and the health bars are what the contract keeps
+              from them.
             </p>
             <div className="row" style={{ marginTop: 14 }}>
               <button className="small" onClick={() => navigate("/play")}>

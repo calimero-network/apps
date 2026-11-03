@@ -4,10 +4,6 @@
     "get_history",
     "get_players"
   ],
-  "mero-blocks": [
-    "heartbeat",
-    "leave"
-  ],
   "mero-design": [
     "add_comment",
     "add_reply",

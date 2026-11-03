@@ -6,6 +6,8 @@ import react from "@vitejs/plugin-react";
 import { servedAssetsFallback } from "@calimero-apps/node-served/vite";
 
 export default defineConfig({
+  // Relative, so the same build runs at / and under the node's /{version}/,
+  // where the cluster serves the bundle's frontend.
   base: "./",
   plugins: [servedAssetsFallback(), react()],
   test: {
@@ -14,30 +16,6 @@ export default defineConfig({
     // `tsc -b` writes declarations under dist-types/. Without this, vitest
     // discovers the compiled copies of the test files and runs them a second
     // time, from a directory where their relative paths no longer resolve.
-    // ⚠️ `**/e2e/**` is load-bearing. vitest's default include matches
-    // `*.spec.ts` as well as `*.test.ts`, so without it vitest collects the
-    // Playwright specs and dies inside `test.describe()` with a message about
-    // duplicate @playwright/test installs — which points nowhere near the
-    // actual cause. The split is: vitest owns `*.test.ts(x)`, Playwright owns
-    // `e2e/*.spec.ts`.
-    exclude: ["**/node_modules/**", "**/dist/**", "**/dist-types/**", "**/e2e/**"],
-    server: {
-      deps: {
-        // ⚠️ @calimero-network/mero-platform@0.1.0 ships DIRECTORY imports
-        // (`from "./bridge"` with no /index.js), which Node's ESM resolver
-        // rejects outright:
-        //
-        //     Error: Directory import '.../dist/bridge' is not supported
-        //     resolving ES modules
-        //
-        // Vite's dev server and its build both resolve them fine, so this only
-        // ever breaks under vitest — the app runs and only the tests fail,
-        // which reads like a test-harness problem rather than a packaging one.
-        inline: [
-          "@calimero-network/mero-platform",
-          "@calimero-network/mero-platform-react",
-        ],
-      },
-    },
+    exclude: ["**/node_modules/**", "**/dist/**", "**/dist-types/**"],
   },
 });

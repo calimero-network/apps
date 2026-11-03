@@ -18,7 +18,7 @@ import type {
   Step,
   TurnStep,
   Verdict,
-} from "./generated/HyperfeedClient";
+} from "./hyperfeedTypes";
 import { PAGE_SIZE, type ActionMode, type AgentMode, type Decision, type FeedBackend, type Filter, type NotificationMode } from "./backend";
 import { MAX_ATTACHMENTS, refuseImage, type BlobStore } from "./attachments";
 import { mergeWatchInput, moveWatch, newWatch } from "./watches";
@@ -39,7 +39,7 @@ import type {
   SituationView,
   WatchInput,
   WatchView,
-} from "./generated/HyperfeedClient";
+} from "./hyperfeedTypes";
 import chatLens from "./lens/fixtures/chat.json";
 import voteLens from "./lens/fixtures/vote.json";
 import chatActions from "./actions/fixtures/chat.json";

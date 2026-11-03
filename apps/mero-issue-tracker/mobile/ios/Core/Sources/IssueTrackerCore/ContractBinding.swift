@@ -6,7 +6,7 @@ import MeroKit
 extension BoundContextContract: ContextContractCalling {}
 
 extension IssueTrackerClient {
-    /// The tracker contract in one repo (context), through the account's relay.
+    /// The tracker contract in one repo (app instance), through the account's cluster session.
     public init(contract: any ContextContract, contextId: String) {
         self.init(transport: contract.bound(to: contextId))
     }

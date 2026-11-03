@@ -15,7 +15,7 @@ public final class SpacesModel: ObservableObject {
         self.backend = backend
     }
 
-    /// Whether a relay serves the account. Without one only joining works.
+    /// Whether the account is connected (always, once signed in on 1.0). Without it only joining works.
     public var hasRelay: Bool { backend.hasRelay }
 
     public func load() async {

@@ -62,8 +62,8 @@ enum Fixtures {
         backend.rootContexts = [studio: [scene]]
         if memberOfScene { backend.members = [scene] }
         let table: [String: String] = [
-            "get_scene": sceneInfo, "get_objects": objects, "list_meshes": meshes, "list_textures": textures,
-            "list_locks": locks, "get_members": members,
+            "getScene": sceneInfo, "getObjects": objects, "listMeshes": meshes, "listTextures": textures,
+            "listLocks": locks, "getMembers": members,
         ]
         backend.recording.setRawHandler { call in table[call.method].map { Data($0.utf8) } }
         return backend

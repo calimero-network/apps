@@ -192,11 +192,11 @@ final class SnapshotBackend: ChatBackend, @unchecked Sendable {
     }
     func createChannelGroup(namespaceId: String, name: String, isPublic: Bool) async throws -> String { "" }
     func createContext(groupId: String, applicationId: String, name: String, initArgs: JSONValue) async throws -> String { "" }
-    func createInvitation(namespaceId: String) async throws -> SignedGroupOpenInvitation {
+    func createInvitation(namespaceId: String) async throws -> OrgInvitation {
         throw ChatError.noRelay
     }
-    func joinWorkspace(namespaceId: String, invitation: SignedGroupOpenInvitation) async throws -> JoinedWorkspace {
-        JoinedWorkspace(published: true, relayURL: "")
+    func joinWorkspace(namespaceId: String, invitation: OrgInvitation) async throws -> JoinedWorkspace {
+        JoinedWorkspace(published: true, nodeURL: "")
     }
     func events(contextId: String) -> AsyncThrowingStream<ChatLiveEvent, Error> { AsyncThrowingStream { $0.finish() } }
     func uploadBlob(contextId: String, data: Data) async throws -> String { "" }

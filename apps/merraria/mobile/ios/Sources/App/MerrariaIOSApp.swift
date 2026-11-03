@@ -7,7 +7,7 @@ import SwiftUI
 struct MerrariaIOSApp: App {
     @StateObject private var session = MeroAppSession(
         packageName: MerrariaConstants.packageName, callback: AppConfig.callback, config: AppConfig.config,
-        walletURL: AppConfig.walletURL, keychainService: AppConfig.keychainService)
+        keychainService: AppConfig.keychainService)
 
     var body: some Scene {
         WindowGroup {
@@ -43,7 +43,7 @@ struct RootView: View {
             } else if let backend = session.backend {
                 NavigationStack {
                     WorldsScreen(
-                        backend: backend, applicationId: session.applicationId, account: session.account ?? "",
+                        session: session, backend: backend, applicationId: session.applicationId, account: session.account ?? "",
                         settings: settings, onPlay: { playing = $0 }, onJoin: { joining = $0 },
                         onSignOut: { Task { await session.signOut() } }
                     )
@@ -53,7 +53,7 @@ struct RootView: View {
                     GameScreen(backend: backend, ref: ref, settings: settings) { playing = nil }
                 }
             } else {
-                Splash(text: "Connecting to your relay…") {
+                Splash(text: "Connecting to your cluster…") {
                     Button("Sign out") { Task { await session.signOut() } }
                         .buttonStyle(SecondaryButtonStyle(fullWidth: false))
                 }
@@ -69,7 +69,7 @@ struct RootView: View {
         .onChange(of: didRestore) { _ in pickUpInvitation() }
         .sheet(item: $joining, onDismiss: openJoined) { invitation in
             JoinSheet(invitation: invitation) {
-                guard let backend = session.backend else { throw MerrariaError.noRelay }
+                guard let backend = session.backend else { throw MerrariaError.signedOut }
                 let worlds = WorldsModel(backend: backend, applicationId: session.applicationId)
                 joined = try await worlds.join(invitation) { await session.didJoinNamespace() }
             }

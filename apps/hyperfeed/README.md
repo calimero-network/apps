@@ -5,18 +5,19 @@ acted, why, and which warrant carried it, sits beside every notification the app
 From the same feed you approve what the agent proposes, undo what it did, set what it may do in
 each app, and talk to it about any of it.
 
-> **Status: prototype.** The contract, its API and the app work against a real `merod`
-> (0.11.0-rc.83): sign-in, creating the feed, the collector, approvals and controls were driven in a
-> browser while a client called the API over JSON-RPC, as an agent will. No agent ships with it:
-> the agent kit (an MCP server) is built separately against the [API](#api-for-agents) below. `/demo`
-> shows the whole loop with no node.
+> **Status: prototype, on Calimero 1.0.** The contract runs on core's component SDK
+> (`calimero-app-sdk`, a `calimero:app` WebAssembly component on the node's wasmtime runtime), is
+> developed against `merod local`, and the frontend reaches it through mero-js's `CalimeroClient`:
+> the local nodes in development, Calimero Cloud in production. No agent ships with it: the agent
+> kit (an MCP server) is built separately against the [API](#api-for-agents) below. `/demo` shows
+> the whole loop with no cluster. See [What changed in the port](#what-changed-in-the-port).
 
 | | |
 | --- | --- |
 | Package | `com.calimero.hyperfeed` |
-| Contract | [`logic/src/lib.rs`](logic/src/lib.rs), with 50 `TestHost` tests in [`logic/src/tests.rs`](logic/src/tests.rs) |
-| Two-node scenario | [`logic/workflows/feed.yml`](logic/workflows/feed.yml): every contract method on real nodes, the feed converging on a second node, and that node refused every write |
-| Frontend | [`app/`](app): Vite, React and mero-react. `/` (feed), `/chat` and `/settings` run against your node; `/demo` runs the same pages in memory. Settings has a section per path: `/settings/controls`, `/settings/rules` (the language your agents answer in, English by default, your general rules, which every agent keeps, and rules for one agent only), `/settings/agents`, `/settings/lenses`, `/settings/alerts` (`/controls` lands on the first). Controls lists the core apps (Chat, Calendar, Sheets, Issues, Docs, CRM, Sign, Pass): those installed on your node are set app by app, the others offer Install, from the marketplace. Opened from Calimero Desktop, Hyperfeed acts with full access, as the admin dashboard does, so Install and deleting a feed work; signed in from a browser it holds an app's grant set, which may do neither, and says so. The apps grid in the top bar, beside the bell, is a launcher for every app Hyperfeed supports: those on your node open in a new tab, where each app signs in with a key of its own (Hyperfeed hands over no session), and the others (on your node, not in the demo) go to Controls to install. The bell in the top bar counts what needs you, whatever the feed shows, with the lenses and rules your agent proposed in Settings, and lists it one line each: a click opens it in place on the feed, with its buttons, a question or approval from a chat included. **The feed is where you act; Chat is the history.** What you ask your agent, from the top of the feed or on a row (with images, picked, pasted or dropped, as in Chat), opens in place: your agent's steps as it works, with Stop, then its answer as markdown, with cards for the PRs and runs it links to and Merge on them. A task post opens its chain in place too, and Team does the same under its ask box: what you ask, a card you Discuss, your agent's chains and the bell's row. A long answer shows its first lines on the row, the rest behind More. Every conversation offers Open chat, or Continue in chat once it runs long, for its whole thread |
+| Contract | [`logic/src/lib.rs`](logic/src/lib.rs) and its modules; [`logic/res/abi.json`](logic/res/abi.json) is its ABI, committed and checked in CI |
+| Tests | [`logic/tests/harness.rs`](logic/tests/harness.rs): every method on core's real wasmtime engine (`TestApp`), v1's `TestHost` tests one for one (`tests/harness/`); [`logic/scenarios/`](logic/scenarios): `feed.json` (v1's merobox workflow) and `access.json` (who may write what), run by `cargo test` and as real accounts on `merod local` in CI |
+| Frontend | [`app/`](app): Vite, React and mero-js `CalimeroClient` through [`@calimero-apps/connect`](../../packages/connect). `/` (feed), `/chat` and `/settings` run against your cluster; `/demo` runs the same pages in memory. Settings has a section per path: `/settings/controls`, `/settings/rules` (the language your agents answer in, English by default, your general rules, which every agent keeps, and rules for one agent only), `/settings/agents`, `/settings/lenses`, `/settings/alerts` (`/controls` lands on the first). Controls lists the core apps (Chat, Calendar, Sheets, Issues, Docs, CRM, Sign, Pass): those you reach are set app by app. The apps grid in the top bar, beside the bell, is a launcher for every app Hyperfeed supports: each opens in a new tab and signs in on its own. The bell in the top bar counts what needs you, whatever the feed shows, with the lenses and rules your agent proposed in Settings, and lists it one line each: a click opens it in place on the feed, with its buttons, a question or approval from a chat included. **The feed is where you act; Chat is the history.** What you ask your agent, from the top of the feed or on a row (with images, picked, pasted or dropped, as in Chat), opens in place: your agent's steps as it works, with Stop, then its answer as markdown, with cards for the PRs and runs it links to and Merge on them. A task post opens its chain in place too, and Team does the same under its ask box: what you ask, a card you Discuss, your agent's chains and the bell's row. A long answer shows its first lines on the row, the rest behind More. Every conversation offers Open chat, or Continue in chat once it runs long, for its whole thread |
 
 ## Why it needs a contract of its own
 
@@ -43,11 +44,11 @@ same warrant path it uses everywhere else.
 | **Pause** | you | while paused, every write the agent wants to make becomes a proposal |
 | **Archived** | you | per chain: put away, with the chain's latest activity then and an optional return time ("later"). It is out of the feed until something new happens in it or that time passes |
 | **Presence** | your agent | per agent name: when it last reported in. The app shows "Agent live" for 90 seconds after a report |
-| **Access** | you | per agent name: what it may reach on its computer besides your Calimero apps: folders (each read only, or read and write; up to 20, each absolute or under `~`, no `..`), a shell, the web. Last-writer-wins. The agent's runtime enforces it before every tool call and refuses `set_access` to the agent. An Access you saved with no folders and shell and web off means your Calimero apps only. **Until you save one, the agent uses its own default:** for mero-bot, the folder it runs in, read and write, with shell and web on |
-| **Reach** | your agent | per agent name: what it reports it can reach, one line per profile it runs (what it serves, model, attested or not, folders, shell, web), written with `agent_reach` (see [the loop](#api-for-agents)). Settings → Agents shows it beside your Access. An agent whose every line is attested is a **private** agent |
-| **Assignment** | you | per app: which of your agents works in it, by the name it reports in with. Last-writer-wins; an empty agent gives the app back. Only that agent takes the app's work (new items, your decisions on its rows, your messages in a chat about it) and calls the app. An app with none is your private agents', or any agent's while none reports in. Code is the app `mero-bot` (the tools on a computer), and it has no default: nothing runs on a computer until you give Code to an agent that has one, such as your local mero-bot. The agent's runtime enforces it and refuses `set_assignment` to the agent |
+| **Access** | you | per agent name: what it may reach on its computer besides your Calimero apps: folders (each read only, or read and write; up to 20, each absolute or under `~`, no `..`), a shell, the web. Last-writer-wins. The agent's runtime enforces it before every tool call and refuses `setAccess` to the agent. An Access you saved with no folders and shell and web off means your Calimero apps only. **Until you save one, the agent uses its own default:** for mero-bot, the folder it runs in, read and write, with shell and web on |
+| **Reach** | your agent | per agent name: what it reports it can reach, one line per profile it runs (what it serves, model, attested or not, folders, shell, web), written with `agentReach` (see [the loop](#api-for-agents)). Settings → Agents shows it beside your Access. An agent whose every line is attested is a **private** agent |
+| **Assignment** | you | per app: which of your agents works in it, by the name it reports in with. Last-writer-wins; an empty agent gives the app back. Only that agent takes the app's work (new items, your decisions on its rows, your messages in a chat about it) and calls the app. An app with none is your private agents', or any agent's while none reports in. Code is the app `mero-bot` (the tools on a computer), and it has no default: nothing runs on a computer until you give Code to an agent that has one, such as your local mero-bot. The agent's runtime enforces it and refuses `setAssignment` to the agent |
 | **Link** | your agent, or you | per task: a subject it works on (`<app>:<context>[:<id>]`) with a label, shown as a chip on the task's post. Your agent's writes add them; you add one from its address or take one off, and a link you took off stays off. A chip with no label is named from the thing itself where the app says: a chat link reads `#launch`, or `DM with Ronit` for a DM, read from the chat in its own context. The chip counts and groups what teammates did there, and opens it in its app beside the feed |
-| **Memo** | your agent's runtime | what your agent read (a node listing, an app's read, a `gh` read), how long it counts as fresh, and how much each agent used it: its query cache, kept within 500 rows and 2 MB, least used dropped first (see [the API](#api-for-agents)). You clear it with `clear_memos` |
+| **Memo** | your agent's runtime | what your agent read (a node listing, an app's read, a `gh` read), how long it counts as fresh, and how much each agent used it: its query cache, kept within 500 rows and 2 MB, least used dropped first (see [the API](#api-for-agents)). You clear it with `clearMemos` |
 | **Subject** | your agent | what an action touched in another app, as `<app>:<context>[:<id>]` (the id from its `issue_id`, `doc_id` or `thread_id` arg), kept beside the action by id, and the chain that last touched each subject. A typed notification whose reply call goes to the same subject, recorded with no chain of its own, joins that chain unless you put it away: one thread per task, teammates' comments included |
 
 Every record merges deterministically:
@@ -59,8 +60,8 @@ Every record merges deterministically:
 
 ## The rules the contract applies
 
-The agent calls `check_action(app_key, category, writes, method)` before it acts. It then calls
-`record_action` either with a **proposal** or with an **outcome**. The same verdict governs both.
+The agent calls `checkAction(app_key, category, writes, method)` before it acts. It then calls
+`recordAction` either with a **proposal** or with an **outcome**. The same verdict governs both.
 
 First the app's **actions** say what the call is. Your agent groups an app's methods into actions
 you would recognise ("Edit documents", "Delete your messages") and proposes them like a lens; once
@@ -98,7 +99,7 @@ people or changing roles".
 - **An outcome the rules say needed you is still recorded,** flagged with a breach, and it stays in
   "Needs you" until you keep it or undo it. Refusing it would hide the one row you most need to see.
 
-Status transitions (`resolve_action` is yours, and `complete_action` is the agent reporting back):
+Status transitions (`resolveAction` is yours, and `completeAction` is the agent reporting back):
 
 ```
 pending ──approve──▶ approved ──complete(done)──▶ done ──undo──▶ undo_requested ──complete(done)──▶ undone
@@ -107,12 +108,13 @@ pending ──approve──▶ approved ──complete(done)──▶ done ─�
 ```
 
 Approving does not perform anything. The agent watches the feed for `ActionChanged`, signs the
-warrant for the real call, and reports the result with `complete_action`.
+warrant for the real call, and reports the result with `completeAction`.
 
 ## Notifications: the collector and lenses
 
-On a node, the open app lists every context the node is in and subscribes to each one's event
-stream. Nearly every event an app emits is bookkeeping (a keystroke in a doc, a cursor, a
+On a cluster, the open app lists every other app your account reaches (`listApps`) and follows
+each one's event stream (`events`), from where it left off on this device; the first time, from the
+app's current log index, so a new device does not replay an app's whole history. Nearly every event an app emits is bookkeeping (a keystroke in a doc, a cursor, a
 reaction), and your own node emits them for your own edits as well. So **nothing is recorded by
 default**. An event becomes a notification only through a **lens** for its app version.
 
@@ -166,22 +168,14 @@ The other core apps ship one too, each in `app/src/lens/fixtures/`:
 plus this device's key. The app key comes from the installed package (`com.calimero.mero-chat`
 becomes `chat`). mero-bot runs the same lenses with the same keys.
 
-**Recording each event once.** Core's event carries no delta id, only the context's new root hash,
-and that hash depends only on the state's contents. So the key is the transition,
-`<context>:<previous root>><new root>:<index>`, which every device watching the context sees
-identically. On top of that, the contract treats a key seen again more than
-`DEDUPE_WINDOW_MS` (10 s) after its last record as a new occurrence (`<key>#1`, `<key>#2`, …), and a
-repeat inside the window as another device's report of the same event. Two edges remain:
+**Recording each event once.** The cluster numbers every event in its app's log (`<index>:<seq>`)
+and every device following the app sees the same number, so the key is `<app>:<event id>`. The
+contract also treats a key seen again more than `DEDUPE_WINDOW_MS` (10 s) after its last record as a
+new occurrence (`<key>#1`, …), and a repeat inside the window as another device's report of the
+same event. (v1's events carried no id, so v1 keyed by the context's state transition.)
 
-- A context that oscillates through the same two states (A, B, A, B, A …) within 10 s records the
-  repeat once.
-- A device's first event per context has no previous root, so a device that connects mid-stream
-  can record that one event twice.
-
-Both disappear if core adds a delta id to `StateMutation`.
-
-The collector only runs while the app is open somewhere. Events that arrive while no client is
-connected are never replayed, so they never reach the feed.
+The collector only runs while the app is open somewhere. A device that comes back resumes each app's
+stream where it left off, so what happened while it was closed is read then.
 
 ## With mero-bot
 
@@ -207,7 +201,7 @@ the feed context, then:
 - **Fires your watches.** "Merge #434 when it's green" becomes a watch in the feed, and mero-bot's
   runtime polls it through `gh` and fires it once, even after the session that set it ended (see
   [Watches](#api-for-agents)).
-- **Keeps merges safe.** It records what it sees of the PRs your tasks link to (`record_pr`), so a
+- **Keeps merges safe.** It records what it sees of the PRs your tasks link to (`recordPr`), so a
   PR card can offer Merge only when every check passed and the base is the default branch. Your
   Merge is a merge watch it fires at once when the checks are green; the agent merges only through
   the same rules (its `merge` tool), and a raw `gh pr merge` in its shell is refused.
@@ -291,41 +285,43 @@ first time it meets this app. An agent without mero-bot's bridge still learns th
 
 ## API for agents
 
-Everything an agent kit needs is a method on the feed's context, called with one JSON-RPC
-`execute`, the same way `mero-issue-tracker`'s MCP server calls its contract:
+Everything an agent kit needs is a method on the feed, an app instance on the cluster, called with
+mero-js's `CalimeroClient` (or `POST /apps/{app}/call` and `/view`) as an account the feed lets in:
 
-```bash
-curl -s -X POST "$NODE/jsonrpc" -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' -d '{
-  "jsonrpc": "2.0", "id": 1, "method": "execute",
-  "params": { "contextId": "<feed context>", "method": "check_action",
-              "argsJson": { "app_key": "sign", "category": "sign", "writes": true } } }'
-# → {"jsonrpc":"2.0","id":1,"result":{"output":{"decision":"ask","reason":"\"sign\" always needs you"}}}
+```ts
+const { result } = await client.view(feedApp, "checkAction", { appKey: "sign", category: "sign", writes: true });
+// → { decision: "ask", reason: "\"sign\" always needs you" }
 ```
 
-The result is under `result.output`. A refusal is a JSON-RPC error of type `FunctionCallError`
-whose message is the contract's sentence (`not allowed: your agent is off in crm`). The feed's
-context id is under **Settings → Agents → Connect your agent**. Every write must come from the feed's owner
-account (your node's own identity, or your account through a warrant); anything else is refused.
+Method names and top-level argument names are camelCase (`checkAction`, `appKey`); the fields
+inside a struct argument or a result keep the contract's snake_case (`{ input: { source_context } }`,
+`item.needs_you`), and its numbers stay JSON numbers. A top-level `u64` argument (`before`, `until`,
+`at`, `since`, `ttlMs`) is a decimal string. Reads are views; everything else is a call. A refusal
+is `422 APP_ERROR` with `{ code: "Invalid" | "Forbidden", fields: { message } }`, `message` being
+the contract's sentence (`not allowed: your agent is off in crm`). Every event goes to everyone the
+feed reaches. Every write must come from the feed's owner, or from an agent account the owner
+added (`addAgentAccount`) and invited into the feed's organization, which makes only the agent's
+side and speaks only as the name it was added under; anyone else is `Forbidden`.
 
 **The agent's methods**
 
 | Method | Args | Returns |
 | --- | --- | --- |
-| `check_action` | `app_key: string, category: string, writes: bool, method?: string` | `Verdict { decision: "act" \| "ask" \| "refuse", reason }` |
-| `record_action` | `input: ActionInput` | `FeedItem`, the recorded row with its `id` |
-| `complete_action` | `id: string, outcome: "done" \| "failed", note: string` | `FeedItem` |
-| `record_notification` | `input: NotificationInput` | `FeedItem`; the same `key` again within 10 s returns the existing row |
-| `complete_answer` | `id: string, outcome: "delivered" \| "failed", note: string` | `FeedItem` |
+| `checkAction` | `appKey: string, category: string, writes: bool, method?: string` | `Verdict { decision: "act" \| "ask" \| "refuse", reason }` |
+| `recordAction` | `input: ActionInput` | `FeedItem`, the recorded row with its `id` |
+| `completeAction` | `id: string, outcome: "done" \| "failed", note: string` | `FeedItem` |
+| `recordNotification` | `input: NotificationInput` | `FeedItem`; the same `key` again within 10 s returns the existing row |
+| `completeAnswer` | `id: string, outcome: "delivered" \| "failed", note: string` | `FeedItem` |
 | `item` | `id: string` | `FeedItem` or `null` |
 | `chain` | `chain: string` | `FeedItem[]`, every row in the chain, oldest first |
-| `feed` | `filter: "all" \| "agent" \| "notifications" \| "needs_you", app_key: string, limit: u32, before: u64` | `FeedPage { items, counts, apps, next_before }`: one row per chain |
+| `feed` | `filter: "all" \| "agent" \| "notifications" \| "needs_you", appKey: string, limit: u32, before: u64` | `FeedPage { items, counts, apps, next_before }`: one row per chain |
 | `settings` | none | `SettingsView { owner, paused, policies, guards, agents, access, reach, assignments, … }` |
-| `set_checkpoint` | `chain: string, input: CheckpointInput { done, next, branches, worktrees, prs, questions, author }` | `CheckpointView`, now the chain's latest; it replaces the last one |
+| `setCheckpoint` | `chain: string, input: CheckpointInput { done, next, branches, worktrees, prs, questions, author }` | `CheckpointView`, now the chain's latest; it replaces the last one |
 | `checkpoint` | `chain: string` | `CheckpointView { chain, done, next, branches, worktrees, prs, questions, author, updated_at }` or `null` |
 
 **Checkpoints: tasks a new session can pick up.** An agent session can end mid-task and take its
 plan with it. So at each milestone, and before a turn ends with work outstanding, the agent writes a
-short checkpoint on the task's chain with `set_checkpoint`: what is done, the next step, the
+short checkpoint on the task's chain with `setCheckpoint`: what is done, the next step, the
 branches, worktrees and PRs it works on, and what is still open. There is one per chain, and each
 write replaces the last (`CheckpointChanged { chain }`). A new session reads `checkpoint(chain)`
 before it acts there and resumes from it; mero-bot puts it in the turn's prompt. The app shows it
@@ -338,12 +334,12 @@ go ahead at a set time unless you stop it.
 
 | Method | Args | Returns |
 | --- | --- | --- |
-| `set_situation` | `chain: string, input: SituationInput { headline, summary, recommend, reason, score, due_at, sources, apps, author }` | `SituationView`; replaces the chain's last one. Up to 200 are kept |
-| `clear_situation` | `chain: string` | `bool`: whether there was one |
+| `setSituation` | `chain: string, input: SituationInput { headline, summary, recommend, reason, score, due_at, sources, apps, author }` | `SituationView`; replaces the chain's last one. Up to 200 are kept |
+| `clearSituation` | `chain: string` | `bool`: whether there was one |
 | `situations` | none | `SituationView[]`, newest first |
-| `schedule_autorun` | `id: string, at: u64` | `AutorunView`, `waiting`; at most a week ahead |
-| `stop_autorun` | `id: string` | `AutorunView`, `stopped`; yours only, and final |
-| `fire_autorun` | `id: string` | `FeedItem`, now `approved`, its draft as the answer; only once its time came |
+| `scheduleAutorun` | `id: string, at: u64` | `AutorunView`, `waiting`; at most a week ahead |
+| `stopAutorun` | `id: string` | `AutorunView`, `stopped`; yours only, and final |
+| `fireAutorun` | `id: string` | `FeedItem`, now `approved`, its draft as the answer; only once its time came |
 | `autoruns` | none | `AutorunView[] { id, chain, at, set_at, status, stopped_at, fired_at }`, soonest first |
 
 A situation has a headline (one line, 140 bytes) and a summary (1000 bytes); `recommend` (400),
@@ -354,7 +350,7 @@ Each write emits `SituationChanged { chain }`.
 
 A default is only for a proposal your agent can undo, behind no guard, in an app where it may write,
 while it is not paused, that is not a draft you send yourself, and whose ask is none, a confirm or a
-reply with a draft. `fire_autorun` checks all of that again when the time comes; anything changed and
+reply with a draft. `fireAutorun` checks all of that again when the time comes; anything changed and
 it is refused, and the proposal waits for you. Your stop always wins: stopping and firing only ever
 turn on, a stop outranks a fire when two devices' copies merge, and a stopped default cannot be set
 again. Status: `waiting`, `stopped`, `fired`, or `settled` once you decided on the proposal yourself.
@@ -367,20 +363,20 @@ kept in the feed instead: a condition, an action, and the chain it reports to.
 
 | Method | Args | Returns |
 | --- | --- | --- |
-| `add_watch` | `input: WatchInput { chain, condition, repo, pr, branch, action, text, agent }` | `WatchView`; the same watch twice is kept once |
-| `cancel_watch` | `id: string, note?: string` | `WatchView`, `cancelled`; refused once it fired |
-| `fire_watch` | `id: string, session: string` | `WatchView`, `firing`; refused unless it is `watching` |
-| `finish_watch` | `id: string, outcome: "done" \| "failed", note: string` | `WatchView`; only a `firing` watch |
-| `watch_seen` | `id: string, seen: string` | `WatchView`: where the condition stood when last looked at, one line |
+| `addWatch` | `input: WatchInput { chain, condition, repo, pr, branch, action, text, agent }` | `WatchView`; the same watch twice is kept once |
+| `cancelWatch` | `id: string, note?: string` | `WatchView`, `cancelled`; refused once it fired |
+| `fireWatch` | `id: string, session: string` | `WatchView`, `firing`; refused unless it is `watching` |
+| `finishWatch` | `id: string, outcome: "done" \| "failed", note: string` | `WatchView`; only a `firing` watch |
+| `watchSeen` | `id: string, seen: string` | `WatchView`: where the condition stood when last looked at, one line |
 | `watches` | `chain: string` (`""`: every chain) | `WatchView[]`, oldest first |
 
 `condition` is `pr_green`, `pr_red`, `pr_merged` (with the PR's number in `pr`), `branch_green` or
 `branch_red` (CI on `branch`'s head; `""` is the default branch; `pr` 0). `action` is `merge` (with
 `pr_green` only), `turn` (start an agent turn in the chain with `text`) or `notify` (tell you `text`
 in the chain). At most 50 wait at once. The contract cannot read GitHub: the agent's runtime polls
-the conditions (mero-bot, through `gh`). When one is met it takes the watch with `fire_watch` before
+the conditions (mero-bot, through `gh`). When one is met it takes the watch with `fireWatch` before
 it acts, so of every session polling exactly one acts, once, and a restarted one never acts again;
-then it reports with `finish_watch`. A watch's status only moves forward (`watching → firing →
+then it reports with `finishWatch`. A watch's status only moves forward (`watching → firing →
 done | failed`, or `watching → cancelled`), also when two devices' copies merge. A merge applies the
 safe-merge rules when it fires: open, not a draft, no conflicts, every check passed, and the base is
 the default branch, so a stacked PR is refused. The app shows the watches still waiting on their
@@ -393,7 +389,7 @@ login and records each PR a task links to, one row per `owner/name#number`.
 
 | Method | Args | Returns |
 | --- | --- | --- |
-| `record_pr` | `input: PrInput { chain, repo, pr, title, state, draft, base, default_branch, conflicts, head_sha, checks, checks_total, checks_passed, checks_pending, failing, stacked_on, stacked_merged }` | `PrView` with `seen_at`; owner only |
+| `recordPr` | `input: PrInput { chain, repo, pr, title, state, draft, base, default_branch, conflicts, head_sha, checks, checks_total, checks_passed, checks_pending, failing, stacked_on, stacked_merged }` | `PrView` with `seen_at`; owner only |
 | `prs` | `chain: string` (`""`: every chain) | `PrView[]`, most recently seen first |
 
 `state` is `open`, `merged` or `closed`; `checks` is `green`, `red` (exactly when `failing` names a
@@ -418,9 +414,9 @@ which tool and its arguments. They survive a restart and reach your other agents
 
 | Method | Args | Returns |
 | --- | --- | --- |
-| `put_memos` | `agent: string, memos: MemoInput[] { key, scope, tool, args, value, class, ttl_ms, fetched_at, unchanged, hits, last_hit_at, attested }` | `u32`, rows written; you, or an added agent as itself |
-| `drop_memos` | `agent: string, keys: string[]` | `u32`, rows dropped: reads it knows are wrong now |
-| `clear_memos` | none | `u32`, rows dropped; yours only |
+| `putMemos` | `agent: string, memos: MemoInput[] { key, scope, tool, args, value, class, ttl_ms, fetched_at, unchanged, hits, last_hit_at, attested }` | `u32`, rows written; you, or an added agent as itself |
+| `dropMemos` | `agent: string, keys: string[]` | `u32`, rows dropped: reads it knows are wrong now |
+| `clearMemos` | none | `u32`, rows dropped; yours only |
 | `memos` | `since: u64` (the feed's clock; `0` for all) | `MemoView[]` written after it, oldest write first |
 
 `class` is `immutable`, `slow` or `fast`; the runtime lengthens `ttl_ms` while refetches find the
@@ -464,42 +460,42 @@ Usually a notification starts the chain and the agent's actions continue it.
 | `confirm` | one button labelled `prompt` | `""` |
 | `""` | the defaults: Approve and Decline on a proposal; nothing on a notification | `""` |
 
-On a notification, your answer goes through `answer_notification` and its status moves
-`received → answered`. On a proposal it goes with the approval (`resolve_action(id, "approve",
+On a notification, your answer goes through `answerNotification` and its status moves
+`received → answered`. On a proposal it goes with the approval (`resolveAction(id, "approve",
 answer)`), so a slot picker or an edited draft is one tap. The answer is in the step's `note`, and
 in the row's `note` while it is current.
 **The loop an agent runs**
 
-1. `check_action` before any write elsewhere.
-   - `act`: do it, then `record_action` with `outcome: "done"` (or `"failed"` and a `note`).
-   - `ask`: `record_action` with `outcome: "proposed"`, then wait.
+1. `checkAction` before any write elsewhere.
+   - `act`: do it, then `recordAction` with `outcome: "done"` (or `"failed"` and a `note`).
+   - `ask`: `recordAction` with `outcome: "proposed"`, then wait.
    - `refuse`: don't. Recording a proposal would be refused too.
 2. Wait by subscribing to the feed context's events (SSE or WebSocket). `ActionChanged { id, status }`
    arrives when you decide: `approved` (do it), `retrying` (try the failed one again),
    `undo_requested` (revert it) or `declined` (drop it). Polling `item` works too.
-3. Report with `complete_action(id, "done" | "failed", note)`. It is accepted only while the action is
+3. Report with `completeAction(id, "done" | "failed", note)`. It is accepted only while the action is
    `approved`, `retrying` or `undo_requested`. If the approval carried an answer, it is the row's
    `note` (the slot you picked, the text you edited): do exactly that.
 4. Answers to notifications arrive as `NotificationChanged { id, status: "answered" }`. Read the
    row: `ask.kind` says what to do and `note` holds the answer (reply with that text, vote that
-   option, confirm). Then report with `complete_answer(id, "delivered" | "failed", note)`. A failed
+   option, confirm). Then report with `completeAnswer(id, "delivered" | "failed", note)`. A failed
    delivery goes back to you to answer again.
 5. Record what you do as a result with `chain` set to the row that led to it, so the flow stays one thread.
-6. You talk to your agent with `say`, or `say_with` when you attach images, which arrives as `MessagePosted { id, chain, from: "you" }`.
+6. You talk to your agent with `say`, or `sayWith` when you attach images, which arrives as `MessagePosted { id, chain, from: "you" }`.
    A message with images lists them in `attachments`; fetch each by `blob_id` from the node (with the
    feed's context id) and look at it before answering.
-   Take it up with `agent_ack(id, "thinking", "")` (that is how the feed knows an agent is there),
-   then answer with `agent_say(chain, id, text, headline?)`, which marks it `answered`. A long answer
+   Take it up with `agentAck(id, "thinking", "")` (that is how the feed knows an agent is there),
+   then answer with `agentSay(chain, id, text, headline?)`, which marks it `answered`. A long answer
    takes a `headline` (one line, at most 80 characters): the row shows it with the text behind "More",
    and the text may run to 32 KB instead of 2000 bytes. Without one the app titles the row by the
    answer's first sentence. When your answer leaves
-   something to the user, use `agent_ask(chain, id, text, ask)` (a `choose` or `reply` ask): your
+   something to the user, use `agentAsk(chain, id, text, ask)` (a `choose` or `reply` ask): your
    message is `asked` and needs them until they say something in the chain, which answers it. If you cannot, give up
-   with `agent_ack(id, "failed", why)`. A proposal or action the conversation leads to goes in the
-   same `chain`. An agent that was away reads `open_questions()` when it starts.
+   with `agentAck(id, "failed", why)`. A proposal or action the conversation leads to goes in the
+   same `chain`. An agent that was away reads `openQuestions()` when it starts.
    The app's Chat page (`/chat`) is these chains as chats: New chat is `say("", text)`, every
    message after it is `say(chain, text)`, and your answers show as they land. Which agent answers
-   is set per app in Settings → Agents (`set_assignment`): a chat about an app goes to the agent
+   is set per app in Settings → Agents (`setAssignment`): a chat about an app goes to the agent
    that works in it, and a new chat to your private agent. When that agent meets work that needs
    code, it proposes a hand-off (an action in the app `mero-bot`, method `hand_off`) and the agent
    you gave code to takes the chat up only once you approve it. What waits on you in a chat is a
@@ -517,28 +513,28 @@ stays in "Needs you" until you keep it or undo it. Events the contract emits: `A
 `SettingsChanged`, `MessagePosted`, `MessageChanged`, `LensChanged`, `ArchiveChanged`,
 `WatchChanged`, `PrChanged`, `SituationChanged`, `AutorunChanged`.
 
-7. Report in while you run: `agent_seen(name)`, about every 30 seconds (mero-bot sends
+7. Report in while you run: `agentSeen(name)`, about every 30 seconds (mero-bot sends
    `mero-bot@<host>`). `settings().agents` lists who reported and when. Report what you can reach with
-   `agent_reach(name, lines)`, one `ReachLine { serves, profile, model, attested, folders, shell, web }`
+   `agentReach(name, lines)`, one `ReachLine { serves, profile, model, attested, folders, shell, web }`
    per profile you run (`serves` is `default` or the kind of work routed to it; up to 16 lines), and
    again when it changes; the latest report replaces the last. Read the owner's Access for your name
    from `settings().access` and enforce it before every tool call; with none saved, apply your own default and
    report it here, so Settings → Agents shows the owner what you actually reach.
 
-**The owner's methods**, which the app calls: `resolve_action(id, decision, answer)` with
+**The owner's methods**, which the app calls: `resolveAction(id, decision, answer)` with
 `approve`, `decline`, `undo` or `keep` (`answer` is `""` except for approving a proposal with an
-ask); `answer_notification(id, answer)`; `set_policy(app_key, agent, notifications)`;
-`set_guard(category, enabled)`; `set_paused(paused)`; `set_access(agent, folders, shell, web)`;
-`set_assignment(app_key, agent)` (`agent` `""` gives the app back to the default); `record_notification(input)`;
-`say(chain, text, headline, mode)`; `decide_lens(app_key, application_id, decision)`;
-`decide_actions(app_key, application_id, decision)`; `set_action_mode(app_key, action, mode)` (`act`, `ask`,
-`off`, or `""` to follow the app); `mark_seen(ids)` and
-`mark_all_seen()`; `archive(chains, until)` (`until` 0 = until something new happens, else ms
+ask); `answerNotification(id, answer)`; `setPolicy(app_key, agent, notifications)`;
+`setGuard(category, enabled)`; `setPaused(paused)`; `setAccess(agent, folders, shell, web)`;
+`setAssignment(app_key, agent)` (`agent` `""` gives the app back to the default); `recordNotification(input)`;
+`say(chain, text, headline, mode)`; `decideLens(app_key, application_id, decision)`;
+`decideActions(app_key, application_id, decision)`; `setActionMode(app_key, action, mode)` (`act`, `ask`,
+`off`, or `""` to follow the app); `markSeen(ids)` and
+`markAllSeen()`; `archive(chains, until)` (`until` 0 = until something new happens, else ms
 for "later") and `unarchive(chains)`; `feed("archived", …)` lists what is put away. An agent kit can call them too, since it
-writes as you, but `resolve_action`, `answer_notification`, `decide_lens` and `say` are your decisions and your
+writes as you, but `resolveAction`, `answerNotification`, `decideLens` and `say` are your decisions and your
 words, and an agent should never call them for itself. The agent's side of lenses is
-`propose_lens(app_key, application_id, spec, summary)` and `lenses()`; of actions,
-`propose_actions(app_key, application_id, actions, summary)` and `action_sets()`.
+`proposeLens(app_key, application_id, spec, summary)` and `lenses()`; of actions,
+`proposeActions(app_key, application_id, actions, summary)` and `actionSets()`.
 
 ## Trust model, honestly
 
@@ -551,7 +547,7 @@ words, and an agent should never call them for itself. The agent's side of lense
   record *your decision* and the hard boundary is the agent itself, which must not sign a warrant
   for something waiting on you.
 - **A cloud agent can.** It has an account of its own, which you add with
-  `add_agent_account(account, name)` (and take off with `remove_agent_account(account)`); it must
+  `addAgentAccount(account, name)` (and take off with `removeAgentAccount(account)`); it must
   also be invited to the feed's context. It may make only the agent's side of the feed (record
   actions and notifications, take up and answer your messages, report progress, suggest rules and
   lenses, claim chains, keep watches and PRs, report what it reaches), and only as the name you
@@ -559,9 +555,9 @@ words, and an agent should never call them for itself. The agent's side of lense
   devices and agent accounts stay yours, enforced by the contract.
 - **Drafts you send.** An action proposed with a `send_call` (`{"method", "args"}`, `"=answer"`
   for your edit of its draft) is sent by your client, as you, when you approve it, and reported by
-  your client with `complete_action`; the agent can neither send nor report one. Since the write
+  your client with `completeAction`; the agent can neither send nor report one. Since the write
   is yours, an app where your agent may only read still takes drafts.
-- **A default is an approval you gave by not stopping it.** `fire_autorun` is the agent's call, so
+- **A default is an approval you gave by not stopping it.** `fireAutorun` is the agent's call, so
   it is the one place the agent's side moves a proposal to `approved`. It is bound to what you could
   have stopped: only an undoable call behind no guard, with the rules checked again at its time,
   never once you stopped it.
@@ -570,37 +566,57 @@ words, and an agent should never call them for itself. The agent's side of lense
 
 ## Running it
 
-Building the contract needs **cargo-mero 0.11.0-rc.83 or newer**: the core tag the workspace's
-`calimero-sdk` is pinned to in the root `Cargo.toml`, and the one CI installs
-(`.github/actions/install-cargo-mero`). An older cargo-mero writes an ABI the SDK no longer
-matches. Install that one with
-`cargo install --locked --git https://github.com/calimero-network/core.git --tag 0.11.0-rc.83 cargo-mero`,
-and check with `cargo mero --version`. When core is bumped, this moves with it.
-
 ```bash
-cargo test -p hyperfeed
-cargo mero bundle --manifest-path apps/hyperfeed/logic/Cargo.toml --dev --app-version 0.0.0 --output dist/com.calimero.hyperfeed.mpk
-pnpm -F hyperfeed codegen   # after any contract change
-pnpm -F hyperfeed dev       # http://localhost:5195, or /demo with no node
-pnpm -F hyperfeed test
+rustup target add wasm32-wasip2
+M=tools/component-bundle/Cargo.toml
+cargo test --manifest-path apps/hyperfeed/logic/Cargo.toml                    # harness + scenarios
+cargo run --release --manifest-path $M -- build  apps/hyperfeed/logic           # res/hyperfeed.wasm + res/abi.json
+cargo run --release --manifest-path $M -- bundle apps/hyperfeed/logic --dev     # a dev-signed .mpk
+pnpm dev:local hyperfeed            # merod local + build + deploy + the dev server on http://localhost:5173
+pnpm merod-local e2e hyperfeed      # scenarios/*.json as real accounts on the cluster
+pnpm -F hyperfeed lint typecheck test build
 ```
 
-Against a real node, `merod init --auth-mode embedded --admin-user <name> --admin-password-file <path>`,
-install the bundle (`meroctl app install --path dist/com.calimero.hyperfeed.mpk`), and open
-`http://localhost:5195`. Connect finds the node on its default port, signs in on the node's own page,
-and "Create my feed" makes the context. The two-node scenario runs without Docker too:
-`merobox bootstrap run --no-docker apps/hyperfeed/logic/workflows/feed.yml`.
+`pnpm dev:local hyperfeed` needs `merod` at the root `Cargo.toml`'s `component-core-tag` (see
+[docs/COMPONENT-APPS.md](../../docs/COMPONENT-APPS.md)). Sign up in the browser with a passkey,
+then "Create my feed" makes the feed: an app instance in an organization of its own. `/demo` needs
+nothing. The production frontend is the one packed into the bundle (`frontend-dir`), which the
+cluster serves from the package's own origin; its build needs `VITE_CALIMERO_CLUSTER` and
+`VITE_CALIMERO_MIN_RELEASE` (`app/.env.example`).
 
-Browser suites, as CI runs them (`test:e2e:ci`):
+## What changed in the port
 
-```bash
-pnpm -F hyperfeed test:e2e        # tests/: the landing page and /demo, no node
-pnpm -F hyperfeed test:e2e:node   # e2e/: a real merod with the bundle; create the feed, answer in place
-```
+Hyperfeed moved from the v1 SDK (`calimero-sdk`, CRDT storage, wasmer, merobox, mero-react) to the
+component SDK. What a client sees differently:
 
-The node suite boots its own merod on port 2697 from `MEROD_BINARY` (or `merod` on the path) and installs
-`logic/dist/com.calimero.hyperfeed.mpk`, the bundle the `cargo mero bundle` line above writes there
-when given `--output apps/hyperfeed/logic/dist/com.calimero.hyperfeed.mpk`.
+| | v1 | now |
+| --- | --- | --- |
+| Method names | `record_action`, `check_action`, … | `recordAction`, `checkAction`, … (all 84 kept, same arguments and answers) |
+| Top-level argument names | `app_key`, `reply_to`, `ttl_ms`, `public_key`, `application_id` | `appKey`, `replyTo`, `ttlMs`, `publicKey`, `applicationId` |
+| `u64` arguments (`feed.before`, `archive.until`, `scheduleAutorun.at`, `memos.since`, `claimChain`/`renewChain.ttlMs`) | JSON numbers | decimal strings (`"0"`) |
+| Results and struct arguments | snake_case fields, numbers | unchanged |
+| Reads | any method | `actionSets`, `autoruns`, `chain`, `chainLease`, `checkAction`, `checkpoint`, `feed`, `item`, `lenses`, `links`, `memos`, `openQuestions`, `prs`, `pushDevices`, `pushKey`, `settings`, `situations`, `watches` are views; calling a write as a view is `NotAView` |
+| Errors | a string (`FunctionCallError`) | `{ code: "Invalid" \| "Forbidden", fields: { message } }`, the same message; owner/agent refusals are `Forbidden` |
+| Events | the same 22 events and fields | unchanged; sent to everyone the feed reaches (`Audience::All`), guests included |
+| Owner | the context's creator, stored | the app's owner (`env::app_owner()`); `settings.owner` is that account |
+| Who may write | the owner's node identity (any device), agent accounts added | the owner (any device or API key), agent accounts added and invited into the feed's organization; org members and guests not added are `Forbidden`, outsiders `404`, anonymous `401` |
+| Time | `env::time_now()` in ns, divided | ms, the log entry's time |
+| Ids | random bytes from the host | `env::random_bytes`, seeded per logged run |
+| Storage | 42 `UnorderedMap`s of mergeable records with last-writer-wins merges | 42 `UnorderedMap<String, _>` of plain records (one leader orders every write, so the merge rules are gone); whole-map reads page through 1,000 rows at a time. Every list inside a stored record is bounded and checked where it is written; a row's history keeps its first step and its latest 63 (v1 trimmed it this way only when merging copies, so a history could grow without bound on one node) |
+| Images | node blobs per context | the feed app's blobs (`uploadBlob`/`downloadBlob`); the contract still stores only their ids |
+| A feed | a context in a namespace of its own | an app instance in an organization of its own (`createOrg`, `createApp`); renaming sets its metadata's `name` |
+| Notification keys | `<context>:<previous root>><root>:<index>` | `<app>:<event id>`, the id the cluster's log gave the event (stable across devices) |
+| The collector | subscribed to every context on the node | follows `client.events` of every other app the account reaches, from where it left off (the first time, from the app's current log index) |
+| Other apps (lens reads, answers, drafts) | `execute` with v1 names | `view`/`call` with the method and top-level argument names in camelCase; lenses keep v1 names |
+| Installing apps from Controls | from the registry, through the admin API | not offered: an organization's admins install packages |
+
+Removed: the merobox workflow (`logic/workflows/feed.yml`, now `scenarios/`), the CRDT merge
+tests (each turned into what it means under one log), `res/state-schema.json`, the abi-codegen
+client (`src/generated/`, now the hand-kept adapter `src/hyperfeed.ts` with its types in
+`src/hyperfeedTypes.ts`, pinned to `res/abi.json` by `hyperfeed.test.ts`), mero-react's provider and
+login popup (now a passkey sign-in), Calimero Desktop's session hand-off, the node-admin calls
+(namespaces, contexts, registry installs), and the Playwright suites (`e2e/` drove merod 0.x;
+`tests/` drove the landing and `/demo`, both still covered by vitest).
 
 ## Using the feed
 
@@ -642,11 +658,9 @@ feed** is there too. mero-bot follows you to a feed once you write in it.
 
 ## Upgrading
 
-Feeds made by an earlier version are not migrated: delete the old feed and create a new one. The
-state layout changed many times (conversations, lenses, images on messages, and since then most
-releases, push devices included), and the
-prototype does not carry old rows over. An older feed still chats in text; attaching an image there
-says the feed is too old.
+Feeds made on a v1 node are not migrated: the component SDK has no migrations yet, and a v1 feed
+lives in a context on a v1 node, not on a 1.0 cluster. Create a new feed. Within 1.0, a feed keeps
+the code it was created with until it is upgraded.
 
 ## Not done yet
 

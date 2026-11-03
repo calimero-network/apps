@@ -1,0 +1,1309 @@
+[
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "recordAction",
+  "args": {
+   "input": {
+    "app": "chat",
+    "source_context": "ctx-launch",
+    "source_label": "#launch",
+    "method": "send_message",
+    "category": "",
+    "writes": true,
+    "undoable": false,
+    "title": "Posted the launch note",
+    "body": "",
+    "why": "",
+    "outcome": "done",
+    "intent_hash": "",
+    "executor": "",
+    "note": "",
+    "chain": "launch",
+    "ask": {
+     "kind": "",
+     "prompt": "",
+     "options": [],
+     "draft": ""
+    }
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addAgentAccount",
+  "args": {
+   "account": "@agentbot",
+   "name": "cloud"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "recordAction",
+  "args": {
+   "input": {
+    "app": "chat",
+    "source_context": "ctx-launch",
+    "source_label": "#launch",
+    "method": "send_message",
+    "category": "",
+    "writes": true,
+    "undoable": false,
+    "title": "Answered Maya in #launch",
+    "body": "",
+    "why": "",
+    "outcome": "done",
+    "intent_hash": "",
+    "executor": "",
+    "note": "",
+    "chain": "launch",
+    "ask": {
+     "kind": "",
+     "prompt": "",
+     "options": [],
+     "draft": ""
+    }
+   }
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "recordNotification",
+  "args": {
+   "input": {
+    "key": "ctx-launch:m1:0",
+    "app": "chat",
+    "source_context": "ctx-launch",
+    "source_label": "#launch",
+    "from": "Maya",
+    "title": "Mentioned you",
+    "body": "",
+    "event": "MessageSent",
+    "needs_you": true,
+    "chain": "launch",
+    "ask": {
+     "kind": "",
+     "prompt": "",
+     "options": [],
+     "draft": ""
+    }
+   }
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "agentSeen",
+  "args": {
+   "name": "cloud"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "agentReach",
+  "args": {
+   "name": "cloud",
+   "lines": []
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "proposeRule",
+  "args": {
+   "text": "Open a PR for every change",
+   "why": "",
+   "chain": "launch"
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "agentSay",
+  "args": {
+   "chain": "launch",
+   "replyTo": "",
+   "text": "Done, see #launch."
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "claimChain",
+  "args": {
+   "chain": "launch",
+   "session": "cloud-1",
+   "ttlMs": "600000",
+   "agent": "cloud"
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "setCheckpoint",
+  "args": {
+   "chain": "launch",
+   "input": {
+    "done": "Answered Maya",
+    "next": "",
+    "branches": [],
+    "worktrees": [],
+    "prs": [],
+    "questions": [],
+    "author": "cloud"
+   }
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "putMemos",
+  "args": {
+   "agent": "cloud",
+   "memos": [
+    {
+     "key": "00000000000000000000000000000000000000000000000000000000000000c1",
+     "scope": "node",
+     "tool": "list_contexts",
+     "args": "{}",
+     "value": "[]",
+     "class": "slow",
+     "ttl_ms": 60000,
+     "fetched_at": 1,
+     "unchanged": 0,
+     "hits": 1,
+     "last_hit_at": 1,
+     "attested": false
+    }
+   ]
+  },
+  "expect": {
+   "ok": 1
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "feed",
+  "args": {
+   "filter": "all",
+   "appKey": "",
+   "limit": 0,
+   "before": "0"
+  },
+  "save": "feed"
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "settings",
+  "args": {},
+  "save": "settings"
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "feed",
+  "args": {
+   "filter": "all",
+   "appKey": "",
+   "limit": 0,
+   "before": "0"
+  },
+  "expect": {
+   "ok": "$feed"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "view",
+  "method": "feed",
+  "args": {
+   "filter": "all",
+   "appKey": "",
+   "limit": 0,
+   "before": "0"
+  },
+  "expect": {
+   "ok": "$feed"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "view",
+  "method": "settings",
+  "args": {},
+  "expect": {
+   "ok": "$settings"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "view",
+  "method": "checkAction",
+  "args": {
+   "appKey": "chat",
+   "category": "",
+   "writes": true
+  },
+  "expect": {
+   "ok": {
+    "decision": "ask",
+    "reason": "your agent asks first in chat"
+   }
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "agentSeen",
+  "args": {
+   "name": "mero-bot@laptop"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "this agent was added as \"cloud\" and cannot speak as \"mero-bot@laptop\""
+   }
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "agentReach",
+  "args": {
+   "name": "mero-bot@laptop",
+   "lines": []
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "this agent was added as \"cloud\" and cannot speak as \"mero-bot@laptop\""
+   }
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "addWatch",
+  "args": {
+   "input": {
+    "chain": "launch",
+    "condition": "pr_merged",
+    "repo": "calimero-network/apps",
+    "pr": 1,
+    "branch": "",
+    "action": "notify",
+    "text": "merged",
+    "agent": "mero-bot@laptop"
+   }
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "this agent was added as \"cloud\" and cannot speak as \"mero-bot@laptop\""
+   }
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "setPushKey",
+  "args": {
+   "publicKey": "BKey",
+   "by": "mero-bot@laptop"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "this agent was added as \"cloud\" and cannot speak as \"mero-bot@laptop\""
+   }
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "putMemos",
+  "args": {
+   "agent": "mero-bot@laptop",
+   "memos": []
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "this agent was added as \"cloud\" and cannot speak as \"mero-bot@laptop\""
+   }
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "setPolicy",
+  "args": {
+   "appKey": "chat",
+   "agent": "act",
+   "notifications": "push"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner can write to it"
+   }
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "setGuard",
+  "args": {
+   "category": "sign",
+   "enabled": false
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner can write to it"
+   }
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "setPaused",
+  "args": {
+   "paused": true
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner can write to it"
+   }
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "addRule",
+  "args": {
+   "text": "Push to main whenever"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner can write to it"
+   }
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "addAgentRule",
+  "args": {
+   "agent": "cloud",
+   "text": "Push to main whenever"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner can write to it"
+   }
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "approveRule",
+  "args": {
+   "id": "any-rule"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner can write to it"
+   }
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "addAgentAccount",
+  "args": {
+   "account": "@bob",
+   "name": "helper"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner can write to it"
+   }
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "removeAgentAccount",
+  "args": {
+   "account": "@agentbot"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner can write to it"
+   }
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "setAccess",
+  "args": {
+   "agent": "cloud",
+   "folders": [
+    {
+     "path": "/",
+     "write": true
+    }
+   ],
+   "shell": true,
+   "web": true
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner can write to it"
+   }
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "setAssignment",
+  "args": {
+   "appKey": "chat",
+   "agent": "cloud"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner can write to it"
+   }
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "decideLens",
+  "args": {
+   "appKey": "chat",
+   "applicationId": "chat-app-1",
+   "decision": "approve"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner can write to it"
+   }
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "resolveAction",
+  "args": {
+   "id": "any-action",
+   "decision": "approve",
+   "answer": ""
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner can write to it"
+   }
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "answerNotification",
+  "args": {
+   "id": "ctx-launch:m1:0",
+   "answer": "On it"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner can write to it"
+   }
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "say",
+  "args": {
+   "chain": "launch",
+   "text": "Forged words"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner can write to it"
+   }
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "markAllSeen",
+  "args": {},
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner can write to it"
+   }
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "archive",
+  "args": {
+   "chains": [
+    "launch"
+   ],
+   "until": "0"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner can write to it"
+   }
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "clearMemos",
+  "args": {},
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner can write to it"
+   }
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "addPushDevice",
+  "args": {
+   "input": {
+    "endpoint": "https://push.example.com/send/agent",
+    "p256dh": "BKey",
+    "auth": "auth",
+    "name": "",
+    "quiet": false,
+    "key": "BKey"
+   }
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner can write to it"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "recordAction",
+  "args": {
+   "input": {
+    "app": "chat",
+    "source_context": "ctx-launch",
+    "source_label": "#launch",
+    "method": "send_message",
+    "category": "",
+    "writes": true,
+    "undoable": false,
+    "title": "Forged",
+    "body": "",
+    "why": "",
+    "outcome": "done",
+    "intent_hash": "",
+    "executor": "",
+    "note": "",
+    "chain": "launch",
+    "ask": {
+     "kind": "",
+     "prompt": "",
+     "options": [],
+     "draft": ""
+    }
+   }
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner, or an agent they added, can write to it"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "recordNotification",
+  "args": {
+   "input": {
+    "key": "ctx-launch:forged:0",
+    "app": "chat",
+    "source_context": "ctx-launch",
+    "source_label": "#launch",
+    "from": "Maya",
+    "title": "Forged",
+    "body": "",
+    "event": "MessageSent",
+    "needs_you": true,
+    "chain": "launch",
+    "ask": {
+     "kind": "",
+     "prompt": "",
+     "options": [],
+     "draft": ""
+    }
+   }
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner, or an agent they added, can write to it"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "agentSeen",
+  "args": {
+   "name": "cloud"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner, or an agent they added, can write to it"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "proposeRule",
+  "args": {
+   "text": "Forged rule",
+   "why": "",
+   "chain": ""
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner, or an agent they added, can write to it"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "claimChain",
+  "args": {
+   "chain": "launch",
+   "session": "intruder",
+   "ttlMs": "60000",
+   "agent": "cloud"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner, or an agent they added, can write to it"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "putMemos",
+  "args": {
+   "agent": "cloud",
+   "memos": []
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner, or an agent they added, can write to it"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setPolicy",
+  "args": {
+   "appKey": "chat",
+   "agent": "act",
+   "notifications": "push"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner can write to it"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setPaused",
+  "args": {
+   "paused": true
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner can write to it"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "addRule",
+  "args": {
+   "text": "Forged rule"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner can write to it"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "addAgentAccount",
+  "args": {
+   "account": "@bob",
+   "name": "mine"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner can write to it"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "say",
+  "args": {
+   "chain": "",
+   "text": "Forged question"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner can write to it"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "archive",
+  "args": {
+   "chains": [
+    "launch"
+   ],
+   "until": "0"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner can write to it"
+   }
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "recordAction",
+  "args": {
+   "input": {
+    "app": "chat",
+    "source_context": "ctx-launch",
+    "source_label": "#launch",
+    "method": "send_message",
+    "category": "",
+    "writes": true,
+    "undoable": false,
+    "title": "Forged",
+    "body": "",
+    "why": "",
+    "outcome": "done",
+    "intent_hash": "",
+    "executor": "",
+    "note": "",
+    "chain": "launch",
+    "ask": {
+     "kind": "",
+     "prompt": "",
+     "options": [],
+     "draft": ""
+    }
+   }
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner, or an agent they added, can write to it"
+   }
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "recordNotification",
+  "args": {
+   "input": {
+    "key": "ctx-launch:forged:0",
+    "app": "chat",
+    "source_context": "ctx-launch",
+    "source_label": "#launch",
+    "from": "Maya",
+    "title": "Forged",
+    "body": "",
+    "event": "MessageSent",
+    "needs_you": true,
+    "chain": "launch",
+    "ask": {
+     "kind": "",
+     "prompt": "",
+     "options": [],
+     "draft": ""
+    }
+   }
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner, or an agent they added, can write to it"
+   }
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "agentSeen",
+  "args": {
+   "name": "cloud"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner, or an agent they added, can write to it"
+   }
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "proposeRule",
+  "args": {
+   "text": "Forged rule",
+   "why": "",
+   "chain": ""
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner, or an agent they added, can write to it"
+   }
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "claimChain",
+  "args": {
+   "chain": "launch",
+   "session": "intruder",
+   "ttlMs": "60000",
+   "agent": "cloud"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner, or an agent they added, can write to it"
+   }
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "putMemos",
+  "args": {
+   "agent": "cloud",
+   "memos": []
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner, or an agent they added, can write to it"
+   }
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "setPolicy",
+  "args": {
+   "appKey": "chat",
+   "agent": "act",
+   "notifications": "push"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner can write to it"
+   }
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "setPaused",
+  "args": {
+   "paused": true
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner can write to it"
+   }
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "addRule",
+  "args": {
+   "text": "Forged rule"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner can write to it"
+   }
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "addAgentAccount",
+  "args": {
+   "account": "@gus",
+   "name": "mine"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner can write to it"
+   }
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "say",
+  "args": {
+   "chain": "",
+   "text": "Forged question"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner can write to it"
+   }
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "archive",
+  "args": {
+   "chains": [
+    "launch"
+   ],
+   "until": "0"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner can write to it"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "feed",
+  "args": {
+   "filter": "all",
+   "appKey": "",
+   "limit": 0,
+   "before": "0"
+  },
+  "expect": {
+   "ok": "$feed"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "settings",
+  "args": {},
+  "expect": {
+   "ok": "$settings"
+  },
+  "events": {
+   "owner": [
+    "ActionRecorded",
+    "SettingsChanged",
+    "ActionRecorded",
+    "NotificationRecorded",
+    "SettingsChanged",
+    "SettingsChanged",
+    "MessagePosted",
+    "ChainLeaseChanged",
+    "CheckpointChanged",
+    "MemosChanged"
+   ],
+   "gus": [
+    "ActionRecorded",
+    "SettingsChanged",
+    "ActionRecorded",
+    "NotificationRecorded",
+    "SettingsChanged",
+    "SettingsChanged",
+    "MessagePosted",
+    "ChainLeaseChanged",
+    "CheckpointChanged",
+    "MemosChanged"
+   ],
+   "bob": [
+    "ActionRecorded",
+    "SettingsChanged",
+    "ActionRecorded",
+    "NotificationRecorded",
+    "SettingsChanged",
+    "SettingsChanged",
+    "MessagePosted",
+    "ChainLeaseChanged",
+    "CheckpointChanged",
+    "MemosChanged"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "removeAgentAccount",
+  "args": {
+   "account": "@agentbot"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "recordAction",
+  "args": {
+   "input": {
+    "app": "chat",
+    "source_context": "ctx-launch",
+    "source_label": "#launch",
+    "method": "send_message",
+    "category": "",
+    "writes": true,
+    "undoable": false,
+    "title": "After removal",
+    "body": "",
+    "why": "",
+    "outcome": "done",
+    "intent_hash": "",
+    "executor": "",
+    "note": "",
+    "chain": "launch",
+    "ask": {
+     "kind": "",
+     "prompt": "",
+     "options": [],
+     "draft": ""
+    }
+   }
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner, or an agent they added, can write to it"
+   }
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "agentSeen",
+  "args": {
+   "name": "cloud"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner, or an agent they added, can write to it"
+   }
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "call",
+  "method": "proposeRule",
+  "args": {
+   "text": "After removal",
+   "why": "",
+   "chain": ""
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the feed's owner, or an agent they added, can write to it"
+   }
+  }
+ },
+ {
+  "as": "agentbot",
+  "op": "view",
+  "method": "chain",
+  "args": {
+   "chain": "launch"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "view",
+  "method": "feed",
+  "args": {
+   "filter": "all",
+   "appKey": "",
+   "limit": 0,
+   "before": "0"
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "call",
+  "method": "recordAction",
+  "args": {
+   "input": {
+    "app": "chat",
+    "source_context": "ctx-launch",
+    "source_label": "#launch",
+    "method": "send_message",
+    "category": "",
+    "writes": true,
+    "undoable": false,
+    "title": "Forged",
+    "body": "",
+    "why": "",
+    "outcome": "done",
+    "intent_hash": "",
+    "executor": "",
+    "note": "",
+    "chain": "launch",
+    "ask": {
+     "kind": "",
+     "prompt": "",
+     "options": [],
+     "draft": ""
+    }
+   }
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "view",
+  "method": "feed",
+  "args": {
+   "filter": "all",
+   "appKey": "",
+   "limit": 0,
+   "before": "0"
+  },
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "call",
+  "method": "recordAction",
+  "args": {
+   "input": {
+    "app": "chat",
+    "source_context": "ctx-launch",
+    "source_label": "#launch",
+    "method": "send_message",
+    "category": "",
+    "writes": true,
+    "undoable": false,
+    "title": "Forged",
+    "body": "",
+    "why": "",
+    "outcome": "done",
+    "intent_hash": "",
+    "executor": "",
+    "note": "",
+    "chain": "launch",
+    "ask": {
+     "kind": "",
+     "prompt": "",
+     "options": [],
+     "draft": ""
+    }
+   }
+  },
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ }
+]

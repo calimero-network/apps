@@ -7,13 +7,14 @@ import SwiftUI
 struct MeroChessApp: App {
     @StateObject private var session = MeroAppSession(
         packageName: ChessConstants.packageName, callback: AppConfig.callback, config: AppConfig.config,
-        walletURL: AppConfig.walletURL, keychainService: AppConfig.keychainService)
+        keychainService: AppConfig.keychainService)
 
     var body: some Scene {
         WindowGroup {
             RootView(session: session, client: session.client)
                 .preferredColorScheme(.light)
                 .tint(Theme.ink)
+                // Invitation links, and the consent page sending the person back.
                 .onOpenURL { url in Task { await session.handle(url) } }
         }
     }
@@ -28,6 +29,23 @@ struct RootView: View {
     /// table it opened.
     @State private var path: [TableRef] = []
     @State private var joining: ChessInvitation?
+    @StateObject private var approvals: ApprovalsModel
+
+    init(session: MeroAppSession, client: MeroClient) {
+        self.session = session
+        self.client = client
+        _approvals = StateObject(
+            wrappedValue: ApprovalsModel(
+                packageName: ChessConstants.packageName, appName: "Mero Chess",
+                fetch: { [weak session] org in
+                    guard let session else { throw CancellationError() }
+                    return try await session.pendingApprovals(org: org)
+                },
+                consent: { [weak session] request, confirm in
+                    guard let session else { return nil }
+                    return await session.client.requestConsent(request, callback: session.callback, confirm: confirm)
+                }))
+    }
 
     var body: some View {
         Group {
@@ -39,6 +57,7 @@ struct RootView: View {
                 NavigationStack(path: $path) {
                     LobbyScreen(
                         backend: backend, applicationId: session.applicationId, account: session.account ?? "",
+                        approvals: approvals,
                         onOpen: { path = [$0] }, onJoin: { joining = $0 },
                         onSignOut: { Task { await session.signOut() } }
                     )
@@ -48,7 +67,7 @@ struct RootView: View {
                     }
                 }
             } else {
-                Splash(text: "Connecting to your relay…") {
+                Splash(text: "Connecting to your cluster…") {
                     Button("Sign out") { Task { await session.signOut() } }
                         .buttonStyle(SecondaryButtonStyle(fullWidth: false))
                 }
@@ -62,6 +81,9 @@ struct RootView: View {
         .onChange(of: session.pendingInvitation) { _ in pickUpInvitation() }
         .onChange(of: session.isSignedIn) { _ in pickUpInvitation() }
         .onChange(of: didRestore) { _ in pickUpInvitation() }
+        .sheet(item: Binding(get: { approvals.confirmation }, set: { if $0 == nil { approvals.answer(false) } })) {
+            ConsentCodeSheet(confirmation: $0) { approvals.answer($0) }
+        }
         .sheet(item: $joining) { invitation in
             JoinSheet(invitation: invitation) {
                 guard let backend = session.backend else { throw ChessError.noRelay }

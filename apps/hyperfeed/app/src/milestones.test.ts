@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { FeedItem } from "./generated/HyperfeedClient";
+import type { FeedItem } from "./hyperfeedTypes";
 import { ciOf, milestonesOf, prOf, trackLine } from "./milestones";
 
 let at = 1_000;

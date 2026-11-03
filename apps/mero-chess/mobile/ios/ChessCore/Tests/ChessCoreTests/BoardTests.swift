@@ -1,4 +1,3 @@
-import MeroChessGenerated
 import XCTest
 
 @testable import ChessCore
