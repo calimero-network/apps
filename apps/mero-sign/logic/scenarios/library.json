@@ -1,0 +1,147 @@
+[
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setup",
+  "args": {
+   "isPrivate": true,
+   "contextName": "default"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "isDefaultPrivateContext",
+  "args": {},
+  "expect": {
+   "ok": true
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createSignature",
+  "args": {
+   "name": "My signature",
+   "blobIdStr": "abababababababababababababababababababababababababababababababab",
+   "dataSize": "512"
+  },
+  "save": "sig",
+  "events": {
+   "owner": [
+    "SignatureCreated"
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listSignatures",
+  "args": {},
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deleteSignature",
+  "args": {
+   "signatureId": "$sig"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "listSignatures",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "joinSharedContext",
+  "args": {
+   "contextIdStr": "agreement-app",
+   "sharedIdentityStr": "@owner",
+   "contextName": "NDA"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "joinSharedContext",
+  "args": {
+   "contextIdStr": "agreement-app",
+   "sharedIdentityStr": "@owner",
+   "contextName": "NDA"
+  },
+  "expect": {
+   "error": "Conflict",
+   "fields": {
+    "message": "Already joined this context"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getSharedIdentity",
+  "args": {
+   "contextIdStr": "agreement-app"
+  },
+  "expect": {
+   "ok": "@owner"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "resolvePrivateIdentity",
+  "args": {
+   "sharedIdentityStr": "@owner"
+  },
+  "expect": {
+   "ok": "@owner"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "leaveSharedContext",
+  "args": {
+   "contextIdStr": "agreement-app"
+  },
+  "expect": {
+   "ok": null
+  },
+  "events": {
+   "owner": [
+    "SignatureCreated",
+    "SignatureDeleted",
+    "ContextJoined",
+    "ContextLeft"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "listJoinedContexts",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ }
+]

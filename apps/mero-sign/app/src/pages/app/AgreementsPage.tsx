@@ -1,7 +1,6 @@
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -25,97 +24,44 @@ import {
   setActiveWorkspace,
 } from '../../lib/activeWorkspace';
 import {
+  createAgreement,
   displayName,
   enterAgreement,
   listAgreements,
   listWorkspaces,
-  workspaceTeeMode,
   type AgreementRow,
-  type TeeMode,
 } from '../../lib/agreements';
-import { TeeBadge } from '../../components/TeeBadge';
-import { useApplicationId } from '../../hooks/useApplicationId';
-import { adminApi } from '../../lib/node';
+import { errorMessage, setContextId } from '../../lib/node';
 import { useCalimero } from '../../lib/useCalimero';
-import { AgreementService } from '../../api/agreementService';
 import styles from './AgreementsPage.module.css';
-import {
-  JOIN_SYNC_POLL_MS,
-  JoinSyncBanner,
-  isNamespaceJustJoined,
-  useJoinSync,
-} from '@calimero-network/mero-react';
 
 // ── The agreements in one workspace ─────────────────────────────────────────
 //
-// ── On the nouns ────────────────────────────────────────────────────────────
-//
-//   WORKSPACE  — the people. You invite people there. The previous screen.
-//   AGREEMENT  — one document set, inside a workspace. This screen.
+//   WORKSPACE  — the people (an organization). The previous screen.
+//   AGREEMENT  — one document set: an app instance in the organization. This screen.
 //   DOCUMENT   — the thing that gets signed, inside an agreement. The next one.
 //
-// Which is also how a person describes it: you are invited to work with
-// someone, you draw up an agreement with them, and you sign the documents in
-// it.
-//
-// ── Where this list comes from, and where it used to ────────────────────────
-//
-// The node, via `listNamespaceGroups` — the subgroups of this workspace, each
-// with its context. It used to come from `listJoinedContexts`, which reads a
-// registry this node writes into its own PRIVATE context at join time. That
-// registry is a per-node snapshot: an agreement created on another node and
-// replicated here was never written into it, so it did not appear until
-// somebody re-joined it by link. The node's own listing cannot drift from what
-// the node actually holds, and it is one call rather than one per agreement.
-//
-// The private registry is still written (see `settleIntoAgreement`) because
-// four other call sites read it, but it is no longer what the list believes.
+// The list is the app's instances in this workspace's organization, read from
+// the cluster: every member of the organization reaches every one of them, and
+// nothing has to replicate first.
 
 export default function AgreementsPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const params = useParams<{ workspaceId?: string }>();
   const stored = useActiveWorkspace();
-  // Needed to ask the node which workspaces it actually has — see `load`.
-  const { applicationId } = useApplicationId();
 
   // The route is the source of truth when there is one — `/workspaces/:id` is
   // a shareable URL and it must win over whatever was last opened. `/agreements`
   // carries no id and falls back to the active workspace.
   const workspaceId = params.workspaceId ?? stored;
-
-  // ⚠️ Passed EXPLICITLY, not left to the store. The store is updated in an
-  // effect below, so on the first render after following a link to another
-  // workspace it still holds the previous one — and `app.createContext` binds
-  // a new agreement to whatever the handle was built with.
   const { app } = useCalimero(workspaceId);
 
   const [rows, setRows] = useState<AgreementRow[]>([]);
-  /**
-   * The workspace's TEE node, if any, keyed by the workspace it was read for —
-   * shown in the header, never as a person.
-   */
-  const [tee, setTee] = useState<{
-    id: string;
-    mode: TeeMode | null;
-  } | null>(null);
-  /** The workspace whose agreement list has come back at least once. */
-  const [listedForWs, setListedForWs] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // The stored workspace is not on this node. See `load`.
+  /** The remembered workspace is not one this account is in any more. */
   const [gone, setGone] = useState(false);
-
-  // A workspace joined this session whose agreements have not replicated yet.
-  // Without this a joiner following an invite is told "No agreements yet" about
-  // the very workspace they were invited to sign something in. `active` while
-  // nothing can be opened yet, so the gate waits out a slow sync up to its
-  // ceiling rather than giving up at the base window.
-  const { isSyncing, dismiss: dismissSyncing } = useJoinSync({
-    namespaceId: workspaceId ?? null,
-    settled: !!workspaceId && listedForWs === workspaceId,
-    active: !rows.some((r) => r.contextId),
-  });
 
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
@@ -124,10 +70,7 @@ export default function AgreementsPage() {
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const service = useMemo(() => new AgreementService(app), [app]);
-
-  // Keep the store in step with the URL, so a reload and the rest of the app
-  // agree about which workspace is open.
+  // A followed `/workspaces/:id` link becomes the active workspace.
   useEffect(() => {
     if (params.workspaceId && params.workspaceId !== stored) {
       setActiveWorkspace(params.workspaceId);
@@ -135,82 +78,41 @@ export default function AgreementsPage() {
   }, [params.workspaceId, stored]);
 
   const load = useCallback(async () => {
-    if (!workspaceId) {
+    if (!workspaceId || !app) {
       setRows([]);
       setLoading(false);
       return;
     }
     setLoading(true);
     setError(null);
-    // Read before the listing: the flag is what says an empty answer is
-    // "not replicated yet" rather than "empty".
-    const justJoined = isNamespaceJustJoined(workspaceId);
     try {
-      // Never throws: an unreadable member list reads as "no TEE".
-      void workspaceTeeMode(adminApi(), workspaceId).then((mode) =>
-        setTee({ id: workspaceId, mode }),
+      setRows(
+        await listAgreements(app.client, app.source, workspaceId, app.accountId),
       );
-      const listed = await listAgreements(adminApi(), workspaceId);
-      setRows(listed);
-      // ⚠️ EMPTY IS NOT AN ANSWER WHILE JUST JOINED. The namespace join returns
-      // before its subgroups replicate, so the first listings of a workspace
-      // you were invited into are empty whatever it holds; settling on that
-      // closed the invitation dialog on "No agreements yet". Only a non-empty
-      // listing ends the gate early; once the flag has cleared (the watchdog
-      // gave up), empty is an ordinary answer again.
-      // Nor is a list whose agreements have no context yet: the subgroup
-      // replicates first, and a card without a context cannot be opened.
-      if (listed.some((r) => r.contextId) || !justJoined) setListedForWs(workspaceId);
       setGone(false);
     } catch (e) {
       setRows([]);
-      // The same window, failing rather than empty ("Uninitialized"): the
-      // poll below asks again, and it is not an error to show or a reason to
-      // think the workspace is gone.
-      if (justJoined) return;
-      setError(
-        e instanceof Error ? e.message : 'Could not load your agreements.',
-      );
-
-      // ⚠️ A FAILED LISTING IS NOT EVIDENCE THE WORKSPACE IS GONE, and the
-      // first version of this treated it as exactly that. A dropped
-      // connection, a 500, a timeout — every one of them wiped the remembered
-      // workspace and replaced the screen with "not on this node" for a
-      // workspace that was perfectly fine. Worst on the reconnect where you
-      // would most want it back.
-      //
-      // So ASK. `listNamespacesForApplication` answering WITHOUT this
-      // workspace in it is the node saying it does not have it. Anything else
-      // — including the check itself failing — is transient, and the
-      // selection stays.
-      if (!applicationId) return;
-      const known = await listWorkspaces(adminApi(), applicationId).catch(
+      setError(errorMessage(e));
+      // A remembered workspace this account is no longer in: say so, rather
+      // than an error with no way forward.
+      const known = await listWorkspaces(app.client, app.source).catch(
         () => null,
       );
       if (!known) return;
       if (known.some((w) => w.namespaceId === workspaceId)) return;
       setGone(true);
-      // Only a selection WE remembered. An id in the URL is the person's
-      // own instruction and is not ours to forget.
       if (!params.workspaceId) setActiveWorkspace(null);
     } finally {
+      app.after();
       setLoading(false);
     }
-  }, [workspaceId, params.workspaceId, applicationId]);
+  }, [workspaceId, params.workspaceId, app]);
 
+  // Keyed on the navigation too: an accepted invitation lands here by
+  // navigating, and the list has to reload.
   useEffect(() => {
     if (app) void load();
-    // `location.key` so returning here after opening an agreement reloads the
-    // list without a full page reload, which is what the old flow used.
   }, [app, load, location.key]);
-
-  // Nothing else re-reads the list while it replicates, so ask again until the
-  // gate settles or gives up.
-  useEffect(() => {
-    if (!app || !isSyncing) return;
-    const timer = setInterval(() => void load(), JOIN_SYNC_POLL_MS);
-    return () => clearInterval(timer);
-  }, [app, isSyncing, load]);
 
   useEffect(() => {
     function onOutside(e: MouseEvent) {
@@ -224,52 +126,60 @@ export default function AgreementsPage() {
 
   const create = useCallback(async () => {
     const name = newName.trim();
-    if (!name) return;
+    if (!name || !app || !workspaceId) return;
     setCreating(true);
     setError(null);
     try {
-      const res = await service.createAgreement(name);
-      if (res.error) {
-        setError(res.error.message);
-        return;
-      }
+      // The instance, its setup (the creator is its first admin), and a
+      // record of it in the creator's private library.
+      await createAgreement(
+        app.client,
+        {
+          source: app.source,
+          org: workspaceId,
+          name,
+          accountId: app.accountId,
+        },
+        undefined,
+        app.after,
+      );
       setNewName('');
       await load();
+    } catch (e) {
+      setError(errorMessage(e));
     } finally {
+      app.after();
       setCreating(false);
     }
-  }, [load, newName, service]);
+  }, [app, load, newName, workspaceId]);
 
   const open = useCallback(
     async (row: AgreementRow) => {
-      if (!row.contextId || !workspaceId) return;
+      if (!app || !workspaceId) return;
       setOpening(row.agreementId);
       setError(null);
       try {
-        // ⚠️ ENTERING IS A STEP. Being in the workspace does not put you in its
-        // agreements — a subgroup is joined by inheritance, and until that has
-        // happened this node holds no identity in the agreement's context and
-        // every contract call from the next screen is refused. `enterAgreement`
-        // is a no-op once you are in, so opening a second time costs one read.
-        const identity = await enterAgreement(adminApi(), {
-          namespaceId: workspaceId,
-          agreementId: row.agreementId,
-          contextId: row.contextId,
-        });
-        // The agreement screens still read these two out of storage; the route
-        // param is the source of truth and this keeps them in step.
-        localStorage.setItem('agreementContextID', row.contextId);
-        localStorage.setItem('agreementContextUserID', identity);
+        // On the roster as a signer if not yet (a member of the workspace
+        // joins by themselves), and recorded in the private library.
+        await enterAgreement(
+          app.client,
+          {
+            source: app.source,
+            appId: row.contextId,
+            accountId: app.accountId,
+            name: row.name,
+          },
+          app.after,
+        );
+        setContextId(row.contextId);
         navigate(`/agreements/${row.contextId}`);
       } catch (e) {
-        setError(
-          e instanceof Error ? e.message : 'Could not open that agreement.',
-        );
+        setError(errorMessage(e));
       } finally {
         setOpening(null);
       }
     },
-    [navigate, workspaceId],
+    [app, navigate, workspaceId],
   );
 
   if (gone) {
@@ -278,10 +188,10 @@ export default function AgreementsPage() {
         <main className={styles.main}>
           <header className={styles.pageHead}>
             <span className={styles.eyebrow}>Agreements</span>
-            <h1 className={styles.title}>That workspace is not on this node</h1>
+            <h1 className={styles.title}>You are not in that workspace</h1>
             <p className={styles.subtitle}>
-              It was remembered from a previous session, but this node does not
-              have it — it may have been reset, or the workspace deleted.
+              It was remembered from a previous session, but your account is
+              not in it any more — you may have left, or it was deleted.
               Nothing of yours is lost; pick a workspace to carry on.
             </p>
           </header>
@@ -340,26 +250,15 @@ export default function AgreementsPage() {
     );
   }
 
-  // The workspace's own member list says so; an agreement born Open admitted
-  // the same node, so its rows say so too when the workspace read came back
-  // empty.
-  const teeMode =
-    (tee?.id === workspaceId ? tee.mode : null) ??
-    rows.find((r) => r.teeMode)?.teeMode ??
-    null;
-
   return (
     <AppShell back={{ label: 'Workspaces', to: '/workspaces' }}>
       <main className={styles.main}>
         <header className={styles.pageHead}>
-          <span className={styles.eyebrow}>
-            Workspace
-            <TeeBadge mode={teeMode} />
-          </span>
+          <span className={styles.eyebrow}>Workspace</span>
           <h1 className={styles.title}>Agreements</h1>
           <p className={styles.subtitle}>
-            An agreement holds the documents a group of people sign. Everything
-            in one lives on the nodes of the people invited to this workspace.
+            An agreement holds the documents a group of people sign. Everyone
+            invited to this workspace can open it.
           </p>
         </header>
 
@@ -411,9 +310,7 @@ export default function AgreementsPage() {
               <span className={styles.count}>{rows.length}</span>
             )}
           </div>
-          {isSyncing ? (
-            <JoinSyncBanner show what="agreements" onDismiss={dismissSyncing} />
-          ) : loading ? (
+          {loading ? (
             <div className={styles.skeletonGrid} aria-label="Loading…">
               <span className={styles.skeleton} />
               <span className={styles.skeleton} />
@@ -445,7 +342,7 @@ export default function AgreementsPage() {
                   >
                     <button
                       className={styles.card}
-                      disabled={!row.contextId || opening === row.agreementId}
+                      disabled={opening === row.agreementId}
                       onClick={() => void open(row)}
                     >
                       <span
@@ -457,9 +354,7 @@ export default function AgreementsPage() {
                       </span>
                       <span className={styles.cardName}>{name}</span>
                       <span className={styles.cardSub}>
-                        {!row.contextId
-                          ? 'Still replicating…'
-                          : opening === row.agreementId
+                        {opening === row.agreementId
                             ? 'Opening…'
                             : row.joined
                               ? `${row.memberCount === 1 ? '1 person' : `${row.memberCount} people`}`
@@ -492,7 +387,6 @@ export default function AgreementsPage() {
                         <button
                           className={styles.dropdownItem}
                           role="menuitem"
-                          disabled={!row.contextId}
                           onClick={() => {
                             setMenuOpenId(null);
                             void open(row);
@@ -507,7 +401,7 @@ export default function AgreementsPage() {
                           onClick={() => {
                             setMenuOpenId(null);
                             void navigator.clipboard.writeText(
-                              row.contextId ?? row.agreementId,
+                              row.contextId,
                             );
                           }}
                         >
@@ -536,7 +430,7 @@ export default function AgreementsPage() {
                 <h2 className={styles.panelTitle}>Your signatures</h2>
                 <p className={styles.panelText}>
                   The drawings you sign with. They stay in your own private
-                  context and never leave your node, so they are the same in
+                  library, so they are the same in
                   every workspace.
                 </p>
               </div>

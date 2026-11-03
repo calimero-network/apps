@@ -1,108 +1,32 @@
-// ── Workspaces, agreements, invitations ─────────────────────────────────────
-//
-// The model, in the fleet's vocabulary — a "group" is a SUBGROUP inside a
-// namespace, never the namespace itself:
-//
-//   Workspace (namespace)  = the people          ← invite people HERE
-//     └── Agreement (subgroup + context)          ← one document set
-//     └── Agreement (subgroup + context)
-//
-// ── Why this file exists at all ─────────────────────────────────────────────
-//
-// Mero Sign was built on "one agreement is one context, and there are no
-// namespaces". That model stopped working at 0.11.0-rc.41, and not subtly:
-// core's `CreateContextRequest` declares
-//
-//     pub group_id: String,
-//
-// with no `Option` and no `#[serde(default)]`. A context belongs to a namespace
-// or a subgroup, always. The old path posted `{applicationId,
-// initializationParams, protocol}` — no group at all, plus `protocol`, which
-// core removed — and every admin body is `deny_unknown_fields`, so it was
-// refused twice over. Creating an agreement returned 400 and the app had no way
-// to make one.
-//
-// So the binding is not a nicety to be added later; it is the thing that makes
-// the call legal. Given a namespace is required, it is worth making it mean
-// something, and the fleet already has the shape: mero-pass (team → vault),
-// mero-forum (space → forum), mero-docs (workspace → folder). Same structure
-// here, so invitations, roles and names behave the way they do everywhere else.
-//
-// ── The two node behaviours this encodes ────────────────────────────────────
-//
-//   1. JOINING A NAMESPACE DOES NOT PUT YOU IN ITS SUBGROUPS. `VisibilityMode`
-//      defaults to RESTRICTED, and a restricted subgroup answers
-//      `join-via-inheritance` with a 403 — so an invited member could never
-//      reach the agreement they were invited to.
-//   2. THE WIRE VALUE IS LOWERCASE. Core rejects "Open" with
-//      `Field 'subgroup_visibility' has invalid format: must be 'open' or
-//      'restricted'`, and mero-js types it as a bare `string`, so nothing
-//      catches the casing at compile time.
-//
-// ── Where a NAME lives ──────────────────────────────────────────────────────
-//
-//   * a workspace's name → `createNamespace({name})`, plus its metadata record
-//     as the fallback for nodes that answer the listing without one.
-//   * an agreement's name → the subgroup's METADATA record.
-//     `createGroupInNamespace` takes `groupName`, the value does NOT persist,
-//     and the listing returns a bare `{groupId}` — so `setGroupMetadata` is
-//     what makes the name readable by a member who has not entered yet.
-//   * the same name → the CONTRACT, via `init`'s second parameter. That is the
-//     authoritative copy for anyone inside, and it survives the metadata record
-//     being lost or rewritten.
-//
-// ⚠️ `init` TAKES TWO PARAMETERS — `(is_private: bool, context_name: String)`.
-// Surplus or missing fields are a guest panic, not a validation error:
-// "init: takes no arguments, but the call sent unknown field(s)". This fleet
-// has shipped that exact 400 to production twice.
-//
-// ── What is NEVER in an invitation ──────────────────────────────────────────
-//
-// An invitation grants namespace membership. No document, no signature, no key
-// material. See `lib/inviteCodec`.
+/**
+ * Workspaces, agreements and the private signature library on Calimero 1.0.
+ *
+ * | v1 | here |
+ * |---|---|
+ * | a workspace: a namespace of the app | an **organization** (`createOrg`) |
+ * | an agreement: a subgroup + its context, `init(false, name)` | an **app instance** in the org (`createApp(name, source, { org })`), then `setup(false, name)` |
+ * | the private signature library: a context `init(true, "default")` in a hidden personal namespace | an app instance the account owns, in no org, then `setup(true, "default")` |
+ * | joining an agreement by inheritance, waiting for it to replicate | nothing: every member of the org reaches its instances; `registerSelfAsParticipant` adds you to the agreement's roster |
+ * | a member key per context | the account: one id everywhere |
+ *
+ * Everything takes the client (and where instances come from, `source`) as an
+ * argument so it is testable with a fake.
+ */
+import {
+  ORG_CAPABILITIES,
+  type AppInfo,
+  type CalimeroClient,
+  type PasskeyProvider,
+} from '@calimero-network/mero-js';
+import type { AppSource } from '@calimero-apps/connect';
 
-import type { AdminApiClient } from '@calimero-network/mero-js';
-import { CAPABILITIES } from '@calimero-network/mero-js';
+import { MeroSignApp, type Transport } from './meroSign';
 
-export type AdminLike = AdminApiClient;
 export type StatusFn = (message: string) => void;
 const noop: StatusFn = () => {};
 
-/**
- * What an invited signer may do: enter the workspace's agreements, and nothing
- * else. Governance — making agreements, inviting people, changing roles — is
- * the admin set.
- *
- * ⚠️ NOT 15, and NOT the node's default. rc.41 seeds a new namespace with
- * `CAN_JOIN_OPEN_SUBGROUPS | CAN_AUTHOR_ON_BEHALF` (core #3969), and
- * `CAN_AUTHOR_ON_BEHALF` is "write as somebody else under a warrant they
- * signed". In a document-signing app that is the one capability that must never
- * be handed out by default, so the seed is overwritten and the write is not
- * swallowed.
- */
-export const MEMBER_CAPABILITIES = CAPABILITIES.CAN_JOIN_OPEN_SUBGROUPS;
-
-export const ADMIN_CAPABILITIES =
-  MEMBER_CAPABILITIES |
-  CAPABILITIES.CAN_CREATE_CONTEXT |
-  CAPABILITIES.CAN_INVITE_MEMBERS |
-  CAPABILITIES.MANAGE_MEMBERS |
-  CAPABILITIES.CAN_CREATE_SUBGROUP |
-  CAPABILITIES.CAN_MANAGE_VISIBILITY |
-  CAPABILITIES.CAN_MANAGE_METADATA;
-
-/**
- * `init`'s arguments, as the JSON `initializationParams` of `createContext`.
- *
- * Positional, matching the ABI exactly: `(is_private, context_name)`.
- */
-export function initParamsFor(name: string, isPrivate = false): number[] {
-  return Array.from(
-    new TextEncoder().encode(
-      JSON.stringify({ is_private: isPrivate, context_name: name }),
-    ),
-  );
-}
+/** The instance name of an account's private signature library. */
+export const LIBRARY_NAME = 'mero-sign:library';
 
 /** A readable label, or a short id — never an empty string. */
 export function displayName(
@@ -117,488 +41,294 @@ export function displayName(
   return `${fallbackPrefix} ${id.slice(0, 8)}…`;
 }
 
-// ── TEE nodes ───────────────────────────────────────────────────────────────
-//
-// A TEE fleet node is admitted by hardware attestation as a member row with
-// role `ReadOnlyTee` (replica) or `RelayTee` (relay), in the workspace and in
-// every agreement born Open. It is infrastructure, not a person: no people
-// count may include it. Its presence is what "TEE enabled" means.
-
-export const isTeeRole = (role: string | undefined): boolean =>
-  role === 'ReadOnlyTee' || role === 'RelayTee';
-
-/** How a TEE node serves a group: `relay` if any TEE row is a `RelayTee`. */
-export type TeeMode = 'relay' | 'replica';
-
-function teeModeOf(rows: readonly { role?: string }[]): TeeMode | null {
-  const tee = rows.filter((m) => isTeeRole(m.role));
-  if (tee.length === 0) return null;
-  return tee.some((m) => m.role === 'RelayTee') ? 'relay' : 'replica';
+/** The instances of this app (the dev bundle, or the package) the account reaches. */
+export async function listInstances(
+  client: Pick<CalimeroClient, 'listApps'>,
+  source: AppSource,
+): Promise<AppInfo[]> {
+  const filter =
+    typeof source === 'string' ? { bundle: source } : { package: source.package };
+  return client.listApps(filter);
 }
 
-/**
- * Whether a TEE node backs this workspace, read from its own member list.
- *
- * Failures read as "no TEE": the indicator is informational and must never
- * break the page it sits on.
- */
-export async function workspaceTeeMode(
-  admin: AdminLike,
-  namespaceId: string,
-): Promise<TeeMode | null> {
-  try {
-    const r = await admin.listGroupMembers(namespaceId);
-    return teeModeOf(r.members ?? []);
-  } catch {
-    return null;
-  }
-}
-
-// ── Workspaces (namespaces) ─────────────────────────────────────────────────
+// ── workspaces ───────────────────────────────────────────────────────────────
 
 export interface WorkspaceRow {
+  /** The org id. */
   namespaceId: string;
   name: string;
-  memberCount: number;
+  /** `owner` | `admin` | `member` | `guest`. */
+  role: string;
   agreementCount: number;
+  memberCount: number;
 }
 
+interface MeOrgs {
+  orgs?: Array<{ orgId: string; name: string; role: string }>;
+}
+
+/** Every workspace (org) this account is in, with agreement and member counts. */
 export async function listWorkspaces(
-  admin: AdminLike,
-  applicationId: string,
+  client: Pick<CalimeroClient, 'me' | 'listApps' | 'getOrg'>,
+  source: AppSource,
 ): Promise<WorkspaceRow[]> {
-  const namespaces = await admin.listNamespacesForApplication(applicationId);
+  const [me, apps] = await Promise.all([
+    client.me() as Promise<MeOrgs>,
+    listInstances(client, source),
+  ]);
   const rows = await Promise.all(
-    (namespaces ?? []).map(async (n) => {
-      const meta = await admin
-        .getGroupMetadata(n.namespaceId)
-        .catch(() => null);
+    (me.orgs ?? []).map(async (o) => {
+      const members = await readMembers(client, o.orgId).catch(() => null);
       return {
-        namespaceId: n.namespaceId,
-        name: displayName([n.name, meta?.name], n.namespaceId, 'Workspace'),
-        memberCount: n.memberCount ?? 0,
-        agreementCount: n.subgroupCount ?? 0,
-        // ⚠️ The personal namespace is NOT a workspace and must not be offered
-        // as one. It holds this node's private signature library, it has no
-        // other member and inviting somebody into it would share that library.
-        personal: isPersonalRecord(meta),
+        namespaceId: o.orgId,
+        name: o.name,
+        role: o.role,
+        agreementCount: apps.filter((a) => a.org === o.orgId).length,
+        memberCount: members ? members.roles.size : 0,
       };
     }),
   );
-  return rows
-    .filter((r) => !r.personal)
-    .map((r) => ({
-      namespaceId: r.namespaceId,
-      name: r.name,
-      memberCount: r.memberCount,
-      agreementCount: r.agreementCount,
-    }));
+  return rows.sort(
+    (a, b) =>
+      a.name.localeCompare(b.name) || a.namespaceId.localeCompare(b.namespaceId),
+  );
 }
 
 /**
- * Create the workspace that holds agreements.
- *
- * No context here — that is an agreement's job. A workspace with no agreement
- * is a valid state: you invite the people first, then draw up the document.
+ * What a member may do unless an admin sets otherwise, as v1 set it on a new
+ * namespace: create agreements and invite people.
+ */
+export const MEMBER_DEFAULTS =
+  ORG_CAPABILITIES.CREATE_APP |
+  ORG_CAPABILITIES.INVITE_MEMBERS |
+  ORG_CAPABILITIES.JOIN_OPEN_TEAMS;
+
+/**
+ * A new workspace: an org whose members may create agreements and invite.
+ * Setting the defaults is a passkey step-up; refused, the org stays and only
+ * its owner and admins can create agreements and invite.
  */
 export async function createWorkspace(
-  admin: AdminLike,
-  opts: { applicationId: string; name: string; accountId?: string | null },
+  client: Pick<CalimeroClient, 'createOrg' | 'setCapabilities'>,
+  name: string,
+  passkey: () => PasskeyProvider,
   onStatus: StatusFn = noop,
-): Promise<{ namespaceId: string; haError: string | null }> {
+): Promise<{ namespaceId: string; warning: string | null }> {
   onStatus('Creating the workspace…');
-  const ns = await admin.createNamespace({
-    applicationId: opts.applicationId,
-    name: opts.name,
-  });
-  // An ACCOUNT founds through the relay, and the account admin says whether
-  // the cloud agreed to host the namespace: `haEnabled: false` with `haError`
-  // in words. The namespace exists either way — but an unhosted one cannot
-  // mint an invitation anybody can redeem, and that failure used to surface
-  // only at invite time, as "not hosted", with nothing to say why. Read it
-  // here, so the screen can say it right after creation. A node answers
-  // without these fields and this reads as `null`.
-  const haError = hostingErrorOf(ns);
-
-  onStatus("Recording the workspace's name…");
-  await admin
-    .setGroupMetadata(ns.namespaceId, { name: opts.name })
-    .catch(() => {});
-
-  onStatus('Setting what an invited signer may do…');
-  // ⚠️ NOT swallowed. See MEMBER_CAPABILITIES: at rc.41 losing this write hands
-  // every invited signer CAN_AUTHOR_ON_BEHALF instead of withholding a
-  // capability, and nothing reports it.
-  await admin.setDefaultCapabilities(ns.namespaceId, {
-    defaultCapabilities: MEMBER_CAPABILITIES,
-  });
-
-  onStatus('Making you an admin of it…');
-  // The creator's own mask, explicitly. `getMemberCapabilities` reports the
-  // DEFAULT for the creator, which was just set to the signer mask — so
-  // without this the person who made the workspace cannot put an agreement in
-  // it, and there is no admin to ask.
-  if (opts.accountId) {
-    await admin.setMemberCapabilities(ns.namespaceId, opts.accountId, {
-      capabilities: ADMIN_CAPABILITIES,
-    });
-    const after = await admin
-      .getMemberCapabilities(ns.namespaceId, opts.accountId)
-      .then((r) => r?.capabilities ?? null)
-      .catch(() => null);
-    if (after !== null && (after & ADMIN_CAPABILITIES) !== ADMIN_CAPABILITIES) {
-      throw new Error(
-        `The node accepted the permission change but did not apply it ` +
-          `(asked for ${ADMIN_CAPABILITIES}, it reports ${after}).`,
-      );
-    }
+  const namespaceId = await client.createOrg(name);
+  onStatus('Letting members create agreements and invite…');
+  try {
+    await client.setCapabilities(namespaceId, MEMBER_DEFAULTS, passkey());
+    return { namespaceId, warning: null };
+  } catch {
+    return {
+      namespaceId,
+      warning:
+        'people you invite will not be able to create agreements or invite others',
+    };
   }
-
-  onStatus('Opening the workspace to invited signers…');
-  await admin
-    .setSubgroupVisibility(ns.namespaceId, { subgroupVisibility: 'open' })
-    .catch(() => {});
-
-  return { namespaceId: ns.namespaceId, haError };
 }
 
-/**
- * Why a freshly founded namespace is not hosted, or `null` when it is (or
- * when the answer came from a node, which says nothing about hosting).
- */
-export function hostingErrorOf(created: unknown): string | null {
-  const r = (created ?? {}) as { haEnabled?: unknown; haError?: unknown };
-  if (r.haEnabled !== false) return null;
-  return typeof r.haError === 'string' && r.haError.trim()
-    ? r.haError.trim()
-    : 'the cloud did not agree to host this workspace';
+// ── members ──────────────────────────────────────────────────────────────────
+
+export interface OrgMembers {
+  name: string;
+  /** account -> `owner` | `admin` | `member` | `guest`. */
+  roles: Map<string, string>;
+  /** account -> the name they set for the workspace, where one is set. */
+  names: Map<string, string>;
 }
 
-/**
- * Who this session is in a context it has just created.
- *
- * ⚠️ NOT `createContext().memberPublicKey`. On a node that field is the new
- * member key; through the account admin it is `""` today, and this app wrote
- * that empty string into the agreement row — `memberPublicKey`,
- * `privateIdentity`, `sharedIdentity` — and then refused to record the
- * agreement because "it cannot be recorded without the identity it was joined
- * with". The identity the node (or relay) holds for the caller is a question
- * with its own answer: `getContextIdentitiesOwned`, which returns the account
- * for a delegated session and the member key for a node. Asked only when the
- * create answered with nothing, so a node round-trips no more than before.
- */
-export async function memberIdentityAfterCreate(
-  admin: AdminLike,
-  ctx: { contextId: string; memberPublicKey?: string | null },
-): Promise<string> {
-  const given = (ctx.memberPublicKey ?? '').trim();
-  if (given) return given;
-  const owned = await ownedIdentity(admin, ctx.contextId);
-  if (owned) return owned;
-  throw new Error(
-    'The context was created but this session holds no identity in it yet. ' +
-      'Reload and try again.',
-  );
-}
-
-// ── The personal workspace ──────────────────────────────────────────────────
-//
-// Mero Sign keeps a PRIVATE context per node: the signature library, plus the
-// bookkeeping `ClientApiDataSource` reads at four other call sites. It is
-// created by `DefaultContextService` with `{is_private: true, context_name:
-// 'default'}` and it is not shared with anybody, ever.
-//
-// ⚠️ IT IS A CONTEXT, so rc.41 requires a group for it exactly as it does for
-// an agreement — `CreateContextRequest.group_id` has no `Option` and no
-// `#[serde(default)]`. "Private" is a property of the CONTRACT (`is_private`),
-// not an exemption from the binding. So the private context needs a namespace
-// too, and it must not be one of the user's workspaces: a workspace is a thing
-// you invite people into, and this is the one context that must never have a
-// second member.
-//
-// Hence a namespace of its own, found by a MARKER rather than by its name. A
-// name is what a user can rename; if "which namespace is my private one" turned
-// on the string "Personal", renaming it would strand the signature library and
-// silently start a second one.
-
-/** The marker that says "this namespace is this node's private store". */
-export const PERSONAL_KIND = 'mero-sign:personal';
-
-/** The name shown if a personal namespace is ever surfaced in a listing. */
-export const PERSONAL_WORKSPACE_NAME = 'Personal';
-
-/** The subgroup the private context is bound to, inside that namespace. */
-export const PERSONAL_GROUP_NAME = 'Private';
-
-/** Does this metadata record mark a personal namespace? */
-export function isPersonalRecord(
-  meta: { data?: Record<string, string> | null } | null | undefined,
-): boolean {
-  return meta?.data?.kind === PERSONAL_KIND;
-}
-
-/**
- * Find this node's personal namespace, or make one.
- *
- * Idempotent, and deliberately so: it runs on a timer from
- * `useDefaultContext`, from `redeemInvitation`, and from four lazy call sites
- * in the data source, so it will be called concurrently and repeatedly. The
- * marker read is what makes a second call cheap and a second NAMESPACE
- * impossible.
- */
-export async function ensurePersonalWorkspace(
-  admin: AdminLike,
-  applicationId: string,
-  onStatus: StatusFn = noop,
-): Promise<string> {
-  const namespaces = await admin
-    .listNamespacesForApplication(applicationId)
-    .catch(() => []);
-
-  for (const n of namespaces ?? []) {
-    const meta = await admin.getGroupMetadata(n.namespaceId).catch(() => null);
-    if (isPersonalRecord(meta)) return n.namespaceId;
+export async function readMembers(
+  client: Pick<CalimeroClient, 'getOrg'>,
+  org: string,
+): Promise<OrgMembers> {
+  const o = (await client.getOrg(org)) as Record<string, unknown>;
+  const members = (o.members ?? {}) as Record<string, string>;
+  const meta = (o.memberMetadata ?? {}) as Record<string, unknown>;
+  const names = new Map<string, string>();
+  for (const [account, value] of Object.entries(meta)) {
+    const name = (value as { name?: unknown } | null)?.name;
+    if (typeof name === 'string' && name.trim()) names.set(account, name.trim());
   }
-
-  onStatus('Setting up your private store…');
-  const ns = await admin.createNamespace({
-    applicationId,
-    name: PERSONAL_WORKSPACE_NAME,
-  });
-
-  // ⚠️ NOT swallowed, unlike the cosmetic metadata writes elsewhere in this
-  // file. The marker IS the identity of this namespace. If the write is lost,
-  // the next call does not find it, creates another, and the node accumulates
-  // a new "personal" namespace — and a new empty signature library — on every
-  // boot. `setGroupMetadata` REPLACES the record, so name and data go together.
-  await admin.setGroupMetadata(ns.namespaceId, {
-    name: PERSONAL_WORKSPACE_NAME,
-    data: { kind: PERSONAL_KIND },
-  });
-
-  return ns.namespaceId;
-}
-
-/**
- * The private context itself: its subgroup, then the context bound to it.
- *
- * ⚠️ VISIBILITY IS RESTRICTED, and named rather than left to core's default
- * (which is moving to Open) — the one place in this app where that is the
- * wanted answer. `createAgreement` opens its
- * subgroup so invited signers can enter; opening this one would make a node's
- * private signature library reachable by anybody admitted to the namespace.
- */
-export async function createPersonalContext(
-  admin: AdminLike,
-  opts: { applicationId: string; namespaceId: string; name?: string },
-  onStatus: StatusFn = noop,
-): Promise<{ groupId: string; contextId: string; memberPublicKey: string }> {
-  onStatus('Creating your private store…');
-  const sg = await admin.createGroupInNamespace(opts.namespaceId, {
-    groupName: PERSONAL_GROUP_NAME,
-    visibility: 'restricted',
-  });
-
-  const ctx = await admin.createContext({
-    applicationId: opts.applicationId,
-    groupId: sg.groupId,
-    // `is_private: true` — the contract's own flag, and the thing
-    // `is_default_private_context` answers on.
-    initializationParams: initParamsFor(opts.name ?? 'default', true),
-  });
-
   return {
-    groupId: sg.groupId,
-    contextId: ctx.contextId,
-    memberPublicKey: await memberIdentityAfterCreate(admin, ctx),
+    name: typeof o.name === 'string' ? o.name : '',
+    roles: new Map(Object.entries(members)),
+    names,
   };
 }
 
-// ── Agreements (subgroup + context) ─────────────────────────────────────────
+/** Publishes the name `account` goes by across the workspace (org member metadata). */
+export async function publishWorkspaceName(
+  client: Pick<CalimeroClient, 'setMemberMetadata'>,
+  org: string,
+  account: string,
+  name: string,
+): Promise<void> {
+  await client.setMemberMetadata(org, account, { name });
+}
+
+// ── the private signature library ────────────────────────────────────────────
+
+/**
+ * The account's private library: the instance named {@link LIBRARY_NAME} it
+ * owns outside any org, created and set up on first use.
+ */
+export async function ensurePrivateLibrary(
+  client: Pick<CalimeroClient, 'listApps' | 'createApp' | 'call' | 'view'>,
+  source: AppSource,
+  accountId: string,
+  after: () => void = () => {},
+): Promise<string> {
+  const found = (await listInstances(client, source)).find(
+    (a) => a.name === LIBRARY_NAME && a.owner === accountId && !a.org,
+  );
+  if (found) {
+    // Set up once; an instance whose setup never ran is set up now.
+    const lib = new MeroSignApp(client, found.appId, after);
+    if (!(await lib.isDefaultPrivateContext())) {
+      await lib.setup({ is_private: true, context_name: 'default' });
+    }
+    return found.appId;
+  }
+  const appId = await client.createApp(LIBRARY_NAME, source);
+  await new MeroSignApp(client, appId, after).setup({
+    is_private: true,
+    context_name: 'default',
+  });
+  return appId;
+}
+
+// ── agreements ───────────────────────────────────────────────────────────────
 
 export interface AgreementRow {
+  /** The app instance id. */
   agreementId: string;
+  /** The same id: v1 told the subgroup and its context apart. */
+  contextId: string;
   name: string;
-  /** Null while the agreement exists but has not replicated to this node. */
-  contextId: string | null;
-  /** People only: TEE node rows are not counted. */
+  /** Participants on the agreement's roster, when it could be read. */
   memberCount: number;
-  /** The agreement's TEE node, if one was admitted (born-Open agreements admit it). */
-  teeMode: TeeMode | null;
+  /** Whether the caller is on the roster. */
   joined: boolean;
-  identity: string | null;
+  /** The account that created the instance. */
+  owner: string;
 }
 
-async function ownedIdentity(
-  admin: AdminLike,
-  contextId: string,
-): Promise<string | null> {
-  const res = await admin
-    .getContextIdentitiesOwned(contextId)
-    .catch(() => null);
-  return res?.identities?.[0] ?? null;
-}
-
+/** The agreements in workspace `org`, by name. */
 export async function listAgreements(
-  admin: AdminLike,
-  namespaceId: string,
+  client: Pick<CalimeroClient, 'listApps'> & Transport,
+  source: AppSource,
+  org: string,
+  accountId: string,
 ): Promise<AgreementRow[]> {
-  const subgroups = await admin.listNamespaceGroups(namespaceId);
-  return Promise.all(
-    (subgroups ?? []).map(async (sg) => {
-      const [contexts, members, meta] = await Promise.all([
-        admin.listGroupContexts(sg.groupId).catch(() => []),
-        admin
-          .listGroupMembers(sg.groupId)
-          .then((r) => r.members ?? [])
-          .catch(() => []),
-        admin.getGroupMetadata(sg.groupId).catch(() => null),
-      ]);
-      const contextId = contexts?.[0]?.contextId ?? null;
-      const identity = contextId ? await ownedIdentity(admin, contextId) : null;
+  const apps = (await listInstances(client, source)).filter((a) => a.org === org);
+  const rows = await Promise.all(
+    apps.map(async (a) => {
+      const roster = await new MeroSignApp(client, a.appId)
+        .listParticipants()
+        .catch(() => null);
       return {
-        agreementId: sg.groupId,
-        name: displayName([sg.name, meta?.name], sg.groupId, 'Agreement'),
-        contextId,
-        memberCount: members.filter((m) => !isTeeRole(m.role)).length,
-        teeMode: teeModeOf(members),
-        joined: !!identity,
-        identity,
+        agreementId: a.appId,
+        contextId: a.appId,
+        name: displayName([a.name], a.appId, 'Agreement'),
+        memberCount: roster?.length ?? 0,
+        joined: roster ? roster.includes(accountId) : a.owner === accountId,
+        owner: a.owner,
       };
     }),
   );
-}
-
-/**
- * Create an agreement: subgroup → name → OPEN visibility → its own context.
- *
- * The visibility step is load-bearing and is NOT swallowed: an agreement left
- * restricted cannot be reached by the people invited to sign it, and it fails
- * silently — they get a 403 from `join-via-inheritance` and the UI shows an
- * agreement they can see the name of and never open.
- */
-export async function createAgreement(
-  admin: AdminLike,
-  opts: {
-    applicationId: string;
-    namespaceId: string;
-    name: string;
-    isPrivate?: boolean;
-  },
-  onStatus: StatusFn = noop,
-): Promise<{
-  agreementId: string;
-  contextId: string;
-  memberPublicKey: string;
-}> {
-  onStatus('Creating the agreement…');
-  // ⚠️ `groupName`, not `name`: every core request body is
-  // `deny_unknown_fields`, so the old spelling is a 400 for the whole call.
-  //
-  // ⚠️ `visibility` AT BIRTH, not only afterwards. A subgroup with no
-  // `visibility` is created RESTRICTED, and between that call and the
-  // `setSubgroupVisibility` below there is a window in which an invited signer
-  // who tries to enter is refused. Setting it here closes the window; the
-  // explicit call is kept because the field is optional in this SDK's request
-  // type and a node that ignores it must still end up open.
-  const sg = await admin.createGroupInNamespace(opts.namespaceId, {
-    groupName: opts.name,
-    visibility: 'open',
-  });
-
-  onStatus('Naming it…');
-  await admin.setGroupMetadata(sg.groupId, { name: opts.name }).catch(() => {});
-
-  onStatus('Opening it to the workspace…');
-  await admin.setSubgroupVisibility(sg.groupId, {
-    subgroupVisibility: 'open',
-  });
-
-  onStatus('Preparing its documents…');
-  const ctx = await admin.createContext({
-    applicationId: opts.applicationId,
-    // ⚠️ THE SUBGROUP, not the namespace. This is the binding rc.41 requires
-    // and the old model had nothing to put here.
-    groupId: sg.groupId,
-    initializationParams: initParamsFor(opts.name, opts.isPrivate ?? false),
-  });
-
-  return {
-    agreementId: sg.groupId,
-    contextId: ctx.contextId,
-    memberPublicKey: await memberIdentityAfterCreate(admin, ctx),
-  };
-}
-
-/** How long to keep trying to enter an agreement, and how often to look. */
-const ENTER_TIMEOUT_MS = 90_000;
-const ENTER_POLL_MS = 2_000;
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-/**
- * Enter an agreement's context, joining by inheritance if needed.
- *
- * ⚠️ RETRIED, not asked once. Right after a namespace join — which is exactly
- * when the invitation path calls this — the node has not projected the
- * membership or replicated the agreement yet: the inheritance join is refused
- * and no identity is held, and a moment later both work. So keep asking until
- * the identity lands or the window passes, and only then say so.
- */
-export async function enterAgreement(
-  admin: AdminLike,
-  opts: { namespaceId: string; agreementId: string; contextId: string },
-  onStatus: StatusFn = noop,
-): Promise<string> {
-  const existing = await ownedIdentity(admin, opts.contextId);
-  if (existing) return existing;
-
-  onStatus('Joining the agreement…');
-  const deadline = Date.now() + ENTER_TIMEOUT_MS;
-  let admitted = false;
-  for (let attempt = 1; ; attempt += 1) {
-    if (!admitted) {
-      // A 403 here is a membership that has not projected yet, or a subgroup
-      // left restricted, which `createAgreement` prevents for anything it
-      // makes. Either way the identity read below is what decides.
-      admitted = await admin.joinSubgroupInheritance(opts.agreementId).then(
-        () => true,
-        () => false,
-      );
-    }
-
-    const identity = await ownedIdentity(admin, opts.contextId);
-    if (identity) return identity;
-    if (Date.now() >= deadline) break;
-    if (attempt === 1) {
-      onStatus('Waiting for the agreement to reach this node…');
-    }
-    await sleep(ENTER_POLL_MS);
-  }
-
-  throw new Error(
-    'This node holds no identity in that agreement. If you were just ' +
-      'invited, the workspace may still be replicating — try again shortly.',
+  return rows.sort(
+    (a, b) =>
+      a.name.localeCompare(b.name) || a.agreementId.localeCompare(b.agreementId),
   );
 }
 
 /**
- * Which agreement an invitation should land you in, out of everything the
- * workspace holds.
+ * A new agreement in workspace `org`: the instance, its `setup` (the creator
+ * is its first admin), and a record of it in the creator's private library.
+ * Answers the instance id.
+ */
+export async function createAgreement(
+  client: Pick<CalimeroClient, 'createApp' | 'listApps' | 'call' | 'view'>,
+  opts: { source: AppSource; org: string; name: string; accountId: string },
+  onStatus: StatusFn = noop,
+  after: () => void = () => {},
+): Promise<string> {
+  onStatus('Creating the agreement…');
+  const appId = await client.createApp(opts.name, opts.source, { org: opts.org });
+  onStatus('Preparing its documents…');
+  await new MeroSignApp(client, appId, after).setup({
+    is_private: false,
+    context_name: opts.name,
+  });
+  await recordInLibrary(client, opts.source, opts.accountId, appId, opts.name, after);
+  return appId;
+}
+
+/** Records a joined agreement in the private library; best-effort. */
+export async function recordInLibrary(
+  client: Pick<CalimeroClient, 'listApps' | 'createApp' | 'call' | 'view'>,
+  source: AppSource,
+  accountId: string,
+  appId: string,
+  name: string,
+  after: () => void = () => {},
+): Promise<void> {
+  try {
+    const library = await ensurePrivateLibrary(client, source, accountId, after);
+    await new MeroSignApp(client, library, after).joinSharedContext({
+      context_id_str: appId,
+      shared_identity_str: accountId,
+      context_name: name,
+    });
+  } catch {
+    // "Already joined" or a library not reachable yet: the agreement itself
+    // is what matters, and it is listed from the workspace either way.
+  }
+}
+
+/**
+ * Enters an agreement: puts the caller on its roster (as a signer) if they
+ * are not on it yet, and records it in their library. Answers their account.
  *
- * The invitation may name one — `contextId` in the envelope, which the inviter
- * put there when they shared a specific agreement. It is a HINT and is treated
- * as one: it is only honoured when it matches an agreement that is actually in
- * the workspace, so an edited envelope cannot send a joiner anywhere the
- * invitation did not already grant.
- *
- * With no usable hint, one agreement is unambiguous and is opened. Several is
- * genuinely ambiguous — the workspace screen lists them and the person picks,
- * which is better than opening whichever replicated first.
+ * A member of the workspace joins by themselves; a guest, or someone an admin
+ * removed, is refused by the contract and gets its sentence.
+ */
+export async function enterAgreement(
+  client: Pick<CalimeroClient, 'listApps' | 'createApp' | 'call' | 'view'>,
+  opts: { source: AppSource; appId: string; accountId: string; name: string },
+  after: () => void = () => {},
+): Promise<string> {
+  const agreement = new MeroSignApp(client, opts.appId, after);
+  const roster = await agreement.listParticipants();
+  if (!roster.includes(opts.accountId)) {
+    try {
+      await agreement.registerSelfAsParticipant();
+    } catch (e) {
+      const code = (e as { appCode?: string } | null)?.appCode;
+      // Forbidden (a guest, or removed): they may still read it.
+      if (code !== 'Conflict' && code !== 'Forbidden') throw e;
+    }
+    await recordInLibrary(
+      client,
+      opts.source,
+      opts.accountId,
+      opts.appId,
+      opts.name,
+      after,
+    );
+  }
+  return opts.accountId;
+}
+
+/**
+ * Which agreement an invitation should land you in: the one the link names
+ * when it is in the workspace, else the only one, else none (the list).
  */
 export function pickInvitedAgreement<T extends { contextId: string | null }>(
   agreements: T[],
-  hintedContextId: string | undefined,
+  hintedContextId: string | null | undefined,
 ): T | null {
   const joinable = agreements.filter((a) => !!a.contextId);
   if (hintedContextId) {

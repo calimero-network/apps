@@ -927,26 +927,27 @@ export const APPS = {
   },
 
   'mero-sign': {
-    // Keeps its own sign-in — a sidebar, or the game launcher — so the
-    // landing gets an onConnect callback and never mounts the shared popup.
+    // A component app (calimero-app-sdk, merod local, CalimeroClient): no
+    // Playwright, so no generated landing spec. docs/COMPONENT-APPS.md.
+    // Passes its own passkey sign-in to the landing page as `onConnect`.
     ownConnect: true,
     displayName: 'Mero Sign',
-    e2eDir: 'tests',
+    e2eDir: null,
     // Same light/dark key as the app shell (src/theme.ts), so the landing
     // choice carries through sign-in.
     themeStorageKey: 'mero-sign:theme',
-    availability: 'web+desktop',
-    trust: ['No signing service', 'Roles per signatory', 'Verify peer-to-peer'],
+    availability: 'web',
+    trust: ['No signing service', 'Roles per signatory', 'No passwords'],
     explainer: [
-      'Upload a PDF, collect signatures from the people you invite, and verify them — with no e-signature company in the middle holding your contracts and charging per envelope.',
-      'An agreement is a shared context you administer. Signatories join by invitation and sign in the roles you assigned them, and your own signature library stays in a private context that only you can read.',
+      'Upload a PDF, collect signatures from the people you invite, and keep every signed version — with no e-signature company in the middle holding your contracts and charging per envelope.',
+      'An agreement is a Calimero app instance in your workspace, and you administer it. Signatories sign in the roles you assigned them, and your own signature library is a private instance only you can open.',
     ],
     features: [
-      { icon: 'FileCheck', title: 'Agreements as contexts', body: 'Create one and you administer it. Membership and roles are yours to set.' },
+      { icon: 'FileCheck', title: 'Agreements you administer', body: 'Create one and you are its admin. Membership and roles are yours to set.' },
       { icon: 'ShieldCheck', title: 'Role-based signing', body: 'Each signatory signs in the role you assigned, so the document knows who still owes a signature.' },
-      { icon: 'LockBox', title: 'A private signature library', body: 'Your signatures live in a local context only you can read, not in a vendor’s account.' },
-      { icon: 'ExternalLink', title: 'Invitations tied to identities', body: 'Scoped invite payloads with permissions, bound to Calimero identities rather than email addresses.' },
-      { icon: 'GlobeCheck', title: 'Verify peer-to-peer', body: 'Check a signature without asking a service whether it is genuine.' },
+      { icon: 'LockBox', title: 'A private signature library', body: 'Your signatures live in an instance only you can open, not in a vendor’s account.' },
+      { icon: 'ExternalLink', title: 'Invitations to a workspace', body: 'One link, approved with your passkey, covers the workspace and every agreement in it.' },
+      { icon: 'GlobeCheck', title: 'Every version kept', body: 'Each signature records the version it signed and the one it produced, and the document’s hash is checked when it opens.' },
     ],
   },
 

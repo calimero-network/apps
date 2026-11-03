@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { Routes, Route, BrowserRouter } from 'react-router-dom';
-import { nodeBasename } from './lib/servedByNode';
+import { nodeBasename as servedBasename } from '@calimero-apps/node-served';
 import { ThemeProvider } from './contexts/ThemeContext';
 import AgreementsPage from './pages/app/AgreementsPage';
 import WorkspacesPage from './pages/app/WorkspacesPage';
@@ -9,10 +8,16 @@ import SignaturesPage from './pages/app/SignaturesPage';
 import ConnectGate from './components/ConnectGate';
 import NotFound from './components/NotFound';
 import LandingPage from './pages/landing/LandingPage';
-import ConnectPopup from './pages/landing/ConnectPopup';
 import InvitationHandlerPopup from './components/InvitationHandlerPopup';
 import { useCalimero } from './lib/useCalimero';
+import { SignInModal } from './lib/loginGate';
 import { ROUTES, type Screen } from './routes';
+import type { SessionDeps } from './session';
+import { SessionProvider, useSessionApi } from './sessionContext';
+
+/** Relative, so the same build runs at / and under the node's served path. */
+const BASE = servedBasename(new URL(window.location.href), '/');
+const nodeBasename = (): string => BASE;
 
 /**
  * The single screen renderer.
@@ -89,8 +94,12 @@ function Screenful({
 }
 
 function AppContent() {
-  const { isAuthenticated } = useCalimero();
-  const [connectOpen, setConnectOpen] = useState(false);
+  const { isAuthenticated, login } = useCalimero();
+  const { api } = useSessionApi();
+
+  // Restoring a stored session: render nothing rather than flash the
+  // connect screen at someone already signed in.
+  if (api.session.status === 'connecting') return null;
 
   return (
     <>
@@ -102,33 +111,32 @@ function AppContent() {
             element={
               <Screenful
                 screen={r.screen}
-                authed={!!isAuthenticated}
+                authed={isAuthenticated}
                 publicScreen={r.publicScreen}
-                onConnect={() => setConnectOpen(true)}
+                onConnect={login}
               />
             }
           />
         ))}
       </Routes>
-      <ConnectPopup
-        isOpen={connectOpen && !isAuthenticated}
-        onClose={() => setConnectOpen(false)}
-      />
+      <SignInModal />
       {/* Invitations are captured at APP level, not per page: a link can land
-          on any route. Mounted outside any auth branch — capture starts in
-          main.tsx before React mounts, so an invitation survives the login
-          redirect, and the prompt waits for a session before it asks. */}
+          on any route. Capture runs in main.tsx before React mounts, so the
+          token survives the passkey sign-up, and the prompt waits for a
+          session before it asks. */}
       <InvitationHandlerPopup />
     </>
   );
 }
 
-export default function App() {
+export default function App({ deps }: { deps?: SessionDeps } = {}) {
   return (
-    <ThemeProvider>
-      <BrowserRouter basename={nodeBasename()}>
-        <AppContent />
-      </BrowserRouter>
-    </ThemeProvider>
+    <SessionProvider deps={deps}>
+      <ThemeProvider>
+        <BrowserRouter basename={nodeBasename()}>
+          <AppContent />
+        </BrowserRouter>
+      </ThemeProvider>
+    </SessionProvider>
   );
 }

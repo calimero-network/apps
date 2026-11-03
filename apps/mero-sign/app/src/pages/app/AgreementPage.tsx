@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { JOIN_SYNC_POLL_MS, useJoinSync, useMero } from '@calimero-network/mero-react';
-import { publishMemberName, useMemberNames } from '@calimero-apps/names';
 import {
   CheckCircle2,
   Clock,
@@ -20,16 +18,12 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import {
-  apiClient,
-  getExecutorPublicKey,
+  blobClient,
+  errorMessage,
   setContextId,
-  setExecutorPublicKey,
   useCalimero,
-  type ResponseData,
 } from '../../lib/node';
-import type { ContextInviteByOpenInvitationResponse } from '../../lib/node';
 import { ClientApiDataSource } from '../../api/dataSource/ClientApiDataSource';
-import { ContextApiDataSource } from '../../api/dataSource/nodeApiDataSource';
 import { DocumentService } from '../../api/documentService';
 import {
   PermissionLevel,
@@ -37,15 +31,13 @@ import {
   type Document as DocumentRow,
 } from '../../api/clientApi';
 import { useActiveWorkspace } from '../../lib/activeWorkspace';
-import { blobClient } from '../../lib/node';
 import { toBlobIdHex } from '../../lib/blobIds';
-import { fetchWhileSyncing } from '../../lib/fetchWhileSyncing';
 import {
   integrityWarning,
   verifyDocumentBytes,
 } from '../../lib/documentIntegrity';
-import { encodeInvite } from '../../lib/inviteCodec';
-import { invitationUrl } from '../../lib/inviteLink';
+import { inviteLink as linkFor, inviteToken } from '../../lib/invites';
+import { publishWorkspaceName, readMembers } from '../../lib/agreements';
 import {
   INVITABLE_LEVELS,
   INVITE_LEVEL_LABELS,
@@ -53,7 +45,6 @@ import {
   buildRoster,
   canRemove,
   isAdmin,
-  isHexId,
   levelChangesFor,
   participantInitials,
   participantName,
@@ -111,16 +102,14 @@ export default function AgreementPage() {
   const { app } = useCalimero();
 
   const clientApi = useMemo(() => new ClientApiDataSource(app), [app]);
-  const nodeApi = useMemo(() => new ContextApiDataSource(app), [app]);
   const documentService = useMemo(() => new DocumentService(), []);
 
   // The route param is the source of truth; storage is kept in step because the
   // PDF viewer and the consent flow still read it.
   const contextId =
     agreementId || localStorage.getItem('agreementContextID') || '';
-  const executorKey = localStorage.getItem('agreementContextUserID') || '';
   useEffect(() => {
-    if (contextId) localStorage.setItem('agreementContextID', contextId);
+    if (contextId) setContextId(contextId);
   }, [contextId]);
 
   const [tab, setTab] = useState<Tab>('documents');
@@ -178,21 +167,13 @@ export default function AgreementPage() {
     setIntegrity(null);
     void (async () => {
       try {
-        // Hex — and `toBlobIdHex` also accepts the base58 ids written before
-        // that was fixed, so documents uploaded by an older build still open.
         const blobId = toBlobIdHex(viewing.pdfBlobId);
         if (!blobId) {
           throw new Error(
             'This document has no readable blob id recorded against it.',
           );
         }
-        // Listed is not yet fetched: the agreement's state syncs before the
-        // node has the bytes, so keep asking while it catches up ("Loading…"
-        // stays up) rather than failing on the first refusal.
-        const blob = await fetchWhileSyncing(
-          () => blobClient.downloadBlob(blobId, contextId),
-          { cancelled: () => cancelled },
-        );
+        const blob = await blobClient.downloadBlob(blobId, contextId);
         if (cancelled) return;
 
         // The hash has always been recorded and shown; nothing ever checked
@@ -225,16 +206,48 @@ export default function AgreementPage() {
 
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [mintingInvite, setMintingInvite] = useState(false);
-  // ⚠️ An invitation is to the WORKSPACE, not to this agreement. See below.
-  const workspaceId = useActiveWorkspace();
-  // People by the name they set for the workspace (namespace member metadata,
-  // shared by every app on it), not by account id.
-  const { admin } = useMero();
-  const { nameOf } = useMemberNames(admin, workspaceId);
+  // ⚠️ An invitation is to the WORKSPACE (an organization), not to this
+  // agreement. The workspace is the instance's own org, read from the cluster;
+  // until it answers, the one the person came from.
+  const activeWorkspace = useActiveWorkspace();
+  const [instanceOrg, setInstanceOrg] = useState<string | null>(null);
+  const workspaceId = instanceOrg ?? activeWorkspace;
+  // People by the name they set for the workspace (org member metadata), not
+  // by account id.
+  const [names, setNames] = useState<Map<string, string>>(new Map());
+  const nameOf = useCallback((id: string) => names.get(id), [names]);
   const personName = useCallback(
     (id: string) => participantName(id, nameOf),
     [nameOf],
   );
+  useEffect(() => {
+    if (!app || !contextId) return;
+    let live = true;
+    void app.client
+      .listApps()
+      .then((apps) => {
+        const org = apps.find((a) => a.appId === contextId)?.org ?? null;
+        if (live && org) setInstanceOrg(org);
+      })
+      .catch(() => {})
+      .finally(app.after);
+    return () => {
+      live = false;
+    };
+  }, [app, contextId]);
+  const loadNames = useCallback(async () => {
+    if (!app || !workspaceId) return;
+    try {
+      setNames((await readMembers(app.client, workspaceId)).names);
+    } catch {
+      // Names are a nicety: ids still show.
+    } finally {
+      app.after();
+    }
+  }, [app, workspaceId]);
+  useEffect(() => {
+    void loadNames();
+  }, [loadNames]);
   const [myName, setMyName] = useState('');
   const [savingName, setSavingName] = useState(false);
   const [inviteeId, setInviteeId] = useState('');
@@ -256,11 +269,9 @@ export default function AgreementPage() {
   const loadDetails = useCallback(async () => {
     if (!contextId) return;
     try {
-      if (executorKey) setExecutorPublicKey(executorKey);
       const res = await clientApi.getContextDetails(
         contextId,
         contextId,
-        executorKey || undefined,
       );
       if (res.error) {
         setError(res.error.message);
@@ -275,12 +286,12 @@ export default function AgreementPage() {
       // keyed by ACCOUNT, and both are 64 hex characters. `whoami()` exists for
       // exactly this. "" means nobody is badged and no role control is offered,
       // which is the safe reading.
-      const me = await clientApi.whoami(contextId, executorKey || undefined);
+      const me = await clientApi.whoami(contextId);
       setSelfAccountId(me.data ? toHexId(me.data) : '');
     } catch {
       setError('Could not load this agreement.');
     }
-  }, [clientApi, contextId, executorKey]);
+  }, [clientApi, contextId]);
 
   const loadDocuments = useCallback(async () => {
     if (!contextId) return;
@@ -288,13 +299,12 @@ export default function AgreementPage() {
       const res = await documentService.listDocuments(
         contextId,
         contextId,
-        executorKey || undefined,
       );
       setDocuments(res.data ?? []);
     } catch {
       setDocuments([]);
     }
-  }, [documentService, contextId, executorKey]);
+  }, [documentService, contextId]);
 
   useEffect(() => {
     if (!app || !contextId) return;
@@ -309,27 +319,6 @@ export default function AgreementPage() {
       cancelled = true;
     };
   }, [app, contextId, loadDetails, loadDocuments]);
-
-  // An invitation to a workspace holding one agreement lands HERE, not on the
-  // workspace's list, so this page is the one that can say the joined
-  // workspace's data has arrived: the agreement's details came back. That ends
-  // the invitation dialog's "Syncing…". The workspace is the active one, which
-  // the join set before navigating.
-  const { isSyncing } = useJoinSync({
-    namespaceId: workspaceId,
-    settled: details !== null,
-    active: details === null,
-  });
-
-  // Until then the read fails ("Uninitialized") rather than coming back empty,
-  // and nothing else asks again: keep reading while the gate is open.
-  useEffect(() => {
-    if (!app || !contextId || !isSyncing) return;
-    const timer = setInterval(() => {
-      void loadDetails().then(loadDocuments);
-    }, JOIN_SYNC_POLL_MS);
-    return () => clearInterval(timer);
-  }, [app, contextId, isSyncing, loadDetails, loadDocuments]);
 
   useEffect(() => {
     function onOutside(e: MouseEvent) {
@@ -359,7 +348,6 @@ export default function AgreementPage() {
           userId,
           level,
           contextId,
-          executorKey || undefined,
         );
         if (res.error) {
           setError(res.error.message || 'Could not change that role.');
@@ -371,7 +359,7 @@ export default function AgreementPage() {
         setRoleBusyFor(null);
       }
     },
-    [clientApi, contextId, executorKey, flash, loadDetails, personName],
+    [clientApi, contextId, flash, loadDetails, personName],
   );
 
   const remove = useCallback(
@@ -381,7 +369,6 @@ export default function AgreementPage() {
         const res = await clientApi.removeParticipant(
           userId,
           contextId,
-          executorKey || undefined,
         );
         if (res.error) {
           setError(res.error.message || 'Could not remove that person.');
@@ -393,128 +380,76 @@ export default function AgreementPage() {
         setRoleBusyFor(null);
       }
     },
-    [clientApi, contextId, executorKey, flash, loadDetails, personName],
+    [clientApi, contextId, flash, loadDetails, personName],
   );
 
   // Publish the name every app on this workspace shows for this account.
   const saveMyName = useCallback(async () => {
     const name = myName.trim();
-    if (!admin || !workspaceId || !selfAccountId || !name) return;
+    if (!app || !workspaceId || !selfAccountId || !name) return;
     setSavingName(true);
     try {
-      await publishMemberName(admin, workspaceId, selfAccountId, name);
+      await publishWorkspaceName(app.client, workspaceId, selfAccountId, name);
       setMyName('');
+      await loadNames();
       flash(`Everyone in this workspace now sees you as ${name}.`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not save your name.');
+      setError(errorMessage(e));
     } finally {
+      app.after();
       setSavingName(false);
     }
-  }, [admin, workspaceId, selfAccountId, myName, flash]);
+  }, [app, workspaceId, selfAccountId, myName, flash, loadNames]);
 
   // ── invitations ───────────────────────────────────────────────────────────
+  // An org invite to this agreement's workspace (a passkey step-up for the
+  // inviter), with `&agreement=` so the joiner lands here. The grant is the
+  // workspace: every agreement in it is reachable once they have joined.
   const mintLink = useCallback(async () => {
-    if (!contextId || !executorKey) {
-      setError('This agreement is not open on your node yet.');
-      return;
-    }
-    // ⚠️ THE NAMESPACE, NOT THE CONTEXT — this is the reported
-    // `{"error":"Internal server error"}` on Create invitation.
-    //
-    // `contextInviteByOpenInvitation` is a kept NAME, not a kept meaning:
-    // since the workspace model it posts to
-    // `POST /admin-api/namespaces/<id>/invite`. This call site still handed it
-    // `getContextId() || contextId`, so the node was asked to mint an
-    // invitation for a namespace whose id is actually a context's — it has no
-    // such namespace, and the lookup fails as a bare 500 that names nothing.
-    //
-    // The grant was never per-agreement anyway: an invitation admits someone
-    // to the workspace, and the agreements inside it are reached by
-    // inheritance from there. See `lib/agreements`.
+    if (!app || !contextId) return;
     if (!workspaceId) {
       setError(
-        'Open this agreement from its workspace first — an invitation is to ' +
-          'the workspace, and this page does not know which one you came from.',
+        'This agreement is not in a workspace, so there is nobody to invite to it.',
       );
       return;
     }
     setMintingInvite(true);
     try {
-      setContextId(contextId);
-      setExecutorPublicKey(executorKey);
-      const res: ResponseData<ContextInviteByOpenInvitationResponse> =
-        await apiClient.node().contextInviteByOpenInvitation(
-          workspaceId,
-          getExecutorPublicKey() || executorKey,
-          // `validForBlocks`. Core clamps an open invitation to 24 hours
-          // whatever is asked for, so this is "as long as it will allow".
-          86400,
-        );
-      if (res.error || !res.data) {
-        setError(res.error?.message || 'Could not create an invitation.');
-        return;
-      }
-      // The node's raw body. Core wraps it; older nodes did not. Accept either.
-      const envelope = res.data as unknown as Record<string, unknown>;
-      const signed = (envelope.data ?? envelope) as Parameters<
-        typeof encodeInvite
-      >[0]['invitation'];
-      if (!signed || typeof signed !== 'object' || !signed.invitation) {
-        setError('The node returned an invitation this app cannot read.');
-        return;
-      }
-      const code = encodeInvite({
-        invitation: signed,
-        contextId,
-        // A display hint, outside the signature, so the recipient's prompt can
-        // name the agreement before they commit. The contract's own
-        // `context_name` supersedes it the moment they join.
-        contextName: details?.context_name,
-      });
-      setInviteLink(invitationUrl(code));
+      const token = await inviteToken(app.client, workspaceId, app.passkey());
+      setInviteLink(linkFor(token, contextId));
+    } catch (e) {
+      setError(errorMessage(e));
     } finally {
+      app.after();
       setMintingInvite(false);
     }
-  }, [contextId, executorKey, details, workspaceId]);
+  }, [app, contextId, workspaceId]);
 
+  // One person who is already in the workspace: put them on this agreement's
+  // roster at the level picked, and hand over a link straight to it.
   const mintTargeted = useCallback(async () => {
     const id = inviteeId.trim();
-    if (!isHexId(id)) {
-      setError('That is not a Calimero id — it should be 64 hex characters.');
-      return;
-    }
+    if (!id) return;
     setMintingInvite(true);
     try {
-      const res = await nodeApi.inviteToContext({
-        contextId,
-        inviter: executorKey,
-        invitee: id,
-      });
-      if (res.error || !res.data) {
-        setError(res.error?.message || 'Could not create that invitation.');
-        return;
-      }
-      // ⚠️ WAS HARDCODED `PermissionLevel.Sign`, so every person ever invited
-      // became a signer and the `Read` level — which the contract enforces and
-      // this UI describes — was unreachable in the product. It was also
-      // unusable even if you reached it: completion demanded a signature from
-      // every participant regardless of level, so one viewer meant no document
-      // in the agreement could ever finish. Both halves are fixed; this is the
-      // half that lets anyone ask for a viewer.
-      await clientApi.addParticipant(
+      const res = await clientApi.addParticipant(
         contextId,
         id,
         inviteeLevel,
         contextId,
-        executorKey || undefined,
       );
-      // A link like any other: the invitee opens it, and the payload is
-      // useless to anyone but the identity it names.
-      setTargetedLink(invitationUrl(res.data));
+      if (res.error) {
+        setError(res.error.message || 'Could not add that person.');
+        return;
+      }
+      const url = new URL(window.location.href);
+      url.search = '';
+      setTargetedLink(url.toString());
+      await loadDetails();
     } finally {
       setMintingInvite(false);
     }
-  }, [inviteeId, inviteeLevel, nodeApi, clientApi, contextId, executorKey]);
+  }, [inviteeId, inviteeLevel, clientApi, contextId, loadDetails]);
 
   const copy = useCallback(
     (value: string, what: string) => {
@@ -534,7 +469,6 @@ export default function AgreementPage() {
         uploadFile.name,
         uploadFile,
         contextId,
-        executorKey || undefined,
       );
       if (res.error) {
         setError(res.error.message || 'Could not upload that document.');
@@ -551,7 +485,6 @@ export default function AgreementPage() {
     uploadFile,
     documentService,
     contextId,
-    executorKey,
     loadDocuments,
     flash,
   ]);
@@ -562,7 +495,6 @@ export default function AgreementPage() {
       const res = await clientApi.deleteDocument(
         doc.id,
         contextId,
-        executorKey || undefined,
       );
       if (res.error) {
         setError(res.error.message || 'Could not delete that document.');
@@ -571,7 +503,7 @@ export default function AgreementPage() {
       await loadDocuments();
       flash('Document deleted.');
     },
-    [clientApi, contextId, executorKey, loadDocuments, flash],
+    [clientApi, contextId, loadDocuments, flash],
   );
 
   const name = details?.context_name?.trim() || 'Agreement';
@@ -871,8 +803,9 @@ export default function AgreementPage() {
                 <div>
                   <h2 className={styles.panelTitle}>Shareable link</h2>
                   <p className={styles.panelText}>
-                    Anybody holding this link can join. It expires within a day,
-                    and it grants membership of this agreement and nothing else.
+                    Anybody holding this link can join this agreement's
+                    workspace and open the agreement. Creating it asks for your
+                    passkey.
                   </p>
                 </div>
               </div>
@@ -916,15 +849,15 @@ export default function AgreementPage() {
                 <div>
                   <h2 className={styles.panelTitle}>Invite one person</h2>
                   <p className={styles.panelText}>
-                    For a specific Calimero identity. They send you their id;
-                    this mints a link only they can redeem.
+                    For someone already in this workspace. They send you their
+                    account id; this adds them at the level you pick.
                   </p>
                 </div>
               </div>
               <div className={styles.createRow}>
                 <input
                   className={styles.input}
-                  placeholder="Their id (64 hex characters)…"
+                  placeholder="Their account id…"
                   aria-label="Their id"
                   value={inviteeId}
                   onChange={(e) => setInviteeId(e.target.value)}
@@ -993,7 +926,7 @@ export default function AgreementPage() {
             </h2>
             <p className={styles.modalDesc}>
               A PDF. Everyone in this agreement will be able to read it and sign
-              it; it is stored on the nodes of the people invited here.
+              it; it is stored with this agreement.
             </p>
             <label
               className={`${styles.drop} ${uploadFile ? styles.dropPicked : ''}`}

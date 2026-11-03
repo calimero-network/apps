@@ -78,27 +78,15 @@ export default function SignaturesPage() {
         return;
       }
 
-      // The PRIVATE context the library lives in, ensured rather than read
-      // back from storage — `localStorage.getItem('defaultContextId') || ''`
-      // is empty on a fresh session, and a blob fetch with no context is a
-      // 400 for an account. Once, not per row.
+      // The private library's instance, ensured (created on first use).
+      // Once, not per row.
       const contextId = await defaultContextIdFor(app);
 
       const withImages = await Promise.all(
         rows.map(async (sig) => {
           let dataURL = '';
-          // ⚠️ HEX. This was `bs58.encode`, and the node answers a base58
-          // blob id with "Failed to decode blob ID (expected hex) … Odd
-          // number of digits" — which the empty catch below then swallowed.
-          // That is the whole of "my signature saved but is never displayed":
-          // the row listed, the image 500'd, and nothing said so.
-          // `blob_id` is BYTES per the ABI — `CalimeroBytes`, not a string.
-          // That divergence was the bug; the type carries it now.
-          const blobId = toBlobIdHex(
-            typeof sig.blob_id === 'string'
-              ? sig.blob_id
-              : sig.blob_id.toArray(),
-          );
+          // The image's blob id in the library: 64 hex digits.
+          const blobId = toBlobIdHex(sig.blob_id);
           try {
             const blob = blobId
               ? await blobClient.downloadBlob(blobId, contextId)
@@ -120,9 +108,8 @@ export default function SignaturesPage() {
             id: String(sig.id),
             name: sig.name,
             dataURL,
-            createdAt: new Date(
-              Number(sig.created_at) / 1_000_000,
-            ).toLocaleDateString(),
+            // Unix milliseconds from the contract.
+            createdAt: new Date(Number(sig.created_at)).toLocaleDateString(),
           };
         }),
       );
@@ -155,21 +142,17 @@ export default function SignaturesPage() {
       try {
         const blob = dataURLToBlob(signatureData);
         const file = new File([blob], 'signature.png', { type: blob.type });
-        // The PRIVATE context: a signature is yours and is announced
-        // nowhere else. `''` would store it on this node with no context at
-        // all — a different thing from "my own context" — and a relay
-        // refuses an account's blob without one. Ensured, not read back.
+        // The private library: a signature is yours alone.
         const contextId = await defaultContextIdFor(app);
         const uploaded = await blobClient.uploadBlob(file, () => {}, contextId);
         if (uploaded.error || !uploaded.data?.blobId) {
           throw new Error(uploaded.error?.message ?? 'Upload failed');
         }
-        // ⚠️ HEX, verbatim. This was converted to base58, which is what made
-        // every saved signature unreadable on the way back out.
+        // HEX, verbatim: what the contract stores and the node serves.
         const blobId = toBlobIdHex(uploaded.data.blobId);
         if (!blobId) {
           throw new Error(
-            `The node returned a blob id this app cannot use: ${uploaded.data.blobId}`,
+            `The cluster returned a blob id this app cannot use: ${uploaded.data.blobId}`,
           );
         }
         await api.createSignature(
@@ -211,7 +194,7 @@ export default function SignaturesPage() {
           <h1 className={styles.title}>Your signatures</h1>
           <p className={styles.subtitle}>
             The drawings you sign documents with. They are stored in your own
-            private context and never leave your node.
+            private library, which nobody else can open.
           </p>
         </header>
 

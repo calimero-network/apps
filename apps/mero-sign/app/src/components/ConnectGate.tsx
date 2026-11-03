@@ -41,10 +41,10 @@ export default function ConnectGate({ what }: { what: string }) {
           <span className={styles.gateIcon}>
             <PlugZap size={26} />
           </span>
-          <h1 className={styles.title}>Connect your node</h1>
+          <h1 className={styles.title}>Sign in to continue</h1>
           <p className={styles.subtitle}>
-            {what} lives on your own Calimero node. Connect one and you will
-            come straight back here.
+            {what} is behind your Calimero account. Sign in with your passkey
+            and you will come straight back here.
           </p>
           <div className={styles.joinRow}>
             <button
@@ -53,7 +53,7 @@ export default function ConnectGate({ what }: { what: string }) {
               onClick={() => login()}
               data-testid="connect-cta"
             >
-              Connect
+              Sign in
             </button>
             <Link className={styles.btnGhost} to="/landing">
               What is Mero Sign?
