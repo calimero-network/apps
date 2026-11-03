@@ -81,13 +81,11 @@
 //! added, which are attested code. Merge-time enforcement (a writer set) is the
 //! next step if a feed is ever shared with anyone else.
 
-use calimero_sdk::abi::AbiType;
-use calimero_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::types::Error as AppError;
-use calimero_sdk::{app, env, AccountId};
-use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::{LwwRegister, Mergeable, UnorderedMap};
+use calimero_app_sdk::prelude::*;
+use serde::{Deserialize, Serialize};
+
+mod store;
+use store::{emit, forbidden, invalid, Map};
 
 mod checkpoint;
 pub use checkpoint::{
@@ -136,9 +134,6 @@ pub use push::{
 
 mod members;
 pub use members::{AgentAccount, AgentAccountView, SendCall, MAX_AGENT_ACCOUNTS};
-
-#[cfg(test)]
-mod tests;
 
 // ── Limits ───────────────────────────────────────────────────────────────────
 //
@@ -319,35 +314,16 @@ const FILTERS: &[&str] = &["all", "agent", "notifications", "needs_you", "archiv
 /// How many chains one `archive` or `unarchive` call may name.
 const MAX_ARCHIVE: usize = 200;
 
-/// Wall-clock milliseconds. `env::time_now()` is nanoseconds, which is past
-/// 2^53 and loses its low digits as a JSON number in the browser.
+/// Wall-clock milliseconds: the log entry's time (`env::time_now()` is in
+/// milliseconds on this runtime; v1's was nanoseconds).
 fn now_ms() -> u64 {
-    env::time_now() / 1_000_000
-}
-
-/// Whole-value last-writer-wins over a TOTAL order: `at`, then the borsh bytes,
-/// so two devices writing in the same millisecond still agree.
-fn lww<T: BorshSerialize + Clone>(mine: &mut T, mine_at: u64, theirs: &T, theirs_at: u64) {
-    let take = match theirs_at.cmp(&mine_at) {
-        std::cmp::Ordering::Greater => true,
-        std::cmp::Ordering::Less => false,
-        std::cmp::Ordering::Equal => {
-            borsh::to_vec(theirs).unwrap_or_default() > borsh::to_vec(mine).unwrap_or_default()
-        }
-    };
-    if take {
-        *mine = theirs.clone();
-    }
+    env::time_now()
 }
 
 // ── Stored records ───────────────────────────────────────────────────────────
 
 /// One step in a row's history: a status, who said what about it, and when.
-#[derive(
-    AbiType, Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
-)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Step {
     pub status: String,
     /// The note that came with it: the agent's ("NDA signed"), or your answer
@@ -356,25 +332,15 @@ pub struct Step {
     pub at: u64,
 }
 
-impl Step {
-    fn sort_key(&self) -> (u64, &str, &str) {
-        (self.at, &self.status, &self.note)
-    }
-}
-
-/// Union two histories in one total order, so every replica keeps the same
-/// steps in the same order and the last one is the current status.
-fn merge_history(mine: &mut Vec<Step>, theirs: &[Step]) {
-    for step in theirs {
-        if !mine.contains(step) {
-            mine.push(step.clone());
-        }
-    }
-    mine.sort_by(|a, b| a.sort_key().cmp(&b.sort_key()));
-    if mine.len() > MAX_HISTORY {
-        // Keep the first step (how it started) and the most recent ones.
-        let excess = mine.len() - MAX_HISTORY;
-        mine.drain(1..=excess);
+/// Appends `step` to a row's history, keeping it to [`MAX_HISTORY`] steps: the
+/// first (how the row started) and the most recent. A history is stored inside
+/// its row and rewritten whole with it, so it must not grow without bound (v1
+/// trimmed it the same way when it merged two copies).
+fn append_step(history: &mut Vec<Step>, step: Step) {
+    history.push(step);
+    if history.len() > MAX_HISTORY {
+        let excess = history.len() - MAX_HISTORY;
+        history.drain(1..=excess);
     }
 }
 
@@ -386,25 +352,14 @@ fn current(history: &[Step]) -> &Step {
 }
 
 /// How a row is best resolved in place. See [`ASK_KINDS`].
-#[derive(
-    AbiType,
-    Debug,
-    Clone,
-    Default,
-    PartialEq,
-    BorshSerialize,
-    BorshDeserialize,
-    Serialize,
-    Deserialize,
-)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Ask {
     /// `""`, `confirm`, `reply` or `choose`.
     pub kind: String,
     /// What the control says: "Reply in #launch", "Pick a slot", "Join the call".
     pub prompt: String,
-    /// `choose`: the options (2 to 8). `reply`: suggested quick replies (up to 8).
+    /// `choose`: the options (2 to 8). `reply`: suggested quick replies (up to
+    /// 8). At most [`MAX_OPTIONS`], checked wherever an ask is written.
     pub options: Vec<String>,
     /// `reply`: a draft to start from, e.g. the agent's proposed text.
     pub draft: String,
@@ -414,10 +369,7 @@ pub struct Ask {
 ///
 /// Everything but `history` and `reviewed` is written once. `history` merges as
 /// a union of steps, and `reviewed` only ever turns on.
-#[app::mergeable(id = "hyperfeed::Action")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Action {
     pub id: String,
     pub app: String,
@@ -444,23 +396,13 @@ pub struct Action {
     pub breach: String,
     pub reviewed: bool,
     pub reviewed_at: u64,
+    /// Every step, oldest first: at most [`MAX_HISTORY`], the first and the
+    /// latest kept (`append_step`).
     pub history: Vec<Step>,
 }
 
-impl Mergeable for Action {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        merge_history(&mut self.history, &other.history);
-        self.reviewed |= other.reviewed;
-        self.reviewed_at = self.reviewed_at.max(other.reviewed_at);
-        Ok(())
-    }
-}
-
 /// One notification an app sent you, as your client saw it.
-#[app::mergeable(id = "hyperfeed::Notification")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Notification {
     /// The dedupe key the client derived from the source event.
     pub id: String,
@@ -478,29 +420,15 @@ pub struct Notification {
     pub seen: bool,
     pub seen_at: u64,
     /// `received`, then `answered` (your answer as the note), then
-    /// `delivered` or `failed` (the agent's note).
+    /// `delivered` or `failed` (the agent's note). At most [`MAX_HISTORY`]
+    /// steps, the first and the latest kept (`append_step`).
     pub history: Vec<Step>,
-}
-
-impl Mergeable for Notification {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        // Seen on any device is seen.
-        self.seen |= other.seen;
-        self.seen_at = self.seen_at.max(other.seen_at);
-        merge_history(&mut self.history, &other.history);
-        Ok(())
-    }
 }
 
 /// What a lens made of a notification: its type, the fields its card shows,
 /// and the call that answers it in its app. Kept beside the notification, keyed
 /// by its id, so rows recorded before lenses existed keep their layout.
-#[app::mergeable(id = "hyperfeed::Typed")]
-#[derive(
-    AbiType, Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
-)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Typed {
     /// One of [`ITEM_TYPES`].
     pub item_type: String,
@@ -512,86 +440,32 @@ pub struct Typed {
     pub reply_call: String,
 }
 
-impl Mergeable for Typed {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        // Written once with its notification; two devices that typed the same
-        // event differently settle on the same one everywhere.
-        if borsh::to_vec(other).unwrap_or_default() > borsh::to_vec(self).unwrap_or_default() {
-            *self = other.clone();
-        }
-        Ok(())
-    }
-}
-
 /// What your agent asked you in a message, kept beside it by the message's
 /// id, so messages written before agents could ask keep their layout.
-#[app::mergeable(id = "hyperfeed::Asked")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Asked {
     pub ask: Ask,
-}
-
-impl Mergeable for Asked {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        // Written once with its message, never changed.
-        if borsh::to_vec(other).unwrap_or_default() > borsh::to_vec(self).unwrap_or_default() {
-            *self = other.clone();
-        }
-        Ok(())
-    }
 }
 
 /// A message's headline: one line for the feed row, its text behind "more".
 /// Kept beside the message, keyed by its id, so messages written before
 /// headlines keep their layout.
-#[app::mergeable(id = "hyperfeed::Headline")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Headline {
     pub text: String,
-}
-
-impl Mergeable for Headline {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        // Written once with its message, never changed.
-        if other.text > self.text {
-            self.text = other.text.clone();
-        }
-        Ok(())
-    }
 }
 
 /// How private a message of yours is: one of [`MESSAGE_MODES`].
 /// Kept beside the message, keyed by its id, so messages written before
 /// modes keep their layout.
-#[app::mergeable(id = "hyperfeed::MessageMode")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MessageMode {
     pub mode: String,
 }
 
-impl Mergeable for MessageMode {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        // Written once with its message, never changed.
-        if other.mode > self.mode {
-            self.mode = other.mode.clone();
-        }
-        Ok(())
-    }
-}
-
 /// An image on a message: a blob on your node, announced to the feed's
 /// context, and what the client needs to show it before fetching it.
-#[derive(
-    AbiType, Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
-)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Attachment {
     pub blob_id: String,
     /// The file's name as you picked it; may be empty for a pasted image.
@@ -604,32 +478,15 @@ pub struct Attachment {
 
 /// A message's attachments. Kept beside the message, keyed by its id, so
 /// messages written before attachments existed keep their layout.
-#[app::mergeable(id = "hyperfeed::Attachments")]
-#[derive(
-    AbiType, Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
-)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Attachments {
+    /// At most [`MAX_ATTACHMENTS`], checked when the message is written.
     pub items: Vec<Attachment>,
-}
-
-impl Mergeable for Attachments {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        // Written once with its message, never changed.
-        if borsh::to_vec(other).unwrap_or_default() > borsh::to_vec(self).unwrap_or_default() {
-            *self = other.clone();
-        }
-        Ok(())
-    }
 }
 
 /// How one app version's events become feed items, as your agent learned it
 /// from the app's ABI. Nothing uses a lens until you approve it.
-#[app::mergeable(id = "hyperfeed::Lens")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Lens {
     pub app: String,
     /// The app version it was learned from: a new version is learned again.
@@ -643,23 +500,12 @@ pub struct Lens {
     pub updated_at: u64,
 }
 
-impl Mergeable for Lens {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        let at = self.updated_at;
-        lww(self, at, other, other.updated_at);
-        Ok(())
-    }
-}
-
 /// One message in a conversation with your agent, inside a chain.
 ///
 /// You talk to your agent about a row by posting into its chain; a question
 /// asked from nowhere starts a chain of its own. The agent's answers, and
 /// anything it proposes or does because of them, land in the same chain.
-#[app::mergeable(id = "hyperfeed::Message")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     pub id: String,
     pub chain: String,
@@ -670,21 +516,13 @@ pub struct Message {
     /// message nobody asked for.
     pub reply_to: String,
     pub created_at: u64,
+    /// Every step, oldest first: at most [`MAX_HISTORY`], the first and the
+    /// latest kept (`append_step`).
     pub history: Vec<Step>,
 }
 
-impl Mergeable for Message {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        merge_history(&mut self.history, &other.history);
-        Ok(())
-    }
-}
-
 /// Your rules for one app.
-#[app::mergeable(id = "hyperfeed::Policy")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Policy {
     pub app: String,
     pub agent: String,
@@ -692,81 +530,37 @@ pub struct Policy {
     pub updated_at: u64,
 }
 
-impl Mergeable for Policy {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        let at = self.updated_at;
-        lww(self, at, other, other.updated_at);
-        Ok(())
-    }
-}
-
 /// Which of your agents works in one app: the agent's name, as it reports in
 /// (`mero-bot@<host>`). Only that agent takes the app's work (its new items,
 /// your decisions about its actions, your messages about it) and only it may
 /// call the app. An app with none is your default agent's: the private one.
-#[app::mergeable(id = "hyperfeed::Assignment")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Assignment {
     /// Empty: back to the default agent.
     pub agent: String,
     pub updated_at: u64,
 }
 
-impl Mergeable for Assignment {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        let at = self.updated_at;
-        lww(self, at, other, other.updated_at);
-        Ok(())
-    }
-}
-
 /// One "always ask me before" switch.
-#[app::mergeable(id = "hyperfeed::Guard")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Guard {
     pub category: String,
     pub enabled: bool,
     pub updated_at: u64,
 }
 
-impl Mergeable for Guard {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        let at = self.updated_at;
-        lww(self, at, other, other.updated_at);
-        Ok(())
-    }
-}
-
 /// The agent's global switch, stored under the single key `"main"`.
-#[app::mergeable(id = "hyperfeed::AgentState")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentState {
     pub paused: bool,
     pub updated_at: u64,
-}
-
-impl Mergeable for AgentState {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        let at = self.updated_at;
-        lww(self, at, other, other.updated_at);
-        Ok(())
-    }
 }
 
 /// A chain you put away. It stays out of the feed until something new
 /// happens in it, or until `until` passes ("later"); `until` 0 has no return
 /// time. Unarchiving keeps the row with `archived: false`, so the latest
 /// decision wins on every device.
-#[app::mergeable(id = "hyperfeed::Archived")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Archived {
     pub archived: bool,
     /// The chain's latest activity when it was put away: anything newer brings it back.
@@ -775,35 +569,16 @@ pub struct Archived {
     pub updated_at: u64,
 }
 
-impl Mergeable for Archived {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        let at = self.updated_at;
-        lww(self, at, other, other.updated_at);
-        Ok(())
-    }
-}
-
 /// What a row is about in another app, as a key: `<app>:<context>`, plus
 /// `:<id>` for one thing in it (an issue, a doc, a thread). Kept two ways: by
 /// the action's id (what it touched), and by the key (the chain that touched
 /// it last), so a notification about the same thing joins that chain. See
 /// [`subject_key`].
-#[app::mergeable(id = "hyperfeed::Subject")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Subject {
     pub subject: String,
     pub chain: String,
     pub at: u64,
-}
-
-impl Mergeable for Subject {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        let at = self.at;
-        lww(self, at, other, other.at);
-        Ok(())
-    }
 }
 
 /// The args that name the one thing a call is about, first match wins. A call
@@ -832,8 +607,7 @@ pub fn subject_key(app: &str, context: &str, id: &str) -> String {
 /// What a notification is about: the thing its reply goes to. One you cannot
 /// answer from the feed has none, and starts a chain of its own.
 fn reply_subject(app: &str, context: &str, reply_call: &str) -> String {
-    let Ok(calimero_sdk::serde_json::Value::Object(call)) =
-        calimero_sdk::serde_json::from_str::<calimero_sdk::serde_json::Value>(reply_call)
+    let Ok(serde_json::Value::Object(call)) = serde_json::from_str::<serde_json::Value>(reply_call)
     else {
         return String::new();
     };
@@ -850,28 +624,14 @@ fn reply_subject(app: &str, context: &str, reply_call: &str) -> String {
 }
 
 /// When an agent last said it was running, by its name.
-#[app::mergeable(id = "hyperfeed::Presence")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Presence {
     pub seen_at: u64,
 }
 
-impl Mergeable for Presence {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        self.seen_at = self.seen_at.max(other.seen_at);
-        Ok(())
-    }
-}
-
 /// A folder an agent may use on its computer: an absolute path, or one under
 /// `~`, and whether it may write there too.
-#[derive(
-    AbiType, Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
-)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Folder {
     pub path: String,
     pub write: bool,
@@ -881,33 +641,19 @@ pub struct Folder {
 /// these folders, a shell, the web. Yours to set (`set_access`); the agent's
 /// runtime enforces it before any tool runs, and an agent with none set keeps
 /// its runtime's default.
-#[app::mergeable(id = "hyperfeed::Access")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Access {
+    /// At most [`MAX_FOLDERS`]; each `setAccess` replaces them all.
     pub folders: Vec<Folder>,
     pub shell: bool,
     pub web: bool,
     pub updated_at: u64,
 }
 
-impl Mergeable for Access {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        let at = self.updated_at;
-        lww(self, at, other, other.updated_at);
-        Ok(())
-    }
-}
-
 /// One agent profile an agent runs, as it reports it: which mode or route
 /// it serves, its model, whether its model is attested, and what it can reach
 /// besides your Calimero apps.
-#[derive(
-    AbiType, Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
-)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ReachLine {
     /// What it runs: `default`, or the kind of work a profile is routed to.
     pub serves: String,
@@ -920,26 +666,15 @@ pub struct ReachLine {
 }
 
 /// What one agent reported it can reach, latest report wins.
-#[app::mergeable(id = "hyperfeed::Reach")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Reach {
+    /// At most [`MAX_REACH`]; each report replaces them all.
     pub lines: Vec<ReachLine>,
     pub at: u64,
 }
 
-impl Mergeable for Reach {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        let at = self.at;
-        lww(self, at, other, other.at);
-        Ok(())
-    }
-}
-
 /// What you let one agent reach, as settings shows it.
-#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AccessView {
     pub agent: String,
     pub folders: Vec<Folder>,
@@ -949,8 +684,7 @@ pub struct AccessView {
 }
 
 /// Which agent works in one app, as settings shows it.
-#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AssignmentView {
     pub app: String,
     pub agent: String,
@@ -958,8 +692,7 @@ pub struct AssignmentView {
 }
 
 /// What one agent reported it can reach, as settings shows it.
-#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ReachView {
     pub agent: String,
     pub lines: Vec<ReachLine>,
@@ -969,31 +702,16 @@ pub struct ReachView {
 /// What your agent is doing right now for one of your messages: its latest
 /// step, replaced by the next one. Kept beside the message by id, never in its
 /// history, so a long turn adds no rows.
-#[app::mergeable(id = "hyperfeed::Progress")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Progress {
     pub doing: String,
     pub at: u64,
 }
 
-impl Mergeable for Progress {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        let at = self.at;
-        lww(self, at, other, other.at);
-        Ok(())
-    }
-}
-
 /// One step of your agent's turn on a message of yours: a tool it ran, a file
 /// it edited, a write it made. Shown in the message's work block, never as a
 /// row of its own.
-#[derive(
-    AbiType, Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
-)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TurnStep {
     /// The agent's own id for the step, unique within the turn.
     pub id: String,
@@ -1008,78 +726,37 @@ pub struct TurnStep {
 /// Your agent's turn on one of your messages, as it goes: its steps, and the
 /// answer it has written so far. Kept beside the message by id and replaced
 /// whole by each report, so a long turn adds no rows.
-#[app::mergeable(id = "hyperfeed::Work")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Work {
+    /// At most [`MAX_HISTORY`]; each `agentWork` report replaces them all.
     pub steps: Vec<TurnStep>,
     /// The answer so far, while the agent writes it; `""` before it starts.
     pub draft: String,
     pub at: u64,
 }
 
-impl Mergeable for Work {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        let at = self.at;
-        lww(self, at, other, other.at);
-        Ok(())
-    }
-}
-
 /// You asked your agent to stop working on one of your messages.
-#[app::mergeable(id = "hyperfeed::StopRequest")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StopRequest {
     pub at: u64,
-}
-
-impl Mergeable for StopRequest {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        // The first request stands: a second one changes nothing.
-        self.at = match (self.at, other.at) {
-            (0, b) => b,
-            (a, 0) => a,
-            (a, b) => a.min(b),
-        };
-        Ok(())
-    }
 }
 
 /// A question that a newer one in its chain replaced: your agent asked
 /// again, or an app sent a new question, before you answered this one. Kept
 /// beside the row by its id. Its buttons go; an answer that still reaches it
 /// goes to your agent marked as answering an old question.
-#[app::mergeable(id = "hyperfeed::Superseded")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Superseded {
     /// The newer question's id.
     pub by: String,
     pub at: u64,
 }
 
-impl Mergeable for Superseded {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        // The first replacement stands, on every device.
-        if (other.at, &other.by) < (self.at, &self.by) {
-            *self = other.clone();
-        }
-        Ok(())
-    }
-}
-
 /// One of your standing rules: a short line your agent keeps to on every
 /// turn ("Never push to main", "Answer in English"). Only you add or remove
 /// one; removing keeps the row with `removed`, so the latest decision wins on
 /// every device.
-#[app::mergeable(id = "hyperfeed::Rule")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Rule {
     pub text: String,
     pub created_at: u64,
@@ -1087,42 +764,18 @@ pub struct Rule {
     pub updated_at: u64,
 }
 
-impl Mergeable for Rule {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        let at = self.updated_at;
-        lww(self, at, other, other.updated_at);
-        Ok(())
-    }
-}
-
 /// The question of your agent's that one of your messages answers, when you
 /// answered it from its buttons. Kept beside your message by its id.
-#[app::mergeable(id = "hyperfeed::Answers")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Answers {
     pub ask: String,
-}
-
-impl Mergeable for Answers {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        // Written once with its message, never changed.
-        if other.ask > self.ask {
-            self.ask = other.ask.clone();
-        }
-        Ok(())
-    }
 }
 
 /// Which agent session is working on a chain, until when. A session claims a
 /// chain before it starts a turn there, renews the lease while it works, and
 /// releases it at the end; another session is refused the chain until then,
 /// or until the lease runs out (the session died). Kept by chain id.
-#[app::mergeable(id = "hyperfeed::Lease")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Lease {
     /// The session's own id: unique per running agent process.
     pub session: String,
@@ -1135,22 +788,11 @@ pub struct Lease {
     pub updated_at: u64,
 }
 
-impl Mergeable for Lease {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        let at = self.updated_at;
-        lww(self, at, other, other.updated_at);
-        Ok(())
-    }
-}
-
 /// A standing rule for one agent only ("Reply in one paragraph" for your
 /// phone's agent): it goes into that agent's turns after your general rules,
 /// which every agent keeps. Only you add or remove one; removing keeps the
 /// row with `removed`, like [`Rule`].
-#[app::mergeable(id = "hyperfeed::AgentRule")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentRule {
     /// The agent's name, as it reports in: "mero-bot@studio".
     pub agent: String,
@@ -1160,20 +802,9 @@ pub struct AgentRule {
     pub updated_at: u64,
 }
 
-impl Mergeable for AgentRule {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        let at = self.updated_at;
-        lww(self, at, other, other.updated_at);
-        Ok(())
-    }
-}
-
 /// A rule your agent suggested after you corrected it. It changes nothing
 /// until you approve it, which adds it as your own rule.
-#[app::mergeable(id = "hyperfeed::RuleProposal")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuleProposal {
     pub text: String,
     /// Why your agent suggests it: the correction that led to it.
@@ -1186,19 +817,10 @@ pub struct RuleProposal {
     pub updated_at: u64,
 }
 
-impl Mergeable for RuleProposal {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        let at = self.updated_at;
-        lww(self, at, other, other.updated_at);
-        Ok(())
-    }
-}
-
 // ── Inputs and views ─────────────────────────────────────────────────────────
 
 /// What the agent reports for one action.
-#[derive(AbiType, Debug, Clone, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActionInput {
     /// Short app key, e.g. `chat`, `sign`, `crm`. Policies are keyed by it.
     pub app: String,
@@ -1245,8 +867,7 @@ pub struct ActionInput {
 }
 
 /// What your client saw for one notification.
-#[derive(AbiType, Debug, Clone, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NotificationInput {
     /// Stable for the same event on every device, e.g.
     /// `<context>:<root hash>:<index>`.
@@ -1275,8 +896,7 @@ pub struct NotificationInput {
 }
 
 /// The rules' answer for one prospective action.
-#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Verdict {
     /// `act`, `ask` or `refuse`.
     pub decision: String,
@@ -1285,8 +905,7 @@ pub struct Verdict {
 
 /// One row of the feed. Actions and notifications share it so a client renders
 /// one list; a field that does not apply to the row's kind is empty.
-#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FeedItem {
     pub id: String,
     pub kind: String,
@@ -1398,8 +1017,7 @@ pub struct FeedItem {
     pub subject: String,
 }
 
-#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FeedCounts {
     pub all: u32,
     pub agent: u32,
@@ -1409,15 +1027,13 @@ pub struct FeedCounts {
     pub archived: u32,
 }
 
-#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AppCount {
     pub app: String,
     pub count: u32,
 }
 
-#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FeedPage {
     pub items: Vec<FeedItem>,
     /// Counts over the whole feed (muted apps excluded), not just this page,
@@ -1428,23 +1044,20 @@ pub struct FeedPage {
     pub next_before: u64,
 }
 
-#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PolicyView {
     pub app: String,
     pub agent: String,
     pub notifications: String,
 }
 
-#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GuardView {
     pub category: String,
     pub enabled: bool,
 }
 
-#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LensView {
     pub app: String,
     pub application_id: String,
@@ -1454,8 +1067,7 @@ pub struct LensView {
     pub updated_at: u64,
 }
 
-#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SettingsView {
     pub owner: String,
     pub paused: bool,
@@ -1500,8 +1112,7 @@ pub struct SettingsView {
 }
 
 /// One of your standing rules, as settings shows it.
-#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RuleView {
     pub id: String,
     pub text: String,
@@ -1509,8 +1120,7 @@ pub struct RuleView {
 }
 
 /// One of your rules for one agent, as settings shows it.
-#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AgentRuleView {
     pub id: String,
     pub agent: String,
@@ -1519,8 +1129,7 @@ pub struct AgentRuleView {
 }
 
 /// A rule your agent suggested, as settings shows it.
-#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RuleProposalView {
     pub id: String,
     pub text: String,
@@ -1531,8 +1140,7 @@ pub struct RuleProposalView {
 }
 
 /// A session's lease on a chain, as [`Hyperfeed::claim_chain`] returns it.
-#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LeaseView {
     pub chain: String,
     pub session: String,
@@ -1543,8 +1151,7 @@ pub struct LeaseView {
 }
 
 /// An agent and when it last said it was running (ms).
-#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AgentView {
     pub name: String,
     pub seen_at: u64,
@@ -1552,99 +1159,191 @@ pub struct AgentView {
 
 // ── State ────────────────────────────────────────────────────────────────────
 
-#[app::state(emits = for<'a> Event<'a>)]
+#[app::state(version = 1)]
 pub struct Hyperfeed {
-    /// The account that created the feed. Only it decides; agents it adds
-    /// (see `agent_accounts`) write the agent's side.
-    owner: LwwRegister<String>,
-    actions: UnorderedMap<String, Action>,
-    notifications: UnorderedMap<String, Notification>,
-    policies: UnorderedMap<String, Policy>,
-    guards: UnorderedMap<String, Guard>,
-    agent: UnorderedMap<String, AgentState>,
-    messages: UnorderedMap<String, Message>,
+    actions: Map<Action>,
+    notifications: Map<Notification>,
+    policies: Map<Policy>,
+    guards: Map<Guard>,
+    agent: Map<AgentState>,
+    messages: Map<Message>,
     /// What a lens made of a notification, by the notification's id.
-    typed: UnorderedMap<String, Typed>,
+    typed: Map<Typed>,
     /// How each app version's events become feed items, by `<app>@<application id>`.
-    lenses: UnorderedMap<String, Lens>,
+    lenses: Map<Lens>,
     /// What your agent can do in each app version, by `<app>@<application id>`.
     /// See [`actions`].
-    action_sets: UnorderedMap<String, ActionSet>,
+    action_sets: Map<ActionSet>,
     /// Your setting for each action apart from its app, by `<app>/<action id>`.
-    action_rules: UnorderedMap<String, ActionRule>,
+    action_rules: Map<ActionRule>,
     /// Chains you put away, by chain id.
-    archived: UnorderedMap<String, Archived>,
+    archived: Map<Archived>,
     /// Agents that report in, by name.
-    presence: UnorderedMap<String, Presence>,
+    presence: Map<Presence>,
     /// What your agent asked you, by its message's id.
-    asks: UnorderedMap<String, Asked>,
+    asks: Map<Asked>,
     /// Your agent's latest step on each message it is working on, by message id.
-    progress: UnorderedMap<String, Progress>,
+    progress: Map<Progress>,
     /// Images on your messages, by the message's id.
-    attachments: UnorderedMap<String, Attachments>,
+    attachments: Map<Attachments>,
     /// Your agent's turn on each of your messages it worked on, by message id.
-    work: UnorderedMap<String, Work>,
+    work: Map<Work>,
     /// Your requests to stop a turn, by message id.
-    stops: UnorderedMap<String, StopRequest>,
+    stops: Map<StopRequest>,
     /// Headlines of messages written with one, by the message's id.
-    headlines: UnorderedMap<String, Headline>,
+    headlines: Map<Headline>,
     /// Which agent each of your messages sent with a mode is for, by the message's id.
-    modes: UnorderedMap<String, MessageMode>,
+    modes: Map<MessageMode>,
     /// What you let each agent reach on its computer, by agent name.
-    access: UnorderedMap<String, Access>,
+    access: Map<Access>,
     /// What each agent last reported it can reach, by agent name.
-    reach: UnorderedMap<String, Reach>,
+    reach: Map<Reach>,
     /// Questions a newer one in their chain replaced, by the question's id.
-    superseded: UnorderedMap<String, Superseded>,
+    superseded: Map<Superseded>,
     /// The question each of your messages sent from its buttons answers, by
     /// your message's id.
-    answers: UnorderedMap<String, Answers>,
+    answers: Map<Answers>,
     /// Which agent session works on each chain, by chain id.
-    leases: UnorderedMap<String, Lease>,
+    leases: Map<Lease>,
     /// "When X, do Y", polled by your agent's runtime, by id. See [`watches`].
-    watches: UnorderedMap<String, Watch>,
+    watches: Map<Watch>,
 
     /// Your standing rules, by id.
-    rules: UnorderedMap<String, Rule>,
+    rules: Map<Rule>,
     /// Rules your agent suggested, by id.
-    rule_proposals: UnorderedMap<String, RuleProposal>,
+    rule_proposals: Map<RuleProposal>,
     /// Where each task stands, as your agent last wrote it, by chain id.
-    checkpoints: UnorderedMap<String, Checkpoint>,
+    checkpoints: Map<Checkpoint>,
     /// The PRs your tasks link to, as your agent's runtime last saw them on
     /// GitHub, by `owner/name#number`. See [`prs`].
-    prs: UnorderedMap<String, PrSeen>,
+    prs: Map<PrSeen>,
     /// Your agent's query cache: what it read, by a hash of where, which tool
     /// and its arguments. See [`memo`].
-    memos: UnorderedMap<String, Memo>,
+    memos: Map<Memo>,
     /// What each action touched, by the action's id.
-    action_subjects: UnorderedMap<String, Subject>,
+    action_subjects: Map<Subject>,
     /// The chain that last touched each subject, by its key.
-    subject_chains: UnorderedMap<String, Subject>,
+    subject_chains: Map<Subject>,
     /// Each task's links, by `<chain>|<subject>`. See [`links`].
-    links: UnorderedMap<String, Link>,
+    links: Map<Link>,
     /// Devices to push to, by endpoint. See [`push`].
-    push_devices: UnorderedMap<String, PushDevice>,
+    push_devices: Map<PushDevice>,
     /// The runtime's VAPID public key, under `vapid`.
-    push_keys: UnorderedMap<String, PushKey>,
+    push_keys: Map<PushKey>,
     /// Which agent works in each app, by app key. See [`Assignment`].
-    assignments: UnorderedMap<String, Assignment>,
+    assignments: Map<Assignment>,
     /// Your rules for one agent only, by id. See [`AgentRule`].
-    agent_rules: UnorderedMap<String, AgentRule>,
+    agent_rules: Map<AgentRule>,
     /// Agents with accounts of their own that you added, by account. See [`members`].
-    agent_accounts: UnorderedMap<String, AgentAccount>,
+    agent_accounts: Map<AgentAccount>,
     /// The call that sends each draft for you to send, by the action's id.
-    sends: UnorderedMap<String, SendCall>,
+    sends: Map<SendCall>,
     /// Each task told as one card, as your agent last wrote it, by chain id.
     /// See [`brief`].
-    situations: UnorderedMap<String, Situation>,
+    situations: Map<Situation>,
     /// Proposals that go ahead at a set time unless you stop them, by the
     /// action's id. See [`brief`].
-    autoruns: UnorderedMap<String, Autorun>,
+    autoruns: Map<Autorun>,
 }
 
 /// Every event is a nudge to re-read the feed; none carries the row itself.
 #[app::event]
-pub enum Event<'a> {
+pub enum Event {
+    ActionRecorded {
+        id: String,
+        status: String,
+    },
+    ActionChanged {
+        id: String,
+        status: String,
+    },
+    NotificationRecorded {
+        id: String,
+    },
+    NotificationChanged {
+        id: String,
+        status: String,
+    },
+    NotificationsSeen {
+        count: u32,
+    },
+    SettingsChanged,
+    /// A message in a chain: yours (your agent should answer) or its answer.
+    MessagePosted {
+        id: String,
+        chain: String,
+        from: String,
+    },
+    MessageChanged {
+        id: String,
+        status: String,
+    },
+    /// A lens was proposed, approved or turned down: re-read `lenses`.
+    LensChanged {
+        app: String,
+        status: String,
+    },
+    /// An app's actions were proposed, approved or turned down: re-read
+    /// `action_sets`.
+    ActionsChanged {
+        app: String,
+        status: String,
+    },
+    /// Chains were put away or brought back: re-read the feed.
+    ArchiveChanged {
+        count: u32,
+    },
+    /// You asked your agent to stop working on message `id`: it ends the turn
+    /// and marks the message failed, "Stopped by you".
+    StopRequested {
+        id: String,
+    },
+    /// A watch was set, fired, finished or cancelled: re-read `watches`.
+    WatchChanged {
+        id: String,
+        chain: String,
+        status: String,
+    },
+    /// An agent session took a chain, or let it go: re-read who is on it.
+    ChainLeaseChanged {
+        chain: String,
+    },
+    /// Your agent wrote where a task stands: re-read its `checkpoint`.
+    CheckpointChanged {
+        chain: String,
+    },
+    /// Your agent's runtime saw a PR change on GitHub (`owner/name#number`):
+    /// re-read `prs`.
+    PrChanged {
+        key: String,
+    },
+    /// Your agent's runtime wrote or dropped cached reads: re-read `memos`
+    /// after the newest `updated_at` you have.
+    MemosChanged {
+        count: u32,
+    },
+    /// You cleared your agent's query cache: forget every cached read.
+    MemosCleared,
+    /// A task's links changed: re-read `links`.
+    LinksChanged {
+        chain: String,
+    },
+    /// A device to push to, or the push key, changed: re-read `push_devices`.
+    PushChanged,
+    /// Your agent wrote or cleared how a task reads as one card: re-read `situations`.
+    SituationChanged {
+        chain: String,
+    },
+    /// A proposal's default was set, stopped or went ahead: re-read `autoruns`.
+    AutorunChanged {
+        id: String,
+        status: String,
+    },
+}
+
+/// What the methods emit, borrowed from what they hold; [`Event`] is what goes
+/// on the wire. v1's `Event<'a>`, kept so each emit reads as it did.
+pub enum Ev<'a> {
     ActionRecorded {
         id: &'a str,
         status: &'a str,
@@ -1664,7 +1363,6 @@ pub enum Event<'a> {
         count: u32,
     },
     SettingsChanged,
-    /// A message in a chain: yours (your agent should answer) or its answer.
     MessagePosted {
         id: &'a str,
         chain: &'a str,
@@ -1674,67 +1372,128 @@ pub enum Event<'a> {
         id: &'a str,
         status: &'a str,
     },
-    /// A lens was proposed, approved or turned down: re-read `lenses`.
     LensChanged {
         app: &'a str,
         status: &'a str,
     },
-    /// An app's actions were proposed, approved or turned down: re-read
-    /// `action_sets`.
     ActionsChanged {
         app: &'a str,
         status: &'a str,
     },
-    /// Chains were put away or brought back: re-read the feed.
     ArchiveChanged {
         count: u32,
     },
-    /// You asked your agent to stop working on message `id`: it ends the turn
-    /// and marks the message failed, "Stopped by you".
     StopRequested {
         id: &'a str,
     },
-    /// A watch was set, fired, finished or cancelled: re-read `watches`.
     WatchChanged {
         id: &'a str,
         chain: &'a str,
         status: &'a str,
     },
-    /// An agent session took a chain, or let it go: re-read who is on it.
     ChainLeaseChanged {
         chain: &'a str,
     },
-    /// Your agent wrote where a task stands: re-read its `checkpoint`.
     CheckpointChanged {
         chain: &'a str,
     },
-    /// Your agent's runtime saw a PR change on GitHub (`owner/name#number`):
-    /// re-read `prs`.
     PrChanged {
         key: &'a str,
     },
-    /// Your agent's runtime wrote or dropped cached reads: re-read `memos`
-    /// after the newest `updated_at` you have.
     MemosChanged {
         count: u32,
     },
-    /// You cleared your agent's query cache: forget every cached read.
     MemosCleared,
-    /// A task's links changed: re-read `links`.
     LinksChanged {
         chain: &'a str,
     },
-    /// A device to push to, or the push key, changed: re-read `push_devices`.
     PushChanged,
-    /// Your agent wrote or cleared how a task reads as one card: re-read `situations`.
     SituationChanged {
         chain: &'a str,
     },
-    /// A proposal's default was set, stopped or went ahead: re-read `autoruns`.
     AutorunChanged {
         id: &'a str,
         status: &'a str,
     },
+}
+
+impl From<Ev<'_>> for Event {
+    fn from(e: Ev<'_>) -> Self {
+        match e {
+            Ev::ActionRecorded { id, status } => Event::ActionRecorded {
+                id: id.to_owned(),
+                status: status.to_owned(),
+            },
+            Ev::ActionChanged { id, status } => Event::ActionChanged {
+                id: id.to_owned(),
+                status: status.to_owned(),
+            },
+            Ev::NotificationRecorded { id } => Event::NotificationRecorded { id: id.to_owned() },
+            Ev::NotificationChanged { id, status } => Event::NotificationChanged {
+                id: id.to_owned(),
+                status: status.to_owned(),
+            },
+            Ev::NotificationsSeen { count } => Event::NotificationsSeen { count },
+            Ev::SettingsChanged => Event::SettingsChanged,
+            Ev::MessagePosted { id, chain, from } => Event::MessagePosted {
+                id: id.to_owned(),
+                chain: chain.to_owned(),
+                from: from.to_owned(),
+            },
+            Ev::MessageChanged { id, status } => Event::MessageChanged {
+                id: id.to_owned(),
+                status: status.to_owned(),
+            },
+            Ev::LensChanged { app, status } => Event::LensChanged {
+                app: app.to_owned(),
+                status: status.to_owned(),
+            },
+            Ev::ActionsChanged { app, status } => Event::ActionsChanged {
+                app: app.to_owned(),
+                status: status.to_owned(),
+            },
+            Ev::ArchiveChanged { count } => Event::ArchiveChanged { count },
+            Ev::StopRequested { id } => Event::StopRequested { id: id.to_owned() },
+            Ev::WatchChanged { id, chain, status } => Event::WatchChanged {
+                id: id.to_owned(),
+                chain: chain.to_owned(),
+                status: status.to_owned(),
+            },
+            Ev::ChainLeaseChanged { chain } => Event::ChainLeaseChanged {
+                chain: chain.to_owned(),
+            },
+            Ev::CheckpointChanged { chain } => Event::CheckpointChanged {
+                chain: chain.to_owned(),
+            },
+            Ev::PrChanged { key } => Event::PrChanged {
+                key: key.to_owned(),
+            },
+            Ev::MemosChanged { count } => Event::MemosChanged { count },
+            Ev::MemosCleared => Event::MemosCleared,
+            Ev::LinksChanged { chain } => Event::LinksChanged {
+                chain: chain.to_owned(),
+            },
+            Ev::PushChanged => Event::PushChanged,
+            Ev::SituationChanged { chain } => Event::SituationChanged {
+                chain: chain.to_owned(),
+            },
+            Ev::AutorunChanged { id, status } => Event::AutorunChanged {
+                id: id.to_owned(),
+                status: status.to_owned(),
+            },
+        }
+    }
+}
+
+/// A refused call: `422 APP_ERROR` with `{ code, fields: { message } }`. v1
+/// failed with the same message as a plain string.
+#[app::error]
+pub enum Error {
+    /// An argument the feed does not take, or a rule the call would break.
+    Invalid { message: String },
+    /// Not yours to make: only the owner decides, an agent you added makes the
+    /// agent's side and speaks only as itself.
+    Forbidden { message: String },
 }
 
 // ── Logic ────────────────────────────────────────────────────────────────────
@@ -1743,81 +1502,47 @@ pub enum Event<'a> {
 impl Hyperfeed {
     /// No arguments: the frontend's context-creation flow sends `{}`. The
     /// creator owns the feed.
+    /// No arguments. The account that creates the feed owns it
+    /// (`env::app_owner()`); nothing is stored until something happens.
     #[app::init]
-    pub fn init() -> Hyperfeed {
-        Hyperfeed {
-            owner: LwwRegister::new(Self::caller()),
-            actions: UnorderedMap::new(),
-            notifications: UnorderedMap::new(),
-            policies: UnorderedMap::new(),
-            guards: UnorderedMap::new(),
-            agent: UnorderedMap::new(),
-            messages: UnorderedMap::new(),
-            typed: UnorderedMap::new(),
-            lenses: UnorderedMap::new(),
-            action_sets: UnorderedMap::new(),
-            action_rules: UnorderedMap::new(),
-            archived: UnorderedMap::new(),
-            presence: UnorderedMap::new(),
-            asks: UnorderedMap::new(),
-            progress: UnorderedMap::new(),
-            attachments: UnorderedMap::new(),
-            work: UnorderedMap::new(),
-            stops: UnorderedMap::new(),
-            headlines: UnorderedMap::new(),
-            modes: UnorderedMap::new(),
-            access: UnorderedMap::new(),
-            reach: UnorderedMap::new(),
-            superseded: UnorderedMap::new(),
-            answers: UnorderedMap::new(),
-            leases: UnorderedMap::new(),
-            watches: UnorderedMap::new(),
-
-            rules: UnorderedMap::new(),
-            rule_proposals: UnorderedMap::new(),
-            checkpoints: UnorderedMap::new(),
-            prs: UnorderedMap::new(),
-            memos: UnorderedMap::new(),
-            action_subjects: UnorderedMap::new(),
-            subject_chains: UnorderedMap::new(),
-            links: UnorderedMap::new(),
-            push_devices: UnorderedMap::new(),
-            push_keys: UnorderedMap::new(),
-            assignments: UnorderedMap::new(),
-            agent_rules: UnorderedMap::new(),
-            agent_accounts: UnorderedMap::new(),
-            sends: UnorderedMap::new(),
-            situations: UnorderedMap::new(),
-            autoruns: UnorderedMap::new(),
-        }
+    pub fn init() -> app::Result<Self> {
+        Ok(Self::load())
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
 
+    /// The calling account: the account itself, or the account an API key
+    /// acts for. Anything else (the platform, another app) is `""`, which is
+    /// never the owner nor an agent you added.
     fn caller() -> String {
-        AccountId::from(env::account_id()).to_string()
+        match env::caller() {
+            Caller::Account(account) | Caller::ApiKey { account, .. } => account,
+            _ => String::new(),
+        }
     }
 
     fn require_owner(&self) -> app::Result<()> {
-        if *self.owner.get() == Self::caller() {
+        if env::app_owner() == Self::caller() {
             Ok(())
         } else {
-            Err(AppError::msg("only the feed's owner can write to it"))
+            Err(forbidden("only the feed's owner can write to it"))
         }
     }
 
     fn fresh_id() -> String {
-        let mut buffer = [0u8; 16];
-        env::random_bytes(&mut buffer);
-        buffer.iter().map(|b| format!("{b:02x}")).collect()
+        // Seeded per logged run: every replica of the log mints the same id.
+        env::random_bytes(16)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect()
     }
 
     fn check_len(field: &str, value: &str, max: usize, required: bool) -> app::Result<()> {
         if required && value.trim().is_empty() {
-            return Err(AppError::msg(format!("{field} must not be empty")));
+            return Err(invalid(format!("{field} must not be empty")));
         }
         if value.len() > max {
-            return Err(AppError::msg(format!(
+            return Err(invalid(format!(
                 "{field} is {} bytes, limit is {max}",
                 value.len()
             )));
@@ -1829,7 +1554,7 @@ impl Hyperfeed {
         if allowed.contains(&value) {
             Ok(())
         } else {
-            Err(AppError::msg(format!(
+            Err(invalid(format!(
                 "{field} must be one of {}, got {value:?}",
                 allowed.join(", ")
             )))
@@ -1845,7 +1570,7 @@ impl Hyperfeed {
         Self::check_len("fields", fields, MAX_FIELDS, false)?;
         Self::check_len("reply_call", reply_call, MAX_FIELDS, false)?;
         if item_type.is_empty() && !(fields.is_empty() && reply_call.is_empty()) {
-            return Err(AppError::msg("fields and reply_call need an item_type"));
+            return Err(invalid("fields and reply_call need an item_type"));
         }
         if !fields.is_empty() {
             Self::check_json_object("fields", fields)?;
@@ -1854,7 +1579,7 @@ impl Hyperfeed {
             let call = Self::check_json_object("reply_call", reply_call)?;
             let method = call.get("method").and_then(|m| m.as_str()).unwrap_or("");
             if method.is_empty() || !call.get("args").is_some_and(|a| a.is_object()) {
-                return Err(AppError::msg(
+                return Err(invalid(
                     "reply_call must be {\"method\": \"…\", \"args\": {…}}",
                 ));
             }
@@ -1865,10 +1590,10 @@ impl Hyperfeed {
     fn check_json_object(
         field: &str,
         value: &str,
-    ) -> app::Result<calimero_sdk::serde_json::Map<String, calimero_sdk::serde_json::Value>> {
-        match calimero_sdk::serde_json::from_str::<calimero_sdk::serde_json::Value>(value) {
-            Ok(calimero_sdk::serde_json::Value::Object(map)) => Ok(map),
-            _ => Err(AppError::msg(format!("{field} must be a JSON object"))),
+    ) -> app::Result<serde_json::Map<String, serde_json::Value>> {
+        match serde_json::from_str::<serde_json::Value>(value) {
+            Ok(serde_json::Value::Object(map)) => Ok(map),
+            _ => Err(invalid(format!("{field} must be a JSON object"))),
         }
     }
 
@@ -1880,7 +1605,7 @@ impl Hyperfeed {
         {
             Ok(())
         } else {
-            Err(AppError::msg(format!(
+            Err(invalid(format!(
                 "app must be lowercase letters, digits, '-' or '.', got {app:?}"
             )))
         }
@@ -1891,7 +1616,7 @@ impl Hyperfeed {
             Ok(())
         } else {
             let names: Vec<&str> = GUARDS.iter().map(|(name, _)| *name).collect();
-            Err(AppError::msg(format!(
+            Err(invalid(format!(
                 "category must be empty or one of {}, got {category:?}",
                 names.join(", ")
             )))
@@ -2136,7 +1861,7 @@ impl Hyperfeed {
 
     /// A notification as a row, with what a lens made of it.
     fn notification_row(&self, n: &Notification) -> app::Result<FeedItem> {
-        let typed = self.typed.get(&n.id)?.map(|t| t.clone());
+        let typed = self.typed.get(&n.id)?;
         let mut item = Self::notification_item(n, typed.as_ref());
         if let Some(s) = self.superseded.get(&n.id)? {
             item.superseded_by = s.by.clone();
@@ -2321,7 +2046,7 @@ impl Hyperfeed {
     /// can look at, within their limits.
     fn check_attachments(attachments: &[Attachment]) -> app::Result<()> {
         if attachments.len() > MAX_ATTACHMENTS {
-            return Err(AppError::msg(format!(
+            return Err(invalid(format!(
                 "{} attachments, limit is {MAX_ATTACHMENTS}",
                 attachments.len()
             )));
@@ -2330,14 +2055,12 @@ impl Hyperfeed {
             let at = format!("attachments[{i}]");
             Self::check_len(&format!("{at}.blob_id"), &a.blob_id, MAX_HASH, true)?;
             if !a.blob_id.chars().all(|c| c.is_ascii_alphanumeric()) {
-                return Err(AppError::msg(format!(
-                    "{at}.blob_id must be letters and digits"
-                )));
+                return Err(invalid(format!("{at}.blob_id must be letters and digits")));
             }
             Self::check_len(&format!("{at}.name"), &a.name, MAX_SHORT, false)?;
             Self::check_one_of(&format!("{at}.mime"), &a.mime, IMAGE_TYPES)?;
             if a.size == 0 || a.size > MAX_IMAGE_BYTES {
-                return Err(AppError::msg(format!(
+                return Err(invalid(format!(
                     "{at}.size is {} bytes, must be 1 to {MAX_IMAGE_BYTES}",
                     a.size
                 )));
@@ -2353,7 +2076,7 @@ impl Hyperfeed {
             return Ok(None);
         };
         if !MESSAGE_MODES.contains(&mode.as_str()) {
-            return Err(AppError::msg(format!(
+            return Err(invalid(format!(
                 "mode must be one of {}, not {mode}",
                 MESSAGE_MODES.join(", ")
             )));
@@ -2381,12 +2104,12 @@ impl Hyperfeed {
         };
         let chars = h.chars().count();
         if chars > MAX_HEADLINE {
-            return Err(AppError::msg(format!(
+            return Err(invalid(format!(
                 "headline is {chars} characters, limit is {MAX_HEADLINE}"
             )));
         }
         if h.contains(['\n', '\r']) {
-            return Err(AppError::msg("headline must be one line"));
+            return Err(invalid("headline must be one line"));
         }
         Self::check_len("text", text, MAX_LONG_MESSAGE, required)?;
         Ok(Some(h))
@@ -2397,7 +2120,7 @@ impl Hyperfeed {
         Self::check_len("ask.prompt", &ask.prompt, MAX_TITLE, false)?;
         Self::check_len("ask.draft", &ask.draft, MAX_BODY, false)?;
         if ask.options.len() > MAX_OPTIONS {
-            return Err(AppError::msg(format!(
+            return Err(invalid(format!(
                 "ask.options has {} options, limit is {MAX_OPTIONS}",
                 ask.options.len()
             )));
@@ -2407,15 +2130,15 @@ impl Hyperfeed {
         }
         match ask.kind.as_str() {
             "" if !ask.options.is_empty() || !ask.draft.is_empty() || !ask.prompt.is_empty() => {
-                Err(AppError::msg(
+                Err(invalid(
                     "an empty ask kind takes no prompt, options or draft",
                 ))
             }
             "choose" if ask.options.len() < 2 => {
-                Err(AppError::msg("a choose ask needs at least 2 options"))
+                Err(invalid("a choose ask needs at least 2 options"))
             }
             "confirm" if !ask.options.is_empty() || !ask.draft.is_empty() => {
-                Err(AppError::msg("a confirm ask takes a prompt only"))
+                Err(invalid("a confirm ask takes a prompt only"))
             }
             _ => Ok(()),
         }
@@ -2425,7 +2148,7 @@ impl Hyperfeed {
     fn check_answer(ask: &Ask, answer: &str) -> app::Result<String> {
         match ask.kind.as_str() {
             "choose" if ask.options.iter().any(|o| o == answer) => Ok(answer.to_owned()),
-            "choose" => Err(AppError::msg(format!(
+            "choose" => Err(invalid(format!(
                 "answer must be one of {}",
                 ask.options.join(", ")
             ))),
@@ -2434,7 +2157,7 @@ impl Hyperfeed {
                 Ok(answer.to_owned())
             }
             "confirm" | "" if answer.is_empty() => Ok(String::new()),
-            _ => Err(AppError::msg("this takes no answer")),
+            _ => Err(invalid("this takes no answer")),
         }
     }
 
@@ -2488,8 +2211,7 @@ impl Hyperfeed {
     fn get_action(&self, id: &str) -> app::Result<Action> {
         self.actions
             .get(id)?
-            .map(|a| a.clone())
-            .ok_or_else(|| AppError::msg(format!("no action {id}")))
+            .ok_or_else(|| invalid(format!("no action {id}")))
     }
 
     fn push_step(
@@ -2499,25 +2221,27 @@ impl Hyperfeed {
         note: String,
     ) -> app::Result<FeedItem> {
         let at = Self::next_at(&action.history);
-        action.history.push(Step {
-            status: status.to_owned(),
-            note,
-            at,
-        });
+        append_step(
+            &mut action.history,
+            Step {
+                status: status.to_owned(),
+                note,
+                at,
+            },
+        );
         let item = self.action_row(&action)?;
         self.actions.insert(action.id.clone(), action)?;
-        app::emit!(Event::ActionChanged {
+        emit(Ev::ActionChanged {
             id: &item.id,
             status: &item.status,
-        });
+        })?;
         Ok(item)
     }
 
     fn get_notification(&self, id: &str) -> app::Result<Notification> {
         self.notifications
             .get(id)?
-            .map(|n| n.clone())
-            .ok_or_else(|| AppError::msg(format!("no notification {id}")))
+            .ok_or_else(|| invalid(format!("no notification {id}")))
     }
 
     fn push_notification_step(
@@ -2527,25 +2251,27 @@ impl Hyperfeed {
         note: String,
     ) -> app::Result<FeedItem> {
         let at = Self::next_at(&n.history);
-        n.history.push(Step {
-            status: status.to_owned(),
-            note,
-            at,
-        });
+        append_step(
+            &mut n.history,
+            Step {
+                status: status.to_owned(),
+                note,
+                at,
+            },
+        );
         let item = self.notification_row(&n)?;
         self.notifications.insert(n.id.clone(), n)?;
-        app::emit!(Event::NotificationChanged {
+        emit(Ev::NotificationChanged {
             id: &item.id,
             status: &item.status,
-        });
+        })?;
         Ok(item)
     }
 
     fn get_message(&self, id: &str) -> app::Result<Message> {
         self.messages
             .get(id)?
-            .map(|m| m.clone())
-            .ok_or_else(|| AppError::msg(format!("no message {id}")))
+            .ok_or_else(|| invalid(format!("no message {id}")))
     }
 
     /// When the newest row in `chain` was made; 0 for none.
@@ -2583,17 +2309,20 @@ impl Hyperfeed {
         note: String,
     ) -> app::Result<FeedItem> {
         let at = Self::next_at(&m.history);
-        m.history.push(Step {
-            status: status.to_owned(),
-            note,
-            at,
-        });
+        append_step(
+            &mut m.history,
+            Step {
+                status: status.to_owned(),
+                note,
+                at,
+            },
+        );
         let item = self.message_row(&m)?;
         self.messages.insert(m.id.clone(), m)?;
-        app::emit!(Event::MessageChanged {
+        emit(Ev::MessageChanged {
             id: &item.id,
             status: &item.status,
-        });
+        })?;
         Ok(item)
     }
 
@@ -2646,11 +2375,11 @@ impl Hyperfeed {
         }
         let item = self.message_row(&m)?;
         self.messages.insert(m.id.clone(), m)?;
-        app::emit!(Event::MessagePosted {
+        emit(Ev::MessagePosted {
             id: &item.id,
             chain: &item.chain,
             from: &item.from,
-        });
+        })?;
         Ok(item)
     }
 
@@ -2660,6 +2389,7 @@ impl Hyperfeed {
     /// the app `method` it calls: once you approved the app's actions, they
     /// decide what the call is, not `category` and `writes`. Older agents omit
     /// it and are judged by what they say.
+    #[app::view]
     pub fn check_action(
         &self,
         app_key: String,
@@ -2696,13 +2426,13 @@ impl Hyperfeed {
         Self::check_len("note", &input.note, MAX_WHY, false)?;
         Self::check_ask(&input.ask)?;
         if !input.ask.kind.is_empty() && input.outcome != "proposed" {
-            return Err(AppError::msg(
+            return Err(invalid(
                 "an ask belongs on a proposal; a done or failed action has nothing to answer",
             ));
         }
         Self::check_len("grant", &input.grant, MAX_KEY, false)?;
         if !input.grant.is_empty() && input.outcome == "proposed" {
-            return Err(AppError::msg(
+            return Err(invalid(
                 "a grant belongs on a done or failed action; a proposal waits for you",
             ));
         }
@@ -2711,7 +2441,7 @@ impl Hyperfeed {
         if sends {
             Self::check_send_call(&input.send_call)?;
             if input.outcome != "proposed" {
-                return Err(AppError::msg(
+                return Err(invalid(
                     "a send_call belongs on a proposal: it is a draft you send yourself",
                 ));
             }
@@ -2731,7 +2461,7 @@ impl Hyperfeed {
         let granted = self.granted(&input.grant, &input.app, &call, now)?;
         let (status, breach) = match (input.outcome.as_str(), verdict.decision.as_str()) {
             ("proposed", "refuse") => {
-                return Err(AppError::msg(format!("not allowed: {}", verdict.reason)))
+                return Err(invalid(format!("not allowed: {}", verdict.reason)))
             }
             ("proposed", _) => (STATUS_PENDING, String::new()),
             (outcome, "act") => (outcome_status(outcome), String::new()),
@@ -2802,10 +2532,10 @@ impl Hyperfeed {
             item.subject = seen.subject;
         }
         self.actions.insert(action.id.clone(), action)?;
-        app::emit!(Event::ActionRecorded {
+        emit(Ev::ActionRecorded {
             id: &item.id,
             status: &item.status,
-        });
+        })?;
         Ok(item)
     }
 
@@ -2818,7 +2548,7 @@ impl Hyperfeed {
         Self::check_len("chain", &chain, MAX_KEY, true)?;
         Self::check_len("subject", &subject, MAX_KEY, true)?;
         if !self.chain_exists(&chain)? {
-            return Err(AppError::msg(format!("no chain {chain}")));
+            return Err(invalid(format!("no chain {chain}")));
         }
         if self.link_removed(&chain, &subject)? {
             return Ok(());
@@ -2859,7 +2589,7 @@ impl Hyperfeed {
             // The undo did not happen, so the action still stands.
             (STATUS_UNDO_REQUESTED, _) => STATUS_DONE,
             (current, _) => {
-                return Err(AppError::msg(format!(
+                return Err(invalid(format!(
                     "action {id} is {current}; nothing is waiting on the agent"
                 )))
             }
@@ -2881,7 +2611,7 @@ impl Hyperfeed {
         let n = self.get_notification(&id)?;
         let status = current(&n.history).status.clone();
         if status != STATUS_ANSWERED {
-            return Err(AppError::msg(format!(
+            return Err(invalid(format!(
                 "notification {id} is {status}; nothing is waiting on the agent"
             )));
         }
@@ -2901,14 +2631,14 @@ impl Hyperfeed {
         Self::check_len("note", &note, MAX_WHY, false)?;
         let m = self.get_message(&id)?;
         if m.from != FROM_YOU {
-            return Err(AppError::msg(format!("message {id} is the agent's own")));
+            return Err(invalid(format!("message {id} is the agent's own")));
         }
         let now = current(&m.history).status.clone();
         match (now.as_str(), status.as_str()) {
             (STATUS_WAITING, _) | (STATUS_THINKING, STATUS_FAILED) => {
                 self.push_message_step(m, &status, note)
             }
-            _ => Err(AppError::msg(format!(
+            _ => Err(invalid(format!(
                 "message {id} is {now}; cannot mark it {status}"
             ))),
         }
@@ -2966,17 +2696,17 @@ impl Hyperfeed {
         Self::check_len("reply_to", &reply_to, MAX_KEY, false)?;
         if reply_to.is_empty() {
             if !self.chain_exists(&chain)? {
-                return Err(AppError::msg(format!("no chain {chain}")));
+                return Err(invalid(format!("no chain {chain}")));
             }
         } else {
             let asked = self.get_message(&reply_to)?;
             if asked.from != FROM_YOU {
-                return Err(AppError::msg(format!(
+                return Err(invalid(format!(
                     "message {reply_to} is the agent's own; answer one of yours"
                 )));
             }
             if asked.chain != chain {
-                return Err(AppError::msg(format!(
+                return Err(invalid(format!(
                     "message {reply_to} is in chain {}, not {chain}",
                     asked.chain
                 )));
@@ -3067,6 +2797,7 @@ impl Hyperfeed {
 
     /// Your messages your agent has not answered yet, oldest first: what an
     /// agent that was away picks up when it starts.
+    #[app::view]
     pub fn open_questions(&self) -> app::Result<Vec<FeedItem>> {
         let mut open: Vec<FeedItem> = self
             .messages
@@ -3101,7 +2832,7 @@ impl Hyperfeed {
         Self::check_len("summary", &summary, MAX_WHY, true)?;
         Self::check_json_object("spec", &spec)?;
         let key = Self::lens_key(&app_key, &application_id);
-        let prior = self.lenses.get(&key)?.map(|l| l.clone());
+        let prior = self.lenses.get(&key)?;
         if let Some(l) = &prior {
             if l.spec == spec && l.summary == summary {
                 return Ok(Self::lens_view(l.clone()));
@@ -3116,10 +2847,10 @@ impl Hyperfeed {
             updated_at: prior.map_or(now_ms(), |l| now_ms().max(l.updated_at + 1)),
         };
         self.lenses.insert(key, lens.clone())?;
-        app::emit!(Event::LensChanged {
+        emit(Ev::LensChanged {
             app: &lens.app,
             status: &lens.status,
-        });
+        })?;
         Ok(Self::lens_view(lens))
     }
 
@@ -3176,7 +2907,7 @@ impl Hyperfeed {
         Self::check_attachments(&attachments)?;
         let mode = Self::check_message_mode(mode)?;
         if !chain.is_empty() && !self.chain_exists(&chain)? {
-            return Err(AppError::msg(format!("no chain {chain}")));
+            return Err(invalid(format!("no chain {chain}")));
         }
         if !chain.is_empty() {
             self.answer_asks(&chain, &text)?;
@@ -3208,11 +2939,11 @@ impl Hyperfeed {
         Self::check_len("text", &text, MAX_MESSAGE, true)?;
         let m = self.get_message(&id)?;
         if m.from != FROM_AGENT || self.asks.get(&id)?.is_none() {
-            return Err(AppError::msg(format!("message {id} asks you nothing")));
+            return Err(invalid(format!("message {id} asks you nothing")));
         }
         let status = current(&m.history).status.clone();
         if status != STATUS_ASKED {
-            return Err(AppError::msg(format!("message {id} is already {status}")));
+            return Err(invalid(format!("message {id} is already {status}")));
         }
         let chain = m.chain.clone();
         if self.superseded.get(&id)?.is_some() {
@@ -3259,27 +2990,25 @@ impl Hyperfeed {
 
         if decision == "keep" {
             if action.breach.is_empty() || action.reviewed {
-                return Err(AppError::msg(format!("action {id} has nothing to keep")));
+                return Err(invalid(format!("action {id} has nothing to keep")));
             }
             if !answer.is_empty() {
-                return Err(AppError::msg("keep takes no answer"));
+                return Err(invalid("keep takes no answer"));
             }
             action.reviewed = true;
             action.reviewed_at = Self::next_at(&action.history);
             let item = self.action_row(&action)?;
             self.actions.insert(action.id.clone(), action)?;
-            app::emit!(Event::ActionChanged {
+            emit(Ev::ActionChanged {
                 id: &item.id,
                 status: &item.status,
-            });
+            })?;
             return Ok(item);
         }
 
         let note = match (status_now.as_str(), decision.as_str()) {
             (STATUS_PENDING, "approve") => Self::check_answer(&action.ask, &answer)?,
-            _ if !answer.is_empty() => {
-                return Err(AppError::msg(format!("{decision} takes no answer")))
-            }
+            _ if !answer.is_empty() => return Err(invalid(format!("{decision} takes no answer"))),
             _ => String::new(),
         };
         let status = match (status_now.as_str(), decision.as_str()) {
@@ -3287,11 +3016,9 @@ impl Hyperfeed {
             (STATUS_FAILED, "approve") => STATUS_RETRYING,
             (STATUS_PENDING | STATUS_FAILED, "decline") => STATUS_DECLINED,
             (STATUS_DONE, "undo") if action.undoable => STATUS_UNDO_REQUESTED,
-            (STATUS_DONE, "undo") => {
-                return Err(AppError::msg(format!("action {id} cannot be undone")))
-            }
+            (STATUS_DONE, "undo") => return Err(invalid(format!("action {id} cannot be undone"))),
             _ => {
-                return Err(AppError::msg(format!(
+                return Err(invalid(format!(
                     "cannot {decision} an action that is {status_now}"
                 )))
             }
@@ -3312,15 +3039,13 @@ impl Hyperfeed {
         self.require_owner()?;
         let mut n = self.get_notification(&id)?;
         if n.ask.kind.is_empty() {
-            return Err(AppError::msg(format!(
+            return Err(invalid(format!(
                 "notification {id} has nothing to answer; open it in its app"
             )));
         }
         let status = current(&n.history).status.clone();
         if !matches!(status.as_str(), STATUS_RECEIVED | STATUS_FAILED) {
-            return Err(AppError::msg(format!(
-                "notification {id} is already {status}"
-            )));
+            return Err(invalid(format!("notification {id} is already {status}")));
         }
         let note = Self::check_answer(&n.ask, &answer)?;
         // Answering it is reading it.
@@ -3403,7 +3128,7 @@ impl Hyperfeed {
         if asks {
             self.supersede_asks(&item.chain, &item.id)?;
         }
-        app::emit!(Event::NotificationRecorded { id: &item.id });
+        emit(Ev::NotificationRecorded { id: &item.id })?;
         Ok(item)
     }
 
@@ -3414,7 +3139,7 @@ impl Hyperfeed {
         let now = now_ms();
         let mut count = 0u32;
         for id in ids {
-            let Some(n) = self.notifications.get(&id)?.map(|n| n.clone()) else {
+            let Some(n) = self.notifications.get(&id)? else {
                 continue;
             };
             if n.seen {
@@ -3427,7 +3152,7 @@ impl Hyperfeed {
             count += 1;
         }
         if count > 0 {
-            app::emit!(Event::NotificationsSeen { count });
+            emit(Ev::NotificationsSeen { count })?;
         }
         Ok(count)
     }
@@ -3465,7 +3190,7 @@ impl Hyperfeed {
             updated_at,
         };
         self.policies.insert(app_key.clone(), policy)?;
-        app::emit!(Event::SettingsChanged);
+        emit(Ev::SettingsChanged)?;
         self.policy_for(&app_key)
     }
 
@@ -3473,7 +3198,7 @@ impl Hyperfeed {
         self.require_owner()?;
         Self::check_category(&category)?;
         if category.is_empty() {
-            return Err(AppError::msg("category must not be empty"));
+            return Err(invalid("category must not be empty"));
         }
         let updated_at = match self.guards.get(&category)? {
             Some(g) => now_ms().max(g.updated_at + 1),
@@ -3487,7 +3212,7 @@ impl Hyperfeed {
                 updated_at,
             },
         )?;
-        app::emit!(Event::SettingsChanged);
+        emit(Ev::SettingsChanged)?;
         Ok(())
     }
 
@@ -3503,10 +3228,10 @@ impl Hyperfeed {
         self.require_owner()?;
         Self::check_one_of("decision", &decision, &["approve", "reject"])?;
         let key = Self::lens_key(&app_key, &application_id);
-        let mut lens =
-            self.lenses.get(&key)?.map(|l| l.clone()).ok_or_else(|| {
-                AppError::msg(format!("no lens for {app_key} at {application_id}"))
-            })?;
+        let mut lens = self
+            .lenses
+            .get(&key)?
+            .ok_or_else(|| invalid(format!("no lens for {app_key} at {application_id}")))?;
         lens.status = if decision == "approve" {
             LENS_APPROVED
         } else {
@@ -3515,10 +3240,10 @@ impl Hyperfeed {
         .to_owned();
         lens.updated_at = now_ms().max(lens.updated_at + 1);
         self.lenses.insert(key, lens.clone())?;
-        app::emit!(Event::LensChanged {
+        emit(Ev::LensChanged {
             app: &lens.app,
             status: &lens.status,
-        });
+        })?;
         Ok(Self::lens_view(lens))
     }
 
@@ -3568,12 +3293,10 @@ impl Hyperfeed {
     pub fn archive(&mut self, chains: Vec<String>, until: u64) -> app::Result<u32> {
         self.require_owner()?;
         if chains.len() > MAX_ARCHIVE {
-            return Err(AppError::msg(format!(
-                "at most {MAX_ARCHIVE} chains at a time"
-            )));
+            return Err(invalid(format!("at most {MAX_ARCHIVE} chains at a time")));
         }
         if until != 0 && until <= now_ms() {
-            return Err(AppError::msg("until must be in the future, or 0"));
+            return Err(invalid("until must be in the future, or 0"));
         }
         self.set_archived(&chains, true, until)
     }
@@ -3582,9 +3305,7 @@ impl Hyperfeed {
     pub fn unarchive(&mut self, chains: Vec<String>) -> app::Result<u32> {
         self.require_owner()?;
         if chains.len() > MAX_ARCHIVE {
-            return Err(AppError::msg(format!(
-                "at most {MAX_ARCHIVE} chains at a time"
-            )));
+            return Err(invalid(format!("at most {MAX_ARCHIVE} chains at a time")));
         }
         self.set_archived(&chains, false, 0)
     }
@@ -3599,7 +3320,7 @@ impl Hyperfeed {
                 .filter(|i| i.chain == *chain)
                 .map(|i| i.chain_at.max(i.at))
                 .max()
-                .ok_or_else(|| AppError::msg(format!("no chain {chain}")))?;
+                .ok_or_else(|| invalid(format!("no chain {chain}")))?;
             let updated_at = match self.archived.get(chain)? {
                 Some(a) => now_ms().max(a.updated_at + 1),
                 None => now_ms(),
@@ -3615,7 +3336,7 @@ impl Hyperfeed {
             )?;
             count += 1;
         }
-        app::emit!(Event::ArchiveChanged { count });
+        emit(Ev::ArchiveChanged { count })?;
         Ok(count)
     }
 
@@ -3635,11 +3356,11 @@ impl Hyperfeed {
         Self::check_len("doing", &doing, MAX_TITLE, true)?;
         let m = self.get_message(&id)?;
         if m.from != FROM_YOU {
-            return Err(AppError::msg(format!("message {id} is the agent's own")));
+            return Err(invalid(format!("message {id} is the agent's own")));
         }
         let status = current(&m.history).status.clone();
         if status != STATUS_THINKING {
-            return Err(AppError::msg(format!(
+            return Err(invalid(format!(
                 "message {id} is {status}; progress is for a message being worked on"
             )));
         }
@@ -3648,10 +3369,10 @@ impl Hyperfeed {
             None => now_ms(),
         };
         self.progress.insert(id.clone(), Progress { doing, at })?;
-        app::emit!(Event::MessageChanged {
+        emit(Ev::MessageChanged {
             id: &id,
             status: STATUS_THINKING,
-        });
+        })?;
         self.message_row(&m)
     }
 
@@ -3671,7 +3392,7 @@ impl Hyperfeed {
     ) -> app::Result<FeedItem> {
         self.require_agent()?;
         if steps.len() > MAX_HISTORY {
-            return Err(AppError::msg(format!(
+            return Err(invalid(format!(
                 "{} steps, limit is {MAX_HISTORY}",
                 steps.len()
             )));
@@ -3685,11 +3406,11 @@ impl Hyperfeed {
         Self::check_len("draft", &draft, MAX_LONG_MESSAGE, false)?;
         let m = self.get_message(&id)?;
         if m.from != FROM_YOU {
-            return Err(AppError::msg(format!("message {id} is the agent's own")));
+            return Err(invalid(format!("message {id} is the agent's own")));
         }
         let status = current(&m.history).status.clone();
         if status == STATUS_WAITING {
-            return Err(AppError::msg(format!(
+            return Err(invalid(format!(
                 "message {id} is waiting; take it up with agent_ack first"
             )));
         }
@@ -3698,10 +3419,10 @@ impl Hyperfeed {
             None => now_ms(),
         };
         self.work.insert(id.clone(), Work { steps, draft, at })?;
-        app::emit!(Event::MessageChanged {
+        emit(Ev::MessageChanged {
             id: &id,
             status: &status,
-        });
+        })?;
         self.message_row(&m)
     }
 
@@ -3714,7 +3435,7 @@ impl Hyperfeed {
         self.require_owner()?;
         let m = self.get_message(&id)?;
         if m.from != FROM_YOU {
-            return Err(AppError::msg(format!(
+            return Err(invalid(format!(
                 "message {id} is the agent's own; stop one of yours"
             )));
         }
@@ -3729,15 +3450,15 @@ impl Hyperfeed {
                 if self.stops.get(&id)?.is_none() {
                     self.stops
                         .insert(id.clone(), StopRequest { at: now_ms() })?;
-                    app::emit!(Event::StopRequested { id: &id });
-                    app::emit!(Event::MessageChanged {
+                    emit(Ev::StopRequested { id: &id })?;
+                    emit(Ev::MessageChanged {
                         id: &id,
                         status: STATUS_THINKING,
-                    });
+                    })?;
                 }
                 self.message_row(&m)
             }
-            _ => Err(AppError::msg(format!(
+            _ => Err(invalid(format!(
                 "message {id} is {status}; there is no turn to stop"
             ))),
         }
@@ -3747,7 +3468,7 @@ impl Hyperfeed {
         Self::check_len("chain", chain, MAX_KEY, true)?;
         Self::check_len("session", session, MAX_KEY, true)?;
         if !(MIN_LEASE_MS..=MAX_LEASE_MS).contains(&ttl_ms) {
-            return Err(AppError::msg(format!(
+            return Err(invalid(format!(
                 "ttl_ms must be {MIN_LEASE_MS} to {MAX_LEASE_MS}, got {ttl_ms}"
             )));
         }
@@ -3779,7 +3500,7 @@ impl Hyperfeed {
                 } else {
                     &l.agent
                 };
-                Err(AppError::msg(format!(
+                Err(invalid(format!(
                     "chain {chain} is held by {who} for {} s more",
                     (l.expires_at - now).div_ceil(1_000)
                 )))
@@ -3806,7 +3527,7 @@ impl Hyperfeed {
         let agent = agent.unwrap_or_default();
         Self::check_len("agent", &agent, MAX_SHORT, false)?;
         let now = now_ms();
-        let prior = self.leases.get(&chain)?.map(|l| l.clone());
+        let prior = self.leases.get(&chain)?;
         Self::held_by_other(&chain, &session, prior.as_ref(), now)?;
         let still_mine = prior
             .as_ref()
@@ -3824,7 +3545,7 @@ impl Hyperfeed {
         let fresh = still_mine.is_none();
         self.leases.insert(chain.clone(), lease)?;
         if fresh {
-            app::emit!(Event::ChainLeaseChanged { chain: &chain });
+            emit(Ev::ChainLeaseChanged { chain: &chain })?;
         }
         Ok(view)
     }
@@ -3844,11 +3565,10 @@ impl Hyperfeed {
         let mut lease = self
             .leases
             .get(&chain)?
-            .map(|l| l.clone())
-            .ok_or_else(|| AppError::msg(format!("chain {chain} is not claimed")))?;
+            .ok_or_else(|| invalid(format!("chain {chain} is not claimed")))?;
         Self::held_by_other(&chain, &session, Some(&lease), now)?;
         if lease.session != session || lease.expires_at == 0 {
-            return Err(AppError::msg(format!(
+            return Err(invalid(format!(
                 "this session does not hold chain {chain}; claim it again"
             )));
         }
@@ -3865,7 +3585,7 @@ impl Hyperfeed {
         self.require_agent()?;
         Self::check_len("chain", &chain, MAX_KEY, true)?;
         Self::check_len("session", &session, MAX_KEY, true)?;
-        let Some(mut lease) = self.leases.get(&chain)?.map(|l| l.clone()) else {
+        let Some(mut lease) = self.leases.get(&chain)? else {
             return Ok(false);
         };
         if lease.session != session || lease.expires_at == 0 {
@@ -3874,11 +3594,12 @@ impl Hyperfeed {
         lease.expires_at = 0;
         lease.updated_at = now_ms().max(lease.updated_at + 1);
         self.leases.insert(chain.clone(), lease)?;
-        app::emit!(Event::ChainLeaseChanged { chain: &chain });
+        emit(Ev::ChainLeaseChanged { chain: &chain })?;
         Ok(true)
     }
 
     /// Who holds `chain` right now: a lease that has not run out, or none.
+    #[app::view]
     pub fn chain_lease(&self, chain: String) -> app::Result<Option<LeaseView>> {
         Self::check_len("chain", &chain, MAX_KEY, true)?;
         let now = now_ms();
@@ -3901,17 +3622,18 @@ impl Hyperfeed {
         self.require_agent()?;
         Self::check_len("chain", &chain, MAX_KEY, true)?;
         if !self.chain_exists(&chain)? {
-            return Err(AppError::msg(format!("no chain {chain}")));
+            return Err(invalid(format!("no chain {chain}")));
         }
         let prior_at = self.checkpoints.get(&chain)?.map_or(0, |c| c.updated_at);
         let checkpoint = Checkpoint::from_input(input, now_ms().max(prior_at + 1))?;
         let view = checkpoint.view(&chain);
         self.checkpoints.insert(chain.clone(), checkpoint)?;
-        app::emit!(Event::CheckpointChanged { chain: &chain });
+        emit(Ev::CheckpointChanged { chain: &chain })?;
         Ok(view)
     }
 
     /// The latest checkpoint on `chain`, or none: read it before acting there.
+    #[app::view]
     pub fn checkpoint(&self, chain: String) -> app::Result<Option<CheckpointView>> {
         Self::check_len("chain", &chain, MAX_KEY, true)?;
         Ok(self.checkpoints.get(&chain)?.map(|c| c.view(&chain)))
@@ -3929,7 +3651,7 @@ impl Hyperfeed {
         self.require_agent()?;
         Self::check_len("chain", &chain, MAX_KEY, true)?;
         if !self.chain_exists(&chain)? {
-            return Err(AppError::msg(format!("no chain {chain}")));
+            return Err(invalid(format!("no chain {chain}")));
         }
         let prior_at = self.situations.get(&chain)?.map_or(0, |s| s.updated_at);
         let situation = Situation::from_input(input, now_ms().max(prior_at + 1))?;
@@ -3945,7 +3667,7 @@ impl Hyperfeed {
             }
         }
         self.situations.insert(chain.clone(), situation)?;
-        app::emit!(Event::SituationChanged { chain: &chain });
+        emit(Ev::SituationChanged { chain: &chain })?;
         Ok(view)
     }
 
@@ -3955,12 +3677,13 @@ impl Hyperfeed {
         Self::check_len("chain", &chain, MAX_KEY, true)?;
         let removed = self.situations.remove(&chain)?.is_some();
         if removed {
-            app::emit!(Event::SituationChanged { chain: &chain });
+            emit(Ev::SituationChanged { chain: &chain })?;
         }
         Ok(removed)
     }
 
     /// Every task your agent told as one card, most recently written first.
+    #[app::view]
     pub fn situations(&self) -> app::Result<Vec<SituationView>> {
         let mut out: Vec<SituationView> = self
             .situations
@@ -4019,18 +3742,18 @@ impl Hyperfeed {
         self.require_agent()?;
         let action = self.get_action(&id)?;
         if let Err(why) = self.autorun_answer(&action)? {
-            return Err(AppError::msg(why));
+            return Err(invalid(why));
         }
         let now = now_ms();
         if at <= now {
-            return Err(AppError::msg("a default goes ahead later, not now"));
+            return Err(invalid("a default goes ahead later, not now"));
         }
         if at > now + MAX_AUTORUN_AHEAD_MS {
-            return Err(AppError::msg("a default goes ahead within a week"));
+            return Err(invalid("a default goes ahead within a week"));
         }
-        let prior = self.autoruns.get(&id)?.map(|a| a.clone());
+        let prior = self.autoruns.get(&id)?;
         if prior.as_ref().is_some_and(|a| a.stopped_at > 0) {
-            return Err(AppError::msg("you stopped this one: it waits for you"));
+            return Err(invalid("you stopped this one: it waits for you"));
         }
         let autorun = Autorun {
             chain: action.chain.clone(),
@@ -4041,10 +3764,10 @@ impl Hyperfeed {
         };
         let view = autorun.view(&id, true);
         self.autoruns.insert(id.clone(), autorun)?;
-        app::emit!(Event::AutorunChanged {
+        emit(Ev::AutorunChanged {
             id: &id,
-            status: AUTORUN_WAITING
-        });
+            status: AUTORUN_WAITING,
+        })?;
         Ok(view)
     }
 
@@ -4055,10 +3778,9 @@ impl Hyperfeed {
         let mut autorun = self
             .autoruns
             .get(&id)?
-            .map(|a| a.clone())
-            .ok_or_else(|| AppError::msg(format!("action {id} has no default")))?;
+            .ok_or_else(|| invalid(format!("action {id} has no default")))?;
         if autorun.fired_at > 0 {
-            return Err(AppError::msg("it already went ahead: undo it instead"));
+            return Err(invalid("it already went ahead: undo it instead"));
         }
         if autorun.stopped_at == 0 {
             autorun.stopped_at = now_ms().max(autorun.set_at + 1);
@@ -4066,10 +3788,10 @@ impl Hyperfeed {
         let pending = current(&self.get_action(&id)?.history).status == STATUS_PENDING;
         let view = autorun.view(&id, pending);
         self.autoruns.insert(id.clone(), autorun)?;
-        app::emit!(Event::AutorunChanged {
+        emit(Ev::AutorunChanged {
             id: &id,
-            status: AUTORUN_STOPPED
-        });
+            status: AUTORUN_STOPPED,
+        })?;
         Ok(view)
     }
 
@@ -4082,35 +3804,35 @@ impl Hyperfeed {
         let mut autorun = self
             .autoruns
             .get(&id)?
-            .map(|a| a.clone())
-            .ok_or_else(|| AppError::msg(format!("action {id} has no default")))?;
+            .ok_or_else(|| invalid(format!("action {id} has no default")))?;
         if autorun.stopped_at > 0 {
-            return Err(AppError::msg("you stopped it: it waits for you"));
+            return Err(invalid("you stopped it: it waits for you"));
         }
         if autorun.fired_at > 0 {
-            return Err(AppError::msg("it already went ahead"));
+            return Err(invalid("it already went ahead"));
         }
         let now = now_ms();
         if now < autorun.at {
-            return Err(AppError::msg("its time has not come"));
+            return Err(invalid("its time has not come"));
         }
         let action = self.get_action(&id)?;
         let answer = match self.autorun_answer(&action)? {
             Ok(answer) => answer,
-            Err(why) => return Err(AppError::msg(why)),
+            Err(why) => return Err(invalid(why)),
         };
         autorun.fired_at = now.max(autorun.set_at + 1);
         self.autoruns.insert(id.clone(), autorun)?;
-        app::emit!(Event::AutorunChanged {
+        emit(Ev::AutorunChanged {
             id: &id,
-            status: AUTORUN_FIRED
-        });
+            status: AUTORUN_FIRED,
+        })?;
         // The note is the approval's answer, which your agent carries out
         // exactly: the draft, or nothing. `autoruns` says it went ahead.
         self.push_step(action, STATUS_APPROVED, answer)
     }
 
     /// Every proposal's default, soonest first.
+    #[app::view]
     pub fn autoruns(&self) -> app::Result<Vec<AutorunView>> {
         let mut out = Vec::new();
         for (id, a) in self.autoruns.entries()? {
@@ -4129,7 +3851,7 @@ impl Hyperfeed {
         let text = text.trim();
         Self::check_len("rule", text, MAX_RULE, true)?;
         if text.contains(['\n', '\r']) {
-            return Err(AppError::msg("a rule is one line"));
+            return Err(invalid("a rule is one line"));
         }
         Ok(text.to_owned())
     }
@@ -4160,7 +3882,7 @@ impl Hyperfeed {
             return Ok(same.clone());
         }
         if rules.len() >= MAX_RULES {
-            return Err(AppError::msg(format!(
+            return Err(invalid(format!(
                 "you have {MAX_RULES} rules, the limit; remove one first"
             )));
         }
@@ -4177,7 +3899,7 @@ impl Hyperfeed {
                 updated_at: now,
             },
         )?;
-        app::emit!(Event::SettingsChanged);
+        emit(Ev::SettingsChanged)?;
         Ok(RuleView {
             id,
             text,
@@ -4199,13 +3921,12 @@ impl Hyperfeed {
         let mut rule = self
             .rules
             .get(&id)?
-            .map(|r| r.clone())
             .filter(|r| !r.removed)
-            .ok_or_else(|| AppError::msg(format!("no rule {id}")))?;
+            .ok_or_else(|| invalid(format!("no rule {id}")))?;
         rule.removed = true;
         rule.updated_at = now_ms().max(rule.updated_at + 1);
         self.rules.insert(id, rule)?;
-        app::emit!(Event::SettingsChanged);
+        emit(Ev::SettingsChanged)?;
         Ok(())
     }
 
@@ -4248,7 +3969,7 @@ impl Hyperfeed {
             return Ok(same.clone());
         }
         if mine.len() >= MAX_RULES {
-            return Err(AppError::msg(format!(
+            return Err(invalid(format!(
                 "{agent} has {MAX_RULES} rules, the limit; remove one first"
             )));
         }
@@ -4265,7 +3986,7 @@ impl Hyperfeed {
                 updated_at: now,
             },
         )?;
-        app::emit!(Event::SettingsChanged);
+        emit(Ev::SettingsChanged)?;
         Ok(AgentRuleView {
             id,
             agent,
@@ -4280,13 +4001,12 @@ impl Hyperfeed {
         let mut rule = self
             .agent_rules
             .get(&id)?
-            .map(|r| r.clone())
             .filter(|r| !r.removed)
-            .ok_or_else(|| AppError::msg(format!("no agent rule {id}")))?;
+            .ok_or_else(|| invalid(format!("no agent rule {id}")))?;
         rule.removed = true;
         rule.updated_at = now_ms().max(rule.updated_at + 1);
         self.agent_rules.insert(id, rule)?;
-        app::emit!(Event::SettingsChanged);
+        emit(Ev::SettingsChanged)?;
         Ok(())
     }
 
@@ -4306,21 +4026,21 @@ impl Hyperfeed {
         Self::check_len("why", &why, MAX_WHY, false)?;
         Self::check_len("chain", &chain, MAX_KEY, false)?;
         if !chain.is_empty() && !self.chain_exists(&chain)? {
-            return Err(AppError::msg(format!("no chain {chain}")));
+            return Err(invalid(format!("no chain {chain}")));
         }
         if self
             .active_rules()?
             .iter()
             .any(|r| r.text.eq_ignore_ascii_case(&text))
         {
-            return Err(AppError::msg("that is already one of the user's rules"));
+            return Err(invalid("that is already one of the user's rules"));
         }
         let waiting = self.waiting_rule_proposals()?;
         if let Some(same) = waiting.iter().find(|p| p.text.eq_ignore_ascii_case(&text)) {
             return Ok(same.clone());
         }
         if waiting.len() >= MAX_RULE_PROPOSALS {
-            return Err(AppError::msg(format!(
+            return Err(invalid(format!(
                 "{MAX_RULE_PROPOSALS} suggested rules already wait for the user"
             )));
         }
@@ -4336,7 +4056,7 @@ impl Hyperfeed {
         };
         let view = Self::rule_proposal_view(id.clone(), &proposal);
         self.rule_proposals.insert(id, proposal)?;
-        app::emit!(Event::SettingsChanged);
+        emit(Ev::SettingsChanged)?;
         Ok(view)
     }
 
@@ -4349,7 +4069,7 @@ impl Hyperfeed {
         proposal.status = RULE_APPROVED.to_owned();
         proposal.updated_at = now_ms().max(proposal.updated_at + 1);
         self.rule_proposals.insert(id, proposal)?;
-        app::emit!(Event::SettingsChanged);
+        emit(Ev::SettingsChanged)?;
         Ok(rule)
     }
 
@@ -4361,7 +4081,7 @@ impl Hyperfeed {
         proposal.updated_at = now_ms().max(proposal.updated_at + 1);
         let view = Self::rule_proposal_view(id.clone(), &proposal);
         self.rule_proposals.insert(id, proposal)?;
-        app::emit!(Event::SettingsChanged);
+        emit(Ev::SettingsChanged)?;
         Ok(view)
     }
 
@@ -4369,10 +4089,9 @@ impl Hyperfeed {
         let proposal = self
             .rule_proposals
             .get(id)?
-            .map(|p| p.clone())
-            .ok_or_else(|| AppError::msg(format!("no suggested rule {id}")))?;
+            .ok_or_else(|| invalid(format!("no suggested rule {id}")))?;
         if proposal.status != RULE_PROPOSED {
-            return Err(AppError::msg(format!(
+            return Err(invalid(format!(
                 "suggested rule {id} is already {}",
                 proposal.status
             )));
@@ -4448,6 +4167,7 @@ impl Hyperfeed {
 
     /// The watches in `chain` (`""`: every chain), oldest first, whatever
     /// their status.
+    #[app::view]
     pub fn watches(&self, chain: String) -> app::Result<Vec<WatchView>> {
         self.watch_list(&chain)
     }
@@ -4464,6 +4184,7 @@ impl Hyperfeed {
 
     /// The PRs the runtime recorded for `chain` (`""`: every chain), the most
     /// recently seen first.
+    #[app::view]
     pub fn prs(&self, chain: String) -> app::Result<Vec<PrView>> {
         self.pr_list(&chain)
     }
@@ -4492,6 +4213,7 @@ impl Hyperfeed {
 
     /// The cached reads written after `since` (the feed's clock, ms; 0 for
     /// all), oldest write first.
+    #[app::view]
     pub fn memos(&self, since: u64) -> app::Result<Vec<MemoView>> {
         self.memo_list(since)
     }
@@ -4512,6 +4234,7 @@ impl Hyperfeed {
 
     /// The links of the task in `chain`, oldest first, each with how much
     /// teammates did there (its notifications in the task).
+    #[app::view]
     pub fn links(&self, chain: String) -> app::Result<Vec<LinkView>> {
         self.link_list(&chain)
     }
@@ -4541,6 +4264,7 @@ impl Hyperfeed {
     }
 
     /// The key phones subscribe with; empty before a runtime set one.
+    #[app::view]
     pub fn push_key(&self) -> app::Result<PushKeyView> {
         self.push_key_get()
     }
@@ -4559,6 +4283,7 @@ impl Hyperfeed {
     }
 
     /// The devices to push to, newest first.
+    #[app::view]
     pub fn push_devices(&self) -> app::Result<Vec<PushDeviceView>> {
         self.push_device_list()
     }
@@ -4600,7 +4325,7 @@ impl Hyperfeed {
                 updated_at,
             },
         )?;
-        app::emit!(Event::SettingsChanged);
+        emit(Ev::SettingsChanged)?;
         Ok(())
     }
 
@@ -4633,7 +4358,7 @@ impl Hyperfeed {
         };
         self.assignments
             .insert(app_key, Assignment { agent, updated_at })?;
-        app::emit!(Event::SettingsChanged);
+        emit(Ev::SettingsChanged)?;
         Ok(())
     }
 
@@ -4643,7 +4368,7 @@ impl Hyperfeed {
         self.require_agent_as(&name)?;
         Self::check_len("name", &name, MAX_KEY, true)?;
         if lines.len() > MAX_REACH {
-            return Err(AppError::msg(format!(
+            return Err(invalid(format!(
                 "{} reach lines, limit is {MAX_REACH}",
                 lines.len()
             )));
@@ -4659,14 +4384,14 @@ impl Hyperfeed {
             None => now_ms(),
         };
         self.reach.insert(name, Reach { lines, at })?;
-        app::emit!(Event::SettingsChanged);
+        emit(Ev::SettingsChanged)?;
         Ok(())
     }
 
     /// Folders within their limits: absolute or under `~`, one line each.
     fn check_folders(folders: &[Folder]) -> app::Result<()> {
         if folders.len() > MAX_FOLDERS {
-            return Err(AppError::msg(format!(
+            return Err(invalid(format!(
                 "{} folders, limit is {MAX_FOLDERS}",
                 folders.len()
             )));
@@ -4674,13 +4399,13 @@ impl Hyperfeed {
         for f in folders {
             Self::check_len("folder", &f.path, MAX_PATH, true)?;
             if !(f.path.starts_with('/') || f.path == "~" || f.path.starts_with("~/")) {
-                return Err(AppError::msg(format!(
+                return Err(invalid(format!(
                     "folder must be absolute or under ~, got {:?}",
                     f.path
                 )));
             }
             if f.path.contains('\n') || f.path.split('/').any(|part| part == "..") {
-                return Err(AppError::msg(format!(
+                return Err(invalid(format!(
                     "folder must be one path with no '..', got {:?}",
                     f.path
                 )));
@@ -4697,7 +4422,7 @@ impl Hyperfeed {
         };
         self.agent
             .insert("main".to_owned(), AgentState { paused, updated_at })?;
-        app::emit!(Event::SettingsChanged);
+        emit(Ev::SettingsChanged)?;
         Ok(())
     }
 
@@ -4744,6 +4469,7 @@ impl Hyperfeed {
     /// (`notifications`), or something that needs you (`needs_you`); `app_key`
     /// keeps chains that touch that app; `before` pages by `chain_at` (0 = from
     /// the newest). The counts are over chains, for the whole feed.
+    #[app::view]
     pub fn feed(
         &self,
         filter: String,
@@ -4871,6 +4597,7 @@ impl Hyperfeed {
     }
 
     /// Every row in a chain, oldest first: the whole flow, muted apps included.
+    #[app::view]
     pub fn chain(&self, chain: String) -> app::Result<Vec<FeedItem>> {
         Self::check_len("chain", &chain, MAX_KEY, true)?;
         let mut items: Vec<FeedItem> = self
@@ -4889,6 +4616,7 @@ impl Hyperfeed {
     }
 
     /// One row, by id, whichever kind it is.
+    #[app::view]
     pub fn item(&self, id: String) -> app::Result<Option<FeedItem>> {
         if let Some(a) = self.actions.get(&id)? {
             return Ok(Some(self.action_row(&a)?));
@@ -4905,12 +4633,14 @@ impl Hyperfeed {
     /// Every app's actions, newest first: what your agent learned for each
     /// app version, and whether you approved it. An app's newest approved set
     /// is the one in force.
+    #[app::view]
     pub fn action_sets(&self) -> app::Result<Vec<ActionSetView>> {
         self.action_set_list()
     }
 
     /// Every lens, newest first: what your agent learned for each app version,
     /// and whether you approved it.
+    #[app::view]
     pub fn lenses(&self) -> app::Result<Vec<LensView>> {
         let mut out: Vec<LensView> = self
             .lenses
@@ -4935,6 +4665,7 @@ impl Hyperfeed {
     /// Your rules: the pause switch, every app you set a policy for, every
     /// guard (defaults included), your standing rules, and the rules your
     /// agent suggested that wait for you.
+    #[app::view]
     pub fn settings(&self) -> app::Result<SettingsView> {
         let mut policies: Vec<PolicyView> = self
             .policies
@@ -4997,7 +4728,7 @@ impl Hyperfeed {
             .collect();
         assignments.sort_by(|a, b| a.app.cmp(&b.app));
         Ok(SettingsView {
-            owner: self.owner.get().clone(),
+            owner: env::app_owner(),
             paused: self.is_paused()?,
             policies,
             guards,

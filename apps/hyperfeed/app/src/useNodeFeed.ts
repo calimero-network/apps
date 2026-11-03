@@ -1,123 +1,216 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useContexts, useMero, useSubscription } from "@calimero-network/mero-react";
-import type { SubscriptionEventData } from "@calimero-network/mero-react";
-import { HyperfeedClient, type LensView } from "./generated/HyperfeedClient";
-import { nodeBackend, type FeedBackend } from "./backend";
+import type { AppInfo, CalimeroClient } from "@calimero-network/mero-js";
+import { describeError } from "@calimero-apps/connect";
+import { calimeroTransport, HyperfeedClient } from "./hyperfeed";
+import type { LensView } from "./hyperfeedTypes";
+import { clusterBackend, type FeedBackend } from "./backend";
 import type { BlobStore } from "./attachments";
-import { appKeyForPackage, REGISTRY } from "./apps";
-import { refusalMessage } from "./refused";
-import { BUILT_IN, decodePayload, toNotifications, type RawEvent, type SourceContext, type StateMutation } from "./collector";
+import { appKeyForPackage } from "./apps";
+import { BUILT_IN, decodePayload, indexOf, toNotifications, type AppEvent, type RawEvent, type SourceContext } from "./collector";
 import { parseLens, type LensHost, type LensSpec } from "./lens/lens";
-import { nodeLensHosts, type NodeAdmin } from "./nodeHost";
+import { clusterLensHosts } from "./lensHost";
+import { isHyperfeed, otherApps } from "./otherApps";
+import { signedIn } from "./newFeed";
+import { useSessionApi } from "./session";
 
 export interface NodeFeed {
   backend: FeedBackend | null;
-  /** Bumped on every event for the feed's own context. */
+  /** Bumped on every event of the feed itself. */
   nudge: number;
-  /** The other contexts being watched for notifications. */
+  /** The other apps being watched for notifications. */
   watching: SourceContext[];
   /**
-   * The apps installed on the node, by app key, Hyperfeed itself left out;
-   * null until the node says, or when it could not.
+   * The apps you reach, by app key, Hyperfeed itself left out; null until the
+   * cluster says, or when it could not.
    */
   installed: string[] | null;
-  /** Install an app from the marketplace by its package, at its newest version; null without the admin API. */
+  /**
+   * Install an app by its package. Not offered on a 1.0 cluster: packages are
+   * installed by an organization's admins from the cluster's console.
+   */
   install: ((pkg: string) => Promise<void>) | null;
   /** Why watching failed, when it did. The feed itself still works. */
   watchError: string | null;
   /** The last events each app version emitted, newest last: what a lens preview runs on. */
   recent: (appKey: string, applicationId: string) => (RawEvent & { contextId: string })[];
-  /** A host to run a lens against one context, for a preview. */
+  /** A host to run a lens against one app instance, for a preview. */
   hostFor: (contextId: string) => LensHost | null;
 }
 
 /** Events kept per app version for a preview. */
 const RECENT = 25;
+/** How long to wait before following a stream again after it broke, at most. */
+const MAX_BACKOFF_MS = 30_000;
 
 /**
- * The feed in `contextId`, plus the collector that fills it.
- *
- * The collector subscribes to every OTHER context on the node and runs each
- * event through the approved lens for that context's app version (or the lens
- * this app ships, for Chat), recording what it keeps as typed notifications.
- * It runs wherever the app is open; with two devices open, both record, and
- * the contract keeps one copy per event key.
+ * Follow `app`'s events from log index `from()`, again after any break (with
+ * a backoff), until `signal` aborts.
  */
-export function useNodeFeed(contextId: string): NodeFeed {
-  const { mero, admin, applicationId } = useMero();
+export async function follow(
+  client: Pick<CalimeroClient, "events">,
+  app: string,
+  from: () => number,
+  onEvent: (e: AppEvent) => void,
+  signal: AbortSignal,
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+): Promise<void> {
+  let backoff = 1_000;
+  while (!signal.aborted) {
+    try {
+      for await (const e of client.events(app, from(), signal)) {
+        backoff = 1_000;
+        onEvent(e);
+      }
+    } catch (e) {
+      if (signal.aborted) return;
+      console.warn(`[hyperfeed] the event stream of ${app} broke`, e);
+    }
+    if (signal.aborted) return;
+    await sleep(backoff);
+    backoff = Math.min(backoff * 2, MAX_BACKOFF_MS);
+  }
+}
+
+/** Where the collector is in each app's log, per account, kept across loads. */
+function positionKey(account: string, app: string): string {
+  return `hyperfeed:collector:${account}:${app}`;
+}
+
+function readPosition(account: string, app: string): number | null {
+  try {
+    const v = localStorage.getItem(positionKey(account, app));
+    const n = v === null ? NaN : Number(v);
+    return Number.isSafeInteger(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+function writePosition(account: string, app: string, index: number) {
+  try {
+    localStorage.setItem(positionKey(account, app), String(index));
+  } catch {
+    // Private mode: it holds for this visit.
+  }
+}
+
+/**
+ * The log index `app` is at now: any view of its own that takes no argument
+ * answers it. Watching starts after it, so the first visit records what
+ * happens from now on, not the app's whole history. Null when it has no such view.
+ */
+export async function currentIndex(client: Pick<CalimeroClient, "appAbi" | "view">, app: string): Promise<number | null> {
+  const abi = (await client.appAbi(app)) as { methods?: Record<string, { kind?: string; params?: unknown[] }> };
+  const probe = Object.entries(abi.methods ?? {}).find(([, m]) => m.kind === "view" && (m.params ?? []).length === 0);
+  if (!probe) return null;
+  return (await client.view(app, probe[0], {})).index;
+}
+
+/**
+ * The feed in app instance `appId`, plus the collector that fills it.
+ *
+ * The collector follows the events of every OTHER app this account reaches and
+ * runs each event through the approved lens for that app's bundle (or the
+ * lens this app ships), recording what it keeps as typed notifications. It
+ * runs wherever the app is open; with two devices open, both record, and the
+ * contract keeps one copy per event key.
+ */
+export function useNodeFeed(appId: string): NodeFeed {
+  const { session } = useSessionApi();
+  const live = signedIn(session);
+  const client = live?.client ?? null;
+  const account = live?.accountId ?? "";
+
   const backend = useMemo(() => {
-    if (!mero) return null;
-    // Images are blobs on your node, announced to the feed's context so your
-    // other devices (and your agent) can fetch them by id.
-    const images: BlobStore | null = admin
-      ? {
-          upload: (data) => admin.uploadBlob({ data, contextId }),
-          read: async (blobId) => new Blob([await admin.getBlob(blobId, { contextId })]),
-        }
-      : null;
-    return nodeBackend(new HyperfeedClient(mero, contextId), mero.rpc, images);
-  }, [mero, admin, contextId]);
+    if (!client) return null;
+    // Images are blobs of the feed's app: your other devices, and the agents
+    // you let into the feed, read them by id.
+    const images: BlobStore = {
+      upload: async (data) => {
+        const { blobId, size } = await client.uploadBlob(appId, new Uint8Array(await data.arrayBuffer()));
+        return { blobId, size };
+      },
+      read: async (blobId) => new Blob([(await client.downloadBlob(appId, blobId)) as BlobPart]),
+    };
+    return clusterBackend(new HyperfeedClient(calimeroTransport(client), appId), otherApps(client), images);
+  }, [client, appId]);
   const [nudge, setNudge] = useState(0);
 
-  // Every context on the node. With no application id, `useContexts` asks the
-  // node for all of them, which is exactly what a collector wants.
-  const { contexts, error: contextsError } = useContexts(null);
-  const [packages, setPackages] = useState<Record<string, string | undefined> | null>(null);
-  const [packagesError, setPackagesError] = useState<string | null>(null);
-
-  // Bumped by an install: the node is asked again what it has.
-  const [listed, setListed] = useState(0);
+  // The feed's own events: each one is a nudge to read the feed again. Live
+  // only: what happened before is in the feed already.
   useEffect(() => {
-    if (!admin) return;
-    let live = true;
-    admin
-      .listApplications()
-      .then((res) => {
-        if (!live) return;
-        const byId: Record<string, string | undefined> = {};
-        for (const app of res.apps) byId[app.id] = app.package;
-        setPackages(byId);
-      })
-      .catch((e: unknown) => {
-        if (live) setPackagesError(e instanceof Error ? e.message : String(e));
-      });
-    return () => {
-      live = false;
-    };
-  }, [admin, listed]);
+    if (!client) return;
+    const stop = new AbortController();
+    let from: number | null = null;
+    void (async () => {
+      from = await client
+        .view(appId, "settings", {})
+        .then((v) => v.index + 1)
+        .catch(() => 0);
+      await follow(
+        client,
+        appId,
+        () => from ?? 0,
+        (e) => {
+          const i = indexOf(e.id);
+          if (i !== null) from = i + 1;
+          setNudge((n) => n + 1);
+        },
+        stop.signal,
+      );
+    })();
+    return () => stop.abort();
+  }, [client, appId]);
 
+  // Every app this account reaches.
+  const [apps, setApps] = useState<AppInfo[] | null>(null);
+  const [appsError, setAppsError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!client) return;
+    let on = true;
+    client.listApps().then(
+      (all) => {
+        if (!on) return;
+        setApps(all);
+        setAppsError(null);
+      },
+      (e: unknown) => {
+        if (on) setAppsError(describeError(e));
+      },
+    );
+    return () => {
+      on = false;
+    };
+  }, [client]);
+
+  const ownBundle = apps?.find((a) => a.appId === appId)?.bundle ?? null;
   const watching = useMemo<SourceContext[]>(
     () =>
-      contexts
-        // Not the feed itself, and not another Hyperfeed context: a feed of
-        // feeds would record its own bookkeeping as news.
-        .filter((c) => c.contextId !== contextId && c.applicationId !== applicationId)
-        .map((c) => {
-          const appKey = appKeyForPackage(packages?.[c.applicationId], c.applicationId);
-          return {
-            contextId: c.contextId,
-            appKey,
-            applicationId: c.applicationId,
-            label: `${appKey} · ${c.contextId.slice(0, 6)}`,
-          };
+      (apps ?? [])
+        // Not the feed itself, and not another Hyperfeed: a feed of feeds
+        // would record its own bookkeeping as news.
+        .filter((a) => a.appId !== appId && !isHyperfeed(a, ownBundle, a.bundle))
+        .map((a) => {
+          const appKey = appKeyForPackage(a.package ?? undefined, a.bundle);
+          return { contextId: a.appId, appKey, applicationId: a.bundle, label: `${appKey} · ${a.name || a.appId.slice(0, 6)}` };
         }),
-    [contexts, contextId, applicationId, packages],
+    [apps, appId, ownBundle],
   );
-  const sources = useRef(new Map<string, SourceContext>());
-  // The last root seen per context: half of each notification's key.
-  const lastRoots = useRef(new Map<string, string>());
-  sources.current = new Map(watching.map((s) => [s.contextId, s]));
+  const orgs = useRef(new Map<string, string | null>());
+  useEffect(() => {
+    orgs.current = new Map((apps ?? []).map((a) => [a.appId, a.org]));
+  }, [apps]);
 
-  // The approved lenses, re-read whenever the feed changes (a lens approved on
-  // another device arrives as a feed event like anything else).
+  // The approved lenses, read again whenever the feed changes (a lens approved
+  // on another device arrives as a feed event like anything else).
   const lenses = useRef(new Map<string, LensSpec>());
   useEffect(() => {
     if (!backend) return;
-    let live = true;
+    let on = true;
     backend
       .lenses()
       .then((all: LensView[]) => {
-        if (!live) return;
+        if (!on) return;
         const approved = new Map<string, LensSpec>();
         for (const l of all) {
           if (l.status !== "approved") continue;
@@ -131,99 +224,98 @@ export function useNodeFeed(contextId: string): NodeFeed {
       })
       .catch(() => undefined);
     return () => {
-      live = false;
+      on = false;
     };
   }, [backend, nudge]);
-  const lensFor = (source: SourceContext): LensSpec | null =>
-    lenses.current.get(`${source.appKey}@${source.applicationId}`) ?? BUILT_IN[source.appKey] ?? null;
 
   const hosts = useMemo(
-    () => (mero && admin ? nodeLensHosts(mero.rpc, admin as unknown as NodeAdmin) : null),
-    [mero, admin],
+    () => (client ? clusterLensHosts(otherApps(client), client, account, (app) => orgs.current.get(app) ?? null) : null),
+    [client, account],
   );
 
   const recentEvents = useRef(new Map<string, (RawEvent & { contextId: string })[]>());
+  const [watchError, setWatchError] = useState<string | null>(null);
 
-  const ids = useMemo(() => [contextId, ...watching.map((w) => w.contextId)], [contextId, watching]);
-
-  useSubscription(
-    ids,
-    useCallback(
-      (event: SubscriptionEventData) => {
-        if (!("contextId" in event)) return;
-        if (event.contextId === contextId) {
-          setNudge((n) => n + 1);
-          return;
-        }
-        const source = sources.current.get(event.contextId);
-        if (!source || !backend || !hosts) return;
-        if (event.type && event.type !== "StateMutation") return;
-        const mutation = event.data as StateMutation;
-        const previous = lastRoots.current.get(event.contextId) ?? "";
-        if (mutation?.newRoot) lastRoots.current.set(event.contextId, mutation.newRoot);
-        const key = `${source.appKey}@${source.applicationId}`;
-        const kept = recentEvents.current.get(key) ?? [];
-        for (const e of mutation?.events ?? []) {
-          if (e.kind) kept.push({ kind: e.kind, payload: decodePayload(e.data), at: Date.now(), contextId: source.contextId });
-        }
-        recentEvents.current.set(key, kept.slice(-RECENT));
-        // Fire and forget: a collector that stalls the stream waiting on the
-        // node is worse than a missed notification. Never silently, though.
-        void toNotifications(source, mutation, previous, lensFor(source), hosts(event.contextId)).then((inputs) => {
-          for (const input of inputs) {
-            void backend
-              .recordNotification(input)
-              .catch((e: unknown) => console.warn("[hyperfeed] could not record a notification", input.key, e));
+  const key = watching.map((w) => `${w.contextId}@${w.applicationId}`).join(",");
+  useEffect(() => {
+    if (!client || !backend || !hosts) return;
+    const stop = new AbortController();
+    for (const source of watching) {
+      void (async () => {
+        let from = readPosition(account, source.contextId);
+        if (from === null) {
+          const at = await currentIndex(client, source.contextId).catch((e: unknown) => {
+            setWatchError(describeError(e));
+            return null;
+          });
+          if (at === null) {
+            console.warn(`[hyperfeed] not watching ${source.label}: it has no view to start from`);
+            return;
           }
-        });
-      },
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      [contextId, backend, hosts],
-    ),
-  );
+          from = at + 1;
+          writePosition(account, source.contextId, from);
+        }
+        const lensKey = `${source.appKey}@${source.applicationId}`;
+        await follow(
+          client,
+          source.contextId,
+          () => from ?? 0,
+          (event) => {
+            const i = indexOf(event.id);
+            if (i !== null) {
+              from = i + 1;
+              writePosition(account, source.contextId, from);
+            }
+            const kept = recentEvents.current.get(lensKey) ?? [];
+            kept.push({ kind: event.kind, payload: decodePayload(event.data), at: Date.now(), contextId: source.contextId });
+            recentEvents.current.set(lensKey, kept.slice(-RECENT));
+            const lens = lenses.current.get(lensKey) ?? BUILT_IN[source.appKey] ?? null;
+            // Fire and forget: a collector that stalls the stream waiting on
+            // the cluster is worse than a missed notification. Never silently, though.
+            void toNotifications(source, event, lens, hosts(source.contextId)).then((inputs) => {
+              for (const input of inputs) {
+                void backend
+                  .recordNotification(input)
+                  .catch((e: unknown) => console.warn("[hyperfeed] could not record a notification", input.key, e));
+              }
+            });
+          },
+          stop.signal,
+        );
+      })();
+    }
+    return () => stop.abort();
+    // `key` stands for `watching`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client, backend, hosts, account, key]);
 
-  const installed = useMemo(
-    () => (packages ? installedApps(packages, applicationId) : null),
-    [packages, applicationId],
-  );
-
-  const install = useCallback(
-    async (pkg: string) => {
-      if (!admin) throw new Error("This session can't install apps.");
-      const [version] = await admin.getRegistryVersions(REGISTRY, pkg);
-      if (!version) throw new Error(`Nothing is published for ${pkg}.`);
-      try {
-        await admin.installApplication({ package: pkg, version });
-      } catch (e) {
-        throw new Error(refusalMessage(e, "install apps"));
-      }
-      setListed((n) => n + 1);
-    },
-    [admin],
-  );
+  const installed = useMemo(() => (apps ? installedApps(apps, appId, ownBundle) : null), [apps, appId, ownBundle]);
 
   return {
     backend,
     nudge,
     watching,
     installed,
-    install: admin ? install : null,
-    watchError: contextsError?.message ?? packagesError,
-    recent: useCallback((appKey: string, appId: string) => recentEvents.current.get(`${appKey}@${appId}`) ?? [], []),
-    hostFor: useCallback((ctx: string) => (hosts ? hosts(ctx) : null), [hosts]),
+    install: null,
+    watchError: appsError ?? watchError,
+    recent: useCallback((appKey: string, bundle: string) => recentEvents.current.get(`${appKey}@${bundle}`) ?? [], []),
+    hostFor: useCallback((app: string) => (hosts ? hosts(app) : null), [hosts]),
   };
 }
 
 /**
- * The app keys of what is installed on the node, each once: not this
- * Hyperfeed, nor another version of it (a feed of feeds would record its own
- * bookkeeping as news).
+ * The app keys of the apps you reach, each once: not this Hyperfeed, nor
+ * another one (a feed of feeds would record its own bookkeeping as news).
  */
-export function installedApps(packages: Record<string, string | undefined>, self: string | null): string[] {
+export function installedApps(
+  apps: Pick<AppInfo, "appId" | "package" | "bundle">[],
+  self: string | null,
+  ownBundle: string | null = null,
+): string[] {
   const keys = new Set<string>();
-  for (const [id, pkg] of Object.entries(packages)) {
-    if (id === self) continue;
-    const key = appKeyForPackage(pkg, id);
+  for (const a of apps) {
+    if (a.appId === self || isHyperfeed(a, ownBundle, a.bundle)) continue;
+    const key = appKeyForPackage(a.package ?? undefined, a.bundle);
     if (key !== "hyperfeed") keys.add(key);
   }
   return [...keys];

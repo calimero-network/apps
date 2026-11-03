@@ -28,8 +28,8 @@ include(":app")
 // The Calimero Kotlin SDK, consumed from source (composite build).
 // ---------------------------------------------------------------------------
 //
-// The delegated-execution layer this app is built on (Cloud sign-in, relay intents, founding,
-// direct admission) came with kotlin-sdk#67 and is not on Maven Central yet. So the
+// The Calimero 1.0 client this app is built on (passkey sign-in, the sealed channel, orgs, app
+// instances, consent) is kotlin-sdk v0.2.0, not on Maven Central yet. So the
 // SDK is included as a build and its modules replace the `network.calimero:*` coordinates the app
 // declares. Which checkout:
 //   1. `-PmeroKotlinSdkDir=/path` (or `meroKotlinSdkDir=` in ~/.gradle/gradle.properties),

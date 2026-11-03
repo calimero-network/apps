@@ -29,7 +29,7 @@ class IssuesModelTest {
             assertEquals(
                 RecordedContractCall.Path.QUERY,
                 fake.backend.recording
-                    .calls("list_issues")
+                    .calls("listIssues")
                     .first()
                     .path,
             )
@@ -89,7 +89,7 @@ class IssuesModelTest {
             assertEquals(
                 RecordedContractCall.Path.EXECUTE,
                 fake.backend.recording
-                    .calls("set_status")
+                    .calls("setStatus")
                     .first()
                     .path,
             )
@@ -109,7 +109,7 @@ class IssuesModelTest {
                     .column("Open")
                     .map { it.id },
             )
-            assertEquals("The relay took too long to answer. Try again.", m.state.value.notice)
+            assertEquals("Your cluster took too long to answer. Try again.", m.state.value.notice)
         }
 
     @Test fun `create sends the four sections`() =
@@ -138,6 +138,6 @@ class IssuesModelTest {
             val m = model(fake)
             m.load()
             val phase = m.state.value.phase
-            assertTrue(phase is LoadPhase.Failed && phase.message.contains("No relay"))
+            assertTrue(phase is LoadPhase.Failed && phase.message.contains("signed out"))
         }
 }

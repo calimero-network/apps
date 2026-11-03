@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
-import type { Attachment, FeedItem, LinkView, WatchView } from "./generated/HyperfeedClient";
+import type { Attachment, FeedItem, LinkView, WatchView } from "./hyperfeedTypes";
 import type { Feed } from "./useFeed";
 import type { BlobStore } from "./attachments";
 import { AttachButton, PickedImages, useImagePicker } from "./ImagePicker";

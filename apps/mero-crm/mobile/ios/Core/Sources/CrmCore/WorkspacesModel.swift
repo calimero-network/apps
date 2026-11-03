@@ -85,7 +85,7 @@ public final class WorkspacesModel: ObservableObject {
         self.names = names
     }
 
-    /// Whether a relay serves the account. Without one only joining works.
+    /// Whether a node serves the account: always once signed in on Calimero 1.0.
     public var hasRelay: Bool { backend.hasRelay }
 
     public func load() async {

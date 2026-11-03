@@ -6,7 +6,7 @@ public struct SignerRow: Identifiable, Equatable, Sendable {
     public let account: String
     public let name: String?
     public let isMe: Bool
-    /// Nanoseconds, when they signed.
+    /// Milliseconds since the epoch, when they signed.
     public let signedAt: UInt64?
     /// Whether the document waited on them when it was uploaded.
     public let required: Bool
@@ -36,16 +36,16 @@ public enum SigningStep: Equatable, Sendable {
 /// Signing does what the web's viewer does, in order (`PDFViewer`,
 /// `ConsentModal`, `DocumentService.signDocument`):
 ///
-/// 1. `whoami` for your ACCOUNT, then `has_consented(account, document)`.
-/// 2. If not, the consent disclosure; accepting calls `set_consent(document)`
+/// 1. `whoami` for your ACCOUNT, then `hasConsented(account, document)`.
+/// 2. If not, the consent disclosure; accepting calls `setConsent(document)`
 ///    (no user argument: the contract records it for the caller).
 /// 3. Draw a signature, or pick one from the library in the private context.
 /// 4. Place it; the PNG is drawn onto that page of the version you opened.
-/// 5. Upload the signed PDF as a blob into the agreement's context, hash it
-///    (SHA-256, hex), and `sign_document(document, base_hash, blob, size,
-///    new_hash)` where `base_hash` is the version you opened — the contract
-///    refuses a stale one rather than erase somebody's signature.
-/// 6. `mark_participant_signed(document)`.
+/// 5. Upload the signed PDF as a blob (`application/pdf`) of the agreement's
+///    instance, hash it (SHA-256, hex), and `signDocument(document, baseHash,
+///    blob, size, newHash)` where `baseHash` is the version you opened — the
+///    contract refuses a stale one (`Conflict`) rather than erase somebody's signature.
+/// 6. `markParticipantSigned(document)`.
 @MainActor
 public final class DocumentModel: ObservableObject {
     @Published public private(set) var entry: DocumentEntry?
@@ -214,9 +214,9 @@ public final class DocumentModel: ObservableObject {
         do {
             let signed = try stamper.stamp(pdf: original, signaturePNG: png, at: placement)
             let newHash = DocumentHash.sha256Hex(signed)
-            let blobId = SignIds.blobHex(try await admin.uploadBlob(signed, contextId: agreement.contextId))
+            let blobId = SignIds.blobHex(try await admin.uploadBlob(signed, contentType: "application/pdf", contextId: agreement.contextId))
             guard !blobId.isEmpty else {
-                throw SignModelError.message("Your relay returned a blob id this app can't use.")
+                throw SignModelError.message("Your cluster returned a blob id this app can't use.")
             }
             try await client.signDocument(
                 documentId: documentId, baseHash: entry.document.hash, pdfBlobIdStr: blobId,
@@ -233,7 +233,7 @@ public final class DocumentModel: ObservableObject {
         } catch {
             step = .placing
             let text = SignErrorText.describe(error)
-            if text.localizedCaseInsensitiveContains("changed while you were signing") {
+            if SignErrorText.isConflict(error) || text.localizedCaseInsensitiveContains("changed while you were signing") {
                 self.error = "Someone signed this document while you were placing your signature. "
                     + "It has been reloaded — sign again on the new version."
                 step = .idle

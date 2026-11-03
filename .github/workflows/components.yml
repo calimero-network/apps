@@ -61,14 +61,37 @@ jobs:
           all=$(scripts/component-apps.sh all)
           # What every component app builds against or is tested with: a change
           # here covers all of them. A brand-new branch (no usable base) does too.
-          shared='^(Cargo\.toml|pnpm-lock\.yaml|pnpm-workspace\.yaml|package\.json|tools/component-bundle/|packages/(connect|merod-local)/|scripts/(component-apps\.sh|check-component-pins\.py)|\.github/workflows/components\.yml)'
+          #
+          # Cargo.toml and pnpm-lock.yaml are judged by scripts/lockfile-fanout.py
+          # rather than by name: every port edits both (its crate joins
+          # `[workspace].exclude`, its frontend becomes a pnpm importer), and
+          # neither edit reaches another component app.
+          shared='^(pnpm-workspace\.yaml|package\.json|tools/component-bundle/|packages/(connect|merod-local)/|scripts/(component-apps\.sh|check-component-pins\.py|lockfile-fanout\.py)|\.github/workflows/components\.yml)'
           if [ "$EVENT" = "workflow_dispatch" ] || [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
              || ! changed=$(git diff --name-only "$BASE" HEAD); then
             apps="$all"
           elif grep -Eq "$shared" <<<"$changed"; then
             apps="$all"
           else
-            apps=$(scripts/component-apps.sh from-paths <<<"$changed")
+            extra=""
+            if grep -qx 'Cargo.toml' <<<"$changed"; then
+              verdict=$(python3 scripts/lockfile-fanout.py manifest --for components --base "$BASE" --head HEAD) || verdict=all
+              [ "$verdict" = "all" ] && extra=all
+            fi
+            if [ -z "$extra" ] && grep -qx 'pnpm-lock.yaml' <<<"$changed"; then
+              verdict=$(python3 scripts/lockfile-fanout.py pnpm --base "$BASE" --head HEAD) || verdict=all
+              if [ "$verdict" = "all" ]; then
+                extra=all
+              else
+                # Importer dirs (`apps/x/app`), mapped like a changed file there.
+                changed=$(printf '%s\n%s\n' "$changed" "$(sed '/^$/d; s|$|/package.json|' <<<"$verdict")")
+              fi
+            fi
+            if [ "$extra" = "all" ]; then
+              apps="$all"
+            else
+              apps=$(scripts/component-apps.sh from-paths <<<"$changed")
+            fi
           fi
           echo "apps=$apps" >> "$GITHUB_OUTPUT"
           echo "::notice::component apps: $apps (core $tag)"

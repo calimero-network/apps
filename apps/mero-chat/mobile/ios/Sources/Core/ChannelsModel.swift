@@ -2,21 +2,22 @@ import Combine
 import Foundation
 import MeroKit
 
-/// Creating a channel the way the web app does (`utils/createChannel.ts`): one
-/// subgroup per channel under the namespace (its visibility is the channel's
-/// public/private flag), the channel's single context inside it, then the
-/// creator's `set_profile`.
+/// Creating a channel the way the web app does (`api/platform.ts`): an open
+/// channel is one app instance of chat in the org itself (every member
+/// reaches it); a private one gets its own team that admits by invitation,
+/// with the instance inside it. Then the creator's `set_profile`.
 struct ChannelCreator: Sendable {
     let backend: any ChatBackend
 
     /// Returns the new context id.
-    func create(
-        in workspace: Workspace, name: String, isPublic: Bool, username: String, now: Date = Date()
-    ) async throws -> String {
-        let groupId = try await backend.createChannelGroup(namespaceId: workspace.id, name: name, isPublic: isPublic)
+    func create(in workspace: Workspace, name: String, isPublic: Bool, username: String) async throws -> String {
+        let groupId =
+            isPublic
+            ? workspace.id
+            : try await backend.createChannelGroup(namespaceId: workspace.id, name: name, isPublic: false)
         let contextId = try await backend.createContext(
             groupId: groupId, applicationId: workspace.applicationId, name: name,
-            initArgs: ChatAPI.channelInitArgs(name: name, createdAt: chatTimestamp(now)))
+            initArgs: ChatAPI.channelInitArgs(name: name))
         if !username.isEmpty {
             // Best effort, as on the web: the channel exists either way.
             try? await ChatAPI(contract: backend.contract).setProfile(contextId, username: username)
@@ -27,8 +28,9 @@ struct ChannelCreator: Sendable {
 
 /// One workspace's channels and DMs.
 ///
-/// Every channel is a subgroup of the namespace holding one context; a DM is
-/// the same with a `DM_CONTEXT_` name and `context_type: "Dm"`. A channel the
+/// A channel is an app instance of chat: in the org itself (an open channel,
+/// as the web makes them) or in a team of it (a private one). A DM is an
+/// instance named `DM_CONTEXT_…` with `context_type: "Dm"`. A channel the
 /// account is not a member of yet (an open channel someone else made) is
 /// listed with a Join action: its contract calls only work after joining.
 @MainActor

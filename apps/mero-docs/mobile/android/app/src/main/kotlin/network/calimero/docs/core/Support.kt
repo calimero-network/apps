@@ -1,13 +1,32 @@
 package network.calimero.docs.core
 
+import com.calimero.mero.AppError
+import com.calimero.mero.CalimeroError
+import com.calimero.mero.ConfirmCancelled
+import com.calimero.mero.ConsentStale
+import com.calimero.mero.LoginRequired
+import com.calimero.mero.NotFound
+import com.calimero.mero.OrgInfo
+import com.calimero.mero.PasskeyCancelled
+import com.calimero.mero.ReleaseDeadlineError
+import com.calimero.mero.TeamInfo
+import com.calimero.mero.UnavailableError
+import com.calimero.mero.WrongNode
+import com.calimero.mero.app.AppSubgroup
+import com.calimero.mero.app.CalimeroAppBackend
 import com.calimero.mero.app.ContextContractCalling
 import com.calimero.mero.app.MeroAppBackend
-import kotlinx.serialization.json.Json
+import com.calimero.mero.app.SignedOutException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.put
-import network.calimero.docs.generated.DocsClient
+import network.calimero.docs.app.Folder
 import java.io.IOException
 import java.net.URI
 import java.net.URLDecoder
@@ -18,37 +37,112 @@ import java.util.Locale
 import kotlin.math.max
 
 /**
- * One folder's docs contract: the generated client, plus the raw transport for the one read the
- * generated decoder cannot take ([readDocument]). (Swift `DocsAPI`.)
+ * One folder's docs instance: the typed client, plus the lenient body read ([readDocument]).
+ * (Swift `DocsAPI`.)
  */
 class DocsApi(
-    private val transport: ContextContractCalling,
+    transport: ContextContractCalling,
 ) {
     val client = DocsClient(transport)
 
     /**
      * The document's body as blocks, in order.
      *
-     * `get_document` is called through the transport and decoded leniently rather than with the
-     * generated `getDocument`: the node writes a span's `"true"` marks back as JSON booleans and
-     * leaves `attributes` out of a plain span, which the ABI's `map<string,string>` does not
-     * describe, so the generated decoder would refuse every formatted document.
+     * `getDocument` is decoded leniently: each block's text is its spans, in order, each with its
+     * marks as strings (`"true"` for a boolean mark, as the web's `canonicalAttrs` reads them). A
+     * mark the node writes as a JSON boolean, or a span without `attributes`, is read the same way.
      */
     suspend fun readDocument(docId: String): List<WireBlock> {
-        val args = buildJsonObject { put("doc", docId) }.toString()
-        val raw = transport.query("get_document", args)
-        val element = Json.parseToJsonElement(raw)
+        val element = client.view("getDocument", buildJsonObject { put("doc", docId) })
         if (element !is JsonArray) return emptyList()
         return element.jsonArray.map { WireBlock.from(it) }
     }
 }
 
-/** The docs contract over this backend's contract, bound to [contextId]. */
-fun MeroAppBackend.docs(contextId: String): DocsApi = DocsApi(contract.bound(contextId))
+/** The docs contract of the folder's app instance [appId]. */
+fun MeroAppBackend.docs(appId: String): DocsApi = DocsApi(contract.bound(appId))
 
 /**
- * Image bytes stored as blobs on the folder's docs context. `MeroAppBackend` has no blob call yet,
- * so the app reads them through the signed-in client's admin surface (`getBlob(blobId, contextId)`).
+ * A workspace's folders, read as the web reads them (`lib/coreFolders.ts`). (Swift `DocsDirectory`.)
+ *
+ * On Calimero 1.0 ([CalimeroAppBackend]) a workspace is an organization and a folder one of its
+ * teams: the team's name, its `parent`, and the folder's docs instance, whose id the team metadata
+ * keeps as `docsApp`. One `GET /orgs/{org}` answers all of it, with only the teams the caller
+ * reaches. Any other backend (tests) is walked through `listSubgroups`, each folder's first app
+ * instance being its docs instance.
+ */
+class DocsDirectory(
+    private val backend: MeroAppBackend,
+) {
+    /** Every folder of [workspaceId] this account sees. */
+    suspend fun folders(workspaceId: String): List<Folder> {
+        val cloud = backend as? CalimeroAppBackend ?: return walk(workspaceId)
+        return folders(cloud.client.getOrg(workspaceId))
+    }
+
+    /** The docs instance of one folder, when a link did not carry it. */
+    suspend fun docsApp(
+        workspaceId: String,
+        folderId: String,
+    ): String? {
+        val cloud = backend as? CalimeroAppBackend ?: return backend.listContexts(folderId).firstOrNull()
+        return cloud.client
+            .getOrg(workspaceId)
+            .teams[folderId]
+            ?.let(::docsApp)
+    }
+
+    private suspend fun walk(workspaceId: String): List<Folder> =
+        coroutineScope {
+            val found = mutableListOf<Folder>()
+            val seen = mutableSetOf(workspaceId)
+            var level: List<Pair<AppSubgroup, String?>> = backend.listSubgroups(workspaceId).map { it to null }
+            var depth = 0
+            while (level.isNotEmpty() && depth < MAX_DEPTH) {
+                val next = mutableListOf<String>()
+                for ((sg, parent) in level) {
+                    if (!seen.add(sg.groupId)) continue
+                    found += Folder(sg.groupId, sg.name?.trim()?.takeIf { it.isNotEmpty() } ?: UNTITLED, parent, sg.contextIds.firstOrNull())
+                    next += sg.groupId
+                }
+                level =
+                    next
+                        .map { id -> async { runCatching { backend.listSubgroups(id) }.getOrDefault(emptyList()).map { it to id } } }
+                        .awaitAll()
+                        .flatten()
+                        .sortedBy { it.first.groupId }
+                depth++
+            }
+            found
+        }
+
+    companion object {
+        /** Where a folder's docs instance id is kept in its team's metadata. */
+        const val DOCS_APP_KEY = "docsApp"
+
+        /** How deep a walked folder tree goes. */
+        const val MAX_DEPTH = 8
+        private const val UNTITLED = "Untitled folder"
+
+        /** The folders of one org snapshot: a team whose parent the caller cannot see sits at the top. */
+        fun folders(org: OrgInfo): List<Folder> =
+            org.teams.values
+                .map { team ->
+                    val parent = team.parent?.takeIf { org.teams.containsKey(it) }
+                    Folder(team.teamId, team.name.trim().ifEmpty { UNTITLED }, parent, docsApp(team))
+                }.sortedBy { it.id }
+
+        fun docsApp(team: TeamInfo): String? =
+            ((team.metadata as? JsonObject)?.get(DOCS_APP_KEY) as? JsonPrimitive)
+                ?.takeIf { it.isString }
+                ?.content
+                ?.takeIf { it.isNotEmpty() }
+    }
+}
+
+/**
+ * Image bytes stored as blobs on the folder's docs app instance, read through
+ * `MeroAppBackend.getBlob` (`/apps/{app}/blobs` on Calimero 1.0).
  */
 fun interface BlobLoading {
     suspend fun blob(
@@ -62,9 +156,9 @@ val NoBlobs = BlobLoading { _, _ -> throw IOException("no blob store") }
 
 /** A document a link names. (Swift `DocTarget`.) */
 data class DocTarget(
-    /** The workspace (namespace) id. */
+    /** The workspace (organization) id. */
     val workspaceId: String,
-    /** The folder's group id. */
+    /** The folder's team id. */
     val folderId: String,
     val docId: String,
     val blockId: String? = null,
@@ -206,20 +300,55 @@ object DocsFormat {
             .replace("&#39;", "'")
             .replace("&amp;", "&")
 
-    /** Words a person can act on, from an error. */
-    fun errorText(error: Throwable): String {
-        val text = error.message ?: error.toString()
-        val lower = text.lowercase()
-        return when {
-            "forbidden" in lower || "read-only" in lower || "readonly" in lower || "not allowed" in lower ->
-                "You can read this folder but not comment in it. Ask a workspace admin for edit access."
-            error::class.simpleName == "NoRelayException" || "no relay" in lower ->
-                "Your account has no relay yet. Join a workspace from an invitation on the web, or try again shortly."
-            error is java.net.UnknownHostException || error is java.net.ConnectException ->
+    /**
+     * Words a person can act on, from an error: Calimero 1.0's typed refusals, and the contract's
+     * own (`APP_ERROR` with `NotFound`, `Invalid` or `Forbidden`, as `src/calimero/errors.ts` tells
+     * them apart). (Swift `DocsFormat.errorText`.)
+     */
+    @Suppress("CyclomaticComplexMethod")
+    fun errorText(error: Throwable): String =
+        when (error) {
+            is AppError -> appErrorText(error.appCode, (error.fields["message"] as? JsonPrimitive)?.content.orEmpty())
+            is ConfirmCancelled, is PasskeyCancelled -> "The passkey prompt was cancelled. Nothing changed."
+            is LoginRequired, is SignedOutException -> "Your session ended. Sign in again."
+            is WrongNode -> "This node doesn't serve your account. Sign in again to reach another node of your cluster."
+            is UnavailableError ->
+                if (error.reason == "network") {
+                    "Can't reach your cluster. Check your connection and try again."
+                } else {
+                    "Your cluster is busy. Try again in a moment."
+                }
+            is ReleaseDeadlineError -> {
+                val release = if (error.release.isEmpty()) "a node release" else "release ${error.release}"
+                "New work is paused until $release is approved. Open Approvals in your account."
+            }
+            is ConsentStale -> "That approval is out of date. Open Approvals and review it again."
+            is NotFound -> "This isn't here any more, or you no longer have access to it."
+            // The node refuses a read-only member's write with 403 (`isReadOnlyWrite`).
+            is CalimeroError ->
+                if (error.status == HTTP_FORBIDDEN) {
+                    "You can read this folder but not comment in it. Ask a workspace admin for edit access."
+                } else {
+                    error.nodeMessage.ifEmpty { error.code }
+                }
+            is java.net.UnknownHostException, is java.net.ConnectException ->
                 "You're offline. Check your connection and try again."
-            else -> text
+            else -> error.message ?: error.toString()
         }
-    }
+
+    /** The contract's refusal (`#[app::error]`) in words. */
+    fun appErrorText(
+        code: String,
+        message: String,
+    ): String =
+        when (code) {
+            "NotFound" -> "This document or comment is gone. Pull to refresh."
+            "Forbidden" -> "You can't do that in this folder."
+            "Invalid" -> if (message.isEmpty()) "That wasn't accepted. Check it and try again." else "That wasn't accepted: $message"
+            else -> message.ifEmpty { code }
+        }
+
+    private const val HTTP_FORBIDDEN = 403
 
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8").replace("+", "%20")
 

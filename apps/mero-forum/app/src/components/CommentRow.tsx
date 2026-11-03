@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import { AuthorAvatar, Byline, VoteColumn } from "./PostCard";
 import { EditIcon, TrashIcon } from "./icons";
-import type { CommentView } from "../generated/ForumClient";
+import type { CommentView } from "../lib/forumApi";
 import { fullDate, timeAgo } from "../lib/forum";
 
 /**

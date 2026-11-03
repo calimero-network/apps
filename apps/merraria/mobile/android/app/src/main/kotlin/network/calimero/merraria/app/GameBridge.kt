@@ -10,12 +10,12 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
-import network.calimero.merraria.generated.Edit
-import network.calimero.merraria.generated.MerrariaClient
-import network.calimero.merraria.generated.PlayerView
-import network.calimero.merraria.generated.TileEntry
-import network.calimero.merraria.generated.Transform
-import network.calimero.merraria.generated.WorldMeta
+import network.calimero.merraria.contract.Edit
+import network.calimero.merraria.contract.MerrariaClient
+import network.calimero.merraria.contract.PlayerView
+import network.calimero.merraria.contract.TileEntry
+import network.calimero.merraria.contract.Transform
+import network.calimero.merraria.contract.WorldMeta
 
 // The bridge between the app and the bundled web game (`app/src/native/host.ts`, which documents
 // the protocol). Both directions are one JSON object per message. Same messages, same spelling as
@@ -230,9 +230,16 @@ data class GameConfig(
 }
 
 /**
- * Answers the page's contract calls with the generated client, method by method: only the
- * contract's own methods, each by its own kind (a view as `query`, a write as `execute`), with its
- * arguments decoded into the contract's types. `init` is not the page's to call. (Swift `BridgeDispatcher`.)
+ * Answers the page's contract calls with the typed client, method by method: only the contract's
+ * own methods, each by its own kind (a view as `query`, a write as `execute`), with its arguments
+ * decoded into the contract's types. `init` and `createWorld` are not the page's to call.
+ * (Swift `BridgeDispatcher`.)
+ *
+ * The page speaks the v1 method names (`app/src/native/host.ts`, `V1_METHOD`: `get_overrides`,
+ * `set_tiles`, `world_meta`, `get_players`), so a game bundle built before or after the component
+ * port runs unchanged. This is the one place they meet the component ABI's camelCase names:
+ * `get_overrides` reads every page of `getOverrides` and answers v1's single array, and each `now`
+ * (seconds) is sent as the contract's u32.
  */
 class BridgeDispatcher(
     private val client: MerrariaClient,
@@ -250,50 +257,50 @@ class BridgeDispatcher(
             throw BridgeFailure("$method is a ${if (isView) "view" else "write"}: send it with ${expected.wire}")
         }
         return when (method) {
-            "get_overrides" -> encode(ListSerializer(TileEntry.serializer()), client.getOverrides())
-            "get_players" -> encode(ListSerializer(PlayerView.serializer()), client.getPlayers(decode(NowArgs.serializer(), argsJson).now))
+            "get_overrides" -> encode(ListSerializer(TileEntry.serializer()), client.allOverrides())
+            "get_players" -> encode(ListSerializer(PlayerView.serializer()), client.getPlayers(u32(decode(NowArgs.serializer(), argsJson).now)))
             "world_meta" -> encode(WorldMeta.serializer(), client.worldMeta())
             "heartbeat" -> {
                 val args = decode(HeartbeatArgs.serializer(), argsJson)
-                client.heartbeat(args.t, args.now)
+                client.heartbeat(args.t, u32(args.now))
                 "null"
             }
             "join" -> {
                 val args = decode(JoinArgs.serializer(), argsJson)
-                encode(PlayerView.serializer(), client.join(args.name, args.now))
+                encode(PlayerView.serializer(), client.join(args.name, u32(args.now)))
             }
             "leave" -> {
-                client.leave(decode(NowArgs.serializer(), argsJson).now)
+                client.leave(u32(decode(NowArgs.serializer(), argsJson).now))
                 "null"
             }
             else -> {
                 val args = decode(SetTilesArgs.serializer(), argsJson)
-                encode(UInt.serializer(), client.setTiles(args.edits, args.now))
+                encode(UInt.serializer(), client.setTiles(args.edits, u32(args.now)))
             }
         }
     }
 
     @Serializable
     private data class NowArgs(
-        val now: ULong,
+        val now: Double,
     )
 
     @Serializable
     private data class HeartbeatArgs(
         val t: Transform,
-        val now: ULong,
+        val now: Double,
     )
 
     @Serializable
     private data class JoinArgs(
         val name: String,
-        val now: ULong,
+        val now: Double,
     )
 
     @Serializable
     private data class SetTilesArgs(
         val edits: List<Edit>,
-        val now: ULong,
+        val now: Double,
     )
 
     private fun <T> decode(

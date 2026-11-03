@@ -399,10 +399,87 @@ def test_catalog() -> None:
     )
 
 
+# ── Cargo.toml ──────────────────────────────────────────────────────────────
+
+MANIFEST_BASE = """\
+[workspace]
+resolver = "2"
+members = ["apps/*/logic"]
+# Component apps are standalone crates.
+exclude = [
+  "apps/kv-store/logic",
+]
+
+[workspace.dependencies]
+calimero-sdk = { git = "https://github.com/calimero-network/core.git", tag = "0.12.0-rc.3" }
+
+[workspace.metadata.mero-apps]
+min-runtime-version = "0.12.0-rc.3"
+component-core-tag = "1.0.0-rc.8"
+component-min-runtime-version = "1.0.0-rc.8"
+
+[profile.app-release]
+inherits = "release"
+opt-level = "z"
+"""
+
+
+def test_manifest() -> None:
+    print("Cargo.toml")
+    ported = MANIFEST_BASE.replace(
+        '  "apps/kv-store/logic",\n',
+        '  "apps/kv-store/logic",\n  "apps/mero-chat/logic",\n',
+    )
+    check("manifest: unchanged does not fan out", lf.manifest_fanout(MANIFEST_BASE, MANIFEST_BASE), [])
+    check("manifest: porting an app (an exclude entry) does not fan out", lf.manifest_fanout(MANIFEST_BASE, ported), [])
+    check(
+        "manifest: porting an app does not fan out the component apps either",
+        lf.manifest_fanout(MANIFEST_BASE, ported, "components"),
+        [],
+    )
+    check(
+        "manifest: a comment or reordering does not fan out",
+        lf.manifest_fanout(MANIFEST_BASE, MANIFEST_BASE.replace("# Component apps are standalone crates.\n", "")),
+        [],
+    )
+    bumped_components = MANIFEST_BASE.replace('component-core-tag = "1.0.0-rc.8"', 'component-core-tag = "1.0.0-rc.9"')
+    check("manifest: the component pin does not reach v1 apps", lf.manifest_fanout(MANIFEST_BASE, bumped_components), [])
+    check(
+        "manifest: the component pin reaches every component app",
+        lf.manifest_fanout(MANIFEST_BASE, bumped_components, "components"),
+        [lf.ALL],
+    )
+    sdk = MANIFEST_BASE.replace('tag = "0.12.0-rc.3" }', 'tag = "0.12.0-rc.4" }')
+    check("manifest: an SDK bump fans out", lf.manifest_fanout(MANIFEST_BASE, sdk), [lf.ALL])
+    check("manifest: an SDK bump fans out the component apps too", lf.manifest_fanout(MANIFEST_BASE, sdk, "components"), [lf.ALL])
+    check(
+        "manifest: the v1 runtime version fans out",
+        lf.manifest_fanout(MANIFEST_BASE, MANIFEST_BASE.replace('min-runtime-version = "0.12.0-rc.3"', 'min-runtime-version = "0.12.0-rc.4"')),
+        [lf.ALL],
+    )
+    check(
+        "manifest: a profile change fans out",
+        lf.manifest_fanout(MANIFEST_BASE, MANIFEST_BASE.replace('opt-level = "z"', 'opt-level = "s"')),
+        [lf.ALL],
+    )
+    check(
+        "manifest: the members glob fans out",
+        lf.manifest_fanout(MANIFEST_BASE, MANIFEST_BASE.replace('members = ["apps/*/logic"]', 'members = ["apps/*/logic", "crates/*"]')),
+        [lf.ALL],
+    )
+    check(
+        "manifest: an exclude entry and an SDK bump together fan out",
+        lf.manifest_fanout(MANIFEST_BASE, ported.replace('tag = "0.12.0-rc.3" }', 'tag = "0.12.0-rc.4" }')),
+        [lf.ALL],
+    )
+    check("manifest: one that does not parse fans out", lf.manifest_fanout(MANIFEST_BASE, MANIFEST_BASE + "\n[workspace\n"), [lf.ALL])
+
+
 if __name__ == "__main__":
     test_cargo()
     test_pnpm()
     test_catalog()
+    test_manifest()
     print()
     if FAILURES:
         print(f"{len(FAILURES)} failure(s): {', '.join(FAILURES)}")

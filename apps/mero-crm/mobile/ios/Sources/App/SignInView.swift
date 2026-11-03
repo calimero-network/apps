@@ -1,11 +1,10 @@
 import MeroKitUI
 import SwiftUI
 
-/// Signed out: what the app is, and Calimero sign-in.
+/// Signed out: what the app is, and Calimero sign-in (a Cloud passkey, or a development node).
 struct SignInView: View {
     @EnvironmentObject private var session: MeroAppSession
     @ObservedObject var client: MeroClient
-    @State private var signingIn = false
 
     private let points = [
         ("rectangle.split.3x1", "A pipeline you move deals through, with the next step on every card."),
@@ -38,38 +37,14 @@ struct SignInView: View {
                             .font(.subheadline.weight(.medium)).foregroundStyle(Palette.ink)
                     }
                 }
-                VStack(spacing: 12) {
-                    Button {
-                        Haptics.tap()
-                        signingIn = true
-                        Task {
-                            await session.signIn()
-                            signingIn = false
-                        }
-                    } label: {
-                        if busy {
-                            HStack(spacing: 8) {
-                                ProgressView().tint(Palette.ink)
-                                Text("Connecting…")
-                            }
-                        } else {
-                            Text("Sign in with Calimero")
-                        }
-                    }
-                    .buttonStyle(PrimaryButtonStyle())
-                    .disabled(busy)
-                    if let message = client.errorMessage, !busy {
-                        ErrorLine(message: message)
-                    }
-                }
+                CloudSignInPanel(style: .app)
+                    .disabled(session.isRestoring)
             }
             .padding(.horizontal, 24)
             .padding(.bottom, 32)
         }
         .screenBackground()
     }
-
-    private var busy: Bool { signingIn || session.isRestoring }
 }
 
 /// The lime rounded square with the pipeline glyph.
