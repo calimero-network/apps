@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { getContextId, getContextIdentity } from "@calimero-network/mero-react";
-import { getMeroJs, downloadBlob } from "../api/meroJsClient";
+import { getContextIdentity } from "../api/calimero";
+import { downloadBlob } from "../api/meroJsClient";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 
 // ── Module-level caches ───────────────────────────────────────────────────────
@@ -19,18 +19,10 @@ const cacheVersionListeners = new Set<() => void>();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-async function resolveExecutorKey(contextId: string): Promise<string> {
-  // Use the active context's identity directly — no extra RPC needed.
-  if (contextId === (getContextId() ?? "")) {
-    return getContextIdentity() ?? "";
-  }
-  // For other contexts (e.g. DM contexts), look up the owned identity.
-  try {
-    const owned = await getMeroJs().admin.getContextIdentitiesOwned(contextId);
-    return (owned as { identities?: string[] }).identities?.[0] ?? "";
-  } catch {
-    return getContextIdentity() ?? "";
-  }
+// The account is the caller in every conversation (v1 looked up this node's
+// member key per context).
+async function resolveExecutorKey(_contextId: string): Promise<string> {
+  return getContextIdentity() ?? "";
 }
 
 function getProfilesForCtx(contextId: string): Promise<ProfileRow[]> {

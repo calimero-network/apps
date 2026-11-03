@@ -1,9 +1,5 @@
-import {
-  getContextId,
-  getContextIdentity as getExecutorPublicKey,
-
-} from "@calimero-network/mero-react";
-import type { ExecuteParams } from "@calimero-network/mero-react";
+import { getContextId, getContextIdentity as getExecutorPublicKey } from "../calimero";
+import type { ExecuteParams } from "../meroJsClient";
 import type { ApiResponse } from "../types";
 import { rpcExec } from "../meroJsClient";
 import { nameRepository } from "../../repositories/names/useNames";

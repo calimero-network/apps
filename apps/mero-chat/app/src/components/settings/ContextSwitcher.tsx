@@ -1,10 +1,6 @@
 import { useEffect, useState } from "react";
 import styled from "styled-components";
-import {
-  getContextId,
-  setContextId,
-  setContextIdentity as setExecutorPublicKey,
-} from "@calimero-network/mero-react";
+import { getContextId, setContextId, setContextIdentity as setExecutorPublicKey } from "../../api/calimero";
 import type { ResponseData } from "../../api/types";
 import {
   nodeApi as apiClientNode,

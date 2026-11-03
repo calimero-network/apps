@@ -23,7 +23,7 @@ test.describe('Mero Chat landing page', () => {
     // again in the trust strip, and an unscoped getByText is a strict-mode
     // violation the moment an app says both.
     await expect(
-      page.locator('.cal-lp-badge').filter({ hasText: "Web + Desktop" }),
+      page.locator('.cal-lp-badge').filter({ hasText: "Web only" }),
     ).toHaveCount(1);
   });
 
@@ -174,16 +174,11 @@ test.describe('Mero Chat landing page', () => {
     await expect(page).toHaveURL(before);
   });
 
-  test('and the landing page stays put underneath it', async ({ page }) => {
-    await page.locator('button').filter({ hasText: /^Connect to node$/ }).first().click();
-    await expect(page.locator('.cal-lp-root')).toHaveAttribute('data-cal-lp-view', 'overview');
-  });
-
 
 
   // ── Overview extras ─────────────────────────────────────────────────────
   test('the overview carries its extra sections', async ({ page }) => {
-    await expect(page.locator('.cal-lp-headline')).toHaveText("Team chat that lives on your nodes, not someone else’s servers.");
+    await expect(page.locator('.cal-lp-headline')).toHaveText("Team chat only its members can read.");
     for (const id of ["showcase","compare","together","who","open-source","always-on","start"]) {
       await expect(page.locator(`#${id}`)).toBeVisible();
     }

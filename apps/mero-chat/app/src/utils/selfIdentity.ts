@@ -1,4 +1,4 @@
-import { getContextIdentity } from "@calimero-network/mero-react";
+import { getContextIdentity } from "../api/calimero";
 
 import {
   getContextMemberIdentity,

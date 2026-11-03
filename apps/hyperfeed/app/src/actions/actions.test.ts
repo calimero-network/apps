@@ -19,6 +19,7 @@ const FROZEN_V1: Record<string, string> = {
   "mero-sign": path.join(__dirname, "../fixtures/v1-abi/mero-sign.json"),
   "mero-sheets": path.join(__dirname, "../fixtures/abi/mero-sheets-v1.json"),
   "mero-calendar": path.join(__dirname, "../fixtures/abi/mero-calendar-v1.json"),
+  "mero-chat": path.join(__dirname, "../fixtures/abi/mero-chat-v1.json"),
 };
 const abiOf = (app: string) =>
   JSON.parse(readFileSync(FROZEN_V1[app] ?? path.join(APPS, app, "logic/res/abi.json"), "utf8")) as Abi;

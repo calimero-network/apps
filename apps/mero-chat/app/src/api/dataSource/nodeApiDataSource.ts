@@ -1,7 +1,10 @@
-import { getMeroJs } from "../meroJsClient";
-import type { CreateContextRequest } from "@calimero-network/mero-react";
+// v1's context API on Calimero 1.0: a context is an app instance of chat in
+// the workspace's org (see `../platform.ts`), the identity in it the account.
+import { describeError } from "@calimero-apps/connect";
+
+import { getAccountId } from "../calimero";
+import { createChatApp, getAppRecord, invalidate, listChatApps, run } from "../platform";
 import type { ApiResponse } from "../types";
-import { getApplicationId } from "../../constants/config";
 import type {
   CreateContextProps,
   CreateContextResponse,
@@ -12,178 +15,92 @@ import type {
   VerifyContextResponse,
 } from "../nodeApi";
 
-/**
- * mero-js throws on a non-2xx instead of returning a status, so every migrated
- * call funnels its error through here to keep the `ApiResponse` envelope the
- * data sources have always returned. `status` is carried when the SDK supplies
- * one (HTTPError), so callers that branch on 404 keep working.
- */
 function sdkError(context: string, error: unknown) {
   const code = (error as { status?: number })?.status ?? 500;
-  const message =
-    error instanceof Error
-      ? error.message
-      : `An unexpected error occurred during ${context}`;
   console.error(`${context} failed:`, error);
-  return { data: null, error: { code, message } } as const;
+  return { data: null, error: { code, message: describeError(error) } } as const;
 }
 
 export class ContextApiDataSource implements NodeApi {
-  async createContext(
-    props: CreateContextProps,
-  ): ApiResponse<CreateContextResponse> {
+  /** A DM-shaped instance named `props.name` in the workspace `props.groupId`. */
+  async createContext(props: CreateContextProps): ApiResponse<CreateContextResponse> {
     try {
-      const jsonData = {
-        name: props.user,
-        is_dm: true,
-        default_channels: [{ name: "private_dm" }],
-        created_at: Date.now(),
-      };
-      const jsonString = JSON.stringify(jsonData);
-      const encoder = new TextEncoder();
-      const bytes = encoder.encode(jsonString);
-      const byteArray = Array.from(bytes);
-
       if (!props.groupId) {
-        throw new Error("createContext needs a groupId: every context lives in a group");
+        throw new Error("createContext needs a groupId: every conversation lives in a workspace");
       }
-      // Typed, never cast: core's CreateContextRequest is `deny_unknown_fields`,
-      // so a stray key (it was `protocol`) refuses the whole create with a 400.
-      const body: CreateContextRequest = {
-        applicationId: getApplicationId(),
-        groupId: props.groupId,
-        initializationParams: byteArray,
-        ...(props.identitySecret ? { identitySecret: props.identitySecret } : {}),
-        // Stored in the context's MetadataRecord.
-        ...(props.name ? { name: props.name } : {}),
-      };
-      const data = await getMeroJs().admin.createContext(body);
-      return { data, error: null };
+      const contextId = await createChatApp(props.groupId, props.name, {
+        name: props.name ?? props.user,
+        context_type: "Dm",
+      });
+      return { data: { contextId, memberPublicKey: getAccountId() }, error: null };
     } catch (error) {
-      console.error("createContext failed:", error);
-      let errorMessage = "An unexpected error occurred during createContext";
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      }
-      return {
-        data: null,
-        error: {
-          code: 500,
-          message: errorMessage,
-        },
-      };
+      return sdkError("createContext", error);
     }
   }
 
-  async verifyContext(
-    props: VerifyContextProps,
-  ): ApiResponse<VerifyContextResponse> {
+  /** Whether this account reaches the instance. There is nothing to sync. */
+  async verifyContext(props: VerifyContextProps): ApiResponse<VerifyContextResponse> {
     try {
-      // Core renamed `rootHash` to `contextStateHash`; the old key never
-      // populated, so `joined` was permanently false and `isSynced`
-      // permanently true. Read the field core actually sends.
-      const ctx = await getMeroJs().admin.getContext(props.contextId);
-      return {
-        data: {
-          joined: !!ctx.contextStateHash,
-          isSynced: ctx.contextStateHash !== "11111111111111111111111111111111",
-        },
-        error: null,
-      };
+      await getAppRecord(props.contextId);
+      return { data: { joined: true, isSynced: true }, error: null };
     } catch (error) {
       return sdkError("verifyContext", error);
     }
   }
 
+  /** The identity is the account; there is no per-context key to mint. */
   async createIdentity(): ApiResponse<CreateIdentityResponse> {
-    try {
-      const data = await getMeroJs().admin.generateContextIdentity();
-      return { data, error: null };
-    } catch (error) {
-      return sdkError("createIdentity", error);
-    }
+    const publicKey = getAccountId();
+    if (!publicKey) return { data: null, error: { code: 401, message: "Sign in first." } };
+    return { data: { publicKey }, error: null };
   }
 
+  /** Deletes the instance (its owner, or an admin of its org). */
   async deleteContext(props: DeleteContextProps): ApiResponse<string> {
     try {
-      // Node-only: a node's `deleteContext` is local bookkeeping and the
-      // account admin refuses it by name (`NotForAccountError`). The one
-      // caller (`ChannelDetailsPopup`) deletes a channel through its subgroup
-      // (`deleteGroup`, which an account can govern) and only falls back here
-      // on a node.
-      //
-      // Path only — no body. `requester` used to ride along here, and rc.38
-      // closed the body: `delete_context` takes `Path(context_id)` and nothing
-      // else, so any key sent is a 422 rather than an ignored extra. The gate
-      // is the caller's token now, not a field the caller names.
-      const data = await getMeroJs().admin.deleteContext(props.contextId);
-      return { data, error: null } as unknown as {
-        data: string;
-        error: null;
-      };
+      await run((c) => c.deleteApp(props.contextId));
+      invalidate();
+      return { data: props.contextId, error: null };
     } catch (error) {
       return sdkError("deleteContext", error);
     }
   }
 
+  /**
+   * The instance of a channel or DM: `groupId` is the pending channel
+   * `GroupApiDataSource.createSubgroup` returned (or a workspace), and
+   * `initializationParams` are v1's init arguments, passed to `init`.
+   */
   async createGroupContext(params: {
     applicationId: string;
     groupId: string;
     initializationParams: Record<string, unknown>;
     identitySecret?: string;
-    /** Human display name stored in the context's MetadataRecord. Capped
-     *  at 64 bytes server-side; omit for DM contexts. */
     name?: string;
   }): ApiResponse<CreateContextResponse> {
     try {
-      const jsonString = JSON.stringify(params.initializationParams);
-      const byteArray = Array.from(new TextEncoder().encode(jsonString));
-
-      // Typed, never cast. core's CreateContextRequest is closed: `protocol`
-      // and `alias` were each a 400 ("unknown field `protocol`"), so no
-      // channel, public or private, could be created. A DM's routing alias
-      // lives on its subgroup's `groupName`, not here.
-      const body: CreateContextRequest = {
-        applicationId: params.applicationId,
-        groupId: params.groupId,
-        initializationParams: byteArray,
-        ...(params.identitySecret ? { identitySecret: params.identitySecret } : {}),
-        // Human-readable display name (server-capped at 64 bytes).
-        ...(params.name ? { name: params.name } : {}),
-      };
-      const data = await getMeroJs().admin.createContext(body);
-      return { data, error: null };
+      const contextId = await createChatApp(params.groupId, params.name, params.initializationParams);
+      return { data: { contextId, memberPublicKey: getAccountId() }, error: null };
     } catch (error) {
       return sdkError("createGroupContext", error);
     }
   }
 
+  /** Every chat instance this account reaches. */
   async listContexts(): ApiResponse<import("../nodeApi").ContextInfo[]> {
     try {
-      const { contexts: rawContexts = [] } =
-        await getMeroJs().admin.getContexts();
-
-      // Core's wire key is `contextStateHash`; `rootHash` never populated, so
-      // the sync indicator in ContextSwitcher was stuck. Keep the field name
-      // the ContextInfo interface exposes, fed from the key core sends.
-      const contexts = rawContexts.map((ctx) => ({
-        contextId: ctx.id,
-        applicationId: ctx.applicationId,
-        lastUpdate: 0,
-        rootHash: ctx.contextStateHash,
-      }));
-
-      return { data: contexts, error: null };
-    } catch (error) {
-      console.error("listContexts failed:", error);
-      let errorMessage = "An unexpected error occurred while fetching contexts";
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      }
+      const apps = await listChatApps();
       return {
-        data: null,
-        error: { code: 500, message: errorMessage },
+        data: apps.map((a) => ({
+          contextId: a.appId,
+          applicationId: a.package ?? a.bundle,
+          lastUpdate: 0,
+          rootHash: "",
+        })),
+        error: null,
       };
+    } catch (error) {
+      return sdkError("listContexts", error);
     }
   }
 }

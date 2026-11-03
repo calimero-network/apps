@@ -1,0 +1,405 @@
+[
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getInfo",
+  "args": {}
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "updateInfo",
+  "args": {
+   "name": "General (updated)",
+   "description": "Updated main channel"
+  },
+  "expect": {
+   "ok": "Info updated"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getInfo",
+  "args": {}
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setProfile",
+  "args": {
+   "username": "Alice",
+   "avatar": null
+  },
+  "expect": {
+   "ok": "Profile set"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setProfile",
+  "args": {
+   "username": "Bob",
+   "avatar": null
+  },
+  "expect": {
+   "ok": "Profile set"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "setProfile",
+  "args": {
+   "username": "Carol",
+   "avatar": null
+  },
+  "expect": {
+   "ok": "Profile set"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "view",
+  "method": "getProfiles",
+  "args": {}
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "sendMessage",
+  "args": {
+   "message": "Hello everyone from Alice!",
+   "mentions": [],
+   "mentionsUsernames": [],
+   "parentMessage": null,
+   "timestamp": "1700000010",
+   "files": null,
+   "images": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "sendMessage",
+  "args": {
+   "message": "Hey Alice! Bob here.",
+   "mentions": [],
+   "mentionsUsernames": [],
+   "parentMessage": null,
+   "timestamp": "1700000011",
+   "files": null,
+   "images": null
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "sendMessage",
+  "args": {
+   "message": "carol-unique-keyword joining the chat! @bob",
+   "mentions": [
+    "@bob"
+   ],
+   "mentionsUsernames": [
+    "bob"
+   ],
+   "parentMessage": null,
+   "timestamp": "1700000012",
+   "files": null,
+   "images": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getMessageCount",
+  "args": {},
+  "expect": {
+   "ok": "3"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getMessages",
+  "args": {
+   "parentMessage": null,
+   "limit": 10,
+   "offset": 0,
+   "searchTerm": null
+  }
+ },
+ {
+  "as": "carol",
+  "op": "view",
+  "method": "getMessagesFrom",
+  "args": {
+   "start": "1",
+   "limit": 10
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "searchMessages",
+  "args": {
+   "query": "CAROL-UNIQUE",
+   "cursor": null,
+   "limit": 10
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "searchMessagesScan",
+  "args": {
+   "query": "carol-unique",
+   "cursor": null,
+   "limit": 10
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getMessages",
+  "args": {
+   "parentMessage": null,
+   "limit": 10,
+   "offset": 0,
+   "searchTerm": "carol-unique-keyword"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getUnreadCount",
+  "args": {},
+  "expect": {
+   "ok": 2
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getUnreadMentions",
+  "args": {},
+  "expect": {
+   "ok": 1
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "markAsRead",
+  "args": {
+   "timestamp": "1700000012"
+  },
+  "expect": {
+   "ok": "ok"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getUnreadCount",
+  "args": {},
+  "expect": {
+   "ok": 0
+  }
+ },
+ {
+  "as": "carol",
+  "op": "view",
+  "method": "getUnreadCount",
+  "args": {},
+  "expect": {
+   "ok": 2
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "saveDraft",
+  "args": {
+   "channel": "general",
+   "text": "half a thought"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getDraft",
+  "args": {
+   "channel": "general"
+  },
+  "expect": {
+   "ok": "half a thought"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "view",
+  "method": "getDraft",
+  "args": {
+   "channel": "general"
+  },
+  "expect": {
+   "ok": ""
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "deleteDraft",
+  "args": {
+   "channel": "general"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getDraft",
+  "args": {
+   "channel": "general"
+  },
+  "expect": {
+   "ok": ""
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setMemberRole",
+  "args": {
+   "target": "@bob",
+   "role": "Mod"
+  },
+  "expect": {
+   "ok": "Role updated"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getMemberRole",
+  "args": {
+   "identity": "@bob"
+  },
+  "expect": {
+   "ok": "Mod"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setMemberRole",
+  "args": {
+   "target": "@carol",
+   "role": "Banned"
+  },
+  "expect": {
+   "ok": "Role updated"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "sendMessage",
+  "args": {
+   "message": "still here?",
+   "mentions": [],
+   "mentionsUsernames": [],
+   "parentMessage": null,
+   "timestamp": "1700000020",
+   "files": null,
+   "images": null
+  },
+  "expect": {
+   "error": "Banned",
+   "fields": {
+    "message": "You are banned from this context"
+   }
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "setMemberRole",
+  "args": {
+   "target": "@carol",
+   "role": "User"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "You don't have permission to change this member's role"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setMemberRole",
+  "args": {
+   "target": "@carol",
+   "role": "User"
+  },
+  "expect": {
+   "ok": "Role updated"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setMemberRole",
+  "args": {
+   "target": "@carol",
+   "role": "User"
+  },
+  "expect": {
+   "ok": "Role unchanged"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getMemberRole",
+  "args": {
+   "identity": "@carol"
+  },
+  "expect": {
+   "ok": "User"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "sendMessage",
+  "args": {
+   "message": "back again",
+   "mentions": [],
+   "mentionsUsernames": [],
+   "parentMessage": null,
+   "timestamp": "1700000021",
+   "files": null,
+   "images": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getMessageCount",
+  "args": {},
+  "expect": {
+   "ok": "4"
+  }
+ }
+]
