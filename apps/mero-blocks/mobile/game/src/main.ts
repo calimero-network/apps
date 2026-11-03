@@ -6,7 +6,7 @@
 // around it:
 //   - no landing page, no node login, no world picker: the app signs in, picks the world and
 //     sends `start` with it;
-//   - the SyncEngine's `exec` is the native bridge (bridge.ts), so every contract call runs
+//   - the SyncEngine's WorldApi is the native bridge (bridge.ts, via v1World.ts), so every contract call runs
 //     through the app's session instead of mero-js;
 //   - touch controls (controls.ts) instead of pointer lock, keyboard and mouse;
 //   - `pause` / `resume` from the app when it goes to the background or opens its menu.
@@ -24,6 +24,7 @@ import { GameRenderer } from "../../../app/src/renderer";
 import { loadWorld, saveWorld } from "../../../app/src/state/persistence";
 import { type AppMessage, detectHost, type Insets, MeroBridge, type StartConfig } from "./bridge";
 import { LOOK_PER_PX, TouchControls } from "./controls";
+import { v1World } from "./v1World";
 
 const REACH = 6;
 const EDIT_REPEAT_MS = 250;
@@ -199,7 +200,7 @@ class Game {
     this.controls.setSelected(this.sel);
 
     const myId = cfg.myId;
-    this.sync = new SyncEngine(bridge.exec, this.world, () => myId || null, {
+    this.sync = new SyncEngine(v1World(bridge.exec), this.world, () => myId || null, {
       onPlayers: (players) => this.onPlayers(players),
       onToast: (msg) => this.controls.toast(msg),
     });

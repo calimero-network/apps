@@ -1,27 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { describeError } from "@calimero-apps/connect";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
-import { useApplicationId } from "../hooks/useApplicationId";
 import { useToast } from "../contexts/ToastContext";
-import { useSelfAccount } from "../lib/forum";
+import { useSignedIn } from "../sessionContext";
 import {
-  createSpaceNamespace,
+  createSpace,
   deleteSpace,
+  inviteLink,
+  inviteToken,
+  isSpaceAdmin,
   leaveSpace,
-  listSpaceNamespaces,
-  mintNamespaceInvite,
-  selfIsGroupAdmin,
+  listSpaces,
   type NamespaceRow,
-} from "../lib/groups";
+} from "../lib/spaces";
 import InviteModal from "../components/InviteModal";
+import SessionMenu from "../components/SessionMenu";
 import { useDialogOpen } from "../hooks/useDialogOpen";
-import {
-  AccountChip,
-  Avatar,
-  NavItem,
-  Shell,
-  SideCard,
-} from "../components/chrome";
+import { Avatar, NavItem, Shell, SideCard } from "../components/chrome";
 import {
   AlertIcon,
   CopyIcon,
@@ -46,47 +41,22 @@ function focusCreate() {
 }
 
 /**
- * Spaces = NAMESPACES. One level up from where this page used to sit.
+ * Spaces = ORGANIZATIONS (v1: namespaces).
  *
- * It used to list contexts and name each one a "space", which collapsed two
- * distinct things into one and left no forum for forums: creating a space made a
- * namespace plus a context and nothing could ever add a second forum to it. The
- * model that actually matches Calimero, and what the two-node suite proves:
+ *   Organization ("space")  ← you invite people HERE
+ *     └── App instance ("forum")   ← one board   → /spaces/:id
  *
- *   Namespace ("space")  ← you invite people HERE
- *     └── Subgroup ("forum") + Context   ← one board   → /spaces/:id
- *
- * So: this page creates namespaces and invites to namespaces. Forums live on
- * ForumsPage. Joining is not done here: an invitation reaches the app only as
- * an opened link, and the app-level `InvitationPrompt` takes it from there.
+ * So: this page creates orgs and invites to orgs. Forums live on ForumsPage.
+ * Joining is not done here: an invitation reaches the app only as an opened
+ * link, and the app-level `InvitationPrompt` takes it from there.
  */
 export default function SpacesPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  // `admin`, never `mero.admin`: on an account `mero` is the relay client, and
-  // its node routes (create, invite, join) answer an account 403. `admin` is
-  // the session's own: the node's client on a node, the account admin on an
-  // account.
-  const { admin, logout, nodeUrl, isDelegated } = useMero();
+  const { client, accountId, source, passkey, after } = useSignedIn();
   const { showToast } = useToast();
-  // Resolved from the NODE by package, not from the session — see lib/appId.
-  const { appId, resolving: resolvingAppId, notInstalled } = useApplicationId();
-  const nodeLabel = (() => {
-    if (!nodeUrl) return "";
-    try {
-      const u = new URL(nodeUrl);
-      return u.port ? `${u.hostname}:${u.port}` : u.hostname;
-    } catch {
-      return nodeUrl;
-    }
-  })();
 
   const [namespaces, setNamespaces] = useState<NamespaceRow[]>([]);
-  // Whether this account is an Admin of each space, by id. An Admin deletes a
-  // space; anyone else leaves it. Absent while unknown: the menu then offers
-  // neither rather than guessing.
-  const selfAccount = useSelfAccount();
-  const [adminOf, setAdminOf] = useState<Record<string, boolean>>({});
   const [listing, setListing] = useState(true);
   // The last list failed. An empty list then is not "no spaces": offering a
   // create would found a duplicate of a space you have.
@@ -128,63 +98,39 @@ export default function SpacesPage() {
       try {
         await fn(setStatus);
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+        setError(describeError(e));
       } finally {
         setPending(null);
         setStatus(null);
+        after();
       }
     },
-    [],
+    [after],
   );
 
   const load = useCallback(
     async (showSpinner = true) => {
-      // Not before the session's admin and this app's id are both known: on an
-      // account the id lands from the registry after sign-in, and until then
-      // `useApplicationId` reports it as still resolving.
-      if (!admin || !appId) {
-        setListing(false);
-        return;
-      }
       if (showSpinner) setListing(true);
       try {
-        setNamespaces(await listSpaceNamespaces(admin, appId));
+        setNamespaces(await listSpaces(client, source));
         setListFailed(false);
       } catch (e) {
         setListFailed(true);
-        setError(e instanceof Error ? e.message : "Could not load spaces.");
+        setError(describeError(e));
       } finally {
         setListing(false);
+        after();
       }
     },
-    [admin, appId],
+    [client, source, after],
   );
 
-  // Keyed on the navigation too. Accepting an invitation whose space cannot be
-  // placed yet lands on `/spaces` — possibly this page, which React Router does
-  // not remount — so without the key the joined space would be missing from
-  // the list until a full reload.
+  // Keyed on the navigation too. Accepting an invitation lands on `/spaces`
+  // (or a space) — possibly this page, which React Router does not remount —
+  // so without the key the joined space would be missing until a reload.
   useEffect(() => {
     void load();
   }, [load, location.key]);
-
-  const spaceIds = namespaces.map((n) => n.namespaceId).join(",");
-  useEffect(() => {
-    const ids = spaceIds ? spaceIds.split(",") : [];
-    if (!admin || !selfAccount || ids.length === 0) return;
-    let cancelled = false;
-    void Promise.all(
-      ids.map(
-        async (id) =>
-          [id, await selfIsGroupAdmin(admin, id, selfAccount)] as const,
-      ),
-    ).then((entries) => {
-      if (!cancelled) setAdminOf(Object.fromEntries(entries));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [admin, selfAccount, spaceIds]);
 
   // Close an open card menu on an outside click. The ref is attached to the
   // OPEN card only (see the grid below), so this compares against one node
@@ -200,75 +146,56 @@ export default function SpacesPage() {
 
   const create = useCallback(() => {
     const spaceName = name.trim();
-    if (!spaceName || !admin) return;
-    if (!appId) {
-      setError(
-        isDelegated
-          ? "Still connecting. Try again in a moment."
-          : "Missing application id — reopen Mero Forum from the desktop app.",
-      );
-      return;
-    }
+    if (!spaceName) return;
     void run("create", async (onStatus) => {
-      const { namespaceId } = await createSpaceNamespace(
-        admin,
-        { applicationId: appId, name: spaceName },
-        onStatus,
-      );
+      const { namespaceId, warning } = await createSpace(client, spaceName, passkey, onStatus);
+      if (warning) showToast(warning, "error");
       setName("");
       onStatus("Refreshing your spaces…");
       await load(false);
-      // Straight into the new namespace: it has no forums yet, and making one is
+      // Straight into the new space: it has no forums yet, and making one is
       // the only useful next step.
       navigate(`/spaces/${namespaceId}`);
     });
-  }, [name, admin, appId, isDelegated, run, load, navigate]);
+  }, [name, client, passkey, run, load, navigate, showToast]);
 
   const mintInvite = useCallback(
     (ns: NamespaceRow) => {
-      if (!admin) return;
       void run(`invite:${ns.namespaceId}`, async (onStatus) => {
-        const code = await mintNamespaceInvite(
-          admin,
-          { namespaceId: ns.namespaceId, namespaceName: ns.name },
-          onStatus,
-        );
-        setInvite({ id: ns.namespaceId, code });
+        onStatus("Approve the invitation with your passkey…");
+        const token = await inviteToken(client, ns.namespaceId, passkey());
+        setInvite({ id: ns.namespaceId, code: inviteLink(token) });
         showToast(`Invite ready for “${ns.name}”.`);
       });
     },
-    [admin, run, showToast],
+    [client, passkey, run, showToast],
   );
 
   const removeSpace = useCallback(
     (ns: NamespaceRow) => {
-      if (!admin) return;
       setPendingDelete(null);
       void run(`delete:${ns.namespaceId}`, async (onStatus) => {
-        await deleteSpace(
-          admin,
-          { namespaceId: ns.namespaceId },
-          onStatus,
-        );
+        onStatus("Approve the deletion with your passkey…");
+        await deleteSpace(client, ns.namespaceId, passkey);
         onStatus("Refreshing your spaces…");
         await load(false);
         showToast(`Deleted \u201c${ns.name}\u201d.`);
       });
     },
-    [admin, run, load, showToast],
+    [client, passkey, run, load, showToast],
   );
 
   const exitSpace = useCallback(
     (ns: NamespaceRow) => {
-      if (!admin) return;
       void run(`leave:${ns.namespaceId}`, async (onStatus) => {
-        await leaveSpace(admin, { namespaceId: ns.namespaceId }, onStatus);
+        onStatus("Approve leaving with your passkey…");
+        await leaveSpace(client, ns.namespaceId, accountId, passkey);
         onStatus("Refreshing your spaces…");
         await load(false);
         showToast(`Left \u201c${ns.name}\u201d.`);
       });
     },
-    [admin, run, load, showToast],
+    [client, accountId, passkey, run, load, showToast],
   );
 
   useDialogOpen(deleteDialogRef, !!pendingDelete);
@@ -290,13 +217,7 @@ export default function SpacesPage() {
             <span className="x-ctaLabel">New space</span>
           </button>
         }
-        account={
-          <AccountChip
-            host={nodeLabel || null}
-            hostTitle={nodeUrl ?? undefined}
-            onLogout={logout}
-          />
-        }
+        account={<SessionMenu />}
         header={
           <div className="x-headRow">
             <div className="x-headText">
@@ -334,8 +255,8 @@ export default function SpacesPage() {
                     <UsersIcon size={16} />
                   </span>
                   <span>
-                    <strong>Peer to peer</strong>
-                    Everything lives on members' nodes — no central server.
+                    <strong>Members only</strong>
+                    A space&apos;s forums are reachable by its members, nobody else.
                   </span>
                 </li>
               </ul>
@@ -360,7 +281,7 @@ export default function SpacesPage() {
           <button
             className="ui-btn ui-btn-primary"
             onClick={create}
-            disabled={pending === "create" || !name.trim() || !appId}
+            disabled={pending === "create" || !name.trim()}
             data-testid="create-space"
           >
             {pending === "create" && <span className="ui-spinner" />}
@@ -381,15 +302,7 @@ export default function SpacesPage() {
           </p>
         )}
 
-        {notInstalled && (
-          <p className={`${styles.note} ${styles.noteWarn}`}>
-            <AlertIcon size={16} />
-            Mero Forum is not installed on this node. Install it from the
-            marketplace, then reload — spaces are listed per application.
-          </p>
-        )}
-
-        {listing || resolvingAppId ? (
+        {listing ? (
           <div aria-label="Loading…">
             <div className={styles.skeletonRow} />
             <div className={styles.skeletonRow} />
@@ -413,7 +326,7 @@ export default function SpacesPage() {
             </button>
           </div>
         ) : namespaces.length === 0 ? (
-          !notInstalled && (
+          (
             <div className={styles.empty} data-testid="spaces-empty">
               <Avatar
                 label="S"
@@ -515,36 +428,22 @@ export default function SpacesPage() {
                       <CopyIcon size={17} />
                       Copy space ID
                     </button>
-                    {adminOf[ns.namespaceId] === true &&
-                      (isDelegated ? (
-                        // Deleting a namespace is a node's own operation:
-                        // core has no delegated form for it yet.
-                        <button
-                          className="ui-menuItem"
-                          role="menuitem"
-                          disabled
-                          title="Deleting a space is not available for cloud accounts yet."
-                          data-testid="delete-space-unavailable"
-                        >
-                          <TrashIcon size={17} />
-                          Delete (not available for cloud accounts yet)
-                        </button>
-                      ) : (
-                        <button
-                          className="ui-menuItem"
-                          role="menuitem"
-                          data-danger="true"
-                          onClick={() => {
-                            setMenuOpenId(null);
-                            setPendingDelete(ns);
-                          }}
-                          data-testid="delete-space"
-                        >
-                          <TrashIcon size={17} />
-                          Delete
-                        </button>
-                      ))}
-                    {adminOf[ns.namespaceId] === false && (
+                    {isSpaceAdmin(ns.role) && (
+                      <button
+                        className="ui-menuItem"
+                        role="menuitem"
+                        data-danger="true"
+                        onClick={() => {
+                          setMenuOpenId(null);
+                          setPendingDelete(ns);
+                        }}
+                        data-testid="delete-space"
+                      >
+                        <TrashIcon size={17} />
+                        Delete
+                      </button>
+                    )}
+                    {!isSpaceAdmin(ns.role) && (
                       <button
                         className="ui-menuItem"
                         role="menuitem"
@@ -583,8 +482,7 @@ export default function SpacesPage() {
             {pendingDelete?.forumCount === 1 ? "" : "s"}
           </strong>{" "}
           inside it will be deleted, with every post and comment in them. This
-          happens for everyone in the space, not just on this node, and it
-          cannot be undone.
+          happens for everyone in the space, and it cannot be undone.
         </p>
         <div className={styles.confirmRow}>
           <button

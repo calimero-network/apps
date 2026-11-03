@@ -1,67 +1,63 @@
 [package]
-# Renamed from `only-peers`. The app was Calimero's original demo and the name
-# reads as a joke; nothing is published under any only-peers id, so the rename is
-# free — no installed copies and no invite links to orphan. Directory == cargo
-# package == npm package, which publish-bundle.yml relies on (it uses one value as
-# both `apps/$APP/logic` and `pnpm -F $APP`).
-name        = "mero-forum"
-description = "A peer-to-peer discussion forum on Calimero"
-version     = "0.1.0"
-edition.workspace    = true
-authors.workspace    = true
-license.workspace    = true
-repository.workspace = true
+# Renamed from `only-peers`, Calimero's original demo. Directory == cargo
+# package == npm package.
+name = "mero-forum"
+description = "Mero Forum — a discussion forum on Calimero, on the component SDK"
+# NOT the release version: the release workflow takes the next appVersion from
+# the registry and passes it to `mero-component bundle --app-version`. Cargo
+# requires the field; bundling locally without --app-version uses it.
+version = "0.1.0"
+edition = "2021"
+authors = ["Calimero Limited <info@calimero.network>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/calimero-network/apps"
+publish = false
 
 [lib]
-# `rlib` added alongside cdylib so TestHost tests can link the crate. There are
-# none today — the contract has no tests at all.
-crate-type = ["cdylib", "rlib"]
+# A `calimero:app` component. No `rlib`: the tests run the BUILT component on
+# core's engine (tests/common/mod.rs), not the crate linked natively.
+crate-type = ["cdylib"]
 
-# NEW. The standalone repo had no [package.metadata.calimero], so this app was
-# never bundled by cargo-mero and never published. Verified against the registry:
-# nothing under com.calimero.only-peers, .onlypeers, or .mero-forum. So this is a
-# FIRST publish and the id below is settled now rather than migrated later.
+# Core at `component-core-tag` (root Cargo.toml), the same tag for every core
+# crate; scripts/check-component-pins.py asserts it. A standalone crate cannot
+# inherit `[workspace.dependencies]`.
+[dependencies]
+calimero-app-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8" }
+serde = { version = "1", features = ["derive"] }
+
+# The harness (`TestApp`, `run_scenario`) and the builder the tests build this
+# crate with, for `cargo test` on the host only.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+calimero-app-sdk   = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8", features = ["testing"] }
+calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8" }
+serde_json = "1"
+
+# Read by `mero-component bundle` (tools/component-bundle), with the keys
+# `cargo mero bundle` reads for a v1 app.
 [package.metadata.calimero]
-package     = "com.calimero.mero-forum"
-# The display name the registry, the launcher and the macOS Dock render. Free to
-# change later; `package`/`slug` are not.
-name        = "Mero Forum"
-description = "A peer-to-peer discussion forum: threads and comments replicated across your own nodes, with no server in the middle."
-author      = "Calimero"
-slug        = "com.calimero.mero-forum"
-# `cargo mero bundle` refuses to run without an icon DECISION and fails at BUNDLE
-# time — after a green PR, on the release run. No PNG in the repo yet.
-# A real icon, not the placeholder. This is what gives the app an icon in the
-# registry and — via tauri-app's `ensure_app_launcher_icon` — in the macOS Dock.
+package = "com.calimero.mero-forum"
+name = "Mero Forum"
+description = "A discussion forum: threads, comments, votes and moderation, shared by the members of your organization."
+author = "Calimero"
+# The slug IS the package id: deep links resolve by `Application.package`.
+slug = "com.calimero.mero-forum"
 # Regenerate with `node app/scripts/gen-icons.mjs`.
-icon        = "../app/public/icon-512.png"
+icon = "../app/public/icon-512.png"
 category = "social"
-tags        = ["forum", "social", "discussion"]
-github      = "https://github.com/calimero-network/apps"
-min-runtime-version = "0.12.0-rc.3"
-frontend    = "https://mero-forum.vercel.app"
-# The built frontend `cargo mero bundle` packs, so the node serves it from the app's own origin.
+tags = ["forum", "social", "discussion"]
+github = "https://github.com/calimero-network/apps"
+# `component-min-runtime-version` in the root Cargo.toml: a node compares it
+# with its own release.
+min-runtime-version = "1.0.0-rc.8"
+# The listing's link, and an origin the node may send a person back to from
+# its consent page. NOT where the production frontend runs: a Cloud node trusts
+# passkey ceremonies only from frontends it serves from a bundle, so the
+# production frontend is the one packed below (docs/COMPONENT-APPS.md).
+frontend = "https://mero-forum.vercel.app"
+# The built frontend the bundle carries; the cluster serves it from the
+# package's own origin. Build it first: `pnpm -F mero-forum build`.
 frontend-dir = "../app/dist"
 
-[dependencies]
-# WAS `calimero-sdk` alone on `branch = "master"`, resolved around 2025-10 — it
-# rides unreleased protocol work against nodes running a release and drifts
-# silently between builds.
-calimero-sdk            = { workspace = true }
-# NEW, and the crux of the rewrite: the contract currently has NO storage
-# dependency at all and keeps posts in a plain `Vec<Post>`. Added here so the
-# CRDT collections are available to the rewrite; see the PR body.
-calimero-storage        = { workspace = true }
-calimero-storage-macros = { workspace = true }
-# `fresh_id` renders 16 random bytes from the host. Not decorative: the old
-# design keyed a post by `posts.len()`, a positional index that a remote insert
-# silently renumbers.
-hex                     = { workspace = true }
-
-[dev-dependencies]
-# Enables register_crdt_merge + the native mock host so TestHost can drive CRDT
-# state under `cargo test`.
-calimero-storage = { workspace = true, features = ["testing"] }
-
-# NOTE: no [profile.*] — cargo ignores profiles in a workspace member and
-# `cargo mero build` then fails with `profile 'app-release' is not defined`.
+# Standalone: excluded from the root workspace (root Cargo.toml), its own
+# Cargo.lock, as core's component apps are.
+[workspace]
