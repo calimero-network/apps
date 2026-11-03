@@ -1,9 +1,46 @@
 import { useCallback, useEffect, useState } from "react";
-import { useMero } from "@calimero-network/mero-react";
-import { publishMemberName, useMemberNames } from "@calimero-apps/names";
 
-import type { ForumClient } from "../generated/ForumClient";
+import { useMaybeSignedIn } from "../sessionContext";
+import type { ForumClient } from "./forumApi";
 import { getActiveNamespaceId, getUsername, setUsername } from "./session";
+import { publishSpaceName, readMembers } from "./spaces";
+
+/**
+ * The names people set for a whole space (org member metadata `{ name }`),
+ * read once per space per page load and shared by every byline. v1 read these
+ * from namespace member metadata through `@calimero-apps/names`.
+ */
+const spaceNames = new Map<string, Promise<Map<string, string>>>();
+
+/** Drops the read space names, so the next byline reads them again (and tests start clean). */
+export function forgetSpaceNames(): void {
+  spaceNames.clear();
+}
+
+export function useSpaceNames(org: string | null): { nameOf: (account: string) => string | undefined } {
+  const signedIn = useMaybeSignedIn();
+  const client = signedIn?.client;
+  const [names, setNames] = useState<Map<string, string> | null>(null);
+  useEffect(() => {
+    if (!client || !org) return;
+    let live = true;
+    let pending = spaceNames.get(org);
+    if (!pending) {
+      pending = readMembers(client, org)
+        .then((m) => m.names)
+        .catch(() => new Map<string, string>());
+      spaceNames.set(org, pending);
+    }
+    void pending.then((n) => {
+      if (live) setNames(n);
+    });
+    return () => {
+      live = false;
+    };
+  }, [client, org]);
+  const nameOf = useCallback((account: string) => names?.get(account), [names]);
+  return { nameOf };
+}
 
 /**
  * The name you post under.
@@ -39,9 +76,9 @@ export interface Nickname {
 }
 
 export function useNickname(client: ForumClient | null, selfAccount?: string | null): Nickname {
-  const { admin } = useMero();
+  const signedIn = useMaybeSignedIn();
   const namespaceId = getActiveNamespaceId();
-  const { nameOf } = useMemberNames(admin, namespaceId);
+  const { nameOf } = useSpaceNames(namespaceId);
   const [name, setName] = useState(getUsername);
 
   /**
@@ -100,8 +137,11 @@ export function useNickname(client: ForumClient | null, selfAccount?: string | n
       // The space-wide name too, so the rename reaches every forum and every
       // other app on the space. Best-effort: this forum's nickname is the one
       // that was asked for, and a refusal here must not report it as failed.
-      if (admin && namespaceId && selfAccount && trimmed) {
-        void publishMemberName(admin, namespaceId, selfAccount, trimmed).catch(() => undefined);
+      if (signedIn && namespaceId && selfAccount && trimmed) {
+        spaceNames.delete(namespaceId);
+        void publishSpaceName(signedIn.client, namespaceId, selfAccount, trimmed)
+          .catch(() => undefined)
+          .finally(signedIn.after);
       }
       try {
         await client.setNickname({ name: trimmed });
@@ -111,7 +151,7 @@ export function useNickname(client: ForumClient | null, selfAccount?: string | n
         setSaving(false);
       }
     },
-    [client, admin, namespaceId, selfAccount],
+    [client, signedIn, namespaceId, selfAccount],
   );
 
   return { name, saving, error, rename };
@@ -141,8 +181,7 @@ export interface AuthorLabel {
  * more than one forum or app.
  */
 export function useAuthorName(account: string, authorName: string): string {
-  const { admin } = useMero();
-  const { nameOf } = useMemberNames(admin, getActiveNamespaceId());
+  const { nameOf } = useSpaceNames(getActiveNamespaceId());
   return (authorName ?? "").trim() || nameOf(account) || "";
 }
 

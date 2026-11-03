@@ -1,5 +1,21 @@
 package network.calimero.models.core
 
+import com.calimero.mero.AppError
+import com.calimero.mero.CalimeroError
+import com.calimero.mero.ConfirmCancelled
+import com.calimero.mero.ConsentStale
+import com.calimero.mero.DirectoryError
+import com.calimero.mero.LoginRequired
+import com.calimero.mero.NotFound
+import com.calimero.mero.PasskeyCancelled
+import com.calimero.mero.ReleaseDeadlineError
+import com.calimero.mero.UnavailableError
+import com.calimero.mero.WrongNode
+import com.calimero.mero.app.SignedOutException
+import com.calimero.mero.tee.TeeTrustException
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import java.io.IOException
 import java.net.UnknownHostException
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -107,15 +123,44 @@ object ModelsFormat {
 
     private fun trim(v: Double): String = String.format(Locale.US, "%.1f", v).removeSuffix(".0")
 
-    /** Words a person can act on, from an error. */
-    fun errorText(error: Throwable): String {
-        val text = error.message ?: error.toString()
-        val lower = text.lowercase()
-        return when {
-            lower.contains("norelay") || lower.contains("no relay") ->
-                "Your account has no relay yet. Join a studio from an invitation link, or try again shortly."
-            error is UnknownHostException -> "You're offline. Check your connection and try again."
-            else -> text
+    /**
+     * Words a person can act on, from an error: the node's typed 1.0 errors, and the contract's
+     * `APP_ERROR` codes (`Forbidden`, `Invalid`, `Locked`). (Swift `ModelsFormat.errorText`.)
+     */
+    @Suppress("CyclomaticComplexMethod")
+    fun errorText(error: Throwable): String =
+        when (error) {
+            is ConfirmCancelled, is PasskeyCancelled -> "You dismissed the passkey prompt, so nothing changed."
+            is ReleaseDeadlineError -> {
+                val release = if (error.release.isEmpty()) "a node release" else "node release ${error.release}"
+                "Your cluster takes no new work until $release is approved. Review it under Needs your approval."
+            }
+            is ConsentStale -> "What you were asked to approve changed in the meantime. Review it again."
+            is NotFound -> "This isn't shared with you, or it was deleted."
+            is LoginRequired, is SignedOutException -> "Your session ended. Sign in again."
+            is WrongNode -> "This node runs a release your account hasn't approved. Try another node of the cluster."
+            is UnavailableError -> "Your cluster can't be reached right now. Try again shortly."
+            is AppError -> appErrorText(error.appCode, (error.fields["message"] as? JsonPrimitive)?.contentOrNull)
+            is CalimeroError -> error.nodeMessage.ifEmpty { error.code }
+            is DirectoryError -> "No cluster called \"${error.cluster}\" was found. Check the name, or paste a node address."
+            is TeeTrustException -> "The node could not prove it runs a trusted Calimero release, so nothing was sent to it."
+            is UnknownHostException -> "You're offline. Check your connection and try again."
+            is IOException -> "Can't reach the node. Check the address and your connection."
+            else -> error.message ?: error.toString()
+        }
+
+    /** The contract's errors (`logic/res/abi.json`), each with a `message`; the contract's own message is kept. */
+    fun appErrorText(
+        code: String,
+        message: String?,
+    ): String {
+        if (!message.isNullOrEmpty()) return message
+        return when (code) {
+            "Forbidden" -> "Your role in this scene doesn't allow that."
+            "Invalid" -> "The scene refused that request."
+            "Locked" -> "Someone else has this checked out."
+            "" -> "The scene refused that request."
+            else -> code
         }
     }
 }

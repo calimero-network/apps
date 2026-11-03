@@ -86,7 +86,7 @@ class CompaniesModelTest {
         }
 
     @Test
-    fun `relayless account has no companies and no error`() =
+    fun `a signed-out backend has no companies and no error`() =
         runTest {
             val fake = FakeAudience()
             fake.backend.hasRelay = false
@@ -130,7 +130,7 @@ class CompaniesModelTest {
             fake.backend.failure = IOException("offline")
             val model = CompaniesModel(fake.backend)
             assertNull(model.create("X"))
-            assertTrue(model.error.value!!.startsWith("The relay can't be reached"))
+            assertTrue(model.error.value!!.startsWith("The cluster can't be reached"))
         }
 }
 
@@ -220,7 +220,7 @@ class AudienceModelTest {
             val model = fake.audienceModel()
             val before = model.version.value
             model.setProfile(" Ana ", " Fund ")
-            val call = fake.recording.calls("set_profile").single()
+            val call = fake.recording.calls("setProfile").single()
             assertEquals(RecordedContractCall.Path.EXECUTE, call.path)
             assertEquals("ctx-1", call.contextId)
             assertEquals("Ana", call.arg("name"))
@@ -229,7 +229,7 @@ class AudienceModelTest {
             assertEquals(
                 RecordedContractCall.Path.QUERY,
                 fake.recording
-                    .calls("get_me")
+                    .calls("getMe")
                     .first()
                     .path,
             )
@@ -245,17 +245,17 @@ class AudienceModelTest {
             assertEquals(
                 JsonArray(listOf(JsonPrimitive("a"), JsonPrimitive("b"))),
                 fake.recording
-                    .calls("set_muted_categories")
+                    .calls("setMutedCategories")
                     .last()
-                    .argElement("category_ids"),
+                    .argElement("categoryIds"),
             )
             model.toggleMuted(fake.categories[0])
             assertEquals(
                 JsonArray(emptyList()),
                 fake.recording
-                    .calls("set_muted_categories")
+                    .calls("setMutedCategories")
                     .last()
-                    .argElement("category_ids"),
+                    .argElement("categoryIds"),
             )
         }
 
@@ -273,27 +273,27 @@ class AudienceModelTest {
             assertEquals(
                 "I know them",
                 fake.recording
-                    .calls("offer_help")
+                    .calls("offerHelp")
                     .single()
                     .arg("note"),
             )
             assertEquals(
                 "accepted",
                 fake.recording
-                    .calls("set_offer_status")
+                    .calls("setOfferStatus")
                     .single()
                     .arg("status"),
             )
             assertEquals(
                 "resolved",
                 fake.recording
-                    .calls("set_ask_status")
+                    .calls("setAskStatus")
                     .single()
                     .arg("status"),
             )
-            assertEquals(1, fake.recording.calls("withdraw_offer").size)
-            assertEquals(1, fake.recording.calls("add_teammate").size)
-            assertEquals(1, fake.recording.calls("remove_teammate").size)
+            assertEquals(1, fake.recording.calls("withdrawOffer").size)
+            assertEquals(1, fake.recording.calls("addTeammate").size)
+            assertEquals(1, fake.recording.calls("removeTeammate").size)
         }
 
     @Test
@@ -326,7 +326,7 @@ class FeedModelTest {
             assertEquals(listOf("p1", "p2"), model.posts.value.map { it.id })
             assertEquals(listOf("d1"), model.drafts.value.map { it.id })
             assertEquals(listOf(true, false, false, false), model.setupSteps.map { it.done })
-            val list = fake.recording.calls("list_posts").last()
+            val list = fake.recording.calls("listPosts").last()
             assertEquals("update", list.arg("kind"))
             assertEquals(JsonPrimitive(100), list.argElement("limit"))
 
@@ -334,9 +334,9 @@ class FeedModelTest {
             assertEquals(
                 "c1",
                 fake.recording
-                    .calls("list_posts")
+                    .calls("listPosts")
                     .last()
-                    .arg("category_id"),
+                    .arg("categoryId"),
             )
             assertEquals(listOf("p1"), model.posts.value.map { it.id })
             model.select("c1")
@@ -347,9 +347,9 @@ class FeedModelTest {
             assertEquals(
                 "d1",
                 fake.recording
-                    .calls("delete_draft")
+                    .calls("deleteDraft")
                     .single()
-                    .arg("draft_id"),
+                    .arg("draftId"),
             )
         }
 
@@ -360,7 +360,7 @@ class FeedModelTest {
             fake.me = MeView(ANA, "Ana", "", false, false, emptyList())
             val model = FeedModel(fake.audienceModel())
             model.load()
-            assertTrue(fake.recording.calls("list_drafts").isEmpty())
+            assertTrue(fake.recording.calls("listDrafts").isEmpty())
         }
 }
 
@@ -373,11 +373,11 @@ class PostModelTest {
             val model = PostModel("p1", fake.audienceModel())
             model.load()
             model.load()
-            assertEquals(1, fake.recording.calls("mark_read").size)
+            assertEquals(1, fake.recording.calls("markRead").size)
             assertEquals(
                 RecordedContractCall.Path.EXECUTE,
                 fake.recording
-                    .calls("mark_read")
+                    .calls("markRead")
                     .single()
                     .path,
             )
@@ -423,24 +423,24 @@ class PostModelTest {
             assertEquals("Add to the question…", model.replyPlaceholder)
 
             model.reply(" Thanks ", "c1")
-            val call = fake.recording.calls("add_comment").single()
-            assertEquals("c1", call.arg("parent_id"))
+            val call = fake.recording.calls("addComment").single()
+            assertEquals("c1", call.arg("parentId"))
             assertEquals("Thanks", call.arg("body"))
             model.edit(fake.comments[1], "Edited")
             assertEquals(
                 "c2",
                 fake.recording
-                    .calls("edit_comment")
+                    .calls("editComment")
                     .single()
-                    .arg("comment_id"),
+                    .arg("commentId"),
             )
             model.delete(fake.comments[1])
             assertEquals(
                 "c2",
                 fake.recording
-                    .calls("delete_comment")
+                    .calls("deleteComment")
                     .single()
-                    .arg("comment_id"),
+                    .arg("commentId"),
             )
         }
 
@@ -455,7 +455,7 @@ class PostModelTest {
             assertEquals(
                 "answered",
                 fake.recording
-                    .calls("set_question_status")
+                    .calls("setQuestionStatus")
                     .single()
                     .arg("status"),
             )
@@ -464,9 +464,9 @@ class PostModelTest {
             assertEquals(
                 "q1",
                 fake.recording
-                    .calls("delete_post")
+                    .calls("deletePost")
                     .single()
-                    .arg("post_id"),
+                    .arg("postId"),
             )
         }
 
@@ -500,16 +500,16 @@ class ComposerModelTest {
             advanceTimeBy(1_600)
             runCurrent()
             withContext(Dispatchers.Default) { withTimeout(5_000) { while (model.draftId.value == null) delay(10) } }
-            val save = fake.recording.calls("save_draft").first()
+            val save = fake.recording.calls("saveDraft").first()
             assertEquals(RecordedContractCall.Path.EXECUTE, save.path)
-            assertNull(save.arg("draft_id"))
+            assertNull(save.arg("draftId"))
             assertEquals("Oct", ComposerState.parse(save.arg("payload")!!)?.title)
             assertEquals("draft-1", model.draftId.value)
 
             assertEquals("post-new", model.publish())
             val input =
                 fake.recording
-                    .calls("publish_update")
+                    .calls("publishUpdate")
                     .single()
                     .argElement("input") as JsonObject
             assertEquals(JsonPrimitive("Oct"), input["title"])
@@ -518,9 +518,9 @@ class ComposerModelTest {
             assertEquals(
                 "draft-1",
                 fake.recording
-                    .calls("delete_draft")
+                    .calls("deleteDraft")
                     .single()
-                    .arg("draft_id"),
+                    .arg("draftId"),
             )
         }
 
@@ -548,15 +548,15 @@ class ComposerModelTest {
             model.update { it.copy(title = "September") }
             advanceTimeBy(5_000)
             runCurrent()
-            assertTrue(fake.recording.calls("save_draft").isEmpty())
+            assertTrue(fake.recording.calls("saveDraft").isEmpty())
             assertNull(model.draftStatus())
             assertEquals("p1", model.publish())
             assertEquals(
                 "p1",
                 fake.recording
-                    .calls("edit_update")
+                    .calls("editUpdate")
                     .single()
-                    .arg("post_id"),
+                    .arg("postId"),
             )
         }
 
@@ -626,9 +626,10 @@ class TabModelsTest {
             model.show("resolved")
             assertEquals(listOf("a2"), model.asks.value.map { it.id })
             assertEquals(
-                JsonPrimitive(0),
+                // A u64 argument goes as a decimal string.
+                JsonPrimitive("0"),
                 fake.recording
-                    .calls("list_contributions")
+                    .calls("listContributions")
                     .last()
                     .argElement("since"),
             )
@@ -644,9 +645,9 @@ class TabModelsTest {
             model.openOnly.value = true
             assertEquals(listOf("q1"), model.shown().map { it.id })
             assertEquals("q-new", model.ask(" Runway? ", " after hires "))
-            val call = fake.recording.calls("ask_question").single()
+            val call = fake.recording.calls("askQuestion").single()
             assertEquals("Runway?", call.arg("title"))
-            assertNull(call.arg("category_id"))
+            assertNull(call.arg("categoryId"))
             assertNull(model.ask("  ", ""))
         }
 
@@ -657,12 +658,12 @@ class TabModelsTest {
             fake.people = listOf(person(ME, "Me", team = true, admin = true), person(ANA, "Ana"))
             val model = PeopleModel(fake.audienceModel())
             model.load()
-            assertEquals(1, fake.recording.calls("get_engagement").size)
+            assertEquals(1, fake.recording.calls("getEngagement").size)
             model.toggleTeam(fake.people[1])
             assertEquals(
                 ANA,
                 fake.recording
-                    .calls("add_teammate")
+                    .calls("addTeammate")
                     .single()
                     .arg("account"),
             )
@@ -683,18 +684,18 @@ class TabModelsTest {
             assertEquals(14u, model.cadenceDays.value)
             model.companyName.value = " Acme Inc "
             assertTrue(model.save())
-            val call = fake.recording.calls("set_settings").single()
-            assertEquals("Acme Inc", call.arg("company_name"))
-            assertEquals(JsonPrimitive(14), call.argElement("cadence_days"))
+            val call = fake.recording.calls("setSettings").single()
+            assertEquals("Acme Inc", call.arg("companyName"))
+            assertEquals(JsonPrimitive(14), call.argElement("cadenceDays"))
             model.addStarters()
-            assertEquals(4, fake.recording.calls("create_category").size)
+            assertEquals(4, fake.recording.calls("createCategory").size)
             model.archiveCategory("c")
             assertEquals(
                 "c",
                 fake.recording
-                    .calls("archive_category")
+                    .calls("archiveCategory")
                     .single()
-                    .arg("category_id"),
+                    .arg("categoryId"),
             )
         }
 

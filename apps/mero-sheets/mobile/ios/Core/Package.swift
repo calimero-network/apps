@@ -11,11 +11,11 @@ let package = Package(
         .library(name: "SheetsCore", targets: ["SheetsCore"])
     ],
     dependencies: [
-        // swift-sdk `main` merge commit of PR #84;
-        // keep in step with `packages.MeroKit.revision` in ../project.yml.
+        // swift-sdk v0.5.0 (Calimero 1.0); keep in step with
+        // `packages.MeroKit.exactVersion` in ../project.yml.
         .package(
             url: "https://github.com/calimero-network/swift-sdk",
-            revision: "c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f")
+            exact: "0.5.0")
     ],
     targets: [
         .target(

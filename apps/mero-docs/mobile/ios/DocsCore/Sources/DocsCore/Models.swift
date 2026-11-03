@@ -9,15 +9,14 @@ public enum LoadState: Equatable, Sendable {
     case failed(String)
 }
 
-/// "You" for this account, a short id for anyone else: the relay has no
-/// member-name call, so names the web reads from group metadata are not here.
+/// "You" for this account, a short id for anyone else.
 public func personName(_ account: String, me: String) -> String {
     account.lowercased() == me.lowercased() ? "You" : DocsFormat.shortId(account)
 }
 
 // MARK: - Workspaces
 
-/// A workspace: a namespace running Mero Docs.
+/// A workspace: an organization running Mero Docs.
 public struct Workspace: Identifiable, Equatable, Hashable, Sendable {
     public let id: String
     public let name: String
@@ -58,14 +57,14 @@ public final class WorkspacesModel: ObservableObject {
 
 // MARK: - Workspace index
 
-/// A folder: a subgroup of the workspace, nested by core's tree, with one docs context.
+/// A folder: a team of the workspace's organization, nested by its `parent`, with one docs app instance.
 public struct Folder: Identifiable, Equatable, Hashable, Sendable {
-    /// The subgroup's group id: what a doc link names.
+    /// The team id: what a doc link names.
     public let id: String
     public let name: String
     /// The folder above; nil at the top.
     public let parentId: String?
-    /// The folder's docs context; nil until one reaches the relay.
+    /// The folder's docs app instance (team metadata `docsApp`); nil until one is created.
     public let contextId: String?
 
     public init(id: String, name: String, parentId: String?, contextId: String?) {
@@ -108,7 +107,7 @@ public struct SearchResult: Identifiable, Equatable, Sendable {
 
 /// Why a folder's documents are not listed.
 public enum FolderIssue: Error, Equatable, Sendable {
-    /// No docs context has reached the relay yet.
+    /// The folder has no docs app instance yet.
     case noContext
     /// The account is not in it and could not join.
     case noAccess(String)
@@ -170,9 +169,6 @@ public final class WorkspaceModel: ObservableObject {
     let backend: any MeroAppBackend
     let recents: any RecentStore
 
-    /// How deep the folder tree is walked.
-    public static let maxDepth = 8
-
     public init(backend: any MeroAppBackend, workspace: Workspace, recents: any RecentStore) {
         self.backend = backend
         self.workspace = workspace
@@ -208,45 +204,13 @@ public final class WorkspaceModel: ObservableObject {
     public func load() async {
         if docs.isEmpty && folders.isEmpty { state = .loading }
         do {
-            let tree = try await walk()
+            let tree = try await DocsDirectory(backend: backend).folders(workspaceId: workspace.id)
             folders = tree
             await readDocs(tree)
             state = .loaded
         } catch {
             state = .failed(DocsFormat.errorText(error))
         }
-    }
-
-    /// The tree, one level at a time from the workspace's root group. A level
-    /// that cannot be read is left empty; only the root failing fails the load.
-    private func walk() async throws -> [Folder] {
-        let backend = backend
-        var found: [Folder] = []
-        var seen: Set<String> = [workspace.id]
-        let top = try await backend.listSubgroups(namespaceId: workspace.id)
-        var level: [(AppSubgroup, String?)] = top.map { ($0, nil) }
-        var depth = 0
-        while !level.isEmpty && depth < Self.maxDepth {
-            var next: [String] = []
-            for (sg, parent) in level where seen.insert(sg.groupId).inserted {
-                found.append(
-                    Folder(
-                        id: sg.groupId, name: sg.name?.trimmed.nonEmpty ?? "Untitled folder", parentId: parent,
-                        contextId: sg.contextIds.first))
-                next.append(sg.groupId)
-            }
-            let children = await withTaskGroup(of: [(AppSubgroup, String?)].self) { group in
-                for id in next {
-                    group.addTask { ((try? await backend.listSubgroups(namespaceId: id)) ?? []).map { ($0, id) } }
-                }
-                var out: [(AppSubgroup, String?)] = []
-                for await list in group { out += list }
-                return out
-            }
-            level = children.sorted { $0.0.groupId < $1.0.groupId }
-            depth += 1
-        }
-        return found
     }
 
     private func readDocs(_ tree: [Folder]) async {
@@ -293,8 +257,8 @@ public final class WorkspaceModel: ObservableObject {
         issues = problems
     }
 
-    /// Titles that match at once, then every folder's full-text index
-    /// (`search_docs`: title and body, best match first).
+    /// Titles that match at once, then every folder's `searchDocs` (a
+    /// word-prefix match on title and body, best match first).
     public func search(_ text: String) async {
         let q = text.trimmed
         query = q
@@ -389,7 +353,7 @@ public final class DocumentModel: ObservableObject {
     private var refreshing = false
     private var dirty = false
 
-    /// How often to re-read when the relay cannot stream events.
+    /// How often to re-read when the node cannot stream events.
     public static let pollInterval: UInt64 = 5_000_000_000
 
     public init(
@@ -471,7 +435,7 @@ public final class DocumentModel: ObservableObject {
         } while dirty
     }
 
-    /// Follow the document until the task is cancelled: the relay's events
+    /// Follow the document until the task is cancelled: the app instance's events
     /// when it streams them, polling otherwise (and after a stream ends).
     public func live() async {
         guard let ctx = contextId else { return }
@@ -516,9 +480,8 @@ public final class DocumentModel: ObservableObject {
 
     private func resolveContext() async throws -> String {
         if let contextId { return contextId }
-        guard let ctx = try await backend.listContexts(groupId: folderId).first else {
-            throw DocsError.folderNotReady
-        }
+        guard let ctx = try await DocsDirectory(backend: backend).docsApp(workspaceId: workspaceId, folderId: folderId)
+        else { throw DocsError.folderNotReady }
         contextId = ctx
         return ctx
     }
@@ -554,7 +517,7 @@ public final class DocumentModel: ObservableObject {
         // Shown at once; kept until a read has it.
         pending.append(
             DocComment(
-                id: id, author: backend.account, createdAt: UInt64(max(0, now().timeIntervalSince1970)) * 1_000_000_000,
+                id: id, author: backend.account, createdAt: UInt64(max(0, now().timeIntervalSince1970) * 1000) * 1_000_000,
                 text: words, blockId: replyTo == nil ? blockId : nil, replyTo: replyTo))
         await readComments(api)
     }
@@ -562,10 +525,13 @@ public final class DocumentModel: ObservableObject {
 
 public enum DocsError: LocalizedError, Equatable {
     case folderNotReady
+    /// The node answered `method` with no result where the contract always returns one.
+    case missingResult(String)
 
     public var errorDescription: String? {
         switch self {
-        case .folderNotReady: return "This folder hasn't reached your relay yet. Try again in a moment."
+        case .folderNotReady: return "This folder isn't ready yet. Try again in a moment."
+        case .missingResult: return "The node sent an answer this app could not read. Try again."
         }
     }
 }

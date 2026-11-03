@@ -3,7 +3,7 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
-/// Reads a blob of the open channel: from the cache, or through the relay.
+/// Reads a blob of the open channel: from the cache, or from its app instance.
 typealias BlobLoader = (String) async throws -> Data
 
 /// An image blob, drawn once it has loaded (`MessageImageField.tsx`'s tile or an avatar).
@@ -195,7 +195,7 @@ struct ShareSheet: UIViewControllerRepresentable {
 // MARK: - Picking
 
 enum AttachmentPicking {
-    /// The largest attachment the app uploads. A blob goes up through the relay
+    /// The largest attachment the app uploads. A blob goes up to the app instance
     /// in one request; past this, on mobile data, it looks like a hang.
     static let maxBytes = 25 * 1024 * 1024
     /// The longest edge a picked photo keeps: sharp full screen on any phone,

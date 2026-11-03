@@ -12,7 +12,7 @@ import network.calimero.blocks.ui.MeroBlocksApp
 
 /**
  * The one activity. Links arrive here, on the launch intent (cold start) or through [onNewIntent],
- * and go to [BlocksAppViewModel.handleLink]: the wallet's sign-in redirect, or a world invitation
+ * and go to [BlocksAppViewModel.handleLink]: the node's consent page coming back, or a world invitation
  * (`https://links.calimero.network/com.calimero.mero-blocks/join?invitation=…`). The manifest keeps
  * the activity across rotation, so switching the game to landscape does not restart it.
  */
@@ -27,9 +27,16 @@ class MainActivity : ComponentActivity() {
             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         }
         if (savedInstanceState == null) consume(intent)
+        // The passkey that approves step-ups (inviting, leaving) needs this Activity; held only while it lives.
+        vm.attach(this)
         setContent {
-            MeroBlocksApp(vm = vm, onSignIn = { vm.signIn(this) }, onShare = ::share)
+            MeroBlocksApp(vm = vm, onSignIn = { vm.signIn(this) }, onSignUp = { vm.signUp(this, it) }, onShare = ::share)
         }
+    }
+
+    override fun onDestroy() {
+        vm.attach(null)
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {

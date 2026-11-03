@@ -39,7 +39,7 @@ public final class MemoryPlayerSettings: PlayerSettings {
 }
 
 /// One world being played: the bridge to the bundled game, the touch controls, the native HUD
-/// (hotbar, status) and the relay's live events.
+/// (hotbar, status) and the node's live events.
 ///
 /// The page is told things through ``send`` (the web view sets it to evaluate the message's
 /// script); what the page posts arrives at ``receive(_:)``.
@@ -197,9 +197,9 @@ public final class GameModel: ObservableObject {
         phase = .left
     }
 
-    // MARK: Relay events
+    // MARK: Node events
 
-    /// Each relay event is a nudge for the game to re-read the tiles. A stream that drops is opened
+    /// Each node event is a nudge for the game to re-read the tiles. A stream that drops is opened
     /// again after a pause, and the game re-reads everything ("reconnected"); polling covers the gap.
     private func startEvents() {
         guard eventsTask == nil, backend.canSubscribe else { return }

@@ -4,8 +4,9 @@ import MeroKitTestSupport
 
 @testable import DocsCore
 
-/// A scripted docs node behind `InMemoryAppBackend`: raw JSON per method, as
-/// the relay returns it (booleans in span marks, nanosecond u64s). (== Kotlin `Fixtures.kt`.)
+/// A scripted docs app instance behind `InMemoryAppBackend`: raw JSON per
+/// method, as the node returns it (camelCase fields, u64s as decimal strings,
+/// timestamps in milliseconds, booleans in span marks). (== Kotlin `Fixtures.kt`.)
 final class FakeDocs: @unchecked Sendable {
     let backend = InMemoryAppBackend()
     private let lock = NSLock()
@@ -45,21 +46,21 @@ final class FakeDocs: @unchecked Sendable {
             "g-product": [AppSubgroup(groupId: "g-specs", name: "Specs", contextIds: ["c-specs"])],
         ]
         backend.members = ["c-product", "c-notes"]
-        on("list_docs", in: "c-product", json: "[\(Self.doc("d1", "Roadmap", updated: 300))]")
-        on("list_docs", in: "c-notes", json: "[\(Self.doc("d2", "Standup notes", updated: 500))]")
-        on("list_docs", in: "c-specs", json: "[\(Self.doc("d3", "API spec", updated: 100))]")
+        on("listDocs", in: "c-product", json: "[\(Self.doc("d1", "Roadmap", updated: 300))]")
+        on("listDocs", in: "c-notes", json: "[\(Self.doc("d2", "Standup notes", updated: 500))]")
+        on("listDocs", in: "c-specs", json: "[\(Self.doc("d3", "API spec", updated: 100))]")
     }
 
     static func doc(_ id: String, _ title: String, updated: UInt64, archived: Bool = false) -> String {
         """
-        {"id":"\(id)","title":"\(title)","tags":[],"archived":\(archived),"created_at":1700000000000000000,\
-        "updated_at":\(1_700_000_000_000_000_000 + updated),"created_by":"\(other)","updated_by":"\(other)","can_delete":false}
+        {"id":"\(id)","title":"\(title)","tags":[],"archived":\(archived),"createdAt":"1700000000000",\
+        "updatedAt":"\(1_700_000_000_000 + updated)","createdBy":"\(other)","updatedBy":"\(other)","canDelete":false}
         """
     }
 
     static func comment(_ id: String, _ body: String, author: String = other, at: UInt64) -> String {
         """
-        {"id":"\(id)","author":"\(author)","doc_id":"d1","body":"\(body)","created_at":\(1_700_000_000_000_000_000 + at)}
+        {"id":"\(id)","author":"\(author)","docId":"d1","body":"\(body)","createdAt":"\(1_700_000_000_000 + at)"}
         """
     }
 

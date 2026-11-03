@@ -11,15 +11,12 @@
 //! A subscription is bound to the key it was made with: a new key drops every
 //! device, and each phone subscribes again.
 
-use calimero_sdk::abi::AbiType;
-use calimero_sdk::app;
-use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
-use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::types::Error as AppError;
-use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::Mergeable;
+use calimero_app_sdk::prelude::*;
 
-use crate::{lww, now_ms, Event, Hyperfeed, MAX_KEY};
+use crate::store::{emit, invalid};
+use serde::{Deserialize, Serialize};
+
+use crate::{now_ms, Ev, Hyperfeed, MAX_KEY};
 
 /// Devices kept at once; the one written longest ago is dropped to make room.
 pub const MAX_PUSH_DEVICES: usize = 10;
@@ -31,10 +28,7 @@ const KEY_ID: &str = "vapid";
 
 /// One device, kept by its endpoint. Taking it off keeps the row with
 /// `removed: true`, so a device that synced late does not bring it back.
-#[app::mergeable(id = "hyperfeed::PushDevice")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PushDevice {
     pub endpoint: String,
     pub p256dh: String,
@@ -49,19 +43,8 @@ pub struct PushDevice {
     pub updated_at: u64,
 }
 
-impl Mergeable for PushDevice {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        let at = self.updated_at;
-        lww(self, at, other, other.updated_at);
-        Ok(())
-    }
-}
-
 /// The runtime's VAPID public key.
-#[app::mergeable(id = "hyperfeed::PushKey")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PushKey {
     pub public_key: String,
     /// The runtime that holds its private half, by name.
@@ -69,18 +52,9 @@ pub struct PushKey {
     pub updated_at: u64,
 }
 
-impl Mergeable for PushKey {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        let at = self.updated_at;
-        lww(self, at, other, other.updated_at);
-        Ok(())
-    }
-}
-
 /// What [`crate::Hyperfeed::add_push_device`] takes: the browser's
 /// `PushSubscription.toJSON()`, a name, and how much it may say.
-#[derive(AbiType, Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PushDeviceInput {
     pub endpoint: String,
     pub p256dh: String,
@@ -93,8 +67,7 @@ pub struct PushDeviceInput {
 }
 
 /// A device as [`crate::Hyperfeed::push_devices`] returns it.
-#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PushDeviceView {
     pub endpoint: String,
     pub p256dh: String,
@@ -105,8 +78,7 @@ pub struct PushDeviceView {
 }
 
 /// The key as [`crate::Hyperfeed::push_key`] returns it; empty before a runtime set one.
-#[derive(AbiType, Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct PushKeyView {
     pub public_key: String,
     pub by: String,
@@ -121,7 +93,7 @@ fn base64url(field: &str, value: &str) -> app::Result<()> {
     {
         Ok(())
     } else {
-        Err(AppError::msg(format!("{field} must be base64url")))
+        Err(invalid(format!("{field} must be base64url")))
     }
 }
 
@@ -135,7 +107,7 @@ impl Hyperfeed {
         base64url("public_key", &public_key)?;
         Self::check_len("by", &by, MAX_KEY, true)?;
         let now = now_ms();
-        let old = self.push_keys.get(KEY_ID)?.map(|k| k.clone());
+        let old = self.push_keys.get(KEY_ID)?;
         if old
             .as_ref()
             .is_some_and(|k| k.public_key == public_key && k.by == by)
@@ -165,7 +137,7 @@ impl Hyperfeed {
                 updated_at,
             },
         )?;
-        app::emit!(Event::PushChanged);
+        emit(Ev::PushChanged)?;
         self.push_key_get()
     }
 
@@ -189,7 +161,7 @@ impl Hyperfeed {
         let endpoint = input.endpoint.trim().to_owned();
         Self::check_len("endpoint", &endpoint, MAX_PUSH_ENDPOINT, true)?;
         if !endpoint.starts_with("https://") || endpoint.contains(char::is_whitespace) {
-            return Err(AppError::msg("endpoint must be an https:// URL"));
+            return Err(invalid("endpoint must be an https:// URL"));
         }
         base64url("p256dh", &input.p256dh)?;
         base64url("auth", &input.auth)?;
@@ -197,17 +169,17 @@ impl Hyperfeed {
         Self::check_len("name", &name, MAX_KEY, false)?;
         let current = self.push_key_get()?.public_key;
         if current.is_empty() {
-            return Err(AppError::msg(
+            return Err(invalid(
                 "no push key yet: start your agent's runtime against this feed first",
             ));
         }
         if input.key != current {
-            return Err(AppError::msg(
+            return Err(invalid(
                 "subscribed with an old push key; subscribe again with the current one",
             ));
         }
         let now = now_ms();
-        let old = self.push_devices.get(&endpoint)?.map(|d| d.clone());
+        let old = self.push_devices.get(&endpoint)?;
         if old.is_none() {
             let mut on: Vec<(u64, String)> = self
                 .push_devices
@@ -242,20 +214,20 @@ impl Hyperfeed {
         };
         let view = view_of(&device);
         self.push_devices.insert(endpoint, device)?;
-        app::emit!(Event::PushChanged);
+        emit(Ev::PushChanged)?;
         Ok(view)
     }
 
     pub(crate) fn push_device_remove(&mut self, endpoint: String) -> app::Result<()> {
         self.require_owner()?;
         if self.push_device_drop(&endpoint, now_ms())? {
-            app::emit!(Event::PushChanged);
+            emit(Ev::PushChanged)?;
         }
         Ok(())
     }
 
     fn push_device_drop(&mut self, endpoint: &str, now: u64) -> app::Result<bool> {
-        let Some(mut d) = self.push_devices.get(endpoint)?.map(|d| d.clone()) else {
+        let Some(mut d) = self.push_devices.get(endpoint)? else {
             return Ok(false);
         };
         if d.removed {

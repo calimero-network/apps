@@ -16,7 +16,7 @@ import type { LandingConfig } from './landingTypes';
 export const CONFIG: LandingConfig = {
   name: "Mero Blocks",
   packageId: "com.calimero.mero-blocks",
-  tagline: "Minecraft-style P2P voxel sandbox. The world is a Calimero context: seed + block-edit diff + player presence, no game server.",
+  tagline: "Minecraft-style multiplayer voxel sandbox. A world is a Calimero app instance: seed + block-edit diff + player presence, no game server.",
   dir: "mero-blocks",
   markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',

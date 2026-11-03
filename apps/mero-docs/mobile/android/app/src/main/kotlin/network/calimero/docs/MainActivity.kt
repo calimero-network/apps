@@ -10,18 +10,24 @@ import network.calimero.docs.ui.MeroDocsApp
 
 /**
  * The one activity. Links arrive here, on the launch intent (cold start) or through
- * [onNewIntent], and go to [DocsAppViewModel.handleLink]: the wallet's sign-in redirect, or a
- * document link (`https://mero-docs.vercel.app/app/<workspace>/f/<folder>/d/<doc>`).
+ * [onNewIntent], and go to [DocsAppViewModel.handleLink]: the node's consent page coming back
+ * (`mero-docs://consent?…`), an invitation to a workspace, or a document link
+ * (`https://mero-docs.vercel.app/app/<workspace>/f/<folder>/d/<doc>`). While it lives, its passkey
+ * (Credential Manager) approves the account's step-ups ([DocsAppViewModel.attach]).
  */
 class MainActivity : ComponentActivity() {
     private val vm: DocsAppViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        vm.attach(this)
         if (savedInstanceState == null) consume(intent)
-        setContent {
-            MeroDocsApp(vm = vm, onSignIn = { vm.session.signIn(this) })
-        }
+        setContent { MeroDocsApp(vm = vm) }
+    }
+
+    override fun onDestroy() {
+        vm.attach(null)
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {

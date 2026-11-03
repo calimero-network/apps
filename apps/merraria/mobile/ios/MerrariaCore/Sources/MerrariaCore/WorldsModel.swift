@@ -27,10 +27,9 @@ public struct WorldEntry: Identifiable, Equatable, Sendable {
 
 /// The worlds: every world this account is in, and creating, joining and inviting to them.
 ///
-/// As on the web (`app/src/net/admin.ts`), a world is its own namespace named after it, an open
-/// subgroup inside that, and the context (the world state) in the subgroup. One namespace per
-/// world keeps an invitation's scope to exactly one world, and the subgroup being open is what lets
-/// an invited player join it.
+/// As on the web (`app/src/net/worlds.ts`), a world is an app instance in an organization of its
+/// own, named after it: one organization per world keeps an invitation's scope to exactly one world.
+/// Worlds an earlier build put in an open team of their organization are still listed and opened.
 @MainActor
 public final class WorldsModel: ObservableObject {
     @Published public private(set) var worlds: [WorldEntry] = []
@@ -92,28 +91,26 @@ public final class WorldsModel: ObservableObject {
         }
     }
 
-    /// A new world: its namespace, its open subgroup, and the context, initialised with
-    /// `{name, seed, now}` (the contract's `init`).
-    public func create(name: String, seed: UInt64) async throws -> WorldRef {
-        guard backend.hasRelay else { throw MerrariaError.noRelay }
+    /// A new world, as the web app makes one: its organization, the app instance in it (the
+    /// contract's `init()` takes nothing), then `createWorld(name, seed, now)`, which only the
+    /// creator may run.
+    public func create(name: String, seed: UInt32) async throws -> WorldRef {
+        guard backend.hasRelay else { throw MerrariaError.signedOut }
         guard let applicationId, !applicationId.isEmpty else { throw MerrariaError.noApplication }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let title = trimmed.isEmpty ? MerrariaConstants.defaultWorldName : String(trimmed.prefix(MerrariaConstants.maxWorldName))
         let namespaceId = try await backend.foundNamespace(name: title).namespaceId
-        let groupId = try await backend.createSubgroup(namespaceId: namespaceId, name: title, isPublic: true)
         let contextId = try await backend.createContext(
-            groupId: groupId, applicationId: applicationId, name: title,
-            initArgs: .object([
-                "name": .string(title), "seed": .number(Double(seed)), "now": .number(Double(nowSeconds())),
-            ]))
-        let ref = WorldRef(contextId: contextId, namespaceId: namespaceId, groupId: groupId, name: title)
+            groupId: namespaceId, applicationId: applicationId, name: title, initArgs: .object([:]))
+        try await MerrariaClient.bound(backend, contextId: contextId).createWorld(name: title, seed: seed, now: nowSeconds())
+        let ref = WorldRef(contextId: contextId, namespaceId: namespaceId, groupId: nil, name: title)
         worlds.insert(WorldEntry(ref: ref, players: 1), at: 0)
         return ref
     }
 
-    /// Redeem an invitation: join the namespace, then the world (its open subgroup's context).
-    /// `didJoin` runs in between (the session reconnects to the admitting relay there when the
-    /// account had none).
+    /// Redeem an invitation: redeem its token (joining the organization), then enter the world (its
+    /// open team's app instance). `didJoin` runs in between (the session re-reads what the account
+    /// sees).
     public func join(_ invitation: WorldInvitation, didJoin: () async -> Void) async throws -> WorldRef {
         let namespaceId = invitation.namespaceId
         _ = try await backend.joinNamespace(namespaceId: namespaceId, invitation: invitation.invitation)
@@ -136,22 +133,22 @@ public final class WorldsModel: ObservableObject {
             name: invitation.worldName ?? MerrariaConstants.defaultWorldName)
     }
 
-    /// Join the world's context if this account is not in it yet (an invited player joins it
-    /// through the open subgroup).
+    /// Make sure this account reaches the world's app instance (an invited player inherits it
+    /// through the open team).
     public func ensureMember(_ contextId: String) async throws {
         if try await backend.isMember(contextId: contextId) { return }
         try await backend.joinContext(contextId: contextId)
     }
 
-    /// A link that admits someone to `ref`'s namespace and opens that world.
+    /// A link that admits someone to `ref`'s organization and opens that world.
     public func inviteLink(_ ref: WorldRef) async throws -> String {
         try await Self.inviteLink(backend: backend, ref: ref)
     }
 
     public static func inviteLink(backend: any MeroAppBackend, ref: WorldRef) async throws -> String {
-        let signed = try await backend.createInvitation(namespaceId: ref.namespaceId)
+        let invitation = try await backend.createInvitation(namespaceId: ref.namespaceId)
         return try WorldInvitation(
-            invitation: signed, worldName: ref.name, contextId: ref.contextId, groupId: ref.groupId
+            invitation: invitation, worldName: ref.name, contextId: ref.contextId, groupId: ref.groupId
         ).link()
     }
 

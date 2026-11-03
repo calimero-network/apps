@@ -1,88 +1,67 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useMero, useNodeIdentity } from "@calimero-network/mero-react";
 
+import { useMaybeSignedIn } from "../sessionContext";
+import { ForumClient, type CommentView, type PostView } from "./forumApi";
 import { getContextId } from "./session";
-import { ForumClient } from "../generated/ForumClient";
-import type { CommentView, PostView } from "../generated/ForumClient";
 
-/**
- * The forum this node is a member of. One context == one forum.
- *
- * ⚠️ Delegates to `useForumWorkspace`, which scopes discovery to THIS
- * application. This function used to be `getContexts().contexts[0]` — the first
- * context on the node, whatever app it belonged to. On a node running more than
- * one Calimero app that is somebody else's context, and every forum call
- * against it came back `FunctionCallError`, because the method does not exist
- * on that contract. It also had no way to create one, so a fresh node was a
- * permanently empty feed.
- */
-export function useForumContext(): {
-  contextId: string | null;
-  loading: boolean;
-} {
-  // The SESSION, not "the first context on the node".
-  //
-  // This used to be `getContexts().contexts[0]` — whatever context happened to
-  // be first, whichever application it belonged to. On a node running more than
-  // one Calimero app that is somebody else's context, and every forum call
-  // against it came back `FunctionCallError`, because the method does not exist
-  // on that contract.
-  //
-  // Now the forum you are in is an explicit choice made on the spaces/forums
-  // pages and recorded in `lib/session`, so there is nothing to guess.
+/** The forum open in this browser: an app instance id (v1's context id). */
+export function useForumContext(): { contextId: string | null; loading: boolean } {
   const [contextId, setContextId] = useState<string | null>(getContextId);
-
   // `setActiveForum` writes synchronously and the pages navigate straight after,
-  // so a re-read on mount is enough; there is no cross-tab case to follow.
+  // so a re-read on mount is enough.
   useEffect(() => {
     setContextId(getContextId());
   }, []);
-
   return { contextId, loading: false };
 }
 
-/**
- * This node's ACCOUNT id — who the contract will record as the author.
- *
- * Not the context identity. Both are 64 hex characters since rc.27, so mixing
- * them type-checks and then silently marks every one of your own posts as
- * somebody else's: `Post.author` is the account, and "can I delete this" is an
- * account comparison.
- */
+/** The signed-in ACCOUNT: who the contract records as the author. */
 export function useSelfAccount(): string | null {
-  const { identity } = useNodeIdentity();
-  return identity?.accountId ?? null;
+  return useMaybeSignedIn()?.accountId ?? null;
 }
 
+/** The open forum's typed client (answers in the shapes the screens use). */
 export function useForumClient(): ForumClient | null {
-  // The identity is asked of `admin`, the session's own: on an account the
-  // relay's raw route does not answer for the account, the account admin does.
-  const { mero, admin } = useMero();
+  const signedIn = useMaybeSignedIn();
   const { contextId } = useForumContext();
-  const [executor, setExecutor] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!admin || !contextId) {
-      setExecutor(null);
-      return;
-    }
-    let cancelled = false;
-    admin
-      .getContextIdentitiesOwned(contextId)
-      .then(({ identities }) => {
-        if (!cancelled && identities.length > 0) setExecutor(identities[0]);
-      })
-      .catch(() => !cancelled && setExecutor(null));
-    return () => {
-      cancelled = true;
-    };
-  }, [admin, contextId]);
-
+  const client = signedIn?.client;
+  const after = signedIn?.after;
   return useMemo(
-    () =>
-      mero && contextId && executor ? new ForumClient(mero, contextId) : null,
-    [mero, contextId, executor],
+    () => (client && contextId ? new ForumClient(client, contextId, after) : null),
+    [client, contextId, after],
   );
+}
+
+/**
+ * Calls `onChange` (at most every 250 ms) for each event of the open forum, so
+ * a peer's post or reply shows without a refresh. Events carry ids only; the
+ * screens re-read what they show.
+ */
+export function useForumEvents(onChange: (kind: string) => void): void {
+  const signedIn = useMaybeSignedIn();
+  const { contextId } = useForumContext();
+  const client = signedIn?.client;
+  const latest = useRef(onChange);
+  latest.current = onChange;
+  useEffect(() => {
+    if (!client || !contextId) return;
+    const abort = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    void (async () => {
+      try {
+        for await (const event of client.events(contextId, 0, abort.signal)) {
+          clearTimeout(timer);
+          timer = setTimeout(() => latest.current(event.kind), 250);
+        }
+      } catch {
+        // Stream closed (sign-out, forum left, network): the next action re-reads.
+      }
+    })();
+    return () => {
+      clearTimeout(timer);
+      abort.abort();
+    };
+  }, [client, contextId]);
 }
 
 export type Sort = "new" | "top";
@@ -217,10 +196,9 @@ export function useComments(
 }
 
 /**
- * The contract stamps posts and comments with `env::time_now()`, which is
- * NANOSECONDS since the epoch. Read as milliseconds that is a date 10^6 times
- * too far out: `new Date(t)` is "Invalid Date" and every age is "just now".
- * Anything past 10^14 cannot be a millisecond time, so it is scaled down.
+ * The contract stamps posts and comments in MILLISECONDS. v1 stamped
+ * nanoseconds; anything past 10^14 cannot be a millisecond time, so it is
+ * scaled down (harmless for the component contract's own stamps).
  */
 export function toMs(t: number): number {
   return t > 1e14 ? Math.floor(t / 1e6) : t;

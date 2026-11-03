@@ -16,7 +16,7 @@
  * still points at the counted ballot.
  */
 import { sha256 } from "@noble/hashes/sha2.js";
-import type { Transcript } from "../generated/MeroVoteClient";
+import type { Transcript } from "../meroVote";
 import {
   addCt,
   ballotDigest,

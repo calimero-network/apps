@@ -1,4 +1,4 @@
-import type { ActionDef, ActionModeView, ActionSetView } from "../generated/HyperfeedClient";
+import type { ActionDef, ActionModeView, ActionSetView } from "../hyperfeedTypes";
 import type { ActionMode } from "../backend";
 import type { Abi } from "../lens/validate";
 
