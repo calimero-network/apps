@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { DayView, UpdateView } from "../generated/StandupClient";
+import type { DayView, UpdateView } from "../standup";
 import { byPerson, digestMarkdown } from "./digest";
 
 const A = "a".repeat(64);
