@@ -63,10 +63,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.calimero.mero.app.MeroAppBackend
-import com.calimero.mero.compose.MeroAppSession
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import network.calimero.models.app.ModelsAppViewModel
+import network.calimero.models.app.SignInMode
 import network.calimero.models.core.InvitationModel
 import network.calimero.models.core.LoadState
 import network.calimero.models.core.ModelsFormat
@@ -74,13 +75,14 @@ import network.calimero.models.core.SceneSummary
 import network.calimero.models.core.ScenesModel
 import network.calimero.models.core.Studio
 import network.calimero.models.core.StudiosModel
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 /** The studios this account is in. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StudiosScreen(
     backend: MeroAppBackend,
-    session: MeroAppSession,
+    vm: ModelsAppViewModel,
     invitation: InvitationModel,
     onJoin: (String) -> Unit,
     onSignOut: () -> Unit,
@@ -95,7 +97,14 @@ fun StudiosScreen(
     var showAccount by remember { mutableStateOf(false) }
     var showJoin by remember { mutableStateOf(false) }
     val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-    LaunchedEffect(model) { model.load() }
+    val approvals = vm.approvals
+
+    /** The studios, then what waits for approval in the account and in each studio. */
+    suspend fun load() {
+        model.load()
+        approvals.refresh(model.studios.value.map { it.id })
+    }
+    LaunchedEffect(model) { load() }
     LaunchedEffect(stage) { if (stage is InvitationModel.Stage.Joined) model.load() }
 
     Scaffold(
@@ -118,13 +127,14 @@ fun StudiosScreen(
             onRefresh = {
                 scope.launch {
                     refreshing = true
-                    model.load()
+                    load()
                     refreshing = false
                 }
             },
             modifier = Modifier.padding(padding).fillMaxSize(),
         ) {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
+                approvalsSection(approvals, scope)
                 val s = state
                 when {
                     s is LoadState.Idle || (s is LoadState.Loading && studios.isEmpty()) -> item { LoadingRows() }
@@ -148,7 +158,8 @@ fun StudiosScreen(
         }
     }
 
-    if (showAccount) AccountSheet(session = session, onDismiss = { showAccount = false }, onSignOut = onSignOut)
+    ApprovalCodeDialog(approvals)
+    if (showAccount) AccountSheet(vm = vm, onDismiss = { showAccount = false }, onSignOut = onSignOut)
     if (showJoin) {
         JoinSheet(onDismiss = { showJoin = false }) { link ->
             showJoin = false
@@ -248,27 +259,37 @@ private fun JoinSheet(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AccountSheet(
-    session: MeroAppSession,
+    vm: ModelsAppViewModel,
     onDismiss: () -> Unit,
     onSignOut: () -> Unit,
 ) {
     var confirm by remember { mutableStateOf(false) }
+    val session = vm.session.collectAsState().value
+    val node = vm.nodeUrl
+    val host = node?.toHttpUrlOrNull()?.host ?: node
+    val nodeLine =
+        when {
+            node.isNullOrEmpty() -> "Not connected to a cluster"
+            vm.mode == SignInMode.DEV -> "Development cluster at $host"
+            else -> "Connected to $host"
+        }
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = ModelsTheme.ground) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
             Text("Account", style = ModelsTheme.heading(17), modifier = Modifier.align(Alignment.CenterHorizontally))
             Row(Modifier.fillMaxWidth().card(), verticalAlignment = Alignment.CenterVertically) {
-                Avatar(session.account.orEmpty(), "Me", 44.dp)
+                Avatar(session?.account.orEmpty(), "Me", 44.dp)
                 Spacer(Modifier.width(12.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text("Signed in", style = ModelsTheme.heading(17))
-                    Text(
-                        if (session.hasRelay) "Connected through your relay" else "No relay serves this account yet",
-                        style = ModelsTheme.body(14, color = ModelsTheme.muted),
-                    )
+                    Text(nodeLine, style = ModelsTheme.body(14, color = ModelsTheme.muted))
                 }
             }
             DetailsDisclosure(
-                listOf("Account" to (session.account ?: "—"), "Application" to (session.applicationId ?: "—")),
+                listOf(
+                    "Account" to (session?.account ?: "—"),
+                    "Package" to (session?.packageName ?: "—"),
+                    "Node" to (node ?: "—"),
+                ),
                 Modifier.fillMaxWidth().card(),
             )
             SecondaryButton(onClick = { confirm = true }) {
