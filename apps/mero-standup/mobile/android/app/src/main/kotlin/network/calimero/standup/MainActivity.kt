@@ -15,7 +15,11 @@ import network.calimero.standup.ui.StandupApp
 
 /**
  * The one activity. Links arrive here, on the launch intent (cold start) or through
- * [onNewIntent], and go to the session: the wallet's sign-in redirect, or a team invitation.
+ * [onNewIntent], and go to the session: the node's consent page sending the person back
+ * (`mero-standup://consent?request_id=…&result=…`), or a team invitation.
+ *
+ * While it lives, the view model holds it ([StandupViewModel.attach]): its passkey approves
+ * invites and member changes, and it opens the consent page.
  */
 class MainActivity : ComponentActivity() {
     private val vm: StandupViewModel by viewModels()
@@ -23,14 +27,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        vm.attach(this)
         if (savedInstanceState == null) consume(intent)
-        val platform =
-            Platform(
-                signIn = { vm.signIn(this) },
-                share = ::share,
-                copy = ::copy,
-            )
+        val platform = Platform(share = ::share, copy = ::copy)
         setContent { StandupApp(vm, platform) }
+    }
+
+    override fun onDestroy() {
+        vm.attach(null)
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {

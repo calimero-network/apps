@@ -730,11 +730,13 @@ for (const [app, entry] of Object.entries(APPS)) {
   // already owned a hand-written `e2e/landing.spec.ts` — covering route guards
   // and redirects, which this page's spec says nothing about — and generating
   // over that name silently deleted them.
-  // An app with no Playwright suite (a component app: its e2e is
-  // `pnpm merod-local e2e`) leaves `e2eDir` out and gets no spec.
+  //
+  // `e2eDir: null` is an app with no Playwright at all (a component app on the
+  // 1.0 runtime, docs/COMPONENT-APPS.md): its page is still generated and its
+  // vitest suite renders it, but there is no e2e directory to write a spec into.
   const SPEC_NAME = 'marketing-landing.spec.ts';
   const targets = Object.entries(files).map(([n, c]) => [join(outDir, n), c, n]);
-  if (entry.e2eDir) {
+  if (entry.e2eDir !== null) {
     const specDest = join(ROOT, 'apps', app, 'app', entry.e2eDir, SPEC_NAME);
     targets.push([specDest, asciiComments(renderSpec(app, entry, meta)), `${entry.e2eDir}/${SPEC_NAME}`]);
   }

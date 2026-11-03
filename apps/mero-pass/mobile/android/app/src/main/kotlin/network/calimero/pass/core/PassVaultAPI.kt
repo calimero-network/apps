@@ -24,7 +24,7 @@ class PassTransport(
     ): String = bound.execute(method, argsJson)
 }
 
-/** The vault client for one context, over the account's relay. */
+/** The vault client for one context, over the account's session. */
 fun passClient(
     contract: ContextContract,
     contextId: String,
