@@ -1,4 +1,4 @@
-import type { Answer, AnswerInput, Field, FormView, ResponseView } from "../generated/FormsClient";
+import type { Answer, AnswerInput, Field, FormView, ResponseView } from "../formsApi";
 
 /** The kinds of field, in the order the builder offers them. Mirrors the contract's FIELD_KINDS. */
 export const KINDS = [
@@ -160,11 +160,11 @@ export function headline(r: Pick<ResponseView, "answers">): string {
 /** Whether a response still wants attention: not archived and not sent on. */
 export const isNew = (r: Pick<ResponseView, "archived" | "crm_deal">) => !r.archived && !r.crm_deal;
 
-/** Node timestamps are nanoseconds. */
-export const fromNanos = (ns: number) => new Date(Math.floor(ns / 1e6));
+/** Contract timestamps are Unix milliseconds (v1's were nanoseconds). */
+export const fromMillis = (ms: number) => new Date(ms);
 
-export function ago(ns: number, now = Date.now()): string {
-  const s = Math.max(0, Math.round((now - ns / 1e6) / 1000));
+export function ago(ms: number, now = Date.now()): string {
+  const s = Math.max(0, Math.round((now - ms) / 1000));
   if (s < 60) return "just now";
   const m = Math.round(s / 60);
   if (m < 60) return `${m}m ago`;
@@ -197,7 +197,7 @@ export function toCsv(form: Pick<FormView, "fields">, responses: ResponseView[])
   const header = [...columns.map((c) => c.label), "Received", "Source", "Archived", "CRM deal"];
   const rows = responses.map((r) => [
     ...columns.map((c) => valueOf(r, c.id)),
-    fromNanos(r.created_at).toISOString(),
+    fromMillis(r.created_at).toISOString(),
     r.source,
     r.archived ? "yes" : "",
     r.crm_deal,
@@ -205,7 +205,7 @@ export function toCsv(form: Pick<FormView, "fields">, responses: ResponseView[])
   return [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n") + "\r\n";
 }
 
-/** The request body a website's backend sends, for the Connect tab. */
+/** The `submitResponse` arguments a website's backend sends, for the Connect tab. */
 export function examplePayload(form: Pick<FormView, "id" | "fields">): string {
   const example = (f: Field): string[] => {
     switch (f.kind) {
@@ -231,8 +231,8 @@ export function examplePayload(form: Pick<FormView, "id" | "fields">): string {
   };
   return JSON.stringify(
     {
-      form_id: form.id,
-      answers: form.fields.map((f) => ({ field_id: f.id, values: example(f) })),
+      formId: form.id,
+      answers: form.fields.map((f) => ({ fieldId: f.id, values: example(f) })),
       source: "/contact/",
     },
     null,

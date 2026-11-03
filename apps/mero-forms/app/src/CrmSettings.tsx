@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { useMero } from "@calimero-network/mero-react";
-import type { CrmLink, Field, FormView } from "./generated/FormsClient";
+import type { CrmLink, Field, FormView } from "./formsApi";
 import { NO_LINK, isLinked } from "./lib/crm";
 import { parsePipelineId } from "./lib/pipelines";
 import { shortAccount } from "./lib/people";
@@ -34,7 +33,6 @@ const MAPPED: [keyof CrmLink, string, string][] = [
  * whole team sends to the same place.
  */
 export function CrmSettings({ form, workspace }: { form: FormView; workspace: Workspace }) {
-  const { isDelegated } = useMero();
   const [pasted, setPasted] = useState("");
   const [tried, setTried] = useState<string | null>(null);
   const { pipelines, error: listError, reload } = usePipelines(true, [form.crm.context_id, tried ?? ""]);
@@ -82,19 +80,15 @@ export function CrmSettings({ form, workspace }: { form: FormView; workspace: Wo
       <h2>Send responses to Mero CRM</h2>
       <p className="empty">
         Each response becomes a contact and a deal in a pipeline, with every answer in a note on
-        the deal. They are written as you, so you have to be a member of the pipeline:{" "}
-        {isDelegated
-          ? "your Calimero account, through the Calimero Cloud relay that serves it."
-          : "this node's identity in it."}
+        the deal. They are written as you, so your account has to reach the pipeline: be a member
+        of the organization it lives in.
       </p>
 
       {listError && <pre className="err">{listError}</pre>}
-      {pipelines === null && !listError && <p className="empty">Looking for pipelines on this node…</p>}
+      {pipelines === null && !listError && <p className="empty">Looking for your pipelines…</p>}
       {pipelines !== null && pipelines.length === 0 && (
         <p className="note">
-          {isDelegated
-            ? "Your account is not in any Mero CRM pipeline that Calimero Cloud can see."
-            : "This node is not in any Mero CRM pipeline."}{" "}
+          Your account does not reach any Mero CRM pipeline.{" "}
           Create a pipeline in Mero CRM or join one from its invite link, then{" "}
           <button className="link" onClick={reload}>
             look again
@@ -118,7 +112,7 @@ export function CrmSettings({ form, workspace }: { form: FormView; workspace: Wo
               <option value="">Choose a pipeline</option>
               {pipelines.map((p) => (
                 <option key={p.contextId} value={p.contextId}>
-                  Pipeline {shortAccount(p.contextId)} · {p.stages.length} stages
+                  {p.name || `Pipeline ${shortAccount(p.contextId)}`} · {p.stages.length} stages
                 </option>
               ))}
             </select>
@@ -172,7 +166,7 @@ export function CrmSettings({ form, workspace }: { form: FormView; workspace: Wo
         <input
           aria-label="pipeline id"
           className="mono"
-          placeholder="Or paste a pipeline id (64 hex, from Mero CRM)"
+          placeholder="Or paste a pipeline id (the Mero CRM app id)"
           value={pasted}
           onChange={(e) => setPasted(e.target.value)}
         />
@@ -182,7 +176,7 @@ export function CrmSettings({ form, workspace }: { form: FormView; workspace: Wo
       </form>
       {tried && pipelines !== null && !pipelines.some((p) => p.contextId === tried) && (
         <p className="err-inline" role="alert">
-          That pipeline did not answer: check the id, and that you are a member of it.
+          That pipeline did not answer: check the id, and that you are a member of its organization.
         </p>
       )}
 

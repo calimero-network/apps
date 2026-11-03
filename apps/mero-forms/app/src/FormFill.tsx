@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Field, FormView } from "./generated/FormsClient";
+import type { Field, FormView } from "./formsApi";
 import { missingRequired, toAnswers, type Draft } from "./lib/fields";
 import type { Workspace } from "./useWorkspace";
 
