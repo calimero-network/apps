@@ -1,6 +1,6 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import type { DocsClient } from '@/generated/docs/DocsClient';
+import type { DocsClient } from '@/lib/docsApi';
 import { docTextFromBlocks } from '@/lib/search/docText';
 import { rowKey, type IndexRow } from '@/lib/workspaceIndex/types';
 import { useTextMatch } from '../useTextMatch';

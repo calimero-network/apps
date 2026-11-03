@@ -3,10 +3,10 @@ import { renderHook, act } from '@testing-library/react';
 import { useOnlineStatus } from '../useOnlineStatus';
 
 // Mutable mock of the SDK's isOnline; rerender picks up changes.
-// (vitest hoists vi.mock above the imports, so mero-react is mocked before
+// (vitest hoists vi.mock above the imports, so @/calimero/react is mocked before
 // useOnlineStatus imports it.)
 let online = true;
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@/calimero/react', () => ({
   useMero: () => ({ isOnline: online }),
 }));
 

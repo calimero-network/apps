@@ -17,7 +17,7 @@ import {
 } from '@/hooks/useMemberDisplayName';
 
 // localStorage marker recording that a display name is already set for a
-// given (namespace, member). Bridges a mero-react bug where
+// given (namespace, member). Bridges a gap where
 // useMemberMetadata can return name=null on a fresh load even though the
 // name IS set server-side - without this, the gate re-appears on EVERY
 // page refresh. The marker is only ever written once we KNOW a name
@@ -61,7 +61,7 @@ function NameGate({
   // The name as seen by the rest of the app's member surfaces: the
   // namespace GroupMember rows (keyed by identity), which reliably carry
   // the name even when `useMemberDisplayName` returns null on a cold load
-  // (mero-react rehydration gap). This is the same source the members
+  // (a read still in flight). This is the same source the members
   // list + the settings panel use, so the gate agrees with them.
   const memberRowName = namespaceMemberNames[selfIdentity] ?? null;
   // The effective name from ANY reliable source.

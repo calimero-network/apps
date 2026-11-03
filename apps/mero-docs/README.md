@@ -1,231 +1,171 @@
 # Mero Docs
 
-A private, end-to-end encrypted document workspace on the [Calimero](https://calimero.network) P2P network. Namespaces hold folders; folders hold documents. Everything is a CRDT, nothing leaves your device in plaintext.
+A document workspace: folders hold rich-text documents that the members of a
+workspace edit together, live. A component app on Calimero 1.0: the contract is
+on core's component SDK (`calimero-app-sdk`, `wasm32-wasip2`), local development
+runs on `merod local`, and the frontend talks to the local nodes in development
+and to Calimero Cloud in production through mero-js's `CalimeroClient`
+(`@calimero-apps/connect`). See [`docs/COMPONENT-APPS.md`](../../docs/COMPONENT-APPS.md).
 
-## What ships in this repo
-
-- **`logic/`** - Rust workspace (v9) that compiles to a **multi-service WASM bundle** (`.mpk`)
-  - `crates/registry` - workspace-level data for a namespace: owner, managers, tags, saved views (no folders; see below)
-  - `crates/docs` - document CRUD + tags + archive inside a folder context
-  - `crates/types` - shared types (`DriveError`) + ABI-stable constants
-- **`app/`** - React + Tiptap web app; talks to a Calimero node via `@calimero-network/mero-react` hooks
-- **`logic/workflows/`** - the merobox scenarios CI runs (see [CI](#ci))
-
-## Feature set
-
-- **Namespaces** - each namespace is a Calimero group hierarchy; switch between them from the top bar
-- **Folders as contexts** - each folder is a subgroup with its own CRDT state; members inherit from the parent unless visibility is `Restricted`
-- **Rich-text docs** - Tiptap editor, HTML-stored, autosave with ordering-safe sequence guard
-- **Fine-grained permissions** - per-member capability bitmask (`READ | WRITE | CREATE_GROUP | MANAGE_GROUP | INVITE_MEMBERS | MANAGE_MEMBERS`) layered on top of coarse roles (Admin / Member / ReadOnly)
-- **Member management** - invite, role transitions, per-member capability overrides, namespace-wide defaults
-- **Tags & archive** - tag docs, filter by tag, archive without deleting
-- **Search** - titles, folders, tags and document text from the palette; on Home the same text is a filter (`q=` in the URL) that combines with folder, tag, date, author and Mentioned me, and saved views keep it. Document text is searched by each folder's `search_docs`, the node's full-text index of that folder (title and body, best match first, a word as you type it), so every doc is found whether or not this device has opened it (see `app/src/hooks/useDocSearch.ts`). A folder whose node runs with search off is searched from the text this device reads instead, once per version per session and never written to browser storage (see `app/src/hooks/useTextIndex.ts`)
-- **Cross-node sync** - every namespace and folder is a CRDT; writes converge without conflict
-
-## Prerequisites
-
-- Node.js 20+ and [pnpm](https://pnpm.io) 9
-- Rust stable + `wasm32-unknown-unknown` target (`rustup target add wasm32-unknown-unknown`)
-- A `merod` binary on PATH or in `MEROD_BINARY`
-- [merobox](https://calimero-network.github.io/merobox) for the e2e workflows
-
-## Quick start
-
-```bash
-pnpm install
-pnpm run app:generate-client          # TypeScript client from the ABI
-MEROD_BINARY=/path/to/merod scripts/local-rig.sh up
-pnpm run app:dev
-```
-
-`scripts/local-rig.sh up` builds the bundle, starts three merod nodes on ports 3920-3925 under `/tmp/merodocs-rig`, installs the bundle on each, creates the namespace, the folder group and its docs context, joins the other two nodes, waits for them to agree on one context state hash, and writes `app/.env.integration`.
-`RIG_BUNDLE=<path.mpk>` installs that bundle instead of building one.
-It stops only the processes it started, recorded in `/tmp/merodocs-rig/rig.pids`.
-
-```bash
-scripts/local-rig.sh status           # per node: URL, pid, online or offline
-scripts/local-rig.sh offline 2        # stop node 2, keeping its home
-scripts/local-rig.sh online 2         # start it again on the same home and ports
-scripts/local-rig.sh down             # stop every node this script started
-```
-
-The dev server serves the rig to the browser under `/__dev` (dev builds only): `GET /__dev/nodes` is the node list, `POST /__dev/node/<n>/offline` and `/online` are the switch.
-The dev panel in the bottom right shows which node this window talks to, toggles any node, and portals an inspector into `#dev-inspector`.
-
-`?node=<n>` points a window at rig node n.
-Two windows need two origins, because one origin is one `localStorage`: open `http://localhost:5179/app?node=1` and `http://127.0.0.1:5179/app?node=2`.
-
-## Project layout
-
-```
-mero-docs/
-├── logic/
-│   ├── Cargo.toml                  # workspace root; [workspace.metadata.calimero] drives `cargo mero bundle`
-│   ├── assets/                     # bundle icon (keep in sync with app/public/icons/)
-│   └── crates/
-│       ├── types/                  # DriveError, tag-key rules
-│       ├── registry/               # per-namespace owner, managers, tags, saved views
-│       └── docs/                   # per-folder document store
-├── app/
-│   └── src/
-│       ├── api/                    # thin admin-API client + generated DocsClient/RegistryClient
-│       ├── hooks/                  # useDocs, useFolderPermissions, useNamespacePermissions,
-│       │                           # useWorkspaceBootstrap, useFolderOperations, useDocEvents, …
-│       ├── context/                # WorkspaceContext + RegistryContext providers
-│       ├── components/
-│       │   ├── workspace/          # NamespaceSwitcher, WorkspaceLayout, NamespaceMembersPanel,
-│       │   │                       # NamespaceSettingsPanel, NamespaceCreateDialog
-│       │   ├── folders/            # FolderTree, FolderBreadcrumb, FolderSharingPanel
-│       │   ├── docs/               # DocumentList, DocumentEditor
-│       │   ├── editor/             # EditorShell, EditorHeader, EditorToolbar, EditorStatusBar
-│       │   ├── admin/              # MemberRoleSelect, NamespaceMemberRow, WorkspaceSettingsPanel
-│       │   └── ui/                 # shadcn-style primitives + ConfirmDialog
-│       └── constants/              # app-id, service ids, capability bits
-└── scripts/
-    └── local-rig.sh                # three local merod nodes + app/.env.integration
-```
-
-## Backend surface (WASM service methods)
-
-### Docs service - one context per folder
-
-| Method | Description |
+| | |
 |---|---|
-| `create_doc(title, content)` | Create a new document; returns the generated id |
-| `get_doc(id)` | Read a document |
-| `list_docs(include_archived)` | List documents in this folder's context |
-| `edit_doc(id, { title?, content? })` | Update title and/or content |
-| `archive_doc(id)` / `unarchive_doc(id)` | Toggle archive state |
-| `delete_doc(id)` | Hard-delete |
-| `add_tag(id, tag)` / `remove_tag(id, tag)` | Mutate tag set (remove is idempotent) |
+| `logic/` | the contract (a standalone crate: its own `[workspace]` and `Cargo.lock`) |
+| `logic/src/rich.rs` | the text engine: Quill deltas, character ids, anchors and undo tokens on the SDK's Fugue `RichText` |
+| `logic/tests/` | `harness.rs` (every method on core's wasmtime engine, `TestApp`), `scenarios.rs` (every `scenarios/*.json`), `guide.rs` (the agent guide's format) |
+| `logic/scenarios/` | `docs-lifecycle.json`, `rich-body.json`, `registry.json` (v1's merobox workflows), `access.json` (the node's gate, guests, other members' content); run by `cargo test` and on `merod local` |
+| `logic/GUIDE.md` | the agent guide the bundle carries |
+| `app/` | Vite + React + BlockNote frontend |
+| `mobile/` | native iOS and Android readers, **still v1** (see [Mobile](#mobile)) |
 
-Events: `DocCreated`, `DocEdited`, `DocArchived`, `DocUnarchived`, `DocDeleted`, `DocTagsChanged`.
+## The model
 
-### Registry service - one context per namespace
+| | Calimero 1.0 | v1 |
+|---|---|---|
+| a workspace | an **organization** | a namespace |
+| the workspace's registry (managers, tags, saved views) | an instance of this app in the org (org access), its id in the org's metadata (`registryApp`) | the `registry` service's context in the namespace's root group |
+| a folder | a **team** of the org; a subfolder a team under it | a subgroup |
+| Open / Restricted folder | a team anyone the parent reaches joins (`join: everyone`) / invite-only (`join: invite`) | subgroup visibility `open` / `restricted` |
+| a folder's documents | an instance of this app with `team` access, its id in the team's metadata (`docsApp`, beside `color`) | the `docs` service's context in the subgroup |
+| folder roles Manager / Editor / Viewer | team row `lead` / `member` / `readOnly` | group role + capabilities |
+| member capabilities | org and team capability bits (`ORG_CAPABILITIES`) | v1 `MemberCapabilities` |
+| joining | an org invite (`?invite=<token>`, naming the restricted folders' teams), redeemed after a passkey sign-in | a namespace invitation link, then joining each context and waiting for it to sync |
+| who you are | an account, signed in with a passkey | a node identity, signed in through the node |
+| presence and cursors | the node's presence API (`publishPresence`, `presenceStream`) | ephemeral context messages |
+| images | blobs of the folder's documents instance (`uploadBlob`, `downloadBlob`) | context blobs |
 
-Every workspace member replicates the registry context, so it holds workspace-level data only. It stores **no folder data**: a folder is a core subgroup, its name and colour are the subgroup's metadata (`name`, `data.color`), its docs context is the one context in the subgroup, its roles are core roles + capabilities, the tree is read by walking `listSubgroups` from the root group, and deleting a folder is one core `deleteGroup`, which cascades.
+The node decides who reaches an instance at all: the org's members reach the
+registry; a folder's instance is reached by its team (an open team by everyone
+who reaches its parent, a restricted one by its direct rows only). Anyone else is
+refused before the contract runs (`404 NOT_FOUND`, `401 UNAUTHENTICATED` when
+anonymous). A `readOnly` row reaches the folder but the node refuses every write
+(`403`), which is how a Viewer stays read-only. The contract checks the rest,
+stated on each method: a document's creator or the folder's moderator (whoever
+created the folder's instance) deletes it; a comment is its author's, and the
+moderator removes any; only the registry's owner names managers.
 
-| Method | Description |
+## Run it
+
+```bash
+rustup target add wasm32-wasip2
+# merod at component-core-tag (root Cargo.toml), once: see docs/COMPONENT-APPS.md
+pnpm dev:local mero-docs      # merod local + the contract + the app on http://localhost:5173/
+```
+
+Sign up with a passkey, create a workspace, a folder in it, and a document. To
+try a second person, invite them from the workspace's members panel and open the
+link in another browser profile.
+
+## Test it
+
+```bash
+M=tools/component-bundle/Cargo.toml
+cargo fmt --manifest-path apps/mero-docs/logic/Cargo.toml -- --check
+cargo clippy --manifest-path apps/mero-docs/logic/Cargo.toml --all-targets -- -D warnings
+cargo clippy --manifest-path apps/mero-docs/logic/Cargo.toml --target wasm32-wasip2 -- -D warnings
+cargo test --manifest-path apps/mero-docs/logic/Cargo.toml       # harness + scenarios + guide
+cargo run --release --manifest-path $M -- build apps/mero-docs/logic   # res/abi.json
+pnpm merod-local e2e mero-docs                                   # the scenarios on merod local
+pnpm -F mero-docs lint && pnpm -F mero-docs typecheck && pnpm -F mero-docs test && pnpm -F mero-docs build
+```
+
+## What changed in the port, and why
+
+### Storage
+
+v1 was a two-service bundle (`docs`, `registry`, and a shared `types` crate). A
+component bundle has one service, so the one component carries both method sets
+(their names never collided) and the frontend creates two kinds of instance
+from it: the registry, and one per folder. Both kinds hold every collection; each
+only ever fills its own.
+
+| v1 (`calimero-storage`) | component SDK |
 |---|---|
-| `get_owner()` | The registry owner (who created the registry context) |
-| `add_manager(member)` / `remove_manager(member)` / `list_managers()` | Manager list; only the owner writes it |
-| `set_tag(key, name, color)` / `delete_tag(key)` / `list_tags()` | Workspace tags (delete is a permanent tombstone) |
-| `save_view(id, name, query)` / `delete_view(id)` / `list_views()` | Workspace saved views |
+| `docs: UnorderedMap<String, DocRecord>` with `title: FugueText`, `body: RichDocument<DriveMarks>`, `tags: UnorderedSet`, `LwwRegister`s, a hand-written `Mergeable` | `docs: UnorderedMap<String, DocMeta>` (creator, times, last editor, archived); `docTags: Set<(doc, tag)>`; the title a `RichText` named `dt:<doc>` |
+| `RichDocument`: a spine of block slots, each block a row with its own rich text | the block order a Fugue `Text` named `do:<doc>`, one character per block; `blocks: UnorderedMap<(doc, block), BlockRow>` (kind, depth, attributes, slot); `slots: UnorderedMap<(doc, slot), block>`; each block's text a `RichText` named `db:<doc>:<block>` |
+| `DriveMarks` (`MarkSchema`): growing `bold`, `italic`, `underline`, `strike`, `textColor`, `backgroundColor`; non-growing `link`, `code`, `comment` | the same keys and the same growth, as the `expand` flag of each `RichText` mark (`rich::expands`) |
+| `FugueText` / `RichText` deltas, anchors, undo (`DeltaUndo`, `Undo`) | rebuilt on the SDK's `RichText` in `src/rich.rs`: `chars`, `insert_after`, `delete_ids`, `mark_ids` |
+| `headers: Moderated<UnorderedMap<String, u64>>` (creator = owner stamp, removable by the founder) | `createdBy` on `DocMeta`; `deleteDoc` checks the caller is the creator or `env::app_owner()` |
+| `comments: Moderated<IndexedMap<String, Comment>>` (`#[index] doc_id`) | `comments: UnorderedMap<(doc, comment), CommentRow>` with `author`, `commentDocs: UnorderedMap<comment, doc>`, `commentTotal: Counter` |
+| `search_indexes!` + `#[derive(Searchable)]` (the node's full-text index) | not in components at `1.0.0-rc.7`: `searchDocs` reads the folder's text itself (below) |
+| registry `owner: Frozen<String>` + `AccessControl` | `env::app_owner()` and `managers: Set<String>` |
+| registry `tags: UnorderedMap<String, TagRecord>` (per-field `LwwRegister`, tombstone merged by OR) | `tags: UnorderedMap<String, TagRow>`; the tombstone stays |
+| registry `views` + `view_origins: WriteOnce<…>` (first saver) | `views: UnorderedMap<String, ViewRow>` with `createdBy`, kept from the first save |
+| `DriveError` (`{kind, data}`) via `app::err!` | `#[app::error] Error { NotFound, Invalid, Forbidden }`, each `{ message }` |
+| `tests/collab_convergence.rs`, `Script` merge tests | gone: one leader orders every write; the stale-view cases they guarded are `applyDeltaOn` / anchor tests in `harness.rs` |
 
-Events: `ManagerAdded`, `ManagerRemoved`, `TagChanged`, `ViewChanged`.
+The text stays a sequence CRDT (Tree-Fugue, core#4813) because an editor sends
+an edit typed against a view a peer has since changed: every character has an
+id, an insert names the character it follows, a delete names ids. So the
+collaborative editing protocol the web editor speaks (`applyDeltaOn` with a base
+text and an anchor, rebase by character ids on a refusal) is unchanged.
 
-### Admin-API surface (via Calimero node, not this bundle)
+### What a client sees
 
-The app uses admin-API endpoints directly for namespace, group and member management:
+| | v1 | now |
+|---|---|---|
+| method and argument names | `create_doc`, `include_archived`, `doc_id`, … | the same methods, camelCase: `createDoc`, `includeArchived`, `docId`, … |
+| answers | snake_case fields (`created_at`, `can_delete`, `anchor_pos`, `next_cursor`, `created_by`) | camelCase (`createdAt`, `canDelete`, `anchorPos`, `nextCursor`, `createdBy`) |
+| timestamps (`createdAt`, `updatedAt`, a comment's `createdAt`) | nanoseconds, JSON numbers | milliseconds (the log entry's time), **decimal strings**; `commentCount` and `searchDocs`' `total` decimal strings too |
+| ids | `doc-<nonce>-<account>-<device>`, `cmt-…`, blocks and marks as bs58 borsh | `doc-<16 hex>`, `cmt-<16 hex>`, `blk-<16 hex>`, marks as decimal ids; all still opaque |
+| character ids (`ids` runs) | `{replica: <node>, counter, len}` per writer | `{replica: "0", counter, len}`: one leader mints every id |
+| anchors and undo tokens | bs58 borsh | `s`, `e`, `a<id>`, `b<id>` / a JSON inverse edit; both still opaque |
+| accounts (`createdBy`, `updatedBy`, `author`, managers) | 64-hex node account ids | 1.0 account ids |
+| `searchDocs` | the node's full-text index (BM25, snippets from the indexer) | every query word must start a word of the title or body, case-insensitive; a title match scores 2, a body match 1; snippet from the body (else the title), matches in `<b>`; reads the folder's text on each call |
+| `searchDocs` on a node with search off | an error, the client fell back to its own text index | always answers |
+| `deleteDoc` | removed the header, the record and the comments the deleter could remove | removes the title, every block's text, the tags and all the document's comments |
+| who may delete a document or a comment | its creator / author or the founder (who created the folder's context) | its creator / author or `env::app_owner()` (who created the folder's instance) |
+| `commentSchemaVersion` | the comment's per-entry schema version | `1` for a live comment, `null` otherwise |
+| `listDocs`, `listComments`, `listTags`, `listViews`, `listManagers` order | storage order | key order (document, comment, tag, view id; account) |
+| `addManager` | any 32-byte hex key | a member of the organization (`Invalid` otherwise) |
+| `removeManager` of a non-manager | a no-op | `NotFound` |
+| an op past the end of a text, an undeclared mark key, a malformed token | a storage error string | `Invalid { message }` |
+| an unknown document, block, comment, tag or view | `"unknown document '…'"` or `{kind: NotFound}` | `NotFound { message }` |
+| a read-only member's write | `ReadOnlyWriteRefused` from v1 core | `403` from the node (the team row is `readOnly`) |
+| `passageCount`, positions, `anchorPos` | `usize` numbers | `u32` numbers |
+| `getBlockDelta` / `spans` | `{text, attributes}` | the same |
+| events | `DocCreated`, …, `MarkApplied { mark_id }` | the same events; `MarkApplied { markId }` |
+| a text split or merged, then undone | the moved text kept its v1 ids | the moved text gets new ids (as v1's split did), so an undo token taken before the split no longer covers it |
 
-- `create_namespace`, `delete_namespace`, `list_namespaces`
-- `list_namespace_groups`, `create_group_in_namespace`, `set_group_alias`, `delete_group`
-- `add_group_members`, `remove_group_members`, `list_group_members`
-- `update_member_role`, `set_member_capabilities`, `get_member_capabilities`
-- `set_default_capabilities`, `set_default_visibility`
-- `create_context`, `join_context`, `delete_context`
-- `/alias/create/context`, `/alias/lookup/context/{name}` (bootstrap)
+### Frontend
 
-See [`useWorkspaceBootstrap`](app/src/hooks/useWorkspaceBootstrap.ts) for the lookup→create→alias-set race-recovery pattern.
+The screens and components are unchanged; the client layer under them is new.
 
-## Permissions model
+| v1 | now |
+|---|---|
+| `MeroProvider`, mero-react hooks, node login, desktop SSO | `src/calimero/session.tsx`: the target from the environment (merod local in `vite`, Cloud in `vite build`), passkey sign-in or sign-up, the stored session (`SessionStore`) |
+| admin API (`listGroupMembers`, `createGroupInNamespace`, `createContext`, `addGroupMembers`, …) | `src/calimero/orgs.ts`: the same calls on organizations and teams, read from one `GET /orgs/{org}` snapshot; `src/calimero/react.tsx` has the hooks the screens used, by the same names |
+| generated `DocsClient` / `RegistryClient` (abi-codegen) | `src/lib/docsApi.ts`: the same method names and answer shapes (snake_case, nanoseconds) over `client.call` / `client.view`; its test checks every method and parameter against `logic/res/abi.json` |
+| SSE subscriptions and ephemeral messages | `src/calimero/live.ts`: one `client.events` stream per instance, and the node's presence API for cursors |
+| v1 errors (`RpcError`, `ReadOnlyWriteRefused`) | mero-js 28 typed errors (`src/calimero/errors.ts`); a node `403` on a write is the Read only message |
 
-Two-axis authorization, enforced server-side in `calimero-network/core`:
+What a person sees differently:
 
-- **Role** (`Admin` / `Member` / `ReadOnly`) - coarse tier. Admins bypass the capability check; role changes never mutate the capability column.
-- **Capability bitmask** (u32) - per-member delegation of specific bits. `get_member_capabilities` returns only this override (0 if never set), never a role-derived "effective" mask.
+- **Sign-in** is a passkey (sign in, or sign up with a name). No node URL, Cloud tab or desktop SSO.
+- **Membership changes ask for the passkey**: roles and capabilities (twice when both change), adding and removing members, invites, member defaults, deleting or leaving a workspace.
+- **Invite links** are org invite tokens (`?invite=<token>&…`), kept through sign-up and redeemed after a confirmation; a folder invite names the folder's team. v1 links no longer work.
+- **No sync states**: "syncing from peers", "just joined", "not synced to your node" and their retries are gone; a joined workspace opens at once.
+- **Folders**: the workspace list shows the organizations that hold an instance of this app; a Restricted folder you cannot reach is not listed; a folder under a parent you cannot see shows as Shared; members who only inherit an Open folder show as Editor.
+- **Removed**: the dev rig panel, the document inspector, `?node=`. The dev server runs on `http://localhost:5173/`.
+- Removed with them: Playwright (`e2e/`, both configs), `src/generated`, mero-react, `@calimero-apps/e2e-node`, abi-codegen, `loginPopup`, `components/dev`, `useApplicationId`, `useAppNamespaces`, `useSyncStatus`, `useNamespaceDisplayNames`, `useRegistryClient`, `lib/registryContext`, `lib/redeemInvite`, and the unit tests that only covered them.
 
-Admin-only operations (`update_member_role`, `add_group_members` admin path, `set_member_capabilities` itself) require role=Admin; they cannot be delegated via capability bits. Cap-delegatable operations (`create_group_invitation`, `create_context`) pass if the caller is Admin OR has the relevant bit.
+### Removed
 
-The per-folder **document role** (`Viewer` / `Editor` / `Manager`) the app shows is derived from core alone (the folder group's role + capabilities); nothing about it is stored in the registry.
-The sharing panel's "Read only" makes the member core `ReadOnly` in the folder's group, and in each Open sub-folder reached through it, stopping at a Restricted sub-folder.
-A Restricted sub-folder someone was invited to directly keeps the role its admin gave them.
-Core reads only the direct row of each folder's group, so a member who only inherits an Open folder gets a direct `ReadOnly` row there.
-While the member holds those rows, nodes refuse their writes to those folders' docs, comments included, with a `ReadOnlyWriteRefused` error; an editor page that still offered the edit drops it and shows the node's text.
-Read only lasts while the member stays in the folder: someone who leaves and comes back through a fresh invite is a normal member again.
-Setting them back to Editor or Manager ends Read only across the same sub-folders; each sub-folder goes back to Editor, since the role a member held there before Read only is not recorded.
-The rows Read only wrote in Open sub-folders stay as direct Member rows after that, so restricting such a folder or making the person a Guest leaves them in with write access; remove them from the folder to take it away (the Make restricted confirmation names them).
-A Read only member who is the admin of a sub-folder keeps writing there: core does not demote a folder's admin.
-When an existing folder is opened, the parent's Read only members can write in it and its Open sub-folders, and a Read only person restored to an Open folder can write in its Open sub-folders, for the moment before their Read only rows are written; writing those rows first would add them to folders that are still Restricted, or that still ban them. A folder created Open gets the rows before it opens.
-An Open sub-folder created or opened later takes Read only from its parent, and its admin re-applies it when opening its sharing panel, which covers two admins acting at once.
-Removing someone from a folder also removes them from the Open sub-folders reached through it, stopping at a Restricted folder.
-In an Open folder a removal is a ban: it lasts until an admin restores them from that folder's Removed list (each folder has its own), and a workspace re-invite does not lift it; someone the parent holds Read only comes back Read only.
-Only the folder's admin can change a folder role, since core takes the role and caps change from its admin alone.
+- `logic/crates/registry`, `logic/crates/types` (folded into the one crate), `logic/res/state-schema.json`, `logic/workflows/` (16 merobox workflows), `logic/tests/collab_convergence.rs`.
+- `scripts/` (`local-rig.sh`, `registry-sync.sh`, `sync-wasm.sh`, `setup-cargo-mero.sh`, `on-res-change.mjs`): v1's three-node rig, the local registry sync and the cargo-mero installer. With the installer gone, the repo's `check-cargo-mero-pin.py` (and its test) and their CI steps go too; so do the `cargo test -p mero-docs*` `--ignored` steps and the `Browser E2E rich (mero-docs)` job in `ci.yml`.
+- The merobox workflows about namespaces, folder groups, roles, visibility and Read only sweeps (`members`, `namespace-lifecycle`, `open-subgroup`, `restricted-privacy`, `folder-read-only`, `nested-read-only-*`, `open-restricted-collab`, `one-account-two-devices`) tested core v1's group machinery, not this contract. In 1.0 that is the node's team access, which core tests; `access.json` keeps what the contract itself decides.
 
-UI helpers:
-- [`useFolderPermissions`](app/src/hooks/useFolderPermissions.ts) - wraps the role+caps read for a specific folder
-- [`useNamespacePermissions`](app/src/hooks/useNamespacePermissions.ts) - same at the namespace root
+## Mobile
 
-## Development workflow
+`mobile/ios` and `mobile/android` are unchanged and remain v1. Their pinned Swift
+and Kotlin SDKs (`MeroAppSession`) have no 1.0 client yet, so they work only
+against a v1 deployment of the app (see `mobile/README.md`).
+`mobile/scripts/regenerate-client.sh` refuses the component ABI so the committed
+v1 clients are not overwritten.
 
-```bash
-# Logic
-pnpm run logic:build                          # build both crates + package the .mpk bundle
-pnpm run logic:clean                          # rm target + per-crate res/ + dist/
+## Production
 
-# App
-pnpm run app:dev                              # Vite + WASM watcher
-pnpm run app:build                            # production build
-pnpm --dir app lint
-pnpm --dir app test                           # Vitest unit tests
-pnpm --dir app exec playwright test           # browser e2e: starts two merod ($MEROD_BINARY) with the logic:build bundle
-
-# Generated client
-pnpm run app:generate-client                  # regenerate DocsClient/RegistryClient from logic/res/abi.json
-```
-
-## CI
-
-[.github/workflows/ci.yml](.github/workflows/ci.yml) runs on every PR:
-
-- **Frontend** - lint + vitest + build
-- **Logic (Rust)** - `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test --workspace`, WASM build for both crates
-- **Bundle** - assembles the `.mpk` artifact and uploads it for reviewers + the e2e job
-- **E2E (mero-docs / \<scenario\>)** - one runner per scenario in `logic/workflows/`, retried only when a joining step loses the cold-join race, with node logs collected per scenario
-- **Browser E2E (mero-docs)** - the Playwright projects; `single-node` and `two-node` run against nodes the suite starts itself, or against the rig when `app/.env.integration` exists
-- **Browser E2E rich (mero-docs)** - the `rich` Playwright project, the live collab session, against a three-node rig brought up with CI's bundle
-
-Known upstream merobox gaps that block additional coverage are tracked as [calimero-network/merobox#214](https://github.com/calimero-network/merobox/issues/214) (`expected_failure` not honored by group_management step classes), [#215](https://github.com/calimero-network/merobox/issues/215) (context-alias steps), [#216](https://github.com/calimero-network/merobox/issues/216) (wait-for-SSE-event), and [#217](https://github.com/calimero-network/merobox/issues/217) (generic admin-API HTTP step).
-
-## Troubleshooting
-
-**WASM build fails**
-```bash
-rustup target add wasm32-unknown-unknown
-```
-
-**Vite cache stale after regenerating the client**
-```bash
-rm -rf app/node_modules/.vite
-```
-
-**Local node + bundle out of sync**
-```bash
-scripts/local-rig.sh down && scripts/local-rig.sh up
-```
-
-## Links
-
-- [Calimero docs](https://docs.calimero.network)
-- [Calimero on GitHub](https://github.com/calimero-network)
-- [Merobox workflow reference](https://calimero-network.github.io/merobox)
-
-## Owned keys are per owner (core 0.11.0-rc.57)
-
-Since core 0.11.0-rc.57 every owned collection (`Authored…`, `WriteOnce`, `Moderated`,
-`ModeratedOnce`) is one namespace per account: two accounts writing one key hold two
-independent entries, and a key-only `get`, `contains`, `owner_of`, `owned_by_me` or `remove`
-acts on the CALLER's own entry only. This app was migrated:
-
-- **Registry.** A saved view's creator is the one account holding its `view_origins`
-  entry; with several holders the creator is unknown. (The registry no longer stores
-  folders, so the per-owner folder reads it used to need are gone.)
-- **Docs.** A doc's creator is the one origin entry whose owner carries the doc id's
-  account tag; with none or several the doc has no known creator. Comments are read by id
-  through the lowest holder, a listed comment's author is matched among its id's holders,
-  `comment_schema_version` reads the holder's entry by name, and a moderator's
-  `delete_comment` removes every holder's comment with `remove_by`.
-
-## License
-
-MIT
+The production frontend is the one the bundle carries (`frontend-dir =
+"../app/dist"`): a Cloud node trusts passkey ceremonies only from frontends it
+serves from a package. Build it with `VITE_CALIMERO_CLUSTER` and
+`VITE_CALIMERO_MIN_RELEASE` set (see `app/.env.example`), then
+`mero-component bundle apps/mero-docs/logic --key …`.

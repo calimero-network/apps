@@ -18,9 +18,8 @@ import { WorkspaceExitPanel } from './WorkspaceExitPanel';
 export function NamespaceSettingsPanel() {
   const { namespaceId, namespaces, namespaceMembers } = useDriveWorkspace();
   const ns = namespaces.find((n) => n.namespaceId === namespaceId);
-  // Core's `memberCount` counts TEE nodes too; the members list below does not.
   const count = ns
-    ? peopleCount(ns.memberCount, namespaceMembers.teeMembers.length)
+    ? peopleCount(ns.memberCount ?? 0, namespaceMembers.teeMembers.length)
     : 0;
 
   return (

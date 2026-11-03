@@ -4,13 +4,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Mock } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useCreateBlockNote } from '@blocknote/react';
-import type { DocsClient } from '@/generated/docs/DocsClient';
+import type { DocsClient } from '@/lib/docsApi';
 import { useFugueBody, type BodyEditor } from '../useFugueBody';
 import { schema } from '@/components/editor/blocknote/schema';
 
 let deliver: ((event: unknown) => void) | null = null;
 const events = { on: () => {}, off: () => {} };
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@/calimero/react', () => ({
   useSubscription: (_ids: string[], handler: (event: unknown) => void) => {
     deliver = handler;
   },

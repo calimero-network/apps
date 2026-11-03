@@ -20,7 +20,7 @@ export type FolderInfo = {
   color?: string;
 };
 
-export type { TagDto as Tag } from '@/generated/registry/RegistryClient';
+export type { TagDto as Tag } from '@/lib/docsApi';
 
 export type DocHrefTarget = {
   ws: string;

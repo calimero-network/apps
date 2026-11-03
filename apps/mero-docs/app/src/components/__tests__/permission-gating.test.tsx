@@ -129,7 +129,7 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
     refetch: vi.fn(),
   }),
 }));
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@/calimero/react', () => ({
   useSubscription: vi.fn(),
   useSubgroups: () => ({ subgroups: [], loading: false, error: null, refetch: vi.fn() }),
   useGroupCapabilities: () => ({

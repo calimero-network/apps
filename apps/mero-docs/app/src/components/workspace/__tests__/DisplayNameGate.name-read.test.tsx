@@ -7,10 +7,10 @@ import {
   fireEvent,
   waitFor,
 } from '@testing-library/react';
-import { MeroContext } from '@calimero-network/mero-react';
+import { LiveContext } from '@/calimero/react';
 import { DisplayNameGate } from '../DisplayNameGate';
 
-// Real useMemberDisplayName + mero-react useMemberMetadata, so the gate sees
+// Real useMemberDisplayName + useMemberMetadata (@/calimero/react), so the gate sees
 // the same loading sequence the app does: idle, then loading, then answered.
 const driveState = {
   namespaceId: 'ns',
@@ -30,9 +30,9 @@ vi.mock('@/hooks/useContextEvents', () => ({
 function renderGate(getMemberMetadata: () => Promise<unknown>) {
   const mero = { admin: { getMemberMetadata } };
   return render(
-    <MeroContext.Provider value={{ mero, admin: mero.admin } as any}>
+    <LiveContext.Provider value={{ admin: { ...mero.admin, onChange: () => () => {} } } as any}>
       <DisplayNameGate />
-    </MeroContext.Provider>,
+    </LiveContext.Provider>,
   );
 }
 

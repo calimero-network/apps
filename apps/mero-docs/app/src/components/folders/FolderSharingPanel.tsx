@@ -24,7 +24,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { UserPlus, Link2, Globe, Lock, Trash2 } from 'lucide-react';
-import { useGroupCapabilities, useMero } from '@calimero-network/mero-react';
+import { useGroupCapabilities, useMero } from '@/calimero/react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { useContextEvents } from '@/hooks/useContextEvents';
@@ -216,7 +216,7 @@ export function FolderSharingPanel({ folderId }: Props) {
     setRemoveError(null);
     try {
       if (!admin) throw new Error('Workspace not ready');
-      // The admin client throws on a refusal, where the mero-react hook would not.
+      // The admin client throws on a refusal, where the v1 hook would not.
       await admin.removeGroupMembers(folderId, { members: [id] });
       await refetch();
       if (id !== selfIdentity) {

@@ -7,4 +7,3 @@ build
 dist
 coverage
 node_modules
-src/generated

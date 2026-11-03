@@ -7,7 +7,7 @@ import { readReturnTo, saveReturnTo } from '@/lib/routes';
 
 const meroState = { isAuthenticated: false, isLoading: true };
 
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@/calimero/react', () => ({
   useMero: () => meroState,
 }));
 vi.mock('@/hooks/useDriveWorkspace', () => ({

@@ -1,13 +1,12 @@
-import { HTTPError } from '@calimero-network/mero-js';
 import { describe, expect, it } from 'vitest';
 import { folderLoadErrorMessage } from '../folderLoadError';
+import { nodeError } from './contractErrorFixture';
 
 const ACCESS = "You don't have access to this workspace's folders.";
-const CONNECTION = "Couldn't reach your node. Check your connection and try again.";
+const CONNECTION = "Couldn't reach Calimero. Check your connection and try again.";
 const GENERIC = "Couldn't load your folders. Try refreshing the page.";
 
-const httpError = (status: number) =>
-  new HTTPError(status, 'x', 'http://node/admin-api', new Headers());
+const httpError = nodeError;
 
 describe('folderLoadErrorMessage', () => {
   it.each([401, 403])('maps HTTP %i to plain access copy', (status) => {

@@ -1,6 +1,6 @@
 // The flicker, as a rule you can assert.
 //
-// mero-react's `useAsyncResource.refetch` sets `loading = true` on EVERY
+// the @/calimero/react `useAsyncResource.refetch` sets `loading = true` on EVERY
 // refetch, and an SSE ding refetches the whole workspace. If any of those
 // pulses reaches a content-hiding stage, `FolderTree` swaps the entire `<ul>`
 // for a one-line placeholder and every row unmounts and remounts - which is

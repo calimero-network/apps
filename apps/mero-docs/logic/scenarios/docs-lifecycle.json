@@ -1,0 +1,452 @@
+[
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listDocs",
+  "args": {
+   "includeArchived": false
+  },
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createDoc",
+  "args": {
+   "title": "Roadmap"
+  },
+  "save": "a"
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createDoc",
+  "args": {
+   "title": "Launch notes"
+  },
+  "save": "b"
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createDoc",
+  "args": {
+   "title": ""
+  },
+  "save": "c"
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getTitle",
+  "args": {
+   "doc": "$a"
+  },
+  "expect": {
+   "ok": "Roadmap"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getDoc",
+  "args": {
+   "id": "missing"
+  },
+  "expect": {
+   "error": "NotFound"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "insertBlock",
+  "args": {
+   "doc": "$b",
+   "after": null,
+   "kind": "paragraph",
+   "depth": 0
+  },
+  "save": "blk"
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "applyDelta",
+  "args": {
+   "doc": "$b",
+   "block": "$blk",
+   "ops": [
+    {
+     "insert": "We ship on Monday",
+     "attributes": {}
+    }
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getText",
+  "args": {
+   "doc": "$b",
+   "block": "$blk"
+  },
+  "expect": {
+   "ok": "We ship on Monday"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "searchDocs",
+  "args": {
+   "query": "monda",
+   "includeArchived": false,
+   "cursor": null,
+   "limit": null
+  },
+  "expect": {
+   "ok": {
+    "hits": [
+     {
+      "id": "$b",
+      "title": "Launch notes",
+      "snippet": "We ship on <b>Monday</b>",
+      "score": 1.0,
+      "archived": false
+     }
+    ],
+    "total": "1",
+    "nextCursor": null
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "searchDocs",
+  "args": {
+   "query": "roadm",
+   "includeArchived": false,
+   "cursor": null,
+   "limit": null
+  },
+  "expect": {
+   "ok": {
+    "hits": [
+     {
+      "id": "$a",
+      "title": "Roadmap",
+      "snippet": "<b>Roadmap</b>",
+      "score": 2.0,
+      "archived": false
+     }
+    ],
+    "total": "1",
+    "nextCursor": null
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "searchDocs",
+  "args": {
+   "query": "zebra",
+   "includeArchived": false,
+   "cursor": null,
+   "limit": null
+  },
+  "expect": {
+   "ok": {
+    "hits": [],
+    "total": "0",
+    "nextCursor": null
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "searchDocs",
+  "args": {
+   "query": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "includeArchived": false,
+   "cursor": null,
+   "limit": null
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "editDoc",
+  "args": {
+   "id": "$a",
+   "title": "Roadmap 2026"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getTitle",
+  "args": {
+   "doc": "$a"
+  },
+  "expect": {
+   "ok": "Roadmap 2026"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "editDoc",
+  "args": {
+   "id": "missing",
+   "title": "x"
+  },
+  "expect": {
+   "error": "NotFound"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "addTag",
+  "args": {
+   "id": "$a",
+   "tag": "q3-plan"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "addTag",
+  "args": {
+   "id": "$a",
+   "tag": "launch"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "addTag",
+  "args": {
+   "id": "$a",
+   "tag": "launch"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "addTag",
+  "args": {
+   "id": "$a",
+   "tag": "Not A Key"
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "removeTag",
+  "args": {
+   "id": "$a",
+   "tag": "q3-plan"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "removeTag",
+  "args": {
+   "id": "$a",
+   "tag": "never-added"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "archiveDoc",
+  "args": {
+   "id": "$c"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "archiveDoc",
+  "args": {
+   "id": "missing"
+  },
+  "expect": {
+   "error": "NotFound"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "addComment",
+  "args": {
+   "docId": "$a",
+   "body": "Looks good"
+  },
+  "save": "cmt"
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addComment",
+  "args": {
+   "docId": "missing",
+   "body": "x"
+  },
+  "expect": {
+   "error": "NotFound"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "commentCount",
+  "args": {},
+  "expect": {
+   "ok": "1"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "commentSchemaVersion",
+  "args": {
+   "id": "$cmt"
+  },
+  "expect": {
+   "ok": 1
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "editComment",
+  "args": {
+   "id": "$cmt",
+   "body": "Mine now"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "editComment",
+  "args": {
+   "id": "$cmt",
+   "body": "Looks great"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "deleteDoc",
+  "args": {
+   "id": "$a"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deleteComment",
+  "args": {
+   "id": "$cmt"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "commentCount",
+  "args": {},
+  "expect": {
+   "ok": "0"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "unarchiveDoc",
+  "args": {
+   "id": "$c"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deleteDoc",
+  "args": {
+   "id": "$c"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getDoc",
+  "args": {
+   "id": "$c"
+  },
+  "expect": {
+   "error": "NotFound"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "createDoc",
+  "args": {
+   "title": "Bob's"
+  },
+  "save": "d"
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "deleteDoc",
+  "args": {
+   "id": "$d"
+  },
+  "events": {
+   "owner": [
+    "DocCreated",
+    "DocCreated",
+    "DocCreated",
+    "BlockInserted",
+    "TextChanged",
+    "TitleChanged",
+    "DocEdited",
+    "DocTagsChanged",
+    "DocTagsChanged",
+    "DocTagsChanged",
+    "DocTagsChanged",
+    "DocTagsChanged",
+    "DocArchived",
+    "CommentAdded",
+    "CommentEdited",
+    "CommentDeleted",
+    "DocUnarchived",
+    "DocDeleted",
+    "DocCreated",
+    "DocDeleted"
+   ]
+  }
+ }
+]

@@ -1,21 +1,15 @@
-// Root of the app: MeroProvider, then the UI providers, then the router. Auth
+// Root of the app: the session (local nodes in development, the Calimero
+// Cloud cluster in production), then the UI providers, then the router. Auth
 // is guarded by the workspace page; useDriveWorkspace owns cache invalidation.
 //
-// Env vars consumed:
-//   VITE_PACKAGE_NAME    - passed to MeroProvider so the OAuth flow
-//                          can resolve the application id from the
-//                          public registry
-//   VITE_REGISTRY_URL    - optional registry override (self-hosted)
-//
 // Routes:
-//   /          → landing page (public)
-//   /login     → Authenticate (ConnectButton entry)
-//   /app/*     → WorkspacePage (auth-guarded shell, mounts
-//                 WorkspaceLayout; screen URLs in lib/routes)
-//   *          → redirect to /
+//   /, /docs, /preview → landing page (public); "Sign in" opens SignInDialog
+//   /app/*             → WorkspacePage (auth-guarded shell, mounts
+//                        WorkspaceLayout; screen URLs in lib/routes)
+//   *                  → redirect to /
 //
 // Above the routes: InvitationPrompt, which offers an invitation link that
-// was opened (on any route, or handed to the app while it is open).
+// was opened, once the person is signed in.
 
 import React, { useCallback, useState, type ReactNode } from 'react';
 import {
@@ -26,19 +20,18 @@ import {
   useLocation,
   useNavigate,
 } from 'react-router-dom';
-import { AppMode, MeroProvider, useMero } from '@calimero-network/mero-react';
+import { CalimeroProvider, useMero } from '@/calimero/react';
+import { SessionProvider, type SessionDeps } from '@/calimero/session';
 import { Toaster } from 'sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ConfirmProvider } from '@/components/ui/confirm-dialog';
 import { DriveWorkspaceProvider } from '@/hooks/useDriveWorkspace';
 import { ThemeProvider, useTheme } from '@/components/theme/ThemeProvider';
-import { PACKAGE_NAME } from '@/constants/config';
-import { readReturnTo } from '@/lib/routes';
-import { isServedByNode } from '@calimero-apps/node-served';
+import { appPath, readReturnTo } from '@/lib/routes';
 import { nodeBasename } from '@/lib/servedByNode';
 
-import DevPanel from '@/components/dev/DevPanel';
 import { InvitationPrompt } from '@/components/workspace/InvitationPrompt';
+import { SignInDialog } from '@/components/workspace/SignInDialog';
 
 import LandingPage from './pages/landing/LandingPage';
 import WorkspacePage from './pages/workspace';
@@ -48,60 +41,11 @@ const LANDING_PATHS = ['/', '/docs', '/preview'];
 // Clears EditorStatusBar's bottom bar so a toast never covers "Saved • E2E Encrypted".
 const TOAST_BOTTOM_OFFSET = 64;
 
-// ── Desktop auth-skip ─────────────────────────────────────────────────────────
-//
-// tauri-app opens an app at its registry `links.frontend` with the session
-// already minted, in the URL fragment:
-//
-//   …#node_url=…&access_token=…&refresh_token=…&app-id=…&expires_at=…
-//
-// mero-react owns that hash - MeroProvider runs `parseAuthCallback` on its first
-// render - but it will not store the tokens unless it can decide the node is
-// trusted, and `resolveTrustedNodeUrl` (present since 4.2.0, so also in
-// the 4.6.1 this app pins) is default-DENY:
-//
-//     candidate + initiated        -> accept only if same origin
-//     candidate + allowedNodeUrls  -> accept only if listed
-//     candidate + neither          -> REJECT
-//
-// "initiated" is the node THIS browser context started a login against, and a
-// desktop hand-off never had one - the launcher did the login. So without an
-// anchor a cold desktop open lands in the third branch, the provider logs
-// "OAuth callback node_url is not trusted … no tokens stored" and NOTHING ELSE,
-// and the user is left at the Connect screen holding a good session. This file
-// says it "mirrors battleships' App.tsx shape exactly", and it inherited that
-// app's missing anchor along with the shape.
-//
-// Every user runs their own node, so there is no list to hard-code: the only
-// workable anchor is the node the desktop handed us in THIS open's hash. Read at
-// module scope, because the provider strips the hash after its first render and
-// a value recomputed on re-render would flip to null underneath it.
-//
-// No hash means no anchor and the strict behaviour is unchanged, so an ordinary
-// web visit and the web login redirect both behave exactly as before.
-const hashNodeUrl =
-  typeof window === 'undefined'
-    ? null
-    : new URLSearchParams(window.location.hash.slice(1)).get('node_url');
-
 /**
  * An authenticated visitor has no business on the marketing page.
  *
- * ⚠️ THIS IS THE STEP THAT CARRIES YOU INTO THE APP. The SSO callback returns
- * to wherever login started - `connectToNode` uses `window.location.href` as
- * the callback URL - which for a visitor who pressed Connect on the landing
- * page is `/`. Without this guard the tokens land, `isAuthenticated` flips
- * true, and the router renders the landing page again: you log in successfully
- * and end up exactly where you started.
- *
- * The app used to get this from a `RedirectIfAuthed` wrapped around its
- * `/login` route. Deleting that page took the redirect with it; the landing
- * routes need the same guard, because they are now where login begins and ends.
- * A visitor bounced here from a deep link goes on to it (see WorkspacePage).
- *
- * An invitation link that landed on `/` is not in the URL by now: the shared
- * capture took it at boot (index.tsx), and InvitationPrompt sits above the
- * routes, so this redirect cannot lose it.
+ * Signing in on the landing page lands here, and this carries the visitor
+ * into the app (or on to the link they opened, see WorkspacePage).
  */
 function RedirectIfAuthed({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading, nodeUrl } = useMero();
@@ -152,14 +96,23 @@ function AppToaster() {
 function AppRoutes() {
   const navigate = useNavigate();
   const [joins, setJoins] = useState(0);
-  const onJoined = useCallback(() => {
-    setJoins((n) => n + 1);
-    navigate('/app', { replace: true });
-  }, [navigate]);
+  const onJoined = useCallback(
+    (workspace: string | null, folder: string | null) => {
+      setJoins((n) => n + 1);
+      navigate(workspace ? appPath(folder ? { ws: workspace, folder } : { ws: workspace }) : '/app', {
+        replace: true,
+      });
+    },
+    [navigate],
+  );
+  const [signInOpen, setSignInOpen] = useState(false);
+  const closeSignIn = useCallback(() => setSignInOpen(false), []);
+  const openSignIn = useCallback(() => setSignInOpen(true), []);
 
   return (
     <>
       <InvitationPrompt onJoined={onJoined} />
+      <SignInDialog open={signInOpen} onClose={closeSignIn} />
       <Routes>
         {/* The landing page is three pages: `/`, `/docs` and `/preview`. They are
               real URLs so they can be shared and opened cold, which needs a route
@@ -174,10 +127,10 @@ function AppRoutes() {
             element={
               landingPath === '/' ? (
                 <RedirectIfAuthed>
-                  <LandingPage />
+                  <LandingPage onConnect={openSignIn} />
                 </RedirectIfAuthed>
               ) : (
-                <LandingPage />
+                <LandingPage onConnect={openSignIn} />
               )
             }
           />
@@ -207,35 +160,25 @@ function AppRoutes() {
   );
 }
 
-export default function App() {
-  const packageName = PACKAGE_NAME || undefined;
-  const registryUrl =
-    import.meta.env.VITE_REGISTRY_URL?.trim() ||
-    'https://apps.calimero.network';
-
+export default function App({ deps }: { deps?: SessionDeps } = {}) {
   return (
     <ThemeProvider>
-      <MeroProvider
-        mode={AppMode.MultiContext}
-        packageName={packageName}
-        registryUrl={registryUrl}
-        allowedNodeUrls={hashNodeUrl ? [hashNodeUrl] : undefined}
-        servedByNode={isServedByNode(new URL(window.location.href))}
-      >
-        <AppToaster />
-        <TooltipProvider>
-          <BrowserRouter
-            basename={nodeBasename()}
-            future={{
-              v7_startTransition: true,
-              v7_relativeSplatPath: true,
-            }}
-          >
-            <AppRoutes />
-          </BrowserRouter>
-          {import.meta.env.DEV && <DevPanel />}
-        </TooltipProvider>
-      </MeroProvider>
+      <SessionProvider deps={deps}>
+        <CalimeroProvider>
+          <AppToaster />
+          <TooltipProvider>
+            <BrowserRouter
+              basename={nodeBasename()}
+              future={{
+                v7_startTransition: true,
+                v7_relativeSplatPath: true,
+              }}
+            >
+              <AppRoutes />
+            </BrowserRouter>
+          </TooltipProvider>
+        </CalimeroProvider>
+      </SessionProvider>
     </ThemeProvider>
   );
 }

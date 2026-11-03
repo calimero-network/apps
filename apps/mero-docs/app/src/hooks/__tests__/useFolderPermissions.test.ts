@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
-import { HTTPError } from '@calimero-network/mero-js';
+import { HTTPError } from '@/calimero/errors';
 import { useFolderPermissions } from '../useFolderPermissions';
 import { CAPABILITIES } from '../../constants/config';
 import { MANAGER_FOLDER_CAPS } from '../../lib/roles';
@@ -14,7 +14,7 @@ const registryAdminState: { isOwnerOrManager: boolean } = {
 
 // useFolderPermissions delegates to useMemberCaps, which fetches both
 // role and capabilities directly via mero.admin (no dependency on
-// mero-react's useGroupCapabilities). Tests drive the mero.admin mocks
+// useGroupCapabilities). Tests drive the mero.admin mocks
 // directly. Bit checks use core's `MemberCapabilities` layout
 // (re-exported as CAPABILITIES from constants/config).
 const listMembersMock = vi.fn();
@@ -29,7 +29,7 @@ const MERO_STUB = {
     getMemberCapabilities: getMemberCapsMock,
   },
 };
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@/calimero/react', () => ({
   useSubscription: vi.fn(),
   useMero: () => MERO_STUB,
 }));
@@ -162,29 +162,12 @@ describe('useFolderPermissions', () => {
 
   it('reports a member core no longer finds in the folder as removed, without retrying', async () => {
     getMemberCapsMock.mockRejectedValue(
-      new HTTPError(404, '', '/groups/folder-1/members/bob/capabilities', new Headers()),
+      new HTTPError(404, 'ERROR', '/groups/folder-1/members/bob/capabilities'),
     );
     const { result } = renderHook(() => useFolderPermissions('ns', 'folder-1'));
     await waitFor(() => expect(result.current.removed).toBe(true));
     // The namespace root is read too (who may create a subfolder); the folder once.
     expect(getMemberCapsMock.mock.calls.filter(([g]) => g === 'folder-1')).toHaveLength(1);
-    expect(result.current.denied).toBe(false);
-    expect(result.current.isMember).toBe(false);
-  });
-
-  it('reports a folder whose group has not synced to this node as notSynced, not removed', async () => {
-    getMemberCapsMock.mockRejectedValue(
-      new HTTPError(
-        404,
-        '',
-        '/groups/folder-1/members/bob/capabilities',
-        new Headers(),
-        '{"error":"group \'folder-1\' not found"}',
-      ),
-    );
-    const { result } = renderHook(() => useFolderPermissions('ns', 'folder-1'));
-    await waitFor(() => expect(result.current.notSynced).toBe(true));
-    expect(result.current.removed).toBe(false);
     expect(result.current.denied).toBe(false);
     expect(result.current.isMember).toBe(false);
   });

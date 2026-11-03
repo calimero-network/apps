@@ -2,7 +2,7 @@
 // instead of silently dropping them on Home or hanging the editor.
 import React from 'react';
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { WorkspaceLayout } from '../WorkspaceLayout';
 import { ConfirmProvider } from '@/components/ui/confirm-dialog';
@@ -77,7 +77,7 @@ vi.mock('@/hooks/useDocs', () => ({
 vi.mock('@/hooks/useMemberDisplayName', () => ({
   useMemberDisplayName: () => ({ name: null }),
 }));
-vi.mock('@calimero-network/mero-react', async (importOriginal) => ({
+vi.mock('@/calimero/react', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useMero: () => ({ mero: null, nodeUrl: 'http://node', logout: vi.fn() }),
 }));
@@ -194,16 +194,6 @@ describe('WorkspaceLayout: routed target the caller cannot open', () => {
     workspace.namespacesListed = true;
     renderAt('/app/ns');
     expect(screen.getByText('You are not in this workspace')).toBeTruthy();
-  });
-
-  it('shows syncing, not not-in-workspace, for a just-joined workspace', () => {
-    workspace.namespaces = [{ namespaceId: 'other' }];
-    workspace.isJustJoined = true;
-    renderAt('/app/ns');
-    expect(screen.queryByText('You are not in this workspace')).toBeNull();
-    expect(
-      screen.getByText('Syncing workspace from peers…'),
-    ).toBeTruthy();
   });
 
   it('names the folder for a link into a restricted folder', () => {
@@ -328,13 +318,6 @@ describe('WorkspaceLayout: routed target the caller cannot open', () => {
     expect(docsRefetch).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps the post-join copy for a workspace still syncing after a join', () => {
-    workspace.isJustJoined = true;
-    workspace.resolvedFolderIds = new Set();
-    renderAt('/app/ns/f/f1/d/doc-1');
-    expect(screen.getByText('Syncing workspace from peers…')).toBeTruthy();
-  });
-
   it('shows a plain error with Try again when the workspace list fails', () => {
     workspace.namespacesListed = false;
     workspace.namespacesError = new Error('HTTP 500 Internal Server Error');
@@ -361,7 +344,7 @@ describe('WorkspaceLayout: routed target the caller cannot open', () => {
     expect(screen.getByTestId('name-gate')).toBeTruthy();
   });
 
-  it('shows a docs failure ahead of the post-join syncing copy', () => {
+  it('shows a docs failure ahead of the loading state', () => {
     workspace.isJustJoined = true;
     docs.listed = false;
     docs.error = new Error('docs down');
@@ -385,45 +368,5 @@ describe('WorkspaceLayout: routed target the caller cannot open', () => {
   it('mounts the name gate for a workspace the caller is in', () => {
     renderAt('/app/ns');
     expect(screen.getByTestId('name-gate')).toBeTruthy();
-  });
-});
-
-// The invitation dialog (InvitationPrompt) holds "Syncing…" on mero-react's
-// just-joined flag; this page is what clears it, by the same gate as its own
-// "Syncing workspace from peers…".
-describe('WorkspaceLayout: ending the invitation dialog’s wait', () => {
-  it('clears a joined workspace’s flag only once its own sync gate lifts', async () => {
-    const { isNamespaceJustJoined, markNamespaceJustJoined } = await import(
-      '@calimero-network/mero-react'
-    );
-    markNamespaceJustJoined('ns');
-    workspace.isJustJoined = true;
-    const view = renderAt('/app/ns');
-    expect(screen.getByText('Syncing workspace from peers…')).toBeTruthy();
-    expect(isNamespaceJustJoined('ns')).toBe(true);
-
-    workspace.isJustJoined = false;
-    view.rerender(
-      <MemoryRouter initialEntries={['/app/ns']}>
-        <Routes>
-          <Route path="/app/*" element={<WorkspaceLayout />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-    await waitFor(() => expect(isNamespaceJustJoined('ns')).toBe(false));
-  });
-
-  it('clears a joined folder’s flag once the folder list has it', async () => {
-    const {
-      clearNamespaceJustJoined,
-      isNamespaceJustJoined,
-      markNamespaceJustJoined,
-    } = await import('@calimero-network/mero-react');
-    markNamespaceJustJoined('f1');
-    markNamespaceJustJoined('f-elsewhere');
-    renderAt('/app/ns');
-    await waitFor(() => expect(isNamespaceJustJoined('f1')).toBe(false));
-    expect(isNamespaceJustJoined('f-elsewhere')).toBe(true);
-    clearNamespaceJustJoined('f-elsewhere');
   });
 });

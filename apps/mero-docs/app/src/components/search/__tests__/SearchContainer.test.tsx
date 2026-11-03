@@ -12,7 +12,7 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import type { FolderIndexStatus } from '@/hooks/useWorkspaceIndex';
 import type { TextIndex } from '@/hooks/useTextIndex';
 import type { RecentDoc } from '@/hooks/useRecentDocs';
-import type { Block, DocsClient } from '@/generated/docs/DocsClient';
+import type { Block, DocsClient } from '@/lib/docsApi';
 import { docTextFromBlocks, searchText } from '@/lib/search/docText';
 import {
   rowKey,
@@ -111,7 +111,7 @@ function Where() {
   return null;
 }
 
-function mount(recent: RecentDoc[] = [], start = '/app/w?node=2') {
+function mount(recent: RecentDoc[] = [], start = '/app/w') {
   const onOpenChange = vi.fn();
   const utils = render(
     <MemoryRouter initialEntries={[start]}>
@@ -416,7 +416,7 @@ describe('SearchContainer opening', () => {
   it('opens a doc and closes', async () => {
     const { onOpenChange } = mount();
     await type('roadmap 2026{Enter}');
-    expect(location).toBe('/app/w/f/f1/d/d1?node=2');
+    expect(location).toBe('/app/w/f/f1/d/d1');
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
@@ -429,7 +429,7 @@ describe('SearchContainer opening', () => {
     await type('zebra');
     await screen.findByRole('group', { name: 'In document text' });
     await userEvent.keyboard('{Enter}');
-    expect(location).toBe('/app/w/f/f2/d/d3?node=2#b=p1');
+    expect(location).toBe('/app/w/f/f2/d/d3#b=p1');
   });
 
   it('lists the docs that mention you for @me, with the sentence, opening at the mention', async () => {
@@ -467,7 +467,7 @@ describe('SearchContainer opening', () => {
     ]);
     expect(screen.queryByRole('group', { name: 'Documents' })).toBeNull();
     await userEvent.keyboard('{Enter}');
-    expect(location).toBe('/app/w/f/f2/d/d3?node=2#b=m-d3');
+    expect(location).toBe('/app/w/f/f2/d/d3#b=m-d3');
   });
 
   it('shows progress, never "no mentions", for @me while docs are still being read', async () => {
@@ -502,16 +502,16 @@ describe('SearchContainer opening', () => {
   it('opens a folder, and a tag as Home filtered to it', async () => {
     mount();
     await type('roads{Enter}');
-    expect(location).toBe('/app/w/f/f3?node=2');
+    expect(location).toBe('/app/w/f/f3');
     await userEvent.clear(screen.getByRole('textbox', { name: 'Search' }));
     await type('#roadmap{Enter}');
-    expect(location).toBe('/app/w?tag=roadmap&node=2');
+    expect(location).toBe('/app/w?tag=roadmap');
   });
 
   it('opens a recent doc', async () => {
     mount([{ folderId: 'f2', docId: 'd3', openedAt: NOW }]);
     await userEvent.keyboard('{Enter}');
-    expect(location).toBe('/app/w/f/f2/d/d3?node=2');
+    expect(location).toBe('/app/w/f/f2/d/d3');
   });
 
   it('opens the URL in a new tab on Cmd/Ctrl+Enter and stays open', async () => {
@@ -520,11 +520,11 @@ describe('SearchContainer opening', () => {
     await type('roadmap 2026');
     await userEvent.keyboard('{Meta>}{Enter}{/Meta}');
     expect(open).toHaveBeenCalledWith(
-      '/app/w/f/f1/d/d1?node=2',
+      '/app/w/f/f1/d/d1',
       '_blank',
       'noopener',
     );
-    expect(location).toBe('/app/w?node=2');
+    expect(location).toBe('/app/w');
     expect(onOpenChange).not.toHaveBeenCalled();
   });
 });
@@ -568,7 +568,7 @@ describe('SearchContainer with the node index', () => {
       limit: 20,
     });
     await userEvent.keyboard('{Enter}');
-    expect(location).toBe('/app/w/f/f2/d/d3?node=2');
+    expect(location).toBe('/app/w/f/f2/d/d3');
   });
 
   it('opens an index match at its block when the doc is read here', async () => {
@@ -587,7 +587,7 @@ describe('SearchContainer with the node index', () => {
     // One row per doc: the index answered f2, so its text is not scanned too.
     expect(found).toHaveLength(1);
     await userEvent.keyboard('{Enter}');
-    expect(location).toBe('/app/w/f/f2/d/d3?node=2#b=p1');
+    expect(location).toBe('/app/w/f/f2/d/d3#b=p1');
   });
 
   it('scans the text read here for a folder whose node runs with search off', async () => {

@@ -1,14 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { useSubscription } from '@calimero-network/mero-react';
+import { useSubscription } from '@/calimero/react';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { useMemberDisplayName } from '../useMemberDisplayName';
 
-// Mock mero-react hooks. memberMetadataMock is invoked each render with
+// Mock @/calimero/react hooks. memberMetadataMock is invoked each render with
 // the same args the hook receives so we can both pin the returned state
 // and (when needed) assert it was called with `(nsId, identity)`.
 const memberMetadataMock = vi.fn();
 const setMemberMetadataFn = vi.fn();
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@/calimero/react', () => ({
   useSubscription: vi.fn(),
   useMero: () => ({ mero: null }),
   useMemberMetadata: (...args: unknown[]) => memberMetadataMock(...args),

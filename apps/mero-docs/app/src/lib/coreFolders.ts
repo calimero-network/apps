@@ -1,18 +1,16 @@
-// The workspace's folders, read from core alone.
+// A workspace's folders, read from its organization's teams.
 //
-// A folder is a subgroup of the workspace's namespace, nested by core's tree;
-// its name and colour are the subgroup's metadata and its docs context is the
-// one context in the subgroup. Nothing about a folder is kept in the
-// namespace-wide registry: every workspace member replicates that context, so
-// a Restricted folder's name, colour, parent, docs context and roles would be
-// on the disk of people never invited to it. Core's subgroup metadata of a
-// Restricted folder is sealed under the subgroup's own key, and core lists a
-// Restricted subgroup only to its members and to the admins above it.
+// A folder is a team of the workspace's org: its name is the team's name, its
+// colour the team metadata's `color`, its documents the app instance whose id
+// the team metadata keeps as `docsApp`, and Open / Restricted the team's
+// `join` (everyone / invite). Core answers `GET /orgs/{org}` with only the
+// teams the caller reaches or manages, so a Restricted folder someone was not
+// invited to is not there at all; one they were invited to below a parent
+// they cannot see comes back `shared`, with no parent.
 
-import type { AdminApiClient } from '@calimero-network/mero-js';
-import { isTransportFailure } from './rich/transport';
+import { DOCS_APP_KEY, type OrgAdmin, type OrgView, type TeamView } from '@/calimero/orgs';
 
-/** Where a folder's colour lives in its subgroup metadata's `data` map. */
+/** Where a folder's colour lives in its team's metadata. */
 export const FOLDER_COLOR_KEY = 'color';
 
 export interface CoreFolder {
@@ -20,176 +18,52 @@ export interface CoreFolder {
   /** The folder above, or null for a top-level one and for a Shared one. */
   parent_id: string | null;
   color: string | null;
-  /** The subgroup's metadata name; null when it has none. */
+  /** The team's name; null when it has none. */
   alias: string | null;
-  /** The folder's docs context; null until one reaches this node. */
+  /** The folder's docs instance; null until one is created. */
   context_id: string | null;
   visibility: 'Open' | 'Restricted' | undefined;
-  /** Core's GroupInfo.effectiveVisibility: Restricted when this folder or one
-   *  above it is. Absent from nodes that predate it; see folderRestriction. */
+  /** Restricted when this folder or one above it (that the caller sees) is. */
   effectiveVisibility?: 'Open' | 'Restricted';
-  /** Reached through a context this node holds rather than through the tree:
-   *  the caller was added to it but cannot see the folder above it. */
+  /** Reached without seeing the folder above it. */
   shared: boolean;
 }
 
-export type FolderReader = Pick<
-  AdminApiClient,
-  'listSubgroups' | 'getGroupInfo' | 'listGroupContexts' | 'getContextsForApplication'
->;
+export type FolderReader = Pick<OrgAdmin, 'listGroupContexts'>;
 
-/** A folder's docs context: the one context in its subgroup, or null. */
-export async function folderDocsContext(
-  admin: Pick<AdminApiClient, 'listGroupContexts'>,
-  folderId: string,
-): Promise<string | null> {
+/** A folder's docs instance, or null. */
+export async function folderDocsContext(admin: FolderReader, folderId: string): Promise<string | null> {
   const contexts = await admin.listGroupContexts(folderId);
   return contexts[0]?.contextId ?? null;
 }
 
-// Core refusing a read to this caller means there is nothing for it there. An
-// unreachable node means nothing yet, and must fail the walk: an empty answer
-// would read as every folder gone, and an open document with them.
-const refused =
-  <T,>(nothing: T) =>
-  (cause: unknown): T => {
-    if (isTransportFailure(cause)) throw cause;
-    return nothing;
-  };
+const text = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
 
-function visibilityOf(raw: string | undefined): CoreFolder['visibility'] {
-  if (raw === 'open' || raw === 'Open') return 'Open';
-  if (raw === 'restricted' || raw === 'Restricted') return 'Restricted';
-  return undefined;
+/** Every folder of `org` this caller sees, from one snapshot. */
+export function foldersOf(org: OrgView): CoreFolder[] {
+  const teams = org.teams;
+  const restricted = (t: TeamView): boolean => {
+    for (let at: TeamView | undefined = t; at; at = at.parent ? teams[at.parent] : undefined) {
+      if (at.join === 'invite') return true;
+    }
+    return false;
+  };
+  return Object.values(teams).map((t) => {
+    const hiddenParent = !!t.parent && !teams[t.parent];
+    return {
+      id: t.teamId,
+      parent_id: hiddenParent ? null : t.parent,
+      color: text(t.metadata[FOLDER_COLOR_KEY]),
+      alias: t.name || null,
+      context_id: text(t.metadata[DOCS_APP_KEY]),
+      visibility: t.join === 'invite' ? 'Restricted' : 'Open',
+      effectiveVisibility: restricted(t) ? 'Restricted' : 'Open',
+      shared: hiddenParent,
+    };
+  });
 }
 
-// A subgroup's description, or null when core refuses it to this caller.
-async function describe(
-  admin: FolderReader,
-  id: string,
-  parent: string | null,
-  shared: boolean,
-): Promise<{ folder: CoreFolder; namespaceId: string | undefined } | null> {
-  const [info, context] = await Promise.all([
-    admin.getGroupInfo(id).catch(refused(null)),
-    folderDocsContext(admin, id).catch(refused(null)),
-  ]);
-  if (!info) return null;
-  const color = info.metadata?.data?.[FOLDER_COLOR_KEY];
-  // Newer than the SDK's GroupInfo type; read off the wire as it comes.
-  const effective = visibilityOf(
-    (info as { effectiveVisibility?: string }).effectiveVisibility,
-  );
-  return {
-    namespaceId: info.namespaceId,
-    folder: {
-      id,
-      parent_id: parent,
-      color: color ? color : null,
-      alias: info.metadata?.name || null,
-      context_id: context,
-      visibility: visibilityOf(info.subgroupVisibility),
-      ...(effective ? { effectiveVisibility: effective } : {}),
-      shared,
-    },
-  };
-}
-
-// Each described group's namespace. Fixed for a group's life, so never stale.
-const NAMESPACE_OF = new Map<string, string>();
-
-/**
- * Every folder of the workspace rooted at `rootId` this caller can see.
- *
- * The tree is walked from the root one level at a time: core lists a
- * subgroup's Open children to anyone and its Restricted ones only to their
- * members and the admins above. A Restricted folder under a parent the caller
- * cannot see is found instead through its docs context, which a member's node
- * holds; it comes back `shared`, with no parent, and its own subtree is walked
- * from there.
- *
- * The node holds the app's contexts for every workspace it is in, so that
- * search meets other workspaces' groups too. A group never changes namespace,
- * so `namespaceOf` remembers each one described - by default for the page's
- * life, shared by every caller - and another workspace's group is asked about
- * once, not on every refresh.
- */
-export async function loadCoreFolders(
-  admin: FolderReader,
-  rootId: string,
-  applicationId: string | null,
-  namespaceOf: Map<string, string> = NAMESPACE_OF,
-): Promise<CoreFolder[]> {
-  const found = new Map<string, CoreFolder>();
-  const seen = new Set<string>([rootId]);
-
-  // Walks down from each of `starts`, describing every child it reaches.
-  const walk = async (starts: string[]) => {
-    let level = starts;
-    while (level.length > 0) {
-      const children = await Promise.all(
-        level.map(async (parent) =>
-          (await admin.listSubgroups(parent).catch(refused([]))).map((c) => ({
-            id: c.groupId,
-            parent: parent === rootId ? null : parent,
-          })),
-        ),
-      );
-      const next = children.flat().filter(({ id, parent }) => {
-        // A Shared folder that turns up below another one the caller sees sits
-        // there, not at a second Shared root. Its subtree is already walked.
-        const known = found.get(id);
-        if (known?.shared && parent !== null) {
-          found.set(id, { ...known, parent_id: parent, shared: false });
-          return false;
-        }
-        if (seen.has(id)) return false;
-        seen.add(id);
-        return true;
-      });
-      const described = await Promise.all(
-        next.map(({ id, parent }) => describe(admin, id, parent, false)),
-      );
-      level = [];
-      for (const d of described) {
-        if (!d) continue;
-        if (d.namespaceId) namespaceOf.set(d.folder.id, d.namespaceId);
-        found.set(d.folder.id, d.folder);
-        level.push(d.folder.id);
-      }
-    }
-  };
-
-  await walk([rootId]);
-
-  if (applicationId) {
-    const { contexts } = await admin
-      .getContextsForApplication(applicationId)
-      .catch(refused({ contexts: [] }));
-    const candidates = [
-      ...new Set(
-        contexts
-          .map((c) => c.groupId)
-          .filter(
-            (g): g is string =>
-              !!g && !seen.has(g) && (namespaceOf.get(g) ?? rootId) === rootId,
-          ),
-      ),
-    ];
-    for (const g of candidates) seen.add(g);
-    const described = await Promise.all(
-      candidates.map((id) => describe(admin, id, null, true)),
-    );
-    const shared: string[] = [];
-    for (const d of described) {
-      if (d?.namespaceId) namespaceOf.set(d.folder.id, d.namespaceId);
-      // Another workspace's folder, or the root itself, is not ours to list.
-      if (!d || d.namespaceId !== rootId) continue;
-      found.set(d.folder.id, d.folder);
-      shared.push(d.folder.id);
-    }
-    await walk(shared);
-  }
-
-  return [...found.values()];
+/** Every folder of the workspace `orgId` this caller sees. */
+export async function loadCoreFolders(admin: Pick<OrgAdmin, 'org'>, orgId: string): Promise<CoreFolder[]> {
+  return foldersOf(await admin.org(orgId, true));
 }

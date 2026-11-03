@@ -1,7 +1,7 @@
 // One list read from the workspace registry, re-read on every registry change.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { RegistryClient } from '@/generated/registry/RegistryClient';
+import type { RegistryClient } from '@/lib/docsApi';
 import { useContextEvents } from './useContextEvents';
 import { useDriveWorkspace } from './useDriveWorkspace';
 

@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { HTTPError } from '@calimero-network/mero-js';
+import { HTTPError } from '@/calimero/errors';
 import { useBlobImage } from '../useBlobImage';
 
 const getBlob = vi.fn();
 const mero = { admin: { getBlob } }; // the provider hands out one client
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@/calimero/react', () => ({
   useMero: () => ({ mero, admin: mero.admin }),
 }));
 
@@ -14,7 +14,7 @@ const CTX = 'ctx-1';
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
 const SVG = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"/>');
 const httpError = (status: number) =>
-  new HTTPError(status, 'x', `http://node/admin-api/blobs/${ID}`, new Headers(), '');
+  new HTTPError(status, 'ERROR', '');
 
 let created: Blob[] = [];
 const createObjectURL = vi.fn((blob: Blob) => {

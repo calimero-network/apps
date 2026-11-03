@@ -529,19 +529,20 @@ export const APPS = {
 
   'mero-docs': {
     markSrc: '/icons/icon.svg',
-    // Nested, because this app's playwright config gives its node-free specs
-    // their own project globbed as `**/landing/**` — a spec written beside that
-    // directory rather than inside it is collected by no project and never runs.
-    e2eDir: 'e2e/landing',
-    availability: 'web+desktop',
-    trust: ['Folders have their own members', 'Rich-text editing', 'Private by default'],
+    // A component app (calimero-app-sdk, merod local, CalimeroClient): no
+    // Playwright, so no generated landing spec. docs/COMPONENT-APPS.md.
+    e2eDir: null,
+    availability: 'web',
+    // Passes its own passkey sign-in to the landing page as `onConnect`.
+    ownConnect: true,
+    trust: ['Folders have their own members', 'Rich-text editing', 'No passwords'],
     explainer: [
       'A document workspace: folders, rich-text documents, and the tags you need to find them again six months later. Each folder keeps its own documents, separate from the rest of the workspace.',
-      'That structure is the point. A folder’s documents replicate only to the people who have that folder, so sharing one project does not hand over the whole workspace.',
+      'That structure is the point. A folder\u2019s documents are an app instance only that folder\u2019s members reach, so sharing one project does not hand over the whole workspace.',
     ],
     features: [
-      { icon: 'Folder', title: 'Folders have their own members', body: 'Each folder’s documents live separately, so access is per folder rather than all-or-nothing.' },
-      { icon: 'FileText', title: 'Rich-text documents', body: 'A real editor with formatting, headings and lists, syncing as you type.' },
+      { icon: 'Folder', title: 'Folders have their own members', body: 'Each folder\u2019s documents live separately, so access is per folder rather than all-or-nothing.' },
+      { icon: 'FileText', title: 'Rich-text documents', body: 'A real editor with formatting, headings and lists, shared as you type.' },
       { icon: 'Table', title: 'Tags and archive', body: 'Organise by tag and retire what is finished without deleting anything.' },
       { icon: 'Shield', title: 'You control the workspace', body: 'You decide who is a member. Membership is how access works.' },
       { icon: 'Eye', title: 'Per-folder visibility', body: 'Decide what is shared and what stays yours, folder by folder.' },
