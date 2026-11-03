@@ -7,26 +7,18 @@ import { dayFactor } from "./engine/sim";
 import { generateWorld, spawnPoint } from "./engine/terrain";
 import { AIR, HOTBAR, STARTING_INVENTORY, tileDef } from "./engine/tiles";
 import { TileStore } from "./engine/world";
-import { acceptWorldInvite, createWorldInvite, ownedContextIdentity } from "./net/admin";
-import { APP_SLUG, inviteLink } from "./net/inviteLink";
-import { primeInvitationCapture as primeInviteCapture } from "@calimero-network/mero-react";
+import { AppError } from "@calimero-network/mero-js";
+import { appSource, describeError } from "@calimero-apps/connect";
 import { GameClient, type WorldMeta } from "./net/client";
-import {
-  captureSessionFromHash,
-  clearWorld,
-  ensureFreshToken,
-  getSession,
-  hasConnection,
-  sessionKind,
-} from "./net/session";
-import { completeEnrolment } from "./net/account";
+import { PACKAGE } from "./net/merraria";
+import { connect, type Connection } from "./net/session";
+import { CURRENT_WORLD, captureInvite, inviteLink, inviteToken, writeCurrentWorld } from "./net/worlds";
 import { RemotePlayer, SyncEngine, Transform } from "./net/sync";
 import { GameRenderer, RemoteDraw } from "./renderer";
 import { loadWorld, playerInBounds, saveWorld } from "./state/persistence";
 import { WheelSteps } from "./input/wheel";
 import { Hud } from "./ui/hud";
-import { invitePromptOpen, reportWorldLoaded, setInviteJoiner } from "./ui/invitePrompt";
-import { Landing, LaunchChoice } from "./ui/landing";
+import { Landing } from "./ui/landing";
 import { showLandingOnce } from "./pages/landing/mount";
 import { PauseMenu } from "./ui/overlays";
 import {
@@ -40,38 +32,29 @@ import {
 
 // ── Inbound invite links ──────────────────────────────────────────────────────
 //
-// Primed before anything else runs: the launcher opens this app by appending
-// `?invitation=…` to its own frontend URL, and the landing flow rewrites the URL
-// as it goes. Capture is durable, so an invite arriving before a node is
-// connected survives the web-login redirect and is replayed once the world
-// picker can act on it. A running desktop app hands a link over as a
-// `deep-link` event instead, which this also hears — in the game too. Either
-// way ui/invitePrompt.tsx asks before joining. A link addressed to another app
-// is dropped, not offered.
-// (Not in the mobile apps' game-only mode: the app takes invitations itself.)
-if (!isNativeHost()) primeInviteCapture("merraria", { slug: APP_SLUG });
-
-/**
- * Set for one reload by an invite accepted in-game: the session already names
- * the invited world, so the next boot goes straight into it instead of
- * stopping at the world picker.
- */
-const ENTER_JOINED_WORLD = "mt-enter-joined-world";
-
-function takeEnterJoinedWorld(): boolean {
-  try {
-    const set = sessionStorage.getItem(ENTER_JOINED_WORLD) === "1";
-    sessionStorage.removeItem(ENTER_JOINED_WORLD);
-    return set;
-  } catch {
-    return false;
-  }
-}
+// Taken off the address bar before anything else runs: a person opening an
+// invitation link (`?invite=<token>`, an org invite) is usually not signed in
+// yet, and the token has to survive the passkey sign-up. The launcher redeems
+// it once a session exists. (Not in the mobile apps' game-only mode: the app
+// takes invitations itself.)
+if (!isNativeHost()) captureInvite();
 
 const SAVE_MS = 5000;
 /** How often a world the node has not synced yet is asked again (see `SyncEngine.connect`). */
 const CONNECT_RETRY_MS = 2000;
 const WORLD_READY_MS = 60_000;
+
+/**
+ * Whether the world is not readable YET: founded right after the instance was
+ * created, a world answers `NoWorld` until its `createWorld` lands. Through the
+ * mobile bridge an error arrives as text, so the text is checked too (and for
+ * v1's `Uninitialized`, which an app built before #702 still reports).
+ */
+function notReadyYet(err: unknown): boolean {
+  if (err instanceof AppError) return err.appCode === "NoWorld";
+  const text = err instanceof Error ? err.message : String(err);
+  return /\bNoWorld\b|"type"\s*:\s*"(Uninitialized|GroupKeyPending)"/i.test(text);
+}
 
 async function fetchWorldMetaWhenReady(client: Pick<GameClient, "fetchWorldMeta">): Promise<WorldMeta> {
   const deadline = Date.now() + WORLD_READY_MS;
@@ -79,8 +62,7 @@ async function fetchWorldMetaWhenReady(client: Pick<GameClient, "fetchWorldMeta"
     try {
       return await client.fetchWorldMeta();
     } catch (err) {
-      const text = err instanceof Error ? err.message : String(err);
-      if (!/"type"\s*:\s*"(Uninitialized|GroupKeyPending)"/i.test(text) || Date.now() >= deadline) throw err;
+      if (!notReadyYet(err) || Date.now() >= deadline) throw err;
       await new Promise((r) => setTimeout(r, 1_000));
     }
   }
@@ -100,15 +82,6 @@ async function boot(): Promise<void> {
   // are skipped and contract calls go through the app. Null on the web.
   const bridge = installBridge();
   const native = bridge ? await bridge.request<NativeConfig>("config") : null;
-  const captured = native ? "none" : captureSessionFromHash();
-  // Back from the wallet? The fragment then carries a device certificate
-  // rather than node tokens: verify it, save it, learn the account's relay,
-  // and the session is an ACCOUNT one from here on. Read once, before
-  // anything renders, so the tab lands signed in instead of on the prompt.
-  const enrolment = native ? undefined : await completeEnrolment();
-  // desktop SSO can hand over an expired token — refresh before going online
-  // (a node matter; an account has no token to refresh)
-  if (!native) await ensureFreshToken();
 
   const app = document.getElementById("app")!;
   const canvas = document.createElement("canvas");
@@ -118,50 +91,45 @@ async function boot(): Promise<void> {
 
   const defaults = { name: localStorage.getItem("mt-name") ?? "Player", seed: 1337 };
 
-  // A stored world is a CLAIM, not a fact. `contextId` survives in
-  // localStorage across a node reset, a reinstall, or a login on another
-  // device — and in every one of those cases this node holds no identity for
-  // it. Entering anyway is what produced
-  //   Could not reach the shared world (rpc world_meta: No owned identity
-  //   found for this context)
-  // as a dead end on open. Ask the node first; if it owns nothing there, drop
-  // the world (keeping the login) and fall through to the picker, which is
-  // already the right screen for "you are not in a world yet".
-  if (!native) await dropWorldIfNotOurs();
+  // The cluster: merod local under `vite`, the Calimero Cloud cluster the
+  // build names in production. A production build without one is a hard stop
+  // with the reason, not a silent fallback.
+  let conn: Connection | null = null;
+  if (!native) {
+    try {
+      conn = await connect();
+    } catch (err) {
+      showFatal(app, `Cannot connect to Calimero: ${describeError(err)}`);
+      return;
+    }
+  }
 
-  // Desktop SSO auto-enter: a full hash (tokens + context) means the desktop
-  // already authenticated us — zero clicks, straight into the shared world.
-  // Likewise a world just joined from an invite accepted in-game.
-  let choice: LaunchChoice;
-  const enterJoined = native ? false : takeEnterJoinedWorld();
+  let choice: { name: string };
+  let worldId: string;
+  let worldOrg: string | null = null;
   if (native) {
     choice = { name: native.name || defaults.name };
-  } else if ((captured === "full" && hasConnection()) || (enterJoined && hasConnection() && getSession().contextId)) {
-    choice = { name: defaults.name };
+    worldId = native.contextId;
   } else {
     // The marketing landing page sits in front of the launcher. It skips
-    // itself for an ?invitation= link and after the first view in a session,
-    // and it is deliberately NOT on the desktop-SSO branch above, which is
-    // zero-click by design.
-    // The unified landing page first. If it actually showed, the launcher drops
-    // its own logo/title/pitch and opens on the world picker — join a world or
-    // create one — rather than making the visitor read a second landing page.
+    // itself for an invitation link and after the first view in a session.
+    // If it actually showed, the launcher drops its own logo/title/pitch and
+    // opens on the world picker rather than a second landing page.
     const sawLanding = await showLandingOnce();
-    choice = await new Landing(app).show(defaults, { chromeless: sawLanding, enrolment });
+    const launched = await new Landing(app, conn!, appSource(import.meta.env, PACKAGE)).show(defaults, {
+      chromeless: sawLanding,
+    });
+    choice = launched;
+    worldId = launched.world.appId;
+    worldOrg = launched.world.org;
+    localStorage.setItem("mt-name", choice.name);
   }
-  if (!native) localStorage.setItem("mt-name", choice.name);
 
   // ---- world + net bootstrap -----------------------------------------
-  // The landing only resolves once a node + world are connected; there is no
-  // offline mode, so an unreachable world is a hard stop, not a fallback.
-  const session = getSession();
-  if (!native && (!hasConnection() || !session.contextId)) {
-    showFatal(app, "Lost the node connection — go back and connect again.");
-    return;
-  }
-  const worldId = native ? native.contextId : session.contextId!;
-
-  const client = native ? new NativeGameClient(bridge!, worldId) : new GameClient();
+  // There is no offline mode, so an unreachable world is a hard stop.
+  const client = native
+    ? new NativeGameClient(bridge!, worldId)
+    : new GameClient(conn!.client, worldId, conn!.accountId ?? "", conn!.sync);
   let seed: number;
   let createdAt = Math.floor(Date.now() / 1000);
   try {
@@ -174,7 +142,7 @@ async function boot(): Promise<void> {
     // and a reload with this contextId still stored walks straight back into
     // the same failure — the loop that made this unrecoverable without
     // clearing site data by hand.
-    if (!native) clearWorld();
+    if (conn) writeCurrentWorld(localStorage, conn.scopedKey(CURRENT_WORLD), null);
     showFatal(app, `Could not reach the shared world (${reason}).`);
     bridge?.send({ type: "fatal", message: `Could not reach the shared world (${reason}).` });
     return;
@@ -259,15 +227,12 @@ async function boot(): Promise<void> {
     // anything still pending — the same reconcile as joining.
     () => { void sync?.reconcile().catch(() => {}); },
   );
-  // Joined and read, retrying while the node has not synced the world yet (a
-  // world just joined from an invite answers `Uninitialized` until it has).
-  // The world's meta and its edits have both come back from the node, so a
-  // world just joined from an invite is really here: the invite prompt's
-  // "Syncing…" ends on this, not on the join returning. Not awaited: the game
-  // runs meanwhile, and its edits queue until the join goes through.
+  // Joined and read, retrying while the world cannot answer yet (a world whose
+  // `createWorld` has not landed answers `NoWorld`; a dropped connection fails
+  // the same way). Not awaited: the game runs meanwhile, and its edits queue
+  // until the join goes through.
   void sync.connect(choice.name, CONNECT_RETRY_MS).then((connected) => {
     if (!connected) return;
-    reportWorldLoaded(worldId);
     hud.toast("Connected to shared world");
     bridge?.send({ type: "status", state: "connected" });
   });
@@ -287,7 +252,14 @@ async function boot(): Promise<void> {
       void sync?.leave();
       window.location.reload(); // back to the landing/launcher
     },
-    onInvite: async () => inviteLink(await createWorldInvite()),
+    // An invitation into the world's org, approved with this player's passkey.
+    onInvite:
+      conn && worldOrg
+        ? ((c: Connection, org: string) => async () => inviteLink(await inviteToken(c.client, org, c.approver())))(
+            conn,
+            worldOrg,
+          )
+        : undefined,
     onZoomChange: (zoom) => renderer.setZoom(zoom),
   });
   renderer.setZoom(native?.zoom ?? menu.getZoom()); // restore the player's zoom choice
@@ -301,7 +273,6 @@ async function boot(): Promise<void> {
   };
 
   window.addEventListener("keydown", (e) => {
-    if (invitePromptOpen()) return; // the invite prompt is answered by clicking
     if (e.code === "Escape" || e.code === "KeyO") return toggleMenu();
     if (menu.open) return; // menu swallows gameplay keys
     if (!e.repeat && (e.code === "Space" || e.code === "KeyW" || e.code === "ArrowUp")) {
@@ -323,7 +294,7 @@ async function boot(): Promise<void> {
   // wheel's ~100px notch still steps immediately).
   const wheelSteps = new WheelSteps();
   window.addEventListener("wheel", (e) => {
-    if (menu.open || invitePromptOpen()) return;
+    if (menu.open) return;
     const steps = wheelSteps.push(e.deltaY, e.deltaMode);
     if (steps === 0) return;
     sel = (((sel + steps) % HOTBAR.length) + HOTBAR.length) % HOTBAR.length;
@@ -334,7 +305,7 @@ async function boot(): Promise<void> {
     mouseY = e.clientY;
   });
   window.addEventListener("mousedown", (e) => {
-    if (menu.open || invitePromptOpen()) return;
+    if (menu.open) return;
     if (e.button === 0) digHeld = true;
     if (e.button === 2) placeHeld = true;
   });
@@ -418,36 +389,6 @@ async function boot(): Promise<void> {
   window.addEventListener("beforeunload", () => {
     save();
     void sync?.leave();
-  });
-
-  // ---- invite links opened while playing ---------------------------------
-  // A running desktop app hands a link to this page as it is. Joining another
-  // world means leaving this one: join first (the session moves to the invited
-  // world only once that succeeded, so a refusal leaves the game untouched),
-  // then save and leave like "Save & leave world", and reload into it.
-  setInviteJoiner({
-    join: async (code, payload) => {
-      if (payload.contextId === worldId) return { contextId: worldId, already: true };
-      const contextId = await acceptWorldInvite(code);
-      save();
-      void sync?.leave();
-      try {
-        sessionStorage.setItem(ENTER_JOINED_WORLD, "1");
-      } catch {
-        /* no session storage: the picker shows the joined world as the current one */
-      }
-      // After the prompt has acked the invitation, which happens once this
-      // returns; a reload in the same task could leave it to replay.
-      setTimeout(() => window.location.reload(), 0);
-      return { contextId };
-    },
-    onShow: () => {
-      keys.clear();
-      jumpPressed = false;
-      digHeld = false;
-      placeHeld = false;
-      menu.hide();
-    },
   });
 
   // ---- frame/tick loop ---------------------------------------------------
@@ -596,28 +537,8 @@ async function boot(): Promise<void> {
     sync,
     editTile,
     getOverrides: () => world.overridesToJSON(),
-    input: () => ({ digHeld, placeHeld, uiOpen: menu.open || invitePromptOpen() }),
+    input: () => ({ digHeld, placeHeld, uiOpen: menu.open }),
   };
-}
-
-/**
- * Drop the stored world unless the node owns an identity for its context.
- *
- * A node that cannot answer (offline, mid-restart) is NOT evidence the world
- * is stale, so that case keeps the session: the connection check downstream
- * reports it, and a player on a flaky network does not silently lose their
- * world.
- */
-async function dropWorldIfNotOurs(): Promise<void> {
-  const { contextId } = getSession();
-  if (!contextId || !sessionKind()) return;
-  let owned: string;
-  try {
-    owned = await ownedContextIdentity(contextId);
-  } catch {
-    return; // node unreachable — not the same thing as not a member
-  }
-  if (!owned) clearWorld();
 }
 
 /** Online-only dead end: the world is unreachable — say why, offer the title screen. */

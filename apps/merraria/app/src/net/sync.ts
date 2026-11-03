@@ -3,6 +3,7 @@
 
 import { Edit, TileStore, tileKey } from "../engine/world";
 import { GameEvent } from "./events";
+import { readAllOverrides, type MethodName } from "./merraria";
 
 export const FLUSH_MS = 150;
 /** active players save their location every 500ms so the map tracks them live */
@@ -27,7 +28,7 @@ export interface RemotePlayer extends Transform {
   online: boolean;
 }
 
-export type ExecFn = <T = unknown>(method: string, args: Record<string, unknown>) => Promise<T>;
+export type ExecFn = <T = unknown>(method: MethodName, args: Record<string, unknown>) => Promise<T>;
 
 export interface SyncCallbacks {
   onRemoteEdits?: (applied: number) => void;
@@ -64,7 +65,7 @@ export class SyncEngine {
     this.pending.clear();
     this.flushing = true;
     try {
-      await this.exec("set_tiles", { edits: batch, now: nowSecs() });
+      await this.exec("setTiles", { edits: batch, now: nowSecs() });
     } catch (err) {
       for (let i = 0; i < batch.length; i++) {
         if (!this.pending.has(keys[i])) this.pending.set(keys[i], batch[i]);
@@ -111,7 +112,7 @@ export class SyncEngine {
 
   /** `pullOverrides` that throws, for callers that must know the read happened. */
   private async readOverrides(): Promise<number> {
-    const entries = await this.exec<{ k: string; t: number }[]>("get_overrides", {});
+    const entries = await readAllOverrides(this.exec);
     let applied = 0;
     for (const { k, t } of entries ?? []) {
       if (this.pending.has(k)) continue;
@@ -124,7 +125,7 @@ export class SyncEngine {
 
   async pullPlayers(): Promise<void> {
     try {
-      const players = await this.exec<RemotePlayer[]>("get_players", { now: nowSecs() });
+      const players = await this.exec<RemotePlayer[]>("getPlayers", { now: nowSecs() });
       const me = this.myId();
       this.cb.onPlayers?.((players ?? []).filter((p) => p.id !== me && p.online));
     } catch (err) {
@@ -147,10 +148,10 @@ export class SyncEngine {
   /**
    * Join the world and read its edits, retrying until the node answers both.
    *
-   * Right after an invitation is accepted the node may not hold the world's
-   * state yet, and the contract answers `Uninitialized` until it has synced
-   * from a peer. Giving up on the first refusal left a joined world unloaded
-   * for good (and the invitation dialog on "Syncing…"). Resolves true once the
+   * Right after a world is created its founding `createWorld` may not have
+   * landed yet, and the contract answers `NoWorld` until it has; a dropped
+   * connection fails the same way. Giving up on the first refusal left a
+   * world unloaded for good. Resolves true once the
    * world is joined and read, or false if `isCurrent` says it was left first.
    */
   async connect(name: string, retryMs: number, isCurrent: () => boolean = () => true): Promise<boolean> {

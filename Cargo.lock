@@ -777,19 +777,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "merraria"
-version = "0.0.2"
-dependencies = [
- "borsh",
- "borsh-derive",
- "calimero-sdk",
- "calimero-storage",
- "calimero-storage-macros",
- "hex",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "multiaddr"
 version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -1,0 +1,391 @@
+[
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createWorld",
+  "args": {
+   "name": "surface",
+   "seed": 42,
+   "now": 1752264000
+  },
+  "expect": {
+   "ok": null
+  },
+  "events": {
+   "bob": [
+    "Initialized"
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "worldMeta",
+  "args": {},
+  "expect": {
+   "ok": {
+    "name": "surface",
+    "seed": 42,
+    "createdAt": 1752264000
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "join",
+  "args": {
+   "name": "Alice",
+   "now": 1752264001
+  },
+  "expect": {
+   "ok": {
+    "id": "@owner",
+    "name": "Alice",
+    "x": 0.0,
+    "y": 0.0,
+    "dir": 1.0,
+    "sel": 0,
+    "action": "idle",
+    "online": true
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "join",
+  "args": {
+   "name": "Bob",
+   "now": 1752264002
+  },
+  "expect": {
+   "ok": {
+    "id": "@bob",
+    "name": "Bob",
+    "x": 0.0,
+    "y": 0.0,
+    "dir": 1.0,
+    "sel": 0,
+    "action": "idle",
+    "online": true
+   }
+  },
+  "events": {
+   "owner": [
+    "Initialized",
+    "PlayerJoined",
+    "PlayerJoined"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getPlayers",
+  "args": {
+   "now": 1752264005
+  },
+  "expect": {
+   "ok": [
+    {
+     "id": "@owner",
+     "name": "Alice",
+     "x": 0.0,
+     "y": 0.0,
+     "dir": 1.0,
+     "sel": 0,
+     "action": "idle",
+     "online": true
+    },
+    {
+     "id": "@bob",
+     "name": "Bob",
+     "x": 0.0,
+     "y": 0.0,
+     "dir": 1.0,
+     "sel": 0,
+     "action": "idle",
+     "online": true
+    }
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setTiles",
+  "args": {
+   "edits": [
+    {
+     "x": 210,
+     "y": 55,
+     "t": 7
+    },
+    {
+     "x": 211,
+     "y": 55,
+     "t": 7
+    },
+    {
+     "x": 212,
+     "y": 54,
+     "t": 8
+    }
+   ],
+   "now": 1752264010
+  },
+  "expect": {
+   "ok": 3
+  },
+  "events": {
+   "bob": [
+    "Initialized",
+    "PlayerJoined",
+    "PlayerJoined",
+    "TilesChanged"
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getOverrides",
+  "args": {},
+  "expect": {
+   "ok": {
+    "items": [
+     {
+      "k": "210,55",
+      "t": 7
+     },
+     {
+      "k": "211,55",
+      "t": 7
+     },
+     {
+      "k": "212,54",
+      "t": 8
+     }
+    ],
+    "next": null
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setTiles",
+  "args": {
+   "edits": [
+    {
+     "x": 211,
+     "y": 55,
+     "t": 0
+    }
+   ],
+   "now": 1752264020
+  },
+  "expect": {
+   "ok": 1
+  },
+  "events": {
+   "owner": [
+    "Initialized",
+    "PlayerJoined",
+    "PlayerJoined",
+    "TilesChanged",
+    "TilesChanged"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getOverrides",
+  "args": {},
+  "expect": {
+   "ok": {
+    "items": [
+     {
+      "k": "210,55",
+      "t": 7
+     },
+     {
+      "k": "211,55",
+      "t": 0
+     },
+     {
+      "k": "212,54",
+      "t": 8
+     }
+    ],
+    "next": null
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "heartbeat",
+  "args": {
+   "t": {
+    "name": "Alice",
+    "x": 305,
+    "y": 66,
+    "dir": 1,
+    "sel": 0,
+    "action": "mining"
+   },
+   "now": 1752264030
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "heartbeat",
+  "args": {
+   "t": {
+    "name": "Bob",
+    "x": 317,
+    "y": 48,
+    "dir": -1,
+    "sel": 2,
+    "action": "building"
+   },
+   "now": 1752264031
+  },
+  "expect": {
+   "ok": null
+  },
+  "events": {
+   "owner": [
+    "Initialized",
+    "PlayerJoined",
+    "PlayerJoined",
+    "TilesChanged",
+    "TilesChanged"
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getPlayers",
+  "args": {
+   "now": 1752264035
+  },
+  "expect": {
+   "ok": [
+    {
+     "id": "@owner",
+     "name": "Alice",
+     "x": 305.0,
+     "y": 66.0,
+     "dir": 1.0,
+     "sel": 0,
+     "action": "mining",
+     "online": true
+    },
+    {
+     "id": "@bob",
+     "name": "Bob",
+     "x": 317.0,
+     "y": 48.0,
+     "dir": -1.0,
+     "sel": 2,
+     "action": "building",
+     "online": true
+    }
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getPlayers",
+  "args": {
+   "now": 1752264036
+  },
+  "expect": {
+   "ok": [
+    {
+     "id": "@owner",
+     "name": "Alice",
+     "x": 305.0,
+     "y": 66.0,
+     "dir": 1.0,
+     "sel": 0,
+     "action": "mining",
+     "online": true
+    },
+    {
+     "id": "@bob",
+     "name": "Bob",
+     "x": 317.0,
+     "y": 48.0,
+     "dir": -1.0,
+     "sel": 2,
+     "action": "building",
+     "online": true
+    }
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "leave",
+  "args": {
+   "now": 1752264038
+  },
+  "expect": {
+   "ok": null
+  },
+  "events": {
+   "owner": [
+    "Initialized",
+    "PlayerJoined",
+    "PlayerJoined",
+    "TilesChanged",
+    "TilesChanged",
+    "PlayerLeft"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getPlayers",
+  "args": {
+   "now": 1752264039
+  },
+  "expect": {
+   "ok": [
+    {
+     "id": "@owner",
+     "name": "Alice",
+     "x": 305.0,
+     "y": 66.0,
+     "dir": 1.0,
+     "sel": 0,
+     "action": "mining",
+     "online": true
+    },
+    {
+     "id": "@bob",
+     "name": "Bob",
+     "x": 317.0,
+     "y": 48.0,
+     "dir": -1.0,
+     "sel": 2,
+     "action": "building",
+     "online": false
+    }
+   ]
+  }
+ }
+]

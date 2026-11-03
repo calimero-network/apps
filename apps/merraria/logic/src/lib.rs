@@ -1,187 +1,110 @@
-//! Merraria — shared 2D tile-world state on Calimero.
+//! Merraria: shared 2D tile-world state, on core's component SDK
+//! (`calimero-app-sdk`).
 //!
-//! Identical architecture to mero-blocks, one dimension lower: the world is
-//! generated deterministically from `seed` on every client; this contract
-//! carries only the tile-override diff (dig = 0/air, never a map-remove) and
-//! player presence on the mero-meet room clock.
+//! The world is generated deterministically from `seed` on every client; this
+//! app carries only the founding parameters, the tile-override diff (dig = an
+//! explicit `0`/air, never a removal) and player presence on the mero-meet room
+//! clock.
 //!
-//! Who may write what is held by storage, on every node: the world's
-//! name/seed/clock are `Frozen` at creation, and each account's avatars sit in
-//! that account's `UserStorage` slot. The overrides stay a public map on
-//! purpose — anyone may dig or build anywhere.
+//! The app runs on its cluster's leader, which applies every write in one
+//! replicated log, so a later write to a tile replaces an earlier one: v1's
+//! last-writer-wins merge rules (`TileOverride`/`Player` `Mergeable`) have
+//! nothing left to decide and are gone, and so is the per-tile timestamp they
+//! needed.
+//!
+//! Who may write what, stated per method (v1 held these rules in storage):
+//!
+//! * `createWorld` founds the world once, and only the app's owner may call it
+//!   (`Forbidden` for anyone else, `WorldExists` the second time). There is no
+//!   setter: name, seed and clock anchor stay as founded (v1's `Frozen`).
+//! * Every avatar row is keyed by the caller's ACCOUNT (`env::caller()`); no
+//!   method takes an account or row id, so nobody can name another player's
+//!   row (v1's `UserStorage`). A player who vanishes without `leave` ages out
+//!   of the TTL in `getPlayers`; nobody writes another player's row.
+//! * The overrides are public on purpose: anyone the app's org admits (owner,
+//!   admins, members and guests, as every member of a v1 context) may dig or
+//!   build anywhere.
+//!
+//! Every change a client sees compared with v1 is listed in
+//! `apps/merraria/README.md`.
 
-use std::cmp::Ordering;
+use calimero_app_sdk::prelude::*;
+use serde::{Deserialize, Serialize};
 
-use calimero_sdk::abi::AbiType;
-use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
-use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::{app, env as sdk_env, PublicKey};
-use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::{
-    Frozen, Mergeable as MergeableTrait, UnorderedMap, UserStorage,
-};
-
-type MemberId = String;
-
-/// World bounds — must match `app/src/engine/world.ts`.
+/// World bounds: must match `app/src/engine/world.ts`.
 const WORLD_W: i32 = 400;
 const WORLD_H: i32 = 200;
 
+/// The most edits one `setTiles` call takes.
 const MAX_EDITS_PER_CALL: usize = 512;
+/// How long after its last stamp a player still counts as online.
 const PRESENCE_TTL_SECS: u64 = 10;
 /// How far ahead of the caller's own clock a stored player stamp may be and
 /// still move room time (see mero-blocks): an honest fast laptop is followed,
-/// a patched `u64::MAX` stamp is ignored instead of freezing presence.
+/// a far-future stamp is ignored instead of freezing presence.
 const MAX_CLOCK_SKEW_SECS: u64 = 900;
+/// The most rows one read answers: `getOverrides`' default and largest
+/// `limit`, and one page of the players map.
+const PAGE: u32 = 1000;
+/// The most avatars a world keeps, one per account that ever joined it. Every
+/// call reads them all to find room time, so they must fit one page.
+const MAX_PLAYERS: u64 = PAGE as u64;
 
-// ── Stored records ───────────────────────────────────────────────────────────
+// ── Records ──────────────────────────────────────────────────────────────────
 
-// ── LWW convergence helper ───────────────────────────────────────────────────
-
-/// Take `other` iff it wins a **total order** of (clock, canonical borsh bytes).
-///
-/// A bare `other.ts > self.ts` is not commutative, and from core 0.11.0-rc.32
-/// that is a live bug rather than a latent one. At an exact clock tie with
-/// differing content each replica keeps its own copy: `merge` changes nothing
-/// on either side, so re-merging never closes the gap and the two stay
-/// divergent permanently, with no error. Breaking the tie on the borsh
-/// encoding — a total order over values — makes both replicas elect the same
-/// winner independently, which is what convergence requires.
-///
-/// Before [core#3807] a collection value's `merge` was never called (entries
-/// resolved last-write-wins by write ORDER), so these rules were dead code and
-/// the tie could not be observed. `#[app::mergeable]` turns them on.
-///
-/// [core#3807]: https://github.com/calimero-network/core/pull/3807
-fn lww_take<T: BorshSerialize>(mine_ts: u64, theirs_ts: u64, mine: &T, theirs: &T) -> bool {
-    match theirs_ts.cmp(&mine_ts) {
-        Ordering::Greater => true,
-        Ordering::Less => false,
-        // Equal clocks: decide on the canonical encoding, so both replicas
-        // elect the same side.
-        //
-        // Infallible on purpose. Core's contract for a dispatched merge
-        // requires a TOTAL rule — "`Err` is not validation, it is a refusal to
-        // converge: the entity stays divergent and repair retries it
-        // indefinitely" — so this must not surface an encoding error. A value
-        // that came back out of storage was borsh-encoded to get there, which
-        // is why the fallback is unreachable rather than merely unlikely.
-        Ordering::Equal => {
-            let encode = |v: &T| calimero_sdk::borsh::to_vec(v).unwrap_or_default();
-            encode(theirs) > encode(mine)
-        }
-    }
-}
-
-/// One tile override: `t` is the tile id (0 = air / dug out).
-#[app::mergeable(id = "merraria::TileOverride")]
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-#[serde(rename_all = "camelCase")]
-pub struct TileOverride {
-    pub t: u8,
-    pub updated_at: u64,
-}
-
-impl MergeableTrait for TileOverride {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        if lww_take(self.updated_at, other.updated_at, self, other) {
-            *self = other.clone();
-        }
-        Ok(())
-    }
-}
-
-#[app::mergeable(id = "merraria::Player")]
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-#[serde(rename_all = "camelCase")]
-pub struct Player {
-    pub name: String,
-    pub x: f64,
-    pub y: f64,
-    /// facing: -1 | 1
-    pub dir: f64,
-    pub sel: u8,
-    /// what the player is doing: "idle" | "walking" | "mining" | "building" | "swimming"
-    #[serde(default)]
-    pub action: String,
-    pub left: bool,
-    pub joined_at: u64,
-    pub updated_at: u64,
-}
-
-impl MergeableTrait for Player {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        if lww_take(self.updated_at, other.updated_at, self, other) {
-            *self = other.clone();
-        }
-        Ok(())
-    }
-}
-
-/// One account's avatars, keyed by device (see `caller`). The slot and the
-/// map nested in it belong to the account: every node refuses another
-/// account's write to either.
-#[derive(BorshSerialize, BorshDeserialize, AbiType, Default, app::Mergeable)]
-#[borsh(crate = "calimero_sdk::borsh")]
-pub struct Avatars {
-    devices: UnorderedMap<MemberId, Player>,
-}
-
-// ── Views / args ─────────────────────────────────────────────────────────────
-
-#[derive(
-    BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug, Default,
-)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-#[serde(rename_all = "camelCase")]
+/// The world's founding parameters, fixed by `createWorld`.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorldMeta {
     pub name: String,
-    pub seed: u64,
-    pub created_at: u64,
+    /// The terrain seed (the client generator reads it as a u32).
+    pub seed: u32,
+    /// The day-clock anchor, in seconds since the epoch.
+    pub created_at: u32,
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+/// One tile edit: `t` is the tile id (0 = air / dug out).
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Edit {
     pub x: i32,
     pub y: i32,
     pub t: u8,
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+/// A player's live transform, as `heartbeat` sends it.
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Transform {
     pub name: String,
     pub x: f64,
     pub y: f64,
+    /// facing: -1 | 1
     pub dir: f64,
     pub sel: u8,
+    /// "idle" | "walking" | "mining" | "building" | "swimming"; empty or
+    /// absent means "idle".
     #[serde(default)]
     pub action: String,
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-#[serde(rename_all = "camelCase")]
+/// One override as `getOverrides` answers it: `k` is `"x,y"`.
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct TileEntry {
     pub k: String,
     pub t: u8,
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-#[serde(rename_all = "camelCase")]
+/// One page of overrides: `next` is the cursor of the following page, `null`
+/// on the last one.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct OverridesPage {
+    pub items: Vec<TileEntry>,
+    pub next: Option<String>,
+}
+
+/// A roster row: `id` is the player's account.
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct PlayerView {
-    pub id: MemberId,
+    pub id: String,
     pub name: String,
     pub x: f64,
     pub y: f64,
@@ -191,185 +114,164 @@ pub struct PlayerView {
     pub online: bool,
 }
 
-// ── Events ───────────────────────────────────────────────────────────────────
+/// A stored avatar row. Never on the wire: its stamps are room-clock seconds.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Player {
+    pub name: String,
+    pub x: f64,
+    pub y: f64,
+    pub dir: f64,
+    pub sel: u8,
+    pub action: String,
+    pub left: bool,
+    pub joined_at: u64,
+    pub updated_at: u64,
+}
 
-#[app::event]
-pub enum Event {
-    Initialized(),
-    /// Tiles changed by this member. Clients re-pull `get_overrides` — the
-    /// event is a nudge, the state is the truth.
-    TilesChanged(MemberId),
-    PlayerJoined(MemberId),
-    PlayerLeft(MemberId),
+impl Player {
+    fn view(&self, id: String, online: bool) -> PlayerView {
+        PlayerView {
+            id,
+            name: self.name.clone(),
+            x: self.x,
+            y: self.y,
+            dir: self.dir,
+            sel: self.sel,
+            action: self.action.clone(),
+            online,
+        }
+    }
 }
 
 // ── State ────────────────────────────────────────────────────────────────────
 
-#[app::state(emits = Event)]
+/// The world.
+#[app::state(version = 1)]
 pub struct Merraria {
-    /// name + seed + day-clock anchor, frozen: the terrain is derived from the
-    /// seed, so nobody (the creator included) may change it after creation.
-    meta: Frozen<WorldMeta>,
-    /// "x,y" -> override. Set-only (dig = t:0), never removed. Public on
-    /// purpose: the world is collaborative.
-    overrides: UnorderedMap<String, TileOverride>,
-    players: UserStorage<Avatars>,
+    /// Name, seed and day-clock anchor: written once by `createWorld`, never
+    /// changed (the terrain is derived from the seed).
+    meta: Cell<WorldMeta>,
+    /// `"x,y"` -> tile id. Set-only (dig = 0), never removed; at most one entry
+    /// per in-bounds tile, so at most 80,000.
+    overrides: UnorderedMap<String, u8>,
+    /// account -> that account's avatar; written only under the caller's own
+    /// account. At most `MAX_PLAYERS` rows (one page), enforced on join.
+    players: UnorderedMap<String, Player>,
 }
 
 #[app::logic]
 impl Merraria {
+    /// The empty app. The node runs it once, when the instance is created; the
+    /// world itself is founded by `createWorld`.
     #[app::init]
-    pub fn init(name: String, seed: u64, now: u64) -> Merraria {
-        app::emit!(Event::Initialized());
-        Merraria {
-            meta: Frozen::new(WorldMeta {
-                name,
-                seed,
-                created_at: now,
-            }),
-            overrides: UnorderedMap::new(),
-            players: UserStorage::new(),
+    pub fn init() -> app::Result<Self> {
+        Ok(Self::load())
+    }
+
+    // ── World ─────────────────────────────────────────────────────────────
+
+    /// Founds the world: its name, terrain seed and day-clock anchor (`now`,
+    /// seconds). Only the app's owner may, and only once: `Forbidden` for any
+    /// other account, `WorldExists` once founded. Emits `Initialized`.
+    pub fn create_world(&mut self, name: String, seed: u32, now: u32) -> app::Result<()> {
+        let account = Self::account()?;
+        if account != env::app_owner() {
+            return Err(AppError::forbidden());
         }
-    }
-
-    /// The real signer of this invocation. Never trust a client-supplied id.
-    ///
-    /// Deliberately the DEVICE, audited against rc.23's account/device split
-    /// (core #3510, which flipped the `executor_id` shim from device to account
-    /// before deleting it). The rule there is that an identity doing *ownership*
-    /// takes the account — a writer set, an owner field, "is the caller a
-    /// member". This contract has none of those: a tile override is
-    /// `{t, updated_at}` with no author, a world has no owner, and nothing here
-    /// is ever compared against a group member list.
-    ///
-    /// The one thing this id names is an AVATAR, and an avatar is one
-    /// installation: a single position that a client heartbeats twice a second.
-    /// Keyed by account, a person's laptop and phone collapse into one row whose
-    /// x/y the two clients overwrite in turn, and neither can see the other.
-    /// Core's own words for `device_id` are "right for per-writer state and wrong
-    /// for per-person state" — a live avatar is per-writer state.
-    /// `one_person_on_two_devices_gets_two_avatars` holds this down.
-    ///
-    /// Ownership still goes by account: the rows live in the caller's
-    /// `UserStorage` slot, keyed inside it by this device id.
-    ///
-    /// Same axis on the client: `sync.ts` suppresses its own echo by comparing an
-    /// event's member id against the context identity the node handed it, which
-    /// is a device key. "Is this the machine that wrote it" is a device question.
-    fn caller() -> PublicKey {
-        sdk_env::device_id().into()
-    }
-
-    fn caller_id() -> MemberId {
-        String::from(Self::caller())
-    }
-
-    // room time (see mero-blocks / mero-meet)
-
-    /// Every avatar row, `(device id, row)`; the id is the map key, never a
-    /// field an account could fill in with someone else's.
-    fn all_players(&self) -> Vec<(MemberId, Player)> {
-        let mut rows = Vec::new();
-        if let Ok(slots) = self.players.entries() {
-            for (_, avatars) in slots {
-                if let Ok(devices) = avatars.devices.entries() {
-                    rows.extend(devices);
-                }
-            }
+        if self.meta.get()?.is_some() {
+            return Err(Error::WorldExists.into());
         }
-        rows
+        self.meta.set(&WorldMeta {
+            name,
+            seed,
+            created_at: now,
+        })?;
+        env::emit(Event::Initialized, Audience::All)?;
+        Ok(())
     }
 
-    /// Room time: the fastest member's clock, up to `MAX_CLOCK_SKEW_SECS`
-    /// ahead of the caller's. Compute it once per call.
-    fn room_now(&self, caller_now: u64) -> u64 {
-        let ceiling = caller_now.saturating_add(MAX_CLOCK_SKEW_SECS);
-        self.all_players()
-            .into_iter()
-            .map(|(_, p)| p.updated_at)
-            .filter(|ts| *ts <= ceiling)
-            .fold(caller_now, u64::max)
-    }
-
-    fn stamp(room_now: u64, stored: u64) -> u64 {
-        room_now.max(stored.saturating_add(1))
-    }
-
-    // ── World ─────────────────────────────────────────────────────────────────
-
+    /// The world's name, seed and clock anchor; `NoWorld` before `createWorld`.
+    #[app::view]
     pub fn world_meta(&self) -> app::Result<WorldMeta> {
-        Ok(self.meta.get()?.clone())
+        self.meta.get()?.ok_or_else(|| Error::NoWorld.into())
     }
 
-    fn in_bounds(x: i32, y: i32) -> bool {
-        x >= 0 && y >= 0 && x < WORLD_W && y < WORLD_H
-    }
-
-    pub fn set_tiles(&mut self, edits: Vec<Edit>, now: u64) -> app::Result<u32> {
+    /// Applies up to 512 tile edits (dig = `t: 0`, stored, never a removal);
+    /// edits outside the 400×200 world are skipped. Answers how many were
+    /// applied. Refreshes the caller's presence stamp and, when anything was
+    /// applied, emits `TilesChanged(account)`. `TooManyEdits` past 512,
+    /// `NoWorld` before `createWorld`.
+    pub fn set_tiles(&mut self, edits: Vec<Edit>, now: u32) -> app::Result<u32> {
+        let account = Self::account()?;
+        self.require_world()?;
         if edits.len() > MAX_EDITS_PER_CALL {
-            app::bail!("too many edits in one batch");
+            return Err(Error::TooManyEdits {
+                max: MAX_EDITS_PER_CALL as u32,
+            }
+            .into());
         }
-        let id = Self::caller_id();
-        let room_now = self.room_now(now);
         let mut applied: u32 = 0;
         for e in edits {
-            if !Self::in_bounds(e.x, e.y) {
+            if !in_bounds(e.x, e.y) {
                 continue;
             }
-            let key = format!("{},{}", e.x, e.y);
-            let stored = match self.overrides.get(&key) {
-                Ok(Some(o)) => o.updated_at,
-                _ => 0,
-            };
-            let updated_at = Self::stamp(room_now, stored);
-            self.overrides
-                .insert(key, TileOverride { t: e.t, updated_at })?;
+            let _previous = self.overrides.insert(&format!("{},{}", e.x, e.y), &e.t)?;
             applied += 1;
         }
         if applied > 0 {
-            self.touch_player(&id, room_now)?;
-            app::emit!(Event::TilesChanged(id));
+            let room_now = self.room_now(now)?;
+            if let Some(mut p) = self.players.get(&account)? {
+                p.updated_at = stamp(room_now, p.updated_at);
+                let _previous = self.players.insert(&account, &p)?;
+            }
+            env::emit(Event::TilesChanged(account), Audience::All)?;
         }
         Ok(applied)
     }
 
-    pub fn get_overrides(&self) -> Vec<TileEntry> {
-        self.overrides
-            .entries()
-            .map(|e| e.map(|(k, o)| TileEntry { k, t: o.t }).collect())
-            .unwrap_or_default()
-    }
-
-    // ── Players ───────────────────────────────────────────────────────────────
-
-    /// This device's row, from the caller's own slot.
-    fn my_player(&self, id: &MemberId) -> app::Result<Option<Player>> {
-        Ok(match self.players.get()? {
-            Some(avatars) => avatars.devices.get(id)?.map(|p| p.clone()),
-            None => None,
+    /// One page of overrides, in key order (`"x,y"` as strings sort): at most
+    /// `limit` (default and largest 1,000), from `cursor` (a previous page's
+    /// `next`; absent for the first page). Read pages until `next` is `null`.
+    #[app::view]
+    pub fn get_overrides(
+        &self,
+        cursor: Option<String>,
+        limit: Option<u32>,
+    ) -> app::Result<OverridesPage> {
+        let mut opts = FindOpts::default().limit(limit.unwrap_or(PAGE).min(PAGE));
+        if let Some(cursor) = cursor {
+            opts = opts.cursor(cursor);
+        }
+        let page = self.overrides.page(opts)?;
+        Ok(OverridesPage {
+            items: page
+                .items
+                .into_iter()
+                .map(|(k, t)| TileEntry { k, t })
+                .collect(),
+            next: page.next,
         })
     }
 
-    /// Upsert this device's row into the caller's own slot.
-    fn put_player(&mut self, id: MemberId, player: Player) -> app::Result<()> {
-        if let Some(mut avatars) = self.players.get()? {
-            let _ = avatars.devices.insert(id, player)?;
-        } else {
-            let mut devices = UnorderedMap::new();
-            let _ = devices.insert(id, player)?;
-            let _ = self.players.insert(Avatars { devices })?;
+    // ── Players ───────────────────────────────────────────────────────────
+
+    /// Joins (or rejoins) as `name`. A rejoin keeps the first `joinedAt` and the
+    /// last position; facing, slot and action reset. Answers the caller's
+    /// roster row and emits `PlayerJoined(account)`. `WorldFull` for a new
+    /// account once the world keeps 1,000 avatars.
+    pub fn join(&mut self, name: String, now: u32) -> app::Result<PlayerView> {
+        let account = Self::account()?;
+        self.require_world()?;
+        let existing = self.players.get(&account)?;
+        if existing.is_none() {
+            self.require_room()?;
         }
-        Ok(())
-    }
-
-    pub fn join(&mut self, name: String, now: u64) -> app::Result<PlayerView> {
-        let id = Self::caller_id();
-        let existing = self.my_player(&id)?;
-        let joined_at = existing.as_ref().map(|p| p.joined_at).unwrap_or(now);
-        let stored = existing.as_ref().map(|p| p.updated_at).unwrap_or(0);
-        let (x, y) = existing.as_ref().map(|p| (p.x, p.y)).unwrap_or((0.0, 0.0));
-        let updated_at = Self::stamp(self.room_now(now), stored);
-
+        let now = u64::from(now);
+        let joined_at = existing.as_ref().map_or(now, |p| p.joined_at);
+        let stored = existing.as_ref().map_or(0, |p| p.updated_at);
+        let (x, y) = existing.as_ref().map_or((0.0, 0.0), |p| (p.x, p.y));
+        let updated_at = stamp(self.room_now_secs(now)?, stored);
         let player = Player {
             name,
             x,
@@ -381,20 +283,26 @@ impl Merraria {
             joined_at,
             updated_at,
         };
-        self.put_player(id.clone(), player.clone())?;
-        app::emit!(Event::PlayerJoined(id.clone()));
-        Ok(Self::view_of(id, &player, true))
+        let _previous = self.players.insert(&account, &player)?;
+        env::emit(Event::PlayerJoined(account.clone()), Audience::All)?;
+        Ok(player.view(account, true))
     }
 
-    /// Silent presence + transform write (no SSE churn).
-    pub fn heartbeat(&mut self, t: Transform, now: u64) -> app::Result<()> {
-        let id = Self::caller_id();
-        let existing = self.my_player(&id)?;
-        let joined_at = existing.as_ref().map(|p| p.joined_at).unwrap_or(now);
-        let stored = existing.as_ref().map(|p| p.updated_at).unwrap_or(0);
-        let was_left = existing.as_ref().map(|p| p.left).unwrap_or(true);
-        let updated_at = Self::stamp(self.room_now(now), stored);
-
+    /// The caller's presence and transform. Silent (no event) unless the caller
+    /// had no row or had left, which emits `PlayerJoined(account)`.
+    /// `WorldFull` for a new account once the world keeps 1,000 avatars.
+    pub fn heartbeat(&mut self, t: Transform, now: u32) -> app::Result<()> {
+        let account = Self::account()?;
+        self.require_world()?;
+        let existing = self.players.get(&account)?;
+        if existing.is_none() {
+            self.require_room()?;
+        }
+        let now = u64::from(now);
+        let joined_at = existing.as_ref().map_or(now, |p| p.joined_at);
+        let stored = existing.as_ref().map_or(0, |p| p.updated_at);
+        let was_left = existing.as_ref().is_none_or(|p| p.left);
+        let updated_at = stamp(self.room_now_secs(now)?, stored);
         let player = Player {
             name: t.name,
             x: t.x,
@@ -410,486 +318,130 @@ impl Merraria {
             joined_at,
             updated_at,
         };
-        self.put_player(id.clone(), player)?;
+        let _previous = self.players.insert(&account, &player)?;
         if was_left {
-            app::emit!(Event::PlayerJoined(id));
+            env::emit(Event::PlayerJoined(account), Audience::All)?;
         }
         Ok(())
     }
 
-    pub fn leave(&mut self, now: u64) -> app::Result<()> {
-        let id = Self::caller_id();
-        let Some(mut p) = self.my_player(&id)? else {
+    /// Marks the caller as having left and emits `PlayerLeft(account)`; a
+    /// no-op (no event) for a caller who never joined.
+    pub fn leave(&mut self, now: u32) -> app::Result<()> {
+        let account = Self::account()?;
+        self.require_world()?;
+        let Some(mut p) = self.players.get(&account)? else {
             return Ok(());
         };
         p.left = true;
-        p.updated_at = Self::stamp(self.room_now(now), p.updated_at);
-        self.put_player(id.clone(), p)?;
-        app::emit!(Event::PlayerLeft(id));
+        p.updated_at = stamp(self.room_now(now)?, p.updated_at);
+        let _previous = self.players.insert(&account, &p)?;
+        env::emit(Event::PlayerLeft(account), Audience::All)?;
         Ok(())
     }
 
-    /// Roster with liveness. A player who vanished without `leave` ages out
-    /// of the TTL here; nobody writes to another account's row to mark it.
-    pub fn get_players(&self, now: u64) -> Vec<PlayerView> {
-        let room_now = self.room_now(now);
-        self.all_players()
+    /// The roster with liveness at room time (`now` is the caller's clock), in
+    /// join order (then by account): every avatar the world keeps, at most
+    /// 1,000 (one page). A player who vanished without `leave`
+    /// ages out of the 10-second TTL here.
+    #[app::view]
+    pub fn get_players(&self, now: u32) -> app::Result<Vec<PlayerView>> {
+        let mut rows = self.all_players()?;
+        let room_now = room_time(&rows, u64::from(now));
+        rows.sort_by(|(a_id, a), (b_id, b)| (a.joined_at, a_id).cmp(&(b.joined_at, b_id)));
+        Ok(rows
             .into_iter()
             .map(|(id, p)| {
                 let online = !p.left && room_now.saturating_sub(p.updated_at) <= PRESENCE_TTL_SECS;
-                Self::view_of(id, &p, online)
+                p.view(id, online)
             })
-            .collect()
+            .collect())
     }
 
-    fn view_of(id: MemberId, p: &Player, online: bool) -> PlayerView {
-        PlayerView {
-            id,
-            name: p.name.clone(),
-            x: p.x,
-            y: p.y,
-            dir: p.dir,
-            sel: p.sel,
-            action: p.action.clone(),
-            online,
+    // ── helpers (not methods: not `pub`) ──────────────────────────────────
+
+    /// The account the caller acts for. The node admits only org accounts to
+    /// this app, so the other callers are a backstop.
+    fn account() -> app::Result<String> {
+        match env::caller() {
+            Caller::Account(account) | Caller::ApiKey { account, .. } => Ok(account),
+            Caller::Public | Caller::System | Caller::App(_) => Err(AppError::login_required()),
         }
     }
 
-    fn touch_player(&mut self, id: &MemberId, room_now: u64) -> app::Result<()> {
-        let Some(mut p) = self.my_player(id)? else {
-            return Ok(());
-        };
-        p.updated_at = Self::stamp(room_now, p.updated_at);
-        self.put_player(id.clone(), p)
+    fn require_world(&self) -> app::Result<()> {
+        match self.meta.get()? {
+            Some(_) => Ok(()),
+            None => Err(Error::NoWorld.into()),
+        }
+    }
+
+    /// Every avatar row, `(account, row)`: one page, which holds them all
+    /// because a world keeps at most `MAX_PLAYERS` (`require_room`).
+    fn all_players(&self) -> app::Result<Vec<(String, Player)>> {
+        Ok(self.players.page(FindOpts::default().limit(PAGE))?.items)
+    }
+
+    /// `WorldFull` when a new account would take the world past `MAX_PLAYERS`
+    /// rows (a stored count, not a scan). Accounts already in it always may.
+    fn require_room(&self) -> app::Result<()> {
+        if self.players.len()? >= MAX_PLAYERS {
+            return Err(Error::WorldFull { max: PAGE }.into());
+        }
+        Ok(())
+    }
+
+    fn room_now(&self, caller_now: u32) -> app::Result<u64> {
+        self.room_now_secs(u64::from(caller_now))
+    }
+
+    fn room_now_secs(&self, caller_now: u64) -> app::Result<u64> {
+        Ok(room_time(&self.all_players()?, caller_now))
     }
 }
 
-// ── Tests ────────────────────────────────────────────────────────────────────
+/// Room time: the fastest member's clock, up to `MAX_CLOCK_SKEW_SECS` ahead of
+/// the caller's.
+fn room_time(rows: &[(String, Player)], caller_now: u64) -> u64 {
+    let ceiling = caller_now.saturating_add(MAX_CLOCK_SKEW_SECS);
+    rows.iter()
+        .map(|(_, p)| p.updated_at)
+        .filter(|ts| *ts <= ceiling)
+        .fold(caller_now, u64::max)
+}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use calimero_sdk::testing::TestHost;
-    use calimero_sdk::AccountId;
+/// A stamp that never goes backwards for its row.
+fn stamp(room_now: u64, stored: u64) -> u64 {
+    room_now.max(stored.saturating_add(1))
+}
 
-    const ALICE: [u8; 32] = [0x11; 32];
-    const BOB: [u8; 32] = [0x22; 32];
-    /// Alice's second machine. `call_as` moves the device and leaves the account
-    /// alone, so ALICE and ALICE_PHONE are one person on two installations.
-    const ALICE_PHONE: [u8; 32] = [0x33; 32];
+fn in_bounds(x: i32, y: i32) -> bool {
+    (0..WORLD_W).contains(&x) && (0..WORLD_H).contains(&y)
+}
 
-    /// Render an id the way the contract does.
-    ///
-    /// `caller_id()` is `String::from(PublicKey)`, and the SDK renders that —
-    /// so this helper does not get to choose. core 0.11.0-rc.27 removed base58
-    /// (core#3691) and `Hash`'s Display is `hex::encode`, which silently
-    /// changed what the contract emits. This was `bs58::encode` and every
-    /// assertion comparing a player id against it failed at the SDK bump.
-    fn id_of(bytes: [u8; 32]) -> String {
-        hex::encode(bytes)
-    }
+/// A typed failure: `422 APP_ERROR` with `{ code, fields }` on the wire.
+#[app::error]
+pub enum Error {
+    /// `createWorld` has not run yet.
+    NoWorld,
+    /// `createWorld` ran already: the founding parameters are fixed.
+    WorldExists,
+    /// One `setTiles` call carried more than `max` edits.
+    TooManyEdits { max: u32 },
+    /// The world already keeps avatars for `max` accounts: a new one cannot join.
+    WorldFull { max: u32 },
+}
 
-    fn new_world() -> TestHost<Merraria> {
-        TestHost::new(|| Merraria::init("surface".to_owned(), 42, 1000))
-    }
-
-    fn t(name: &str, x: f64) -> Transform {
-        Transform {
-            name: name.to_owned(),
-            x,
-            y: 60.0,
-            dir: 1.0,
-            sel: 0,
-            action: "walking".to_owned(),
-        }
-    }
-
-    #[test]
-    fn world_meta_returns_init_params() {
-        let app = new_world();
-        let meta = app.view(|s| s.world_meta()).unwrap();
-        assert_eq!(meta.name, "surface");
-        assert_eq!(meta.seed, 42);
-        assert_eq!(meta.created_at, 1000);
-    }
-
-    #[test]
-    fn set_tiles_roundtrips_and_digging_stores_air() {
-        let mut app = new_world();
-        app.call_as(ALICE, |s| {
-            s.set_tiles(
-                vec![Edit { x: 5, y: 60, t: 7 }, Edit { x: 6, y: 61, t: 0 }],
-                1000,
-            )
-        })
-        .unwrap();
-        let overrides = app.view(|s| s.get_overrides());
-        assert_eq!(overrides.len(), 2);
-        assert_eq!(overrides.iter().find(|o| o.k == "5,60").unwrap().t, 7);
-        assert_eq!(overrides.iter().find(|o| o.k == "6,61").unwrap().t, 0);
-    }
-
-    #[test]
-    fn same_tile_upserts_never_duplicates() {
-        let mut app = new_world();
-        app.call_as(ALICE, |s| {
-            s.set_tiles(vec![Edit { x: 1, y: 1, t: 3 }], 1000)
-        })
-        .unwrap();
-        app.call_as(BOB, |s| s.set_tiles(vec![Edit { x: 1, y: 1, t: 0 }], 1010))
-            .unwrap();
-        let overrides = app.view(|s| s.get_overrides());
-        assert_eq!(overrides.len(), 1);
-        assert_eq!(overrides[0].t, 0);
-    }
-
-    #[test]
-    fn out_of_bounds_edits_are_skipped() {
-        let mut app = new_world();
-        let applied = app
-            .call_as(ALICE, |s| {
-                s.set_tiles(
-                    vec![
-                        Edit { x: -1, y: 0, t: 1 },
-                        Edit { x: 0, y: 200, t: 1 },
-                        Edit { x: 400, y: 0, t: 1 },
-                        Edit { x: 10, y: 10, t: 1 },
-                    ],
-                    1000,
-                )
-            })
-            .unwrap();
-        assert_eq!(applied, 1);
-    }
-
-    #[test]
-    fn oversized_batch_is_rejected() {
-        let mut app = new_world();
-        let edits: Vec<Edit> = (0..513)
-            .map(|i| Edit {
-                x: i % 100,
-                y: 1,
-                t: 1,
-            })
-            .collect();
-        assert!(app.call_as(ALICE, |s| s.set_tiles(edits, 1000)).is_err());
-    }
-
-    #[test]
-    fn join_heartbeat_roster_lifecycle() {
-        let mut app = new_world();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
-            .unwrap();
-        app.call_as(ALICE, |s| s.heartbeat(t("Alice", 33.0), 1003))
-            .unwrap();
-        let players = app.view(|s| s.get_players(1005));
-        assert_eq!(players.len(), 1);
-        assert!(players[0].online);
-        assert_eq!(players[0].x, 33.0);
-
-        app.call_as(ALICE, |s| s.leave(1010)).unwrap();
-        let players = app.view(|s| s.get_players(1011));
-        assert!(!players[0].online);
-    }
-
-    #[test]
-    fn a_vanished_player_ages_out_and_self_heals() {
-        let mut app = new_world();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
-            .unwrap();
-        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000))
-            .unwrap();
-
-        // Alice goes silent without `leave`; nobody writes her row, she is
-        // offline because her stamp aged out.
-        app.call_as(BOB, |s| s.heartbeat(t("Bob", 0.0), 1075))
-            .unwrap();
-        let alice = app
-            .view(|s| s.get_players(1076))
-            .into_iter()
-            .find(|p| p.id == id_of(ALICE))
-            .unwrap();
-        assert!(!alice.online);
-
-        app.call_as(ALICE, |s| s.heartbeat(t("Alice", 5.0), 1080))
-            .unwrap();
-        let alice = app
-            .view(|s| s.get_players(1081))
-            .into_iter()
-            .find(|p| p.id == id_of(ALICE))
-            .unwrap();
-        assert!(
-            alice.online,
-            "a silent player is back on the next heartbeat"
-        );
-    }
-
-    #[test]
-    fn skewed_fast_clock_cannot_knock_peers_offline() {
-        let mut app = new_world();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
-            .unwrap();
-        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000))
-            .unwrap();
-        app.call_as(BOB, |s| s.heartbeat(t("Bob", 0.0), 1600))
-            .unwrap(); // 10 min ahead
-        app.call_as(ALICE, |s| s.heartbeat(t("Alice", 0.0), 1002))
-            .unwrap();
-        let alice = app
-            .view(|s| s.get_players(1603))
-            .into_iter()
-            .find(|p| p.id == id_of(ALICE))
-            .unwrap();
-        assert!(alice.online);
-    }
-
-    #[test]
-    fn backward_clock_never_freezes_liveness() {
-        let mut app = new_world();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 5000))
-            .unwrap();
-        app.call_as(ALICE, |s| s.heartbeat(t("Alice", 0.0), 1000))
-            .unwrap();
-        let players = app.view(|s| s.get_players(5002));
-        assert!(players[0].online);
-    }
-
-    #[test]
-    fn rejoin_preserves_joined_at_and_position() {
-        let mut app = new_world();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
-            .unwrap();
-        app.call_as(ALICE, |s| s.heartbeat(t("Alice", 42.0), 1005))
-            .unwrap();
-        app.call_as(ALICE, |s| s.join("Alice2".to_owned(), 1010))
-            .unwrap();
-        let players = app.view(|s| s.get_players(1011));
-        assert_eq!(players[0].x, 42.0, "position survives rejoin");
-        assert_eq!(players[0].name, "Alice2");
-    }
-
-    /// The rc.23 identity decision, made executable. `caller()` is the device on
-    /// purpose (see its doc comment): an avatar is per-installation, so one
-    /// person playing on two machines is two avatars standing in two places.
-    /// Under `account_id()` both machines would write the SAME row and their
-    /// heartbeats would overwrite each other's position twice a second — this
-    /// test is what would catch that swap.
-    #[test]
-    fn one_person_on_two_devices_gets_two_avatars() {
-        let mut app = new_world();
-        app.call_as(ALICE, |s| s.heartbeat(t("Alice", 10.0), 1000))
-            .unwrap();
-        app.call_as(ALICE_PHONE, |s| s.heartbeat(t("Alice", 90.0), 1001))
-            .unwrap();
-
-        let players = app.view(|s| s.get_players(1002));
-        assert_eq!(players.len(), 2, "two installations, two avatars");
-        let laptop = players.iter().find(|p| p.id == id_of(ALICE)).unwrap();
-        let phone = players.iter().find(|p| p.id == id_of(ALICE_PHONE)).unwrap();
-        assert_eq!(laptop.x, 10.0);
-        assert_eq!(
-            phone.x, 90.0,
-            "the second machine did not overwrite the first"
-        );
-    }
-
-    /// The other axis: two people on machines of their own are still two rows,
-    /// so the device keying above never collapses distinct players either.
-    #[test]
-    fn two_accounts_on_their_own_devices_are_two_players() {
-        let mut app = new_world();
-        app.call_as_account(ALICE, ALICE, |s| s.join("Alice".to_owned(), 1000))
-            .unwrap();
-        app.call_as_account(BOB, BOB, |s| s.join("Bob".to_owned(), 1001))
-            .unwrap();
-        let players = app.view(|s| s.get_players(1002));
-        assert_eq!(players.len(), 2);
-    }
-
-    #[test]
-    fn heartbeat_without_join_creates_a_live_row() {
-        let mut app = new_world();
-        app.call_as(ALICE, |s| s.heartbeat(t("Ghost", 1.0), 1000))
-            .unwrap();
-        let players = app.view(|s| s.get_players(1001));
-        assert_eq!(players.len(), 1);
-        assert!(players[0].online);
-    }
-
-    #[test]
-    fn leave_when_never_joined_is_a_no_op() {
-        let mut app = new_world();
-        assert!(app.call_as(ALICE, |s| s.leave(1000)).is_ok());
-        assert!(app.view(|s| s.get_players(1001)).is_empty());
-    }
-
-    #[test]
-    fn concurrent_edits_by_two_players_both_land() {
-        let mut app = new_world();
-        app.call_as(ALICE, |s| {
-            s.set_tiles(vec![Edit { x: 1, y: 1, t: 3 }], 1000)
-        })
-        .unwrap();
-        app.call_as(BOB, |s| s.set_tiles(vec![Edit { x: 2, y: 2, t: 8 }], 1000))
-            .unwrap();
-        assert_eq!(app.view(|s| s.get_overrides()).len(), 2);
-    }
-
-    #[test]
-    fn transform_fields_survive_the_roundtrip() {
-        let mut app = new_world();
-        let tr = Transform {
-            name: "Alice".to_owned(),
-            x: 1.25,
-            y: 60.5,
-            dir: -1.0,
-            sel: 7,
-            action: "mining".to_owned(),
-        };
-        app.call_as(ALICE, |s| s.heartbeat(tr, 1000)).unwrap();
-        let p = &app.view(|s| s.get_players(1001))[0];
-        assert_eq!((p.x, p.y), (1.25, 60.5));
-        assert_eq!(p.dir, -1.0);
-        assert_eq!(p.sel, 7);
-        assert_eq!(p.action, "mining");
-    }
-
-    #[test]
-    fn empty_action_defaults_to_idle_and_join_starts_idle() {
-        let mut app = new_world();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
-            .unwrap();
-        let p = &app.view(|s| s.get_players(1001))[0];
-        assert_eq!(p.action, "idle");
-        let tr = Transform {
-            name: "Alice".to_owned(),
-            x: 1.0,
-            y: 60.0,
-            dir: 1.0,
-            sel: 0,
-            action: String::new(), // old clients omit the field (serde default)
-        };
-        app.call_as(ALICE, |s| s.heartbeat(tr, 1002)).unwrap();
-        let p = &app.view(|s| s.get_players(1003))[0];
-        assert_eq!(p.action, "idle");
-    }
-
-    #[test]
-    fn empty_batch_applies_nothing_and_succeeds() {
-        let mut app = new_world();
-        let applied = app.call_as(ALICE, |s| s.set_tiles(vec![], 1000)).unwrap();
-        assert_eq!(applied, 0);
-    }
-
-    #[test]
-    fn world_edges_are_editable() {
-        let mut app = new_world();
-        let applied = app
-            .call_as(ALICE, |s| {
-                s.set_tiles(
-                    vec![
-                        Edit { x: 0, y: 0, t: 1 },
-                        Edit {
-                            x: 399,
-                            y: 199,
-                            t: 1,
-                        },
-                    ],
-                    1000,
-                )
-            })
-            .unwrap();
-        assert_eq!(applied, 2, "corner tiles are in bounds");
-    }
-
-    #[test]
-    fn tile_lww_stamps_are_monotonic_per_key() {
-        let mut app = new_world();
-        app.call_as(ALICE, |s| {
-            s.set_tiles(vec![Edit { x: 2, y: 2, t: 7 }], 9000)
-        })
-        .unwrap();
-        app.call_as(BOB, |s| s.set_tiles(vec![Edit { x: 2, y: 2, t: 4 }], 1000))
-            .unwrap();
-        let overrides = app.view(|s| s.get_overrides());
-        assert_eq!(overrides[0].t, 4, "later edit wins even with a slow clock");
-    }
-
-    /// Founding parameters are a `Frozen` cell written by the account that
-    /// ran `init`; there is no setter, and every node refuses a later write.
-    #[test]
-    fn world_meta_is_frozen_by_its_creator() {
-        let app = new_world();
-        assert!(app.view(|s| s.meta.writer()).is_some());
-        assert_eq!(app.view(|s| s.world_meta()).unwrap().seed, 42);
-    }
-
-    /// Another account writing into my slot, as a patched node would, is
-    /// refused by storage; my own heartbeat still lands.
-    #[test]
-    fn another_account_cannot_move_or_evict_my_avatar() {
-        let mut app = new_world();
-        app.call_as_account(ALICE, ALICE, |s| s.heartbeat(t("Alice", 10.0), 1000))
-            .unwrap();
-
-        let forged = app.call_as_account(BOB, BOB, |s| -> app::Result<()> {
-            let Some(mut alices) = s.players.get_for_user(&AccountId::from(ALICE))? else {
-                app::bail!("alice has a slot");
-            };
-            let mut row = alices.devices.get(&id_of(ALICE))?.unwrap().clone();
-            row.x = 999.0;
-            row.left = true;
-            let _ = alices.devices.insert(id_of(ALICE), row)?;
-            Ok(())
-        });
-        assert!(forged.is_err(), "bob cannot rewrite alice's row");
-
-        app.call_as_account(ALICE, ALICE, |s| s.heartbeat(t("Alice", 11.0), 1001))
-            .unwrap();
-        let players = app.view(|s| s.get_players(1002));
-        assert_eq!(players.len(), 1);
-        assert_eq!(players[0].x, 11.0);
-        assert!(players[0].online);
-    }
-
-    /// A row stamped `u64::MAX` must not drag room time with it.
-    #[test]
-    fn a_far_future_stamp_does_not_hijack_room_time() {
-        let mut app = new_world();
-        app.call_as_account(BOB, BOB, |s| {
-            s.put_player(
-                id_of(BOB),
-                Player {
-                    name: "Mallory".to_owned(),
-                    x: 0.0,
-                    y: 0.0,
-                    dir: 1.0,
-                    sel: 0,
-                    action: "idle".to_owned(),
-                    left: false,
-                    joined_at: 0,
-                    updated_at: u64::MAX,
-                },
-            )
-        })
-        .unwrap();
-        app.call_as_account(ALICE, ALICE, |s| s.heartbeat(t("Alice", 1.0), 1000))
-            .unwrap();
-
-        let alice = app
-            .view(|s| s.get_players(1003))
-            .into_iter()
-            .find(|p| p.id == id_of(ALICE))
-            .unwrap();
-        assert!(alice.online, "room time stayed on the real clock");
-        let stored = app
-            .call_as_account(ALICE, ALICE, |s| s.my_player(&id_of(ALICE)))
-            .unwrap()
-            .unwrap()
-            .updated_at;
-        assert!(
-            stored < 1000 + MAX_CLOCK_SKEW_SECS,
-            "stamp not dragged to u64::MAX"
-        );
-    }
+/// What changed, emitted to everyone the app reaches after the write. Clients
+/// re-pull state on a nudge: the event is a nudge, the state is the truth.
+#[app::event]
+pub enum Event {
+    /// The world was founded (`createWorld`).
+    Initialized,
+    /// Tiles changed by this account (`setTiles`).
+    TilesChanged(String),
+    /// This account joined, or came back with a heartbeat after leaving.
+    PlayerJoined(String),
+    /// This account left.
+    PlayerLeft(String),
 }

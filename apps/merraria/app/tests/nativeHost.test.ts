@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { frontTile, MeroBridge, NativeGameClient, nativeChannel } from "../src/native/host";
+import { CALLS, VIEWS } from "../src/net/merraria";
+import { frontTile, MeroBridge, NativeGameClient, nativeChannel, V1_METHOD } from "../src/native/host";
 
 function bridgeWithLog() {
   const sent: Record<string, unknown>[] = [];
@@ -13,18 +14,18 @@ describe("native host bridge", () => {
     expect(nativeChannel({ MeroBridgeAndroid: { postMessage: () => {} } })).not.toBeNull();
   });
 
-  it("sends views as query and writes as execute, and resolves the app's answer", async () => {
+  it("sends views as query and writes as execute, by their v1 names, and resolves the app's answer", async () => {
     const { bridge, sent } = bridgeWithLog();
     const client = new NativeGameClient(bridge, "ctx");
-    const read = client.exec("get_overrides", {});
-    const write = client.exec("set_tiles", { edits: [{ x: 1, y: 2, t: 0 }], now: 5 });
+    const read = client.exec("getOverrides", { cursor: "c", limit: 5 });
+    const write = client.exec("setTiles", { edits: [{ x: 1, y: 2, t: 0 }], now: 5 });
     expect(sent).toEqual([
       { type: "request", id: 1, op: "query", method: "get_overrides", args: {} },
       { type: "request", id: 2, op: "execute", method: "set_tiles", args: { edits: [{ x: 1, y: 2, t: 0 }], now: 5 } },
     ]);
     bridge.receive(JSON.stringify({ type: "response", id: 2, ok: true, value: 1 }));
     bridge.receive({ type: "response", id: 1, ok: true, value: [{ k: "1,2", t: 0 }] });
-    await expect(read).resolves.toEqual([{ k: "1,2", t: 0 }]);
+    await expect(read).resolves.toEqual({ items: [{ k: "1,2", t: 0 }], next: null });
     await expect(write).resolves.toBe(1);
   });
 
@@ -34,6 +35,14 @@ describe("native host bridge", () => {
     const meta = client.fetchWorldMeta();
     bridge.receive({ type: "response", id: 1, ok: false, error: '{"type":"Uninitialized"}' });
     await expect(meta).rejects.toThrow('rpc world_meta: {"type":"Uninitialized"}');
+  });
+
+  it("maps every engine method except createWorld onto a v1 name, and refuses createWorld", async () => {
+    expect(Object.keys(V1_METHOD).sort()).toEqual([...CALLS, ...VIEWS].filter((m) => m !== "createWorld").sort());
+    const { bridge, sent } = bridgeWithLog();
+    const client = new NativeGameClient(bridge, "ctx");
+    await expect(client.exec("createWorld", { name: "w", seed: 1, now: 1 })).rejects.toThrow("rpc createWorld");
+    expect(sent).toEqual([]);
   });
 
   it("learns its identity from join", async () => {
