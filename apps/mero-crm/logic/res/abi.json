@@ -642,6 +642,16 @@
       "rottingDays": "cell",
       "stages": "table"
     },
+    "search": {
+      "activities": [],
+      "automations": [],
+      "contacts": [],
+      "currency": [],
+      "deals": [],
+      "notes": [],
+      "rottingDays": [],
+      "stages": []
+    },
     "version": 1
   },
   "world": "calimero:app@0.5.0"
