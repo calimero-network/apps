@@ -1,64 +1,65 @@
 [package]
 # Directory == cargo package == npm package, which publish-bundle.yml relies on
 # (it uses one value as both `apps/$APP/logic` and `pnpm -F $APP`).
-name        = "mero-standup"
-description = "Async standups and a decision log for a small team, replicated between its members' own nodes"
-version     = "0.1.0"
-edition.workspace    = true
-authors.workspace    = true
-license.workspace    = true
-repository.workspace = true
+name = "mero-standup"
+description = "Async standups and a decision log for a small team, on the component SDK"
+# NOT the release version: the release workflow takes the next appVersion from
+# the registry and passes it to `mero-component bundle --app-version`. Cargo
+# requires the field; bundling locally without --app-version uses it.
+version = "0.1.0"
+edition = "2021"
+authors = ["Calimero Limited <info@calimero.network>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/calimero-network/apps"
 publish = false
 
 [lib]
-# `rlib` beside cdylib so the TestHost tests in src/tests.rs can link the crate.
-crate-type = ["cdylib", "rlib"]
+# A `calimero:app` component. No `rlib`: the tests run the BUILT component on
+# core's engine (tests/common/mod.rs), not the crate linked natively.
+crate-type = ["cdylib"]
 
-# Read by `cargo mero build` / `cargo mero bundle`. `appVersion` is absent on
-# purpose: the release workflow resolves it from the registry.
-#
-# None of this can be inherited from the workspace (`[package.metadata]` is not
-# on cargo's inheritable list); scripts/check-app-metadata.sh asserts the
-# fleet-wide values match `[workspace.metadata.mero-apps]` instead.
+# Core at `component-core-tag` (root Cargo.toml), the same tag for every core
+# crate; scripts/check-component-pins.py asserts it. A standalone crate cannot
+# inherit `[workspace.dependencies]`.
+[dependencies]
+calimero-app-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8" }
+# The views' `#[derive(Serialize)]`.
+serde = { version = "1", features = ["derive"] }
+
+# The harness (`TestApp`, `run_scenario`) and the builder the tests build this
+# crate with, for `cargo test` on the host only.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+calimero-app-sdk   = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8", features = ["testing"] }
+calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8" }
+serde_json = "1"
+
+# Read by `mero-component bundle` (tools/component-bundle), with the keys
+# `cargo mero bundle` reads for a v1 app.
 [package.metadata.calimero]
-package     = "com.calimero.mero-standup"
-name        = "Mero Standup"
-description = "Async standups and a decision log for a small team: post what you did, what is next and what blocks you, and record what the team decided and why. Replicated between the members' own nodes."
-author      = "Calimero"
-# The slug IS the package id: a deep link resolves by `Application.package`.
-slug        = "com.calimero.mero-standup"
-# A real icon, not cargo-mero's "default" placeholder (check-app-icons.py).
+package = "com.calimero.mero-standup"
+name = "Mero Standup"
+description = "Async standups and a decision log for a small team: post what you did, what is next and what blocks you, and record what the team decided and why."
+author = "Calimero"
+# The slug IS the package id: deep links resolve by `Application.package`.
+slug = "com.calimero.mero-standup"
+# A real icon, not a placeholder (check-app-icons.py).
 # Regenerate with `node app/scripts/gen-icons.mjs`.
-icon        = "../app/public/icon-512.png"
-category    = "productivity"
-tags        = ["standup", "decisions", "team", "productivity"]
-github      = "https://github.com/calimero-network/apps"
-# Asserted equal to [workspace.metadata.mero-apps] in CI.
-min-runtime-version = "0.12.0-rc.3"
-# The registered login callback origin, compared by EXACT origin, so no
-# trailing slash. ⚠️ Resolves to nothing until the Vercel project exists:
-# Root Directory `apps/mero-standup/app`, project named `mero-standup`.
-frontend    = "https://mero-standup.vercel.app"
-# The built frontend `cargo mero bundle` packs, so the node serves it from the app's own origin.
+icon = "../app/public/icon-512.png"
+category = "productivity"
+tags = ["standup", "decisions", "team", "productivity"]
+github = "https://github.com/calimero-network/apps"
+# `component-min-runtime-version` in the root Cargo.toml: a node compares it
+# with its own release.
+min-runtime-version = "1.0.0-rc.8"
+# The listing's link, and an origin the node may send a person back to from
+# its consent page. NOT where the production frontend runs: a Cloud node trusts
+# passkey ceremonies only from frontends it serves from a bundle, so the
+# production frontend is the one packed below (docs/COMPONENT-APPS.md).
+frontend = "https://mero-standup.vercel.app"
+# The built frontend the bundle carries; the cluster serves it from the
+# package's own origin. Build it first: `pnpm -F mero-standup build`.
 frontend-dir = "../app/dist"
 
-# ⚠️ Keep the dependency tables AFTER the calimero table: the landing generator
-# reads that table up to the next `[` header and finds nothing at end of file.
-[dependencies]
-calimero-sdk            = { workspace = true }
-calimero-storage        = { workspace = true }
-calimero-storage-macros = { workspace = true }
-# Decision ids are 16 random bytes from the host, rendered as hex.
-hex                     = { workspace = true }
-
-[dev-dependencies]
-# The native mock host, so TestHost can drive real CRDT state under cargo test.
-calimero-storage = { workspace = true, features = ["testing"] }
-
-# NOTE: no [profile.*] — cargo ignores profiles in a workspace member and
-# `cargo mero build` then fails with `profile 'app-release' is not defined`.
-
-# `cargo mero` sets `calimero_abi` when it extracts the ABI; src/tests.rs keeps
-# the v1 migration tests out of that build.
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ["cfg(calimero_abi)"] }
+# Standalone: excluded from the root workspace (root Cargo.toml), its own
+# Cargo.lock, as core's component apps are.
+[workspace]

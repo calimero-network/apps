@@ -1,7 +1,7 @@
 package network.calimero.standup.core
 
-import network.calimero.standup.generated.DayView
-import network.calimero.standup.generated.UpdateView
+import network.calimero.standup.contract.DayView
+import network.calimero.standup.contract.UpdateView
 import java.util.Locale
 
 /** One person's week: their updates in day order, only days they posted. */

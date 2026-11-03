@@ -1,176 +1,93 @@
-// ── Invitation LINKS ─────────────────────────────────────────────────────────
+// ── Invitation links ─────────────────────────────────────────────────────────
 //
-// Mero Pass had no invitations at all: the vault list told the user to "ask
-// whoever runs it for an invitation", and nothing in the app could mint one. So
-// there is no legacy code format to keep working here — this is the ecosystem
-// convention adopted whole, the way mero-stream, mero-meet and mero-chat-pwa
-// build links:
+// An invitation is an org invite token the node minted (`client.invite`, a
+// passkey step-up). The link opens this frontend with the token in `?invite=`;
+// the page takes it off the address bar into storage before anything renders
+// (a person opening a link is usually not signed in yet, and the token has to
+// survive the passkey sign-up), and redeems it once a session exists.
 //
-//   https://links.calimero.network/com.calimero.mero-pass/join?invitation=<code>
-//
-// The `@calimero-network/mero-platform` SDK builds and parses them. It is
-// HTTPS-ONLY by design, and that is the right default: an HTTPS link opens the
-// web/PWA app directly, and on a device with the desktop app installed and
-// associated, the launcher takes it. `calimero://` is a device-local transport
-// rather than something to paste into a chat, so it is offered separately as a
-// secondary "copy desktop link" affordance.
-//
-// ⚠️ THE INVITATION RIDES A QUERY PARAMETER, NEVER THE URL HASH. The hash
-// belongs to the desktop SSO hand-off (`#node_url=…&access_token=…`), which
-// `MeroProvider` parses and strips on first render — see `src/index.tsx`.
-// Putting an invitation there would race the session out of the URL, and
-// `urlWithoutInvitation` below preserves the hash for exactly that reason.
-//
-// ⚠️ AND IT CARRIES NO SECRET. The `<code>` is a signed grant of membership in
-// a namespace plus a few unsigned routing hints — see `lib/inviteCodec`. A vault
-// password never touches a link, a query string, a log line or localStorage.
-//
-// Pure functions only — no DOM, no session. See `lib/invitationIntents.ts` for
-// the capture side, which does touch the platform.
+// v1's signed namespace payloads, the deflate + base58 codec and the
+// links.calimero.network / `calimero://` deep links are gone: the token is all
+// the node needs, and the frontend that redeems it is the one the cluster
+// serves.
 
-import { createLink, parseIntent } from '@calimero-network/mero-platform';
+import type { KeyValueStorage } from '@calimero-apps/connect';
 
-/**
- * This app's slug, which IS its package id.
- *
- * Not a friendly name: the desktop launcher resolves a deep link by
- * `Application.package`, so the two must be the same string. It is declared once
- * in `logic/Cargo.toml` under `[package.metadata.calimero]` (`package` and
- * `slug`, deliberately identical) and mirrored here because the frontend cannot
- * read the manifest at build time.
- *
- * ⚠️ Changing the package id in the manifest without changing this produces
- * links that resolve to nothing, with no error anywhere.
- */
-export const APP_SLUG = 'com.calimero.mero-pass';
+/** Query parameter carrying the token. */
+export const INVITE_PARAM = 'invite';
 
-/** The intent verb. `join` is the ecosystem convention; chat-pwa uses it too. */
-export const JOIN_ACTION = 'join';
+const PENDING = 'mero-pass:pending-invite';
 
-/** Query parameter carrying the invitation payload, matching chat-pwa. */
-export const INVITATION_PARAM = 'invitation';
-
-/**
- * Canonical shareable invitation link — HTTPS, via the platform SDK.
- *
- * `host` exists for tests and for pointing a dev build at a non-default link
- * host; production wants the default.
- */
-export function invitationUrl(code: string, host?: string): string {
-  const trimmed = code.trim();
-  if (!trimmed) {
-    throw new Error('cannot build an invitation link for an empty code');
-  }
-  return createLink(
-    APP_SLUG,
-    JOIN_ACTION,
-    { [INVITATION_PARAM]: trimmed },
-    host,
+/** The link that opens this frontend with `token` to redeem. */
+export function invitationUrl(
+  token: string,
+  location: Pick<Location, 'origin' | 'pathname'> = window.location,
+): string {
+  const trimmed = token.trim();
+  if (!trimmed)
+    throw new Error('cannot build an invitation link for an empty token');
+  // Back to the app's root (not the page it was minted on), keeping a base path
+  // such as the node's `/{version}/` where the cluster serves the bundle.
+  const base = location.pathname.replace(
+    /\/(teams|vault|security|share)(\/.*)?$/,
+    '/',
   );
+  const url = new URL(base || '/', location.origin);
+  url.searchParams.set(INVITE_PARAM, trimmed);
+  return url.toString();
 }
 
-/**
- * Device-local deep link, for the "copy desktop link" affordance.
- *
- * Kept out of the SDK's remit on purpose — it is HTTPS-only by design, because
- * `calimero://` is a transport between the launcher and an app rather than
- * something that survives being pasted into a chat window.
- */
-export function invitationDeepLink(code: string): string {
-  const trimmed = code.trim();
-  if (!trimmed) {
-    throw new Error('cannot build a deep link for an empty code');
-  }
-  return `calimero://${APP_SLUG}/${JOIN_ACTION}?${INVITATION_PARAM}=${encodeURIComponent(trimmed)}`;
+/** What the invite modal shows: the link, and the bare token. */
+export function shareableInvitation(token: string): {
+  link: string;
+  code: string;
+} {
+  return { link: invitationUrl(token), code: token.trim() };
 }
 
-/**
- * Pull an invitation payload out of anything a person might hand us: a platform
- * link, a `calimero://` deep link, a bare query string, or the code itself.
- *
- * Parsing goes through the SDK's `parseIntent`, which matters for one specific
- * reason: `calimero://<slug>/<action>` is split by hand there rather than with
- * `new URL().hostname`, because non-special-scheme host parsing mangles a dotted
- * slug like `com.calimero.mero-pass`.
- *
- * Returns null when there is no invitation in it — including for a URL that
- * carries some other app's slug, which is not ours to redeem.
- */
+/** A pasted link or bare token, as the token; null for anything else. */
 export function invitationFromRaw(raw: string): string | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
-
-  const intent = parseIntent(trimmed);
-
-  // Reject another app's invitation — but only when this really is a platform
-  // intent, which means BOTH a slug and an action. `parseIntent` reports the
-  // first path segment as the slug whatever it is, so this app's own
-  // `/home?invitation=…` comes back as `{slug: "home", action: null}` — a route
-  // misread as a slug, which it has no way to know. Rejecting on the slug alone
-  // would therefore throw away the app's own links.
-  const isPlatformIntent = intent.slug !== null && intent.action !== null;
-  if (isPlatformIntent && intent.slug !== APP_SLUG) return null;
-
-  const code = intent.params[INVITATION_PARAM]?.trim();
-  if (code) return code;
-
-  // ── Not a URL at all: the bare code ─────────────────────────────────────
-  //
-  // Until there was a "paste what you were sent" field this could not happen —
-  // every invitation arrived as a link and every caller had a URL. It does now,
-  // and a code pasted on its own has no params for `parseIntent` to find, so
-  // without this the field rejects the exact string the invite dialog told the
-  // sender to copy.
-  //
-  // The shape test is deliberately narrow. A code is base58 (see
-  // `lib/inviteCodec`), so anything with a slash, a space or a `?` in it is a
-  // URL we failed to parse rather than a code, and handing THAT to the decoder
-  // turns "that link is not for this app" into "that invitation could not be
-  // read".
-  if (/^[A-Za-z0-9]+$/.test(trimmed)) return trimmed;
-  return null;
+  try {
+    const token = new URL(trimmed).searchParams.get(INVITE_PARAM);
+    return token?.trim() || null;
+  } catch {
+    return /^[A-Za-z0-9_\-.~]+$/.test(trimmed) ? trimmed : null;
+  }
 }
 
-/**
- * Strip the invitation parameter from a URL, preserving everything else.
- *
- * The platform store is what makes redemption durable, so this is not how the
- * intent is remembered — it is hygiene. An invitation is a signed capability,
- * and one sitting in the address bar of a PASSWORD MANAGER gets screenshotted,
- * pasted into a bug report, or shared by someone demoing their screen.
- *
- * The hash is preserved: it carries the SSO session on the desktop hand-off, and
- * dropping it would sign the user out to accept an invitation.
- */
-export function urlWithoutInvitation(url: string): string {
-  const [beforeHash, ...hashParts] = url.split('#');
-  const hash = hashParts.length ? `#${hashParts.join('#')}` : '';
-  const q = beforeHash.indexOf('?');
-  if (q < 0) return url;
-
-  const base = beforeHash.slice(0, q);
-  const params = new URLSearchParams(beforeHash.slice(q + 1));
-  params.delete(INVITATION_PARAM);
-  const rest = params.toString();
-  return `${base}${rest ? `?${rest}` : ''}${hash}`;
+/** Takes `?invite=` off the address bar into storage. */
+export function captureInvite(
+  storage: KeyValueStorage = localStorage,
+  loc: Location = window.location,
+): void {
+  const url = new URL(loc.href);
+  const token = url.searchParams.get(INVITE_PARAM);
+  if (!token) return;
+  try {
+    storage.setItem(PENDING, token);
+  } catch {
+    return;
+  }
+  url.searchParams.delete(INVITE_PARAM);
+  window.history.replaceState(null, '', url.toString());
 }
 
-/**
- * What to offer as the shareable thing.
- *
- * Always a link: the platform host is a constant, so unlike an origin-derived
- * version there is no environment in which a link cannot be built — the desktop
- * shell included, where `tauri://` is not an origin worth sharing. The invite
- * dialog shows only `link`.
- */
-export function shareableInvitation(code: string): {
-  link: string;
-  deepLink: string;
-  code: string;
-} {
-  return {
-    link: invitationUrl(code),
-    deepLink: invitationDeepLink(code),
-    code: code.trim(),
-  };
+export function pendingInvite(
+  storage: KeyValueStorage = localStorage,
+): string | null {
+  try {
+    return storage.getItem(PENDING);
+  } catch {
+    return null;
+  }
+}
+
+export function dropInvite(storage: KeyValueStorage = localStorage): void {
+  try {
+    storage.removeItem(PENDING);
+  } catch {
+    /* nothing stored */
+  }
 }
