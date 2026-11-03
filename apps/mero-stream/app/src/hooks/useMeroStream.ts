@@ -1,196 +1,106 @@
-import { useCallback, useMemo } from "react";
-import { useExecute } from "@calimero-network/mero-react";
-import {
-  getContextId,
-  getExecutorPublicKey,
-  nowMillis,
-  nowSecs,
-} from "../lib/session";
-import { useMyId } from "./useMyId";
-import type {
-  ChunkView,
-  DecodedFrame,
-  LiveStats,
-  Member,
-  SenderCursor,
-  StreamStats,
-} from "../types";
+import { useCallback, useMemo, useState } from "react";
+import { describeError } from "@calimero-apps/connect";
+import { useSessionApi } from "../session";
+import { meroStream, type ChunkInput } from "../lib/meroStream";
+import { getContextId, nowMillis, nowSecs } from "../lib/session";
+import type { SenderCursor } from "../types";
 
 /**
- * Typed wrapper over the Mero Stream contract RPC (mirrors mero-meet's
- * useMeroMeet). Every mutating method passes `now` (unix seconds) since the WASM
- * contract has no wall clock.
+ * The contract of the active room, for the screens.
  *
- * The Task-3 core is `encodeFrame`: `raw` is the downscaled luma buffer (a plain
- * number[] of 0-255 bytes, `width * height` long). It is a MUTATION ARGUMENT, so
- * it stays local to the executing node — only the compressed fragment the
- * contract produces enters the replicated delta and gossips.
+ * v1 wrapped mero-react's `useExecute`; this wraps mero-js's `CalimeroClient`
+ * through `lib/meroStream` (which turns the component's wire shapes back into
+ * the ones the screens were written against). The API is the one the pages
+ * already used:
+ *
+ * - `contextId` is the room's app id (v1: its context id);
+ * - `executorId` and `myId` are both the signed-in ACCOUNT. v1 had two ids
+ *   (the executor writes went out as, and the device key the contract
+ *   recorded); on the component runtime the contract records the caller's
+ *   account, which is also who presence names;
+ * - reads and `join` resolve to `null` on a refusal (v1's `useExecute` did the
+ *   same, and the pages rely on it), with the message in `error`;
+ * - `encodeFrame` and `postChunk` reject, because the probe times them and
+ *   counts a refusal as a failed encode.
  */
 export function useMeroStream() {
+  const { session, store } = useSessionApi();
+  const client = session.status === "signed-in" ? session.client : null;
+  const accountId = session.status === "signed-in" ? session.accountId : null;
   const contextId = getContextId();
-  // Two ids, equal on a node and different on an account — see lib/identity.
-  // `executorId` is what writes go out as (`identities-owned`: the node's
-  // context identity, or the account). `myId` is what the CONTRACT records as
-  // the caller, which is the device: the same key on a node, the certified
-  // device's signing key on an account. Compare `member.memberId` and the
-  // ephemeral `author` against `myId`, never against `executorId`.
-  const executorId = getExecutorPublicKey();
-  const myId = useMyId(executorId);
-  const { execute, loading, error } = useExecute(contextId, executorId);
+  const [error, setError] = useState<string | null>(null);
 
-  const join = useCallback(
-    (username: string) => execute<Member>("join", { username, now: nowSecs() }),
-    [execute],
+  const after = useCallback(() => {
+    if (client) store?.sync(client);
+  }, [client, store]);
+
+  const api = useMemo(
+    () => (client && contextId ? meroStream(client, contextId, after) : null),
+    [client, contextId, after],
   );
 
-  const getMembers = useCallback(
-    () => execute<Member[]>("get_members", {}),
-    [execute],
+  /** Run `fn` against the room; `null` (and `error` set) when it is refused. */
+  const soft = useCallback(
+    async <T>(fn: (c: NonNullable<typeof api>) => Promise<T>): Promise<T | null> => {
+      if (!api) return null;
+      try {
+        const out = await fn(api);
+        setError(null);
+        return out;
+      } catch (e) {
+        setError(describeError(e));
+        return null;
+      }
+    },
+    [api],
   );
 
-  const encodeFrame = useCallback(
-    (
-      raw: number[] | Uint8Array,
-      width: number,
-      height: number,
-      track: number,
-    ) =>
-      // The contract signature is encode_frame(raw, width, height, track, now).
-      // Pass `raw` as a plain array so it serializes to a JSON byte list.
-      //
-      // `now` is MILLISECONDS here, unlike every other method's `nowSecs()`.
-      // Fragments are the one thing whose timestamp gets subtracted from a
-      // receiver's clock (§4 end-to-end latency), and that measurement is
-      // meaningless quantized to whole seconds. See lib/session.ts#nowMillis.
-      execute<number>("encode_frame", {
-        raw: Array.from(raw),
-        width,
-        height,
-        track,
-        now: nowMillis(),
-      }),
-    [execute],
-  );
-
-  const getFrame = useCallback(
-    (afterSeq: number) =>
-      execute<DecodedFrame[]>("get_frame", { after_seq: afterSeq }),
-    [execute],
-  );
-
-  const pruneFrames = useCallback(
-    (beforeSeq: number) => execute("prune_frames", { before_seq: beforeSeq }),
-    [execute],
-  );
-
-  const getStats = useCallback(
-    () => execute<StreamStats>("get_stats", {}),
-    [execute],
-  );
-
-  // ── Approach 2: opaque chunks from a real browser codec ────────────────────
-  // `now` is MILLISECONDS here too (see nowMillis) — chunk timestamps feed the
-  // same §4 latency arithmetic as approach 3's fragments.
-  const postChunk = useCallback(
-    (c: {
-      dataB64: string;
-      track: number;
-      isKeyframe: boolean;
-      codec: string;
-      width: number;
-      height: number;
-      timestampUs: number;
-    }) =>
-      execute<number>("post_chunk", {
-        data_b64: c.dataB64,
-        track: c.track,
-        is_keyframe: c.isKeyframe,
-        codec: c.codec,
-        width: c.width,
-        height: c.height,
-        timestamp_us: c.timestampUs,
-        now: nowMillis(),
-      }),
-    [execute],
-  );
-
-  /**
-   * Drain every sender past the caller's own per-sender cursor.
-   *
-   * A sender absent from `cursors` is served from that sender's newest live
-   * keyframe, so a joining peer simply passes `[]` — feeding a decoder a delta
-   * frame with no preceding keyframe throws, and each sender is an independent
-   * bitstream, so the entry point has to be chosen per sender. That absorbs what
-   * used to be a separate `keyframe_cursor()` round-trip.
-   */
-  const getChunks = useCallback(
-    (cursors: SenderCursor[]) =>
-      execute<ChunkView[]>("get_chunks", { cursors }),
-    [execute],
-  );
-
-  /**
-   * Newest live keyframe per sender. The receive path no longer needs this —
-   * `getChunks([])` already starts a joiner correctly — but it stays available
-   * for diagnostics.
-   */
-  const keyframeCursors = useCallback(
-    () => execute<SenderCursor[]>("keyframe_cursors", {}),
-    [execute],
-  );
-
-  const getLiveStats = useCallback(
-    () => execute<LiveStats>("get_live_stats", {}),
-    [execute],
-  );
-
-  const renameStream = useCallback(
-    (name: string) => execute("rename_stream", { name }),
-    [execute],
+  const hard = useCallback(
+    <T>(fn: (c: NonNullable<typeof api>) => Promise<T>): Promise<T> => {
+      if (!api) return Promise.reject(new Error("not signed in to a room"));
+      return fn(api);
+    },
+    [api],
   );
 
   return useMemo(
     () => ({
       contextId,
-      executorId,
-      myId,
-      loading,
+      executorId: accountId,
+      myId: accountId,
+      loading: false,
       error,
-      join,
-      getMembers,
-      encodeFrame,
-      getFrame,
-      pruneFrames,
-      getStats,
-      renameStream,
-      postChunk,
-      getChunks,
-      keyframeCursors,
-      getLiveStats,
+      join: (username: string) => soft((c) => c.join(username, nowSecs())),
+      getMembers: () => soft((c) => c.getMembers()),
+      encodeFrame: (
+        raw: number[] | Uint8Array,
+        width: number,
+        height: number,
+        track: number,
+      ) => hard((c) => c.encodeFrame(raw, width, height, track, nowMillis())),
+      getFrame: (afterSeq: number) => soft((c) => c.getFrame(afterSeq)),
+      pruneFrames: (beforeSeq: number) => soft((c) => c.pruneFrames(beforeSeq)),
+      getStats: () => soft((c) => c.getStats()),
+      renameStream: (name: string) => soft((c) => c.renameStream(name)),
+      postChunk: (chunk: ChunkInput) => hard((c) => c.postChunk(chunk, nowMillis())),
+      getChunks: (cursors: SenderCursor[]) => soft((c) => c.getChunks(cursors)),
+      keyframeCursors: () => soft((c) => c.keyframeCursors()),
+      getLiveStats: () => soft((c) => c.getLiveStats()),
     }),
-    // `loading`/`error` are deliberately NOT deps: they flip on every request,
-    // and having them here would change this object's identity each time —
-    // tearing down and rebuilding every consumer effect keyed on the returned
-    // object (the capture interval + SSE drain in useStream). The identity now
-    // only changes when `execute` genuinely changes (provider became ready /
-    // session moved), at the cost of the (unused) loading/error fields going
-    // stale on the object. Same discipline as mero-meet's useMeroMeet.
+    // `error` is deliberately not a dep: it flips on every refusal, and a new
+    // object identity would tear down every effect keyed on this one (the
+    // capture interval and the event drain).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [
-      contextId,
-      executorId,
-      myId,
-      join,
-      getMembers,
-      encodeFrame,
-      getFrame,
-      pruneFrames,
-      getStats,
-      renameStream,
-      postChunk,
-      getChunks,
-      keyframeCursors,
-      getLiveStats,
-    ],
+    [contextId, accountId, soft, hard],
   );
+}
+
+/** The signed-in client, for the hooks that use more than the contract (events, presence). */
+export function useClient() {
+  const { session, store } = useSessionApi();
+  const client = session.status === "signed-in" ? session.client : null;
+  const after = useCallback(() => {
+    if (client) store?.sync(client);
+  }, [client, store]);
+  return { client, after };
 }

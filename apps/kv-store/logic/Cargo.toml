@@ -1,97 +1,59 @@
 [package]
 name = "kv-store"
-description = "Calimero KV Store — the reference app"
-# NOT the release version. Cargo requires a version field; the release workflow
-# ignores it, because the REGISTRY owns the number: it takes the highest
-# published appVersion for this package and increments the patch (0.0.1 when
-# nothing is published). Bumping this changes nothing about what ships, so never
-# read a shipped version out of the tree.
+description = "Calimero KV Store — the reference app, on the component SDK"
+# NOT the release version: the release workflow takes the next appVersion from
+# the registry and passes it to `mero-component bundle --app-version`. Cargo
+# requires the field; bundling locally without --app-version uses it.
 version = "0.0.1"
-edition.workspace      = true
-authors.workspace      = true
-license.workspace      = true
-repository.workspace    = true
+edition = "2021"
+authors = ["Calimero Limited <info@calimero.network>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/calimero-network/apps"
 publish = false
 
 [lib]
-# `cdylib` for the wasm the node loads. `rlib` as well so `cargo test` can link
-# the crate — without it `tests/converge.rs` cannot `use kv_store::KvStore`.
-crate-type = ["cdylib", "rlib"]
+# A `calimero:app` component. No `rlib`: the tests run the BUILT component on
+# core's engine (tests/common/mod.rs), not the crate linked natively.
+crate-type = ["cdylib"]
 
+# Core at `component-core-tag` (root Cargo.toml), the same tag for every core
+# crate; scripts/check-component-pins.py asserts it. A standalone crate cannot
+# inherit `[workspace.dependencies]`.
 [dependencies]
-calimero-sdk.workspace     = true
-calimero-storage.workspace = true
-thiserror.workspace        = true
+calimero-app-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8" }
 
-[dev-dependencies]
-# The `testing` feature enables the native mock host, which is what lets
-# `TestHost` and `converge_app` drive real CRDT state under `cargo test` with no
-# node and no wasm.
-calimero-storage = { workspace = true, features = ["testing"] }
+# The harness (`TestApp`, `run_scenario`) and the builder the tests build this
+# crate with, for `cargo test` on the host only.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+calimero-app-sdk   = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8", features = ["testing"] }
+calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8" }
+serde_json = "1"
 
-# Read by `cargo mero build` / `cargo mero bundle`. Every field the node and the
-# registry render has a producer here, so nothing hand-writes a manifest.json.
-#
-# `appVersion` is deliberately absent — the release workflow resolves it from
-# the registry and passes `--app-version`.
-#
-# NOTE: none of this can be inherited from the workspace. `[package.metadata]`
-# is not on cargo's inheritable list, so `min-runtime-version.workspace = true`
-# resolves to the literal `{"workspace": true}`. `scripts/check-app-metadata.sh`
-# asserts the fleet-wide values match `[workspace.metadata.mero-apps]` instead —
-# NOT `[workspace.metadata.calimero]`, which cargo-mero reads and would use to
-# REPLACE this whole table. See the root Cargo.toml.
+# Read by `mero-component bundle` (tools/component-bundle), with the keys
+# `cargo mero bundle` reads for a v1 app.
 [package.metadata.calimero]
 package = "com.calimero.kv-store"
 name = "KV Store"
-description = "The reference Calimero app: an UnorderedMap<String, LwwRegister<String>> exercised end to end, with a typed client generated from the contract's own ABI."
+description = "The reference Calimero app: a string key-value store on the component SDK, from contract to frontend."
 author = "Calimero"
-# The slug IS the package id: the desktop and links.calimero.network resolve a
-# deep link by `Application.package`, so these must never drift apart.
+# The slug IS the package id: deep links resolve by `Application.package`.
 slug = "com.calimero.kv-store"
-# ⚠️ REQUIRED. `cargo mero bundle` refuses to run without an icon decision —
-# a path, "default", or --no-icon — and errors with `no icon configured for
-# <package>`. That happens at BUNDLE time, so it cannot fail CI on a pull
-# request: only the release workflow bundles, and that only runs on a push to
-# main. A missing icon is therefore a green PR that breaks the moment it merges.
-#
-# The app's own 512px mark, the path the rest of the fleet uses
-# (`../app/public/icon-512.png`). It was "default" — cargo-mero's built-in
-# Calimero mark — while the app had no icon of its own; now that the frontend
-# ships one, the desktop and the registry listing show the same mark the
-# browser tab does instead of a generic placeholder shared with every other app.
 icon = "../app/public/icon-512.png"
 category = "developer-tools"
-tags = ["example", "reference", "kv", "crdt"]
+tags = ["example", "reference", "kv"]
 github = "https://github.com/calimero-network/apps"
-# Asserted equal to [workspace.metadata.mero-apps] in CI. Three bundles in the
-# registry still advertise 0.1.0 — cargo-mero's placeholder floor, which nobody
-# verified — which is the failure that check exists to prevent.
-min-runtime-version = "0.12.0-rc.3"
-# Doubles as this app's registered redirect URI: the auth frontend treats the
-# registry-declared frontend origin as the only callback it will authorize, and
-# compares it by EXACT ORIGIN. Get it wrong and hosted login breaks *after*
-# credentials are accepted, while local and desktop login keep working (loopback
-# is always trusted) — which is how mero-stream shipped a guessed origin and
-# nobody noticed for weeks.
-#
-# Written WITHOUT a trailing slash on purpose. An origin is scheme + host
-# (+ port) and nothing else; `window.location.origin` never carries a trailing
-# slash, so the bare form is what a literal comparison against it matches.
-# `scripts/check-app-metadata.sh` tolerates either, but only this form is
-# actually an origin.
-#
-# ⚠️ This resolves to nothing until the Vercel project exists. It is declared
-# ahead of the deployment deliberately: the release workflow only publishes on a
-# push to main, and the project is being linked as part of that same merge, so
-# no bundle carrying this value reaches the registry before the origin is live.
-# If that merge happens WITHOUT the Vercel project being created, this field is
-# worse than absent — it is the field that authorizes a login callback, so it
-# would authorize an origin nobody controls.
-#
-# Vercel project settings: Root Directory `apps/kv-store/app`, and the project
-# name decides the domain — a project named anything else yields a different
-# `<project>.vercel.app` and silently invalidates this value.
+# `component-min-runtime-version` in the root Cargo.toml: a node compares it
+# with its own release.
+min-runtime-version = "1.0.0-rc.8"
+# The listing's link, and an origin the node may send a person back to from
+# its consent page. NOT where the production frontend runs: a Cloud node trusts
+# passkey ceremonies only from frontends it serves from a bundle, so the
+# production frontend is the one packed below (docs/COMPONENT-APPS.md).
 frontend = "https://mero-kv-store.vercel.app"
-# The built frontend `cargo mero bundle` packs, so the node serves it from the app's own origin.
+# The built frontend the bundle carries; the cluster serves it from the
+# package's own origin. Build it first: `pnpm -F kv-store build`.
 frontend-dir = "../app/dist"
+
+# Standalone: excluded from the root workspace (root Cargo.toml), its own
+# Cargo.lock, as core's component apps are.
+[workspace]

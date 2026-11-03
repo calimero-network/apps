@@ -18,8 +18,6 @@ subprojects {
         ignoreFailures.set(false)
         filter {
             exclude { entry -> entry.file.path.contains("/build/") }
-            // The contract client is generated from logic/res/abi.json (see README): not hand-formatted.
-            exclude { entry -> entry.file.path.contains("/generated/") }
         }
     }
 
@@ -27,9 +25,5 @@ subprojects {
         buildUponDefaultConfig = true
         config.setFrom(rootProject.file("config/detekt/detekt.yml"))
         parallel = true
-    }
-
-    tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
-        exclude("**/generated/**")
     }
 }

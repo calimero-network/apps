@@ -1,0 +1,296 @@
+[
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "postUpdate",
+  "args": {
+   "day": "2026-10-13",
+   "done": "Mine",
+   "next": "",
+   "blockers": "Stuck on access"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "postUpdate",
+  "args": {
+   "day": "2026-10-13",
+   "done": "Guest work",
+   "next": "",
+   "blockers": ""
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "clearUpdate",
+  "args": {
+   "day": "2026-10-13"
+  },
+  "expect": {
+   "error": "NoUpdate",
+   "fields": {
+    "day": "2026-10-13"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "listDays",
+  "args": {
+   "before": null,
+   "limit": 10
+  },
+  "expect": {
+   "ok": {
+    "days": [
+     {
+      "day": "2026-10-13",
+      "updates": 2,
+      "blocked": 1
+     }
+    ],
+    "nextCursor": null
+   }
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "offerHelp",
+  "args": {
+   "day": "2026-10-13",
+   "author": "@owner",
+   "note": "I have access"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "withdrawHelp",
+  "args": {
+   "day": "2026-10-13",
+   "author": "@owner"
+  },
+  "expect": {
+   "error": "NoHelp",
+   "fields": {
+    "day": "2026-10-13",
+    "author": "@owner"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "withdrawHelp",
+  "args": {
+   "day": "2026-10-13",
+   "author": "@owner",
+   "helper": "@carol"
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "withdrawHelp",
+  "args": {
+   "day": "2026-10-13",
+   "author": "@owner"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setName",
+  "args": {
+   "name": "Alice"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setName",
+  "args": {
+   "name": "Mallory",
+   "account": "@owner"
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getName",
+  "args": {
+   "account": "@owner"
+  },
+  "expect": {
+   "ok": "Alice"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "postUpdate",
+  "args": {
+   "day": "2026-10-13",
+   "done": "forged",
+   "next": "",
+   "blockers": "",
+   "author": "@owner"
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "view",
+  "method": "getDay",
+  "args": {
+   "day": "2026-10-13"
+  },
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "call",
+  "method": "postUpdate",
+  "args": {
+   "day": "2026-10-13",
+   "done": "x",
+   "next": "",
+   "blockers": ""
+  },
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "view",
+  "method": "teamName",
+  "args": {},
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "call",
+  "method": "setTeamName",
+  "args": {
+   "name": "Pwned"
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "postUpdate",
+  "args": {
+   "day": "2026-02-30",
+   "done": "x",
+   "next": "",
+   "blockers": ""
+  },
+  "expect": {
+   "error": "NotADate",
+   "fields": {
+    "day": "2026-02-30"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "postUpdate",
+  "args": {
+   "day": "2026-10-13"
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "listDecisions",
+  "args": {
+   "search": null,
+   "tag": null,
+   "from_day": null,
+   "standing_only": false,
+   "cursor": null,
+   "limit": 0
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "teamName",
+  "args": {},
+  "expect": {
+   "ok": ""
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "listDays",
+  "args": {
+   "before": null,
+   "limit": 10
+  },
+  "expect": {
+   "ok": {
+    "days": [
+     {
+      "day": "2026-10-13",
+      "updates": 2,
+      "blocked": 1
+     }
+    ],
+    "nextCursor": null
+   }
+  },
+  "events": {
+   "bob": [
+    "UpdatePosted",
+    "UpdatePosted",
+    "HelpOffered",
+    "HelpWithdrawn",
+    "ProfileSet"
+   ]
+  }
+ }
+]

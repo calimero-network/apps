@@ -5,7 +5,7 @@ import type { Secret } from '@calimero-network/mero-pass';
 import shell from '../styles/shell.module.css';
 import styles from '../pages/vault/vault.module.css';
 import { describeError } from '../lib/errors';
-import { SERVED_BY_NODE } from '../lib/servedByNode';
+import { useCalimero } from '../calimero';
 
 const ISSUE_TEXT: Record<string, string> = {
   weak: 'weak',
@@ -22,6 +22,13 @@ export default function HealthPanel({
   secrets: Secret[];
   onOpen: (id: string) => void;
 }) {
+  // A frontend the cluster serves may connect only to the cluster's own API
+  // origins (its CSP), so Have I Been Pwned is out of reach there. A node
+  // reached by URL (`direct`) also lists `nodes`, but its page is not the
+  // cluster's: the check stays available.
+  const { target } = useCalimero();
+  const SERVED_BY_NODE =
+    target?.kind === 'cloud' && !target.direct && !!target.nodes?.length;
   const [breached, setBreached] = useState<Set<string>>(new Set());
   const [checking, setChecking] = useState(false);
   const [checked, setChecked] = useState(false);
@@ -70,7 +77,7 @@ export default function HealthPanel({
         </button>
         <span className={shell.rowSub}>
           {SERVED_BY_NODE
-            ? 'Breach checks are unavailable in the node-hosted app: it may not contact Have I Been Pwned.'
+            ? 'Breach checks are unavailable in the cluster-hosted app: it may not contact Have I Been Pwned.'
             : 'Sends only the first 5 characters of each password’s SHA-1 to Have I Been Pwned; the match happens here.'}
         </span>
       </div>

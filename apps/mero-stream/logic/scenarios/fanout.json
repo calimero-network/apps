@@ -1,0 +1,128 @@
+[
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "join",
+  "args": {
+   "username": "Alice",
+   "now": "1751955000"
+  },
+  "expect": {
+   "ok": {
+    "memberId": "@owner",
+    "username": "Alice",
+    "joinedAt": "1751955000",
+    "updatedAt": "1751955000"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "join",
+  "args": {
+   "username": "Bob",
+   "now": "1751955001"
+  },
+  "expect": {
+   "ok": {
+    "memberId": "@bob",
+    "username": "Bob",
+    "joinedAt": "1751955001",
+    "updatedAt": "1751955001"
+   }
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "join",
+  "args": {
+   "username": "Carol",
+   "now": "1751955002"
+  },
+  "expect": {
+   "ok": {
+    "memberId": "@carol",
+    "username": "Carol",
+    "joinedAt": "1751955002",
+    "updatedAt": "1751955002"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "renameStream",
+  "args": {
+   "name": "fanout"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "carol",
+  "op": "view",
+  "method": "getStats",
+  "args": {},
+  "expect": {
+   "ok": {
+    "name": "fanout",
+    "memberCount": 3,
+    "liveFragments": 0,
+    "nextSeq": "0",
+    "oldestLiveSeq": "0",
+    "prunedFrames": "0"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "encodeFrame",
+  "args": {
+   "raw": "ABEiM0RVZneImaq7zN3u_w",
+   "width": 4,
+   "height": 4,
+   "track": 0,
+   "now": "1751955010000"
+  },
+  "expect": {
+   "ok": "1"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "frameChecksum",
+  "args": {
+   "seq": "1"
+  },
+  "expect": {
+   "ok": "5954774151269662453"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "frameChecksum",
+  "args": {
+   "seq": "1"
+  },
+  "expect": {
+   "ok": "5954774151269662453"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "view",
+  "method": "frameChecksum",
+  "args": {
+   "seq": "1"
+  },
+  "expect": {
+   "ok": "5954774151269662453"
+  }
+ }
+]
