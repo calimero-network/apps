@@ -21,16 +21,15 @@
             </intent-filter>
 
             <!--
-              Calimero Cloud sign-in: the wallet redirects to the enrolment callback
-              (BuildConfig.ENROL_CALLBACK_URL, default mero-design://enrol) with the device
-              certificate in the fragment. Scheme and host come from the `meroEnrolCallback`
-              Gradle property, so this filter always matches what the app asks the wallet for.
+              The node's consent page sends the person back here
+              (BuildConfig.CONSENT_CALLBACK_URL, default mero-design://consent?request_id=…&result=…).
+              Scheme and host come from the `meroConsentCallback` Gradle property.
             -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="${enrolScheme}" android:host="${enrolHost}" />
+                <data android:scheme="${consentScheme}" android:host="${consentHost}" />
             </intent-filter>
 
             <!--
@@ -47,6 +46,17 @@
                     android:scheme="https"
                     android:host="links.calimero.network"
                     android:pathPrefix="/com.calimero.mero-design/board" />
+            </intent-filter>
+
+            <!-- Team invitations: https://links.calimero.network/com.calimero.mero-design/join?invitation=… -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="links.calimero.network"
+                    android:pathPrefix="/com.calimero.mero-design/join" />
             </intent-filter>
 
             <!-- The desktop launcher's form: calimero://com.calimero.mero-design/board?… -->

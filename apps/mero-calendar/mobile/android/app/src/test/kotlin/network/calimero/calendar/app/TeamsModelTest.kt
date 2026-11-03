@@ -15,7 +15,7 @@ class TeamsModelTest {
     private val names = LocalNames(MemoryKeyValueStore())
 
     @Test
-    fun `lists the account's teams, named by the relay or this device`() =
+    fun `lists the account's teams, named by the cluster or this device`() =
         runTest {
             val backend = InMemoryAppBackend()
             val a = "a1".repeat(32)
@@ -30,15 +30,6 @@ class TeamsModelTest {
                     .map { it.name },
             )
             assertEquals(false, model.state.value.loading)
-        }
-
-    @Test
-    fun `a relayless account is asked to join`() =
-        runTest {
-            val backend = InMemoryAppBackend().apply { hasRelay = false }
-            val model = TeamsModel(backend, names)
-            model.load()
-            assertTrue(model.state.value.noRelay)
         }
 
     @Test
@@ -79,10 +70,10 @@ class TeamsModelTest {
             assertEquals("Design", parsed.teamName)
 
             val joinerNames = LocalNames(MemoryKeyValueStore())
-            val joiner = InMemoryAppBackend(account = "cd".repeat(32)).apply { hasRelay = false }
+            val joiner = InMemoryAppBackend(account = "acc_joiner")
             val model = TeamsModel(joiner, joinerNames)
             assertEquals(team.id, model.join(link))
-            assertTrue(joiner.hasRelay)
+            assertTrue(joiner.log.any { it.startsWith("joinNamespace") })
             assertEquals("Design", joinerNames.team(team.id))
             assertTrue(team.id in model.justJoined)
         }

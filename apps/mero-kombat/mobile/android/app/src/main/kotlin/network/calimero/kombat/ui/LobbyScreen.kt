@@ -58,6 +58,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.calimero.mero.app.MeroAppBackend
 import kotlinx.coroutines.launch
+import network.calimero.kombat.app.ApprovalsModel
 import network.calimero.kombat.app.ArenaEntry
 import network.calimero.kombat.app.ArenaRef
 import network.calimero.kombat.app.KombatConstants
@@ -65,7 +66,7 @@ import network.calimero.kombat.app.KombatInvitation
 import network.calimero.kombat.app.KombatText
 import network.calimero.kombat.app.LobbyModel
 
-/** The arenas: practice first, then every arena in every namespace this account is in. (iOS `LobbyScreen`.) */
+/** The arenas: practice first, then every arena in every organization this account is in. (iOS `LobbyScreen`.) */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LobbyScreen(
@@ -77,6 +78,7 @@ fun LobbyScreen(
     onJoin: (KombatInvitation) -> Unit,
     onShare: (String) -> Unit,
     onSignOut: () -> Unit,
+    approvals: ApprovalsModel? = null,
 ) {
     val model = remember(backend) { LobbyModel(backend, applicationId) }
     val state by model.state.collectAsState()
@@ -88,7 +90,13 @@ fun LobbyScreen(
     var actionError by remember { mutableStateOf<String?>(null) }
     var refreshing by remember { mutableStateOf(false) }
 
-    LaunchedEffect(model) { model.load() }
+    LaunchedEffect(model) {
+        model.load()
+        approvals?.refresh(
+            model.state.value.namespaces
+                .map { it.id },
+        )
+    }
 
     fun invite(ref: ArenaRef) {
         scope.launch {
@@ -144,6 +152,10 @@ fun LobbyScreen(
                 scope.launch {
                     refreshing = true
                     model.load()
+                    approvals?.refresh(
+                        model.state.value.namespaces
+                            .map { it.id },
+                    )
                     refreshing = false
                 }
             },
@@ -164,6 +176,7 @@ fun LobbyScreen(
                             }
                         }
                     }
+                    approvals?.let { item { ApprovalsSection(it) } }
                     item { PracticeRow(onPractice) }
                     when {
                         !state.loaded ->
@@ -171,14 +184,6 @@ fun LobbyScreen(
                                 Box(Modifier.fillMaxWidth().padding(vertical = 40.dp), contentAlignment = Alignment.Center) {
                                     CircularProgressIndicator(color = KombatColors.Ink, strokeWidth = 2.dp)
                                 }
-                            }
-                        !model.hasRelay ->
-                            item {
-                                EmptyState(
-                                    title = "Join your first arena",
-                                    text = "Your account has no relay yet. Open an invitation link someone sent you, or paste it here.",
-                                    action = "Join with a link",
-                                ) { pasting = true }
                             }
                         state.arenas.isEmpty() ->
                             item {

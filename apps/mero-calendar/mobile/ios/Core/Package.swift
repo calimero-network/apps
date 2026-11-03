@@ -12,17 +12,19 @@ let package = Package(
         .library(name: "CalendarCore", targets: ["CalendarCore"]),
     ],
     dependencies: [
-        // The main merge commit of calimero-network/swift-sdk#84 (app session);
-        // keep in step with project.yml.
-        .package(url: "https://github.com/calimero-network/swift-sdk", revision: "c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f"),
+        // swift-sdk release v0.5.0 (core 1.0). Keep in step with project.yml.
+        .package(url: "https://github.com/calimero-network/swift-sdk", exact: "0.5.0"),
     ],
     targets: [
-        // @generated from ../../../logic/res/abi.json — see README "Regenerate the client".
-        .target(name: "CalendarGenerated", path: "Sources/CalendarGenerated"),
+        // The calendar contract's typed client (../../../logic/res/abi.json).
+        .target(
+            name: "CalendarContract",
+            dependencies: [.product(name: "MeroKit", package: "swift-sdk")],
+            path: "Sources/CalendarContract"),
         .target(
             name: "CalendarCore",
             dependencies: [
-                "CalendarGenerated",
+                "CalendarContract",
                 .product(name: "MeroKit", package: "swift-sdk"),
             ],
             path: "Sources/CalendarCore"),
@@ -30,7 +32,7 @@ let package = Package(
             name: "CalendarCoreTests",
             dependencies: [
                 "CalendarCore",
-                "CalendarGenerated",
+                "CalendarContract",
                 .product(name: "MeroKit", package: "swift-sdk"),
                 .product(name: "MeroKitTestSupport", package: "swift-sdk"),
             ],

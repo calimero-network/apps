@@ -1,6 +1,11 @@
 package network.calimero.blocks.app
 
+import com.calimero.mero.AppError
+import com.calimero.mero.ConfirmCancelled
+import com.calimero.mero.NotFound
+import com.calimero.mero.ReleaseDeadlineError
 import com.calimero.mero.app.AppContextEvent
+import com.calimero.mero.app.OrgInvitation
 import com.calimero.mero.invite.InviteCodec
 import com.calimero.mero.invite.InviteLink
 import com.calimero.mero.testkit.InMemoryAppBackend
@@ -12,13 +17,13 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.double
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.long
 import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -34,22 +39,32 @@ object Fixtures {
     val device = "de".repeat(32)
 
     /**
-     * A token minted by the web app's own `encodeInvite` (app/src/net/inviteCodec.ts:
-     * `bs58(deflateSync(JSON, { level: 9 }))`) for `{invitation, groupAlias: "Lime Valley",
-     * contextId: "c"×64, groupId: "b"×64}`, around the SDKs' chat vector invitation (group id =
-     * bytes 1…32). Same token as the Swift tests.
+     * A 0.x token minted by the web app's own `encodeInvite` around a signed group invitation.
+     * Calimero 1.0 refuses it. Same token as the Swift tests.
      */
-    const val WEB_TOKEN =
+    const val LEGACY_WEB_TOKEN =
         "7AFNTiMbuC1rQX6sQZrCxrz8XFBVKtQDKdMiR8LFqwvyQgcAA4XhtpgMvEfNRGNdS7wfvMbvXHUkin1Muc2rvHvWw5doEVRkA8kqvekckd8i44TAFRo2" +
             "nqu393v5Nvqibt9sAPcedipQwZ2U8xTfFZ5R3hnbRikgPQ7edPWzNAiw3fsy7ngpq1SM4JzhEctVt25vA6JtmiA85u34vQBgJd9Dkuie2K2MwAwSQx" +
             "NgiogEagrqbWuetiedN5u8iCdUfcsicugJi1irX9ZRoD7ZnDHyCCUMPsfjV6e5HhUEMik45vMjZ2B5iCrmVj1HvNUboqgDh6UL5VNZ3cmbFkHC9bGMgi"
     val webNamespace = (1..32).joinToString("") { "%02x".format(it) }
 
+    /** A 1.0 link token: the org invite for [webNamespace], the world's app instance ("c"×64) and team ("b"×64), named "Lime Valley". */
+    val WEB_TOKEN: String =
+        InviteCodec.encode(
+            buildJsonObject {
+                put("invitation", "inv_lime")
+                put("namespaceId", webNamespace)
+                put("contextId", "c".repeat(64))
+                put("name", "Lime Valley")
+                put("groupId", "b".repeat(64))
+            }.toString(),
+        )
+
     fun meta() =
         buildJsonObject {
             put("name", "Lime Valley")
-            put("seed", 1337)
-            put("createdAt", 1_730_000_000)
+            put("seed", "1337")
+            put("createdAt", "1730000000")
         }
 
     fun player(
@@ -82,27 +97,68 @@ class InvitationTest {
     @Test
     fun refusesAnotherAppsLinkAndJunk() {
         assertNull(BlocksInvitation.parse(InviteLink.invitation(Fixtures.WEB_TOKEN, "com.calimero.chat")))
+        assertNull("a pre-1.0 signed invitation", BlocksInvitation.parse(Fixtures.LEGACY_WEB_TOKEN))
         assertNull(BlocksInvitation.parse("hello"))
         assertNull(BlocksInvitation.parse(""))
     }
 
-    /** What the phone mints, the web app reads: `invitation` with a signature, `groupAlias`, and `contextId` / `groupId` strings. */
+    /** What the phone mints is an OrgInvitation any 1.0 client reads, plus the world's team. */
     @Test
-    fun mintsTheWebAppsPayload() {
+    fun mintsTheOrgInvitationPayload() {
         val original = BlocksInvitation.parse(Fixtures.WEB_TOKEN)!!
         val minted = BlocksInvitation(original.invitation, "Ana's world", "ctx-1", "grp-1")
         val payload = obj(InviteCodec.decode(minted.token()))
-        assertEquals("Ana's world", payload["groupAlias"]!!.jsonPrimitive.content)
+        assertEquals("inv_lime", payload["invitation"]!!.jsonPrimitive.content)
+        assertEquals("Ana's world", payload["name"]!!.jsonPrimitive.content)
         assertEquals("ctx-1", payload["contextId"]!!.jsonPrimitive.content)
         assertEquals("grp-1", payload["groupId"]!!.jsonPrimitive.content)
-        val signed = payload["invitation"]!!.jsonObject
-        assertNotNull(signed["inviter_signature"] ?: signed["inviterSignature"])
-        assertNotNull(signed["invitation"]!!.jsonObject)
+        assertEquals("ctx-1", OrgInvitation.decode(minted.token())?.contextId)
 
         val back = BlocksInvitation.parse(minted.link())!!
         assertEquals("Ana's world", back.name)
         assertEquals("ctx-1", back.contextId)
         assertEquals(Fixtures.webNamespace, back.namespaceId)
+    }
+
+    @Test
+    fun theWebFrontendsLinkOpens() {
+        val invitation = BlocksInvitation.parse("https://blocks.example/?invite=inv_lime")!!
+        assertEquals("inv_lime", invitation.invitation.token)
+        assertNull(invitation.contextId)
+        assertNull(BlocksInvitation.parse("https://blocks.example/?invite=nope"))
+    }
+
+    @Test
+    fun errorsReadAsWords() {
+        assertEquals(
+            "Too many block changes at once (at most 512). Try again.",
+            BlocksText.error(
+                AppError(
+                    "refused",
+                    buildJsonObject {
+                        put("code", "TooManyEdits")
+                        put("fields", buildJsonObject { put("max", 512) })
+                    },
+                ),
+            ),
+        )
+        assertEquals("The passkey prompt was cancelled. Nothing changed.", BlocksText.error(ConfirmCancelled()))
+        assertEquals("This isn't shared with you, or it was deleted.", BlocksText.error(NotFound("gone")))
+        assertEquals(
+            "Your cluster takes no new work until node release 2.3.110 is approved. Review it under Needs your approval.",
+            BlocksText.error(ReleaseDeadlineError("deadline", buildJsonObject { put("release", "2.3.110") })),
+        )
+    }
+
+    /** The methods the phone calls, as the component ABI (`logic/res/abi.json`) names them. */
+    @Test
+    fun theClientCallsTheComponentSurface() {
+        assertEquals(
+            setOf("worldMeta", "getOverrides", "getPlayers", "overrideCount", "join", "heartbeat", "leave", "setBlocks"),
+            BlocksClient.METHODS.keys,
+        )
+        assertEquals(listOf("now", "cursor", "limit"), BlocksClient.METHODS["getPlayers"])
+        assertEquals(BlocksClient.METHODS.keys, BridgeRouter.NAMES.values.toSet())
     }
 }
 
@@ -118,11 +174,13 @@ class WorldsModelTest {
             val ref = model.create("  Lime Valley  ", 4242uL)
             assertEquals("Lime Valley", ref.name)
             assertEquals("foundNamespace Lime Valley", backend.log.first())
-            assertTrue(backend.log.toString(), backend.log.any { it.startsWith("createSubgroup ${ref.namespaceId} Lime Valley") })
-            assertTrue(ref.groupId in backend.publicSubgroups)
+            // The app instance sits in the world's organization itself: no team.
+            assertTrue(backend.log.toString(), "createContext ${ref.namespaceId} ${backend.applicationId} Lime Valley" in backend.log)
+            assertNull(ref.groupId)
+            assertTrue(backend.publicSubgroups.isEmpty())
             val args = backend.initArgs[ref.contextId]!!.jsonObject
             assertEquals("Lime Valley", args["name"]!!.jsonPrimitive.content)
-            assertEquals(4242L, args["seed"]!!.jsonPrimitive.long)
+            assertEquals(JsonPrimitive("4242"), args["seed"])
             assertNotNull(args["now"])
             assertEquals(
                 ref,
@@ -140,24 +198,22 @@ class WorldsModelTest {
             val seed =
                 backend.initArgs[ref.contextId]!!
                     .jsonObject["seed"]!!
-                    .jsonPrimitive.long
+                    .jsonPrimitive.content
             assertTrue(seed.toULong() in BlocksConstants.SEED_RANGE)
-        }
-
-    @Test
-    fun saysWhenTheCloudWillNotHostTheWorld() =
-        runTest {
-            backend.haEnabled = false
-            val model = model()
-            model.create("Solo", 1uL)
-            assertNotNull(model.state.value.notice)
         }
 
     @Test
     fun listsEveryWorldWithWhoIsPlaying() =
         runTest {
             backend.recording.handler = { call ->
-                if (call.method == "get_players") JsonArray(listOf(Fixtures.player("a", true), Fixtures.player("b", false))) else JsonNull
+                if (call.method == "getPlayers") {
+                    buildJsonObject {
+                        put("items", JsonArray(listOf(Fixtures.player("a", true), Fixtures.player("b", false))))
+                        put("next", JsonNull)
+                    }
+                } else {
+                    JsonNull
+                }
             }
             val creator = model()
             val one = creator.create("One", 1uL)
@@ -172,7 +228,7 @@ class WorldsModelTest {
             assertEquals(
                 RecordedContractCall.Path.QUERY,
                 backend.recording
-                    .calls("get_players")
+                    .calls("getPlayers")
                     .first()
                     .path,
             )
@@ -212,7 +268,6 @@ class WorldsModelTest {
     @Test
     fun joinsFromTheWebAppsInvitation() =
         runTest {
-            backend.hasRelay = false
             val invitation = BlocksInvitation.parse(Fixtures.WEB_TOKEN)!!
             var didJoin = false
             val ref = model().join(invitation) { didJoin = true }
@@ -221,7 +276,6 @@ class WorldsModelTest {
             assertEquals(Fixtures.webNamespace, ref.namespaceId)
             assertEquals("Lime Valley", ref.name)
             assertEquals(listOf("joinNamespace ${Fixtures.webNamespace}"), backend.log)
-            assertTrue("the admitting relay is the account's now", backend.hasRelay)
         }
 
     @Test
@@ -237,7 +291,7 @@ class WorldsModelTest {
         }
 
     @Test
-    fun leavingAWorldLeavesItsNamespace() =
+    fun leavingAWorldLeavesItsOrganization() =
         runTest {
             val model = model()
             val ref = model.create("Gone", 1uL)
@@ -257,7 +311,7 @@ class GameModelTest {
     private val world = WorldRef("cc".repeat(32), "aa".repeat(32), "bb".repeat(32), "Lime Valley")
 
     init {
-        backend.recording.handler = { call -> if (call.method == "world_meta") Fixtures.meta() else JsonNull }
+        backend.recording.handler = { call -> if (call.method == "worldMeta") Fixtures.meta() else JsonNull }
     }
 
     private fun kotlinx.coroutines.test.TestScope.model(
@@ -317,7 +371,7 @@ class GameModelTest {
             assertEquals(1, answer["id"]!!.jsonPrimitive.int)
             assertTrue(answer["ok"]!!.jsonPrimitive.boolean)
             assertEquals(1337, answer["result"]!!.jsonObject["seed"]!!.jsonPrimitive.int)
-            val call = backend.recording.calls("world_meta").first()
+            val call = backend.recording.calls("worldMeta").first()
             assertEquals(world.contextId, call.contextId)
             assertEquals(RecordedContractCall.Path.QUERY, call.path)
 
@@ -338,7 +392,7 @@ class GameModelTest {
             val answer = obj(sent.last())
             assertEquals(5, answer["id"]!!.jsonPrimitive.int)
             assertFalse(answer["ok"]!!.jsonPrimitive.boolean)
-            assertEquals("cannot connect", answer["error"]!!.jsonPrimitive.content)
+            assertEquals("Your cluster can't be reached. Check your connection and try again.", answer["error"]!!.jsonPrimitive.content)
         }
 
     @Test

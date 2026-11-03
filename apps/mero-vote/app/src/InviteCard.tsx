@@ -1,73 +1,43 @@
 import { useState } from "react";
-import {
-  useContextGroup,
-  useCreateNamespaceInvitation,
-} from "@calimero-network/mero-react";
-import {
-  generateInvitationUrl,
-  serializeInvitationPayload,
-} from "./utils/invitation";
+import type { CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
+import { inviteLink, inviteToken } from "./groups";
+import { errText } from "./useMeroVote";
 import { CheckIcon, CopyIcon, LinkIcon, UserPlusIcon } from "./icons";
 import { IconTile } from "./ui";
 
 /**
- * Mint a shareable invitation to this context.
- *
- * Deliberately ONE link, HTTPS. The https link already hands off to the desktop
- * launcher on a machine that has it, so offering a second `calimero://` link
- * would ask the user to choose between two things they cannot tell apart —
- * mero-chat-pwa removed its second link for exactly that reason.
+ * Mint a link that makes whoever opens it a member of this group's
+ * organization (v1: a namespace invitation). Making one is approved with the
+ * inviter's passkey (the node answers 412 CONFIRM_REQUIRED and mero-js asks
+ * for it); redeeming it is not.
  */
-export function InviteCard({ contextId }: { contextId: string }) {
-  // The namespace is not in the session, but a context knows the group it lives
-  // in — and `ContextPicker` creates contexts directly in the namespace, so that
-  // group IS the namespace. (Put a context in a subgroup instead and this would
-  // hand `createNamespaceInvitation` a subgroup id.)
-  const {
-    groupId,
-    loading: groupLoading,
-    error: groupError,
-  } = useContextGroup(contextId);
-  const { createNamespaceInvitation } = useCreateNamespaceInvitation();
-
+export function InviteCard({
+  client,
+  org,
+  passkey,
+  after,
+}: {
+  client: Pick<CalimeroClient, "invite">;
+  org: string | null;
+  passkey: () => PasskeyProvider;
+  after: () => void;
+}) {
   const [link, setLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
 
-  const namespaceId = groupId;
-
-  async function mint() {
-    if (!namespaceId) return;
+  async function mint(org: string) {
     setBusy(true);
     setFailed(null);
     setCopied(false);
     try {
-      const res = await createNamespaceInvitation(namespaceId);
-      // The recursive variant returns `invitations[]` instead; this app only
-      // ever asks for the single-namespace one, so anything else is a surprise
-      // worth reporting rather than guessing at.
-      const invitation = (res as { invitation?: unknown } | null)?.invitation;
-      if (!invitation) {
-        throw new Error(
-          "the node returned no invitation — expected a single-namespace invitation",
-        );
-      }
-      setLink(
-        generateInvitationUrl(
-          serializeInvitationPayload({
-            invitation: invitation as Parameters<
-              typeof serializeInvitationPayload
-            >[0]["invitation"],
-            namespaceId,
-            contextId,
-          }),
-        ),
-      );
+      setLink(inviteLink(await inviteToken(client, org, passkey())));
     } catch (e) {
-      setFailed(e instanceof Error ? e.message : String(e));
+      setFailed(errText(e));
     } finally {
       setBusy(false);
+      after();
     }
   }
 
@@ -77,8 +47,7 @@ export function InviteCard({ contextId }: { contextId: string }) {
       await navigator.clipboard.writeText(link);
       setCopied(true);
     } catch {
-      // Clipboard access can be denied; the link is on screen and selectable,
-      // so this is a convenience failing, not the feature failing.
+      // Clipboard access can be denied; the link is on screen and selectable.
       setCopied(false);
     }
   }
@@ -94,66 +63,29 @@ export function InviteCard({ contextId }: { contextId: string }) {
           <div className="meta">Members can vote and audit every tally</div>
         </div>
       </div>
-      <p className="hint">
-        One link. Opens the web app, or hands off to Calimero Desktop on a
-        machine that has it. Whoever opens it joins this group and sees its
-        polls.
-      </p>
-
-      {groupLoading && (
-        <p className="empty">Resolving this context&apos;s namespace…</p>
-      )}
-      {groupError && <pre className="err">{groupError.message}</pre>}
-
-      <button
-        className={link ? "ghost" : ""}
-        onClick={mint}
-        disabled={busy || !namespaceId}
-        style={{ width: "100%" }}
-      >
-        <LinkIcon size={16} />
-        {busy ? "Creating…" : link ? "Create another" : "Create invite link"}
-      </button>
-
-      {link && (
+      {!org ? (
+        <p className="hint">This group has no organization, so nobody can be invited to it.</p>
+      ) : (
         <>
-          {/*
-            ONE LINE, truncated, with Copy as the real affordance.
-
-            This was a full-width `<pre>` with `word-break: break-all`, and an
-            invitation payload is a few hundred base58 characters — so it wrapped
-            into a wall of text taller than the rest of the card and pushed the
-            explanation below the fold. Nobody transcribes an invite link by eye;
-            the only thing anyone does with it is copy it. So it is rendered as a
-            single ellipsised line that still selects and still copies in full
-            (CSS truncation is visual only — `textContent` is the whole link, and
-            the Copy button writes `link`, not what is painted).
-
-            `title` puts the full value in the native tooltip, and `readOnly`
-            input semantics are avoided deliberately: a `<code>` stays selectable
-            without becoming a form control the tab order has to visit.
-          */}
-          <div className="link-field">
-            <code className="invite-link mono" title={link}>
-              {link}
-            </code>
-            <button className="sm" onClick={copy}>
-              {copied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
-              {copied ? "Copied" : "Copy"}
-            </button>
-          </div>
-          {/*
-            Said plainly rather than hidden, because it is the difference between
-            "this link is broken" and "this app is not deployed yet". The desktop
-            resolves a link to an installed app and then reads the bundle's
-            `links.frontend`; with that field absent it forgets the link.
-          */}
-          <p className="help" style={{ marginTop: 10 }}>
-            Send it to whoever you are inviting; opening it is how they join.
-            The links page opens this app through its published bundle&apos;s{" "}
-            <code>links.frontend</code> origin — see{" "}
-            <code>logic/Cargo.toml</code>.
+          <p className="hint">
+            One link. Whoever opens it signs in with a passkey, joins this group&apos;s organization and sees
+            its polls. Creating it asks for your passkey.
           </p>
+          <button className={link ? "ghost" : ""} onClick={() => void mint(org)} disabled={busy} style={{ width: "100%" }}>
+            <LinkIcon size={16} />
+            {busy ? "Creating…" : link ? "Create another" : "Create invite link"}
+          </button>
+          {link && (
+            <div className="link-field">
+              <code className="invite-link mono" title={link} aria-label="invitation link">
+                {link}
+              </code>
+              <button className="sm" onClick={() => void copy()}>
+                {copied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
+                {copied ? "Copied" : "Copy"}
+              </button>
+            </div>
+          )}
         </>
       )}
       {failed && <pre className="err">{failed}</pre>}

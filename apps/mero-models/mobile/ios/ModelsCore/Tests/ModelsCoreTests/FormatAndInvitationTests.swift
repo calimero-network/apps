@@ -19,6 +19,38 @@ final class FormatAndInvitationTests: XCTestCase {
         XCTAssertEqual(ModelsFormat.until(1_800_000_000_000 + 86_400_000, now: now, timeZone: utc), "16 Jan, 08:00")
     }
 
+    func testTheNodesErrorsReadAsWords() {
+        XCTAssertEqual(
+            ModelsFormat.errorText(ReleaseDeadlineError("deadline", details: ["release": "2.3.110"])),
+            "Your cluster takes no new work until node release 2.3.110 is approved. Review it under Needs your approval.")
+        XCTAssertEqual(ModelsFormat.errorText(NotFound("no such app")), "This isn't shared with you, or it was deleted.")
+        XCTAssertEqual(ModelsFormat.errorText(LoginRequired("expired")), "Your session ended. Sign in again.")
+        XCTAssertEqual(ModelsFormat.errorText(ConfirmCancelled()), "You dismissed the passkey prompt, so nothing changed.")
+        XCTAssertEqual(
+            ModelsFormat.errorText(WrongNode("not approved")),
+            "This node runs a release your account hasn't approved. Try another node of the cluster.")
+    }
+
+    /// `422 APP_ERROR {code, fields: {message}}`: the contract's own words, else words for its code.
+    func testTheContractsErrorsReadAsWords() {
+        let locked = AppError(
+            "app error", details: ["code": .string("Locked"), "fields": .object(["message": .string("crate is checked out by Ana")])])
+        XCTAssertEqual(ModelsFormat.errorText(locked), "crate is checked out by Ana")
+        let forbidden = AppError("app error", details: ["code": .string("Forbidden"), "fields": .object([:])])
+        XCTAssertEqual(ModelsFormat.errorText(forbidden), "Your role in this scene doesn't allow that.")
+    }
+
+    func testTheSignInFieldTakesAClusterNameOrANode() {
+        XCTAssertEqual(ClusterTarget.parse(" EU-shared-1 "), .name("eu-shared-1"))
+        XCTAssertEqual(ClusterTarget.parse("https://node1.example.com/"), .url("https://node1.example.com"))
+        XCTAssertEqual(ClusterTarget.parse("node1.example.com"), .url("https://node1.example.com"))
+        XCTAssertEqual(ClusterTarget.parse("http://127.0.0.1:2501"), .url("http://127.0.0.1:2501"))
+        XCTAssertNil(ClusterTarget.parse("ftp://x.y"))
+        XCTAssertNil(ClusterTarget.parse("two words"))
+        XCTAssertNil(ClusterTarget.parse(""))
+        XCTAssertEqual(ClusterTarget.parse("https://node1.example.com")?.label, "node1.example.com")
+    }
+
     func testALinkRoundTripsInTheWebFormat() async throws {
         let backend = Fixtures.backend()
         let link = try await ModelsInvitation.mint(backend: backend, namespaceId: Fixtures.studio, contextId: Fixtures.scene)
@@ -26,11 +58,13 @@ final class FormatAndInvitationTests: XCTestCase {
         let parsed = try XCTUnwrap(ModelsInvitation.parse(link))
         XCTAssertEqual(parsed.namespaceId, Fixtures.studio)
         XCTAssertEqual(parsed.contextId, Fixtures.scene)
-        // The payload keys are the web's.
+        XCTAssertEqual(parsed.invitation.token, InMemoryAppBackend.invitation(namespaceId: Fixtures.studio).token)
+        // The payload is the 1.0 link shape: an org invite token, the org and the scene.
         let token = try XCTUnwrap(InviteLink.token(fromPasted: link))
         let json = try XCTUnwrap(InviteCodec.decode(token: token))
         XCTAssertTrue(json.contains("\"namespaceId\""))
-        XCTAssertTrue(json.contains("\"inviter_signature\""))
+        XCTAssertTrue(json.contains("\"invitation\":\"inv_"))
+        XCTAssertEqual(OrgInvitation.decode(token)?.contextId, Fixtures.scene)
     }
 
     func testAnotherAppsLinkIsRefused() async throws {
@@ -54,6 +88,16 @@ final class FormatAndInvitationTests: XCTestCase {
         XCTAssertEqual(model.stage, .joined(namespaceId: Fixtures.studio, contextId: Fixtures.scene))
         XCTAssertTrue(backend.log.contains("joinNamespace \(Fixtures.studio)"))
         XCTAssertTrue(backend.log.contains("joinContext \(Fixtures.scene)"))
+    }
+
+    func testRawJSONParsesAndALinkWithoutASceneIsRefused() throws {
+        let json = #"{"invitation":"inv_x","namespaceId":"org1","contextId":"app1","extra":1}"#
+        let parsed = try XCTUnwrap(ModelsInvitation.parse(json))
+        XCTAssertEqual(parsed.namespaceId, "org1")
+        XCTAssertEqual(parsed.contextId, "app1")
+        XCTAssertNil(ModelsInvitation.parse(#"{"invitation":"inv_x","namespaceId":"org1"}"#))
+        let old = #"{"invitation":{"invitation":{"group_id":[1]},"inviter_signature":"s"},"namespaceId":"aa","contextId":"cc"}"#
+        XCTAssertNil(ModelsInvitation.parse(old))
     }
 
     func testABadLinkFails() {

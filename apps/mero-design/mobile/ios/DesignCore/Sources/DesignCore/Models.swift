@@ -11,7 +11,7 @@ public enum LoadState: Equatable, Sendable {
 
 // MARK: - Teams
 
-/// A team: a namespace running Mero Design.
+/// A team: an organization running Mero Design.
 public struct Team: Identifiable, Equatable, Sendable {
     public let id: String
     public let name: String
@@ -48,7 +48,7 @@ public final class TeamsModel: ObservableObject {
 
 // MARK: - Boards
 
-/// A board: a subgroup of the team with one context in it.
+/// A board: an app instance of Mero Design in the team's organization.
 public struct BoardSummary: Identifiable, Equatable, Sendable {
     public var id: String { contextId }
     public let contextId: String
@@ -75,17 +75,31 @@ public final class BoardsModel: ObservableObject {
     public func load() async {
         if boards.isEmpty { state = .loading }
         do {
-            let subgroups = try await backend.listSubgroups(namespaceId: teamId)
-            let listed = subgroups.compactMap { sg -> BoardSummary? in
-                guard let ctx = sg.contextIds.first else { return nil }
-                let name = sg.name?.trimmingCharacters(in: .whitespaces) ?? ""
-                let known = boards.first { $0.contextId == ctx }
+            // The org's own instances, then those its teams hold (a board created in a team).
+            var listed: [(id: String, group: String, name: String?)] = []
+            var failure: Error?
+            do {
+                listed += try await backend.listContextEntries(groupId: teamId).map { ($0.id, teamId, $0.name) }
+            } catch {
+                failure = error
+            }
+            if let subgroups = try? await backend.listSubgroups(namespaceId: teamId) {
+                failure = nil
+                for sg in subgroups {
+                    for ctx in sg.contextIds where !listed.contains(where: { $0.id == ctx }) {
+                        listed.append((ctx, sg.groupId, sg.contextIds.count == 1 ? sg.name : nil))
+                    }
+                }
+            }
+            if let failure, listed.isEmpty { throw failure }
+            boards = listed.map { entry in
+                let name = entry.name?.trimmingCharacters(in: .whitespaces) ?? ""
+                let known = boards.first { $0.contextId == entry.id }
                 return BoardSummary(
-                    contextId: ctx, groupId: sg.groupId,
-                    name: known?.name ?? (name.isEmpty ? "Board \(DesignFormat.shortId(ctx))" : name),
+                    contextId: entry.id, groupId: entry.group,
+                    name: known?.name ?? (name.isEmpty ? "Board \(DesignFormat.shortId(entry.id))" : name),
                     description: known?.description ?? "", elementCount: known?.elementCount)
             }
-            boards = listed
             state = .loaded
             await enrich()
         } catch {
@@ -158,7 +172,7 @@ public final class BoardModel: ObservableObject {
     let now: () -> Date
     private var fetching: Set<String> = []
     /// What this phone wrote that a read has not shown yet: kept on screen
-    /// until the relay's state catches up.
+    /// until the cluster's state catches up.
     private var pendingComments: [Comment] = []
     private var pendingReplies: [String: [CommentReply]] = [:]
     private var refreshing = false
@@ -166,7 +180,7 @@ public final class BoardModel: ObservableObject {
 
     /// A pointer counts as here for this long after it last moved (the web's window).
     public static let viewerWindowMs: UInt64 = 10_000
-    /// How often to re-read when the relay cannot stream events.
+    /// How often to re-read when the node cannot stream events.
     public static let pollInterval: UInt64 = 5_000_000_000
 
     public init(
@@ -193,18 +207,10 @@ public final class BoardModel: ObservableObject {
     public var shareLink: String { DesignFormat.boardLink(teamId: teamId, contextId: contextId) }
     public var account: String { backend.account }
 
-    /// Join the board's context when this account is not in it yet (an open
-    /// subgroup of the team), then read everything.
+    /// Read everything. On 1.0 every member of the team's organization reaches
+    /// its boards; there is nothing to join first.
     public func open() async {
         phase = .loading
-        if let member = try? await backend.isMember(contextId: contextId), !member {
-            do {
-                try await backend.joinContext(contextId: contextId)
-            } catch {
-                phase = .failed("Couldn't join this board: \(DesignFormat.errorText(error))")
-                return
-            }
-        }
         do {
             try await loadElements()
             phase = .ready
@@ -235,7 +241,7 @@ public final class BoardModel: ObservableObject {
         } while dirty
     }
 
-    /// Follow the board until the task is cancelled: the relay's events when it
+    /// Follow the board until the task is cancelled: the node's events when it
     /// streams them, polling otherwise (and after a stream ends).
     public func live() async {
         if backend.canSubscribe {

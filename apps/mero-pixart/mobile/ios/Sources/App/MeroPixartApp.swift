@@ -58,7 +58,7 @@ struct RootView: View {
                 SignedInView(session: session, router: router, backend: backend)
                     .id(session.revision)
             } else if session.isSignedIn {
-                Splash(text: "Connecting to your relay…") {
+                Splash(text: "Connecting to your cluster…") {
                     Button("Sign out") { Task { await session.signOut() } }
                         .buttonStyle(SecondaryButtonStyle(fullWidth: false))
                 }
@@ -148,7 +148,7 @@ struct SignedInView: View {
         self.session = session
         self.router = router
         self.backend = backend
-        _holder = StateObject(wrappedValue: StoreHolder(BlobStore(loader: SessionBlobs(admin: session.client.admin))))
+        _holder = StateObject(wrappedValue: StoreHolder(BlobStore(loader: SessionBlobs(backend: backend))))
     }
 
     var body: some View {

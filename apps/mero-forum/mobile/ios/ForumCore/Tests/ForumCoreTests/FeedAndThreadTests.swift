@@ -1,4 +1,3 @@
-import ForumGenerated
 import Foundation
 import MeroKit
 import MeroKitTestSupport
@@ -14,7 +13,7 @@ final class FeedModelTests: XCTestCase {
 
     func testPagesTheFeedByCursor() async {
         let (backend, script) = makeBackend()
-        script.on("list_posts") { call in
+        script.on("listPosts") { call in
             call.string("cursor") == nil
                 ? PostPage(items: [post("p1"), post("p2")], nextCursor: "p2")
                 : PostPage(items: [post("p2"), post("p3")], nextCursor: nil)
@@ -27,7 +26,7 @@ final class FeedModelTests: XCTestCase {
         await model.loadMore()
         XCTAssertEqual(model.posts.map(\.id), ["p1", "p2", "p3"])
         XCTAssertFalse(model.hasMore)
-        let calls = backend.recording.calls("list_posts")
+        let calls = backend.recording.calls("listPosts")
         XCTAssertEqual(calls.map { $0.path }, [.query, .query])
         XCTAssertEqual(calls.first?.string("sort"), "new")
         XCTAssertEqual(calls.first?.contextId, ctx)
@@ -36,7 +35,7 @@ final class FeedModelTests: XCTestCase {
 
     func testSortRestartsTheFeed() async {
         let (backend, script) = makeBackend()
-        script.on("list_posts") { call in PostPage(items: [post(call.string("sort") ?? "?")], nextCursor: nil) }
+        script.on("listPosts") { call in PostPage(items: [post(call.string("sort") ?? "?")], nextCursor: nil) }
         let model = feed(backend)
         await model.refresh()
         await model.setSort(.top)
@@ -45,7 +44,7 @@ final class FeedModelTests: XCTestCase {
 
     func testVoteShowsAtOnceAndUndoesOnFailure() async {
         let (backend, script) = makeBackend()
-        script.on("list_posts") { _ in PostPage(items: [post("p1", score: 3, myVote: 0)], nextCursor: nil) }
+        script.on("listPosts") { _ in PostPage(items: [post("p1", score: 3, myVote: 0)], nextCursor: nil) }
         let model = feed(backend)
         await model.refresh()
         await model.vote(model.posts[0], value: 1)
@@ -63,15 +62,15 @@ final class FeedModelTests: XCTestCase {
 
     func testCreatePostNeedsTitleAndTextThenRefreshes() async throws {
         let (backend, script) = makeBackend()
-        script.on("create_post") { _ in "p9" }
-        script.on("list_posts") { _ in PostPage(items: [post("p9", author: me)], nextCursor: nil) }
+        script.on("createPost") { _ in "p9" }
+        script.on("listPosts") { _ in PostPage(items: [post("p9", author: me)], nextCursor: nil) }
         let model = feed(backend)
         do {
             try await model.createPost(title: "Hi", body: " ")
             XCTFail("expected a refusal")
         } catch {}
         try await model.createPost(title: " Hello ", body: "World")
-        let call = try XCTUnwrap(backend.recording.calls("create_post").first)
+        let call = try XCTUnwrap(backend.recording.calls("createPost").first)
         XCTAssertEqual(call.string("title"), "Hello")
         XCTAssertEqual(call.string("body"), "World")
         XCTAssertEqual(model.posts.map(\.id), ["p9"])
@@ -80,23 +79,23 @@ final class FeedModelTests: XCTestCase {
 
     func testDeleteAndModerate() async {
         let (backend, script) = makeBackend()
-        script.on("list_posts") { _ in PostPage(items: [post("p1", author: me), post("p2")], nextCursor: nil) }
+        script.on("listPosts") { _ in PostPage(items: [post("p1", author: me), post("p2")], nextCursor: nil) }
         script.on("moderators") { _ in [me] }
         let model = feed(backend)
         await model.refresh()
         await model.loadModerators()
         XCTAssertTrue(model.isModerator)
         await model.delete(model.posts[0])
-        XCTAssertEqual(backend.recording.calls("delete_post").first?.string("post_id"), "p1")
+        XCTAssertEqual(backend.recording.calls("deletePost").first?.string("postId"), "p1")
         await model.moderate(model.posts[0])
-        XCTAssertEqual(backend.recording.calls("moderate_post").first?.string("post_id"), "p2")
+        XCTAssertEqual(backend.recording.calls("moderatePost").first?.string("postId"), "p2")
         XCTAssertTrue(model.posts.isEmpty)
     }
 
     func testAFailedDeletePutsThePostBack() async {
         let (backend, script) = makeBackend()
-        script.on("list_posts") { _ in PostPage(items: [post("p1", author: me)], nextCursor: nil) }
-        script.fail("delete_post")
+        script.on("listPosts") { _ in PostPage(items: [post("p1", author: me)], nextCursor: nil) }
+        script.fail("deletePost")
         let model = feed(backend)
         await model.refresh()
         await model.delete(model.posts[0])
@@ -111,7 +110,7 @@ final class FeedModelTests: XCTestCase {
         await model.loadModerators()
         try await model.addModerator(bob.uppercased())
         XCTAssertEqual(model.moderators, [me, bob])
-        XCTAssertEqual(backend.recording.calls("set_moderators").last?.args["accounts"], [.string(me), .string(bob)])
+        XCTAssertEqual(backend.recording.calls("setModerators").last?.args["accounts"], [.string(me), .string(bob)])
         do {
             try await model.addModerator("nope")
             XCTFail("expected a refusal")
@@ -128,24 +127,24 @@ final class FeedModelTests: XCTestCase {
 
     func testNamePushedToTheForumOrAdopted() async throws {
         let (backend, script) = makeBackend()
-        script.on("get_nickname") { _ in "" }
+        script.on("getNickname") { _ in "" }
         let named = feed(backend, name: "Ana")
         await named.syncName()
-        XCTAssertEqual(backend.recording.calls("set_nickname").first?.string("name"), "Ana")
+        XCTAssertEqual(backend.recording.calls("setNickname").first?.string("name"), "Ana")
 
         let (other, otherScript) = makeBackend()
-        otherScript.on("get_nickname") { _ in "Remote" }
+        otherScript.on("getNickname") { _ in "Remote" }
         let store = MemoryNameStore()
         let adopting = FeedModel(backend: other, forum: forumRef(), names: store)
         await adopting.syncName()
         XCTAssertEqual(store.name, "Remote")
         XCTAssertEqual(adopting.displayName, "Remote")
-        XCTAssertTrue(other.recording.calls("set_nickname").isEmpty)
+        XCTAssertTrue(other.recording.calls("setNickname").isEmpty)
     }
 
     func testRenameUpdatesYourPosts() async throws {
         let (backend, script) = makeBackend()
-        script.on("list_posts") { _ in PostPage(items: [post("p1", author: me, name: "Old")], nextCursor: nil) }
+        script.on("listPosts") { _ in PostPage(items: [post("p1", author: me, name: "Old")], nextCursor: nil) }
         let store = MemoryNameStore("Old")
         let model = FeedModel(backend: backend, forum: forumRef(), names: store)
         await model.refresh()
@@ -156,7 +155,7 @@ final class FeedModelTests: XCTestCase {
 
     func testLiveEventsRefreshTheFeed() async throws {
         let (backend, script) = makeBackend()
-        script.on("list_posts") { _ in PostPage(items: [post("p1")], nextCursor: nil) }
+        script.on("listPosts") { _ in PostPage(items: [post("p1")], nextCursor: nil) }
         let model = feed(backend)
         let watching = Task { await model.watch() }
         defer { watching.cancel() }
@@ -177,8 +176,8 @@ final class ThreadModelTests: XCTestCase {
 
     func testLoadsThePostAndItsReplies() async {
         let (backend, script) = makeBackend()
-        script.on("get_post") { _ in post("p1", comments: 2) }
-        script.on("list_comments") { call in
+        script.on("getPost") { _ in post("p1", comments: 2) }
+        script.on("listComments") { call in
             call.string("cursor") == nil
                 ? CommentPage(items: [comment("c1")], nextCursor: "c1")
                 : CommentPage(items: [comment("c2")], nextCursor: nil)
@@ -189,43 +188,43 @@ final class ThreadModelTests: XCTestCase {
         XCTAssertEqual(model.comments.map(\.id), ["c1"])
         await model.loadMore()
         XCTAssertEqual(model.comments.map(\.id), ["c1", "c2"])
-        XCTAssertEqual(backend.recording.calls("list_comments").first?.string("post_id"), "p1")
+        XCTAssertEqual(backend.recording.calls("listComments").first?.string("postId"), "p1")
     }
 
     func testReplyPostsAndReloads() async throws {
         let (backend, script) = makeBackend()
-        script.on("get_post") { _ in post("p1", comments: 1) }
-        script.on("create_comment") { _ in "c9" }
-        script.on("list_comments") { _ in CommentPage(items: [comment("c9", author: me)], nextCursor: nil) }
+        script.on("getPost") { _ in post("p1", comments: 1) }
+        script.on("createComment") { _ in "c9" }
+        script.on("listComments") { _ in CommentPage(items: [comment("c9", author: me)], nextCursor: nil) }
         let model = thread(backend)
         try await model.reply("  thanks  ")
-        XCTAssertEqual(backend.recording.calls("create_comment").first?.string("body"), "thanks")
+        XCTAssertEqual(backend.recording.calls("createComment").first?.string("body"), "thanks")
         XCTAssertEqual(model.comments.map(\.id), ["c9"])
         XCTAssertTrue(model.isMine(author: model.comments[0].author))
     }
 
     func testCommentVotesEditsAndRemovals() async throws {
         let (backend, script) = makeBackend()
-        script.on("get_post") { _ in post("p1", comments: 2) }
-        script.on("list_comments") { _ in CommentPage(items: [comment("c1", author: me), comment("c2")], nextCursor: nil) }
+        script.on("getPost") { _ in post("p1", comments: 2) }
+        script.on("listComments") { _ in CommentPage(items: [comment("c1", author: me), comment("c2")], nextCursor: nil) }
         let model = thread(backend)
         await model.load()
         await model.voteComment(model.comments[1], value: -1)
         XCTAssertEqual(model.comments[1].score, -1)
         try await model.editComment(model.comments[0], body: "edited")
         XCTAssertEqual(model.comments[0].body, "edited")
-        XCTAssertEqual(backend.recording.calls("edit_comment").first?.string("comment_id"), "c1")
+        XCTAssertEqual(backend.recording.calls("editComment").first?.string("commentId"), "c1")
         await model.deleteComment(model.comments[0])
         await model.moderateComment(model.comments[0])
         XCTAssertTrue(model.comments.isEmpty)
         XCTAssertEqual(model.post?.commentCount, 0)
-        XCTAssertEqual(backend.recording.calls("moderate_comment").first?.string("comment_id"), "c2")
+        XCTAssertEqual(backend.recording.calls("moderateComment").first?.string("commentId"), "c2")
     }
 
     func testRemovingThePostClosesTheThread() async {
         let (backend, script) = makeBackend()
-        script.on("get_post") { _ in post("p1") }
-        script.on("list_comments") { _ in CommentPage(items: [], nextCursor: nil) }
+        script.on("getPost") { _ in post("p1") }
+        script.on("listComments") { _ in CommentPage(items: [], nextCursor: nil) }
         let model = thread(backend)
         await model.load()
         let removed = await model.moderatePost()
@@ -235,8 +234,8 @@ final class ThreadModelTests: XCTestCase {
 
     func testPostVoteRollsBack() async {
         let (backend, script) = makeBackend()
-        script.on("get_post") { _ in post("p1", score: 1) }
-        script.on("list_comments") { _ in CommentPage(items: [], nextCursor: nil) }
+        script.on("getPost") { _ in post("p1", score: 1) }
+        script.on("listComments") { _ in CommentPage(items: [], nextCursor: nil) }
         script.fail("vote")
         let model = thread(backend)
         await model.load()

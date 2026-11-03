@@ -19,7 +19,7 @@ final class WorkspaceModelTests: XCTestCase {
         ]
         fake.backend.rootContexts = [b: ["ctx-1"]]
         _ = try? await fake.backend.contract.execute(
-            contextId: "ctx-1", method: "set_repo_url", argsJSON: Data(#"{"url":"https://github.com/acme/core"}"#.utf8))
+            contextId: "ctx-1", method: "setRepoUrl", argsJSON: Data(#"{"url":"https://github.com/acme/core"}"#.utf8))
         let store = MemoryTrackerStore()
         store.activeWorkspace = b
         let m = model(fake, store: store)

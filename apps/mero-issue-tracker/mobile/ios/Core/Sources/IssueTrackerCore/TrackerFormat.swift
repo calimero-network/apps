@@ -1,4 +1,5 @@
 import Foundation
+import MeroKit
 
 /// Names and fixed values shared with the web app (`app/src/config.ts`, `theme.ts`).
 public enum Tracker {
@@ -10,7 +11,7 @@ public enum Tracker {
     public static let priorities = ["low", "medium", "high", "urgent"]
     /// What a new issue starts at, as on the web.
     public static let defaultPriority = "high"
-    /// How often to re-read while the relay's event stream is not available.
+    /// How often to re-read while the node's event stream is not available.
     public static let pollInterval: TimeInterval = 5
 }
 
@@ -128,21 +129,69 @@ public enum TrackerFormat {
 
     /// Plain words for a failure.
     public static func errorText(_ error: Error) -> String {
+        if let text = clusterErrorText(error) { return text }
         let text = String(describing: error)
-        if text.contains("noRelay") {
-            return "No relay serves this account yet. Join a workspace from an invitation link to get one."
+        if error is SignedOutError || text.contains("notSignedIn") {
+            return "You're signed out. Sign in again to reach your cluster."
         }
         if let urlError = error as? URLError {
             switch urlError.code {
             case .notConnectedToInternet, .networkConnectionLost:
                 return "You are offline. Check your connection and try again."
             case .timedOut:
-                return "The relay took too long to answer. Try again."
+                return "Your cluster took too long to answer. Try again."
             default:
                 break
             }
         }
         let described = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         return described.isEmpty ? "Something went wrong. Try again." : described
+    }
+
+    /// The Calimero 1.0 node's typed errors, in words.
+    static func clusterErrorText(_ error: Error) -> String? {
+        switch error {
+        case is ConfirmCancelled: return "The passkey prompt was cancelled."
+        case is LoginRequired: return "Your session ended. Sign in again."
+        case is ReleaseDeadlineError:
+            return "A newer node release needs approval before anything can change. Review it under Workspace."
+        case is ConsentStale: return "That approval request is out of date. Try again."
+        case is NotFound: return "This isn't available to you (yet)."
+        case is WrongNode: return "That node can't serve this workspace. Sign in again to reach your cluster."
+        case let error as UnavailableError:
+            return "Your cluster is unavailable right now (\(error.reason)). Try again shortly."
+        case let error as AppError: return appErrorText(code: error.appCode, fields: error.fields)
+        default:
+            // MeroKitUI's step-up guard (no passkey to approve a member or invite change).
+            if String(describing: type(of: error)) == "PasskeyRequired" {
+                return "This needs your passkey. Sign in again on this device and retry."
+            }
+            return nil
+        }
+    }
+
+    /// The contract's refusals (`422 APP_ERROR`): `NotFound { id }`,
+    /// `Invalid { message }`, `Forbidden { message }` (see `logic/res/abi.json`).
+    public static func appErrorText(code: String, fields: [String: JSONValue]) -> String {
+        let message = fields["message"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        switch code {
+        case "NotFound":
+            let id = fields["id"]?.stringValue ?? ""
+            if id.hasPrefix("comment-") { return "That comment no longer exists." }
+            return "That issue no longer exists. It may have been deleted."
+        case "Forbidden":
+            return message.isEmpty ? "You aren't allowed to do that here." : sentence(message)
+        case "Invalid":
+            return message.isEmpty ? "Check what you entered and try again." : sentence(message)
+        default:
+            return message.isEmpty ? "The tracker refused that (\(code))." : sentence(message)
+        }
+    }
+
+    /// `text` with a capital first letter and a full stop.
+    static func sentence(_ text: String) -> String {
+        var s = text.prefix(1).uppercased() + text.dropFirst()
+        if !s.hasSuffix(".") { s += "." }
+        return s
     }
 }

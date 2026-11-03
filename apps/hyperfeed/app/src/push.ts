@@ -1,5 +1,5 @@
-import type { PushDeviceInput } from "./generated/HyperfeedClient";
-import { nodeBasename } from "./servedByNode";
+import type { PushDeviceInput } from "./hyperfeedTypes";
+import { nodeBasename } from "./served";
 
 /**
  * Push to your phone: this browser subscribes with its push service, using

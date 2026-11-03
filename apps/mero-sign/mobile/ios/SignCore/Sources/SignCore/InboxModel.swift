@@ -22,8 +22,6 @@ public final class InboxModel: ObservableObject {
         self.directory = directory
     }
 
-    public var hasRelay: Bool { directory.backend.hasRelay }
-
     public func entries(in bucket: InboxBucket) -> [DocumentEntry] {
         entries.filter { $0.bucket == bucket }
             .sorted { $0.document.uploadedAt > $1.document.uploadedAt }
@@ -35,11 +33,10 @@ public final class InboxModel: ObservableObject {
         if entries.isEmpty { phase = .loading }
         do {
             let agreements = try await directory.allAgreements()
-            let backend = directory.backend
             var joined: [AgreementRef] = []
             var notJoined: [AgreementRef] = []
             for agreement in agreements {
-                if (try? await backend.isMember(contextId: agreement.contextId)) == true {
+                if await directory.isJoined(agreement.contextId) {
                     joined.append(agreement)
                 } else {
                     notJoined.append(agreement)
