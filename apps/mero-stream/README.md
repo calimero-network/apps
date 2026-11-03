@@ -1,307 +1,278 @@
 # Mero Stream — streaming media *over* Calimero
 
 > **Experimental capacity probe, not a shippable feature.** This app
-> deliberately does the *wrong* thing — pushing audio/video through the Calimero
-> contract state (CRDT → DAG → gossipsub → apply) instead of WebRTC — to learn
-> the node's ceiling **with numbers**. The deliverable is a stated ceiling with
-> the first bottleneck named. See `ROADMAP-TASKS/task-3-streaming-over-calimero.md`.
+> deliberately does the *wrong* thing — pushing audio/video through a Calimero
+> app (its replicated log, or its presence channel) instead of WebRTC — to
+> learn the platform's ceiling **with numbers**. The deliverable is a stated
+> ceiling with the first bottleneck named. See
+> `ROADMAP-TASKS/task-3-streaming-over-calimero.md`.
 >
 > For real, low-latency calls, media rides native WebRTC peer-to-peer and never
 > touches the contract — that is **Mero Meet**, and it remains the right answer.
 
-## Platform support — web only
+Mero Stream runs on Calimero 1.0: a contract on core's **component SDK**
+(`calimero-app-sdk`, a `calimero:app` WebAssembly component on the node's
+wasmtime runtime), developed against **`merod local`**, and a frontend that
+talks to **Calimero Cloud** in production and to the local nodes in development
+through mero-js's **`CalimeroClient`** (`@calimero-apps/connect`). See
+[docs/COMPONENT-APPS.md](../../docs/COMPONENT-APPS.md).
 
-**Mero Stream is a web app. The Calimero desktop is not a supported target.**
+The web call needs a browser with WebCodecs (H.264) and a camera. The native
+iOS and Android apps in `mobile/` move to 1.0 in #698, which depends on this
+port (see [Mobile](#mobile)).
 
-It is not blocked there and it does not crash: the desktop opens an app at its
-registry `links.frontend` with a session in the URL fragment, and this app reads
-that fragment like any other, so it will render and run. What is *not* supported
-is the desktop integration around it — treat a desktop window as unsupported and
-reproduce anything you see there in a browser first.
+## Run it
 
-Concretely, as of this note:
-
-* The Tauri bridge in `app/src/lib/tauri.ts` was written against **Tauri v1**
-  (`window.__TAURI_INVOKE__`, `__TAURI_IPC__`, `__TAURI__`). tauri-app is
-  **Tauri v2** (`@tauri-apps/api ^2.11.1`, `tauri = { version = "2" }`) with
-  `withGlobalTauri: false`, so none of those globals exists in an app window and
-  every `invokeTauri()` call resolved to `null`. Nothing surfaced, because the
-  two commands built on it were never called from anywhere — they have been
-  removed rather than left looking functional.
-* Even with a correct v2 `invoke`, the command it reached for
-  (`close_current_window`) is not among the ones tauri-app grants to `app-*`
-  windows: `capabilities/remote.json` lists `core:window:allow-close` and the
-  node proxy/token-broker commands, and nothing else.
-* Session detection still accepts a Tauri global as a signal, but it never
-  needs to: the desktop always writes the fragment, which `hasHashSession()`
-  already covers.
-
-Everything the app actually does works from a browser without the shell: node
-traffic is direct HTTP + SSE from the page, there is no Tauri Rust proxy on any
-call path, and auth is an ordinary bearer token (PR #5). That is why web-only is
-a real position here and not a gap — but it does mean the desktop path carries
-no tests, no support, and no promises.
-
-## The distinguishing move (approach 3)
-
-The toy **codec runs deterministically inside the WASM contract**, not in the
-browser. The frontend hands the contract a *raw* luma frame; `encode_frame`
-compresses it in WASM and stores only the compressed fragment; a `get_frame`
-view reconstructs the frame in WASM on any node.
-
-```
- sender node                                     peer node(s)
- getUserMedia → canvas → raw luma                SSE FramePosted(seq)
-   → encode_frame(raw,w,h,track,now)  ══gossip══▶   → get_frame(seq) [view, decode in WASM]
-   [MUTATION, WASM encodes]          only the        → luma → canvas → <video>
-   store frag-{seq}-{chunk}          compressed
-   prune < seq-WINDOW                fragment
-   emit FramePosted                  crosses (≤ ~1 MiB, target 4–32 KiB)
-        raw frame stays LOCAL to the sender ▲
+```bash
+pnpm install                     # once, at the repo root
+rustup target add wasm32-wasip2  # once
+pnpm dev:local mero-stream       # merod local + build + deploy + http://localhost:5173/
 ```
 
-Because the raw frame is a mutation *argument*, it is local to the executing
-node — only the resulting **state delta** (the compressed fragment) is sealed and
-gossiped. So `encode_frame(raw)` runs on the sender and only the compressed
-fragment propagates.
+`merod` at the pinned core release must be on the `PATH` (or in `MEROD_BIN`);
+`pnpm dev:local` prints how to get it when it is missing. In the browser,
+**create an account** (a passkey), **create a stream** (an organization), a
+**room** in it (an app instance: one call), and press **Go live**. **Invite**
+mints a link (approved with your passkey); a second browser profile with its own
+passkey that opens it joins the stream and lands in the room.
 
-## Hard constraints (baked into the contract)
+## The three approaches, all live in this app
 
-- **C1 Determinism.** The codec is **integer-only** (no float / SIMD / threads /
-  randomness / wall clock — the contract takes `now: u64` as an arg). A `view`
-  decode returns the same bytes on every node.
-- **C2 Small deltas.** Every stored fragment stays well under the 1 MiB
-  gossip/delta cap; we target 4–32 KiB and **sub-frame chunk** anything larger
-  (`MAX_CHUNK_BYTES = 16 KiB`).
-- **C3 Delete is a tombstone.** Fragment keys are globally monotone and **never
-  reused** (`frag-{seq}-{chunk}`); pruning the live window emits *more*
-  tombstones. Tombstone growth is a primary metric, not a footnote.
-- **C4 Toy codec.** Codec #1: downscale (in the browser canvas) + 4-bit luma
-  quantize + RLE, in WASM. Trivially deterministic; ratio tunable by geometry.
+The task doc lists three ways to move media through Calimero. They fail for
+different reasons and the contrast IS the finding:
+
+| | `/stream` — approach 3 | contract — approach 2 | `/live` — approach 1 |
+|---|---|---|---|
+| How the bytes travel | `encodeFrame` (the app's log) | `postChunk` (the app's log) | **presence** (`/apps/{app}/presence`) |
+| Where the codec runs | **inside the app component** | **in the browser** (WebCodecs) | in the browser (WebCodecs) |
+| Codec | toy: 4-bit quantize + RLE | real: hardware H.264 | real: hardware H.264 |
+| Resolution | 64×48 greyscale | **640×480** | **640×480** |
+| Why it's capped there | every reader must decode bit-identical bytes (C1), and real codecs are float-heavy → non-deterministic | not capped by determinism — the app never computes the media | same |
+| Per frame on the cluster | a contract run that encodes | a contract run that stores (a memcpy) | no contract run at all |
+| New state at 480p30 | ~4.6 MB/s | ~188 KB/s | **zero — nothing is persisted** |
+| Receive path | `FramePosted` → `getFrame` | `ChunkPosted` → `getChunks` | the bytes ride the presence event |
+| Remaining risk | contract CPU **and** log size | log size | 4 KiB slices; a lossy channel |
+
+The call page (`/live`) uses approach 1 only; `postChunk`/`getChunks` stay in the
+contract and the typed client for measurement (a test, `ephemeralOnly.test.ts`,
+keeps them off the call path). `/stream` is the approach-3 baseline, reachable by
+URL.
+
+### Approach 3: the codec runs in the contract
+
+The frontend hands the contract a *raw* luma frame; `encodeFrame` compresses it
+in the component and stores only the compressed fragments; a `getFrame` view
+reconstructs the frame in the component on any read.
+
+```
+ sender                                           peer(s)
+ getUserMedia → canvas → raw luma                 event FramePosted(seq)
+   → encodeFrame(raw,w,h,track,now)  ══log══▶       → getFrame(afterSeq) [view, decode in the component]
+   [CALL, the component encodes]     only the         → luma → canvas
+   store (from, seq, chunk)          compressed
+   prune < seq-WINDOW                fragments are
+   emit FramePosted                  stored
+```
+
+### Approach 1: media on presence
+
+The node's presence channel carries one entry per (account, device) per app:
+never persisted, never in the log, the newest `seq` wins, gone 7 s after the
+last update, every change pushed to every subscriber as one event.
+`app/src/lib/ephemeralFrames.ts` turns that register into a lossy datagram pipe:
+
+- An entry is at most **4 KiB** on a 1.0 node (v1's ephemeral slice was
+  16 KiB), so a frame is fragmented: a 1.5 Mbps / 25 fps delta frame (~7.5 KB)
+  is two fragments, a keyframe a dozen. A frame that loses a fragment is never
+  shown; the next keyframe (at most 2 s away) is the retry.
+- The framing header carries a per-sender `msgSeq` that advances every frame, so
+  two byte-identical frames never coalesce, and a reassembler drops replays.
+- The stream's opening `snapshot` (each author's current entry, up to 7 s old)
+  is skipped: for media a stale frame is worse than none.
+
+**None of the three is shippable media.** Approach 2 removes the CPU wall,
+approach 1 removes the storage wall as well; what is left on approach 1 is a
+4 KiB MTU, one HTTP publish per fragment, and a channel that may drop things.
+
+## Constraints (in the contract)
+
+- **C1 Determinism.** The codec is integer-only (no float / SIMD / threads /
+  randomness / wall clock — the contract takes `now` as an argument). Every
+  reader's `getFrame` decodes the same bytes; `frameChecksum` makes that
+  assertable.
+- **C2 Small entries.** Every stored fragment stays far below the 1 MiB a run
+  may write: frames are split at `MAX_CHUNK_BYTES = 16 KiB`, opaque chunks are
+  capped at 256 KiB (which also keeps a chunk's base64 under the node's 512 KiB
+  argument cap).
+- **C3 Keys are never reused.** Frame and chunk sequences are monotone, so a
+  pruned key is never written again and a reader's cursor never points at a
+  recycled one.
+- **C4 Toy codec.** Downscale (in the browser canvas) + 4-bit luma quantize +
+  RLE, in the component.
 
 ## Contract API (`logic/src/lib.rs`)
 
 | Method | Kind | Purpose |
 |--------|------|---------|
-| `init(name)` | init | Create the stream context. |
-| `join(username, now)` | mutation | Become a member (gates `encode_frame`). |
-| `get_members()` | view | Roster. |
-| `encode_frame(raw, width, height, track, now) -> seq` | mutation | **Task-3 core.** Encode raw luma in WASM, chunk, store, prune, emit `FramePosted`. |
-| `get_frame(after_seq) -> DecodedFrame[]` | view | Reassemble chunks + decode in WASM. |
-| `frame_checksum(seq) -> u64?` | view | FNV-1a over the decoded pixels, computed in WASM. Two nodes agreeing on it **is** the C1 bit-identity proof; `null` = frame not live. |
-| `prune_frames(before_seq)` | mutation | Explicit reaper (also inline in `encode_frame`); reaches only the caller's own frames. |
-| `get_stats() -> StreamStats` | view | §4 instrumentation: live fragments, next/oldest seq, pruned count. |
-| `rename_stream(name)` | mutation | Owner-only. |
+| `init(name?)` | init | Create the room; `name` is the stream name (the frontend passes the room's name). |
+| `join(username, now)` | call | Become a member (gates the writes), or rename yourself. Returns the `Member`. |
+| `getMembers()` | view | Roster, in account order. |
+| `encodeFrame(raw, width, height, track, now) -> seq` | call | **Task-3 core.** Encode raw luma in the component, chunk, store, prune the caller's frames older than 30 seqs, emit `FramePosted`. |
+| `getFrame(afterSeq) -> DecodedFrame[]` | view | Reassemble + decode every frame after the cursor, by seq. |
+| `frameChecksum(seq) -> u64?` | view | FNV-1a over the decoded pixels; `null` = frame not live. |
+| `pruneFrames(beforeSeq)` | call | Prune the caller's own frames below the watermark. |
+| `getStats() -> StreamStats` | view | Approach-3 instrumentation: live fragments, next/oldest seq, pruned frames. |
+| `postChunk(dataB64, track, isKeyframe, codec, width, height, timestampUs, now) -> seq` | call | Approach 2: store one opaque WebCodecs chunk in the caller's own ring; age out the caller's chunks older than 6 s (never their newest keyframe); for the owner, sweep senders silent for 30 s. Emits `ChunkPosted`. |
+| `getChunks(cursors) -> ChunkView[]` | view | Every chunk past each sender's cursor; a sender missing from `cursors` starts at their newest live keyframe. |
+| `keyframeCursors() -> SenderCursor[]` | view | Each sender's newest live keyframe. |
+| `getLiveStats() -> LiveStats` | view | Approach-2 instrumentation, per sender. |
+| `pruneChunks(beforeSeq)` | call | Prune the caller's own chunks, never past their newest keyframe. |
+| `renameStream(name)` | call | The room's owner only (`NotOwner`). |
+| `isMemberAdmin(member) -> bool` | view | Whether `member` (an account) is the room's owner. |
 
-> **Who can write what.** Every node enforces it, not just the API: a member
-> row, a sender's cursor, its chunks and its fragments are owned by the account
-> that wrote them (`Authored` / `Moderated`), so nobody else can rewrite or
-> delete them, and reads drop any chunk or fragment planted under another
-> sender's id. Only the stream's creator (the `chunks` moderator) sweeps a
-> departed sender's buffer. The init name is `Frozen`. Still open: approach 3's
-> global `next_seq` is shared, so a member's patched node can stall that probe
-> path for everyone, and a device id registered first by another account cannot
-> be used by its real owner.
+Errors (`422 APP_ERROR`, `{ code, fields }`): `NotJoined`, `ZeroDimension`,
+`DimensionTooLarge {max}`, `RawTooLarge {max}`, `RawLengthMismatch {expected, got}`,
+`BadBase64`, `EmptyChunk`, `ChunkTooLarge {max}`, `CodecRequired`, `NotOwner`.
 
-> **Timestamp units.** `encode_frame`'s `now` is unix **milliseconds**; every
-> other `now` is **seconds**. Fragments are the one thing whose timestamp gets
-> subtracted from a receiver's clock (§4 end-to-end latency), and that
-> measurement is meaningless quantized to whole seconds.
+Events (to everyone the room reaches): `Initialized`, `MemberJoined(account)`,
+`FramePosted(seq)`, `FramesPruned(beforeSeq)`, `ChunkPosted(seq)`; a tuple
+variant's data is `{"0": …}`.
 
-Events (SSE): `Initialized`, `MemberJoined`, `FramePosted(seq)`, `FramesPruned(beforeSeq)`.
+**Timestamp units.** `join`'s `now` is unix seconds; `encodeFrame`'s and
+`postChunk`'s are milliseconds (end-to-end media latency is meaningless at
+second resolution).
 
-## Three approaches, all live in this app
+**Who can write what.** Every write lands under the caller's own account:
+fragments are keyed `(from, seq, chunk)`, chunks `(from, seq)`, cursors and
+member rows by account, and no method takes a sender id. So nobody can rewrite,
+prune or plant media under someone else's name, and readers need no
+"who wrote this row" checks. The room's owner (its creator, `env::app_owner()`)
+renames it and sweeps departed senders' buffers. Still open, as in v1:
+approach 3's global frame seq is shared, so a member can advance it.
 
-The task doc lists three ways to move media through Calimero. This repo now
-implements all three — two on separate routes, and the third as a **transport
-switch on `/live`** — because they fail for different reasons and the contrast IS
-the finding:
+## Test it
 
-| | `/stream` — approach 3 | `/live` — approach 2 | `/live` — approach 1 |
+| | what it covers | needs a node |
+|---|---|---|
+| `cargo test --manifest-path apps/mero-stream/logic/Cargo.toml` | the codec's unit tests (C1 bit identity, >255 runs, truncated and oversized streams, the 4-bit contract); v1's `TestHost` tests method for method on core's wasmtime engine (encode/decode, chunking, the frame window, checksums, approach 2's per-sender rings, keyframe clamp, wall-clock window, count backstop, stale-sender sweep, four broadcasters); v1's forged-write tests as "every write is the caller's own"; access and wire checks; every `scenarios/*.json` | no |
+| `pnpm -F mero-stream test` | the typed client's methods and parameter names are exactly `logic/res/abi.json`'s, and its conversions; streams (orgs), rooms (app instances) and invitation links; presence encoding; the media framing, codecs, metrics, slots, congestion control; sign-up, stream and room creation, invitation, redemption into a room (mocked client) | no |
+| `pnpm merod-local e2e mero-stream` | every `scenarios/*.json` on `merod local`: real accounts with passkeys, an org per scenario, each account on a different node | yes |
+
+The scenarios are v1's two- and three-node Docker workflows with accounts instead of nodes:
+
+| scenario | v1 workflow | proves |
+|---|---|---|
+| `fragment-round-trip.json` | `e2e.yml` | a frame encoded by one account decodes to the same checksum, geometry and pixels for another |
+| `tombstones.json` | `e2e-tombstones.yml` | after 40 frames both readers see the exact bounded window (31 live, 9 pruned, oldest 10); a post-prune frame decodes; a pruned frame reads as absent |
+| `fanout.json` | `e2e-fanout.yml` | one sender, two other readers, one checksum |
+| `live-chunks.json` | `e2e-live-chunks.yml` | approach 2: opaque bytes and their decoder config cross exactly; `pruneChunks(everything)` still leaves the keyframe; another member's prune cannot touch them |
+| `access.json` | — | anonymous and outsider callers refused by the node, `NotJoined` before `join`, `NotOwner`, the owner as admin, a member's whole write surface aimed at the owner's media reaching only its own, a guest streaming, malformed arguments |
+
+v1's `e2e-ephemeral-frames.yml` (approach 1 over v1's `set_ephemeral`) has no
+scenario: presence is a node channel, not a contract method, so it is covered
+by `presence.test.ts` and `ephemeralFrames.test.ts` (fragmenting to the 4 KiB
+entry and reassembling). The capacity ladder probe and `scripts/load-curve.py`
+drove v1 nodes over JSON-RPC in Docker; they are removed, and a load run on the
+component runtime is still to be written (it would drive `encodeFrame` /
+`postChunk` through `CalimeroClient` against `merod local`).
+
+## What changed in the port, and why
+
+Same methods, same arguments (in camelCase), same answers and events, with these
+differences a client sees:
+
+| | v1 (`calimero-sdk`, wasmer, a context) | now (component SDK, an app instance) | why |
 |---|---|---|---|
-| How the bytes travel | `encode_frame` (state) | `post_chunk` (state) | **`set_ephemeral`** (presence) |
-| Where the codec runs | **inside the WASM app** | **in the browser** (WebCodecs) | in the browser (WebCodecs) |
-| Codec | toy: 4-bit quantize + RLE | real: hardware H.264 | real: hardware H.264 |
-| Resolution | 64×48 greyscale | **640×480** | **640×480** |
-| Why it's capped there | every node must compute bit-identical bytes (C1), and real codecs are float-heavy → non-deterministic | not capped by determinism — the app never computes the media, so a float codec is fine | same |
-| Node CPU per frame | ~9.93 ms measured | ~0 (a memcpy; no codec work) | ~0, and no WASM run at all |
-| New state at 480p30 | ~4.6 MB/s (≈230× chat) | ~188 KB/s (≈9× chat) | **zero — nothing is persisted** |
-| Tombstones to reap it | yes | yes (`prune_chunks`) | **none — a 7 s TTL sweeps it** |
-| Receive path | `FramePosted` → `get_frame` | `ChunkPosted` → `get_chunks` | the bytes ride the event |
-| Compression | ~2–10× | ~60× | ~60× |
-| Remaining risk | WASM CPU **and** replication | replication + tombstones | 16 KiB slices; a lossy channel |
+| transport | JSON-RPC `execute` on your own node, a context id | `CalimeroClient.call` / `.view` on any node of the cluster, an app id | one app per replicated log |
+| method and argument names | `encode_frame`, `after_seq`, `data_b64`, `is_keyframe`, `timestamp_us`, `before_seq`, … | `encodeFrame`, `afterSeq`, `dataB64`, `isKeyframe`, `timestampUs`, `beforeSeq`, … | the ABI is camelCase |
+| `init` | `init(name)` | `init(name?)`, `""` without it | the harness and `merod-local e2e` create apps without init arguments; the frontend passes the room name |
+| `u64` arguments (`now`, `afterSeq`, `beforeSeq`, `seq`, `timestampUs`, cursors' `afterSeq`) | numbers | decimal strings (`"1751955010000"`) | D20 |
+| `encodeFrame`'s `raw` | a JSON array of byte values | base64url bytes | D20 (`Vec<u8>`); also ~4x smaller on the wire |
+| `u64` results and fields (`seq`, `joinedAt`, `updatedAt`, `createdAt`, `nextSeq`, `oldestLiveSeq`, `prunedFrames`, `timestampUs`, `afterSeq`, `oldestLive`, `lastKeyframe`, `newestAt`, `pruned`, `liveBytes`, `prunedChunks`, `frameChecksum`) | numbers (the checksum lost precision above 2^53) | decimal strings | D20 |
+| `DecodedFrame.pixels` | a JSON array of byte values | base64url | D20 |
+| `ChunkView.dataB64`, `postChunk`'s `dataB64` | standard base64 | unchanged | it is the app's own field, not a `Vec<u8>` |
+| `memberId`, `from`, `MemberJoined`'s id | a device key (hex), not the account | the caller's **account id** | identity is an account (passkeys); one broadcast per account |
+| `join` | refused a device another account had registered | no such case | accounts, not device keys |
+| reads | any method (every one ran through `execute`) | `getMembers`, `getFrame`, `frameChecksum`, `getStats`, `getChunks`, `keyframeCursors`, `getLiveStats`, `isMemberAdmin` are views; a write called as a view is `NotAView` | a view is answered without touching the log |
+| refusals | `app::bail!` strings ("join the stream before this operation", …) | typed codes, listed above | `#[app::error]`'s wire shape |
+| events | tuple payloads, bare values (`FramePosted: 5`) | same names, data `{"0": "5"}`; `Initialized` has no data | the component event shape |
+| owner / admin | `Ownable` stream name and an `AccessControl` admin role, both the creator's account | the app instance's owner (its creator) | `env::app_owner()` replaces the owner stamps |
+| who sweeps a departed sender | moderators of `chunks` (the creator) | the room's owner | same person |
+| write rules | owner stamps on every row (`Authored`, `Moderated`), readers re-checking who wrote each fragment and chunk | every key embeds the caller's account; nothing to re-check | one log, and no method takes a sender id |
+| `get_frame` order | seq, then sender's device key | seq, then sender's account id | |
+| `getMembers` order | none in particular | account order | keys read in order |
+| who may call | any member of the context | any member, admin or guest of the room's org, and the owner; anonymous `401`, others `404` | the org is the access boundary |
+| v1 `init`'s `Frozen` initial name and `Ownable` workaround | needed (rc.20 dropped writes in `init`) | gone: `init` writes the name | |
 
-Approach 2 needs a **keyframe-clamped reaper**: a delta frame is undecodable
-without the keyframe it references, so pruning past the newest keyframe leaves a
-stream that replicates happily and shows nothing. That clamp is the one piece of
-media awareness the app has, and it's unit- and e2e-tested.
+The frontend changed with it:
 
-### Approach 1 — media on ephemeral presence (core `0.11.0-rc.24`)
+- **Gone:** mero-react (`MeroProvider`, the node/cloud login popup,
+  `useExecute`, `useSubscription`, `useJoinSync`, the invitation dialog and
+  gate), mero-platform, the desktop SSO hash bootstrap and Tauri bridge, the
+  web-only notice for the desktop window, the v1 namespace/subgroup/context
+  admin calls (`lib/groups.ts`), the invitation codec and deep links, the
+  application-id resolution, TEE badges and hosting checks, `@calimero-apps/names`
+  (namespace member metadata), the Playwright and node-driving e2e scripts
+  (`app/e2e`, `app/tests`), and their tests.
+- **Now:** `@calimero-apps/connect` resolves the target from the build
+  (`merod local` under `vite`, a Cloud cluster under `vite build`); sign-in is a
+  **passkey**; a **stream** is an organization (`client.me().orgs`,
+  `createOrg`); a **room** is an app instance in it (`listApps`,
+  `createApp(name, source, { org, initArgs: { name } })`); an **invitation** is
+  an org invite link (`client.invite(org, "member", passkey)`, a passkey
+  step-up; opening it after sign-in redeems it and opens the stream or room);
+  stream-wide display names are org member metadata (`setMemberMetadata`); the
+  call carries media on the node's **presence** channel (`publishPresence`,
+  `presenceStream`); `/stream` listens on the room's event stream
+  (`client.events`).
+- `src/lib/meroStream.ts` is the one typed adapter: it calls the contract by
+  method name and converts the answers back to the shapes the screens were
+  written against (numbers, `pixels` as bytes), so the pages kept their logic.
+  A test checks its method list against `logic/res/abi.json`.
+- Rooms are no longer "joined" separately from the stream: everyone in the
+  org reaches every room, and a room row shows "joined" once you have called
+  `join` in it.
+- Each presence entry is 4 KiB (v1's slice: 16 KiB), so frames are fragmented
+  four times finer.
 
-core#3427 added **ephemeral presence**: a per-author, in-memory, signed,
-group-key-encrypted slice that gossips between nodes without a WASM run, without
-a state delta, and without ever touching the DAG. The node sweeps it after 7 s
-and re-publishes the holder's own slice every 2.5 s. That is a much better shape
-for live media than replicated state, and `/live` can now use it — flip the
-transport switch next to the bitrate slider. **No contract change: this is a node
-RPC, so `logic/` is untouched and the same bundle serves both.**
+**Removed with no replacement:** the v1 Docker workflows (`logic/workflows`, the
+capacity-ladder probe), the Docker dev-node scripts (`scripts/dev-node*.sh`,
+`dev-invite.sh`), `e2e-live-call.sh` and the browser drivers, `load-curve.py`,
+`ensure-cargo-mero.sh`, `build.sh` / `build-bundle.sh`, `res/state-schema.json`,
+`rust-toolchain.toml` (the component CI uses stable). A two-browser call is now
+`pnpm dev:local mero-stream` and two browser profiles.
 
-What it costs, and `app/src/lib/ephemeralFrames.ts` is where it is paid:
+## Mobile
 
-- A slice is capped at **16 KiB**, so a keyframe is fragmented. A delta frame at
-  1.5 Mbps / 25 fps is ~7.5 KB — one fragment, unaffected.
-- A slice is a single-writer **register**, not a queue. Every publish emits its
-  own event, so it behaves as a lossy 16 KiB datagram channel — but the node
-  drops an envelope whose LWW seq is at or below the highest it has applied, and
-  the outbound publish is spawned per call. So a multi-fragment keyframe can lose
-  a fragment; it is then never shown, and the next keyframe is the retry.
-- The node **suppresses the event when a slice's bytes are unchanged**, so the
-  framing header carries a per-sender `msgSeq` that advances every frame. Without
-  it, two byte-identical frames in a row would make the second invisible.
-- A replayed entry (the seed a new subscriber gets, carrying `ageMs`) is a *stale*
-  frame by definition, and is dropped rather than decoded.
+The native **iOS and Android** apps move to Calimero 1.0 in a separate PR,
+#698, which builds on this port's contract (`logic/res/abi.json`) and merges
+after it. Until then `mobile/` is as on `main`; see
+[mobile/README.md](mobile/README.md).
 
-**None of the three is shippable media.** Approach 2 removes the CPU wall,
-approach 1 removes the storage wall as well; what is left on approach 1 is a
-16 KiB MTU and a channel that is allowed to drop things.
+## Production
 
-## Status (phased — see the task doc §7)
+`vite build` connects to a Calimero Cloud cluster by name, and refuses to start
+without two variables set where the bundle's frontend is built:
 
-- **P0 — Contract skeleton + determinism proof — ✅ DONE.** `Fragment` state,
-  `encode_frame` / `get_frame` / `prune_frames`, codec #1. **28 unit tests**,
-  incl. bit-identical round-trip (C1), chunk split/reassemble (C2), the
-  no-key-reuse-across-prune regression (C3), the `frame_checksum` properties the
-  e2e leans on, codec edges (>255 runs, truncated/oversized streams, the 4-bit
-  quantization contract), the geometry guards, and multi-sender frame grouping.
-- **P1 — Frontend dev route — ✅ DONE.** Capture → `encode_frame`;
-  `FramePosted` SSE → `get_frame` → render, with a slow poll behind it.
-  Desktop/dev-gated, off any call path. **54 unit tests** across the luma path,
-  the §4 metric arithmetic, and session bootstrap.
-- **P2 — e2e — ✅ DONE.** Three merobox scenarios, all in CI against merod
-  `0.11.0-rc.25`:
-
-  | Scenario | Nodes | Proves |
-  |---|---|---|
-  | `e2e.yml` | 2 | C1 across the wire — the peer's independent in-WASM decode is bit-identical (`frame_checksum` equality) |
-  | `e2e-tombstones.yml` | 2 | C3 across the wire — after 40 frames force pruning, both nodes agree on the exact bounded window, and a *post-prune* frame is not shadowed by prune tombstones |
-  | `e2e-fanout.yml` | 3 | gossip fan-out at K=2 — one sender, **both** peers decode to the same checksum |
-| `e2e-live-chunks.yml` | 2 | **approach 2** — opaque codec bytes cross byte-identically, and `prune_chunks(everything)` still leaves the peer a decodable keyframe |
-  | `e2e-ephemeral-frames.yml` | 2 | **approach 1** — a frame published with `set_ephemeral` reaches node 2 byte-identically as a live delta, a 45 KB frame reassembles from its fragments, and node 1's `contextStateHash` is unchanged throughout (the load-bearing no-DAG-growth guard, against a non-null baseline) |
-- **Browser leg — ✅ AUTOMATED.** `make e2e-call` runs the whole two-node 480p
-  call unattended: `cargo mero build` → both nodes → app install → namespace,
-  context and open invitation → vite → two Chrome contexts → sender encodes,
-  receiver decodes → teardown. It asserts what the merobox scenarios structurally
-  cannot: that the receiver's canvas holds real 640×480 pixels *and that they
-  change*, with the state read from the receiver's own node. Needs real Google
-  Chrome — Playwright's bundled Chromium has no proprietary codecs, so no H.264.
-  See docs/DEV-TESTING.md.
-- **Two people getting into a call — ✅ IN THE UI, AND CLICKED IN A TEST.**
-  `/streams` lists **namespaces** (a "stream"), `/streams/:namespaceId` lists that
-  stream's **rooms** — a room being a subgroup plus the context that is the call.
-  Invite mints a link at either scope; opening it on another node asks, then
-  joins. `make e2e-ui` drives that by clicking — create stream → create room →
-  mint link → open it on **node2** → both peers see each other at 640×480 — which is the one path
-  `e2e-call` (types `/live` directly) and `e2e-suite` (curl) both structurally miss.
-- **P3 — Load curve — 🚧 TOOLING READY, RUN PENDING.** `scripts/load-curve.py`
-  ramps fps × geometry and emits the CSV (achieved fps, encode RTT p50/p95,
-  errors, live/pruned fragments, peer-side counters, RocksDB growth). The
-  30–60 min sustained run and the results write-up are what remains — *that
-  write-up is the actual deliverable.*
-
-### Where the §4 numbers come from
-
-| Metric | Measured by | Status |
-|--------|-------------|--------|
-| End-to-end fragment latency | frontend (`lib/metrics.ts`) | ✅ two-clock caveat documented |
-| Ingest rate (fps, KiB/s) | frontend + load generator | ✅ |
-| Encode round-trip (upper bound on WASM CPU) | frontend + load generator | ✅ |
-| Seq gaps / drop proxy | frontend | ✅ |
-| Tombstone growth | `get_stats().prunedFrames` + RocksDB `du` | ✅ (load generator) |
-| Server-side cost per mutation (mean) | core `/metrics`, `execution_duration_seconds_{sum,count}` by method | ✅ measured: **9.93 ms** mean for `encode_frame` at 64×48 |
-| Server-side cost **percentiles** | same histogram's buckets | ⚠️ buckets are 1 s…512 s, so every observation lands in the first one — mean is exact, tail shape is not available |
-| **Sealed delta size** | core logs `artifact_len` at `debug` | ⚠️ log-grep only, no histogram |
-| **Gossip publish drops / backpressure** | — | ❌ `libp2p_gossipsub_messages_total` (received count) is the *only* gossipsub series core exposes |
-
-`/metrics` is served unauthenticated on the RPC port (`crates/server/src/metrics.rs`),
-so a run can scrape it directly:
-
-```bash
-curl -s http://localhost:2660/metrics \
-  | grep -E 'execution_duration_seconds_(sum|count).*encode_frame'
-# mean server-side ms = sum/count*1000
+```
+VITE_CALIMERO_CLUSTER=<cluster name in the cloud's node directory>
+VITE_CALIMERO_MIN_RELEASE=<lowest mero-tee release a node may run>
 ```
 
-Worth knowing what that 9.93 ms means: client-observed encode RTT at the same
-geometry was 19.69 ms p50, so **roughly half the cost is JSON serialization,
-transport and RPC rather than the node**. At 4×4 the node figure was 1.81 ms, so
-the server side scales with geometry while the client overhead is close to fixed.
-
-## Build & test
+The production frontend is the one **packed into the `.mpk`** (`frontend-dir`),
+which the cluster serves from the package's own origin: a Cloud node trusts
+passkey ceremonies only from its own origins and from frontends it serves from
+a bundle. Rooms are created from the package (`com.calimero.mero-stream`). The
+`frontend` link in `logic/Cargo.toml` and `app/vercel.json` stay as the
+listing's link; they are not where people sign in. See
+[docs/DEPLOY.md](docs/DEPLOY.md).
 
 ```bash
-make logic-test     # contract unit tests (native TestHost) — C1..C3
-make logic-build    # cargo mero build → logic/res/mero_stream.wasm (ABI embedded)
-make logic-bundle   # cargo mero bundle → logic/dist/com.calimero.mero-stream.mpk
-make app-build      # frontend bundle (tsc + vite)
-make app-test       # frontend unit tests (incl. the §4 metric arithmetic)
-make dev            # vite dev server (the /stream dev route)
-make dev-nodes      # two local nodes + install + a stream context (solo testing)
-make e2e-call       # FULLY AUTOMATED two-node 480p call in real Chrome
-make e2e-ui         # the same call, but reached by CLICKING: stream → room → invite → join
-make workflows      # ALL four e2e scenarios over merobox (Docker + merobox>=0.6.49)
-make load-curve     # P3 load generator usage
+pnpm -F mero-stream build
+cargo run --release --manifest-path tools/component-bundle/Cargo.toml -- \
+  bundle apps/mero-stream/logic --key <production key> --app-version <x.y.z>
 ```
 
-### The rc.19 toolchain
-
-Both build scripts go through **`cargo mero`** (core `tools/cargo-mero`), pinned by
-`scripts/ensure-cargo-mero.sh` to the same release as the four `calimero-*` git
-tags in `logic/Cargo.toml`. The pin is not cosmetic: the ABI emitter is versioned
-with core, so a tool and an SDK from different releases can embed a schema the node
-doesn't share.
-
-`cargo mero build` emits the ABI from `src/*.rs` (no `build.rs` anywhere — core
-#3319 deleted all 60 of them), compiles to wasm32, size-optimizes with a
-**built-in** `wasm-opt` (reproducible; the old script silently skipped optimization
-when `wasm-opt` wasn't on `PATH`, so identical source produced different bytes per
-machine), and embeds the ABI as the `calimero_abi_v1` custom section.
-
-`cargo mero bundle` derives `manifest.json` from `[package.metadata.calimero]` in
-`Cargo.toml` and the node's own canonical `BundleManifest` type. That replaces a
-hand-written heredoc which shipped `"hash": null` — **a bundle the node rejects as
-malformed before it even checks the signature** — plus unwritable `license` /
-`tags` / `links` slots the registry renders. `build-bundle.sh` re-verifies both
-properties on the packaged `.mpk` rather than trusting the tool.
-
-Bundle metadata now lives in `Cargo.toml`, not in the script.
-
-CI gates: `cargo fmt --check`, `cargo clippy -D warnings`, contract tests, WASM
-build · eslint, prettier, `tsc --noEmit`, vitest, vite build · ruff +
-byte-compile on `scripts/` · the three e2e scenarios as parallel matrix legs.
-The e2e files use distinct port bases (2760/2780/2800) so they can also run
-concurrently on one host.
-
-Toolchain: Rust `1.89.0` (pinned in `logic/rust-toolchain.toml`), pnpm for the
-frontend. The contract pins `calimero-*` to the core release **tag**
-`0.11.0-rc.25`, which must match the merod image in `workflows/e2e.yml` — bump
-them together. (Not `branch = "master"`: that rides unreleased protocol work
-against a released node. Not `tag = "latest"` either: core has no such tag, so it
-resolves only from a warm cargo cache and fails on CI.)
-
-## Owned keys are per owner (core 0.11.0-rc.57)
-
-Since core 0.11.0-rc.57 every owned collection (`Authored…`, `WriteOnce`, `Moderated`,
-`ModeratedOnce`) is one namespace per account: two accounts writing one key hold two
-independent entries, and a key-only `get`, `contains`, `owner_of`, `owned_by_me` or `remove`
-acts on the CALLER's own entry only. This app was migrated:
-
-A member row is keyed by DEVICE. **Semantic change:** a device used to belong to the
-first account that joined with it (the key was taken). Now a second account can file a
-row of its own under someone else's device, so `account_of` reads the row across owners:
-a device held by exactly one account speaks for it, and a device claimed by several
-speaks for **nobody** — a claimant can never post as someone else, at the cost that a
-patched node can silence a device it claims. `join` still refuses a device another
-account holds. A sender's chunks, fragments and cursor are read as that account's own
-entries (`get_by` / `entries_with_owners`), and the moderator's sweep of a departed sender
-removes their chunks with `remove_by`. Test:
-`a_device_row_belongs_to_the_account_that_joined_with_it`.
+⚠️ Known gap: mero-js checks a Cloud node's release against
+`cloud.calimero.network` mirrors, which the served page's CSP does not list
+(docs/COMPONENT-APPS.md, "What the component SDK does not have yet").

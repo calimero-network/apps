@@ -1019,20 +1019,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mero-stream"
-version = "0.0.2"
-dependencies = [
- "base64",
- "borsh",
- "borsh-derive",
- "calimero-sdk",
- "calimero-storage",
- "calimero-storage-macros",
- "hex",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "mero-updates"
 version = "0.1.0"
 dependencies = [

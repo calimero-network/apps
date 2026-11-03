@@ -2,99 +2,25 @@ import "@calimero-apps/glass/glass.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
-import {
-  MeroProvider,
-  AppMode as MeroAppMode,
-} from "@calimero-network/mero-react";
-import "@calimero-network/mero-ui/styles.css";
-import { primeInvitationCapture } from "@calimero-network/mero-react";
+import { nodeBasename } from "@calimero-apps/node-served";
 import App from "./App";
+import { SessionProvider } from "./SessionProvider";
 import { ToastProvider } from "./contexts/ToastContext";
-import { APP_ENABLED, IS_TAURI } from "./lib/tauri";
-import WebOnlyNotice from "./components/WebOnlyNotice";
-import { captureSessionFromHash } from "./lib/session";
-import { APP_SLUG } from "./lib/inviteLink";
+import { captureInvite } from "./lib/streams";
 import "./index.css";
-import { nodeBasename, isServedByNode } from "@calimero-apps/node-served";
 
-// ── Tauri desktop SSO ─────────────────────────────────────────────────────────
-//
-// tauri-app opens this app in a WebviewWindow with auth + stream context in the
-// URL hash (see tauri-app appUtils.ts `openAppFrontend`):
-//
-//   …#node_url=…&access_token=…&refresh_token=…
-//     &app-id=…&context_id=…&executor_public_key=…&expires_at=…
-//
-// SSO is owned by MeroProvider, NOT us: on first render it runs
-// `parseAuthCallback(window.location.href)`, reads `access_token` + `node_url`
-// from this hash, stores them in mero-js's own token store, then strips the hash.
-// We must therefore leave the hash INTACT — all we do here is capture Mero
-// Stream's own context (context_id + executor_public_key + dev_mode) before
-// MeroProvider strips it; those are read by name and never mutate location, so
-// running first is safe. The plain web has no hash → no-op, and App renders the
-// landing page (see App.tsx). Mirrors mero-meet's main.tsx.
-captureSessionFromHash();
+// Before React mounts: whoever opens an invitation link is usually not signed
+// in yet, and the token has to survive the passkey sign-up.
+captureInvite();
 
-// mero-react ≥4.1 REJECTS an SSO callback whose node_url is not explicitly
-// trusted (`allowedNodeUrls`) — it drops the tokens with only a console error.
-// Our node_url legitimately varies per user (everyone runs their own node), so
-// the only workable trust anchor is the node the desktop handed us in THIS
-// open's hash. Read it before MeroProvider strips the hash.
-const hashNodeUrl = APP_ENABLED
-  ? new URLSearchParams(window.location.hash.slice(1)).get("node_url")
-  : null;
-
-// ── Desktop window: stop here ────────────────────────────────────────────────
-//
-// Mero Stream rendered fine inside the Calimero desktop shell, which is exactly
-// why it needed blocking: the UI worked, a stream could be created, and only
-// the media never arrived. Live video is the whole app, so a window that cannot
-// carry it is not a degraded Mero Stream but a convincing imitation of one.
-//
-// `navigator.mediaDevices` is absent in wry's WKWebView — the same wall
-// mero-meet hits — and that is not ours to fix from in here. Say so on open and
-// hand over the link, rather than letting it be discovered three screens later.
-//
-// Deliberately mounted WITHOUT MeroProvider: there is nothing to authenticate
-// for, and a login attempt from a window that cannot use the result is just
-// another dead end.
-if (IS_TAURI) {
-  createRoot(document.getElementById("root")!).render(
-    <StrictMode>
-      <WebOnlyNotice />
-    </StrictMode>,
-  );
-} else {
-  // An invitation reaches this app only as an opened link: the links page (or a
-  // cold desktop start) appends `?invitation=…` to this URL, and a running
-  // desktop sends a `deep-link` event. Captured before the router can rewrite
-  // the URL; a link addressed to another app is dropped, not offered. Not in the
-  // desktop window above: nothing there could redeem it.
-  primeInvitationCapture("mero-stream", { slug: APP_SLUG });
-  createRoot(document.getElementById("root")!).render(
-    <StrictMode>
-      <MeroProvider
-        mode={MeroAppMode.MultiContext}
-        // ⚠️ `?.trim() ||`, never `??`. Vercel inlines a defined-but-EMPTY env
-        // var as `""`, which `??` happily keeps — and an empty packageName makes
-        // `buildAuthLoginUrl` drop the `package-name` param entirely. Without it
-        // auth-frontend cannot look the app up in the registry to authorize the
-        // callback origin, so a hosted login dies on "Login callback destination
-        // is not allowed". That is exactly what shipped on mero-design.
-        packageName={
-          import.meta.env.VITE_APPLICATION_PACKAGE?.trim() ||
-          "com.calimero.mero-stream"
-        }
-        registryUrl="https://apps.calimero.network"
-        servedByNode={isServedByNode(new URL(window.location.href))}
-        allowedNodeUrls={hashNodeUrl ? [hashNodeUrl] : undefined}
-      >
-        <BrowserRouter basename={nodeBasename(new URL(window.location.href), "/")}>
-          <ToastProvider>
-            <App />
-          </ToastProvider>
-        </BrowserRouter>
-      </MeroProvider>
-    </StrictMode>,
-  );
-}
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <SessionProvider>
+      <BrowserRouter basename={nodeBasename(new URL(window.location.href), "/")}>
+        <ToastProvider>
+          <App />
+        </ToastProvider>
+      </BrowserRouter>
+    </SessionProvider>
+  </StrictMode>,
+);
