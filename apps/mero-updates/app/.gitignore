@@ -23,5 +23,3 @@ dist-ssr
 *.sln
 *.sw?
 
-# The node-backed suite's merod home (e2e/global-setup.ts)
-.playwright-data/

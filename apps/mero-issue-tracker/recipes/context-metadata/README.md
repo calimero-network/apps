@@ -1,17 +1,12 @@
-# Recipe: per-context metadata (room topic / description)
+# Recipe: room metadata (topic / description)
 
-Attach propagated, human-readable metadata to a **context** (room) — a topic,
-description, icon, etc. — that every member reads, without touching the room's
-WASM contract. This is the context-level sibling of the workspace-name
-propagation the base already does for namespaces (group metadata).
+Attach human-readable metadata to a **room** (an app instance): a title, a
+topic, an icon, that every member reads, without touching the room's
+contract. v1 kept this as context metadata on the managing group; on
+Calimero 1.0 an app instance carries its own metadata.
 
-- `setContextMetadata(groupId, contextId, { name, data })` — writes a CRDT
-  `MetadataRecord` (`{ name, data, updatedAt, updatedBy }`).
-- `getContextMetadata(groupId, contextId)` — reads it back on any node.
-
-`name` is the display title; `data` is a free `Record<string,string>` (topic,
-description, emoji…). Use it for room headers/settings. `groupId` is the
-room's managing group (the namespace for flat rooms, or the subgroup if you use
-the private-rooms recipe — `getContextGroup(contextId)` resolves it).
+- `client.setAppMetadata(appId, { name, data })`: the app's owner or an admin
+  of its organization; at most 16 KiB of JSON.
+- `(await client.getApp(appId)).metadata`: read by anyone the app reaches.
 
 `useRoomMetadata.ts` is a drop-in hook: `{ meta, setMeta }`.

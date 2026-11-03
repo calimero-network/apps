@@ -107,12 +107,12 @@ export interface Board {
 }
 
 export interface Project {
+  /** The board's app instance id (v1: its context id). */
   contextId: string;
-  // The subgroup's group id (hex 32 bytes). Distinct from contextId — a
-  // DIFFERENT id, though core 0.11.0-rc.27 made both 64 hex so they no longer
-  // look different (core#3691):
-  // member/role admin-API endpoints key off the group id, not the context id.
+  /** The team (organization) the board belongs to. */
   groupId: string;
+  /** The account that created the board's instance: it (or a team admin) may delete it. */
+  owner?: string;
   name: string;
   description: string;
   isPublic: boolean;

@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   MAX_BATCH,
+  MAX_BLOB_BYTES,
   MAX_LOCK_HOURS,
   MAX_OBJECTS,
   MAX_TEXTURE_SIDE,
@@ -33,13 +34,14 @@ describe("the frontend's copies of the contract's rules", () => {
 
   it("uses the contract's limits", () => {
     const limit = (name: string) =>
-      Number(new RegExp(`pub const ${name}: (?:usize|u32) = ([\\d_]+);`).exec(CONTRACT)![1]!.replace(/_/g, ""));
+      Number(new RegExp(`pub const ${name}: (?:usize|u32|u64) = ([\\d_]+);`).exec(CONTRACT)![1]!.replace(/_/g, ""));
     expect(MAX_BATCH).toBe(limit("MAX_BATCH"));
     expect(MAX_OBJECTS).toBe(limit("MAX_OBJECTS"));
     expect(MAX_VERTICES).toBe(limit("MAX_VERTICES"));
     expect(MAX_TRIANGLES).toBe(limit("MAX_TRIANGLES"));
     expect(MAX_TEXTURE_SIDE).toBe(limit("MAX_TEXTURE_SIDE"));
     expect(MAX_LOCK_HOURS).toBe(limit("MAX_LOCK_HOURS"));
+    expect(MAX_BLOB_BYTES).toBe(limit("MAX_BLOB_BYTES"));
   });
 });
 

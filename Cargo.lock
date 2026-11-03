@@ -725,16 +725,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "issue-tracker-types"
-version = "0.1.0"
-dependencies = [
- "borsh",
- "hex",
- "serde",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "itoa"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -842,28 +832,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mero-crm"
-version = "0.1.0"
-dependencies = [
- "calimero-sdk",
- "calimero-storage",
- "calimero-storage-macros",
- "hex",
- "serial_test",
-]
-
-[[package]]
-name = "mero-design"
-version = "0.0.2"
-dependencies = [
- "calimero-sdk",
- "calimero-storage",
- "calimero-storage-macros",
- "serde_json",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "mero-docs"
 version = "10.1.3"
 dependencies = [
@@ -894,48 +862,6 @@ dependencies = [
  "borsh",
  "calimero-sdk",
  "serde",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "mero-forms"
-version = "0.1.0"
-dependencies = [
- "calimero-sdk",
- "calimero-storage",
- "calimero-storage-macros",
- "hex",
-]
-
-[[package]]
-name = "mero-issue-tracker"
-version = "0.1.0"
-dependencies = [
- "calimero-sdk",
- "calimero-storage",
- "calimero-storage-macros",
- "hex",
- "issue-tracker-types",
- "serial_test",
-]
-
-[[package]]
-name = "mero-models"
-version = "0.0.1"
-dependencies = [
- "calimero-sdk",
- "calimero-storage",
- "calimero-storage-macros",
-]
-
-[[package]]
-name = "mero-pixart"
-version = "0.0.2"
-dependencies = [
- "calimero-sdk",
- "calimero-storage",
- "calimero-storage-macros",
- "serde_json",
  "thiserror 1.0.69",
 ]
 
@@ -971,16 +897,6 @@ dependencies = [
 
 [[package]]
 name = "mero-sign"
-version = "0.1.0"
-dependencies = [
- "calimero-sdk",
- "calimero-storage",
- "calimero-storage-macros",
- "hex",
-]
-
-[[package]]
-name = "mero-updates"
 version = "0.1.0"
 dependencies = [
  "calimero-sdk",

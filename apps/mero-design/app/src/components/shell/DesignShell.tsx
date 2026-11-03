@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Outlet, useLocation, useMatch, useNavigate, useSearchParams } from "react-router-dom";
-import { JoinSyncBanner, useJoinSync, useMero } from "@calimero-network/mero-react";
+import { useAuth } from "../../sessionContext";
 import { getNodeIdentity } from "../../api/rpc";
 import { useTeamList } from "../../hooks/useTeamList";
 import { useBoardList } from "../../hooks/useBoardList";
@@ -59,7 +59,7 @@ export default function DesignShell() {
   const location = useLocation();
   const [params, setParams] = useSearchParams();
   const { showToast } = useToast();
-  const { logout, nodeUrl } = useMero();
+  const { logout, nodeUrl } = useAuth();
 
   const teamMatch = useMatch("/teams/:teamId/*");
   const boardMatch = useMatch("/teams/:teamId/projects/:projectId");
@@ -103,12 +103,6 @@ export default function DesignShell() {
     if (projectId) rememberBoard(nodeUrl, teamId, projectId);
     else rememberTeam(nodeUrl, teamId);
   }, [teamId, projectId, nodeUrl]);
-
-  // A team just joined by invitation has not replicated yet; the invitation
-  // dialog holds "Syncing…", and this banner shows, until the team's boards
-  // have been read. An empty list counts (a new team has none); a failed read
-  // does not, and the 30 s poll tries again.
-  const joinSync = useJoinSync({ namespaceId: teamId, settled: !!teamId && boards.listedFor === teamId });
 
   const toggleRail = useCallback(() => {
     if (narrow) {
@@ -277,14 +271,6 @@ export default function DesignShell() {
           {showRail && <aside className={styles.rail}>{rail}</aside>}
 
           <main className={styles.main}>
-            {joinSync.isSyncing && (
-              <JoinSyncBanner
-                show
-                what="boards"
-                onDismiss={joinSync.dismiss}
-                className={styles.syncBanner}
-              />
-            )}
             <Outlet />
           </main>
 
@@ -341,7 +327,7 @@ export default function DesignShell() {
       {deletingTeam && (
         <ConfirmDialog
           title="Delete team?"
-          message={`${teamName} and its boards will be removed from this node. Other members keep their copies.`}
+          message={`${teamName} and every board in it will be deleted for everyone. This cannot be undone.`}
           confirmLabel="Delete team"
           destructive
           onCancel={() => setDeletingTeam(false)}

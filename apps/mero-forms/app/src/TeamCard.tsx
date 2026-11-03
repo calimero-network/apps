@@ -1,59 +1,39 @@
-import { useEffect, useState } from "react";
-import { useMero } from "@calimero-network/mero-react";
-import { InviteCard } from "./InviteCard";
-import { PersonName } from "./names";
+import { useState } from "react";
+import { describeError } from "@calimero-apps/connect";
+import { inviteLink, inviteToken } from "./lib/orgs";
+import { PersonName, useOrg } from "./names";
+import { useSignedIn } from "./sessionContext";
 import { Avatar } from "./ui";
 import { useRead, type Workspace } from "./useWorkspace";
 
 /**
  * Who builds the forms and reads the responses, and how to bring someone in.
  *
- * Joining the namespace is not joining the team: a namespace member can see
- * that the workspace exists, but only the team (the admins and the `team`
- * role) builds forms and reads responses. So an admin brings someone in in two steps — the
+ * Joining the organization is not joining the team: an org member reaches the
+ * workspace, but only the team (the admins and the accounts they add) builds
+ * forms and reads responses. So an admin brings someone in in two steps: the
  * invitation link, then "Add to team" once they appear below as a member.
- * Form keys are members too, and are never offered.
  */
 export function TeamCard({
   workspace,
-  contextId,
-  namespaceId,
+  appId,
+  org,
   isAdmin,
   me,
 }: {
   workspace: Workspace;
-  contextId: string;
-  namespaceId: string | null;
+  appId: string;
+  org: string | null;
   isAdmin: boolean;
   me: string | null;
 }) {
-  const { admin } = useMero();
+  const { members, reload } = useOrg();
   const team = useRead(workspace.client, workspace.version, (c) => c.listTeam(), []);
-  const keys = useRead(
-    workspace.client,
-    workspace.version,
-    (c) => (isAdmin ? c.listFormKeys() : Promise.resolve([])),
-    [isAdmin],
-  );
-  const [members, setMembers] = useState<string[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!admin || !namespaceId || !isAdmin) return;
-    let live = true;
-    admin
-      .listGroupMembers(namespaceId)
-      .then((r) => live && setMembers(r.members.map((m) => m.identity.toLowerCase())))
-      .catch(() => live && setMembers([]));
-    return () => {
-      live = false;
-    };
-  }, [admin, namespaceId, isAdmin, workspace.version]);
-
   const onTeam = new Set((team.data ?? []).map((m) => m.account));
-  const isKey = new Set((keys.data ?? []).map((k) => k.account));
-  const candidates = (members ?? []).filter((a) => !onTeam.has(a) && !isKey.has(a));
+  const candidates = members ? [...members.roles.keys()].filter((a) => !onTeam.has(a)).sort() : null;
 
   function run(account: string, fn: () => Promise<unknown>) {
     setBusy(account);
@@ -96,14 +76,14 @@ export function TeamCard({
         <section className="card">
           <h2>Members not on the team</h2>
           <p className="empty">
-            People who joined the namespace with an invitation. Add them to give them the forms.
+            People in this workspace&apos;s organization. Add them to give them the forms.
           </p>
-          {members === null && <p className="empty">Loading members…</p>}
-          {members !== null && candidates.length === 0 && (
+          {candidates === null && <p className="empty">Loading members…</p>}
+          {candidates !== null && candidates.length === 0 && (
             <p className="empty">Nobody waiting. Send an invitation below.</p>
           )}
           <ul className="people-list">
-            {candidates.map((account) => (
+            {(candidates ?? []).map((account) => (
               <li key={account} className="person-row">
                 <Avatar account={account} size={28} />
                 <span className="person-name">
@@ -111,7 +91,12 @@ export function TeamCard({
                 </span>
                 <button
                   disabled={busy === account}
-                  onClick={() => run(account, () => workspace.act((c) => c.addTeamMember({ who: account })))}
+                  onClick={() =>
+                    run(account, async () => {
+                      await workspace.act((c) => c.addTeamMember({ who: account }));
+                      reload();
+                    })
+                  }
                 >
                   {busy === account ? "Adding…" : "Add to team"}
                 </button>
@@ -122,7 +107,72 @@ export function TeamCard({
         </section>
       )}
 
-      {isAdmin && <InviteCard contextId={contextId} />}
+      {isAdmin && org && <InviteCard org={org} appId={appId} />}
     </>
+  );
+}
+
+/**
+ * Make a shareable invitation into this workspace's organization: an org
+ * invite token, approved with your passkey, in a link that opens this app and
+ * lands in this workspace. Whoever opens it joins the org; add them to the
+ * team above to give them the forms.
+ */
+export function InviteCard({ org, appId }: { org: string; appId: string }) {
+  const { client, passkey, after } = useSignedIn();
+  const [link, setLink] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+
+  async function mint() {
+    setBusy(true);
+    setFailed(null);
+    setCopied(false);
+    try {
+      setLink(inviteLink(await inviteToken(client, org, passkey()), appId));
+    } catch (e) {
+      setFailed(describeError(e));
+    } finally {
+      setBusy(false);
+      after();
+    }
+  }
+
+  async function copy() {
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopied(true);
+    } catch {
+      // The link is on screen and selectable; the clipboard is a convenience.
+      setCopied(false);
+    }
+  }
+
+  return (
+    <div className="card">
+      <h2>Invite a teammate</h2>
+      <p className="empty" style={{ marginBottom: 14 }}>
+        One link, approved with your passkey. Whoever opens it signs in with a passkey and joins
+        this workspace&apos;s organization; add them to the team above to give them the forms.
+      </p>
+      <div className="row">
+        <button onClick={() => void mint()} disabled={busy}>
+          {busy ? "Creating…" : link ? "Create another" : "Create invite link"}
+        </button>
+        {link && (
+          <button className="ghost" onClick={() => void copy()}>
+            {copied ? "Copied" : "Copy"}
+          </button>
+        )}
+      </div>
+      {link && (
+        <code className="invite-link mono" title={link}>
+          {link}
+        </code>
+      )}
+      {failed && <pre className="err">{failed}</pre>}
+    </div>
   );
 }

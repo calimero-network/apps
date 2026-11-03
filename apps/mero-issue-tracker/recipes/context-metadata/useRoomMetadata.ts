@@ -1,58 +1,42 @@
 /**
- * RECIPE — propagated per-room (context) metadata: topic / description. Copy
- * into app/src/hooks. No contract change needed. Not built into the base.
+ * RECIPE: a room's metadata (title + free key/value data) as app metadata.
+ * Reference code; copy into app/src/hooks/. Not compiled as-is.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { useMero } from '@calimero-network/mero-react';
+import type { CalimeroClient } from '@calimero-network/mero-js';
 
 export interface RoomMeta {
   name: string;
-  topic: string;
-  description: string;
+  data: Record<string, string>;
 }
 
-const EMPTY: RoomMeta = { name: '', topic: '', description: '' };
+export function useRoomMetadata(client: Pick<CalimeroClient, 'getApp' | 'setAppMetadata'>, appId: string | null) {
+  const [meta, setMetaState] = useState<RoomMeta | null>(null);
 
-export function useRoomMetadata(contextId: string | null) {
-  const { mero } = useMero();
-  const [groupId, setGroupId] = useState<string | null>(null);
-  const [meta, setMetaState] = useState<RoomMeta>(EMPTY);
-
-  // Resolve the room's managing group (namespace for flat rooms; subgroup if
-  // you use the private-rooms recipe).
   useEffect(() => {
-    if (!mero || !contextId) return;
-    let cancelled = false;
-    // getContextGroup → the managing group id as a string | null.
-    mero.admin.getContextGroup(contextId).then(
-      (g) => { if (!cancelled) setGroupId(g ?? null); },
-      () => { if (!cancelled) setGroupId(null); },
-    );
-    return () => { cancelled = true; };
-  }, [mero, contextId]);
+    if (!appId) return;
+    let live = true;
+    client
+      .getApp(appId)
+      .then((app) => {
+        const m = (app.metadata ?? null) as Partial<RoomMeta> | null;
+        if (live) setMetaState(m && typeof m.name === 'string' ? { name: m.name, data: m.data ?? {} } : null);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [client, appId]);
 
-  const refresh = useCallback(async () => {
-    if (!mero || !contextId || !groupId) return;
-    const rec = await mero.admin.getContextMetadata(groupId, contextId).catch(() => null);
-    setMetaState({
-      name: rec?.name ?? '',
-      topic: rec?.data?.topic ?? '',
-      description: rec?.data?.description ?? '',
-    });
-  }, [mero, contextId, groupId]);
+  /** The app's owner or an org admin; the node refuses anyone else. */
+  const setMeta = useCallback(
+    async (next: RoomMeta) => {
+      if (!appId) return;
+      await client.setAppMetadata(appId, next);
+      setMetaState(next);
+    },
+    [client, appId],
+  );
 
-  useEffect(() => { void refresh(); }, [refresh]);
-
-  /** Write propagated metadata so all members see the same topic/description. */
-  const setMeta = useCallback(async (next: Partial<RoomMeta>) => {
-    if (!mero || !contextId || !groupId) return;
-    const merged = { ...meta, ...next };
-    await mero.admin.setContextMetadata(groupId, contextId, {
-      name: merged.name,
-      data: { topic: merged.topic, description: merged.description },
-    });
-    setMetaState(merged);
-  }, [mero, contextId, groupId, meta]);
-
-  return { meta, setMeta, refresh };
+  return { meta, setMeta };
 }

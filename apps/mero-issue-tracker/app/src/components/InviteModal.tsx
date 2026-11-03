@@ -1,10 +1,9 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import styled, { keyframes } from "styled-components";
 import { tokens as t } from "../theme";
-import { generateInvitationUrl } from "../utils/invitation";
 
 interface InviteModalProps {
-  /** Mints an invitation and returns the JSON payload the link carries. */
+  /** Mints an invitation (a passkey step-up) and returns the link to share. */
   onInvite: () => Promise<string>;
   onClose: () => void;
 }
@@ -23,21 +22,15 @@ export default function InviteModal({ onInvite, onClose }: InviteModalProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  // The one thing to share. Opened, never pasted: the links page hands it to
-  // the app (or a running desktop), which asks the invitee before joining.
-  const webUrl = useMemo(
-    () => (payload ? generateInvitationUrl(payload) : ""),
-    [payload],
-  );
+  // The one thing to share: a link to this frontend carrying the org invite
+  // token, which the invitee redeems after signing in.
+  const webUrl = payload ?? "";
 
   const handleGenerate = async () => {
     setLoading(true);
     setError(null);
     try {
-      // Already JSON: `useWorkspace.invite` builds the shared payload (which is
-      // what carries the workspace NAME to the joiner) and serialises it. The
-      // old `JSON.stringify(await onInvite())` double-encoded nothing useful —
-      // it wrapped the raw admin response, whose shape no other mero app reads.
+      // Minting an invite is a passkey step-up: the browser asks for it.
       setPayload(await onInvite());
     } catch (err) {
       setError(

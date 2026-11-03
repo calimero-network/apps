@@ -1,0 +1,663 @@
+[
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "join",
+  "args": {
+   "name": "Ada",
+   "now": "1727000000000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "putObjects",
+  "args": {
+   "objects": [
+    {
+     "id": "body",
+     "name": "Body",
+     "kind": "cube",
+     "parent": "",
+     "position": {
+      "x": 0.0,
+      "y": 0.5,
+      "z": 0.0
+     },
+     "rotation": {
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0
+     },
+     "scale": {
+      "x": 1.0,
+      "y": 1.0,
+      "z": 1.0
+     },
+     "visible": true,
+     "material": {
+      "color": "#c8ccd4",
+      "metalness": 0.0,
+      "roughness": 0.6,
+      "opacity": 1.0,
+      "emissive": "#000000",
+      "wireframe": false,
+      "flat_shading": false,
+      "base_color_map": "",
+      "normal_map": "",
+      "normal_scale": 1.0,
+      "orm_map": "",
+      "emissive_map": ""
+     },
+     "segments": 32,
+     "intensity": 0.0,
+     "created_by": "",
+     "created_at": 0,
+     "updated_at": 0
+    },
+    {
+     "id": "fin",
+     "name": "Fin",
+     "kind": "mesh",
+     "parent": "body",
+     "position": {
+      "x": 0.75,
+      "y": 0.5,
+      "z": 0.0
+     },
+     "rotation": {
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0
+     },
+     "scale": {
+      "x": 1.0,
+      "y": 1.0,
+      "z": 1.0
+     },
+     "visible": true,
+     "material": {
+      "color": "#c8ccd4",
+      "metalness": 0.0,
+      "roughness": 0.6,
+      "opacity": 1.0,
+      "emissive": "#000000",
+      "wireframe": false,
+      "flat_shading": false,
+      "base_color_map": "",
+      "normal_map": "",
+      "normal_scale": 1.0,
+      "orm_map": "",
+      "emissive_map": ""
+     },
+     "segments": 32,
+     "intensity": 0.0,
+     "created_by": "",
+     "created_at": 0,
+     "updated_at": 0
+    }
+   ],
+   "now": "1727000000001"
+  },
+  "expect": {
+   "ok": [
+    "body",
+    "fin"
+   ]
+  },
+  "events": {
+   "bob": [
+    "MemberChanged",
+    "ObjectsChanged"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setEnvironment",
+  "args": {
+   "environment": {
+    "name": "Robot",
+    "background": "#1d1f24",
+    "ambient_color": "#ffffff",
+    "ambient_intensity": 0.4,
+    "updated_at": 0
+   },
+   "now": "1727000000002"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "join",
+  "args": {
+   "name": "Bea",
+   "now": "1727000000003"
+  },
+  "expect": {
+   "ok": null
+  },
+  "events": {
+   "bob": [
+    "MemberChanged",
+    "ObjectsChanged",
+    "EnvironmentChanged",
+    "MemberChanged"
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getScene",
+  "args": {},
+  "expect": {
+   "ok": {
+    "name": "Robot",
+    "environment": {
+     "name": "Robot",
+     "background": "#1d1f24",
+     "ambient_color": "#ffffff",
+     "ambient_intensity": 0.4,
+     "updated_at": 1727000000002
+    },
+    "object_count": 2,
+    "mesh_count": 0,
+    "texture_count": 0,
+    "member_count": 2,
+    "me": "@bob",
+    "my_role": "viewer"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getObjectsByIds",
+  "args": {
+   "ids": [
+    "fin",
+    "body"
+   ]
+  },
+  "expect": {
+   "ok": [
+    {
+     "id": "fin",
+     "name": "Fin",
+     "kind": "mesh",
+     "parent": "body",
+     "position": {
+      "x": 0.75,
+      "y": 0.5,
+      "z": 0.0
+     },
+     "rotation": {
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0
+     },
+     "scale": {
+      "x": 1.0,
+      "y": 1.0,
+      "z": 1.0
+     },
+     "visible": true,
+     "material": {
+      "color": "#c8ccd4",
+      "metalness": 0.0,
+      "roughness": 0.6,
+      "opacity": 1.0,
+      "emissive": "#000000",
+      "wireframe": false,
+      "flat_shading": false,
+      "base_color_map": "",
+      "normal_map": "",
+      "normal_scale": 1.0,
+      "orm_map": "",
+      "emissive_map": ""
+     },
+     "segments": 32,
+     "intensity": 0.0,
+     "created_by": "@owner",
+     "created_at": 1727000000001,
+     "updated_at": 1727000000001
+    },
+    {
+     "id": "body",
+     "name": "Body",
+     "kind": "cube",
+     "parent": "",
+     "position": {
+      "x": 0.0,
+      "y": 0.5,
+      "z": 0.0
+     },
+     "rotation": {
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0
+     },
+     "scale": {
+      "x": 1.0,
+      "y": 1.0,
+      "z": 1.0
+     },
+     "visible": true,
+     "material": {
+      "color": "#c8ccd4",
+      "metalness": 0.0,
+      "roughness": 0.6,
+      "opacity": 1.0,
+      "emissive": "#000000",
+      "wireframe": false,
+      "flat_shading": false,
+      "base_color_map": "",
+      "normal_map": "",
+      "normal_scale": 1.0,
+      "orm_map": "",
+      "emissive_map": ""
+     },
+     "segments": 32,
+     "intensity": 0.0,
+     "created_by": "@owner",
+     "created_at": 1727000000001,
+     "updated_at": 1727000000001
+    }
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "checkOut",
+  "args": {
+   "ids": [
+    "fin"
+   ],
+   "hours": 8,
+   "now": "1727000000004"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "view only: ask the scene's admin for the editor role to change it"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "myRole",
+  "args": {},
+  "expect": {
+   "ok": "viewer"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "grantEditor",
+  "args": {
+   "member": "@bob"
+  },
+  "expect": {
+   "ok": null
+  },
+  "events": {
+   "bob": [
+    "MemberChanged",
+    "ObjectsChanged",
+    "EnvironmentChanged",
+    "MemberChanged",
+    "RoleChanged"
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "myRole",
+  "args": {},
+  "expect": {
+   "ok": "editor"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "checkOut",
+  "args": {
+   "ids": [
+    "fin"
+   ],
+   "hours": 8,
+   "now": "1727000000005"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "listLocks",
+  "args": {
+   "now": "1727000000006"
+  },
+  "expect": {
+   "ok": [
+    {
+     "asset_id": "fin",
+     "holder": "@bob",
+     "since": 1727000000005,
+     "expires_at": 1727028800005,
+     "mine": false
+    }
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deleteObjects",
+  "args": {
+   "ids": [
+    "fin"
+   ],
+   "now": "1727000000007"
+  },
+  "expect": {
+   "error": "Locked",
+   "fields": {
+    "message": "fin is checked out by Bea; ask them to check it in"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "putObjects",
+  "args": {
+   "objects": [
+    {
+     "id": "fin",
+     "name": "Fin",
+     "kind": "mesh",
+     "parent": "body",
+     "position": {
+      "x": 1.5,
+      "y": 0.5,
+      "z": 0.0
+     },
+     "rotation": {
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0
+     },
+     "scale": {
+      "x": 1.0,
+      "y": 1.0,
+      "z": 1.0
+     },
+     "visible": true,
+     "material": {
+      "color": "#c8ccd4",
+      "metalness": 0.0,
+      "roughness": 0.6,
+      "opacity": 1.0,
+      "emissive": "#000000",
+      "wireframe": false,
+      "flat_shading": false,
+      "base_color_map": "",
+      "normal_map": "",
+      "normal_scale": 1.0,
+      "orm_map": "",
+      "emissive_map": ""
+     },
+     "segments": 32,
+     "intensity": 0.0,
+     "created_by": "",
+     "created_at": 0,
+     "updated_at": 0
+    }
+   ],
+   "now": "1727000000008"
+  },
+  "expect": {
+   "ok": [
+    "fin"
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "checkIn",
+  "args": {
+   "ids": [
+    "fin"
+   ]
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "listLocks",
+  "args": {
+   "now": "1727000000009"
+  },
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getMembers",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "id": "@owner",
+     "name": "Ada",
+     "role": "admin",
+     "joined_at": 1727000000000
+    },
+    {
+     "id": "@bob",
+     "name": "Bea",
+     "role": "editor",
+     "joined_at": 1727000000003
+    }
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "revokeEditor",
+  "args": {
+   "member": "@bob"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "putObjects",
+  "args": {
+   "objects": [
+    {
+     "id": "tail",
+     "name": "Tail",
+     "kind": "cone",
+     "parent": "",
+     "position": {
+      "x": 0.0,
+      "y": 0.5,
+      "z": 0.0
+     },
+     "rotation": {
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0
+     },
+     "scale": {
+      "x": 1.0,
+      "y": 1.0,
+      "z": 1.0
+     },
+     "visible": true,
+     "material": {
+      "color": "#c8ccd4",
+      "metalness": 0.0,
+      "roughness": 0.6,
+      "opacity": 1.0,
+      "emissive": "#000000",
+      "wireframe": false,
+      "flat_shading": false,
+      "base_color_map": "",
+      "normal_map": "",
+      "normal_scale": 1.0,
+      "orm_map": "",
+      "emissive_map": ""
+     },
+     "segments": 32,
+     "intensity": 0.0,
+     "created_by": "",
+     "created_at": 0,
+     "updated_at": 0
+    }
+   ],
+   "now": "1727000000010"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "view only: ask the scene's admin for the editor role to change it"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deleteObjects",
+  "args": {
+   "ids": [
+    "fin"
+   ],
+   "now": "1727000000011"
+  },
+  "expect": {
+   "ok": null
+  },
+  "events": {
+   "bob": [
+    "MemberChanged",
+    "ObjectsChanged",
+    "EnvironmentChanged",
+    "MemberChanged",
+    "RoleChanged",
+    "LocksChanged",
+    "ObjectsChanged",
+    "LocksChanged",
+    "RoleChanged",
+    "ObjectsDeleted"
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getObjects",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "id": "body",
+     "name": "Body",
+     "kind": "cube",
+     "parent": "",
+     "position": {
+      "x": 0.0,
+      "y": 0.5,
+      "z": 0.0
+     },
+     "rotation": {
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0
+     },
+     "scale": {
+      "x": 1.0,
+      "y": 1.0,
+      "z": 1.0
+     },
+     "visible": true,
+     "material": {
+      "color": "#c8ccd4",
+      "metalness": 0.0,
+      "roughness": 0.6,
+      "opacity": 1.0,
+      "emissive": "#000000",
+      "wireframe": false,
+      "flat_shading": false,
+      "base_color_map": "",
+      "normal_map": "",
+      "normal_scale": 1.0,
+      "orm_map": "",
+      "emissive_map": ""
+     },
+     "segments": 32,
+     "intensity": 0.0,
+     "created_by": "@owner",
+     "created_at": 1727000000001,
+     "updated_at": 1727000000001
+    }
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "clearScene",
+  "args": {},
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the scene's admin can do that"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "clearScene",
+  "args": {},
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getObjects",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ }
+]
