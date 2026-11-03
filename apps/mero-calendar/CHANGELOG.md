@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## Calimero 1.0 (component SDK)
+
+- **Contract** on core's component SDK (`calimero-app-sdk` at `1.0.0-rc.8`,
+  `wasm32-wasip2`): the same methods, camelCase on the wire; shared events in a
+  `Table`, private events and booking links as per-owner rows only the owner's
+  calls read, display names per account. Every change a client sees is listed in
+  the README ("What changed in the port").
+- **Tests**: core's `TestApp` harness (`tests/harness.rs`) and
+  `scenarios/*.json` ported from the merobox workflows, run in the harness and on
+  `merod local` (CI's e2e job).
+- **Frontend** on mero-js `CalimeroClient` through `@calimero-apps/connect`:
+  passkey accounts, teams as orgs, calendars as app instances, org invites,
+  booking links as API keys; local nodes in dev, Calimero Cloud in production.
+- **Removed**: merobox workflows and scripts, the Makefile, v1 Playwright suites,
+  mero-react, the desktop SSO hand-off and the v1 invitation codec.
+
 ## [Unreleased] — Mero Calendar
 
 Major rebrand and rewrite of the former "plantr" template into **Mero Calendar**.

@@ -4,8 +4,9 @@ import { describe, expect, it } from "vitest";
 import { parseLens, runLens, type LensHost } from "./lens";
 import { validateLens, type Abi } from "./validate";
 
-const APPS = path.resolve(__dirname, "../../../..");
-const abi = JSON.parse(readFileSync(path.join(APPS, "mero-calendar/logic/res/abi.json"), "utf8")) as Abi;
+// The v1 calendar's ABI, frozen when the app moved to Calimero 1.0: hyperfeed
+// runs on v1 nodes, where the calendar is still the published v1 bundle.
+const abi = JSON.parse(readFileSync(path.join(__dirname, "../fixtures/abi/mero-calendar-v1.json"), "utf8")) as Abi;
 const lens = parseLens(readFileSync(path.join(__dirname, "fixtures", "calendar.json"), "utf8"));
 
 // Accounts as mero-calendar writes them: 32 bytes, hex.

@@ -290,22 +290,26 @@ export const APPS = {
   },
 
   'mero-calendar': {
+    // A component app (Calimero 1.0): sign-in is the app's own passkey modal,
+    // handed to the landing page as `onConnect`; there is no mero-react popup.
+    ownConnect: true,
     e2eDir: 'e2e',
     // This app ships its own light/dark switch; the landing toggle writes the
     // same key so the choice carries through sign-in instead of resetting.
     themeStorageKey: 'mc-theme',
-    availability: 'web+desktop',
-    trust: ['Teams are namespaces', 'Private events never sync', 'Light and dark'],
+    // Calimero 1.0 is reached from the browser (passkeys); no desktop node hand-off.
+    availability: 'web',
+    trust: ['Teams you invite', 'Private events stay yours', 'Light and dark'],
     explainer: [
-      'A shared calendar for a team that does not want its schedule sitting in someone else’s cloud. A team is a Calimero namespace, so the people in it are exactly the people you invited, and the calendar lives on their nodes and yours.',
-      'Shared events are owner-gated: only the person who created an event can change or delete it, and every node enforces that. Your calendar shows what you own or were invited to, but every shared event replicates to the whole team, so anything confidential belongs in a private event. Private events use node-local storage and never replicate at all — they exist on your machine and nowhere else.',
+      'A shared calendar for a team that does not want its schedule sitting in someone else’s cloud. A team is a Calimero organization, so the people in it are exactly the people you invited, and its calendars run on attested Calimero nodes.',
+      'Shared events are owner-gated: only the person who created an event can change or delete it, and only its owner and the people invited to it can read it. Private events are yours alone: no other member can read them through the app. Booking links let someone with no account book a meeting with you.',
     ],
     features: [
-      { icon: 'Grid', title: 'Teams are namespaces', body: 'Everyone in the namespace syncs the same calendar. Membership is the access model.' },
-      { icon: 'Shield', title: 'Owner-gated shared events', body: 'Only an event’s owner can edit or delete it, on every node. Your view shows what you own or were invited to; the team can still read every shared event.' },
-      { icon: 'EyeOff', title: 'Genuinely private events', body: 'Node-local storage that never replicates. Not "private" as a flag on a shared record.' },
+      { icon: 'Grid', title: 'Teams you invite', body: 'A team is an organization; its members are the people you invited, and each team can hold several calendars.' },
+      { icon: 'Shield', title: 'Owner-gated shared events', body: 'Only an event’s owner can edit or delete it. Only its owner and invitees can read it.' },
+      { icon: 'EyeOff', title: 'Private events', body: 'Events with nobody else in them are yours alone: no other member reads them.' },
       { icon: 'Moon', title: 'Light and dark themes', body: 'With an accessible palette, because a calendar is something people stare at all day.' },
-      { icon: 'HeartCheck', title: 'Readable identities', body: 'Display names instead of key hashes, so a shared calendar reads like one.' },
+      { icon: 'HeartCheck', title: 'Readable identities', body: 'Display names instead of account ids, so a shared calendar reads like one.' },
     ],
   },
 

@@ -1,6 +1,6 @@
 import React, { FC } from 'react';
 import styles from './error-modal.module.scss';
-import { useAuth } from '../../../hooks/useAuth';
+import { useSessionApi } from '../../../api/sessionContext';
 import { nodeBasename } from '@calimero-apps/node-served';
 
 interface IErrorModalProps {
@@ -14,12 +14,12 @@ const ErrorModal: FC<IErrorModalProps> = ({
   closeError,
   errorType,
 }) => {
-  const { logout } = useAuth();
+  const { api } = useSessionApi();
 
   const handleCloseError = () => {
     if (errorType === 'websocket') {
       closeError();
-      logout();
+      void api.signOut();
       window.location.href = nodeBasename(new URL(window.location.href), '/');
     } else {
       closeError();

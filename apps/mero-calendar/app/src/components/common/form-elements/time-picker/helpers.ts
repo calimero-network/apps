@@ -29,7 +29,7 @@ export const getOptionIndx = (times: [string, string][], selectedTime: string) =
 export const parseTimeString = (timeValue: string) => {
   const timeStr = timeValue.replace(/\D+/gi, '');
     let hours = +timeStr.slice(0, 2) % 24;
-    let mins = +timeStr.slice(2, 4).padEnd(2, '0');
+    const mins = +timeStr.slice(2, 4).padEnd(2, '0');
 
     if (mins === 60) {
       hours++;

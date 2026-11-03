@@ -3,15 +3,15 @@ export const validationMethodsWithoutParams = {
     return !value.trim() ? { status: false, errorMessage: "Required field!" } : { status: true };
   },
   isNumber(value: string) {
-    let regex = /^\d+$/;
+    const regex = /^\d+$/;
     return !(regex.test(value)) ? { status: false, errorMessage: "The field must contains number" } : { status: true };
   },
   isNumberWithColon(value: string) {
-    let regex = /^[0-9:]+$/gi;
+    const regex = /^[0-9:]+$/gi;
     return !(regex.test(value)) ? { status: false, errorMessage: "The field must contains number with colon" } : { status: true };
   },
   isEmail(value: string) {
-    let regex = /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,24})+$/;
+    const regex = /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,24})+$/;
     return !(regex.test(value)) ? { status: false, errorMessage: "Not valid email" } : { status: true };
   },
 }

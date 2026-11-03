@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useState } from "react";
 import { useValidator } from "../useValidator";
 import { IErrorsMessages, IRules, IValidatorData } from "../useValidator/types";
 import { TSubmitHandler } from "./types";
@@ -17,7 +17,7 @@ const createNewErrors = <Fields>(errors: IErrorsMessages<Fields>, deleteField: s
   }, {} as IErrorsMessages<Fields>);
 }
 
-const isEmpty = (obj: Object) => Object.keys(obj).length === 0;
+const isEmpty = (obj: object) => Object.keys(obj).length === 0;
 
 export const useForm = <FormValues extends IValidatorData>({ defaultValues, rules = {} }: IUseFormProps<FormValues>) => {
   const { errors, validate, checkField, fails, setErrors } = useValidator<FormValues>();
@@ -27,7 +27,7 @@ export const useForm = <FormValues extends IValidatorData>({ defaultValues, rule
   const setValue = (name: keyof typeof defaultValues, value: FormValues[keyof FormValues]) => {
     const errorMessage = checkField({ fieldRules: rules[name], value, fields: values });
     if (!isEmpty(rules)) {
-      if (Boolean(errorMessage)) {
+      if (errorMessage) {
         setErrors({...errors, [name]: errorMessage as string });
       } else {
         setErrors(createNewErrors(errors, name as string));

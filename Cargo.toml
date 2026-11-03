@@ -71,6 +71,7 @@ exclude = [
   "apps/mero-sheets/logic/crates/recalc",
   "apps/mero-sheets/logic/crates/recalc-wasm",
   "apps/mero-sheets/logic/crates/types",
+  "apps/mero-calendar/logic",
 ]
 
 [workspace.package]
