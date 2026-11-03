@@ -816,19 +816,23 @@ export const APPS = {
 
   'mero-sheets': {
     displayName: 'Mero Sheets',
-    e2eDir: 'e2e',
+    // A component app (calimero-app-sdk, merod local, CalimeroClient): no
+    // Playwright, so no generated landing spec. docs/COMPONENT-APPS.md.
+    e2eDir: null,
+    // Passes its own passkey sign-in to the landing page as `onConnect`.
+    ownConnect: true,
     // This app ships its own light/dark switch; the landing toggle writes the
     // same key so the choice carries through sign-in instead of resetting.
     // The app's own key: it reads the old `app:theme` only while this is unset.
     themeStorageKey: 'mero-sheets:theme',
-    availability: 'web+desktop',
-    trust: ['Live collaboration', 'Formulas recompute for all peers', 'Sheet on your node'],
+    availability: 'web',
+    trust: ['Live collaboration', 'Formulas recompute for everyone', 'No passwords'],
     explainer: [
-      'A collaborative spreadsheet where you can see everyone’s cursor and nobody can see your data except the people you invited. The sheet lives in a Calimero context on your own node.',
+      'A collaborative spreadsheet where you can see everyone’s cursor and nobody can see your data except the people you invited. The workbook is a Calimero app instance only the members of your workspace can open.',
       'Formulas are stored raw and re-evaluated for every peer whenever a cell they reference changes, so nobody is looking at a stale total — which is the failure that makes shared spreadsheets untrustworthy in the first place.',
     ],
     features: [
-      { icon: 'Lock', title: 'Truly private sheets', body: 'The data lives in a context you control. It never passes through a central server.' },
+      { icon: 'Lock', title: 'Truly private sheets', body: 'Only the people in your workspace can open it, and your account is a passkey.' },
       { icon: 'Zap', title: 'Live collaboration', body: 'Every collaborator’s cursor in their own colour, and their edits on your screen as they make them.' },
       { icon: 'BarChart', title: 'Formulas that always compute', body: '94 functions, from SUMIFS and XLOOKUP to TEXT and EOMONTH, re-evaluated per peer whenever a referenced cell changes.' },
       { icon: 'Table', title: 'Multiple sheet tabs', body: 'Split a workbook the way you would expect, with tabs that sync like everything else.' },
@@ -837,9 +841,8 @@ export const APPS = {
     ],
     overview: {
       headline: 'The spreadsheet your team actually owns.',
-      // Recorded from the real app on a real node by `pnpm landing:media` in
-      // apps/mero-sheets/app. The chapter times match CHAPTERS in
-      // e2e/media/capture-landing-media.spec.ts.
+      // Recorded from the v1 app on a real node (the Playwright capture that
+      // made it went with the move to Calimero 1.0).
       showcase: {
         heading: 'A budget, filled in together',
         sub: 'Recorded from the real app, running on a real node — the totals are the app’s own formula engine at work.',
@@ -847,7 +850,7 @@ export const APPS = {
           src: '/landing/demo.webm',
           poster: '/landing/demo-poster.jpg',
           chapters: [
-            { at: 0, title: 'Open a workbook', body: 'A Q3 budget on your node, with Ada from your team already in it.' },
+            { at: 0, title: 'Open a workbook', body: 'A Q3 budget in your workspace, with Ada from your team already in it.' },
             { at: 3, title: 'Type a number', body: 'Fill in a cell and every total that reads it recomputes.' },
             { at: 8, title: 'Write a formula', body: 'Start typing =AV and autocomplete offers AVERAGE, with its arguments.' },
             { at: 14.5, title: 'Ada edits, live', body: 'Her cursor walks up to Wages, her number lands, and the totals update on your screen.' },
@@ -859,11 +862,11 @@ export const APPS = {
         sub: 'Everything you expect from a shared spreadsheet. The difference is who holds the numbers.',
         themLabel: 'A typical cloud spreadsheet',
         rows: [
-          { label: 'Where the sheet lives', them: 'On the vendor’s servers', us: 'On your node, and the nodes of the people you invite' },
+          { label: 'Where the sheet lives', them: 'On the vendor’s servers', us: 'In an app instance only your workspace can open' },
           { label: 'Who can read it', them: 'The vendor, and whoever it grants access', us: 'Only members of the workbook’s namespace' },
           { label: 'Adding a collaborator', them: 'Another seat on the monthly bill', us: 'An invite. The app is open source and free' },
           { label: 'Formulas', them: 'Computed on their servers', us: 'Stored raw and recomputed on every peer, so nobody sees a stale total' },
-          { label: 'If the vendor goes away', them: 'Your data may go with it', us: 'Your node still has every workbook, and you can download it any time' },
+          { label: 'If the vendor goes away', them: 'Your data may go with it', us: 'You can download every workbook, any time, as CSV or XLSX' },
         ],
       },
       collaboration: {
@@ -881,7 +884,7 @@ export const APPS = {
         items: [
           {
             label: 'Finance & operations',
-            title: 'Budgets and forecasts that never leave your nodes',
+            title: 'Budgets and forecasts only your team can open',
             body: 'Plan the quarter together, live, without the figures sitting on a third party’s servers.',
             uses: ['Budgets', 'Forecasts', 'CSV export'],
           },
@@ -901,29 +904,27 @@ export const APPS = {
             label: 'Regulated & public sector',
             title: 'Live collaboration on infrastructure you already control',
             body: 'For finance, health and government data that cannot leave your own servers, without giving up working together in real time.',
-            uses: ['Self-hosted nodes', 'Works offline', 'No third-party cloud'],
+            uses: ['Invite-only workspaces', 'Passkey accounts', 'No ad-funded cloud'],
           },
         ],
       },
       openSource: {
-        // The workspace licence logic/Cargo.toml inherits (the app README still
-        // says TBD). Commands run and checked: without the app's wasm-rustflags
-        // the build fails in wasm-opt on `i64.trunc_sat_f64_s` (see ci.yml);
-        // the dev server uses the app's own vite port.
+        // The licence logic/Cargo.toml declares. A component app: the
+        // contract builds with tools/component-bundle, and `pnpm dev:local`
+        // runs merod local, the contract and the app on :5173.
         license: 'MIT or Apache-2.0',
         commands: [
           '# fork calimero-network/apps on GitHub, then',
           'git clone https://github.com/<you>/apps',
           'cd apps && pnpm install',
-          'export RUSTFLAGS="$(cat apps/mero-sheets/logic/wasm-rustflags)"',
-          'cargo mero build -p mero-sheets',
-          'pnpm -F mero-sheets dev   # app on :5185',
+          'cargo test --manifest-path apps/mero-sheets/logic/Cargo.toml',
+          'pnpm dev:local mero-sheets   # app on :5173',
         ],
       },
       alwaysOn: true,
       closing: {
         title: 'Start your first workbook',
-        body: 'Connect a node, or install the desktop app that bundles one, then invite the people you work with.',
+        body: 'Sign in with a passkey, create a workbook, then invite the people you work with.',
       },
     },
   },

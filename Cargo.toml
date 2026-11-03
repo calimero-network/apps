@@ -67,6 +67,10 @@ exclude = [
   "apps/mero-sign/logic",
   "apps/battleships/logic",
   "apps/battleships/logic/crates/rules",
+  "apps/mero-sheets/logic",
+  "apps/mero-sheets/logic/crates/recalc",
+  "apps/mero-sheets/logic/crates/recalc-wasm",
+  "apps/mero-sheets/logic/crates/types",
 ]
 
 [workspace.package]
