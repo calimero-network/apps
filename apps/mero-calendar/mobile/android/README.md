@@ -1,145 +1,84 @@
 # Mero Calendar for Android
 
 A native Jetpack Compose (Material 3) client for Mero Calendar, the `com.calimero.mero-calendar`
-app in [`../../logic`](../../logic). It runs the same contract as the web frontend in
+app in [`../../logic`](../../logic). It calls the same component contract as the web frontend in
 [`../../app`](../../app), so people on Android, iOS and the web share the same teams, calendars and
-events. It is built on the Calimero Kotlin SDK's app session (`MeroAppSession`, `MeroAppBackend`,
-`ContextContract`) and a contract client generated from the ABI.
+events. It is built on the Calimero Kotlin SDK's 1.0 app session (`MeroAppSession`,
+`CalimeroAppBackend`, `ContextContract`) and a typed client of the contract. Its iOS twin is
+[`../ios`](../ios/README.md): same screens, copy and flows.
 
-## Delegated execution only
-
-The phone runs no node, and the app has no node-login screen, admin password or "node URL"
-setting. It signs in with a Calimero account, and the account's relay works on its behalf:
+## Calimero 1.0
 
 | What | How | SDK |
 |---|---|---|
-| Sign in | The Calimero wallet certifies a key this device generated; the answer comes back on the `mero-calendar://enrol` callback | `MeroAppSession.signIn` / `handle(url)` |
-| Session | Keys, session and nonces in Keystore-backed storage, restored on launch | `MeroAppSession.create` / `restore` |
-| Teams | The account's namespaces running Mero Calendar | `MeroAppBackend.listNamespaces` |
-| Create a team | Found a namespace through the relay (the cloud is asked to host it) | `foundNamespace` |
-| Calendars | One open subgroup per calendar with one context in it (the web app's model), plus contexts made straight in the team | `listSubgroups`, `listContexts` |
-| Create a calendar | An open subgroup, then the contract's context in it | `createSubgroup(isPublic = true)`, `createContext` |
-| Open a calendar | Join its context when the account is not in it yet, retried while a just-joined team syncs | `isMember`, `joinContext` |
-| Read events, members | `POST /admin-api/contexts/{id}/query` through the generated client | `contract.bound(contextId)` |
-| Write events, your name | Signed warrants on `POST /admin-api/contexts/{id}/intents`. Never `/jsonrpc` | same |
-| Invite | An invitation signed by this device, shared as the web app's link | `createInvitation` |
-| Join | Direct admission at the relay the invitation names, then reconnect | `joinNamespace`, `session.didJoinNamespace()` |
-| Live updates | The relay's event stream for the open calendar; polling every 10 s when it cannot stream | `events(contextId)` |
+| Sign in (Cloud) | A cluster by name (node directory) or a node URL, every node attested (`CloudPolicy.production`), then the device's passkey (Credential Manager). "Create an account" registers a new one | `CalimeroClient.connect`, `MeroAppSession.signIn` / `signUp` |
+| Sign in (development) | A `merod local` URL (`http://10.0.2.2:2501` from the emulator), mock attestation, a software passkey kept on the device for that node | `CloudPolicy.development`, `SoftPasskey` |
+| Session | Kept encrypted with the cluster's nodes, restored on launch | `EncryptedSessionStore`, `restore` |
+| Teams | Orgs running Mero Calendar | `listNamespaces`, `foundNamespace` |
+| Calendars | A team in the org holding one app instance | `listSubgroups`, `createSubgroup`, `createContext` |
+| Events, members, your name | The typed contract client over the bound app instance (views / intents) | `contract.bound(appId)` |
+| Invite / join | Org invite links (`OrgInvitation`, the team's name in `name`), redeemed at `POST /invites/{token}/redeem`; minting is a passkey step-up | `createInvitation`, `joinNamespace` |
+| Approvals | App upgrades and node releases awaiting the person, on Your Teams. Review shows the confirmation code, then opens the node's consent page in a Custom Tab, which returns to `mero-calendar://consent` | `pendingApprovals`, `requestConsent(confirm)` |
+| Live updates | The node's event stream for the open calendar; polling every 10 s otherwise | `events(appId)` |
 
-### Private events
+The Activity hands the session its passkey (`CalendarAppViewModel.attach` → `session.passkey`)
+while it lives, so member changes and invites get their step-ups.
 
-On a node, a private event lives in the contract's `#[app::private]` storage. A relay has no
-private storage for the accounts it serves, so — exactly as the web app does for an account
-(`app/src/api/privateStore.ts`) — a private event, and an event with no invitees (which the
-contract would route to its private storage), is kept **on this device only** and never sent to
-the relay or the team. The store uses the web app's key (`mc-private-events:<account>:<team>`) and
-record shape. A private event that later gets invitees and is no longer private is promoted to a
-shared event (`create_event`), the contract's own one-way rule. A shared event cannot be made
-private again (the sheet says so).
+## The contract client
 
-## Screens
+`contract/CalendarClient.kt` is a typed client of the component contract (`logic/res/abi.json` of
+the component port, web PR #720), the twin of the web app's `app/src/api/calendar.ts` and iOS's
+`CalendarContract.swift`: camelCase methods and arguments, no `timestamp` arguments, account ids as
+strings, `u64` values as decimal strings, and the contract's error codes (`CalendarAppCode`), which
+`ErrorText` puts into words.
 
-Sign in → Your Teams (create, join with a link, invite) → a team's calendars (create, invite,
-syncing state right after a join) → the calendar with Month / Week / Day / Agenda views, a
-"Today" pill and period arrows (plus horizontal swipes) → the event sheet (create, edit,
-view-only for someone else's event, delete) with Material date and time pickers, the 10-colour
-palette, the private toggle and teammates to invite. Members, your name and Details (ids) are in
-the calendar's overflow menu. Pull to refresh on the lists, swipe to delete in the agenda.
+**Private events** are the contract's per-owner rows (`getPrivateEvents`, `createPrivateEvent`,
+`updatePrivateEvent`, `deletePrivateEvent`): only the owner's own calls read them, on any device. A
+peerless `createEvent` stays private too. Inviting someone to a private event promotes it
+(`updatePrivateEvent`, same id); a shared event can't become private again.
 
-Invitation links use the web app's format, so a link from any side opens on the others:
-`https://links.calimero.network/com.calimero.mero-calendar/join?invitation=<base58(deflate(payload))>`
-with the payload `{"invitation": <signed invitation>, "__teamName": "<team>"}`. The app also
-accepts `calimero://com.calimero.mero-calendar/join?invitation=…` and bare tokens, and refuses a
-link naming another app.
+Event times are stored as the web app stores them, JavaScript's `Date.prototype.toString()`; all-day
+events are `long-event` from 00:00 to 23:59.
 
-Event times are stored as the web app stores them, JavaScript's `Date.prototype.toString()`
-(`Wed Oct 28 2026 10:00:00 GMT+0100 (Central European Standard Time)`); all-day events are
-`long-event` from 00:00 to 23:59.
-
-## The generated contract client
-
-`app/src/main/kotlin/network/calimero/calendar/generated/CalendarClient.kt` is generated from
-`logic/res/abi.json` by `@calimero/abi-codegen`; do not edit it (ktlint and detekt skip it). To
-regenerate after the ABI changes:
-
-```bash
-ABI_CODEGEN=/path/to/abi-codegen/dist/cli.js ./scripts/regenerate-client.sh
-```
-
-**Codegen gap, worked around in `data/HexIdTransport.kt`:** the ABI declares an event's `owner`
-and `peers` as 32-byte `bytes`, so the generated types hold byte lists, but the contract's `UserId`
-serialises as a 64-character hex string. `HexIdTransport` wraps the SDK's bound contract and
-converts the two for `get_events` / `get_private_events` results and the event writes'
-`event_data.peers`; every other call passes through byte for byte.
-
-## Build and run
+## Build and test
 
 Needs JDK 17 and the Android SDK (platform 34).
 
 ```bash
 cd apps/mero-calendar/mobile/android
 ./scripts/fetch-sdk.sh            # clone kotlin-sdk at the commit in kotlin-sdk.ref into .sdk/
-./gradlew assembleDebug           # app/build/outputs/apk/debug/app-debug.apk
-./gradlew installDebug            # onto a device
-```
-
-The gates CI runs (`.github/workflows/mero-calendar-android.yml`):
-
-```bash
 ./gradlew ktlintCheck detekt testDebugUnitTest lint assembleDebug
 ```
 
 ### The SDK pin
 
-The app session layer (calimero-network/kotlin-sdk#67) is on kotlin-sdk `main` but not in a release
-yet, so the SDK is built from source as a Gradle composite build:
-`settings.gradle.kts` includes the checkout and substitutes it for the `network.calimero:mero-core`
-/ `mero-compose` / `mero-testkit` coordinates. `kotlin-sdk.ref` pins
-`ea8ded7380b94676b6156231c3f5291a8a3d8dd8`, the merge commit of #67 on `main`.
+`kotlin-sdk.ref` pins `1e3f27c2cb672651a34a743435144e291de66022`, the commit of the kotlin-sdk
+`v0.2.0` release (Calimero 1.0), which is not on Maven Central. The SDK
+is built from source as a Gradle composite build (`settings.gradle.kts`): `-PmeroKotlinSdkDir=/path`,
+else `MERO_KOTLIN_SDK_DIR`, else `.sdk/kotlin-sdk`.
 
-Which checkout: `-PmeroKotlinSdkDir=/path`, else `MERO_KOTLIN_SDK_DIR`, else `.sdk/kotlin-sdk`
-(made by `scripts/fetch-sdk.sh`). The Android Gradle Plugin and Kotlin versions in
-`gradle/libs.versions.toml` must equal the SDK's; compare them on every bump.
+### Configuration
 
-### Pointing it at another environment
-
-All optional; empty means the SDK's defaults. Pass them with `-P` or put them in
-`gradle.properties`: `meroCloudUrl`, `meroWalletUrl`, `meroRegistryUrl`, and `meroEnrolCallback`
-(default `mero-calendar://enrol`; the manifest's intent filter is generated from it).
-
-**Sign-in callback.** The hosted wallet currently redirects only to `https://` callbacks; app-scheme
-callbacks need a pending wallet change. Until then, production sign-in needs an https App Link: set
-`meroEnrolCallback` to it, publish `assetlinks.json` for `network.calimero.calendar`, and add an
-`autoVerify` intent filter.
+Optional `-P` / `gradle.properties` values: `meroCluster` (the cluster name or node URL the sign-in
+screen prefills), `meroDevNodeUrl` (default `http://10.0.2.2:2501`) and `meroConsentCallback`
+(default `mero-calendar://consent`; the manifest's intent filter is generated from it). Plain http
+is allowed only to `10.0.2.2` and `localhost` (`res/xml/network_security_config.xml`).
 
 ## Layout
 
 ```
 app/src/main/kotlin/network/calimero/calendar/
-  generated/ CalendarClient (codegen output)
-  data/      HexIdTransport, EventTime, PrivateEventStore + KeyValueStore + LocalNames,
-             CalendarRepository, TeamInvites, CalendarMath, EventDraft, ErrorText
-  app/       TeamsModel, CalendarsModel, CalendarModel (plain StateFlow state holders over
-             MeroAppBackend) and CalendarAppViewModel (owns the MeroAppSession and navigation)
+  contract/  CalendarClient (typed component contract)
+  data/      EventTime, KeyValueStore + LocalNames, CalendarRepository, TeamInvites, CalendarMath,
+             EventDraft, ErrorText
+  app/       TeamsModel, CalendarsModel, CalendarModel, ApprovalsModel (StateFlow state holders
+             over MeroAppBackend) and CalendarAppViewModel (session, sign-in, navigation)
   ui/        Compose screens and sheets
-app/src/test/   JVM unit tests
+app/src/test/   JVM unit tests against mero-testkit's InMemoryAppBackend
 ```
-
-## Tests
-
-`./gradlew testDebugUnitTest` (29 tests) runs the view models against mero-testkit's
-`InMemoryAppBackend` and `RecordingContextContract`: teams (list, relayless, create, hosting
-warning, invite link round trip and join, foreign links refused), calendars (subgroups + root
-contexts, create as open subgroup + context, open with retried join, give up after the window),
-events (shared + device-private merge, private/peerless stays local, shared create with hex peers
-and the web's date strings, promotion, update/delete routing, your name), plus `EventTime` against
-the web app's `Date.toString()` form, `HexIdTransport` and `CalendarMath`.
 
 ## Not supported yet
 
-- **Booking links**: the web app offers them only to a node login (a guest calls the owner's node
-  under an access grant); an account has no node to issue one.
-- **Year view**: month, week, day and agenda only.
-- **Deleting or leaving teams and calendars, member roles and capabilities**: `MeroAppBackend` has
-  no call for them yet. Members shows the names people set in the calendar (`get_members`).
-- **Push notifications**: live updates run only while a calendar is open.
+- **Booking links**: in the contract, but only the web app offers them.
+- **Passkey sign-in on a real cluster** needs the cluster's Digital Asset Links for the app.
+- **Year view**, deleting or leaving teams and calendars, member roles, push notifications.

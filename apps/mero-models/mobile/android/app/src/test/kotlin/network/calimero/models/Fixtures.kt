@@ -63,12 +63,12 @@ object Fixtures {
         if (memberOfScene) backend.members = setOf(scene)
         val table =
             mapOf(
-                "get_scene" to sceneInfo,
-                "get_objects" to objects,
-                "list_meshes" to meshes,
-                "list_textures" to textures,
-                "list_locks" to locks,
-                "get_members" to members,
+                "getScene" to sceneInfo,
+                "getObjects" to objects,
+                "listMeshes" to meshes,
+                "listTextures" to textures,
+                "listLocks" to locks,
+                "getMembers" to members,
             )
         backend.recording.handler = { call -> Json.parseToJsonElement(table[call.method] ?: "null") }
         return backend

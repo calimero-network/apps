@@ -16,17 +16,13 @@
 //! force, so learning a new version never leaves an app without rules while
 //! the new set waits for you.
 
-use calimero_sdk::abi::AbiType;
-use calimero_sdk::app;
-use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
-use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::types::Error as AppError;
-use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::Mergeable;
+use calimero_app_sdk::prelude::*;
+
+use crate::store::{emit, invalid};
+use serde::{Deserialize, Serialize};
 
 use crate::{
-    lww, now_ms, Event, Hyperfeed, LENS_APPROVED, LENS_PROPOSED, LENS_REJECTED, MAX_KEY, MAX_SHORT,
-    MAX_WHY,
+    now_ms, Ev, Hyperfeed, LENS_APPROVED, LENS_PROPOSED, LENS_REJECTED, MAX_KEY, MAX_SHORT, MAX_WHY,
 };
 
 /// How you set one action: `act` without asking, `ask` first, or `off`.
@@ -37,11 +33,7 @@ pub const MAX_ACTIONS: usize = 40;
 pub const MAX_ACTION_METHODS: usize = 64;
 
 /// One action, as your agent proposes it and settings shows it.
-#[derive(
-    AbiType, Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
-)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ActionDef {
     /// Stable within the app, e.g. `edit`; your setting for it is kept by it.
     pub id: String,
@@ -59,13 +51,12 @@ pub struct ActionDef {
 }
 
 /// An app version's actions, as your agent learned them from its ABI.
-#[app::mergeable(id = "hyperfeed::ActionSet")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActionSet {
     pub app: String,
     pub application_id: String,
+    /// At most [`MAX_ACTIONS`], each covering at most [`MAX_ACTION_METHODS`]
+    /// methods, checked in `proposeActions`.
     pub actions: Vec<ActionDef>,
     /// One line for you: what changed, or what the set covers.
     pub summary: String,
@@ -74,36 +65,16 @@ pub struct ActionSet {
     pub updated_at: u64,
 }
 
-impl Mergeable for ActionSet {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        let at = self.updated_at;
-        lww(self, at, other, other.updated_at);
-        Ok(())
-    }
-}
-
 /// Your setting for one action, kept by `<app>/<action id>`. It outlives the
 /// set it was made under: a new version's action with the same id keeps it.
-#[app::mergeable(id = "hyperfeed::ActionRule")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActionRule {
     /// One of [`ACTION_MODES`], or empty to follow the app again.
     pub mode: String,
     pub updated_at: u64,
 }
 
-impl Mergeable for ActionRule {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        let at = self.updated_at;
-        lww(self, at, other, other.updated_at);
-        Ok(())
-    }
-}
-
-#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ActionSetView {
     pub app: String,
     pub application_id: String,
@@ -114,8 +85,7 @@ pub struct ActionSetView {
 }
 
 /// One action you set apart from its app's mode.
-#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ActionModeView {
     pub app: String,
     pub action: String,
@@ -158,7 +128,7 @@ fn view(s: ActionSet) -> ActionSetView {
 impl Hyperfeed {
     fn check_actions(actions: &[ActionDef]) -> app::Result<()> {
         if actions.is_empty() || actions.len() > MAX_ACTIONS {
-            return Err(AppError::msg(format!(
+            return Err(invalid(format!(
                 "an app has 1 to {MAX_ACTIONS} actions, got {}",
                 actions.len()
             )));
@@ -171,11 +141,11 @@ impl Hyperfeed {
             Self::check_len("action description", &a.description, MAX_WHY, false)?;
             Self::check_category(&a.category)?;
             if ids.contains(&a.id.as_str()) {
-                return Err(AppError::msg(format!("two actions are called {:?}", a.id)));
+                return Err(invalid(format!("two actions are called {:?}", a.id)));
             }
             ids.push(&a.id);
             if a.methods.is_empty() || a.methods.len() > MAX_ACTION_METHODS {
-                return Err(AppError::msg(format!(
+                return Err(invalid(format!(
                     "{:?} covers 1 to {MAX_ACTION_METHODS} methods, got {}",
                     a.id,
                     a.methods.len()
@@ -184,7 +154,7 @@ impl Hyperfeed {
             for m in &a.methods {
                 Self::check_len("method", m, MAX_SHORT, true)?;
                 if methods.contains(&m.as_str()) {
-                    return Err(AppError::msg(format!(
+                    return Err(invalid(format!(
                         "{m:?} is in two actions; a method belongs to one"
                     )));
                 }
@@ -288,7 +258,7 @@ impl Hyperfeed {
         Self::check_len("summary", &summary, MAX_WHY, true)?;
         Self::check_actions(&actions)?;
         let key = set_key(&app_key, &application_id);
-        let prior = self.action_sets.get(&key)?.map(|s| s.clone());
+        let prior = self.action_sets.get(&key)?;
         if let Some(s) = &prior {
             if s.actions == actions && s.summary == summary {
                 return Ok(view(s.clone()));
@@ -303,10 +273,10 @@ impl Hyperfeed {
             updated_at: prior.map_or(now_ms(), |s| now_ms().max(s.updated_at + 1)),
         };
         self.action_sets.insert(key, set.clone())?;
-        app::emit!(Event::ActionsChanged {
+        emit(Ev::ActionsChanged {
             app: &set.app,
             status: &set.status,
-        });
+        })?;
         Ok(view(set))
     }
 
@@ -322,10 +292,7 @@ impl Hyperfeed {
         let mut set = self
             .action_sets
             .get(&key)?
-            .map(|s| s.clone())
-            .ok_or_else(|| {
-                AppError::msg(format!("no actions for {app_key} at {application_id}"))
-            })?;
+            .ok_or_else(|| invalid(format!("no actions for {app_key} at {application_id}")))?;
         set.status = if decision == "approve" {
             LENS_APPROVED
         } else {
@@ -334,10 +301,10 @@ impl Hyperfeed {
         .to_owned();
         set.updated_at = now_ms().max(set.updated_at + 1);
         self.action_sets.insert(key, set.clone())?;
-        app::emit!(Event::ActionsChanged {
+        emit(Ev::ActionsChanged {
             app: &set.app,
             status: &set.status,
-        });
+        })?;
         Ok(view(set))
     }
 
@@ -360,7 +327,7 @@ impl Hyperfeed {
         };
         self.action_rules
             .insert(key, ActionRule { mode, updated_at })?;
-        app::emit!(Event::SettingsChanged);
+        emit(Ev::SettingsChanged)?;
         Ok(())
     }
 

@@ -3,18 +3,27 @@ import MeroKit
 import MeroKitUI
 import SwiftUI
 
-/// Where sign-in goes, from Info.plist (empty = the SDK's defaults).
+/// Which Calimero 1.0 cluster the app signs in to, from the Info.plist keys
+/// `project.yml` sets. An empty value means "ask on the sign-in screen".
 enum AppConfig {
-    static var callback: CloudCallback { .scheme(string("MeroForumCallbackScheme") ?? "mero-forum") }
+    /// Where the node's consent page sends the person back
+    /// (`mero-forum://consent?request_id=…&result=…`).
+    static var callback: CloudCallback {
+        .scheme(string("MeroForumCallbackScheme") ?? "mero-forum", path: "consent")
+    }
+
+    /// The Calimero Cloud cluster: a node URL from the console. Signing in
+    /// verifies the node's attestation (`CloudPolicy.production`).
+    static var clusterURL: String? { string("CalimeroClusterURL") }
+
+    /// The development cluster (`merod local`) the sign-in screen prefills.
+    static var devNodeURL: String { string("DefaultNodeURL") ?? "http://localhost:2501" }
 
     static var config: MeroProviderConfig {
         MeroProviderConfig(
-            packageName: ForumConstants.packageName,
-            registryURL: string("MeroRegistryURL"),
-            cloudBaseURL: string("MeroCloudBaseURL").flatMap(URL.init(string:)))
+            nodeURL: clusterURL, policy: .production, packageName: ForumConstants.packageName,
+            packageVersion: string("MeroPackageVersion"))
     }
-
-    static var walletURL: URL? { string("MeroWalletURL").flatMap(URL.init(string:)) }
 
     private static func string(_ key: String) -> String? {
         (Bundle.main.object(forInfoDictionaryKey: key) as? String)?.trimmingCharacters(in: .whitespaces).nilIfBlank
@@ -29,7 +38,7 @@ extension String {
 struct MeroForumApp: App {
     @StateObject private var session = MeroAppSession(
         packageName: ForumConstants.packageName, callback: AppConfig.callback, config: AppConfig.config,
-        walletURL: AppConfig.walletURL, keychainService: "network.calimero.forum")
+        keychainService: "network.calimero.forum")
 
     var body: some Scene {
         WindowGroup {
@@ -38,6 +47,7 @@ struct MeroForumApp: App {
                 .preferredColorScheme(.light)
                 .tint(Palette.ink)
                 .task { if !DemoMode.isOn { await session.restore() } }
+                // Invitation links, and the consent page sending the person back.
                 .onOpenURL { url in Task { await session.handle(url) } }
         }
     }
@@ -60,7 +70,7 @@ struct RootView: View {
                     .background(Palette.ground)
             } else if let backend = activeBackend {
                 NavigationStack(path: $path) {
-                    SpacesScreen(backend: backend, openInvitation: { invitation.open($0) })
+                    SpacesScreen(backend: backend, session: session, openInvitation: { invitation.open($0) })
                         .navigationDestination(for: AppNamespace.self) { space in
                             ForumsScreen(
                                 backend: backend, space: space,

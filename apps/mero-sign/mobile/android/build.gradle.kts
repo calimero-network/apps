@@ -18,7 +18,7 @@ subprojects {
         ignoreFailures.set(false)
         filter {
             exclude { entry -> entry.file.path.contains("/build/") }
-            // The contract client is generated (README "Regenerate the contract client").
+            // The contract client is written from logic/res/abi.json, one line per method (README "The contract client").
             exclude { entry -> entry.file.path.contains("/generated/") }
         }
     }

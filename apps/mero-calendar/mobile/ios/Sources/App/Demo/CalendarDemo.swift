@@ -5,9 +5,9 @@ import MeroKit
 
 /// Mero Calendar's demo: three teams, their calendars and members, and a
 /// design studio's real-looking month of meetings, client work and time off,
-/// placed around today. The contract answers `get_events`, `get_members`,
-/// `create_event`, ... from them in the wire shape the generated client
-/// decodes (owner and peers as 64-hex `UserId`s, times as the web app's
+/// placed around today. The contract answers `getEvents`, `getPrivateEvents`,
+/// `getMembers`, `createEvent`, ... from them in the component ABI's wire
+/// shape (owner and peers as account ids, times as the web app's
 /// `Date.toString()`). Writes change the fixtures, so the tour can add events.
 enum CalendarDemo {
     static let meName = "Sofia Marino"
@@ -50,32 +50,23 @@ enum CalendarDemo {
                 return AppSubgroup(groupId: DemoIds.hex("group:\(team.name)/\(calendar)"), name: calendar, contextIds: [id])
             }
         }
-        seedPrivateEvents(now: now)
         let store = Store(now: now)
         return DemoBackend(
             account: me, applicationId: applicationId, namespaces: namespaces, subgroups: subgroups,
             members: members, handler: { try store.handle($0) })
     }
 
-    /// The studio calendar's private (device-only) events, reset on every launch.
-    private static func seedPrivateEvents(now: Date) {
-        let defaults = DefaultsStore()
-        let privateStore = PrivateEventStore(store: defaults)
-        for team in teams {
-            defaults.set(nil, for: PrivateEventStore.key(account: me, namespaceId: self.team(team.name)))
-        }
-        let key = PrivateEventStore.key(account: me, namespaceId: team(atlas))
-        let studio = context(atlas, "Studio schedule")
-        for (day, time, minutes, title, color) in [
-            (2, "08:00", 45, "Physio appointment", 8), (7, "18:30", 60, "Pick up Luca from football", 5),
-        ] {
-            let start = at(day, time, now)
-            privateStore.add(
-                key: key, contextId: studio,
-                event: CalendarItem(
-                    id: "", title: title, owner: me, start: start, end: start.addingTimeInterval(Double(minutes) * 60),
-                    color: CalendarConstants.palette[color], isPrivate: true))
-        }
+    /// The studio calendar's private events (the demo account's own).
+    static func privateEvents(now: Date) -> [WireEvent] {
+        [(2, "08:00", 45, "Physio appointment", 8), (7, "18:30", 60, "Pick up Luca from football", 5)]
+            .map { day, time, minutes, title, color in
+                let start = at(day, time, now)
+                return WireEvent(
+                    id: DemoIds.hex("private:\(title)"), title: title, description: "", owner: me,
+                    start: EventTime.format(start), end: EventTime.format(start.addingTimeInterval(Double(minutes) * 60)),
+                    eventType: CalendarConstants.timedType, color: CalendarConstants.palette[color], peers: [],
+                    private: true)
+            }
     }
 
     /// `days` from today at `time` ("HH:mm"), local time.
@@ -88,9 +79,8 @@ enum CalendarDemo {
 
     // MARK: Wire shapes
 
-    /// `get_events`' row as the contract sends it: `owner` and `peers` are
-    /// 64-hex `UserId`s (`HexIdTransport` turns them into the generated
-    /// `CalendarEvent`'s byte arrays). Keys are `CalendarEvent`'s.
+    /// `getEvents`' row as the contract sends it: `owner` and `peers` are
+    /// account ids. Keys are `CalendarEvent`'s.
     struct WireEvent: Codable {
         var id: String
         var title: String
@@ -118,6 +108,10 @@ enum CalendarDemo {
         private var next = 0
 
         init(now: Date) {
+            defer {
+                let studio = CalendarDemo.context(CalendarDemo.atlas, "Studio schedule")
+                events[studio, default: []] += CalendarDemo.privateEvents(now: now)
+            }
             for team in CalendarDemo.teams {
                 for calendar in team.calendars {
                     let id = CalendarDemo.context(team.name, calendar)
@@ -135,14 +129,17 @@ enum CalendarDemo {
             defer { lock.unlock() }
             let context = call.contextId
             switch call.method {
-            case "get_events":
-                return try DemoReply.json(events[context] ?? [])
-            case "get_private_events":
-                return try DemoReply.json([WireEvent]())
-            case "get_members":
+            case "getEvents":
+                return try DemoReply.json((events[context] ?? []).filter { !$0.private })
+            case "getPrivateEvents":
+                return try DemoReply.json((events[context] ?? []).filter { $0.private && $0.owner == CalendarDemo.me })
+            case "getMembers":
                 return try DemoReply.json(members[context] ?? [])
-            case "create_event", "create_private_event":
-                let data = call.args["event_data"] as? [String: Any] ?? [:]
+            case "createEvent", "createPrivateEvent":
+                let data = call.args["eventData"] as? [String: Any] ?? [:]
+                let peers = data["peers"] as? [String] ?? []
+                // As the contract: no one invited keeps it private.
+                let isPrivate = call.method == "createPrivateEvent" || peers.isEmpty
                 next += 1
                 let id = DemoIds.hex("event:created:\(next):\(Date().timeIntervalSince1970)")
                 events[context, default: []].append(
@@ -151,11 +148,11 @@ enum CalendarDemo {
                         owner: CalendarDemo.me, start: data["start"] as? String ?? "", end: data["end"] as? String ?? "",
                         eventType: data["event_type"] as? String ?? CalendarConstants.timedType,
                         color: data["color"] as? String ?? CalendarConstants.defaultColor,
-                        peers: data["peers"] as? [String] ?? [], private: call.method == "create_private_event"))
+                        peers: isPrivate ? [] : peers, private: isPrivate))
                 return try DemoReply.json(id)
-            case "update_event", "update_private_event":
-                let id = call.string("event_id") ?? ""
-                let data = call.args["event_data"] as? [String: Any] ?? [:]
+            case "updateEvent", "updatePrivateEvent":
+                let id = call.string("eventId") ?? ""
+                let data = call.args["eventData"] as? [String: Any] ?? [:]
                 guard let i = events[context]?.firstIndex(where: { $0.id == id }) else {
                     throw DemoContractError("Event not found")
                 }
@@ -167,18 +164,20 @@ enum CalendarDemo {
                 if let v = data["event_type"] as? String { event.eventType = v }
                 if let v = data["color"] as? String { event.color = v }
                 if let v = data["peers"] as? [String] { event.peers = v }
+                // Inviting someone promotes a private event to a shared one.
+                if event.private && !event.peers.isEmpty { event.private = false }
                 events[context]![i] = event
                 return try DemoReply.json(id)
-            case "delete_event", "delete_private_event":
-                let id = call.string("event_id") ?? ""
+            case "deleteEvent", "deletePrivateEvent":
+                let id = call.string("eventId") ?? ""
                 events[context]?.removeAll { $0.id == id }
                 return try DemoReply.json(id)
-            case "set_username":
+            case "setUsername":
                 let name = call.string("username") ?? ""
                 let stamp = nowMillis()
                 if let i = members[context]?.firstIndex(where: { $0.id == CalendarDemo.me }) {
                     members[context]![i].username = name
-                    members[context]![i].usernameUpdatedAt = stamp
+                    members[context]![i].usernameUpdatedAt = U64(stamp)
                 } else {
                     members[context, default: []].append(
                         Member(id: CalendarDemo.me, username: name, joinedAt: stamp, usernameUpdatedAt: stamp))

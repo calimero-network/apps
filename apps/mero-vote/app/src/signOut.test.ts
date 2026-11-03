@@ -3,30 +3,32 @@ import { signOut } from "./signOut";
 import { THEME_STORAGE_KEY } from "./theme";
 import { loadTrusteeKey, saveTrusteeKey } from "./utils/trusteeKeys";
 
+const SELECTION = "mero-vote:group:local:acct-1";
+
 beforeEach(() => localStorage.clear());
 
 describe("signOut", () => {
-  it("forgets the open context, ends the session, and keeps the theme and trustee keys", () => {
-    localStorage.setItem("mero:context_id", "ctx-1");
+  it("forgets the open group, ends the session, and keeps the theme and trustee keys", async () => {
+    localStorage.setItem(SELECTION, JSON.stringify({ appId: "app-1" }));
     localStorage.setItem(THEME_STORAGE_KEY, "dark");
-    const key = { v: 1 as const, contextId: "ctx-1", pollId: "poll-1", account: "acc-1", secret: "ab".repeat(32) };
+    const key = { v: 1 as const, contextId: "app-1", pollId: "poll-1", account: "acc-1", secret: "ab".repeat(32) };
     saveTrusteeKey(key);
-    const logout = vi.fn();
+    const end = vi.fn(async () => undefined);
 
-    signOut(logout);
+    await signOut(end, SELECTION);
 
-    expect(logout).toHaveBeenCalledTimes(1);
-    expect(localStorage.getItem("mero:context_id")).toBeNull();
+    expect(end).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem(SELECTION)).toBeNull();
     expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("dark");
-    expect(loadTrusteeKey("ctx-1", "poll-1", "acc-1")).toEqual(key);
+    expect(loadTrusteeKey("app-1", "poll-1", "acc-1")).toEqual(key);
   });
 
-  it("forgets the context before the session goes, so nothing re-enters it", () => {
-    localStorage.setItem("mero:context_id", "ctx-1");
-    let atLogout: string | null = "unset";
-    signOut(() => {
-      atLogout = localStorage.getItem("mero:context_id");
-    });
-    expect(atLogout).toBeNull();
+  it("forgets the group before the session goes, so nothing re-enters it", async () => {
+    localStorage.setItem(SELECTION, JSON.stringify({ appId: "app-1" }));
+    let atEnd: string | null = "unset";
+    await signOut(async () => {
+      atEnd = localStorage.getItem(SELECTION);
+    }, SELECTION);
+    expect(atEnd).toBeNull();
   });
 });
