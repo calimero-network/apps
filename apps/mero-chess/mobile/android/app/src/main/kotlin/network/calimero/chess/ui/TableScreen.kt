@@ -78,8 +78,8 @@ import network.calimero.chess.app.PieceColor
 import network.calimero.chess.app.TableModel
 import network.calimero.chess.app.TableRef
 import network.calimero.chess.app.TableState
-import network.calimero.chess.generated.GameSummary
-import network.calimero.chess.generated.TableView
+import network.calimero.chess.contract.GameSummary
+import network.calimero.chess.contract.TableView
 
 /** One table: the board between the two players, then the game, the moves and the record. (iOS `TableScreen`.) */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -246,8 +246,8 @@ fun TableScreen(
     }
     if (showingDetails) {
         ChessSheet("Details", onDismiss = { showingDetails = false }) {
-            DetailRow("Table (context)", model.contextId)
-            DetailRow("Club (namespace)", model.namespaceId ?: "Unknown")
+            DetailRow("App instance", model.contextId)
+            DetailRow("Organization", model.namespaceId ?: "Unknown")
             DetailRow("You, as the contract sees you", state.view?.me ?: "—")
             state.view?.let {
                 DetailRow("Position (FEN)", it.fen)

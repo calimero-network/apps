@@ -10,10 +10,15 @@ import {
   RemotePlayer,
   SyncEngine,
   Transform,
+  type WorldApi,
 } from "../src/net/sync";
 
 const T: Transform = { name: "P", x: 1, y: 2, z: 3, yaw: 0, pitch: 0, sel: 0 };
 
+/**
+ * A fake `WorldApi` recording each call as `{ method, args }` (ABI names and
+ * argument names), answering from `overrides` (an Error rejects).
+ */
 function makeSync(overrides: Partial<Record<string, unknown>> = {}) {
   const calls: { method: string; args: Record<string, unknown> }[] = [];
   const world = new WorldStore();
@@ -26,9 +31,17 @@ function makeSync(overrides: Partial<Record<string, unknown>> = {}) {
     }
     return null;
   });
+  const api: WorldApi = {
+    setBlocks: (edits, now) => exec("setBlocks", { edits, now }),
+    getOverrides: () => exec("getOverrides", {}) as Promise<never>,
+    getPlayers: (now) => exec("getPlayers", { now }) as Promise<never>,
+    join: (name, now) => exec("join", { name, now }),
+    heartbeat: (t, now) => exec("heartbeat", { t, now }),
+    leave: (now) => exec("leave", { now }),
+  };
   const players: RemotePlayer[][] = [];
   const toasts: string[] = [];
-  const sync = new SyncEngine(exec as never, world, () => "me", {
+  const sync = new SyncEngine(api, world, () => "me", {
     onPlayers: (p) => players.push(p),
     onToast: (m) => toasts.push(m),
   });
@@ -43,7 +56,7 @@ describe("SyncEngine outbound edits", () => {
     sync.queueEdit(4, 4, 4, 7);
     await sync.flush();
     expect(calls).toHaveLength(1);
-    expect(calls[0].method).toBe("set_blocks");
+    expect(calls[0].method).toBe("setBlocks");
     const edits = calls[0].args.edits as { x: number; b: number }[];
     expect(edits).toHaveLength(2);
     expect(edits.find((e) => e.x === 1)!.b).toBe(0);
@@ -57,7 +70,7 @@ describe("SyncEngine outbound edits", () => {
   });
 
   it("requeues the batch on failure without clobbering newer edits", async () => {
-    const { sync } = makeSync({ set_blocks: new Error("network down") });
+    const { sync } = makeSync({ setBlocks: new Error("network down") });
     sync.queueEdit(1, 2, 3, 5);
     const flushPromise = sync.flush();
     sync.queueEdit(1, 2, 3, 9); // player edits the same block while in flight
@@ -82,7 +95,7 @@ describe("SyncEngine inbound events", () => {
 
   it("pulls overrides on a peer's BlocksChanged", async () => {
     const { sync, world, exec } = makeSync({
-      get_overrides: [{ k: "1,2,3", b: STONE }],
+      getOverrides: [{ k: "1,2,3", b: STONE }],
     });
     sync.handleEvent({ kind: "BlocksChanged", value: "peer" });
     await vi.waitFor(() => expect(exec).toHaveBeenCalled());
@@ -98,14 +111,14 @@ describe("SyncEngine inbound events", () => {
   });
 
   it("toasts and refreshes the roster on join/leave", async () => {
-    const { sync, toasts } = makeSync({ get_players: [] });
+    const { sync, toasts } = makeSync({ getPlayers: [] });
     sync.handleEvent({ kind: "PlayerJoined", value: "peer" });
     sync.handleEvent({ kind: "PlayerLeft", value: "peer" });
     expect(toasts).toEqual(["A player joined", "A player left"]);
   });
 
   it("does not toast for its own join", () => {
-    const { sync, toasts } = makeSync({ get_players: [] });
+    const { sync, toasts } = makeSync({ getPlayers: [] });
     sync.handleEvent({ kind: "PlayerJoined", value: "me" });
     expect(toasts).toEqual([]);
   });
@@ -129,7 +142,7 @@ describe("SyncEngine roster", () => {
       name: id,
     });
     const { sync, players } = makeSync({
-      get_players: [mk("me", true), mk("peer", true), mk("ghost", false)],
+      getPlayers: [mk("me", true), mk("peer", true), mk("ghost", false)],
     });
     await sync.pullPlayers();
     expect(players[0].map((p) => p.id)).toEqual(["peer"]);
@@ -143,7 +156,7 @@ describe("SyncEngine tick cadence", () => {
     sync.tick(FLUSH_MS - 1, null, false);
     expect(exec).not.toHaveBeenCalled();
     sync.tick(1, null, false);
-    expect(exec).toHaveBeenCalledWith("set_blocks", expect.anything());
+    expect(exec).toHaveBeenCalledWith("setBlocks", expect.anything());
   });
 
   it("heartbeats at 1s while moving, 3s while idle", () => {
@@ -160,9 +173,9 @@ describe("SyncEngine tick cadence", () => {
   });
 
   it("polls players every PLAYERS_POLL_MS", () => {
-    const { sync, exec } = makeSync({ get_players: [] });
+    const { sync, exec } = makeSync({ getPlayers: [] });
     sync.tick(PLAYERS_POLL_MS, null, false);
-    expect(exec.mock.calls.filter((c) => c[0] === "get_players")).toHaveLength(1);
+    expect(exec.mock.calls.filter((c) => c[0] === "getPlayers")).toHaveLength(1);
   });
 
   it("sends no heartbeat without a transform", () => {
@@ -195,7 +208,7 @@ describe("SyncEngine.connect (a world just joined from an invite)", () => {
       const { sync, exec } = makeSync();
       exec.mockImplementation(async (method: string) => {
         if (method === "join" && ++joins < 3) throw uninitialized();
-        return method === "get_overrides" || method === "get_players" ? [] : null;
+        return method === "getOverrides" || method === "getPlayers" ? [] : null;
       });
 
       let connected: boolean | undefined;
@@ -216,8 +229,8 @@ describe("SyncEngine.connect (a world just joined from an invite)", () => {
       let reads = 0;
       const { sync, exec } = makeSync();
       exec.mockImplementation(async (method: string) => {
-        if (method === "get_overrides" && ++reads === 1) throw uninitialized();
-        return method === "get_overrides" || method === "get_players" ? [] : null;
+        if (method === "getOverrides" && ++reads === 1) throw uninitialized();
+        return method === "getOverrides" || method === "getPlayers" ? [] : null;
       });
 
       let connected: boolean | undefined;

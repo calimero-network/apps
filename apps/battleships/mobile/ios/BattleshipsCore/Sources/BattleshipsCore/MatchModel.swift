@@ -1,5 +1,4 @@
 import Foundation
-import GameGenerated
 import MeroKit
 
 /// One match, from placing the fleet to the audited result. (Kotlin `MatchModel`; the web app's
@@ -58,9 +57,9 @@ public final class MatchModel: ObservableObject {
     public let ref: MatchRef
     public let backend: any BattleshipsBackend
     public let store: any BoardStore
-    /// The key the match names you by (`register_player`'s answer; the account on a relay).
+    /// The account the match names you by (`registerPlayer`'s answer).
     public let me: String
-    private let game: GameClient
+    private let game: BattleshipsContract
     private var answeredShot: UInt32?
     private var revealing = false
     private var refreshing = false
@@ -71,7 +70,7 @@ public final class MatchModel: ObservableObject {
         self.me = me.lowercased()
         self.backend = backend
         self.store = store
-        self.game = GameClient.make(backend.app.contract, contextId: ref.contextId)
+        self.game = BattleshipsContract(backend.contract, appId: ref.appId)
     }
 
     // MARK: Reading
@@ -110,7 +109,6 @@ public final class MatchModel: ObservableObject {
         }
         switch state.endedBy {
         case "sunk": return state.loser?.lowercased() == me ? "Your fleet was sunk." : "Every ship of theirs is sunk."
-        case "equivocation": return "A player answered the same shot two ways."
         case "impossible_misses": return "Too many misses to be true: a fleet was hidden."
         default: return nil
         }
@@ -150,11 +148,8 @@ public final class MatchModel: ObservableObject {
             incoming = try await game.getIncomingShots(matchId: matchId)
         } catch {
             if state == nil {
-                // A context the relay has not synced yet, or one this account has not joined.
+                // A match the node has not applied yet (just created on another node).
                 syncing = true
-                if (try? await backend.app.isMember(contextId: ref.contextId)) == false {
-                    try? await backend.app.joinContext(contextId: ref.contextId)
-                }
                 if case .failed = stage {} else { stage = .loading }
             } else {
                 notice = ErrorText.describe(error, fallback: "Couldn't refresh the match.")
@@ -164,7 +159,7 @@ public final class MatchModel: ObservableObject {
         syncing = false
         var latest = current
         shots = mine.shots
-        turn = await game.currentTurn()
+        turn = try? await game.getCurrentTurn(matchId: matchId)
         let committed = latest.committed.contains { $0.lowercased() == me }
         guard committed else {
             state = latest
@@ -182,7 +177,7 @@ public final class MatchModel: ObservableObject {
         if await answerPendingShot(latest, cells: board.cells) {
             latest = (try? await game.getMatchState(matchId: matchId)) ?? latest
             answers = (try? await game.getIncomingShots(matchId: matchId))?.shots ?? answers
-            turn = await game.currentTurn()
+            turn = try? await game.getCurrentTurn(matchId: matchId)
         }
         if await revealIfDue(latest, board: board) {
             latest = (try? await game.getMatchState(matchId: matchId)) ?? latest
@@ -225,19 +220,19 @@ public final class MatchModel: ObservableObject {
         revealing = true
         defer { revealing = false }
         do {
-            try await game.reveal(matchId: ref.matchId, cells: board.cells, salt: board.saltBytes)
+            try await game.revealBoard(matchId: ref.matchId, cells: board.cells, salt: board.saltBytes)
             return true
         } catch {
             return false
         }
     }
 
-    /// Keep the match fresh while it is on screen: the relay's events when it streams, and a poll
+    /// Keep the match fresh while it is on screen: the lobby instance's events, and a poll
     /// either way, so a dropped event never stalls a turn.
     public func live() async {
         await withTaskGroup(of: Void.self) { group in
-            if backend.app.canSubscribe {
-                let stream = backend.app.events(contextId: ref.contextId)
+            if backend.canSubscribe {
+                let stream = backend.events(contextId: ref.appId)
                 group.addTask { [weak self] in
                     do {
                         for try await _ in stream { await self?.refresh() }
@@ -344,7 +339,7 @@ public final class MatchModel: ObservableObject {
         busy = true
         defer { busy = false }
         do {
-            try await game.proposeShot(matchId: ref.matchId, x: UInt32(target.x), y: UInt32(target.y))
+            try await game.proposeShot(matchId: ref.matchId, x: target.x, y: target.y)
             aim = nil
             await refresh()
         } catch {

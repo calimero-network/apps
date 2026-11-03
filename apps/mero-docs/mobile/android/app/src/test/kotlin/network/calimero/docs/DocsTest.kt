@@ -1,11 +1,23 @@
 package network.calimero.docs
 
+import com.calimero.mero.AppError
+import com.calimero.mero.CalimeroError
+import com.calimero.mero.ConfirmCancelled
+import com.calimero.mero.LoginRequired
+import com.calimero.mero.OrgInfo
+import com.calimero.mero.TeamInfo
+import com.calimero.mero.WrongNode
 import com.calimero.mero.app.AppNamespace
 import com.calimero.mero.testkit.RecordedContractCall
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import network.calimero.docs.app.DocumentModel
 import network.calimero.docs.app.FolderNotReadyException
 import network.calimero.docs.app.LoadState
@@ -18,7 +30,11 @@ import network.calimero.docs.core.BlockAlignment
 import network.calimero.docs.core.BlockKind
 import network.calimero.docs.core.CommentBody
 import network.calimero.docs.core.DocComment
+import network.calimero.docs.core.DocDto
+import network.calimero.docs.core.DocSearchPage
 import network.calimero.docs.core.DocTarget
+import network.calimero.docs.core.DocsClient
+import network.calimero.docs.core.DocsDirectory
 import network.calimero.docs.core.DocsFormat
 import network.calimero.docs.core.DocumentReader
 import network.calimero.docs.core.LinkTarget
@@ -28,7 +44,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume
 import org.junit.Test
+import java.io.File
 
 /** (Swift `DocsCoreTests.swift`; the same cases.) */
 class DocumentReaderTest {
@@ -190,7 +208,7 @@ class ModelTest {
         runTest {
             val fake = FakeDocs()
             fake.standardWorkspace()
-            fake.on("list_docs", "c-notes", """{"oops":1}""")
+            fake.on("listDocs", "c-notes", """{"oops":1}""")
             val model = WorkspaceModel(fake.backend, ws(), MemoryRecents())
             model.load()
             assertEquals(LoadState.Loaded, model.state.value)
@@ -202,8 +220,8 @@ class ModelTest {
         runTest {
             val fake = FakeDocs()
             fake.standardWorkspace()
-            fake.on("search_docs", "c-specs", """{"hits":[{"id":"d3","title":"API spec","snippet":"the <b>road</b>","score":2.0,"archived":false}],"total":1,"next_cursor":null}""")
-            fake.on("search_docs", json = """{"hits":[],"total":0}""")
+            fake.on("searchDocs", "c-specs", """{"hits":[{"id":"d3","title":"API spec","snippet":"the <b>road</b>","score":2.0,"archived":false}],"total":1,"nextCursor":null}""")
+            fake.on("searchDocs", json = """{"hits":[],"total":0}""")
             val model = WorkspaceModel(fake.backend, ws(), MemoryRecents())
             model.load()
             model.search("road")
@@ -216,7 +234,7 @@ class ModelTest {
             )
             val call =
                 fake.backend.recording
-                    .calls("search_docs")
+                    .calls("searchDocs")
                     .first()
             assertEquals("road", call.arg("query"))
             assertEquals(RecordedContractCall.Path.QUERY, call.path)
@@ -228,10 +246,10 @@ class ModelTest {
         runTest {
             val fake = FakeDocs()
             fake.standardWorkspace()
-            fake.on("get_doc", json = FakeDocs.doc("d1", "Roadmap", 1))
-            fake.on("get_document", json = FakeDocs.BODY)
+            fake.on("getDoc", json = FakeDocs.doc("d1", "Roadmap", 1))
+            fake.on("getDocument", json = FakeDocs.BODY)
             fake.on(
-                "list_comments",
+                "listComments",
                 json = "[${FakeDocs.comment("c1", "[[block:b2]] Why fast?", at = 1)},${FakeDocs.comment("c2", "[[reply:c1]] Because", FakeDocs.ME, 2)}]",
             )
             val recents = MemoryRecents()
@@ -270,27 +288,27 @@ class ModelTest {
         runTest {
             val fake = FakeDocs()
             fake.standardWorkspace()
-            fake.on("get_doc", json = FakeDocs.doc("d1", "Roadmap", 1))
-            fake.on("get_document", json = FakeDocs.BODY)
-            fake.on("list_comments", json = "[]")
-            fake.on("add_comment", json = "\"new1\"")
+            fake.on("getDoc", json = FakeDocs.doc("d1", "Roadmap", 1))
+            fake.on("getDocument", json = FakeDocs.BODY)
+            fake.on("listComments", json = "[]")
+            fake.on("addComment", json = "\"new1\"")
             val model = DocumentModel(fake.backend, FakeDocs.WS, "g-product", "d1", contextId = "c-product")
             model.open()
             model.addComment("  Looks good ", "b3")
             val call =
                 fake.backend.recording
-                    .calls("add_comment")
+                    .calls("addComment")
                     .first()
             assertEquals(RecordedContractCall.Path.EXECUTE, call.path)
             assertEquals("c-product", call.contextId)
             assertEquals("[[block:b3]] Looks good", call.arg("body"))
-            assertEquals("d1", call.arg("doc_id"))
+            assertEquals("d1", call.arg("docId"))
             assertEquals(listOf("Looks good"), model.threads.value.map { it.root.text })
             model.reply("new1", "Thanks")
             assertEquals(
                 "[[reply:new1]] Thanks",
                 fake.backend.recording
-                    .calls("add_comment")
+                    .calls("addComment")
                     .last()
                     .arg("body"),
             )
@@ -316,4 +334,94 @@ class ModelTest {
             none.loadImage("ab")
             assertEquals(DocumentModel.ImageState.Unavailable, none.images.value["ab"])
         }
+}
+
+class WireTest {
+    @Test fun docViewTimestampsAreMillisecondStrings() {
+        val doc =
+            DocDto.from(
+                Json.parseToJsonElement(
+                    """{"id":"doc-1","title":"T","tags":["k"],"archived":false,"createdAt":"1700000000123",""" +
+                        """"updatedAt":"1700000000456","createdBy":"a","updatedBy":"b","canDelete":true}""",
+                ),
+            )
+        assertEquals(1_700_000_000_123_000_000uL, doc.createdAt)
+        assertEquals(1_700_000_000_456_000_000uL, doc.updatedAt)
+        assertTrue(doc.canDelete)
+    }
+
+    @Test fun searchPageTotalIsADecimalString() {
+        val page = DocSearchPage.from(Json.parseToJsonElement("""{"hits":[],"total":"12","nextCursor":20}"""))
+        assertEquals(12uL, page.total)
+        assertEquals(20u, page.nextCursor)
+    }
+
+    @Test fun foldersComeFromTheOrgsTeams() {
+        val org =
+            OrgInfo(
+                raw = JsonObject(emptyMap()),
+                orgId = "org1",
+                name = "Acme",
+                members = emptyMap(),
+                teams =
+                    mapOf(
+                        "t-product" to TeamInfo("t-product", "Product", null, "everyone", metadata = meta("docsApp" to "app-product", "color" to "blue")),
+                        "t-specs" to TeamInfo("t-specs", "Specs", "t-product", "invite", metadata = meta("docsApp" to "app-specs")),
+                        // Its parent is a team the caller does not see: it sits at the top.
+                        "t-shared" to TeamInfo("t-shared", "Board", "t-hidden", "invite", metadata = meta()),
+                    ),
+                metadata = JsonObject(emptyMap()),
+                memberMetadata = emptyMap(),
+                releaseApprovers = emptyList(),
+                publishes = emptyList(),
+                newWorkStopped = null,
+            )
+        val folders = DocsDirectory.folders(org)
+        assertEquals(listOf("t-product", "t-shared", "t-specs"), folders.map { it.id })
+        assertEquals("t-product", folders.first { it.id == "t-specs" }.parentId)
+        assertEquals("app-specs", folders.first { it.id == "t-specs" }.contextId)
+        assertNull(folders.first { it.id == "t-shared" }.parentId)
+        assertNull(folders.first { it.id == "t-shared" }.contextId)
+    }
+
+    /** Every method the client calls is in the component ABI, by name; skipped while it is still v1. */
+    @Test fun clientMethodsAreInTheComponentAbi() {
+        val file = File("../../../logic/res/abi.json")
+        Assume.assumeTrue("logic/res/abi.json is not readable", file.isFile)
+        val root = Json.parseToJsonElement(file.readText()).jsonObject
+        Assume.assumeTrue("logic/res/abi.json is not the component ABI yet", root.containsKey("abiVersion"))
+        val methods = root["methods"]!!.jsonObject
+        for (name in DocsClient.METHODS) assertNotNull("$name is not in the ABI", methods[name])
+        assertEquals("view", methods["listDocs"]!!.jsonObject["kind"]!!.jsonPrimitive.content)
+        assertEquals("call", methods["addComment"]!!.jsonObject["kind"]!!.jsonPrimitive.content)
+        val params = methods["addComment"]!!.jsonObject["params"]!!.jsonArray.map { it.jsonArray[0].jsonPrimitive.content }
+        assertEquals(listOf("docId", "body"), params)
+    }
+
+    @Test fun calimero10ErrorsReadAsWords() {
+        assertEquals("Your session ended. Sign in again.", DocsFormat.errorText(LoginRequired("expired")))
+        assertEquals("The passkey prompt was cancelled. Nothing changed.", DocsFormat.errorText(ConfirmCancelled()))
+        assertTrue(DocsFormat.errorText(WrongNode("x")).startsWith("This node doesn't serve your account."))
+        assertTrue(
+            DocsFormat
+                .errorText(CalimeroError(403, "FORBIDDEN", "read only"))
+                .startsWith("You can read this folder but not comment"),
+        )
+
+        fun app(
+            code: String,
+            message: String,
+        ) = AppError(
+            "",
+            buildJsonObject {
+                put("code", code)
+                put("fields", buildJsonObject { put("message", message) })
+            },
+        )
+        assertEquals("This document or comment is gone. Pull to refresh.", DocsFormat.errorText(app("NotFound", "no doc")))
+        assertEquals("You can't do that in this folder.", DocsFormat.errorText(app("Forbidden", "")))
+        assertEquals("That wasn't accepted: empty comment", DocsFormat.errorText(app("Invalid", "empty comment")))
+    }
+
+    private fun meta(vararg pairs: Pair<String, String>) = JsonObject(pairs.associate { it.first to JsonPrimitive(it.second) })
 }

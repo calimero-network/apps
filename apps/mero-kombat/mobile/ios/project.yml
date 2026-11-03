@@ -4,12 +4,12 @@
 #   xcodegen generate          # writes MeroKombat.xcodeproj (not committed)
 #   open MeroKombat.xcodeproj
 #
-# The non-UI layer (generated contract client, view models, the game bridge, the fight pad's input
-# mapping, presence) is the local SwiftPM package in KombatCore/, tested on macOS with
-# `swift test --package-path KombatCore` (no simulator). The game itself is the web app's engine,
-# built by ../scripts/build-web.sh into Resources/Game and shipped in the app bundle.
-# The swift-sdk is pinned by revision to its main merge commit of swift-sdk#84. Keep it
-# equal to the revision in KombatCore/Package.swift.
+# The non-UI layer (typed contract client, view models, the game bridge, the fight pad's input
+# mapping, presence) is the local SwiftPM package in KombatCore/, tested on macOS with `swift
+# test --package-path KombatCore` (no simulator). The game itself is the web app's engine, built
+# by ../scripts/build-web.sh into Resources/Game and shipped in the app bundle. The swift-sdk is
+# pinned to its v0.5.0 release (Calimero 1.0). Keep it equal to the version in
+# KombatCore/Package.swift.
 name: MeroKombat
 
 options:
@@ -21,7 +21,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f
+    exactVersion: 0.5.0
   KombatCore:
     path: KombatCore
 
@@ -52,20 +52,24 @@ targets:
         UISupportedInterfaceOrientations: [UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         CFBundleURLTypes:
-          # The wallet returns here after Cloud sign-in (`mero-kombat://enrol#credential=…`).
-          - CFBundleURLName: network.calimero.kombat.enrol
+          # The node's consent page returns here (`mero-kombat://consent?request_id=…&result=…`).
+          - CFBundleURLName: network.calimero.kombat.consent
             CFBundleURLSchemes: [mero-kombat]
           # Invitation deep links: `calimero://com.calimero.mero-kombat/join?invitation=…`.
           - CFBundleURLName: network.calimero.kombat.invite
             CFBundleURLSchemes: [calimero]
-        # Where sign-in goes. Empty = the SDK's defaults (the hosted Calimero wallet, Cloud
-        # manager and app registry). Point these at another environment to test against it.
+        # The Calimero 1.0 cluster. MeroNodeURL: a node from Calimero Cloud's
+        # console (empty = sign-in asks for one); MeroNodes: the cluster's other
+        # nodes, comma-separated, for failover; MeroAllowMock: YES only for a
+        # `merod local` cluster (mock attestation). See ../README.md.
+        MeroNodeURL: ""
+        MeroNodes: ""
+        MeroAllowMock: "NO"
+        MeroPackageVersion: ""
+        # Where the node's consent page returns to.
         MeroKombatCallbackScheme: mero-kombat
         MeroKombatCallbackHost: ""
-        MeroKombatCallbackPath: /enrol
-        MeroCloudBaseURL: ""
-        MeroWalletURL: ""
-        MeroRegistryURL: ""
+        MeroKombatCallbackPath: /consent
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: network.calimero.kombat

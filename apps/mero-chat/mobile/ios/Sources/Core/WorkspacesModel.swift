@@ -2,7 +2,7 @@ import Combine
 import Foundation
 import MeroKit
 
-/// The workspace list: the namespaces the account is in, founding one, and
+/// The workspace list: the orgs the account is in, founding one, and
 /// joining one from an invitation.
 @MainActor
 final class WorkspacesModel: ObservableObject {
@@ -15,7 +15,7 @@ final class WorkspacesModel: ObservableObject {
     @Published var notice: String?
 
     private let backend: any ChatBackend
-    /// Chat's application id, when known: only namespaces running it are chat
+    /// Chat's package, when known: only orgs running it are chat
     /// workspaces (the web app filters the same way).
     private let applicationId: @MainActor () -> String?
     private let displayName: @MainActor () -> String
@@ -75,7 +75,7 @@ final class WorkspacesModel: ObservableObject {
                         + (founded.haError ?? "no reason given"))
             }
             await load()
-            // The listing may lag the founding; the namespace runs chat's app either way.
+            // The listing may lag the founding; the org runs chat either way.
             let workspace =
                 workspaces.first(where: { $0.id == founded.namespaceId })
                 ?? applicationId().map { Workspace(id: founded.namespaceId, name: name, applicationId: $0) }
@@ -99,7 +99,7 @@ final class WorkspacesModel: ObservableObject {
         }
     }
 
-    /// Redeem an invitation link or token. Returns the joined namespace id.
+    /// Redeem an invitation link or token. Returns the joined org id.
     func join(invitation input: String) async -> String? {
         guard let invitation = ChatInvitation.parse(input) else {
             errorText = "That isn't a Mero Chat invitation link."
@@ -110,13 +110,15 @@ final class WorkspacesModel: ObservableObject {
         do {
             let joined = try await backend.joinWorkspace(
                 namespaceId: invitation.namespaceId, invitation: invitation.invitation)
-            let name = invitation.workspaceName ?? ChatIdentity.short(invitation.namespaceId)
+            // A web link carries the token only: the node names the org it joined.
+            let org = joined.namespaceId.isEmpty ? invitation.namespaceId : joined.namespaceId
+            let name = invitation.workspaceName ?? (org.isEmpty ? "the workspace" : ChatIdentity.short(org))
             notice =
                 joined.published
-                ? "Joined \(name). Channels appear as the relay syncs."
+                ? "Joined \(name)."
                 : "The join to \(name) was sent but not published yet. Try again shortly."
             errorText = nil
-            return invitation.namespaceId
+            return org
         } catch {
             errorText = ChatErrorText.describe(error)
             return nil

@@ -1,98 +1,53 @@
 import { useEffect, useState } from "react";
-import { useMero } from "@calimero-network/mero-react";
 
-import {
-  clearActiveForum,
-  getContextId,
-  getForumNode,
-  isForumConfirmed,
-  markForumConfirmed,
-} from "./session";
+import { useMaybeSignedIn } from "../sessionContext";
+import { listInstances } from "./spaces";
+import { clearActiveForum, getContextId } from "./session";
 
-// Whether the forum this browser remembers may be opened on the node it is
-// connected to NOW.
-//
-// The remembered forum is a context id, and it outlives both the node it was
-// opened on and the context itself. Routed in unchecked, a node switch
-// (localhost:2528 -> 2529) or a deleted / left forum lands in a feed whose
-// every read fails. So the gates ask the node first, the way mero-stream's
-// RequireStream does: open it only once the node lists it, drop it otherwise.
-
+/**
+ * Whether the remembered forum can be opened: `checking` until the cluster has
+ * listed this account's forums, `open` when the remembered one is among them,
+ * `none` otherwise (and the memory is dropped). It is remembered across
+ * reloads, so it can name a forum since deleted, or one in a space this account
+ * has left.
+ */
 export type StoredForum = "none" | "checking" | "open";
 
-export interface StoredForumInput {
-  stored: string | null;
-  /** The node it was opened on; null for entries older builds wrote. */
-  storedNode: string | null;
-  node: string | null;
-  /** Opened or listed on this node during this load. */
-  confirmed: boolean;
-  /** The context ids the node listed; null until it has answered. */
-  listed: readonly string[] | null;
+/** The decision, given the stored id and the instances listed (`null`: not answered yet). */
+export function decideStoredForum(stored: string | null, listed: readonly string[] | null): StoredForum {
+  if (!stored) return "none";
+  if (!listed) return "checking";
+  return listed.includes(stored) ? "open" : "none";
 }
 
-export function decideStoredForum(i: StoredForumInput): {
-  state: StoredForum;
-  drop: boolean;
-} {
-  if (!i.stored) return { state: "none", drop: false };
-  // Chosen on another node: whatever this one holds under that id, it is not
-  // the forum that was picked.
-  if (i.storedNode && i.node && i.storedNode !== i.node)
-    return { state: "none", drop: true };
-  if (i.confirmed) return { state: "open", drop: false };
-  if (!i.listed) return { state: "checking", drop: false };
-  return i.listed.includes(i.stored)
-    ? { state: "open", drop: false }
-    : { state: "none", drop: true };
-}
-
-/** The remembered forum's standing on this node; drops it when it has none. */
 export function useStoredForum(): StoredForum {
-  const { admin, nodeUrl } = useMero();
-  const node = nodeUrl ?? null;
-  const stored = getContextId();
-  const storedNode = getForumNode();
-  // Keyed by what was asked, so an answer for another node or forum is unused.
-  const [answer, setAnswer] = useState<{
-    key: string;
-    listed: string[];
-  } | null>(null);
-  const key = `${node ?? ""}\n${stored ?? ""}`;
-  const confirmed = !!stored && isForumConfirmed(stored, node);
-  const decision = decideStoredForum({
-    stored,
-    storedNode,
-    node,
-    confirmed,
-    listed: answer?.key === key ? answer.listed : null,
-  });
+  const signedIn = useMaybeSignedIn();
+  const stored = signedIn ? getContextId() : null;
+  const [answer, setAnswer] = useState<{ stored: string; listed: string[] } | null>(null);
+  const state = decideStoredForum(stored, answer && answer.stored === stored ? answer.listed : null);
 
-  const ask = decision.state === "checking" && !!admin;
+  const client = signedIn?.client;
+  const source = signedIn?.source;
+  const after = signedIn?.after;
   useEffect(() => {
-    if (!ask || !admin || !stored) return;
-    let cancelled = false;
-    admin
-      .getContexts()
-      .then((resp) => {
-        const listed = (resp.contexts ?? []).map((c) => c.id);
-        if (listed.includes(stored)) markForumConfirmed(stored, node);
-        return listed;
-      })
-      // Couldn't reach the node to verify: let the page try rather than drop
-      // a live forum on one flaky request (as mero-stream does), unconfirmed.
+    if (state !== "checking" || !client || !source || !stored) return;
+    let live = true;
+    listInstances(client, source)
+      .then((apps) => apps.map((a) => a.appId))
+      // Unreachable: keep the memory and let the feed say what is wrong.
       .catch(() => [stored])
       .then((listed) => {
-        if (!cancelled) setAnswer({ key, listed });
-      });
+        if (live) setAnswer({ stored, listed });
+      })
+      .finally(() => after?.());
     return () => {
-      cancelled = true;
+      live = false;
     };
-  }, [ask, admin, stored, node, key]);
+  }, [state, client, source, stored, after]);
 
   useEffect(() => {
-    if (decision.drop) clearActiveForum();
-  }, [decision.drop]);
+    if (stored && state === "none") clearActiveForum();
+  }, [stored, state]);
 
-  return decision.state;
+  return state;
 }

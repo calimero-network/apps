@@ -1,8 +1,8 @@
 import Foundation
 import MeroKit
 
-/// Re-read a repo when it changes: on each of the relay's events for the
-/// context, or every few seconds when the stream is not available (no relay
+/// Re-read a repo when it changes: on each of the node's events for the
+/// app instance, or every few seconds when the stream is not available (no stream
 /// session yet) or ends. Runs until the calling task is cancelled.
 public enum LiveUpdates {
     public static func follow(

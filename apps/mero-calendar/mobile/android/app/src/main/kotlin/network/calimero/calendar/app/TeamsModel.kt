@@ -9,7 +9,7 @@ import network.calimero.calendar.data.ErrorText
 import network.calimero.calendar.data.LocalNames
 import network.calimero.calendar.data.TeamInvites
 
-/** A team: a namespace running Mero Calendar. */
+/** A team: a Calimero org running Mero Calendar. */
 data class Team(
     val id: String,
     val name: String,
@@ -20,8 +20,6 @@ data class TeamsState(
     val loading: Boolean = true,
     val teams: List<Team> = emptyList(),
     val error: String? = null,
-    /** No relay serves the account yet: only joining works. */
-    val noRelay: Boolean = false,
 )
 
 /** The teams list (the web app's `TeamsPage`): list, create, invite, join. */
@@ -36,10 +34,6 @@ class TeamsModel(
     val justJoined = mutableSetOf<String>()
 
     suspend fun load() {
-        if (!backend.hasRelay) {
-            _state.value = TeamsState(loading = false, noRelay = true)
-            return
-        }
         _state.update { it.copy(loading = it.teams.isEmpty(), error = null) }
         try {
             val teams =
@@ -72,11 +66,14 @@ class TeamsModel(
     /** A shareable invitation link to [team]. */
     suspend fun inviteLink(team: Team): String = TeamInvites.link(backend.createInvitation(team.id), team.name)
 
+    /** The org ids of the listed teams (where approvals are read). */
+    val orgs: List<String> get() = _state.value.teams.map { it.id }
+
     /** Redeem a pasted or opened link. Returns the team's id. */
     suspend fun join(input: String): String {
         val invitation = TeamInvites.parse(input) ?: throw IllegalArgumentException(NOT_AN_INVITATION)
-        backend.joinNamespace(invitation.namespaceId, invitation.invitation)
         invitation.teamName?.let { names.setTeam(invitation.namespaceId, it) }
+        backend.joinNamespace(invitation.namespaceId, invitation.invitation)
         justJoined += invitation.namespaceId
         return invitation.namespaceId
     }

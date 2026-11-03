@@ -11,10 +11,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import network.calimero.chess.generated.GameSummary
-import network.calimero.chess.generated.MeroChessClient
-import network.calimero.chess.generated.SeatView
-import network.calimero.chess.generated.TableView
+import network.calimero.chess.contract.GameSummary
+import network.calimero.chess.contract.MeroChessClient
+import network.calimero.chess.contract.SeatView
+import network.calimero.chess.contract.TableView
 
 /** A promotion the player has started and not yet chosen a piece for. */
 data class PendingPromotion(

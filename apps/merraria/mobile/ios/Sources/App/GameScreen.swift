@@ -377,9 +377,9 @@ private struct PauseMenu: View {
                     }
                     DisclosureGroup("Details") {
                         VStack(spacing: 10) {
-                            DetailRow(label: "World (context)", value: model.ref.contextId)
-                            DetailRow(label: "Namespace", value: model.ref.namespaceId)
-                            if let groupId = model.ref.groupId { DetailRow(label: "Group", value: groupId) }
+                            DetailRow(label: "World (app instance)", value: model.ref.contextId)
+                            DetailRow(label: "Organization", value: model.ref.namespaceId)
+                            if let groupId = model.ref.groupId { DetailRow(label: "Team", value: groupId) }
                         }
                         .padding(.top, 8)
                     }

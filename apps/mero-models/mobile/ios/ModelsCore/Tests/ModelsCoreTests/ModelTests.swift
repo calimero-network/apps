@@ -44,7 +44,7 @@ final class ModelTests: XCTestCase {
         XCTAssertEqual(model.name, "Crate kit")
         XCTAssertEqual(model.objects.count, 4)
         XCTAssertTrue(backend.recording.calls.allSatisfy { $0.path == .query })
-        XCTAssertEqual(backend.recording.calls("list_locks").first?.args["now"], .number(Double(Fixtures.now)))
+        XCTAssertEqual(backend.recording.calls("listLocks").first?.args["now"], .string(String(Fixtures.now)))
         XCTAssertNotNil(model.viewerJSON())
     }
 
@@ -93,13 +93,13 @@ final class ModelTests: XCTestCase {
         let backend = Fixtures.backend()
         let model = SceneModel(backend: backend, studioId: Fixtures.studio, contextId: Fixtures.scene, now: clock)
         await model.open()
-        let before = backend.recording.calls("get_objects").count
+        let before = backend.recording.calls("getObjects").count
         let live = Task { await model.live() }
         try await Task.sleep(nanoseconds: 50_000_000)
         backend.emit(AppContextEvent(contextId: Fixtures.scene, kind: "StateMutation"))
         try await Task.sleep(nanoseconds: 200_000_000)
         live.cancel()
-        XCTAssertGreaterThan(backend.recording.calls("get_objects").count, before)
+        XCTAssertGreaterThan(backend.recording.calls("getObjects").count, before)
     }
 
     func testBlobsAreReadOnce() async {

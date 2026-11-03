@@ -9,8 +9,8 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.encodeToJsonElement
-import network.calimero.forum.generated.CommentView
-import network.calimero.forum.generated.PostView
+import network.calimero.forum.contract.CommentView
+import network.calimero.forum.contract.PostView
 import java.io.IOException
 
 val ME = "ab".repeat(32)

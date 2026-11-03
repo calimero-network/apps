@@ -1,27 +1,28 @@
 import Foundation
 import MeroKit
 
-/// A company or audience invitation in the web app's format
-/// (`app/src/lib/inviteCodec.ts` + `inviteLink.ts`), so a link minted on a
-/// phone opens in the browser and the other way round:
+/// A company or audience invitation: Calimero 1.0's org invite token in the
+/// SDK's link shape (``OrgInvitation``), plus where to land:
 ///
-/// - payload: JSON `{"invitation": <SignedGroupOpenInvitation>, "kind": "namespace"|"audience",
-///   "groupId": <namespace>, "groupAlias": <company name>, "audienceId"?, "contextId"?, "audienceName"?}`
+/// - payload: JSON `{"invitation": "inv_…", "namespaceId": <org>, "contextId"?, "name"?: <company name>,
+///   "kind": "namespace"|"audience", "audienceId"?, "audienceName"?}`
 /// - token: `base58(deflate(payload))` (``InviteCodec``, byte-compatible with fflate + bs58)
 /// - link: `https://links.calimero.network/com.calimero.mero-updates/join?invitation=<token>`
 ///
-/// The grant is always the namespace (audiences are open subgroups, reachable
-/// by every company member); `audienceId` / `contextId` only say where to land.
+/// The grant is always the org (audiences are open teams, reachable by every
+/// company member): redeeming the token (`POST /invites/{token}/redeem`) joins
+/// the org it belongs to; `audienceId` / `contextId` only say where to land. A
+/// pre-1.0 signed invitation is refused (a 1.0 cluster cannot redeem it).
 public struct UpdatesInvitation: Sendable {
     /// The registry package, which is also the links' slug (`APP_SLUG`).
     public static let packageName = "com.calimero.mero-updates"
 
     public enum Kind: String, Sendable { case namespace, audience }
 
-    /// The signed envelope, carried through untouched.
-    public let invitation: SignedGroupOpenInvitation
+    /// The org invite token.
+    public let invitation: OrgInvitation
     public let kind: Kind
-    /// The namespace (company) it admits to, read from inside the signed invitation.
+    /// The org (company) it admits to.
     public let namespaceId: String
     public let companyName: String?
     public let audienceId: String?
@@ -29,7 +30,7 @@ public struct UpdatesInvitation: Sendable {
     public let audienceName: String?
 
     public init(
-        invitation: SignedGroupOpenInvitation, kind: Kind, namespaceId: String, companyName: String? = nil,
+        invitation: OrgInvitation, kind: Kind, namespaceId: String, companyName: String? = nil,
         audienceId: String? = nil, contextId: String? = nil, audienceName: String? = nil
     ) {
         self.invitation = invitation
@@ -41,22 +42,17 @@ public struct UpdatesInvitation: Sendable {
         self.audienceName = audienceName
     }
 
-    private struct Payload: Encodable {
-        let invitation: SignedGroupOpenInvitation
-        let kind: String
-        let groupId: String
-        let groupAlias: String?
-        let audienceId: String?
-        let contextId: String?
-        let audienceName: String?
-    }
-
-    /// The shareable link.
+    /// The shareable link: the SDK's ``OrgInvitation`` JSON with this app's landing fields beside it.
     public func link() throws -> String {
-        let token = try InviteCodec.encode(
-            Payload(
-                invitation: invitation, kind: kind.rawValue, groupId: namespaceId, groupAlias: companyName,
-                audienceId: audienceId, contextId: contextId, audienceName: audienceName))
+        let base = OrgInvitation(
+            namespaceId: namespaceId, token: invitation.token, contextId: Self.nonEmpty(contextId),
+            name: Self.nonEmpty(companyName))
+        guard case .object(var payload) = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(base))
+        else { throw UpdatesError.notAnInvitation }
+        payload["kind"] = .string(kind.rawValue)
+        if let audienceId = Self.nonEmpty(audienceId) { payload["audienceId"] = .string(audienceId) }
+        if let audienceName = Self.nonEmpty(audienceName) { payload["audienceName"] = .string(audienceName) }
+        let token = try InviteCodec.encode(JSONValue.object(payload))
         return InviteLink.invitation(token: token, slug: Self.packageName)
     }
 
@@ -85,60 +81,24 @@ public struct UpdatesInvitation: Sendable {
         return parse(json: json)
     }
 
-    /// Read the decoded payload. Like the web's `parsePayload`, it checks the
-    /// envelope is signed and leaves its fields to the node.
+    /// Read the decoded payload (under an optional `data` envelope). The SDK's
+    /// ``OrgInvitation`` decoding refuses a 0.x payload (a signed object as `invitation`).
     public static func parse(json: String) -> UpdatesInvitation? {
         guard let parsed = try? JSONDecoder().decode(JSONValue.self, from: Data(json.utf8)) else { return nil }
         let root = parsed["data"].flatMap { $0.objectValue != nil ? $0 : nil } ?? parsed
-        guard case .object(var fields) = root else { return nil }
-
-        let signedValue: JSONValue
-        if let inner = fields["invitation"], isSigned(inner) {
-            signedValue = inner
-        } else if isSigned(root) {
-            signedValue = root  // a bare SignedGroupOpenInvitation
-            fields = [:]
-        } else {
-            return nil
-        }
-        guard let signed = decodeSigned(signedValue) else { return nil }
-
-        let chainNamespace = fields["chain"]?.arrayValue?.first(where: { $0["kind"]?.stringValue == "namespace" })
-        let fromChain = chainNamespace?["invitation"].flatMap(decodeSigned).map { hex($0.invitation.groupId) }
-        let signedGroup = hex(signed.invitation.groupId)
-        let namespaceId =
-            [fromChain, signedGroup, fields["groupId"]?.stringValue].compactMap { $0 }.first { !$0.isEmpty } ?? ""
-        guard !namespaceId.isEmpty else { return nil }
+        guard case .object(let fields) = root,
+            let data = try? JSONEncoder().encode(root),
+            let base = try? JSONDecoder().decode(OrgInvitation.self, from: data)
+        else { return nil }
 
         let audienceId = nonEmpty(fields["audienceId"]?.stringValue)
-        let contextId = nonEmpty(fields["contextId"]?.stringValue)
+        let contextId = nonEmpty(base.contextId)
         let kind: Kind = fields["kind"]?.stringValue == "audience" || (audienceId != nil && contextId != nil)
             ? .audience : .namespace
         return UpdatesInvitation(
-            invitation: signed, kind: kind, namespaceId: namespaceId,
-            companyName: nonEmpty(fields["groupAlias"]?.stringValue ?? fields["groupName"]?.stringValue),
-            audienceId: audienceId, contextId: contextId,
-            audienceName: nonEmpty(fields["audienceName"]?.stringValue))
-    }
-
-    private static func isSigned(_ value: JSONValue) -> Bool {
-        guard case .object(let o) = value, o["invitation"]?.objectValue != nil else { return false }
-        return o["inviter_signature"]?.stringValue != nil || o["inviterSignature"]?.stringValue != nil
-    }
-
-    /// Decode the envelope, accepting the camelCase spelling some nodes write.
-    private static func decodeSigned(_ value: JSONValue) -> SignedGroupOpenInvitation? {
-        guard case .object(var o) = value else { return nil }
-        if o["inviter_signature"] == nil, let camel = o["inviterSignature"] {
-            o["inviter_signature"] = camel
-            o["inviterSignature"] = nil
-        }
-        guard let data = try? JSONEncoder().encode(JSONValue.object(o)) else { return nil }
-        return try? JSONDecoder().decode(SignedGroupOpenInvitation.self, from: data)
-    }
-
-    static func hex(_ bytes: [Int]) -> String {
-        bytes.map { String(format: "%02x", $0 & 0xFF) }.joined()
+            invitation: base, kind: kind, namespaceId: base.namespaceId,
+            companyName: nonEmpty(base.name ?? fields["groupAlias"]?.stringValue), audienceId: audienceId,
+            contextId: contextId, audienceName: nonEmpty(fields["audienceName"]?.stringValue))
     }
 
     private static func nonEmpty(_ s: String?) -> String? {
