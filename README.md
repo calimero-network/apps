@@ -61,9 +61,8 @@ Start here. These exist to be read, not shipped.
 
 | App | Live | What it is | Package |
 | --- | --- | --- | --- |
-| [kv-store](apps/kv-store) | [↗](https://mero-kv-store.vercel.app) | An `UnorderedMap<String, LwwRegister<String>>` exercised end to end, with a typed client generated from the contract's own ABI. | `com.calimero.kv-store` |
+| [kv-store](apps/kv-store) | [↗](https://mero-kv-store.vercel.app) | The first component app (Calimero 1.0): a string key-value store on `calimero-app-sdk`, developed on `merod local`, its frontend on mero-js `CalimeroClient` (Cloud in production). | `com.calimero.kv-store` |
 | [scaffolding-e2e](apps/scaffolding-e2e) | [↗](https://scaffolding-e2e-application.vercel.app/) | Full-stack scaffold — KV, CRDTs, blobs, private storage and namespace management behind an interactive test suite that exercises every SDK surface. | `com.calimero.scaffolding-e2e` |
-| [delegated-execution](apps/delegated-execution) | — | Delegated execution with buttons on it: mint an account in the tab, take a session on a node you do not own, read, and write through a relay — no password in the flow. Frontend only; drives the scaffolding-e2e contract. | *(no bundle)* |
 
 ### Collaboration & productivity
 
@@ -80,14 +79,14 @@ Start here. These exist to be read, not shipped.
 | [mero-forum](apps/mero-forum) | [↗](https://mero-forum.vercel.app) | Threads and comments replicated across your own nodes, with no server in the middle. | `com.calimero.mero-forum` |
 | [mero-chat](apps/mero-chat) | [↗](https://chat.hyperfeed.me) | A component app (Calimero 1.0): team chat with workspaces, public and private channels, threads, reactions and DMs, each channel an app instance its members reach, on `calimero-app-sdk`, its frontend on mero-js `CalimeroClient`. | `com.calimero.chat` |
 | [mero-updates](apps/mero-updates) | — | Investor updates, two-way: categories, KPI deltas, asks answered in one click, investor Q&A and read receipts, between the company's and its investors' nodes. | `com.calimero.mero-updates` |
-| [mero-standup](apps/mero-standup) | — | Async standups and a decision log for a small team: each member's own update per day (started from yesterday's), help on blockers, a weekly digest, and tagged write-once decisions superseded rather than edited. Small on purpose — the second app to read after kv-store, and the worked example of migrating a live app's state (v1 → v2). | `com.calimero.mero-standup` |
+| [mero-standup](apps/mero-standup) | — | Async standups and a decision log for a small team: each member's own update per day (started from yesterday's), help on blockers, a weekly digest, and tagged write-once decisions superseded rather than edited. A component app (Calimero 1.0) on `calimero-app-sdk`: v1's storage-tier write rules as method checks, tables with indexes and counts; frontend on mero-js `CalimeroClient`. | `com.calimero.mero-standup` |
 | [mero-forms](apps/mero-forms) | — | Forms with the questions you choose — typed and checked answers, a builder, responses with a summary and CSV — filled in by hand or by a website through a key that can answer one form; any response goes on to [Mero CRM](apps/mero-crm) as a contact and a deal. | `com.calimero.mero-forms` |
 
 ### Secrets, documents & governance
 
 | App | Live | What it is | Package |
 | --- | --- | --- | --- |
-| [mero-pass](apps/mero-pass) | [↗](https://mero-pass.vercel.app) | Secret manager — a vault is a context. Credentials stay on member nodes, versioned and attributed, with no master password to phish. | `com.calimero.mero-pass` |
+| [mero-pass](apps/mero-pass) | [↗](https://mero-pass.vercel.app) | Secret manager on Calimero 1.0 (component SDK) — a vault is an app instance in your team's org. Secrets are sealed in the browser, versioned and attributed, with no master password to phish. | `com.calimero.mero-pass` |
 | [mero-sign](apps/mero-sign) | [↗](https://mero-sign.vercel.app) | Document signing — upload a PDF, collect signatures from namespace members, verify them peer-to-peer. | `com.calimero.mero-sign` |
 | [mero-vote](apps/mero-vote) | — | Private polls with verifiable tallies — ballots encrypted in the browser (ElGamal on ristretto255) with zero-knowledge well-formedness proofs, t-of-n threshold-decrypted totals (distributed key generation, no trusted dealer), and a tally every member re-verifies. | `com.calimero.mero-vote` |
 
@@ -105,7 +104,7 @@ Start here. These exist to be read, not shipped.
 
 | App | Live | What it is | Package |
 | --- | --- | --- | --- |
-| [mero-stream](apps/mero-stream) | [↗](https://mero-stream-neon.vercel.app) | Media capacity probe. `/stream` runs a toy integer codec inside the contract; `/live` stores opaque browser-encoded H.264. Deliberately the wrong way round, to find the node's ceiling with numbers. **Not shippable media, and web-only — it does not run in Calimero Desktop.** | `com.calimero.mero-stream` |
+| [mero-stream](apps/mero-stream) | [↗](https://mero-stream-neon.vercel.app) | Media capacity probe, on the component runtime. `/stream` runs a toy integer codec inside the contract; `/live` carries browser-encoded H.264 over the node's presence channel. Deliberately the wrong way round, to find the platform's ceiling with numbers. **Not shippable media, and web only.** | `com.calimero.mero-stream` |
 | [hyperfeed](apps/hyperfeed) | — | Prototype. One feed for your agent and your apps: every action an agent took on your behalf (with its warrant's intent hash and executor) beside every notification your other contexts emitted, with approvals, undo, per-app agent modes and "always ask" guards enforced by the contract. `/demo` runs with no node. | `com.calimero.hyperfeed` |
 
 ### Out of scope

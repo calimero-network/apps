@@ -1,76 +1,73 @@
-//! Mero Pass — one vault's replicated state.
+//! Mero Pass: one vault's state, on core's component SDK (`calimero-app-sdk`).
 //!
-//! A Calimero context IS a vault. This contract holds what every member of that
-//! context replicates: the vault's name, its secrets, who may change them, the
-//! device keys the vault key is wrapped to, and an append-only activity trail.
+//! An app instance IS a vault. It holds what every member of the vault reads:
+//! the vault's name, its secrets, who may change them, the device keys the vault
+//! key is wrapped to, and an append-only activity trail.
 //!
-//! ── What the node never sees ────────────────────────────────────────────────
+//! # What the node never sees
 //!
 //! Every secret NAME, FIELD and TAG list arrives here already encrypted by the
-//! browser under the vault key (AES-256-GCM, see `app/src/lib/crypto.ts`). The
-//! contract stores ciphertext envelopes and never decrypts them — it cannot: the
-//! vault key only exists wrapped to device public keys, and the matching private
-//! keys live in each browser's IndexedDB. A member's node, its disk, its logs and
-//! its operator see ciphertext. Only the secret's KIND (login, totp, …) and its
+//! browser under the vault key (AES-256-GCM, `packages/mero-pass/src/crypto.ts`).
+//! The contract stores ciphertext envelopes and never decrypts them; it cannot:
+//! the vault key only exists wrapped to device public keys, whose private halves
+//! live in each browser. Only a secret's KIND (login, totp, …) and its
 //! bookkeeping (who, when) are cleartext, so the UI can draw an icon before the
 //! vault is unlocked.
 //!
-//! ── Who may do what, and where it is enforced ───────────────────────────────
+//! # One log, plain data
 //!
-//! Three roles: Admin, Editor, Viewer — plus `pending`, an account that has
-//! registered a device and was never let in. They live in an [`AccessControl`]
-//! whose writer set IS the admin tier, and are PROJECTED onto three guarded
-//! stores as capability masks:
+//! The app runs on its cluster's leader, which applies every write in one
+//! replicated log. v1's CRDT plumbing has nothing left to decide, so the state is
+//! plain tables and maps:
 //!
-//! | store       | Viewer | Editor        | Admin |
-//! |-------------|--------|---------------|-------|
-//! | `secrets`   | read   | WRITE         | FULL  |
-//! | `history`   | read   | WRITE         | FULL  |
-//! | `admin`     | read   | read          | FULL  |
+//! | v1 (`calimero-storage`) | here |
+//! |---|---|
+//! | `Frozen<String>` name + `settings` rename register | `vaultName: Cell<String>` (set by `renameVault`) |
+//! | `AccessControl` (admin tier + `editor`/`viewer` roles) | `members: Table<Member>`, a maintained `perRole` count |
+//! | `PermissionedStorage<UnorderedMap<String, Secret>>`, a `Secret` of `LwwRegister`s | `secrets: Table<Secret>` + `secretFields: UnorderedMap<(id, field), String>` (a record cannot hold a map) |
+//! | `PermissionedStorage<SortedMap<"id/rev", Revision>>` | `history: UnorderedMap<(id, seq), Revision>`, `seq` from `revisionSeq: Counter` |
+//! | `admin` flags `default_role`, `current_key` | `defaultRole`, `currentKey: Cell<String>` |
+//! | `admin` flags `revoked:<fp>`, `removed:<account>` | `revoked`, `removed: Set<String>` |
+//! | `AuthoredMap<String, DeviceKey>` (owner stamp per entry) | `devices: Table<Device>` keyed `(fingerprint, account)`, the account a field |
+//! | `AuthoredMap<String, KeyWrap>` | `keyWraps: Table<KeyWrap>`, `wrappedBy` a field; `byRecipient`, `byKey`, `byAuthor` indexes |
+//! | `AuthoredVector<AuditLogEntry>` | `audit: Vector<AuditEntry>`, `account` a field |
 //!
-//! The masks are signed and re-checked by every peer at merge
-//! ([`ProtocolAuthorizer`]), so a patched node that skips the API guards below
-//! still has its forged write dropped everywhere else. The guards here are the
-//! fail-fast half of the same rule.
+//! # Who may do what
 //!
-//! Hard-deleting a secret (`purge_secret`) needs DELETE, which only admins hold.
-//! Editors move secrets to the trash, which is a WRITE of a tombstone flag — so
-//! an editor can never make a secret unrecoverable.
-
-#![allow(clippy::len_without_is_empty)]
+//! The organization decides who reaches the app (its owner, admins, members and
+//! guests). Inside the vault there are three roles, Admin, Editor and Viewer,
+//! plus `pending`: an account that registered a device and was never let in.
+//! The account that creates the vault is its first Admin.
+//!
+//! v1 enforced the write rules in storage (capability masks re-checked by every
+//! peer at merge, owner stamps on authored entries). Every write here goes
+//! through a method, so they are checks in the method, against `env::caller()`,
+//! before anything is written:
+//!
+//! | rule | methods | refused with |
+//! |---|---|---|
+//! | Editor or Admin | `addSecret`, `updateSecret`, `trashSecret`, `restoreSecret`, `renameVault` | `Forbidden` |
+//! | Admin | `setRole`, `removeMember`, `setDefaultRole`, `rotateKey`, `purgeSecret` | `Forbidden` |
+//! | the device's own account, or an Admin | `revokeDevice` | `Forbidden` |
+//! | an Admin's wrap only, to an agent's key | `addKeyWraps` (skipped), `wrappedPairs` (not counted) | — |
+//! | a role holder's wrap only | `wrappedPairs` (not counted) | — |
+//!
+//! A device's account, a wrap's author and an audit line's account are the
+//! caller's account, written by the method: nobody can write one in someone
+//! else's name, which is what v1's owner stamps guaranteed.
+//!
+//! Everything a client sees differently from v1 is listed in
+//! `apps/mero-pass/README.md`, "What changed in the port".
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use calimero_sdk::abi::AbiType;
-use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
-use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::{app, env, AccountId};
-use calimero_storage::address::Id;
-use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::permissioned::{Op, ProtocolAuthorizer};
-use calimero_storage::collections::rekey::RekeyTarget;
-use calimero_storage::collections::{
-    AccessControl, AuthoredMap, AuthoredVector, Frozen, LwwRegister, MergeStrategy,
-    Mergeable as MergeableTrait, PermissionedStorage, SortedMap, UnorderedMap,
-};
-use calimero_storage::entities::OpMask;
+use calimero_app_sdk::env::Caller;
+use calimero_app_sdk::prelude::*;
+use calimero_app_sdk::StorageError;
+use serde::Serialize;
 
-/// Roles held in [`AccessControl`]. Admin is the registry's own admin tier.
-///
-/// Viewer is an explicit grant, not the absence of one: an account with no role
-/// at all is `pending` — it registered a device but no admin has let it in —
-/// and clients only wrap the vault key to accounts that hold SOME role. That is
-/// what stops a removed member who re-registers a device from being handed the
-/// key again.
-const ROLE_EDITOR: &str = "editor";
-const ROLE_VIEWER: &str = "viewer";
-
-/// Role masks projected onto `secrets` and `history`. Admins always receive
-/// `FULL` from `project_onto`, so they are not listed.
-const CONTENT_ROLES: [(&str, OpMask); 1] = [(ROLE_EDITOR, OpMask::WRITE)];
-
-/// Role masks projected onto `admin`: nobody but the admins.
-const ADMIN_ONLY: [(&str, OpMask); 0] = [];
+/// The most rows one storage read returns.
+const PAGE: u32 = 1000;
 
 /// Upper bound on one ciphertext envelope. A 64 KiB note, base64'd and wrapped,
 /// fits comfortably; anything larger belongs in a blob.
@@ -78,6 +75,10 @@ const MAX_ENVELOPE_LEN: usize = 128 * 1024;
 
 /// Upper bound on the number of fields one secret may carry.
 const MAX_FIELDS: usize = 64;
+
+/// The longest field name, account, key id or label, in bytes: they are parts of
+/// storage keys, which the node caps at 1 KiB.
+const MAX_NAME_LEN: usize = 256;
 
 /// What a registered device key is. A recovery key is shown and handled
 /// differently by clients (never prompted for approval, listed separately). An
@@ -99,194 +100,181 @@ const SECRET_KINDS: [&str; 8] = [
     "oauth2",
 ];
 
-// ── Stored types ────────────────────────────────────────────────────────────
+const ROLE_ADMIN: &str = "admin";
+const ROLE_EDITOR: &str = "editor";
+const ROLE_VIEWER: &str = "viewer";
+const ROLE_PENDING: &str = "pending";
+const ROLE_REMOVED: &str = "removed";
 
-/// One secret, as independent registers rather than one record.
-///
-/// Field-level registers are the point: Alice fixing the URL while Bob rotates
-/// the password are writes to two different registers, so BOTH survive the
-/// merge. A single last-writer-wins record would keep one edit and silently
-/// discard the other. Within one field, last writer wins by HLC — there is no
-/// meaningful way to merge two different passwords.
-#[derive(Default, BorshSerialize, BorshDeserialize, AbiType, app::Mergeable)]
-#[borsh(crate = "calimero_sdk::borsh")]
+// ── stored records ───────────────────────────────────────────────────────────
+
+/// A vault role held by one account: `admin`, `editor` or `viewer`. An account
+/// with no row is `pending`.
+#[derive(Record)]
+#[table(key = "account", index(by_role = ["role", "account"]), count(per_role = ["role"]))]
+pub struct Member {
+    pub account: String,
+    pub role: String,
+}
+
+/// One secret's cleartext bookkeeping and its encrypted name and tags. Its
+/// fields are rows of `secretFields`, keyed `(id, field)`.
+#[derive(Record)]
+#[table(key = "id")]
 pub struct Secret {
-    /// Cleartext kind — `login`, `totp`, … — so the UI can pick an icon.
-    kind: LwwRegister<String>,
-    /// Encrypted display name.
-    name: LwwRegister<String>,
-    /// Encrypted tag list (one envelope over a JSON array).
-    tags: LwwRegister<String>,
-    /// Field name (`password`, `url`, …) → encrypted value.
-    fields: UnorderedMap<String, LwwRegister<String>>,
-    created_at: LwwRegister<u64>,
-    created_by: LwwRegister<String>,
-    updated_at: LwwRegister<u64>,
-    updated_by: LwwRegister<String>,
-    /// Tombstone. Trashing is a flag rather than a `remove`, because the map is
-    /// add-wins: a hard remove loses to a concurrent edit and the secret comes
-    /// back. The flag resolves edit-vs-trash by HLC instead.
-    trashed: LwwRegister<bool>,
-    trashed_at: LwwRegister<u64>,
-}
-
-/// A superseded field value. Written once, never edited.
-#[derive(Debug, Clone, Default, BorshSerialize, BorshDeserialize, AbiType)]
-#[borsh(crate = "calimero_sdk::borsh")]
-pub struct Revision {
-    /// The field that changed; `name` and `tags` use those reserved names.
-    field: String,
-    /// The value it held before, still encrypted (under whichever vault key it
-    /// was written with — the envelope names its key).
-    previous: String,
-    replaced_at: u64,
-    replaced_by: String,
-}
-
-/// A device public key the vault key may be wrapped to.
-///
-/// Stored in an [`AuthoredMap`], so only the account that registered it can
-/// remove it. Its account is the entry's owner stamp, which every node
-/// verifies — never a field in the value, which a modified node could fill
-/// with anyone's account to be handed the vault key in their name.
-///
-/// Keys are per owner (core rc.57): two accounts registering one fingerprint
-/// hold two entries, each read with its own account (`entries_with_owners`).
-/// A key-only `owner_of` would only ever name the caller.
-#[derive(Debug, Clone, Default, BorshSerialize, BorshDeserialize, AbiType)]
-#[borsh(crate = "calimero_sdk::borsh")]
-pub struct DeviceKey {
-    /// Base64 of the raw (uncompressed) P-256 ECDH public key.
-    public_key: String,
-    label: String,
-    /// `browser` for a browser's device key; `recovery` for an account's
-    /// offline recovery key, whose private half exists only on paper; `agent`
-    /// for the key of software acting for its account, admitted by an admin.
-    kind: String,
-    node_device: String,
-    added_at: u64,
-}
-
-/// The vault key, wrapped to one device key by one wrapper.
-///
-/// Keyed by `recipient:key_id:nonce` in an authored map: the random nonce
-/// means nobody can occupy the key a genuine wrap will be written under, and the owner stamp says who wrapped
-/// it. A forged wrap is detectable anyway — the recipient checks that the
-/// unwrapped key hashes to `key_id` — but it must not be able to displace a
-/// genuine one, nor make a device look approved (see `wrapped_pairs`).
-#[derive(Debug, Clone, Default, BorshSerialize, BorshDeserialize, AbiType)]
-#[borsh(crate = "calimero_sdk::borsh")]
-pub struct KeyWrap {
-    key_id: String,
-    recipient: String,
-    wrapper: String,
-    /// ECIES envelope: ephemeral public key, IV and ciphertext, base64 JSON.
-    envelope: String,
-    wrapped_at: u64,
-}
-
-/// One line of the activity trail. Who wrote it is the slot's owner stamp,
-/// not a field: an author can claim anything in their own entry.
-#[derive(Debug, Clone, Default, BorshSerialize, BorshDeserialize, AbiType)]
-#[borsh(crate = "calimero_sdk::borsh")]
-pub struct AuditLogEntry {
-    action: String,
-    /// The object acted on: a secret id, an account, a device fingerprint.
-    /// Never a secret's name — names are ciphertext, and a trail that echoed
-    /// them in the clear would undo the encryption.
-    target: String,
-    /// The author's node device, as the author's node reported it.
-    device: String,
-    timestamp: u64,
-}
-
-/// Keys of the admin-only store. It is a flat map rather than a struct because
-/// a guarded store must hold a collection: the per-entry writer stamps are what
-/// peers verify at merge.
-const ADMIN_DEFAULT_ROLE: &str = "default_role";
-const ADMIN_CURRENT_KEY: &str = "current_key";
-/// Prefix of a revoked device's entry. A revoked device is skipped by every
-/// client that wraps a new vault key, which is what locks it out of writes made
-/// after the next rotation.
-const ADMIN_REVOKED: &str = "revoked:";
-/// Prefix of a removed account's entry. Clients never auto-admit it again; only
-/// an explicit `set_role` does.
-const ADMIN_REMOVED: &str = "removed:";
-
-/// Key of the vault's name in `settings`, once someone has renamed it.
-const SETTING_VAULT_NAME: &str = "vault_name";
-
-// Written-once values: every write uses a fresh random key, so two replicas
-// never contend for one entry, and if one ever did, the copy already present
-// wins. Nothing for the merge point to decide, so no wasm hop is paid for it.
-macro_rules! immutable_value {
-    ($($t:ty),*) => {$(
-        impl MergeStrategy for $t {
-            const DISPATCHED: bool = false;
-        }
-        impl MergeableTrait for $t {
-            fn merge(&mut self, _other: &Self) -> std::result::Result<(), MergeError> {
-                Ok(())
-            }
-        }
-        impl RekeyTarget for $t {
-            fn rekey_relative_to(&mut self, _parent_id: Id) {}
-        }
-    )*};
-}
-immutable_value!(Revision, DeviceKey, KeyWrap, AuditLogEntry);
-
-// ── Views (what RPC returns) ────────────────────────────────────────────────
-
-#[derive(AbiType, Debug, Clone, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct SecretView {
+    /// `secret_` and 32 hex characters, chosen by the client.
     pub id: String,
+    /// Cleartext kind, one of [`SECRET_KINDS`], so the UI can pick an icon.
     pub kind: String,
+    /// Encrypted display name.
     pub name: String,
+    /// Encrypted tag list (one envelope over a JSON array).
     pub tags: String,
-    pub fields: BTreeMap<String, String>,
     pub created_at: u64,
     pub created_by: String,
     pub updated_at: u64,
     pub updated_by: String,
+    /// In the trash: recoverable until an admin purges it.
     pub trashed: bool,
     pub trashed_at: u64,
 }
 
-#[derive(AbiType, Debug, Clone, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct RevisionView {
+/// A superseded field value. Written once, never edited.
+#[derive(Record)]
+#[table(key = ["secret_id", "seq"], index(by_secret = ["secret_id", "seq"]))]
+pub struct RevisionRow {
+    pub secret_id: String,
+    pub seq: u64,
+    /// The field that changed; `name` and `tags` use those reserved names.
     pub field: String,
+    /// The value it held before, still encrypted (under whichever vault key it
+    /// was written with: the envelope names its key).
     pub previous: String,
     pub replaced_at: u64,
     pub replaced_by: String,
 }
 
-#[derive(AbiType, Debug, Clone, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+/// A device public key the vault key may be wrapped to, registered by
+/// `account`: the caller of `registerDevice`, never a value the registrant
+/// chose. Two accounts registering one fingerprint hold two rows.
+#[derive(Record)]
+#[table(
+    key = ["fingerprint", "account"],
+    index(by_fingerprint = ["fingerprint", "account"]),
+    index(by_account = ["account", "fingerprint"]),
+)]
+pub struct Device {
+    /// Hex SHA-256 of the raw public key.
+    pub fingerprint: String,
+    pub account: String,
+    /// Base64 of the raw (uncompressed) P-256 ECDH public key.
+    pub public_key: String,
+    pub label: String,
+    /// `browser`, `recovery` or `agent`.
+    pub kind: String,
+    pub added_at: u64,
+}
+
+/// The vault key, wrapped to one device key by one wrapper. `wrappedBy` is the
+/// caller of `addKeyWraps`.
+#[derive(Record)]
+#[table(
+    key = "slot",
+    index(by_recipient = ["recipient", "key_id"]),
+    index(by_key = ["key_id"]),
+    index(by_author = ["wrapped_by", "recipient", "key_id"]),
+)]
+pub struct KeyWrap {
+    /// `recipient:key_id:wrap_<32 hex>`.
+    pub slot: String,
+    pub key_id: String,
+    /// The recipient device's fingerprint.
+    pub recipient: String,
+    /// The wrapping device's fingerprint, as the client reported it.
+    pub wrapper: String,
+    /// ECIES envelope: ephemeral public key, IV and ciphertext, base64 JSON.
+    pub envelope: String,
+    pub wrapped_by: String,
+    pub wrapped_at: u64,
+}
+
+/// One line of the activity trail, written by the method that acted.
+#[derive(Record)]
+#[table(key = "seq")]
+pub struct AuditEntry {
+    pub seq: u64,
+    pub action: String,
+    /// The object acted on: a secret id, an account, a device fingerprint.
+    /// Never a secret's name: names are ciphertext, and a trail that echoed
+    /// them in the clear would undo the encryption.
+    pub target: String,
+    pub account: String,
+    pub timestamp: u64,
+}
+
+// ── results ──────────────────────────────────────────────────────────────────
+
+/// A secret as callers see it, fields included. A plain struct: a `Record`
+/// cannot hold a map. Times are decimal strings on the wire.
+#[derive(Serialize)]
+pub struct SecretView {
+    pub id: String,
+    pub kind: String,
+    pub name: String,
+    pub tags: String,
+    /// Field name → encrypted value; cleared fields are absent.
+    pub fields: BTreeMap<String, String>,
+    #[serde(rename = "createdAt", with = "calimero_app_sdk::json::u64_str")]
+    pub created_at: u64,
+    #[serde(rename = "createdBy")]
+    pub created_by: String,
+    #[serde(rename = "updatedAt", with = "calimero_app_sdk::json::u64_str")]
+    pub updated_at: u64,
+    #[serde(rename = "updatedBy")]
+    pub updated_by: String,
+    pub trashed: bool,
+    #[serde(rename = "trashedAt", with = "calimero_app_sdk::json::u64_str")]
+    pub trashed_at: u64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RevisionView {
+    pub field: String,
+    pub previous: String,
+    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    pub replaced_at: u64,
+    pub replaced_by: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DeviceView {
     pub fingerprint: String,
     pub public_key: String,
     pub label: String,
     pub kind: String,
+    /// The account that registered it.
     pub account: String,
+    #[serde(with = "calimero_app_sdk::json::u64_str")]
     pub added_at: u64,
     pub revoked: bool,
 }
 
-#[derive(AbiType, Debug, Clone, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct KeyWrapView {
     pub key_id: String,
     pub recipient: String,
     pub wrapper: String,
     pub envelope: String,
+    /// The account that stored the wrap.
     pub wrapped_by: String,
 }
 
-#[derive(AbiType, Debug, Clone, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+/// One wrap handed to `addKeyWraps`.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct KeyWrapInput {
     pub key_id: String,
     pub recipient: String,
@@ -294,19 +282,19 @@ pub struct KeyWrapInput {
     pub envelope: String,
 }
 
-#[derive(AbiType, Debug, Clone, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Serialize)]
 pub struct MemberView {
     pub account: String,
     /// `admin`, `editor` or `viewer`; `pending` for an account that has
     /// registered a device but was never given a role; `removed` for one an
     /// admin removed, which clients must not auto-admit.
     pub role: String,
+    /// Its unrevoked devices.
     pub devices: u32,
 }
 
-#[derive(AbiType, Debug, Clone, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct VaultInfo {
     pub name: String,
     pub current_key: String,
@@ -315,238 +303,295 @@ pub struct VaultInfo {
     pub my_role: String,
 }
 
-#[derive(AbiType, Debug, Clone, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Serialize)]
 pub struct AuditView {
     pub action: String,
     pub target: String,
     pub account: String,
+    /// Always empty: a component app has no node device to report (v1's
+    /// author node). Kept so the shape is v1's.
     pub device: String,
+    #[serde(with = "calimero_app_sdk::json::u64_str")]
     pub timestamp: u64,
-    /// True when the author blanked this entry. The slot stays, so a redaction
-    /// is itself visible in the trail.
+    /// Always false: no method blanks a line. Kept so the shape is v1's.
     pub redacted: bool,
 }
 
-// ── State ───────────────────────────────────────────────────────────────────
+// ── state ────────────────────────────────────────────────────────────────────
 
-#[app::state(emits = Event)]
-pub struct MeroPassApp {
-    /// The vault's human name as created, readable by every member on every
-    /// node. The frontend also writes it to the subgroup's metadata, for
-    /// members who have not entered the vault yet; this copy (or a rename in
-    /// `settings`) is the authoritative one.
-    vault_name: Frozen<String>,
-    roles: AccessControl,
-    secrets: PermissionedStorage<UnorderedMap<String, Secret>, ProtocolAuthorizer>,
-    /// `secret_id/rev_id` → superseded value, so a secret's history is one
-    /// prefix read.
-    history: PermissionedStorage<SortedMap<String, Revision>, ProtocolAuthorizer>,
-    /// Admin-only settings: `default_role`, `current_key`, `revoked:<fp>`.
-    admin: PermissionedStorage<UnorderedMap<String, LwwRegister<String>>, ProtocolAuthorizer>,
-    /// Editor-writable settings: the vault's name after a rename.
-    settings: PermissionedStorage<UnorderedMap<String, LwwRegister<String>>, ProtocolAuthorizer>,
-    /// Device fingerprint → public key. Any member may register their own.
-    devices: AuthoredMap<String, DeviceKey>,
-    /// `recipient:key_id:nonce` → wrapped vault key.
-    key_wraps: AuthoredMap<String, KeyWrap>,
-    /// Append-only. Entries can be blanked only by their own author, and a
-    /// blanked slot stays visible as a redaction.
-    audit: AuthoredVector<AuditLogEntry>,
+/// One vault.
+#[app::state(version = 1)]
+pub struct MeroPass {
+    /// The vault's name; empty until the creator's first `renameVault`.
+    vault_name: Cell<String>,
+    /// `editor` or `viewer`; unset means `editor`.
+    default_role: Cell<String>,
+    /// The key id new writes use; unset until the first `rotateKey`.
+    current_key: Cell<String>,
+    members: Table<Member>,
+    /// Accounts an admin removed. Clients never auto-admit them again; only an
+    /// explicit `setRole` does.
+    removed: Set<String>,
+    /// Revoked device fingerprints. Clients skip them when wrapping a new key.
+    revoked: Set<String>,
+    secrets: Table<Secret>,
+    /// `(secret id, field name)` → encrypted value.
+    secret_fields: UnorderedMap<(String, String), String>,
+    /// Superseded values, `(secret id, seq)`, so one secret's history is one
+    /// prefix read, newest last.
+    history: Table<RevisionRow>,
+    revision_seq: Counter,
+    devices: Table<Device>,
+    key_wraps: Table<KeyWrap>,
+    /// Append-only.
+    audit: Table<AuditEntry>,
+    audit_seq: Counter,
 }
 
-/// Events carry ids only. A subscriber learns THAT something changed and
-/// re-reads it through the encrypted view; nothing sensitive rides the event.
-#[app::event]
-pub enum Event {
-    SecretChanged { secret_id: String },
-    MembersChanged,
-    KeysChanged,
-    VaultRenamed,
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+/// The calling account; `LoginRequired` for anyone else.
+fn account() -> app::Result<String> {
+    match env::caller() {
+        Caller::Account(account) | Caller::ApiKey { account, .. } => Ok(account),
+        Caller::Public | Caller::System | Caller::App(_) => Err(AppError::login_required()),
+    }
 }
 
-// ── Logic ───────────────────────────────────────────────────────────────────
+/// `prefix_` and 32 random hex characters.
+fn fresh_id(prefix: &str) -> String {
+    let hex: String = env::random_bytes(16)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    format!("{prefix}_{hex}")
+}
+
+/// Every row `read` pages through, page by page.
+fn all<T>(mut read: impl FnMut(FindOpts) -> Result<Page<T>, StorageError>) -> app::Result<Vec<T>> {
+    let mut out = Vec::new();
+    let mut opts = FindOpts::default().limit(PAGE);
+    loop {
+        let page = read(opts)?;
+        out.extend(page.items);
+        match page.next {
+            Some(next) => opts = FindOpts::default().limit(PAGE).cursor(next),
+            None => return Ok(out),
+        }
+    }
+}
+
+fn s(v: &str) -> KeyPart {
+    KeyPart::Str(v.to_owned())
+}
+
+fn forbidden(message: &str) -> AppError {
+    Error::Forbidden {
+        message: message.to_owned(),
+    }
+    .into()
+}
+
+fn invalid(message: impl Into<String>) -> AppError {
+    Error::Invalid {
+        message: message.into(),
+    }
+    .into()
+}
+
+fn not_found(message: &str) -> AppError {
+    Error::NotFound {
+        message: message.to_owned(),
+    }
+    .into()
+}
+
+fn check_envelope(value: &str) -> app::Result<()> {
+    if value.len() > MAX_ENVELOPE_LEN {
+        return Err(invalid(format!("value too large: {} bytes", value.len())));
+    }
+    Ok(())
+}
+
+fn check_name(what: &str, value: &str) -> app::Result<()> {
+    if value.is_empty() || value.len() > MAX_NAME_LEN {
+        return Err(invalid(format!("{what} must be 1 to {MAX_NAME_LEN} bytes")));
+    }
+    Ok(())
+}
 
 #[app::logic]
-impl MeroPassApp {
-    /// `name` arrives as the JSON `initializationParams` of `createContext`.
-    /// The creator is the vault's first admin.
+#[allow(clippy::len_without_is_empty)]
+impl MeroPass {
+    /// The empty vault, with the account that creates the app instance as its
+    /// first Admin. It takes no arguments: the creator names the vault with
+    /// `renameVault` (v1 took the name as `init`'s argument).
     #[app::init]
-    pub fn init(name: String) -> MeroPassApp {
-        let me = Self::me();
-        let only_me: BTreeSet<AccountId> = BTreeSet::from([me]);
-        MeroPassApp {
-            vault_name: Frozen::new(name),
-            roles: AccessControl::new(me),
-            secrets: PermissionedStorage::new(only_me.clone(), false),
-            history: PermissionedStorage::new(only_me.clone(), false),
-            admin: PermissionedStorage::new(only_me.clone(), false),
-            settings: PermissionedStorage::new(only_me, false),
-            devices: AuthoredMap::new(),
-            key_wraps: AuthoredMap::new(),
-            audit: AuthoredVector::new(),
+    pub fn init() -> app::Result<Self> {
+        let mut state = Self::load();
+        let creator = account().unwrap_or_else(|_| env::app_owner());
+        state.members.insert(Member {
+            account: creator,
+            role: ROLE_ADMIN.to_owned(),
+        })?;
+        Ok(state)
+    }
+
+    // ── identity and roles (helpers) ─────────────────────────────────────────
+
+    fn role_of(&self, who: &str) -> app::Result<String> {
+        Ok(self
+            .members
+            .get(who)?
+            .map(|m| m.role)
+            .unwrap_or_else(|| ROLE_PENDING.to_owned()))
+    }
+
+    fn is_admin(&self, who: &str) -> app::Result<bool> {
+        Ok(self.role_of(who)? == ROLE_ADMIN)
+    }
+
+    /// The caller, when they hold Editor or Admin.
+    fn require_editor(&self) -> app::Result<String> {
+        let me = account()?;
+        match self.role_of(&me)?.as_str() {
+            ROLE_ADMIN | ROLE_EDITOR => Ok(me),
+            _ => Err(forbidden(
+                "view-only: an Editor or Admin role is required to change secrets",
+            )),
         }
     }
 
-    // ── Identity ────────────────────────────────────────────────────────────
-
-    /// The ACCOUNT calling — a person, not a machine. One user's phone and
-    /// laptop are one principal here.
-    fn me() -> AccountId {
-        AccountId::from(env::account_id())
-    }
-
-    fn me_str() -> String {
-        Self::me().to_string()
-    }
-
-    fn parse_account(hex_account: &str) -> app::Result<AccountId> {
-        let bytes = hex::decode(hex_account.trim())
-            .map_err(|_| app::err!("not an account id: expected 64 hex characters"))?;
-        let arr: [u8; 32] = bytes
-            .try_into()
-            .map_err(|_| app::err!("not an account id: expected 32 bytes"))?;
-        Ok(AccountId::from(arr))
-    }
-
-    fn fresh_id(prefix: &str) -> String {
-        let mut buffer = [0u8; 16];
-        env::random_bytes(&mut buffer);
-        format!("{prefix}_{}", hex::encode(buffer))
-    }
-
-    fn role_of(&self, who: &AccountId) -> &'static str {
-        if self.roles.is_admin(who) {
-            "admin"
-        } else if self.roles.has_role(ROLE_EDITOR, who).unwrap_or(false) {
-            "editor"
-        } else if self.roles.has_role(ROLE_VIEWER, who).unwrap_or(false) {
-            "viewer"
+    /// The caller, when they hold Admin.
+    fn require_admin(&self) -> app::Result<String> {
+        let me = account()?;
+        if self.is_admin(&me)? {
+            Ok(me)
         } else {
-            "pending"
+            Err(forbidden("only a vault Admin can do that"))
         }
     }
 
-    fn require(&self, allowed: bool, what: &str) -> app::Result<()> {
-        if allowed {
-            Ok(())
-        } else {
-            app::bail!("{what}");
-        }
+    fn admins(&self) -> app::Result<u64> {
+        Ok(self.members.count("perRole", &[s(ROLE_ADMIN)])?)
     }
 
-    fn require_editor(&self) -> app::Result<()> {
-        self.require(
-            self.secrets.can(&Self::me(), Op::Write),
-            "view-only: an Editor or Admin role is required to change secrets",
-        )
-    }
-
-    fn require_admin(&self) -> app::Result<()> {
-        self.require(
-            self.roles.is_admin(&Self::me()),
-            "only a vault Admin can do that",
-        )
-    }
-
-    fn check_envelope(value: &str) -> app::Result<()> {
-        if value.len() > MAX_ENVELOPE_LEN {
-            app::bail!("value too large: {} bytes", value.len());
-        }
-        Ok(())
-    }
-
-    fn audit(&mut self, action: &str, target: &str) -> app::Result<()> {
-        let _ = self.audit.push(AuditLogEntry {
+    fn audit(&mut self, action: &str, target: &str, who: &str) -> app::Result<()> {
+        let seq = self.audit_seq.increment()?;
+        self.audit.insert(AuditEntry {
+            seq,
             action: action.to_owned(),
             target: target.to_owned(),
-            device: hex::encode(env::device_id()),
+            account: who.to_owned(),
             timestamp: env::time_now(),
         })?;
         Ok(())
     }
 
-    /// Push the role registry onto every guarded store. Must follow every role
-    /// or admin change: the registry write and the projection are separate
-    /// signed actions, and only the projection is consulted at merge.
-    fn project_roles(&mut self) -> app::Result<()> {
-        self.roles.project_onto(&CONTENT_ROLES, &mut self.secrets)?;
-        self.roles.project_onto(&CONTENT_ROLES, &mut self.history)?;
-        self.roles
-            .project_onto(&CONTENT_ROLES, &mut self.settings)?;
-        self.roles.project_onto(&ADMIN_ONLY, &mut self.admin)?;
-        Ok(())
+    /// Every device row at `fingerprint`, whichever account registered it.
+    fn devices_at(&self, fingerprint: &str) -> app::Result<Vec<Device>> {
+        all(|o| self.devices.find("byFingerprint", &[s(fingerprint)], o))
     }
 
-    // ── The vault ───────────────────────────────────────────────────────────
+    /// Whether every registration at `fingerprint` is an agent's. Only an
+    /// admin's wrap admits an agent, so a member cannot hand the vault to
+    /// software by opening the vault. "Every", not "any": another account
+    /// filing an agent entry at a browser's fingerprint must not stop that
+    /// browser being given keys.
+    fn is_agent_device(&self, fingerprint: &str) -> app::Result<bool> {
+        let holders = self.devices_at(fingerprint)?;
+        Ok(!holders.is_empty() && holders.iter().all(|d| d.kind == DEVICE_AGENT))
+    }
 
-    pub fn vault_info(&self) -> app::Result<VaultInfo> {
-        let default_role = match self.admin_setting(ADMIN_DEFAULT_ROLE)?.as_str() {
-            "" => "editor".to_owned(),
-            other => other.to_owned(),
-        };
-        let me = Self::me();
-        Ok(VaultInfo {
-            name: self.vault_name()?,
-            current_key: self.admin_setting(ADMIN_CURRENT_KEY)?,
-            default_role,
-            my_account: me.to_string(),
-            my_role: self.role_of(&me).to_owned(),
+    fn fields_of(&self, id: &str) -> app::Result<BTreeMap<String, String>> {
+        Ok(all(|o| self.secret_fields.prefix(&[s(id)], o))?
+            .into_iter()
+            .map(|((_, field), value)| (field, value))
+            .collect())
+    }
+
+    fn view_of(&self, secret: Secret) -> app::Result<SecretView> {
+        Ok(SecretView {
+            fields: self.fields_of(&secret.id)?,
+            id: secret.id,
+            kind: secret.kind,
+            name: secret.name,
+            tags: secret.tags,
+            created_at: secret.created_at,
+            created_by: secret.created_by,
+            updated_at: secret.updated_at,
+            updated_by: secret.updated_by,
+            trashed: secret.trashed,
+            trashed_at: secret.trashed_at,
         })
     }
 
-    pub fn vault_name(&self) -> app::Result<String> {
-        match self.settings.get()?.get(SETTING_VAULT_NAME)? {
-            Some(renamed) => Ok(renamed.get().clone()),
-            None => Ok(self.vault_name.get()?.clone()),
-        }
+    // ── the vault ────────────────────────────────────────────────────────────
+
+    /// The vault's name, key, default role, and the caller's account and role.
+    /// `defaultRole` is `editor` until an admin sets it; `currentKey` is empty
+    /// until the first `rotateKey`.
+    #[app::view]
+    pub fn vault_info(&self) -> app::Result<VaultInfo> {
+        let me = account()?;
+        let default_role = match self.default_role.get()? {
+            Some(role) if !role.is_empty() => role,
+            _ => ROLE_EDITOR.to_owned(),
+        };
+        Ok(VaultInfo {
+            name: self.vault_name()?,
+            current_key: self.current_key.get()?.unwrap_or_default(),
+            default_role,
+            my_role: self.role_of(&me)?,
+            my_account: me,
+        })
     }
 
-    /// Rename the vault. Editors and admins — the name lives in a guarded
-    /// store, so a pending or removed member's rename is refused everywhere;
-    /// concurrent renames resolve by last writer.
+    /// The vault's name; empty until the first `renameVault`.
+    #[app::view]
+    pub fn vault_name(&self) -> app::Result<String> {
+        Ok(self.vault_name.get()?.unwrap_or_default())
+    }
+
+    /// Rename the vault. Editors and admins (`Forbidden` for anyone else).
+    /// Emits `VaultRenamed`.
     pub fn rename_vault(&mut self, name: String) -> app::Result<()> {
-        self.require_editor()?;
-        let _ = self
-            .settings
-            .get_mut()?
-            .insert(SETTING_VAULT_NAME.to_owned(), LwwRegister::new(name))?;
-        self.audit("vault_renamed", "vault")?;
-        app::emit!(Event::VaultRenamed);
+        let me = self.require_editor()?;
+        check_envelope(&name)?;
+        self.vault_name.set(&name)?;
+        self.audit("vault_renamed", "vault", &me)?;
+        env::emit(Event::VaultRenamed, Audience::All)?;
         Ok(())
     }
 
-    // ── Roles ───────────────────────────────────────────────────────────────
+    // ── roles ────────────────────────────────────────────────────────────────
 
-    /// Everyone this vault knows about: each role holder, plus every account
-    /// that registered a device without being given a role (`pending`).
+    /// Everyone this vault knows about, by account: each role holder, plus
+    /// every account that registered an unrevoked device without being given a
+    /// role (`pending`, or `removed` after an admin removed it).
+    #[app::view]
     pub fn list_members(&self) -> app::Result<Vec<MemberView>> {
         let mut rows: BTreeMap<String, (String, u32)> = BTreeMap::new();
-        for admin in self.roles.admins() {
-            let _ = rows.insert(admin.to_string(), ("admin".to_owned(), 0));
+        for m in all(|o| self.members.scan(o))? {
+            let _ = rows.insert(m.account, (m.role, 0));
         }
-        for (role, name) in [(ROLE_EDITOR, "editor"), (ROLE_VIEWER, "viewer")] {
-            for who in self.roles.members_of(role)? {
-                let _ = rows
-                    .entry(who.to_string())
-                    .or_insert_with(|| (name.to_owned(), 0));
-            }
-        }
-        let removed = self.prefixed_set(ADMIN_REMOVED)?;
-        let revoked = self.revoked_set()?;
-        for (owner, fingerprint, _) in self.devices.entries_with_owners()? {
-            if revoked.contains(&fingerprint) {
+        let revoked: BTreeSet<String> = all(|o| self.revoked.page(o))?.into_iter().collect();
+        for d in all(|o| self.devices.scan(o))? {
+            if revoked.contains(&d.fingerprint) {
                 continue;
             }
-            let account = owner.to_string();
-            let fallback = if removed.contains(&account) {
-                "removed"
-            } else {
-                "pending"
+            let row = match rows.get_mut(&d.account) {
+                Some(row) => row,
+                None => {
+                    let fallback = if self.removed.contains(&d.account)? {
+                        ROLE_REMOVED
+                    } else {
+                        ROLE_PENDING
+                    };
+                    rows.entry(d.account.clone())
+                        .or_insert_with(|| (fallback.to_owned(), 0))
+                }
             };
-            let row = rows
-                .entry(account)
-                .or_insert_with(|| (fallback.to_owned(), 0));
             row.1 += 1;
         }
         Ok(rows
@@ -559,140 +604,82 @@ impl MeroPassApp {
             .collect())
     }
 
-    /// Give `account` a role: `admin`, `editor` or `viewer`. Admin only.
-    ///
-    /// Writes the registry AND re-projects it onto the guarded stores, so the
-    /// label and what peers enforce cannot disagree.
+    /// Give `account` a role: `admin`, `editor` or `viewer`. Admin only
+    /// (`Forbidden`). `NotFound` for an account the organization does not hold;
+    /// `Invalid` for another role; `Conflict` for the last Admin stepping down.
+    /// An explicit role re-admits a removed account. Emits `MembersChanged`.
     pub fn set_role(&mut self, account: String, role: String) -> app::Result<()> {
-        self.require_admin()?;
-        let who = Self::parse_account(&account)?;
-        let is_admin = self.roles.is_admin(&who);
-        match role.as_str() {
-            "admin" => {
-                if !is_admin {
-                    self.roles.grant_admin(who)?;
-                }
-            }
-            "editor" | "viewer" => {
-                if is_admin && self.roles.admins().len() <= 1 {
-                    app::bail!("a vault needs at least one Admin — promote someone else first");
-                }
-                // The grants first: they are admin actions, and an admin
-                // stepping themselves down stops being one on the next line.
-                let (grant, revoke) = if role == "editor" {
-                    (ROLE_EDITOR, ROLE_VIEWER)
-                } else {
-                    (ROLE_VIEWER, ROLE_EDITOR)
-                };
-                self.roles.grant(grant, who)?;
-                self.roles.revoke(revoke, &who)?;
-                if is_admin {
-                    self.roles.revoke_admin(&who)?;
-                }
-            }
-            other => {
-                app::bail!("unknown role '{other}': expected admin, editor or viewer");
-            }
+        let me = self.require_admin()?;
+        check_name("account", &account)?;
+        if ![ROLE_ADMIN, ROLE_EDITOR, ROLE_VIEWER].contains(&role.as_str()) {
+            return Err(invalid(format!(
+                "unknown role '{role}': expected admin, editor or viewer"
+            )));
         }
-        // An explicit role is an explicit re-admission.
-        let removed_key = format!("{ADMIN_REMOVED}{account}");
-        if self.admin_setting(&removed_key)? == "1" {
-            let _ = self
-                .admin
-                .get_mut()?
-                .insert(removed_key, LwwRegister::new(String::new()))?;
+        if env::org().is_some() && env::org_role(&account).is_none() {
+            return Err(not_found("not a member of this team"));
         }
-        self.project_roles()?;
-        self.audit(&format!("role_set:{role}"), &account)?;
-        app::emit!(Event::MembersChanged);
+        if role != ROLE_ADMIN && self.is_admin(&account)? && self.admins()? <= 1 {
+            return Err(Error::Conflict {
+                message: "a vault needs at least one Admin — promote someone else first".to_owned(),
+            }
+            .into());
+        }
+        self.members.upsert(Member {
+            account: account.clone(),
+            role: role.clone(),
+        })?;
+        let _ = self.removed.remove(&account)?;
+        self.audit(&format!("role_set:{role}"), &account, &me)?;
+        env::emit(Event::MembersChanged, Audience::All)?;
         Ok(())
     }
 
-    /// Remove an account from the vault: drop every role and revoke every
-    /// device it registered. The caller must then rotate the vault key (the
-    /// client does, via `rotate_key`) so nothing written afterwards is
-    /// readable with the key the removed account already holds.
+    /// Remove an account from the vault: drop its role and revoke every device
+    /// it registered. Admin only (`Forbidden`); `Invalid` for the caller
+    /// themselves. The caller must then rotate the vault key (the client does,
+    /// via `rotateKey`) so nothing written afterwards is readable with the key
+    /// the removed account already holds. Emits `MembersChanged`.
     pub fn remove_member(&mut self, account: String) -> app::Result<()> {
-        self.require_admin()?;
-        let who = Self::parse_account(&account)?;
-        if who == Self::me() {
-            app::bail!("you cannot remove yourself — leave the team instead");
+        let me = self.require_admin()?;
+        check_name("account", &account)?;
+        if account == me {
+            return Err(invalid(
+                "you cannot remove yourself — leave the team instead",
+            ));
         }
-        if self.roles.is_admin(&who) {
-            self.roles.revoke_admin(&who)?;
+        let _ = self.members.remove(&account)?;
+        let _ = self.removed.insert(&account)?;
+        let theirs = all(|o| self.devices.find("byAccount", &[s(&account)], o))?;
+        for d in theirs {
+            let _ = self.revoked.insert(&d.fingerprint)?;
         }
-        for role in [ROLE_EDITOR, ROLE_VIEWER] {
-            if self.roles.has_role(role, &who)? {
-                self.roles.revoke(role, &who)?;
-            }
-        }
-        self.project_roles()?;
-        let theirs: Vec<String> = self
-            .devices
-            .entries_by(&who)?
-            .into_iter()
-            .map(|(fp, _)| fp)
-            .collect();
-        let admin = self.admin.get_mut()?;
-        let _ = admin.insert(
-            format!("{ADMIN_REMOVED}{account}"),
-            LwwRegister::new("1".to_owned()),
-        )?;
-        for fp in theirs {
-            let _ = admin.insert(
-                format!("{ADMIN_REVOKED}{fp}"),
-                LwwRegister::new("1".to_owned()),
-            )?;
-        }
-        self.audit("member_removed", &account)?;
-        app::emit!(Event::MembersChanged);
+        self.audit("member_removed", &account, &me)?;
+        env::emit(Event::MembersChanged, Audience::All)?;
         Ok(())
     }
 
-    /// The role newcomers are admitted with.
+    /// The role newcomers are admitted with: `editor` or `viewer` (`Invalid`
+    /// otherwise). Admin only (`Forbidden`).
     pub fn set_default_role(&mut self, role: String) -> app::Result<()> {
-        self.require_admin()?;
-        if role != "editor" && role != "viewer" {
-            app::bail!("default role must be editor or viewer");
+        let me = self.require_admin()?;
+        if role != ROLE_EDITOR && role != ROLE_VIEWER {
+            return Err(invalid("default role must be editor or viewer"));
         }
-        let _ = self.admin.get_mut()?.insert(
-            ADMIN_DEFAULT_ROLE.to_owned(),
-            LwwRegister::new(role.clone()),
-        )?;
-        self.audit(&format!("default_role:{role}"), "vault")?;
+        self.default_role.set(&role)?;
+        self.audit(&format!("default_role:{role}"), "vault", &me)?;
         Ok(())
     }
 
-    // ── Devices & keys ──────────────────────────────────────────────────────
+    // ── devices and keys ─────────────────────────────────────────────────────
 
-    fn admin_setting(&self, key: &str) -> app::Result<String> {
-        Ok(self
-            .admin
-            .get()?
-            .get(key)?
-            .map(|r| r.get().clone())
-            .unwrap_or_default())
-    }
-
-    /// Every admin-store key under `prefix` whose flag is set, prefix stripped.
-    fn prefixed_set(&self, prefix: &str) -> app::Result<BTreeSet<String>> {
-        Ok(self
-            .admin
-            .get()?
-            .entries()?
-            .filter(|(_, flag)| flag.get() == "1")
-            .filter_map(|(k, _)| k.strip_prefix(prefix).map(str::to_owned))
-            .collect())
-    }
-
-    fn revoked_set(&self) -> app::Result<BTreeSet<String>> {
-        self.prefixed_set(ADMIN_REVOKED)
-    }
-
-    /// Register this browser's public key so the vault key can be wrapped to
-    /// it. `fingerprint` must be the hex SHA-256 of the raw key; the client
-    /// derives both, and the contract checks the shape, not the hash (a wrong
-    /// fingerprint only hurts the registrant: nothing wrapped to it opens).
+    /// Register this browser's public key under the caller's account, so the
+    /// vault key can be wrapped to it. Anyone the organization lets reach the
+    /// vault may, including `pending` accounts. `fingerprint` must be 64 hex
+    /// characters (the hex SHA-256 of the raw key; the contract checks the
+    /// shape, not the hash: a wrong fingerprint only hurts the registrant) and
+    /// `kind` `browser`, `recovery` or `agent`; else `Invalid`. A repeat of the
+    /// caller's own registration is a no-op. Emits `KeysChanged`.
     pub fn register_device(
         &mut self,
         fingerprint: String,
@@ -700,171 +687,169 @@ impl MeroPassApp {
         label: String,
         kind: String,
     ) -> app::Result<()> {
+        let me = account()?;
         if fingerprint.len() != 64 || !fingerprint.chars().all(|c| c.is_ascii_hexdigit()) {
-            app::bail!("fingerprint must be 64 hex characters");
+            return Err(invalid("fingerprint must be 64 hex characters"));
         }
         if !DEVICE_KINDS.contains(&kind.as_str()) {
-            app::bail!("device kind must be browser, recovery or agent");
+            return Err(invalid("device kind must be browser, recovery or agent"));
         }
-        Self::check_envelope(&public_key)?;
-        // The caller's own registration only: keys are per owner, so another
-        // account's entry at this fingerprint is theirs, and never in the way.
-        if self.devices.contains(&fingerprint)? {
+        check_envelope(&public_key)?;
+        check_envelope(&label)?;
+        if self.devices.contains(&(fingerprint.clone(), me.clone()))? {
             return Ok(());
         }
-        self.devices.insert(
-            fingerprint.clone(),
-            DeviceKey {
-                public_key,
-                label,
-                kind,
-                node_device: hex::encode(env::device_id()),
-                added_at: env::time_now(),
-            },
-        )?;
-        self.audit("device_registered", &fingerprint)?;
-        app::emit!(Event::KeysChanged);
+        self.devices.insert(Device {
+            fingerprint: fingerprint.clone(),
+            account: me.clone(),
+            public_key,
+            label,
+            kind,
+            added_at: env::time_now(),
+        })?;
+        self.audit("device_registered", &fingerprint, &me)?;
+        env::emit(Event::KeysChanged, Audience::All)?;
         Ok(())
     }
 
-    /// Every registered device, with the account that registered it read
-    /// from the entry's owner stamp. Clients decide whom to wrap the vault key
-    /// to by this account, so it must be one nobody can claim for someone else.
+    /// Every registered device, by fingerprint, with the account that
+    /// registered it. Clients decide whom to wrap the vault key to by this
+    /// account, so it is the registrant's own, never a value they wrote.
+    #[app::view]
     pub fn list_devices(&self) -> app::Result<Vec<DeviceView>> {
-        let revoked = self.revoked_set()?;
-        let mut out = Vec::new();
-        for (owner, fingerprint, d) in self.devices.entries_with_owners()? {
-            out.push(DeviceView {
-                revoked: revoked.contains(&fingerprint),
-                account: owner.to_string(),
-                fingerprint,
+        let revoked: BTreeSet<String> = all(|o| self.revoked.page(o))?.into_iter().collect();
+        Ok(all(|o| self.devices.scan(o))?
+            .into_iter()
+            .map(|d| DeviceView {
+                revoked: revoked.contains(&d.fingerprint),
+                fingerprint: d.fingerprint,
                 public_key: d.public_key,
                 label: d.label,
                 kind: d.kind,
+                account: d.account,
                 added_at: d.added_at,
-            });
-        }
-        Ok(out)
+            })
+            .collect())
     }
 
-    /// Revoke a device. Your own device you may always revoke; anyone else's
-    /// needs an admin. Follow with `rotate_key`.
+    /// Revoke a device. Your own device you may always revoke (its row is
+    /// withdrawn); anyone else's needs an admin (`Forbidden`), whose revocation
+    /// marks the fingerprint revoked for every account. `NotFound` for a
+    /// fingerprint nobody registered. Follow with `rotateKey`. Emits
+    /// `KeysChanged`.
     pub fn revoke_device(&mut self, fingerprint: String) -> app::Result<()> {
-        // Any account's device, not just the caller's: keys are per owner.
-        if self.devices.entries_at(&fingerprint)?.is_empty() {
-            app::bail!("no such device");
+        let me = account()?;
+        if self.devices_at(&fingerprint)?.is_empty() {
+            return Err(not_found("no such device"));
         }
-        let owned = self.devices.owned_by_me(&fingerprint).unwrap_or(false);
-        let is_admin = self.roles.is_admin(&Self::me());
-        self.require(
-            owned || is_admin,
-            "only the device's owner or a vault Admin can revoke it",
-        )?;
+        let key = (fingerprint.clone(), me.clone());
+        let owned = self.devices.contains(&key)?;
+        let is_admin = self.is_admin(&me)?;
+        if !owned && !is_admin {
+            return Err(forbidden(
+                "only the device's owner or a vault Admin can revoke it",
+            ));
+        }
         if is_admin {
-            let _ = self.admin.get_mut()?.insert(
-                format!("{ADMIN_REVOKED}{fingerprint}"),
-                LwwRegister::new("1".to_owned()),
-            )?;
+            let _ = self.revoked.insert(&fingerprint)?;
         } else {
             // An owner revokes by withdrawing the key: nothing will be wrapped
             // to a key that is no longer listed.
-            let _ = self.devices.remove(&fingerprint)?;
+            let _ = self.devices.remove(&key)?;
         }
-        self.audit("device_revoked", &fingerprint)?;
-        app::emit!(Event::KeysChanged);
+        self.audit("device_revoked", &fingerprint, &me)?;
+        env::emit(Event::KeysChanged, Audience::All)?;
         Ok(())
     }
 
-    /// Store wraps of a vault key. Any member holding the key may wrap it to
-    /// any registered, unrevoked device — that is how a newcomer or a new
-    /// device gets in without the creator being online. An agent's key is
-    /// the exception: only an admin's wraps to it are stored.
+    /// Store wraps of a vault key and answer how many were stored. Any account
+    /// that reaches the vault may wrap a key to any registered, unrevoked device;
+    /// that is how a newcomer or a new device gets in without the creator being
+    /// online. Skipped, not refused: a wrap to an unknown or revoked device, a
+    /// `keyId` with `:` in it or longer than 256 bytes, a repeat (one wrap per
+    /// author, key, recipient and wrapper), and a non-admin's wrap to an agent's
+    /// key. `Invalid` for an envelope over 128 KiB. Emits `KeysChanged` when
+    /// anything was stored.
     pub fn add_key_wraps(&mut self, wraps: Vec<KeyWrapInput>) -> app::Result<u32> {
-        let revoked = self.revoked_set()?;
-        let is_admin = self.roles.is_admin(&Self::me());
+        let me = account()?;
+        let is_admin = self.is_admin(&me)?;
         let mut added = 0;
         for w in wraps {
-            Self::check_envelope(&w.envelope)?;
+            check_envelope(&w.envelope)?;
             if w.key_id.contains(':')
-                || revoked.contains(&w.recipient)
-                || self.devices.entries_at(&w.recipient)?.is_empty()
+                || w.key_id.is_empty()
+                || w.key_id.len() > MAX_NAME_LEN
+                || w.wrapper.len() > MAX_NAME_LEN
+                || self.revoked.contains(&w.recipient)?
+                || self.devices_at(&w.recipient)?.is_empty()
                 || (!is_admin && self.is_agent_device(&w.recipient)?)
             {
                 continue;
             }
-            // One wrap per wrapper, key and recipient: a repeat is a no-op.
-            let prefix = format!("{}:{}:", w.recipient, w.key_id);
-            let repeat = self
-                .key_wraps
-                .my_entries()?
-                .into_iter()
-                .any(|(slot, existing)| slot.starts_with(&prefix) && existing.wrapper == w.wrapper);
-            if repeat {
+            let mine = all(|o| {
+                self.key_wraps
+                    .find("byAuthor", &[s(&me), s(&w.recipient), s(&w.key_id)], o)
+            })?;
+            if mine.iter().any(|existing| existing.wrapper == w.wrapper) {
                 continue;
             }
-            self.key_wraps.insert(
-                format!("{prefix}{}", Self::fresh_id("wrap")),
-                KeyWrap {
-                    key_id: w.key_id,
-                    recipient: w.recipient,
-                    wrapper: w.wrapper,
-                    envelope: w.envelope,
-                    wrapped_at: env::time_now(),
-                },
-            )?;
-            added += 1;
-        }
-        if added > 0 {
-            app::emit!(Event::KeysChanged);
-        }
-        Ok(added)
-    }
-
-    /// Whether every registration at `fingerprint` is an agent's. Only an
-    /// admin's wrap admits an agent, so a member cannot hand the vault to
-    /// software by opening the vault. "Every", not "any": another account
-    /// filing an agent entry at a browser's fingerprint must not stop that
-    /// browser being given keys.
-    fn is_agent_device(&self, fingerprint: &str) -> app::Result<bool> {
-        let holders = self.devices.entries_at(&fingerprint.to_owned())?;
-        Ok(!holders.is_empty() && holders.iter().all(|(_, d)| d.kind == DEVICE_AGENT))
-    }
-
-    /// Every wrap addressed to `recipient`. `wrapped_by` is the entry's owner
-    /// stamp.
-    pub fn key_wraps_for(&self, recipient: String) -> app::Result<Vec<KeyWrapView>> {
-        let mut out = Vec::new();
-        let prefix = format!("{recipient}:");
-        for (author, slot, w) in self.key_wraps.entries_with_owners()? {
-            if !slot.starts_with(&prefix) {
-                continue;
-            }
-            out.push(KeyWrapView {
-                wrapped_by: author.to_string(),
+            self.key_wraps.insert(KeyWrap {
+                slot: format!("{}:{}:{}", w.recipient, w.key_id, fresh_id("wrap")),
                 key_id: w.key_id,
                 recipient: w.recipient,
                 wrapper: w.wrapper,
                 envelope: w.envelope,
-            });
+                wrapped_by: me.clone(),
+                wrapped_at: env::time_now(),
+            })?;
+            added += 1;
         }
-        Ok(out)
+        if added > 0 {
+            env::emit(Event::KeysChanged, Audience::All)?;
+        }
+        Ok(added)
     }
 
-    /// Which `key_id:recipient` pairs already have a wrap from a member who
-    /// holds a role, so a key holder only wraps what is missing.
+    /// Every wrap addressed to `recipient`, with the account that stored it.
+    #[app::view]
+    pub fn key_wraps_for(&self, recipient: String) -> app::Result<Vec<KeyWrapView>> {
+        Ok(
+            all(|o| self.key_wraps.find("byRecipient", &[s(&recipient)], o))?
+                .into_iter()
+                .map(|w| KeyWrapView {
+                    key_id: w.key_id,
+                    recipient: w.recipient,
+                    wrapper: w.wrapper,
+                    envelope: w.envelope,
+                    wrapped_by: w.wrapped_by,
+                })
+                .collect(),
+        )
+    }
+
+    /// Which `keyId:recipient` pairs already have a wrap from a member who
+    /// holds a role, sorted, so a key holder only wraps what is missing.
     ///
     /// Clients also treat a device in this list as approved, so a wrap from
-    /// anyone else — a pending or removed account, which never held the key,
-    /// writing a garbage wrap to its own device — must not count. Nor does a
-    /// wrap to an agent's key from anyone but an admin.
+    /// anyone else (a pending or removed account, which never held the key,
+    /// writing a garbage wrap to its own device) does not count. Nor does a wrap
+    /// to an agent's key from anyone but an admin.
+    #[app::view]
     pub fn wrapped_pairs(&self) -> app::Result<Vec<String>> {
         let mut pairs = BTreeSet::new();
-        for (who, _, w) in self.key_wraps.entries_with_owners()? {
-            // An agent counts as approved only by an admin's wrap, the same
-            // rule `add_key_wraps` applies to new ones.
-            let counts = match self.role_of(&who) {
-                "admin" => true,
-                "editor" | "viewer" => !self.is_agent_device(&w.recipient)?,
+        let mut roles: BTreeMap<String, String> = BTreeMap::new();
+        for w in all(|o| self.key_wraps.scan(o))? {
+            let role = match roles.get(&w.wrapped_by) {
+                Some(role) => role.clone(),
+                None => {
+                    let role = self.role_of(&w.wrapped_by)?;
+                    let _ = roles.insert(w.wrapped_by.clone(), role.clone());
+                    role
+                }
+            };
+            let counts = match role.as_str() {
+                ROLE_ADMIN => true,
+                ROLE_EDITOR | ROLE_VIEWER => !self.is_agent_device(&w.recipient)?,
                 _ => false,
             };
             if counts {
@@ -874,58 +859,44 @@ impl MeroPassApp {
         Ok(pairs.into_iter().collect())
     }
 
-    /// Make `key_id` the key new writes use. The first call bootstraps the
-    /// vault; every later one is a rotation, and both are admin only.
-    ///
-    /// The caller must have stored wraps of the new key before calling this,
-    /// or members would be told to write with a key they cannot open.
+    /// Make `keyId` the key new writes use. The first call bootstraps the
+    /// vault (audited `key_created`); every later one is a rotation
+    /// (`key_rotated`). Admin only (`Forbidden`). The caller must have stored a
+    /// wrap of the new key first (`Invalid` otherwise), or members would be told
+    /// to write with a key they cannot open. Emits `KeysChanged`.
     pub fn rotate_key(&mut self, key_id: String) -> app::Result<()> {
-        self.require_admin()?;
-        let has_wrap = self.key_wraps.entries()?.any(|(_, w)| w.key_id == key_id);
-        if !has_wrap {
-            app::bail!("wrap the new key to at least one device before switching to it");
+        let me = self.require_admin()?;
+        let wrapped = self
+            .key_wraps
+            .find("byKey", &[s(&key_id)], FindOpts::default().limit(1))?;
+        if wrapped.items.is_empty() {
+            return Err(invalid(
+                "wrap the new key to at least one device before switching to it",
+            ));
         }
-        let first = self.admin_setting(ADMIN_CURRENT_KEY)?.is_empty();
-        let _ = self.admin.get_mut()?.insert(
-            ADMIN_CURRENT_KEY.to_owned(),
-            LwwRegister::new(key_id.clone()),
+        let first = self.current_key.get()?.unwrap_or_default().is_empty();
+        self.current_key.set(&key_id)?;
+        self.audit(
+            if first { "key_created" } else { "key_rotated" },
+            &key_id,
+            &me,
         )?;
-        self.audit(if first { "key_created" } else { "key_rotated" }, &key_id)?;
-        app::emit!(Event::KeysChanged);
+        env::emit(Event::KeysChanged, Audience::All)?;
         Ok(())
     }
 
-    // ── Secrets ─────────────────────────────────────────────────────────────
+    // ── secrets ──────────────────────────────────────────────────────────────
 
-    fn view_of(id: String, s: &Secret) -> app::Result<SecretView> {
-        let fields = s
-            .fields
-            .entries()?
-            .map(|(k, v)| (k, v.get().clone()))
-            .filter(|(_, v)| !v.is_empty())
-            .collect();
-        Ok(SecretView {
-            id,
-            kind: s.kind.get().clone(),
-            name: s.name.get().clone(),
-            tags: s.tags.get().clone(),
-            fields,
-            created_at: *s.created_at.get(),
-            created_by: s.created_by.get().clone(),
-            updated_at: *s.updated_at.get(),
-            updated_by: s.updated_by.get().clone(),
-            trashed: *s.trashed.get(),
-            trashed_at: *s.trashed_at.get(),
-        })
-    }
-
-    /// Add a secret under an id the CLIENT chose.
+    /// Add a secret under an id the CLIENT chose, and answer the id. Editors and
+    /// admins (`Forbidden`).
     ///
     /// Client-chosen because the id is bound into every field's ciphertext as
-    /// associated data, which is what stops a member from pasting one secret's
-    /// password envelope into another secret: the id has to exist before the
-    /// encryption does. It is 16 random bytes like before, and an id that is
-    /// already taken is refused rather than upserted.
+    /// associated data, which stops a member from pasting one secret's password
+    /// envelope into another secret: the id has to exist before the encryption
+    /// does. It must be `secret_` and 32 hex characters (`Invalid`), and an id
+    /// already taken is `Conflict`, not an upsert. `kind` is one of the eight
+    /// kinds, at most 64 fields with names up to 256 bytes, each envelope at
+    /// most 128 KiB (`Invalid`). Emits `SecretChanged`.
     pub fn add_secret(
         &mut self,
         id: String,
@@ -934,61 +905,69 @@ impl MeroPassApp {
         tags: String,
         fields: BTreeMap<String, String>,
     ) -> app::Result<String> {
-        self.require_editor()?;
+        let me = self.require_editor()?;
         if !SECRET_KINDS.contains(&kind.as_str()) {
-            app::bail!("unknown secret kind '{kind}'");
+            return Err(invalid(format!("unknown secret kind '{kind}'")));
         }
         if fields.len() > MAX_FIELDS {
-            app::bail!("too many fields");
+            return Err(invalid("too many fields"));
         }
-        Self::check_envelope(&name)?;
-        Self::check_envelope(&tags)?;
-        for v in fields.values() {
-            Self::check_envelope(v)?;
+        check_envelope(&name)?;
+        check_envelope(&tags)?;
+        for (field, value) in &fields {
+            check_name("field name", field)?;
+            check_envelope(value)?;
         }
-
         let well_formed = id
             .strip_prefix("secret_")
             .is_some_and(|h| h.len() == 32 && h.chars().all(|c| c.is_ascii_hexdigit()));
         if !well_formed {
-            app::bail!("secret id must be 'secret_' followed by 32 hex characters");
+            return Err(invalid(
+                "secret id must be 'secret_' followed by 32 hex characters",
+            ));
         }
-        if self.secrets.get()?.contains(&id)? {
-            app::bail!("a secret with this id already exists");
+        if self.secrets.contains(&id)? {
+            return Err(Error::Conflict {
+                message: "a secret with this id already exists".to_owned(),
+            }
+            .into());
         }
         let now = env::time_now();
-        let me = Self::me_str();
-        let mut stored = UnorderedMap::new();
-        for (k, v) in fields {
-            let _ = stored.insert(k, LwwRegister::new(v))?;
+        self.secrets.insert(Secret {
+            id: id.clone(),
+            kind,
+            name,
+            tags,
+            created_at: now,
+            created_by: me.clone(),
+            updated_at: now,
+            updated_by: me.clone(),
+            trashed: false,
+            trashed_at: 0,
+        })?;
+        for (field, value) in fields {
+            if !value.is_empty() {
+                let _ = self.secret_fields.insert(&(id.clone(), field), &value)?;
+            }
         }
-        let secret = Secret {
-            kind: LwwRegister::new(kind),
-            name: LwwRegister::new(name),
-            tags: LwwRegister::new(tags),
-            fields: stored,
-            created_at: LwwRegister::new(now),
-            created_by: LwwRegister::new(me.clone()),
-            updated_at: LwwRegister::new(now),
-            updated_by: LwwRegister::new(me),
-            trashed: LwwRegister::new(false),
-            trashed_at: LwwRegister::new(0),
-        };
-        let _ = self.secrets.get_mut()?.insert(id.clone(), secret)?;
-        self.audit("secret_added", &id)?;
-        app::emit!(Event::SecretChanged {
-            secret_id: id.clone()
-        });
+        self.audit("secret_added", &id, &me)?;
+        env::emit(
+            Event::SecretChanged {
+                secret_id: id.clone(),
+            },
+            Audience::All,
+        )?;
         Ok(id)
     }
 
-    /// Change some of a secret's fields. Only what is passed is touched, so
-    /// two members editing different fields concurrently both keep their edit.
-    /// An empty string clears a field. Every superseded value is kept in the
-    /// history, still encrypted.
-    ///
-    /// `rekey` marks a re-encryption under a rotated key: the plaintext did not
-    /// change, so nothing is added to the history.
+    /// Change some of a secret's fields. Editors and admins (`Forbidden`);
+    /// `NotFound` for an unknown id. Only what is passed is touched: `name` and
+    /// `tags` when not null, and each field in `fields`; an empty string clears a
+    /// field. Every superseded non-empty value is kept in the history, still
+    /// encrypted. `rekey` marks a re-encryption under a rotated key: the
+    /// plaintext did not change, so nothing is added to the history. More than
+    /// 64 fields afterwards is `Invalid` and changes nothing. Emits
+    /// `SecretChanged`.
     pub fn update_secret(
         &mut self,
         id: String,
@@ -997,59 +976,57 @@ impl MeroPassApp {
         fields: BTreeMap<String, String>,
         rekey: bool,
     ) -> app::Result<()> {
-        self.require_editor()?;
+        let me = self.require_editor()?;
         for v in fields.values().chain(name.iter()).chain(tags.iter()) {
-            Self::check_envelope(v)?;
+            check_envelope(v)?;
         }
+        for field in fields.keys() {
+            check_name("field name", field)?;
+        }
+        let Some(mut secret) = self.secrets.get(&id)? else {
+            return Err(not_found("secret not found"));
+        };
         let now = env::time_now();
-        let me = Self::me_str();
         let mut superseded: Vec<(String, String)> = Vec::new();
-        {
-            let map = self.secrets.get_mut()?;
-            let mut secret = map
-                .get_mut(&id)?
-                .ok_or_else(|| app::err!("secret not found"))?;
-            if let Some(name) = name {
-                superseded.push(("name".to_owned(), secret.name.get().clone()));
-                secret.name.set(name);
-            }
-            if let Some(tags) = tags {
-                superseded.push(("tags".to_owned(), secret.tags.get().clone()));
-                secret.tags.set(tags);
-            }
-            for (field, value) in fields {
-                let previous = secret
-                    .fields
-                    .get(&field)?
-                    .map(|r| r.get().clone())
-                    .unwrap_or_default();
-                if previous == value {
-                    continue;
-                }
-                superseded.push((field.clone(), previous));
-                let _ = secret.fields.insert(field, LwwRegister::new(value))?;
-            }
-            if secret.fields.len()? > MAX_FIELDS {
-                app::bail!("too many fields");
-            }
-            secret.updated_at.set(now);
-            secret.updated_by.set(me.clone());
+        if let Some(name) = name {
+            superseded.push(("name".to_owned(), std::mem::replace(&mut secret.name, name)));
         }
+        if let Some(tags) = tags {
+            superseded.push(("tags".to_owned(), std::mem::replace(&mut secret.tags, tags)));
+        }
+        for (field, value) in fields {
+            let key = (id.clone(), field.clone());
+            let previous = self.secret_fields.get(&key)?.unwrap_or_default();
+            if previous == value {
+                continue;
+            }
+            if value.is_empty() {
+                let _ = self.secret_fields.remove(&key)?;
+            } else {
+                let _ = self.secret_fields.insert(&key, &value)?;
+            }
+            superseded.push((field, previous));
+        }
+        if self.fields_of(&id)?.len() > MAX_FIELDS {
+            return Err(invalid("too many fields"));
+        }
+        secret.updated_at = now;
+        secret.updated_by = me.clone();
+        self.secrets.upsert(secret)?;
         if !rekey {
-            let history = self.history.get_mut()?;
             for (field, previous) in superseded {
                 if previous.is_empty() {
                     continue;
                 }
-                let _ = history.insert(
-                    format!("{id}/{}", Self::fresh_id("rev")),
-                    Revision {
-                        field,
-                        previous,
-                        replaced_at: now,
-                        replaced_by: me.clone(),
-                    },
-                )?;
+                let seq = self.revision_seq.increment()?;
+                self.history.insert(RevisionRow {
+                    secret_id: id.clone(),
+                    seq,
+                    field,
+                    previous,
+                    replaced_at: now,
+                    replaced_by: me.clone(),
+                })?;
             }
         }
         self.audit(
@@ -1059,133 +1036,151 @@ impl MeroPassApp {
                 "secret_updated"
             },
             &id,
+            &me,
         )?;
-        app::emit!(Event::SecretChanged { secret_id: id });
+        env::emit(Event::SecretChanged { secret_id: id }, Audience::All)?;
         Ok(())
     }
 
-    /// Superseded values of one secret, newest first.
+    /// Superseded values of one secret, newest first; `[]` for an unknown id.
+    #[app::view]
     pub fn secret_history(&self, id: String) -> app::Result<Vec<RevisionView>> {
-        let mut out: Vec<RevisionView> = self
-            .history
-            .get()?
-            .prefix(format!("{id}/").as_bytes())?
-            .map(|(_, r)| RevisionView {
+        let rows = all(|o| self.history.find("bySecret", &[s(&id)], o.reverse()))?;
+        Ok(rows
+            .into_iter()
+            .map(|r| RevisionView {
                 field: r.field,
                 previous: r.previous,
                 replaced_at: r.replaced_at,
                 replaced_by: r.replaced_by,
             })
-            .collect();
-        out.sort_by_key(|r| std::cmp::Reverse(r.replaced_at));
-        Ok(out)
+            .collect())
     }
 
-    fn set_trashed(&mut self, id: &str, trashed: bool) -> app::Result<()> {
-        self.require_editor()?;
+    fn set_trashed(&mut self, id: &str, trashed: bool) -> app::Result<String> {
+        let me = self.require_editor()?;
         let now = env::time_now();
-        let map = self.secrets.get_mut()?;
-        let mut secret = map
-            .get_mut(id)?
-            .ok_or_else(|| app::err!("secret not found"))?;
-        secret.trashed.set(trashed);
-        secret.trashed_at.set(if trashed { now } else { 0 });
-        Ok(())
+        let found = self.secrets.update(id, |s| {
+            s.trashed = trashed;
+            s.trashed_at = if trashed { now } else { 0 };
+        })?;
+        if !found {
+            return Err(not_found("secret not found"));
+        }
+        Ok(me)
     }
 
-    /// Move a secret to the trash. Recoverable until an admin purges it.
+    /// Move a secret to the trash: recoverable until an admin purges it.
+    /// Editors and admins (`Forbidden`); `NotFound` for an unknown id. Emits
+    /// `SecretChanged`.
     pub fn trash_secret(&mut self, id: String) -> app::Result<()> {
-        self.set_trashed(&id, true)?;
-        self.audit("secret_trashed", &id)?;
-        app::emit!(Event::SecretChanged { secret_id: id });
+        let me = self.set_trashed(&id, true)?;
+        self.audit("secret_trashed", &id, &me)?;
+        env::emit(Event::SecretChanged { secret_id: id }, Audience::All)?;
         Ok(())
     }
 
+    /// Take a secret out of the trash. Editors and admins (`Forbidden`);
+    /// `NotFound` for an unknown id. Emits `SecretChanged`.
     pub fn restore_secret(&mut self, id: String) -> app::Result<()> {
-        self.set_trashed(&id, false)?;
-        self.audit("secret_restored", &id)?;
-        app::emit!(Event::SecretChanged { secret_id: id });
+        let me = self.set_trashed(&id, false)?;
+        self.audit("secret_restored", &id, &me)?;
+        env::emit(Event::SecretChanged { secret_id: id }, Audience::All)?;
         Ok(())
     }
 
-    /// Delete a trashed secret and its history for good. Admin only — this is
-    /// the one operation that needs DELETE on the guarded store.
+    /// Delete a trashed secret, its fields and its history for good. Admin only
+    /// (`Forbidden`); `NotFound` for an unknown id, `Invalid` for one not in the
+    /// trash. Emits `SecretChanged`.
     pub fn purge_secret(&mut self, id: String) -> app::Result<()> {
-        self.require(
-            self.secrets.can(&Self::me(), Op::Delete),
-            "only a vault Admin can permanently delete a secret",
-        )?;
-        let trashed = self
-            .secrets
-            .get()?
-            .get(&id)?
-            .map(|s| *s.trashed.get())
-            .ok_or_else(|| app::err!("secret not found"))?;
-        if !trashed {
-            app::bail!("move the secret to the trash first");
+        let me = account()?;
+        if !self.is_admin(&me)? {
+            return Err(forbidden(
+                "only a vault Admin can permanently delete a secret",
+            ));
         }
-        let _ = self.secrets.get_mut()?.remove(&id)?;
-        let revisions: Vec<String> = self
-            .history
-            .get()?
-            .prefix(format!("{id}/").as_bytes())?
-            .map(|(k, _)| k)
-            .collect();
-        let history = self.history.get_mut()?;
-        for k in revisions {
-            let _ = history.remove(&k)?;
+        let Some(secret) = self.secrets.get(&id)? else {
+            return Err(not_found("secret not found"));
+        };
+        if !secret.trashed {
+            return Err(invalid("move the secret to the trash first"));
         }
-        self.audit("secret_purged", &id)?;
-        app::emit!(Event::SecretChanged { secret_id: id });
+        let _ = self.secrets.remove(&id)?;
+        for field in self.fields_of(&id)?.into_keys() {
+            let _ = self.secret_fields.remove(&(id.clone(), field))?;
+        }
+        let revisions = all(|o| self.history.find("bySecret", &[s(&id)], o))?;
+        for r in revisions {
+            let _ = self.history.remove(&(r.secret_id, r.seq))?;
+        }
+        self.audit("secret_purged", &id, &me)?;
+        env::emit(Event::SecretChanged { secret_id: id }, Audience::All)?;
         Ok(())
     }
 
+    /// One secret, or `null` for an unknown id.
+    #[app::view]
     pub fn get_secret(&self, id: String) -> app::Result<Option<SecretView>> {
-        match self.secrets.get()?.get(&id)? {
-            Some(s) => Ok(Some(Self::view_of(id, &s)?)),
+        match self.secrets.get(&id)? {
+            Some(secret) => Ok(Some(self.view_of(secret)?)),
             None => Ok(None),
         }
     }
 
-    /// Every secret, trashed ones included — the client splits them. Search
-    /// and filtering happen in the browser, after decryption: the contract
-    /// holds ciphertext and has nothing to match against.
+    /// Every secret, trashed ones included (the client splits them), by id.
+    /// Search and filtering happen in the browser, after decryption: the
+    /// contract holds ciphertext and has nothing to match against.
+    #[app::view]
     pub fn list_secrets(&self) -> app::Result<Vec<SecretView>> {
-        self.secrets
-            .get()?
-            .entries()?
-            .map(|(id, s)| Self::view_of(id, &s))
+        all(|o| self.secrets.scan(o))?
+            .into_iter()
+            .map(|secret| self.view_of(secret))
             .collect()
     }
 
-    // ── Audit ───────────────────────────────────────────────────────────────
+    // ── audit ────────────────────────────────────────────────────────────────
 
-    /// The trail, newest first.
-    /// The trail, newest first. Each line's account is its slot's owner
-    /// stamp, so nobody can write a line in someone else's name.
+    /// The trail, newest first: at most the newest 1,000 lines. Each line's
+    /// account is the caller of the method that wrote it.
+    #[app::view]
     pub fn get_audit_logs(&self) -> app::Result<Vec<AuditView>> {
-        let mut logs = Vec::new();
-        for index in 0..self.audit.len()? {
-            let Some(e) = self.audit.get(index)? else {
-                continue;
-            };
-            logs.push(AuditView {
-                redacted: e.action.is_empty(),
+        let page = self.audit.scan(FindOpts::default().limit(PAGE).reverse())?;
+        Ok(page
+            .items
+            .into_iter()
+            .map(|e| AuditView {
                 action: e.action,
                 target: e.target,
-                account: self
-                    .audit
-                    .owner_of(index)?
-                    .map(|a| a.to_string())
-                    .unwrap_or_default(),
-                device: e.device,
+                account: e.account,
+                device: String::new(),
                 timestamp: e.timestamp,
-            });
-        }
-        logs.sort_by_key(|l| std::cmp::Reverse(l.timestamp));
-        Ok(logs)
+                redacted: false,
+            })
+            .collect())
     }
 }
 
-#[cfg(test)]
-mod tests;
+/// A typed failure: `422 APP_ERROR` with `{ code, fields }` on the wire. Each
+/// `message` is v1's wording.
+#[app::error]
+pub enum Error {
+    /// The caller's vault role does not allow this.
+    Forbidden { message: String },
+    /// No such secret, device, or organization member.
+    NotFound { message: String },
+    /// An argument broke a rule.
+    Invalid { message: String },
+    /// The id is taken, or the change would leave the vault without an Admin.
+    Conflict { message: String },
+}
+
+/// Events carry ids only. A subscriber learns THAT something changed and
+/// re-reads it through the encrypted view; nothing sensitive rides the event.
+/// Sent to everyone the app reaches (guests included), as in v1.
+#[app::event]
+pub enum Event {
+    SecretChanged { secret_id: String },
+    MembersChanged,
+    KeysChanged,
+    VaultRenamed,
+}

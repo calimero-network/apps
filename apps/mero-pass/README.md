@@ -1,21 +1,27 @@
 # Mero Pass
 
-A peer-to-peer password manager on Calimero. Teams share vaults of secrets that
-live on their members' own nodes, sync between them without a server, and are
-**end-to-end encrypted in the browser**: no node, disk, log or operator ever
-holds a readable secret.
+A password manager for teams on Calimero. Teams share vaults of secrets that
+are **end-to-end encrypted in the browser**: the Calimero nodes that hold a
+vault, their disks, their logs and their operators only ever see ciphertext.
 
-> Alpha. The v2 state layout is not compatible with v1 vaults, and there is no
-> migration — create new vaults.
+Mero Pass runs on Calimero 1.0: the contract is a `calimero:app` component on
+core's component SDK (`calimero-app-sdk`, the node's wasmtime runtime), the
+frontend talks to **Calimero Cloud** in production and to **`merod local`** in
+development through mero-js's `CalimeroClient`
+([docs/COMPONENT-APPS.md](../../docs/COMPONENT-APPS.md)).
+
+> Alpha. The component state is not compatible with v1 vaults, and there is no
+> migration: create new vaults (see [What changed in the port](#what-changed-in-the-port-and-why)).
 
 ## How it works
 
-| Concept | Calimero primitive |
+| Concept | Calimero 1.0 |
 |---|---|
-| **Team** | a namespace. Invitations grant membership of it. |
-| **Vault** | a subgroup plus one context running this contract. *Open* vaults admit every team member by inheritance; *invite-only* vaults need their own invitation. |
-| **Personal vault** | its own namespace nobody else can join, with a restricted subgroup. |
-| **Secret** | an entry whose name, fields and tags are **ciphertext**. Only its kind (login, TOTP, …) is cleartext. |
+| **Team** | an **organization**. Invitations are org invites. |
+| **Vault** | an **app instance** of this package in the org. *Open* vaults reach every org member; *invite-only* vaults reach the members of their own invite-only **team**. |
+| **Personal vault** | an org nobody else is invited to, marked `{ kind: "personal" }` in its metadata. |
+| **Secret** | a row whose name, fields and tags are **ciphertext**. Only its kind (login, TOTP, …) is cleartext. |
+| **Account** | a passkey: sign in, or sign up with a new one. |
 
 ### Encryption
 
@@ -96,7 +102,7 @@ into a new vault even if every device is gone.
 - **Unlocked:** they can read what you can. Auto-lock and the Lock button
   narrow that window. (A browser set up before sealing was required held an
   unprotected key until its owner next opened Mero Pass.)
-- **Using your node account from another browser:** their browser has to be
+- **Using your account from another browser:** their browser has to be
   approved, and the request appears on yours.
 - Either way, revoke the device from another one (or ask an admin). That
   rotates the vault key, so nothing written afterwards opens for it. What it
@@ -107,27 +113,27 @@ into a new vault even if every device is gone.
 | Role | May |
 |---|---|
 | Viewer | read |
-| Editor | add, edit, trash, restore |
+| Editor | add, edit, trash, restore, rename the vault |
 | Admin | everything, plus roles, key rotation, and permanent deletion |
-| *pending* | has registered a device but has not been admitted yet. Gets no key. |
+| *pending* | reaches the vault through the org and has registered a device, but has not been admitted. Gets no key. |
 
-Roles live in an `AccessControl` registry and are projected as capability
-masks onto `PermissionedStorage<_, ProtocolAuthorizer>` stores. Every peer
-re-checks them when merging, so a patched node that skips the API checks
-still has its forged writes dropped. Newcomers are admitted with the vault's
-default role, Editor or Viewer, by the next admin who opens the vault.
+The account that creates a vault is its first Admin. The roles live in the
+contract and are checked by every method against the caller
+(`logic/src/lib.rs`, "Who may do what"): one leader applies every write in one
+log, so there is no peer to forge a write on and no merge to re-check. Who
+reaches the vault at all is the organization's (or the vault team's) decision,
+made by the node before the contract runs. Newcomers are admitted with the
+vault's default role, Editor or Viewer, by the next admin who opens the vault.
 
-### Convergence
+### Order and history
 
-- **Per-field registers.** Concurrent edits to different fields of one secret
-  both survive; the merobox scenario proves this across two nodes.
-- **Tombstones.** Trashing sets a flag rather than removing the entry, so an
-  edit racing a trash resolves by HLC instead of resurrecting the secret.
+- **One log.** Every change is applied in order by the vault's leader. Edits
+  to different fields of one secret both stick; on one field the later wins.
+- **Trash.** Trashing sets a flag; only an admin purges.
 - **History.** Every superseded value is kept, still sealed, and can be
   restored.
-- **Append-only audit trail** (`AuthoredVector`). Entries can only be blanked,
-  only by their own author, and a blank stays visible as a redaction. No
-  entry carries a name or a value.
+- **Append-only audit trail.** Each line names the account that acted and the
+  object (a secret id, an account, a fingerprint), never a name or a value.
 
 ## Features
 
@@ -147,7 +153,7 @@ default role, Editor or Viewer, by the next admin who opens the vault.
 - Share links: one secret for someone outside the team, sealed inside the URL
   fragment (never sent to a server). A passphrase is optional and an expiry is
   enforced by the viewer. Links cannot be revoked; the dialog says so.
-- Live updates over SSE when another member changes something.
+- Live updates from the app's event stream when another member changes something.
 - Device approval with confirmation codes, a recovery key every browser sets
   up, and a warning when only one browser holds a vault's key.
 - Agents: an agent (mero-bot) opens a vault with its own `agent` device key
@@ -158,7 +164,7 @@ default role, Editor or Viewer, by the next admin who opens the vault.
   - invite expiry (1h / 24h / 7d);
   - invite-only vaults;
   - remove a member, which is finished inside each vault by key rotation;
-  - revoke devices on the Security page.
+  - remove a lost passkey on the Security page.
 
 ## Design
 
@@ -191,8 +197,8 @@ inside the frame share `app/src/styles/shell.module.css`; the lock screen is
 **Log out** (the rail, the phone drawer, or Security → Your account) runs
 `app/src/auth/signOut.ts`: it locks the device key, so every open vault drops
 its keys and decrypted items; clears a copied secret from the clipboard at
-once; forgets the application resolved for this node; then calls mero-react's
-`logout()`. The theme, the auto-lock delay and the sealed device key stay.
+once; forgets the team and vault it had open last; then ends the Calimero
+session and forgets the stored copy. The theme, the auto-lock delay and the sealed device key stay.
 
 The landing page (`app/src/pages/landing/`) is hand-owned rather than generated
 from `scripts/landing/`, restyled to the same glass. It follows the Calimero
@@ -219,47 +225,122 @@ A login's tile shows the first letter of its name. It does not fetch the site's
 favicon, because that request would tell a third party which sites are in the
 vault. On a phone the three panes collapse to one at a time.
 
-Screenshots of every screen, with no node: `SHOTS_CHROMIUM=<chromium> node
-app/e2e/shots.mjs --out /tmp/shots`.
 
 ## Layout
 
 ```
-logic/            Rust contract → WASM
-  src/lib.rs      state, roles, key registry, secrets
-  src/tests.rs    TestHost tests
-  workflows/      two-node merobox scenario
-app/              React + Vite frontend
-  src/lib/        deviceKey, recoveryKey, vaults, totp, health, portability,
-                  shareLink (crypto and vaultSession live in
-                  packages/mero-pass, shared with mero-bot)
-  src/pages/      landing, teams, team, vault, security, share
-  src/components/AppShell.tsx   the signed-in frame: rail, top bar, Lock, Log out
-  src/auth/       signOut: lock, clear clipboard, forget the app, log out
-  src/styles/     frame, shell (pages) and gate (lock screen) CSS modules
-  tests/          Playwright, no node: entry, landing, theme, Log out
-  e2e/shots/      screenshot harness (fixtures in place of a node)
-  e2e/journey/    Playwright against a real node (session: theme, copy, Log out)
+logic/              the contract: a standalone crate on calimero-app-sdk (wasm32-wasip2)
+  src/lib.rs        state, roles, device keys and wraps, secrets, audit
+  tests/harness.rs  TestApp: every method on core's real wasmtime engine
+  scenarios/*.json  neutral steps run by cargo test AND on merod local (CI e2e)
+  res/abi.json      the component's ABI, committed, diffed in CI
+app/                React + Vite frontend
+  src/calimero.tsx  the session: local nodes in dev, the Cloud cluster in production, passkeys
+  src/lib/meroPass.ts  the contract, typed (its method list is checked against res/abi.json)
+  src/lib/vaultApi.ts  the one adapter from the contract's answers to the vault core's records
+  src/lib/vaults.ts    teams (orgs), vaults (app instances), invites, members
+  src/lib/          deviceKey, recoveryKey, totp, health, portability, shareLink
+                    (crypto and vaultSession live in packages/mero-pass, shared with mero-bot)
+  src/pages/        landing, teams, team, vault, security, share
+mobile/             native iOS and Android apps (their Calimero 1.0 port is #699; see mobile/README.md)
 ```
 
 ## Develop
 
 ```bash
-# Contract: tests, then bundle (which also writes res/abi.json)
-cargo test -p mero-pass
-cargo mero bundle --manifest-path apps/mero-pass/logic/Cargo.toml --dev \
-  --app-version 0.0.0 --output /tmp/mero-pass.mpk
+rustup target add wasm32-wasip2
+M=tools/component-bundle/Cargo.toml
 
-# Regenerate the typed client after any contract change
-pnpm -F mero-pass codegen
+# Contract: harness + scenarios, then the component and its ABI
+cargo test --manifest-path apps/mero-pass/logic/Cargo.toml
+cargo run --release --manifest-path $M -- build apps/mero-pass/logic   # res/mero_pass.wasm + res/abi.json
+
+# Everything on merod local: the cluster, the contract, the dev server on :5173
+pnpm dev:local mero-pass
+pnpm merod-local e2e mero-pass   # every scenarios/*.json as real accounts on three nodes
 
 # Frontend
-pnpm -F mero-pass test
-pnpm -F mero-pass dev        # http://localhost:5182
-pnpm -F mero-pass test:e2e   # Playwright specs in app/tests, no node
-MEROD_BINARY=… pnpm -F mero-pass test:journey   # e2e/journey: needs merod and the bundle
+pnpm -F mero-pass lint && pnpm -F mero-pass typecheck && pnpm -F mero-pass test && pnpm -F mero-pass build
 ```
 
-The two-node scenario: `merobox bootstrap run apps/mero-pass/logic/workflows/e2e.yml`.
+In the browser, sign up with a passkey and create a vault: you get your own
+instance of the bundle `dev:local` uploaded. Invite a second browser profile
+from the team's **Invite** button to try sharing.
 
-See [logic/README.md](logic/README.md) for the contract API.
+## Production
+
+The production frontend is the one packed into the bundle (`frontend-dir`),
+served by the cluster from the package's own origin: a Cloud node trusts
+passkey ceremonies only from frontends it serves. Build it with
+`VITE_CALIMERO_CLUSTER` and `VITE_CALIMERO_MIN_RELEASE` set (`app/.env.example`),
+then bundle:
+
+```bash
+pnpm -F mero-pass build
+cargo run --release --manifest-path tools/component-bundle/Cargo.toml -- \
+  bundle apps/mero-pass/logic --key key.json --app-version <version>
+```
+
+Known limits on a cluster-served page today: the breach check (Have I Been
+Pwned) is off, because the page's CSP lets it reach the cluster's API origins
+only; and mero-js's release attestation needs the same exception
+(docs/COMPONENT-APPS.md, "What the component SDK does not have yet").
+
+## What changed in the port, and why
+
+Same methods, same arguments, same events and the same answers, in the
+component SDK's wire shapes. The vault core (`@calimero-network/mero-pass`) and
+its public `VaultApi` are unchanged: the app converts the new answers back to
+its records in one adapter (`app/src/lib/vaultApi.ts`).
+
+| | v1 (`calimero-sdk`, wasmer) | now (component SDK) | why |
+|---|---|---|---|
+| method names | `vault_info`, `add_secret`, `key_wraps_for`, … | `vaultInfo`, `addSecret`, `keyWrapsFor`, … | the ABI names methods and arguments in camelCase |
+| argument and result fields | `public_key`, `key_id`, `my_role`, `created_at`, … | `publicKey`, `keyId`, `myRole`, `createdAt`, … | camelCase on the wire |
+| times (`createdAt`, `addedAt`, `replacedAt`, `timestamp`, …) | numbers | decimal strings (`"1700000000000"`) | `u64` travels as a decimal string |
+| `init` | `init(name)`: the vault's name as `initializationParams` | `init()` takes nothing; the creator names the vault with `renameVault` (the frontend does it right after creating the instance); `vaultName` is `""` until then | the runtime runs `init` with no arguments |
+| who is the first Admin | the context's creator | the account that creates the app instance | same idea, an account instead of a node identity |
+| accounts | 64-hex account ids, parsed and checked | the node's account ids, opaque strings; `setRole` refuses an account the organization does not hold (`NotFound`) | accounts are the node's; the org is the membership list |
+| errors | `app::bail!("message")`, a string | `422 APP_ERROR` `{ code, fields: { message } }` with code `Forbidden`, `NotFound`, `Invalid` or `Conflict`; `message` is v1's text | `#[app::error]`'s typed shape |
+| write rules | capability masks on `PermissionedStorage` (re-checked by every peer at merge) and owner stamps on `Authored*` entries | the same rules as checks in each method against the caller, before anything is written; a refused write is `Forbidden` | one leader, one log: every write goes through a method |
+| a device's account, a wrap's author, an audit line's account | the entry's owner stamp | a field the method writes from the caller | the same guarantee, enforced by the method |
+| reads | any method | `vaultInfo`, `vaultName`, `listMembers`, `listDevices`, `keyWrapsFor`, `wrappedPairs`, `secretHistory`, `getSecret`, `listSecrets`, `getAuditLogs` are views; calling a write as a view is `NotAView` | a view is answered without touching the log |
+| `getAuditLogs` | every line | the newest 1,000 lines, newest first | multi-row reads are pages |
+| other lists (`listSecrets`, `listDevices`, `listMembers`, …) | every entry | still every entry (the contract reads page by page) | a vault's secrets must not be cut off |
+| audit `device` | the author's node device | always `""` | a component app has no node device to report |
+| audit `redacted` | true for a line its author blanked | always `false` | no method blanks a line (none did in v1 either) |
+| a cleared field | an empty register, filtered out of answers | the row is deleted; the 64-field cap counts fields with a value | plain data, nothing to merge |
+| history order | by `replaced_at`, newest first | by write order, newest first | one log orders every write |
+| concurrent edits | per-field LWW registers merged by HLC; trash vs edit by HLC | the log orders them; the later write holds | no CRDT merge under one log |
+| events | emitted before the write commits | emitted after it, to everyone the app reaches (`Audience::All`), guests included; they carry ids only | an event describes a write that happened |
+| who may call | any member of the context | any owner, admin, member or guest of the org (for an invite-only vault: its team); anonymous `401 UNAUTHENTICATED`, others `404 NOT_FOUND` | the org is the access boundary |
+| a member who leaves the team | keeps a synced copy until removed and rotated | stops reaching the vault at once; their vault role stays listed until an admin's client removes it and rotates the key | the node gates every request |
+| migrations, v1 state | none in v1 | none, and v1 vaults are not carried over: create new ones | the component SDK has no migrations yet, and the storage layout is new |
+
+The frontend changed with it:
+
+- **Gone:** mero-react's `MeroProvider` and node login, the desktop SSO
+  hand-off (`auth/desktopBootstrap`), the application-id resolution
+  (`lib/appId`, `useApplicationId`), node-served detection
+  (`@calimero-apps/node-served`), the generated `MeroPassClient` and
+  abi-codegen, the v1 invitation codec (signed namespace payloads, deflate +
+  base58, links.calimero.network / `calimero://` deep links,
+  `@calimero-network/mero-platform`), the post-join sync gate, namespace member
+  names (`@calimero-apps/names`), the node device list, the Playwright suites
+  and screenshot harness (built on mero-react and mocked or real merod 0.x
+  nodes; the checklist drops Playwright, and the screens are now tested with a
+  mocked client), and the two-node v1 workflow (`logic/workflows/e2e.yml`).
+- **New:** `@calimero-apps/connect` picks the target from the build (`merod
+  local` under `vite`, the Cloud cluster under `vite build`) and keeps the
+  session per app and target; sign-in is a **passkey**; teams are **orgs** and
+  vaults **app instances**; an invitation is an **org invite** token in
+  `?invite=` (making one is a passkey step-up; opening it after signing in
+  redeems it); live updates come from `client.events`; member names are org
+  member metadata (your sign-up name is set when you create or join a team);
+  the Security page lists your **passkeys** instead of node devices.
+- **Same:** every screen, the crypto, the vault session, device approval,
+  recovery keys, rotation, share links, import/export, health, TOTP.
+
+The native iOS and Android apps (`mobile/`) move to Calimero 1.0 in their own
+PR, #699, against this contract's component ABI; it depends on this port and
+lands right after it.

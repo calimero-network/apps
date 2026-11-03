@@ -1,7 +1,7 @@
 import Foundation
 import MeroKit
 
-/// A team the account is in: one context, directly in its namespace (as the
+/// A team the account is in: one app instance, directly in its org (namespace) (as the
 /// web app's `ContextPicker` creates them).
 public struct TeamSummary: Identifiable, Hashable, Sendable {
     public let namespaceId: String
@@ -19,7 +19,7 @@ public struct TeamSummary: Identifiable, Hashable, Sendable {
     public var title: String { name.isEmpty ? "Unnamed team" : name }
 }
 
-/// The team list: the account's namespaces for this app, the team contexts
+/// The team list: the account's orgs for this app, the team app instances
 /// in each, and starting or joining one.
 @MainActor
 public final class TeamsModel: ObservableObject {
@@ -37,7 +37,7 @@ public final class TeamsModel: ObservableObject {
         self.applicationId = applicationId
     }
 
-    /// Whether a relay serves the account. Without one only joining works.
+    /// Whether the account is connected (always, once signed in on 1.0). Without it only joining works.
     public var hasRelay: Bool { backend.hasRelay }
 
     public func load() async {
@@ -87,7 +87,7 @@ public final class TeamsModel: ObservableObject {
         }.sorted { $0.title.localizedCompare($1.title) == .orderedAscending }
     }
 
-    /// Start a team: found a namespace, create the team's context directly in
+    /// Start a team: found an org, create the team's app instance directly in
     /// it, and name it. Returns the new team, or nil with ``error`` set.
     public func create(name: String) async -> TeamSummary? {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -115,7 +115,7 @@ public final class TeamsModel: ObservableObject {
     }
 
     /// The application a new team's context runs: the session's, else the one
-    /// the freshly founded namespace was founded with.
+    /// the freshly founded org was founded with.
     private func applicationId(for namespaceId: String) async throws -> String {
         if let applicationId, !applicationId.isEmpty { return applicationId }
         let namespaces = try await backend.listNamespaces()
@@ -126,13 +126,13 @@ public final class TeamsModel: ObservableObject {
     }
 
     /// Redeem an invitation. Returns the team it names; its updates arrive as
-    /// the namespace syncs. Nil with ``error`` set when the relay refused.
+    /// the namespace syncs. Nil with ``error`` set when the node refused.
     public func join(_ invitation: StandupInvitation) async -> TeamSummary? {
         isWorking = true
         defer { isWorking = false }
         do {
             _ = try await backend.joinNamespace(namespaceId: invitation.namespaceId, invitation: invitation.invitation)
-            let team = TeamSummary(namespaceId: invitation.namespaceId, contextId: invitation.contextId, name: "")
+            let team = TeamSummary(namespaceId: invitation.namespaceId, contextId: invitation.contextId, name: invitation.name ?? "")
             if !teams.contains(where: { $0.contextId == team.contextId }) { teams.append(team) }
             error = nil
             return team

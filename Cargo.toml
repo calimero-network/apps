@@ -43,6 +43,10 @@ members  = [
 #
 # See docs/COMPONENT-APPS.md.
 exclude = [
+  "apps/kv-store/logic",
+  "apps/mero-pass/logic",
+  "apps/mero-standup/logic",
+  "apps/mero-stream/logic",
   "apps/mero-chat/logic",
 ]
 
@@ -129,12 +133,14 @@ merod-image = "ghcr.io/calimero-network/merod:0.12.0-rc.3"
 # asserts every one of them names this tag instead. Like the SDK tag above, a
 # real release tag, never a branch.
 #
-# 1.0.0-rc.7 is the first release carrying core#4813 (Cell, Set, Vector,
-# Frozen, PerUser and Fugue Text in the component SDK).
-component-core-tag = "1.0.0-rc.7"
+# 1.0.0-rc.7 brought core#4813 (Cell, Set, Vector, Frozen, PerUser and Fugue
+# Text in the component SDK); 1.0.0-rc.8 adds blobs, full-text search, xcall
+# (the outbox and synchronous xcall.call/xcall.view), actions and outbound HTTP
+# from actions and calls for components (core#4815-#4822).
+component-core-tag = "1.0.0-rc.8"
 # What a component bundle declares as `minRuntimeVersion`: a 1.0 node compares
 # it with its own version, so it is the core tag above.
-component-min-runtime-version = "1.0.0-rc.7"
+component-min-runtime-version = "1.0.0-rc.8"
 
 # ── profiles MUST live here ──────────────────────────────────────────────────
 #

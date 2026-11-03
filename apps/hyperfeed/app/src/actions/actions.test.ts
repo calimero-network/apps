@@ -8,11 +8,12 @@ import { groupSets, modeOf, uncovered, validateActions } from "./actions";
 const APPS = path.resolve(__dirname, "../../../..");
 /**
  * Apps that moved to Calimero 1.0 (a component contract with its own ABI
- * format and camelCase methods). Hyperfeed runs on v1 nodes, where they are
- * still the published v1 bundles, so it is checked against those contracts'
- * ABIs, frozen in fixtures/abi when each app was ported.
+ * format and camelCase methods). Hyperfeed runs on v1 nodes, where these are
+ * still the published v1 bundles, so their actions are checked against each
+ * contract's ABI, frozen in fixtures/abi when the app was ported.
  */
 const FROZEN_V1: Record<string, string> = {
+  "mero-pass": path.join(__dirname, "../fixtures/abi/mero-pass-v1.json"),
   "mero-chat": path.join(__dirname, "../fixtures/abi/mero-chat-v1.json"),
 };
 const abiOf = (app: string) =>

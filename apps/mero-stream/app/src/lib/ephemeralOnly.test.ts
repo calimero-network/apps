@@ -90,11 +90,13 @@ describe("the call path is ephemeral-only", () => {
     }
   });
 
-  it.each(CALL_PATH)("%s publishes only through set_ephemeral", (file) => {
+  it.each(CALL_PATH)("%s publishes only through presence", (file) => {
     const code = stripComments(readSource(file));
-    // `post_chunk` is the JSON-RPC method name; seeing it outside a comment in
-    // the call path means someone reintroduced the raw call.
+    // The contract method's wire name (v1's was `post_chunk`); seeing either
+    // outside a comment in the call path means someone reintroduced the raw
+    // call.
     expect(code).not.toContain("post_chunk");
+    expect(code).not.toContain('"postChunk"');
   });
 
   it("useLiveStream has no transport switch left", () => {
@@ -119,12 +121,13 @@ describe("the call path is ephemeral-only", () => {
     }
   });
 
-  it("still reaches set_ephemeral, so this test cannot pass vacuously", () => {
+  it("still publishes to presence, so this test cannot pass vacuously", () => {
     // Without this, deleting the send path entirely would satisfy every
     // assertion above. A guard against a call that writes nothing is worthless
     // if it also passes for a call that sends nothing.
     const hook = readSource("hooks/useLiveStream.ts");
-    expect(hook).toMatch(/ephemeral\.set\b/);
+    expect(stripComments(hook)).toMatch(/\bpresencePublisher\(/);
+    expect(stripComments(hook)).toMatch(/\bawait publish\(fragment\)/);
     expect(hook).toContain("publishEphemeralFrame");
   });
 
