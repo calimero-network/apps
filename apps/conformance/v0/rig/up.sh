@@ -25,7 +25,7 @@ set -eu
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 APP_DIR=$(cd "${HERE}/../app" && pwd)
-WS=$(cd "${HERE}/../../../.." && pwd)
+WS=$(cd "${HERE}/../../../../.." && pwd)
 STATE="${HERE}/.state"
 RUN="${STATE}/run"
 

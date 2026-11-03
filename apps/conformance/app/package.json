@@ -1,32 +1,38 @@
 {
-  "name": "conformance",
+  "name": "conformance-1.0",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --port 5190 --strictPort",
+    "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b",
-    "rig:up": "sh ../rig/up.sh",
-    "rig:down": "sh ../rig/down.sh",
-    "test:matrix": "playwright test",
-    "test:rig": "node scripts/test-rig.mjs"
+    "test": "vitest run",
+    "lint": "eslint .",
+    "test:cluster": "vitest run --config vitest.cluster.config.ts"
   },
   "dependencies": {
-    "@calimero-apps/node-served": "workspace:*",
-    "@calimero-network/mero-js": "catalog:",
-    "@calimero-network/mero-react": "catalog:",
+    "@calimero-apps/connect": "workspace:*",
+    "@calimero-network/mero-js": "catalog:component",
     "react": "catalog:",
     "react-dom": "catalog:"
   },
   "devDependencies": {
-    "@playwright/test": "catalog:",
+    "@eslint/js": "catalog:",
+    "@testing-library/react": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
+    "eslint": "catalog:",
+    "eslint-plugin-react-hooks": "catalog:",
+    "eslint-plugin-react-refresh": "catalog:",
+    "globals": "catalog:",
+    "jsdom": "catalog:",
     "typescript": "catalog:",
-    "vite": "catalog:"
+    "typescript-eslint": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
   }
 }

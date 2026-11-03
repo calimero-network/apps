@@ -62,6 +62,7 @@ Start here. These exist to be read, not shipped.
 | App | Live | What it is | Package |
 | --- | --- | --- | --- |
 | [kv-store](apps/kv-store) | [↗](https://mero-kv-store.vercel.app) | The first component app (Calimero 1.0): a string key-value store on `calimero-app-sdk`, developed on `merod local`, its frontend on mero-js `CalimeroClient` (Cloud in production). | `com.calimero.kv-store` |
+| [conformance](apps/conformance) | — | Not a product: the conformance matrix. Every call a component app's client (mero-js `CalimeroClient`) makes, run as two accounts on `merod local` with one report row per check, and the contract it calls; the 0.x rig it replaces is kept beside it in `v0/`. | `com.calimero.conformance` |
 | [scaffolding-e2e](apps/scaffolding-e2e) | [↗](https://scaffolding-e2e-application.vercel.app/) | Full-stack scaffold — KV, CRDTs, blobs, private storage and namespace management behind an interactive test suite that exercises every SDK surface. | `com.calimero.scaffolding-e2e` |
 
 ### Collaboration & productivity

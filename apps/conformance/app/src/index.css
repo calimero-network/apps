@@ -99,3 +99,17 @@ tr.fail td:nth-child(4) {
 .empty {
   color: var(--muted);
 }
+
+button {
+  font: inherit;
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
