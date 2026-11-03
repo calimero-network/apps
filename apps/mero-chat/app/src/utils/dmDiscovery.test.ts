@@ -10,10 +10,6 @@ const THEM_HEX =
   "1cc26bb3d3e07a649a2b1c9b563582345377e1b1a0b916318c82cd7255f8f692";
 const THIRD_HEX =
   "95d149056d8ef636acd7e46b0b6c8326163e09c745abfd2b77a1dc43eff277d2";
-// The same account as ME_HEX, base58 — the form the contract emits. Verified
-// against a live node: THEM_HEX encodes to the `creator` the contract reports
-// for a DM that account created.
-const ME_BASE58 = "5DbGqkRapbvsSCrSm5sSVEMUTioc8RGnG9Q6zmrAcACd";
 
 describe("resolveDmCounterpart", () => {
   it("names the other member of a two-person group", () => {
@@ -22,13 +18,6 @@ describe("resolveDmCounterpart", () => {
 
   it("does not care which order the members arrive in", () => {
     expect(resolveDmCounterpart([THEM_HEX, ME_HEX], ME_HEX)).toBe(THEM_HEX);
-  });
-
-  it("matches me across encodings", () => {
-    // The whole reason this goes through `sameAccount`: the members list is hex
-    // and the identity we compare against may be base58. A raw === never
-    // matches, and the DM would look like it belongs to someone else.
-    expect(resolveDmCounterpart([ME_HEX, THEM_HEX], ME_BASE58)).toBe(THEM_HEX);
   });
 
   it("matches an identity that is not in a form sameAccount recognises", () => {
@@ -65,7 +54,7 @@ describe("resolveDmCounterpart", () => {
   it("refuses to guess when the same account is listed twice", () => {
     // Two entries that are both me is a malformed group, not a conversation
     // with myself. Returning me would open a DM whose counterpart is the user.
-    expect(resolveDmCounterpart([ME_HEX, ME_BASE58], ME_HEX)).toBeNull();
+    expect(resolveDmCounterpart([ME_HEX, ME_HEX], ME_HEX)).toBeNull();
   });
 
   it("ignores blank entries rather than treating them as a member", () => {

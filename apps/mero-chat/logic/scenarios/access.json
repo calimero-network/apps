@@ -1,0 +1,315 @@
+[
+ {
+  "as": "@anonymous",
+  "op": "view",
+  "method": "getInfo",
+  "args": {},
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "call",
+  "method": "sendMessage",
+  "args": {
+   "message": "anonymous",
+   "mentions": [],
+   "mentionsUsernames": [],
+   "parentMessage": null,
+   "timestamp": "1700000000",
+   "files": null,
+   "images": null
+  },
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "view",
+  "method": "getMessageCount",
+  "args": {},
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "call",
+  "method": "sendMessage",
+  "args": {
+   "message": "outsider",
+   "mentions": [],
+   "mentionsUsernames": [],
+   "parentMessage": null,
+   "timestamp": "1700000000",
+   "files": null,
+   "images": null
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "sendMessage",
+  "args": {
+   "message": "guests chat too",
+   "mentions": [],
+   "mentionsUsernames": [],
+   "parentMessage": null,
+   "timestamp": "1700000001",
+   "files": null,
+   "images": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getMessageCount",
+  "args": {},
+  "expect": {
+   "ok": "1"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "updateInfo",
+  "args": {
+   "name": "hijacked",
+   "description": null
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "Only an admin can change the channel's info"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setMemberRole",
+  "args": {
+   "target": "@owner",
+   "role": "Banned"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "You don't have permission to change this member's role"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setMemberRole",
+  "args": {
+   "target": "@bob",
+   "role": "Admin"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "You don't have permission to change this member's role"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setMemberRole",
+  "args": {
+   "target": "@owner",
+   "role": "User"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "An admin cannot demote themselves below Admin"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "deleteMessage",
+  "args": {
+   "messageId": "nope_1",
+   "parentId": null
+  },
+  "expect": {
+   "error": "NotFound",
+   "fields": {
+    "message": "Message not found"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "editMessage",
+  "args": {
+   "messageId": "nope_1",
+   "newMessage": "x",
+   "timestamp": "1700000002",
+   "parentId": null
+  },
+  "expect": {
+   "error": "NotFound",
+   "fields": {
+    "message": "Message not found"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "updateReaction",
+  "args": {
+   "messageId": "nope_1",
+   "emoji": "👍",
+   "add": true
+  },
+  "expect": {
+   "error": "NotFound",
+   "fields": {
+    "message": "Message not found"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "sendMessage",
+  "args": {
+   "message": "reply",
+   "mentions": [],
+   "mentionsUsernames": [],
+   "parentMessage": "nope_1",
+   "timestamp": "1700000002",
+   "files": null,
+   "images": null
+  },
+  "expect": {
+   "error": "NotFound",
+   "fields": {
+    "message": "Parent message not found"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "sendMessage",
+  "args": {
+   "message": "from the future",
+   "mentions": [],
+   "mentionsUsernames": [],
+   "parentMessage": null,
+   "timestamp": "9999999999",
+   "files": null,
+   "images": null
+  },
+  "expect": {
+   "error": "Invalid",
+   "fields": {
+    "message": "Timestamp 9999999999 is too far in the future"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setProfile",
+  "args": {
+   "username": "Bob",
+   "avatar": "not-a-blob"
+  },
+  "expect": {
+   "error": "Invalid",
+   "fields": {
+    "message": "Invalid avatar blob ID: not-a-blob"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "searchMessagesScan",
+  "args": {
+   "query": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "cursor": null,
+   "limit": null
+  },
+  "expect": {
+   "error": "Invalid",
+   "fields": {
+    "message": "Search term too long: 257 characters, limit is 256"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "searchMessagesScan",
+  "args": {
+   "query": "guests",
+   "cursor": "nope",
+   "limit": null
+  },
+  "expect": {
+   "error": "Invalid",
+   "fields": {
+    "message": "Invalid search cursor"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "sendMessage",
+  "args": {
+   "message": "a write is not a view",
+   "mentions": [],
+   "mentionsUsernames": [],
+   "parentMessage": null,
+   "timestamp": "1700000003",
+   "files": null,
+   "images": null
+  },
+  "expect": {
+   "error": "NotAView"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "send_message",
+  "args": {
+   "message": "v1 name",
+   "mentions": [],
+   "mentionsUsernames": [],
+   "parentMessage": null,
+   "timestamp": "1700000003",
+   "files": null,
+   "images": null
+  },
+  "expect": {
+   "error": "UnknownMethod"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getMessageCount",
+  "args": {},
+  "expect": {
+   "ok": "1"
+  }
+ }
+]
