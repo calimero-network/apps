@@ -1,5 +1,4 @@
 import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
-import { shareableInvitation } from "../lib/inviteLink";
 import { useToast } from "../contexts/ToastContext";
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import styles from "./InviteModal.module.css";
@@ -18,10 +17,8 @@ import { CopyIcon, LinkIcon, UserPlusIcon, XIcon } from "./icons";
  *   * it offered link / desktop link / raw code at equal weight, so the choice
  *     was yours to make every single time, and the answer is the link ~always.
  *
- * So: one link, and copying it closes the dialog. It is the only form there
- * is: the links page opens it in the web app or hands it to an installed
- * desktop, so there is no desktop variant or raw code to pick between, and
- * nowhere to paste either.
+ * So: one link, and copying it closes the dialog. It opens this frontend,
+ * where the invitee signs in with a passkey and confirms the join.
  */
 export default function InviteModal({
   open,
@@ -44,10 +41,8 @@ export default function InviteModal({
   // `open` drives it, not a conditional render — so it renders many times with
   // no invitation minted yet. `shareableInvitation` THROWS on an empty code,
   // which took the whole page down on load until this returned null instead.
-  const share = useMemo(
-    () => (code.trim() ? shareableInvitation(code) : null),
-    [code],
-  );
+  // `code` is the whole link (lib/companies `inviteLink`).
+  const share = useMemo(() => (code.trim() ? { link: code.trim() } : null), [code]);
 
   useDialogOpen(dialogRef, open && !!share);
 
