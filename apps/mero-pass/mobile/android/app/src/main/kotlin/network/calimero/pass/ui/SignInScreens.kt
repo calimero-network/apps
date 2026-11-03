@@ -33,14 +33,12 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.ContentPaste
 import androidx.compose.material.icons.outlined.Drafts
-import androidx.compose.material.icons.outlined.HowToReg
 import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -75,20 +73,19 @@ import network.calimero.pass.core.PassErrorText
 fun SignInScreen(
     vm: PassViewModel,
     invitedTo: String?,
-    onSignIn: () -> Unit,
+    activity: android.content.Context,
 ) {
-    val state by vm.session.client.state
-        .collectAsState()
     Column(
         Modifier
             .fillMaxSize()
             .background(Palette.Ground)
             .statusBarsPadding()
             .navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.height(32.dp))
         HeroIcon(Icons.Filled.Key, 84)
         Spacer(Modifier.height(20.dp))
         Text("Mero Pass", fontWeight = FontWeight.SemiBold, fontSize = 34.sp, color = Palette.Ink)
@@ -114,18 +111,8 @@ fun SignInScreen(
                 Text("You're invited to join “$invitedTo”. Sign in to accept.", fontSize = 15.sp, fontWeight = FontWeight.Medium, color = Palette.Ink)
             }
         }
-        Spacer(Modifier.weight(1f))
-        state.error?.let {
-            Text(it, fontSize = 14.sp, color = Palette.Danger, textAlign = TextAlign.Center)
-            Spacer(Modifier.height(12.dp))
-        }
-        PrimaryButton("Sign in with Calimero", onSignIn, busy = state.isLoading, icon = Icons.Outlined.HowToReg)
-        if (state.isLoading) {
-            TextButton(onClick = { vm.session.cancelSignIn() }) { Text("Cancel", color = Palette.Ink) }
-        } else {
-            Spacer(Modifier.height(12.dp))
-            Text("You'll approve this device in your Calimero wallet.", fontSize = 13.sp, color = Palette.Muted)
-        }
+        Spacer(Modifier.height(28.dp))
+        CloudSignInPanel(vm, activity)
     }
 }
 
@@ -264,7 +251,7 @@ fun InvitationSheet(
     val joining = stage is InvitationModel.Stage.Joining
 
     fun accept() {
-        scope.launch { vm.invitation.accept(backend = { vm.session.backend.value }, didJoin = { vm.session.didJoinNamespace() }) }
+        scope.launch { vm.invitation.accept(backend = { vm.backend.value }, didJoin = { vm.didJoin() }) }
     }
 
     PassSheet(dismiss = { vm.invitation.reset() }, locked = joining) {
