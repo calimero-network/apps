@@ -5,7 +5,6 @@ import SwiftUI
 struct SignInView: View {
     @EnvironmentObject private var session: MeroAppSession
     @ObservedObject var client: MeroClient
-    @State private var signingIn = false
 
     private let points: [(String, String)] = [
         ("doc.text", "Structured updates: TL;DR, KPIs with the change since last time, and asks."),
@@ -38,36 +37,12 @@ struct SignInView: View {
                             .font(.subheadline.weight(.medium)).foregroundStyle(Palette.ink)
                     }
                 }
-                VStack(spacing: 12) {
-                    Button {
-                        Haptics.tap()
-                        signingIn = true
-                        Task {
-                            await session.signIn()
-                            signingIn = false
-                        }
-                    } label: {
-                        if busy {
-                            HStack(spacing: 8) {
-                                ProgressView().tint(Palette.ink)
-                                Text("Connecting…")
-                            }
-                        } else {
-                            Text("Sign in with Calimero")
-                        }
-                    }
-                    .buttonStyle(PrimaryButtonStyle())
-                    .disabled(busy)
-                    if let message = client.errorMessage, !busy {
-                        ErrorLine(message: message)
-                    }
-                }
+                CloudSignInPanel(style: .app)
+                    .disabled(session.isRestoring)
             }
             .padding(.horizontal, 24)
             .padding(.bottom, 32)
         }
         .screenBackground()
     }
-
-    private var busy: Bool { signingIn || session.isRestoring }
 }

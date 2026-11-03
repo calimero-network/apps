@@ -11,16 +11,12 @@ fun configString(name: String): String {
     return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 }
 
-// The wallet redirects to this URL; the manifest's intent filter is built from its scheme and host
-// so the two cannot drift apart.
-val enrolCallback: String = providers.gradleProperty("meroEnrolCallback").getOrElse("mero-updates://enrol").trim()
-val enrolScheme: String = enrolCallback.substringBefore("://")
-val enrolHost: String =
-    enrolCallback
-        .substringAfter("://")
-        .substringBefore('/')
-        .substringBefore('#')
-        .substringBefore('?')
+// The node's consent page sends the person back to this URL; the manifest's intent filter is built
+// from its scheme and host so the two cannot drift apart. Keep it in step with
+// UpdatesViewModel.CONSENT_CALLBACK.
+val consentCallback = "mero-updates://consent"
+val consentScheme: String = consentCallback.substringBefore("://")
+val consentHost: String = consentCallback.substringAfter("://")
 
 android {
     namespace = "network.calimero.updates"
@@ -34,12 +30,13 @@ android {
         versionCode = 1
         versionName = "0.1.0"
 
-        buildConfigField("String", "CLOUD_BASE_URL", configString("meroCloudUrl"))
-        buildConfigField("String", "WALLET_URL", configString("meroWalletUrl"))
-        buildConfigField("String", "REGISTRY_URL", configString("meroRegistryUrl"))
-        buildConfigField("String", "ENROL_CALLBACK_URL", "\"$enrolCallback\"")
-        manifestPlaceholders["enrolScheme"] = enrolScheme
-        manifestPlaceholders["enrolHost"] = enrolHost
+        // The Calimero Cloud cluster the sign-in form prefills: its name (nodes from the node
+        // directory) or a node URL. Empty: the form asks.
+        buildConfigField("String", "CLUSTER", configString("meroCluster"))
+        // The development node (`merod local`) the form prefills; empty: http://10.0.2.2:2501.
+        buildConfigField("String", "DEV_NODE_URL", configString("meroDevNodeUrl"))
+        manifestPlaceholders["consentScheme"] = consentScheme
+        manifestPlaceholders["consentHost"] = consentHost
     }
 
     buildTypes {

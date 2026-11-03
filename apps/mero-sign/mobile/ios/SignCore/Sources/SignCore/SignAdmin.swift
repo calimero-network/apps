@@ -1,55 +1,91 @@
 import Foundation
 import MeroKit
 
-/// What Mero Sign needs from the account's admin surface beyond
-/// ``MeroAppBackend``: blobs (a document's PDF and every signed version, the
-/// signature images), group metadata (the marker that says which namespace
-/// holds the private store) and member names.
+/// One app instance of Mero Sign the account reaches: an agreement (in a
+/// workspace organization) or the account's signature library (in none).
+public struct SignInstance: Hashable, Sendable {
+    public let appId: String
+    public let name: String
+    /// The account that created it.
+    public let owner: String
+    /// The organization it is in; `nil` for an instance the account owns outright.
+    public let org: String?
+
+    public init(appId: String, name: String, owner: String, org: String?) {
+        self.appId = appId
+        self.name = name
+        self.owner = owner
+        self.org = org
+    }
+}
+
+/// What Mero Sign needs beyond ``MeroAppBackend``'s screens, from the signed-in
+/// ``CalimeroClient``, the same calls the web makes (`app/src/lib/agreements.ts`):
 ///
-/// The app uses ``BackendSignAdmin``; tests use a fake.
+/// - blobs: a document's PDF and every signed version, the signature images
+///   (`POST /apps/{app}/blobs` with their content type; the contract stores
+///   the 64-hex id);
+/// - this app's instances (`GET /apps?package=`) and creating the library
+///   (`POST /apps`, in no org);
+/// - member names (the org's member metadata).
+///
+/// The app uses ``ClientSignAdmin``; tests use a fake.
 public protocol SignAdmin: Sendable {
-    /// Store bytes against a context the account is a member of; the relay
-    /// announces the blob to that context. Returns the blob id.
-    func uploadBlob(_ data: Data, contextId: String) async throws -> String
-    /// A blob's bytes, read through the context that holds it.
+    /// Store bytes as a blob of an app instance; returns its id as 64 lowercase hex.
+    func uploadBlob(_ data: Data, contentType: String, contextId: String) async throws -> String
+    /// A blob's bytes, read through the instance that holds it.
     func getBlob(_ blobId: String, contextId: String) async throws -> Data
-    /// A group's metadata record: its name and data map, or nil if never set.
-    func groupMetadata(_ groupId: String) async throws -> (name: String?, data: [String: String])?
-    /// Replace a group's metadata record (name and data together).
-    func setGroupMetadata(_ groupId: String, name: String?, data: [String: String]) async throws
-    /// The name a member set for themselves in a namespace (shared by every app on it).
+    /// Mero Sign's instances the account reaches.
+    func instances() async throws -> [SignInstance]
+    /// Create an instance of Mero Sign named `name`, in `org` (or the account's own, in none). Returns its app id.
+    func createInstance(name: String, org: String?) async throws -> String
+    /// The name a member set for themselves in an organization (its member metadata).
     func memberName(namespaceId: String, account: String) async throws -> String?
 }
 
-/// ``SignAdmin`` over the account's ``MeroAppBackend`` (blobs, metadata reads,
-/// member names) and, for the one write the backend has no call for — a group
-/// metadata record WITH a data map, the private store's marker — the
-/// session's admin surface (`session.client.admin`).
-public struct BackendSignAdmin: SignAdmin {
+/// ``SignAdmin`` over the signed-in ``CalimeroClient`` (blobs, instances) and
+/// the account's ``MeroAppBackend`` (member names).
+public struct ClientSignAdmin: SignAdmin {
     public let backend: any MeroAppBackend
-    public let admin: (any AdminSurface)?
+    public let client: CalimeroClient?
+    /// The app's package, or a bundle hash on a development cluster.
+    public let applicationId: String
 
-    public init(backend: any MeroAppBackend, admin: (any AdminSurface)?) {
+    public init(backend: any MeroAppBackend, client: CalimeroClient?, applicationId: String = SignConstants.packageName) {
         self.backend = backend
-        self.admin = admin
+        self.client = client
+        self.applicationId = applicationId
     }
 
-    public func uploadBlob(_ data: Data, contextId: String) async throws -> String {
-        try await backend.uploadBlob(contextId: contextId, data: data).blobId
+    private func signedIn() throws -> CalimeroClient {
+        guard let client else { throw SignModelError.message("You're signed out. Sign in again and retry.") }
+        return client
+    }
+
+    private var isBundle: Bool { Hex.is32(applicationId) }
+
+    public func uploadBlob(_ data: Data, contentType: String, contextId: String) async throws -> String {
+        let blob = try await signedIn().uploadBlob(contextId, data, contentType: contentType)
+        let id = SignIds.blobHex(blob.id)
+        guard !id.isEmpty else { throw SignModelError.message("Your cluster returned a blob id this app can't use.") }
+        return id
     }
 
     public func getBlob(_ blobId: String, contextId: String) async throws -> Data {
-        try await backend.getBlob(blobId: blobId, contextId: contextId)
+        try await signedIn().blobContent(contextId, blobId).data
     }
 
-    public func groupMetadata(_ groupId: String) async throws -> (name: String?, data: [String: String])? {
-        guard let record = try await backend.groupMetadata(groupId: groupId) else { return nil }
-        return (record.name, record.data)
+    public func instances() async throws -> [SignInstance] {
+        let client = try signedIn()
+        let apps =
+            isBundle
+            ? try await client.listApps(bundle: applicationId) : try await client.listApps(package: applicationId)
+        return apps.map { SignInstance(appId: $0.appId, name: $0.name, owner: $0.owner, org: $0.org) }
     }
 
-    public func setGroupMetadata(_ groupId: String, name: String?, data: [String: String]) async throws {
-        guard let admin else { throw SignModelError.message("You're signed out. Sign in again and retry.") }
-        try await admin.setGroupMetadata(groupId, request: SetGroupMetadataRequest(name: name, data: data))
+    public func createInstance(name: String, org: String?) async throws -> String {
+        let source: AppSource = isBundle ? .bundle(applicationId) : .package(applicationId)
+        return try await signedIn().createApp(name, bundle: source, org: org)
     }
 
     public func memberName(namespaceId: String, account: String) async throws -> String? {

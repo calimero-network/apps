@@ -7,7 +7,7 @@ import UIKit
 /// dialog overlays.
 struct ChatScreen: View {
     @ObservedObject var session: SessionModel
-    let backend: DelegatedChatBackend
+    let backend: CloudChatBackend
     let channel: ChannelEntry
     let workspace: Workspace
     @ObservedObject var workspaces: WorkspacesModel
@@ -21,7 +21,7 @@ struct ChatScreen: View {
     @State private var thread: ChatMessage?
 
     init(
-        session: SessionModel, backend: DelegatedChatBackend, channel: ChannelEntry, workspace: Workspace,
+        session: SessionModel, backend: CloudChatBackend, channel: ChannelEntry, workspace: Workspace,
         workspaces: WorkspacesModel, onBack: @escaping () -> Void, onChangeWorkspace: @escaping () -> Void,
         onChannelsChanged: @escaping () -> Void
     ) {
@@ -144,7 +144,7 @@ struct ThreadView: View {
     @State private var reactions: ChatMessage?
 
     init(
-        session: SessionModel, backend: DelegatedChatBackend, channel: ChannelEntry, root: ChatMessage,
+        session: SessionModel, backend: CloudChatBackend, channel: ChannelEntry, root: ChatMessage,
         onClose: @escaping () -> Void
     ) {
         self.session = session

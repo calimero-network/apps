@@ -1,12 +1,12 @@
 import Foundation
 import MeroKit
 
-/// An agreement: a subgroup of a workspace (namespace) with one context.
+/// An agreement: an app instance in a workspace (a Calimero organization).
 /// (The web's `AgreementRow`.)
 public struct AgreementRef: Hashable, Identifiable, Sendable {
     public let namespaceId: String
     public let workspaceName: String
-    /// The subgroup id.
+    /// The app instance id (the same as ``contextId``: v1 told a subgroup and its context apart).
     public let agreementId: String
     public let name: String
     public let contextId: String
@@ -41,14 +41,16 @@ public struct SyncTiming: Sendable {
 }
 
 /// Workspaces and the agreements in them, and entering one the way the web
-/// app's invitation flow does (`enterAgreement` + `settleIntoAgreement`).
+/// app does (`app/src/lib/agreements.ts`: `listAgreements`, `enterAgreement`).
 public struct AgreementDirectory: Sendable {
     public let backend: any MeroAppBackend
+    public let admin: any SignAdmin
     public let store: PrivateStore
     public let timing: SyncTiming
 
-    public init(backend: any MeroAppBackend, store: PrivateStore, timing: SyncTiming = SyncTiming()) {
+    public init(backend: any MeroAppBackend, admin: any SignAdmin, store: PrivateStore, timing: SyncTiming = SyncTiming()) {
         self.backend = backend
+        self.admin = admin
         self.store = store
         self.timing = timing
     }
@@ -57,56 +59,61 @@ public struct AgreementDirectory: Sendable {
         SignClient.make(contract: backend.contract, contextId: contextId)
     }
 
-    /// The account's workspaces, without the personal namespace (it holds the
-    /// private store and is never a workspace — `listWorkspaces`).
+    /// The account's workspaces (organizations of this app), by name.
     public func workspaces() async throws -> [AppNamespace] {
-        var out: [AppNamespace] = []
-        for namespace in try await backend.listNamespaces() where !(await store.isPersonal(namespace.id)) {
-            out.append(namespace)
-        }
-        return out.sorted { Self.name(of: $0).localizedCaseInsensitiveCompare(Self.name(of: $1)) == .orderedAscending }
+        try await backend.listNamespaces()
+            .sorted { Self.name(of: $0).localizedCaseInsensitiveCompare(Self.name(of: $1)) == .orderedAscending }
     }
 
-    /// The agreements in a workspace that have a context.
+    /// The agreements in a workspace: Mero Sign's app instances in that organization, by name.
     public func agreements(in workspace: AppNamespace) async throws -> [AgreementRef] {
-        try await backend.listSubgroups(namespaceId: workspace.id).compactMap { subgroup in
-            guard let contextId = subgroup.contextIds.first else { return nil }
-            return AgreementRef(
-                namespaceId: workspace.id, workspaceName: Self.name(of: workspace),
-                agreementId: subgroup.groupId,
-                name: Self.agreementName(subgroup.name, id: subgroup.groupId),
-                contextId: contextId)
-        }
+        try await admin.instances()
+            .filter { $0.org == workspace.id }
+            .map {
+                AgreementRef(
+                    namespaceId: workspace.id, workspaceName: Self.name(of: workspace), agreementId: $0.appId,
+                    name: Self.agreementName($0.name, id: $0.appId), contextId: $0.appId)
+            }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     /// Every agreement in every workspace.
     public func allAgreements() async throws -> [AgreementRef] {
-        var out: [AgreementRef] = []
-        for workspace in try await workspaces() {
-            out += (try? await agreements(in: workspace)) ?? []
+        let workspaces = try await workspaces()
+        let instances = try await admin.instances()
+        return workspaces.flatMap { workspace in
+            instances.filter { $0.org == workspace.id }.map {
+                AgreementRef(
+                    namespaceId: workspace.id, workspaceName: Self.name(of: workspace), agreementId: $0.appId,
+                    name: Self.agreementName($0.name, id: $0.appId), contextId: $0.appId)
+            }
         }
-        return out
+    }
+
+    /// Whether the account is on the agreement's roster (the web's `joined`):
+    /// opened before, so its documents are the account's to sign or read.
+    public func isJoined(_ contextId: String) async -> Bool {
+        guard let roster = try? await client(contextId).listParticipants() else { return false }
+        return roster.contains { SignIds.same($0, backend.account) }
     }
 
     // MARK: Entering
 
-    /// Enter an agreement's context, joining its open subgroup if needed,
-    /// retried while a fresh workspace membership projects (`enterAgreement`).
+    /// Check the account reaches the agreement. On Calimero 1.0 every member of
+    /// the workspace reaches its agreements; there is nothing to join.
     public func enter(_ contextId: String) async throws {
         for attempt in 0..<max(timing.enterAttempts, 1) {
             if attempt > 0 { try await Task.sleep(for: timing.delay) }
             if (try? await backend.isMember(contextId: contextId)) == true { return }
-            if (try? await backend.joinContext(contextId: contextId)) != nil { return }
         }
-        throw SignModelError.message(
-            "Your account isn't in that agreement yet. If you were just invited, the workspace may still be syncing — try again shortly.")
+        throw SignModelError.message("Your account can't open that agreement. Ask whoever invited you to check your workspace role.")
     }
 
-    /// Everything after entering, as the web's `settleIntoAgreement`: wait for
-    /// state, register as a participant (`register_self_as_participant`, which
-    /// grants Sign to the caller's own account and nobody else), settle on the
-    /// name, then record the agreement and the identity it was joined with in
-    /// the private context (`join_shared_context` → `IdentityMapping`).
+    /// Everything after entering, as the web's `enterAgreement`: read the
+    /// agreement's name, register as a signer if not on the roster
+    /// (`registerSelfAsParticipant`; a guest or a removed account is refused
+    /// and may still read), then record the agreement and the identity it was
+    /// joined with in the private library (`joinSharedContext` → `IdentityMapping`).
     ///
     /// Returns the agreement's name as every node sees it.
     @discardableResult
@@ -131,17 +138,21 @@ public struct AgreementDirectory: Sendable {
         return nil
     }
 
-    /// "Already registered" is success; a failure that isn't syncing stops.
+    /// On the roster already, or `Conflict` / `Forbidden`, is done; a failure that isn't syncing stops.
     func registerSelf(_ contextId: String) async {
+        if let roster = try? await client(contextId).listParticipants(),
+            roster.contains(where: { SignIds.same($0, backend.account) })
+        {
+            return
+        }
         for attempt in 0..<max(timing.registerAttempts, 1) {
             if attempt > 0 { try? await Task.sleep(for: timing.delay) }
             do {
                 try await client(contextId).registerSelfAsParticipant()
                 return
             } catch {
-                let text = SignErrorText.message(error)
-                if text.localizedCaseInsensitiveContains("already registered") { return }
-                if !SignErrorText.isSyncing(text) { return }
+                if SignErrorText.isConflict(error) || SignErrorText.isForbidden(error) { return }
+                if !SignErrorText.isSyncing(error) { return }
             }
         }
     }

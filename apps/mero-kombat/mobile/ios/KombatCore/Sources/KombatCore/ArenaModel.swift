@@ -105,7 +105,7 @@ public final class ArenaModel: ObservableObject, GameHost {
 
     // MARK: Running
 
-    /// Announce, read, then keep current: every relay event is a nudge to re-read, the poll
+    /// Announce, read, then keep current: every node event is a nudge to re-read, the poll
     /// covers events missed while the stream reconnects, and the opponent's presence streams in.
     public func run() async {
         await announce()
@@ -334,8 +334,8 @@ public final class ArenaModel: ObservableObject, GameHost {
 
     public func inviteLink() async throws -> String {
         guard let namespaceId = ref.namespaceId else { throw KombatError.noNamespace }
-        let signed = try await backend.createInvitation(namespaceId: namespaceId)
-        return try KombatInvitation(invitation: signed, namespaceId: namespaceId, contextId: contextId).link()
+        let invitation = try await backend.createInvitation(namespaceId: namespaceId)
+        return try KombatInvitation(invitation: invitation, contextId: contextId).link()
     }
 }
 

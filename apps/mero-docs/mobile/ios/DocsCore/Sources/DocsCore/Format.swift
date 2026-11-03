@@ -1,10 +1,11 @@
 import Foundation
+import MeroKit
 
 /// A document a link names. (== Kotlin `DocTarget`.)
 public struct DocTarget: Equatable, Hashable, Sendable {
-    /// The workspace (namespace) id.
+    /// The workspace (organization) id.
     public let workspaceId: String
-    /// The folder's group id.
+    /// The folder's team id.
     public let folderId: String
     public let docId: String
     public let blockId: String?
@@ -140,22 +141,48 @@ public enum DocsFormat {
             .replacingOccurrences(of: "&amp;", with: "&")
     }
 
-    /// Words a person can act on, from an error.
+    /// Words a person can act on, from an error: Calimero 1.0's typed
+    /// refusals, and the contract's own (`APP_ERROR` with `NotFound`,
+    /// `Invalid` or `Forbidden`, as `src/calimero/errors.ts` tells them apart).
     public static func errorText(_ error: Error) -> String {
-        let text = (error as? LocalizedError)?.errorDescription ?? String(describing: error)
-        let lower = text.lowercased()
-        if lower.contains("forbidden") || lower.contains("read-only") || lower.contains("readonly")
-            || lower.contains("not allowed")
-        {
+        switch error {
+        case let app as AppError:
+            return appErrorText(code: app.appCode, message: app.fields["message"]?.stringValue ?? "")
+        case is ConfirmCancelled, is PasskeyCancelled:
+            return "The passkey prompt was cancelled. Nothing changed."
+        case is LoginRequired, is SignedOutError:
+            return "Your session ended. Sign in again."
+        case is WrongNode:
+            return "This node doesn't serve your account. Sign in again to reach another node of your cluster."
+        case let unavailable as UnavailableError:
+            return unavailable.reason == "network"
+                ? "Can't reach your cluster. Check your connection and try again."
+                : "Your cluster is busy. Try again in a moment."
+        case let deadline as ReleaseDeadlineError:
+            let release = deadline.release.isEmpty ? "a node release" : "release \(deadline.release)"
+            return "New work is paused until \(release) is approved. Open Approvals in your account."
+        case is ConsentStale:
+            return "That approval is out of date. Open Approvals and review it again."
+        case is NotFound:
+            return "This isn't here any more, or you no longer have access to it."
+        case let refused as CalimeroError where refused.status == 403:
+            // The node refuses a read-only member's write with 403 (`isReadOnlyWrite`).
             return "You can read this folder but not comment in it. Ask a workspace admin for edit access."
-        }
-        if text.contains("noRelay") || lower.contains("no relay") {
-            return "Your account has no relay yet. Join a workspace from an invitation on the web, or try again shortly."
-        }
-        if let url = error as? URLError, url.code == .notConnectedToInternet {
+        case let url as URLError where url.code == .notConnectedToInternet:
             return "You're offline. Check your connection and try again."
+        default:
+            return (error as? LocalizedError)?.errorDescription ?? String(describing: error)
         }
-        return text
+    }
+
+    /// The contract's refusal (`#[app::error]`) in words.
+    public static func appErrorText(code: String, message: String) -> String {
+        switch code {
+        case "NotFound": return "This document or comment is gone. Pull to refresh."
+        case "Forbidden": return "You can't do that in this folder."
+        case "Invalid": return message.isEmpty ? "That wasn't accepted. Check it and try again." : "That wasn't accepted: \(message)"
+        default: return message.isEmpty ? code : message
+        }
     }
 
     private static func encode(_ s: String) -> String {

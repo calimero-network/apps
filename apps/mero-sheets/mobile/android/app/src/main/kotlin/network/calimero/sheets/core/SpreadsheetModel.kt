@@ -468,7 +468,7 @@ class SpreadsheetModel(
         fun errorText(e: Throwable): String {
             val text = SheetsFormat.errorText(e)
             return if (text.contains("uninitiali", ignoreCase = true)) {
-                "This spreadsheet has not reached the relay yet. It syncs from a member who is online."
+                "This spreadsheet isn't ready yet. Try again in a moment."
             } else {
                 text
             }

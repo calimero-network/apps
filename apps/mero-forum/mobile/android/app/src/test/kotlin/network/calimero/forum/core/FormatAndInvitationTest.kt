@@ -92,12 +92,24 @@ class ForumInvitationTest {
 
     @Test
     fun `web payload shapes`() {
-        val envelope = signed.raw.toString()
-        val camel = envelope.replace("inviter_signature", "inviterSignature")
-        val parsed = ForumInvitation.parseJson("""{"data":{"invitation":$camel,"groupName":"Ops"}}""")!!
+        val parsed = ForumInvitation.parseJson("""{"data":{"invitation":"inv_x","namespaceId":"$NS","groupName":"Ops"}}""")!!
         assertEquals("Ops", parsed.spaceName)
         assertEquals(NS, parsed.namespaceId)
-        assertNotNull(ForumInvitation.parseJson(envelope))
+        assertEquals("inv_x", parsed.invitation.token)
+    }
+
+    @Test
+    fun `the web apps 1_0 link parses`() {
+        val forum = ForumInvitation.parse("https://forum.example/?invite=inv_abc123&forum=app9")!!
+        assertEquals("inv_abc123", forum.invitation.token)
+        assertEquals(ForumInvitation.Kind.FORUM, forum.kind)
+        assertEquals("app9", forum.contextId)
+        assertEquals(ForumInvitation.Kind.SPACE, ForumInvitation.parse("https://forum.example/?invite=inv_abc123")!!.kind)
+    }
+
+    @Test
+    fun `a pre 1_0 signed invitation is refused`() {
+        assertNull(ForumInvitation.parseJson("""{"invitation":{"invitation":{"group_id":[1]},"inviter_signature":"5a"},"namespaceId":"n"}"""))
     }
 
     @Test

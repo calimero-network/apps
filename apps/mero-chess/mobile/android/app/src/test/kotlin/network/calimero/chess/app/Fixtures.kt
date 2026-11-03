@@ -6,9 +6,9 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
-import network.calimero.chess.generated.MoveView
-import network.calimero.chess.generated.SeatView
-import network.calimero.chess.generated.TableView
+import network.calimero.chess.contract.MoveView
+import network.calimero.chess.contract.SeatView
+import network.calimero.chess.contract.TableView
 
 object Fixtures {
     val me = "ab".repeat(32)
