@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { avatarHue, displayName, initials } from "./lib/people";
 import { parseRich, type Inline } from "./lib/rich";
-import { useSpaceNames } from "./names";
 
 // ── avatar ──────────────────────────────────────────────────────────────────
 
@@ -16,11 +15,10 @@ export function Avatar({
   size?: number;
 }) {
   const hue = avatarHue(account);
-  const spaceName = useSpaceNames().nameOf(account);
   return (
     <span
       className="avatar"
-      title={displayName(account, name, spaceName)}
+      title={displayName(account, name)}
       aria-hidden="true"
       style={{
         width: size,
@@ -30,7 +28,7 @@ export function Avatar({
         color: `hsl(${hue} 70% var(--avatar-fg-l))`,
       }}
     >
-      {initials(account, name, spaceName)}
+      {initials(account, name)}
     </span>
   );
 }

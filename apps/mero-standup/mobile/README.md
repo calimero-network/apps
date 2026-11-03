@@ -6,31 +6,34 @@ copy, icons and flows.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | [`ios/`](ios/README.md) | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `c9ca1a0` |
-| Android | [`android/`](android/README.md) | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `ea8ded7` (`android/kotlin-sdk.ref`) |
+| iOS | [`ios/`](ios/README.md) | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `v0.5.0` (Calimero 1.0) |
+| Android | [`android/`](android/README.md) | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `v0.2.0` (Calimero 1.0, `android/kotlin-sdk.ref`) |
 
-**SDK pins.** Both pin the SDKs' `main` merge commits of swift-sdk PR #84 and kotlin-sdk PR #67,
-which add `MeroAppSession`, `MeroAppBackend` and `ContextContract`. The pins live in
+**SDK pins.** Both are SDK releases. They live in
 `Core/Package.swift` and `project.yml` on iOS, `kotlin-sdk.ref` on Android.
 
-## Delegated execution only
+## Calimero 1.0
 
-Neither app runs or logs into a node. The person signs in with their Calimero account (the
-wallet certifies the phone's device key), the Cloud manager names the relay that serves the
-account, and everything goes through that relay through the SDKs' `MeroAppSession`:
+Both apps talk to a Calimero 1.0 cluster over the SDKs' sealed channel and sign in with a passkey:
 
-- **Reads** (the contract's `read_only` views) are the relay's account-scoped query; **writes**
-  are warrants the device key signs. The generated `StandupClient` decides which per method.
-- **Teams** are what the web app makes: a namespace founded for the app, with the team's context
-  created directly in it (not in a subgroup), named with `set_team_name`.
-- **Invitations** use the web app's format, so a link from either side opens on the other:
+- **Sign-in**: Calimero Cloud (a cluster by name, through the node directory, or a node URL; every
+  node's attestation verified), or a development node (`merod local`, mock attestation, a software
+  passkey kept on the device).
+- **Teams** are an org with the team's app instance in it, named with `setTeamName`.
+- **Invitations** are org invite links (the SDKs' `OrgInvitation`):
   `https://links.calimero.network/com.calimero.mero-standup/join?invitation=<base58(deflate(json))>`
-  with `{invitation, namespaceId, contextId}`. Redeemed by direct admission through the relay.
-- **Live updates** come from the relay's event stream (coalesced), with a poll as a fallback.
+  with `{invitation: "inv_…", namespaceId, contextId, name}`, redeemed at
+  `POST /invites/{token}/redeem`. Pre-1.0 signed links are refused.
+- **Approvals** (an update of Mero Standup, a node release) show the node's confirmation code, then
+  open its consent page in the system browser (a Custom Tab on Android).
+- **Contract calls** go through a hand-written typed client of the **component contract**
+  (`logic/res/abi.json` of the port, web PR #709): camelCase methods, arguments and results,
+  timestamps as decimal strings, refusals as `APP_ERROR` codes put into words.
+- **Live updates** come from the node's event stream (coalesced), with a poll as a fallback.
 
 ## Screens
 
-1. **Sign in**: what the app is, "Sign in with Calimero".
+1. **Sign in**: what the app is; Calimero Cloud (passkey sign-in or create an account) or a development node.
 2. **Teams**: your teams, start one, join one with a pasted invitation link; an opened
    invitation link asks "Join this team?" first.
 3. **Team**, with four tabs:
@@ -49,28 +52,14 @@ A first-run sheet asks for your name in a new team ("Later" is remembered per te
 
 ## Not on mobile (yet)
 
-- **Namespace-wide names.** The web app falls back to the name a person set for the whole
-  namespace (`@calimero-apps/names`). `MeroAppBackend` has no member-names call, so the apps show
-  the team name, else a short id.
+- **Org-wide names.** A person's name on a team is the one set there with `setName` (the web app
+  dropped its namespace-wide fallback too).
 - **Dark theme.** The apps use the Calimero light style only; the web app has a theme switch.
 - **Adding a second team to an existing namespace** (the web's "advanced: namespaces" panel).
 - **Push reminders** to post. The SDKs have no push yet.
 
-## Regenerating the contract client
-
-`ios/Core/Sources/StandupCore/Generated/StandupClient.swift` and
-`android/app/src/main/kotlin/network/calimero/standup/generated/StandupClient.kt` are generated
-from `../logic/res/abi.json` with `calimero-abi-codegen --target swift|kotlin`. Do not edit
-them; after a contract change run:
-
-```bash
-./scripts/regenerate-clients.sh
-# or with a local build of the codegen:
-ABI_CODEGEN="node /path/to/abi-codegen/dist/cli.js" ./scripts/regenerate-clients.sh
-```
-
 ## CI
 
 `.github/workflows/mero-standup-ios.yml` (macOS: `swift test` on the core package, XcodeGen and a
-simulator build of the app) and `.github/workflows/mero-standup-android.yml` (fetch the SDK,
+generic iOS build of the app) and `.github/workflows/mero-standup-android.yml` (fetch the SDK,
 ktlint, detekt, unit tests, Android lint, `assembleDebug`), each path-filtered to its folder.

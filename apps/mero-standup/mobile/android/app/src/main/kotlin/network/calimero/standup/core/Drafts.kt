@@ -1,7 +1,7 @@
 package network.calimero.standup.core
 
-import network.calimero.standup.generated.DecisionView
-import network.calimero.standup.generated.UpdateView
+import network.calimero.standup.contract.DecisionView
+import network.calimero.standup.contract.UpdateView
 
 /** What the update sheet edits. */
 data class UpdateDraft(

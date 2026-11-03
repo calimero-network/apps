@@ -4,8 +4,9 @@ import { describe, expect, it } from "vitest";
 import { parseLens, runLens, type LensHost } from "./lens";
 import { validateLens, type Abi } from "./validate";
 
-const APPS = path.resolve(__dirname, "../../../..");
-const abi = JSON.parse(readFileSync(path.join(APPS, "mero-pass/logic/res/abi.json"), "utf8")) as Abi;
+// The v1 mero-pass ABI, frozen when the app moved to Calimero 1.0: hyperfeed runs
+// on v1 nodes, where mero-pass is still the published v1 bundle.
+const abi = JSON.parse(readFileSync(path.join(__dirname, "../fixtures/abi/mero-pass-v1.json"), "utf8")) as Abi;
 const lens = parseLens(readFileSync(path.join(__dirname, "fixtures", "pass.json"), "utf8"));
 
 // Accounts as mero-pass writes them (`created_by`, an audit line's `account`): AccountId, hex.
