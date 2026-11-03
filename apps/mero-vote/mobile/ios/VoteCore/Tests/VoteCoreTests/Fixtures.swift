@@ -10,6 +10,9 @@ let ctx = String(repeating: "cc", count: 32)
 let ns = String(repeating: "aa", count: 32)
 let pollId = String(repeating: "dd", count: 32)
 
+/// The app's voting-group reference, not MeroKit's (an org/team id) of the same name.
+typealias GroupRef = VoteCore.GroupRef
+
 func groupRef() -> GroupRef { GroupRef(namespaceId: ns, workspaceName: "Design", contextId: ctx) }
 
 /// The shared cross-implementation vectors (mobile/test-vectors/vectors.json).

@@ -1,5 +1,4 @@
 import BattleshipsCore
-import LobbyGenerated
 import MeroKit
 import SwiftUI
 
@@ -45,7 +44,7 @@ struct LobbyScreen: View {
                 }
                 .accessibilityLabel("Invite players")
                 .accessibilityIdentifier("lobby.invite")
-                .disabled(inviting || model.lobbyContextId == nil)
+                .disabled(inviting || model.appId == nil)
             }
         }
         .safeAreaInset(edge: .bottom) {
@@ -70,7 +69,7 @@ struct LobbyScreen: View {
         .sheet(isPresented: $choosing) {
             ChallengeSheet(model: model) { ref in
                 choosing = false
-                openMatch(MatchRoute(ref: ref, me: model.me, lobby: lobby))
+                openMatch(MatchRoute(ref: ref, me: model.me, lobby: lobby, opponentName: model.displayName(ref.opponent)))
             } invite: {
                 choosing = false
                 invite()
@@ -132,10 +131,10 @@ struct LobbyScreen: View {
                     Button {
                         if let ref = model.ref(for: match) {
                             Haptics.tap()
-                            openMatch(MatchRoute(ref: ref, me: model.me, lobby: lobby))
+                            openMatch(MatchRoute(ref: ref, me: model.me, lobby: lobby, opponentName: model.displayName(ref.opponent)))
                         }
                     } label: {
-                        MatchRow(match: match, opponent: model.opponent(in: match), me: model.me)
+                        MatchRow(match: match, opponent: model.opponent(in: match), me: model.me, names: model.names)
                     }
                     .disabled(model.ref(for: match) == nil)
                     .accessibilityIdentifier("lobby.match.\(index)")
@@ -152,14 +151,14 @@ struct LobbyScreen: View {
             PlayerRow(name: "You", key: model.me, isYou: true, busy: false, challenge: nil)
             ForEach(model.opponents, id: \.player) { entry in
                 PlayerRow(
-                    name: Names.player(entry.player, me: model.me), key: entry.player, isYou: false,
+                    name: model.displayName(entry.player), key: entry.player, isYou: false,
                     busy: model.challenging == entry.player
                 ) {
                     Task {
                         Haptics.tap()
                         if let ref = await model.challenge(entry.player) {
                             Haptics.success()
-                            openMatch(MatchRoute(ref: ref, me: model.me, lobby: lobby))
+                            openMatch(MatchRoute(ref: ref, me: model.me, lobby: lobby, opponentName: model.displayName(ref.opponent)))
                         } else {
                             Haptics.failure()
                         }
@@ -190,7 +189,7 @@ struct LobbyScreen: View {
             } else {
                 VStack(spacing: 10) {
                     ForEach(model.sortedHistory, id: \.matchId) { result in
-                        HistoryRow(result: result, me: model.me)
+                        HistoryRow(result: result, me: model.me, names: model.names)
                     }
                 }
             }
@@ -227,13 +226,14 @@ private struct MatchRow: View {
     let match: MatchSummary
     let opponent: String
     let me: String
+    var names: [String: String] = [:]
 
     var body: some View {
         Card(padding: 14) {
             HStack(spacing: 12) {
                 SymbolTile(symbol: symbol, tone: tone, size: 44)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("vs \(Names.player(opponent, me: me))").font(Typeface.display(17)).foregroundStyle(Palette.ink)
+                    Text("vs \(Names.player(opponent, me: me, names: names))").font(Typeface.display(17)).foregroundStyle(Palette.ink)
                     Text(Date(timeIntervalSince1970: Double(match.createdMs) / 1000).formatted(date: .abbreviated, time: .shortened))
                         .font(.system(size: 13)).foregroundStyle(Palette.muted)
                 }
@@ -253,7 +253,7 @@ private struct MatchRow: View {
         switch won {
         case .some(true): return "trophy"
         case .some(false): return "flag"
-        case .none: return match.contextId == nil ? "hourglass" : "scope"
+        case .none: return match.status == .pending ? "hourglass" : "scope"
         }
     }
 
@@ -271,8 +271,8 @@ private struct MatchRow: View {
         case .some(true): Badge(text: "Won")
         case .some(false): Badge(text: "Lost", tone: .neutral)
         case .none:
-            if match.contextId == nil {
-                Badge(text: "Setting up", tone: .pending)
+            if match.status == .pending {
+                Badge(text: "Deploying", tone: .pending)
             } else if match.status == .finished {
                 Badge(text: "Over", tone: .neutral)
             } else {
@@ -330,6 +330,7 @@ private struct StatTile: View {
 private struct HistoryRow: View {
     let result: MatchRecord
     let me: String
+    var names: [String: String] = [:]
 
     var body: some View {
         Card(padding: 14) {
@@ -361,9 +362,9 @@ private struct HistoryRow: View {
 
     private var title: String {
         switch mine {
-        case .some(true): return "You beat \(Names.player(result.loser, me: me))"
-        case .some(false): return "\(Names.player(result.winner, me: me)) beat you"
-        case .none: return "\(Names.player(result.winner, me: me)) beat \(Names.player(result.loser, me: me))"
+        case .some(true): return "You beat \(Names.player(result.loser, me: me, names: names))"
+        case .some(false): return "\(Names.player(result.winner, me: me, names: names)) beat you"
+        case .none: return "\(Names.player(result.winner, me: me, names: names)) beat \(Names.player(result.loser, me: me, names: names))"
         }
     }
 }
@@ -398,7 +399,7 @@ private struct ChallengeSheet: View {
                         SectionLabel(text: "Challenge")
                         ForEach(Array(model.opponents.enumerated()), id: \.element.player) { index, entry in
                             PlayerRow(
-                                name: Names.player(entry.player, me: model.me), key: entry.player, isYou: false,
+                                name: model.displayName(entry.player), key: entry.player, isYou: false,
                                 busy: model.challenging == entry.player
                             ) {
                                 Task {

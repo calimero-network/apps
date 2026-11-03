@@ -1,0 +1,351 @@
+[
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "sit",
+  "args": {
+   "seat": "p2",
+   "name": "Guest",
+   "fighter": "cryo",
+   "now": "1700000001000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "view",
+  "method": "arena",
+  "args": {
+   "now": "1700000002000"
+  },
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "call",
+  "method": "sit",
+  "args": {
+   "seat": "p1",
+   "name": "",
+   "fighter": "cryo",
+   "now": "1700000002000"
+  },
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "view",
+  "method": "arena",
+  "args": {
+   "now": "1700000002000"
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "call",
+  "method": "sit",
+  "args": {
+   "seat": "p1",
+   "name": "M",
+   "fighter": "cryo",
+   "now": "1700000002000"
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "sit",
+  "args": {
+   "seat": "p1",
+   "name": "Bob",
+   "fighter": "kinetic",
+   "now": "1700000003000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "cy",
+  "op": "call",
+  "method": "act",
+  "args": {
+   "matchIndex": 0,
+   "round": 0,
+   "id": 1,
+   "kind": "uppercut",
+   "hit": true,
+   "blocked": false,
+   "now": "1700000004000"
+  },
+  "expect": {
+   "error": "NotInCorner",
+   "fields": {}
+  }
+ },
+ {
+  "as": "cy",
+  "op": "call",
+  "method": "stand",
+  "args": {
+   "now": "1700000004000"
+  },
+  "expect": {
+   "error": "NotInCorner",
+   "fields": {}
+  }
+ },
+ {
+  "as": "cy",
+  "op": "call",
+  "method": "sit",
+  "args": {
+   "seat": "p2",
+   "name": "Usurper",
+   "fighter": "jinzo",
+   "now": "1700000004000"
+  },
+  "expect": {
+   "error": "CornerTaken",
+   "fields": {}
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "act",
+  "args": {
+   "matchIndex": 0,
+   "round": 0,
+   "id": 1,
+   "kind": "fireball",
+   "hit": true,
+   "blocked": false,
+   "now": "1700000005000"
+  },
+  "expect": {
+   "error": "UnknownMove",
+   "fields": {
+    "kind": "fireball"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "act",
+  "args": {
+   "matchIndex": 3,
+   "round": 0,
+   "id": 1,
+   "kind": "punch",
+   "hit": true,
+   "blocked": false,
+   "now": "1700000005000"
+  },
+  "expect": {
+   "error": "WrongMatch",
+   "fields": {
+    "current": 0
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "act",
+  "args": {
+   "matchIndex": 0,
+   "round": 2,
+   "id": 1,
+   "kind": "punch",
+   "hit": true,
+   "blocked": false,
+   "now": "1700000005000"
+  },
+  "expect": {
+   "error": "RoundOver",
+   "fields": {
+    "current": 0
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "rematch",
+  "args": {
+   "now": "1700000005000"
+  },
+  "expect": {
+   "error": "MatchNotFinished",
+   "fields": {}
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "act",
+  "args": {
+   "matchIndex": 0,
+   "round": 0,
+   "id": 1,
+   "kind": "punch",
+   "hit": true,
+   "blocked": false,
+   "now": 5000
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "act",
+  "args": {
+   "match_index": 0,
+   "round": 0,
+   "id": 1,
+   "kind": "punch",
+   "hit": true,
+   "blocked": false,
+   "now": "1700000005000"
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "join",
+  "args": {
+   "name": "Bob",
+   "fighter": "goku",
+   "now": "1700000005000"
+  },
+  "expect": {
+   "error": "UnknownFighter",
+   "fields": {
+    "fighter": "goku"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "sit",
+  "args": {
+   "seat": "p3",
+   "name": "Bob",
+   "fighter": "cryo",
+   "now": "1700000005000"
+  },
+  "expect": {
+   "error": "UnknownSeat",
+   "fields": {
+    "seat": "p3"
+   }
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "act",
+  "args": {
+   "matchIndex": 0,
+   "round": 0,
+   "id": 1,
+   "kind": "kick",
+   "hit": true,
+   "blocked": false,
+   "now": "1700000006000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "cy",
+  "op": "view",
+  "method": "arena",
+  "args": {
+   "now": "1700000006000"
+  },
+  "expect": {
+   "ok": {
+    "title": "Arena",
+    "createdAt": "0",
+    "matchIndex": 0,
+    "round": 0,
+    "status": "fighting",
+    "roundResults": [],
+    "winner": "",
+    "flawless": false,
+    "hits": [
+     {
+      "by": "p2",
+      "id": 1,
+      "kind": "kick",
+      "damage": 7,
+      "blocked": false,
+      "at": "1700000006000"
+     }
+    ],
+    "matchActions": 1,
+    "totalActions": "1",
+    "maxHp": 100,
+    "roundsToWin": 2,
+    "p1": {
+     "seat": "p1",
+     "member": "@bob",
+     "name": "Bob",
+     "fighter": "kinetic",
+     "hp": 93,
+     "roundsWon": 0,
+     "matchesWon": 0,
+     "online": true
+    },
+    "p2": {
+     "seat": "p2",
+     "member": "@gus",
+     "name": "Guest",
+     "fighter": "cryo",
+     "hp": 100,
+     "roundsWon": 0,
+     "matchesWon": 0,
+     "online": true
+    },
+    "me": "@cy",
+    "mySeat": ""
+   }
+  },
+  "events": {
+   "owner": [
+    "Initialized",
+    "Seated",
+    "Seated",
+    "Acted"
+   ],
+   "gus": [
+    "Initialized",
+    "Seated",
+    "Seated",
+    "Acted"
+   ]
+  }
+ }
+]

@@ -4,22 +4,17 @@ import MeroKitUI
 import Security
 import SwiftUI
 
-/// Where sign-in goes, from Info.plist (empty = the SDK's defaults).
+/// Which cluster the app talks to, from Info.plist (see ../README.md).
 enum AppConfig {
-    static var callback: CloudCallback { .scheme(string("BattleshipsCallbackScheme") ?? "battleships") }
-
-    static var config: MeroProviderConfig {
-        MeroProviderConfig(
-            packageName: Battleships.packageName,
-            registryURL: string("MeroRegistryURL"),
-            cloudBaseURL: string("MeroCloudBaseURL").flatMap(URL.init(string:)))
+    /// Where the node's consent page sends the person back (`battleships://consent`).
+    static var callback: CloudCallback {
+        .scheme(CloudSettings.string("BattleshipsCallbackScheme") ?? "battleships", path: "consent")
     }
 
-    static var walletURL: URL? { string("MeroWalletURL").flatMap(URL.init(string:)) }
-
-    private static func string(_ key: String) -> String? {
-        let value = (Bundle.main.object(forInfoDictionaryKey: key) as? String)?.trimmingCharacters(in: .whitespaces)
-        return value?.isEmpty == false ? value : nil
+    /// The package, and the Cloud cluster's node when one is configured (`MeroNodeURL`).
+    /// Without one the sign-in screen asks for it, or for a development node.
+    static var config: MeroProviderConfig {
+        MeroProviderConfig(nodeURL: CloudSettings.clusterURL, packageName: Battleships.packageName)
     }
 }
 
@@ -27,7 +22,7 @@ enum AppConfig {
 struct BattleshipsApp: App {
     @StateObject private var session = MeroAppSession(
         packageName: Battleships.packageName, callback: AppConfig.callback, config: AppConfig.config,
-        walletURL: AppConfig.walletURL, keychainService: "network.calimero.battleships")
+        keychainService: "network.calimero.battleships")
 
     var body: some Scene {
         WindowGroup {
@@ -47,11 +42,12 @@ enum Route: Hashable {
     case match(MatchRoute)
 }
 
-/// A match, who you are in it, and its lobby (for a rematch).
+/// A match, who you are in it, its lobby (for a rematch), and the opponent's name there.
 struct MatchRoute: Hashable {
     let ref: MatchRef
     let me: String
     let lobby: AppNamespace
+    var opponentName: String?
 }
 
 /// Signed out: the sign-in screen. Signed in: the lobbies, and everything under them.
@@ -72,7 +68,7 @@ struct RootView: View {
                 ProgressView().tint(Palette.ink).frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Palette.ground)
             } else if let backend = activeBackend {
-                let game = battleshipsBackend(backend)
+                let game = backend
                 NavigationStack(path: $path) {
                     LobbiesScreen(
                         backend: game, applicationId: applicationId,
@@ -112,15 +108,6 @@ struct RootView: View {
         }
     }
 
-    /// The bundle's two services need the admin's `serviceName`, which the SDK's backend exposes
-    /// as `DelegatedAppBackend.admin`.
-    private func battleshipsBackend(_ backend: any MeroAppBackend) -> any BattleshipsBackend {
-        if let delegated = backend as? DelegatedAppBackend {
-            return AdminBattleshipsBackend(app: delegated, admin: delegated.admin)
-        }
-        return PlainBackend(app: backend)
-    }
-
     private var invitedTitle: String? {
         if case .confirm(let title) = invitation.stage { return title }
         return nil
@@ -136,20 +123,6 @@ struct RootView: View {
             get: { invitation.stage != .idle && activeBackend != nil },
             set: { if !$0 { invitation.reset() } })
     }
-}
-
-/// A backend with no admin to name services through: contexts are created with the bundle's
-/// default service, and none reports one.
-private struct PlainBackend: BattleshipsBackend {
-    let app: any MeroAppBackend
-
-    func createServiceContext(
-        groupId: String, applicationId: String, service: String, name: String, initArgs: JSONValue
-    ) async throws -> String {
-        try await app.createContext(groupId: groupId, applicationId: applicationId, name: name, initArgs: initArgs)
-    }
-
-    func serviceName(contextId: String) async throws -> String? { nil }
 }
 
 /// Boards in the Keychain: this device only, never synced or backed up, readable after the first

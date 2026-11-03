@@ -1,8 +1,4 @@
 {
-  "mero-blocks": [
-    "heartbeat",
-    "leave"
-  ],
   "mero-chat": [
     "delete_draft",
     "delete_message",

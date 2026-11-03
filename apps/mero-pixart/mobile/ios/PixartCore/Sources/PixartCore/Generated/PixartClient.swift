@@ -17,7 +17,7 @@ public struct PixartClient: Sendable {
     @discardableResult
     public func addLayer(layer: Layer) async throws -> String {
         let args = try JSONEncoder().encode(AddLayerArgs(layer: layer))
-        let response = try await transport.execute(method: "add_layer", argsJSON: args)
+        let response = try await transport.execute(method: "addLayer", argsJSON: args)
         return try JSONDecoder().decode(String.self, from: response)
     }
 
@@ -28,14 +28,14 @@ public struct PixartClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func bringToFront(id: String, updatedAt: UInt64) async throws {
         let args = try JSONEncoder().encode(BringToFrontArgs(id: id, updatedAt: updatedAt))
-        _ = try await transport.execute(method: "bring_to_front", argsJSON: args)
+        _ = try await transport.execute(method: "bringToFront", argsJSON: args)
     }
 
     /// can_edit
     ///
     /// View (`read_only`): sent with `query`.
     public func canEdit() async throws -> Bool {
-        let response = try await transport.query(method: "can_edit", argsJSON: Data("{}".utf8))
+        let response = try await transport.query(method: "canEdit", argsJSON: Data("{}".utf8))
         return try JSONDecoder().decode(Bool.self, from: response)
     }
 
@@ -43,7 +43,7 @@ public struct PixartClient: Sendable {
     ///
     /// Write (`mutating`): sent with `execute`.
     public func clearLayers() async throws {
-        _ = try await transport.execute(method: "clear_layers", argsJSON: Data("{}".utf8))
+        _ = try await transport.execute(method: "clearLayers", argsJSON: Data("{}".utf8))
     }
 
     /// delete_layer
@@ -51,7 +51,7 @@ public struct PixartClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func deleteLayer(id: String) async throws {
         let args = try JSONEncoder().encode(DeleteLayerArgs(id: id))
-        _ = try await transport.execute(method: "delete_layer", argsJSON: args)
+        _ = try await transport.execute(method: "deleteLayer", argsJSON: args)
     }
 
     /// get_cursors
@@ -63,7 +63,7 @@ public struct PixartClient: Sendable {
     ///
     /// View (`read_only`): sent with `query`.
     public func getCursors() async throws -> [CursorState] {
-        let response = try await transport.query(method: "get_cursors", argsJSON: Data("{}".utf8))
+        let response = try await transport.query(method: "getCursors", argsJSON: Data("{}".utf8))
         return try JSONDecoder().decode([CursorState].self, from: response)
     }
 
@@ -71,7 +71,7 @@ public struct PixartClient: Sendable {
     ///
     /// View (`read_only`): sent with `query`.
     public func getDocument() async throws -> DocumentInfo {
-        let response = try await transport.query(method: "get_document", argsJSON: Data("{}".utf8))
+        let response = try await transport.query(method: "getDocument", argsJSON: Data("{}".utf8))
         return try JSONDecoder().decode(DocumentInfo.self, from: response)
     }
 
@@ -80,7 +80,7 @@ public struct PixartClient: Sendable {
     /// View (`read_only`): sent with `query`.
     public func getLayer(id: String) async throws -> Layer? {
         let args = try JSONEncoder().encode(GetLayerArgs(id: id))
-        let response = try await transport.query(method: "get_layer", argsJSON: args)
+        let response = try await transport.query(method: "getLayer", argsJSON: args)
         return try JSONDecoder().decode(Layer?.self, from: response)
     }
 
@@ -91,7 +91,7 @@ public struct PixartClient: Sendable {
     ///
     /// View (`read_only`): sent with `query`.
     public func getLayers() async throws -> [Layer] {
-        let response = try await transport.query(method: "get_layers", argsJSON: Data("{}".utf8))
+        let response = try await transport.query(method: "getLayers", argsJSON: Data("{}".utf8))
         return try JSONDecoder().decode([Layer].self, from: response)
     }
 
@@ -102,7 +102,7 @@ public struct PixartClient: Sendable {
     ///
     /// View (`read_only`): sent with `query`.
     public func getMembers() async throws -> [Member] {
-        let response = try await transport.query(method: "get_members", argsJSON: Data("{}".utf8))
+        let response = try await transport.query(method: "getMembers", argsJSON: Data("{}".utf8))
         return try JSONDecoder().decode([Member].self, from: response)
     }
 
@@ -111,7 +111,7 @@ public struct PixartClient: Sendable {
     /// View (`read_only`): sent with `query`.
     public func getRole(member: String) async throws -> String {
         let args = try JSONEncoder().encode(GetRoleArgs(member: member))
-        let response = try await transport.query(method: "get_role", argsJSON: args)
+        let response = try await transport.query(method: "getRole", argsJSON: args)
         return try JSONDecoder().decode(String.self, from: response)
     }
 
@@ -120,7 +120,7 @@ public struct PixartClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func grantEditor(member: String) async throws {
         let args = try JSONEncoder().encode(GrantEditorArgs(member: member))
-        _ = try await transport.execute(method: "grant_editor", argsJSON: args)
+        _ = try await transport.execute(method: "grantEditor", argsJSON: args)
     }
 
     /// init
@@ -147,7 +147,7 @@ public struct PixartClient: Sendable {
     ///
     /// View (`read_only`): sent with `query`.
     public func listRoles() async throws -> [MemberRole] {
-        let response = try await transport.query(method: "list_roles", argsJSON: Data("{}".utf8))
+        let response = try await transport.query(method: "listRoles", argsJSON: Data("{}".utf8))
         return try JSONDecoder().decode([MemberRole].self, from: response)
     }
 
@@ -158,7 +158,7 @@ public struct PixartClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func moveLayer(id: String, parentId: String? = nil, layerIndex: UInt32, updatedAt: UInt64) async throws {
         let args = try JSONEncoder().encode(MoveLayerArgs(id: id, parentId: parentId, layerIndex: layerIndex, updatedAt: updatedAt))
-        _ = try await transport.execute(method: "move_layer", argsJSON: args)
+        _ = try await transport.execute(method: "moveLayer", argsJSON: args)
     }
 
     /// move_layers
@@ -174,14 +174,14 @@ public struct PixartClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func moveLayers(moves: [ContractTuple2<String, String>], updatedAt: UInt64) async throws {
         let args = try JSONEncoder().encode(MoveLayersArgs(moves: moves, updatedAt: updatedAt))
-        _ = try await transport.execute(method: "move_layers", argsJSON: args)
+        _ = try await transport.execute(method: "moveLayers", argsJSON: args)
     }
 
     /// my_role
     ///
     /// View (`read_only`): sent with `query`.
     public func myRole() async throws -> String {
-        let response = try await transport.query(method: "my_role", argsJSON: Data("{}".utf8))
+        let response = try await transport.query(method: "myRole", argsJSON: Data("{}".utf8))
         return try JSONDecoder().decode(String.self, from: response)
     }
 
@@ -193,7 +193,7 @@ public struct PixartClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func reorderLayers(order: [ContractTuple2<String, UInt32>], updatedAt: UInt64) async throws {
         let args = try JSONEncoder().encode(ReorderLayersArgs(order: order, updatedAt: updatedAt))
-        _ = try await transport.execute(method: "reorder_layers", argsJSON: args)
+        _ = try await transport.execute(method: "reorderLayers", argsJSON: args)
     }
 
     /// revoke_editor
@@ -201,7 +201,7 @@ public struct PixartClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func revokeEditor(member: String) async throws {
         let args = try JSONEncoder().encode(RevokeEditorArgs(member: member))
-        _ = try await transport.execute(method: "revoke_editor", argsJSON: args)
+        _ = try await transport.execute(method: "revokeEditor", argsJSON: args)
     }
 
     /// send_to_back
@@ -213,7 +213,7 @@ public struct PixartClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func sendToBack(id: String, updatedAt: UInt64) async throws {
         let args = try JSONEncoder().encode(SendToBackArgs(id: id, updatedAt: updatedAt))
-        _ = try await transport.execute(method: "send_to_back", argsJSON: args)
+        _ = try await transport.execute(method: "sendToBack", argsJSON: args)
     }
 
     /// transfer_ownership
@@ -223,7 +223,7 @@ public struct PixartClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func transferOwnership(newOwner: String) async throws {
         let args = try JSONEncoder().encode(TransferOwnershipArgs(newOwner: newOwner))
-        _ = try await transport.execute(method: "transfer_ownership", argsJSON: args)
+        _ = try await transport.execute(method: "transferOwnership", argsJSON: args)
     }
 
     /// update_adjustments
@@ -233,7 +233,7 @@ public struct PixartClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func updateAdjustments(id: String, brightness: Int32? = nil, contrast: Int32? = nil, saturation: Int32? = nil, hue: Int32? = nil, exposure: Int32? = nil, blur: UInt32? = nil, invert: Bool? = nil, curves: String? = nil, updatedAt: UInt64) async throws {
         let args = try JSONEncoder().encode(UpdateAdjustmentsArgs(id: id, brightness: brightness, contrast: contrast, saturation: saturation, hue: hue, exposure: exposure, blur: blur, invert: invert, curves: curves, updatedAt: updatedAt))
-        _ = try await transport.execute(method: "update_adjustments", argsJSON: args)
+        _ = try await transport.execute(method: "updateAdjustments", argsJSON: args)
     }
 
     /// update_cursor
@@ -244,7 +244,7 @@ public struct PixartClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func updateCursor(x: Int64, y: Int64, updatedAt: UInt64) async throws {
         let args = try JSONEncoder().encode(UpdateCursorArgs(x: x, y: y, updatedAt: updatedAt))
-        _ = try await transport.execute(method: "update_cursor", argsJSON: args)
+        _ = try await transport.execute(method: "updateCursor", argsJSON: args)
     }
 
     /// update_document
@@ -255,7 +255,7 @@ public struct PixartClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func updateDocument(name: String? = nil, description: String? = nil, width: UInt32? = nil, height: UInt32? = nil, background: String? = nil) async throws {
         let args = try JSONEncoder().encode(UpdateDocumentArgs(name: name, description: description, width: width, height: height, background: background))
-        _ = try await transport.execute(method: "update_document", argsJSON: args)
+        _ = try await transport.execute(method: "updateDocument", argsJSON: args)
     }
 
     /// update_layer
@@ -266,7 +266,7 @@ public struct PixartClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func updateLayer(id: String, name: String? = nil, visible: Bool? = nil, locked: Bool? = nil, opacity: UInt32? = nil, blendMode: String? = nil, x: Int64? = nil, y: Int64? = nil, width: UInt32? = nil, height: UInt32? = nil, rotation: Int32? = nil, scaleX: Int32? = nil, scaleY: Int32? = nil, fill: String? = nil, updatedAt: UInt64) async throws {
         let args = try JSONEncoder().encode(UpdateLayerArgs(id: id, name: name, visible: visible, locked: locked, opacity: opacity, blendMode: blendMode, x: x, y: y, width: width, height: height, rotation: rotation, scaleX: scaleX, scaleY: scaleY, fill: fill, updatedAt: updatedAt))
-        _ = try await transport.execute(method: "update_layer", argsJSON: args)
+        _ = try await transport.execute(method: "updateLayer", argsJSON: args)
     }
 
     /// update_layer_content
@@ -277,7 +277,7 @@ public struct PixartClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func updateLayerContent(id: String, blobId: String, width: UInt32, height: UInt32, updatedAt: UInt64) async throws {
         let args = try JSONEncoder().encode(UpdateLayerContentArgs(id: id, blobId: blobId, width: width, height: height, updatedAt: updatedAt))
-        _ = try await transport.execute(method: "update_layer_content", argsJSON: args)
+        _ = try await transport.execute(method: "updateLayerContent", argsJSON: args)
     }
 
     /// update_layer_mask
@@ -287,7 +287,7 @@ public struct PixartClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func updateLayerMask(id: String, maskBlobId: String? = nil, updatedAt: UInt64) async throws {
         let args = try JSONEncoder().encode(UpdateLayerMaskArgs(id: id, maskBlobId: maskBlobId, updatedAt: updatedAt))
-        _ = try await transport.execute(method: "update_layer_mask", argsJSON: args)
+        _ = try await transport.execute(method: "updateLayerMask", argsJSON: args)
     }
 
     /// update_member_username
@@ -295,7 +295,7 @@ public struct PixartClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func updateMemberUsername(username: String, timestamp: UInt64) async throws {
         let args = try JSONEncoder().encode(UpdateMemberUsernameArgs(username: username, timestamp: timestamp))
-        _ = try await transport.execute(method: "update_member_username", argsJSON: args)
+        _ = try await transport.execute(method: "updateMemberUsername", argsJSON: args)
     }
 
     /// update_text
@@ -305,7 +305,7 @@ public struct PixartClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func updateText(id: String, content: String? = nil, fontFamily: String? = nil, fontSize: UInt32? = nil, color: String? = nil, bold: Bool? = nil, italic: Bool? = nil, align: String? = nil, updatedAt: UInt64) async throws {
         let args = try JSONEncoder().encode(UpdateTextArgs(id: id, content: content, fontFamily: fontFamily, fontSize: fontSize, color: color, bold: bold, italic: italic, align: align, updatedAt: updatedAt))
-        _ = try await transport.execute(method: "update_text", argsJSON: args)
+        _ = try await transport.execute(method: "updateText", argsJSON: args)
     }
 
     /// update_transform
@@ -322,7 +322,7 @@ public struct PixartClient: Sendable {
     /// Write (`mutating`): sent with `execute`.
     public func updateTransform(id: String, rotation: Int32? = nil, scaleX: Int32? = nil, scaleY: Int32? = nil, skewX: Int32? = nil, skewY: Int32? = nil, flipH: Bool? = nil, flipV: Bool? = nil, warp: String? = nil, updatedAt: UInt64) async throws {
         let args = try JSONEncoder().encode(UpdateTransformArgs(id: id, rotation: rotation, scaleX: scaleX, scaleY: scaleY, skewX: skewX, skewY: skewY, flipH: flipH, flipV: flipV, warp: warp, updatedAt: updatedAt))
-        _ = try await transport.execute(method: "update_transform", argsJSON: args)
+        _ = try await transport.execute(method: "updateTransform", argsJSON: args)
     }
 
     private struct AddLayerArgs: Encodable {
@@ -331,12 +331,7 @@ public struct PixartClient: Sendable {
 
     private struct BringToFrontArgs: Encodable {
         let id: String
-        let updatedAt: UInt64
-
-        enum CodingKeys: String, CodingKey {
-            case id
-            case updatedAt = "updated_at"
-        }
+        @WireDecimal var updatedAt: UInt64
     }
 
     private struct DeleteLayerArgs: Encodable {
@@ -365,41 +360,24 @@ public struct PixartClient: Sendable {
     private struct JoinArgs: Encodable {
         let username: String
         let avatar: String?
-        let timestamp: UInt64
+        @WireDecimal var timestamp: UInt64
     }
 
     private struct MoveLayerArgs: Encodable {
         let id: String
         let parentId: String?
         let layerIndex: UInt32
-        let updatedAt: UInt64
-
-        enum CodingKeys: String, CodingKey {
-            case id
-            case parentId = "parent_id"
-            case layerIndex = "layer_index"
-            case updatedAt = "updated_at"
-        }
+        @WireDecimal var updatedAt: UInt64
     }
 
     private struct MoveLayersArgs: Encodable {
         let moves: [ContractTuple2<String, String>]
-        let updatedAt: UInt64
-
-        enum CodingKeys: String, CodingKey {
-            case moves
-            case updatedAt = "updated_at"
-        }
+        @WireDecimal var updatedAt: UInt64
     }
 
     private struct ReorderLayersArgs: Encodable {
         let order: [ContractTuple2<String, UInt32>]
-        let updatedAt: UInt64
-
-        enum CodingKeys: String, CodingKey {
-            case order
-            case updatedAt = "updated_at"
-        }
+        @WireDecimal var updatedAt: UInt64
     }
 
     private struct RevokeEditorArgs: Encodable {
@@ -408,20 +386,11 @@ public struct PixartClient: Sendable {
 
     private struct SendToBackArgs: Encodable {
         let id: String
-        let updatedAt: UInt64
-
-        enum CodingKeys: String, CodingKey {
-            case id
-            case updatedAt = "updated_at"
-        }
+        @WireDecimal var updatedAt: UInt64
     }
 
     private struct TransferOwnershipArgs: Encodable {
         let newOwner: String
-
-        enum CodingKeys: String, CodingKey {
-            case newOwner = "new_owner"
-        }
     }
 
     private struct UpdateAdjustmentsArgs: Encodable {
@@ -434,32 +403,13 @@ public struct PixartClient: Sendable {
         let blur: UInt32?
         let invert: Bool?
         let curves: String?
-        let updatedAt: UInt64
-
-        enum CodingKeys: String, CodingKey {
-            case id
-            case brightness
-            case contrast
-            case saturation
-            case hue
-            case exposure
-            case blur
-            case invert
-            case curves
-            case updatedAt = "updated_at"
-        }
+        @WireDecimal var updatedAt: UInt64
     }
 
     private struct UpdateCursorArgs: Encodable {
-        let x: Int64
-        let y: Int64
-        let updatedAt: UInt64
-
-        enum CodingKeys: String, CodingKey {
-            case x
-            case y
-            case updatedAt = "updated_at"
-        }
+        @WireDecimal var x: Int64
+        @WireDecimal var y: Int64
+        @WireDecimal var updatedAt: UInt64
     }
 
     private struct UpdateDocumentArgs: Encodable {
@@ -477,33 +427,15 @@ public struct PixartClient: Sendable {
         let locked: Bool?
         let opacity: UInt32?
         let blendMode: String?
-        let x: Int64?
-        let y: Int64?
+        @WireDecimalOptional var x: Int64?
+        @WireDecimalOptional var y: Int64?
         let width: UInt32?
         let height: UInt32?
         let rotation: Int32?
         let scaleX: Int32?
         let scaleY: Int32?
         let fill: String?
-        let updatedAt: UInt64
-
-        enum CodingKeys: String, CodingKey {
-            case id
-            case name
-            case visible
-            case locked
-            case opacity
-            case blendMode = "blend_mode"
-            case x
-            case y
-            case width
-            case height
-            case rotation
-            case scaleX = "scale_x"
-            case scaleY = "scale_y"
-            case fill
-            case updatedAt = "updated_at"
-        }
+        @WireDecimal var updatedAt: UInt64
     }
 
     private struct UpdateLayerContentArgs: Encodable {
@@ -511,32 +443,18 @@ public struct PixartClient: Sendable {
         let blobId: String
         let width: UInt32
         let height: UInt32
-        let updatedAt: UInt64
-
-        enum CodingKeys: String, CodingKey {
-            case id
-            case blobId = "blob_id"
-            case width
-            case height
-            case updatedAt = "updated_at"
-        }
+        @WireDecimal var updatedAt: UInt64
     }
 
     private struct UpdateLayerMaskArgs: Encodable {
         let id: String
         let maskBlobId: String?
-        let updatedAt: UInt64
-
-        enum CodingKeys: String, CodingKey {
-            case id
-            case maskBlobId = "mask_blob_id"
-            case updatedAt = "updated_at"
-        }
+        @WireDecimal var updatedAt: UInt64
     }
 
     private struct UpdateMemberUsernameArgs: Encodable {
         let username: String
-        let timestamp: UInt64
+        @WireDecimal var timestamp: UInt64
     }
 
     private struct UpdateTextArgs: Encodable {
@@ -548,19 +466,7 @@ public struct PixartClient: Sendable {
         let bold: Bool?
         let italic: Bool?
         let align: String?
-        let updatedAt: UInt64
-
-        enum CodingKeys: String, CodingKey {
-            case id
-            case content
-            case fontFamily = "font_family"
-            case fontSize = "font_size"
-            case color
-            case bold
-            case italic
-            case align
-            case updatedAt = "updated_at"
-        }
+        @WireDecimal var updatedAt: UInt64
     }
 
     private struct UpdateTransformArgs: Encodable {
@@ -573,20 +479,7 @@ public struct PixartClient: Sendable {
         let flipH: Bool?
         let flipV: Bool?
         let warp: String?
-        let updatedAt: UInt64
-
-        enum CodingKeys: String, CodingKey {
-            case id
-            case rotation
-            case scaleX = "scale_x"
-            case scaleY = "scale_y"
-            case skewX = "skew_x"
-            case skewY = "skew_y"
-            case flipH = "flip_h"
-            case flipV = "flip_v"
-            case warp
-            case updatedAt = "updated_at"
-        }
+        @WireDecimal var updatedAt: UInt64
     }
 }
 

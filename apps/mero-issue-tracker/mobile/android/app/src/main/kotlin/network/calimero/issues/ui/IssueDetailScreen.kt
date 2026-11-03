@@ -69,6 +69,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import network.calimero.issues.contract.CommentView
+import network.calimero.issues.contract.IssueView
 import network.calimero.issues.core.IssueDetailModel
 import network.calimero.issues.core.LiveUpdates
 import network.calimero.issues.core.LoadPhase
@@ -76,8 +78,6 @@ import network.calimero.issues.core.Tracker
 import network.calimero.issues.core.TrackerFormat
 import network.calimero.issues.core.WorkspaceModel
 import network.calimero.issues.core.WorkspaceState
-import network.calimero.issues.generated.CommentView
-import network.calimero.issues.generated.IssueView
 
 private sealed interface DetailDialog {
     data object Assignee : DetailDialog

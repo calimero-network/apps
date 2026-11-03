@@ -18,9 +18,9 @@ enum ChatConstants {
 
 /// Errors the chat layer raises itself.
 enum ChatError: Error, Equatable, LocalizedError {
-    /// The relay answered with something that is not the shape the contract returns.
+    /// The node answered with something that is not the shape the contract returns.
     case badResponse(method: String, detail: String)
-    /// The signed-in account has no relay yet.
+    /// The account isn't connected to its cluster (signed out).
     case noRelay
     /// The input was refused before anything was sent.
     case invalidInput(String)
@@ -28,21 +28,21 @@ enum ChatError: Error, Equatable, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .badResponse(let method, let detail):
-            return "The relay's answer to \(method) could not be read: \(detail)"
+            return "The node's answer to \(method) could not be read: \(detail)"
         case .noRelay:
-            return "No relay serves this account yet. Join a workspace from an invitation to get one."
+            return "You're not connected to your cluster. Sign in again."
         case .invalidInput(let message):
             return message
         }
     }
 }
 
-/// JSON plumbing between the relay's generic `JSONValue` results and typed models.
+/// JSON plumbing between the node's generic `JSONValue` results and typed models.
 enum ChatJSON {
     /// Decode `value` (a contract's `returns`) as `T`.
     static func decode<T: Decodable>(_ type: T.Type, _ value: JSONValue?, method: String) throws -> T {
         // Canonical spelling writes integral numbers without a fraction, so a
-        // `u64` the relay handed back as a double still decodes as an integer.
+        // `u64` the node handed back as a double still decodes as an integer.
         let data = CanonicalJSON.data(value ?? .null)
         do {
             return try JSONDecoder().decode(T.self, from: data)
@@ -59,11 +59,12 @@ enum ChatJSON {
 
 /// How the contract names an account.
 enum ChatIdentity {
-    /// The contract's `UserId` for an account: base58 of the account's 32
-    /// bytes (`user_of` in lib.rs). `nil` when `accountHex` is not 64 hex.
+    /// How the contract names an account: on the component runtime the
+    /// caller is the node's account id as it is (v1 used base58 `UserId`s).
+    /// `nil` for an empty one.
     static func userId(accountHex: String) -> String? {
-        guard let bytes = try? Hex.decode(accountHex, label: "account", bytes: 32) else { return nil }
-        return InviteCodec.base58Encode(bytes)
+        let account = accountHex.trimmingCharacters(in: .whitespacesAndNewlines)
+        return account.isEmpty ? nil : account
     }
 
     /// A short form of an id for display.

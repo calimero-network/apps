@@ -76,7 +76,7 @@ Start here. These exist to be read, not shipped.
 | [mero-docs](apps/mero-docs) | [↗](https://mero-docs.vercel.app) | Namespace-scoped document workspace - a multi-service bundle pairing a registry with the docs themselves. | `com.calimero.mero-drive-docs` |
 | [mero-crm](apps/mero-crm) | — | Sales CRM — drag-and-drop pipeline, deals, people, activities, stage automations, insights, and a local deal assistant (health score, next best step, email draft). | `com.calimero.mero-crm` |
 | [mero-issue-tracker](apps/mero-issue-tracker) | [↗](https://mero-issue-tracker-app.vercel.app) | Issue board for a small engineering team whose backlog lives on their own nodes. | `com.calimero.mero-issue-tracker` |
-| [mero-forum](apps/mero-forum) | [↗](https://mero-forum.vercel.app) | Threads and comments replicated across your own nodes, with no server in the middle. | `com.calimero.mero-forum` |
+| [mero-forum](apps/mero-forum) | [↗](https://mero-forum.vercel.app) | A component app (Calimero 1.0): threads, comments, votes and moderators in an app instance its organization's members share, on `calimero-app-sdk`, its frontend on mero-js `CalimeroClient`. | `com.calimero.mero-forum` |
 | [mero-updates](apps/mero-updates) | — | Investor updates, two-way: categories, KPI deltas, asks answered in one click, investor Q&A and read receipts, between the company's and its investors' nodes. | `com.calimero.mero-updates` |
 | [mero-standup](apps/mero-standup) | — | Async standups and a decision log for a small team: each member's own update per day (started from yesterday's), help on blockers, a weekly digest, and tagged write-once decisions superseded rather than edited. A component app (Calimero 1.0) on `calimero-app-sdk`: v1's storage-tier write rules as method checks, tables with indexes and counts; frontend on mero-js `CalimeroClient`. | `com.calimero.mero-standup` |
 | [mero-forms](apps/mero-forms) | — | Forms with the questions you choose — typed and checked answers, a builder, responses with a summary and CSV — filled in by hand or by a website through a key that can answer one form; any response goes on to [Mero CRM](apps/mero-crm) as a contact and a deal. | `com.calimero.mero-forms` |
@@ -87,24 +87,24 @@ Start here. These exist to be read, not shipped.
 | --- | --- | --- | --- |
 | [mero-pass](apps/mero-pass) | [↗](https://mero-pass.vercel.app) | Secret manager on Calimero 1.0 (component SDK) — a vault is an app instance in your team's org. Secrets are sealed in the browser, versioned and attributed, with no master password to phish. | `com.calimero.mero-pass` |
 | [mero-sign](apps/mero-sign) | [↗](https://mero-sign.vercel.app) | Document signing — upload a PDF, collect signatures from namespace members, verify them peer-to-peer. | `com.calimero.mero-sign` |
-| [mero-vote](apps/mero-vote) | — | Private polls with verifiable tallies — ballots encrypted in the browser (ElGamal on ristretto255) with zero-knowledge well-formedness proofs, t-of-n threshold-decrypted totals (distributed key generation, no trusted dealer), and a tally every member re-verifies. | `com.calimero.mero-vote` |
+| [mero-vote](apps/mero-vote) | — | Private polls with verifiable tallies — ballots encrypted in the browser (ElGamal on ristretto255) with zero-knowledge well-formedness proofs, t-of-n threshold-decrypted totals (distributed key generation, no trusted dealer), and a tally every member re-verifies in their own browser. A component app (Calimero 1.0) on `calimero-app-sdk`: v1's storage-tier write rules as method checks; frontend on mero-js `CalimeroClient`. | `com.calimero.mero-vote` |
 
 ### Games
 
 | App | Live | What it is | Package |
 | --- | --- | --- | --- |
-| [mero-blocks](apps/mero-blocks) | [↗](https://mero-blocks.vercel.app/) | Minecraft-style multiplayer voxel sandbox. No game server — the world is a context: seed + block-edit diff + player presence. | `com.calimero.mero-blocks` |
+| [mero-blocks](apps/mero-blocks) | [↗](https://mero-blocks.vercel.app/) | Minecraft-style multiplayer voxel sandbox, a component app (Calimero 1.0). No game server — a world is an app instance: seed + block-edit diff + player presence. Its native iOS/Android apps move to 1.0 in #700. | `com.calimero.mero-blocks` |
 | [merraria](apps/merraria) | [↗](https://merraria.vercel.app/) | Terraria-style 2D mining sandbox — seed-generated terrain, CRDT tile diff, player presence. | `com.calimero.merraria` |
 | [battleships](apps/battleships) | [↗](https://battleships-fawn.vercel.app) | Two-player Battleships with commit-reveal ship placement: boards stay on the device, every answer is audited at the reveal. A component app (Calimero 1.0) on `calimero-app-sdk`: the lobby and every match in one app instance, the result recorded by the call that decides it; frontend on mero-js `CalimeroClient`. | `com.calimero.battleships` |
 | [mero-chess](apps/mero-chess) | [↗](https://mero-chess.vercel.app) | Two-player chess. A table is a context: the move list replicates as CRDT state and the rules — legal moves, check, mate, the draws — run inside the contract. | `com.calimero.mero-chess` |
-| [mero-kombat](apps/mero-kombat) | [↗](https://mero-kombat.vercel.app) | One-on-one arcade fighter. An arena is a context: movement streams over ephemeral presence, every punch and kick is a contract transaction, and health, rounds and the winner are derived from them. | `com.calimero.mero-kombat` |
+| [mero-kombat](apps/mero-kombat) | [↗](https://mero-kombat.vercel.app) | One-on-one arcade fighter, a component app (Calimero 1.0). An arena is an app instance: movement streams over ephemeral presence, every punch and kick is a contract transaction, and the contract keeps health, rounds and the winner. | `com.calimero.mero-kombat` |
 
 ### Experiments
 
 | App | Live | What it is | Package |
 | --- | --- | --- | --- |
 | [mero-stream](apps/mero-stream) | [↗](https://mero-stream-neon.vercel.app) | Media capacity probe, on the component runtime. `/stream` runs a toy integer codec inside the contract; `/live` carries browser-encoded H.264 over the node's presence channel. Deliberately the wrong way round, to find the platform's ceiling with numbers. **Not shippable media, and web only.** | `com.calimero.mero-stream` |
-| [hyperfeed](apps/hyperfeed) | — | Prototype. One feed for your agent and your apps: every action an agent took on your behalf (with its warrant's intent hash and executor) beside every notification your other contexts emitted, with approvals, undo, per-app agent modes and "always ask" guards enforced by the contract. `/demo` runs with no node. | `com.calimero.hyperfeed` |
+| [hyperfeed](apps/hyperfeed) | — | Prototype. One feed for your agent and your apps: every action an agent took on your behalf (with its warrant's intent hash and executor) beside every notification your other apps emitted, with approvals, undo, per-app agent modes and "always ask" guards enforced by the contract. `/demo` runs with no node. A component app (Calimero 1.0): `calimero-app-sdk`, `merod local` in dev, mero-js `CalimeroClient` on Calimero Cloud. | `com.calimero.hyperfeed` |
 
 ### Out of scope
 
@@ -128,6 +128,7 @@ development.
 
 ```bash
 pnpm dev:local kv-store        # merod local + build + deploy + the app's dev server on :5173
+pnpm dev:local hyperfeed
 pnpm merod-local e2e kv-store  # the app's scenarios as real accounts on the cluster
 ```
 

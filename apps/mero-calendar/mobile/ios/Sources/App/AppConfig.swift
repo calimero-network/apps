@@ -3,26 +3,32 @@ import Foundation
 import MeroKit
 import MeroKitUI
 
-/// Where the app signs in and which cloud it routes through, from the
-/// Info.plist keys `project.yml` sets. An empty value means the SDK's default.
+/// Which Calimero 1.0 cluster the app signs in to, from the Info.plist keys
+/// `project.yml` sets. An empty value means "ask on the sign-in screen".
 enum AppConfig {
+    /// Where the node's consent page sends the person back
+    /// (`mero-calendar://consent?request_id=…&result=…`).
     static var callback: CloudCallback {
         if let host = string("MeroCalendarCallbackHost") {
-            return .https(host: host, path: string("MeroCalendarCallbackPath") ?? "/enrol")
+            return .https(host: host, path: string("MeroCalendarCallbackPath") ?? "/consent")
         }
-        return .scheme(string("MeroCalendarCallbackScheme") ?? "mero-calendar")
+        return .scheme(string("MeroCalendarCallbackScheme") ?? "mero-calendar", path: "consent")
     }
+
+    /// The Calimero Cloud cluster: a node URL from the console. Signing in
+    /// verifies the node's attestation (`CloudPolicy.production`).
+    static var clusterURL: String? { string("CalimeroClusterURL") }
+
+    /// The development cluster (`merod local`) the sign-in screen prefills.
+    static var devNodeURL: String { string("DefaultNodeURL") ?? "http://localhost:2501" }
 
     static var providerConfig: MeroProviderConfig {
         MeroProviderConfig(
-            packageName: CalendarConstants.packageName,
-            registryURL: string("MeroRegistryURL"),
-            cloudBaseURL: string("MeroCloudBaseURL").flatMap { URL(string: $0) })
+            nodeURL: clusterURL, policy: .production, packageName: CalendarConstants.packageName,
+            packageVersion: string("MeroPackageVersion"))
     }
 
-    static var walletURL: URL? { string("MeroWalletURL").flatMap { URL(string: $0) } }
-
-    /// The Keychain service the device key, session and relay tokens live under.
+    /// The Keychain service the session (and a development cluster's soft passkey) live under.
     static let keychainService = "network.calimero.calendar"
 
     private static func string(_ key: String) -> String? {

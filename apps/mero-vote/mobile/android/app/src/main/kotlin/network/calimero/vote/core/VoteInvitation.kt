@@ -1,98 +1,81 @@
 package network.calimero.vote.core
 
-import com.calimero.mero.admin.SignedGroupOpenInvitation
 import com.calimero.mero.app.MeroAppBackend
+import com.calimero.mero.app.OrgInvitation
 import com.calimero.mero.invite.InviteCodec
 import com.calimero.mero.invite.InviteLink
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.put
+import java.net.URI
+import java.net.URLDecoder
 
 /**
- * An invitation in the web app's format (`app/src/utils/invitation.ts`), so a link minted on
- * either side opens on the other. (Swift `VoteInvitation`.)
+ * An invitation: Calimero 1.0's org invite token. Two link shapes open it (Swift `VoteInvitation`):
  *
- * - payload: `{"invitation": <SignedGroupOpenInvitation>, "namespaceId": "<hex>", "contextId": "<hex>"}`
- * - token: `base58(deflate(payload))` ([InviteCodec])
- * - link: `https://links.calimero.network/com.calimero.mero-vote/join?invitation=<token>`
+ * - the SDK's (what this app mints, [OrgInvitation]):
+ *   `https://links.calimero.network/com.calimero.mero-vote/join?invitation=<base58(deflate(payload))>`,
+ *   payload `{"invitation": "inv_…", "namespaceId": "<org>", "contextId": "<app instance>"}`;
+ * - the web app's: its own address with `?invite=inv_…` (the token alone).
  *
- * The signed invitation grants the NAMESPACE; `contextId` says which voting group in it to open.
+ * The token grants the ORG (redeemed with `POST /invites/{token}/redeem`, which joins the org it
+ * belongs to); [contextId], when the link names one, says which voting group in it to open once
+ * joined, and otherwise the org's first one opens. A pre-1.0 signed invitation is refused: a 1.0
+ * cluster cannot redeem it.
  */
 data class VoteInvitation(
-    val invitation: SignedGroupOpenInvitation,
-    val contextId: String,
+    val invitation: OrgInvitation,
+    /** The voting group to open after joining; null for a web link. */
+    val contextId: String?,
 ) {
-    /** The namespace it admits to: the hex of its SIGNED `group_id`, never the field beside it. */
-    val namespaceId: String
-        get() {
-            val inner = invitation.raw["invitation"] as? JsonObject
-            val raw = inner?.get("group_id") ?: inner?.get("groupId")
-            return when (raw) {
-                is JsonArray -> raw.mapNotNull { (it as? JsonPrimitive)?.intOrNull }.joinToString("") { "%02x".format(it and BYTE_MASK) }
-                is JsonPrimitive -> raw.contentOrNull.orEmpty().lowercase()
-                else -> ""
-            }
-        }
+    /** The org it admits to; empty for a web link (the node names it when it is redeemed). */
+    val namespaceId: String get() = invitation.namespaceId
 
-    fun token(): String =
-        InviteCodec.encode(
-            buildJsonObject {
-                put("contextId", contextId)
-                put("invitation", invitation.raw)
-                put("namespaceId", namespaceId)
-            }.toString(),
-        )
+    fun token(): String = invitation.copy(contextId = contextId).encoded()
 
     fun link(): String = InviteLink.invitation(token(), VoteConstants.PACKAGE_NAME)
 
     companion object {
-        private const val BYTE_MASK = 0xff
-        private val json = Json { ignoreUnknownKeys = true }
+        /** The query parameter the web app's links carry the token in. */
+        const val WEB_PARAM = "invite"
 
         /**
-         * Parse a link (https or `calimero://`), a bare token or raw JSON. Null when it holds no
-         * Mero Vote invitation, including another app's link.
+         * Parse a link (https or `calimero://`), a bare code, a bare `inv_…` token or raw JSON. Null
+         * when it holds no Mero Vote invitation, including another app's link.
          */
         fun parse(input: String): VoteInvitation? {
             val trimmed = input.trim()
             if (trimmed.isEmpty()) return null
             if (trimmed.startsWith("{")) return parseJson(trimmed)
+            if (trimmed.startsWith("inv_") && trimmed.none { it.isWhitespace() || it == '/' || it == '?' }) {
+                return VoteInvitation(OrgInvitation("", trimmed), null)
+            }
+            webToken(trimmed)?.let { return VoteInvitation(OrgInvitation("", it), null) }
             val token = tokenFromLink(trimmed) ?: return null
             return InviteCodec.decode(token)?.let(::parseJson)
         }
 
+        /** The web app's `?invite=inv_…`, from an http(s) link. */
+        internal fun webToken(raw: String): String? {
+            val uri = runCatching { URI(raw) }.getOrNull() ?: return null
+            if (uri.scheme?.lowercase() !in setOf("http", "https")) return null
+            return uri.rawQuery
+                ?.split('&')
+                ?.firstOrNull { it.substringBefore('=') == WEB_PARAM }
+                ?.substringAfter('=', "")
+                ?.let { URLDecoder.decode(it, "UTF-8") }
+                ?.nullIfBlank()
+        }
+
         /** As the Swift SDK's `token(fromPasted:expectedSlug:)`: another app's link is refused. */
-        private fun tokenFromLink(raw: String): String? {
-            val lower = raw.lowercase()
-            val isLink = lower.startsWith("http://") || lower.startsWith("https://") || lower.startsWith("calimero://")
-            if (isLink) {
-                val segments = raw.substringBefore('?').split('/').map { it.lowercase() }
-                if (VoteConstants.PACKAGE_NAME !in segments) return null
-            }
-            return InviteLink.tokenFromPasted(raw)
-        }
+        private fun tokenFromLink(raw: String): String? = InviteLink.tokenFromPasted(raw, VoteConstants.PACKAGE_NAME)
 
-        /** The web's `parseInvitationPayload`: both ids present, the invitation the signed envelope. */
+        /** The SDK payload: the org and an invite token present (a 0.x signed envelope is refused). */
         fun parseJson(text: String): VoteInvitation? {
-            val root = runCatching { json.parseToJsonElement(text).jsonObject }.getOrNull() ?: return null
-            val contextId = root.string("contextId")?.nullIfBlank() ?: return null
-            root.string("namespaceId")?.nullIfBlank() ?: return null
-            val wrapped = root["invitation"] as? JsonObject ?: return null
-            if (wrapped["inviter_signature"] == null) return null
-            return VoteInvitation(SignedGroupOpenInvitation(wrapped), contextId)
+            val invitation = OrgInvitation.decodeJson(text) ?: return null
+            return VoteInvitation(invitation, invitation.contextId?.nullIfBlank())
         }
-
-        private fun JsonObject.string(key: String): String? = (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull
     }
 }
 
@@ -113,6 +96,11 @@ class InvitationModel(
 
         data class Joined(
             val group: GroupRef,
+        ) : Stage
+
+        /** Joined a workspace that has no voting group yet. */
+        data class JoinedWorkspace(
+            val workspace: String,
         ) : Stage
 
         data class Failed(
@@ -138,7 +126,7 @@ class InvitationModel(
         return true
     }
 
-    /** Join. [backend] is read again after [didJoin], which may hand the session the admitting relay. */
+    /** Join (`POST /invites/{token}/redeem`). [backend] is read again after [didJoin]. */
     suspend fun accept(
         backend: () -> MeroAppBackend?,
         didJoin: suspend () -> Unit,
@@ -150,7 +138,14 @@ class InvitationModel(
             return
         }
         _stage.value = Stage.Joining
-        attempt { current.joinNamespace(invitation.namespaceId, invitation.invitation) }.exceptionOrNull()?.let { error ->
+        var org = invitation.namespaceId
+        val joined = attempt { current.joinNamespace(org, invitation.invitation) }
+        joined
+            .getOrNull()
+            ?.namespaceId
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { org = it }
+        joined.exceptionOrNull()?.let { error ->
             val text = (error.message ?: error.toString()).lowercase()
             if (listOf("already a member", "already member", "already joined").none { it in text }) {
                 _stage.value = Stage.Failed(VoteErrorText.describe(error))
@@ -158,21 +153,37 @@ class InvitationModel(
             }
         }
         didJoin()
-        // The group's context is directly in the namespace; membership arrives with the
-        // namespace's, but ask for it in case it has not projected yet.
+        if (org.isEmpty()) {
+            _stage.value = Stage.JoinedWorkspace("Workspace")
+            return
+        }
+        // On 1.0 the org's members reach its org-wide app instances at once; the retries cover a
+        // node that has not caught up yet.
+        var contextId = invitation.contextId
         for (i in 0 until attempts) {
             if (i > 0) delay(retryDelayMs)
             val now = backend() ?: break
-            if (attempt { now.isMember(invitation.contextId) }.getOrDefault(false)) break
-            if (attempt { now.joinContext(invitation.contextId) }.isSuccess) break
+            val known = contextId
+            if (known != null) {
+                if (attempt { now.isMember(known) }.getOrDefault(false)) break
+                if (attempt { now.joinContext(known) }.isSuccess) break
+            } else {
+                val first = attempt { now.listContexts(org) }.getOrNull()?.firstOrNull()
+                if (first != null) {
+                    contextId = first
+                    break
+                }
+            }
         }
         val workspace =
             attempt { backend()?.listNamespaces() }
                 .getOrNull()
-                ?.firstOrNull { it.id == invitation.namespaceId }
+                ?.firstOrNull { it.id == org }
                 ?.name
-                ?.nullIfBlank() ?: "Workspace"
-        _stage.value = Stage.Joined(GroupRef(invitation.namespaceId, workspace, invitation.contextId))
+                ?.nullIfBlank() ?: invitation.invitation.name?.nullIfBlank() ?: "Workspace"
+        val opened = contextId
+        _stage.value =
+            if (opened == null) Stage.JoinedWorkspace(workspace) else Stage.Joined(GroupRef(org, workspace, opened))
     }
 
     fun reset() {

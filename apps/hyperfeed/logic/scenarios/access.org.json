@@ -1,0 +1,12 @@
+{
+ "members": [
+  "bob",
+  "agentbot"
+ ],
+ "guests": [
+  "gus"
+ ],
+ "outsiders": [
+  "mallory"
+ ]
+}

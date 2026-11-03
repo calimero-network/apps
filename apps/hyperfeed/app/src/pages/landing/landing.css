@@ -1749,3 +1749,36 @@
     max-width: none;
   }
 }
+
+/* The passkey sign-in dialog (loginPopup.tsx). */
+.hl-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.45);
+}
+.hl-modal {
+  display: grid;
+  gap: 12px;
+  width: min(440px, 100%);
+  padding: 24px;
+  border-radius: 16px;
+  background: var(--glass-bg, var(--bg, #fff));
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+.hl-modal h2 {
+  margin: 0;
+}
+.hl-modal .row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.hl-modal input {
+  flex: 1;
+  min-width: 0;
+}

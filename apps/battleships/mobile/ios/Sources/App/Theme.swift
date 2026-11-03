@@ -36,6 +36,13 @@ extension Color {
     }
 }
 
+extension CloudStyle {
+    /// The sign-in and approvals views in Battleships' colours.
+    static let app = CloudStyle(
+        ink: Palette.ink, muted: Palette.muted, accent: Palette.lime, onAccent: Palette.ink, danger: Palette.danger,
+        field: Palette.surface, hairline: Palette.hairline)
+}
+
 enum Typeface {
     /// Figtree (the web app's face, bundled) for headings; the system face if it is missing.
     static func display(_ size: CGFloat, weight: Font.Weight = .semibold) -> Font {
