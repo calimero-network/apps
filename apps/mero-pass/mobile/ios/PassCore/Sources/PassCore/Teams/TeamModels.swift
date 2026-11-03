@@ -1,5 +1,6 @@
 import Foundation
 import MeroKit
+import PassGenerated
 
 /// A team: a namespace, the people, and the vaults they share.
 public struct TeamRow: Identifiable, Hashable, Sendable {
@@ -49,7 +50,7 @@ public struct VaultRef: Hashable, Sendable {
     }
 }
 
-/// A readable label, given whatever the relay told us (the web's `displayName`).
+/// A readable label, given whatever the node told us (the web's `displayName`).
 public func displayName(_ candidates: [String?], id: String, fallback: String) -> String {
     for candidate in candidates {
         if let trimmed = candidate?.nilIfBlank { return trimmed }
@@ -155,8 +156,8 @@ public final class TeamModel: ObservableObject {
         }
     }
 
-    /// Create a vault everyone in the team can open: an OPEN subgroup with a
-    /// context whose `init(name)` stores the name in the contract.
+    /// Create a vault everyone in the team can open: an OPEN subgroup with an app
+    /// instance in it, named with `renameVault` right after (on 1.0 `init` takes no arguments).
     @discardableResult
     public func create(name: String) async throws -> VaultRef {
         guard let trimmed = name.nilIfBlank else { throw PassModelError.message("Give the vault a name.") }
@@ -169,7 +170,8 @@ public final class TeamModel: ObservableObject {
             let groupId = try await backend.createSubgroup(namespaceId: namespaceId, name: trimmed, isPublic: true)
             let contextId = try await backend.createContext(
                 groupId: groupId, applicationId: applicationId, name: trimmed,
-                initArgs: .object(["name": .string(trimmed)]))
+                initArgs: .object([:]))
+            try await PassClient.make(contract: backend.contract, contextId: contextId).renameVault(name: trimmed)
             vaults.append(VaultRow(id: groupId, name: trimmed, contextId: contextId, joined: true))
             vaults.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
             return ref(groupId: groupId, name: trimmed, contextId: contextId)
@@ -284,8 +286,7 @@ public final class InvitationModel: ObservableObject {
         return true
     }
 
-    /// Join. `backend` is read again after `didJoin`, which may hand the
-    /// session the admitting relay.
+    /// Join (`POST /invites/{token}/redeem`). `backend` is read again after `didJoin`.
     public func accept(
         backend: @escaping @MainActor () -> (any MeroAppBackend)?,
         didJoin: @escaping @MainActor () async -> Void
@@ -295,9 +296,11 @@ public final class InvitationModel: ObservableObject {
             return
         }
         stage = .joining(title: invitation.title)
-        let namespaceId = invitation.namespaceId
+        var namespaceId = invitation.namespaceId
         do {
-            _ = try await current.joinNamespace(namespaceId: namespaceId, invitation: invitation.invitation)
+            let joined = try await current.joinNamespace(namespaceId: namespaceId, invitation: invitation.invitation)
+            // A web link carries the token alone: the node names the team it opened.
+            if !joined.namespaceId.isEmpty { namespaceId = joined.namespaceId }
         } catch {
             let text = "\(error)".lowercased()
             let already = ["already a member", "already member", "already joined", "alreadyjoined", "duplicate member"]
@@ -307,7 +310,12 @@ public final class InvitationModel: ObservableObject {
             }
         }
         await didJoin()
-        let teamName = invitation.teamName ?? "Team"
+        var teamName = invitation.teamName ?? "Team"
+        if invitation.teamName == nil, let listed = try? await backend()?.listNamespaces(),
+            let name = listed.first(where: { $0.id == namespaceId })?.name, !name.isEmpty
+        {
+            teamName = name
+        }
         var vault: VaultRef?
         if invitation.kind == .vault, let contextId = invitation.contextId, let vaultId = invitation.vaultId {
             let ref = VaultRef(
