@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useMero } from "@calimero-network/mero-react";
-import { createNamespace, deleteNamespace, leaveNamespace, listNamespaces } from "../api/rpc";
-import { useApplicationId } from "./useApplicationId";
+import { createTeam as createOrg, deleteTeam as deleteOrg, leaveTeam as leaveOrg, listTeams } from "../api/rpc";
 import { setStoredTeamName } from "../utils/teamName";
 import type { Team } from "../types";
 
 export interface CreatedTeam {
   id: string;
-  /** Set when an account's team was created but the cloud declined to host it. */
-  haError?: string;
+  /** Set when the team was created but members could not be let create boards and invite. */
+  warning?: string;
 }
 
 export interface TeamList {
@@ -20,20 +18,17 @@ export interface TeamList {
   reload: () => Promise<void>;
   /** Founds a team and adds it to the list; rejects with the node's reason. */
   createTeam: (name: string) => Promise<CreatedTeam>;
-  /** Node-only. Rejects with the node's reason; the team stays listed then. */
+  /** Its owner only (a passkey step-up). Rejects with the node's reason; the team stays listed then. */
   deleteTeam: (teamId: string) => Promise<void>;
   /** What a member who is not an admin does instead. The team stays listed when refused. */
   leaveTeam: (teamId: string) => Promise<void>;
 }
 
 /**
- * This app's teams on this node, polled every 30 s so a team joined or created
- * elsewhere shows up in the switcher without a reload.
+ * This account's teams (organizations), polled every 30 s so a team joined or
+ * created elsewhere shows up in the switcher without a reload.
  */
 export function useTeamList(): TeamList {
-  // MeroDesign's own application id — see hooks/useApplicationId.
-  const ensureAppId = useApplicationId();
-  const { isDelegated } = useMero();
   const [teams, setTeams] = useState<Team[]>([]);
   const [listed, setListed] = useState(false);
   const [error, setError] = useState(false);
@@ -50,13 +45,7 @@ export function useTeamList(): TeamList {
   const reload = useCallback(async () => {
     const gen = ++generation.current;
     try {
-      const appId = await ensureAppId();
-      // An account's id lands from the registry after sign-in. Until then the
-      // list would be unscoped — every app's namespaces, read as teams, and
-      // /teams would open one of another app's — so it is not asked: still
-      // loading, not empty. (On a node "" is the old-node fallback, kept.)
-      if (!appId && isDelegated) return;
-      const items = await listNamespaces(appId);
+      const items = await listTeams();
       if (!alive.current || gen !== generation.current) return;
       setTeams(items.map((n) => ({ groupId: n.namespaceId, name: n.name ?? "" })));
       setListed(true);
@@ -65,7 +54,7 @@ export function useTeamList(): TeamList {
       // A failed re-read never blanks a list that has loaded.
       if (alive.current && gen === generation.current) setError(true);
     }
-  }, [ensureAppId, isDelegated]);
+  }, []);
 
   useEffect(() => {
     void reload();
@@ -74,27 +63,22 @@ export function useTeamList(): TeamList {
   }, [reload]);
 
   const createTeam = useCallback(async (name: string): Promise<CreatedTeam> => {
-    const appId = await ensureAppId();
-    if (!appId) throw new Error("Select or install the Mero Design application first.");
-    // On a node this is the node's own namespace; on an account the admin
-    // founds it through the relay, as the account, and asks the cloud to host
-    // it. The body is the same either way.
-    const data = await createNamespace(appId, name);
+    const data = await createOrg(name);
     const id = data.namespaceId;
     // Cache the name so it survives even if the server later returns no alias,
     // and so it can be embedded in invitations for joiners.
     if (id) setStoredTeamName(id, name);
     setTeams((prev) => (prev.some((t) => t.groupId === id) ? prev : [...prev, { groupId: id, name }]));
-    return { id, ...(data.haError ? { haError: data.haError } : {}) };
-  }, [ensureAppId]);
+    return { id, ...(data.warning ? { warning: data.warning } : {}) };
+  }, []);
 
   const deleteTeam = useCallback(async (teamId: string) => {
-    await deleteNamespace(teamId);
+    await deleteOrg(teamId);
     setTeams((prev) => prev.filter((t) => t.groupId !== teamId));
   }, []);
 
   const leaveTeam = useCallback(async (teamId: string) => {
-    await leaveNamespace(teamId);
+    await leaveOrg(teamId);
     setTeams((prev) => prev.filter((t) => t.groupId !== teamId));
   }, []);
 

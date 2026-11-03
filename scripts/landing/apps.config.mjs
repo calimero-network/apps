@@ -405,26 +405,30 @@ export const APPS = {
 
   'mero-design': {
     displayName: 'Mero Design',
-    e2eDir: 'e2e',
-    availability: 'web+desktop',
-    trust: ['Live collaboration', 'Infinite canvas', 'Files on your nodes'],
+    // A component app (calimero-app-sdk, merod local, CalimeroClient): no
+    // Playwright, so no generated landing spec. docs/COMPONENT-APPS.md.
+    e2eDir: null,
+    availability: 'web',
+    // Passes its own passkey sign-in to the landing page as `onConnect`.
+    ownConnect: true,
+    trust: ['Live collaboration', 'Infinite canvas', 'No passwords'],
     explainer: [
-      'A collaborative design tool in the shape of Figma — an infinite canvas with shapes, text and images that several people can work on at once. The difference is where the file lives: in a Calimero context on your infrastructure, shared only with the teammates you invite.',
-      'There is no central server holding your designs, which means no vendor with a copy, no seat-based access model, and nothing to migrate off if you change your mind.',
+      'A collaborative design tool in the shape of Figma — an infinite canvas with shapes, text and images that several people can work on at once. The difference is who can read the file: a Calimero app instance shared only with the members of your team.',
+      'There is no vendor holding your designs, which means no seat-based access model, and nothing to migrate off if you change your mind.',
     ],
     features: [
       { icon: 'Grid', title: 'Infinite canvas', body: 'Pan and zoom, with multi-select and grouping. Frames and groups ride the same element model.' },
       { icon: 'Cube', title: 'A full shape set', body: 'Rectangles, circles, lines, arrows and freehand paths, with fill, stroke and corner controls.' },
-      { icon: 'CloudUpload', title: 'Images and SVGs', body: 'Dropped straight onto the canvas and stored as blobs on your node, not on a CDN.' },
+      { icon: 'CloudUpload', title: 'Images and SVGs', body: 'Dropped straight onto the canvas and stored as blobs of the board, not on a CDN.' },
       { icon: 'FileText', title: 'Text with font controls', body: 'Real text elements with family, size and weight, not shapes that happen to look like words.' },
       { icon: 'Download', title: 'Export to PNG or SVG', body: 'Your work leaves in a format anything can open. No lock-in on the way out.' },
-      { icon: 'Refresh', title: 'Live collaboration', body: 'See teammates’ cursors, notes and edits the moment they make them. Changes sync peer to peer, with no central server deciding who edited what.' },
+      { icon: 'Refresh', title: 'Live collaboration', body: 'See teammates’ cursors, notes and edits the moment they make them, every change ordered by one log.' },
     ],
     overview: {
       // Same line calimero.network uses for design, so the two pages agree.
-      headline: 'Your canvas. Your pixels. Your nodes.',
-      // Recorded from the real app by `pnpm landing:media` in apps/mero-design/app.
-      // The chapter times match CHAPTERS in e2e/media/capture-landing-media.spec.ts.
+      headline: 'Your canvas. Your pixels. Your team.',
+      // Recorded from the real app (v1) by a Playwright harness the component
+      // port removed; the clips stay as they are.
       showcase: {
         heading: 'From a note to a new design, together',
         sub: 'Recorded from the real editor on the bundled Web design starter — nothing staged, nothing mocked up.',
@@ -432,10 +436,10 @@ export const APPS = {
           src: '/landing/demo.webm',
           poster: '/landing/demo-poster.jpg',
           chapters: [
-            { at: 0, title: 'Open a board', body: 'The design is on your node, and Ada from your team is already in it.' },
+            { at: 0, title: 'Open a board', body: 'The board belongs to your team, and Ada is already in it.' },
             { at: 3, title: 'Leave a note', body: 'Drop a sticky note where the feedback belongs.' },
             { at: 9, title: 'Point at it', body: 'Draw an arrow — it docks to the button it is about.' },
-            { at: 14, title: 'Ada changes it, live', body: 'Her cursor comes over and the button turns green on your screen. No refresh, no server in the middle.' },
+            { at: 14, title: 'Ada changes it, live', body: 'Her cursor comes over and the button turns green on your screen. No refresh.' },
             { at: 19, title: 'Present it', body: 'Hit Present. Ada’s change is already in the slide.' },
           ],
         },
@@ -445,28 +449,26 @@ export const APPS = {
         sub: 'Everything you expect from a collaborative canvas. The difference is who holds the file.',
         themLabel: 'A typical cloud design tool',
         rows: [
-          { label: 'Where the file lives', them: 'On the vendor’s servers', us: 'On your node, and the nodes of the people you invite' },
-          { label: 'Who can read it', them: 'The vendor, and whoever it grants access', us: 'Only members of the board’s namespace' },
+          { label: 'Where the file lives', them: 'On the vendor’s servers', us: 'In your team’s app instance on Calimero' },
+          { label: 'Who can read it', them: 'The vendor, and whoever it grants access', us: 'Only members of the board’s team' },
           { label: 'Adding a collaborator', them: 'Another seat on the monthly bill', us: 'An invite. The app is open source and free' },
-          { label: 'Working offline', them: 'Usually needs a connection', us: 'Full editing; changes merge when you reconnect' },
-          { label: 'If the vendor goes away', them: 'Your files may go with it', us: 'Your node still has every board' },
+          { label: 'If the vendor goes away', them: 'Your files may go with it', us: 'The app is open source: run it on your own cluster' },
         ],
       },
       collaboration: {
-        heading: 'Live collaboration, with no server in the middle',
-        sub: 'Everyone on a board sees each other’s cursors and edits as they happen, and two people can change it at the same moment without either losing work — because of how a board is stored.',
+        heading: 'Live collaboration, every change in order',
+        sub: 'Everyone on a board sees each other’s cursors and edits as they happen, and two people can change it at the same moment without either losing work.',
         points: [
           { title: 'Every element is its own record', body: 'Two people editing different shapes never queue behind each other.' },
-          { title: 'Every property is its own value', body: 'One person moves a shape while another recolours it, and both changes land.' },
-          { title: 'Presence stays out of the file', body: 'Cursors travel separately, so they can never rewrite the artwork.' },
-          { title: 'Offline is a normal state', body: 'Keep drawing with no network. Your node merges the changes when it reaches a peer again.' },
+          { title: 'One log orders every write', body: 'Edits land in the order they were made; the last write to one shape wins, and nothing else is touched.' },
+          { title: 'Presence stays out of the artwork', body: 'Cursors are their own records, so they can never rewrite a shape.' },
         ],
         roles: [
           { name: 'Owner', can: 'Names the board, grants and revokes roles, and can hand ownership on.' },
           { name: 'Editor', can: 'Draws, moves and edits elements, and comments.' },
           { name: 'Viewer', can: 'Follows the board live without changing it.' },
         ],
-        rolesNote: 'Permissions are checked when changes merge, not only hidden in the interface — a rename from a non-owner is refused, wherever it came from.',
+        rolesNote: 'Permissions are checked by the board itself, not only hidden in the interface — a rename from a non-owner is refused, wherever it came from.',
       },
       audiences: {
         heading: 'Made for teams whose designs are nobody else’s business',
@@ -474,7 +476,7 @@ export const APPS = {
           {
             label: 'Product teams',
             title: 'Design the roadmap without handing it to a vendor',
-            body: 'Unreleased screens and flows stay on your team’s own nodes until the day you ship them.',
+            body: 'Unreleased screens and flows stay with your team until the day you ship them.',
             uses: ['UI screens', 'Design systems', 'HTML handoff'],
           },
           {
@@ -487,7 +489,7 @@ export const APPS = {
             label: 'Regulated & public sector',
             title: 'Live collaboration on infrastructure you already control',
             body: 'For finance, health and government work that cannot leave your own servers, without giving up working together in real time.',
-            uses: ['Self-hosted nodes', 'Owner, editor and viewer roles', 'Works offline'],
+            uses: ['Self-hosted clusters', 'Owner, editor and viewer roles', 'Passkey sign-in'],
           },
           {
             label: 'Open-source communities',
@@ -499,20 +501,19 @@ export const APPS = {
       },
       openSource: {
         license: 'MIT',
-        // Checked against apps/mero-design/Makefile: `make dev` is the whole stack
-        // (two nodes, invite, then the app), not the frontend alone.
+        // `pnpm dev:local` is the whole stack: merod local, the contract, the app.
         commands: [
           '# fork calimero-network/apps on GitHub, then',
           'git clone https://github.com/<you>/apps',
-          'cd apps/apps/mero-design',
-          'make setup   # check tools, build, install',
-          'make dev     # 2 local nodes + app on :5173',
+          'cd apps',
+          'pnpm install',
+          'pnpm dev:local mero-design   # merod local + the app on :5173',
         ],
       },
       alwaysOn: true,
       closing: {
         title: 'Start your first board',
-        body: 'Connect a node, or install the desktop app that bundles one, then invite the people you design with.',
+        body: 'Sign in with a passkey, create a team, then invite the people you design with.',
       },
     },
   },

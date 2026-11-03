@@ -60,6 +60,7 @@ exclude = [
   "apps/mero-issue-tracker/logic",
   "apps/mero-pixart/logic",
   "apps/mero-models/logic",
+  "apps/mero-design/logic",
 ]
 
 [workspace.package]

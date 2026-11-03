@@ -476,21 +476,21 @@ export const DOCS = {
         id: 'concepts',
         heading: 'The words, and what they mean here',
         paragraphs: [
-          'A board is a shared canvas with real roles on it. Ownership is enforced at merge time, not only in the UI, which is the part worth understanding.',
+          'A board is a shared canvas with real roles on it. Ownership is enforced by the board itself, not only in the UI, which is the part worth understanding.',
         ],
         concepts: [
-          { term: 'Namespace', def: 'A design space you own and invite collaborators into.' },
-          { term: 'Context', def: 'One board — its elements, comments and cursors.' },
-          { term: 'Element', def: 'A shape, a frame, a text node. Stored in a map keyed by id, with each mutable field as its own register so two people editing different properties of the same element do not collide.' },
-          { term: 'Owner / editor / viewer', def: 'The three roles. The board name and description live in owner-gated storage: a rename from a non-owner is rejected when the change merges, not merely hidden by the interface.' },
-          { term: 'Cursor', def: 'Where each collaborator is pointing. Ephemeral presence, kept apart from the board so a cursor update never touches your artwork.' },
+          { term: 'Team', def: 'An organization: a design space you own and invite collaborators into.' },
+          { term: 'Board', def: 'An app instance in the team — its elements, comments and cursors. Every member of the team can open it.' },
+          { term: 'Element', def: 'A shape, a frame, a text node. Stored in a map keyed by id, with the paint order kept beside it, so a change to one element never rewrites another.' },
+          { term: 'Owner / editor / viewer', def: 'The three roles. Only the owner renames the board: a rename from anyone else is refused by the board, not merely hidden by the interface. Team admins can edit every board.' },
+          { term: 'Cursor', def: 'Where each collaborator is pointing, kept apart from the elements so a cursor update never touches your artwork.' },
         ],
       },
       {
         id: 'start',
         heading: 'Getting started',
         steps: [
-          { title: 'Connect a node', body: 'Press Connect to node and choose your node in the popup.' },
+          { title: 'Sign in', body: 'Press Connect and sign in (or create an account) with a passkey.' },
           { title: 'Create a board', body: 'You are its owner. Name it, and set a description if it needs one.' },
           { title: 'Draw something', body: 'Add frames, shapes and text. Each element is a separate record, so collaborators editing different elements never queue behind each other.' },
           { title: 'Invite editors', body: 'Grant the editor role to the people who should be able to change things; everyone else can look.' },
@@ -501,36 +501,35 @@ export const DOCS = {
         heading: 'Working together',
         paragraphs: [
           'Roles are granted and revoked by the owner, and ownership itself can be transferred. Comments carry their author, and only that author may edit or delete their own.',
-          'Layer order, grouping and multi-select all operate on the same element records, so two people rearranging different groups converge without either losing a move.',
+          'Layer order, grouping and multi-select all operate on the same element records, and every change is applied in order, so two people rearranging different groups both keep their moves.',
         ],
       },
       {
         id: 'storage',
         heading: 'What is stored, and where',
         bullets: [
-          'Elements, keyed by id, with per-field registers for position, style, text and label.',
-          'Comments and replies, each owned by its author.',
+          'Elements, keyed by id, and their paint order.',
+          'Comments and replies, each stamped with its author.',
           'Members and their usernames, plus the role list.',
-          'Cursors, as presence — deliberately not part of the document.',
+          'Cursors, one per person — deliberately apart from the elements.',
         ],
       },
-      OFFLINE,
       {
         id: 'trouble',
         heading: 'When something looks wrong',
         concepts: [
-          { term: 'A rename did not stick', def: 'The board name is owner-gated. A non-owner’s rename is refused at merge, so it can appear locally for a moment and then revert.' },
+          { term: 'A rename did not stick', def: 'The board name is owner-gated. A non-owner’s rename is refused, and the app says so.' },
           { term: 'You cannot edit', def: 'You have the viewer role. Ask the owner to grant editor.' },
-          { term: 'Cursors are frozen', def: 'Presence stopped, not the board. Your elements are unaffected; reconnecting restores cursors.' },
+          { term: 'Cursors are frozen', def: 'The live connection dropped, not the board. Your elements are unaffected; it reconnects on its own.' },
         ],
       },
     ],
     previewSteps: [
       // Beats of the recorded hero loop (public/landing/hero.webm), in order.
-      { title: 'Two people, one board', body: 'You and Ada have the same sign-in screen open, each from your own node.' },
+      { title: 'Two people, one board', body: 'You and Ada have the same sign-in screen open, each in your own browser.' },
       { title: 'Her note lands live', body: 'Ada leaves a sticky note by the headline, and it appears on your canvas as she makes it.' },
       { title: 'You change the design', body: 'At the same moment you recolour the Sign in button. Neither of you waits for the other.' },
-      { title: 'She sees it too', body: 'Ada’s cursor comes over to the button. Edits to different things merge instead of colliding.' },
+      { title: 'She sees it too', body: 'Ada’s cursor comes over to the button. Edits to different things never collide.' },
     ],
   },
 
