@@ -335,6 +335,17 @@
       "objects": "unorderedMap",
       "textures": "unorderedMap"
     },
+    "search": {
+      "editors": [],
+      "environment": [],
+      "history": [],
+      "historyLen": [],
+      "locks": [],
+      "members": [],
+      "meshes": [],
+      "objects": [],
+      "textures": []
+    },
     "version": 1
   },
   "world": "calimero:app@0.5.0"
