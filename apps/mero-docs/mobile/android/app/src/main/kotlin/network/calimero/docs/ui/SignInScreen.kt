@@ -13,33 +13,33 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Article
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.calimero.mero.compose.MeroAuthState
+import network.calimero.docs.app.DocsAppViewModel
 
-/** Sign in with a Calimero account: the wallet certifies this phone's key. */
+/** Sign in with a Calimero account: a passkey on your Calimero Cloud cluster, or a development node. */
 @Composable
-fun SignInScreen(
-    auth: MeroAuthState,
-    onSignIn: () -> Unit,
-    onCancel: () -> Unit,
-) {
+fun SignInScreen(vm: DocsAppViewModel) {
     Box(Modifier.fillMaxSize().background(DocsTheme.ground).safeDrawingPadding()) {
-        Column(Modifier.fillMaxSize().padding(start = 24.dp, end = 24.dp, bottom = 16.dp)) {
-            Spacer(Modifier.weight(1f))
+        Column(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(start = 24.dp, end = 24.dp, bottom = 16.dp),
+        ) {
+            Spacer(Modifier.height(48.dp))
             AppMark(64.dp)
             Text("Mero Docs", style = DocsTheme.heading(34), modifier = Modifier.padding(top = 24.dp))
             Text(
@@ -52,27 +52,8 @@ fun SignInScreen(
                 Feature(Icons.Outlined.Search, "Search every folder at once")
                 Feature(Icons.Outlined.ChatBubbleOutline, "Comment on any paragraph")
             }
-            Spacer(Modifier.weight(1f))
-            auth.error?.let {
-                Text(it, style = DocsTheme.body(14, color = DocsTheme.danger), modifier = Modifier.padding(bottom = 12.dp))
-            }
-            PrimaryButton(onClick = onSignIn, enabled = !auth.isLoading) {
-                if (auth.isLoading) {
-                    CircularProgressIndicator(color = DocsTheme.ink, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(10.dp))
-                }
-                Text(if (auth.isLoading) "Waiting for the wallet…" else "Sign in with Calimero", style = DocsTheme.body(16, FontWeight.SemiBold, DocsTheme.ink))
-            }
-            if (auth.isLoading) {
-                TextButton(onClick = onCancel, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-                    Text("Cancel", style = DocsTheme.body(14, FontWeight.Medium))
-                }
-            }
-            Text(
-                "Your documents stay end-to-end encrypted on your workspace's nodes. This phone holds no node; it signs in through your account's relay.",
-                style = DocsTheme.body(12, color = DocsTheme.faint),
-                modifier = Modifier.padding(top = 14.dp),
-            )
+            Spacer(Modifier.height(36.dp))
+            CloudSignInPanel(vm)
         }
     }
 }

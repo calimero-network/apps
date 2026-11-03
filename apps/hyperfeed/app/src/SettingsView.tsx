@@ -5,7 +5,7 @@ import { messageOf, type Feed, type PushState } from "./useFeed";
 import { Badge, NewFeedButton, type NewFeed } from "./FeedView";
 import { appKeyForPackage, appLook, CORE_PACKAGES, DEFAULT_APPS } from "./apps";
 import { GUARD_LABELS, TYPE_LABELS } from "./format";
-import type { ActionSetView, Folder, LensView, ReachLine, RuleProposalView, RuleView } from "./generated/HyperfeedClient";
+import type { ActionSetView, Folder, LensView, ReachLine, RuleProposalView, RuleView } from "./hyperfeedTypes";
 import { groupSets, modeOf } from "./actions/actions";
 import type { Preview, PreviewRow } from "./preview";
 import { currentEndpoint, deviceName, inputOf, pushSupported, subscribe, unsubscribe } from "./push";

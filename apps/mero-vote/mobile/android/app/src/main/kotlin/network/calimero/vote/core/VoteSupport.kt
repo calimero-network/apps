@@ -1,9 +1,23 @@
 package network.calimero.vote.core
 
-import com.calimero.mero.account.NoRelayException
+import com.calimero.mero.AppError
+import com.calimero.mero.ConfirmCancelled
+import com.calimero.mero.ConsentStale
+import com.calimero.mero.LoginRequired
+import com.calimero.mero.NotFound
+import com.calimero.mero.NotLeader
+import com.calimero.mero.PasskeyCancelled
+import com.calimero.mero.ReleaseDeadlineError
+import com.calimero.mero.UnavailableError
+import com.calimero.mero.WrongNode
 import com.calimero.mero.app.ContextContract
+import com.calimero.mero.app.PasskeyRequired
+import com.calimero.mero.app.SignedOutException
+import com.calimero.mero.tee.TeeTrustException
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import network.calimero.vote.generated.Phase
 import network.calimero.vote.generated.PollDefinition
 import network.calimero.vote.generated.VoteClient
@@ -19,7 +33,7 @@ object VoteConstants {
     /** The registry package and invitation-link slug (`APP_SLUG` on the web). */
     const val PACKAGE_NAME = "com.calimero.mero-vote"
 
-    /** How often an open screen is re-read when the relay cannot stream events. */
+    /** How often an open screen is re-read when the node cannot stream events. */
     const val POLL_INTERVAL_MS = 10_000L
 
     /** The contract's limits. */
@@ -28,9 +42,12 @@ object VoteConstants {
     const val MAX_DESCRIPTION = 4000
     const val MAX_OPTION = 200
     const val MAX_NAME = 64
+
+    /** Proof branches one ballot may carry: `2·options + maxChoices − minChoices + 1`. */
+    const val MAX_BALLOT_BRANCHES = 38
 }
 
-/** The vote client for one context, over the account's relay. */
+/** The vote client for one voting group (app instance), over the account's session. */
 fun voteClient(
     contract: ContextContract,
     contextId: String,
@@ -61,17 +78,54 @@ class VoteModelException(
 
 /** A failure, in words a person can act on. (Swift `VoteErrorText`.) */
 object VoteErrorText {
+    @Suppress("CyclomaticComplexMethod")
     fun describe(error: Throwable): String =
         when (error) {
             is VoteModelException -> error.message.orEmpty()
-            is NoRelayException -> "No relay serves your account yet. Join a voting group from an invitation link to get one."
+            is SignedOutException -> "You're signed out. Sign in again."
+            is ConfirmCancelled, is PasskeyCancelled -> "You cancelled the passkey prompt, so nothing changed."
+            is PasskeyRequired -> "This needs your passkey. Keep the app open and try again."
+            is AppError -> describe(error)
+            is LoginRequired -> "Your session ended. Sign in again."
+            is WrongNode, is NotLeader -> "This node can't serve your account right now. Try again in a moment."
+            is UnavailableError -> "Your cluster is unavailable (${error.code.lowercase()}). Try again in a moment."
+            is ReleaseDeadlineError -> {
+                val release = if (error.release.isEmpty()) "A node release" else "Node release ${error.release}"
+                "$release is waiting for your approval. Open Account, then Approvals."
+            }
+            is ConsentStale -> "That approval was already decided or has expired. Refresh and try again."
+            is NotFound -> "This voting group isn't on your cluster, or you're no longer a member."
+            is TeeTrustException -> "The node could not be verified: ${error.message}"
             is UnknownHostException -> "You're offline. Check your connection and try again."
-            is SocketTimeoutException -> "The relay took too long to answer. Try again."
+            is SocketTimeoutException -> "The cluster took too long to answer. Try again."
             is SerializationException ->
                 "The voting group answered in a shape this app doesn't understand. Update the app and try again."
-            is IOException -> error.message?.takeIf { it.isNotBlank() } ?: "Couldn't reach the relay. Try again."
+            is IOException -> "Couldn't reach the cluster. Try again."
             else -> error.message?.takeIf { it.isNotBlank() } ?: "Something went wrong. Try again."
         }
+
+    /** The contract's refusals (`APP_ERROR {code, fields}`, codes from its ABI). */
+    fun describe(app: AppError): String {
+        val detail = (app.fields["message"] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull?.nullIfBlank()
+
+        fun with(lead: String) = detail?.let { "$lead ${sentence(it)}" } ?: lead
+        return when (app.appCode) {
+            "Forbidden" -> with("You can't do that in this voting group.")
+            "Phase" -> with("The poll has moved on to another step.")
+            "Invalid" -> detail?.let(::sentence) ?: "The voting group refused that request."
+            "Crypto" -> with("A proof didn't check out.")
+            "NotFound" -> "That poll isn't in this voting group."
+            "BadArgs" -> "This app is out of step with the voting group. Update the app and try again."
+            else -> detail?.let(::sentence) ?: app.nodeMessage.ifBlank { "The voting group refused that (${app.appCode})." }
+        }
+    }
+
+    /** [text] with a capital first letter and a full stop. */
+    internal fun sentence(text: String): String {
+        if (text.isEmpty()) return text
+        val capped = text.replaceFirstChar { it.uppercase() }
+        return if (capped.endsWith(".") || capped.endsWith("!") || capped.endsWith("?")) capped else "$capped."
+    }
 }
 
 /** Words and small numbers shared by the screens. (Swift `VoteFormat`.) */

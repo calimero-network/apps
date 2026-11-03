@@ -4,7 +4,6 @@ import com.calimero.mero.testkit.RecordedContractCall
 import com.calimero.mero.testkit.RecordingContextContract
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -18,7 +17,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 import kotlinx.serialization.json.put
-import network.calimero.blocks.generated.BlocksClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -152,27 +150,42 @@ class BridgeRouterTest {
     private val recording =
         RecordingContextContract { call ->
             when (call.method) {
-                "world_meta" ->
+                "worldMeta" ->
                     buildJsonObject {
                         put("name", "Lime Valley")
-                        put("seed", 1337)
-                        put("createdAt", 1_730_000_000)
+                        put("seed", "1337")
+                        put("createdAt", "1730000000")
                     }
-                "get_overrides" ->
-                    buildJsonArray {
-                        add(
-                            buildJsonObject {
-                                put("k", "1,2,3")
-                                put("b", 8)
-                            },
-                        )
+                // Two pages: the router follows `next`.
+                "getOverrides" ->
+                    if (call.args.jsonObject["cursor"] == null) {
+                        page(entry("1,2,3", 8), next = "p2")
+                    } else {
+                        page(entry("4,5,6", 2), next = null)
                     }
-                "get_players" -> JsonArray(listOf(player("ab".repeat(32), "Ana")))
+                "getPlayers" -> page(player("ab".repeat(32), "Ana"), next = null)
                 "join" -> player("me", "Ana")
-                "set_blocks" -> JsonPrimitive(2)
+                "setBlocks" -> JsonPrimitive(2)
                 else -> JsonNull
             }
         }
+
+    private fun entry(
+        k: String,
+        b: Int,
+    ) = buildJsonObject {
+        put("k", k)
+        put("b", b)
+    }
+
+    private fun page(
+        item: JsonObject,
+        next: String?,
+    ) = buildJsonObject {
+        put("items", buildJsonArray { add(item) })
+        put("next", next?.let(::JsonPrimitive) ?: JsonNull)
+    }
+
     private val router = BridgeRouter(BlocksClient(recording.bound(contextId)))
 
     private fun player(
@@ -180,6 +193,8 @@ class BridgeRouterTest {
         name: String,
     ) = buildJsonObject {
         put("id", id)
+        put("account", id)
+        put("device", "")
         put("name", name)
         put("x", 1.5)
         put("y", 30)
@@ -196,22 +211,28 @@ class BridgeRouterTest {
             val meta = obj(router.handle(BridgeOp.QUERY, "world_meta", "{}"))
             assertEquals(1337, meta["seed"]!!.jsonPrimitive.int)
             assertEquals(1_730_000_000L, meta["createdAt"]!!.jsonPrimitive.long)
-            assertEquals(RecordedContractCall.Path.QUERY, recording.calls("world_meta").first().path)
-            assertEquals(contextId, recording.calls("world_meta").first().contextId)
+            assertEquals(RecordedContractCall.Path.QUERY, recording.calls("worldMeta").first().path)
+            assertEquals(contextId, recording.calls("worldMeta").first().contextId)
 
             val players = Json.parseToJsonElement(router.handle(BridgeOp.QUERY, "get_players", """{"now":1730000001}""")).jsonArray
             assertEquals("Ana", players[0].jsonObject["name"]!!.jsonPrimitive.content)
+            // u64 on the component wire is a decimal string.
             assertEquals(
-                1_730_000_001L,
+                JsonPrimitive("1730000001"),
                 recording
-                    .calls("get_players")
+                    .calls("getPlayers")
                     .first()
-                    .args.jsonObject["now"]!!
-                    .jsonPrimitive.long,
+                    .args.jsonObject["now"],
             )
 
+            // Both pages, as one list: the page's shape.
             val overrides = Json.parseToJsonElement(router.handle(BridgeOp.QUERY, "get_overrides", "{}")).jsonArray
-            assertEquals(8, overrides[0].jsonObject["b"]!!.jsonPrimitive.int)
+            assertEquals(listOf(8, 2), overrides.map { it.jsonObject["b"]!!.jsonPrimitive.int })
+            assertEquals(listOf(null, JsonPrimitive("p2")), recording.calls("getOverrides").map { it.args.jsonObject["cursor"] })
+
+            // A page built against the component ABI may use its names.
+            router.handle(BridgeOp.QUERY, "worldMeta", "{}")
+            assertEquals(2, recording.calls("worldMeta").size)
         }
 
     @Test
@@ -224,13 +245,14 @@ class BridgeRouterTest {
             val t = call.args.jsonObject["t"]!!.jsonObject
             assertEquals(12.5, t["x"]!!.jsonPrimitive.double, 0.0)
             assertEquals(3, t["sel"]!!.jsonPrimitive.int)
+            assertEquals(JsonPrimitive("1730000000"), call.args.jsonObject["now"])
 
             val edits = """{"edits":[{"x":10,"y":31,"z":12,"b":0},{"x":10,"y":32,"z":12,"b":8}],"now":1730000002}"""
             assertEquals("2", router.handle(BridgeOp.EXECUTE, "set_blocks", edits))
             assertEquals(
                 2,
                 recording
-                    .calls("set_blocks")
+                    .calls("setBlocks")
                     .first()
                     .args.jsonObject["edits"]!!
                     .jsonArray.size,
@@ -285,7 +307,7 @@ class BridgeRouterTest {
                     "set_blocks" to """{"edits":[{"x":1,"y":2,"z":3,"b":16}],"now":1}""",
                 )
             for ((method, args) in cases) {
-                val op = if (method in BridgeRouter.VIEWS) BridgeOp.QUERY else BridgeOp.EXECUTE
+                val op = if (BridgeRouter.contractMethod(method) in BridgeRouter.VIEWS) BridgeOp.QUERY else BridgeOp.EXECUTE
                 try {
                     router.handle(op, method, args)
                     fail("$method $args got through")

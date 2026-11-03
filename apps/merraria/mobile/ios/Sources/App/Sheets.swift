@@ -5,7 +5,7 @@ import UIKit
 
 /// Create world: a name and a seed, as the web app's "Create world" asks.
 struct NewWorldSheet: View {
-    let onCreate: (String, UInt64) async throws -> Void
+    let onCreate: (String, UInt32) async throws -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var name = MerrariaConstants.defaultWorldName
     @State private var seed = String(MerrariaConstants.randomSeed())
@@ -170,9 +170,9 @@ struct JoinSheet: View {
                     .font(Theme.body(15)).foregroundStyle(Theme.ink2)
                 DisclosureGroup("Details") {
                     VStack(spacing: 12) {
-                        DetailRow(label: "Namespace", value: invitation.namespaceId)
-                        if let contextId = invitation.contextId { DetailRow(label: "World (context)", value: contextId) }
-                        if let groupId = invitation.groupId { DetailRow(label: "Group", value: groupId) }
+                        DetailRow(label: "Organization", value: invitation.namespaceId)
+                        if let contextId = invitation.contextId { DetailRow(label: "World (app instance)", value: contextId) }
+                        if let groupId = invitation.groupId { DetailRow(label: "Team", value: groupId) }
                     }
                     .padding(.top, 8)
                 }

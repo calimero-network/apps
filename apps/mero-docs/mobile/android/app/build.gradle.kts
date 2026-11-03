@@ -11,17 +11,6 @@ fun configString(name: String): String {
     return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 }
 
-// The wallet redirects to this URL; the manifest's intent filter is built from its scheme and host
-// so the two cannot drift apart.
-val enrolCallback: String = providers.gradleProperty("meroEnrolCallback").getOrElse("mero-docs://enrol").trim()
-val enrolScheme: String = enrolCallback.substringBefore("://")
-val enrolHost: String =
-    enrolCallback
-        .substringAfter("://")
-        .substringBefore('/')
-        .substringBefore('#')
-        .substringBefore('?')
-
 android {
     namespace = "network.calimero.docs"
     // The SDK modules compile against 34 (AGP 8.5.2's supported ceiling); stay in step with them.
@@ -34,12 +23,11 @@ android {
         versionCode = 1
         versionName = "0.1.0"
 
-        buildConfigField("String", "CLOUD_BASE_URL", configString("meroCloudUrl"))
-        buildConfigField("String", "WALLET_URL", configString("meroWalletUrl"))
-        buildConfigField("String", "REGISTRY_URL", configString("meroRegistryUrl"))
-        buildConfigField("String", "ENROL_CALLBACK_URL", "\"$enrolCallback\"")
-        manifestPlaceholders["enrolScheme"] = enrolScheme
-        manifestPlaceholders["enrolHost"] = enrolHost
+        // The cluster sign-in starts with: a Calimero Cloud cluster's name (`eu-shared-1`) or a
+        // node's URL; empty = the person enters one. And the development node (`merod local`) the
+        // "Development node" field starts with; empty = http://10.0.2.2:2501, the host from the emulator.
+        buildConfigField("String", "CLUSTER", configString("meroCluster"))
+        buildConfigField("String", "DEV_NODE_URL", configString("meroDevNodeUrl"))
     }
 
     buildTypes {
@@ -76,13 +64,6 @@ android {
     }
 }
 
-// The generated contract client is regenerated, never hand-edited: keep the linters off it.
-tasks.matching { it.name.startsWith("runKtlint") || it.name.startsWith("ktlint") }.configureEach {
-    if (this is org.jlleitschuh.gradle.ktlint.tasks.BaseKtLintCheckTask) {
-        exclude { it.file.path.contains("/generated/") }
-    }
-}
-
 dependencies {
     implementation(libs.mero.core)
     implementation(libs.mero.compose)
@@ -106,8 +87,4 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.mero.testkit)
-}
-
-tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
-    exclude("**/generated/**")
 }

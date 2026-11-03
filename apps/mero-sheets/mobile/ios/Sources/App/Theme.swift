@@ -201,3 +201,10 @@ struct DetailsDisclosure: View {
         .tint(Theme.text2)
     }
 }
+
+extension CloudStyle {
+    /// The sign-in and approvals views in Mero Sheets' colours.
+    static let app = CloudStyle(
+        ink: Theme.ink, muted: Theme.text2, accent: Theme.lime, onAccent: Theme.ink, danger: Theme.danger,
+        field: Theme.surface, hairline: Theme.lineStrong)
+}

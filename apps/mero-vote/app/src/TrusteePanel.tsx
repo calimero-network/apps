@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Ceremony, MeroVoteClient, PollView } from "./generated/MeroVoteClient";
+import type { Ceremony, MeroVoteClient, PollView } from "./meroVote";
 import {
   BASE,
   branchToWire,

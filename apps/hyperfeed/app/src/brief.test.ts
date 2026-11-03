@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ActionSetView, FeedItem, SettingsView } from "./generated/HyperfeedClient";
+import type { ActionSetView, FeedItem, SettingsView } from "./hyperfeedTypes";
 import {
   ALLOW_AFTER,
   autorunLine,
@@ -16,7 +16,7 @@ import {
   waitingAutoruns,
   whyShown,
 } from "./brief";
-import type { SituationView } from "./generated/HyperfeedClient";
+import type { SituationView } from "./hyperfeedTypes";
 
 const NOW = new Date(2026, 9, 16, 15, 0).getTime();
 const HOUR = 3_600_000;

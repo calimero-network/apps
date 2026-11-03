@@ -64,14 +64,15 @@ object Fixtures {
         backend.namespaces = listOf(AppNamespace(team, "Studio", backend.applicationId, 3))
         backend.subgroups = mapOf(team to listOf(AppSubgroup(group, "Landing page", listOf(board))))
         if (memberOfBoard) backend.members = setOf(board)
+        // The component contract's names; the whole board fits one `getElementsPage`.
         val table =
             mapOf(
-                "get_elements" to elements,
-                "get_comments" to comments,
-                "get_members" to members,
-                "get_cursors" to cursors,
-                "my_role" to "\"$role\"",
-                "get_board" to """{"name":"Landing v2","description":"Hero and pricing","elementCount":3,"memberCount":2,"owner":null}""",
+                "getElementsPage" to """{"items":$elements,"nextCursor":null}""",
+                "getComments" to comments,
+                "getMembers" to members,
+                "getCursors" to cursors,
+                "myRole" to "\"$role\"",
+                "getBoard" to """{"name":"Landing v2","description":"Hero and pricing","elementCount":3,"memberCount":2,"owner":null}""",
             )
         backend.recording.handler = { call -> Json.parseToJsonElement(table[call.method] ?: "null") }
         return backend

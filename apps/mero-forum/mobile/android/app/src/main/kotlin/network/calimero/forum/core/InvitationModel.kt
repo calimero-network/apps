@@ -60,7 +60,7 @@ class InvitationModel(
         return true
     }
 
-    /** Join. [backend] is read again after [didJoin], which may hand the session the admitting relay. */
+    /** Join: redeem the org invite token. [backend] is read again after [didJoin], which re-reads what the account sees. */
     suspend fun accept(
         backend: () -> MeroAppBackend?,
         didJoin: suspend () -> Unit,
@@ -72,8 +72,9 @@ class InvitationModel(
             return
         }
         _stage.value = Stage.Joining(invitation.title)
-        val namespaceId = invitation.namespaceId
-        val joined = attempt { current.joinNamespace(namespaceId, invitation.invitation) }
+        val joined = attempt { current.joinNamespace(invitation.namespaceId, invitation.invitation) }
+        // A web link names no org: the redeemed invite says which it was.
+        val namespaceId = joined.getOrNull()?.namespaceId?.nullIfBlank() ?: invitation.namespaceId
         joined.exceptionOrNull()?.let { error ->
             val text = (error.message ?: error.toString()).lowercase()
             val already = listOf("already a member", "already member", "already joined").any { it in text }

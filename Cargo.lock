@@ -605,15 +605,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hyperfeed"
-version = "0.0.1"
-dependencies = [
- "calimero-sdk",
- "calimero-storage",
- "calimero-storage-macros",
-]
-
-[[package]]
 name = "icu_collections"
 version = "2.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1026,28 +1017,6 @@ dependencies = [
  "calimero-storage",
  "calimero-storage-macros",
  "hex",
-]
-
-[[package]]
-name = "mero-vote"
-version = "0.0.1"
-dependencies = [
- "calimero-sdk",
- "calimero-storage",
- "hex",
- "mero-vote-crypto",
- "sha2 0.10.9",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "mero-vote-crypto"
-version = "0.0.1"
-dependencies = [
- "curve25519-dalek",
- "hex",
- "serde_json",
- "sha2 0.10.9",
 ]
 
 [[package]]
