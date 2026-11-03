@@ -99,77 +99,77 @@ enum IssuesDemo {
             }
 
             switch call.method {
-            case "list_issues":
+            case "listIssues":
                 var list = repo.issues
                 if let s = call.string("status") { list = list.filter { $0.status == s } }
                 if let a = call.string("assignee") { list = list.filter { $0.assignee == a } }
                 if let l = call.string("label") { list = list.filter { $0.labels.contains(l) } }
                 return try DemoReply.json(list)
-            case "get_issue":
-                let issue = repo.issues[try index(call.string("issue_id"))]
+            case "getIssue":
+                let issue = repo.issues[try index(call.string("issueId"))]
                 let thread = repo.comments.filter { $0.issueId == issue.id }.sorted { $0.createdAt < $1.createdAt }
                 return try DemoReply.json(IssueDetail(issue: issue, comments: thread))
-            case "get_repo_info":
+            case "getRepoInfo":
                 return try DemoReply.json(RepoInfo(repoUrl: repo.url))
-            case "get_status_counts":
+            case "getStatusCounts":
                 return try DemoReply.json(Tracker.statuses.map { s in
                     StatusCount(status: s, count: UInt64(repo.issues.filter { $0.status == s }.count))
                 })
-            case "set_repo_url":
+            case "setRepoUrl":
                 repo.url = call.string("url") ?? ""
-            case "create_issue":
+            case "createIssue":
                 let id = mint("issue", now)
                 repo.issues.append(
                     IssueView(
                         id: id, title: call.string("title") ?? "", summary: call.string("summary") ?? "",
                         impact: call.string("impact") ?? "", repro: call.string("repro") ?? "",
-                        resolutionCriteria: call.string("resolution_criteria") ?? "", status: "Open",
+                        resolutionCriteria: call.string("resolutionCriteria") ?? "", status: "Open",
                         priority: call.string("priority") ?? Tracker.defaultPriority, assignee: nil,
                         labels: Array(Set(call.strings("labels") ?? [])).sorted(), createdBy: IssuesDemo.me,
                         createdAt: IssuesDemo.ms(ago: 0, from: now)))
                 return try DemoReply.json(id)
-            case "delete_issue":
-                let i = try index(call.string("issue_id"))
+            case "deleteIssue":
+                let i = try index(call.string("issueId"))
                 let id = repo.issues[i].id
                 repo.issues.remove(at: i)
                 repo.comments.removeAll { $0.issueId == id }
-            case "set_status":
-                repo.issues[try index(call.string("issue_id"))].status = call.string("status") ?? "Open"
-            case "set_priority":
-                repo.issues[try index(call.string("issue_id"))].priority = call.string("priority") ?? "medium"
-            case "set_assignee":
+            case "setStatus":
+                repo.issues[try index(call.string("issueId"))].status = call.string("status") ?? "Open"
+            case "setPriority":
+                repo.issues[try index(call.string("issueId"))].priority = call.string("priority") ?? "medium"
+            case "setAssignee":
                 let who = call.string("assignee")
-                repo.issues[try index(call.string("issue_id"))].assignee = (who?.isEmpty ?? true) ? nil : who
-            case "add_label":
-                let i = try index(call.string("issue_id"))
+                repo.issues[try index(call.string("issueId"))].assignee = (who?.isEmpty ?? true) ? nil : who
+            case "addLabel":
+                let i = try index(call.string("issueId"))
                 if let l = call.string("label"), !repo.issues[i].labels.contains(l) {
                     repo.issues[i].labels = (repo.issues[i].labels + [l]).sorted()
                 }
-            case "remove_label":
-                let i = try index(call.string("issue_id"))
+            case "removeLabel":
+                let i = try index(call.string("issueId"))
                 repo.issues[i].labels.removeAll { $0 == call.string("label") }
-            case "set_summary":
-                repo.issues[try index(call.string("issue_id"))].summary = call.string("summary") ?? ""
-            case "set_impact":
-                repo.issues[try index(call.string("issue_id"))].impact = call.string("impact") ?? ""
-            case "set_repro":
-                repo.issues[try index(call.string("issue_id"))].repro = call.string("repro") ?? ""
-            case "set_resolution_criteria":
-                repo.issues[try index(call.string("issue_id"))].resolutionCriteria = call.string("resolution_criteria") ?? ""
-            case "add_comment":
-                let issue = repo.issues[try index(call.string("issue_id"))]
+            case "setSummary":
+                repo.issues[try index(call.string("issueId"))].summary = call.string("summary") ?? ""
+            case "setImpact":
+                repo.issues[try index(call.string("issueId"))].impact = call.string("impact") ?? ""
+            case "setRepro":
+                repo.issues[try index(call.string("issueId"))].repro = call.string("repro") ?? ""
+            case "setResolutionCriteria":
+                repo.issues[try index(call.string("issueId"))].resolutionCriteria = call.string("resolutionCriteria") ?? ""
+            case "addComment":
+                let issue = repo.issues[try index(call.string("issueId"))]
                 let id = mint("comment", now)
                 repo.comments.append(
                     CommentView(
                         id: id, issueId: issue.id, author: IssuesDemo.me, body: call.string("body") ?? "",
                         createdAt: IssuesDemo.ms(ago: 0, from: now)))
                 return try DemoReply.json(id)
-            case "edit_comment":
-                let i = try comment(call.string("comment_id"))
-                repo.comments[i].body = call.string("new_body") ?? repo.comments[i].body
+            case "editComment":
+                let i = try comment(call.string("commentId"))
+                repo.comments[i].body = call.string("newBody") ?? repo.comments[i].body
                 repo.comments[i].editedAt = IssuesDemo.ms(ago: 0, from: now)
-            case "delete_comment":
-                repo.comments.remove(at: try comment(call.string("comment_id")))
+            case "deleteComment":
+                repo.comments.remove(at: try comment(call.string("commentId")))
             default:
                 break
             }

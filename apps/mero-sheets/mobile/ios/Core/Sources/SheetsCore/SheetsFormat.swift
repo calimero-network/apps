@@ -1,10 +1,11 @@
 import Foundation
+import MeroKit
 
 /// Names and fixed values shared with the web app (`app/src/config.ts`).
 public enum MeroSheets {
     /// The registry package: what workspaces are founded with and invitation links carry.
     public static let packageName = "com.calimero.mero-sheets"
-    /// How often to re-read while the relay's event stream is not available.
+    /// How often to re-read while the node's event stream is not available.
     public static let pollInterval: TimeInterval = 5
     /// The tab a new spreadsheet starts with, as on the web.
     public static let firstSheetName = "Sheet 1"
@@ -43,23 +44,46 @@ public enum SheetsFormat {
         return Int(h.magnitude % 8)
     }
 
-    /// Plain words for a failure.
+    /// Plain words for a failure: Calimero 1.0's errors and the contract's own
+    /// (`422 APP_ERROR` with `NotFound` / `Invalid` / `Forbidden` and `fields.message`).
     public static func errorText(_ error: Error) -> String {
         let text = String(describing: error)
-        if text.contains("noRelay") {
-            return "No relay serves this account yet. Join a workspace from an invitation link to get one."
+        if error is SignedOutError || text.contains("noRelay") { return "You're signed out. Sign in again." }
+        if error is PasskeyCancelled || error is ConfirmCancelled { return "You cancelled the passkey prompt, so nothing changed." }
+        if error is ConfirmRequired { return "This needs your passkey. Open the app again and retry." }
+        if error is LoginRequired { return "Your session ended. Sign in again." }
+        if error is WrongNode { return "This node can't serve your account right now. Try again." }
+        if let busy = error as? UnavailableError { return "The cluster is busy (\(busy.reason)). Try again in a moment." }
+        if let stall = error as? ReleaseDeadlineError {
+            let release = stall.release.isEmpty ? "a node release" : "node release \(stall.release)"
+            return "Your workspace has to approve \(release) first. Open Workspace, then Approvals."
         }
+        if error is ConsentStale { return "That approval expired. Start it again." }
+        if let app = error as? AppError { return appErrorText(code: app.appCode, fields: app.fields, message: app.message) }
+        if let node = error as? CalimeroError, !node.message.isEmpty { return node.message }
         if let urlError = error as? URLError {
             switch urlError.code {
             case .notConnectedToInternet, .networkConnectionLost:
                 return "You are offline. Check your connection and try again."
             case .timedOut:
-                return "The relay took too long to answer. Try again."
+                return "The cluster took too long to answer. Try again."
             default:
                 break
             }
         }
         let described = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         return described.isEmpty ? "Something went wrong. Try again." : described
+    }
+
+    /// The contract's refusal (`APP_ERROR {code, fields}`) in plain words: its
+    /// own `fields.message` when it gave one, else a sentence for the code.
+    public static func appErrorText(code: String, fields: [String: JSONValue], message: String) -> String {
+        if let own = fields["message"]?.stringValue?.trimmingCharacters(in: .whitespaces), !own.isEmpty { return own }
+        switch code {
+        case "NotFound": return "That is no longer in the spreadsheet. Pull to refresh."
+        case "Forbidden": return "Your role in this spreadsheet doesn't allow that."
+        case "Invalid": return "That value isn't accepted here."
+        default: return message.isEmpty ? (code.isEmpty ? "The spreadsheet refused that change." : code) : message
+        }
     }
 }

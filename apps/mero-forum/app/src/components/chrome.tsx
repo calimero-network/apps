@@ -190,7 +190,7 @@ export function AccountChip({
   logoutTestId?: string;
   hostTestId?: string;
 }) {
-  const display = name?.trim() || "Your node";
+  const display = name?.trim() || "You";
   return (
     <div className="x-accountChip">
       <Avatar label={display} seed={display} size={36} />

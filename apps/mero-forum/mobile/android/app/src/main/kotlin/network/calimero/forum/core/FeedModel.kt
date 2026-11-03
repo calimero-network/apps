@@ -7,8 +7,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import network.calimero.forum.generated.ForumClient
-import network.calimero.forum.generated.PostView
+import network.calimero.forum.contract.ForumClient
+import network.calimero.forum.contract.PostView
 
 /**
  * One forum's timeline, and everything done to it: post, vote, edit, delete, moderate, the

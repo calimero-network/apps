@@ -7,7 +7,7 @@ import UIKit
 /// The demo account: three workspaces, a product team's folders and
 /// documents, one long launch plan with comments on its blocks, and the
 /// picture its image block shows. Answers the docs contract in the shapes the
-/// generated client decodes (`DocDto`, `Block`, `CommentDto`, `DocSearchPage`).
+/// node writes them (`DocDto`, `Block`, `CommentDto`, `DocSearchPage`: camelCase, u64s as decimal strings).
 enum DocsDemo {
     static let applicationId = DemoIds.hex("app:mero-docs")
     static let me = DemoIds.hex("person:me")
@@ -87,18 +87,18 @@ enum DocsDemo {
             defer { lock.unlock() }
             let here = docs[call.contextId] ?? []
             switch call.method {
-            case "list_docs":
+            case "listDocs":
                 return try DemoReply.json(here.map(\.dto))
-            case "get_doc":
+            case "getDoc":
                 return try DemoReply.json(try find(call.string("id"), in: here).dto)
-            case "get_document":
+            case "getDocument":
                 return try DemoReply.json(try find(call.string("doc"), in: here).blocks)
-            case "list_comments":
-                return try DemoReply.json(comments[call.string("doc_id") ?? ""] ?? [])
-            case "comment_count":
-                return try DemoReply.json(UInt64(comments.values.joined().count))
-            case "add_comment":
-                let doc = try find(call.string("doc_id"), in: here)
+            case "listComments":
+                return try DemoReply.json(comments[call.string("docId") ?? ""] ?? [])
+            case "commentCount":
+                return try DemoReply.json(String(comments.values.joined().count))
+            case "addComment":
+                let doc = try find(call.string("docId"), in: here)
                 nextComment += 1
                 let id = DemoIds.hex("comment:new:\(nextComment)")
                 comments[doc.dto.id, default: []].append(
@@ -106,7 +106,7 @@ enum DocsDemo {
                         id: id, author: me, docId: doc.dto.id, body: call.string("body") ?? "",
                         createdAt: DemoIds.stamp(ago: 0)))
                 return try DemoReply.json(id)
-            case "search_docs":
+            case "searchDocs":
                 return try DemoReply.json(search(call.string("query") ?? "", in: here))
             default:
                 return DemoReply.null

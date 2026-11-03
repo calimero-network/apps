@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import type { ActionDef, ActionSetView } from "../generated/HyperfeedClient";
+import type { ActionDef, ActionSetView } from "../hyperfeedTypes";
 import type { Abi } from "../lens/validate";
 import { groupSets, modeOf, uncovered, validateActions } from "./actions";
 

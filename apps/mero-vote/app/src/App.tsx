@@ -1,20 +1,19 @@
-import { useEffect, useRef, useState } from "react";
-import {
-  ConnectButton,
-  InvitationDialog,
-  InvitationGate,
-  clearContextId,
-  useMero,
-} from "@calimero-network/mero-react";
-import { ContextPicker } from "./ContextPicker";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CalimeroError, type CalimeroClient } from "@calimero-network/mero-js";
+import { appSource, type KeyValueStorage } from "@calimero-apps/connect";
+import { GroupPicker, type OpenedGroup } from "./GroupPicker";
 import { InviteCard } from "./InviteCard";
-import { readInvitation, useJoinFromInvitation } from "./useJoinFromInvitation";
+import { PACKAGE, meroVote } from "./meroVote";
+import { defaultDeps, describeTarget, useSession, type SessionApi, type SessionDeps } from "./session";
+import { dropInvite, pendingInvite, selectionKey } from "./groups";
 import { VotePanel } from "./VotePanel";
 import { ThemeToggle } from "./ThemeToggle";
 import { signOut } from "./signOut";
+import { VoteGroupContext, errText, type VoteGroup } from "./useMeroVote";
 import {
   BarChartIcon,
   BoxIcon,
+  CheckIcon,
   ChevronRightIcon,
   KeyIcon,
   LayersIcon,
@@ -27,59 +26,121 @@ import {
   UserPlusIcon,
   VoteIcon,
 } from "./icons";
-import { IconTile, IdField, shortId } from "./ui";
+import { Callout, IconTile, IdField, shortId } from "./ui";
 
-export function App() {
-  const {
-    isAuthenticated,
-    isLoading,
-    applicationId,
-    contextId: stored,
-    nodeUrl,
-    logout,
-  } = useMero();
-  // A context joined in this page, ahead of the one the provider read from
-  // storage: opening it in place keeps the invitation dialog up until its
-  // polls have been read.
-  const [opened, setOpened] = useState<{
-    contextId: string;
-    namespaceId: string;
-  } | null>(null);
-  const contextId = opened?.contextId ?? stored;
-  // Mounted at the root, unconditionally: an invitation captured before login
-  // has to be redeemed as soon as the session exists, which means this cannot
-  // live inside a branch that only renders once a context is chosen.
-  const join = useJoinFromInvitation({
-    onOpen: (contextId, namespaceId) => setOpened({ contextId, namespaceId }),
-  });
-
-  // Drop the stored context and re-render at the picker. A reload rather than
-  // local state, for the same reason `ContextPicker.select` reloads: the
-  // provider reads the stored context on mount, so reloading is what makes the
-  // provider and the UI agree instead of duplicating that logic here.
-  function switchContext() {
-    clearContextId();
-    window.location.reload();
+function readSelection(storage: KeyValueStorage, key: string): OpenedGroup | null {
+  try {
+    const raw = storage.getItem(key);
+    const parsed: unknown = raw ? JSON.parse(raw) : null;
+    if (parsed && typeof parsed === "object" && typeof (parsed as OpenedGroup).appId === "string") {
+      return parsed as OpenedGroup;
+    }
+  } catch {
+    /* nothing usable stored */
   }
+  return null;
+}
 
-  const onLogout = () => signOut(logout);
+/** Calls `onEvent` for each event of `app`, until the returned stop. */
+function subscribeTo(client: CalimeroClient, app: string) {
+  return (onEvent: () => void) => {
+    const abort = new AbortController();
+    void (async () => {
+      try {
+        for await (const _event of client.events(app, 0, abort.signal)) onEvent();
+      } catch {
+        // Stream closed (sign-out, group left, network): the poll timer still runs.
+      }
+    })();
+    return () => abort.abort();
+  };
+}
+
+export function App({
+  deps = defaultDeps,
+  storage = globalThis.localStorage,
+}: {
+  deps?: SessionDeps;
+  storage?: KeyValueStorage;
+}) {
+  // Memoised: a new object every render would reconnect every render.
+  const sessionDeps = useMemo(
+    () => (storage === deps.storage || !storage ? deps : { ...deps, storage }),
+    [deps, storage],
+  );
+  const api = useSession(sessionDeps);
+  const { session, store } = api;
+  const source = useMemo(() => appSource(deps.env, PACKAGE), [deps.env]);
+  const [opened, setOpened] = useState<OpenedGroup | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [pickerKey, setPickerKey] = useState(0);
+
+  const client = session.status === "signed-in" ? session.client : null;
+  const key = session.status === "signed-in" ? selectionKey(session.target, session.accountId) : null;
+  const after = useCallback(() => {
+    if (client) store?.sync(client);
+  }, [client, store]);
+
+  // The group opened last time, on this target, by this account.
+  useEffect(() => {
+    setOpened(key ? readSelection(storage, key) : null);
+  }, [key, storage]);
+
+  const open = useCallback(
+    (group: OpenedGroup | null) => {
+      setOpened(group);
+      if (!key) return;
+      try {
+        if (group) storage.setItem(key, JSON.stringify({ appId: group.appId, name: group.name, org: group.org }));
+        else storage.removeItem(key);
+      } catch {
+        /* remembered for this page only */
+      }
+    },
+    [key, storage],
+  );
+
+  // An invitation link opened before signing in is redeemed once a session exists.
+  useEffect(() => {
+    if (!client) return;
+    const token = pendingInvite(storage);
+    if (!token) return;
+    let live = true;
+    client
+      .redeemInvite(token)
+      .then(() => {
+        dropInvite(storage);
+        if (live) {
+          setNotice("Invitation accepted: the voting group is in your list.");
+          setPickerKey((k) => k + 1);
+        }
+      })
+      .catch((e: unknown) => {
+        // A refusal (used, expired, revoked) can never succeed: drop it. Anything
+        // else (the cluster unreachable) is kept and tried on the next load.
+        if (e instanceof CalimeroError && e.status < 500) dropInvite(storage);
+        if (live) setNotice(`The invitation could not be accepted: ${errText(e)}`);
+      })
+      .finally(after);
+    return () => {
+      live = false;
+    };
+  }, [client, storage, after]);
+
+  const group: VoteGroup | null = useMemo(
+    () =>
+      client && opened
+        ? { client: meroVote(client, opened.appId, after), subscribe: subscribeTo(client, opened.appId) }
+        : null,
+    [client, opened, after],
+  );
+
+  const onLogout = () => void signOut(api.signOut, key, storage).then(() => setOpened(null));
+  const signedIn = session.status === "signed-in";
+  const connecting = session.status === "connecting";
 
   return (
     <>
-      {/* Logged out with a link opened: "you're invited" and the login, not the landing page. */}
-      <InvitationGate parse={readInvitation} noun="voting group" appName="Mero Vote" />
-      {/*
-        At the root, so a link that arrives while a context is already open is
-        answered too, not left waiting until the user happens to log out.
-      */}
-      <InvitationDialog
-        redemption={join}
-        noun="voting group"
-        appName="Mero Vote"
-        // The grant is the namespace, not just the context the link names, and
-        // the person accepting should know that before they click.
-        detail="Joining makes this node a member of the namespace this voting group lives in, and its polls and ballots sync here from the other members."
-      />
       <header className="topbar">
         <div className="topbar-inner">
           <div className="brand">
@@ -88,79 +149,54 @@ export function App() {
             </span>
             <h1>Mero Vote</h1>
           </div>
-          {isAuthenticated && (
+          {signedIn && (
             <nav className="crumbs" aria-label="Breadcrumb">
               <span className="sep">
                 <ChevronRightIcon size={14} />
               </span>
               <span className="crumb">
                 <LayersIcon size={14} />
-                Contexts
+                Voting groups
               </span>
-              {contextId && (
+              {opened && (
                 <>
                   <span className="sep">
                     <ChevronRightIcon size={14} />
                   </span>
-                  <span className="crumb current" title={contextId}>
+                  <span className="crumb current" title={opened.appId}>
                     <BoxIcon size={14} />
-                    <code className="mono">{shortId(contextId)}</code>
+                    {opened.name ? <span>{opened.name}</span> : <code className="mono">{shortId(opened.appId)}</code>}
                   </span>
                 </>
               )}
             </nav>
           )}
           <div className="topbar-right">
-            <span
-              className="status-pill"
-              title={
-                isAuthenticated
-                  ? "Connected"
-                  : isLoading
-                    ? "Connecting"
-                    : "Not connected"
-              }
-            >
-              <span
-                className={`dot ${isAuthenticated ? "live" : isLoading ? "wait" : ""}`}
-              />
-              <span className="label">
-                {isAuthenticated
-                  ? "Connected"
-                  : isLoading
-                    ? "Connecting"
-                    : "Not connected"}
-              </span>
+            <span className="status-pill" title={signedIn ? "Connected" : connecting ? "Connecting" : "Not connected"}>
+              <span className={`dot ${signedIn ? "live" : connecting ? "wait" : ""}`} />
+              <span className="label">{signedIn ? "Connected" : connecting ? "Connecting" : "Not connected"}</span>
             </span>
-            {isAuthenticated && contextId && (
-              /*
-                The only way back. Selecting a context used to be a ONE-WAY door:
-                `setContextId` is written to storage and the app then renders the
-                panel forever, so the picker was unreachable without clearing
-                site data or logging out. A node routinely holds several
-                contexts, and comparing two of them is the normal way to watch
-                a CRDT converge.
-              */
+            {signedIn && opened && (
               <button
                 className="ghost sm collapse"
-                onClick={switchContext}
-                aria-label="Change context"
-                title="Change context"
+                onClick={() => open(null)}
+                aria-label="Change group"
+                title="Change group"
               >
                 <SwitchIcon size={15} />
-                <span className="btn-label">Change context</span>
+                <span className="btn-label">Change group</span>
               </button>
             )}
             <ThemeToggle />
-            {isAuthenticated && (
+            {session.status === "signed-in" && (
               <SessionMenu
-                nodeUrl={nodeUrl}
-                applicationId={applicationId}
-                contextId={contextId}
+                where={describeTarget(session.target)}
+                accountId={session.accountId}
+                appId={opened?.appId ?? null}
                 onLogout={onLogout}
               />
             )}
-            {isAuthenticated && (
+            {signedIn && (
               // Always on screen, not only in the session menu: ending a session
               // should never take a hunt. The label folds to the icon on a phone;
               // the accessible name stays "Log out".
@@ -181,73 +217,26 @@ export function App() {
       </header>
 
       <main className="wrap">
-        {isLoading ? (
+        {notice && (
+          <Callout tone="success" icon={<CheckIcon size={18} />}>
+            {notice}
+          </Callout>
+        )}
+        {session.status === "connecting" ? (
           <div className="card center loading-card">
             <span className="spinner" aria-hidden="true" />
             <p className="empty">Connecting…</p>
           </div>
-        ) : !isAuthenticated ? (
-          <section className="welcome">
-            <div className="welcome-copy">
-              <span className="eyebrow pill">
-                <ShieldCheckIcon size={14} />
-                Secret ballot · public audit
-              </span>
-              <p className="welcome-title">
-                Private polls with{" "}
-                <span className="glass-grad-text">verifiable tallies</span>.
-              </p>
-              <p className="welcome-lead">
-                Ballots are encrypted in your browser and proven well-formed in
-                zero knowledge; no node — yours included — ever sees a vote.
-                Everyone can re-run the count.
-              </p>
-              <ul className="welcome-points">
-                <li>
-                  <span className="icon-tile accent">
-                    <LockIcon size={18} />
-                  </span>
-                  <span>
-                    <strong>Encrypted here</strong>Your choice leaves this tab
-                    as ciphertext and a proof.
-                  </span>
-                </li>
-                <li>
-                  <span className="icon-tile">
-                    <KeyIcon size={18} />
-                  </span>
-                  <span>
-                    <strong>Shared key</strong>Trustees hold the decryption key
-                    together; no one holds all of it.
-                  </span>
-                </li>
-                <li>
-                  <span className="icon-tile">
-                    <BarChartIcon size={18} />
-                  </span>
-                  <span>
-                    <strong>Audited by everyone</strong>Every member&apos;s node
-                    recomputes the tally from the frozen ballots.
-                  </span>
-                </li>
-              </ul>
-            </div>
-            <div className="card connect-card">
-              <span className="connect-mark">
-                <ServerIcon size={22} />
-              </span>
-              <h2>Connect a node</h2>
-              <p>
-                Sign in to your Calimero node to see your voting groups. The
-                login modal discovers nodes on the usual local ports and accepts
-                a URL directly.
-              </p>
-              <ConnectButton />
-            </div>
-          </section>
-        ) : !contextId ? (
+        ) : session.status === "unconfigured" ? (
+          <div className="card">
+            <h2>Not configured</h2>
+            <pre className="err">{session.message}</pre>
+          </div>
+        ) : session.status === "signed-out" ? (
+          <Welcome api={api} where={describeTarget(session.target)} invited={pendingInvite(storage) !== null} />
+        ) : !opened || !group ? (
           <>
-            <ContextPicker applicationId={applicationId} />
+            <GroupPicker key={pickerKey} client={session.client} source={source} onOpen={open} after={after} />
             <div className="section-head join-head">
               <h3>
                 <UserPlusIcon size={16} />
@@ -262,49 +251,123 @@ export function App() {
                 <div className="grow">
                   <h2>Join with an invitation</h2>
                   <div className="meta">
-                    Open an invitation link someone sent you. It opens this app
-                    and asks before joining.
+                    Open an invitation link someone sent you. It opens this app, and the group appears here once
+                    you are signed in.
                   </div>
                 </div>
               </div>
             </div>
           </>
         ) : (
-          <>
-            {/* Keyed, so a context opened in place starts from nothing of the last one's. */}
+          <VoteGroupContext.Provider value={group}>
+            {/* Keyed, so a group opened in place starts from nothing of the last one's. */}
             <VotePanel
-              key={contextId}
-              contextId={contextId}
-              joinedNamespace={
-                opened?.contextId === contextId ? opened.namespaceId : null
-              }
-              side={<InviteCard contextId={contextId} />}
+              key={opened.appId}
+              contextId={opened.appId}
+              side={<InviteCard client={session.client} org={opened.org} passkey={deps.passkey} after={after} />}
             />
-          </>
+          </VoteGroupContext.Provider>
         )}
       </main>
     </>
   );
 }
 
+/** The front door: what the app is, and a passkey sign-in or sign-up. */
+function Welcome({ api, where, invited }: { api: SessionApi; where: string; invited: boolean }) {
+  const [name, setName] = useState("");
+  return (
+    <section className="welcome">
+      <div className="welcome-copy">
+        <span className="eyebrow pill">
+          <ShieldCheckIcon size={14} />
+          Secret ballot · public audit
+        </span>
+        <p className="welcome-title">
+          Private polls with <span className="glass-grad-text">verifiable tallies</span>.
+        </p>
+        <p className="welcome-lead">
+          Ballots are encrypted in your browser and proven well-formed in zero knowledge; no node ever sees a
+          vote. Everyone can re-run the count.
+        </p>
+        <ul className="welcome-points">
+          <li>
+            <span className="icon-tile accent">
+              <LockIcon size={18} />
+            </span>
+            <span>
+              <strong>Encrypted here</strong>Your choice leaves this tab as ciphertext and a proof.
+            </span>
+          </li>
+          <li>
+            <span className="icon-tile">
+              <KeyIcon size={18} />
+            </span>
+            <span>
+              <strong>Shared key</strong>Trustees hold the decryption key together; no one holds all of it.
+            </span>
+          </li>
+          <li>
+            <span className="icon-tile">
+              <BarChartIcon size={18} />
+            </span>
+            <span>
+              <strong>Audited by everyone</strong>Every member can recompute the tally from the sealed
+              ballots, in their own browser.
+            </span>
+          </li>
+        </ul>
+      </div>
+      <div className="card connect-card">
+        <span className="connect-mark">
+          <ServerIcon size={22} />
+        </span>
+        <h2>{invited ? "You're invited" : "Sign in"}</h2>
+        <p>
+          {invited
+            ? "Sign in or create an account to join the voting group you were invited to. "
+            : "Sign in to see your voting groups. "}
+          Connected to {where}. Accounts are passkeys: nothing to remember, nothing to leak.
+        </p>
+        <button disabled={api.busy} onClick={() => void api.signIn()}>
+          Sign in with a passkey
+        </button>
+        <form
+          className="row"
+          style={{ marginTop: 14 }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (name.trim()) void api.signUp(name.trim());
+          }}
+        >
+          <input placeholder="Your name" aria-label="name" value={name} onChange={(e) => setName(e.target.value)} />
+          <button className="ghost" type="submit" disabled={api.busy || !name.trim()}>
+            Create an account
+          </button>
+        </form>
+        {api.error && <pre className="err">{api.error}</pre>}
+      </div>
+    </section>
+  );
+}
+
 /**
- * Node, application and context ids, plus a second Log out next to the
- * session it ends (the top bar carries the always-visible one).
+ * Where this session is connected, the account and the open group's app id,
+ * plus a second Log out next to the session it ends (the top bar carries the
+ * always-visible one).
  *
  * No inactivity logout anywhere in this app. A session ends when the user ends
- * it — being idle overnight is normal use, and it costs nothing in exposure
- * since the refresh token already lives in the same localStorage as the access
- * token.
+ * it — being idle overnight is normal use.
  */
 function SessionMenu({
-  nodeUrl,
-  applicationId,
-  contextId,
+  where,
+  accountId,
+  appId,
   onLogout,
 }: {
-  nodeUrl: string | null | undefined;
-  applicationId: string | null | undefined;
-  contextId: string | null | undefined;
+  where: string;
+  accountId: string;
+  appId: string | null;
   onLogout: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -312,8 +375,7 @@ function SessionMenu({
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node))
-        setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     document.addEventListener("mousedown", onDown);
@@ -342,36 +404,17 @@ function SessionMenu({
             Session
           </div>
           <dl className="kv">
-            <dt>Node</dt>
+            <dt>Cluster</dt>
+            <dd>{where}</dd>
+            <dt>Account</dt>
             <dd>
-              <code className="mono" title={nodeUrl ?? ""}>
-                {nodeUrl ?? "—"}
-              </code>
+              <IdField value={accountId} label="account id" />
             </dd>
-            <dt>Application</dt>
-            <dd>
-              {applicationId ? (
-                <IdField value={applicationId} label="application id" />
-              ) : (
-                "—"
-              )}
-            </dd>
-            <dt>Context</dt>
-            <dd>
-              {contextId ? (
-                <IdField value={contextId} label="context id" />
-              ) : (
-                <span className="empty">not selected</span>
-              )}
-            </dd>
+            <dt>Group</dt>
+            <dd>{appId ? <IdField value={appId} label="app id" /> : <span className="empty">not selected</span>}</dd>
           </dl>
           <div className="menu-sep" />
-          <button
-            className="menu-item danger"
-            role="menuitem"
-            onClick={onLogout}
-            data-testid="menu-logout-btn"
-          >
+          <button className="menu-item danger" role="menuitem" onClick={onLogout} data-testid="menu-logout-btn">
             <LogOutIcon size={16} />
             Log out
           </button>

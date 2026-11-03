@@ -6,9 +6,10 @@ import MeroKit
 extension BoundContextContract: ContextContractCalling {}
 
 extension UpdatesClient {
-    /// The client for one audience, over the account's relay.
+    /// The client for one audience (an app instance), over the account's
+    /// cluster session, speaking the component ABI (``ComponentWire``).
     public init(backend: any MeroAppBackend, contextId: String) {
-        self.init(transport: backend.contract.bound(to: contextId))
+        self.init(transport: ComponentWire(backend.contract.bound(to: contextId)))
     }
 }
 
@@ -29,22 +30,52 @@ extension ReactionCount: Identifiable { public var id: String { emoji } }
 public enum ErrorText {
     public static func describe(_ error: Error) -> String {
         switch error {
-        case AccountError.noRelay:
-            return "No relay serves your account yet. Join a company with an invitation link first."
-        case AccountError.intentRefused(let reason, _, let status):
-            return "The relay refused this (\(status)): \(reason)"
+        case is SignedOutError, AccountError.notSignedIn:
+            return "You're signed out. Sign in again."
+        case is LoginRequired:
+            return "Your session ended. Sign in again."
+        case is ConfirmCancelled:
+            return "The passkey prompt was cancelled, so nothing changed."
+        case is WrongNode:
+            return "That node can't serve your account right now. Sign in again to reach your cluster."
+        case is ReleaseDeadlineError:
+            return "A newer node release needs approval before anything can change. Review it under Approvals."
+        case is ConsentStale:
+            return "That approval request is out of date. Try again."
         case let error as URLError:
-            return "The relay can't be reached (\(error.code.rawValue)). Check your connection and try again."
-        case MeroError.network(let message):
-            return "The relay can't be reached: \(message)"
-        case MeroError.authRevoked:
-            return "Your session was revoked. Sign out and sign in again."
+            return "The cluster can't be reached (\(error.code.rawValue)). Check your connection and try again."
+        case let error as UnavailableError:
+            return "The cluster is busy (\(error.reason)). Try again in a moment."
+        case let error as AppError:
+            return appError(code: error.appCode, message: error.fields["message"]?.stringValue ?? "")
+        case let error as CalimeroError:
+            return error.message.isEmpty ? "The node refused this (\(error.code))." : error.message
         case is DecodingError:
             return "The audience answered in a shape this app does not read. It may run a different version of Mero Updates."
         case let error as LocalizedError:
+            // MeroKitUI's step-up guard (no passkey to approve a member or invite change).
+            if String(describing: type(of: error)) == "PasskeyRequired" {
+                return "This needs your passkey. Sign in again on this device and retry."
+            }
             return error.errorDescription ?? "\(error)"
         default:
             return "\(error)"
+        }
+    }
+
+    /// The contract's refusals (`422 APP_ERROR {code, fields: {message}}`):
+    /// `NotFound`, `Invalid` and `Forbidden`, each with the contract's message.
+    public static func appError(code: String, message: String) -> String {
+        let text = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !text.isEmpty {
+            let s = text.prefix(1).uppercased() + text.dropFirst()
+            return s.hasSuffix(".") ? s : s + "."
+        }
+        switch code {
+        case "NotFound": return "That is no longer here. It may have been deleted."
+        case "Forbidden": return "Only the company's team can do that."
+        case "Invalid": return "Check what you entered and try again."
+        default: return "Mero Updates refused that (\(code))."
         }
     }
 }

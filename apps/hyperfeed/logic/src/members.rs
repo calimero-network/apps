@@ -33,24 +33,18 @@
 //! (see the crate docs): these checks bind honest nodes. A cloud agent is
 //! attested code, which is why it is trusted with the agent's side at all.
 
-use calimero_sdk::abi::AbiType;
-use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
-use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::types::Error as AppError;
-use calimero_sdk::{app, serde_json};
-use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::Mergeable;
+use calimero_app_sdk::prelude::*;
+use serde::{Deserialize, Serialize};
 
-use crate::{lww, now_ms, Event, Hyperfeed, MAX_FIELDS, MAX_KEY};
+use crate::store::{emit, forbidden, invalid};
+
+use crate::{now_ms, Ev, Hyperfeed, MAX_FIELDS, MAX_KEY};
 
 /// At most this many agent accounts on one feed.
 pub const MAX_AGENT_ACCOUNTS: usize = 16;
 
 /// An agent's own account you added to the feed, by account.
-#[app::mergeable(id = "hyperfeed::AgentAccount")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentAccount {
     /// The name it reports in with, and the only one it may speak as.
     pub name: String,
@@ -60,17 +54,8 @@ pub struct AgentAccount {
     pub removed: bool,
 }
 
-impl Mergeable for AgentAccount {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        let at = self.at;
-        lww(self, at, other, other.at);
-        Ok(())
-    }
-}
-
 /// An agent account, as settings shows it.
-#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AgentAccountView {
     pub account: String,
     pub name: String,
@@ -78,20 +63,10 @@ pub struct AgentAccountView {
 }
 
 /// The call that sends a draft in its app, kept beside the action it belongs to.
-#[app::mergeable(id = "hyperfeed::SendCall")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SendCall {
     /// `{"method": ..., "args": {...}}`, as a lens's `reply_call` is.
     pub call: String,
-}
-
-impl Mergeable for SendCall {
-    fn merge(&mut self, _other: &Self) -> Result<(), MergeError> {
-        // Written once, when the draft is recorded.
-        Ok(())
-    }
 }
 
 /// Who is calling, as far as the feed is concerned.
@@ -107,12 +82,12 @@ impl Hyperfeed {
     /// You, or an agent you added: who may make the agent's side of the feed.
     pub(crate) fn require_agent(&self) -> app::Result<Caller> {
         let caller = Self::caller();
-        if *self.owner.get() == caller {
+        if env::app_owner() == caller {
             return Ok(Caller::Owner);
         }
         match self.agent_accounts.get(&caller)? {
             Some(a) if !a.removed => Ok(Caller::Agent(a.name.clone())),
-            _ => Err(AppError::msg(
+            _ => Err(forbidden(
                 "only the feed's owner, or an agent they added, can write to it",
             )),
         }
@@ -124,7 +99,7 @@ impl Hyperfeed {
         let caller = self.require_agent()?;
         if let Caller::Agent(own) = &caller {
             if own != name {
-                return Err(AppError::msg(format!(
+                return Err(forbidden(format!(
                     "this agent was added as {own:?} and cannot speak as {name:?}"
                 )));
             }
@@ -138,8 +113,8 @@ impl Hyperfeed {
         let name = name.trim().to_owned();
         Self::check_len("account", &account, MAX_KEY, true)?;
         Self::check_len("name", &name, MAX_KEY, true)?;
-        if account == *self.owner.get() {
-            return Err(AppError::msg(
+        if account == env::app_owner() {
+            return Err(invalid(
                 "that is your own account; your agent there writes as you already",
             ));
         }
@@ -152,12 +127,12 @@ impl Hyperfeed {
             .iter()
             .find(|(acc, a)| a.name == name && *acc != account)
         {
-            return Err(AppError::msg(format!(
+            return Err(invalid(format!(
                 "{name:?} is already the name of agent account {other}; remove it first"
             )));
         }
         if !live.iter().any(|(acc, _)| *acc == account) && live.len() >= MAX_AGENT_ACCOUNTS {
-            return Err(AppError::msg(format!(
+            return Err(invalid(format!(
                 "{MAX_AGENT_ACCOUNTS} agent accounts, limit is {MAX_AGENT_ACCOUNTS}"
             )));
         }
@@ -170,15 +145,15 @@ impl Hyperfeed {
                 removed: false,
             },
         )?;
-        app::emit!(Event::SettingsChanged);
+        emit(Ev::SettingsChanged)?;
         Ok(())
     }
 
     pub(crate) fn agent_account_remove(&mut self, account: String) -> app::Result<()> {
         self.require_owner()?;
         let account = account.trim().to_owned();
-        let Some(old) = self.agent_accounts.get(&account)?.map(|a| a.clone()) else {
-            return Err(AppError::msg(format!("no agent account {account}")));
+        let Some(old) = self.agent_accounts.get(&account)? else {
+            return Err(invalid(format!("no agent account {account}")));
         };
         if old.removed {
             return Ok(());
@@ -192,7 +167,7 @@ impl Hyperfeed {
                 ..old
             },
         )?;
-        app::emit!(Event::SettingsChanged);
+        emit(Ev::SettingsChanged)?;
         Ok(())
     }
 
@@ -223,16 +198,16 @@ impl Hyperfeed {
     pub(crate) fn check_send_call(call: &str) -> app::Result<()> {
         Self::check_len("send_call", call, MAX_FIELDS, true)?;
         let value: serde_json::Value = serde_json::from_str(call)
-            .map_err(|e| AppError::msg(format!("send_call is not JSON: {e}")))?;
+            .map_err(|e| invalid(format!("send_call is not JSON: {e}")))?;
         let method = value
             .get("method")
             .and_then(|m| m.as_str())
             .unwrap_or_default();
         if method.trim().is_empty() {
-            return Err(AppError::msg("send_call names no method"));
+            return Err(invalid("send_call names no method"));
         }
         if !value.get("args").is_some_and(serde_json::Value::is_object) {
-            return Err(AppError::msg("send_call's args must be an object"));
+            return Err(invalid("send_call's args must be an object"));
         }
         Ok(())
     }

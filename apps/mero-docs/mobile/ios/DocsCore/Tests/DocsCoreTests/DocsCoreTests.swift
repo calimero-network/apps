@@ -169,7 +169,7 @@ final class ModelTests: XCTestCase {
     func testAFolderThatFailsIsReportedNotFatal() async {
         let fake = FakeDocs()
         fake.standardWorkspace()
-        fake.on("list_docs", in: "c-notes") { _ in "{\"oops\":1}" }
+        fake.on("listDocs", in: "c-notes") { _ in "{\"oops\":1}" }
         let model = WorkspaceModel(backend: fake.backend, workspace: Workspace(id: FakeDocs.ws, name: "Acme", memberCount: 3), recents: MemoryRecents())
         await model.load()
         XCTAssertEqual(model.state, .loaded)
@@ -180,14 +180,14 @@ final class ModelTests: XCTestCase {
     func testSearchRanksIndexHitsThenTitleMatches() async {
         let fake = FakeDocs()
         fake.standardWorkspace()
-        fake.on("search_docs", in: "c-specs", json: #"{"hits":[{"id":"d3","title":"API spec","snippet":"the <b>road</b>","score":2.0,"archived":false}],"total":1,"next_cursor":null}"#)
-        fake.on("search_docs", json: #"{"hits":[],"total":0}"#)
+        fake.on("searchDocs", in: "c-specs", json: #"{"hits":[{"id":"d3","title":"API spec","snippet":"the <b>road</b>","score":2.0,"archived":false}],"total":1,"nextCursor":null}"#)
+        fake.on("searchDocs", json: #"{"hits":[],"total":0}"#)
         let model = WorkspaceModel(backend: fake.backend, workspace: Workspace(id: FakeDocs.ws, name: "Acme", memberCount: 3), recents: MemoryRecents())
         await model.load()
         await model.search("road")
         XCTAssertEqual(model.results.map(\.row.title), ["API spec", "Roadmap"])
         XCTAssertEqual(model.results.first?.snippet, "the <b>road</b>")
-        let call = fake.backend.recording.calls("search_docs").first
+        let call = fake.backend.recording.calls("searchDocs").first
         XCTAssertEqual(call?.args["query"]?.stringValue, "road")
         XCTAssertEqual(call?.path, .query)
         await model.search("")
@@ -197,10 +197,10 @@ final class ModelTests: XCTestCase {
     func testDocumentOpensReadsBodyAndCommentsAndRecordsRecent() async {
         let fake = FakeDocs()
         fake.standardWorkspace()
-        fake.on("get_doc", json: FakeDocs.doc("d1", "Roadmap", updated: 1))
-        fake.on("get_document", json: FakeDocs.body)
+        fake.on("getDoc", json: FakeDocs.doc("d1", "Roadmap", updated: 1))
+        fake.on("getDocument", json: FakeDocs.body)
         fake.on(
-            "list_comments",
+            "listComments",
             json: "[\(FakeDocs.comment("c1", "[[block:b2]] Why fast?", at: 1)),\(FakeDocs.comment("c2", "[[reply:c1]] Because", author: FakeDocs.me, at: 2))]")
         let recents = MemoryRecents()
         let model = DocumentModel(
@@ -223,22 +223,22 @@ final class ModelTests: XCTestCase {
     func testCommentingSendsThePrefixedBodyAndShowsItAtOnce() async throws {
         let fake = FakeDocs()
         fake.standardWorkspace()
-        fake.on("get_doc", json: FakeDocs.doc("d1", "Roadmap", updated: 1))
-        fake.on("get_document", json: FakeDocs.body)
-        fake.on("list_comments", json: "[]")
-        fake.on("add_comment", json: "\"new1\"")
+        fake.on("getDoc", json: FakeDocs.doc("d1", "Roadmap", updated: 1))
+        fake.on("getDocument", json: FakeDocs.body)
+        fake.on("listComments", json: "[]")
+        fake.on("addComment", json: "\"new1\"")
         let model = DocumentModel(
             backend: fake.backend, workspaceId: FakeDocs.ws, folderId: "g-product", docId: "d1", contextId: "c-product")
         await model.open()
         try await model.addComment("  Looks good ", blockId: "b3")
-        let call = try XCTUnwrap(fake.backend.recording.calls("add_comment").first)
+        let call = try XCTUnwrap(fake.backend.recording.calls("addComment").first)
         XCTAssertEqual(call.path, .execute)
         XCTAssertEqual(call.contextId, "c-product")
         XCTAssertEqual(call.args["body"]?.stringValue, "[[block:b3]] Looks good")
-        XCTAssertEqual(call.args["doc_id"]?.stringValue, "d1")
+        XCTAssertEqual(call.args["docId"]?.stringValue, "d1")
         XCTAssertEqual(model.threads.map(\.root.text), ["Looks good"])
         try await model.reply(to: "new1", "Thanks")
-        XCTAssertEqual(fake.backend.recording.calls("add_comment").last?.args["body"]?.stringValue, "[[reply:new1]] Thanks")
+        XCTAssertEqual(fake.backend.recording.calls("addComment").last?.args["body"]?.stringValue, "[[reply:new1]] Thanks")
     }
 
     func testDocumentInAFolderWithNoContextFails() async {
@@ -261,5 +261,101 @@ final class ModelTests: XCTestCase {
         let none = DocumentModel(backend: fake.backend, workspaceId: "w", folderId: "g", docId: "d", contextId: "c")
         await none.loadImage("ab")
         XCTAssertEqual(none.images["ab"], .unavailable)
+    }
+}
+
+final class ErrorTextTests: XCTestCase {
+    func testCalimero10ErrorsReadAsWords() {
+        XCTAssertEqual(DocsFormat.errorText(LoginRequired("expired")), "Your session ended. Sign in again.")
+        XCTAssertEqual(DocsFormat.errorText(SignedOutError(method: "getDocument")), "Your session ended. Sign in again.")
+        XCTAssertEqual(DocsFormat.errorText(ConfirmCancelled()), "The passkey prompt was cancelled. Nothing changed.")
+        XCTAssertTrue(DocsFormat.errorText(WrongNode("x")).hasPrefix("This node doesn't serve your account."))
+        XCTAssertTrue(
+            DocsFormat.errorText(ReleaseDeadlineError("x", details: ["release": .string("1.2.0")]))
+                .contains("release 1.2.0"))
+        XCTAssertTrue(DocsFormat.errorText(ConsentStale("x")).contains("out of date"))
+        XCTAssertTrue(
+            DocsFormat.errorText(CalimeroError(status: 403, code: "FORBIDDEN", message: "read only"))
+                .hasPrefix("You can read this folder but not comment"))
+    }
+
+    func testContractRefusalsReadAsWords() {
+        func app(_ code: String, _ message: String) -> AppError {
+            AppError("", details: ["code": .string(code), "fields": .object(["message": .string(message)])])
+        }
+        XCTAssertEqual(DocsFormat.errorText(app("NotFound", "no doc")), "This document or comment is gone. Pull to refresh.")
+        XCTAssertEqual(DocsFormat.errorText(app("Forbidden", "")), "You can't do that in this folder.")
+        XCTAssertEqual(DocsFormat.errorText(app("Invalid", "empty comment")), "That wasn't accepted: empty comment")
+        XCTAssertEqual(DocsFormat.errorText(app("Other", "")), "Other")
+    }
+}
+
+final class WireTests: XCTestCase {
+    func testDocViewTimestampsAreMillisecondStrings() throws {
+        let json = #"{"id":"doc-1","title":"T","tags":["k"],"archived":false,"createdAt":"1700000000123","updatedAt":"1700000000456","createdBy":"a","updatedBy":"b","canDelete":true}"#
+        let doc = try JSONDecoder().decode(DocDto.self, from: Data(json.utf8))
+        XCTAssertEqual(doc.createdAt, 1_700_000_000_123_000_000)
+        XCTAssertEqual(doc.updatedAt, 1_700_000_000_456_000_000)
+        XCTAssertTrue(doc.canDelete)
+        // The demo writes the same wire shape back.
+        let again = try JSONDecoder().decode(DocDto.self, from: try JSONEncoder().encode(doc))
+        XCTAssertEqual(again, doc)
+        let object = try JSONSerialization.jsonObject(with: try JSONEncoder().encode(doc)) as? [String: Any]
+        XCTAssertEqual(object?["updatedAt"] as? String, "1700000000456")
+    }
+
+    func testSearchPageTotalIsADecimalString() throws {
+        let page = try JSONDecoder().decode(
+            DocSearchPage.self, from: Data(#"{"hits":[],"total":"12","nextCursor":20}"#.utf8))
+        XCTAssertEqual(page.total, 12)
+        XCTAssertEqual(page.nextCursor, 20)
+    }
+
+    func testFoldersComeFromTheOrgsTeams() {
+        let org = OrgInfo(
+            json: .object([
+                "orgId": .string("org1"), "name": .string("Acme"),
+                "teams": .object([
+                    "t-product": .object([
+                        "teamId": .string("t-product"), "name": .string("Product"), "join": .string("everyone"),
+                        "metadata": .object(["docsApp": .string("app-product"), "color": .string("blue")]),
+                    ]),
+                    "t-specs": .object([
+                        "teamId": .string("t-specs"), "name": .string("Specs"), "parent": .string("t-product"),
+                        "join": .string("invite"), "metadata": .object(["docsApp": .string("app-specs")]),
+                    ]),
+                    // Its parent is a team the caller does not see: it sits at the top.
+                    "t-shared": .object([
+                        "teamId": .string("t-shared"), "name": .string("Board"), "parent": .string("t-hidden"),
+                        "join": .string("invite"), "metadata": .object([:]),
+                    ]),
+                ]),
+            ]))
+        let folders = DocsDirectory.folders(of: org)
+        XCTAssertEqual(folders.map(\.id), ["t-product", "t-shared", "t-specs"])
+        XCTAssertEqual(folders.first { $0.id == "t-specs" }?.parentId, "t-product")
+        XCTAssertEqual(folders.first { $0.id == "t-specs" }?.contextId, "app-specs")
+        XCTAssertNil(folders.first { $0.id == "t-shared" }?.parentId)
+        XCTAssertNil(folders.first { $0.id == "t-shared" }?.contextId)
+    }
+
+    /// Every method the client calls is in the component ABI, by name. Skipped
+    /// while `logic/res/abi.json` is still the v1 ABI (before the web port lands).
+    func testClientMethodsAreInTheComponentABI() throws {
+        let abi = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("logic/res/abi.json")
+        guard let data = try? Data(contentsOf: abi),
+            let root = try JSONSerialization.jsonObject(with: data) as? [String: Any], root["abiVersion"] != nil,
+            let methods = root["methods"] as? [String: [String: Any]]
+        else { throw XCTSkip("logic/res/abi.json is not the component ABI yet") }
+        for name in DocsClient.methods {
+            XCTAssertNotNil(methods[name], "\(name) is not in the ABI")
+        }
+        XCTAssertEqual(methods["listDocs"]?["kind"] as? String, "view")
+        XCTAssertEqual(methods["addComment"]?["kind"] as? String, "call")
+        let params = (methods["addComment"]?["params"] as? [[String]])?.map { $0[0] }
+        XCTAssertEqual(params, ["docId", "body"])
     }
 }

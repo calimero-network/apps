@@ -2,43 +2,40 @@ import Foundation
 import MeroKit
 import MeroKitUI
 
-/// Where the app signs in and which cloud it routes through, read from the
-/// Info.plist keys `project.yml` sets. An empty value means the SDK's default
-/// (the hosted Calimero wallet and Cloud manager).
+/// Which Calimero 1.0 cluster the app signs in to, read from the Info.plist
+/// keys `project.yml` sets. An empty value means "ask on the sign-in screen".
 enum AppConfig {
-    /// The app scheme the wallet returns to (`mero-chat://enrol#credential=…`).
+    /// The app scheme the node's consent page returns to
+    /// (`mero-chat://consent?request_id=…&result=…`).
     static var callbackScheme: String {
         string("MeroChatCallbackScheme") ?? "mero-chat"
     }
 
-    /// An https host the wallet returns to instead (a verified Associated
-    /// Domain, iOS 17.4+). Unset by default.
+    /// An https host the consent page returns to instead (a verified
+    /// Associated Domain, iOS 17.4+). Unset by default.
     static var callbackHost: String? { string("MeroChatCallbackHost") }
-    static var callbackPath: String { string("MeroChatCallbackPath") ?? "/enrol" }
+    static var callbackPath: String { string("MeroChatCallbackPath") ?? "/consent" }
 
-    /// The wallet callback to use.
+    /// The consent page's return.
     static var callback: CloudCallback {
         if let host = callbackHost { return .https(host: host, path: callbackPath) }
-        return .scheme(callbackScheme)
+        return .scheme(callbackScheme, path: "consent")
     }
 
-    /// The Calimero Cloud manager (relay discovery, routing, HA).
-    static var cloudBaseURL: URL {
-        string("MeroCloudBaseURL").flatMap { URL(string: $0) } ?? CloudClient.defaultBaseURL
+    /// The Calimero Cloud cluster: a node URL from the console. Signing in
+    /// verifies the node's attestation (`CloudPolicy.production`).
+    static var clusterURL: String? { string("CalimeroClusterURL") }
+
+    /// The development node (`merod local`) the sign-in screen prefills.
+    static var devNodeURL: String { string("DefaultNodeURL") ?? "http://localhost:2501" }
+
+    static var providerConfig: MeroProviderConfig {
+        MeroProviderConfig(
+            nodeURL: clusterURL, policy: .production, packageName: ChatConstants.packageName,
+            packageVersion: string("MeroPackageVersion"))
     }
 
-    /// The Calimero wallet's enrolment page.
-    static var walletURL: URL {
-        string("MeroWalletURL").flatMap { URL(string: $0) } ?? DeviceEnrolment.defaultWalletURL
-    }
-
-    /// The registry the chat package resolves from.
-    static var registryURL: String {
-        string("MeroRegistryURL") ?? ApplicationRegistry.defaultURL
-    }
-
-    /// The Keychain service the device key, the account session and the
-    /// relay tokens are stored under.
+    /// The Keychain service the session (and a development node's soft passkey) live under.
     static let keychainService = "network.calimero.chat"
 
     private static func string(_ key: String) -> String? {

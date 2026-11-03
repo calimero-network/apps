@@ -21,16 +21,30 @@
             </intent-filter>
 
             <!--
-              Calimero Cloud sign-in: the wallet redirects to the enrolment callback
-              (BuildConfig.ENROL_CALLBACK_URL, default mero-docs://enrol) with the device
-              certificate in the fragment. Scheme and host come from the `meroEnrolCallback`
-              Gradle property, so this filter always matches what the app asks the wallet for.
+              The node's consent page sends the person back here:
+              mero-docs://consent?request_id=…&result=approved|declined
+              (DocsAppViewModel.CONSENT_CALLBACK).
             -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="${enrolScheme}" android:host="${enrolHost}" />
+                <data android:scheme="mero-docs" android:host="consent" />
+            </intent-filter>
+
+            <!--
+              Invitations to a workspace, as the SDK spells them:
+              https://links.calimero.network/com.calimero.mero-drive-docs/join?invitation=…
+              Not autoVerify: Android offers the app in the chooser.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="links.calimero.network"
+                    android:pathPrefix="/com.calimero.mero-drive-docs/" />
             </intent-filter>
 
             <!--

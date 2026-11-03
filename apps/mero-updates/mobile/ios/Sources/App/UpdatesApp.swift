@@ -7,7 +7,7 @@ import UpdatesCore
 struct UpdatesApp: App {
     @StateObject private var session = MeroAppSession(
         packageName: AppConfig.packageName, callback: AppConfig.callback, config: AppConfig.config,
-        walletURL: AppConfig.walletURL, keychainService: AppConfig.keychainService)
+        keychainService: AppConfig.keychainService)
 
     var body: some Scene {
         WindowGroup {

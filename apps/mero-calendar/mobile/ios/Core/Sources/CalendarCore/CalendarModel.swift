@@ -30,7 +30,7 @@ public final class CalendarModel: ObservableObject {
 
     public init(
         backend: any MeroAppBackend, team: Team, calendar: TeamCalendar, names: NameBook,
-        privateStore: PrivateEventStore, math: CalendarMath = CalendarMath(), today: Date = Date()
+        math: CalendarMath = CalendarMath(), today: Date = Date()
     ) {
         self.backend = backend
         self.team = team
@@ -39,12 +39,11 @@ public final class CalendarModel: ObservableObject {
         self.math = math
         self.focus = math.startOfDay(today)
         self.repository = CalendarRepository(
-            contract: backend.contract.bound(to: calendar.id), contextId: calendar.id, account: backend.account,
-            namespaceId: team.id, privateStore: privateStore)
+            contract: backend.contract.bound(to: calendar.id), contextId: calendar.id, account: backend.account)
     }
 
-    /// The signed-in account, 64 hex.
-    public var me: String { backend.account.lowercased() }
+    /// The signed-in account id.
+    public var me: String { backend.account }
 
     /// First open: register the stored name (or ask for one), then load.
     public func start() async {
@@ -72,7 +71,7 @@ public final class CalendarModel: ObservableObject {
         hasLoaded = true
     }
 
-    /// Follow the context: the relay's event stream when it is up, polling
+    /// Follow the app instance: the node's event stream when it is up, polling
     /// every `pollInterval` otherwise. Runs until cancelled.
     public func runLive() async {
         if backend.canSubscribe {
@@ -90,7 +89,7 @@ public final class CalendarModel: ObservableObject {
 
     // MARK: Names
 
-    /// Save the person's name for this calendar (`set_username`).
+    /// Save the person's name for this calendar (`setUsername`).
     public func setName(_ raw: String) async {
         let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         needsName = false
@@ -109,9 +108,9 @@ public final class CalendarModel: ObservableObject {
     /// The name the prompt starts with.
     public var suggestedName: String { names.username(context: calendar.id) ?? names.lastUsername ?? "" }
 
-    /// The display name of an account: its `get_members` name, else a short id.
+    /// The display name of an account: its `getMembers` name, else a short id.
     public func displayName(_ account: String) -> String {
-        let id = account.lowercased()
+        let id = account
         if let person = members.first(where: { $0.id == id }), !person.name.isEmpty { return person.name }
         if id == me, let mine = names.username(context: calendar.id) { return mine }
         return CalendarConstants.short(id)
@@ -124,7 +123,7 @@ public final class CalendarModel: ObservableObject {
     }
 
     /// Only the owner edits an event; everyone else sees it read-only.
-    public func canEdit(_ event: CalendarItem) -> Bool { event.isLocal || event.owner.lowercased() == me }
+    public func canEdit(_ event: CalendarItem) -> Bool { event.owner == me }
 
     // MARK: Events
 
@@ -135,7 +134,7 @@ public final class CalendarModel: ObservableObject {
         if draft.isNew {
             try await repository.create(item)
         } else {
-            try await repository.update(item)
+            try await repository.update(item, wasPrivate: draft.original?.isPrivate ?? false)
         }
         await reload()
     }

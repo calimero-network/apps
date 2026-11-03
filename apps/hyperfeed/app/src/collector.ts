@@ -1,4 +1,4 @@
-import type { NotificationInput } from "./generated/HyperfeedClient";
+import type { NotificationInput } from "./hyperfeedTypes";
 import { runLens, type LensHost, type LensSpec, type Outcome } from "./lens/lens";
 import calendarLens from "./lens/fixtures/calendar.json";
 import chatLens from "./lens/fixtures/chat.json";
@@ -27,33 +27,30 @@ import signLens from "./lens/fixtures/sign.json";
  * mention of you or of everyone, and your role changing; in the others a
  * mention, an invite, a request to sign, or a change to what is yours.
  *
- * The dedupe key is `<context>:<previous root>><new root>:<index>`: the state
- * TRANSITION, not just where it ended. Every device watching a context sees the
- * same sequence of roots, so the same change keys the same way everywhere and
- * the contract records it once. The new root alone is not enough: core derives
- * it from the state's contents, so a value set A, then B, then A again ends on
- * a root it had before, and the third change would read as a repeat of the
- * first. The contract also treats a key seen again after a few seconds as a new
- * occurrence, which covers the rest (A, B, A, B, A …).
- *
- * A device's first event for a context has no previous root, so the key
- * starts `<context>:>`; a device that connects mid-stream may record that one
- * event a second time. A duplicate is the cheaper failure: a missed event is
- * gone for good.
+ * The dedupe key is `<app>:<event id>`. A component app's events are
+ * numbered by the cluster's log (`<index>:<seq>`), the same on every device
+ * that follows the app, so two of your devices watching it record one event
+ * once. (v1 keyed by the context's state transition, `<previous root>><new
+ * root>`, because its events carried no id.)
  *
  * ⚠️ mero-bot carries the same lens engine and keys (`src/hyperfeed/lens/`,
  * `src/hyperfeed/collect.ts`). Change both or neither.
  */
 
-/** The `data` of a `StateMutation` context event. */
-export interface StateMutation {
-  newRoot?: string;
-  events?: { kind?: string; data?: number[] | string | null }[];
+/** One event of another app, as the cluster streams it (`client.events`). */
+export interface AppEvent {
+  /** `<log index>:<seq>`: stable across devices. */
+  id: string;
+  kind: string;
+  data: unknown;
 }
 
+/** A source of notifications: another app instance you reach (v1's context). */
 export interface SourceContext {
+  /** The app instance id. */
   contextId: string;
   appKey: string;
+  /** The bundle it runs: what a lens is learned and approved for (v1's application id). */
   applicationId: string;
   label: string;
 }
@@ -77,40 +74,37 @@ export interface RawEvent {
 }
 
 /**
- * The notifications in one state change: one per event the lens records. A
- * failed read drops its event; the rest of the change is still read.
+ * The notification one event makes, when the lens records it: none for an
+ * event without a kind, without a lens, or that the lens drops. A failed read
+ * drops the event, with a warning.
  */
 export async function toNotifications(
   source: SourceContext,
-  mutation: StateMutation,
-  /** The root this client last saw for the context, or "" for its first event. */
-  previousRoot: string,
+  event: AppEvent,
   lens: LensSpec | null,
   host: LensHost,
 ): Promise<NotificationInput[]> {
-  const root = mutation.newRoot ?? "";
-  if (!root || !lens) return []; // no stable key, or nothing to read it with
-  const outcomes = await Promise.all(
-    (mutation.events ?? []).map(async (event, index) => {
-      const kind = event.kind ?? "";
-      if (!kind) return null;
-      const out: Outcome = await runLens(lens, kind, decodePayload(event.data), source, host);
-      if (out.kind === "error") console.warn(`[hyperfeed] could not read ${source.appKey} ${kind}: ${out.why}`);
-      return out.kind === "recorded" ? { kind, index, reading: out.reading } : null;
-    }),
-  );
-  return outcomes
-    .filter((r): r is NonNullable<typeof r> => r !== null)
-    .map(({ kind, index, reading }) => ({
-      // The index is the event's place in the change, so a skipped event never shifts a key.
-      key: clip(`${source.contextId}:${previousRoot.slice(0, 16)}>${root}:${index}`, 200),
+  if (!event.id || !event.kind || !lens) return [];
+  const out: Outcome = await runLens(lens, event.kind, decodePayload(event.data), source, host);
+  if (out.kind === "error") console.warn(`[hyperfeed] could not read ${source.appKey} ${event.kind}: ${out.why}`);
+  if (out.kind !== "recorded") return [];
+  return [
+    {
+      key: clip(`${source.contextId}:${event.id}`, 200),
       app: source.appKey,
       source_context: source.contextId,
-      event: clip(kind, 120),
+      event: clip(event.kind, 120),
       // Every notification starts a chain of its own; the agent continues it.
       chain: "",
-      ...reading,
-    }));
+      ...out.reading,
+    },
+  ];
+}
+
+/** The log index of an event id (`<index>:<seq>`), or null. */
+export function indexOf(id: string): number | null {
+  const n = Number(id.split(":")[0]);
+  return Number.isSafeInteger(n) && n >= 0 ? n : null;
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -159,11 +153,16 @@ export function identitiesOf(ids: (string | null | undefined)[]): Set<string> {
   return out;
 }
 
-/** The JSON an event carries (an object, a string, …), or `null` when it is not JSON. */
-export function decodePayload(data: number[] | string | null | undefined): unknown {
+/**
+ * The JSON an event carries (an object, a string, …), or `null` when it is not
+ * JSON. The cluster streams it already parsed; bytes and JSON text are read too.
+ */
+export function decodePayload(data: unknown): unknown {
   if (data == null) return null;
+  if (typeof data === "object" && !Array.isArray(data)) return data;
+  if (typeof data !== "string" && !Array.isArray(data)) return data;
   try {
-    const raw = typeof data === "string" ? data : new TextDecoder().decode(Uint8Array.from(data));
+    const raw = typeof data === "string" ? data : new TextDecoder().decode(Uint8Array.from(data as number[]));
     return JSON.parse(raw) as unknown;
   } catch {
     return null;

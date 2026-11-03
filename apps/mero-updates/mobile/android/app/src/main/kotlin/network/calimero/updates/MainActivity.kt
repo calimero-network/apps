@@ -15,7 +15,11 @@ import network.calimero.updates.ui.UpdatesApp
 
 /**
  * The one activity. Links arrive here, on the launch intent (cold start) or through
- * [onNewIntent], and go to the session: the wallet's sign-in redirect, or an invitation.
+ * [onNewIntent], and go to the view model: an invitation, or the node's consent page sending the
+ * person back (`mero-updates://consent?request_id=…`).
+ *
+ * While it lives, its passkey (Credential Manager) approves the account's step-ups: inviting,
+ * member changes, leaving a company.
  */
 class MainActivity : ComponentActivity() {
     private val vm: UpdatesViewModel by viewModels()
@@ -23,14 +27,20 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        vm.attach(this)
         if (savedInstanceState == null) consume(intent)
         val platform =
             Platform(
-                signIn = { vm.signIn(this) },
+                signInCloud = { cluster, create, name -> vm.signInCloud(this, cluster, create, name) },
                 share = ::share,
                 copy = ::copy,
             )
         setContent { UpdatesApp(vm, platform) }
+    }
+
+    override fun onDestroy() {
+        vm.attach(null)
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {

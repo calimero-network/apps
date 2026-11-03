@@ -81,7 +81,7 @@ fun ChannelsScreen(
             if (state.loaded && state.channels.isEmpty() && state.dms.isEmpty()) {
                 EmptyState(
                     title = "No channels here yet",
-                    body = "Right after joining, channels appear once your relay has synced the workspace. Pull them again with refresh, or create one.",
+                    body = "No channels you can reach yet. Pull them again with refresh, or create one.",
                 )
             } else {
                 LazyColumn(Modifier.fillMaxSize()) {

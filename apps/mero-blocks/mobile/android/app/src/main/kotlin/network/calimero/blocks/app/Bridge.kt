@@ -12,12 +12,6 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.put
-import network.calimero.blocks.generated.BlockEntry
-import network.calimero.blocks.generated.BlocksClient
-import network.calimero.blocks.generated.Edit
-import network.calimero.blocks.generated.PlayerView
-import network.calimero.blocks.generated.Transform
-import network.calimero.blocks.generated.WorldMeta
 
 // The app half of the bridge between the game page (`../game/src/bridge.ts`) and the signed-in
 // session. The page posts JSON text; the app answers by evaluating
@@ -189,9 +183,14 @@ object BridgeCodec {
 }
 
 /**
- * Runs the page's contract calls through the generated [BlocksClient]: only the methods the game
- * uses, each on its own path (views `query`, mutations `execute`), with typed arguments. `init` and
- * anything else are refused. (Swift `BridgeRouter`.)
+ * Runs the page's contract calls through [BlocksClient] on the component ABI: only the methods the
+ * game uses, each on its own path (views `query`, mutations `execute`), with typed arguments. `init`
+ * and anything else are refused. (Swift `BridgeRouter`.)
+ *
+ * The page speaks the bridge wire it always has (`game/src/bridge.ts`, `v1World.ts`): snake_case
+ * names, `now` as a number, whole lists. This router puts each call on the component wire
+ * (camelCase, u64 as decimal strings, pages followed) and answers in the page's shapes. The
+ * camelCase names are accepted too, for a page built against the component ABI.
  */
 class BridgeRouter(
     private val client: BlocksClient,
@@ -215,19 +214,15 @@ class BridgeRouter(
         val now: ULong,
     )
 
-    /** The method's return value as JSON text. */
-    @Suppress("ThrowsCount")
+    /** The method's return value as JSON text, in the shape the page reads. */
+    @Suppress("ThrowsCount", "CyclomaticComplexMethod")
     suspend fun handle(
         op: BridgeOp,
         method: String,
         argsJson: String,
     ): String {
-        val expected =
-            when (method) {
-                in VIEWS -> BridgeOp.QUERY
-                in MUTATIONS -> BridgeOp.EXECUTE
-                else -> throw BridgeException.unknownMethod(method)
-            }
+        val name = contractMethod(method) ?: throw BridgeException.unknownMethod(method)
+        val expected = if (name in VIEWS) BridgeOp.QUERY else BridgeOp.EXECUTE
         if (op != expected) throw BridgeException.wrongPath(method, expected)
 
         fun <T> args(serializer: KSerializer<T>): T =
@@ -238,15 +233,15 @@ class BridgeRouter(
             } catch (e: IllegalArgumentException) {
                 throw BridgeException.badArguments(method, e.message.orEmpty())
             }
-        return when (method) {
-            "world_meta" -> encode(WorldMeta.serializer(), client.worldMeta())
-            "get_overrides" -> encode(ListSerializer(BlockEntry.serializer()), client.getOverrides())
-            "override_count" -> encode(UInt.serializer(), client.overrideCount())
-            "get_players" -> encode(ListSerializer(PlayerView.serializer()), client.getPlayers(args(NowArgs.serializer()).now))
+        return when (name) {
+            "worldMeta" -> encode(WorldMeta.serializer(), client.worldMeta())
+            "getOverrides" -> encode(ListSerializer(BlockEntry.serializer()), client.getOverrides())
+            "overrideCount" -> encode(UInt.serializer(), client.overrideCount())
+            "getPlayers" -> encode(ListSerializer(PlayerView.serializer()), client.getPlayers(args(NowArgs.serializer()).now))
             "join" -> args(JoinArgs.serializer()).let { encode(PlayerView.serializer(), client.join(it.name, it.now)) }
             "leave" -> client.leave(args(NowArgs.serializer()).now).let { NULL }
             "heartbeat" -> args(HeartbeatArgs.serializer()).let { client.heartbeat(it.t, it.now) }.let { NULL }
-            "set_blocks" ->
+            "setBlocks" ->
                 args(SetBlocksArgs.serializer()).let {
                     checkEdits(method, it.edits)
                     encode(UInt.serializer(), client.setBlocks(it.edits, it.now))
@@ -270,11 +265,33 @@ class BridgeRouter(
     ): String = json.encodeToString(serializer, value)
 
     companion object {
-        val VIEWS = setOf("world_meta", "get_overrides", "get_players", "override_count")
-        val MUTATIONS = setOf("join", "leave", "heartbeat", "set_blocks")
+        /** The page's name for each method -> the contract's. */
+        val NAMES: Map<String, String> =
+            mapOf(
+                "world_meta" to "worldMeta",
+                "get_overrides" to "getOverrides",
+                "get_players" to "getPlayers",
+                "override_count" to "overrideCount",
+                "join" to "join",
+                "leave" to "leave",
+                "heartbeat" to "heartbeat",
+                "set_blocks" to "setBlocks",
+            )
+        val VIEWS = setOf("worldMeta", "getOverrides", "getPlayers", "overrideCount")
+        val MUTATIONS = setOf("join", "leave", "heartbeat", "setBlocks")
+
+        /** The contract's name for what the page called, or null when the game may not call it. */
+        fun contractMethod(method: String): String? = NAMES[method] ?: method.takeIf { it in VIEWS || it in MUTATIONS }
+
         private const val NULL = "null"
         const val MAX_EDITS = 512
         const val MAX_BLOCK_ID = 15u
-        private val json = Json { ignoreUnknownKeys = true }
+        private val json =
+            Json {
+                ignoreUnknownKeys = true
+                encodeDefaults = true
+                // A page on the component wire sends `now` as a decimal string.
+                isLenient = true
+            }
     }
 }

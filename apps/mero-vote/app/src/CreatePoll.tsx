@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Member } from "./generated/MeroVoteClient";
+import type { Member } from "./meroVote";
 import { errText, short, useMeroVote } from "./useMeroVote";
 import { BarChartIcon, CheckIcon, PlusIcon, XIcon } from "./icons";
 import { Callout, IconTile } from "./ui";
@@ -220,7 +220,7 @@ export function CreatePoll({
           <legend>Who can vote</legend>
           <div className="choice-group">
             <label className={`inline choice ${everyone ? "on" : ""}`}>
-              <input type="radio" checked={everyone} onChange={() => setEveryone(true)} /> every member of this context
+              <input type="radio" checked={everyone} onChange={() => setEveryone(true)} /> every member of this group
             </label>
             <label className={`inline choice ${!everyone ? "on" : ""}`}>
               <input type="radio" checked={!everyone} onChange={() => setEveryone(false)} /> only these members:
