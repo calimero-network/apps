@@ -1,5 +1,4 @@
 import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
-import { shareableInvitation } from "../lib/inviteLink";
 import { useToast } from "../contexts/ToastContext";
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import styles from "./InviteModal.module.css";
@@ -31,6 +30,7 @@ export default function InviteModal({
   onClose,
 }: {
   open: boolean;
+  /** The invitation link (`?invite=<org invite token>`), "" until one is minted. */
   code: string;
   /** What the invitation grants — "Whole space · Foo" or "Opens Bar". */
   scope: string;
@@ -40,14 +40,9 @@ export default function InviteModal({
   const dialogRef = useRef<HTMLDialogElement | null>(null);
   const { showToast } = useToast();
   const [showRaw, setShowRaw] = useState(false);
-  // Guarded, because this component is mounted for the whole page life now —
-  // `open` drives it, not a conditional render — so it renders many times with
-  // no invitation minted yet. `shareableInvitation` THROWS on an empty code,
-  // which took the whole page down on load until this returned null instead.
-  const share = useMemo(
-    () => (code.trim() ? shareableInvitation(code) : null),
-    [code],
-  );
+  // Guarded: this component is mounted for the whole page life (`open`
+  // drives it), so it renders many times with no invitation minted yet.
+  const share = useMemo(() => (code.trim() ? { link: code.trim() } : null), [code]);
 
   useDialogOpen(dialogRef, open && !!share);
 

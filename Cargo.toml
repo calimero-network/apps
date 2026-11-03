@@ -52,6 +52,9 @@ exclude = [
   # The contract's own crypto crate is a member of ITS workspace; the
   # `apps/*/logic/crates/*` glob above would claim it too.
   "apps/mero-vote/logic/crates/crypto",
+  "apps/mero-kombat/logic",
+  "apps/mero-blocks/logic",
+  "apps/mero-forum/logic",
   "apps/mero-updates/logic",
 ]
 
