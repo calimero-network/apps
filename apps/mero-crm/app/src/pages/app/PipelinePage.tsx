@@ -74,7 +74,7 @@ export default function PipelinePage(): React.ReactElement {
   });
 
   if (!data.loaded) {
-    return <Empty>{data.warmingUp ? 'Syncing this pipeline from your teammates…' : 'Loading pipeline…'}</Empty>;
+    return <Empty>{'Loading pipeline…'}</Empty>;
   }
 
   const totalValue = open.reduce((a, d) => a + d.value, 0);

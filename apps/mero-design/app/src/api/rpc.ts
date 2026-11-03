@@ -1,32 +1,44 @@
-import { RpcError, type SignedGroupOpenInvitation } from "@calimero-network/mero-js";
+import { AppError, ORG_CAPABILITIES, TrapError, type AppInfo, type CalimeroClient } from "@calimero-network/mero-js";
+import type { AppSource } from "@calimero-apps/connect";
 import { getApi } from "./client";
+import { toWire } from "./meroDesign";
 import { getCachedBlob, setCachedBlob } from "../utils/blobCache";
-import { fromWire, metaOf, packLabel, toWire } from "../utils/elementMeta";
+import { fromWire, metaOf, packLabel, toWire as elementToWire } from "../utils/elementMeta";
 import { useCanvasStore } from "../store/canvasStore";
 import type { Element } from "../types";
 
+/**
+ * v1 → Calimero 1.0, for this app:
+ *
+ * | v1 | here |
+ * |---|---|
+ * | a team: a namespace of the app | an **organization** (`createOrg`) |
+ * | a board: a subgroup of the team + the context bound to it | an **app instance** in the org (`createApp(name, source, { org })`) |
+ * | the board's name: the context's (and subgroup's) metadata | the instance's `name`, then the contract's own (`updateBoard`) |
+ * | team roles: namespace Admin / Member | org `owner` / `admin` (Admin) and `member` / `guest` (Member) |
+ * | a team invitation: a signed payload in a link | an **org invite** token in `?invite=` (a passkey step-up) |
+ * | your name in the team: namespace member metadata | org **member metadata** `{ name }` |
+ * | joining a board's context, waiting for it to sync | nothing: every member of the org reaches its instances |
+ * | blobs announced to the context | blobs of the app instance (`uploadBlob` / `downloadBlob`) |
+ */
+
 // ── Contract calls ───────────────────────────────────────────────────────────
-//
-// Every call goes through the session's `rpc` transport (see `client.tsx`):
-// JSON-RPC `execute` against a node on a node login, a warrant through the
-// relay on an account session. The call sites do not know which — the same
-// `rpcCall(contextId, method, args)` serves both.
 
 /**
  * Fold the client-side element extras into `label` on the way out.
  *
- * Only the two methods that write a label carry them — see
- * `utils/elementMeta.ts`. A label rename looks the element up in the store so a
- * rename never strips its dash style or sticky-ness; a caller that is changing
- * the extras themselves passes the updated element as `__element`, because the
- * store write it just made may not be the one this reads.
+ * Only the methods that write a label carry them (see `utils/elementMeta.ts`).
+ * A label rename looks the element up in the store so a rename never strips
+ * its dash style or sticky-ness; a caller that is changing the extras
+ * themselves passes the updated element as `__element`, because the store
+ * write it just made may not be the one this reads.
  */
 export function packArgs(method: string, args: Record<string, unknown>): Record<string, unknown> {
   if (method === "add_element" && args.element && typeof args.element === "object") {
-    return { ...args, element: toWire(args.element as Element) };
+    return { ...args, element: elementToWire(args.element as Element) };
   }
   if (method === "add_elements" && Array.isArray(args.elements)) {
-    return { ...args, elements: (args.elements as Element[]).map(toWire) };
+    return { ...args, elements: (args.elements as Element[]).map(elementToWire) };
   }
   if (method === "update_element_label") {
     const { __element, ...rest } = args as { __element?: Element } & Record<string, unknown>;
@@ -48,7 +60,7 @@ export function packArgs(method: string, args: Record<string, unknown>): Record<
   return args;
 }
 
-/** Unpack every element a read returns — the inverse of `packArgs`. */
+/** Unpack every element a read returns: the inverse of `packArgs`. */
 export function unpackResult<T>(method: string, value: T): T {
   if ((method === "get_elements" || method === "get_elements_by_ids") && Array.isArray(value)) {
     return value.map((el) => fromWire(el as Element)) as T;
@@ -60,402 +72,386 @@ export function unpackResult<T>(method: string, value: T): T {
 }
 
 /**
- * What a contract method returned, whatever shape the transport handed back.
- *
- * A node's `execute` answers `{ output, logs }` and mero-js returns `output`
- * verbatim: older nodes encode it as a `u8[]` of JSON text, newer ones as the
- * parsed value (string, object, array of objects). The relay answers the
- * parsed `returns`. Handle all of them.
+ * A readable error for a failed request: the contract's own message
+ * (`422 APP_ERROR { code, fields: { message } }`) when it gave one.
  */
-export function decodeOutput<T>(out: unknown): T {
-  if (out === null || out === undefined) return null as T;
-  if (typeof out === "string") {
-    try { return JSON.parse(out) as T; } catch { return out as T; }
+export function callFailure(err: unknown): Error {
+  if (err instanceof AppError) {
+    const message = err.fields?.message;
+    if (typeof message === "string" && message) return new Error(message);
+    return new Error(err.appCode || err.message);
   }
-  if (Array.isArray(out)) {
-    if (out.length === 0) return null as T;
-    if (typeof out[0] !== "number") return out as T; // already JSON values
-    // Legacy byte-array format
-    const text = new TextDecoder().decode(new Uint8Array(out as number[]));
-    return JSON.parse(text) as T;
-  }
-  if (typeof out === "object") return out as T;
-  // A bare number or boolean is already the value.
-  return out as T;
-}
-
-/**
- * A readable message for a failed contract call: the WASM's own reason when
- * the RPC error carries one, else the RPC-level message.
- */
-function rpcFailure(err: unknown): Error {
-  if (err instanceof RpcError) {
-    const data = err.data;
-    if (typeof data === "string" && data) return new Error(data);
-    if (data && typeof data === "object") {
-      const inner = (data as { data?: unknown; message?: unknown });
-      if (typeof inner.data === "string" && inner.data) return new Error(inner.data);
-      if (typeof inner.message === "string" && inner.message) return new Error(inner.message);
-    }
-    return new Error(err.message || JSON.stringify(data ?? err));
-  }
+  if (err instanceof TrapError) return new Error(`The board refused the change (${err.kind || "trap"}).`);
   return err instanceof Error ? err : new Error(String(err));
 }
 
+/** Pages `getElementsPage` reads at a time when `get_elements` wants the whole board. */
+const ELEMENT_PAGE = 1000;
+
+type Contract = Pick<CalimeroClient, "call" | "view">;
+
+async function send(client: Contract, app: string, method: string, args: Record<string, unknown>): Promise<unknown> {
+  const req = toWire(method, args);
+  const res = req.kind === "call"
+    ? await client.call(app, req.name, req.args)
+    : await client.view(app, req.name, req.args);
+  return res.result;
+}
+
+/**
+ * Every element on the board in paint order. The component contract answers
+ * `getElements` with at most a page (1,000), so a larger board is read page
+ * by page through `getElementsPage`, as v1's single read returned it whole.
+ */
+async function allElements(client: Contract, app: string): Promise<Element[]> {
+  const out: Element[] = [];
+  let cursor: string | null = null;
+  for (;;) {
+    const page = (await send(client, app, "get_elements_page", { cursor, limit: ELEMENT_PAGE })) as {
+      items?: Element[];
+      nextCursor?: string | null;
+    };
+    out.push(...(page.items ?? []));
+    if (!page.nextCursor) return out;
+    cursor = page.nextCursor;
+  }
+}
+
+/**
+ * Call a contract method of the board `app` (an app instance id) by its v1 name
+ * with v1's arguments; `meroDesign.ts` maps them onto the component's wire.
+ */
 export async function rpcCall<T>(
-  contextId: string,
+  app: string,
   method: string,
   args: Record<string, unknown>,
 ): Promise<T> {
-  const { rpc } = getApi();
-  let out: unknown;
+  const { client, after } = getApi();
   try {
-    out = await rpc.execute<unknown>({ contextId, method, argsJson: packArgs(method, args) });
+    const packed = packArgs(method, args);
+    const out = method === "get_elements" ? await allElements(client, app) : await send(client, app, method, packed);
+    return unpackResult(method, out as T);
   } catch (err) {
-    throw rpcFailure(err);
+    throw callFailure(err);
+  } finally {
+    after();
   }
-  return unpackResult(method, decodeOutput<T>(out));
 }
 
-// ── Admin API ────────────────────────────────────────────────────────────────
-//
-// Thin, typed wrappers over the session's admin client. They exist so pages
-// and tests have one seam (`../api/rpc`) rather than reaching for the client
-// everywhere, and so the shapes the pages read are normalised in one place.
+// ── Who am I ─────────────────────────────────────────────────────────────────
 
-/** What `admin.getNodeIdentity()` answers with. */
 export interface NodeIdentity {
-  /** The person: 64 hex characters. What member listings name members by. */
+  /** The signed-in account. What members, authors and owners are named by. */
   accountId: string;
-  /** This installation, when the node reports one. */
-  deviceId?: string | null;
-  publicKey?: string;
 }
 
-/**
- * Ask the session who it is.
- *
- * core 0.11.0-rc.23 (#3522) deleted `GET /namespaces/:id/identity` and dropped
- * `selfIdentity` from the group member listing — "who am I" was always a
- * node-level question, and one identity is shared across namespaces. Compare
- * `accountId` against a member's `identity`, which rc.23 also made an account.
- * On an account session the account admin answers with the account itself.
- */
+/** The signed-in account (v1 asked the node; the session already knows). */
 export async function getNodeIdentity(): Promise<NodeIdentity> {
-  const me = await getApi().admin.getNodeIdentity();
-  return { accountId: me.accountId ?? "", deviceId: me.deviceId, publicKey: me.publicKey };
+  return { accountId: getApi().accountId };
 }
 
-export interface NamespaceEntry {
+// ── Teams: organizations ─────────────────────────────────────────────────────
+
+/** What `/me` answers about orgs. */
+interface MeOrgs {
+  orgs?: Array<{ orgId: string; name: string; role: string }>;
+}
+
+export interface TeamEntry {
+  /** The org id. */
   namespaceId: string;
   name?: string;
+  /** `owner` | `admin` | `member` | `guest`. */
+  role: string;
 }
 
-function httpStatus(err: unknown): number | undefined {
-  const s = (err as { status?: unknown } | null)?.status;
-  return typeof s === "number" ? s : undefined;
-}
-
-/**
- * This app's namespaces. Scoped to the application so only Mero Design's
- * teams come back (instead of every namespace the session can see). Falls
- * back to the unscoped listing on older nodes that lack the scoped route
- * (404/405).
- */
-export async function listNamespaces(applicationId?: string): Promise<NamespaceEntry[]> {
-  const { admin } = getApi();
-  let raw: unknown;
-  if (applicationId) {
-    try {
-      raw = await admin.listNamespacesForApplication(applicationId);
-    } catch (err) {
-      const status = httpStatus(err);
-      if (status !== 404 && status !== 405) throw err;
-      raw = await admin.listNamespaces();
-    }
-  } else {
-    raw = await admin.listNamespaces();
+/** Every team this account is in. */
+export async function listTeams(): Promise<TeamEntry[]> {
+  const { client, after } = getApi();
+  try {
+    const me = (await client.me()) as MeOrgs;
+    return (me.orgs ?? []).map((o) => ({ namespaceId: o.orgId, name: o.name || undefined, role: o.role }));
+  } finally {
+    after();
   }
-  const list = Array.isArray(raw)
-    ? raw
-    : ((raw as { namespaces?: unknown[]; data?: unknown[] } | null)?.namespaces
-        ?? (raw as { data?: unknown[] } | null)?.data
-        ?? []);
-  return (list as Record<string, unknown>[])
-    .map((n) => ({
-      namespaceId: String(n.namespaceId ?? n.groupId ?? n.id ?? ""),
-      name: (typeof n.name === "string" ? n.name : typeof n.alias === "string" ? n.alias : "") || undefined,
-    }))
-    .filter((n) => n.namespaceId);
 }
 
-export interface CreatedNamespace {
+/** The caller's role in `org`, or null when not in it. */
+export async function myTeamRole(org: string): Promise<string | null> {
+  return (await listTeams()).find((t) => t.namespaceId === org)?.role ?? null;
+}
+
+/** An org owner or admin: may delete the team and manage its members. */
+export const isTeamAdminRole = (role: string | null | undefined): boolean => role === "owner" || role === "admin";
+
+/**
+ * What a member may do unless an admin sets otherwise, as v1 set it on a new
+ * namespace: create boards and invite people (and join open teams, the node's
+ * own default).
+ */
+export const MEMBER_DEFAULTS =
+  ORG_CAPABILITIES.CREATE_APP | ORG_CAPABILITIES.INVITE_MEMBERS | ORG_CAPABILITIES.JOIN_OPEN_TEAMS;
+
+export interface CreatedTeam {
   namespaceId: string;
-  /**
-   * An account founds through the relay and asks the cloud to host the new
-   * team (HA). When the cloud declined — typically the account is not linked
-   * to a cloud user yet — `haError` says why, and invitations minted for the
-   * team will not be claimable until that is fixed. A node never sets these.
-   */
-  haEnabled?: boolean;
-  haError?: string;
+  /** The team exists, but members may not create boards or invite (the step-up was refused). */
+  warning?: string;
 }
 
 /**
- * Found a team. The body is EXACTLY `applicationId` + `name`:
- * `CreateNamespaceApiRequest` is `deny_unknown_fields`, so an extra key is a
- * 400 for the whole create.
+ * Found a team: an org whose members may create boards and invite. Setting
+ * those defaults is a passkey step-up; refused, the org stays (only its owner
+ * and admins can then create boards and invite).
  */
-export async function createNamespace(applicationId: string, name: string): Promise<CreatedNamespace> {
-  const data = await getApi().admin.createNamespace({ applicationId, name });
-  const extra = data as { haEnabled?: boolean; haError?: string };
-  return {
-    namespaceId: data.namespaceId ?? "",
-    ...(extra.haEnabled !== undefined ? { haEnabled: extra.haEnabled } : {}),
-    ...(extra.haError ? { haError: extra.haError } : {}),
-  };
+export async function createTeam(name: string): Promise<CreatedTeam> {
+  const { client, passkey, after } = getApi();
+  try {
+    const namespaceId = await client.createOrg(name);
+    try {
+      await client.setCapabilities(namespaceId, MEMBER_DEFAULTS, passkey());
+      return { namespaceId };
+    } catch {
+      return {
+        namespaceId,
+        warning: "The team was created, but people you invite will not be able to create boards or invite others.",
+      };
+    }
+  } finally {
+    after();
+  }
 }
 
-/** Node-only: an account cannot delete a namespace. Callers hide the control. */
-export async function deleteNamespace(namespaceId: string): Promise<void> {
-  await getApi().admin.deleteNamespace(namespaceId);
+/** Deletes the org and every board in it, for everyone. Its owner only; a passkey step-up. */
+export async function deleteTeam(org: string): Promise<void> {
+  const { client, passkey, after } = getApi();
+  try {
+    await client.deleteOrg(org, passkey());
+  } finally {
+    after();
+  }
 }
 
-/**
- * Leave a team. What a member who is not an admin does instead of deleting it;
- * works on a node and on an account alike.
- */
-export async function leaveNamespace(namespaceId: string): Promise<void> {
-  await getApi().admin.leaveNamespace(namespaceId);
+/** Leave a team (remove yourself). A passkey step-up. */
+export async function leaveTeam(org: string): Promise<void> {
+  const { client, passkey, accountId, after } = getApi();
+  try {
+    await client.removeMember(org, accountId, passkey());
+  } finally {
+    after();
+  }
 }
 
-/**
- * Mint an invitation to a team. Returned as the raw response object so the
- * token the inviter shares is exactly what the node (or the account) signed;
- * the joiner's parser reads `invitation` out of it.
- */
-export async function createNamespaceInvitation(namespaceId: string): Promise<Record<string, unknown>> {
-  const data = await getApi().admin.createNamespaceInvitation(namespaceId);
-  return (data ?? {}) as unknown as Record<string, unknown>;
+/** An invitation into `org` as a member, approved with the inviter's passkey. Answers its token. */
+export async function createTeamInvitation(org: string): Promise<string> {
+  const { client, passkey, after } = getApi();
+  try {
+    return await client.invite(org, "member", passkey());
+  } finally {
+    after();
+  }
 }
 
-/** Redeem an invitation. `invitation` is the signed struct, not the whole token. */
-export async function joinNamespace(namespaceId: string, invitation: unknown): Promise<void> {
-  await getApi().admin.joinNamespace(namespaceId, {
-    invitation: invitation as SignedGroupOpenInvitation,
-  });
+/** Redeem an invitation token. Answers the org it joined, when the node names it. */
+export async function redeemInvitation(token: string): Promise<string | null> {
+  const { client, after } = getApi();
+  try {
+    const redeemed = await client.redeemInvite(token);
+    for (const key of ["org", "orgId"]) {
+      const v = (redeemed as Record<string, unknown>)[key];
+      if (typeof v === "string" && v) return v;
+    }
+    return null;
+  } finally {
+    after();
+  }
 }
 
-export interface SubgroupInfo {
-  groupId: string;
-  name?: string;
-}
+// ── Members of a team ────────────────────────────────────────────────────────
 
-/** The subgroups of a team — one per project. */
-export async function listSubgroups(groupId: string): Promise<SubgroupInfo[]> {
-  const raw: unknown = await getApi().admin.listSubgroups(groupId);
-  const list = Array.isArray(raw)
-    ? raw
-    : ((raw as { subgroups?: unknown[]; data?: unknown[] } | null)?.subgroups
-        ?? (raw as { data?: unknown[] } | null)?.data
-        ?? []);
-  return (list as Record<string, unknown>[])
-    .map((s) => ({
-      groupId: String(s.groupId ?? s.group_id ?? s.id ?? ""),
-      name: (typeof s.name === "string" ? s.name : typeof s.alias === "string" ? s.alias : "") || undefined,
-    }))
-    .filter((s) => s.groupId);
-}
-
-export interface GroupContextInfo {
-  contextId: string;
-  name?: string;
-}
-
-/** The contexts in a group — a project's board lives in its subgroup. */
-export async function listGroupContexts(groupId: string): Promise<GroupContextInfo[]> {
-  const raw: unknown = await getApi().admin.listGroupContexts(groupId);
-  const list = Array.isArray(raw)
-    ? raw
-    : ((raw as { contexts?: unknown[]; items?: unknown[]; data?: unknown[] } | null)?.contexts
-        ?? (raw as { items?: unknown[] } | null)?.items
-        ?? (raw as { data?: unknown[] } | null)?.data
-        ?? []);
-  return (list as Record<string, unknown>[])
-    .map((c) => ({
-      contextId: String(c.contextId ?? c.context_id ?? c.id ?? ""),
-      name: (typeof c.name === "string" ? c.name : typeof c.alias === "string" ? c.alias : "") || undefined,
-    }))
-    .filter((c) => c.contextId);
-}
-
-/**
- * A project's subgroup. `CreateGroupInNamespaceBody` accepts `groupName` and
- * `visibility`, nothing else, and is `deny_unknown_fields`.
- */
-export async function createSubgroup(namespaceId: string, groupName: string): Promise<string> {
-  // Born Open, not flipped to it: created Restricted, core admits the TEE with
-  // an op sealed under the subgroup's own key, and the later Open flip cites
-  // it - a namespace member outside the subgroup can read the flip but never
-  // that ancestry, so their node stops applying the namespace's governance.
-  const data = await getApi().admin.createGroupInNamespace(namespaceId, { groupName, visibility: "open" });
-  const raw = data as unknown as { groupId?: string; group_id?: string; id?: string };
-  return raw.groupId ?? raw.group_id ?? raw.id ?? "";
-}
-
-export async function setSubgroupVisibility(groupId: string, subgroupVisibility: "open" | "restricted"): Promise<void> {
-  await getApi().admin.setSubgroupVisibility(groupId, { subgroupVisibility });
-}
-
-/**
- * A project's board. `CreateContextRequest` is `deny_unknown_fields` and
- * accepts only applicationId / serviceName / contextSeed / initializationParams
- * / groupId / identitySecret / name.
- */
-export async function createContext(input: {
-  applicationId: string;
-  groupId: string;
+/** The parts of `GET /orgs/{org}` the screens read. */
+export interface TeamRecord {
   name: string;
-  initializationParams: number[];
-}): Promise<string> {
-  const data = await getApi().admin.createContext(input);
-  const raw = data as unknown as { contextId?: string; id?: string };
-  return raw.contextId ?? raw.id ?? "";
+  /** account -> `owner` | `admin` | `member` | `guest`. */
+  roles: Map<string, string>;
+  /** account -> the name they set for the team, where one is set. */
+  names: Map<string, string>;
 }
 
-/**
- * Rename a board for everyone: the context's replicated name, and its
- * subgroup's (older listings read the board name off the subgroup).
- *
- * A metadata write replaces the record whole, so the current `data` map is read
- * back and passed through rather than wiped. The subgroup write is best-effort:
- * the context record is the one every reader prefers.
- */
-export async function renameBoard(groupId: string, contextId: string, name: string): Promise<void> {
-  const { admin } = getApi();
-  const current = await admin.getContextMetadata(groupId, contextId).catch(() => null);
-  await admin.setContextMetadata(groupId, contextId, {
-    name,
-    ...(current?.data && Object.keys(current.data).length > 0 ? { data: current.data } : {}),
-  });
-  const group = await admin.getGroupMetadata(groupId).catch(() => null);
-  await admin
-    .setGroupMetadata(groupId, {
-      name,
-      ...(group?.data && Object.keys(group.data).length > 0 ? { data: group.data } : {}),
-    })
-    .catch(() => {});
+export async function readTeam(org: string): Promise<TeamRecord> {
+  const { client, after } = getApi();
+  try {
+    const o = (await client.getOrg(org)) as Record<string, unknown>;
+    const members = (o.members ?? {}) as Record<string, string>;
+    const meta = (o.memberMetadata ?? {}) as Record<string, unknown>;
+    const names = new Map<string, string>();
+    for (const [account, value] of Object.entries(meta)) {
+      const name = (value as { name?: unknown } | null)?.name;
+      if (typeof name === "string" && name.trim()) names.set(account, name.trim());
+    }
+    return { name: typeof o.name === "string" ? o.name : "", roles: new Map(Object.entries(members)), names };
+  } finally {
+    after();
+  }
 }
 
-/**
- * Node-only: an account cannot delete a context. It is also not on an app
- * token: the token a node hands this app has no `context:delete`, so the node
- * answers 403. A board is deleted through its subgroup (`deleteGroup`); this is
- * only the fallback for a board that has none.
- */
-export async function deleteContext(contextId: string): Promise<void> {
-  await getApi().admin.deleteContext(contextId);
-}
-
-/**
- * Delete a board's subgroup for everyone in the team. The delete cascades: it
- * unregisters the board's context with it. Core admits a team admin or the
- * subgroup's owner, and an account has the same op, so this is the board
- * delete on both kinds of session.
- */
-export async function deleteGroup(groupId: string): Promise<void> {
-  await getApi().admin.deleteGroup(groupId);
-}
-
-/**
- * Join a context this session is entitled to but hasn't joined yet (e.g. a
- * project created on a peer after we joined the team). Idempotent.
- */
-export async function joinContext(contextId: string): Promise<{ memberPublicKey?: string }> {
-  const data = await getApi().admin.joinContext(contextId);
-  return { memberPublicKey: data?.memberPublicKey };
-}
-
-/** The identities this session holds in a context — its member key(s). */
-export async function getContextIdentitiesOwned(contextId: string): Promise<string[]> {
-  const res: unknown = await getApi().admin.getContextIdentitiesOwned(contextId);
-  if (Array.isArray(res)) return res.filter((x): x is string => typeof x === "string");
-  const obj = res as { identities?: unknown[]; items?: unknown[] } | null;
-  const list = obj?.identities ?? obj?.items ?? [];
-  return (Array.isArray(list) ? list : []).filter((x): x is string => typeof x === "string");
+/** Publishes the name `account` goes by across the team (org member metadata). */
+export async function setTeamName(org: string, account: string, name: string): Promise<void> {
+  const { client, after } = getApi();
+  try {
+    await client.setMemberMetadata(org, account, { name });
+  } finally {
+    after();
+  }
 }
 
 export interface GroupMemberInfo {
   identity: string;
+  /** `Admin` (the org's owner or an admin) or `Member` (a member or a guest). */
   role: string;
+  /** The org's owner: never demoted or removed from here. */
+  owner?: boolean;
   name?: string;
 }
 
-/**
- * A TEE fleet node admitted by hardware attestation (core's
- * `GroupMemberRole::ReadOnlyTee` / `RelayTee`). It is infrastructure, not a
- * person: never listed as a member, shown as "TEE enabled" instead.
- */
-export const isTeeRole = (role: string | undefined): boolean =>
-  role === "ReadOnlyTee" || role === "RelayTee";
-
-export async function listGroupMembers(
-  groupId: string,
-): Promise<{ members: GroupMemberInfo[]; teeMembers: GroupMemberInfo[] }> {
-  const raw: unknown = await getApi().admin.listGroupMembers(groupId);
-  const list = Array.isArray(raw)
-    ? raw
-    : ((raw as { members?: unknown[]; data?: unknown[] } | null)?.members
-        ?? (raw as { data?: unknown[] } | null)?.data
-        ?? []);
-  const all = (list as Record<string, unknown>[])
-    .map((m) => ({
-      identity: String(m.identity ?? m.memberId ?? m.id ?? ""),
-      role: typeof m.role === "string" ? m.role : "Member",
-      name: (typeof m.name === "string" ? m.name.trim() : "") || undefined,
-    }))
-    .filter((m) => m.identity);
-  // TEE nodes are member rows on the node (the namespace and every Born Open
-  // subgroup admit them), but kept out of `members` so no list, count or role
-  // control ever shows one as a person.
-  return {
-    members: all.filter((m) => !isTeeRole(m.role)),
-    teeMembers: all.filter((m) => isTeeRole(m.role)),
-  };
+/** The team's members, by account, with the screen's two roles. */
+export async function listGroupMembers(org: string): Promise<{ members: GroupMemberInfo[] }> {
+  const team = await readTeam(org);
+  const members = [...team.roles.entries()].map(([identity, role]) => ({
+    identity,
+    role: isTeamAdminRole(role) ? "Admin" : "Member",
+    ...(role === "owner" ? { owner: true } : {}),
+    ...(team.names.get(identity) ? { name: team.names.get(identity) } : {}),
+  }));
+  return { members };
 }
 
-export async function updateMemberRole(groupId: string, identity: string, role: string): Promise<void> {
-  await getApi().admin.updateMemberRole(groupId, identity, { role });
+/** Promote to admin or demote to member. A passkey step-up. */
+export async function updateMemberRole(org: string, account: string, role: "Admin" | "Member"): Promise<void> {
+  const { client, passkey, after } = getApi();
+  try {
+    await client.setMember(org, account, role === "Admin" ? "admin" : "member", passkey());
+  } finally {
+    after();
+  }
+}
+
+/** Take someone out of the team. A passkey step-up. */
+export async function removeTeamMember(org: string, account: string): Promise<void> {
+  const { client, passkey, after } = getApi();
+  try {
+    await client.removeMember(org, account, passkey());
+  } finally {
+    after();
+  }
+}
+
+// ── Boards: app instances ────────────────────────────────────────────────────
+
+export interface BoardEntry {
+  /** The app instance id. Called `contextId` across the screens, as in v1. */
+  contextId: string;
+  /** The team (org) it belongs to. */
+  groupId: string;
+  name: string;
+  /** Who created the instance: it (or a team admin) may delete it. */
+  owner: string;
+}
+
+/** The instances of this app (the dev bundle, or the package) the account reaches. */
+export async function listInstances(client: Pick<CalimeroClient, "listApps">, source: AppSource): Promise<AppInfo[]> {
+  const filter = typeof source === "string" ? { bundle: source } : { package: source.package };
+  return client.listApps(filter);
+}
+
+/** A team's boards, by name. */
+export async function listBoards(org: string): Promise<BoardEntry[]> {
+  const { client, source, after } = getApi();
+  try {
+    return (await listInstances(client, source))
+      .filter((a) => a.org === org)
+      .map((a) => ({ contextId: a.appId, groupId: org, name: a.name, owner: a.owner }))
+      .sort((a, b) => a.name.localeCompare(b.name) || a.contextId.localeCompare(b.contextId));
+  } finally {
+    after();
+  }
+}
+
+/** Which team a board is in, among the boards this account reaches; null when none. */
+export async function teamOfBoard(app: string): Promise<string | null> {
+  const { client, source, after } = getApi();
+  try {
+    return (await listInstances(client, source)).find((a) => a.appId === app)?.org ?? null;
+  } finally {
+    after();
+  }
+}
+
+/**
+ * A new board in the team: an app instance in the org, named on the contract
+ * too (v1's `init` took the name; the component's takes nothing). Answers its id.
+ */
+export async function createBoard(org: string, name: string): Promise<string> {
+  const { client, source, after } = getApi();
+  let app: string;
+  try {
+    app = await client.createApp(name, source, { org });
+  } finally {
+    after();
+  }
+  // Best-effort: the instance's own name is what the list shows until then.
+  await rpcCall(app, "update_board", { name, description: "" }).catch(() => {});
+  return app;
+}
+
+/** Deletes the board for everyone (its creator, or a team admin). */
+export async function deleteBoard(app: string): Promise<void> {
+  const { client, after } = getApi();
+  try {
+    await client.deleteApp(app);
+  } finally {
+    after();
+  }
+}
+
+/** Renames the board for everyone: the contract's name, which every reader prefers. Its owner only. */
+export async function renameBoard(app: string, name: string): Promise<void> {
+  await rpcCall(app, "update_board", { name, description: null });
+}
+
+/** The board's current name on the contract, or "" until its owner set one. */
+export async function boardName(app: string): Promise<string> {
+  const board = await rpcCall<{ name?: string }>(app, "get_board", {});
+  return board?.name?.trim() ?? "";
 }
 
 // ── Blobs ────────────────────────────────────────────────────────────────────
 //
-// `contextId` is REQUIRED on both calls. On a node it makes the upload announce
-// the blob to the context's peers at once, and the read do P2P discovery for
-// a blob a peer holds and we do not (without it the node only checks local
-// storage and 404s — exactly the receiver-side error for peer-uploaded
-// images). On a relay the account's blob requests are refused outright
-// without one.
+// An image or SVG is a blob of the board's app instance: uploaded to it, read
+// back by any member who reaches it. The element stores the blob's hex id.
 
-export async function uploadBlob(data: ArrayBuffer | Uint8Array, contextId: string): Promise<{ blobId: string }> {
-  if (!contextId) throw new Error("uploadBlob needs the board's context id");
-  const res = await getApi().admin.uploadBlob({ data, contextId });
-  return { blobId: res?.blobId ?? "" };
+export async function uploadBlob(data: ArrayBuffer | Uint8Array, app: string): Promise<{ blobId: string }> {
+  if (!app) throw new Error("uploadBlob needs the board's id");
+  const { client, after } = getApi();
+  try {
+    const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+    const res = await client.uploadBlob(app, bytes);
+    return { blobId: res?.id || res?.blobId || "" };
+  } finally {
+    after();
+  }
 }
 
-export async function getBlob(blobId: string, contextId: string): Promise<ArrayBuffer> {
+export async function getBlob(blobId: string, app: string): Promise<ArrayBuffer> {
   const cached = await getCachedBlob(blobId);
   if (cached) return cached;
-  if (!contextId) throw new Error("getBlob needs the board's context id");
-
-  // Core's blob discovery sweep runs to a 30 s deadline before the transfer
-  // starts (probe-based discovery, rc.39 / core#3831); mero-js's read budget
-  // is sized for that, so no extra client-side timeout here.
-  const t0 = performance.now();
-  const buf = await getApi().admin.getBlob(blobId, { contextId });
-  const ms = Math.round(performance.now() - t0);
-  const kb = Math.round(buf.byteLength / 1024);
-  if (ms > 500) console.warn(`[MeroDesign] slow blob fetch: ${blobId.slice(0, 8)}… ${kb} KB in ${ms}ms`);
-  setCachedBlob(blobId, buf); // fire-and-forget, non-blocking
-  return buf;
+  if (!app) throw new Error("getBlob needs the board's id");
+  const { client, after } = getApi();
+  try {
+    const bytes = await client.downloadBlob(app, blobId);
+    const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+    setCachedBlob(blobId, buf); // fire-and-forget, non-blocking
+    return buf;
+  } finally {
+    after();
+  }
 }

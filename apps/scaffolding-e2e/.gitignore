@@ -1,40 +1,23 @@
 # Dependencies
 node_modules/
-.pnpm-store/
 
 # Build output
 dist/
-frontend/public/app.wasm
+app/dist-types/
 
-# Rust / WASM
+# Rust / component build output (`mero-component build` writes the .wasm next
+# to the committed res/abi.json)
 logic/target/
 logic/res/*.wasm
 
-# Bundle signing key. NEVER commit this: whoever signs a package's first
-# published version owns it, because the node derives ApplicationId from
-# (package, signer). build-bundle.sh generates one here on first run, and CI
-# signs with the organization's MERO_SIGN_KEY secret.
-logic/res/my-key.json
-
-# Bundle artifacts (`cargo mero bundle` writes dist/, which is ignored above)
+# Bundle artifacts
 *.mpk
-logic/res/bundle-temp/
 
-# Calimero node data
-logic/data/
-
-# Playwright
-frontend/playwright-report/
-frontend/test-results/
-frontend/tests/.auth/
-
-# Env
-frontend/.env
-frontend/.env.local
+# Written by `pnpm dev:local scaffolding-e2e`
+app/.env.development.local
 
 # Editor
 .DS_Store
 .vscode/
 .idea/
 *.swp
-logic/Cargo.lock

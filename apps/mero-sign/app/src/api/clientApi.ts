@@ -2,22 +2,25 @@ import { type ApiResponse } from '../lib/node';
 
 export type UserId = string;
 
-/**
- * ⚠️ RE-EXPORTED FROM THE GENERATED CLIENT, not declared here.
- *
- * The hand-written copy said `blob_id: string`. The ABI says BYTES, and the
- * generated client wraps them as `CalimeroBytes`. That one-word divergence is
- * the blob-id bug in type form: the app believed it held a string, so
- * `bs58.encode`-ing it looked correct, and the node answered "Failed to decode
- * blob ID (expected hex)" at runtime. Sourcing the type from the ABI makes
- * that a compile error instead.
- */
-import type {
-  DocumentChunk,
-  SignatureRecord,
-} from '../generated/MeroSignClient';
+/** A saved signature image, in the account's private library. */
+export interface SignatureRecord {
+  /** Below 2^53, so a JS number holds it exactly. */
+  id: number;
+  name: string;
+  /** The image's blob id in the private library: 64 lowercase hex digits. */
+  blob_id: string;
+  size: number;
+  /** Unix milliseconds. */
+  created_at: number;
+}
 
-export type { DocumentChunk, SignatureRecord };
+/** A chunk of a document's text with its embedding, for semantic search. */
+export interface DocumentChunk {
+  text: string;
+  embedding: number[];
+  start_position: number;
+  end_position: number;
+}
 
 export interface SavedSignature {
   id: number;
@@ -73,6 +76,8 @@ export interface DocumentInfo {
   status: DocumentStatus;
   pdf_blob_id: string;
   size: number;
+  /** Who must sign it: fixed when it was uploaded. */
+  required_signers?: UserId[];
   embeddings?: number[]; // New: Vector embeddings from frontend
   extracted_text?: string; // New: Extracted text from PDF
 }

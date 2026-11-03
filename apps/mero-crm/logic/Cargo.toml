@@ -1,55 +1,66 @@
 [package]
-# The DIRECTORY, the cargo package and the npm package are ONE value:
-# publish-bundle.yml uses it as both a path (`apps/$APP/logic`) and a package.
-name        = "mero-crm"
-description = "A simple, private sales CRM: pipeline, deals, contacts, activities and follow-up automation"
-version     = "0.1.0"
-edition.workspace    = true
-authors.workspace    = true
-license.workspace    = true
-repository.workspace = true
+# The DIRECTORY and the cargo package are one value: CI finds the app as
+# `apps/$APP/logic`.
+name = "mero-crm"
+description = "A simple, private sales CRM: pipeline, deals, contacts, activities and follow-up automation, on the component SDK"
+# NOT the release version: a release passes the registry's next version to
+# `mero-component bundle --app-version`. Cargo requires the field; bundling
+# locally without --app-version uses it.
+version = "0.1.0"
+edition = "2021"
+authors = ["Calimero Limited <info@calimero.network>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/calimero-network/apps"
+publish = false
 
 [lib]
-# `cdylib` for the WASM artifact the bundle ships; `rlib` so the TestHost unit
-# tests and tests/converge.rs can link the crate as a normal Rust library.
-crate-type = ["cdylib", "rlib"]
+# A `calimero:app` component. No `rlib`: the tests run the BUILT component on
+# core's engine (tests/common/mod.rs), not the crate linked natively.
+crate-type = ["cdylib"]
 
-# Package-level metadata with `services`: the root Cargo.toml deliberately has
-# no `[workspace.metadata.calimero]` (cargo-mero would REPLACE this table with
-# it). See the note in apps/mero-issue-tracker/logic/Cargo.toml.
+# Core at `component-core-tag` (root Cargo.toml), the same tag for every core
+# crate; scripts/check-component-pins.py asserts it. A standalone crate cannot
+# inherit `[workspace.dependencies]`.
+[dependencies]
+calimero-app-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8" }
+# The result shapes (`DealView`, `DealDetail`, …) are plain serde structs: they
+# carry lists and computed fields a `Record` cannot.
+serde = { version = "1", features = ["derive"] }
+
+# The harness (`TestApp`, `run_scenario`) and the builder the tests build this
+# crate with, for `cargo test` on the host only.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+calimero-app-sdk   = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8", features = ["testing"] }
+calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8" }
+serde_json = "1"
+
+# Read by `mero-component bundle` (tools/component-bundle), with the keys
+# `cargo mero bundle` reads for a v1 app. The v1 `services` table is gone: a
+# component bundle is one `app.wasm`, and a pipeline is an app instance created
+# from the package (or the bundle in dev), not from a named service.
 [package.metadata.calimero]
-package     = "com.calimero.mero-crm"
-name        = "Mero CRM"
+package = "com.calimero.mero-crm"
+name = "Mero CRM"
 description = "A simple, private sales CRM - track your pipeline, work your deals, and never lose a follow-up"
-author      = "Calimero"
-slug        = "com.calimero.mero-crm"
-icon        = "../app/public/icon-512.png"
-category    = "productivity"
-tags        = ["productivity", "crm", "sales", "collaboration"]
-github      = "https://github.com/calimero-network/apps"
-min-runtime-version = "0.12.0-rc.3"
-# A BARE https origin — it doubles as the login callback's registered redirect
-# URI and is compared by EXACT ORIGIN.
-frontend    = "https://mero-crm.vercel.app"
-# The built frontend `cargo mero bundle` packs, so the node serves it from the app\'s own origin.
+author = "Calimero"
+# The slug IS the package id: deep links resolve by `Application.package`.
+slug = "com.calimero.mero-crm"
+icon = "../app/public/icon-512.png"
+category = "productivity"
+tags = ["productivity", "crm", "sales", "collaboration"]
+github = "https://github.com/calimero-network/apps"
+# `component-min-runtime-version` in the root Cargo.toml: a node compares it
+# with its own release.
+min-runtime-version = "1.0.0-rc.8"
+# The listing's link, and an origin the node may send a person back to from
+# its consent page. NOT where the production frontend runs: a Cloud node trusts
+# passkey ceremonies only from frontends it serves from a bundle, so the
+# production frontend is the one packed below (docs/COMPONENT-APPS.md).
+frontend = "https://mero-crm.vercel.app"
+# The built frontend the bundle carries; the cluster serves it from the
+# package's own origin. Build it first: `pnpm -F mero-crm build`.
 frontend-dir = "../app/dist"
 
-# One service, named `crm`. Context creation passes `serviceName`, so the name
-# is part of how every pipeline is created.
-[[package.metadata.calimero.services]]
-name  = "crm"
-crate = "mero-crm"
-
-[dependencies]
-calimero-sdk            = { workspace = true }
-calimero-storage        = { workspace = true }
-calimero-storage-macros = { workspace = true }
-hex                     = { workspace = true }
-
-[dev-dependencies]
-calimero-storage = { workspace = true, features = ["testing"] }
-# converge_app clears/repopulates the process-global merge registry per run.
-serial_test = "3"
-
-# NOTE: no [profile.*]. Cargo ignores profiles in a workspace member and
-# `cargo mero build` then fails with `profile 'app-release' is not defined`.
+# Standalone: excluded from the root workspace (root Cargo.toml), its own
+# Cargo.lock, as core's component apps are.
+[workspace]

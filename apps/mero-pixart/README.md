@@ -1,6 +1,8 @@
 # MeroPixArt
 
-A collaborative image editor built on the Calimero p2p network. Think Photoshop / Photopea — but your project data lives on your own nodes, shared only with the people you invite.
+A collaborative image editor on Calimero 1.0. Think Photoshop / Photopea, but your project lives on attested Calimero nodes that only the people in your team reach.
+
+A **component app**: the contract is on core's component SDK (`calimero-app-sdk`, a `calimero:app` component on the node's wasmtime runtime), developed on `merod local`, and the frontend talks to a Calimero Cloud cluster in production (the local nodes in development) through mero-js's `CalimeroClient`. See [`docs/COMPONENT-APPS.md`](../../docs/COMPONENT-APPS.md).
 
 ## Features
 
@@ -10,13 +12,13 @@ A collaborative image editor built on the Calimero p2p network. Think Photoshop 
 - **Blend modes** (all 16), per-layer opacity, **layer masks** (paint to hide/reveal)
 - **Free transform** — move, scale, rotate, **shear** (skew X/Y), **mirror** (flip H/V) and a **corner-pin warp**, from either the on-canvas gizmo or the numeric Transform panel. Everything stays live transform params until you explicitly bake them with *Apply*
 - **Paint tools** — brush, eraser, bucket fill, eyedropper — re-render the raster layer to a new PNG blob
-- **Image upload** — pixels stored as PNG blobs on the node and announced to the context
+- **Image upload** — pixels stored as PNG blobs of the document (`POST /apps/{app}/blobs`); a layer names its blob by id
 - **Text layers** with font / size / color / style controls
 - **Export** the composited document to PNG or JPG; **project gallery** per team
 - **Showcase projects** — four complete documents (a product ad, an illustrated landscape, a geometric poster and a transform reference sheet) that load into a project from *File ▸ Open Showcase Project…*, or when you start a new project from one
-- **Multi-member projects** — invite teammates via Calimero group invitations
-- **Roles via AccessControl** — owner / admin / editor / viewer (read-only by default)
-- **Real-time sync & presence** (live cursors) over SSE — no central server
+- **Multi-member projects** — invite teammates with a team (org) invite link
+- **Roles** — the document's owner, editors and viewers (read-only by default); the team's owner and admins always edit
+- **Live updates & cursors** over the app's event stream
 - Undo / redo, zoom & pan, keyboard shortcuts
 
 > Remaining follow-ups: standalone adjustment layers, a finer warp mesh than four
@@ -42,158 +44,117 @@ in *Sunset Ridge* is the mountain layer again with `flipV` and a gradient mask.
 
 Opening one goes through the same contract calls a person would make by hand
 (`update_document`, `add_layer`, `update_layer_content`, `move_layers`), so every
-layer lands in WASM and reaches every other member.
+layer lands in the contract and reaches every other member.
 
-To see them without booting a node:
+To see them without a cluster:
 
 ```bash
 cd app && pnpm dev
-# then open http://localhost:5176/scripts/showcase-preview.html
+# then open http://localhost:5173/scripts/showcase-preview.html
 ```
 
-CI renders them too, and uploads the PNGs as the `showcase-renders` artifact.
-
-## Architecture
+## Layout
 
 ```
 mero-pixart/
-├── logic/          Rust WASM — document state, layers, blob refs, membership, roles (calimero-sdk)
-├── app/            React + TypeScript + Vite frontend (canvas compositor)
-│   ├── src/utils/transform.ts   one definition of a layer's matrix + warp mesh
-│   ├── src/utils/layerTree.ts   the folder tree read off `parentId`
-│   └── src/showcase/            the bundled demo documents, as paint recipes
-├── workflows/      merobox bootstrap workflows for dev / CI
-├── scripts/        Dev node scripts (start, stop, invite)
-└── .github/        CI workflows
+├── logic/                 the contract: a standalone component crate (wasm32-wasip2)
+│   ├── src/lib.rs         document, layers, blob ids, roster, roles, cursors
+│   ├── tests/harness.rs   TestApp: the built component on core's wasmtime engine
+│   ├── tests/scenarios.rs every scenarios/*.json in the harness
+│   ├── scenarios/         neutral steps, run by cargo test AND on merod local
+│   └── res/abi.json       the component's ABI, committed, diffed in CI
+├── app/                   Vite + React; CalimeroClient through @calimero-apps/connect
+│   └── src/api/           session, teams (orgs), the contract adapter (pixart.ts), useApi
+└── mobile/                native iOS / Android viewers, still on the v1 contract (see mobile/README.md)
 ```
 
-The compositor caches each layer's prepared pixels (mask + adjustment filter),
-keyed by a signature that deliberately excludes position, rotation and opacity —
-so dragging one layer re-prepares only that layer. Without it, a `blur`
-adjustment re-ran a full gaussian pass per layer on every pointer move
-(`utils/compositor.ts` documents the measurements).
-
-The WASM contract holds **layer metadata** (kind, `parentId` for folder nesting,
-transform — position, scale, rotation, shear, mirror, corner-pin warp — opacity,
-blend mode, adjustments, text props) and **blob references** — the actual pixels are stored as
-PNG **blobs** on the node and announced to the context so they propagate to every
-member. Adjustments are **non-destructive**: they are stored as parameters and
-applied by the frontend at composite/render time, never baked into the stored
-pixels until an explicit destructive edit re-renders the layer. Document metadata
-(name, description, size, background) lives in `Ownable` registers so only the
-owner can rename/resize, with the values `init` was given `Frozen`; access is
-governed by an `AccessControl` role registry (the creator is the sole initial
-admin), whose roles are projected onto the layer map's capability set — so every
-node, not just the caller's, refuses a viewer's layer write. The roster is one
-`UserStorage` slot per account and each cursor is owned by the account that
-wrote it. State changes fan out to members over **SSE** for
-real-time collaboration.
-
-## Quick Start
-
-### Prerequisites
-
-- **Rust** (1.89+) with the `wasm32-unknown-unknown` target — `rustup target add wasm32-unknown-unknown`
-- **Node 18+** and **pnpm** — `npm i -g pnpm`
-- **`merod`** + **`meroctl`** Calimero binaries on your `PATH` (a `merod 0.11.0-rc.x` node)
-- **jq** — `brew install jq` / `apt install jq`
-- **Docker** + **`merobox`** — *optional*, only for the merobox workflow tests
-- Network access on first build (the contract pulls `calimero-sdk` from the core git tag — see [SDK pin](#sdk-pin))
-
-### Run it (single node)
+## Run it
 
 ```bash
-make setup       # check prereqs + build the WASM contract + install frontend deps
-make dev-node    # start node1 on :2460, install the app, create a default Team + Project
-make frontend    # start the Vite dev server → http://localhost:5176
+# merod at component-core-tag (Linux), once: see docs/COMPONENT-APPS.md
+pnpm dev:local mero-pixart         # merod local, build + deploy, the app on http://localhost:5173
 ```
 
-Open http://localhost:5176, connect to the node (`http://localhost:2460`, user
-`admin` / pass `calimero1234`), pick the **Team**, open a **Project**, and start editing.
-
-### Two-node local stack (test real p2p collaboration)
-
-```bash
-make dev         # build WASM, start node1 (:2460) + node2 (:2461), auto-invite node2, run the frontend
-make stop        # tear everything down and free ports 2460/2461/2560/2561
-```
-
-Log into node1 in one browser and node2 in another (or a private window) — edits,
-layers, and cursors sync live between them.
-
-### Using the editor
-
-- **Tools** (left rail): move, brush, eraser, bucket, eyedropper, text, transform, hand/zoom — shortcuts `V B E G I T` etc.
-- **Layers** (right): a folder tree. Add raster/text/fill layers and folders, drag a row onto a folder to nest it (or onto the strip below the list to lift it out), click a folder's twirl to collapse its contents, double-click a name to rename. ⌘G groups the selection, ⌘⇧G ungroups. Selecting a folder selects everything inside it, so a drag on the canvas moves the group as one.
-- **Transform** (right, collapsed by default — open it from its header or *Edit ▸ Transform Numerically…*): numeric position, angle, skew X/Y, mirror and the four warp corner pins, plus presets and *Apply* to bake. With the Transform tool the canvas gizmo does the same thing by hand — corners scale, edge grips shear, the top knob rotates (Shift constrains), and *Warp* mode swaps the handles for corner pins.
-- **Adjustments** (right): brightness/contrast/saturation/hue/exposure/blur/invert sliders + a Curves editor.
-- **File menu**: open a showcase project, place an image, export PNG/JPG. **Top bar**: undo/redo, zoom, invite teammates, settings (roles, rename/resize).
-
-### Ports
-
-| | HTTP (RPC/admin) | P2P |
-|---|---|---|
-| node1 | `2460` | `2560` |
-| node2 | `2461` | `2561` |
-| frontend (Vite) | `5176` | — |
+Sign up with a passkey, create a team, then a project. To try collaboration,
+open an invitation link (*Projects ▸ Invitations*, or *Invite* in the editor) in
+a second browser profile and sign up there.
 
 ## Commands
 
-| Command | Description |
-|---|---|
-| `make setup` | Check prereqs, build logic, install deps |
-| `make build` | Build WASM + frontend production bundle |
-| `make dev` | Two-node stack + Vite dev server |
-| `make frontend` | Frontend only (http://localhost:5176) |
-| `make stop` | Stop all dev nodes |
-| `make unit` | Vitest unit tests |
-| `make e2e` | Playwright mocked e2e tests |
-| `make test` | Unit + e2e tests |
-| `make workflows` | merobox 2-node workflow tests (needs Docker) |
-| `make logic-test` | Contract RPC assertions via merobox (needs Docker) |
-| `make clean` | Remove all build artifacts |
-
-Contract tests: `cd logic && cargo test`.
-
-## Testing
-
-- **Contract (Rust):** `cd logic && cargo test` — roles, ownership, layer LWW merge, folder reparenting (including the nested case), the transform patch/clamp rules, `move_layers`' cycle guard, and the viewer edit-gate.
-- **Frontend unit (Vitest):** `make unit` — the transform algebra (matrix compose/invert, shear, mirror, warp mesh), the folder tree (nesting, cycle survival, selection expansion, bounds), the compositor's decisions (paint order, inherited opacity, blend mapping), raster pixel math (curves, levels, flood fill), the four showcase documents, the store, and the Layers/Transform panels via Testing Library.
-  jsdom ships no 2D canvas, so the suite installs a stub (`src/test/canvasStub.ts`) with a real pixel buffer behind `getImageData`/`putImageData` and a recorded draw log — read its header comment before asserting on pixels, because it does not rasterise shapes.
-- **Frontend e2e (Playwright, mocked):** `make e2e` — the editor chrome, the folder tree, free transform, every editor operation checked against the RPCs it issues, the showcase gallery and the projects page, all against a fake node (`e2e/support/mocks.ts`). One spec renders every showcase full-size and uploads the PNGs.
-- **Integration / p2p (merobox):** `make workflows` / `make logic-test` — spins up real nodes in Docker via the YAMLs in `workflows/`. CI runs all of the above (`.github/workflows/`).
-
-## SDK pin
-
-The contract pins all Calimero crates to **`0.11.0-rc.25`** via the **core git tag**:
-
-```toml
-calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.25" }
+```bash
+M=tools/component-bundle/Cargo.toml
+cargo test --manifest-path apps/mero-pixart/logic/Cargo.toml                 # harness + scenarios
+cargo run --release --manifest-path $M -- build  apps/mero-pixart/logic       # res/abi.json
+cargo run --release --manifest-path $M -- bundle apps/mero-pixart/logic --dev # dist/*.mpk
+pnpm merod-local e2e mero-pixart                                              # scenarios on merod local
+pnpm -F mero-pixart lint typecheck test build
 ```
 
-The rc is published only as a git tag (crates.io stops at rc.5) and the workspace
-package version at the tag is `0.0.0`, so a plain version requirement can't match —
-the git-tag form is required. Uses `borsh` 1.x. The merod runtime image used by the
-merobox workflows is `ghcr.io/calimero-network/merod:0.11.0-rc.25`.
+## Production
 
-## Data Model
+The production frontend is the one packed into the bundle (`frontend-dir`), served
+by the cluster from the package's own origin, and built with `VITE_CALIMERO_CLUSTER`
+and `VITE_CALIMERO_MIN_RELEASE` (see `app/.env.example`). Projects are created from
+the package `com.calimero.mero-pixart`.
 
-Each **Project** is a Calimero context inside a **Team** (namespace/group). Members
-are invited the same way as in other Calimero apps and granted roles via
-AccessControl. The document state (layers, adjustments, blob refs, members) is
-stored in the WASM logic and synced across all member nodes via the Calimero p2p
-layer; raster pixels travel as PNG blobs.
+## Data model
 
-## Owned keys are per owner (core 0.11.0-rc.57)
+A **team** is a Calimero organization; a **project** is an instance of this app in
+the team's org, holding one document. Who reaches a project is the org's business:
+an account outside the team is refused by the node before the contract runs.
 
-Since core 0.11.0-rc.57 every owned collection (`Authored…`, `WriteOnce`, `Moderated`,
-`ModeratedOnce`) is one namespace per account: two accounts writing one key hold two
-independent entries, and a key-only `get`, `contains`, `owner_of`, `owned_by_me` or `remove`
-acts on the CALLER's own entry only. This app was migrated:
+| state | what |
+|---|---|
+| `document: Cell<Document>` | name, description, canvas size, background, owner |
+| `editors: Set<account>` | who the owner made an editor |
+| `layers: UnorderedMap<id, Layer>` | every layer, at most 1,000; pixels and masks are blob ids |
+| `members: UnorderedMap<account, Member>` | the roster (name, avatar, joined) |
+| `cursors: UnorderedMap<account, CursorState>` | one pointer per person |
 
-`get_cursors` labels each pointer with its entry's own owner (`entries_with_owners`); a
-key-only `owner_of` would only ever name the caller, so every other member's pointer
-would have been dropped.
+Pixels never enter the state: the frontend uploads each PNG to the document
+(`client.uploadBlob(app, bytes)`) and stores the answer's 64-hex `id` in the layer.
+
+## What changed in the port
+
+| | v1 (calimero-sdk 0.12, merobox, MeroJs) | component (calimero-app-sdk 1.0.0-rc.7) |
+|---|---|---|
+| methods | snake_case (`update_layer`) | camelCase on the wire (`updateLayer`), same arguments in camelCase; `app/src/api/pixart.ts` keeps v1 names for the screens |
+| 64-bit arguments | JSON numbers | `u64`/`i64` arguments (`updatedAt`, `timestamp`, `x`, `y`) are decimal strings. Integers inside records (a `Layer`, a `Member`, a cursor) stay numbers |
+| reads | every method is a JSON-RPC call | the reads are views (`getDocument`, `getLayers`, `getLayer`, `getMembers`, `getCursors`, `getRole`, `myRole`, `canEdit`, `listRoles`) |
+| errors | a message string | `ViewOnly`, `OwnerOnly`, `Invalid { message }`; a call before sign-in is the node's `401`, an outsider's its `404` |
+| events | tuple variants (`LayerAdded("id")`) | named fields: `LayerAdded { id }`, `LayerUpdated { id }`, `LayerDeleted { id }`, `LayersReordered {}`, `MemberJoined { member }`, `MemberUsernameUpdated { member }`, `DocumentUpdated {}`, `CursorMoved { identity }`, `RoleUpdated { member }`, `OwnerTransferred { member }` |
+| `init` | `init(name, description, width, height)` as context init params | the same, as `createApp`'s `initArgs`; every one optional (`"Untitled"`, 1280 × 720) |
+| document owner | `Ownable` cells + `Frozen` initial values; admin tier of `AccessControl` | `document.owner`; admin == owner, as in v1 (only a transfer ever changed the admin tier) |
+| editors | `AccessControl` role projected onto the layer map, enforced on merge | `editors: Set`, checked in every layer write. **New:** the team's (org's) owner and admins always edit, so v1's frontend step that granted them the editor role document by document is gone |
+| grants and transfers | any 64-hex account id | an account the team holds (any org role, guests included); anything else is `Invalid` |
+| `transferOwnership` | the previous owner lost admin and kept nothing | the previous owner becomes an editor |
+| layers | `IndexedMap` with indexes on `parent_id`, `layer_index`, merged last-writer-wins on `updated_at` | a map of at most 1,000 layers (`addLayer` refuses more), read in one page and ordered by `(layerIndex, id)`. One log orders every write, so the **later call wins** whatever `updatedAt` it carries; `updatedAt` is stored as given |
+| blob ids | base58 `BlobId`, announced to the context (`blob_announce_to_context`) | the 64-hex id `uploadBlob` answers (`id`); anything else is `Invalid`. No announce: an upload makes the blob the document's on every node |
+| `join` / `updateMemberUsername` | any username | trimmed, 1 to 64 characters (`Invalid` otherwise) |
+| cursors | keyed by device (two windows, two pointers) | keyed by account (one pointer per person); `identity` and `account` are both the account |
+| `clearLayers` | admin only | owner only (the same person) |
+| teams / projects | namespaces / subgroups each holding one context, joined and synced per node | orgs / app instances (`createOrg`, `createApp(name, source, { org, initArgs })`, `listApps`); nothing to join or sync |
+| invitations | signed namespace invitations in a deflate+base58 link, desktop deep links | org invite tokens in `?invite=` (a passkey step-up to make, redeemed after sign-in) |
+| sign-in | node URL / Cloud wallet, desktop SSO | passkeys (`signUp`/`signIn`), one target fixed at build |
+| a person's name | namespace member metadata (`@calimero-apps/names`) | org member metadata (`setMemberMetadata`), shared by every app on the team |
+| delete a project | delete the subgroup and context (team admins, subgroup admins) | `deleteApp` (its creator, or a team owner or admin) |
+
+**Blobs on rc.7.** Component blobs are core#4815, which landed on core's master
+after the `1.0.0-rc.7` tag. A node at rc.7 answers a component app's blob routes
+with `409 NOT_SUPPORTED`, so on `merod local` at the pinned tag a raster layer's
+pixels cannot be uploaded yet (text, fill, group and adjustment layers, and
+everything else, work). The frontend already uses the blob routes #4815 serves.
+When `component-core-tag` moves to a release with #4815, `Layer.blobId` and
+`maskBlobId` should become `BlobRef`s (the SDK type #4815 adds): a blob that no
+stored `BlobRef` refers to is forgotten after an hour, and a string id is not a
+reference.
+
+Removed: the merobox workflows (`logic/workflows/`, now `scenarios/`), the
+`TestHost` unit tests (ported into `tests/harness.rs`), `res/state-schema.json`,
+`calimero.json`, the Makefile and `scripts/` (merobox / merod 0.x dev nodes), the
+Playwright suites (they drove a mocked or real v1 node), mero-react /
+mero-platform / `@calimero-apps/names` / e2e-node, the namespace invitation codec,
+desktop SSO, the join-sync gate and the subgroup walk.
 
 ## License
 

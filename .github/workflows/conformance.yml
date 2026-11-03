@@ -1,7 +1,14 @@
-# The conformance app's rig (apps/conformance): an owner node, a mock-TEE relay
-# behind an ingress, and two accounts, with the matrix run in node mode and in
-# account mode. One row per admin or RPC call; any row whose outcome is not the
-# one its mode expects fails the job.
+# The conformance app (apps/conformance), two jobs:
+#
+#   rig     (0.x) the rig in apps/conformance/v0: an owner node, a mock-TEE
+#           relay behind an ingress, and two accounts, with the matrix run in
+#           node mode and in account mode. One row per admin or RPC call; any
+#           row whose outcome is not the one its mode expects fails the job.
+#   matrix  (1.0) the matrix of every call mero-js's CalimeroClient makes,
+#           run as two accounts on `merod local` (core's release binary at
+#           component-core-tag, as components.yml's e2e uses). Same rule: one
+#           row per call, any row not as expected fails. Kept beside the rig
+#           until the 0.x rig is retired.
 #
 # Three ways in:
 #   * from ci.yml, on a change the `changes` job's `conformance` filter matches
@@ -10,7 +17,7 @@
 #     repo;
 #   * by hand, with an optional core ref.
 #
-# It builds core from source rather than taking a release: `merod` must have
+# The rig builds core from source rather than taking a release: `merod` must have
 # `--features merod/mock-attestation`, which release binaries deliberately
 # leave out, and `mero-auth`, `cargo-mero` and the scaffolding-e2e bundles come
 # from that same checkout. Not a required check.
@@ -226,7 +233,7 @@ jobs:
       - uses: ./.github/actions/setup-playwright
         timeout-minutes: 15
         with:
-          working-directory: apps/conformance/app
+          working-directory: apps/conformance/v0/app
 
       # up.sh reads every one of these (see its header and the README's table);
       # each is set rather than left to a default that assumes a workstation.
@@ -248,7 +255,7 @@ jobs:
         env:
           CORE_REF: ${{ steps.core.outputs.ref }}
           CORE_SHA: ${{ steps.sha.outputs.sha }}
-          REPORT: apps/conformance/app/test-results/conformance-report.json
+          REPORT: apps/conformance/v0/app/test-results/conformance-report.json
         run: |
           set -euo pipefail
           if [ ! -f "$REPORT" ]; then
@@ -285,8 +292,140 @@ jobs:
           # `.state` is a dot-directory, which upload-artifact skips by default.
           include-hidden-files: true
           path: |
+            apps/conformance/v0/app/test-results
+            apps/conformance/v0/rig/.state/run/logs
+            apps/conformance/v0/rig/.state/run/ingress/*.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # The 1.0 matrix (apps/conformance/app, src/conformance/matrix.ts) on
+  # `merod local`: no relay, no mero-auth, no ingress, since 1.0 nodes sign
+  # accounts in with passkeys themselves. Pinned to component-core-tag, not to
+  # the `core_ref` input (which names the rig's core): the matrix checks the
+  # client and node this repo's component apps pin.
+  matrix:
+    name: Conformance matrix (1.0, merod local)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    concurrency:
+      group: conformance-matrix-${{ github.event_name }}-${{ github.ref }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target-components
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve component-core-tag
+        id: tag
+        run: |
+          set -euo pipefail
+          tag=$(awk -F'"' '/^component-core-tag/{print $2}' Cargo.toml)
+          [ -n "$tag" ] || { echo "::error::no component-core-tag in Cargo.toml"; exit 1; }
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "::notice::conformance matrix against merod $tag"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip2
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target-components
+          key: conformance-matrix-${{ runner.os }}-${{ hashFiles('apps/conformance/logic/Cargo.lock', 'tools/component-bundle/Cargo.lock') }}
+          restore-keys: conformance-matrix-${{ runner.os }}-
+      - name: Build the component
+        run: cargo run --locked --release --manifest-path tools/component-bundle/Cargo.toml -- build apps/conformance/logic
+
+      # core's release binary for the pinned tag, checked against the release's
+      # SHA256SUMS (as components.yml's e2e job).
+      - name: Install merod ${{ steps.tag.outputs.tag }}
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/merod" && cd "$RUNNER_TEMP/merod"
+          base="https://github.com/calimero-network/core/releases/download/$TAG"
+          asset=merod_x86_64-unknown-linux-gnu.tar.gz
+          curl -fsSL --retry 3 -o "$asset" "$base/$asset"
+          curl -fsSL --retry 3 -o SHA256SUMS "$base/SHA256SUMS"
+          grep -E "  $asset\$" SHA256SUMS | sha256sum -c -
+          tar -xzf "$asset" merod
+          ./merod --version
+          echo "MEROD_BIN=$RUNNER_TEMP/merod/merod" >> "$GITHUB_ENV"
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          # merod-local runs as TypeScript under Node's type stripping (>= 22.18).
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Start merod local
+        run: |
+          set -euo pipefail
+          mkdir -p .merod-local
+          nohup node packages/merod-local/src/cli.ts up --fresh > .merod-local/merod.log 2>&1 &
+          for port in 2501 2502 2503; do
+            for _ in $(seq 1 180); do
+              if curl -fsS "http://127.0.0.1:$port/health" 2>/dev/null | jq -e '.systemLeader' >/dev/null 2>&1; then break; fi
+              sleep 0.5
+            done
+            curl -fsS "http://127.0.0.1:$port/health" | jq -e '.systemLeader' >/dev/null \
+              || { echo "::error::node :$port did not become healthy"; tail -50 .merod-local/merod.log; exit 1; }
+          done
+          # As merod-local's own start does: let the leader register the nodes
+          # and mint its first session key before the first sign-up.
+          sleep 2
+
+      - name: Run the matrix
+        env:
+          CONFORMANCE_WASM: ${{ github.workspace }}/apps/conformance/logic/res/conformance.wasm
+        run: pnpm --filter ./apps/conformance/app test:cluster
+
+      - name: Summarize the report
+        if: always()
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          REPORT: apps/conformance/app/test-results/conformance-report.json
+        run: |
+          set -euo pipefail
+          if [ ! -f "$REPORT" ]; then
+            {
+              echo "### Conformance matrix (1.0) against merod ${TAG}"
+              echo
+              echo "No report: the run stopped before the matrix wrote one (the build failed or the cluster did not come up). See the log and the conformance-matrix artifact."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          jq -r --arg tag "$TAG" '
+            def cell: tostring | gsub("[\r\n]+"; " ") | gsub("\\|"; "\\|") | .[0:400];
+            "### Conformance matrix (1.0) against merod \($tag)",
+            "",
+            "| rows | passed | failed |",
+            "| ---: | ---: | ---: |",
+            "| \(.summary.rows) | \(.summary.passed) | \(.summary.failed) |",
+            (if .summary.failed > 0 then
+              "",
+              "#### Failing rows",
+              "",
+              "| who | row | expected | actual | error |",
+              "| --- | --- | --- | --- | --- |",
+              (.rows[] | select(.pass | not)
+                | "| \(.who) | \(.name | cell) | \(.expected) | \(.actual) | \((.error // "") | cell) |")
+            else empty end)
+          ' "$REPORT" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the report and the cluster log
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: conformance-matrix-${{ github.run_id }}-${{ github.run_attempt }}
+          include-hidden-files: true
+          path: |
             apps/conformance/app/test-results
-            apps/conformance/rig/.state/run/logs
-            apps/conformance/rig/.state/run/ingress/*.log
+            .merod-local/merod.log
           retention-days: 7
           if-no-files-found: ignore

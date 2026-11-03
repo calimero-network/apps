@@ -1,26 +1,20 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
-import { useApplicationId } from "../hooks/useApplicationId";
+import { describeError } from "@calimero-apps/connect";
 import { useToast } from "../contexts/ToastContext";
-import { setActiveAudience, setAudienceName } from "../lib/session";
-import { useSelfAccount } from "../lib/updates";
+import { setActiveAudience, setAudienceName } from "../lib/active";
 import {
   createAudience,
-  deleteAudience,
-  enterAudienceContext,
+  inviteLink,
+  isAdminRole,
   listAudiences,
-  mintNamespaceInvite,
-  mintAudienceInvite,
-  namespaceTeeMode,
-  selfIsGroupAdmin,
+  mintInvite,
+  readCompany,
   type AudienceRow,
-  type TeeMode,
-} from "../lib/groups";
+} from "../lib/companies";
+import { useSignedIn } from "../lib/sessionContext";
 import InviteModal from "../components/InviteModal";
-import { TeeBadge } from "../components/ui";
 import { useDialogOpen } from "../hooks/useDialogOpen";
-import { hostingProblem } from "../lib/hosting";
 import AppHeader from "../components/AppHeader";
 import LogoutButton from "../components/LogoutButton";
 import {
@@ -36,12 +30,6 @@ import {
   UsersIcon,
 } from "../components/icons";
 import styles from "./AudiencesPage.module.css";
-import {
-  JOIN_SYNC_POLL_MS,
-  JoinSyncBanner,
-  isNamespaceJustJoined,
-  useJoinSync,
-} from "@calimero-network/mero-react";
 
 /**
  * Audiences inside one space (namespace). An audience is a SUBGROUP plus the context bound
@@ -65,40 +53,14 @@ import {
 export default function AudiencesPage() {
   const navigate = useNavigate();
   const { namespaceId = "" } = useParams();
-  // `admin`, never `mero.admin`: the session-aware admin (see CompaniesPage).
-  // On an account session the raw client's admin is the relay's node route and
-  // answers 403 to every create and join.
-  const { admin, nodeUrl } = useMero();
+  const { client, accountId, source, passkey, after } = useSignedIn();
   const { showToast } = useToast();
-  // Resolved from the NODE by package (or the registry, for an account) — see
-  // lib/appId and hooks/useApplicationId.
-  const { appId } = useApplicationId();
-  // Whether anyone can be invited to this space — see lib/hosting. Re-read
-  // after every mint, since a refused one is where the answer may change.
-  const [hostingVersion, setHostingVersion] = useState(0);
-  const hostingNote = useMemo(
-    () => hostingProblem(namespaceId),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [namespaceId, hostingVersion],
-  );
 
   const [audiences, setAudiences] = useState<AudienceRow[]>([]);
-  // Who may delete an audience: a company Admin, or an Admin of the audience.
-  const selfAccount = useSelfAccount();
   const [spaceAdmin, setSpaceAdmin] = useState(false);
-  /** The space whose audience list has come back at least once. */
-  const [listedForNs, setListedForNs] = useState<string | null>(null);
-  /** Contract roster per audience context, kept for the member counts on each row. */
   const [listing, setListing] = useState(true);
   const [nsName, setNsName] = useState("");
-  /**
-   * The company's TEE node, if any, keyed by the namespace it was read for —
-   * shown beside its name, never as a member.
-   */
-  const [tee, setTee] = useState<{
-    id: string;
-    mode: TeeMode | null;
-  } | null>(null);
+  const [memberCount, setMemberCount] = useState(0);
   const [name, setName] = useState("");
 
   const [pending, setPending] = useState<string | null>(null);
@@ -110,200 +72,116 @@ export default function AudiencesPage() {
     scope: string;
     hint: React.ReactNode;
   } | null>(null);
-  // The audience pending deletion. Its posts and comments go with it, for
-  // everyone — a sentence `window.confirm` has no room for.
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [pendingDelete, setPendingDelete] = useState<AudienceRow | null>(null);
   const deleteDialogRef = useRef<HTMLDialogElement | null>(null);
 
-  const run = useCallback(
-    async (
-      key: string,
-      fn: (onStatus: (m: string) => void) => Promise<void>,
-    ) => {
-      setPending(key);
-      setError(null);
+  const run = useCallback(async (key: string, fn: (onStatus: (m: string) => void) => Promise<void>) => {
+    setPending(key);
+    setError(null);
+    setStatus(null);
+    try {
+      await fn(setStatus);
+    } catch (e) {
+      setError(describeError(e));
+    } finally {
+      after();
+      setPending(null);
       setStatus(null);
-      try {
-        await fn(setStatus);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
-      } finally {
-        setPending(null);
-        setStatus(null);
-      }
-    },
-    [],
-  );
+    }
+  }, [after]);
 
   const load = useCallback(
     async (showSpinner = true) => {
-      if (!admin || !namespaceId) return;
+      if (!namespaceId) return;
       if (showSpinner) setListing(true);
       try {
-        // The namespace's own name for the header, so the page says which space
-        // you are in rather than a truncated id.
-        const info = await admin.getNamespace(namespaceId).catch(() => null);
-        setNsName(
-          (info?.name ?? "").trim() || `Space ${namespaceId.slice(0, 6)}`,
-        );
-        // Never throws: an unreadable member list reads as "no TEE".
-        void namespaceTeeMode(admin, namespaceId).then((mode) =>
-          setTee({ id: namespaceId, mode }),
-        );
-        void selfIsGroupAdmin(admin, namespaceId, selfAccount).then(
-          setSpaceAdmin,
-        );
-        setAudiences(await listAudiences(admin, namespaceId, selfAccount));
-        // A real answer for this space, which the sync gate below weighs.
-        setListedForNs(namespaceId);
+        const info = await readCompany(client, namespaceId).catch(() => null);
+        setNsName((info?.name ?? "").trim() || `Company ${namespaceId.slice(0, 6)}`);
+        setSpaceAdmin(isAdminRole(info?.roles.get(accountId)));
+        setMemberCount(info?.roles.size ?? 0);
+        setAudiences(await listAudiences(client, source, namespaceId));
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Could not load audiences.");
+        setError(describeError(e));
       } finally {
+        after();
         setListing(false);
       }
     },
-    [admin, namespaceId, selfAccount],
+    [client, source, namespaceId, accountId, after],
   );
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  // A space joined this session whose audiences have not replicated yet. Without
-  // this the branch below tells a brand-new member "No audiences yet. Create one
-  // above." about a space that may be full of them. An empty list only counts
-  // once the just-joined flag has cleared; until then it is what a node that
-  // has not synced the space returns.
-  const { isSyncing, dismiss: dismissSyncing } = useJoinSync({
-    namespaceId: namespaceId || null,
-    settled:
-      listedForNs === namespaceId &&
-      (audiences.length > 0 || !isNamespaceJustJoined(namespaceId)),
-    // Still empty: let the gate wait up to its ceiling, not the base window.
-    active: audiences.length === 0,
-  });
-
-  // Nothing else re-reads the list, so while the gate is up ask again.
-  useEffect(() => {
-    if (!isSyncing || audiences.length > 0) return;
-    const timer = setInterval(() => void load(false), JOIN_SYNC_POLL_MS);
-    return () => clearInterval(timer);
-  }, [isSyncing, audiences.length, load]);
+  const open = useCallback(
+    (contextId: string, audienceName: string) => {
+      setAudienceName(contextId, audienceName);
+      setActiveAudience(contextId, namespaceId);
+      navigate("/a");
+    },
+    [namespaceId, navigate],
+  );
 
   const create = useCallback(() => {
     const audienceName = name.trim();
-    if (!audienceName || !admin) return;
-    if (!appId) {
-      setError(
-        "Missing application id — reopen Mero Updates from the desktop app.",
-      );
-      return;
-    }
+    if (!audienceName) return;
     void run("create", async (onStatus) => {
-      // `identity`, not the create response's `memberPublicKey`: the account
-      // admin returns "" there, and lib/groups re-reads the identity this
-      // session actually holds in the new context.
-      const { contextId, identity } = await createAudience(
-        admin,
-        { applicationId: appId, namespaceId, name: audienceName },
-        onStatus,
-      );
-      setAudienceName(contextId, audienceName);
+      onStatus("Creating the audience…");
+      const contextId = await createAudience(client, source, namespaceId, audienceName);
       setName("");
-      setActiveAudience(contextId, identity, namespaceId, nodeUrl);
-      // Into the audience: the creator is already a member, so there is nothing to wait
-      // for. 480p H.264 (/live), not the 64x48 in-WASM comparison route.
-      navigate("/a");
+      open(contextId, audienceName);
     });
-  }, [name, admin, appId, namespaceId, run, navigate, nodeUrl]);
+  }, [name, client, source, namespaceId, run, open]);
 
-  /** Enter an audience: join it if needed, wait for the identity, then open the audience. */
-  const enter = useCallback(
-    (audience: AudienceRow) => {
-      if (!admin) return;
-      if (!audience.contextId) {
-        setError(
-          `“${audience.name}” has no audience context on this node yet. It may still be replicating — refresh in a moment.`,
-        );
-        return;
-      }
-      const contextId = audience.contextId;
-      void run(`enter:${audience.audienceId}`, async (onStatus) => {
-        const identity = await enterAudienceContext(
-          admin,
-          { audienceId: audience.audienceId, contextId },
-          onStatus,
-        );
-        setAudienceName(contextId, audience.name);
-        setActiveAudience(contextId, identity, namespaceId, nodeUrl);
-        navigate("/a");
-      });
-    },
-    [admin, run, navigate, namespaceId, nodeUrl],
-  );
+  /** Enter an audience: every member of the company reaches every audience in it. */
+  const enter = useCallback((audience: AudienceRow) => open(audience.contextId, audience.name), [open]);
 
   const inviteToAudience = useCallback(
     (audience: AudienceRow) => {
-      if (!admin) return;
-      void run(`invite:${audience.audienceId}`, async (onStatus) => {
-        const code = await mintAudienceInvite(
-          admin,
-          {
-            namespaceId,
-            audienceId: audience.audienceId,
-            audienceName: audience.name,
-            namespaceName: nsName,
-            contextId: audience.contextId,
-          },
-          onStatus,
-        ).finally(() => setHostingVersion((v) => v + 1));
+      void run(`invite:${audience.contextId}`, async (onStatus) => {
+        onStatus("Approve the invitation with your passkey…");
+        const token = await mintInvite(client, namespaceId, passkey());
         setInvite({
-          key: `audience:${audience.audienceId}`,
-          code,
+          key: `audience:${audience.contextId}`,
+          code: inviteLink(token, audience.contextId),
           scope: `Opens ${audience.name}`,
           hint: (
             <>
-              Opening the link puts them straight into{" "}
-              <strong>{audience.name}</strong>. Note what it grants: joining{" "}
-              <strong>{nsName}</strong>, which makes every audience in it
-              reachable — access is inherited from the company, so this is{" "}
-              <em>not</em> narrower than the company link. It just lands them in
-              this audience instead of the list.
+              Opening the link puts them straight into <strong>{audience.name}</strong>. Note what it
+              grants: joining <strong>{nsName}</strong>, which makes every audience in it reachable —
+              this is <em>not</em> narrower than the company link. It just lands them in this audience
+              instead of the list.
             </>
           ),
         });
         showToast(`Invite ready for “${audience.name}”.`);
       });
     },
-    [admin, namespaceId, nsName, run, showToast],
+    [client, namespaceId, nsName, passkey, run, showToast],
   );
 
   const inviteToNamespace = useCallback(() => {
-    if (!admin) return;
     void run("invite:namespace", async (onStatus) => {
-      const code = await mintNamespaceInvite(
-        admin,
-        { namespaceId, namespaceName: nsName },
-        onStatus,
-      ).finally(() => setHostingVersion((v) => v + 1));
+      onStatus("Approve the invitation with your passkey…");
+      const token = await mintInvite(client, namespaceId, passkey());
       setInvite({
         key: "namespace",
-        code,
+        code: inviteLink(token),
         scope: `Whole company · ${nsName}`,
         hint: (
           <>
-            This link joins <strong>{nsName}</strong> and every audience in it,
-            including audiences made later. It lands them on the audience list —
-            to drop someone straight into one audience, use{" "}
-            <strong>Invite</strong> on that audience.
+            This link joins <strong>{nsName}</strong> and every audience in it, including audiences
+            made later. It lands them on the audience list — to drop someone straight into one
+            audience, use <strong>Invite</strong> on that audience.
           </>
         ),
       });
       showToast(`Invite ready for “${nsName}”.`);
     });
-  }, [admin, namespaceId, nsName, run, showToast]);
+  }, [client, namespaceId, nsName, passkey, run, showToast]);
 
   useDialogOpen(deleteDialogRef, !!pendingDelete);
 
@@ -318,28 +196,17 @@ export default function AudiencesPage() {
 
   const removeAudience = useCallback(
     (audience: AudienceRow) => {
-      if (!admin) return;
       setPendingDelete(null);
-      void run(`delete:${audience.audienceId}`, async (onStatus) => {
-        await deleteAudience(
-          admin,
-          { audienceId: audience.audienceId, contextId: audience.contextId },
-          onStatus,
-        );
+      void run(`delete:${audience.contextId}`, async (onStatus) => {
+        onStatus("Deleting…");
+        await client.deleteApp(audience.contextId);
         onStatus("Refreshing audiences…");
         await load(false);
         showToast(`Deleted \u201c${audience.name}\u201d.`);
       });
     },
-    [admin, run, load, showToast],
+    [client, run, load, showToast],
   );
-
-  // The namespace's own member list says so; an audience born Open admitted the
-  // same node, so its rows say so too when the namespace read came back empty.
-  const teeMode =
-    (tee?.id === namespaceId ? tee.mode : null) ??
-    audiences.find((a) => a.teeMode)?.teeMode ??
-    null;
 
   const copyId = (label: string, id: string) => {
     void navigator.clipboard
@@ -369,33 +236,23 @@ export default function AudiencesPage() {
           </span>
           <div className={styles.headText}>
             <h1 className={styles.title}>{nsName || "Company"}</h1>
-            <TeeBadge mode={teeMode} />
             {/* Said on the page because it is the one thing a founder would
                 otherwise assume wrong: an audience here is a FILTER for attention,
-                not a wall. Audiences are open subgroups, so a member of the company
-                can open any of them. */}
+                not a wall. Every member of the company can open any of them. */}
             <p className={styles.sub} data-testid="audience-scope-note">
               An audience is a feed of updates. Everyone invited to this company
               can open every audience in it — for something confidential, like a
               board, create a separate company and invite only the board.
             </p>
           </div>
-          {/* Gated on hosting: a space the cloud refused to host cannot be
-              invited to (lib/hosting), and the button says so rather than
-              failing on the click. */}
           <button
             className={`${styles.btn} ${styles.btnSecondary}`}
             onClick={inviteToNamespace}
-            disabled={pending === "invite:namespace" || !!hostingNote}
-            title={hostingNote ?? undefined}
+            disabled={pending === "invite:namespace"}
             data-testid="invite-space"
           >
             <UserPlusIcon size={16} />
-            {pending === "invite:namespace"
-              ? "Inviting…"
-              : hostingNote
-                ? "Invite (not hosted yet)"
-                : "Invite people"}
+            {pending === "invite:namespace" ? "Inviting…" : "Invite people"}
           </button>
         </div>
 
@@ -418,7 +275,7 @@ export default function AudiencesPage() {
             <button
               className={styles.btn}
               onClick={create}
-              disabled={pending === "create" || !name.trim() || !appId}
+              disabled={pending === "create" || !name.trim()}
               data-testid="create-audience"
             >
               {pending !== "create" && <PlusIcon size={16} />}
@@ -447,9 +304,7 @@ export default function AudiencesPage() {
           )}
         </div>
 
-        {isSyncing ? (
-          <JoinSyncBanner show what="audiences" onDismiss={dismissSyncing} />
-        ) : listing ? (
+        {listing ? (
           <div className={styles.grid} aria-busy="true">
             <div className={styles.skeleton} />
             <div className={styles.skeleton} />
@@ -466,43 +321,26 @@ export default function AudiencesPage() {
           <div className={styles.grid}>
             {audiences.map((audience) => (
               <div
-                key={audience.audienceId}
+                key={audience.contextId}
                 className={styles.cardWrap}
-                ref={menuOpenId === audience.audienceId ? menuRef : null}
+                ref={menuOpenId === audience.contextId ? menuRef : null}
               >
                 <button
                   className={styles.card}
                   data-testid="audience-row"
-                  disabled={!audience.contextId}
                   onClick={() => enter(audience)}
                 >
-                  <span
-                    className={styles.cardTile}
-                    data-joined={audience.joined}
-                    aria-hidden
-                  >
+                  <span className={styles.cardTile} data-joined aria-hidden>
                     <HashIcon size={18} />
                   </span>
                   <span className={styles.cardText}>
                     <span className={styles.cardName}>{audience.name}</span>
                     <span className={styles.cardSub}>
-                      {audience.contextId ? (
-                        <>
-                          <UsersIcon size={13} />
-                          {`${audience.memberCount} member${audience.memberCount === 1 ? "" : "s"}`}
-                          {!audience.joined && (
-                            <span className={styles.tag}>not joined</span>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          <span className={styles.spinner} aria-hidden />
-                          syncing…
-                        </>
-                      )}
+                      <UsersIcon size={13} />
+                      {`${memberCount} member${memberCount === 1 ? "" : "s"}`}
                     </span>
                   </span>
-                  {pending === `enter:${audience.audienceId}` ? (
+                  {pending === `enter:${audience.contextId}` ? (
                     <span className={styles.spinner} aria-hidden />
                   ) : (
                     <ChevronRightIcon
@@ -516,19 +354,19 @@ export default function AudiencesPage() {
                   data-testid="audience-menu"
                   title="More options"
                   aria-label="More options"
-                  aria-expanded={menuOpenId === audience.audienceId}
+                  aria-expanded={menuOpenId === audience.contextId}
                   onClick={(e) => {
                     e.stopPropagation();
                     setMenuOpenId(
-                      menuOpenId === audience.audienceId
+                      menuOpenId === audience.contextId
                         ? null
-                        : audience.audienceId,
+                        : audience.contextId,
                     );
                   }}
                 >
                   <MoreIcon size={16} />
                 </button>
-                {menuOpenId === audience.audienceId && (
+                {menuOpenId === audience.contextId && (
                   <div
                     className={styles.dropdown}
                     role="menu"
@@ -537,32 +375,26 @@ export default function AudiencesPage() {
                     <button
                       className={styles.dropdownItem}
                       data-testid="invite-audience"
-                      disabled={!!hostingNote}
-                      title={hostingNote ?? undefined}
                       onClick={() => {
                         setMenuOpenId(null);
                         inviteToAudience(audience);
                       }}
                     >
                       <UserPlusIcon size={15} />
-                      {hostingNote ? "Invite (not hosted yet)" : "Invite"}
+                      Invite
                     </button>
-                    {audience.contextId && (
-                      <button
-                        className={styles.dropdownItem}
-                        onClick={() => {
-                          setMenuOpenId(null);
-                          copyId("Context ID", audience.contextId!);
-                        }}
-                      >
-                        <CopyIcon size={15} />
-                        Copy context ID
-                      </button>
-                    )}
-                    {/* Admins only. Deleting an audience is `deleteGroup` on
-                        its subgroup (see deleteAudience), which an account
-                        can do too; anyone else is not offered it. */}
-                    {(spaceAdmin || audience.selfAdmin) && (
+                    <button
+                      className={styles.dropdownItem}
+                      onClick={() => {
+                        setMenuOpenId(null);
+                        copyId("Audience ID", audience.contextId);
+                      }}
+                    >
+                      <CopyIcon size={15} />
+                      Copy audience ID
+                    </button>
+                    {/* Its creator, or an admin of the company; anyone else is not offered it. */}
+                    {(spaceAdmin || audience.owner === accountId) && (
                       <>
                         <div className={styles.dropdownSep} />
                         <button
@@ -580,9 +412,9 @@ export default function AudiencesPage() {
                     )}
                     <div
                       className={styles.dropdownMeta}
-                      title={audience.audienceId}
+                      title={audience.contextId}
                     >
-                      Group <code>{audience.audienceId}</code>
+                      ID <code>{audience.contextId}</code>
                     </div>
                   </div>
                 )}
@@ -605,8 +437,8 @@ export default function AudiencesPage() {
         </div>
         <p className={styles.confirmText}>
           <strong>{pendingDelete?.name}</strong> and every update, reply and ask
-          in it will be deleted. This happens for everyone in the company, not
-          just on this node, and it cannot be undone.
+          in it will be deleted. This happens for everyone in the company, and it
+          cannot be undone.
         </p>
         <div className={styles.confirmRow}>
           <button
@@ -618,7 +450,7 @@ export default function AudiencesPage() {
           <button
             className={`${styles.btn} ${styles.btnDanger}`}
             onClick={() => pendingDelete && removeAudience(pendingDelete)}
-            disabled={pending === `delete:${pendingDelete?.audienceId}`}
+            disabled={pending === `delete:${pendingDelete?.contextId}`}
             data-testid="confirm-delete-audience"
           >
             Delete audience
