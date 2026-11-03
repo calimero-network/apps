@@ -475,6 +475,22 @@
       "threadStats": "unorderedMap",
       "threads": "unorderedMap"
     },
+    "search": {
+      "admins": [],
+      "banned": [],
+      "drafts": [],
+      "founding": [],
+      "hidden": [],
+      "info": [],
+      "messageIds": [],
+      "messages": [],
+      "mods": [],
+      "profiles": [],
+      "reactions": [],
+      "readReceipts": [],
+      "threadStats": [],
+      "threads": []
+    },
     "version": 1
   },
   "world": "calimero:app@0.5.0"
