@@ -6,6 +6,7 @@ import type { Abi } from "../lens/validate";
 import { groupSets, modeOf, uncovered, validateActions } from "./actions";
 
 const APPS = path.resolve(__dirname, "../../../..");
+/**
  * Apps that moved to Calimero 1.0 (a component contract with its own ABI
  * format and camelCase methods). Hyperfeed runs on v1 nodes, where these are
  * still the published v1 bundles, so their actions are checked against each
