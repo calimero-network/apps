@@ -58,6 +58,7 @@ exclude = [
   "apps/mero-forms/logic",
   "apps/mero-updates/logic",
   "apps/mero-issue-tracker/logic",
+  "apps/mero-pixart/logic",
   "apps/mero-chess/logic",
 ]
 

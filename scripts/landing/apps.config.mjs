@@ -691,12 +691,16 @@ export const APPS = {
 
   'mero-pixart': {
     displayName: 'Mero PixArt',
+    // A component app (Calimero 1.0): sign-in is the app's own passkey modal,
+    // handed to the landing page as `onConnect`; there is no mero-react popup.
+    ownConnect: true,
     e2eDir: 'e2e',
-    availability: 'web+desktop',
-    trust: ['Non-destructive edits', 'Real layer folders', 'Pixels on your nodes'],
+    // Calimero 1.0 is reached from the browser (passkeys); no desktop node hand-off.
+    availability: 'web',
+    trust: ['Non-destructive edits', 'Real layer folders', 'Only your team reaches it'],
     explainer: [
       'A collaborative raster image editor with the depth of a desktop tool — layer folders, masks, blend modes, curves and a corner-pin warp — that several people can work in at the same time.',
-      'Adjustments are non-destructive and applied live, so you can reconsider an exposure change a week later. The project, including every uploaded image, lives as blobs on your node rather than in a cloud editor’s bucket.',
+      'Adjustments are non-destructive and applied live, so you can reconsider an exposure change a week later. The project, including every uploaded image, lives on attested Calimero nodes that only your team reaches, rather than in a cloud editor’s bucket.',
     ],
     features: [
       { icon: 'Cube3DLayers', title: 'Layers and folders', body: 'Raster, text and fill layers inside real collapsible folders, not a flat list pretending to nest.' },
@@ -708,10 +712,8 @@ export const APPS = {
     ],
     overview: {
       headline: 'Your images. Your layers. Your nodes.',
-      // Recorded from the real editor by `pnpm landing:media` in
-      // apps/mero-pixart/app, against the mocked node the `mocked` Playwright
-      // project uses (no merod). The chapter times match CHAPTERS in
-      // e2e/media/capture-landing-media.spec.ts.
+      // Recorded from the real editor (v1) against a mocked node. The chapter
+      // times match the recording.
       showcase: {
         heading: 'A launch poster, edited in layers',
         sub: 'Recorded from the real editor on the bundled Aurora Edition project: 23 layers in six folders, all drawn by the app’s own compositor.',
@@ -732,15 +734,15 @@ export const APPS = {
         sub: 'Layers, masks, blend modes and curves, the way a desktop editor does them. The difference is where the file lives.',
         themLabel: 'A typical cloud image editor',
         rows: [
-          { label: 'Where the file lives', them: 'On the vendor’s servers', us: 'On your node, and the nodes of the people you invite' },
-          { label: 'Your uploaded images', them: 'In the vendor’s storage bucket', us: 'Stored as blobs on your node' },
-          { label: 'Who can open it', them: 'The vendor, and whoever it grants access', us: 'Only members of the project’s namespace' },
+          { label: 'Where the file lives', them: 'On the vendor’s servers', us: 'On attested Calimero nodes, sealed' },
+          { label: 'Your uploaded images', them: 'In the vendor’s storage bucket', us: 'Blobs of the document, on the same nodes' },
+          { label: 'Who can open it', them: 'The vendor, and whoever it grants access', us: 'Only the people in your team' },
           { label: 'Adding a collaborator', them: 'Another seat on the monthly bill', us: 'An invite. The app is open source and free' },
           { label: 'Getting your work out', them: 'Often a proprietary format', us: 'Export PNG, JPEG or SVG whenever you want' },
         ],
       },
       collaboration: {
-        heading: 'Several people, one image, no server in the middle',
+        heading: 'Several people, one image, at the same time',
         sub: 'Everyone in a project sees each other’s cursors and changes, and two people can work on it at once without either losing work, because of how a document is stored.',
         points: [
           { title: 'Every layer is its own record', body: 'Two people working on different layers never queue behind each other.' },
@@ -753,7 +755,7 @@ export const APPS = {
           { name: 'Editor', can: 'Adds, paints, transforms, adjusts and deletes layers.' },
           { name: 'Viewer', can: 'Watches the image change without being able to change it.' },
         ],
-        rolesNote: 'The contract checks these, not just the interface: a layer change from a viewer, or a rename from a non-owner, is refused wherever it came from.',
+        rolesNote: 'The contract checks these, not just the interface: a layer change from a viewer, or a rename from a non-owner, is refused. The team’s owner and admins can always edit.',
       },
       audiences: {
         heading: 'Made for images that are nobody else’s business',
@@ -761,7 +763,7 @@ export const APPS = {
           {
             label: 'Design & marketing teams',
             title: 'Campaign artwork that stays off a vendor’s cloud until launch day',
-            body: 'Posters, ads and social assets built in layers and folders by the whole team, on your own nodes.',
+            body: 'Posters, ads and social assets built in layers and folders by the whole team, reachable by nobody else.',
             uses: ['Layer folders', 'Blend modes', 'PNG and JPEG export'],
           },
           {
@@ -785,22 +787,20 @@ export const APPS = {
         ],
       },
       openSource: {
-        // The workspace licence logic/Cargo.toml inherits. The Makefile's own
-        // targets: `setup` checks prerequisites and builds, `dev` starts two
-        // local nodes, invites the second and serves the app on :5176.
+        // logic/Cargo.toml's licence. `pnpm dev:local` starts merod local,
+        // deploys the contract and serves the app on :5173.
         license: 'MIT or Apache-2.0',
         commands: [
           '# fork calimero-network/apps on GitHub, then',
           'git clone https://github.com/<you>/apps',
-          'cd apps/apps/mero-pixart',
-          'make setup   # check tools, build logic, install app deps',
-          'make dev     # 2 local nodes + app on :5176',
+          'cd apps && pnpm install',
+          'pnpm dev:local mero-pixart   # merod local + app on :5173',
         ],
       },
       alwaysOn: true,
       closing: {
         title: 'Start your first image',
-        body: 'Connect a node, or install the desktop app that bundles one, then invite the people you make things with.',
+        body: 'Sign in with a passkey, create a team, then invite the people you make things with.',
       },
     },
   },
