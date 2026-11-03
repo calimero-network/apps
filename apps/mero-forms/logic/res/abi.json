@@ -555,6 +555,24 @@
       "team": "set",
       "triage": "unorderedMap"
     },
+    "search": {
+      "admins": [],
+      "captchaExpiry": [],
+      "captchaSeen": [],
+      "formKeys": [],
+      "formLinks": [],
+      "formResponses": [],
+      "formStats": [],
+      "forms": [],
+      "linkKeys": [],
+      "linkStats": [],
+      "links": [],
+      "responses": [],
+      "senderStats": [],
+      "settings": [],
+      "team": [],
+      "triage": []
+    },
     "version": 1
   },
   "world": "calimero:app@0.5.0"
