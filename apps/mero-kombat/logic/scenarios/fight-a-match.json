@@ -1,0 +1,894 @@
+[
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "join",
+  "args": {
+   "name": "Node One",
+   "fighter": "cryo",
+   "now": "1700000002000"
+  },
+  "expect": {
+   "ok": null
+  },
+  "events": {
+   "bob": [
+    "Initialized",
+    "PlayerJoined"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "pick",
+  "args": {
+   "fighter": "kinetic",
+   "now": "1700000003000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "sit",
+  "args": {
+   "seat": "p1",
+   "name": "Node One",
+   "fighter": "kinetic",
+   "now": "1700000004000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "sit",
+  "args": {
+   "seat": "p2",
+   "name": "Node Two",
+   "fighter": "inferno",
+   "now": "1700000005000"
+  },
+  "expect": {
+   "ok": null
+  },
+  "events": {
+   "owner": [
+    "Initialized",
+    "PlayerJoined",
+    "Seated",
+    "Seated"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "arena",
+  "args": {
+   "now": "1700000006000"
+  },
+  "expect": {
+   "ok": {
+    "title": "Arena",
+    "createdAt": "0",
+    "matchIndex": 0,
+    "round": 0,
+    "status": "fighting",
+    "roundResults": [],
+    "winner": "",
+    "flawless": false,
+    "hits": [],
+    "matchActions": 0,
+    "totalActions": "0",
+    "maxHp": 100,
+    "roundsToWin": 2,
+    "p1": {
+     "seat": "p1",
+     "member": "@owner",
+     "name": "Node One",
+     "fighter": "kinetic",
+     "hp": 100,
+     "roundsWon": 0,
+     "matchesWon": 0,
+     "online": true
+    },
+    "p2": {
+     "seat": "p2",
+     "member": "@bob",
+     "name": "Node Two",
+     "fighter": "inferno",
+     "hp": 100,
+     "roundsWon": 0,
+     "matchesWon": 0,
+     "online": true
+    },
+    "me": "@owner",
+    "mySeat": "p1"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "sit",
+  "args": {
+   "seat": "p1",
+   "name": "Node Two",
+   "fighter": "inferno",
+   "now": "1700000007000"
+  },
+  "expect": {
+   "error": "CornerTaken",
+   "fields": {}
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "act",
+  "args": {
+   "matchIndex": 0,
+   "round": 0,
+   "id": 1,
+   "kind": "jump",
+   "hit": false,
+   "blocked": false,
+   "now": "1700000008000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "act",
+  "args": {
+   "matchIndex": 0,
+   "round": 0,
+   "id": 2,
+   "kind": "punch",
+   "hit": true,
+   "blocked": false,
+   "now": "1700000009000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "act",
+  "args": {
+   "matchIndex": 0,
+   "round": 0,
+   "id": 3,
+   "kind": "kick",
+   "hit": true,
+   "blocked": false,
+   "now": "1700000010000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "act",
+  "args": {
+   "matchIndex": 0,
+   "round": 0,
+   "id": 4,
+   "kind": "uppercut",
+   "hit": false,
+   "blocked": false,
+   "now": "1700000011000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "act",
+  "args": {
+   "matchIndex": 0,
+   "round": 0,
+   "id": 5,
+   "kind": "block",
+   "hit": false,
+   "blocked": false,
+   "now": "1700000012000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "act",
+  "args": {
+   "matchIndex": 0,
+   "round": 0,
+   "id": 6,
+   "kind": "special",
+   "hit": true,
+   "blocked": false,
+   "now": "1700000013000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "act",
+  "args": {
+   "matchIndex": 0,
+   "round": 0,
+   "id": 7,
+   "kind": "punch",
+   "hit": true,
+   "blocked": true,
+   "now": "1700000014000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "arena",
+  "args": {
+   "now": "1700000015000"
+  },
+  "expect": {
+   "ok": {
+    "title": "Arena",
+    "createdAt": "0",
+    "matchIndex": 0,
+    "round": 0,
+    "status": "fighting",
+    "roundResults": [],
+    "winner": "",
+    "flawless": false,
+    "hits": [
+     {
+      "by": "p2",
+      "id": 7,
+      "kind": "punch",
+      "damage": 1,
+      "blocked": true,
+      "at": "1700000014000"
+     },
+     {
+      "by": "p2",
+      "id": 6,
+      "kind": "special",
+      "damage": 11,
+      "blocked": false,
+      "at": "1700000013000"
+     },
+     {
+      "by": "p1",
+      "id": 3,
+      "kind": "kick",
+      "damage": 7,
+      "blocked": false,
+      "at": "1700000010000"
+     },
+     {
+      "by": "p1",
+      "id": 2,
+      "kind": "punch",
+      "damage": 5,
+      "blocked": false,
+      "at": "1700000009000"
+     }
+    ],
+    "matchActions": 7,
+    "totalActions": "7",
+    "maxHp": 100,
+    "roundsToWin": 2,
+    "p1": {
+     "seat": "p1",
+     "member": "@owner",
+     "name": "Node One",
+     "fighter": "kinetic",
+     "hp": 88,
+     "roundsWon": 0,
+     "matchesWon": 0,
+     "online": true
+    },
+    "p2": {
+     "seat": "p2",
+     "member": "@bob",
+     "name": "Node Two",
+     "fighter": "inferno",
+     "hp": 88,
+     "roundsWon": 0,
+     "matchesWon": 0,
+     "online": true
+    },
+    "me": "@bob",
+    "mySeat": "p2"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "act",
+  "args": {
+   "matchIndex": 0,
+   "round": 0,
+   "id": 8,
+   "kind": "uppercut",
+   "hit": true,
+   "blocked": false,
+   "now": "1700000016000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "act",
+  "args": {
+   "matchIndex": 0,
+   "round": 0,
+   "id": 9,
+   "kind": "uppercut",
+   "hit": true,
+   "blocked": false,
+   "now": "1700000017000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "act",
+  "args": {
+   "matchIndex": 0,
+   "round": 0,
+   "id": 10,
+   "kind": "uppercut",
+   "hit": true,
+   "blocked": false,
+   "now": "1700000018000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "act",
+  "args": {
+   "matchIndex": 0,
+   "round": 0,
+   "id": 11,
+   "kind": "uppercut",
+   "hit": true,
+   "blocked": false,
+   "now": "1700000019000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "act",
+  "args": {
+   "matchIndex": 0,
+   "round": 0,
+   "id": 12,
+   "kind": "uppercut",
+   "hit": true,
+   "blocked": false,
+   "now": "1700000020000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "act",
+  "args": {
+   "matchIndex": 0,
+   "round": 0,
+   "id": 13,
+   "kind": "uppercut",
+   "hit": true,
+   "blocked": false,
+   "now": "1700000021000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "act",
+  "args": {
+   "matchIndex": 0,
+   "round": 0,
+   "id": 14,
+   "kind": "uppercut",
+   "hit": true,
+   "blocked": false,
+   "now": "1700000022000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "arena",
+  "args": {
+   "now": "1700000023000"
+  },
+  "expect": {
+   "ok": {
+    "title": "Arena",
+    "createdAt": "0",
+    "matchIndex": 0,
+    "round": 1,
+    "status": "fighting",
+    "roundResults": [
+     "p1"
+    ],
+    "winner": "",
+    "flawless": false,
+    "hits": [],
+    "matchActions": 14,
+    "totalActions": "14",
+    "maxHp": 100,
+    "roundsToWin": 2,
+    "p1": {
+     "seat": "p1",
+     "member": "@owner",
+     "name": "Node One",
+     "fighter": "kinetic",
+     "hp": 100,
+     "roundsWon": 1,
+     "matchesWon": 0,
+     "online": true
+    },
+    "p2": {
+     "seat": "p2",
+     "member": "@bob",
+     "name": "Node Two",
+     "fighter": "inferno",
+     "hp": 100,
+     "roundsWon": 0,
+     "matchesWon": 0,
+     "online": true
+    },
+    "me": "@owner",
+    "mySeat": "p1"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "act",
+  "args": {
+   "matchIndex": 0,
+   "round": 0,
+   "id": 999,
+   "kind": "punch",
+   "hit": true,
+   "blocked": false,
+   "now": "1700000024000"
+  },
+  "expect": {
+   "error": "RoundOver",
+   "fields": {
+    "current": 1
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "act",
+  "args": {
+   "matchIndex": 0,
+   "round": 1,
+   "id": 15,
+   "kind": "uppercut",
+   "hit": true,
+   "blocked": false,
+   "now": "1700000025000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "act",
+  "args": {
+   "matchIndex": 0,
+   "round": 1,
+   "id": 16,
+   "kind": "uppercut",
+   "hit": true,
+   "blocked": false,
+   "now": "1700000026000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "act",
+  "args": {
+   "matchIndex": 0,
+   "round": 1,
+   "id": 17,
+   "kind": "uppercut",
+   "hit": true,
+   "blocked": false,
+   "now": "1700000027000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "act",
+  "args": {
+   "matchIndex": 0,
+   "round": 1,
+   "id": 18,
+   "kind": "uppercut",
+   "hit": true,
+   "blocked": false,
+   "now": "1700000028000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "act",
+  "args": {
+   "matchIndex": 0,
+   "round": 1,
+   "id": 19,
+   "kind": "uppercut",
+   "hit": true,
+   "blocked": false,
+   "now": "1700000029000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "act",
+  "args": {
+   "matchIndex": 0,
+   "round": 1,
+   "id": 20,
+   "kind": "uppercut",
+   "hit": true,
+   "blocked": false,
+   "now": "1700000030000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "act",
+  "args": {
+   "matchIndex": 0,
+   "round": 1,
+   "id": 21,
+   "kind": "uppercut",
+   "hit": true,
+   "blocked": false,
+   "now": "1700000031000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "act",
+  "args": {
+   "matchIndex": 0,
+   "round": 1,
+   "id": 22,
+   "kind": "uppercut",
+   "hit": true,
+   "blocked": false,
+   "now": "1700000032000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "arena",
+  "args": {
+   "now": "1700000033000"
+  },
+  "expect": {
+   "ok": {
+    "title": "Arena",
+    "createdAt": "0",
+    "matchIndex": 0,
+    "round": 1,
+    "status": "finished",
+    "roundResults": [
+     "p1",
+     "p1"
+    ],
+    "winner": "p1",
+    "flawless": true,
+    "hits": [
+     {
+      "by": "p1",
+      "id": 22,
+      "kind": "uppercut",
+      "damage": 13,
+      "blocked": false,
+      "at": "1700000032000"
+     },
+     {
+      "by": "p1",
+      "id": 21,
+      "kind": "uppercut",
+      "damage": 13,
+      "blocked": false,
+      "at": "1700000031000"
+     },
+     {
+      "by": "p1",
+      "id": 20,
+      "kind": "uppercut",
+      "damage": 13,
+      "blocked": false,
+      "at": "1700000030000"
+     },
+     {
+      "by": "p1",
+      "id": 19,
+      "kind": "uppercut",
+      "damage": 13,
+      "blocked": false,
+      "at": "1700000029000"
+     },
+     {
+      "by": "p1",
+      "id": 18,
+      "kind": "uppercut",
+      "damage": 13,
+      "blocked": false,
+      "at": "1700000028000"
+     },
+     {
+      "by": "p1",
+      "id": 17,
+      "kind": "uppercut",
+      "damage": 13,
+      "blocked": false,
+      "at": "1700000027000"
+     },
+     {
+      "by": "p1",
+      "id": 16,
+      "kind": "uppercut",
+      "damage": 13,
+      "blocked": false,
+      "at": "1700000026000"
+     },
+     {
+      "by": "p1",
+      "id": 15,
+      "kind": "uppercut",
+      "damage": 13,
+      "blocked": false,
+      "at": "1700000025000"
+     }
+    ],
+    "matchActions": 22,
+    "totalActions": "22",
+    "maxHp": 100,
+    "roundsToWin": 2,
+    "p1": {
+     "seat": "p1",
+     "member": "@owner",
+     "name": "Node One",
+     "fighter": "kinetic",
+     "hp": 100,
+     "roundsWon": 2,
+     "matchesWon": 1,
+     "online": true
+    },
+    "p2": {
+     "seat": "p2",
+     "member": "@bob",
+     "name": "Node Two",
+     "fighter": "inferno",
+     "hp": 0,
+     "roundsWon": 0,
+     "matchesWon": 0,
+     "online": true
+    },
+    "me": "@bob",
+    "mySeat": "p2"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "history",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "index": 0,
+     "startedAt": "0",
+     "winner": "p1",
+     "flawless": true,
+     "rounds": [
+      "p1",
+      "p1"
+     ],
+     "actions": 22
+    }
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "stand",
+  "args": {
+   "now": "1700000034000"
+  },
+  "expect": {
+   "error": "AlreadyFought",
+   "fields": {}
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "rematch",
+  "args": {
+   "now": "1700000035000"
+  },
+  "expect": {
+   "ok": 1
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "arena",
+  "args": {
+   "now": "1700000036000"
+  },
+  "expect": {
+   "ok": {
+    "title": "Arena",
+    "createdAt": "0",
+    "matchIndex": 1,
+    "round": 0,
+    "status": "fighting",
+    "roundResults": [],
+    "winner": "",
+    "flawless": false,
+    "hits": [],
+    "matchActions": 0,
+    "totalActions": "22",
+    "maxHp": 100,
+    "roundsToWin": 2,
+    "p1": {
+     "seat": "p1",
+     "member": "@owner",
+     "name": "Node One",
+     "fighter": "kinetic",
+     "hp": 100,
+     "roundsWon": 0,
+     "matchesWon": 1,
+     "online": false
+    },
+    "p2": {
+     "seat": "p2",
+     "member": "@bob",
+     "name": "Node Two",
+     "fighter": "inferno",
+     "hp": 100,
+     "roundsWon": 0,
+     "matchesWon": 0,
+     "online": true
+    },
+    "me": "@owner",
+    "mySeat": "p1"
+   }
+  },
+  "events": {
+   "bob": [
+    "Initialized",
+    "PlayerJoined",
+    "Seated",
+    "Seated",
+    "Acted",
+    "Acted",
+    "Acted",
+    "Acted",
+    "Acted",
+    "Acted",
+    "Acted",
+    "Acted",
+    "Acted",
+    "Acted",
+    "Acted",
+    "Acted",
+    "Acted",
+    "Acted",
+    "RoundOver",
+    "Acted",
+    "Acted",
+    "Acted",
+    "Acted",
+    "Acted",
+    "Acted",
+    "Acted",
+    "Acted",
+    "RoundOver",
+    "MatchOver",
+    "MatchStarted"
+   ]
+  }
+ }
+]

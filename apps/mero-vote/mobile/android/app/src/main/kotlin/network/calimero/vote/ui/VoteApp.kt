@@ -1,5 +1,6 @@
 package network.calimero.vote.ui
 
+import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.slideInHorizontally
@@ -19,8 +20,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Check
@@ -28,17 +31,14 @@ import androidx.compose.material.icons.filled.HowToVote
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.outlined.Drafts
-import androidx.compose.material.icons.outlined.HowToReg
 import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -61,6 +61,7 @@ import network.calimero.vote.core.GroupRef
 import network.calimero.vote.core.GroupsModel
 import network.calimero.vote.core.InvitationModel
 import network.calimero.vote.core.PollModel
+import network.calimero.vote.core.VoteConstants
 
 /** Where the person is. The stack's top is on screen; Back pops it. (iOS: the NavigationStack path.) */
 sealed interface Route {
@@ -98,7 +99,7 @@ class Navigator(
         stack.addAll(routes)
     }
 
-    fun groups(): GroupsModel = models.getOrPut(Route.Groups) { GroupsModel(backend, vm.session.applicationId.orEmpty()) } as GroupsModel
+    fun groups(): GroupsModel = models.getOrPut(Route.Groups) { GroupsModel(backend, VoteConstants.PACKAGE_NAME) } as GroupsModel
 
     fun group(route: Route.Group): GroupModel = models.getOrPut(route) { GroupModel(backend, route.group) } as GroupModel
 
@@ -109,21 +110,13 @@ class Navigator(
 @Composable
 fun VoteApp(
     vm: VoteViewModel,
-    onSignIn: () -> Unit,
+    activity: Context,
 ) {
     VoteTheme {
-        val backend by vm.session.backend.collectAsState()
-        val revision by vm.session.revision.collectAsState()
-        val restoring by vm.session.isRestoring.collectAsState()
+        val backend by vm.backend.collectAsState()
+        val revision by vm.revision.collectAsState()
+        val restoring = vm.restoring
         val stage by vm.invitation.stage.collectAsState()
-        val pending by vm.session.pendingInvitation.collectAsState()
-
-        LaunchedEffect(pending) {
-            pending?.let {
-                vm.invitation.open(it)
-                vm.session.dismissPendingInvitation()
-            }
-        }
 
         val current = backend
         Box(Modifier.fillMaxSize().background(Palette.Surface)) {
@@ -131,7 +124,7 @@ fun VoteApp(
                 current != null ->
                     key(revision) {
                         val nav = remember { Navigator(current, vm) }
-                        Stack(nav, vm)
+                        Stack(nav, vm, activity)
                         if (stage != InvitationModel.Stage.Idle) {
                             InvitationSheet(vm) { group -> nav.reset(listOf(Route.Group(group))) }
                         }
@@ -140,7 +133,7 @@ fun VoteApp(
                     Box(Modifier.fillMaxSize().background(Palette.Ground), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = Palette.Ink)
                     }
-                else -> SignInScreen(vm, invited = stage == InvitationModel.Stage.Confirm, onSignIn = onSignIn)
+                else -> SignInScreen(vm, invited = stage == InvitationModel.Stage.Confirm, activity = activity)
             }
         }
     }
@@ -150,6 +143,7 @@ fun VoteApp(
 private fun Stack(
     nav: Navigator,
     vm: VoteViewModel,
+    activity: Context,
 ) {
     val top = nav.stack.last()
     BackHandler(enabled = nav.stack.size > 1) { nav.pop() }
@@ -170,6 +164,7 @@ private fun Stack(
                 GroupsScreen(
                     model = nav.groups(),
                     vm = vm,
+                    activity = activity,
                     open = { nav.push(Route.Group(it)) },
                     openInvitation = { vm.invitation.open(it) },
                 )
@@ -184,20 +179,19 @@ private fun Stack(
 private fun SignInScreen(
     vm: VoteViewModel,
     invited: Boolean,
-    onSignIn: () -> Unit,
+    activity: Context,
 ) {
-    val state by vm.session.client.state
-        .collectAsState()
     Column(
         Modifier
             .fillMaxSize()
             .background(Palette.Ground)
             .statusBarsPadding()
             .navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.height(32.dp))
         Box(
             Modifier.size(84.dp).clip(RoundedCornerShape(24.dp)).background(Palette.Lime),
             contentAlignment = Alignment.Center,
@@ -227,18 +221,8 @@ private fun SignInScreen(
                 Text("You're invited to a voting group. Sign in to accept.", fontSize = 15.sp, fontWeight = FontWeight.Medium, color = Palette.Ink)
             }
         }
-        Spacer(Modifier.weight(1f))
-        state.error?.let {
-            Text(it, fontSize = 14.sp, color = Palette.Danger, textAlign = TextAlign.Center)
-            Spacer(Modifier.height(12.dp))
-        }
-        PrimaryButton("Sign in with Calimero", onSignIn, busy = state.isLoading, icon = Icons.Outlined.HowToReg)
-        if (state.isLoading) {
-            TextButton(onClick = { vm.session.cancelSignIn() }) { Text("Cancel", color = Palette.Ink) }
-        } else {
-            Spacer(Modifier.height(12.dp))
-            Text("You'll approve this device in your Calimero wallet.", fontSize = 13.sp, color = Palette.Muted)
-        }
+        Spacer(Modifier.height(28.dp))
+        CloudSignInPanel(vm, activity)
     }
 }
 
@@ -273,7 +257,7 @@ private fun InvitationSheet(
 
     fun accept() {
         scope.launch {
-            vm.invitation.accept(backend = { vm.session.backend.value }, didJoin = { vm.session.didJoinNamespace() })
+            vm.invitation.accept(backend = { vm.backend.value }, didJoin = { vm.didJoin() })
         }
     }
     ModalBottomSheet(onDismissRequest = { if (!joining) vm.invitation.reset() }, sheetState = sheet, containerColor = Palette.Surface) {
@@ -287,16 +271,14 @@ private fun InvitationSheet(
                 InvitationModel.Stage.Confirm -> {
                     IconCircle(Icons.Outlined.Drafts, Palette.LimeSoft)
                     SheetTitle("Join this voting group?")
-                    SheetBody(
-                        "Joining makes your account a member of the workspace it lives in, and its polls and ballots sync to you from the other members.",
-                    )
+                    SheetBody("Joining makes your account a member of the workspace it lives in, so you can see its polls and vote in them.")
                     PrimaryButton("Join", ::accept)
                     SecondaryButton("Not now", { vm.invitation.reset() })
                 }
                 InvitationModel.Stage.Joining -> {
                     CircularProgressIndicator(color = Palette.Ink, modifier = Modifier.padding(top = 12.dp))
                     SheetTitle("Joining…")
-                    SheetBody("This can take up to a minute when no other member is online.")
+                    SheetBody("Your cluster is adding you to the workspace.")
                 }
                 is InvitationModel.Stage.Joined -> {
                     IconCircle(Icons.Filled.Check, Palette.Lime)
@@ -306,6 +288,12 @@ private fun InvitationSheet(
                         open(s.group)
                         vm.invitation.reset()
                     })
+                }
+                is InvitationModel.Stage.JoinedWorkspace -> {
+                    IconCircle(Icons.Filled.Check, Palette.Lime)
+                    SheetTitle("You're in ${s.workspace}")
+                    SheetBody("It has no voting group yet. Its groups show on your home screen as they are made.")
+                    PrimaryButton("Done", { vm.invitation.reset() })
                 }
                 is InvitationModel.Stage.Failed -> {
                     IconCircle(Icons.Outlined.Warning, Palette.DangerSoft, Palette.Danger)

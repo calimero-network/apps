@@ -11,7 +11,7 @@ import java.security.SecureRandom
  *     commitment = hex(SHA256(borsh(Vec<u8> cells) || salt))
  *
  * `borsh(Vec<u8>)` is a 4-byte little-endian length, then the bytes; the salt is 16 random bytes.
- * The cells and the salt never leave the device until [GameApi.reveal] publishes them at the end.
+ * The cells and the salt never leave the device until [BattleshipsContract.revealBoard] publishes them at the end.
  * (Swift `Commitment`.)
  */
 object Commitment {

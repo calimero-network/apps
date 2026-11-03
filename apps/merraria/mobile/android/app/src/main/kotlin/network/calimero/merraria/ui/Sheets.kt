@@ -120,7 +120,7 @@ private suspend fun attempt(
 /** Create world: a name and a seed, as the web app's "Create world" asks. (iOS `NewWorldSheet`.) */
 @Composable
 fun NewWorldSheet(
-    onCreate: suspend (String, ULong) -> Unit,
+    onCreate: suspend (String, UInt) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var name by remember { mutableStateOf(MerrariaConstants.DEFAULT_WORLD_NAME) }
@@ -240,9 +240,9 @@ fun JoinSheet(
             style = Type.body(15, color = MerrariaColors.Ink2),
         )
         Disclosure("Details") {
-            DetailRow("Namespace", invitation.namespaceId)
-            invitation.contextId?.let { DetailRow("World (context)", it) }
-            invitation.groupId?.let { DetailRow("Group", it) }
+            DetailRow("Organization", invitation.namespaceId)
+            invitation.contextId?.let { DetailRow("World (app instance)", it) }
+            invitation.groupId?.let { DetailRow("Team", it) }
         }
         error?.let { ErrorBanner(it) { error = null } }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {

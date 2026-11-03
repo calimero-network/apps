@@ -1,38 +1,35 @@
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import { AppMode, MeroProvider } from "@calimero-network/mero-react";
 import { App } from "./App";
-import { adoptDesktopSession } from "./utils/desktopSso";
-import { PACKAGE_NAME, REGISTRY_URL } from "./config";
+import { SessionContext, useSession } from "./session";
 // Fonts are bundled, never fetched from Google: offline, and no viewer IPs to a third party.
 import "@calimero-apps/glass/fonts.css";
 import "@fontsource/ibm-plex-mono/400.css";
 import "@fontsource/ibm-plex-mono/500.css";
 import "./index.css";
-import { isServedByNode } from "@calimero-apps/node-served";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("#root is missing from index.html");
-
-// Before React mounts: the provider resolves the auth callback on its first
-// render, so a desktop hand-off's node has to be in storage by then. See
-// utils/desktopSso.ts.
-adoptDesktopSession();
 
 // StrictMode in dev only; double-invoked effects mislead when reading a call log.
 const Wrapper = import.meta.env.DEV
   ? StrictMode
   : ({ children }: { children: ReactNode }) => <>{children}</>;
 
+/**
+ * One session for every screen: the local nodes under `vite` (`pnpm dev:local
+ * hyperfeed`), the Calimero Cloud cluster in a production build, signed in
+ * with a passkey (packages/connect).
+ */
+function Session({ children }: { children: ReactNode }) {
+  const api = useSession();
+  return <SessionContext.Provider value={api}>{children}</SessionContext.Provider>;
+}
+
 createRoot(root).render(
   <Wrapper>
-    {/*
-      MultiContext: the auth callback returns tokens and an application id, and
-      the app picks the context (FeedPicker). `packageName` + `registryUrl` let
-      the auth frontend resolve this app's allowed callback origin.
-    */}
-    <MeroProvider mode={AppMode.MultiContext} packageName={PACKAGE_NAME} registryUrl={REGISTRY_URL} servedByNode={isServedByNode(new URL(window.location.href))}>
+    <Session>
       <App />
-    </MeroProvider>
+    </Session>
   </Wrapper>,
 );

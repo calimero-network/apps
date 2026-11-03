@@ -10,13 +10,15 @@
 > (the script refuses it).
 
 Native iOS and Android readers for Mero Docs, next to the web editor (`../app`) and the
-contract (`../logic`, package `com.calimero.mero-drive-docs`, services `docs` and `registry`).
-They have the same screens, copy, icons (SF Symbols and the matching Material icons) and behaviour.
+contract (`../logic`, package `com.calimero.mero-drive-docs`, one component on Calimero 1.0).
+They have the same screens, copy, icons (SF Symbols and the matching Material icons) and behaviour,
+and both run on Calimero 1.0: a passkey account on a Calimero Cloud cluster (or a development
+node), its organizations as workspaces, their teams as folders.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `c9ca1a0` (merge commit of PR #84 on `main`) |
-| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `ea8ded7` (merge commit of PR #67 on `main`), composite build from `android/kotlin-sdk.ref` |
+| iOS | `ios/` | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `v0.5.0` |
+| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `v0.2.0` (not on Maven Central), composite build from `android/kotlin-sdk.ref` |
 
 **To bump a pin**, change it in every place it is set. On iOS that means
 `ios/project.yml` and `ios/DocsCore/Package.swift`; on Android, `android/kotlin-sdk.ref`.
@@ -26,22 +28,22 @@ They have the same screens, copy, icons (SF Symbols and the matching Material ic
 The phone reads documents and discusses them; writing stays on the web, where the BlockNote
 editor and its CRDT binding live. What both apps do:
 
-- **Sign in** with a Calimero account (`MeroAppSession`): the wallet certifies the phone's key.
-  The session is kept in the Keychain / Keystore and restored at launch.
-- **Workspaces**: the account's namespaces running Mero Docs. Pull to refresh.
+- **Sign in** with a passkey on your Calimero Cloud cluster, or on a development node (see *How
+  the apps reach Calimero*). The session is kept in the Keychain / encrypted preferences and
+  restored at launch.
+- **Workspaces**: the account's organizations running Mero Docs. Pull to refresh.
 - **Workspace**: search, **Recent** (the documents this phone opened last here, kept on the phone
   as the web keeps them in `localStorage`), the top-level **Folders**, and **Recently updated**
   (every document, newest change first: the web's Home table). Swipe a document to share its link.
-- **Search**: titles match as you type; then every folder's `search_docs` (the node's full-text
-  index of titles and bodies, best match first) adds hits with the node's snippet, matched words
-  in bold.
-- **Folder**: its subfolders and documents. Folders are the workspace's subgroups, nested by
-  core's tree and walked level by level, each with one docs context, as `lib/coreFolders.ts`
-  reads them. An open folder this account is not in yet is joined (`joinContext`), as the web's
-  index does; a restricted one it cannot join says so.
+- **Search**: titles match as you type; then every folder's `searchDocs` (a word-prefix match on
+  title and body, best match first) adds hits with the contract's snippet, matched words in bold.
+- **Folder**: its subfolders and documents. Folders are the organization's teams, nested by their
+  `parent`, each with one docs app instance whose id the team metadata keeps as `docsApp`, as
+  `lib/coreFolders.ts` reads them from one `GET /orgs/{org}`. A Restricted folder this account was
+  not invited to is not listed; one whose parent it cannot see sits at the top.
 - **Document**: the body drawn natively and read-only (see below), with the folder, last change
   and author, an archived banner, and the ids behind a Details disclosure. Live: it follows the
-  relay's event stream, or polls every 5 s when the relay cannot stream. Long-press a block to
+  app instance's event stream, or polls every 5 s when it cannot stream. Long-press a block to
   comment on it, copy a link to it, or copy its text. A link to another document opens it here;
   a mention shows as the member; other links open in the browser.
 - **Comments**: a sheet with every thread, or one block's. Comment on the document or on a block,
@@ -51,57 +53,88 @@ editor and its CRDT binding live. What both apps do:
   (with `#b=<block>` for one block), so it opens in the web app and in these apps. Android offers
   the app for those links; iOS opens them once the domain publishes an associated-domains file.
 
+- **Invitations**: an invitation link (Calimero 1.0's org invite token, in the SDK's
+  `OrgInvitation` link shape) asks to join once someone is signed in, and redeems it
+  (`POST /invites/{token}/redeem`); the workspace list reloads.
+- **Approvals** (Account sheet): node releases and app upgrades waiting for you, per workspace and
+  for your own apps. *Review* shows the request's confirmation code first, then opens the node's
+  consent page in the system browser (a Custom Tab on Android), which returns to
+  `mero-docs://consent`.
+
 Not on the phone: editing a document or its title, creating or moving documents and folders,
-tags, archive, saved views, members, roles and sharing settings, presence cursors. Invitations
-are not redeemed on the phone; an invitation link shows a note to accept it on the web or desktop.
+tags, archive, saved views, members, roles and sharing settings, presence cursors.
 
 ## How a document is drawn
 
-`get_document` returns the body already merged by the contract's rich-text CRDT: a flat list of
+`getDocument` returns the body already merged by the contract's rich-text CRDT: a flat list of
 blocks (kind, depth, string attributes) whose text is runs of equally formatted characters. The
 web feeds the same rows to BlockNote (`lib/rich/blocknote.ts`, `lib/rich/attributes.ts`); the
 apps port only that read path (`DocumentReader`, the same code and the same test cases on both
 platforms) and draw the blocks natively. No CRDT or web view runs on the phone.
 
 Drawn: paragraphs, headings (levels 1 to 3), bullet, numbered and check lists (with nesting and
-BlockNote's numbering), quotes, code blocks, images (the `blob:` reference read through the
-account's relay), dividers, alignment and BlockNote's text and background colours; inline bold,
+BlockNote's numbering), quotes, code blocks, images (the `blob:` reference read as a blob of
+the folder's app instance), dividers, alignment and BlockNote's text and background colours; inline bold,
 italic, underline, strike, code, colours and links. Any other block kind shows the web's notice,
 "This block needs a newer version of Mero Docs."
 
-`get_document` is read through the bound contract and decoded leniently rather than with the
-generated `getDocument`: the node writes a span's `"true"` marks back as JSON booleans and leaves
-`attributes` off a plain span, which the ABI's `map<string,string>` does not describe, so the
-generated decoder would refuse every formatted document. Every other call uses the generated client.
+Each block's text is the contract's Fugue `RichText` for it, read as the web reads it: its
+`spans` in order, each a run of equally formatted characters with its marks as strings (`"true"`
+for a boolean mark). The reader takes a mark written as a JSON boolean, or a span without
+`attributes`, the same way. The phone never writes body text, so the character `ids` are not read.
 
 ## Comments on blocks
 
-The contract's comments are flat and per document (`add_comment(doc_id, body)`,
-`list_comments`), with no block or parent field, and the web app has no comments UI yet. The apps
+The contract's comments are flat and per document (`addComment(docId, body)`,
+`listComments(docId)`), with no block or parent field, and the web app has no comments UI yet. The apps
 set the convention: a comment on a block starts its body with `[[block:<block id>]]`, a reply with
 `[[reply:<comment id>]]`, then a space and the text. A body with neither is a comment on the whole
 document, so anything that reads the raw body still sees the words.
 
-## Delegated execution only
+## How the apps reach Calimero
 
-Neither app runs or logs into a node. `MeroAppSession` signs in, finds the account's relay, and
-gives a `MeroAppBackend`: namespaces, subgroups, membership and events go through it, contract
-reads through the relay's query and writes as signed warrants. Each folder's docs context is
-called as the account, as the web's per-folder clients are. Images are read with the signed-in
-client's `admin.getBlob(blobId, contextId)`, because `MeroAppBackend` has no blob call yet.
-Authors show as "You" or a short id: the relay has no member-name call.
+Both apps talk to a node of a Calimero 1.0 cluster over the sealed channel
+(`calimero/sealed-http/v2`, after the node's TDX attestation is verified) and sign in with a
+passkey; they run no node. `MeroAppSession` builds the SDK's `CalimeroAppBackend`:
 
-## Generated contract client
+| Mero Docs | `MeroAppBackend` | Calimero 1.0 |
+| --- | --- | --- |
+| workspace | namespace | organization |
+| folder | subgroup | team (its docs instance in team metadata `docsApp`) |
+| folder's documents | context | app instance (`/apps/{app}/views`, `/intents`, `/events`) |
+| image | blob | `/apps/{app}/blobs` (`MeroAppBackend.getBlob`) |
+| invitation | `OrgInvitation` | org invite token, redeemed at `/invites/{token}/redeem` |
 
-`DocsClient` is generated from `../logic/res/abi.json` with the SDK's `ContextContractCalling`
-(`--transport-import`), so it takes `contract.bound(to:)` directly; never edit it by hand:
+Sign-in (`ios/Sources/App/CloudAccess.swift`, `android/…/ui/CloudAccess.kt`):
 
-- iOS: `ios/DocsCore/Sources/DocsCore/Generated/DocsClient.swift`
-- Android: `android/app/src/main/kotlin/network/calimero/docs/generated/DocsClient.kt`
+- **Calimero Cloud:** your cluster by name (`eu-shared-1`: its nodes come from the Calimero Cloud
+  directory and the client fails over between them) or by a node's URL, then *Sign in with
+  passkey* or *Create an account*. Prefill it with `MeroNodeURL` in `ios/project.yml` or
+  `-PmeroCluster=` on Android. The device's passkey belongs to the cluster's relying party: a real
+  cluster needs the `webcredentials:<rp-id>` associated domain (iOS) or Digital Asset Links
+  (Android).
+- **Development node:** a `merod local` node (`MeroDevNodeURL`, `http://localhost:2501`; Android
+  `-PmeroDevNodeUrl=`, `http://10.0.2.2:2501` from the emulator), mock attestation allowed, with a
+  software passkey kept on the phone for it.
+- Membership step-ups (joining by invitation) are approved with the account's passkey; on Android
+  `MainActivity` hands the session its Activity's.
 
-After a contract change, regenerate both with `scripts/regenerate-client.sh` (set `ABI_CODEGEN`
-to an abi-codegen `dist/cli.js` that has the `swift` and `kotlin` targets) and commit the result.
-Views go through the bound contract's `query`, writes through `execute`.
+Authors show as "You" or a short id.
+
+### The contract
+
+`DocsClient` (`ios/DocsCore/Sources/DocsCore/DocsClient.swift`, `android/…/core/DocsClient.kt`)
+is the read and comment half of the web's typed adapter (`../app/src/lib/docsApi.ts`) over the
+component ABI (`../logic/res/abi.json`): `listDocs`, `getDoc`, `searchDocs`, `getDocument`,
+`listComments` and `addComment`, with camelCase arguments. 64-bit values arrive as decimal
+strings and timestamps in milliseconds; like the web adapter, it hands the screens nanoseconds. A
+test on each platform checks every method, and `addComment`'s parameters, against `abi.json`
+(skipped while that file is still the v1 ABI).
+
+Errors read as words (`DocsFormat.errorText`): a cancelled passkey prompt, an ended session
+(`LoginRequired`), a node that does not serve the account (`WrongNode`), an unavailable cluster, a
+release deadline that paused new work, a stale consent request, the node's `403` for a read-only
+member, and the contract's `APP_ERROR` codes (`NotFound`, `Invalid`, `Forbidden`).
 
 ## Build and test
 
@@ -121,12 +154,10 @@ cd android
 ./gradlew ktlintCheck detekt testDebugUnitTest lint assembleDebug
 ```
 
-Sign-in returns to `mero-docs://enrol`. Point the apps at another environment with the
-`MeroCloudBaseURL` / `MeroWalletURL` / `MeroRegistryURL` Info.plist keys in `ios/project.yml`, or
-`-PmeroCloudUrl=` / `-PmeroWalletUrl=` / `-PmeroRegistryUrl=` / `-PmeroEnrolCallback=` on Android.
-The hosted wallet currently returns only to `https://` callbacks, so production sign-in needs that
-wallet change or a verified https callback (as in Mero Chat).
+iOS: the cluster is `MeroNodeURL` and the development node `MeroDevNodeURL` (Info.plist keys in
+`ios/project.yml`). Android: `-PmeroCluster=` and `-PmeroDevNodeUrl=`. The consent page returns to
+`mero-docs://consent` on both.
 
-CI: `.github/workflows/mero-docs-ios.yml` (DocsCore tests on macOS, simulator build) and
+CI: `.github/workflows/mero-docs-ios.yml` (DocsCore tests on macOS, app build) and
 `.github/workflows/mero-docs-android.yml` (ktlint, detekt, unit tests, Android Lint,
 `assembleDebug`), each path-filtered to its folder.

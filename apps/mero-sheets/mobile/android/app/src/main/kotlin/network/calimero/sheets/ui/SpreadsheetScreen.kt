@@ -522,7 +522,7 @@ private fun AboutSheet(
                 Explain(
                     Icons.Outlined.Functions,
                     "Values are computed by the workbook on your team’s nodes and read here as they are. The phone does not recalculate: " +
-                        "after you change a value, the new results arrive from the relay.",
+                        "after you change a value, the new results arrive from the cluster.",
                 )
                 Explain(Icons.Outlined.Laptop, "Formulas, formatting, charts and sheet structure are edited in the web app.")
             }

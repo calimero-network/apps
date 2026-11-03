@@ -1,6 +1,6 @@
 // swift-tools-version: 5.9
 //
-// DocsCore: everything in the iOS app that is not a view. The generated
+// DocsCore: everything in the iOS app that is not a view. The typed
 // contract client, the read-only document reader (contract blocks to
 // renderable blocks), comment threads, and the view models. It builds and tests on
 // macOS with `swift test`, so none of it needs a simulator; project.yml links
@@ -14,13 +14,18 @@ let package = Package(
         .library(name: "DocsCore", targets: ["DocsCore"]),
     ],
     dependencies: [
-        // swift-sdk `main`, the merge commit of PR #84. Keep it equal to ../project.yml.
-        .package(url: "https://github.com/calimero-network/swift-sdk", revision: "c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f"),
+        // swift-sdk release v0.5.0 (Calimero 1.0).
+        // Keep it equal to ../project.yml.
+        .package(url: "https://github.com/calimero-network/swift-sdk", exact: "0.5.0"),
     ],
     targets: [
         .target(
             name: "DocsCore",
-            dependencies: [.product(name: "MeroKit", package: "swift-sdk")]
+            dependencies: [
+                .product(name: "MeroKit", package: "swift-sdk"),
+                // `CalimeroAppBackend`: folders are read from the org snapshot (`DocsDirectory`).
+                .product(name: "MeroKitUI", package: "swift-sdk"),
+            ]
         ),
         .testTarget(
             name: "DocsCoreTests",

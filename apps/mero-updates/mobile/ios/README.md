@@ -26,18 +26,22 @@ open MeroUpdates.xcodeproj
 
 ## SDK pin
 
-`project.yml` and `Core/Package.swift` pin swift-sdk `c9ca1a0`, the `main` merge commit of PR #84.
-Move both together when bumping (to a newer commit or a release tag).
+`project.yml` and `Core/Package.swift` pin swift-sdk `v0.5.0`, its Calimero 1.0 release
+(`exactVersion` / `exact:`). Move both together when bumping to a newer release.
 
 ## Configuration
 
-Info.plist keys set in `project.yml`; empty means the SDK default:
+Info.plist keys set in `project.yml`:
 
 | Key | Default |
 | --- | --- |
-| `UpdatesCallbackScheme` | `mero-updates` (the wallet returns to `mero-updates://enrol`) |
-| `UpdatesCallbackHost` / `UpdatesCallbackPath` | unset: set a host to use a verified https callback |
-| `MeroCloudBaseURL`, `MeroWalletURL`, `MeroRegistryURL` | the hosted Calimero services |
+| `MeroNodeURL` | empty: the sign-in screen asks for a node of your Calimero Cloud cluster |
+| `MeroDevNodeURL` | `http://localhost:2501`: the *Development node* field (`merod local`, `allowMock`) |
+| `UpdatesCallbackScheme` | `mero-updates` (the node's consent page returns to `mero-updates://consent`) |
+| `UpdatesCallbackHost` / `UpdatesCallbackPath` | unset: set a host to use a verified https return |
+
+Signing in with the device's passkey on a real cluster needs the `webcredentials:<rp-id>`
+associated domain of the cluster's relying party; a development node uses a software passkey.
 
 Invitation links open the app as `calimero://com.calimero.mero-updates/join?invitation=…`; the
 https form needs Associated Domains on `links.calimero.network`, which that host does not publish

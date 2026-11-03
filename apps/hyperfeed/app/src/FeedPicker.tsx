@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useApplicationContexts, useMero } from "@calimero-network/mero-react";
-import { openFeed, useNewFeed } from "./newFeed";
-import { HyperfeedClient } from "./generated/HyperfeedClient";
-import { refusalMessage } from "./refused";
+import type { AppInfo } from "@calimero-network/mero-js";
+import { describeError } from "@calimero-apps/connect";
+import { feedSource, openFeed, signedIn, useNewFeed } from "./newFeed";
+import { calimeroTransport, HyperfeedClient } from "./hyperfeed";
+import { useSessionApi } from "./session";
 import {
   confirmText,
   deleteFeed,
@@ -10,37 +11,57 @@ import {
   feedLabel,
   hint,
   isEmpty,
+  listFeeds,
   NAME_MAX,
   nameProblem,
   orderFeeds,
   readFeedNames,
   renameFeed,
   suggestName,
-  type FeedAdmin,
   type FeedFacts,
-  type FeedName,
-  type NamesAdmin,
 } from "./feeds";
 
-/** Your feeds on this node: only this Hyperfeed's, never another app's contexts. */
-function useFeeds(applicationId: string | null) {
-  const { contexts: reported, loading, error, refetch } = useApplicationContexts(applicationId);
-  // Without an application id the hook lists EVERY context on the node; only
-  // ours are safe to open.
-  const contexts = applicationId ? reported.filter((c) => c.applicationId === applicationId) : [];
-  return { contexts, loading, error, refetch };
+/** The signed-in client, or null. */
+function useClient() {
+  const { session } = useSessionApi();
+  return signedIn(session)?.client ?? null;
+}
+
+/** Your feeds on the cluster: instances of this Hyperfeed, never another app's. */
+function useFeeds() {
+  const client = useClient();
+  const [feeds, setFeeds] = useState<AppInfo[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [asked, setAsked] = useState(0);
+  useEffect(() => {
+    if (!client) return;
+    let live = true;
+    setLoading(true);
+    listFeeds(client, feedSource())
+      .then(
+        (f) => live && (setFeeds(f), setError(null)),
+        (e: unknown) => live && setError(describeError(e)),
+      )
+      .finally(() => live && setLoading(false));
+    return () => {
+      live = false;
+    };
+  }, [client, asked]);
+  const refetch = useCallback(async () => setAsked((n) => n + 1), []);
+  return { feeds, loading, error, refetch };
 }
 
 /** How much each feed holds and when it last moved, read while the switcher is open. */
 function useFeedFacts(ids: string[], open: boolean) {
-  const { mero } = useMero();
+  const client = useClient();
   const [facts, setFacts] = useState<Record<string, FeedFacts>>({});
   const key = ids.join(",");
   useEffect(() => {
-    if (!open || !mero) return;
+    if (!open || !client) return;
     let live = true;
     for (const id of key.split(",").filter(Boolean)) {
-      new HyperfeedClient(mero, id)
+      new HyperfeedClient(calimeroTransport(client), id)
         .feed({ filter: "all", app_key: "", limit: 1, before: 0 })
         .then(
           (p) => ({ rows: p.counts.all + p.counts.archived, at: p.items[0]?.chain_at ?? 0 }),
@@ -51,36 +72,39 @@ function useFeedFacts(ids: string[], open: boolean) {
     return () => {
       live = false;
     };
-  }, [open, mero, key]);
+  }, [open, client, key]);
   return facts;
 }
 
-/** Every feed's name: read once on mount, and again whenever `tick` moves. */
-function useFeedNames(applicationId: string | null, tick: unknown) {
-  const { admin } = useMero();
-  const [names, setNames] = useState<Record<string, FeedName> | null>(null);
+/** Every feed's name: read whenever the list or `tick` moves. */
+function useFeedNames(feeds: AppInfo[], tick: unknown) {
+  const client = useClient();
+  const [names, setNames] = useState<Record<string, string | null> | null>(null);
   const [again, setAgain] = useState(0);
+  const key = feeds.map((f) => `${f.appId}:${f.name}`).join(",");
   useEffect(() => {
-    if (!admin || !applicationId) return;
+    if (!client) return;
     let live = true;
-    readFeedNames(admin as unknown as NamesAdmin, applicationId).then(
+    readFeedNames(client, feeds).then(
       (n) => live && setNames(n),
       () => live && setNames((n) => n ?? {}),
     );
     return () => {
       live = false;
     };
-  }, [admin, applicationId, tick, again]);
+    // `key` stands for `feeds`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client, key, tick, again]);
   const reread = useCallback(() => setAgain((a) => a + 1), []);
-  return { names, reread, admin };
+  return { names, reread, client };
 }
 
 /** A feed's name, then its short id as a hint; just the id while names are read. */
-function FeedTitle({ id, names }: { id: string; names: Record<string, FeedName> | null }) {
+function FeedTitle({ id, names }: { id: string; names: Record<string, string | null> | null }) {
   if (!names) return <span className="mono">{hint(id)}</span>;
   return (
     <>
-      <span className={`switcher-name ${names[id]?.name ? "" : "unnamed"}`}>{names[id]?.name || "Unnamed feed"}</span>
+      <span className={`switcher-name ${names[id] ? "" : "unnamed"}`}>{names[id] || "Unnamed feed"}</span>
       <span className="mono switcher-hint"> · {hint(id)}</span>
     </>
   );
@@ -148,30 +172,30 @@ function NameForm({
 }
 
 /**
- * Delete a feed you are not in, with its namespace. Mero-bot and the
- * collector stop on their own: they follow the contexts the node lists.
+ * Delete a feed you are not in. Mero-bot and the collector stop on their own:
+ * they follow the apps the cluster lists.
  */
 function useDeleteFeed(onDeleted: () => void) {
-  const { admin } = useMero();
+  const client = useClient();
   const [busy, setBusy] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const remove = useCallback(
     async (id: string) => {
-      if (!admin) return;
+      if (!client) return;
       setBusy(id);
       setFailed(null);
       try {
-        await deleteFeed(admin as unknown as FeedAdmin, id);
+        await deleteFeed(client, id);
         onDeleted();
       } catch (e) {
-        setFailed(refusalMessage(e, "delete a feed"));
+        setFailed(describeError(e));
       } finally {
         setBusy(null);
       }
     },
-    [admin, onDeleted],
+    [client, onDeleted],
   );
-  return { remove, busy, failed, ready: Boolean(admin) };
+  return { remove, busy, failed, ready: Boolean(client) };
 }
 
 /**
@@ -181,16 +205,16 @@ function useDeleteFeed(onDeleted: () => void) {
  * renamed, and any but the open one deleted, after a confirm that names
  * what goes. A new feed is named as it is made.
  */
-export function FeedSwitcher({ applicationId, current }: { applicationId: string | null; current: string }) {
+export function FeedSwitcher({ current }: { current: string }) {
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [naming, setNaming] = useState(false);
   const [renameBusy, setRenameBusy] = useState(false);
   const [renameFailed, setRenameFailed] = useState<string | null>(null);
-  const { contexts, loading, refetch } = useFeeds(applicationId);
-  const { create, busy, failed } = useNewFeed(applicationId);
-  const { names, reread, admin } = useFeedNames(applicationId, open);
+  const { feeds, loading, refetch } = useFeeds();
+  const { create, busy, failed, ready } = useNewFeed();
+  const { names, reread, client } = useFeedNames(feeds, open);
   const root = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -201,11 +225,11 @@ export function FeedSwitcher({ applicationId, current }: { applicationId: string
   }, [open]);
 
   const rename = async (id: string, name: string) => {
-    if (!admin) return;
+    if (!client) return;
     setRenameBusy(true);
     setRenameFailed(null);
     try {
-      await renameFeed(admin as unknown as NamesAdmin, id, names?.[id]?.namespace ?? null, name);
+      await renameFeed(client, id, name);
       setRenaming(null);
       reread();
     } catch (e) {
@@ -234,7 +258,7 @@ export function FeedSwitcher({ applicationId, current }: { applicationId: string
   }, [open]);
 
   // The open feed is listed even before the node reports it.
-  const listed = contexts.some((c) => c.contextId === current) ? contexts.map((c) => c.contextId) : [current, ...contexts.map((c) => c.contextId)];
+  const listed = feeds.some((f) => f.appId === current) ? feeds.map((f) => f.appId) : [current, ...feeds.map((f) => f.appId)];
   const facts = useFeedFacts(listed, open);
   const ids = orderFeeds(listed, current, facts);
   const onDeleted = useCallback(() => {
@@ -263,7 +287,7 @@ export function FeedSwitcher({ applicationId, current }: { applicationId: string
           <div className="switcher-label">Your feeds{loading ? " · looking…" : ""}</div>
           {ids.map((id) =>
             confirming === id ? (
-              <div key={id} className="switcher-confirm" role="alertdialog" aria-label={`Delete feed ${feedLabel(names?.[id]?.name, id)}`}>
+              <div key={id} className="switcher-confirm" role="alertdialog" aria-label={`Delete feed ${feedLabel(names?.[id], id)}`}>
                 <p>{confirmText(facts[id])}</p>
                 <div className="row">
                   <button type="button" className="danger small" disabled={del.busy !== null} onClick={() => void del.remove(id)}>
@@ -275,10 +299,10 @@ export function FeedSwitcher({ applicationId, current }: { applicationId: string
                 </div>
               </div>
             ) : renaming === id ? (
-              <div key={id} className="switcher-rename" role="group" aria-label={`Rename feed ${feedLabel(names?.[id]?.name, id)}`}>
+              <div key={id} className="switcher-rename" role="group" aria-label={`Rename feed ${feedLabel(names?.[id], id)}`}>
                 <NameForm
                   label="Name"
-                  initial={names?.[id]?.name ?? ""}
+                  initial={names?.[id] ?? ""}
                   submit="Save"
                   busyText="Saving…"
                   busy={renameBusy}
@@ -307,12 +331,12 @@ export function FeedSwitcher({ applicationId, current }: { applicationId: string
                   </span>
                   {id === current && <span className="switcher-check">Open</span>}
                 </button>
-                {names && admin && (
+                {names && client && (
                   <button
                     type="button"
                     role="menuitem"
                     className="switcher-delete switcher-rename-button"
-                    aria-label={`Rename feed ${feedLabel(names[id]?.name, id)}`}
+                    aria-label={`Rename feed ${feedLabel(names[id], id)}`}
                     title="Rename this feed"
                     onClick={() => {
                       setRenameFailed(null);
@@ -325,7 +349,7 @@ export function FeedSwitcher({ applicationId, current }: { applicationId: string
                   </button>
                 )}
                 {id !== current && del.ready && (
-                  <button type="button" role="menuitem" className="switcher-delete" aria-label={`Delete feed ${feedLabel(names?.[id]?.name, id)}`} title="Delete this feed" onClick={() => setConfirming(id)}>
+                  <button type="button" role="menuitem" className="switcher-delete" aria-label={`Delete feed ${feedLabel(names?.[id], id)}`} title="Delete this feed" onClick={() => setConfirming(id)}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                       <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
                     </svg>
@@ -340,7 +364,7 @@ export function FeedSwitcher({ applicationId, current }: { applicationId: string
             <div className="switcher-rename" role="group" aria-label="Name your new feed">
               <NameForm
                 label="Name"
-                initial={suggestName(Object.values(names ?? {}).map((f) => f.name))}
+                initial={suggestName(Object.values(names ?? {}))}
                 submit="Create"
                 busyText="Creating…"
                 busy={busy}
@@ -355,7 +379,7 @@ export function FeedSwitcher({ applicationId, current }: { applicationId: string
               />
             </div>
           ) : (
-            <button type="button" role="menuitem" disabled={busy || !applicationId} onClick={() => setNaming(true)}>
+            <button type="button" role="menuitem" disabled={busy || !ready} onClick={() => setNaming(true)}>
               Create a new feed
             </button>
           )}
@@ -369,49 +393,42 @@ export function FeedSwitcher({ applicationId, current }: { applicationId: string
 /**
  * Open your feed, or make it.
  *
- * Under `AppMode.MultiContext` the session carries no context, so picking one
- * is the app's job. A feed is personal: usually there is exactly one, in a
- * namespace of its own that you never invite anyone to.
+ * A feed is personal: usually there is exactly one, an app instance in an
+ * organization of its own that only the cloud agents you add are invited to.
  */
-export function FeedPicker({ applicationId }: { applicationId: string | null }) {
-  const { contexts, loading, error, refetch } = useFeeds(applicationId);
-  const { create, busy, failed } = useNewFeed(applicationId);
-  const { names } = useFeedNames(applicationId, contexts.length);
+export function FeedPicker() {
+  const { feeds, loading, error, refetch } = useFeeds();
+  const { create, busy, failed, ready } = useNewFeed();
+  const { names } = useFeedNames(feeds, feeds.length);
 
   return (
     <section className="center-card">
       <h1>Your feed</h1>
       <p className="muted">
-        A feed is a context only you write to. Your agent records what it does there, and this app records
+        A feed is an app only you write to. Your agent records what it does there, and this app records
         what your other apps send you.
       </p>
       {loading && <p className="muted">Looking for your feed…</p>}
-      {error && <pre className="err">{error.message}</pre>}
-      {!loading && !applicationId && (
-        <p className="muted">
-          Waiting for the session to say which application it is bound to. If it never does, install Hyperfeed
-          on the node first.
-        </p>
-      )}
-      {contexts.length > 0 && (
+      {error && <pre className="err">{error}</pre>}
+      {feeds.length > 0 && (
         <ul className="picker">
-          {contexts.map((c) => (
-            <li key={c.contextId}>
-              <button type="button" className="ghost" onClick={() => openFeed(c.contextId)}>
-                Open feed <FeedTitle id={c.contextId} names={names} />
+          {feeds.map((f) => (
+            <li key={f.appId}>
+              <button type="button" className="ghost" onClick={() => openFeed(f.appId)}>
+                Open feed <FeedTitle id={f.appId} names={names} />
               </button>
             </li>
           ))}
         </ul>
       )}
-      {/* Always offered: a feed made by an earlier Hyperfeed is replaced by a new one. */}
-      {!loading && applicationId && (
+      {/* Always offered: a second feed, or one to replace an old one. */}
+      {!loading && ready && (
         <NameForm
           // Remade once names are read, so the suggestion skips a taken one.
           key={names ? "named" : "reading"}
           label="Feed name"
-          initial={suggestName(Object.values(names ?? {}).map((f) => f.name))}
-          submit={contexts.length === 0 ? "Create my feed" : "Create a new feed"}
+          initial={suggestName(Object.values(names ?? {}))}
+          submit={feeds.length === 0 ? "Create my feed" : "Create a new feed"}
           busyText="Creating…"
           busy={busy}
           onSubmit={(name) => void create(name)}
