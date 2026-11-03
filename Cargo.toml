@@ -44,6 +44,7 @@ members  = [
 # See docs/COMPONENT-APPS.md.
 exclude = [
   "apps/kv-store/logic",
+  "apps/hyperfeed/logic",
   "apps/mero-pass/logic",
   "apps/mero-standup/logic",
   "apps/mero-stream/logic",
