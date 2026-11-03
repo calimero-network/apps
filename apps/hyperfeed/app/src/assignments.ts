@@ -1,4 +1,4 @@
-import type { SettingsView } from "./generated/HyperfeedClient";
+import type { SettingsView } from "./hyperfeedTypes";
 
 /**
  * Which of your agents works in which app (the contract's `assignments`), as

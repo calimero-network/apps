@@ -1,105 +1,52 @@
 package network.calimero.pixart.core
 
-import com.calimero.mero.admin.SignedGroupOpenInvitation
 import com.calimero.mero.app.MeroAppBackend
-import com.calimero.mero.invite.InviteCodec
-import com.calimero.mero.invite.InviteLink
+import com.calimero.mero.app.OrgInvitation
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.put
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
- * A team invitation in the web app's format (`utils/invitation.ts`, `InviteModal`, `InvitationPrompt`), so
- * a link minted on either side opens on the other. (Swift `PixartInvitation`.)
+ * A team invitation: kotlin-sdk's [OrgInvitation], the link payload every Calimero 1.0 app shares,
+ * with the team's name to show as its `name`:
  *
- * - payload: `{"invitation": <SignedGroupOpenInvitation>, "groupName"?: …, "__teamName"?: "<team name>"}`
- * - token: `base58(deflate(payload))` ([InviteCodec])
+ * - payload: `{"invitation": "inv_…", "namespaceId": "<team>", "name"?: "<team name>"}`
+ * - token: `base58(deflate(payload))` ([com.calimero.mero.invite.InviteCodec])
  * - link: `https://links.calimero.network/com.calimero.mero-pixart/join?invitation=<token>`
+ *
+ * A PixArt team is a Calimero organization. A pre-1.0 signed invitation is refused (a 1.0
+ * cluster cannot redeem it). (Swift `PixartInvitation`.)
  */
 data class PixartInvitation(
-    val invitation: SignedGroupOpenInvitation,
-    val teamName: String? = null,
+    val invitation: OrgInvitation,
 ) {
-    /** The team it admits to: the hex of its SIGNED `group_id`. */
-    val namespaceId: String
-        get() =
-            when (val raw = invitation.invitation.raw["group_id"] ?: invitation.invitation.raw["groupId"]) {
-                is JsonArray -> raw.mapNotNull { (it as? JsonPrimitive)?.intOrNull }.joinToString("") { "%02x".format(it and BYTE_MASK) }
-                is JsonPrimitive -> raw.contentOrNull.orEmpty().lowercase()
-                else -> ""
-            }
+    /** The team (organization) it admits to: the one the node minted the token for. */
+    val namespaceId: String get() = invitation.namespaceId
+    val teamName: String? get() = invitation.name?.trim()?.ifEmpty { null }
 
     val title: String get() = teamName ?: "a team"
 
     /** The shareable link. */
-    fun link(): String {
-        val token =
-            InviteCodec.encode(
-                buildJsonObject {
-                    put("invitation", invitation.raw)
-                    teamName?.trim()?.takeIf { it.isNotEmpty() }?.let { put("__teamName", it) }
-                }.toString(),
-            )
-        return InviteLink.invitation(token, PixartFormat.PACKAGE_NAME)
-    }
+    fun link(): String = invitation.link(PixartFormat.PACKAGE_NAME)
 
     companion object {
-        private const val BYTE_MASK = 0xff
-        private val json = Json { ignoreUnknownKeys = true }
+        /** [invitation] with [teamName] as its name when one is given. */
+        fun of(
+            invitation: OrgInvitation,
+            teamName: String? = null,
+        ): PixartInvitation = PixartInvitation(invitation.copy(name = teamName?.trim()?.ifEmpty { null } ?: invitation.name?.trim()?.ifEmpty { null }))
 
         /** A link (https or `calimero://`), a bare token, or raw JSON; null when it holds no invitation, and for another app's link. */
         fun parse(input: String): PixartInvitation? {
             val trimmed = input.trim()
             if (trimmed.isEmpty()) return null
             if (trimmed.startsWith("{")) return parseJson(trimmed)
-            val token = tokenFromLink(trimmed) ?: return null
-            return InviteCodec.decode(token)?.let(::parseJson)
+            return OrgInvitation.parse(trimmed, PixartFormat.PACKAGE_NAME)?.let(::PixartInvitation)
         }
 
-        /** The SDK's `tokenFromPasted` has no expected-app check, so another app's link is refused here. */
-        private fun tokenFromLink(raw: String): String? {
-            val lower = raw.lowercase()
-            val isLink = lower.startsWith("http://") || lower.startsWith("https://") || lower.startsWith("calimero://")
-            if (isLink) {
-                val segments = raw.substringBefore('?').split('/').map { it.lowercase() }
-                if (PixartFormat.PACKAGE_NAME !in segments) return null
-            }
-            return InviteLink.tokenFromPasted(raw)
-        }
-
-        /** The decoded payload (the web's `parseTeamInvitation`). */
-        fun parseJson(text: String): PixartInvitation? {
-            val root = runCatching { json.parseToJsonElement(text).jsonObject }.getOrNull() ?: return null
-            val name = (root.string("__teamName") ?: root.string("groupName"))?.trim()?.takeIf { it.isNotEmpty() }
-            val wrapped = root["invitation"] as? JsonObject
-            return when {
-                wrapped != null && isEnvelope(wrapped) -> PixartInvitation(signed(wrapped), name)
-                isEnvelope(root) -> PixartInvitation(signed(root), name)
-                else -> null
-            }
-        }
-
-        private fun isEnvelope(obj: JsonObject): Boolean =
-            obj["invitation"] is JsonObject && (obj.string("inviter_signature") != null || obj.string("inviterSignature") != null)
-
-        /** The envelope verbatim, with a camelCase signature key renamed to core's spelling. */
-        private fun signed(obj: JsonObject): SignedGroupOpenInvitation {
-            val camel = obj["inviterSignature"]
-            if (obj["inviter_signature"] != null || camel == null) return SignedGroupOpenInvitation(obj)
-            return SignedGroupOpenInvitation(JsonObject(obj.filterKeys { it != "inviterSignature" } + ("inviter_signature" to camel)))
-        }
-
-        private fun JsonObject.string(key: String): String? = (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull
+        /** The decoded payload: an [OrgInvitation]. */
+        fun parseJson(text: String): PixartInvitation? = OrgInvitation.decodeJson(text)?.let(::PixartInvitation)
     }
 }
 
@@ -144,7 +91,7 @@ class InvitationModel {
         return true
     }
 
-    /** Join the team. [didJoin] may hand the session the admitting relay. */
+    /** Join the team: redeem the invite token on the node. [didJoin] re-reads what the account sees. */
     suspend fun accept(
         backend: () -> MeroAppBackend?,
         didJoin: suspend () -> Unit,

@@ -1,55 +1,42 @@
 import Foundation
 import MeroKit
 
-/// An invitation in the web app's format (`app/src/utils/invitation.ts`), so a
-/// link minted on either side opens on the other. (Kotlin `ModelsInvitation`.)
+/// An invitation link: swift-sdk's ``OrgInvitation``, the payload every Calimero 1.0 app shares,
+/// so a link minted here opens in any client of the package. (Kotlin `ModelsInvitation`.)
 ///
-/// - payload: `{"invitation": <SignedGroupOpenInvitation>, "namespaceId": "<studio>", "contextId": "<scene>"}`
+/// - payload: `{"invitation": "inv_…", "namespaceId": "<studio>", "contextId": "<scene>"}`
 /// - token: `base58(deflate(payload))` (``InviteCodec``)
 /// - link: `https://links.calimero.network/com.calimero.mero-models/join?invitation=<token>`
 ///
-/// The signed invitation grants the studio (the namespace); `contextId` only
-/// says which scene to open afterwards.
+/// The invite token admits to the studio (the organization); `contextId` only says which scene
+/// (app instance) to open afterwards.
 public struct ModelsInvitation: Sendable {
-    public let invitation: SignedGroupOpenInvitation
-    /// The payload's own `namespaceId`, used only when the signed id is unreadable.
-    public let payloadNamespaceId: String
+    public let invitation: OrgInvitation
     public let contextId: String
 
-    public init(invitation: SignedGroupOpenInvitation, namespaceId: String, contextId: String) {
-        self.invitation = invitation
-        self.payloadNamespaceId = namespaceId
+    public init(invitation: OrgInvitation, contextId: String) {
+        self.invitation = OrgInvitation(
+            namespaceId: invitation.namespaceId, token: invitation.token, contextId: contextId, name: invitation.name)
         self.contextId = contextId
     }
 
-    /// The studio it admits to: the hex of its SIGNED `group_id`, so a tampered
-    /// wrapper cannot redirect a join.
-    public var namespaceId: String {
-        let signed = Hex.encode(invitation.invitation.groupId.map { UInt8(truncatingIfNeeded: $0) })
-        return signed.isEmpty ? payloadNamespaceId : signed
-    }
-
-    private struct Payload: Encodable {
-        let invitation: SignedGroupOpenInvitation
-        let namespaceId: String
-        let contextId: String
-    }
+    /// The studio it admits to: the organization the node minted the token for.
+    public var namespaceId: String { invitation.namespaceId }
 
     /// The shareable token.
     public func token() throws -> String {
-        try InviteCodec.encode(Payload(invitation: invitation, namespaceId: namespaceId, contextId: contextId))
+        try invitation.encoded()
     }
 
-    /// The shareable link, the only form the web app offers.
+    /// The shareable link.
     public func link() throws -> String {
-        InviteLink.invitation(token: try token(), slug: ModelsFormat.packageName)
+        try invitation.link(slug: ModelsFormat.packageName)
     }
 
-    /// Mint a link to a scene: an invitation to its studio, signed with this
-    /// device's key, plus the scene to open.
+    /// Mint a link to a scene: an invite token to its studio, plus the scene to open.
     public static func mint(backend: any MeroAppBackend, namespaceId: String, contextId: String) async throws -> String {
-        let signed = try await backend.createInvitation(namespaceId: namespaceId)
-        return try ModelsInvitation(invitation: signed, namespaceId: namespaceId, contextId: contextId).link()
+        let invitation = try await backend.createInvitation(namespaceId: namespaceId)
+        return try ModelsInvitation(invitation: invitation, contextId: contextId).link()
     }
 
     /// Parse a link (https or `calimero://`), a bare token or the raw JSON.
@@ -64,17 +51,13 @@ public struct ModelsInvitation: Sendable {
         return parse(json: json)
     }
 
-    /// The web's `parseInvitationPayload`: both ids present, and an envelope
-    /// that carries `inviter_signature`. The node judges the rest.
+    /// The payload as JSON: an ``OrgInvitation`` that names a scene. The node judges the rest; a
+    /// pre-1.0 signed invitation is refused.
     public static func parse(json: String) -> ModelsInvitation? {
-        guard let value = try? JSONDecoder().decode(JSONValue.self, from: Data(json.utf8)),
-            let namespaceId = value["namespaceId"]?.stringValue, !namespaceId.isEmpty,
-            let contextId = value["contextId"]?.stringValue, !contextId.isEmpty,
-            case .object(let envelope)? = value["invitation"], envelope["inviter_signature"] != nil,
-            let data = try? JSONEncoder().encode(JSONValue.object(envelope)),
-            let signed = try? JSONDecoder().decode(SignedGroupOpenInvitation.self, from: data)
+        guard let invitation = try? JSONDecoder().decode(OrgInvitation.self, from: Data(json.utf8)),
+            let contextId = invitation.contextId, !contextId.isEmpty
         else { return nil }
-        return ModelsInvitation(invitation: signed, namespaceId: namespaceId, contextId: contextId)
+        return ModelsInvitation(invitation: invitation, contextId: contextId)
     }
 }
 
@@ -114,8 +97,9 @@ public final class InvitationModel: ObservableObject {
         return true
     }
 
-    /// Join. `backend` is read again after `didJoin`, which may hand the
-    /// session the admitting relay.
+    /// Join: redeem the invite token on the node, then make sure the scene is
+    /// reachable. `backend` is read again after `didJoin`, which re-reads what
+    /// the account sees.
     public func accept(
         backend: @escaping @MainActor () -> (any MeroAppBackend)?,
         didJoin: @escaping @MainActor () async -> Void
@@ -136,8 +120,8 @@ public final class InvitationModel: ObservableObject {
             }
         }
         await didJoin()
-        // The scene sits in the studio's root group: membership follows the
-        // studio's once peers apply it. Ask a few times, joining if it is open.
+        // The scene is an app instance of the studio: membership in the org
+        // reaches it once the node commits the redemption. Ask a few times.
         for attempt in 0..<attempts {
             if attempt > 0 { try? await Task.sleep(nanoseconds: retryDelay) }
             guard let now = backend() else { break }

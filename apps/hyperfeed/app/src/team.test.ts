@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { FeedItem } from "./generated/HyperfeedClient";
+import type { FeedItem } from "./hyperfeedTypes";
 import { agentDigest, digestLine, digestSince, groupSentence, headlineOf, isNoise, line, teamGroups } from "./team";
 
 const NOW = new Date(2026, 9, 9, 15, 0).getTime();

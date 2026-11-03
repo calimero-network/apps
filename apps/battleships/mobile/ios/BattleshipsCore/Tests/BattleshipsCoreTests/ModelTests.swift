@@ -4,131 +4,96 @@ import XCTest
 
 @testable import BattleshipsCore
 
-/// ``BattleshipsBackend`` over the SDK's ``InMemoryAppBackend``: contexts are created there (so
-/// they list), and the service each runs is remembered here.
-final class FakeBattleshipsBackend: BattleshipsBackend, @unchecked Sendable {
-    let memory: InMemoryAppBackend
-    private let lock = NSLock()
-    private var services: [String: String] = [:]
-    private(set) var created: [(service: String, groupId: String, initArgs: JSONValue)] = []
-
-    init(memory: InMemoryAppBackend = InMemoryAppBackend()) {
-        self.memory = memory
-    }
-
-    var app: any MeroAppBackend { memory }
-
-    func createServiceContext(
-        groupId: String, applicationId: String, service: String, name: String, initArgs: JSONValue
-    ) async throws -> String {
-        let id = try await memory.createContext(groupId: groupId, applicationId: applicationId, name: name, initArgs: initArgs)
-        record(id, service: service, groupId: groupId, initArgs: initArgs)
-        return id
-    }
-
-    func serviceName(contextId: String) async throws -> String? {
-        service(of: contextId)
-    }
-
-    private func record(_ id: String, service: String, groupId: String, initArgs: JSONValue) {
-        lock.lock()
-        services[id] = service
-        created.append((service, groupId, initArgs))
-        lock.unlock()
-    }
-
-    private func service(of id: String) -> String? {
-        lock.lock()
-        defer { lock.unlock() }
-        return services[id]
-    }
-
-    func setService(_ service: String, for contextId: String) {
-        lock.lock()
-        services[contextId] = service
-        lock.unlock()
-    }
-}
-
 let me = String(repeating: "ab", count: 32)
 let rival = String(repeating: "cd", count: 32)
 let rivalAccount = String(repeating: "ce", count: 32)
 
-func summary(_ id: String, contextId: String? = nil, status: String = "Active") -> JSONValue {
+/// A `MatchSummary` as the contract answers it: u64s as decimal strings.
+func summary(_ id: String, status: String = "Active") -> JSONValue {
     .object([
         "match_id": .string(id), "player1": .string(me), "player2": .string(rival),
-        "player2_account": .string(rivalAccount), "status": .string(status),
-        "context_id": contextId.map { .string($0) } ?? .null, "winner": .null, "created_ms": .number(1),
+        "player2_account": .string(rival), "status": .string(status), "winner": .null,
+        "created_ms": .string("1700000000000"),
     ])
 }
 
 @MainActor
 final class LobbyModelTests: XCTestCase {
-    func testCreatingALobbyFoundsItAndStartsTheLobbyService() async throws {
-        let backend = FakeBattleshipsBackend()
-        let model = LobbiesModel(backend: backend, applicationId: nil)
+    func testCreatingALobbyFoundsAnOrgAndOneInstanceOfThePackage() async throws {
+        let backend = InMemoryAppBackend()
+        let model = LobbiesModel(backend: backend, applicationId: Battleships.packageName)
         let lobby = try await model.create(name: "  Harbour  ")
         XCTAssertEqual(lobby.name, "Harbour")
-        XCTAssertTrue(backend.memory.log.contains("foundNamespace Harbour"))
-        XCTAssertEqual(backend.created.map(\.service), ["lobby"])
-        XCTAssertEqual(backend.created.first?.groupId, lobby.id)
+        XCTAssertTrue(backend.log.contains("foundNamespace Harbour"))
+        XCTAssertTrue(backend.log.contains("createContext \(lobby.id) \(Battleships.packageName) Harbour"))
+        XCTAssertEqual(backend.rootContexts[lobby.id]?.count, 1)
         XCTAssertEqual(model.lobbies.map(\.id), [lobby.id])
     }
 
     func testALobbyNeedsAName() async {
-        let backend = FakeBattleshipsBackend()
+        let backend = InMemoryAppBackend()
         do {
             _ = try await LobbiesModel(backend: backend, applicationId: nil).create(name: " ")
             XCTFail("expected a refusal")
         } catch {
             XCTAssertEqual(ErrorText.describe(error), "Give the lobby a name.")
         }
-        XCTAssertTrue(backend.memory.log.isEmpty)
+        XCTAssertTrue(backend.log.isEmpty)
     }
 
-    func testTheLobbyContextIsFoundByItsServiceNotByBeingFirst() async throws {
-        let backend = FakeBattleshipsBackend()
+    func testLoadingReadsTheLobbyInstanceWithCamelCaseViews() async throws {
+        let backend = InMemoryAppBackend()
         let ns = AppNamespace(id: "aa01", name: "Harbour", applicationId: "app")
-        backend.memory.namespaces = [ns]
-        backend.memory.rootContexts = ["aa01": ["game-ctx", "lobby-ctx"]]
-        backend.setService("game", for: "game-ctx")
-        backend.setService("lobby", for: "lobby-ctx")
-        backend.memory.recording.setHandler { call in
+        backend.namespaces = [ns]
+        backend.rootContexts = ["aa01": ["lobby-app"]]
+        backend.groupMembers = ["aa01": [AppMember(identity: rival, role: "Member", name: "Rafael")]]
+        backend.recording.setHandler { call in
             switch call.method {
-            case "register_player": return .string(me)
-            case "get_matches": return .array([summary("m1", contextId: "game-ctx")])
-            case "get_players":
+            case "registerPlayer": return .string(me)
+            case "getMatches": return .array([summary("m1")])
+            case "getPlayers":
                 return .array([
                     .object(["account": .string(me), "player": .string(me)]),
-                    .object(["account": .string(rivalAccount), "player": .string(rival)]),
+                    .object(["account": .string(rival), "player": .string(rival)]),
                 ])
-            case "get_player_stats": return .object(["wins": 2, "losses": 1, "games_played": 3])
-            case "get_history": return .array([])
+            case "getPlayerStats":
+                XCTAssertEqual(call.args["player"]?.stringValue, me)
+                return .object(["wins": "2", "losses": "1", "games_played": "3"])
+            case "getHistory":
+                return .array([
+                    .object([
+                        "match_id": "m0", "winner": .string(me), "loser": .string(rival),
+                        "finished_ms": "1700000000001",
+                    ])
+                ])
             default: return .null
             }
         }
         let model = LobbyModel(backend: backend, namespace: ns, syncAttempts: 1, syncDelay: .zero)
         await model.load()
         XCTAssertEqual(model.phase, .loaded)
-        XCTAssertEqual(model.lobbyContextId, "lobby-ctx")
-        XCTAssertTrue(backend.memory.log.contains("joinContext lobby-ctx"), "joins the lobby when not a member")
-        XCTAssertEqual(backend.memory.recording.calls("register_player").first?.contextId, "lobby-ctx")
+        XCTAssertEqual(model.appId, "lobby-app")
+        XCTAssertEqual(backend.recording.calls("registerPlayer").first?.contextId, "lobby-app")
+        XCTAssertEqual(backend.recording.calls("registerPlayer").first?.path, .execute)
+        XCTAssertEqual(backend.recording.calls("getMatches").first?.path, .query)
         XCTAssertEqual(model.opponents.map(\.player), [rival])
         XCTAssertEqual(model.myMatches.map(\.matchId), ["m1"])
-        XCTAssertEqual(model.stats?.wins, 2)
-        XCTAssertEqual(model.ref(for: model.myMatches[0])?.contextId, "game-ctx")
+        XCTAssertEqual(model.myMatches.first?.createdMs, 1_700_000_000_000)
+        XCTAssertEqual(model.stats, PlayerStatsView(wins: 2, losses: 1, gamesPlayed: 3))
+        XCTAssertEqual(model.history.first?.finishedMs, 1_700_000_000_001)
+        XCTAssertEqual(model.displayName(rival), "Rafael", "names come from the org's member metadata")
+        XCTAssertEqual(model.ref(for: model.myMatches[0]), MatchRef(namespaceId: "aa01", appId: "lobby-app", matchId: "m1", opponent: rival))
     }
 
-    func testChallengingCreatesTheGameContextBesideTheLobby() async throws {
-        let backend = FakeBattleshipsBackend()
+    func testChallengingCreatesTheMatchInTheLobbyInstance() async throws {
+        let backend = InMemoryAppBackend()
         let ns = AppNamespace(id: "aa01", name: "Harbour", applicationId: "app-id")
-        backend.memory.rootContexts = ["aa01": ["lobby-ctx"]]
-        backend.setService("lobby", for: "lobby-ctx")
-        backend.memory.recording.setHandler { call in
+        backend.rootContexts = ["aa01": ["lobby-app"]]
+        backend.recording.setHandler { call in
             switch call.method {
-            case "register_player": return .string(me)
-            case "create_match": return .string("m9")
-            case "get_matches": return .array([summary("m9")])
+            case "registerPlayer": return .string(me)
+            case "createMatch": return .string("m9")
+            case "getMatches": return .array([summary("m9", status: "Pending")])
             default: return .null
             }
         }
@@ -136,29 +101,22 @@ final class LobbyModelTests: XCTestCase {
         await model.load()
         let challenged = await model.challenge(rival)
         let ref = try XCTUnwrap(challenged)
-        XCTAssertEqual(ref.matchId, "m9")
-        XCTAssertEqual(backend.created.map(\.service), ["game"])
-        XCTAssertEqual(backend.created.first?.groupId, "aa01", "the game sits in the lobby's group, for the xcall")
-        XCTAssertEqual(
-            backend.created.first?.initArgs,
-            .object([
-                "player1": .string(me), "player2": .string(rival), "player2_account": .string(rivalAccount),
-                "lobby_context_id": .string("lobby-ctx"), "match_id": .string("m9"),
-            ]))
-        let recorded = try XCTUnwrap(backend.memory.recording.calls("set_match_context_id").first)
-        XCTAssertEqual(recorded.args["context_id"]?.stringValue, ref.contextId)
-        XCTAssertEqual(backend.memory.recording.calls("create_match").first?.args["player2"]?.stringValue, rival)
+        XCTAssertEqual(ref, MatchRef(namespaceId: "aa01", appId: "lobby-app", matchId: "m9", opponent: rival))
+        let created = try XCTUnwrap(backend.recording.calls("createMatch").first)
+        XCTAssertEqual(created.args, .object(["player2": .string(rival)]))
+        XCTAssertEqual(created.contextId, "lobby-app")
+        XCTAssertFalse(backend.log.contains { $0.hasPrefix("createContext") }, "no instance per match on 1.0")
     }
 
-    func testAChallengeToSomethingThatIsNotAKeyIsRefusedLocally() async {
-        let backend = FakeBattleshipsBackend()
-        backend.memory.rootContexts = ["aa01": ["lobby-ctx"]]
+    func testAChallengeToNoOneIsRefusedLocally() async {
+        let backend = InMemoryAppBackend()
+        backend.rootContexts = ["aa01": ["lobby-app"]]
         let model = LobbyModel(backend: backend, namespace: AppNamespace(id: "aa01", name: nil, applicationId: "a"), syncAttempts: 1, syncDelay: .zero)
         await model.load()
-        let ref = await model.challenge("nope")
+        let ref = await model.challenge("  ")
         XCTAssertNil(ref)
-        XCTAssertEqual(model.notice, "That is not a valid player key.")
-        XCTAssertTrue(backend.memory.recording.calls("create_match").isEmpty)
+        XCTAssertEqual(model.notice, "That is not a valid player.")
+        XCTAssertTrue(backend.recording.calls("createMatch").isEmpty)
     }
 }
 
@@ -180,7 +138,7 @@ final class FakeGame: @unchecked Sendable {
         defer { lock.unlock() }
         calls.append(call.method)
         switch call.method {
-        case "get_match_state":
+        case "getMatchState":
             var pendingValue: JSONValue = .null
             if let pending {
                 pendingValue = .object([
@@ -194,25 +152,25 @@ final class FakeGame: @unchecked Sendable {
                 "loser": .null, "revealed": .array(revealed.map { .string($0) }), "audit_failed": .array([]),
                 "winner": winner.map { .string($0) } ?? .null,
             ])
-        case "get_shots": return .object(["size": 10, "shots": .array(shots.map { .number(Double($0)) })])
-        case "get_incoming_shots": return .object(["size": 10, "shots": .array(incoming.map { .number(Double($0)) })])
-        case "get_current_turn": return turn.map { .string($0) } ?? .null
-        case "commit_board":
+        case "getShots": return .object(["size": 10, "shots": .array(shots.map { .number(Double($0)) })])
+        case "getIncomingShots": return .object(["size": 10, "shots": .array(incoming.map { .number(Double($0)) })])
+        case "getCurrentTurn": return turn.map { .string($0) } ?? .null
+        case "commitBoard":
             committed.append(me)
             return .null
-        case "acknowledge_shot":
+        case "acknowledgeShot":
             if let pending { incoming[pending.y * 10 + pending.x] = call.args["hit"]?.boolValue == true ? 2 : 3 }
             pending = nil
             turn = me
             return .string("ok")
-        case "propose_shot":
+        case "proposeShot":
             let x = Int(call.args["x"]?.doubleValue ?? 0)
             let y = Int(call.args["y"]?.doubleValue ?? 0)
             shots[y * 10 + x] = 4
             pending = (1, x, y, rival)
             turn = rival
             return .null
-        case "reveal_board":
+        case "revealBoard":
             revealed.append(me)
             return .null
         default: return .null
@@ -222,11 +180,10 @@ final class FakeGame: @unchecked Sendable {
 
 @MainActor
 final class MatchModelTests: XCTestCase {
-    private func makeModel(_ game: FakeGame, store: InMemoryBoardStore = InMemoryBoardStore()) -> (MatchModel, FakeBattleshipsBackend) {
-        let backend = FakeBattleshipsBackend()
-        backend.memory.members = ["game-ctx"]
-        backend.memory.recording.setHandler { try game.handle($0) }
-        let ref = MatchRef(namespaceId: "aa01", lobbyContextId: "lobby-ctx", matchId: "m1", contextId: "game-ctx", opponent: rival)
+    private func makeModel(_ game: FakeGame, store: InMemoryBoardStore = InMemoryBoardStore()) -> (MatchModel, InMemoryAppBackend) {
+        let backend = InMemoryAppBackend()
+        backend.recording.setHandler { try game.handle($0) }
+        let ref = MatchRef(namespaceId: "aa01", appId: "lobby-app", matchId: "m1", opponent: rival)
         return (MatchModel(ref: ref, me: me, backend: backend, store: store), backend)
     }
 
@@ -257,14 +214,14 @@ final class MatchModelTests: XCTestCase {
         XCTAssertTrue(ok)
         let stored = try XCTUnwrap(store.load(owner: me, matchId: "m1"))
         XCTAssertEqual(stored.cells, model.layout.cells)
-        let commit = try XCTUnwrap(backend.memory.recording.calls("commit_board").first)
+        let commit = try XCTUnwrap(backend.recording.calls("commitBoard").first)
         XCTAssertEqual(commit.args["commitment"]?.stringValue, stored.commitment)
         XCTAssertEqual(try Commitment.compute(cells: stored.cells, salt: stored.saltBytes), stored.commitment)
         // Nothing but the commitment left the device: no call carries the salt or the cells.
-        for call in backend.memory.recording.calls {
+        for call in backend.recording.calls {
             let text = String(data: call.argsJSON ?? Data(), encoding: .utf8) ?? ""
             XCTAssertFalse(text.contains(stored.salt))
-            XCTAssertFalse(text.contains("board_bytes"))
+            XCTAssertFalse(text.contains("boardBytes"))
         }
         XCTAssertEqual(model.stage, .waiting)
     }
@@ -276,7 +233,7 @@ final class MatchModelTests: XCTestCase {
         model.shuffle()
         let ok = await model.deploy()
         XCTAssertFalse(ok)
-        XCTAssertTrue(backend.memory.recording.calls("commit_board").isEmpty)
+        XCTAssertTrue(backend.recording.calls("commitBoard").isEmpty)
     }
 
     func testAShotAtYouIsAnsweredFromYourBoard() async throws {
@@ -289,9 +246,10 @@ final class MatchModelTests: XCTestCase {
         game.turn = rival
         let (model, backend) = makeModel(game, store: store)
         await model.refresh()
-        let answer = try XCTUnwrap(backend.memory.recording.calls("acknowledge_shot").first)
+        let answer = try XCTUnwrap(backend.recording.calls("acknowledgeShot").first)
         XCTAssertEqual(answer.args["hit"]?.boolValue, true)
-        XCTAssertEqual(answer.args["shot_id"]?.doubleValue, 3)
+        XCTAssertEqual(answer.args["shotId"]?.doubleValue, 3)
+        XCTAssertEqual(answer.args["matchId"]?.stringValue, "m1")
         XCTAssertEqual(model.stage, .battle)
         XCTAssertEqual(model.ownBoard[1], Cell.hit)
         XCTAssertTrue(model.isMyTurn)
@@ -306,9 +264,9 @@ final class MatchModelTests: XCTestCase {
         await model.refresh()
         await model.tapTarget(Coordinate(4, 6))
         XCTAssertEqual(model.aim, Coordinate(4, 6))
-        XCTAssertTrue(backend.memory.recording.calls("propose_shot").isEmpty)
+        XCTAssertTrue(backend.recording.calls("proposeShot").isEmpty)
         await model.tapTarget(Coordinate(4, 6))
-        let shot = try XCTUnwrap(backend.memory.recording.calls("propose_shot").first)
+        let shot = try XCTUnwrap(backend.recording.calls("proposeShot").first)
         XCTAssertEqual(shot.args["x"]?.doubleValue, 4)
         XCTAssertEqual(shot.args["y"]?.doubleValue, 6)
         XCTAssertNil(model.aim)
@@ -323,10 +281,12 @@ final class MatchModelTests: XCTestCase {
         game.standing = "awaiting_reveal"
         let (model, backend) = makeModel(game, store: store)
         await model.refresh()
-        let reveal = try XCTUnwrap(backend.memory.recording.calls("reveal_board").first)
-        let salt = reveal.args["salt"]?.arrayValue?.compactMap(\.doubleValue).map { UInt8($0) }
-        XCTAssertEqual(salt, Vectors.aliceSalt, "the salt goes as 16 numbers, as the contract's [u8; 16] reads it")
-        let bytes = reveal.args["board_bytes"]?.arrayValue?.compactMap(\.doubleValue).map { UInt8($0) }
+        let reveal = try XCTUnwrap(backend.recording.calls("revealBoard").first)
+        XCTAssertEqual(reveal.contextId, "lobby-app")
+        let salt = reveal.args["salt"]?.stringValue.flatMap(Base64URL.decode)
+        XCTAssertEqual(salt, Vectors.aliceSalt, "the salt goes as base64url")
+        XCTAssertFalse(reveal.args["salt"]?.stringValue?.contains("=") ?? true, "unpadded")
+        let bytes = reveal.args["boardBytes"]?.stringValue.flatMap(Base64URL.decode)
         XCTAssertEqual(bytes, Commitment.boardBytes(Vectors.alice.cells))
         XCTAssertEqual(model.stage, .finished)
         XCTAssertEqual(model.outcome, .auditing)
@@ -334,7 +294,7 @@ final class MatchModelTests: XCTestCase {
         game.winner = me
         await model.refresh()
         XCTAssertEqual(model.outcome, .won)
-        XCTAssertEqual(backend.memory.recording.calls("reveal_board").count, 1, "revealed once")
+        XCTAssertEqual(backend.recording.calls("revealBoard").count, 1, "revealed once")
     }
 
     func testAMatchDeployedElsewhereSaysSo() async {
@@ -359,31 +319,34 @@ final class InvitationTests: XCTestCase {
         XCTAssertEqual(parsed.inviterKey, me)
     }
 
-    func testTheTokenIsTheShapeTheWebReaderTakes() throws {
-        let signed = InMemoryAppBackend.invitation(namespaceId: ns)
-        let token = try LobbyInvitation(invitation: signed, lobbyName: "Harbour").token()
+    func testTheTokenIsTheSDKsLinkShape() throws {
+        let invite = InMemoryAppBackend.invitation(namespaceId: ns)
+        let token = try LobbyInvitation(invitation: invite, lobbyName: "Harbour").token()
         let json = try XCTUnwrap(InviteCodec.decode(token: token))
         let value = try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8))
-        let first = try XCTUnwrap(value["invitations"]?.arrayValue?.first)
-        XCTAssertEqual(first["groupId"]?.stringValue, ns, "readLobbyInvitation reads the namespace from here")
-        XCTAssertNotNil(first["invitation"]?["inviter_signature"])
+        XCTAssertEqual(value["invitation"]?.stringValue, invite.token)
+        XCTAssertEqual(value["namespaceId"]?.stringValue, ns, "OrgInvitation reads the org here")
+        XCTAssertEqual(value["name"]?.stringValue, "Harbour")
+        let sdk = try XCTUnwrap(OrgInvitation.decode(token))
+        XCTAssertEqual(sdk.namespaceId, ns)
         XCTAssertEqual(value["__lobbyName"]?.stringValue, "Harbour")
     }
 
-    func testReadsTheSingleShapeAndRefusesOtherApps() throws {
-        let signed = InMemoryAppBackend.invitation(namespaceId: ns)
-        let json = try XCTUnwrap(String(data: JSONEncoder().encode(signed), encoding: .utf8))
+    func testReadsRawJSONAndRefusesOtherAppsAndPre10Invitations() throws {
+        let json = #"{"invitation":"inv_abc","namespaceId":"\#(ns)"}"#
         XCTAssertEqual(LobbyInvitation.parse(json)?.namespaceId, ns)
+        XCTAssertEqual(LobbyInvitation.parse(json)?.invitation.token, "inv_abc")
         let token = try XCTUnwrap(InviteCodec.encode(json: json))
         XCTAssertNil(LobbyInvitation.parse("https://links.calimero.network/com.calimero.chat/join?invitation=\(token)"))
         XCTAssertNotNil(LobbyInvitation.parse("calimero://com.calimero.battleships/join?invitation=\(token)"))
         XCTAssertNil(LobbyInvitation.parse("hello"))
+        let pre10 = #"{"invitation":{"group_id":[1,2]},"inviter_signature":"ff"}"#
+        XCTAssertNil(LobbyInvitation.parse(pre10), "a 1.0 cluster cannot redeem a signed group invitation")
     }
 
     @MainActor
     func testJoiningRedeemsTheNamespace() async throws {
         let backend = InMemoryAppBackend()
-        backend.hasRelay = false
         let link = try LobbyInvitation(invitation: InMemoryAppBackend.invitation(namespaceId: ns), lobbyName: "Harbour").link()
         let model = InvitationModel()
         XCTAssertTrue(model.open(link))
@@ -392,23 +355,33 @@ final class InvitationTests: XCTestCase {
         await model.accept(backend: { backend }, didJoin: { joined = true })
         XCTAssertTrue(joined)
         XCTAssertEqual(model.stage, .joined(namespaceId: ns, title: "Harbour"))
-        XCTAssertTrue(backend.hasRelay)
+        XCTAssertTrue(backend.log.contains { $0.hasPrefix("joinNamespace \(ns)") })
     }
 }
 
 final class ErrorTextTests: XCTestCase {
-    struct Raw: Error, CustomStringConvertible {
-        let description: String
+    func testAppErrorsInWords() {
+        XCTAssertEqual(ErrorText.describe(AppError("x", details: ["code": "Finished"])), "This match is already finished.")
+        XCTAssertTrue(ErrorText.isFinished(AppError("x", details: ["code": "Finished"])))
+        let invalid = AppError("x", details: ["code": "Invalid", "fields": .object(["message": "not your turn"])])
+        XCTAssertEqual(ErrorText.describe(invalid), "Not your turn.")
+        let notReady = AppError("x", details: ["code": "Invalid", "fields": .object(["message": "opponent must place ships first"])])
+        XCTAssertTrue(ErrorText.isOpponentNotReady(notReady))
+        XCTAssertEqual(
+            ErrorText.describe(AppError("x", details: ["code": "CommitmentMismatch"])),
+            "That board does not match the fleet you deployed.")
     }
 
-    func testReadsTheContractErrorOutOfItsBytes() {
-        let body = Array(#"{"kind":"Invalid","data":"not your turn"}"#.utf8).map(String.init).joined(separator: ", ")
-        XCTAssertEqual(ErrorText.describe(Raw(description: "rpc failed: [\(body)]")), "It is not your turn yet.")
-        XCTAssertTrue(ErrorText.isFinished(Raw(description: #"{"kind":"Finished","data":""}"#)))
+    func testEveryContractErrorHasWords() throws {
+        for code in ["AlreadyCommitted", "CommitmentMismatch", "Finished", "Forbidden", "Invalid", "MatchIdCollision", "NotFound"] {
+            XCTAssertNotNil(ErrorText.appErrors[code], code)
+        }
     }
 
-    func testOfflineIsSaidPlainly() {
+    func testTransportErrorsAreSaidPlainly() {
         XCTAssertEqual(
             ErrorText.describe(URLError(.notConnectedToInternet)), "You're offline. Check your connection and try again.")
+        XCTAssertEqual(ErrorText.describe(LoginRequired("expired")), "Your session ended. Sign in again.")
+        XCTAssertEqual(ErrorText.describe(ConfirmCancelled()), "You dismissed the passkey sheet, so nothing changed.")
     }
 }

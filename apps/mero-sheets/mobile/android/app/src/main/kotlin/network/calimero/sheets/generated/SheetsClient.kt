@@ -35,7 +35,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun addAttachment(sheetId: String, rowId: String, colId: String, blobId: String, name: String, size: ULong, mime: String): String {
         val args = json.encodeToString(AddAttachmentArgs.serializer(), AddAttachmentArgs(sheetId, rowId, colId, blobId, name, size, mime))
-        val response = transport.execute("add_attachment", args)
+        val response = transport.execute("addAttachment", args)
         return json.decodeFromString(serializer<String>(), response)
     }
 
@@ -48,7 +48,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun addChart(chart: ChartInput): String {
         val args = json.encodeToString(AddChartArgs.serializer(), AddChartArgs(chart))
-        val response = transport.execute("add_chart", args)
+        val response = transport.execute("addChart", args)
         return json.decodeFromString(serializer<String>(), response)
     }
 
@@ -63,7 +63,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun addComment(sheetId: String, rowId: String, colId: String, text: String, parent: String): String {
         val args = json.encodeToString(AddCommentArgs.serializer(), AddCommentArgs(sheetId, rowId, colId, text, parent))
-        val response = transport.execute("add_comment", args)
+        val response = transport.execute("addComment", args)
         return json.decodeFromString(serializer<String>(), response)
     }
 
@@ -76,7 +76,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun addRule(rule: RuleInput): String {
         val args = json.encodeToString(AddRuleArgs.serializer(), AddRuleArgs(rule))
-        val response = transport.execute("add_rule", args)
+        val response = transport.execute("addRule", args)
         return json.decodeFromString(serializer<String>(), response)
     }
 
@@ -95,7 +95,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun applyAxisOps(sheetId: String, ops: List<AxisOp>) {
         val args = json.encodeToString(ApplyAxisOpsArgs.serializer(), ApplyAxisOpsArgs(sheetId, ops))
-        transport.execute("apply_axis_ops", args)
+        transport.execute("applyAxisOps", args)
     }
 
     /**
@@ -113,7 +113,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun applyCellOps(sheetId: String, ops: List<CellOp>) {
         val args = json.encodeToString(ApplyCellOpsArgs.serializer(), ApplyCellOpsArgs(sheetId, ops))
-        transport.execute("apply_cell_ops", args)
+        transport.execute("applyCellOps", args)
     }
 
     /**
@@ -125,7 +125,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun applyPrivateCellOps(sheetId: String, ops: List<CellOp>) {
         val args = json.encodeToString(ApplyPrivateCellOpsArgs.serializer(), ApplyPrivateCellOpsArgs(sheetId, ops))
-        transport.execute("apply_private_cell_ops", args)
+        transport.execute("applyPrivateCellOps", args)
     }
 
     /**
@@ -139,7 +139,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun applyStyleOps(sheetId: String, ops: List<StyleOp>) {
         val args = json.encodeToString(ApplyStyleOpsArgs.serializer(), ApplyStyleOpsArgs(sheetId, ops))
-        transport.execute("apply_style_ops", args)
+        transport.execute("applyStyleOps", args)
     }
 
     /**
@@ -149,7 +149,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun clearCell(sheetId: String, rowId: String, colId: String) {
         val args = json.encodeToString(ClearCellArgs.serializer(), ClearCellArgs(sheetId, rowId, colId))
-        transport.execute("clear_cell", args)
+        transport.execute("clearCell", args)
     }
 
     /**
@@ -161,7 +161,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun createPrivateSheet(name: String): String {
         val args = json.encodeToString(CreatePrivateSheetArgs.serializer(), CreatePrivateSheetArgs(name))
-        val response = transport.execute("create_private_sheet", args)
+        val response = transport.execute("createPrivateSheet", args)
         return json.decodeFromString(serializer<String>(), response)
     }
 
@@ -172,7 +172,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun createSheet(name: String): String {
         val args = json.encodeToString(CreateSheetArgs.serializer(), CreateSheetArgs(name))
-        val response = transport.execute("create_sheet", args)
+        val response = transport.execute("createSheet", args)
         return json.decodeFromString(serializer<String>(), response)
     }
 
@@ -186,7 +186,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun deleteComment(id: String) {
         val args = json.encodeToString(DeleteCommentArgs.serializer(), DeleteCommentArgs(id))
-        transport.execute("delete_comment", args)
+        transport.execute("deleteComment", args)
     }
 
     /**
@@ -196,7 +196,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun deleteNamedRange(name: String) {
         val args = json.encodeToString(DeleteNamedRangeArgs.serializer(), DeleteNamedRangeArgs(name))
-        transport.execute("delete_named_range", args)
+        transport.execute("deleteNamedRange", args)
     }
 
     /**
@@ -208,7 +208,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun deletePrivateSheet(sheetId: String) {
         val args = json.encodeToString(DeletePrivateSheetArgs.serializer(), DeletePrivateSheetArgs(sheetId))
-        transport.execute("delete_private_sheet", args)
+        transport.execute("deletePrivateSheet", args)
     }
 
     /**
@@ -218,7 +218,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun deleteSheet(sheetId: String) {
         val args = json.encodeToString(DeleteSheetArgs.serializer(), DeleteSheetArgs(sheetId))
-        transport.execute("delete_sheet", args)
+        transport.execute("deleteSheet", args)
     }
 
     /**
@@ -231,7 +231,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun dropLink(fromContext: ContractBytes, publicationId: String) {
         val args = json.encodeToString(DropLinkArgs.serializer(), DropLinkArgs(fromContext, publicationId))
-        transport.execute("drop_link", args)
+        transport.execute("dropLink", args)
     }
 
     /**
@@ -244,7 +244,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun editComment(id: String, text: String) {
         val args = json.encodeToString(EditCommentArgs.serializer(), EditCommentArgs(id, text))
-        transport.execute("edit_comment", args)
+        transport.execute("editComment", args)
     }
 
     /**
@@ -260,7 +260,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun editNote(sheetId: String, rowId: String, colId: String, ops: List<NoteChange>) {
         val args = json.encodeToString(EditNoteArgs.serializer(), EditNoteArgs(sheetId, rowId, colId, ops))
-        transport.execute("edit_note", args)
+        transport.execute("editNote", args)
     }
 
     /**
@@ -272,7 +272,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      * View (`read_only`): sent with `query`.
      */
     suspend fun exportAll(): List<Sheet> {
-        val response = transport.query("export_all", "{}")
+        val response = transport.query("exportAll", "{}")
         return json.decodeFromString(serializer<List<Sheet>>(), response)
     }
 
@@ -287,7 +287,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun getActivity(since: ULong, limit: UInt): List<ActivityEntry> {
         val args = json.encodeToString(GetActivityArgs.serializer(), GetActivityArgs(since, limit))
-        val response = transport.query("get_activity", args)
+        val response = transport.query("getActivity", args)
         return json.decodeFromString(serializer<List<ActivityEntry>>(), response)
     }
 
@@ -300,7 +300,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      * View (`read_only`): sent with `query`.
      */
     suspend fun getAllCells(): List<Cell> {
-        val response = transport.query("get_all_cells", "{}")
+        val response = transport.query("getAllCells", "{}")
         return json.decodeFromString(serializer<List<Cell>>(), response)
     }
 
@@ -312,7 +312,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      * View (`read_only`): sent with `query`.
      */
     suspend fun getAttachments(): List<Attachment> {
-        val response = transport.query("get_attachments", "{}")
+        val response = transport.query("getAttachments", "{}")
         return json.decodeFromString(serializer<List<Attachment>>(), response)
     }
 
@@ -327,7 +327,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun getCells(sheetId: String): List<Cell> {
         val args = json.encodeToString(GetCellsArgs.serializer(), GetCellsArgs(sheetId))
-        val response = transport.query("get_cells", args)
+        val response = transport.query("getCells", args)
         return json.decodeFromString(serializer<List<Cell>>(), response)
     }
 
@@ -339,7 +339,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      * View (`read_only`): sent with `query`.
      */
     suspend fun getCharts(): List<Chart> {
-        val response = transport.query("get_charts", "{}")
+        val response = transport.query("getCharts", "{}")
         return json.decodeFromString(serializer<List<Chart>>(), response)
     }
 
@@ -351,7 +351,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      * View (`read_only`): sent with `query`.
      */
     suspend fun getComments(): List<Comment> {
-        val response = transport.query("get_comments", "{}")
+        val response = transport.query("getComments", "{}")
         return json.decodeFromString(serializer<List<Comment>>(), response)
     }
 
@@ -363,7 +363,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      * View (`read_only`): sent with `query`.
      */
     suspend fun getFunctions(): List<FunctionDef> {
-        val response = transport.query("get_functions", "{}")
+        val response = transport.query("getFunctions", "{}")
         return json.decodeFromString(serializer<List<FunctionDef>>(), response)
     }
 
@@ -375,7 +375,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      * View (`read_only`): sent with `query`.
      */
     suspend fun getLayouts(): List<SheetLayout> {
-        val response = transport.query("get_layouts", "{}")
+        val response = transport.query("getLayouts", "{}")
         return json.decodeFromString(serializer<List<SheetLayout>>(), response)
     }
 
@@ -387,7 +387,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      * View (`read_only`): sent with `query`.
      */
     suspend fun getLinks(): List<Link> {
-        val response = transport.query("get_links", "{}")
+        val response = transport.query("getLinks", "{}")
         return json.decodeFromString(serializer<List<Link>>(), response)
     }
 
@@ -402,7 +402,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      * View (`read_only`): sent with `query`.
      */
     suspend fun getMembers(): List<Member> {
-        val response = transport.query("get_members", "{}")
+        val response = transport.query("getMembers", "{}")
         return json.decodeFromString(serializer<List<Member>>(), response)
     }
 
@@ -414,7 +414,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      * View (`read_only`): sent with `query`.
      */
     suspend fun getNamedRanges(): List<NamedRange> {
-        val response = transport.query("get_named_ranges", "{}")
+        val response = transport.query("getNamedRanges", "{}")
         return json.decodeFromString(serializer<List<NamedRange>>(), response)
     }
 
@@ -427,7 +427,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun getNote(sheetId: String, rowId: String, colId: String): List<Span> {
         val args = json.encodeToString(GetNoteArgs.serializer(), GetNoteArgs(sheetId, rowId, colId))
-        val response = transport.query("get_note", args)
+        val response = transport.query("getNote", args)
         return json.decodeFromString(serializer<List<Span>>(), response)
     }
 
@@ -439,7 +439,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      * View (`read_only`): sent with `query`.
      */
     suspend fun getNotedCells(): List<NotedCell> {
-        val response = transport.query("get_noted_cells", "{}")
+        val response = transport.query("getNotedCells", "{}")
         return json.decodeFromString(serializer<List<NotedCell>>(), response)
     }
 
@@ -452,7 +452,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      * View (`read_only`): sent with `query`.
      */
     suspend fun getPrivateCells(): List<Cell> {
-        val response = transport.query("get_private_cells", "{}")
+        val response = transport.query("getPrivateCells", "{}")
         return json.decodeFromString(serializer<List<Cell>>(), response)
     }
 
@@ -464,7 +464,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      * View (`read_only`): sent with `query`.
      */
     suspend fun getPrivateSheets(): List<Sheet> {
-        val response = transport.query("get_private_sheets", "{}")
+        val response = transport.query("getPrivateSheets", "{}")
         return json.decodeFromString(serializer<List<Sheet>>(), response)
     }
 
@@ -485,7 +485,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      * View (`read_only`): sent with `query`.
      */
     suspend fun getProject(): Project {
-        val response = transport.query("get_project", "{}")
+        val response = transport.query("getProject", "{}")
         return json.decodeFromString(serializer<Project>(), response)
     }
 
@@ -497,7 +497,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      * View (`read_only`): sent with `query`.
      */
     suspend fun getProtections(): List<Protection> {
-        val response = transport.query("get_protections", "{}")
+        val response = transport.query("getProtections", "{}")
         return json.decodeFromString(serializer<List<Protection>>(), response)
     }
 
@@ -509,7 +509,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      * View (`read_only`): sent with `query`.
      */
     suspend fun getPublications(): List<Publication> {
-        val response = transport.query("get_publications", "{}")
+        val response = transport.query("getPublications", "{}")
         return json.decodeFromString(serializer<List<Publication>>(), response)
     }
 
@@ -521,7 +521,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      * View (`read_only`): sent with `query`.
      */
     suspend fun getRules(): List<Rule> {
-        val response = transport.query("get_rules", "{}")
+        val response = transport.query("getRules", "{}")
         return json.decodeFromString(serializer<List<Rule>>(), response)
     }
 
@@ -534,7 +534,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      * View (`read_only`): sent with `query`.
      */
     suspend fun getSheetViews(): List<SheetView> {
-        val response = transport.query("get_sheet_views", "{}")
+        val response = transport.query("getSheetViews", "{}")
         return json.decodeFromString(serializer<List<SheetView>>(), response)
     }
 
@@ -546,7 +546,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      * View (`read_only`): sent with `query`.
      */
     suspend fun getStyles(): List<CellStyle> {
-        val response = transport.query("get_styles", "{}")
+        val response = transport.query("getStyles", "{}")
         return json.decodeFromString(serializer<List<CellStyle>>(), response)
     }
 
@@ -569,7 +569,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun initProject(name: String): String {
         val args = json.encodeToString(InitProjectArgs.serializer(), InitProjectArgs(name))
-        val response = transport.execute("init_project", args)
+        val response = transport.execute("initProject", args)
         return json.decodeFromString(serializer<String>(), response)
     }
 
@@ -597,7 +597,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      * View (`read_only`): sent with `query`.
      */
     suspend fun listSheets(): List<Sheet> {
-        val response = transport.query("list_sheets", "{}")
+        val response = transport.query("listSheets", "{}")
         return json.decodeFromString(serializer<List<Sheet>>(), response)
     }
 
@@ -612,7 +612,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun protectRange(sheetId: String, topRowId: String, leftColId: String, bottomRowId: String, rightColId: String, description: String, editors: List<String>): String {
         val args = json.encodeToString(ProtectRangeArgs.serializer(), ProtectRangeArgs(sheetId, topRowId, leftColId, bottomRowId, rightColId, description, editors))
-        val response = transport.execute("protect_range", args)
+        val response = transport.execute("protectRange", args)
         return json.decodeFromString(serializer<String>(), response)
     }
 
@@ -626,20 +626,21 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun publishRange(sheetId: String, topRowId: String, leftColId: String, bottomRowId: String, rightColId: String, targetContext: String, name: String): String {
         val args = json.encodeToString(PublishRangeArgs.serializer(), PublishRangeArgs(sheetId, topRowId, leftColId, bottomRowId, rightColId, targetContext, name))
-        val response = transport.execute("publish_range", args)
+        val response = transport.execute("publishRange", args)
         return json.decodeFromString(serializer<String>(), response)
     }
 
     /**
      * push_publication
      *
-     * Push a link's values again now.
+     * The values a link delivers now (`LinkPush`, as raw JSON). On the component runtime the
+     * client relays them to the target workbook (`receiveLink`); this app does not relay links.
      *
-     * Write (`mutating`): sent with `execute`.
+     * View: sent with `query`.
      */
-    suspend fun pushPublication(id: String) {
+    suspend fun pushPublication(id: String): String {
         val args = json.encodeToString(PushPublicationArgs.serializer(), PushPublicationArgs(id))
-        transport.execute("push_publication", args)
+        return transport.query("pushPublication", args)
     }
 
     /**
@@ -654,7 +655,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun receiveLink(fromContext: ContractBytes, publicationId: String, name: String, sourceName: String, rows: UInt, cols: UInt, values: List<String>) {
         val args = json.encodeToString(ReceiveLinkArgs.serializer(), ReceiveLinkArgs(fromContext, publicationId, name, sourceName, rows, cols, values))
-        transport.execute("receive_link", args)
+        transport.execute("receiveLink", args)
     }
 
     /**
@@ -667,7 +668,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun removeAttachment(id: String) {
         val args = json.encodeToString(RemoveAttachmentArgs.serializer(), RemoveAttachmentArgs(id))
-        transport.execute("remove_attachment", args)
+        transport.execute("removeAttachment", args)
     }
 
     /**
@@ -677,7 +678,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun removeChart(id: String) {
         val args = json.encodeToString(RemoveChartArgs.serializer(), RemoveChartArgs(id))
-        transport.execute("remove_chart", args)
+        transport.execute("removeChart", args)
     }
 
     /**
@@ -689,7 +690,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun removeProtection(id: String) {
         val args = json.encodeToString(RemoveProtectionArgs.serializer(), RemoveProtectionArgs(id))
-        transport.execute("remove_protection", args)
+        transport.execute("removeProtection", args)
     }
 
     /**
@@ -699,7 +700,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun removeRule(id: String) {
         val args = json.encodeToString(RemoveRuleArgs.serializer(), RemoveRuleArgs(id))
-        transport.execute("remove_rule", args)
+        transport.execute("removeRule", args)
     }
 
     /**
@@ -709,7 +710,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun renamePrivateSheet(sheetId: String, name: String) {
         val args = json.encodeToString(RenamePrivateSheetArgs.serializer(), RenamePrivateSheetArgs(sheetId, name))
-        transport.execute("rename_private_sheet", args)
+        transport.execute("renamePrivateSheet", args)
     }
 
     /**
@@ -719,7 +720,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun renameSheet(sheetId: String, newName: String) {
         val args = json.encodeToString(RenameSheetArgs.serializer(), RenameSheetArgs(sheetId, newName))
-        transport.execute("rename_sheet", args)
+        transport.execute("renameSheet", args)
     }
 
     /**
@@ -729,7 +730,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun searchFunctions(prefix: String): List<FunctionDef> {
         val args = json.encodeToString(SearchFunctionsArgs.serializer(), SearchFunctionsArgs(prefix))
-        val response = transport.query("search_functions", args)
+        val response = transport.query("searchFunctions", args)
         return json.decodeFromString(serializer<List<FunctionDef>>(), response)
     }
 
@@ -740,7 +741,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun setCell(sheetId: String, rowId: String, colId: String, rawValue: String): String {
         val args = json.encodeToString(SetCellArgs.serializer(), SetCellArgs(sheetId, rowId, colId, rawValue))
-        val response = transport.execute("set_cell", args)
+        val response = transport.execute("setCell", args)
         return json.decodeFromString(serializer<String>(), response)
     }
 
@@ -754,7 +755,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun setCellFormat(sheetId: String, rowId: String, colId: String, format: String): String {
         val args = json.encodeToString(SetCellFormatArgs.serializer(), SetCellFormatArgs(sheetId, rowId, colId, format))
-        val response = transport.execute("set_cell_format", args)
+        val response = transport.execute("setCellFormat", args)
         return json.decodeFromString(serializer<String>(), response)
     }
 
@@ -767,7 +768,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun setCommentResolved(id: String, resolved: Boolean) {
         val args = json.encodeToString(SetCommentResolvedArgs.serializer(), SetCommentResolvedArgs(id, resolved))
-        transport.execute("set_comment_resolved", args)
+        transport.execute("setCommentResolved", args)
     }
 
     /**
@@ -779,7 +780,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun setFrozen(sheetId: String, rows: UInt, cols: UInt) {
         val args = json.encodeToString(SetFrozenArgs.serializer(), SetFrozenArgs(sheetId, rows, cols))
-        transport.execute("set_frozen", args)
+        transport.execute("setFrozen", args)
     }
 
     /**
@@ -791,7 +792,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun setNamedRange(name: String, target: String) {
         val args = json.encodeToString(SetNamedRangeArgs.serializer(), SetNamedRangeArgs(name, target))
-        transport.execute("set_named_range", args)
+        transport.execute("setNamedRange", args)
     }
 
     /**
@@ -804,7 +805,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun setRole(memberId: String, role: String) {
         val args = json.encodeToString(SetRoleArgs.serializer(), SetRoleArgs(memberId, role))
-        transport.execute("set_role", args)
+        transport.execute("setRole", args)
     }
 
     /**
@@ -816,7 +817,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun setSizes(sheetId: String, sizes: List<AxisSize>) {
         val args = json.encodeToString(SetSizesArgs.serializer(), SetSizesArgs(sheetId, sizes))
-        transport.execute("set_sizes", args)
+        transport.execute("setSizes", args)
     }
 
     /**
@@ -853,7 +854,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun updateChart(id: String, chart: ChartInput) {
         val args = json.encodeToString(UpdateChartArgs.serializer(), UpdateChartArgs(id, chart))
-        transport.execute("update_chart", args)
+        transport.execute("updateChart", args)
     }
 
     /**
@@ -865,7 +866,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun updateProtection(id: String, description: String, editors: List<String>) {
         val args = json.encodeToString(UpdateProtectionArgs.serializer(), UpdateProtectionArgs(id, description, editors))
-        transport.execute("update_protection", args)
+        transport.execute("updateProtection", args)
     }
 
     /**
@@ -877,7 +878,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
      */
     suspend fun updateRule(id: String, rule: RuleInput) {
         val args = json.encodeToString(UpdateRuleArgs.serializer(), UpdateRuleArgs(id, rule))
-        transport.execute("update_rule", args)
+        transport.execute("updateRule", args)
     }
 
     /**
@@ -902,12 +903,12 @@ class SheetsClient(private val transport: ContextContractCalling) {
 
     @Serializable
     private data class AddAttachmentArgs(
-        @SerialName("sheet_id") val sheetId: String,
-        @SerialName("row_id") val rowId: String,
-        @SerialName("col_id") val colId: String,
-        @SerialName("blob_id") val blobId: String,
+        val sheetId: String,
+        val rowId: String,
+        val colId: String,
+        val blobId: String,
         val name: String,
-        val size: ULong,
+        @Serializable(with = U64String::class) val size: ULong,
         val mime: String,
     )
 
@@ -918,9 +919,9 @@ class SheetsClient(private val transport: ContextContractCalling) {
 
     @Serializable
     private data class AddCommentArgs(
-        @SerialName("sheet_id") val sheetId: String,
-        @SerialName("row_id") val rowId: String,
-        @SerialName("col_id") val colId: String,
+        val sheetId: String,
+        val rowId: String,
+        val colId: String,
         val text: String,
         val parent: String,
     )
@@ -932,33 +933,33 @@ class SheetsClient(private val transport: ContextContractCalling) {
 
     @Serializable
     private data class ApplyAxisOpsArgs(
-        @SerialName("sheet_id") val sheetId: String,
+        val sheetId: String,
         val ops: List<AxisOp>,
     )
 
     @Serializable
     private data class ApplyCellOpsArgs(
-        @SerialName("sheet_id") val sheetId: String,
+        val sheetId: String,
         val ops: List<CellOp>,
     )
 
     @Serializable
     private data class ApplyPrivateCellOpsArgs(
-        @SerialName("sheet_id") val sheetId: String,
+        val sheetId: String,
         val ops: List<CellOp>,
     )
 
     @Serializable
     private data class ApplyStyleOpsArgs(
-        @SerialName("sheet_id") val sheetId: String,
+        val sheetId: String,
         val ops: List<StyleOp>,
     )
 
     @Serializable
     private data class ClearCellArgs(
-        @SerialName("sheet_id") val sheetId: String,
-        @SerialName("row_id") val rowId: String,
-        @SerialName("col_id") val colId: String,
+        val sheetId: String,
+        val rowId: String,
+        val colId: String,
     )
 
     @Serializable
@@ -983,18 +984,18 @@ class SheetsClient(private val transport: ContextContractCalling) {
 
     @Serializable
     private data class DeletePrivateSheetArgs(
-        @SerialName("sheet_id") val sheetId: String,
+        val sheetId: String,
     )
 
     @Serializable
     private data class DeleteSheetArgs(
-        @SerialName("sheet_id") val sheetId: String,
+        val sheetId: String,
     )
 
     @Serializable
     private data class DropLinkArgs(
-        @SerialName("from_context") val fromContext: ContractBytes,
-        @SerialName("publication_id") val publicationId: String,
+        val fromContext: ContractBytes,
+        val publicationId: String,
     )
 
     @Serializable
@@ -1005,28 +1006,28 @@ class SheetsClient(private val transport: ContextContractCalling) {
 
     @Serializable
     private data class EditNoteArgs(
-        @SerialName("sheet_id") val sheetId: String,
-        @SerialName("row_id") val rowId: String,
-        @SerialName("col_id") val colId: String,
+        val sheetId: String,
+        val rowId: String,
+        val colId: String,
         val ops: List<NoteChange>,
     )
 
     @Serializable
     private data class GetActivityArgs(
-        val since: ULong,
+        @Serializable(with = U64String::class) val since: ULong,
         val limit: UInt,
     )
 
     @Serializable
     private data class GetCellsArgs(
-        @SerialName("sheet_id") val sheetId: String,
+        val sheetId: String,
     )
 
     @Serializable
     private data class GetNoteArgs(
-        @SerialName("sheet_id") val sheetId: String,
-        @SerialName("row_id") val rowId: String,
-        @SerialName("col_id") val colId: String,
+        val sheetId: String,
+        val rowId: String,
+        val colId: String,
     )
 
     @Serializable
@@ -1041,23 +1042,23 @@ class SheetsClient(private val transport: ContextContractCalling) {
 
     @Serializable
     private data class ProtectRangeArgs(
-        @SerialName("sheet_id") val sheetId: String,
-        @SerialName("top_row_id") val topRowId: String,
-        @SerialName("left_col_id") val leftColId: String,
-        @SerialName("bottom_row_id") val bottomRowId: String,
-        @SerialName("right_col_id") val rightColId: String,
+        val sheetId: String,
+        val topRowId: String,
+        val leftColId: String,
+        val bottomRowId: String,
+        val rightColId: String,
         val description: String,
         val editors: List<String>,
     )
 
     @Serializable
     private data class PublishRangeArgs(
-        @SerialName("sheet_id") val sheetId: String,
-        @SerialName("top_row_id") val topRowId: String,
-        @SerialName("left_col_id") val leftColId: String,
-        @SerialName("bottom_row_id") val bottomRowId: String,
-        @SerialName("right_col_id") val rightColId: String,
-        @SerialName("target_context") val targetContext: String,
+        val sheetId: String,
+        val topRowId: String,
+        val leftColId: String,
+        val bottomRowId: String,
+        val rightColId: String,
+        val targetContext: String,
         val name: String,
     )
 
@@ -1068,10 +1069,10 @@ class SheetsClient(private val transport: ContextContractCalling) {
 
     @Serializable
     private data class ReceiveLinkArgs(
-        @SerialName("from_context") val fromContext: ContractBytes,
-        @SerialName("publication_id") val publicationId: String,
+        val fromContext: ContractBytes,
+        val publicationId: String,
         val name: String,
-        @SerialName("source_name") val sourceName: String,
+        val sourceName: String,
         val rows: UInt,
         val cols: UInt,
         val values: List<String>,
@@ -1099,14 +1100,14 @@ class SheetsClient(private val transport: ContextContractCalling) {
 
     @Serializable
     private data class RenamePrivateSheetArgs(
-        @SerialName("sheet_id") val sheetId: String,
+        val sheetId: String,
         val name: String,
     )
 
     @Serializable
     private data class RenameSheetArgs(
-        @SerialName("sheet_id") val sheetId: String,
-        @SerialName("new_name") val newName: String,
+        val sheetId: String,
+        val newName: String,
     )
 
     @Serializable
@@ -1116,17 +1117,17 @@ class SheetsClient(private val transport: ContextContractCalling) {
 
     @Serializable
     private data class SetCellArgs(
-        @SerialName("sheet_id") val sheetId: String,
-        @SerialName("row_id") val rowId: String,
-        @SerialName("col_id") val colId: String,
-        @SerialName("raw_value") val rawValue: String,
+        val sheetId: String,
+        val rowId: String,
+        val colId: String,
+        val rawValue: String,
     )
 
     @Serializable
     private data class SetCellFormatArgs(
-        @SerialName("sheet_id") val sheetId: String,
-        @SerialName("row_id") val rowId: String,
-        @SerialName("col_id") val colId: String,
+        val sheetId: String,
+        val rowId: String,
+        val colId: String,
         val format: String,
     )
 
@@ -1138,7 +1139,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
 
     @Serializable
     private data class SetFrozenArgs(
-        @SerialName("sheet_id") val sheetId: String,
+        val sheetId: String,
         val rows: UInt,
         val cols: UInt,
     )
@@ -1151,13 +1152,13 @@ class SheetsClient(private val transport: ContextContractCalling) {
 
     @Serializable
     private data class SetRoleArgs(
-        @SerialName("member_id") val memberId: String,
+        val memberId: String,
         val role: String,
     )
 
     @Serializable
     private data class SetSizesArgs(
-        @SerialName("sheet_id") val sheetId: String,
+        val sheetId: String,
         val sizes: List<AxisSize>,
     )
 
@@ -1202,7 +1203,7 @@ class SheetsClient(private val transport: ContextContractCalling) {
  */
 @Serializable
 data class ActivityData(
-    val at: ULong,
+    @Serializable(with = U64String::class) val at: ULong,
     /** Empty for workbook-level actions (a named range). */
     @SerialName("sheet_id") val sheetId: String,
     /** `cells`, `rows`, `cols`, `sheet` or `name`. */
@@ -1218,7 +1219,7 @@ data class ActivityData(
 data class ActivityEntry(
     val id: String,
     val author: String,
-    val at: ULong,
+    @Serializable(with = U64String::class) val at: ULong,
     @SerialName("sheet_id") val sheetId: String,
     val kind: String,
     val summary: String,
@@ -1233,7 +1234,7 @@ data class ActivityEntry(
 @Serializable
 data class AlertState(
     val cells: List<String>,
-    @SerialName("updated_at") val updatedAt: ULong,
+    @SerialName("updated_at") @Serializable(with = U64String::class) val updatedAt: ULong,
 )
 
 /** A live attachment. */
@@ -1245,10 +1246,10 @@ data class Attachment(
     @SerialName("col_id") val colId: String,
     @SerialName("blob_id") val blobId: String,
     val name: String,
-    val size: ULong,
+    @Serializable(with = U64String::class) val size: ULong,
     val mime: String,
     @SerialName("created_by") val createdBy: String,
-    @SerialName("created_at") val createdAt: ULong,
+    @SerialName("created_at") @Serializable(with = U64String::class) val createdAt: ULong,
 )
 
 /**
@@ -1263,9 +1264,9 @@ data class AttachmentData(
     @SerialName("col_id") val colId: String,
     @SerialName("blob_id") val blobId: String,
     val name: String,
-    val size: ULong,
+    @Serializable(with = U64String::class) val size: ULong,
     val mime: String,
-    @SerialName("created_at") val createdAt: ULong,
+    @SerialName("created_at") @Serializable(with = U64String::class) val createdAt: ULong,
 )
 
 /**
@@ -1278,7 +1279,7 @@ data class AxisData(
     /** Fractional position: decimal digits, compared as strings. */
     val pos: String,
     val deleted: Boolean,
-    @SerialName("updated_at") val updatedAt: ULong,
+    @SerialName("updated_at") @Serializable(with = U64String::class) val updatedAt: ULong,
 )
 
 /** One explicit row or column entry of a sheet. */
@@ -1397,13 +1398,13 @@ data class Cell(
     @SerialName("raw_value") val rawValue: String,
     @SerialName("computed_value") val computedValue: String,
     val format: String,
-    @SerialName("updated_at") val updatedAt: ULong,
+    @SerialName("updated_at") @Serializable(with = U64String::class) val updatedAt: ULong,
     /**
      * Member id of whoever last changed the cell; empty for a cell last
      * written before the activity log existed.
      */
     @SerialName("last_editor") val lastEditor: String,
-    @SerialName("last_edited_at") val lastEditedAt: ULong,
+    @SerialName("last_edited_at") @Serializable(with = U64String::class) val lastEditedAt: ULong,
 )
 
 /**
@@ -1432,7 +1433,7 @@ data class CellData(
     @SerialName("sheet_id") val sheetId: String,
     /** Raw user input (may be a formula like `=SUM(A1:A5)`). */
     @SerialName("raw_value") val rawValue: String,
-    @SerialName("updated_at") val updatedAt: ULong,
+    @SerialName("updated_at") @Serializable(with = U64String::class) val updatedAt: ULong,
 )
 
 /** Who last changed a cell and when, keyed like the cell. */
@@ -1440,7 +1441,7 @@ data class CellData(
 data class CellMeta(
     /** Member id (`whoami`). */
     val author: String,
-    val at: ULong,
+    @Serializable(with = U64String::class) val at: ULong,
 )
 
 @Serializable(with = CellOpSerializer::class)
@@ -1529,7 +1530,7 @@ data class ChartData(
     val title: String,
     @SerialName("created_by") val createdBy: String,
     val deleted: Boolean,
-    @SerialName("updated_at") val updatedAt: ULong,
+    @SerialName("updated_at") @Serializable(with = U64String::class) val updatedAt: ULong,
 )
 
 /**
@@ -1560,8 +1561,8 @@ data class Comment(
     val mentions: List<String>,
     val parent: String,
     val resolved: Boolean,
-    @SerialName("created_at") val createdAt: ULong,
-    @SerialName("updated_at") val updatedAt: ULong,
+    @SerialName("created_at") @Serializable(with = U64String::class) val createdAt: ULong,
+    @SerialName("updated_at") @Serializable(with = U64String::class) val updatedAt: ULong,
 )
 
 /**
@@ -1579,8 +1580,8 @@ data class CommentData(
     val mentions: List<String>,
     /** The comment this replies to; empty for a thread's first comment. */
     val parent: String,
-    @SerialName("created_at") val createdAt: ULong,
-    @SerialName("updated_at") val updatedAt: ULong,
+    @SerialName("created_at") @Serializable(with = U64String::class) val createdAt: ULong,
+    @SerialName("updated_at") @Serializable(with = U64String::class) val updatedAt: ULong,
 )
 
 @Serializable
@@ -1730,7 +1731,7 @@ data class Event_StylesChanged(
 data class FormatData(
     /** Empty means Automatic, and overrides a format the cell carried from v1. */
     val format: String,
-    @SerialName("updated_at") val updatedAt: ULong,
+    @SerialName("updated_at") @Serializable(with = U64String::class) val updatedAt: ULong,
 )
 
 /**
@@ -1740,7 +1741,7 @@ data class FormatData(
 @Serializable
 data class Founding(
     val id: String,
-    @SerialName("created_at") val createdAt: ULong,
+    @SerialName("created_at") @Serializable(with = U64String::class) val createdAt: ULong,
 )
 
 @Serializable
@@ -1762,7 +1763,7 @@ data class Link(
     val name: String,
     val rows: UInt,
     val cols: UInt,
-    @SerialName("updated_at") val updatedAt: ULong,
+    @SerialName("updated_at") @Serializable(with = U64String::class) val updatedAt: ULong,
 )
 
 /**
@@ -1777,12 +1778,12 @@ data class LinkedData(
     val rows: UInt,
     val cols: UInt,
     val values: List<String>,
-    @SerialName("created_at") val createdAt: ULong,
+    @SerialName("created_at") @Serializable(with = U64String::class) val createdAt: ULong,
     /** Removed here: later pushes are ignored. */
     val blocked: Boolean,
     /** Withdrawn by the source. */
     val deleted: Boolean,
-    @SerialName("updated_at") val updatedAt: ULong,
+    @SerialName("updated_at") @Serializable(with = U64String::class) val updatedAt: ULong,
 )
 
 /** One collaborator, by the name they chose. */
@@ -1794,8 +1795,8 @@ data class Member(
      */
     val id: String,
     val nickname: String,
-    @SerialName("joined_at") val joinedAt: ULong,
-    @SerialName("updated_at") val updatedAt: ULong,
+    @SerialName("joined_at") @Serializable(with = U64String::class) val joinedAt: ULong,
+    @SerialName("updated_at") @Serializable(with = U64String::class) val updatedAt: ULong,
     /**
      * The member's account (hex), as core's group roster names them: the
      * same value as `id`.
@@ -1822,8 +1823,8 @@ data class MemberData(
      * First time this member announced themselves. Earliest wins on merge — a
      * later rename must not look like a later arrival.
      */
-    @SerialName("joined_at") val joinedAt: ULong,
-    @SerialName("updated_at") val updatedAt: ULong,
+    @SerialName("joined_at") @Serializable(with = U64String::class) val joinedAt: ULong,
+    @SerialName("updated_at") @Serializable(with = U64String::class) val updatedAt: ULong,
 )
 
 @Serializable
@@ -1844,7 +1845,7 @@ data class NamedRangeData(
     val name: String,
     /** A reference in stored form (`[sheet-id]!A1:B9`). */
     val target: String,
-    @SerialName("updated_at") val updatedAt: ULong,
+    @SerialName("updated_at") @Serializable(with = U64String::class) val updatedAt: ULong,
 )
 
 /**
@@ -1924,7 +1925,7 @@ data class Project(
     val id: String,
     /** Empty until `init_project` runs. */
     val name: String,
-    @SerialName("created_at") val createdAt: ULong,
+    @SerialName("created_at") @Serializable(with = U64String::class) val createdAt: ULong,
 )
 
 /** A live protected range. */
@@ -1958,7 +1959,7 @@ data class ProtectionData(
     val editors: List<String>,
     @SerialName("created_by") val createdBy: String,
     val deleted: Boolean,
-    @SerialName("updated_at") val updatedAt: ULong,
+    @SerialName("updated_at") @Serializable(with = U64String::class) val updatedAt: ULong,
 )
 
 /** A live publication. */
@@ -2023,7 +2024,7 @@ data class RuleData(
     val recipients: List<String>,
     @SerialName("created_by") val createdBy: String,
     val deleted: Boolean,
-    @SerialName("updated_at") val updatedAt: ULong,
+    @SerialName("updated_at") @Serializable(with = U64String::class) val updatedAt: ULong,
 )
 
 /** A rule as written or read: its range by corner ids, and what it does. */
@@ -2053,7 +2054,7 @@ data class Sheet(
     val id: String,
     val name: String,
     val position: UInt,
-    @SerialName("created_at") val createdAt: ULong,
+    @SerialName("created_at") @Serializable(with = U64String::class) val createdAt: ULong,
     /**
      * For a linked sheet (read-only, pushed from another workbook), that
      * workbook's name; empty otherwise.
@@ -2068,9 +2069,9 @@ data class SheetData(
     val name: String,
     /** Tab ordering hint (lower = further left). */
     val position: UInt,
-    @SerialName("created_at") val createdAt: ULong,
+    @SerialName("created_at") @Serializable(with = U64String::class) val createdAt: ULong,
     /** Timestamp of the last rename — used for LWW name merge. */
-    @SerialName("updated_at") val updatedAt: ULong,
+    @SerialName("updated_at") @Serializable(with = U64String::class) val updatedAt: ULong,
 )
 
 /**
@@ -2098,7 +2099,7 @@ data class SheetView(
 data class SheetViewData(
     @SerialName("frozen_rows") val frozenRows: UInt,
     @SerialName("frozen_cols") val frozenCols: UInt,
-    @SerialName("updated_at") val updatedAt: ULong,
+    @SerialName("updated_at") @Serializable(with = U64String::class) val updatedAt: ULong,
 )
 
 /** A resized row or column. Keyed `"{sheet_id}|r|{id}"` or `"{sheet_id}|c|{id}"`. */
@@ -2106,7 +2107,7 @@ data class SheetViewData(
 data class SizeData(
     /** Pixels. */
     val size: UInt,
-    @SerialName("updated_at") val updatedAt: ULong,
+    @SerialName("updated_at") @Serializable(with = U64String::class) val updatedAt: ULong,
 )
 
 @Serializable
@@ -2209,7 +2210,7 @@ data class StyleData(
 data class StyleField(
     val field: String,
     val value: String,
-    @SerialName("updated_at") val updatedAt: ULong,
+    @SerialName("updated_at") @Serializable(with = U64String::class) val updatedAt: ULong,
 )
 
 /** One style change: set `field` of a cell to `value` (empty clears it). */

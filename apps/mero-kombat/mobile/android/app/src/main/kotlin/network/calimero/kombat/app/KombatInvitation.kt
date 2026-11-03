@@ -1,46 +1,40 @@
 package network.calimero.kombat.app
 
-import com.calimero.mero.admin.SignedGroupOpenInvitation
+import com.calimero.mero.app.OrgInvitation
 import com.calimero.mero.invite.InviteCodec
 import com.calimero.mero.invite.InviteLink
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.contentOrNull
 
 /**
- * An invitation to one arena, in the web app's form (`app/src/utils/invitation.ts`), so a link made
- * on the phone opens in the browser and the other way round:
+ * An invitation to one arena: kotlin-sdk's [OrgInvitation] (the link payload every Calimero 1.0 app
+ * shares):
  *
- * - payload: JSON `{"invitation": <SignedGroupOpenInvitation>, "namespaceId": "…", "contextId": "…"}`
+ * - payload: JSON `{"invitation": "inv_…", "namespaceId": "…", "contextId": "…"}`
  * - token: `base58(deflate(payload))` ([InviteCodec])
  * - link: `https://links.calimero.network/com.calimero.mero-kombat/join?invitation=<token>`
  *
- * The invitation admits to the NAMESPACE (one link lets someone into every arena in it); the
- * context id says which arena to open once in. (Swift `KombatInvitation`.)
+ * The invite token admits to the ORGANIZATION (one link lets someone into every arena in it); the app
+ * instance id says which arena to open once in. (Swift `KombatInvitation`.)
  */
 data class KombatInvitation(
-    val invitation: SignedGroupOpenInvitation,
-    val namespaceId: String,
+    val invitation: OrgInvitation,
     val contextId: String,
 ) {
-    /** The shareable link. The signed invitation is passed through exactly as core sent it. */
-    fun link(): String {
-        val payload =
-            JsonObject(
-                mapOf(
-                    "invitation" to invitation.raw,
-                    "namespaceId" to JsonPrimitive(namespaceId),
-                    "contextId" to JsonPrimitive(contextId),
-                ),
-            )
-        return InviteLink.invitation(InviteCodec.encode(payload.toString()), KombatConstants.PACKAGE_NAME)
-    }
+    /** The organization it admits to: the one the node minted the token for. */
+    val namespaceId: String get() = invitation.namespaceId
+
+    /** The shareable link. */
+    fun link(): String = invitation.copy(contextId = contextId).link(KombatConstants.PACKAGE_NAME)
 
     companion object {
+        /** [invitation] naming the arena [contextId]. */
+        fun of(
+            invitation: OrgInvitation,
+            contextId: String,
+        ): KombatInvitation = KombatInvitation(invitation.copy(contextId = contextId), contextId)
+
         /**
          * A pasted link, a deep link or a bare token; null when it is not a Mero Kombat invitation
-         * (another app's link is refused: redeeming it would join that app's namespace).
+         * (another app's link is refused: redeeming it would join that app's organization).
          */
         fun parse(input: String): KombatInvitation? {
             val token = InviteLink.tokenFromPasted(input.trim(), KombatConstants.PACKAGE_NAME) ?: return null
@@ -48,17 +42,11 @@ data class KombatInvitation(
             return parseJson(json)
         }
 
-        /** The decoded payload, checked as the web app's `parseInvitationPayload` checks it. */
+        /** The decoded payload: an [OrgInvitation] that names the arena. A pre-1.0 signed invitation is refused. */
         fun parseJson(json: String): KombatInvitation? {
-            val fields = runCatching { Json.parseToJsonElement(json) as? JsonObject }.getOrNull()
-            val namespaceId = fields?.text("namespaceId")
-            val contextId = fields?.text("contextId")
-            val signed = fields?.get("invitation") as? JsonObject
-            val signature = signed?.let { (it["inviter_signature"] as? JsonPrimitive)?.contentOrNull }
-            if (namespaceId == null || contextId == null || signed == null || signature == null) return null
-            return KombatInvitation(SignedGroupOpenInvitation(signed), namespaceId, contextId)
+            val invitation = OrgInvitation.decodeJson(json) ?: return null
+            val contextId = invitation.contextId?.takeIf { it.isNotEmpty() } ?: return null
+            return KombatInvitation(invitation, contextId)
         }
-
-        private fun JsonObject.text(key: String): String? = (this[key] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotEmpty() }
     }
 }

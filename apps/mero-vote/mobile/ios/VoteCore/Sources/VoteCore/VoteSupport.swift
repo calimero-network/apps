@@ -5,7 +5,7 @@ import MeroKit
 public enum VoteConstants {
     /// The registry package and invitation-link slug (`APP_SLUG` on the web).
     public static let packageName = "com.calimero.mero-vote"
-    /// How often an open screen is re-read when the relay cannot stream events.
+    /// How often an open screen is re-read when the node cannot stream events.
     public static let pollInterval: Duration = .seconds(10)
     /// The contract's limits.
     public static let maxOptions = 16
@@ -13,10 +13,12 @@ public enum VoteConstants {
     public static let maxDescription = 4000
     public static let maxOption = 200
     public static let maxName = 64
+    /// Proof branches one ballot may carry: `2·options + maxChoices − minChoices + 1`.
+    public static let maxBallotBranches = 38
 }
 
 extension VoteClient {
-    /// The vote client for one context, over the account's relay.
+    /// The vote client for one context, over the account's node session.
     public static func make(contract: any ContextContract, contextId: String) -> VoteClient {
         VoteClient(transport: contract.bound(to: contextId))
     }
@@ -68,17 +70,33 @@ public enum VoteModelError: Error, LocalizedError, Equatable {
 public enum VoteErrorText {
     public static func describe(_ error: Error) -> String {
         if let model = error as? VoteModelError, case .message(let text) = model { return text }
-        if let account = error as? AccountError, case .noRelay = account {
-            return "No relay serves your account yet. Join a voting group from an invitation link to get one."
+        if error is SignedOutError { return "You're signed out. Sign in again." }
+        if error is ConfirmCancelled || error is PasskeyCancelled {
+            return "You cancelled the passkey prompt, so nothing changed."
         }
+        if let app = error as? AppError { return describe(app: app) }
+        if error is LoginRequired { return "Your session ended. Sign in again." }
+        if error is WrongNode || error is NotLeader {
+            return "This node can't serve your account right now. Try again in a moment."
+        }
+        if let busy = error as? UnavailableError {
+            return "Your cluster is unavailable (\(busy.reason)). Try again in a moment."
+        }
+        if let deadline = error as? ReleaseDeadlineError {
+            let release = deadline.release.isEmpty ? "A node release" : "Node release \(deadline.release)"
+            return "\(release) is waiting for your approval. Open Account, then Approvals."
+        }
+        if error is ConsentStale { return "That approval was already decided or has expired. Refresh and try again." }
+        if error is NotFound { return "This voting group isn't on your cluster, or you're no longer a member." }
+        if let trust = error as? TeeTrustError { return "The node could not be verified: \(trust.message)" }
         if let url = error as? URLError {
             switch url.code {
             case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed:
                 return "You're offline. Check your connection and try again."
             case .timedOut:
-                return "The relay took too long to answer. Try again."
+                return "The cluster took too long to answer. Try again."
             default:
-                return "Couldn't reach the relay. Try again."
+                return "Couldn't reach the cluster. Try again."
             }
         }
         if error is DecodingError {
@@ -86,6 +104,29 @@ public enum VoteErrorText {
         }
         let text = (error as? LocalizedError)?.errorDescription ?? "\(error)"
         return text.isEmpty ? "Something went wrong. Try again." : text
+    }
+
+    /// The contract's refusals (`APP_ERROR {code, fields}`, codes from its ABI).
+    public static func describe(app: AppError) -> String {
+        let detail = app.fields["message"]?.stringValue?.nilIfEmpty
+        func with(_ lead: String) -> String { detail.map { "\(lead) \(sentence($0))" } ?? lead }
+        switch app.appCode {
+        case "Forbidden": return with("You can't do that in this voting group.")
+        case "Phase": return with("The poll has moved on to another step.")
+        case "Invalid": return detail.map(sentence) ?? "The voting group refused that request."
+        case "Crypto": return with("A proof didn't check out.")
+        case "NotFound": return "That poll isn't in this voting group."
+        case "BadArgs": return "This app is out of step with the voting group. Update the app and try again."
+        default:
+            return detail.map(sentence) ?? (app.message.isEmpty ? "The voting group refused that (\(app.appCode))." : app.message)
+        }
+    }
+
+    /// `text` with a capital first letter and a full stop.
+    static func sentence(_ text: String) -> String {
+        guard let first = text.first else { return text }
+        let capped = first.uppercased() + text.dropFirst()
+        return capped.hasSuffix(".") || capped.hasSuffix("!") || capped.hasSuffix("?") ? capped : capped + "."
     }
 }
 

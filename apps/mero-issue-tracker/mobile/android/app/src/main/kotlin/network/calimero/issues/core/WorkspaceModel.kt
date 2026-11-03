@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.json.JsonObject
-import network.calimero.issues.generated.IssueTrackerClient
+import network.calimero.issues.contract.IssueTrackerClient
 import kotlin.coroutines.cancellation.CancellationException
 
 /** One repository: a context in the workspace's root group running the tracker. */

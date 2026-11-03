@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { FeedItem } from "./generated/HyperfeedClient";
+import type { FeedItem } from "./hyperfeedTypes";
 import { choicesFor, firstSentence, previewOf, heldLine, headlineOfMessage, localCommand, htmlText, plainMethod, rowTitle, saysMore, stepsOf, writeText } from "./format";
 
 const row = (patch: Partial<FeedItem>): FeedItem =>

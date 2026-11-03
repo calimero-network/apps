@@ -34,7 +34,7 @@ class SpacesModel(
     private val _isCreating = MutableStateFlow(false)
     val isCreating: StateFlow<Boolean> = _isCreating.asStateFlow()
 
-    /** Whether a relay serves the account. Without one only joining works. */
+    /** Whether the account is connected (always, once signed in on 1.0). Without it only joining works. */
     val hasRelay: Boolean get() = backend.hasRelay
 
     suspend fun load() {
@@ -72,16 +72,22 @@ class SpacesModel(
     }
 }
 
-/** One forum in a space: an open subgroup with one context running the contract. */
+/**
+ * One forum in a space: an app instance of Mero Forum in the space's org (the web app's
+ * `createApp(name, source, { org })`). Its id is the app instance id.
+ */
 data class ForumRow(
     val id: String,
     val name: String,
-    /** Null while the forum exists but its context has not replicated yet. */
+    /** The app instance (the same as [id] on 1.0; kept nullable for the screens). */
     val contextId: String?,
     val joined: Boolean,
 )
 
-/** The forums in one space: list, create, join, and invite people. (Swift `ForumsModel`.) */
+/**
+ * The forums in one space: list, create, open, and invite people. (Swift `ForumsModel`.) On
+ * Calimero 1.0 every member of the org reaches its app instances: nothing to join, nothing to sync.
+ */
 class ForumsModel(
     val backend: MeroAppBackend,
     val namespaceId: String,
@@ -102,10 +108,8 @@ class ForumsModel(
     suspend fun load() {
         if (_forums.value.isEmpty()) _phase.value = LoadPhase.Loading
         attempt {
-            backend.listSubgroups(namespaceId).map { group ->
-                val contextId = group.contextIds.firstOrNull()
-                val joined = contextId != null && attempt { backend.isMember(contextId) }.getOrDefault(false)
-                ForumRow(group.groupId, group.name?.nullIfBlank() ?: "Forum ${group.groupId.take(SpacesModel.ID_PREFIX)}", contextId, joined)
+            backend.listContextEntries(namespaceId).map { entry ->
+                ForumRow(entry.id, entry.name?.nullIfBlank() ?: "Forum ${entry.id.take(SpacesModel.ID_PREFIX)}", entry.id, joined = true)
             }
         }.onSuccess { rows ->
             _forums.value = rows.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
@@ -115,42 +119,25 @@ class ForumsModel(
         }
     }
 
-    /**
-     * Create a forum: an OPEN subgroup (so everyone in the space can join it) with a context
-     * running the contract, whose `init` takes no arguments.
-     */
+    /** Create a forum: an app instance of Mero Forum directly in the space's org, whose `init` takes no arguments. */
     suspend fun create(name: String): ForumRef {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) throw ForumModelException("Give the forum a name.")
         if (applicationId.isEmpty()) throw ForumModelException("Still connecting to Calimero. Try again in a moment.")
         _isCreating.value = true
         try {
-            val groupId = worded { backend.createSubgroup(namespaceId, trimmed, isPublic = true) }
-            val contextId = worded { backend.createContext(groupId, applicationId, trimmed, JsonObject(emptyMap())) }
+            val contextId = worded { backend.createContext(namespaceId, applicationId, trimmed, JsonObject(emptyMap())) }
             _forums.value =
-                (_forums.value + ForumRow(groupId, trimmed, contextId, joined = true))
+                (_forums.value + ForumRow(contextId, trimmed, contextId, joined = true))
                     .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
-            return ref(groupId, trimmed, contextId)
+            return ref(contextId, trimmed, contextId)
         } finally {
             _isCreating.value = false
         }
     }
 
-    /** Open a forum, joining its context first when this account is not in it yet. */
-    suspend fun enter(forum: ForumRow): ForumRef {
-        val contextId = forum.contextId ?: throw ForumModelException("This forum is still syncing. Try again in a moment.")
-        if (forum.joined) return ref(forum.id, forum.name, contextId)
-        _entering.value = forum.id
-        try {
-            worded {
-                if (!attempt { backend.isMember(contextId) }.getOrDefault(false)) backend.joinContext(contextId)
-            }
-            _forums.value = _forums.value.map { if (it.id == forum.id) it.copy(joined = true) else it }
-            return ref(forum.id, forum.name, contextId)
-        } finally {
-            _entering.value = null
-        }
-    }
+    /** Open a forum. Every member of the space reaches it on 1.0. */
+    fun enter(forum: ForumRow): ForumRef = ref(forum.id, forum.name, forum.contextId ?: forum.id)
 
     /** An invitation link to the whole space. */
     suspend fun spaceInvite(): String =

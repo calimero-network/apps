@@ -23,7 +23,7 @@ final class ModelTests: XCTestCase {
         XCTAssertTrue(backend.log.contains { $0.hasPrefix("createContext \(pipeline.namespaceId) \(backend.applicationId) Enterprise") })
         XCTAssertEqual(backend.rootContexts[pipeline.namespaceId], [pipeline.contextId])
         XCTAssertEqual(backend.initArgs[pipeline.contextId], .object([:]))
-        let currency = try XCTUnwrap(backend.recording.calls("set_currency").first)
+        let currency = try XCTUnwrap(backend.recording.calls("setCurrency").first)
         XCTAssertEqual(currency.path, .execute)
         XCTAssertEqual(currency.contextId, pipeline.contextId)
         XCTAssertEqual(args(currency)["currency"], .string("EUR"))
@@ -49,13 +49,12 @@ final class ModelTests: XCTestCase {
         let addedValue = await model.addPipeline(to: model.workspaces[0], name: "", currency: "USD")
         let added = try XCTUnwrap(addedValue)
         XCTAssertEqual(added.name, "Sales")
-        XCTAssertTrue(backend.recording.calls("set_currency").isEmpty)
+        XCTAssertTrue(backend.recording.calls("setCurrency").isEmpty)
         XCTAssertEqual(model.workspaces[0].pipelines.count, 3)
     }
 
     func testJoiningRedeemsTheInvitationAndListsTheWorkspace() async throws {
         let backend = backend(Script())
-        backend.hasRelay = false
         let store = MemoryStore()
         let model = WorkspacesModel(backend: backend, applicationId: "app", names: LocalNames(store: store))
         let ns = String(repeating: "34", count: 32)
@@ -63,7 +62,6 @@ final class ModelTests: XCTestCase {
         let joined = await model.join(invitation)
         XCTAssertEqual(joined, ns)
         XCTAssertTrue(backend.log.contains("joinNamespace \(ns)"))
-        XCTAssertTrue(backend.hasRelay)
         XCTAssertEqual(model.workspace(ns)?.title, "Globex")
 
         let link = await model.inviteLink(for: try XCTUnwrap(model.workspace(ns)))
@@ -87,13 +85,13 @@ final class ModelTests: XCTestCase {
         XCTAssertEqual(m.version, 1)
         XCTAssertEqual(
             Set(backend.recording.calls.map(\.method)),
-            ["list_stages", "list_deals", "list_contacts", "list_activities", "list_automations", "get_settings"])
+            ["listStages", "listDeals", "listContacts", "listActivities", "listAutomations", "getSettings"])
         XCTAssertTrue(backend.recording.calls.allSatisfy { $0.path == .query && $0.contextId == "ctx" })
     }
 
     func testAContextStillSyncingIsWarmingUpNotAnError() async {
         let script = Script()
-        script.failRead = MeroError.network("Context state not initialized, awaiting state sync")
+        script.failRead = AppError("Context state not initialized, awaiting state sync")
         let m = model(script, backend(script))
         await m.load()
         XCTAssertTrue(m.warmingUp)
@@ -125,22 +123,22 @@ final class ModelTests: XCTestCase {
         draft.newContactName = "Ana Diaz"
         draft.newContactEmail = "ana@acme.test"
         let id = await m.createDeal(draft)
-        XCTAssertEqual(id, "new-create_deal")
-        let person = args(try XCTUnwrap(backend.recording.calls("create_contact").first))
+        XCTAssertEqual(id, "new-createDeal")
+        let person = args(try XCTUnwrap(backend.recording.calls("createContact").first))
         XCTAssertEqual(person["name"], .string("Ana Diaz"))
         XCTAssertEqual(person["organization"], .string("Acme"))
-        let call = try XCTUnwrap(backend.recording.calls("create_deal").first)
+        let call = try XCTUnwrap(backend.recording.calls("createDeal").first)
         let sent = args(call)
         XCTAssertEqual(call.path, .execute)
         XCTAssertEqual(sent["title"], .string("Acme — 50 seats"))
-        XCTAssertEqual(sent["value"], .number(12_500))
-        XCTAssertEqual(sent["contact_id"], .string("new-create_contact"))
-        XCTAssertEqual(sent["stage_id"], .string("qualified"))
+        XCTAssertEqual(sent["value"], .string("12500"), "a u64 goes as a decimal string")
+        XCTAssertEqual(sent["contactId"], .string("new-createContact"))
+        XCTAssertEqual(sent["stageId"], .string("qualified"))
         XCTAssertEqual(sent["owner"], .string(m.me))
-        XCTAssertEqual(sent["expected_close"], .number(Double(Days.ms(Days.noon(now, utc)))))
+        XCTAssertEqual(sent["expectedClose"], .string(String(Days.ms(Days.noon(now, utc)))))
         XCTAssertEqual(m.notice?.text, "Deal added")
         // The write is followed by a fresh read.
-        XCTAssertEqual(backend.recording.calls("list_deals").count, 2)
+        XCTAssertEqual(backend.recording.calls("listDeals").count, 2)
     }
 
     func testMovingClosingAndReopeningDeals() async throws {
@@ -151,16 +149,16 @@ final class ModelTests: XCTestCase {
         let m = model(script, backend)
         await m.load()
         do { let r = await m.move(d, to: "meeting"); XCTAssertTrue(r) }
-        XCTAssertEqual(args(try XCTUnwrap(backend.recording.calls("move_deal").first))["stage_id"], .string("meeting"))
+        XCTAssertEqual(args(try XCTUnwrap(backend.recording.calls("moveDeal").first))["stageId"], .string("meeting"))
         XCTAssertEqual(m.notice?.text, "Moved to Meeting")
         do { let r = await m.move(d, to: "lead"); XCTAssertTrue(r) }
-        XCTAssertEqual(backend.recording.calls("move_deal").count, 1)
+        XCTAssertEqual(backend.recording.calls("moveDeal").count, 1)
         do { let r = await m.markWon(d); XCTAssertTrue(r) }
         XCTAssertEqual(m.notice?.text, "Won “Acme — 50 seats” — €12,000")
         do { let r = await m.markLost(d, reason: " Price "); XCTAssertTrue(r) }
-        XCTAssertEqual(args(try XCTUnwrap(backend.recording.calls("mark_lost").first))["reason"], .string("Price"))
+        XCTAssertEqual(args(try XCTUnwrap(backend.recording.calls("markLost").first))["reason"], .string("Price"))
         do { let r = await m.reopen(d); XCTAssertTrue(r) }
-        XCTAssertEqual(backend.recording.calls("reopen_deal").count, 1)
+        XCTAssertEqual(backend.recording.calls("reopenDeal").count, 1)
     }
 
     func testSchedulingUsesTheDealsOwnerElseYouAndSuggestionsDueAtTen() async throws {
@@ -171,24 +169,24 @@ final class ModelTests: XCTestCase {
         await m.load()
         let scheduled = await m.schedule(SuggestedActivity(kind: .meeting, subject: "Book a demo", dueInDays: 3), on: m.deal("d1")!)
         XCTAssertTrue(scheduled)
-        let first = args(try XCTUnwrap(backend.recording.calls("add_activity").first))
+        let first = args(try XCTUnwrap(backend.recording.calls("addActivity").first))
         XCTAssertEqual(first["owner"], .string(m.me))
-        XCTAssertEqual(first["deal_id"], .string("d1"))
-        XCTAssertEqual(first["contact_id"], .string("c1"))
+        XCTAssertEqual(first["dealId"], .string("d1"))
+        XCTAssertEqual(first["contactId"], .string("c1"))
         XCTAssertEqual(first["kind"], .string("meeting"))
-        XCTAssertEqual(first["due_at"], .number(Double(Days.ms(Days.dueIn(3, now: now, utc)))))
+        XCTAssertEqual(first["dueAt"], .string(String(Days.ms(Days.dueIn(3, now: now, utc)))))
         var draft = ActivityDraft(due: now, dealId: "d2")
         draft.subject = "Call"
         do { let r = await m.schedule(draft); XCTAssertTrue(r) }
-        XCTAssertEqual(args(backend.recording.calls("add_activity")[1])["owner"], .string("bob"))
+        XCTAssertEqual(args(backend.recording.calls("addActivity")[1])["owner"], .string("bob"))
 
         let a = activity("a1", due: ms(daysFromNow: -1))
         do { let r = await m.snooze(a); XCTAssertTrue(r) }
         XCTAssertEqual(
-            args(try XCTUnwrap(backend.recording.calls("reschedule_activity").first))["due_at"],
-            .number(Double(Days.ms(Days.dueIn(1, now: now, utc)))))
+            args(try XCTUnwrap(backend.recording.calls("rescheduleActivity").first))["dueAt"],
+            .string(String(Days.ms(Days.dueIn(1, now: now, utc)))))
         do { let r = await m.setDone(a, true); XCTAssertTrue(r) }
-        XCTAssertEqual(args(try XCTUnwrap(backend.recording.calls("set_activity_done").first))["done"], .bool(true))
+        XCTAssertEqual(args(try XCTUnwrap(backend.recording.calls("setActivityDone").first))["done"], .bool(true))
     }
 
     func testAFailedWriteIsReportedNotThrown() async {
@@ -197,12 +195,12 @@ final class ModelTests: XCTestCase {
         let m = model(script, backend)
         await m.load()
         backend.recording.setRawHandler { call in
-            if call.path == .execute { throw AccountError.noRelay(method: call.method) }
+            if call.path == .execute { throw SignedOutError(method: call.method) }
             return try script.answer(call)
         }
         do { let r = await m.deleteDeal(deal("d1")); XCTAssertFalse(r) }
         XCTAssertEqual(m.notice?.isError, true)
-        XCTAssertEqual(m.notice?.text, ErrorText.describe(AccountError.noRelay(method: "delete_deal")))
+        XCTAssertEqual(m.notice?.text, ErrorText.describe(SignedOutError(method: "deleteDeal")))
     }
 
     func testStagesReorderAndSettingsValidate() async throws {
@@ -212,15 +210,15 @@ final class ModelTests: XCTestCase {
         await m.load()
         do { let r = await m.moveStage(m.stages[1], by: -1); XCTAssertTrue(r) }
         XCTAssertEqual(
-            args(try XCTUnwrap(backend.recording.calls("reorder_stages").first))["stage_ids"],
+            args(try XCTUnwrap(backend.recording.calls("reorderStages").first))["stageIds"],
             .array(["qualified", "lead", "meeting", "proposal", "negotiation"].map(JSONValue.string)))
         do { let r = await m.moveStage(m.stages[0], by: -1); XCTAssertFalse(r) }
         do { let r = await m.setCurrency("dollars"); XCTAssertFalse(r) }
-        XCTAssertTrue(backend.recording.calls("set_currency").isEmpty)
+        XCTAssertTrue(backend.recording.calls("setCurrency").isEmpty)
         do { let r = await m.setCurrency("gbp"); XCTAssertTrue(r) }
-        XCTAssertEqual(args(try XCTUnwrap(backend.recording.calls("set_currency").first))["currency"], .string("GBP"))
+        XCTAssertEqual(args(try XCTUnwrap(backend.recording.calls("setCurrency").first))["currency"], .string("GBP"))
         do { let r = await m.setRottingDays(21); XCTAssertTrue(r) }
-        XCTAssertEqual(args(try XCTUnwrap(backend.recording.calls("set_rotting_days").first))["days"], .number(21))
+        XCTAssertEqual(args(try XCTUnwrap(backend.recording.calls("setRottingDays").first))["days"], .number(21))
     }
 
     func testOwnersAreLabelledAndOfferedOnce() async {

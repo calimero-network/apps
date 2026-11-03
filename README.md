@@ -104,7 +104,7 @@ Start here. These exist to be read, not shipped.
 | App | Live | What it is | Package |
 | --- | --- | --- | --- |
 | [mero-stream](apps/mero-stream) | [↗](https://mero-stream-neon.vercel.app) | Media capacity probe, on the component runtime. `/stream` runs a toy integer codec inside the contract; `/live` carries browser-encoded H.264 over the node's presence channel. Deliberately the wrong way round, to find the platform's ceiling with numbers. **Not shippable media, and web only.** | `com.calimero.mero-stream` |
-| [hyperfeed](apps/hyperfeed) | — | Prototype. One feed for your agent and your apps: every action an agent took on your behalf (with its warrant's intent hash and executor) beside every notification your other contexts emitted, with approvals, undo, per-app agent modes and "always ask" guards enforced by the contract. `/demo` runs with no node. | `com.calimero.hyperfeed` |
+| [hyperfeed](apps/hyperfeed) | — | Prototype. One feed for your agent and your apps: every action an agent took on your behalf (with its warrant's intent hash and executor) beside every notification your other apps emitted, with approvals, undo, per-app agent modes and "always ask" guards enforced by the contract. `/demo` runs with no node. A component app (Calimero 1.0): `calimero-app-sdk`, `merod local` in dev, mero-js `CalimeroClient` on Calimero Cloud. | `com.calimero.hyperfeed` |
 
 ### Out of scope
 
@@ -128,7 +128,7 @@ development.
 
 ```bash
 pnpm dev:local kv-store        # merod local + build + deploy + the app's dev server on :5173
-pnpm dev:local mero-updates
+pnpm dev:local hyperfeed
 pnpm merod-local e2e kv-store  # the app's scenarios as real accounts on the cluster
 ```
 

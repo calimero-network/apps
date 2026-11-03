@@ -206,7 +206,7 @@ fun JoinInvitationSheet(
     val scope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = true, confirmValueChange = { !busy })
-    ModalBottomSheet(onDismissRequest = { if (!busy) vm.session.dismissPendingInvitation() }, sheetState = state, containerColor = Palette.ground) {
+    ModalBottomSheet(onDismissRequest = { if (!busy) vm.dismissPendingInvitation() }, sheetState = state, containerColor = Palette.ground) {
         Column(
             Modifier.padding(Palette.gutter).navigationBarsPadding(),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -253,7 +253,7 @@ fun JoinInvitationSheet(
                     }
                 }, busy = busy)
             }
-            SecondaryButton("Not now", { vm.session.dismissPendingInvitation() }, enabled = !busy)
+            SecondaryButton("Not now", { vm.dismissPendingInvitation() }, enabled = !busy)
         }
     }
 }

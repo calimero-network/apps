@@ -351,7 +351,7 @@ struct AboutSheet: View {
                 }
                 Section {
                     Label {
-                        Text("Values are computed by the workbook on your team’s nodes and read here as they are. The phone does not recalculate: after you change a value, the new results arrive from the relay.")
+                        Text("Values are computed by the workbook on your team’s nodes and read here as they are. The phone does not recalculate: after you change a value, the new results arrive from the cluster.")
                             .font(.system(size: 14)).foregroundStyle(Theme.text2)
                     } icon: {
                         Image(systemName: "function")

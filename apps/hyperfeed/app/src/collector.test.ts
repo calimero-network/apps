@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BUILT_IN, clip, decodePayload, hexToBase58, identitiesOf, toNotifications } from "./collector";
+import { BUILT_IN, clip, decodePayload, hexToBase58, identitiesOf, indexOf, toNotifications } from "./collector";
 import type { LensHost } from "./lens/lens";
 import { appKeyForPackage } from "./apps";
 
@@ -29,39 +29,42 @@ function chat(messages: Record<string, unknown>[], fail = new Set<string>()): Le
 const msg = (id: string, text: string, mentions: string[] = []) => ({ id, sender: "maya", text, mentions, mentions_usernames: [] });
 
 describe("toNotifications", () => {
-  it("keys an event by context, transition and its place in the change", async () => {
+  it("keys an event by its app and the id the cluster's log gave it", async () => {
     const host = chat([msg("m1", "lunch?"), msg("m2", "ping", ["me"])]);
-    const out = await toNotifications(CHAT, { newRoot: "root-1", events: [sent("m1"), sent("m2")] }, "root-0", BUILT_IN.chat!, host);
-    // m1 is channel chatter, so only m2 is recorded, still at index 1.
-    expect(out.map((n) => n.key)).toEqual(["ctx-chat:root-0>root-1:1"]);
+    // m1 is channel chatter: the lens drops it.
+    expect(await toNotifications(CHAT, { id: "41:0", ...sent("m1") }, BUILT_IN.chat!, host)).toEqual([]);
+    const out = await toNotifications(CHAT, { id: "41:1", ...sent("m2") }, BUILT_IN.chat!, host);
+    expect(out.map((n) => n.key)).toEqual(["ctx-chat:41:1"]);
     expect(out[0]).toMatchObject({ app: "chat", source_context: "ctx-chat", event: "MessageSent", item_type: "message", from: "Maya", chain: "" });
   });
 
-  it("keys the transition, so returning to an earlier state is a new event", async () => {
-    const host = chat([msg("m1", "ping", ["me"])]);
-    const key = async (prev: string, root: string) =>
-      (await toNotifications(CHAT, { newRoot: root, events: [sent("m1")] }, prev, BUILT_IN.chat!, host))[0]!.key;
-    const keys = [await key("", "root-a"), await key("root-a", "root-b"), await key("root-b", "root-a")];
-    expect(new Set(keys).size).toBe(3);
+  it("reads an event whose data arrives already parsed", async () => {
+    const host = chat([msg("m2", "ping", ["me"])]);
+    const out = await toNotifications(CHAT, { id: "7:0", kind: "MessageSent", data: { message_id: "m2" } }, BUILT_IN.chat!, host);
+    expect(out).toHaveLength(1);
   });
 
-  it("drops an event its lens cannot read, and keeps the rest", async () => {
+  it("drops an event its lens cannot read", async () => {
     const host = chat([msg("m2", "ping", ["me"])], new Set(["gone"]));
-    const out = await toNotifications(CHAT, { newRoot: "r", events: [sent("gone"), sent("m2")] }, "", BUILT_IN.chat!, host);
-    expect(out.map((n) => n.key)).toEqual(["ctx-chat:>r:1"]);
+    expect(await toNotifications(CHAT, { id: "1:0", ...sent("gone") }, BUILT_IN.chat!, host)).toEqual([]);
   });
 
-  it("records nothing without a root to key it by, or without a lens", async () => {
+  it("records nothing without an id to key it by, or without a lens", async () => {
     const host = chat([msg("m1", "ping", ["me"])]);
-    expect(await toNotifications(CHAT, { events: [sent("m1")] }, "", BUILT_IN.chat!, host)).toEqual([]);
-    expect(await toNotifications({ ...CHAT, appKey: "drive-docs" }, { newRoot: "r", events: [{ kind: "TextChanged", data: bytes({}) }] }, "", null, host)).toEqual([]);
+    expect(await toNotifications(CHAT, { id: "", ...sent("m1") }, BUILT_IN.chat!, host)).toEqual([]);
+    expect(await toNotifications({ ...CHAT, appKey: "drive-docs" }, { id: "1:0", kind: "TextChanged", data: bytes({}) }, null, host)).toEqual([]);
   });
 
   it("stays inside the contract's limits, counted in bytes", async () => {
     const host = chat([msg("m1", "é".repeat(5000), ["me"])]);
-    const [n] = await toNotifications(CHAT, { newRoot: "r".repeat(300), events: [sent("m1")] }, "", BUILT_IN.chat!, host);
+    const [n] = await toNotifications({ ...CHAT, contextId: "c".repeat(300) }, { id: "1:0", ...sent("m1") }, BUILT_IN.chat!, host);
     expect(n!.key.length).toBeLessThanOrEqual(200);
     expect(new TextEncoder().encode(n!.body).length).toBeLessThanOrEqual(2000);
+  });
+
+  it("reads the log index out of an event id", () => {
+    expect(indexOf("41:3")).toBe(41);
+    expect(indexOf("x")).toBeNull();
   });
 });
 
