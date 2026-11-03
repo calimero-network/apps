@@ -7,12 +7,13 @@ import { validateLens, type Abi } from "./validate";
 
 const APPS = path.resolve(__dirname, "../../../..");
 /**
- * mero-updates moved to Calimero 1.0 (a component contract with its own ABI
- * format and camelCase methods). Hyperfeed runs on v1 nodes, where mero-updates
- * is still the published v1 bundle, so its lens is checked against that
- * contract's ABI, frozen in fixtures/abi when the app was ported.
+ * Apps that moved to Calimero 1.0 (a component contract with its own ABI
+ * format and camelCase methods). Hyperfeed runs on v1 nodes, where these are
+ * still the published v1 bundles, so they are checked against each contract's
+ * ABI, frozen in fixtures/abi when the app was ported.
  */
 const FROZEN_V1: Record<string, string> = {
+  "mero-vote": path.join(__dirname, "../fixtures/abi/mero-vote-v1.json"),
   "mero-updates": path.join(__dirname, "../fixtures/abi/mero-updates-v1.json"),
 };
 const abiOf = (app: string) =>
