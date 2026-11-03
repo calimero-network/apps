@@ -11,23 +11,25 @@ import {
   useParams,
   useSearchParams,
 } from 'react-router-dom';
-import { useMero } from '@calimero-network/mero-react';
+import { useCalimero } from '../../calimero';
 
 import AppShell from '../../components/AppShell';
 import InviteModal from '../../components/InviteModal';
 import MembersPanel from '../../components/MembersPanel';
 import { PlusIcon } from '../../components/icons';
-import { useApplicationId } from '../../hooks/useApplicationId';
 import { useTeamCapabilities } from '../../hooks/useTeamCapabilities';
 import { hueOf, monogramOf } from '../../lib/itemView';
 import { pickVault, readLastVisit, rememberTeam } from '../../lib/lastVisit';
-import { canCreateVault, canInvite } from '../../lib/roles';
+import {
+  canCreateInviteOnlyVault,
+  canCreateVault,
+  canInvite,
+} from '../../lib/roles';
 import {
   DEFAULT_INVITE_SECS,
   INVITE_VALIDITY,
   createVault,
   displayName,
-  enterVaultContext,
   listTeams,
   listVaults,
   mintTeamInvite,
@@ -35,13 +37,6 @@ import {
 } from '../../lib/vaults';
 import type { VaultRow } from '../../lib/vaults';
 import styles from '../../styles/shell.module.css';
-import {
-  JOIN_SYNC_MAX_MS,
-  JOIN_SYNC_POLL_MS,
-  JoinSyncBanner,
-  isNamespaceJustJoined,
-  useJoinSync,
-} from '@calimero-network/mero-react';
 import { describeError } from '../../lib/errors';
 
 type Tab = 'vaults' | 'people';
@@ -59,25 +54,24 @@ type Tab = 'vaults' | 'people';
  */
 export default function TeamPage() {
   const { teamId } = useParams<{ teamId: string }>();
-  // `admin`, never `mero.admin`: the session-aware client (see `lib/vaults`
-  // `AdminLike`). `isDelegated` hides the two things an ACCOUNT cannot do yet:
-  // a subgroup invitation has no account form in mero-react, so an invite-only
-  // vault can neither be invited to nor, for an account, usefully created.
-  const { admin, isDelegated, nodeUrl } = useMero();
+  const { client, source, passkey, after, where } = useCalimero();
+  const conn = useMemo(
+    () => (client ? { client, source, passkey, after } : null),
+    [client, source, passkey, after],
+  );
+  const nodeUrl = where;
   const navigate = useNavigate();
   const location = useLocation();
   // Set by the teams screen when it resumed into this team. See the effect
   // after the list loads.
   const resume =
     (location.state as { resume?: boolean } | null)?.resume === true;
-  // Handed over by the teams screen right after `createTeam`: why the cloud
-  // would not host this team, in words a person can act on. Only an account
-  // founding through a relay ever has one.
+  // Handed over by the teams screen right after `createTeam`: what the team
+  // cannot do yet (its member defaults were not confirmed with a passkey).
   const hostingNotice =
     (location.state as { hostingNotice?: string } | null)?.hostingNotice ??
     null;
   const [params, setParams] = useSearchParams();
-  const { appId, notInstalled } = useApplicationId();
   const {
     accountId,
     capabilities,
@@ -109,34 +103,19 @@ export default function TeamPage() {
 
   const mayCreateVault = canCreateVault(capabilities);
   const mayInvite = canInvite(capabilities);
+  const mayCreateInviteOnly = canCreateInviteOnlyVault(capabilities);
   const heading = useMemo(
     () => (teamId ? displayName([teamName], teamId, 'Team') : 'Team'),
     [teamName, teamId],
   );
 
-  // A team joined this session whose vaults have not replicated yet. Without
-  // this a brand-new member is told "No vaults in this team yet" about a team
-  // whose vaults are still on their way — and invited to create a duplicate.
-  //
-  // So an EMPTY list settles only once the team is no longer just-joined: until
-  // then it is what a node that has not synced the team returns. The watchdog
-  // clears the flag, after which a team with no vaults reads as empty again.
-  const listed = !!teamId && listedForTeam === teamId;
-  const { isSyncing, dismiss: dismissSyncing } = useJoinSync({
-    namespaceId: teamId ?? null,
-    settled:
-      listed && (vaults.length > 0 || !isNamespaceJustJoined(teamId ?? null)),
-    // Still empty: let the gate wait up to its ceiling, not the base window.
-    active: vaults.length === 0,
-  });
-
   // `quiet` re-reads without the "Loading…" swap, for the polls below.
   const load = useCallback(
     async (quiet = false) => {
-      if (!admin || !teamId) return;
+      if (!conn || !teamId) return;
       if (!quiet) setLoading(true);
       try {
-        setVaults(await listVaults(admin, teamId));
+        setVaults(await listVaults(conn, teamId));
         setListedForTeam(teamId);
         setError(null);
       } catch (e) {
@@ -145,12 +124,14 @@ export default function TeamPage() {
         if (!quiet) setLoading(false);
       }
     },
-    [admin, teamId],
+    [conn, teamId],
   );
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  const listed = !!teamId && listedForTeam === teamId;
 
   // Where you were last (`lib/lastVisit`), written only once the node has
   // listed this team's vaults, so a typo'd or stale URL is never resumed into.
@@ -186,29 +167,10 @@ export default function TeamPage() {
     location.search,
   ]);
 
-  // Nothing else re-reads the list, so while the gate is up keep asking — and
-  // that covers a read that failed because the team had not synced yet. A
-  // vault can also be listed before its context arrives (it cannot be opened
-  // until then), so keep asking while one is missing, for as long as the gate
-  // would wait at most: an invite-only vault's context may never show here.
-  const awaitingContext = vaults.some((v) => !v.contextId);
   useEffect(() => {
-    if (!isSyncing && !awaitingContext) return;
-    const since = Date.now();
-    const timer = setInterval(() => {
-      if (!isSyncing && Date.now() - since >= JOIN_SYNC_MAX_MS) {
-        clearInterval(timer);
-        return;
-      }
-      void load(true);
-    }, JOIN_SYNC_POLL_MS);
-    return () => clearInterval(timer);
-  }, [isSyncing, awaitingContext, load]);
-
-  useEffect(() => {
-    if (!admin || !appId || !teamId) return;
+    if (!conn || !teamId) return;
     let cancelled = false;
-    listTeams(admin, appId)
+    listTeams(conn)
       .then((rows) => {
         if (!cancelled) {
           setTeamName(rows.find((r) => r.namespaceId === teamId)?.name ?? '');
@@ -220,16 +182,16 @@ export default function TeamPage() {
     return () => {
       cancelled = true;
     };
-  }, [admin, appId, teamId]);
+  }, [conn, teamId]);
 
   const create = useCallback(async () => {
     const name = newName.trim();
-    if (!admin || !appId || !teamId || !name) return;
+    if (!conn || !teamId || !name) return;
     setError(null);
     try {
       await createVault(
-        admin,
-        { applicationId: appId, namespaceId: teamId, name, restricted },
+        conn,
+        { namespaceId: teamId, name, restricted },
         setBusy,
       );
       setNewName('');
@@ -240,46 +202,23 @@ export default function TeamPage() {
     } finally {
       setBusy(null);
     }
-  }, [admin, appId, teamId, newName, restricted, load]);
+  }, [conn, teamId, newName, restricted, load]);
 
+  // An instance is reachable as soon as the org lets you in: nothing to join.
   const open = useCallback(
-    async (vault: VaultRow) => {
-      if (!admin || !vault.contextId) return;
-      setError(null);
-      try {
-        await enterVaultContext(
-          admin,
-          {
-            vaultId: vault.vaultId,
-            contextId: vault.contextId,
-            // Invite-only: this node is either already a direct member (it was
-            // invited to the vault) or will be refused — inheritance cannot
-            // admit anyone to it.
-            direct: vault.restricted,
-            // The team this vault belongs to. Inheritance eligibility is
-            // decided against the PARENT, so this is the group whose state
-            // the retry has to wait for — see `joinVaultWithRetry`.
-            namespaceId: teamId,
-          },
-          setBusy,
-        );
-        navigate(`/vault/${vault.contextId}`);
-      } catch (e) {
-        setError(describeError(e));
-      } finally {
-        setBusy(null);
-      }
+    (vault: VaultRow) => {
+      if (vault.contextId) navigate(`/vault/${vault.contextId}`);
     },
-    [admin, navigate, teamId],
+    [navigate],
   );
 
   const inviteToTeam = useCallback(async () => {
-    if (!admin || !teamId) return;
+    if (!conn || !teamId) return;
     setError(null);
     try {
       const code = await mintTeamInvite(
-        admin,
-        { namespaceId: teamId, teamName: heading, validForSecs: validFor },
+        conn,
+        { namespaceId: teamId, validForSecs: validFor },
         setBusy,
       );
       setInvite({
@@ -292,24 +231,16 @@ export default function TeamPage() {
     } finally {
       setBusy(null);
     }
-  }, [admin, teamId, heading, validFor, validLabel]);
+  }, [conn, teamId, heading, validFor, validLabel]);
 
   const inviteToVault = useCallback(
     async (vault: VaultRow) => {
-      if (!admin || !teamId) return;
+      if (!conn || !teamId) return;
       setError(null);
       try {
         const code = await mintVaultInvite(
-          admin,
-          {
-            namespaceId: teamId,
-            vaultId: vault.vaultId,
-            vaultName: vault.name,
-            teamName: heading,
-            contextId: vault.contextId,
-            validForSecs: validFor,
-            restricted: vault.restricted,
-          },
+          conn,
+          { namespaceId: teamId, team: vault.team, validForSecs: validFor },
           setBusy,
         );
         setInvite({
@@ -328,7 +259,7 @@ export default function TeamPage() {
         setBusy(null);
       }
     },
-    [admin, teamId, heading, validFor, validLabel],
+    [conn, teamId, heading, validFor, validLabel],
   );
 
   return (
@@ -414,7 +345,7 @@ export default function TeamPage() {
         {busy && <p className={styles.status}>{busy}</p>}
         {hostingNotice && (
           <p className={styles.status} data-testid="hosting-notice">
-            This team exists, but nobody can join it yet: {hostingNotice}.
+            This team exists, but {hostingNotice}.
           </p>
         )}
 
@@ -423,17 +354,11 @@ export default function TeamPage() {
             {!mayCreateVault && !capsLoading && (
               <p className={styles.status} data-testid="member-notice">
                 You are a Member of this team, so you can open every vault below
-                but not create new ones. An Admin can change that under People.
+                but not create new ones. An Admin can change that.
               </p>
             )}
 
-            {notInstalled ? (
-              <p className={styles.empty}>
-                Mero Pass is not installed on this node.
-              </p>
-            ) : isSyncing ? (
-              <JoinSyncBanner show what="vaults" onDismiss={dismissSyncing} />
-            ) : loading ? (
+            {loading ? (
               <p className={styles.empty}>Loading…</p>
             ) : vaults.length === 0 ? (
               <p className={styles.empty} data-testid="vaults-empty">
@@ -449,7 +374,7 @@ export default function TeamPage() {
                     <button
                       type="button"
                       className={`${styles.card} ${vault.joined ? styles.cardJoined : ''}`}
-                      onClick={() => void open(vault)}
+                      onClick={() => open(vault)}
                       disabled={!vault.contextId || !!busy}
                       data-testid="vault-card"
                     >
@@ -497,7 +422,7 @@ export default function TeamPage() {
                         account rather than failing at the mint. */}
                     {mayInvite &&
                       vault.contextId &&
-                      !(isDelegated && vault.restricted) && (
+                      (!vault.restricted || mayCreateInviteOnly) && (
                         <button
                           type="button"
                           className={styles.menuBtn}
@@ -547,7 +472,7 @@ export default function TeamPage() {
                       node's operation (`createGroupInvitation` has no account
                       form yet). An account would create a vault nobody else
                       could ever be let into. */}
-                  {!isDelegated && (
+                  {mayCreateInviteOnly && (
                     <label className={styles.check}>
                       <input
                         type="checkbox"
@@ -562,7 +487,7 @@ export default function TeamPage() {
                     type="button"
                     className={styles.btn}
                     onClick={() => void create()}
-                    disabled={!admin || !appId || !newName.trim() || !!busy}
+                    disabled={!conn || !newName.trim() || !!busy}
                     data-testid="vault-create"
                   >
                     Create

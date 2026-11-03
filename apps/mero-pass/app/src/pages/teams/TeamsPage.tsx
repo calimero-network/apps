@@ -2,17 +2,17 @@ import {
   type CSSProperties,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useMero, useNodeIdentity } from '@calimero-network/mero-react';
 import { Lock } from '@calimero-network/mero-icons';
 
 import AppShell from '../../components/AppShell';
 import InviteModal from '../../components/InviteModal';
 import { ChevronIcon, PlusIcon } from '../../components/icons';
-import { useApplicationId } from '../../hooks/useApplicationId';
+import { useCalimero } from '../../calimero';
 import {
   createPersonalVault,
   createTeam,
@@ -31,7 +31,7 @@ import { pickTeam, readLastVisit } from '../../lib/lastVisit';
  *
  * ── The noun ────────────────────────────────────────────────────────────────
  *
- * A TEAM is a namespace: the people. A VAULT is a subgroup and its context: the
+ * A TEAM is an organization: the people. A VAULT is an app instance in it: the
  * secrets. You invite someone to a team; the vaults in it are then shared with
  * them. This replaces "space", which said nothing about what the thing is for —
  * and every password manager that has this concept calls it a team, a family or
@@ -44,19 +44,15 @@ import { pickTeam, readLastVisit } from '../../lib/lastVisit';
  * hover), and "start a team" beside "join a team" as two panels underneath.
  */
 export default function TeamsPage() {
-  // `admin`, never `mero.admin`: the session-aware client. On an account the
-  // raw client's admin is the relay's node route and answers 403 to every
-  // call on this screen — the list, the creates, the invitation, the join —
-  // which rendered as "Mero Pass is not installed on this node". See
-  // `lib/vaults` `AdminLike`.
-  const { admin, nodeUrl } = useMero();
-  // ⚠️ `accountId`, never `publicKey` and never a context executor identity —
-  // all three are 64 hex since rc.27, so a swap type-checks, returns 200, and
-  // grants a principal that exists nowhere. See `useTeamCapabilities`.
-  const { identity } = useNodeIdentity();
+  const { client, source, passkey, after, where } = useCalimero();
+  const conn = useMemo(
+    () => (client ? { client, source, passkey, after } : null),
+    [client, source, passkey, after],
+  );
+  const nodeUrl = where;
   const navigate = useNavigate();
   const location = useLocation();
-  const { appId, resolving, notInstalled } = useApplicationId();
+  // Instances come from the package (or the dev bundle): nothing to resolve.
 
   const [teams, setTeams] = useState<TeamRow[]>([]);
   // The personal vault's context, resolved at load so the card can go straight
@@ -74,22 +70,17 @@ export default function TeamsPage() {
   const menuRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
-    if (!admin || !appId) {
-      setLoading(resolving);
-      return;
-    }
+    if (!conn) return;
     setLoading(true);
     try {
-      const rows = await listTeams(admin, appId);
+      const rows = await listTeams(conn);
       setTeams(rows);
       const mine = rows.find((t) => t.personal);
       if (mine) {
         // One extra request, only when a personal vault exists. A failure here
         // degrades the card to "open the namespace" rather than emptying the
         // screen — the vault still exists either way.
-        const vaults = await listVaults(admin, mine.namespaceId).catch(
-          () => [],
-        );
+        const vaults = await listVaults(conn, mine.namespaceId).catch(() => []);
         setPersonalVaultId(vaults[0]?.contextId ?? null);
       } else {
         setPersonalVaultId(null);
@@ -100,7 +91,7 @@ export default function TeamsPage() {
     } finally {
       setLoading(false);
     }
-  }, [admin, appId, resolving]);
+  }, [conn]);
 
   // Keyed on the navigation too. Accepting an invitation navigates to where
   // the person now belongs, and a team whose vaults have not replicated yet
@@ -119,8 +110,8 @@ export default function TeamsPage() {
   // and send you straight back into it. Reached any other way, this is the list.
   const resume = (location.state as { resume?: boolean } | null)?.resume;
   useEffect(() => {
-    if (!resume || loading || resolving) return;
-    if (!notInstalled && (!admin || !appId)) return; // not listed yet
+    if (!resume || loading) return;
+    if (!conn) return; // not listed yet
     const target = error
       ? null
       : pickTeam(
@@ -134,10 +125,7 @@ export default function TeamsPage() {
   }, [
     resume,
     loading,
-    resolving,
-    notInstalled,
-    admin,
-    appId,
+    conn,
     error,
     teams,
     nodeUrl,
@@ -159,12 +147,12 @@ export default function TeamsPage() {
 
   const create = useCallback(async () => {
     const name = newName.trim();
-    if (!admin || !appId || !name) return;
+    if (!conn || !name) return;
     setError(null);
     try {
-      const { namespaceId, haError } = await createTeam(
-        admin,
-        { applicationId: appId, name, accountId: identity?.accountId ?? null },
+      const { namespaceId, warning: haError } = await createTeam(
+        conn,
+        name,
         setBusy,
       );
       setNewName('');
@@ -182,17 +170,13 @@ export default function TeamsPage() {
     } finally {
       setBusy(null);
     }
-  }, [admin, appId, newName, load, navigate, identity?.accountId]);
+  }, [conn, newName, load, navigate]);
 
   const createPersonal = useCallback(async () => {
-    if (!admin || !appId) return;
+    if (!conn) return;
     setError(null);
     try {
-      const { contextId } = await createPersonalVault(
-        admin,
-        { applicationId: appId },
-        setBusy,
-      );
+      const { contextId } = await createPersonalVault(conn, setBusy);
       await load();
       navigate(`/vault/${contextId}`);
     } catch (e) {
@@ -200,17 +184,17 @@ export default function TeamsPage() {
     } finally {
       setBusy(null);
     }
-  }, [admin, appId, load, navigate]);
+  }, [conn, load, navigate]);
 
   const inviteTo = useCallback(
     async (team: TeamRow) => {
-      if (!admin) return;
+      if (!conn) return;
       setMenuOpenId(null);
       setError(null);
       try {
         const code = await mintTeamInvite(
-          admin,
-          { namespaceId: team.namespaceId, teamName: team.name },
+          conn,
+          { namespaceId: team.namespaceId },
           setBusy,
         );
         setInvite({ code, scope: `Whole team · ${team.name}` });
@@ -220,7 +204,7 @@ export default function TeamsPage() {
         setBusy(null);
       }
     },
-    [admin],
+    [conn],
   );
 
   // Two different things share one listing on the wire. Split them here so no
@@ -296,7 +280,7 @@ export default function TeamsPage() {
               type="button"
               className={styles.btn}
               onClick={() => void createPersonal()}
-              disabled={!admin || !appId || !!busy}
+              disabled={!conn || !!busy}
               data-testid="personal-create"
             >
               Create private vault
@@ -315,12 +299,7 @@ export default function TeamsPage() {
           you invite.
         </p>
 
-        {notInstalled ? (
-          <p className={styles.empty} data-testid="not-installed">
-            Mero Pass is not installed on this node. Install it from the app
-            registry, then reload.
-          </p>
-        ) : loading && teams.length === 0 ? (
+        {loading && teams.length === 0 ? (
           <p className={styles.empty}>Loading…</p>
         ) : sharedTeams.length === 0 ? (
           // ⚠️ Only when the load SUCCEEDED and came back empty. A failed list
@@ -460,7 +439,7 @@ export default function TeamsPage() {
                 type="button"
                 className={styles.btn}
                 onClick={() => void create()}
-                disabled={!admin || !appId || !newName.trim() || !!busy}
+                disabled={!conn || !newName.trim() || !!busy}
                 data-testid="team-create"
               >
                 Create

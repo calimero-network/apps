@@ -746,15 +746,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
-name = "kv-store"
-version = "0.0.1"
-dependencies = [
- "calimero-sdk",
- "calimero-storage",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "lazy_static"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -974,17 +965,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mero-pass"
-version = "0.1.0"
-dependencies = [
- "calimero-sdk",
- "calimero-storage",
- "calimero-storage-macros",
- "hex",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "mero-pixart"
 version = "0.0.2"
 dependencies = [
@@ -1003,40 +983,6 @@ dependencies = [
  "calimero-storage",
  "calimero-storage-macros",
  "hex",
-]
-
-[[package]]
-name = "mero-standup"
-version = "0.1.0"
-dependencies = [
- "calimero-sdk",
- "calimero-storage",
- "calimero-storage-macros",
- "hex",
-]
-
-[[package]]
-name = "mero-standup-v1"
-version = "0.1.0"
-dependencies = [
- "calimero-sdk",
- "calimero-storage",
- "calimero-storage-macros",
- "hex",
-]
-
-[[package]]
-name = "mero-stream"
-version = "0.0.2"
-dependencies = [
- "base64",
- "borsh",
- "borsh-derive",
- "calimero-sdk",
- "calimero-storage",
- "calimero-storage-macros",
- "hex",
- "thiserror 1.0.69",
 ]
 
 [[package]]

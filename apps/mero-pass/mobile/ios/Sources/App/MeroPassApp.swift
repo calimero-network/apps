@@ -5,22 +5,16 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
-/// Where sign-in goes, from Info.plist (empty = the SDK's defaults).
+/// Which Calimero 1.0 cluster the app talks to, from Info.plist: `MeroNodeURL` (a node of
+/// your Cloud cluster; empty = the sign-in screen asks) and `MeroDevNodeURL`. See ../README.md.
 enum AppConfig {
-    static var callback: CloudCallback { .scheme(string("MeroPassCallbackScheme") ?? "mero-pass") }
-
-    static var config: MeroProviderConfig {
-        MeroProviderConfig(
-            packageName: PassConstants.packageName,
-            registryURL: string("MeroRegistryURL"),
-            cloudBaseURL: string("MeroCloudBaseURL").flatMap(URL.init(string:)))
+    /// Where the node's consent page returns (`mero-pass://consent`).
+    static var callback: CloudCallback {
+        .scheme(CloudSettings.string("MeroPassCallbackScheme") ?? "mero-pass", path: "consent")
     }
 
-    static var walletURL: URL? { string("MeroWalletURL").flatMap(URL.init(string:)) }
-
-    private static func string(_ key: String) -> String? {
-        let value = (Bundle.main.object(forInfoDictionaryKey: key) as? String)?.trimmingCharacters(in: .whitespaces)
-        return value?.isEmpty == false ? value : nil
+    static var config: MeroProviderConfig {
+        MeroProviderConfig(nodeURL: CloudSettings.clusterURL, packageName: PassConstants.packageName)
     }
 }
 
@@ -62,7 +56,7 @@ final class AppServices: ObservableObject {
 struct MeroPassApp: App {
     @StateObject private var session = MeroAppSession(
         packageName: PassConstants.packageName, callback: AppConfig.callback, config: AppConfig.config,
-        walletURL: AppConfig.walletURL, keychainService: "network.calimero.pass")
+        keychainService: "network.calimero.pass")
     @StateObject private var services = AppServices()
 
     var body: some Scene {

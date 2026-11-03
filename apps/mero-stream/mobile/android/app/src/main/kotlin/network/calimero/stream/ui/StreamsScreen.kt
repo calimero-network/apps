@@ -65,6 +65,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -75,6 +76,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import network.calimero.stream.app.ApprovalsModel
 import network.calimero.stream.app.InvitationLanding
 import network.calimero.stream.app.StreamSummary
 import network.calimero.stream.app.StreamViewModel
@@ -96,13 +98,19 @@ fun StreamsScreen(
     val working by model.isWorking.collectAsState()
     val error by model.error.collectAsState()
     val notice by model.notice.collectAsState()
+    val context = LocalContext.current
+    val approvals = remember(model) { vm.approvals(context) }
+    val approvalItems by approvals.items.collectAsState()
+    val approvalBusy by approvals.busy.collectAsState()
+    val approvalMessage by approvals.message.collectAsState()
+    val confirmation by approvals.confirmation.collectAsState()
     val scope = rememberCoroutineScope()
     val tap = rememberTap()
     var creating by remember { mutableStateOf(false) }
     var joining by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
 
-    LaunchedEffect(model) { model.load() }
+    LaunchedEffect(model) { loadAll(model, approvals) }
 
     fun invite(stream: StreamSummary) {
         tap()
@@ -138,9 +146,7 @@ fun StreamsScreen(
                     }
                 },
                 actions = {
-                    if (model.hasRelay) {
-                        IconButton(onClick = { creating = true }) { Icon(Icons.Filled.Add, contentDescription = "Create stream") }
-                    }
+                    IconButton(onClick = { creating = true }) { Icon(Icons.Filled.Add, contentDescription = "Create stream") }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Palette.Surface),
             )
@@ -148,7 +154,7 @@ fun StreamsScreen(
     ) { padding ->
         PullToRefreshBox(
             isRefreshing = loading && loaded,
-            onRefresh = { scope.launch { model.load() } },
+            onRefresh = { scope.launch { loadAll(model, approvals) } },
             modifier = Modifier.fillMaxSize().padding(padding),
         ) {
             LazyColumn(
@@ -181,6 +187,10 @@ fun StreamsScreen(
                         )
                     }
                 }
+                approvalsSection(approvalItems, approvalBusy, approvalMessage) { item ->
+                    tap()
+                    scope.launch { approvals.approve(item) }
+                }
                 if (!loaded) {
                     item { Loading() }
                 } else if (streams.isEmpty()) {
@@ -189,13 +199,9 @@ fun StreamsScreen(
                             EmptyState(
                                 Icons.Outlined.Layers,
                                 "No streams yet",
-                                if (model.hasRelay) {
-                                    "Create one to start a call, or open an invitation link someone sent you."
-                                } else {
-                                    "Your account has no relay yet. Join a stream with an invitation link first."
-                                },
+                                "Create one to start a call, or open an invitation link someone sent you.",
                             )
-                            if (model.hasRelay) PrimaryButton("Create stream", onClick = { creating = true }, icon = Icons.Filled.Add)
+                            PrimaryButton("Create stream", onClick = { creating = true }, icon = Icons.Filled.Add)
                             SecondaryButton("Join with a link", onClick = { joining = true }, icon = Icons.Outlined.Link)
                         }
                     }
@@ -230,6 +236,7 @@ fun StreamsScreen(
             }
         }
     }
+    confirmation?.let { ConsentCodeSheet(it, onAnswer = approvals::answerConfirmation) }
     if (joining) {
         JoinLinkSheet(model, onDismiss = { joining = false }) { landing ->
             joining = false
@@ -239,6 +246,15 @@ fun StreamsScreen(
             }
         }
     }
+}
+
+/** The streams, then what waits for approval in the account and in each stream. */
+private suspend fun loadAll(
+    model: StreamsModel,
+    approvals: ApprovalsModel,
+) {
+    model.load()
+    approvals.refresh(model.streams.value.map { it.id })
 }
 
 @OptIn(ExperimentalFoundationApi::class)

@@ -4,15 +4,6 @@ import react from "@vitejs/plugin-react-swc";
 import pkg from "./package.json" with { type: "json" };
 import { servedAssetsFallback } from "@calimero-apps/node-served/vite";
 
-// Mero Stream is a desktop-first Task-3 capacity probe: tauri-app opens it in a
-// WebviewWindow and proxies node traffic through its Rust backend. On the plain
-// web it renders a short "open from the desktop app" landing page (see
-// src/App.tsx).
-//
-// Unlike Mero Meet there is NO WebRTC and NO MediaPipe here — the whole point of
-// this app is to push captured luma frames THROUGH the Calimero contract (the
-// contract encodes/decodes in WASM), so there are no external media runtimes to
-// sync into public/.
 export default defineConfig({
   // Relative, so the same build runs at / and under the node's /{version}/.
   base: "./",
@@ -23,31 +14,17 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
   server: {
-    // Pinned, and NOT 5173. Every mero app served from the same origin shares one
-    // localStorage, so running this on the port another Calimero app had used
-    // inherited that app's mero-react session — you were logged straight in as
-    // whoever was last here, with THEIR application id, and the stream picker
-    // then listed that app's namespaces. One port per app makes that impossible.
-    // (Overridable for Playwright, which needs to pick its own.)
-    port: Number(process.env.PW_PORT) || 5178,
-    strictPort: false,
+    // 5173, exactly: `merod local` trusts passkey ceremonies from
+    // http://localhost:5173 (and :3000), and `pnpm dev:local mero-stream`
+    // prints this URL. Sessions are stored per app and per target
+    // (`calimero-session:mero-stream:<target>`), so sharing the origin with
+    // another app's dev server no longer leaks a session between them.
+    port: 5173,
+    strictPort: true,
   },
   test: {
     environment: "jsdom",
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
-    server: {
-      deps: {
-        // `@calimero-network/mero-platform@0.1.0` ships an ESM entry that does
-        // `export … from "./bridge"` — a directory import with no extension.
-        // Bundlers resolve that; Node's ESM resolver refuses it outright, so
-        // vitest's node-side resolution fails the whole suite with "Directory
-        // import ... is not supported". Inlining routes it through Vite's
-        // transform instead, which is how the app itself loads it.
-        //
-        // Remove when the SDK publishes explicit extensions; nothing here works
-        // around a bug in our own code.
-        inline: [/@calimero-network\/mero-platform/],
-      },
-    },
+    setupFiles: ["./src/test/setup.ts"],
   },
 });

@@ -28,9 +28,9 @@ include(":app")
 // The Calimero Kotlin SDK, consumed from source (composite build).
 // ---------------------------------------------------------------------------
 //
-// The delegated-execution layer this app is built on (Cloud sign-in, relay intents, founding,
-// direct admission) came with kotlin-sdk#67 and is not on Maven Central yet. So the
-// SDK is included as a build and its modules replace the `network.calimero:*` coordinates the app
+// The Calimero 1.0 client this app is built on (passkeys, the sealed channel, orgs and app
+// instances, presence, the consent page) is kotlin-sdk v0.2.0, which is not on Maven Central yet. So the
+// SDK is included as a build and its modules replace the `com.calimero.mero:*` coordinates the app
 // declares. Which checkout:
 //   1. `-PmeroKotlinSdkDir=/path` (or `meroKotlinSdkDir=` in ~/.gradle/gradle.properties),
 //   2. the `MERO_KOTLIN_SDK_DIR` environment variable,
@@ -54,8 +54,8 @@ if (!sdkDir.resolve("settings.gradle.kts").isFile) {
 
 includeBuild(sdkDir) {
     dependencySubstitution {
-        substitute(module("network.calimero:mero-core")).using(project(":mero-core"))
-        substitute(module("network.calimero:mero-compose")).using(project(":mero-compose"))
-        substitute(module("network.calimero:mero-testkit")).using(project(":mero-testkit"))
+        substitute(module("com.calimero.mero:mero-core")).using(project(":mero-core"))
+        substitute(module("com.calimero.mero:mero-compose")).using(project(":mero-compose"))
+        substitute(module("com.calimero.mero:mero-testkit")).using(project(":mero-testkit"))
     }
 }
