@@ -11,6 +11,8 @@
 
 mod common;
 
+use std::sync::OnceLock;
+
 use calimero_app_sdk::testing::{Failure, Org, TestApp};
 use serde_json::{json, Value};
 
@@ -21,9 +23,18 @@ const BOB: &str = "bob";
 const CAROL: &str = "carol";
 const GUEST: &str = "gus";
 
-/// A 64-hex blob id, distinct per `n`.
+/// How many blobs `app()` uploads: `blob(1)` to `blob(BLOBS)`.
+const BLOBS: u8 = 4;
+
+/// The ids of the blobs `app()` uploads. A blob id is its content's SHA-256, so
+/// they are the same in every `TestApp`.
+static BLOB_IDS: OnceLock<Vec<String>> = OnceLock::new();
+
+/// The id of blob `n` (1..=BLOBS), one the app holds: since core 1.0.0-rc.8
+/// (#4815) the runtime refuses a stored reference to a blob the app does not
+/// hold (`HostDenied`), so a made-up id no longer works.
 fn blob(n: u8) -> String {
-    format!("{n:02x}").repeat(32)
+    BLOB_IDS.get().expect("app() uploads the blobs first")[usize::from(n) - 1].clone()
 }
 
 fn org() -> Org {
@@ -34,7 +45,12 @@ fn org() -> Org {
 }
 
 fn app() -> TestApp {
-    common::app(org())
+    let mut t = common::app(org());
+    let ids: Vec<String> = (1..=BLOBS)
+        .map(|n| t.upload_blob(&[n], "model/gltf-binary"))
+        .collect();
+    let _ = BLOB_IDS.set(ids);
+    t
 }
 
 fn now(ms: u64) -> String {
@@ -442,7 +458,7 @@ fn textures_are_listed_by_name_versioned_and_deleted() {
 fn the_history_view_keeps_the_newest_500() {
     let mut t = app();
     for i in 0..503_u64 {
-        let id = format!("{:064x}", i + 1);
+        let id = t.upload_blob(&(i + 1).to_be_bytes(), "model/gltf-binary");
         ok(t.as_(OWNER).call(
             "putMesh",
             json!({ "mesh": mesh("m", &id, 10), "now": now(i) }),
