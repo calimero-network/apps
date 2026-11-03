@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { FeedItem } from "./generated/HyperfeedClient";
+import type { FeedItem } from "./hyperfeedTypes";
 import { appHome, appLink, canOpen, chatName, linkNamer, subjectFromLink } from "./links";
 import type { LensHost } from "./lens/lens";
 import { laneOf } from "./format";

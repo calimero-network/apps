@@ -7,7 +7,6 @@ import type {
   CheckpointView,
   FeedItem,
   FeedPage,
-  HyperfeedClient,
   LensView,
   LinkView,
   NotificationInput,
@@ -23,7 +22,9 @@ import type {
   SettingsView,
   WatchView,
   Folder,
-} from "./generated/HyperfeedClient";
+} from "./hyperfeedTypes";
+import type { HyperfeedClient } from "./hyperfeed";
+import type { OtherApps } from "./otherApps";
 import { mergeWatchInput } from "./watches";
 
 export type Filter = "all" | "agent" | "notifications" | "needs_you" | "archived";
@@ -36,8 +37,8 @@ export type ActionMode = "" | "act" | "ask" | "off";
 /**
  * Everything the screens need from a feed, whichever feed it is.
  *
- * Two implementations: {@link nodeBackend}, which calls the Hyperfeed contract
- * in a context on your node, and `DemoBackend`, which keeps the same rules in
+ * Two implementations: {@link clusterBackend}, which calls the Hyperfeed
+ * contract in an app instance on your cluster, and `DemoBackend`, which keeps the same rules in
  * memory so the app can be tried without a node. The screens never know which
  * one they hold.
  */
@@ -53,8 +54,8 @@ export interface FeedBackend {
   completeAnswer(id: string, outcome: "delivered" | "failed", note: string): Promise<FeedItem>;
   /** Report how a draft you approved went: the feed sends those itself (an action's reply call). */
   completeAction(id: string, outcome: "done" | "failed", note: string): Promise<FeedItem>;
-  /** Call a method of another app on your node: how a typed row is answered directly. */
-  callApp(contextId: string, method: string, args: Record<string, unknown>): Promise<unknown>;
+  /** Call a method of another app you reach (by app instance id): how a typed row is answered directly. */
+  callApp(app: string, method: string, args: Record<string, unknown>): Promise<unknown>;
   /** What your agent learned for each app version, and what you decided. */
   lenses(): Promise<LensView[]>;
   decideLens(appKey: string, applicationId: string, decision: "approve" | "reject"): Promise<LensView>;
@@ -160,12 +161,11 @@ export interface FeedBackend {
 /** Rows per read. The contract's own default; the feed pages beyond it. */
 export const PAGE_SIZE = 50;
 
-/** The one call the feed makes into other apps. */
-export interface AppRpc {
-  execute<T>(params: { contextId: string; method: string; argsJson?: Record<string, unknown> }): Promise<T>;
-}
-
-export function nodeBackend(client: HyperfeedClient, rpc: AppRpc, images: BlobStore | null = null): FeedBackend {
+/**
+ * The feed in an app instance on the cluster, through the typed adapter
+ * ({@link HyperfeedClient}); `apps` is how a row is answered in another app.
+ */
+export function clusterBackend(client: HyperfeedClient, apps: OtherApps, images: BlobStore | null = null): FeedBackend {
   return {
     kind: "node",
     images,
@@ -175,82 +175,38 @@ export function nodeBackend(client: HyperfeedClient, rpc: AppRpc, images: BlobSt
     answerNotification: (id, answer) => client.answerNotification({ id, answer }),
     completeAnswer: (id, outcome, note) => client.completeAnswer({ id, outcome, note }),
     completeAction: (id, outcome, note) => client.completeAction({ id, outcome, note }),
-    callApp: (contextId, method, args) => rpc.execute({ contextId, method, argsJson: args }),
+    callApp: (app, method, args) => apps.call(app, method, args),
     lenses: () => client.lenses(),
     decideLens: (appKey, applicationId, decision) =>
       client.decideLens({ app_key: appKey, application_id: applicationId, decision }),
-    actionSets: () =>
-      client.actionSets().catch((e: unknown) => {
-        if (lacksMethod(e, "action_sets")) return [];
-        throw e;
-      }),
+    actionSets: () => client.actionSets(),
     decideActions: (appKey, applicationId, decision) =>
       client.decideActions({ app_key: appKey, application_id: applicationId, decision }),
     setActionMode: (appKey, action, mode) =>
       client.setActionMode({ app_key: appKey, action, mode }).then(() => undefined),
     chain: (chain) => client.chain({ chain }),
-    checkpoint: (chain) =>
-      client.checkpoint({ chain }).then(
-        (c) => (c ? c : null),
-        (e: unknown) => {
-          if (lacksMethod(e, "checkpoint")) return null;
-          throw e;
-        },
-      ),
-    situations: () =>
-      client.situations().catch((e: unknown) => {
-        if (lacksMethod(e, "situations")) return [];
-        throw e;
-      }),
-    autoruns: () =>
-      client.autoruns().catch((e: unknown) => {
-        if (lacksMethod(e, "autoruns")) return [];
-        throw e;
-      }),
+    checkpoint: (chain) => client.checkpoint({ chain }).then((c) => c ?? null),
+    situations: () => client.situations(),
+    autoruns: () => client.autoruns(),
     stopAutorun: (id) => client.stopAutorun({ id }),
-    watches: (chain) =>
-      client.watches({ chain }).catch((e: unknown) => {
-        if (lacksMethod(e, "watches")) return [];
-        throw e;
-      }),
+    watches: (chain) => client.watches({ chain }),
     cancelWatch: (id) => client.cancelWatch({ id, note: null }),
     mergeWhenGreen: (chain, repo, pr) => client.addWatch({ input: mergeWatchInput(chain, repo, pr) }),
-    prs: (chain) =>
-      client.prs({ chain }).catch((e: unknown) => {
-        if (lacksMethod(e, "prs")) return [];
-        throw e;
-      }),
-    links: (chain) =>
-      client.links({ chain }).catch((e: unknown) => {
-        if (lacksMethod(e, "links")) return [];
-        throw e;
-      }),
+    prs: (chain) => client.prs({ chain }),
+    links: (chain) => client.links({ chain }),
     addLink: (chain, subject, label) => client.addLink({ chain, input: { subject, label, by: "you" } }),
     removeLink: (chain, subject) => client.removeLink({ chain, subject }).then(() => undefined),
-    pushKey: () =>
-      client.pushKey().catch((e: unknown) => {
-        if (lacksMethod(e, "push_key")) return null;
-        throw e;
-      }),
-    pushDevices: () =>
-      client.pushDevices().catch((e: unknown) => {
-        if (lacksMethod(e, "push_devices")) return [];
-        throw e;
-      }),
+    pushKey: () => client.pushKey(),
+    pushDevices: () => client.pushDevices(),
     addPushDevice: (input) => client.addPushDevice({ input }),
     removePushDevice: (endpoint) => client.removePushDevice({ endpoint }).then(() => undefined),
-    // Text alone keeps to `say`, which every feed has; only images need `say_with`.
-    // No `headline` key: a feed made before headlines refuses any argument it does not know.
-    // `mode` only when given, for the same reason: callers give it to a feed that lists modes.
+    // Text alone keeps to `say`; only images need `sayWith`. `headline` and
+    // `mode` are optional arguments, sent only when given.
     say: (chain, text, attachments = [], mode) =>
       attachments.length
         ? client.sayWith({ chain, text, attachments, ...(mode ? { mode } : {}) } as Parameters<HyperfeedClient["sayWith"]>[0])
         : client.say({ chain, text, ...(mode ? { mode } : {}) } as Parameters<HyperfeedClient["say"]>[0]),
-    answerAsk: (id, chain, text) =>
-      client.answerAsk({ id, text }).catch((e: unknown) => {
-        if (!lacksMethod(e, "answer_ask")) throw e;
-        return client.say({ chain, text } as Parameters<HyperfeedClient["say"]>[0]);
-      }),
+    answerAsk: (id, _chain, text) => client.answerAsk({ id, text }),
     stop: (id) => client.stop({ id }),
     markSeen: (ids) => client.markSeen({ ids }),
     markAllSeen: () => client.markAllSeen(),
@@ -273,14 +229,4 @@ export function nodeBackend(client: HyperfeedClient, rpc: AppRpc, images: BlobSt
     recordNotification: (input) => client.recordNotification({ input }),
     recordAction: (input) => client.recordAction({ input }),
   };
-}
-
-/**
- * Whether a call failed because the feed's contract has no such method: a feed
- * made before it. The node answers `{ type: "FunctionCallError", data: 'method "x" not found' }`.
- */
-export function lacksMethod(e: unknown, method: string): boolean {
-  const data = (e as { data?: unknown } | null)?.data;
-  const said = `${String(e)} ${typeof data === "string" ? data : JSON.stringify(data ?? "")}`;
-  return new RegExp(`${method}.*not found|not found.*${method}`, "i").test(said);
 }

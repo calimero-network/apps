@@ -43,42 +43,38 @@ import network.calimero.models.app.ModelsAppViewModel
 import network.calimero.models.app.SceneLink
 import network.calimero.models.core.InvitationModel
 
-/** Restoring → a splash. Signed out → sign in. Signed in → studios, scenes, a scene. */
+/** Restoring → a splash. Signed out → sign in (passkey). Signed in → studios, scenes, a scene. */
 @Composable
-fun MeroModelsApp(
-    vm: ModelsAppViewModel,
-    onSignIn: () -> Unit,
-) {
+fun MeroModelsApp(vm: ModelsAppViewModel) {
     ModelsMaterialTheme {
         val restored by vm.restored.collectAsState()
-        val restoring by vm.session.isRestoring.collectAsState()
-        val backend by vm.session.backend.collectAsState()
-        val revision by vm.session.revision.collectAsState()
-        val auth by vm.session.client.state
-            .collectAsState()
-        val pendingInvitation by vm.session.pendingInvitation.collectAsState()
+        val session by vm.session.collectAsState()
+        val backend by vm.backend.collectAsState()
+        val revision by vm.revision.collectAsState()
         val stage by vm.invitation.stage.collectAsState()
+        val restoring = session?.isRestoring?.collectAsState()?.value ?: false
+        val pendingInvitation = session?.pendingInvitation?.collectAsState()?.value
 
         LaunchedEffect(pendingInvitation) {
             val raw = pendingInvitation ?: return@LaunchedEffect
             vm.openInvitation(raw)
-            vm.session.dismissPendingInvitation()
+            session?.dismissPendingInvitation()
         }
 
+        val current = backend
         when {
             !restored || restoring -> Splash("Restoring your session…")
-            auth.isDelegated && backend != null ->
+            current != null ->
                 key(revision) {
-                    SignedIn(vm, backend!!)
+                    SignedIn(vm, current)
                 }
-            auth.isDelegated -> Splash("Connecting to your relay…") { SecondaryButton(onClick = vm::signOut, fullWidth = false) { Text("Sign out") } }
-            else -> SignInScreen(auth = auth, onSignIn = onSignIn, onCancel = { vm.session.cancelSignIn() })
+            else -> SignInScreen(vm)
         }
 
         if (stage != InvitationModel.Stage.Idle) {
             InvitationSheet(
                 stage = stage,
-                signedIn = auth.isDelegated,
+                signedIn = current != null,
                 onAccept = vm::acceptInvitation,
                 onDismiss = { vm.invitation.reset() },
                 onOpen = { studioId, contextId ->
@@ -107,7 +103,7 @@ private fun SignedIn(
         composable("studios") {
             StudiosScreen(
                 backend = backend,
-                session = vm.session,
+                vm = vm,
                 invitation = vm.invitation,
                 onJoin = vm::openInvitation,
                 onSignOut = vm::signOut,

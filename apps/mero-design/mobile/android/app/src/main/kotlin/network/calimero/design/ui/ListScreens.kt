@@ -55,10 +55,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.calimero.mero.app.MeroAppBackend
-import com.calimero.mero.compose.MeroAppSession
 import kotlinx.coroutines.launch
 import network.calimero.design.app.BoardSummary
 import network.calimero.design.app.BoardsModel
+import network.calimero.design.app.DesignAppViewModel
 import network.calimero.design.app.LoadState
 import network.calimero.design.app.Team
 import network.calimero.design.app.TeamsModel
@@ -69,11 +69,12 @@ import network.calimero.design.core.DesignFormat
 @Composable
 fun TeamsScreen(
     backend: MeroAppBackend,
-    session: MeroAppSession,
+    vm: DesignAppViewModel,
     onSignOut: () -> Unit,
     onOpen: (Team) -> Unit,
 ) {
     val model = remember(backend) { TeamsModel(backend) }
+    val context = LocalContext.current
     val teams by model.teams.collectAsState()
     val state by model.state.collectAsState()
     val scope = rememberCoroutineScope()
@@ -117,10 +118,11 @@ fun TeamsScreen(
                             EmptyState(
                                 Icons.Outlined.Groups,
                                 "No teams yet",
-                                "Create a team in Mero Design on the web or desktop, or accept an invitation there. It shows up here.",
+                                "Create a team in Mero Design on the web, or open an invitation link someone sent you. It shows up here.",
                             )
                         }
                     else -> {
+                        item { ApprovalsCard(vm, context, teams.map { it.id }) }
                         item { SectionLabel("Teams") }
                         items(teams, key = { it.id }) { team -> TeamRow(team) { onOpen(team) } }
                     }
@@ -129,7 +131,7 @@ fun TeamsScreen(
         }
     }
 
-    if (showAccount) AccountSheet(session = session, onDismiss = { showAccount = false }, onSignOut = onSignOut)
+    if (showAccount) AccountSheet(vm = vm, onDismiss = { showAccount = false }, onSignOut = onSignOut)
 }
 
 @Composable
@@ -162,7 +164,7 @@ private fun TeamRow(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AccountSheet(
-    session: MeroAppSession,
+    vm: DesignAppViewModel,
     onDismiss: () -> Unit,
     onSignOut: () -> Unit,
 ) {
@@ -171,18 +173,18 @@ private fun AccountSheet(
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
             Text("Account", style = DesignTheme.heading(17), modifier = Modifier.align(Alignment.CenterHorizontally))
             Row(Modifier.fillMaxWidth().card(), verticalAlignment = Alignment.CenterVertically) {
-                Avatar(session.account.orEmpty(), "Me", 44.dp)
+                Avatar(vm.account.orEmpty(), "Me", 44.dp)
                 Spacer(Modifier.width(12.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text("Signed in", style = DesignTheme.heading(17))
                     Text(
-                        if (session.hasRelay) "Connected through your relay" else "No relay serves this account yet",
+                        "Connected to your Calimero cluster",
                         style = DesignTheme.body(14, color = DesignTheme.muted),
                     )
                 }
             }
             DetailsDisclosure(
-                listOf("Account" to (session.account ?: "—"), "Application" to (session.applicationId ?: "—")),
+                listOf("Account" to (vm.account ?: "—"), "Node" to (vm.nodeUrl ?: "—"), "Package" to DesignFormat.PACKAGE_NAME),
                 Modifier.fillMaxWidth().card(),
             )
             SecondaryButton(onClick = { confirm = true }) {

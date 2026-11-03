@@ -2,7 +2,6 @@ package network.calimero.docs.app
 
 import android.content.SharedPreferences
 import com.calimero.mero.app.AppNamespace
-import com.calimero.mero.app.AppSubgroup
 import com.calimero.mero.app.MeroAppBackend
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -21,12 +20,13 @@ import network.calimero.docs.core.CommentBody
 import network.calimero.docs.core.CommentThread
 import network.calimero.docs.core.DocBlock
 import network.calimero.docs.core.DocComment
+import network.calimero.docs.core.DocDto
 import network.calimero.docs.core.DocTarget
+import network.calimero.docs.core.DocsDirectory
 import network.calimero.docs.core.DocsFormat
 import network.calimero.docs.core.DocumentReader
 import network.calimero.docs.core.NoBlobs
 import network.calimero.docs.core.docs
-import network.calimero.docs.generated.DocDto
 import kotlin.coroutines.cancellation.CancellationException
 
 /** Where a list screen is. (Swift `LoadState`.) */
@@ -54,10 +54,7 @@ private inline fun <T> attempt(block: () -> T): Result<T> =
         Result.failure(e)
     }
 
-/**
- * "You" for this account, a short id for anyone else: the relay has no member-name call, so names
- * the web reads from group metadata are not here. (Swift `personName`.)
- */
+/** "You" for this account, a short id for anyone else. (Swift `personName`.) */
 fun personName(
     account: String,
     me: String,
@@ -65,7 +62,7 @@ fun personName(
 
 // region Workspaces
 
-/** A workspace: a namespace running Mero Docs. */
+/** A workspace: an organization running Mero Docs. */
 data class Workspace(
     val id: String,
     val name: String,
@@ -101,12 +98,12 @@ class WorkspacesModel(
 
 /** A folder: a subgroup of the workspace, nested by core's tree, with one docs context. */
 data class Folder(
-    /** The subgroup's group id: what a doc link names. */
+    /** The team id: what a doc link names. */
     val id: String,
     val name: String,
     /** The folder above; null at the top. */
     val parentId: String?,
-    /** The folder's docs context; null until one reaches the relay. */
+    /** The folder's docs app instance (team metadata `docsApp`); null until one is created. */
     val contextId: String?,
 )
 
@@ -130,7 +127,7 @@ data class SearchResult(
 
 /** Why a folder's documents are not listed. */
 sealed class FolderIssue {
-    /** No docs context has reached the relay yet. */
+    /** The folder has no docs app instance yet. */
     object NoContext : FolderIssue()
 
     /** The account is not in it and could not join. */
@@ -236,38 +233,13 @@ class WorkspaceModel(
     /** Folders and documents, read again. */
     suspend fun load() {
         if (_docs.value.isEmpty() && _folders.value.isEmpty()) _state.value = LoadState.Loading
-        attempt { walk() }
+        attempt { DocsDirectory(backend).folders(workspace.id) }
             .onSuccess { tree ->
                 _folders.value = tree
                 readDocs(tree)
                 _state.value = LoadState.Loaded
             }.onFailure { _state.value = LoadState.Failed(DocsFormat.errorText(it)) }
     }
-
-    /** The tree, one level at a time from the workspace's root group; only the root failing fails the load. */
-    private suspend fun walk(): List<Folder> =
-        coroutineScope {
-            val found = mutableListOf<Folder>()
-            val seen = mutableSetOf(workspace.id)
-            var level: List<Pair<AppSubgroup, String?>> = backend.listSubgroups(workspace.id).map { it to null }
-            var depth = 0
-            while (level.isNotEmpty() && depth < MAX_DEPTH) {
-                val next = mutableListOf<String>()
-                for ((sg, parent) in level) {
-                    if (!seen.add(sg.groupId)) continue
-                    found += Folder(sg.groupId, sg.name?.trim()?.takeIf { it.isNotEmpty() } ?: "Untitled folder", parent, sg.contextIds.firstOrNull())
-                    next += sg.groupId
-                }
-                level =
-                    next
-                        .map { id -> async { attempt { backend.listSubgroups(id) }.getOrDefault(emptyList()).map { it to id } } }
-                        .awaitAll()
-                        .flatten()
-                        .sortedBy { it.first.groupId }
-                depth++
-            }
-            found
-        }
 
     private suspend fun readDocs(tree: List<Folder>) {
         val outcomes =
@@ -301,7 +273,7 @@ class WorkspaceModel(
             .map { list -> list.map { DocRow(folder.id, ctx, folder.name, it) } }
     }
 
-    /** Titles that match at once, then every folder's full-text index (`search_docs`). */
+    /** Titles that match at once, then every folder's `searchDocs` (a word-prefix match on title and body). */
     suspend fun search(text: String) {
         val q = text.trim()
         _query.value = q
@@ -349,8 +321,6 @@ class WorkspaceModel(
     ) : Exception()
 
     companion object {
-        /** How deep the folder tree is walked. */
-        const val MAX_DEPTH = 8
         private const val SEARCH_LIMIT = 20u
         val NEWEST_FIRST: Comparator<DocRow> = compareByDescending<DocRow> { it.doc.updatedAt }.thenBy { it.id }
     }
@@ -470,7 +440,7 @@ class DocumentModel(
         }
     }
 
-    /** Follow the document until cancelled: the relay's events when it streams them, polling otherwise. */
+    /** Follow the document until cancelled: the app instance's events when it streams them, polling otherwise. */
     suspend fun live() {
         val ctx = _contextId.value ?: return
         if (backend.canSubscribe) {
@@ -517,7 +487,7 @@ class DocumentModel(
 
     private suspend fun resolveContext(): String {
         _contextId.value?.let { return it }
-        val ctx = backend.listContexts(folderId).firstOrNull() ?: throw FolderNotReadyException()
+        val ctx = DocsDirectory(backend).docsApp(workspaceId, folderId) ?: throw FolderNotReadyException()
         _contextId.value = ctx
         return ctx
     }
@@ -562,13 +532,13 @@ class DocumentModel(
     }
 
     companion object {
-        /** How often to re-read when the relay cannot stream events. */
+        /** How often to re-read when the node cannot stream events. */
         const val POLL_INTERVAL_MS = 5_000L
         private const val NANOS_PER_MILLI = 1_000_000L
     }
 }
 
-/** A folder with no docs context on the relay yet. (Swift `DocsError.folderNotReady`.) */
-class FolderNotReadyException : Exception("This folder hasn't reached your relay yet. Try again in a moment.")
+/** A folder with no docs app instance yet. (Swift `DocsError.folderNotReady`.) */
+class FolderNotReadyException : Exception("This folder isn't ready yet. Try again in a moment.")
 
 // endregion

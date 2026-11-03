@@ -62,7 +62,7 @@ public enum BridgeInbound: Equatable, Sendable {
 /// A message to the game page (`ToPage`), delivered as ``script``. (Kotlin `BridgeOutbound`.)
 public enum BridgeOutbound: Equatable, Sendable {
     case boot(mode: GameMode, local: Int?, fighters: [String], muted: Bool)
-    /// The contract's latest `arena()` read, as the generated client serialises `ArenaView`.
+    /// The contract's latest `arena()` read, in the page's snake_case wire form (`GameCalls.encode`).
     case state(viewJSON: String)
     /// The opponent's presence slice, as it arrived.
     case slice(json: String)
@@ -112,7 +112,7 @@ public enum BridgeOutbound: Equatable, Sendable {
     }
 }
 
-/// Where the game page's contract calls go: the generated client, method by method. Only what the
+/// Where the game page's contract calls go: the typed client, method by method. Only what the
 /// engine calls is open to it (`act`, and the two reads); anything else is refused, so a page can
 /// never sit, stand or rematch on the player's behalf. (Kotlin `GameCalls`.)
 public struct GameCalls: Sendable {
@@ -120,7 +120,8 @@ public struct GameCalls: Sendable {
 
     public init(client: KombatClient) { self.client = client }
 
-    /// The `act` arguments as the web engine sends them (the ABI's snake_case).
+    /// The `act` arguments as the web engine sends them (the page protocol's snake_case, `now` a
+    /// number); the client sends them on in the contract's camelCase with `now` a decimal string.
     struct ActArgs: Decodable {
         let match_index: UInt32
         let round: UInt32
@@ -160,8 +161,12 @@ public struct GameCalls: Sendable {
         }
     }
 
-    /// A generated type as the page reads it (the ABI's field names).
+    /// A contract answer as the page reads it. The page protocol predates the component ABI and is
+    /// unchanged, so its field names stay snake_case (`match_index`, `my_seat`, `rounds_won`): the
+    /// contract's camelCase is converted here, the one place the two meet.
     public static func encode<T: Encodable>(_ value: T) throws -> String {
-        String(decoding: try JSONEncoder().encode(value), as: UTF8.self)
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        return String(decoding: try encoder.encode(value), as: UTF8.self)
     }
 }

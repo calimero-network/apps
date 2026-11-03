@@ -51,7 +51,7 @@ fun MembersSheet(
                                 Text(m.name.ifEmpty { shortId(m.id) }, style = Tokens.body.copy(fontWeight = FontWeight.Medium))
                                 Text(shortId(m.id), style = Tokens.caption.copy(fontSize = 12.sp))
                             }
-                            if (m.id.equals(account, ignoreCase = true)) {
+                            if (m.id == account) {
                                 Text(
                                     "You",
                                     fontSize = 12.sp,

@@ -1,4 +1,4 @@
-import type { CheckpointView } from "./generated/HyperfeedClient";
+import type { CheckpointView } from "./hyperfeedTypes";
 import { timeLabel } from "./format";
 
 export type { CheckpointView };

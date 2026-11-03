@@ -31,43 +31,44 @@ final class EventTimeTests: XCTestCase {
     }
 }
 
-final class HexIdsTests: XCTestCase {
-    func testEventListsTurnHexIdsIntoBytes() throws {
+final class CalendarContractTests: XCTestCase {
+    /// The component ABI's methods (`logic/res/abi.json` on the port, web PR #720).
+    func testTheMethodListIsTheComponentABIs() {
+        XCTAssertEqual(
+            Set(CalendarMethods.calls + CalendarMethods.views),
+            [
+                "bookSlot", "cancelBooking", "createBookingLink", "createEvent", "createPrivateEvent",
+                "deleteBookingLink", "deleteEvent", "deletePrivateEvent", "getAvailableSlots", "getBookingPage",
+                "getEvents", "getMembers", "getPrivateEvents", "listBookingLinks", "rescheduleBooking", "setUsername",
+                "updateEvent", "updatePrivateEvent",
+            ])
+        XCTAssertEqual(Set(CalendarAppCode.allCases.map(\.rawValue)).count, 9)
+    }
+
+    func testEventsReadAccountStrings() throws {
         let json = """
             [{"id":"e1","title":"T","description":"","owner":"\(Fixture.me)","start":"s","end":"e",\
             "event_type":"event","color":"#fff","peers":["\(Fixture.bob)"],"private":false}]
             """
-        let fixed = HexIds.response("get_events", Data(json.utf8))
-        let events = try JSONDecoder().decode([CalendarEvent].self, from: fixed)
-        XCTAssertEqual(events.first?.owner.hexString, Fixture.me)
-        XCTAssertEqual(events.first?.peers.map(\.hexString), [Fixture.bob])
-        XCTAssertEqual(events.first?.private, false)
+        let events = try JSONDecoder().decode([CalendarEvent].self, from: Data(json.utf8))
+        XCTAssertEqual(events.first?.owner, Fixture.me)
+        XCTAssertEqual(events.first?.peers, [Fixture.bob])
+        XCTAssertEqual(events.first?.eventType, "event")
     }
 
-    func testEventWritesSendPeersAsHex() throws {
-        let args = try JSONEncoder().encode([
-            "event_data": CreateCalendarEvent(
-                title: "T", description: "", start: "s", end: "e", eventType: "event", color: "#fff",
-                peers: [Fixture.bob.hexBytes])
-        ])
-        let sent = HexIds.request("create_event", args)
-        let object = try JSONSerialization.jsonObject(with: sent) as? [String: Any]
-        let event = object?["event_data"] as? [String: Any]
-        XCTAssertEqual(event?["peers"] as? [String], [Fixture.bob])
+    func testU64sAreDecimalStringsBothWays() throws {
+        let members = try JSONDecoder().decode(
+            [Member].self,
+            from: Data(#"[{"id":"x","username":"a","joinedAt":"1761650000000000001","usernameUpdatedAt":2}]"#.utf8))
+        XCTAssertEqual(members.first?.joinedAt.value, 1_761_650_000_000_000_001)
+        XCTAssertEqual(members.first?.usernameUpdatedAt.value, 2)
+        let sent = String(decoding: try JSONEncoder().encode(U64(1_783_296_000_000)), as: UTF8.self)
+        XCTAssertEqual(sent, #""1783296000000""#)
     }
 
-    func testOtherMethodsPassThroughByteForByte() {
-        let members = Data(#"[{"id":"x","username":"a","joinedAt":1761650000000000001,"usernameUpdatedAt":2}]"#.utf8)
-        XCTAssertEqual(HexIds.response("get_members", members), members)
-        let args = Data(#"{"username":"a","timestamp":1761650000000}"#.utf8)
-        XCTAssertEqual(HexIds.request("set_username", args), args)
-    }
-
-    func testTimestampsKeepTheirDigits() throws {
-        let args = Data(#"{"event_data":{"peers":[[1,2]],"title":"t"},"timestamp":1761650000123}"#.utf8)
-        let sent = String(decoding: HexIds.request("create_event", args), as: UTF8.self)
-        XCTAssertTrue(sent.contains("1761650000123"), sent)
-        XCTAssertTrue(sent.contains(#""0102""#), sent)
+    func testAnUpdateSendsOnlyTheFieldsItNames() throws {
+        let sent = try JSONSerialization.jsonObject(with: JSONEncoder().encode(UpdateCalendarEvent(title: "New")))
+        XCTAssertEqual(sent as? [String: String], ["title": "New"])
     }
 }
 
@@ -81,18 +82,35 @@ final class TeamInvitationTests: XCTestCase {
         XCTAssertEqual(parsed.teamName, "Design")
     }
 
-    func testWebPayloadWithTheNodeEnvelopeAndTeamName() throws {
-        let signed = MeroKitTestSupportShim.invitation(namespaceId: Fixture.teamId)
-        let inner = String(decoding: try JSONEncoder().encode(signed), as: UTF8.self)
-        let json = #"{"invitation":\#(inner),"groupName":null,"__teamName":"Ops"}"#
+    func testLinkCarriesTheSDKPayload() throws {
+        let invitation = MeroKitTestSupportShim.invitation(namespaceId: Fixture.teamId)
+        let link = try TeamInvitation(invitation: invitation, teamName: "Ops").link()
+        let token = try XCTUnwrap(InviteLink.token(fromPasted: link))
+        let json = try XCTUnwrap(InviteCodec.decode(token: token))
+        let root = try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8))
+        XCTAssertEqual(root["invitation"]?.stringValue, invitation.token)
+        XCTAssertEqual(root["namespaceId"]?.stringValue, Fixture.teamId)
+        XCTAssertEqual(root["name"]?.stringValue, "Ops")
+        // The SDK reads the same link.
+        XCTAssertEqual(OrgInvitation.parse(link, expectedSlug: CalendarConstants.packageName)?.name, "Ops")
+    }
+
+    func testPayloadWithTheNodeEnvelopeAndTeamName() throws {
+        let json = #"{"data":{"invitation":"inv_abc","namespaceId":"\#(Fixture.teamId)","groupName":null,"__teamName":"Ops"}}"#
         let parsed = try XCTUnwrap(TeamInvitation.parse(json: json))
         XCTAssertEqual(parsed.namespaceId, Fixture.teamId)
+        XCTAssertEqual(parsed.invitation.token, "inv_abc")
         XCTAssertEqual(parsed.teamName, "Ops")
+    }
+
+    func testPreOneSignedInvitationIsRefused() {
+        let json = #"{"invitation":{"invitation":{"group_id":[1,2]},"inviter_signature":"5a5a"},"__teamName":"Old"}"#
+        XCTAssertNil(TeamInvitation.parse(json: json))
     }
 
     func testAnotherAppsLinkIsRefused() throws {
         let signed = MeroKitTestSupportShim.invitation(namespaceId: Fixture.teamId)
-        let token = try InviteCodec.encode(["invitation": signed])
+        let token = try signed.encoded()
         XCTAssertNil(TeamInvitation.parse("https://links.calimero.network/com.calimero.chat/join?invitation=\(token)"))
         XCTAssertNotNil(TeamInvitation.parse("calimero://com.calimero.mero-calendar/join?invitation=\(token)"))
         XCTAssertNotNil(TeamInvitation.parse(token))
@@ -101,7 +119,7 @@ final class TeamInvitationTests: XCTestCase {
 }
 
 enum MeroKitTestSupportShim {
-    static func invitation(namespaceId: String) -> SignedGroupOpenInvitation {
+    static func invitation(namespaceId: String) -> OrgInvitation {
         InMemoryAppBackend.invitation(namespaceId: namespaceId)
     }
 }

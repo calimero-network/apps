@@ -21,7 +21,7 @@ struct MatchScreen: View {
         self.rematched = rematched
     }
 
-    private var opponentName: String { Names.player(route.ref.opponent, me: route.me) }
+    private var opponentName: String { route.opponentName ?? Names.player(route.ref.opponent, me: route.me) }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -33,8 +33,8 @@ struct MatchScreen: View {
                     stageContent
                     DetailsDisclosure(rows: [
                         ("Match", route.ref.matchId),
-                        ("Match context", route.ref.contextId),
-                        ("Lobby context", route.ref.lobbyContextId),
+                        ("Lobby app", route.ref.appId),
+                        ("Organization", route.ref.namespaceId),
                         ("You play as", route.me),
                         ("Opponent", route.ref.opponent),
                         ("Your commitment", model.stored?.commitment ?? ""),
@@ -66,7 +66,7 @@ struct MatchScreen: View {
         case .loading:
             VStack(spacing: 12) {
                 ProgressView().tint(Palette.ink)
-                Text(model.syncing ? "Waiting for the match to reach your relay…" : "Opening the match…")
+                Text(model.syncing ? "Waiting for the match to start…" : "Opening the match…")
                     .font(.system(size: 15)).foregroundStyle(Palette.muted).multilineTextAlignment(.center)
             }
             .frame(maxWidth: .infinity)
@@ -308,10 +308,10 @@ struct MatchScreen: View {
         Task {
             do {
                 let ref = try await MatchMaker.create(
-                    backend: model.backend, namespace: route.lobby, lobbyContextId: route.ref.lobbyContextId,
+                    backend: model.backend, namespace: route.lobby, appId: route.ref.appId,
                     opponent: route.ref.opponent)
                 Haptics.success()
-                rematched(MatchRoute(ref: ref, me: route.me, lobby: route.lobby))
+                rematched(MatchRoute(ref: ref, me: route.me, lobby: route.lobby, opponentName: route.opponentName))
             } catch {
                 model.notice = ErrorText.describe(error, fallback: "Couldn't start a rematch. Try again.")
                 Haptics.failure()

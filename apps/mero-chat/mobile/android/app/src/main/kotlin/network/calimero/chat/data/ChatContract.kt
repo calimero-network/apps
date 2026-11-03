@@ -9,14 +9,14 @@ import kotlinx.serialization.json.put
 
 /** The `com.calimero.chat` methods this app calls (lib.rs `#[app::logic] impl MeroChat`). */
 object ChatMethods {
-    // Views: read through the relay's account-scoped query route.
+    // Views: answered by a node without writing. ComponentChatContract sends the ABI's camelCase names.
     const val GET_INFO = "get_info"
     const val GET_MESSAGES = "get_messages"
     const val GET_MESSAGES_FROM = "get_messages_from"
     const val GET_PROFILES = "get_profiles"
     const val GET_UNREAD_COUNT = "get_unread_count"
 
-    // Writes: signed warrants through the relay's intents route.
+    // Calls: through the app instance's log.
     const val SEND_MESSAGE = "send_message"
     const val EDIT_MESSAGE = "edit_message"
     const val DELETE_MESSAGE = "delete_message"
@@ -45,7 +45,7 @@ object ChatArgs {
     /** lib.rs `MAX_EMOJI_LEN`. */
     const val MAX_EMOJI_BYTES = 64
 
-    /** core's metadata record cap for a group's (subgroup's) name, which a channel's name is. */
+    /** The cap on a channel's (app instance's) and a workspace's name. */
     const val MAX_CHANNEL_NAME_BYTES = 64
 
     /**
@@ -145,25 +145,22 @@ object ChatArgs {
     /** The empty object the argument-less views take. */
     fun none(): JsonObject = JsonObject(emptyMap())
 
-    /** `init(name, context_type, description, created_at, creator_username)` for a new channel. */
+    /**
+     * `init(name?, contextType?, description?, creatorUsername?)` for a new channel, in the
+     * component ABI's names (the web's `initArgsFrom`). The node hands them to the instance as they
+     * are, so they skip [ComponentChatContract]; `createdAt` comes from the log's clock.
+     */
     fun channelInit(
         name: String,
-        createdAtSecs: Long,
         creatorUsername: String,
     ): JsonObject =
         buildJsonObject {
             put("name", name)
-            put("context_type", ChatContextInfo.CONTEXT_TYPE_CHANNEL)
+            put("contextType", ChatContextInfo.CONTEXT_TYPE_CHANNEL)
             put("description", "")
-            put("created_at", createdAtSecs)
-            put("creator_username", creatorUsername)
+            put("creatorUsername", creatorUsername)
         }
 }
-
-/** `init`'s arguments as the JSON bytes a node's context-creation request carries. */
-fun initBytes(init: JsonObject): List<Int> = init.toString().toByteArray(Charsets.UTF_8).map { it.toInt() and BYTE_MASK }
-
-private const val BYTE_MASK = 0xff
 
 /** Why an input is refused before anything is sent, or null when it may go out. */
 object ChatValidation {

@@ -22,7 +22,7 @@ public struct CrmTransport: CrmGenerated.ContextContractCalling {
 }
 
 extension CrmClient {
-    /// The client for one pipeline (one context), over the account's relay.
+    /// The client for one pipeline (one context), over the account's node session.
     public init(backend: any MeroAppBackend, contextId: String) {
         self.init(transport: CrmTransport(backend.contract.bound(to: contextId)))
     }
@@ -85,16 +85,32 @@ public enum CrmError: LocalizedError, Equatable {
 public enum ErrorText {
     public static func describe(_ error: Error) -> String {
         switch error {
-        case AccountError.noRelay:
-            return "No relay serves your account yet. Join a workspace with an invitation link first."
-        case AccountError.intentRefused(let reason, _, let status):
-            return "The relay refused this (\(status)): \(reason)"
+        case is SignedOutError, AccountError.notSignedIn:
+            return "You're signed out. Sign in again."
+        case is ConfirmCancelled:
+            return "The passkey prompt was cancelled, so nothing changed."
+        case is ConfirmRequired:
+            return "This needs your passkey. Sign in again on this phone and retry."
+        case is LoginRequired:
+            return "Your session ended. Sign in again."
+        case is WrongNode:
+            return "This node can't serve your account right now. Try again, or sign in to another node of your cluster."
+        case let error as ReleaseDeadlineError:
+            return error.release.isEmpty
+                ? "Your cluster is waiting for a node release to be approved. Open Approvals to review it."
+                : "Your cluster is waiting for node release \(error.release) to be approved. Open Approvals to review it."
+        case is ConsentStale:
+            return "What you were approving changed in the meantime. Open Approvals and review it again."
+        case let error as AppError:
+            return appError(error)
         case let error as URLError:
-            return "The relay can't be reached (\(error.code.rawValue)). Check your connection and try again."
-        case MeroError.network(let message):
-            return "The relay can't be reached: \(message)"
-        case MeroError.authRevoked:
-            return "Your session was revoked. Sign out and sign in again."
+            return "The cluster can't be reached (\(error.code.rawValue)). Check your connection and try again."
+        case let error as UnavailableError:
+            return "The cluster is busy (\(error.reason)). Try again in a moment."
+        case is NotFound:
+            return "This pipeline isn't there any more, or you're no longer a member of its workspace."
+        case let error as CalimeroError:
+            return error.message.isEmpty ? "The node refused this (\(error.code))." : error.message
         case is DecodingError:
             return "The pipeline answered in a shape this app does not read. It may run a different version of Mero CRM."
         case let error as LocalizedError:
@@ -102,6 +118,30 @@ public enum ErrorText {
         default:
             return "\(error)"
         }
+    }
+
+    /// The contract's own refusals (`422 APP_ERROR`, `{code, fields}`): `NotFound
+    /// {what, id}`, `Invalid {message}` and `Forbidden {message}`.
+    public static func appError(_ error: AppError) -> String {
+        let message = error.fields["message"]?.stringValue.map(sentence)
+        switch error.appCode {
+        case "NotFound":
+            let what = error.fields["what"]?.stringValue ?? "item"
+            return "That \(what) no longer exists. Someone may have deleted it; pull to refresh."
+        case "Invalid":
+            return message ?? "The pipeline refused this input."
+        case "Forbidden":
+            return message ?? "Only whoever created this may do that."
+        default:
+            return message ?? (error.message.isEmpty ? "The pipeline refused this (\(error.appCode))." : error.message)
+        }
+    }
+
+    /// `only the creator may…` as a sentence.
+    static func sentence(_ text: String) -> String {
+        guard let first = text.first else { return text }
+        let body = first.uppercased() + text.dropFirst()
+        return body.hasSuffix(".") ? body : body + "."
     }
 
     /// The two transient failures a context reports while its state is still

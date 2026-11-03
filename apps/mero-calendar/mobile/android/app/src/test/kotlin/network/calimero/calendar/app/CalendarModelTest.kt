@@ -15,7 +15,6 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import network.calimero.calendar.data.LocalNames
 import network.calimero.calendar.data.MemoryKeyValueStore
-import network.calimero.calendar.data.PrivateEventStore
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -24,12 +23,12 @@ import java.time.LocalDate
 import java.time.ZoneId
 
 class CalendarModelTest {
-    private val me = "ab".repeat(32)
-    private val alice = "a1".repeat(32)
+    // Account ids, as a 1.0 node names them.
+    private val me = "acc_me"
+    private val alice = "acc_alice"
     private val zone = ZoneId.of("Europe/Berlin")
     private val store = MemoryKeyValueStore()
     private val names = LocalNames(store)
-    private val privateStore = PrivateEventStore(store)
     private val team = Team("aa".repeat(32), "Design", "ap".repeat(32))
     private val calendar = CalendarRef("cc".repeat(32), "gg".repeat(32), "Release")
 
@@ -37,6 +36,7 @@ class CalendarModelTest {
         id: String,
         owner: String,
         peers: List<String> = emptyList(),
+        private: Boolean = false,
     ) = buildJsonObject {
         put("id", id)
         put("title", "Planning")
@@ -47,77 +47,107 @@ class CalendarModelTest {
         put("event_type", "event")
         put("color", "#2aa775")
         put("peers", buildJsonArray { peers.forEach { add(JsonPrimitive(it)) } })
-        put("private", false)
+        put("private", private)
     }
 
-    private fun backend(events: List<JsonElement> = emptyList()): InMemoryAppBackend {
+    private fun backend(
+        events: List<JsonElement> = emptyList(),
+        mine: List<JsonElement> = emptyList(),
+    ): InMemoryAppBackend {
         val backend = InMemoryAppBackend(account = me)
         backend.recording.handler = { call: RecordedContractCall ->
             when (call.method) {
-                "get_events" -> JsonArray(events)
-                "get_members" ->
+                "getEvents" -> JsonArray(events)
+                "getPrivateEvents" -> JsonArray(mine)
+                "getMembers" ->
                     buildJsonArray {
                         add(
                             buildJsonObject {
                                 put("id", alice)
                                 put("username", "Alice")
-                                put("joinedAt", 1)
-                                put("usernameUpdatedAt", 1)
+                                put("joinedAt", "1761650000000000001")
+                                put("usernameUpdatedAt", "1")
                             },
                         )
                     }
-                "create_event", "update_event", "delete_event" -> JsonPrimitive("shared-1")
+                "createEvent", "createPrivateEvent" -> JsonPrimitive("new-1")
+                "updateEvent", "updatePrivateEvent", "deleteEvent", "deletePrivateEvent" -> call.args.jsonObject["eventId"]
                 else -> JsonNull
             }
         }
         return backend
     }
 
-    private fun model(backend: InMemoryAppBackend) = CalendarModel(backend, team, calendar, names, privateStore, zone = zone, now = { 1_761_650_000_000 })
+    private fun model(backend: InMemoryAppBackend) = CalendarModel(backend, team, calendar, names, zone = zone)
 
     private fun draft(peers: List<String> = emptyList()) =
         network.calimero.calendar.data.EventDraft
             .newOn(LocalDate.of(2026, 10, 29))
             .copy(title = "Dentist", peers = peers)
 
+    private fun arg(
+        call: RecordedContractCall,
+        vararg path: String,
+    ): String {
+        var e: JsonElement = call.args
+        path.forEach { e = e.jsonObject[it]!! }
+        return e.jsonPrimitive.content
+    }
+
     @Test
-    fun `loads shared events with this device's private ones`() =
+    fun `loads shared and private events from the contract`() =
         runTest {
-            val backend = backend(listOf(sharedEvent("s1", alice, listOf(me))))
+            val backend = backend(listOf(sharedEvent("s1", alice, listOf(me))), listOf(sharedEvent("p1", me, private = true)))
             val model = model(backend)
-            model.save(null, draft())
+            model.load()
             val events = model.state.value.events
             assertEquals(2, events.size)
             val shared = events.single { it.id == "s1" }
             assertEquals(alice, shared.owner)
             assertEquals(listOf(me), shared.peers)
+            assertFalse(shared.isPrivate)
             assertFalse(model.canEdit(shared))
-            val local = events.single { it.isLocal }
-            assertTrue(local.isPrivate)
-            assertTrue(model.canEdit(local))
+            val mine = events.single { it.id == "p1" }
+            assertTrue(mine.isPrivate)
+            assertTrue(model.canEdit(mine))
             assertEquals("Alice", model.nameOf(alice))
+            assertEquals(
+                RecordedContractCall.Path.QUERY,
+                backend.recording
+                    .calls("getPrivateEvents")
+                    .single()
+                    .path,
+            )
         }
 
     @Test
-    fun `a peerless or private event never reaches the contract`() =
+    fun `a private event goes to createPrivateEvent, a peerless one to createEvent`() =
         runTest {
             val backend = backend()
             val model = model(backend)
             model.save(null, draft())
             model.save(null, draft(listOf(alice)).withPrivate(true))
-            assertTrue(backend.recording.calls.none { it.method.startsWith("create") })
-            assertEquals(2, privateStore.list(privateStore.key(me, team.id), calendar.contextId).size)
+            // The contract keeps a peerless createEvent private itself.
+            assertEquals(1, backend.recording.calls("createEvent").size)
+            val call = backend.recording.calls("createPrivateEvent").single()
+            assertEquals("Dentist", arg(call, "eventData", "title"))
+            assertTrue(
+                call.args.jsonObject["eventData"]!!
+                    .jsonObject["peers"]!!
+                    .jsonArray
+                    .isEmpty(),
+            )
         }
 
     @Test
-    fun `an event with teammates goes to create_event with hex peers`() =
+    fun `an event with teammates goes to createEvent with account peers and no timestamp`() =
         runTest {
             val backend = backend()
             model(backend).save(null, draft(listOf(alice)))
-            val call = backend.recording.calls("create_event").single()
+            val call = backend.recording.calls("createEvent").single()
             assertEquals(RecordedContractCall.Path.EXECUTE, call.path)
             assertEquals(calendar.contextId, call.contextId)
-            val data = call.args.jsonObject["event_data"]!!.jsonObject
+            val data = call.args.jsonObject["eventData"]!!.jsonObject
             assertEquals(
                 alice,
                 data["peers"]!!
@@ -125,87 +155,56 @@ class CalendarModelTest {
                     .single()
                     .jsonPrimitive.content,
             )
+            assertEquals("event", data["event_type"]!!.jsonPrimitive.content)
             assertEquals("Thu Oct 29 2026 09:00:00 GMT+0100 (Central European Standard Time)", data["start"]!!.jsonPrimitive.content)
-            assertEquals(
-                "1761650000000",
-                call.args.jsonObject["timestamp"]!!
-                    .jsonPrimitive.content,
-            )
+            assertEquals(setOf("eventData"), call.args.jsonObject.keys)
         }
 
     @Test
-    fun `a private event that gains teammates is promoted to shared`() =
+    fun `editing and deleting go to the shared or the private methods`() =
         runTest {
-            val backend = backend()
-            val model = model(backend)
-            model.save(null, draft())
-            val local =
-                model.state.value.events
-                    .single()
-            model.save(local, draft(listOf(alice)))
-            assertEquals(1, backend.recording.calls("create_event").size)
-            assertTrue(privateStore.list(privateStore.key(me, team.id), calendar.contextId).isEmpty())
-        }
-
-    @Test
-    fun `editing and deleting a shared event go to the contract, a private one stays here`() =
-        runTest {
-            val backend = backend(listOf(sharedEvent("s1", me, listOf(alice))))
+            val backend = backend(listOf(sharedEvent("s1", me, listOf(alice))), listOf(sharedEvent("p1", me, private = true)))
             val model = model(backend)
             model.load()
             val shared =
                 model.state.value.events
-                    .single()
+                    .single { it.id == "s1" }
             model.save(
                 shared,
                 network.calimero.calendar.data.EventDraft
                     .from(shared, zone)
                     .copy(title = "Moved"),
             )
-            val update = backend.recording.calls("update_event").single()
-            assertEquals(
-                "s1",
-                update.args.jsonObject["event_id"]!!
-                    .jsonPrimitive.content,
-            )
-            assertEquals(
-                "Moved",
-                update.args.jsonObject["event_data"]!!
-                    .jsonObject["title"]!!
-                    .jsonPrimitive.content,
-            )
+            val update = backend.recording.calls("updateEvent").single()
+            assertEquals("s1", arg(update, "eventId"))
+            assertEquals("Moved", arg(update, "eventData", "title"))
             model.delete(shared)
+            assertEquals("s1", arg(backend.recording.calls("deleteEvent").single(), "eventId"))
+
+            // A private event that gains a teammate is promoted by updatePrivateEvent.
+            val mine =
+                model.state.value.events
+                    .single { it.id == "p1" }
+            model.save(
+                mine,
+                network.calimero.calendar.data.EventDraft
+                    .from(mine, zone)
+                    .withPrivate(false)
+                    .copy(peers = listOf(alice)),
+            )
+            val promote = backend.recording.calls("updatePrivateEvent").single()
+            assertEquals("p1", arg(promote, "eventId"))
             assertEquals(
-                "s1",
-                backend.recording
-                    .calls("delete_event")
+                alice,
+                promote.args.jsonObject["eventData"]!!
+                    .jsonObject["peers"]!!
+                    .jsonArray
                     .single()
-                    .args.jsonObject["event_id"]!!
                     .jsonPrimitive.content,
             )
-
-            model.save(null, draft())
-            val local =
-                model.state.value.events
-                    .single { it.isLocal }
-            model.save(
-                local,
-                network.calimero.calendar.data.EventDraft
-                    .from(local, zone)
-                    .copy(title = "Renamed"),
-            )
-            assertEquals(
-                "Renamed",
-                model.state.value.events
-                    .single { it.isLocal }
-                    .title,
-            )
-            model.delete(local)
-            assertTrue(
-                model.state.value.events
-                    .none { it.isLocal },
-            )
-            assertTrue(backend.recording.calls("update_private_event").isEmpty())
+            model.delete(mine)
+            assertEquals("p1", arg(backend.recording.calls("deletePrivateEvent").single(), "eventId"))
+            assertEquals(1, backend.recording.calls("deleteEvent").size)
         }
 
     @Test
@@ -215,10 +214,10 @@ class CalendarModelTest {
             val model = model(backend)
             model.start()
             assertTrue(model.state.value.askName)
-            assertTrue(backend.recording.calls("set_username").isEmpty())
+            assertTrue(backend.recording.calls("setUsername").isEmpty())
             model.saveName(" Bob ")
             assertFalse(model.state.value.askName)
-            val call = backend.recording.calls("set_username").single()
+            val call = backend.recording.calls("setUsername").single()
             assertEquals(
                 "Bob",
                 call.args.jsonObject["username"]!!
@@ -228,7 +227,7 @@ class CalendarModelTest {
             val again = model(backend)
             again.start()
             assertFalse(again.state.value.askName)
-            assertEquals(2, backend.recording.calls("set_username").size)
+            assertEquals(2, backend.recording.calls("setUsername").size)
             assertEquals("Bob", again.lastName)
         }
 

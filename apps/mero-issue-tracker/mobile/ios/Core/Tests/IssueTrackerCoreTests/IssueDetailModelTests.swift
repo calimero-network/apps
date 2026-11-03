@@ -31,8 +31,8 @@ final class IssueDetailModelTests: XCTestCase {
         await m.setAssignee("")
         XCTAssertNil(m.issue?.assignee)
         XCTAssertEqual(
-            String(data: fake.backend.recording.calls("set_assignee").last?.argsJSON ?? Data(), encoding: .utf8)?
-                .contains("\"assignee\""), false)  // null is left out, meaning unassigned
+            String(data: fake.backend.recording.calls("setAssignee").last?.argsJSON ?? Data(), encoding: .utf8)?
+                .contains("\"assignee\":null"), true)  // an explicit null (`option<string>`) unassigns
     }
 
     func testCommentsAreAuthorGated() async {
@@ -63,7 +63,7 @@ final class IssueDetailModelTests: XCTestCase {
         draft.repro = "1. boot\n2. crash"
         let saved = await m.saveSections(draft)
         XCTAssertTrue(saved)
-        XCTAssertEqual(fake.backend.recording.calls.map(\.method).filter { $0.hasPrefix("set_") }, ["set_impact", "set_repro"])
+        XCTAssertEqual(fake.backend.recording.calls.map(\.method).filter { $0.hasPrefix("set") }, ["setImpact", "setRepro"])
         XCTAssertEqual(m.issue?.repro, "1. boot\n2. crash")
         draft.summary = " "
         let refused = await m.saveSections(draft)

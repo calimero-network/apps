@@ -34,7 +34,8 @@ final class Router: ObservableObject {
     }
 }
 
-/// Restoring → a splash. Signed out → sign in. Signed in → studios.
+/// Restoring → a splash. Signed out → sign in (passkey). Signed in → studios
+/// (the account's organizations running Mero Models).
 struct RootView: View {
     @ObservedObject var session: MeroAppSession
     @ObservedObject var router: Router
@@ -55,13 +56,13 @@ struct RootView: View {
                             case .scene(let studioId, let contextId, let name):
                                 SceneScreen(
                                     backend: backend, studioId: studioId, contextId: contextId, name: name,
-                                    blobs: SessionBlobs(admin: session.client.admin))
+                                    blobs: SessionBlobs(backend: backend))
                             }
                         }
                 }
                 .id(session.revision)
             } else if session.isSignedIn {
-                Splash(text: "Connecting to your relay…") {
+                Splash(text: "Connecting to your cluster…") {
                     Button("Sign out") { Task { await session.signOut() } }
                         .buttonStyle(SecondaryButtonStyle(fullWidth: false))
                 }

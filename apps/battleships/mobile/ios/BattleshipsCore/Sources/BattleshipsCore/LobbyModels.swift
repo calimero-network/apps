@@ -1,8 +1,7 @@
 import Foundation
-import LobbyGenerated
 import MeroKit
 
-/// The lobbies (namespaces running Battleships) this account is in, and founding a new one.
+/// The lobbies (Calimero orgs running Battleships) this account is in, and founding a new one.
 /// (Kotlin `LobbiesModel`; the web app's `LobbySelect` + `useNamespaceBootstrap`.)
 @MainActor
 public final class LobbiesModel: ObservableObject {
@@ -21,7 +20,7 @@ public final class LobbiesModel: ObservableObject {
     public func load() async {
         if lobbies.isEmpty { phase = .loading }
         do {
-            let all = try await backend.app.listNamespaces()
+            let all = try await backend.listNamespaces()
             lobbies = all.sorted { Names.lobby($0).localizedCaseInsensitiveCompare(Names.lobby($1)) == .orderedAscending }
             phase = .loaded
         } catch {
@@ -29,62 +28,33 @@ public final class LobbiesModel: ObservableObject {
         }
     }
 
-    /// Found a lobby: a namespace running the bundle, with the lobby service's context in its
-    /// root group (the web app's `createNamespaceWithLobby`). Match contexts are created beside it.
+    /// Found a lobby: an organization for the package, then the app instance in it (the web
+    /// app's `createLobby`). Every match is played inside that one instance.
     public func create(name raw: String) async throws -> AppNamespace {
         let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { throw BattleshipsError.invalid("Give the lobby a name.") }
-        guard backend.app.hasRelay else {
-            throw BattleshipsError.invalid("No relay serves your account yet. Join a lobby from an invitation first.")
-        }
-        let founded = try await backend.app.foundNamespace(name: name)
-        let listed = (try? await backend.app.listNamespaces()) ?? []
-        let appId = listed.first { $0.id == founded.namespaceId }?.applicationId ?? applicationId ?? ""
-        guard !appId.isEmpty else { throw BattleshipsError.invalid("Still connecting. Try again in a moment.") }
-        _ = try await backend.createServiceContext(
-            groupId: founded.namespaceId, applicationId: appId, service: Battleships.lobbyService, name: "lobby",
-            initArgs: .object([:]))
-        let lobby = AppNamespace(id: founded.namespaceId, name: name, applicationId: appId, memberCount: 1)
+        guard backend.hasRelay else { throw BattleshipsError.invalid("Sign in to create a lobby.") }
+        let founded = try await backend.foundNamespace(name: name)
+        _ = try await backend.createContext(
+            groupId: founded.namespaceId, applicationId: applicationId ?? "", name: name, initArgs: .object([:]))
+        let lobby = AppNamespace(
+            id: founded.namespaceId, name: name, applicationId: applicationId ?? Battleships.packageName, memberCount: 1)
         if !lobbies.contains(where: { $0.id == lobby.id }) { lobbies.insert(lobby, at: 0) }
         phase = .loaded
         return lobby
     }
 }
 
-/// Creating a match, from the lobby and from a finished match's rematch: allocate it in the
-/// lobby, create the game context beside the lobby's (the namespace root group, so the game's
-/// `xcall` reaches the lobby), then record the context in the lobby. (The web app's `createMatch`.)
+/// Creating a match, from the lobby and from a finished match's rematch: `createMatch` in the
+/// lobby's instance starts it (no context per match on 1.0). (The web app's `createMatch`.)
 public enum MatchMaker {
     public static func create(
-        backend: any BattleshipsBackend, namespace: AppNamespace, lobbyContextId: String, opponent: String
+        backend: any BattleshipsBackend, namespace: AppNamespace, appId: String, opponent: String
     ) async throws -> MatchRef {
-        let key = opponent.trimmingCharacters(in: .whitespaces).lowercased()
-        guard LobbyInvitation.isKey(key) else { throw BattleshipsError.invalid("That is not a valid player key.") }
-        var applicationId = namespace.applicationId
-        if applicationId.isEmpty {
-            // A lobby opened straight from an invitation does not know its application yet.
-            applicationId = try await backend.app.listNamespaces().first { $0.id == namespace.id }?.applicationId ?? ""
-        }
-        guard !applicationId.isEmpty else { throw BattleshipsError.invalid("The lobby is still syncing. Try again in a moment.") }
-        let lobby = LobbyClient.make(backend.app.contract, contextId: lobbyContextId)
-        let matchId = try await lobby.createMatch(player2: key)
-        guard let created = try await lobby.getMatches().first(where: { $0.matchId == matchId }) else {
-            throw BattleshipsError.invalid("That match no longer exists in this lobby.")
-        }
-        let initArgs: JSONValue = .object([
-            "player1": .string(created.player1),
-            "player2": .string(created.player2),
-            "player2_account": .string(created.player2Account),
-            "lobby_context_id": .string(lobbyContextId),
-            "match_id": .string(matchId),
-        ])
-        let contextId = try await backend.createServiceContext(
-            groupId: namespace.id, applicationId: applicationId, service: Battleships.gameService,
-            name: "match", initArgs: initArgs)
-        try await lobby.setMatchContextId(matchId: matchId, contextId: contextId)
-        return MatchRef(
-            namespaceId: namespace.id, lobbyContextId: lobbyContextId, matchId: matchId, contextId: contextId,
-            opponent: key)
+        let key = opponent.trimmingCharacters(in: .whitespaces)
+        guard LobbyInvitation.isKey(key) else { throw BattleshipsError.invalid("That is not a valid player.") }
+        let matchId = try await BattleshipsContract(backend.contract, appId: appId).createMatch(player2: key)
+        return MatchRef(namespaceId: namespace.id, appId: appId, matchId: matchId, opponent: key)
     }
 }
 
@@ -93,11 +63,13 @@ public enum MatchMaker {
 @MainActor
 public final class LobbyModel: ObservableObject {
     @Published public private(set) var phase: LoadPhase = .loading
-    @Published public private(set) var lobbyContextId: String?
+    @Published public private(set) var appId: String?
     @Published public private(set) var matches: [MatchSummary] = []
     @Published public private(set) var players: [PlayerEntry] = []
     @Published public private(set) var stats: PlayerStatsView?
     @Published public private(set) var history: [MatchRecord] = []
+    /// Display names members set in the lobby's organization, by account.
+    @Published public private(set) var names: [String: String] = [:]
     @Published public private(set) var me: String
     @Published public private(set) var challenging: String?
     @Published public var notice: String?
@@ -114,7 +86,7 @@ public final class LobbyModel: ObservableObject {
     ) {
         self.backend = backend
         self.namespace = namespace
-        self.me = backend.app.account
+        self.me = backend.account
         self.syncAttempts = syncAttempts
         self.syncDelay = syncDelay
     }
@@ -123,7 +95,7 @@ public final class LobbyModel: ObservableObject {
 
     /// Players who opened this lobby, other than you: who you can challenge.
     public var opponents: [PlayerEntry] {
-        players.filter { $0.player.lowercased() != me.lowercased() && $0.account.lowercased() != backend.app.account.lowercased() }
+        players.filter { $0.player.lowercased() != me.lowercased() && $0.account.lowercased() != backend.account.lowercased() }
     }
 
     /// Your matches, the ones still going first, newest first within each.
@@ -148,22 +120,23 @@ public final class LobbyModel: ObservableObject {
     }
 
     public func ref(for match: MatchSummary) -> MatchRef? {
-        guard let lobbyContextId, let contextId = match.contextId, !contextId.isEmpty else { return nil }
-        return MatchRef(
-            namespaceId: namespace.id, lobbyContextId: lobbyContextId, matchId: match.matchId, contextId: contextId,
-            opponent: opponent(in: match))
+        guard let appId else { return nil }
+        return MatchRef(namespaceId: namespace.id, appId: appId, matchId: match.matchId, opponent: opponent(in: match))
     }
 
-    /// Find the lobby context, make sure this account is in it, record who you play as, read it all.
+    /// "You", their name in the lobby, or a short handle.
+    public func displayName(_ key: String) -> String { Names.player(key, me: me, names: names) }
+
+    /// Find the lobby's app instance, record who you play as, read it all.
     public func load() async {
-        if lobbyContextId == nil {
+        if appId == nil {
             phase = .loading
             for attempt in 0..<syncAttempts {
                 if attempt > 0 { await pause(syncDelay) }
                 if Task.isCancelled { return }
                 do {
-                    if let found = try await resolveLobbyContext() {
-                        lobbyContextId = found
+                    if let found = try await backend.listContexts(groupId: namespace.id).first {
+                        appId = found
                         break
                     }
                 } catch {
@@ -173,19 +146,16 @@ public final class LobbyModel: ObservableObject {
                     }
                 }
             }
-            guard let lobbyContextId else {
-                phase = .failed("This lobby hasn't synced to your relay yet. Pull to refresh in a moment.")
+            guard appId != nil else {
+                phase = .failed("This lobby isn't ready yet. Pull to refresh in a moment.")
                 return
             }
-            if (try? await backend.app.isMember(contextId: lobbyContextId)) != true {
-                try? await backend.app.joinContext(contextId: lobbyContextId)
-            }
         }
-        if !registered, let lobbyContextId {
-            if let key = try? await LobbyClient.make(backend.app.contract, contextId: lobbyContextId).registerPlayer(),
+        if !registered, let appId {
+            if let key = try? await BattleshipsContract(backend.contract, appId: appId).registerPlayer(),
                 LobbyInvitation.isKey(key)
             {
-                me = key.lowercased()
+                me = key
                 registered = true
             }
         }
@@ -194,8 +164,8 @@ public final class LobbyModel: ObservableObject {
 
     /// Re-read the lobby's matches, players, your record and the history.
     public func refresh() async {
-        guard let lobbyContextId else { return }
-        let lobby = LobbyClient.make(backend.app.contract, contextId: lobbyContextId)
+        guard let appId else { return }
+        let lobby = BattleshipsContract(backend.contract, appId: appId)
         do {
             matches = try await lobby.getMatches()
             phase = .loaded
@@ -209,11 +179,14 @@ public final class LobbyModel: ObservableObject {
         if let list = try? await lobby.getPlayers() { players = list }
         if let record = try? await lobby.getPlayerStats(player: me) { stats = record }
         if let records = try? await lobby.getHistory() { history = records }
+        if let members = try? await backend.listMembers(groupId: namespace.id) {
+            names = Dictionary(members.compactMap { m in m.name.map { (m.identity, $0) } }, uniquingKeysWith: { a, _ in a })
+        }
     }
 
-    /// Challenge `opponent`: a new match, its game context, and where to open it.
+    /// Challenge `opponent`: a new match, and where to open it.
     public func challenge(_ opponent: String) async -> MatchRef? {
-        guard let lobbyContextId else {
+        guard let appId else {
             notice = "The lobby is still syncing. Try again in a moment."
             return nil
         }
@@ -221,7 +194,7 @@ public final class LobbyModel: ObservableObject {
         defer { challenging = nil }
         do {
             let ref = try await MatchMaker.create(
-                backend: backend, namespace: namespace, lobbyContextId: lobbyContextId, opponent: opponent)
+                backend: backend, namespace: namespace, appId: appId, opponent: opponent)
             await refresh()
             return ref
         } catch {
@@ -230,19 +203,19 @@ public final class LobbyModel: ObservableObject {
         }
     }
 
-    /// A link that brings someone into this lobby (and every match context in it).
+    /// A link that brings someone into this lobby's organization (a passkey step-up).
     public func invitationLink() async throws -> String {
-        let signed = try await backend.app.createInvitation(namespaceId: namespace.id)
+        let signed = try await backend.createInvitation(namespaceId: namespace.id)
         return try LobbyInvitation(invitation: signed, lobbyName: name, inviterKey: me).link()
     }
 
-    /// Keep the lobby fresh while it is on screen: the relay's events when it streams, and a poll
-    /// either way (someone joining emits no event the lobby context sees).
+    /// Keep the lobby fresh while it is on screen: the instance's event stream, and a poll either
+    /// way (someone joining the organization emits no event in the instance).
     public func live() async {
-        guard let lobbyContextId else { return }
+        guard let appId else { return }
         await withTaskGroup(of: Void.self) { group in
-            if backend.app.canSubscribe {
-                let stream = backend.app.events(contextId: lobbyContextId)
+            if backend.canSubscribe {
+                let stream = backend.events(contextId: appId)
                 group.addTask { [weak self] in
                     do {
                         for try await _ in stream { await self?.refresh() }
@@ -257,21 +230,6 @@ public final class LobbyModel: ObservableObject {
                 }
             }
         }
-    }
-
-    /// The context in the namespace's root group that runs the lobby service. Match contexts sit
-    /// in the same group, so "the first one" is wrong as soon as a match exists (the web app's
-    /// note in `useBattleshipsLobby`). A relay that does not say falls back to the first.
-    private func resolveLobbyContext() async throws -> String? {
-        let ids = try await backend.app.listContexts(groupId: namespace.id)
-        guard !ids.isEmpty else { return nil }
-        var anyNamed = false
-        for id in ids {
-            guard let service = try? await backend.serviceName(contextId: id) else { continue }
-            if service == Battleships.lobbyService { return id }
-            anyNamed = true
-        }
-        return anyNamed ? nil : ids.first
     }
 }
 
@@ -304,7 +262,7 @@ public final class InvitationModel: ObservableObject {
         return true
     }
 
-    /// Join. `backend` is read again after `didJoin`, which may hand the session the admitting relay.
+    /// Join (`POST /invites/{token}/redeem`). `backend` is read again after `didJoin`.
     public func accept(
         backend: @escaping @MainActor () -> (any MeroAppBackend)?,
         didJoin: @escaping @MainActor () async -> Void

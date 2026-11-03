@@ -13,7 +13,6 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -36,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import network.calimero.chat.app.ApprovalsModel
 import network.calimero.chat.app.ProfileStore
 import network.calimero.chat.app.SessionStage
 import network.calimero.chat.app.WorkspacesModel
@@ -44,11 +44,12 @@ import network.calimero.chat.data.Workspace
 
 private enum class WorkspaceDialog { NONE, CREATE, JOIN, NAME }
 
-/** The account's workspaces (namespaces running chat), with create and join. */
+/** The account's workspaces (orgs running chat), with create and join, and what waits for approval. */
 @Composable
 fun WorkspacesScreen(
     model: WorkspacesModel,
     profile: ProfileStore,
+    approvals: ApprovalsModel,
     session: SessionStage.SignedIn,
     onOpen: (Workspace) -> Unit,
     onSignOut: () -> Unit,
@@ -57,9 +58,9 @@ fun WorkspacesScreen(
     val name by profile.displayName.collectAsStateWithLifecycle()
     var dialog by remember { mutableStateOf(if (name.isBlank()) WorkspaceDialog.NAME else WorkspaceDialog.NONE) }
 
-    // Re-list whenever the relay situation changes: a join can give the account its first relay,
-    // and listings need the relay session.
-    LaunchedEffect(session.relayUrl, session.live) { model.refresh() }
+    // Re-list for each account, then read what waits for approval in it and in each workspace.
+    LaunchedEffect(session.account) { model.refresh().join() }
+    LaunchedEffect(state.workspaces) { approvals.load(state.workspaces.map { it.id }) }
 
     Scaffold(
         topBar = {
@@ -71,23 +72,22 @@ fun WorkspacesScreen(
             )
         },
         floatingActionButton = {
-            if (session.hasRelay) {
-                ExtendedFloatingActionButton(
-                    onClick = { dialog = WorkspaceDialog.CREATE },
-                    icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-                    text = { Text("New workspace") },
-                )
-            }
+            ExtendedFloatingActionButton(
+                onClick = { dialog = WorkspaceDialog.CREATE },
+                icon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                text = { Text("New workspace") },
+            )
         },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             StatusStrip(
-                busy = state.busy ?: if (session.connecting) "Connecting to your relay…" else null,
+                busy = state.busy,
                 error = state.error,
-                notice = state.notice ?: session.note,
+                notice = state.notice,
                 onDismiss = model::clearMessages,
             )
-            WorkspacesBody(state, session, onJoin = { dialog = WorkspaceDialog.JOIN }, onOpen = onOpen)
+            ApprovalsCard(approvals, orgs = state.workspaces.map { it.id })
+            WorkspacesBody(state, onJoin = { dialog = WorkspaceDialog.JOIN }, onOpen = onOpen)
         }
     }
 
@@ -99,7 +99,7 @@ fun WorkspacesScreen(
             title = { Text("Join ${invite.workspaceName ?: "this workspace"}?") },
             text = {
                 Text(
-                    "Your account will be admitted through a relay the invitation names. You'll join as \"${name.ifBlank { "(set your name first)" }}\".",
+                    "You'll join the workspace with your Calimero account, as \"${name.ifBlank { "(set your name first)" }}\".",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             },
@@ -143,19 +143,10 @@ private fun WorkspacesTopBar(
 @Composable
 private fun WorkspacesBody(
     state: WorkspacesState,
-    session: SessionStage.SignedIn,
     onJoin: () -> Unit,
     onOpen: (Workspace) -> Unit,
 ) {
     when {
-        !session.hasRelay ->
-            EmptyState(
-                title = "Join your first workspace",
-                body =
-                    "No relay serves your account yet, which is normal for a new account. Open an invitation " +
-                        "link someone sent you (or paste it here) to join their workspace.",
-                action = { Button(onClick = onJoin) { Text("Paste an invitation link") } },
-            )
         state.workspaces.isEmpty() && state.loaded && !state.loading ->
             EmptyState(
                 title = "No workspaces yet",

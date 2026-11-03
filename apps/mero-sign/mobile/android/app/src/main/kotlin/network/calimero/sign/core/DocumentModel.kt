@@ -9,7 +9,7 @@ data class SignerRow(
     val account: String,
     val name: String?,
     val isMe: Boolean,
-    /** Nanoseconds, when they signed. */
+    /** Milliseconds since the epoch, when they signed. */
     val signedAt: ULong?,
     val required: Boolean,
 ) {
@@ -192,8 +192,8 @@ class DocumentModel(
         attempt {
             val signed = stamper.stamp(original, png, placement)
             val newHash = DocumentHash.sha256Hex(signed)
-            val blobId = SignIds.blobHex(admin.uploadBlob(signed, agreement.contextId))
-            if (blobId.isEmpty()) throw SignModelException("Your relay returned a blob id this app can't use.")
+            val blobId = SignIds.blobHex(admin.uploadBlob(signed, "application/pdf", agreement.contextId))
+            if (blobId.isEmpty()) throw SignModelException("Your cluster returned a blob id this app can't use.")
             client.signDocument(documentId, entry.document.hash, blobId, signed.size.toULong(), newHash)
             client.markParticipantSigned(documentId)
             if (saveToLibrary && _chosenIsNew.value) {
@@ -206,7 +206,7 @@ class DocumentModel(
             loadPdf(force = true)
         }.onFailure {
             val text = SignErrorText.describe(it)
-            if (text.contains("changed while you were signing", ignoreCase = true)) {
+            if (SignErrorText.isConflict(it) || text.contains("changed while you were signing", ignoreCase = true)) {
                 error.value = "Someone signed this document while you were placing your signature. " +
                     "It has been reloaded — sign again on the new version."
                 _step.value = SigningStep.IDLE

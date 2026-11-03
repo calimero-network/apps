@@ -1,41 +1,73 @@
 [package]
-name        = "mero-vote"
-description = "Private polls with verifiable tallies"
-# NOT the release version — the registry owns the number (see kv-store).
-version     = "0.0.1"
-edition.workspace    = true
-authors.workspace    = true
-license.workspace    = true
-repository.workspace = true
+name = "mero-vote"
+description = "Private polls with verifiable tallies, on the component SDK"
+# NOT the release version: the release workflow takes the next appVersion from
+# the registry and passes it to `mero-component bundle --app-version`. Cargo
+# requires the field; bundling locally without --app-version uses it.
+version = "0.0.1"
+edition = "2021"
+authors = ["Calimero Limited <info@calimero.network>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/calimero-network/apps"
 publish = false
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+# A `calimero:app` component. No `rlib`: the tests run the BUILT component on
+# core's engine (tests/common/mod.rs), not the crate linked natively.
+crate-type = ["cdylib"]
 
+# Core at `component-core-tag` (root Cargo.toml), the same tag for every core
+# crate; scripts/check-component-pins.py asserts it. A standalone crate cannot
+# inherit `[workspace.dependencies]`.
 [dependencies]
+calimero-app-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8" }
 mero-vote-crypto = { path = "crates/crypto" }
-calimero-sdk.workspace     = true
-calimero-storage.workspace = true
-thiserror.workspace        = true
-hex.workspace              = true
-sha2.workspace             = true
+serde = { version = "1", features = ["derive"] }
+sha2 = "0.10.8"
+hex = "0.4.3"
 
-[dev-dependencies]
-calimero-storage = { workspace = true, features = ["testing"] }
+# The harness (`TestApp`, `run_scenario`) and the builder the tests build this
+# crate with, for `cargo test` on the host only. The crypto crate plays the
+# browser's half of the protocol in tests/harness.rs.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+calimero-app-sdk   = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8", features = ["testing"] }
+calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8" }
+serde_json = "1"
 
+# Read by `mero-component bundle` (tools/component-bundle), with the keys
+# `cargo mero bundle` reads for a v1 app.
 [package.metadata.calimero]
 package = "com.calimero.mero-vote"
 name = "Mero Vote"
-description = "Private polls with verifiable tallies. Ballots are encrypted in the browser, proven well-formed in zero knowledge, and tallied by every member from the same frozen ballot box — no host sees a vote, and no one has to trust the count."
+description = "Private polls with verifiable tallies. Ballots are encrypted in the browser, proven well-formed in zero knowledge, and tallied from the same sealed ballot box by anyone who audits — no host sees a vote, and no one has to trust the count."
 author = "Calimero"
 slug = "com.calimero.mero-vote"
 icon = "../app/public/icon-512.png"
 category = "productivity"
 tags = ["voting", "polls", "privacy", "zero-knowledge", "governance"]
 github = "https://github.com/calimero-network/apps"
-min-runtime-version = "0.12.0-rc.3"
-# Bare origin, no trailing slash (compared by exact origin). Resolves to nothing
-# until the Vercel project `mero-vote` exists; see docs/VERCEL.md.
+# `component-min-runtime-version` in the root Cargo.toml: a node compares it
+# with its own release.
+min-runtime-version = "1.0.0-rc.8"
+# The listing's link, and an origin the node may send a person back to from
+# its consent page. NOT where the production frontend runs: a Cloud node trusts
+# passkey ceremonies only from frontends it serves from a bundle, so the
+# production frontend is the one packed below (docs/COMPONENT-APPS.md).
 frontend = "https://mero-vote.vercel.app"
-# The built frontend `cargo mero bundle` packs, so the node serves it from the app's own origin.
+# The built frontend the bundle carries; the cluster serves it from the
+# package's own origin. Build it first: `pnpm -F mero-vote build`.
 frontend-dir = "../app/dist"
+
+# Standalone: excluded from the root workspace (root Cargo.toml), its own
+# Cargo.lock, as core's component apps are. The crypto crate is a member, and a
+# default one, so `cargo test` here also runs its unit tests and the
+# cross-implementation vectors (crates/crypto/tests/vectors.rs).
+[workspace]
+members = ["crates/crypto"]
+default-members = [".", "crates/crypto"]
+
+# The component pays for every instruction in fuel (200M per call or view), and
+# ballot verification is curve arithmetic: optimise the whole graph as one unit.
+[profile.release]
+codegen-units = 1
+lto = true

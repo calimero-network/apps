@@ -1,5 +1,12 @@
 package network.calimero.sheets.core
 
+import com.calimero.mero.AppError
+import com.calimero.mero.ConfirmCancelled
+import com.calimero.mero.ConsentStale
+import com.calimero.mero.LoginRequired
+import com.calimero.mero.app.SignedOutException
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import network.calimero.sheets.generated.AxisEntryView
 import network.calimero.sheets.generated.AxisSize
 import network.calimero.sheets.generated.SheetLayout
@@ -122,5 +129,19 @@ class SheetsFormatTest {
         assertEquals(2, grid.colAt(140.0))
         assertEquals(1, grid.rowAt(47.9))
         assertEquals(24.0, grid.frozenHeight, 0.0)
+    }
+
+    @Test fun `Calimero 1_0 errors read as words`() {
+        assertEquals("You're signed out. Sign in again.", SheetsFormat.errorText(SignedOutException("getAllCells")))
+        assertEquals("Your session ended. Sign in again.", SheetsFormat.errorText(LoginRequired("expired")))
+        assertEquals("Sheet not found", SheetsFormat.errorText(AppError("Sheet not found")))
+        val own = JsonObject(mapOf("code" to JsonPrimitive("Forbidden"), "fields" to JsonObject(mapOf("message" to JsonPrimitive("Viewers can't edit")))))
+        assertEquals("Viewers can't edit", SheetsFormat.errorText(AppError("app error", own)))
+        assertEquals(
+            "Your role in this spreadsheet doesn't allow that.",
+            SheetsFormat.errorText(AppError("app error", JsonObject(mapOf("code" to JsonPrimitive("Forbidden"))))),
+        )
+        assertEquals("You cancelled the passkey prompt, so nothing changed.", SheetsFormat.errorText(ConfirmCancelled()))
+        assertEquals("That approval expired. Start it again.", SheetsFormat.errorText(ConsentStale("stale")))
     }
 }

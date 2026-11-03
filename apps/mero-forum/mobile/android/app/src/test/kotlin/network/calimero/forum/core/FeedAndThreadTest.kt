@@ -11,8 +11,8 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.int
-import network.calimero.forum.generated.CommentPage
-import network.calimero.forum.generated.PostPage
+import network.calimero.forum.contract.CommentPage
+import network.calimero.forum.contract.PostPage
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -29,7 +29,7 @@ class FeedModelTest {
     fun `pages the feed by cursor`() =
         runTest {
             val (backend, script) = makeBackend()
-            script.on("list_posts") { call ->
+            script.on("listPosts") { call ->
                 if (call.string("cursor") == null) PostPage(listOf(post("p1"), post("p2")), "p2") else PostPage(listOf(post("p2"), post("p3")), null)
             }
             val model = feed(backend)
@@ -40,7 +40,7 @@ class FeedModelTest {
             model.loadMore()
             assertEquals(listOf("p1", "p2", "p3"), model.posts.value.map { it.id })
             assertTrue(!model.hasMore.value)
-            val calls = backend.recording.calls("list_posts")
+            val calls = backend.recording.calls("listPosts")
             assertEquals(listOf(RecordedContractCall.Path.QUERY, RecordedContractCall.Path.QUERY), calls.map { it.path })
             assertEquals("new", calls.first().string("sort"))
             assertEquals(CTX, calls.first().contextId)
@@ -51,7 +51,7 @@ class FeedModelTest {
     fun `sort restarts the feed`() =
         runTest {
             val (backend, script) = makeBackend()
-            script.on("list_posts") { call -> PostPage(listOf(post(call.string("sort") ?: "?")), null) }
+            script.on("listPosts") { call -> PostPage(listOf(post(call.string("sort") ?: "?")), null) }
             val model = feed(backend)
             model.refresh()
             model.setSort(FeedSort.TOP)
@@ -62,7 +62,7 @@ class FeedModelTest {
     fun `vote shows at once and undoes on failure`() =
         runTest {
             val (backend, script) = makeBackend()
-            script.on("list_posts") { PostPage(listOf(post("p1", score = 3)), null) }
+            script.on("listPosts") { PostPage(listOf(post("p1", score = 3)), null) }
             val model = feed(backend)
             model.refresh()
             model.vote(model.posts.value[0], 1)
@@ -83,8 +83,8 @@ class FeedModelTest {
     fun `create post needs title and text then refreshes`() =
         runTest {
             val (backend, script) = makeBackend()
-            script.on("create_post") { "p9" }
-            script.on("list_posts") { PostPage(listOf(post("p9", author = ME)), null) }
+            script.on("createPost") { "p9" }
+            script.on("listPosts") { PostPage(listOf(post("p9", author = ME)), null) }
             val model = feed(backend)
             try {
                 model.createPost("Hi", " ")
@@ -92,7 +92,7 @@ class FeedModelTest {
             } catch (_: ForumModelException) {
             }
             model.createPost(" Hello ", "World")
-            val call = backend.recording.calls("create_post").first()
+            val call = backend.recording.calls("createPost").first()
             assertEquals("Hello", call.string("title"))
             assertEquals("World", call.string("body"))
             assertEquals(listOf("p9"), model.posts.value.map { it.id })
@@ -103,7 +103,7 @@ class FeedModelTest {
     fun `delete and moderate`() =
         runTest {
             val (backend, script) = makeBackend()
-            script.on("list_posts") { PostPage(listOf(post("p1", author = ME), post("p2")), null) }
+            script.on("listPosts") { PostPage(listOf(post("p1", author = ME), post("p2")), null) }
             script.on("moderators") { listOf(ME) }
             val model = feed(backend)
             model.refresh()
@@ -113,17 +113,17 @@ class FeedModelTest {
             assertEquals(
                 "p1",
                 backend.recording
-                    .calls("delete_post")
+                    .calls("deletePost")
                     .first()
-                    .string("post_id"),
+                    .string("postId"),
             )
             model.moderate(model.posts.value[0])
             assertEquals(
                 "p2",
                 backend.recording
-                    .calls("moderate_post")
+                    .calls("moderatePost")
                     .first()
-                    .string("post_id"),
+                    .string("postId"),
             )
             assertTrue(model.posts.value.isEmpty())
         }
@@ -132,8 +132,8 @@ class FeedModelTest {
     fun `a failed delete puts the post back`() =
         runTest {
             val (backend, script) = makeBackend()
-            script.on("list_posts") { PostPage(listOf(post("p1", author = ME)), null) }
-            script.fail("delete_post")
+            script.on("listPosts") { PostPage(listOf(post("p1", author = ME)), null) }
+            script.fail("deletePost")
             val model = feed(backend)
             model.refresh()
             model.delete(model.posts.value[0])
@@ -154,7 +154,7 @@ class FeedModelTest {
                 JsonArray(listOf(JsonPrimitive(ME), JsonPrimitive(BOB))),
                 (
                     backend.recording
-                        .calls("set_moderators")
+                        .calls("setModerators")
                         .last()
                         .args as JsonObject
                 )["accounts"],
@@ -178,31 +178,31 @@ class FeedModelTest {
     fun `name pushed to the forum or adopted`() =
         runTest {
             val (backend, script) = makeBackend()
-            script.on("get_nickname") { "" }
+            script.on("getNickname") { "" }
             feed(backend, "Ana").syncName()
             assertEquals(
                 "Ana",
                 backend.recording
-                    .calls("set_nickname")
+                    .calls("setNickname")
                     .first()
                     .string("name"),
             )
 
             val (other, otherScript) = makeBackend()
-            otherScript.on("get_nickname") { "Remote" }
+            otherScript.on("getNickname") { "Remote" }
             val store = MemoryNameStore()
             val adopting = FeedModel(other, forumRef(), store)
             adopting.syncName()
             assertEquals("Remote", store.name)
             assertEquals("Remote", adopting.displayName.value)
-            assertTrue(other.recording.calls("set_nickname").isEmpty())
+            assertTrue(other.recording.calls("setNickname").isEmpty())
         }
 
     @Test
     fun `rename updates your posts`() =
         runTest {
             val (backend, script) = makeBackend()
-            script.on("list_posts") { PostPage(listOf(post("p1", author = ME, name = "Old")), null) }
+            script.on("listPosts") { PostPage(listOf(post("p1", author = ME, name = "Old")), null) }
             val store = MemoryNameStore("Old")
             val model = FeedModel(backend, forumRef(), store)
             model.refresh()
@@ -216,7 +216,7 @@ class FeedModelTest {
     fun `live events refresh the feed`() =
         runTest {
             val (backend, script) = makeBackend()
-            script.on("list_posts") { PostPage(listOf(post("p1")), null) }
+            script.on("listPosts") { PostPage(listOf(post("p1")), null) }
             val model = feed(backend)
             val watching = backgroundScope.launch { model.watch() }
             runCurrent()
@@ -235,8 +235,8 @@ class ThreadModelTest {
     fun `loads the post and its replies`() =
         runTest {
             val (backend, script) = makeBackend()
-            script.on("get_post") { post("p1", comments = 2u) }
-            script.on("list_comments") { call ->
+            script.on("getPost") { post("p1", comments = 2u) }
+            script.on("listComments") { call ->
                 if (call.string("cursor") == null) CommentPage(listOf(comment("c1")), "c1") else CommentPage(listOf(comment("c2")), null)
             }
             val model = thread(backend)
@@ -248,9 +248,9 @@ class ThreadModelTest {
             assertEquals(
                 "p1",
                 backend.recording
-                    .calls("list_comments")
+                    .calls("listComments")
                     .first()
-                    .string("post_id"),
+                    .string("postId"),
             )
         }
 
@@ -258,15 +258,15 @@ class ThreadModelTest {
     fun `reply posts and reloads`() =
         runTest {
             val (backend, script) = makeBackend()
-            script.on("get_post") { post("p1", comments = 1u) }
-            script.on("create_comment") { "c9" }
-            script.on("list_comments") { CommentPage(listOf(comment("c9", author = ME)), null) }
+            script.on("getPost") { post("p1", comments = 1u) }
+            script.on("createComment") { "c9" }
+            script.on("listComments") { CommentPage(listOf(comment("c9", author = ME)), null) }
             val model = thread(backend)
             model.reply("  thanks  ")
             assertEquals(
                 "thanks",
                 backend.recording
-                    .calls("create_comment")
+                    .calls("createComment")
                     .first()
                     .string("body"),
             )
@@ -278,8 +278,8 @@ class ThreadModelTest {
     fun `comment votes edits and removals`() =
         runTest {
             val (backend, script) = makeBackend()
-            script.on("get_post") { post("p1", comments = 2u) }
-            script.on("list_comments") { CommentPage(listOf(comment("c1", author = ME), comment("c2")), null) }
+            script.on("getPost") { post("p1", comments = 2u) }
+            script.on("listComments") { CommentPage(listOf(comment("c1", author = ME), comment("c2")), null) }
             val model = thread(backend)
             model.load()
             model.voteComment(model.comments.value[1], -1)
@@ -289,9 +289,9 @@ class ThreadModelTest {
             assertEquals(
                 "c1",
                 backend.recording
-                    .calls("edit_comment")
+                    .calls("editComment")
                     .first()
-                    .string("comment_id"),
+                    .string("commentId"),
             )
             model.deleteComment(model.comments.value[0])
             model.moderateComment(model.comments.value[0])
@@ -300,9 +300,9 @@ class ThreadModelTest {
             assertEquals(
                 "c2",
                 backend.recording
-                    .calls("moderate_comment")
+                    .calls("moderateComment")
                     .first()
-                    .string("comment_id"),
+                    .string("commentId"),
             )
         }
 
@@ -310,8 +310,8 @@ class ThreadModelTest {
     fun `removing the post closes the thread`() =
         runTest {
             val (backend, script) = makeBackend()
-            script.on("get_post") { post("p1") }
-            script.on("list_comments") { CommentPage(emptyList(), null) }
+            script.on("getPost") { post("p1") }
+            script.on("listComments") { CommentPage(emptyList(), null) }
             val model = thread(backend)
             model.load()
             assertTrue(model.moderatePost())
@@ -322,8 +322,8 @@ class ThreadModelTest {
     fun `post vote rolls back`() =
         runTest {
             val (backend, script) = makeBackend()
-            script.on("get_post") { post("p1", score = 1) }
-            script.on("list_comments") { CommentPage(emptyList(), null) }
+            script.on("getPost") { post("p1", score = 1) }
+            script.on("listComments") { CommentPage(emptyList(), null) }
             script.fail("vote")
             val model = thread(backend)
             model.load()
