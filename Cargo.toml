@@ -65,6 +65,8 @@ exclude = [
   "apps/conformance/logic",
   "apps/scaffolding-e2e/logic",
   "apps/mero-sign/logic",
+  "apps/battleships/logic",
+  "apps/battleships/logic/crates/rules",
 ]
 
 [workspace.package]

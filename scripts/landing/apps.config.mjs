@@ -226,19 +226,21 @@ export const APPS = {
     ],
   },
   battleships: {
-    e2eDir: 'e2e',
-    availability: 'web+desktop',
-    trust: ['Boards never leave your device', 'Commit-reveal placement', 'Node or account'],
+    // A component app (calimero-app-sdk, merod local, CalimeroClient): no
+    // Playwright, so no generated landing spec. docs/COMPONENT-APPS.md.
+    e2eDir: null,
+    availability: 'web',
+    trust: ['Boards never leave your device', 'Commit-reveal placement', 'No passwords'],
     explainer: [
-      'Turn-based Battleships for two players, where the interesting part is not the game — it is the trust model. Your fleet lives on your own device and nowhere else: not on your opponent’s node, not on yours, and not on the relay if you play from an account.',
-      'Placement is commit-reveal: you commit to a board up front and reveal it at the end, so neither side can quietly move a ship after seeing where the shots are going. A lobby service handles matchmaking and a separate game service runs each match.',
+      'Turn-based Battleships for two players, where the interesting part is not the game — it is the trust model. Your fleet lives on your own device and nowhere else: not with your opponent, not on the cluster, not in the app.',
+      'Placement is commit-reveal: you commit to a board up front and reveal it at the end, so neither side can quietly move a ship after seeing where the shots are going. A lobby is one app instance that pairs players, runs every match and keeps the record.',
     ],
     features: [
-      { icon: 'EyeOff', title: 'A board your opponent cannot read', body: 'Ships live in your browser’s storage. The contract holds only a hash of them, so there is no copy on any node to inspect.' },
+      { icon: 'EyeOff', title: 'A board your opponent cannot read', body: 'Ships live in your browser’s storage. The contract holds only a hash of them, so there is no copy anywhere to inspect.' },
       { icon: 'LockCheck', title: 'Commit-reveal placement', body: 'You commit to a fleet before play and reveal it after. Every answer you gave is replayed against it, so a lie costs the game.' },
-      { icon: 'Target', title: 'Matchmaking without a server', body: 'A lobby service pairs players and a game service runs each match, both inside the same bundle.' },
-      { icon: 'ArrowUpRight', title: 'Results reported back', body: 'A finished match tells the lobby who won through a cross-context call, so history survives the game.' },
-      { icon: 'ExternalLink', title: 'Invite by link', body: 'Recursive namespace invitations. Play from a node you run, or from a Calimero account through its relay.' },
+      { icon: 'Target', title: 'Matchmaking without a game server', body: 'The lobby pairs players and runs each match in the same contract, one log ordering every shot.' },
+      { icon: 'ArrowUpRight', title: 'Results recorded with the game', body: 'The call that decides a match records its winner, history and stats in the lobby at once.' },
+      { icon: 'ExternalLink', title: 'Invite by link', body: 'One link joins the lobby’s organization. Sign in with a passkey: no password, no email.' },
     ],
   },
 

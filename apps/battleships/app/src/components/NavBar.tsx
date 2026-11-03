@@ -1,4 +1,3 @@
-import React from 'react';
 import { nodeBasename } from '@calimero-apps/node-served';
 import {
   Navbar as MeroNavbar,

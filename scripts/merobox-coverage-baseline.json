@@ -1,9 +1,4 @@
 {
-  "battleships": [
-    "get_current_user",
-    "get_history",
-    "get_players"
-  ],
   "mero-chat": [
     "delete_draft",
     "delete_message",

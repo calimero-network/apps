@@ -1,9 +1,8 @@
 # Rust / WASM
 logic/target/
-# NOT `res/` wholesale — that hides res/abi.json and res/state-schema.json, and
-# ci.yml's ABI-staleness gate then has nothing to diff and passes while checking
-# nothing. The root .gitignore covers the build output for both the primary
-# crate and the service crates under logic/crates/*/res/.
+# NOT `res/` wholesale — that hides res/abi.json, and the Components workflow's
+# ABI-staleness check then has nothing to diff. The root .gitignore covers the
+# built res/*.wasm.
 logic/res/*.mpk
 logic/res/bundle-temp/
 logic/dist/
@@ -11,13 +10,8 @@ logic/dist/
 # Frontend
 app/node_modules/
 app/dist/
-app/playwright-report/
-app/test-results/
-app/e2e-artifacts/
-
-# merobox runtime data (~400 MB of node state)
-logic/workflows/data/
-logic/workflows/**/.pids/
+app/dist-types/
+app/.env.development.local
 
 # misc
 .DS_Store
