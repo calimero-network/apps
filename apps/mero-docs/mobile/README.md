@@ -1,14 +1,5 @@
 # Mero Docs: native mobile apps
 
-> **Status: still v1.** The contract and the web frontend moved to the 1.0 runtime (component SDK,
-> app instances, orgs and teams, passkeys; see [`../README.md`](../README.md#mobile)). These native
-> apps still go through the v1 Swift and Kotlin SDKs (`MeroAppSession`: relay, contexts, namespace
-> invitations) and a client generated from the v1 ABI of the `docs` service, and their pinned SDKs
-> have no 1.0 client to replace that with. Until they do, the apps work only against a v1
-> deployment of the app. Do not run `scripts/regenerate-client.sh` until then:
-> `../logic/res/abi.json` is now the component ABI, which the committed v1 clients do not match
-> (the script refuses it).
-
 Native iOS and Android readers for Mero Docs, next to the web editor (`../app`) and the
 contract (`../logic`, package `com.calimero.mero-drive-docs`, one component on Calimero 1.0).
 They have the same screens, copy, icons (SF Symbols and the matching Material icons) and behaviour,
