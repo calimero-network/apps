@@ -26,36 +26,33 @@ import network.calimero.blocks.app.BlocksAppViewModel
 fun MeroBlocksApp(
     vm: BlocksAppViewModel,
     onSignIn: () -> Unit,
+    onSignUp: (String) -> Unit,
     onShare: (String) -> Unit,
 ) {
     BlocksTheme {
-        val session = vm.session
+        val active by vm.sessionFlow.collectAsState()
         val restored by vm.restored.collectAsState()
-        val restoring by session.isRestoring.collectAsState()
-        val auth by session.client.state.collectAsState()
-        val backend by session.backend.collectAsState()
-        val revision by session.revision.collectAsState()
-        val pending by session.pendingInvitation.collectAsState()
+        val waiting by vm.waitingLink.collectAsState()
         val joining by vm.joining.collectAsState()
         val playing by vm.playing.collectAsState()
         var showingSettings by remember { mutableStateOf(false) }
+        val session = active
+        val restoring = session?.isRestoring?.collectAsState()?.value ?: false
+        val backend = session?.backend?.collectAsState()?.value
+        val pending = session?.pendingInvitation?.collectAsState()?.value ?: waiting
 
         when {
             !restored || restoring -> Splash("Restoring your session…")
-            !auth.isDelegated -> SignInScreen(auth = auth, invited = pending != null, onSignIn = onSignIn, onCancel = vm::cancelSignIn)
-            backend == null ->
-                Splash("Connecting to your relay…") {
-                    SecondaryButton(onClick = vm::signOut, fullWidth = false) { ButtonLabel("Sign out") }
-                }
+            session == null || backend == null -> SignInScreen(vm, invited = pending != null, onSignIn = onSignIn, onSignUp = onSignUp)
             else -> {
-                val current = backend!!
+                val revision by session.revision.collectAsState()
                 key(revision) {
                     val world = playing
                     when {
                         world != null -> {
                             BackHandler { vm.play(null) }
                             GameScreen(
-                                backend = current,
+                                backend = backend,
                                 world = world,
                                 myId = vm.myId,
                                 settings = vm.settings,
@@ -68,7 +65,7 @@ fun MeroBlocksApp(
                             BackHandler { showingSettings = false }
                             SettingsScreen(
                                 settings = vm.settings,
-                                account = auth.account.orEmpty(),
+                                account = backend.account,
                                 onSignOut = {
                                     showingSettings = false
                                     vm.signOut()
@@ -78,8 +75,9 @@ fun MeroBlocksApp(
                         }
                         else ->
                             WorldsScreen(
-                                backend = current,
+                                backend = backend,
                                 applicationId = session.applicationId,
+                                approvals = vm::approvals,
                                 onOpen = vm::play,
                                 onJoin = vm::ask,
                                 onShare = onShare,

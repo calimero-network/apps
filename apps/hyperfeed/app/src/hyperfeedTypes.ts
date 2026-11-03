@@ -1,0 +1,2091 @@
+/**
+ * The shapes the Hyperfeed contract takes and answers, as `logic/src/*.rs`
+ * declares them: records keep v1's snake_case fields and JSON numbers (they are
+ * plain serde structs, which the component SDK passes through as they are).
+ *
+ * First generated from v1's ABI by abi-codegen; hand-kept since, because a
+ * component ABI names its types without their shapes. `hyperfeed.test.ts` pins
+ * the method list to the committed `logic/res/abi.json`.
+ */
+
+
+/**
+ * What you let one agent reach on its computer, beyond your Calimero apps:
+ * these folders, a shell, the web. Yours to set (`set_access`); the agent's
+ * runtime enforces it before any tool runs, and an agent with none set keeps
+ * its runtime's default.
+ */
+export interface Access {
+  folders: Folder[];
+  shell: boolean;
+  web: boolean;
+  updated_at: number;
+}
+
+/**
+ * What you let one agent reach, as settings shows it.
+ */
+export interface AccessView {
+  agent: string;
+  folders: Folder[];
+  shell: boolean;
+  web: boolean;
+  updated_at: number;
+}
+
+/**
+ * One thing your agent did, or wants to do, on your behalf.
+ *
+ * Everything but `history` and `reviewed` is written once. `history` merges as
+ * a union of steps, and `reviewed` only ever turns on.
+ */
+export interface Action {
+  id: string;
+  app: string;
+  source_context: string;
+  source_label: string;
+  method: string;
+  category: string;
+  writes: boolean;
+  undoable: boolean;
+  title: string;
+  body: string;
+  why: string;
+  /**
+   * Hex `H(method ‖ args)` from the warrant. The arguments themselves never
+   * leave the agent: this is enough to match the feed row to the delta.
+   */
+  intent_hash: string;
+  /**
+   * The relay account that executed the warrant, as the agent was told.
+   */
+  executor: string;
+  created_at: number;
+  /**
+   * The chain this belongs to: the id of the row that started it.
+   */
+  chain: string;
+  ask: Ask;
+  /**
+   * Why the rules say this needed you, when the agent acted anyway. Empty
+   * when it did not.
+   */
+  breach: string;
+  reviewed: boolean;
+  reviewed_at: number;
+  history: Step[];
+}
+
+/**
+ * One action, as your agent proposes it and settings shows it.
+ */
+export interface ActionDef {
+  /**
+   * Stable within the app, e.g. `edit`; your setting for it is kept by it.
+   */
+  id: string;
+  /**
+   * What it is, for you: "Edit documents".
+   */
+  label: string;
+  /**
+   * One line on what it covers: "Write, format and reorder text".
+   */
+  description: string;
+  /**
+   * The guard that always covers it, or empty when that depends on the
+   * call (sending to someone new): then the category the agent names stands.
+   */
+  category: string;
+  /**
+   * Whether it changes anything. An action that only reads always may run.
+   */
+  writes: boolean;
+  /**
+   * The app's methods it covers, by name.
+   */
+  methods: string[];
+}
+
+/**
+ * What the agent reports for one action.
+ */
+export interface ActionInput {
+  /**
+   * Short app key, e.g. `chat`, `sign`, `crm`. Policies are keyed by it.
+   */
+  app: string;
+  source_context: string;
+  source_label: string;
+  method: string;
+  /**
+   * One of the guard categories, or empty for none.
+   */
+  category: string;
+  writes: boolean;
+  undoable: boolean;
+  title: string;
+  body: string;
+  why: string;
+  /**
+   * `proposed`, `done` or `failed`.
+   */
+  outcome: string;
+  intent_hash: string;
+  executor: string;
+  /**
+   * What went wrong, for a `failed` outcome.
+   */
+  note: string;
+  /**
+   * The chain this continues: the id of the row that led to it (a
+   * notification, or an earlier action). Empty starts a chain of its own.
+   */
+  chain: string;
+  /**
+   * For a proposal: how you resolve it, beyond approve or decline. A
+   * `choose` lets you approve with one of the options; a `reply` lets you
+   * edit the agent's draft before it goes.
+   */
+  ask: Ask;
+  /**
+   * For an outcome: the id of a proposal in the same app you approved with
+   * "Allow for this session" (see [`SESSION_GRANT`]) in the last 12 hours.
+   * Under the app's Ask mode, it is recorded without a breach. Older agents
+   * omit it.
+   */
+  grant: string;
+  /**
+   * What it touched in the app, as [`subject_key`] makes it (`""` for
+   * nothing in particular). A notification about the same thing, with no
+   * chain of its own, joins this action's chain. Older agents omit it.
+   */
+  subject: string;
+  /**
+   * For a draft you send yourself: the call that sends it in its app,
+   * `{"method": ..., "args": {...}}`, where `"=answer"` in an arg is your
+   * edit of the draft. Your client makes it as you when you approve; the
+   * agent never does. Only on a proposal. See `members.rs`.
+   */
+  send_call: string;
+}
+
+/**
+ * One action you set apart from its app's mode.
+ */
+export interface ActionModeView {
+  app: string;
+  action: string;
+  mode: string;
+}
+
+/**
+ * Your setting for one action, kept by `<app>/<action id>`. It outlives the
+ * set it was made under: a new version's action with the same id keeps it.
+ */
+export interface ActionRule {
+  /**
+   * One of [`ACTION_MODES`], or empty to follow the app again.
+   */
+  mode: string;
+  updated_at: number;
+}
+
+/**
+ * An app version's actions, as your agent learned them from its ABI.
+ */
+export interface ActionSet {
+  app: string;
+  application_id: string;
+  actions: ActionDef[];
+  /**
+   * One line for you: what changed, or what the set covers.
+   */
+  summary: string;
+  /**
+   * [`LENS_PROPOSED`], [`LENS_APPROVED`] or [`LENS_REJECTED`].
+   */
+  status: string;
+  updated_at: number;
+}
+
+export interface ActionSetView {
+  app: string;
+  application_id: string;
+  actions: ActionDef[];
+  summary: string;
+  status: string;
+  updated_at: number;
+}
+
+/**
+ * An agent's own account you added to the feed, by account.
+ */
+export interface AgentAccount {
+  /**
+   * The name it reports in with, and the only one it may speak as.
+   */
+  name: string;
+  /**
+   * When you added it, or removed it; the later write wins.
+   */
+  at: number;
+  /**
+   * Removed rows stay, so a removal is not undone by an older add merging in.
+   */
+  removed: boolean;
+}
+
+/**
+ * An agent account, as settings shows it.
+ */
+export interface AgentAccountView {
+  account: string;
+  name: string;
+  added_at: number;
+}
+
+/**
+ * A standing rule for one agent only ("Reply in one paragraph" for your
+ * phone's agent): it goes into that agent's turns after your general rules,
+ * which every agent keeps. Only you add or remove one; removing keeps the
+ * row with `removed`, like [`Rule`].
+ */
+export interface AgentRule {
+  /**
+   * The agent's name, as it reports in: "mero-bot@studio".
+   */
+  agent: string;
+  text: string;
+  created_at: number;
+  removed: boolean;
+  updated_at: number;
+}
+
+/**
+ * One of your rules for one agent, as settings shows it.
+ */
+export interface AgentRuleView {
+  id: string;
+  agent: string;
+  text: string;
+  created_at: number;
+}
+
+/**
+ * The agent's global switch, stored under the single key `"main"`.
+ */
+export interface AgentState {
+  paused: boolean;
+  updated_at: number;
+}
+
+/**
+ * An agent and when it last said it was running (ms).
+ */
+export interface AgentView {
+  name: string;
+  seen_at: number;
+}
+
+/**
+ * The question of your agent's that one of your messages answers, when you
+ * answered it from its buttons. Kept beside your message by its id.
+ */
+export interface Answers {
+  ask: string;
+}
+
+export interface AppCount {
+  app: string;
+  count: number;
+}
+
+/**
+ * A chain you put away. It stays out of the feed until something new
+ * happens in it, or until `until` passes ("later"); `until` 0 has no return
+ * time. Unarchiving keeps the row with `archived: false`, so the latest
+ * decision wins on every device.
+ */
+export interface Archived {
+  archived: boolean;
+  /**
+   * The chain's latest activity when it was put away: anything newer brings it back.
+   */
+  at: number;
+  until: number;
+  updated_at: number;
+}
+
+/**
+ * How a row is best resolved in place. See [`ASK_KINDS`].
+ */
+export interface Ask {
+  /**
+   * `""`, `confirm`, `reply` or `choose`.
+   */
+  kind: string;
+  /**
+   * What the control says: "Reply in #launch", "Pick a slot", "Join the call".
+   */
+  prompt: string;
+  /**
+   * `choose`: the options (2 to 8). `reply`: suggested quick replies (up to 8).
+   */
+  options: string[];
+  /**
+   * `reply`: a draft to start from, e.g. the agent's proposed text.
+   */
+  draft: string;
+}
+
+/**
+ * What your agent asked you in a message, kept beside it by the message's
+ * id, so messages written before agents could ask keep their layout.
+ */
+export interface Asked {
+  ask: Ask;
+}
+
+/**
+ * Which of your agents works in one app: the agent's name, as it reports in
+ * (`mero-bot@<host>`). Only that agent takes the app's work (its new items,
+ * your decisions about its actions, your messages about it) and only it may
+ * call the app. An app with none is your default agent's: the private one.
+ */
+export interface Assignment {
+  /**
+   * Empty: back to the default agent.
+   */
+  agent: string;
+  updated_at: number;
+}
+
+/**
+ * Which agent works in one app, as settings shows it.
+ */
+export interface AssignmentView {
+  app: string;
+  agent: string;
+  updated_at: number;
+}
+
+/**
+ * An image on a message: a blob on your node, announced to the feed's
+ * context, and what the client needs to show it before fetching it.
+ */
+export interface Attachment {
+  blob_id: string;
+  /**
+   * The file's name as you picked it; may be empty for a pasted image.
+   */
+  name: string;
+  /**
+   * One of [`IMAGE_TYPES`].
+   */
+  mime: string;
+  /**
+   * Bytes, at most 10 MiB.
+   */
+  size: number;
+}
+
+/**
+ * A message's attachments. Kept beside the message, keyed by its id, so
+ * messages written before attachments existed keep their layout.
+ */
+export interface Attachments {
+  items: Attachment[];
+}
+
+/**
+ * One proposal's default, kept by the action's id. The time is last-writer-
+ * wins by when it was set; stopping and firing only ever turn on, and a stop
+ * outranks a fire, so a merge never makes a stopped default go ahead.
+ */
+export interface Autorun {
+  chain: string;
+  at: number;
+  set_at: number;
+  stopped_at: number;
+  fired_at: number;
+}
+
+/**
+ * A proposal's default, as [`crate::Hyperfeed::autoruns`] returns it.
+ */
+export interface AutorunView {
+  /**
+   * The proposal's action id.
+   */
+  id: string;
+  chain: string;
+  /**
+   * When it goes ahead (ms).
+   */
+  at: number;
+  set_at: number;
+  /**
+   * One of [`AUTORUN_WAITING`], [`AUTORUN_STOPPED`], [`AUTORUN_FIRED`],
+   * [`AUTORUN_SETTLED`].
+   */
+  status: string;
+  stopped_at: number;
+  fired_at: number;
+}
+
+/**
+ * The latest checkpoint on one chain, kept by chain id. A new one replaces
+ * it whole: last writer wins.
+ */
+export interface Checkpoint {
+  done: string;
+  next: string;
+  branches: string[];
+  worktrees: string[];
+  prs: string[];
+  questions: string[];
+  author: string;
+  updated_at: number;
+}
+
+/**
+ * What the agent writes: [`crate::Hyperfeed::set_checkpoint`]'s `input`.
+ * `done` and `next` are prose; the lists may be empty.
+ */
+export interface CheckpointInput {
+  /**
+   * What is done so far.
+   */
+  done: string;
+  /**
+   * The next step, as the session that picks it up should take it.
+   */
+  next: string;
+  /**
+   * Git branches the task works on.
+   */
+  branches: string[];
+  /**
+   * Worktrees (absolute paths) the task works in.
+   */
+  worktrees: string[];
+  /**
+   * Pull requests: links, or `repo#number`.
+   */
+  prs: string[];
+  /**
+   * What is still open: questions for the user, or doubts to settle.
+   */
+  questions: string[];
+  /**
+   * Who writes it: "mero-bot@studio".
+   */
+  author: string;
+}
+
+/**
+ * A chain's latest checkpoint, as [`crate::Hyperfeed::checkpoint`] returns it.
+ */
+export interface CheckpointView {
+  chain: string;
+  done: string;
+  next: string;
+  branches: string[];
+  worktrees: string[];
+  prs: string[];
+  questions: string[];
+  author: string;
+  /**
+   * When it was written (ms).
+   */
+  updated_at: number;
+}
+
+export interface Event_ActionChanged {
+  id: string;
+  status: string;
+}
+
+export interface Event_ActionRecorded {
+  id: string;
+  status: string;
+}
+
+export interface Event_ActionsChanged {
+  app: string;
+  status: string;
+}
+
+export interface Event_ArchiveChanged {
+  count: number;
+}
+
+export interface Event_AutorunChanged {
+  id: string;
+  status: string;
+}
+
+export interface Event_ChainLeaseChanged {
+  chain: string;
+}
+
+export interface Event_CheckpointChanged {
+  chain: string;
+}
+
+export interface Event_LensChanged {
+  app: string;
+  status: string;
+}
+
+export interface Event_LinksChanged {
+  chain: string;
+}
+
+export interface Event_MemosChanged {
+  count: number;
+}
+
+export interface Event_MessageChanged {
+  id: string;
+  status: string;
+}
+
+export interface Event_MessagePosted {
+  id: string;
+  chain: string;
+  from: string;
+}
+
+export interface Event_NotificationChanged {
+  id: string;
+  status: string;
+}
+
+export interface Event_NotificationRecorded {
+  id: string;
+}
+
+export interface Event_NotificationsSeen {
+  count: number;
+}
+
+export interface Event_PrChanged {
+  key: string;
+}
+
+export interface Event_SituationChanged {
+  chain: string;
+}
+
+export interface Event_StopRequested {
+  id: string;
+}
+
+export interface Event_WatchChanged {
+  id: string;
+  chain: string;
+  status: string;
+}
+
+export interface FeedCounts {
+  all: number;
+  agent: number;
+  notifications: number;
+  needs_you: number;
+  /**
+   * Chains put away right now (shown only by the `archived` filter).
+   */
+  archived: number;
+}
+
+/**
+ * One row of the feed. Actions and notifications share it so a client renders
+ * one list; a field that does not apply to the row's kind is empty.
+ */
+export interface FeedItem {
+  id: string;
+  kind: string;
+  /**
+   * The chain it belongs to, how many rows the chain has, and when anything
+   * in it last happened (what the feed is ordered and paged by).
+   */
+  chain: string;
+  chain_len: number;
+  chain_at: number;
+  app: string;
+  source_context: string;
+  source_label: string;
+  title: string;
+  body: string;
+  at: number;
+  needs_you: boolean;
+  /**
+   * The current status and its note: an action's (`pending` … `done`) or a
+   * notification's (`received`, `answered`, `delivered`, `failed`).
+   */
+  status: string;
+  status_at: number;
+  note: string;
+  ask: Ask;
+  /**
+   * Every step, oldest first.
+   */
+  history: Step[];
+  method: string;
+  category: string;
+  why: string;
+  intent_hash: string;
+  executor: string;
+  undoable: boolean;
+  breach: string;
+  /**
+   * When you kept an action the agent took without asking; 0 if not.
+   */
+  reviewed_at: number;
+  /**
+   * Who sent a notification; for a message, [`FROM_YOU`] or [`FROM_AGENT`].
+   */
+  from: string;
+  event: string;
+  seen: boolean;
+  /**
+   * The message of yours an agent message answers.
+   */
+  reply_to: string;
+  /**
+   * One of [`ITEM_TYPES`]; `""` for an untyped row.
+   */
+  item_type: string;
+  /**
+   * The type's fields, a JSON object, or `""`.
+   */
+  fields: string;
+  /**
+   * The call that answers it in its app, or `""`; see [`Typed`].
+   */
+  reply_call: string;
+  /**
+   * Its latest step while the message is `thinking` ("Editing ChatView.tsx"), or `""`.
+   */
+  doing: string;
+  /**
+   * When that step started; 0 with no step.
+   */
+  doing_at: number;
+  /**
+   * Images on a message of yours; empty for every other row.
+   */
+  attachments: Attachment[];
+  /**
+   * What your agent did for it, step by step; empty for every other row.
+   */
+  steps: TurnStep[];
+  /**
+   * The answer your agent has written so far, while the message is `thinking`; `""` otherwise.
+   */
+  draft: string;
+  /**
+   * When you asked your agent to stop working on it; 0 if you did not.
+   */
+  stop_at: number;
+  /**
+   * The headline the message was written with, which is also its `title`;
+   * `""` when it has none, and for every other row. Without one, `title`
+   * is the message's first line and a client may derive a shorter one.
+   */
+  headline: string;
+  /**
+   * On a message of yours sent with a mode: `private` or `public` (see
+   * [`MESSAGE_MODES`]). `""` when it was sent without one, and for every
+   * other row; your agent's runtime then decides, usually by the chain's
+   * last message that had one.
+   */
+  mode: string;
+  /**
+   * On a question (your agent's, or a notification's) that a newer one in
+   * its chain replaced before you answered it: the newer one's id. Its
+   * buttons are gone. `""` otherwise.
+   */
+  superseded_by: string;
+  /**
+   * On a message of yours sent from a question's buttons: that question's
+   * id. `""` otherwise.
+   */
+  answers: string;
+  /**
+   * Whether the question it answers had been replaced by a newer one: your
+   * agent confirms against where things stand now before acting on it.
+   */
+  answers_superseded: boolean;
+  /**
+   * On a message: the agent whose session holds its chain right now
+   * ("mero-bot@studio"), or `""` when nobody does.
+   */
+  held_by: string;
+  /**
+   * Since when that session has held the chain; 0 when nobody does.
+   */
+  held_since: number;
+  /**
+   * On an action, what it touched; on a notification, what its reply goes
+   * to; see [`subject_key`]. `""` for nothing in particular.
+   */
+  subject: string;
+}
+
+export interface FeedPage {
+  items: FeedItem[];
+  /**
+   * Counts over the whole feed (muted apps excluded), not just this page,
+   * so the filter tabs stay right while paging.
+   */
+  counts: FeedCounts;
+  apps: AppCount[];
+  /**
+   * Pass as `before` for the next page; 0 when there is none.
+   */
+  next_before: number;
+}
+
+/**
+ * A folder an agent may use on its computer: an absolute path, or one under
+ * `~`, and whether it may write there too.
+ */
+export interface Folder {
+  path: string;
+  write: boolean;
+}
+
+/**
+ * One "always ask me before" switch.
+ */
+export interface Guard {
+  category: string;
+  enabled: boolean;
+  updated_at: number;
+}
+
+export interface GuardView {
+  category: string;
+  enabled: boolean;
+}
+
+/**
+ * A message's headline: one line for the feed row, its text behind "more".
+ * Kept beside the message, keyed by its id, so messages written before
+ * headlines keep their layout.
+ */
+export interface Headline {
+  text: string;
+}
+
+export interface Hyperfeed {
+  /**
+   * The account that created the feed. Only it decides; agents it adds
+   * (see `agent_accounts`) write the agent's side.
+   */
+  owner: string;
+  actions: Record<string, Action>;
+  notifications: Record<string, Notification>;
+  policies: Record<string, Policy>;
+  guards: Record<string, Guard>;
+  agent: Record<string, AgentState>;
+  messages: Record<string, Message>;
+  /**
+   * What a lens made of a notification, by the notification's id.
+   */
+  typed: Record<string, Typed>;
+  /**
+   * How each app version's events become feed items, by `<app>@<application id>`.
+   */
+  lenses: Record<string, Lens>;
+  /**
+   * What your agent can do in each app version, by `<app>@<application id>`.
+   * See [`actions`].
+   */
+  action_sets: Record<string, ActionSet>;
+  /**
+   * Your setting for each action apart from its app, by `<app>/<action id>`.
+   */
+  action_rules: Record<string, ActionRule>;
+  /**
+   * Chains you put away, by chain id.
+   */
+  archived: Record<string, Archived>;
+  /**
+   * Agents that report in, by name.
+   */
+  presence: Record<string, Presence>;
+  /**
+   * What your agent asked you, by its message's id.
+   */
+  asks: Record<string, Asked>;
+  /**
+   * Your agent's latest step on each message it is working on, by message id.
+   */
+  progress: Record<string, Progress>;
+  /**
+   * Images on your messages, by the message's id.
+   */
+  attachments: Record<string, Attachments>;
+  /**
+   * Your agent's turn on each of your messages it worked on, by message id.
+   */
+  work: Record<string, Work>;
+  /**
+   * Your requests to stop a turn, by message id.
+   */
+  stops: Record<string, StopRequest>;
+  /**
+   * Headlines of messages written with one, by the message's id.
+   */
+  headlines: Record<string, Headline>;
+  /**
+   * Which agent each of your messages sent with a mode is for, by the message's id.
+   */
+  modes: Record<string, MessageMode>;
+  /**
+   * What you let each agent reach on its computer, by agent name.
+   */
+  access: Record<string, Access>;
+  /**
+   * What each agent last reported it can reach, by agent name.
+   */
+  reach: Record<string, Reach>;
+  /**
+   * Questions a newer one in their chain replaced, by the question's id.
+   */
+  superseded: Record<string, Superseded>;
+  /**
+   * The question each of your messages sent from its buttons answers, by
+   * your message's id.
+   */
+  answers: Record<string, Answers>;
+  /**
+   * Which agent session works on each chain, by chain id.
+   */
+  leases: Record<string, Lease>;
+  /**
+   * "When X, do Y", polled by your agent's runtime, by id. See [`watches`].
+   */
+  watches: Record<string, Watch>;
+  /**
+   * Your standing rules, by id.
+   */
+  rules: Record<string, Rule>;
+  /**
+   * Rules your agent suggested, by id.
+   */
+  rule_proposals: Record<string, RuleProposal>;
+  /**
+   * Where each task stands, as your agent last wrote it, by chain id.
+   */
+  checkpoints: Record<string, Checkpoint>;
+  /**
+   * The PRs your tasks link to, as your agent's runtime last saw them on
+   * GitHub, by `owner/name#number`. See [`prs`].
+   */
+  prs: Record<string, PrSeen>;
+  /**
+   * Your agent's query cache: what it read, by a hash of where, which tool
+   * and its arguments. See [`memo`].
+   */
+  memos: Record<string, Memo>;
+  /**
+   * What each action touched, by the action's id.
+   */
+  action_subjects: Record<string, Subject>;
+  /**
+   * The chain that last touched each subject, by its key.
+   */
+  subject_chains: Record<string, Subject>;
+  /**
+   * Each task's links, by `<chain>|<subject>`. See [`links`].
+   */
+  links: Record<string, Link>;
+  /**
+   * Devices to push to, by endpoint. See [`push`].
+   */
+  push_devices: Record<string, PushDevice>;
+  /**
+   * The runtime's VAPID public key, under `vapid`.
+   */
+  push_keys: Record<string, PushKey>;
+  /**
+   * Which agent works in each app, by app key. See [`Assignment`].
+   */
+  assignments: Record<string, Assignment>;
+  /**
+   * Your rules for one agent only, by id. See [`AgentRule`].
+   */
+  agent_rules: Record<string, AgentRule>;
+  /**
+   * Agents with accounts of their own that you added, by account. See [`members`].
+   */
+  agent_accounts: Record<string, AgentAccount>;
+  /**
+   * The call that sends each draft for you to send, by the action's id.
+   */
+  sends: Record<string, SendCall>;
+  /**
+   * Each task told as one card, as your agent last wrote it, by chain id.
+   * See [`brief`].
+   */
+  situations: Record<string, Situation>;
+  /**
+   * Proposals that go ahead at a set time unless you stop them, by the
+   * action's id. See [`brief`].
+   */
+  autoruns: Record<string, Autorun>;
+}
+
+/**
+ * Which agent session is working on a chain, until when. A session claims a
+ * chain before it starts a turn there, renews the lease while it works, and
+ * releases it at the end; another session is refused the chain until then,
+ * or until the lease runs out (the session died). Kept by chain id.
+ */
+export interface Lease {
+  /**
+   * The session's own id: unique per running agent process.
+   */
+  session: string;
+  /**
+   * Who it is, in words: "mero-bot@studio".
+   */
+  agent: string;
+  /**
+   * When this session took the chain; kept while it renews.
+   */
+  claimed_at: number;
+  /**
+   * When the lease runs out; 0 once released.
+   */
+  expires_at: number;
+  updated_at: number;
+}
+
+/**
+ * A session's lease on a chain, as [`Hyperfeed::claim_chain`] returns it.
+ */
+export interface LeaseView {
+  chain: string;
+  session: string;
+  agent: string;
+  claimed_at: number;
+  /**
+   * 0 once released.
+   */
+  expires_at: number;
+}
+
+/**
+ * How one app version's events become feed items, as your agent learned it
+ * from the app's ABI. Nothing uses a lens until you approve it.
+ */
+export interface Lens {
+  app: string;
+  /**
+   * The app version it was learned from: a new version is learned again.
+   */
+  application_id: string;
+  /**
+   * The lens itself, JSON (see the app's `lens` module).
+   */
+  spec: string;
+  /**
+   * One line for you: what it records and how it answers.
+   */
+  summary: string;
+  /**
+   * [`LENS_PROPOSED`], [`LENS_APPROVED`] or [`LENS_REJECTED`].
+   */
+  status: string;
+  updated_at: number;
+}
+
+export interface LensView {
+  app: string;
+  application_id: string;
+  spec: string;
+  summary: string;
+  status: string;
+  updated_at: number;
+}
+
+/**
+ * One link of a task, kept by `<chain>|<subject>`. Taking it off keeps the
+ * row with `removed: true`, so your agent touching the thing again does not
+ * bring it back; only you adding it does.
+ */
+export interface Link {
+  chain: string;
+  subject: string;
+  label: string;
+  by: string;
+  added_at: number;
+  removed: boolean;
+  updated_at: number;
+}
+
+/**
+ * What [`crate::Hyperfeed::add_link`] takes.
+ */
+export interface LinkInput {
+  /**
+   * `<app>:<context>[:<id>]`, as [`crate::subject_key`] makes it.
+   */
+  subject: string;
+  /**
+   * What the chip says ("Agent digest card"); `""` keeps the one it has,
+   * and a client names an unlabelled one from what it knows.
+   */
+  label: string;
+  /**
+   * `agent` or `you`.
+   */
+  by: string;
+}
+
+/**
+ * A link as [`crate::Hyperfeed::links`] returns it.
+ */
+export interface LinkView {
+  chain: string;
+  subject: string;
+  /**
+   * The subject's parts: the app's key, its context, and the one thing in
+   * it (`""` for the whole context: a chat, a board).
+   */
+  app: string;
+  context: string;
+  item: string;
+  label: string;
+  by: string;
+  added_at: number;
+  /**
+   * Notifications in the task about it: what teammates did there.
+   */
+  activity: number;
+  /**
+   * The latest of them (ms); 0 with none.
+   */
+  last_at: number;
+}
+
+/**
+ * One read as the agent last saw it, kept by its key.
+ */
+export interface Memo {
+  scope: string;
+  tool: string;
+  args: string;
+  value: string;
+  class: string;
+  ttl_ms: number;
+  fetched_at: number;
+  unchanged: number;
+  /**
+   * Per agent, each only ever growing: merged by max, so two agents never
+   * lose each other's counts.
+   */
+  hits: MemoHits[];
+  last_hit_at: number;
+  agent: string;
+  attested: boolean;
+  /**
+   * When the feed last took a write to it (the feed's clock): what
+   * [`crate::Hyperfeed::memos`] reads after.
+   */
+  updated_at: number;
+}
+
+/**
+ * How often one agent used a row.
+ */
+export interface MemoHits {
+  agent: string;
+  hits: number;
+}
+
+/**
+ * One row as [`crate::Hyperfeed::put_memos`] takes it.
+ */
+export interface MemoInput {
+  /**
+   * A hex hash of scope, tool and arguments: the runtime's key for the read.
+   */
+  key: string;
+  /**
+   * What the read is about: `<app>:<context>`, `node`, `gh:<owner>/<name>`.
+   */
+  scope: string;
+  /**
+   * The tool, without its server's prefix: `chat_get_messages`, `gh`.
+   */
+  tool: string;
+  /**
+   * Its arguments, as canonical JSON or a command line.
+   */
+  args: string;
+  /**
+   * What it returned, at most [`MAX_MEMO_VALUE`].
+   */
+  value: string;
+  /**
+   * One of [`MEMO_CLASSES`].
+   */
+  class: string;
+  /**
+   * How long the value counts as fresh, as the runtime last judged it.
+   */
+  ttl_ms: number;
+  /**
+   * When it was read (ms).
+   */
+  fetched_at: number;
+  /**
+   * Refetches in a row that found the same value.
+   */
+  unchanged: number;
+  /**
+   * This agent's hits on it, in total: the feed keeps the largest it saw.
+   */
+  hits: number;
+  /**
+   * When this agent last used it (ms).
+   */
+  last_hit_at: number;
+  /**
+   * Read by an agent whose every model is attested: never shown to one that is not.
+   */
+  attested: boolean;
+}
+
+/**
+ * A row as [`crate::Hyperfeed::memos`] returns it.
+ */
+export interface MemoView {
+  key: string;
+  scope: string;
+  tool: string;
+  args: string;
+  value: string;
+  class: string;
+  ttl_ms: number;
+  fetched_at: number;
+  unchanged: number;
+  hits: MemoHits[];
+  last_hit_at: number;
+  agent: string;
+  attested: boolean;
+  updated_at: number;
+}
+
+/**
+ * One message in a conversation with your agent, inside a chain.
+ *
+ * You talk to your agent about a row by posting into its chain; a question
+ * asked from nowhere starts a chain of its own. The agent's answers, and
+ * anything it proposes or does because of them, land in the same chain.
+ */
+export interface Message {
+  id: string;
+  chain: string;
+  /**
+   * [`FROM_YOU`] or [`FROM_AGENT`].
+   */
+  from: string;
+  text: string;
+  /**
+   * The message of yours this answers; empty for yours, and for an agent
+   * message nobody asked for.
+   */
+  reply_to: string;
+  created_at: number;
+  history: Step[];
+}
+
+/**
+ * How private a message of yours is: one of [`MESSAGE_MODES`].
+ * Kept beside the message, keyed by its id, so messages written before
+ * modes keep their layout.
+ */
+export interface MessageMode {
+  mode: string;
+}
+
+/**
+ * One notification an app sent you, as your client saw it.
+ */
+export interface Notification {
+  /**
+   * The dedupe key the client derived from the source event.
+   */
+  id: string;
+  app: string;
+  source_context: string;
+  source_label: string;
+  from: string;
+  title: string;
+  body: string;
+  event: string;
+  needs_you: boolean;
+  created_at: number;
+  chain: string;
+  ask: Ask;
+  seen: boolean;
+  seen_at: number;
+  /**
+   * `received`, then `answered` (your answer as the note), then
+   * `delivered` or `failed` (the agent's note).
+   */
+  history: Step[];
+}
+
+/**
+ * What your client saw for one notification.
+ */
+export interface NotificationInput {
+  /**
+   * Stable for the same event on every device, e.g.
+   * `<context>:<root hash>:<index>`.
+   */
+  key: string;
+  app: string;
+  source_context: string;
+  source_label: string;
+  from: string;
+  title: string;
+  body: string;
+  event: string;
+  needs_you: boolean;
+  /**
+   * Empty starts a chain of its own, which is usual for a notification.
+   */
+  chain: string;
+  /**
+   * How to answer it from the feed, if it can be.
+   */
+  ask: Ask;
+  /**
+   * What a lens made of it: one of [`ITEM_TYPES`]. Older clients omit these.
+   */
+  item_type: string;
+  /**
+   * The type's fields, a JSON object.
+   */
+  fields: string;
+  /**
+   * The call that answers it in its app, a JSON object; see [`Typed`].
+   */
+  reply_call: string;
+}
+
+/**
+ * Your rules for one app.
+ */
+export interface Policy {
+  app: string;
+  agent: string;
+  notifications: string;
+  updated_at: number;
+}
+
+export interface PolicyView {
+  app: string;
+  agent: string;
+  notifications: string;
+}
+
+/**
+ * What [`crate::Hyperfeed::record_pr`] takes: the PR as GitHub shows it now.
+ */
+export interface PrInput {
+  /**
+   * The chain (task) that links to it; `""` keeps the one already recorded.
+   */
+  chain: string;
+  /**
+   * `owner/name`.
+   */
+  repo: string;
+  pr: number;
+  title: string;
+  /**
+   * `open`, `merged` or `closed`.
+   */
+  state: string;
+  draft: boolean;
+  /**
+   * The branch it merges into.
+   */
+  base: string;
+  /**
+   * The repository's default branch.
+   */
+  default_branch: string;
+  /**
+   * GitHub found conflicts with the base.
+   */
+  conflicts: boolean;
+  /**
+   * The head commit the checks are on.
+   */
+  head_sha: string;
+  /**
+   * `green` (every check passed), `red` (one failed) or `pending`.
+   */
+  checks: string;
+  checks_total: number;
+  checks_passed: number;
+  checks_pending: number;
+  /**
+   * The failing checks' names, at most [`MAX_FAILING`].
+   */
+  failing: string[];
+  /**
+   * When `base` is another PR's branch, that PR's number; 0 otherwise.
+   */
+  stacked_on: number;
+  /**
+   * Whether the PR it is stacked on is merged (its branch is dead).
+   */
+  stacked_merged: boolean;
+}
+
+/**
+ * One PR as the runtime last saw it, kept by `owner/name#number`.
+ */
+export interface PrSeen {
+  chain: string;
+  repo: string;
+  pr: number;
+  title: string;
+  state: string;
+  draft: boolean;
+  base: string;
+  default_branch: string;
+  conflicts: boolean;
+  head_sha: string;
+  checks: string;
+  checks_total: number;
+  checks_passed: number;
+  checks_pending: number;
+  failing: string[];
+  stacked_on: number;
+  stacked_merged: boolean;
+  seen_at: number;
+}
+
+/**
+ * A PR as [`crate::Hyperfeed::prs`] returns it.
+ */
+export interface PrView {
+  chain: string;
+  repo: string;
+  pr: number;
+  title: string;
+  state: string;
+  draft: boolean;
+  base: string;
+  default_branch: string;
+  conflicts: boolean;
+  head_sha: string;
+  checks: string;
+  checks_total: number;
+  checks_passed: number;
+  checks_pending: number;
+  failing: string[];
+  stacked_on: number;
+  stacked_merged: boolean;
+  /**
+   * When the runtime looked (ms).
+   */
+  seen_at: number;
+}
+
+/**
+ * When an agent last said it was running, by its name.
+ */
+export interface Presence {
+  seen_at: number;
+}
+
+/**
+ * What your agent is doing right now for one of your messages: its latest
+ * step, replaced by the next one. Kept beside the message by id, never in its
+ * history, so a long turn adds no rows.
+ */
+export interface Progress {
+  doing: string;
+  at: number;
+}
+
+/**
+ * One device, kept by its endpoint. Taking it off keeps the row with
+ * `removed: true`, so a device that synced late does not bring it back.
+ */
+export interface PushDevice {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  name: string;
+  /**
+   * Say only "Something needs you": no title, no text leaves your node.
+   */
+  quiet: boolean;
+  /**
+   * The VAPID public key it subscribed with.
+   */
+  key: string;
+  added_at: number;
+  removed: boolean;
+  updated_at: number;
+}
+
+/**
+ * What [`crate::Hyperfeed::add_push_device`] takes: the browser's
+ * `PushSubscription.toJSON()`, a name, and how much it may say.
+ */
+export interface PushDeviceInput {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  /**
+   * "Sandi's iPhone"; `""` is named "A device".
+   */
+  name: string;
+  quiet: boolean;
+  /**
+   * The key it subscribed with: refused unless it is the current one.
+   */
+  key: string;
+}
+
+/**
+ * A device as [`crate::Hyperfeed::push_devices`] returns it.
+ */
+export interface PushDeviceView {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  name: string;
+  quiet: boolean;
+  added_at: number;
+}
+
+/**
+ * The runtime's VAPID public key.
+ */
+export interface PushKey {
+  public_key: string;
+  /**
+   * The runtime that holds its private half, by name.
+   */
+  by: string;
+  updated_at: number;
+}
+
+/**
+ * The key as [`crate::Hyperfeed::push_key`] returns it; empty before a runtime set one.
+ */
+export interface PushKeyView {
+  public_key: string;
+  by: string;
+  updated_at: number;
+}
+
+/**
+ * What one agent reported it can reach, latest report wins.
+ */
+export interface Reach {
+  lines: ReachLine[];
+  at: number;
+}
+
+/**
+ * One agent profile an agent runs, as it reports it: which mode or route
+ * it serves, its model, whether its model is attested, and what it can reach
+ * besides your Calimero apps.
+ */
+export interface ReachLine {
+  /**
+   * What it runs: `default`, or the kind of work a profile is routed to.
+   */
+  serves: string;
+  profile: string;
+  model: string;
+  attested: boolean;
+  folders: Folder[];
+  shell: boolean;
+  web: boolean;
+}
+
+/**
+ * What one agent reported it can reach, as settings shows it.
+ */
+export interface ReachView {
+  agent: string;
+  lines: ReachLine[];
+  at: number;
+}
+
+/**
+ * One of your standing rules: a short line your agent keeps to on every
+ * turn ("Never push to main", "Answer in English"). Only you add or remove
+ * one; removing keeps the row with `removed`, so the latest decision wins on
+ * every device.
+ */
+export interface Rule {
+  text: string;
+  created_at: number;
+  removed: boolean;
+  updated_at: number;
+}
+
+/**
+ * A rule your agent suggested after you corrected it. It changes nothing
+ * until you approve it, which adds it as your own rule.
+ */
+export interface RuleProposal {
+  text: string;
+  /**
+   * Why your agent suggests it: the correction that led to it.
+   */
+  why: string;
+  /**
+   * The chain where you corrected it, or `""`.
+   */
+  chain: string;
+  /**
+   * [`RULE_PROPOSED`], [`RULE_APPROVED`] or [`RULE_DISMISSED`].
+   */
+  status: string;
+  created_at: number;
+  updated_at: number;
+}
+
+/**
+ * A rule your agent suggested, as settings shows it.
+ */
+export interface RuleProposalView {
+  id: string;
+  text: string;
+  why: string;
+  chain: string;
+  status: string;
+  created_at: number;
+}
+
+/**
+ * One of your standing rules, as settings shows it.
+ */
+export interface RuleView {
+  id: string;
+  text: string;
+  created_at: number;
+}
+
+/**
+ * The call that sends a draft in its app, kept beside the action it belongs to.
+ */
+export interface SendCall {
+  /**
+   * `{"method": ..., "args": {...}}`, as a lens's `reply_call` is.
+   */
+  call: string;
+}
+
+export interface SettingsView {
+  owner: string;
+  paused: boolean;
+  policies: PolicyView[];
+  guards: GuardView[];
+  /**
+   * Every agent that has reported in, most recent first.
+   */
+  agents: AgentView[];
+  /**
+   * Your standing rules, oldest first: your agent keeps to each on every turn.
+   */
+  rules: RuleView[];
+  /**
+   * Rules your agent suggested that wait for you, newest first.
+   */
+  rule_proposals: RuleProposalView[];
+  /**
+   * The modes a client offers beside Send. Always empty: which agent takes
+   * your work is set per app (`assignments`). A `mode` argument is still
+   * taken and kept, for clients made before assignments.
+   */
+  message_modes: string[];
+  /**
+   * What you let each agent reach on its computer, by agent name. An agent
+   * with no entry keeps its runtime's default.
+   */
+  access: AccessView[];
+  /**
+   * What each agent last reported it can reach, by agent name.
+   */
+  reach: ReachView[];
+  /**
+   * Which agent works in each app you assigned, by app. An app with none
+   * is your default agent's. Absent on a feed made before assignments.
+   */
+  assignments: AssignmentView[];
+  /**
+   * Your rules for one agent only, by agent then oldest first. Each agent
+   * keeps `rules` and then its own. Absent on a feed made before them.
+   */
+  agent_rules: AgentRuleView[];
+  /**
+   * Actions you set apart from their app's mode, by app then action.
+   * Absent on a feed made before actions.
+   */
+  action_modes: ActionModeView[];
+  /**
+   * Agents with accounts of their own you added, by name. Absent on a feed
+   * made before them.
+   */
+  agent_accounts: AgentAccountView[];
+}
+
+/**
+ * One chain's situation, kept by chain id. A new one replaces it whole: last
+ * writer wins.
+ */
+export interface Situation {
+  headline: string;
+  summary: string;
+  recommend: string;
+  reason: string;
+  score: number;
+  due_at: number;
+  sources: number;
+  apps: number;
+  author: string;
+  updated_at: number;
+}
+
+/**
+ * What the agent writes: [`crate::Hyperfeed::set_situation`]'s `input`.
+ */
+export interface SituationInput {
+  /**
+   * The card's headline, as you would say it: "Launch date: the team
+   * settled on Thursday, and your calendar clashes".
+   */
+  headline: string;
+  /**
+   * What is going on, in a few sentences.
+   */
+  summary: string;
+  /**
+   * What your agent recommends you do; may be empty.
+   */
+  recommend: string;
+  /**
+   * Why it ranks where it does; may be empty.
+   */
+  reason: string;
+  /**
+   * How pressing your agent judges it, 0 (whenever) to 100 (now).
+   */
+  score: number;
+  /**
+   * When it is due (ms), or 0.
+   */
+  due_at: number;
+  /**
+   * How many things it read to write this, and in how many apps: "from 7
+   * things in 3 apps". 0 when it does not say.
+   */
+  sources: number;
+  apps: number;
+  /**
+   * Who writes it: "mero-bot@studio".
+   */
+  author: string;
+}
+
+/**
+ * A chain's situation, as [`crate::Hyperfeed::situations`] returns it.
+ */
+export interface SituationView {
+  chain: string;
+  headline: string;
+  summary: string;
+  recommend: string;
+  reason: string;
+  score: number;
+  due_at: number;
+  sources: number;
+  apps: number;
+  author: string;
+  /**
+   * When it was written (ms).
+   */
+  updated_at: number;
+}
+
+/**
+ * One step in a row's history: a status, who said what about it, and when.
+ */
+export interface Step {
+  status: string;
+  /**
+   * The note that came with it: the agent's ("NDA signed"), or your answer
+   * (the reply you sent, the option you picked).
+   */
+  note: string;
+  at: number;
+}
+
+/**
+ * You asked your agent to stop working on one of your messages.
+ */
+export interface StopRequest {
+  at: number;
+}
+
+/**
+ * What a row is about in another app, as a key: `<app>:<context>`, plus
+ * `:<id>` for one thing in it (an issue, a doc, a thread). Kept two ways: by
+ * the action's id (what it touched), and by the key (the chain that touched
+ * it last), so a notification about the same thing joins that chain. See
+ * [`subject_key`].
+ */
+export interface Subject {
+  subject: string;
+  chain: string;
+  at: number;
+}
+
+/**
+ * A question that a newer one in its chain replaced: your agent asked
+ * again, or an app sent a new question, before you answered this one. Kept
+ * beside the row by its id. Its buttons go; an answer that still reaches it
+ * goes to your agent marked as answering an old question.
+ */
+export interface Superseded {
+  /**
+   * The newer question's id.
+   */
+  by: string;
+  at: number;
+}
+
+/**
+ * One step of your agent's turn on a message of yours: a tool it ran, a file
+ * it edited, a write it made. Shown in the message's work block, never as a
+ * row of its own.
+ */
+export interface TurnStep {
+  /**
+   * The agent's own id for the step, unique within the turn.
+   */
+  id: string;
+  /**
+   * What it is doing, in words: "Editing ChatView.tsx", "Running the tests".
+   */
+  title: string;
+  /**
+   * `running`, `waiting` (on your approval), `done` or `failed`.
+   */
+  status: string;
+  /**
+   * When the step started.
+   */
+  at: number;
+}
+
+/**
+ * What a lens made of a notification: its type, the fields its card shows,
+ * and the call that answers it in its app. Kept beside the notification, keyed
+ * by its id, so rows recorded before lenses existed keep their layout.
+ */
+export interface Typed {
+  /**
+   * One of [`ITEM_TYPES`].
+   */
+  item_type: string;
+  /**
+   * A JSON object: the fields of that type (`from`, `text`, `options`, …).
+   */
+  fields: string;
+  /**
+   * A JSON object `{ "method", "args" }`: what your client calls in the
+   * source context to answer, with `"=$answer"` where your answer goes.
+   * Empty: answered by your agent, or not answerable from the feed.
+   */
+  reply_call: string;
+}
+
+/**
+ * The rules' answer for one prospective action.
+ */
+export interface Verdict {
+  /**
+   * `act`, `ask` or `refuse`.
+   */
+  decision: string;
+  reason: string;
+}
+
+/**
+ * One watch, kept by id.
+ */
+export interface Watch {
+  chain: string;
+  condition: string;
+  repo: string;
+  pr: number;
+  branch: string;
+  action: string;
+  text: string;
+  /**
+   * Who set it: "mero-bot@studio", or "" for you.
+   */
+  agent: string;
+  /**
+   * [`WATCH_WATCHING`], [`WATCH_FIRING`], [`WATCH_DONE`], [`WATCH_FAILED`]
+   * or [`WATCH_CANCELLED`].
+   */
+  status: string;
+  /**
+   * How the action went, or why it was cancelled.
+   */
+  note: string;
+  /**
+   * What the runtime last saw, as one line: "3 of 5 checks passed, 2 running".
+   */
+  seen: string;
+  seen_at: number;
+  /**
+   * The session that fired it, and when.
+   */
+  fired_by: string;
+  fired_at: number;
+  created_at: number;
+  updated_at: number;
+}
+
+/**
+ * What [`crate::Hyperfeed::add_watch`] takes. Every field is required; use
+ * `""` or `0` where it does not apply.
+ */
+export interface WatchInput {
+  /**
+   * The chain it reports to: the task it belongs to.
+   */
+  chain: string;
+  /**
+   * One of [`WATCH_CONDITIONS`].
+   */
+  condition: string;
+  /**
+   * The GitHub repository, `owner/name`.
+   */
+  repo: string;
+  /**
+   * The pull request's number, for a `pr_*` condition; 0 otherwise.
+   */
+  pr: number;
+  /**
+   * The branch, for a `branch_*` condition; `""` is the repository's
+   * default branch. `""` for a `pr_*` condition.
+   */
+  branch: string;
+  /**
+   * One of [`WATCH_ACTIONS`]. `merge` goes with `pr_green` only.
+   */
+  action: string;
+  /**
+   * The prompt for a `turn`, or what a `notify` tells you; may be `""` for
+   * a `merge`.
+   */
+  text: string;
+  /**
+   * Who sets it: "mero-bot@studio"; `""` for you.
+   */
+  agent: string;
+}
+
+/**
+ * A watch, as the feed returns it.
+ */
+export interface WatchView {
+  id: string;
+  chain: string;
+  condition: string;
+  repo: string;
+  pr: number;
+  branch: string;
+  action: string;
+  text: string;
+  agent: string;
+  status: string;
+  note: string;
+  seen: string;
+  seen_at: number;
+  fired_by: string;
+  fired_at: number;
+  created_at: number;
+  updated_at: number;
+}
+
+/**
+ * Your agent's turn on one of your messages, as it goes: its steps, and the
+ * answer it has written so far. Kept beside the message by id and replaced
+ * whole by each report, so a long turn adds no rows.
+ */
+export interface Work {
+  steps: TurnStep[];
+  /**
+   * The answer so far, while the agent writes it; `""` before it starts.
+   */
+  draft: string;
+  at: number;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export type AbiEvent =
+  | { name: "ActionChanged"; payload: Event_ActionChanged }
+  | { name: "ActionRecorded"; payload: Event_ActionRecorded }
+  | {
+    /**
+     * An app's actions were proposed, approved or turned down: re-read
+     * `action_sets`.
+     */
+    name: "ActionsChanged";
+    payload: Event_ActionsChanged;
+  }
+  | {
+    /**
+     * Chains were put away or brought back: re-read the feed.
+     */
+    name: "ArchiveChanged";
+    payload: Event_ArchiveChanged;
+  }
+  | {
+    /**
+     * A proposal's default was set, stopped or went ahead: re-read `autoruns`.
+     */
+    name: "AutorunChanged";
+    payload: Event_AutorunChanged;
+  }
+  | {
+    /**
+     * An agent session took a chain, or let it go: re-read who is on it.
+     */
+    name: "ChainLeaseChanged";
+    payload: Event_ChainLeaseChanged;
+  }
+  | {
+    /**
+     * Your agent wrote where a task stands: re-read its `checkpoint`.
+     */
+    name: "CheckpointChanged";
+    payload: Event_CheckpointChanged;
+  }
+  | {
+    /**
+     * A lens was proposed, approved or turned down: re-read `lenses`.
+     */
+    name: "LensChanged";
+    payload: Event_LensChanged;
+  }
+  | {
+    /**
+     * A task's links changed: re-read `links`.
+     */
+    name: "LinksChanged";
+    payload: Event_LinksChanged;
+  }
+  | {
+    /**
+     * Your agent's runtime wrote or dropped cached reads: re-read `memos`
+     * after the newest `updated_at` you have.
+     */
+    name: "MemosChanged";
+    payload: Event_MemosChanged;
+  }
+  | {
+    /**
+     * You cleared your agent's query cache: forget every cached read.
+     */
+    name: "MemosCleared";
+  }
+  | { name: "MessageChanged"; payload: Event_MessageChanged }
+  | {
+    /**
+     * A message in a chain: yours (your agent should answer) or its answer.
+     */
+    name: "MessagePosted";
+    payload: Event_MessagePosted;
+  }
+  | { name: "NotificationChanged"; payload: Event_NotificationChanged }
+  | { name: "NotificationRecorded"; payload: Event_NotificationRecorded }
+  | { name: "NotificationsSeen"; payload: Event_NotificationsSeen }
+  | {
+    /**
+     * Your agent's runtime saw a PR change on GitHub (`owner/name#number`):
+     * re-read `prs`.
+     */
+    name: "PrChanged";
+    payload: Event_PrChanged;
+  }
+  | {
+    /**
+     * A device to push to, or the push key, changed: re-read `push_devices`.
+     */
+    name: "PushChanged";
+  }
+  | { name: "SettingsChanged" }
+  | {
+    /**
+     * Your agent wrote or cleared how a task reads as one card: re-read `situations`.
+     */
+    name: "SituationChanged";
+    payload: Event_SituationChanged;
+  }
+  | {
+    /**
+     * You asked your agent to stop working on message `id`: it ends the turn
+     * and marks the message failed, "Stopped by you".
+     */
+    name: "StopRequested";
+    payload: Event_StopRequested;
+  }
+  | {
+    /**
+     * A watch was set, fired, finished or cancelled: re-read `watches`.
+     */
+    name: "WatchChanged";
+    payload: Event_WatchChanged;
+  }
+;

@@ -14,8 +14,8 @@ let package = Package(
         .library(name: "PixartCore", targets: ["PixartCore"]),
     ],
     dependencies: [
-        // swift-sdk `main` merge commit of PR #84.
-        .package(url: "https://github.com/calimero-network/swift-sdk", revision: "c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f"),
+        // swift-sdk v0.5.0 (Calimero 1.0); keep it equal to `exactVersion` in ../project.yml.
+        .package(url: "https://github.com/calimero-network/swift-sdk", exact: "0.5.0"),
     ],
     targets: [
         .target(

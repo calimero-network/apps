@@ -1,140 +1,125 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  InvitationDialog,
-  InvitationGate,
-  useInviteRedemption,
-  useMero,
-  type ParsedInvitation,
-  type RedeemOutcome,
-} from "@calimero-network/mero-react";
-import { redeemInvite } from "../lib/groups";
-import {
-  decodeInvite,
-  groupIdOfInvite,
-  type ForumInvitePayload,
-} from "../lib/inviteCodec";
-import { setActiveForum, setForumName } from "../lib/session";
+import { CalimeroError } from "@calimero-network/mero-js";
+import { describeError } from "@calimero-apps/connect";
+
+import { useMaybeSignedIn, useSessionApi } from "../sessionContext";
+import { useDialogOpen } from "../hooks/useDialogOpen";
+import { dropInvite, joinedOrg, pendingInvite, type PendingInvite } from "../lib/spaces";
+import { setActiveForum } from "../lib/session";
+import SignInModal from "./SignInModal";
+import styles from "./InviteModal.module.css";
 
 /**
- * "Join X?" for an invitation that arrived as a link: mero-react's
- * `InvitationDialog`, which asks, joins, and stays up on "Syncing…" until the
- * space's data has reached this node.
+ * "Join this space?" for an invitation that arrived as a link (`?invite=`,
+ * taken into storage before the first render, see `captureInvite`).
  *
- * ── Why this is mounted at the APP level, not on a page ──────────────────────
+ * Mounted at the APP level because a link can land on any route. It asks
+ * rather than joins: joining puts you in someone's organization, and a
+ * forwarded link or a refreshing background tab should not do that silently.
  *
- * Because a link can land anywhere. The first version put this on the spaces
- * page, which is wrong in a way that had already bitten once: someone with a
- * stored context is redirected to `/live` on boot, so the spaces page never
- * mounts, so the invitation was never shown. That is the same shape as the bug
- * where forum links pointed at a route with no redemption code — a handler that
- * only exists on one route is a handler that misses.
- *
- * ── Why it asks rather than joins ────────────────────────────────────────────
- *
- * Joining is a state change: it puts you in someone's namespace and, for a forum
- * invitation, walks you into a live call. Doing that on page load makes a
- * forwarded link, or a background tab that refreshes, join silently. Decoding is
- * pure and local, so the scope can be shown first and the join needs a click.
- *
- * The join is this app's own (`redeemInvite`): a forum invitation also enters
- * the forum's context, and where it lands depends on which. The syncing stage
- * ends when the landing page reads the space: ForumsPage's forum list, or
- * FeedPage's first page of posts.
+ * Signed out, it offers the sign-in first; the token survives the sign-up.
+ * Signed in, Join redeems the org invite and lands in the forum the link names
+ * (a forum invitation) or on the space's forum list. There is no "Syncing…"
+ * stage any more: nothing has to replicate before a new member can read.
  */
-interface ForumInvitation extends ParsedInvitation {
-  payload: ForumInvitePayload;
-}
-
 export default function InvitationPrompt() {
-  // `admin`, not `mero.admin`: on an account the relay client's join route is
-  // a node's (403), while the account admin joins as the account.
-  const { admin, nodeUrl } = useMero();
+  const { api } = useSessionApi();
+  const signedIn = useMaybeSignedIn();
   const navigate = useNavigate();
-  const [status, setStatus] = useState<string | null>(null);
+  const [invite, setInvite] = useState<PendingInvite | null>(() => pendingInvite());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [signingIn, setSigningIn] = useState(false);
+  const dialogRef = useRef<HTMLDialogElement | null>(null);
+  const ready = api.session.status === "signed-out" || api.session.status === "signed-in";
+  useDialogOpen(dialogRef, !!invite && ready && !signingIn);
 
-  const parse = useCallback((token: string): ForumInvitation | null => {
-    const payload = decodeInvite(token);
-    if (!payload) return null;
-    return {
-      namespaceId: groupIdOfInvite(payload),
-      invitation: payload.invitation,
-      teamName: payload.forumName ?? payload.groupAlias,
-      payload,
-    };
+  useEffect(() => {
+    if (signedIn) setSigningIn(false);
+  }, [signedIn]);
+
+  const dismiss = useCallback(() => {
+    dropInvite();
+    setInvite(null);
+    setError(null);
   }, []);
 
-  const redeem = useCallback(
-    async ({ payload }: ForumInvitation): Promise<RedeemOutcome> => {
-      if (!admin) {
-        return {
-          status: "failed",
-          namespaceId: null,
-          message: "No node connection yet. Reconnect and try again.",
-          reason: "node-unreachable",
-          retryable: true,
-        };
+  const join = useCallback(async () => {
+    if (!signedIn || !invite) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const org = joinedOrg(await signedIn.client.redeemInvite(invite.token));
+      dropInvite();
+      setInvite(null);
+      if (invite.forum) {
+        setActiveForum(invite.forum, org);
+        navigate("/f");
+      } else {
+        navigate(org ? `/spaces/${org}` : "/spaces");
       }
-      try {
-        // A failed join comes back as its outcome, already carrying whether
-        // the invitation is worth keeping; the hook acks or keeps it by that.
-        const { outcome, landed } = await redeemInvite(
-          admin,
-          payload,
-          setStatus,
-        );
-        if (!landed) return outcome;
-        // The space the landing page reads, so its `useJoinSync` clears the
-        // flag the dialog is waiting on. The join's own id is the fallback for
-        // a code that named no destination.
-        let namespaceId = outcome.namespaceId;
-        if (landed.kind === "forum") {
-          if (landed.forumName)
-            setForumName(landed.contextId, landed.forumName);
-          setActiveForum(
-            landed.contextId,
-            landed.identity,
-            landed.namespaceId,
-            nodeUrl,
-          );
-          namespaceId = landed.namespaceId ?? namespaceId;
-          navigate("/f");
-        } else if (landed.kind === "namespace") {
-          namespaceId = landed.namespaceId;
-          navigate(`/spaces/${landed.namespaceId}`);
-        } else {
-          navigate("/spaces");
-        }
-        return {
-          status: outcome.status,
-          namespaceId,
-          teamName: payload.forumName ?? payload.groupAlias,
-        };
-      } finally {
-        setStatus(null);
-      }
-    },
-    [admin, navigate, nodeUrl],
-  );
+    } catch (e) {
+      // A refusal (used, expired, revoked) can never succeed: drop it. Anything
+      // else (the cluster unreachable) is kept for another try.
+      if (e instanceof CalimeroError && e.status < 500) dropInvite();
+      setError(`The invitation could not be accepted: ${describeError(e)}`);
+    } finally {
+      setBusy(false);
+      signedIn.after();
+    }
+  }, [signedIn, invite, navigate]);
 
-  const redemption = useInviteRedemption({ parse, redeem, enabled: !!admin });
-  const payload = redemption.parsed?.payload;
+  if (!invite) return null;
 
   return (
     <>
-      {/* Logged out with a link opened: "you're invited" and the login, not the landing page. */}
-      <InvitationGate parse={parse} noun="space" appName="Mero Forum" />
-      <InvitationDialog
-        redemption={redemption}
-        noun="space"
-        appName="Mero Forum"
-        status={status}
-        detail={
-          payload?.forumName
-            ? "Joining takes you straight into that forum."
-            : "Joining gives you access to the space and every forum in it."
-        }
-      />
+      <dialog
+        ref={dialogRef}
+        className={styles.dialog}
+        onClose={() => !busy && setInvite(pendingInvite())}
+        data-testid="invitation-dialog"
+      >
+        <div className={styles.body}>
+          <header className={styles.head}>
+            <h2 className={styles.title}>You&apos;re invited to Mero Forum</h2>
+          </header>
+          <p className={styles.hint}>
+            {invite.forum
+              ? "Joining gives you access to the space and takes you straight into the forum you were invited to."
+              : "Joining gives you access to the space and every forum in it."}
+          </p>
+          {error && (
+            <p className={styles.hint} role="alert" data-testid="invitation-error">
+              {error}
+            </p>
+          )}
+          {signedIn ? (
+            <button
+              type="button"
+              className={styles.primary}
+              onClick={() => void join()}
+              disabled={busy}
+              data-testid="invitation-join"
+            >
+              {busy ? "Joining…" : "Join"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={styles.primary}
+              onClick={() => setSigningIn(true)}
+              data-testid="invitation-signin"
+            >
+              Sign in to join
+            </button>
+          )}
+          <button type="button" className="ui-btn" onClick={dismiss} disabled={busy} data-testid="invitation-dismiss">
+            Not now
+          </button>
+        </div>
+      </dialog>
+      <SignInModal open={signingIn} onClose={() => setSigningIn(false)} />
     </>
   );
 }

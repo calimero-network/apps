@@ -31,10 +31,10 @@ final class ModelTests: XCTestCase {
         XCTAssertEqual(model.boards[0].name, "Landing v2")
         XCTAssertEqual(model.boards[0].description, "Hero and pricing")
         XCTAssertEqual(model.boards[0].elementCount, 3)
-        XCTAssertEqual(backend.recording.calls("get_board").first?.path, .query)
+        XCTAssertEqual(backend.recording.calls("getBoard").first?.path, .query)
     }
 
-    func testOpeningJoinsTheBoardThenDrawsIt() async {
+    func testOpeningReadsTheBoardThenDrawsIt() async {
         let backend = Fixtures.backend(
             elements: "[" + Fixtures.element("r", Fixtures.rect) + "," + Fixtures.element("p", Fixtures.image("blob9")) + "]",
             memberOfBoard: false)
@@ -42,7 +42,9 @@ final class ModelTests: XCTestCase {
         let model = BoardModel(backend: backend, teamId: Fixtures.team, contextId: Fixtures.board, blobs: blobs)
         await model.open()
         XCTAssertEqual(model.phase, .ready)
-        XCTAssertTrue(backend.log.contains("joinContext \(Fixtures.board)"))
+        XCTAssertFalse(backend.log.contains { $0.hasPrefix("joinContext") }, "org members reach the board as is")
+        let page = backend.recording.calls("getElementsPage").first
+        XCTAssertEqual(page?.args, .object(["cursor": .null, "limit": .number(1000)]))
         XCTAssertEqual(model.scene.nodes.count, 2)
         XCTAssertEqual(model.name, "Landing v2")
         XCTAssertEqual(model.role, "editor")
@@ -70,12 +72,15 @@ final class ModelTests: XCTestCase {
         let join = try XCTUnwrap(backend.recording.calls("join").first)
         XCTAssertEqual(join.path, .execute)
         XCTAssertEqual(join.args["username"], .string("Fran"))
-        let add = try XCTUnwrap(backend.recording.calls("add_comment").first)
+        XCTAssertEqual(join.args["timestamp"], .string("1700000000000"), "u64 arguments travel as decimal strings")
+        XCTAssertEqual(join.args["avatar"], .null)
+        let add = try XCTUnwrap(backend.recording.calls("addComment").first)
         XCTAssertEqual(add.path, .execute)
         XCTAssertEqual(add.args["content"], .string("Bigger logo?"))
-        XCTAssertEqual(add.args["x"], .number(120))
-        XCTAssertEqual(add.args["y"], .number(90))
-        XCTAssertEqual(add.args["created_at"], .number(1_700_000_000_000))
+        XCTAssertEqual(add.args["x"], .string("120"))
+        XCTAssertEqual(add.args["y"], .string("90"))
+        XCTAssertEqual(add.args["createdAt"], .string("1700000000000"))
+        XCTAssertNil(add.args["created_at"])
         XCTAssertEqual(model.myName, "Fran")
         XCTAssertEqual(model.comments.count, 1)
         XCTAssertEqual(model.name(for: Fixtures.me), "Fran")
@@ -92,8 +97,10 @@ final class ModelTests: XCTestCase {
         XCTAssertEqual(model.name(for: "ff"), "ff")
         try await model.reply(to: "c1", "Agreed")
         XCTAssertTrue(backend.recording.calls("join").isEmpty)
-        let reply = try XCTUnwrap(backend.recording.calls("add_reply").first)
-        XCTAssertEqual(reply.args["comment_id"], .string("c1"))
+        let reply = try XCTUnwrap(backend.recording.calls("addReply").first)
+        XCTAssertEqual(reply.args["commentId"], .string("c1"))
+        XCTAssertNotNil(reply.args["replyId"]?.stringValue)
+        XCTAssertNotNil(reply.args["createdAt"]?.stringValue)
         XCTAssertEqual(reply.args["content"], .string("Agreed"))
     }
 
@@ -113,23 +120,57 @@ final class ModelTests: XCTestCase {
         let backend = Fixtures.backend()
         let model = BoardModel(backend: backend, teamId: Fixtures.team, contextId: Fixtures.board)
         await model.open()
-        let before = backend.recording.calls("get_elements").count
+        let before = backend.recording.calls("getElementsPage").count
         let task = Task { await model.live() }
-        for _ in 0..<500 where backend.recording.calls("get_elements").count == before {
+        for _ in 0..<500 where backend.recording.calls("getElementsPage").count == before {
             backend.emit(AppContextEvent(contextId: Fixtures.board, kind: "StateMutation"))
             await Task.yield()
         }
-        XCTAssertGreaterThan(backend.recording.calls("get_elements").count, before)
+        XCTAssertGreaterThan(backend.recording.calls("getElementsPage").count, before)
         task.cancel()
         backend.finishEvents()
     }
 
     func testAFailedReadIsShown() async {
         let backend = Fixtures.backend()
-        backend.recording.setRawHandler { _ in throw URLError(.notConnectedToInternet) }
+        backend.recording.setHandler { _ in throw URLError(.notConnectedToInternet) }
         let model = BoardModel(backend: backend, teamId: Fixtures.team, contextId: Fixtures.board)
         await model.open()
         XCTAssertEqual(model.phase, .failed("You're offline. Check your connection and try again."))
+    }
+}
+
+final class TransportTests: XCTestCase {
+    func testABoardLargerThanAPageIsReadWhole() async throws {
+        let backend = InMemoryAppBackend()
+        let el = Fixtures.element("a", Fixtures.rect)
+        backend.recording.setHandler { call in
+            let first = call.args["cursor"] == .null
+            let json = #"{"items":["# + el + #"],"nextCursor":"# + (first ? #""c1""# : "null") + "}"
+            return try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8))
+        }
+        let elements = try await backend.designClient("board").getElements()
+        XCTAssertEqual(elements.count, 2)
+        XCTAssertEqual(backend.recording.calls("getElementsPage").map { $0.args["cursor"] }, [.null, .string("c1")])
+    }
+
+    func testV1NamesMapOntoTheComponentWire() throws {
+        XCTAssertEqual(ComponentTransport.camel("update_member_username"), "updateMemberUsername")
+        XCTAssertEqual(ComponentTransport.camel("join"), "join")
+        let wire = try ComponentTransport.wire(
+            "update_cursor", Data(#"{"x":-3,"y":4,"updated_at":1700000000000}"#.utf8))
+        XCTAssertEqual(wire.name, "updateCursor")
+        XCTAssertEqual(wire.args, .object(["x": "-3", "y": "4", "updatedAt": "1700000000000"]))
+        let other = try ComponentTransport.wire("get_role", Data(#"{"member":"ab"}"#.utf8))
+        XCTAssertEqual(other.args, .object(["member": "ab"]), "only 64-bit arguments become strings")
+    }
+
+    func testRefusalsInWords() {
+        let forbidden = AppError("x", details: ["code": "Forbidden", "fields": .object(["message": "only editors may comment"])])
+        XCTAssertEqual(
+            DesignFormat.errorText(forbidden), "You have view-only access to this board. Ask an admin for edit access to comment.")
+        let invalid = AppError("x", details: ["code": "Invalid", "fields": .object(["message": "comment not found"])])
+        XCTAssertEqual(DesignFormat.errorText(invalid), "Comment not found")
     }
 }
 

@@ -7,22 +7,62 @@ web client does.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen | swift-sdk `c9ca1a0` (`main` merge commit of swift-sdk#84) |
-| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | kotlin-sdk `ea8ded7` (`main` merge commit of kotlin-sdk#67), composite build |
+| iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen | swift-sdk `v0.5.0` |
+| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | kotlin-sdk `v0.2.0`, composite build |
 
-The SDK pins are the `main` merge commits of those app-session PRs. To bump them, change
-`revision:` in `ios/project.yml` and `ios/VoteCore/Package.swift` (keep the two identical), and
-`android/kotlin-sdk.ref`.
+Both pins are SDK releases. To bump them, change `exactVersion:` in `ios/project.yml` and `exact:` in
+`ios/VoteCore/Package.swift` to the new release (and refresh `ios/VoteCore/Package.resolved`), and set
+`android/kotlin-sdk.ref` to the new kotlin-sdk tag's commit.
 
-## Delegated execution only
+## How the apps reach Calimero
 
-Neither app runs or logs into a node. Both are built on the SDKs' `MeroAppSession`: the person
-signs in with their Calimero account (the wallet certifies this device's key), the Cloud manager
-names the account's relay, and everything goes through that relay. Views are the relay's
-account-scoped query, writes are warrants the device key signs. A workspace is a namespace founded
-through the relay; a voting group is a context directly in it (as on the web, so one namespace
-invitation covers both). Live updates come from `MeroAppBackend.events(contextId)`, with a
-10-second poll when the relay cannot stream.
+**Both apps run on Calimero 1.0.** They talk to a node of a Calimero Cloud cluster over the sealed
+channel (`calimero/sealed-http/v2`, after the node's TDX attestation is verified) and sign in with a
+passkey; they run no node. The session builds the SDK's `CalimeroAppBackend`, and the view models
+keep their `MeroAppBackend` calls, each of which maps one to one:
+
+| The app | `MeroAppBackend` | Calimero 1.0 |
+| --- | --- | --- |
+| workspace | namespace | organization (metadata `package = com.calimero.mero-vote`) |
+| voting group | context | org-wide app instance (`/apps/{app}/views`, `/intents`, `/events`) |
+| invitation | `OrgInvitation` | org invite token, redeemed at `/invites/{token}/redeem` |
+
+Sign-in (`ios/Sources/App/CloudAccess.swift`, `android/.../ui/CloudAccess.kt`, the same screens):
+
+- **Calimero Cloud:** your cluster by name (`eu-shared-1`, its nodes read from the Calimero Cloud
+  directory) or by a node's URL (`MeroNodeURL` on iOS, `-PmeroNodeUrl` on Android prefills it),
+  then *Sign in with passkey* or *Create an account*. The device's passkey belongs to the
+  cluster's relying party: a real cluster needs the `webcredentials:<rp-id>` associated domain on
+  iOS and the RP's Digital Asset Links on Android.
+- **Development node:** a `merod local` node (`http://localhost:2501` on iOS,
+  `http://10.0.2.2:2501` from the Android emulator), mock attestation allowed, with a software
+  passkey kept on the device for it.
+- **Approvals** (Account sheet): node releases and app upgrades waiting for you, per workspace and
+  for your own apps. *Review* shows the node's confirmation code first, then opens the node's
+  consent page in the system browser (a Custom Tab on Android), which returns to
+  `mero-vote://consent`. The app's own session cannot approve anything.
+- Member changes and invites are passkey step-ups: iOS hands the session's passkey to the backend;
+  Android sets `MeroAppSession.passkey` from the Activity on screen.
+
+A voting group sits directly in its workspace, so one workspace invitation covers both. Live
+updates come from `MeroAppBackend.events(contextId)`, with a 10-second poll when the stream is not
+available.
+
+## The contract surface
+
+Both clients call the contract's component ABI, exactly as the web app's adapter
+(`../app/src/meroVote.ts`) does:
+
+- methods and arguments are camelCase (`castBallot`, `getPoll`, `pollId`, `minChoices`,
+  `closesAt`); answers keep their snake_case fields;
+- every u64 in an answer (`created_at`, `cast_at`, `closed_at`…) is a decimal string, read back
+  into a number (`VoteWireDecoding`); `closesAt` goes out as a decimal string or `null`;
+- a refusal is `422 APP_ERROR {code, fields: {message}}` with the ABI's codes (`Forbidden`,
+  `Phase`, `Invalid`, `Crypto`, `NotFound`); `VoteErrorText` puts them, and the node's own
+  errors (cancelled passkey, ended session, wrong node, unavailable cluster, release deadline,
+  stale consent), in plain words;
+- a sealed poll's `closure.aggregate` (new) is decoded; a ballot must verify in one call, so the
+  new-poll sheet refuses `2·options + maxChoices − minChoices + 1 > 38` before sending.
 
 ## The cryptography on the phone
 
@@ -62,15 +102,16 @@ Chaum–Pedersen proofs) and publish proven partial decryptions. See `../README.
   The dealing polynomial lives only inside the call that deals, and the combined key is re-derived
   from the frozen dealings when a partial is published.
 - **Re-verify on this device** runs the web's independent re-audit (`verify.ts`), ported as
-  `TranscriptAudit`, over `get_transcript` and compares counts and transcript digest with the node.
+  `TranscriptAudit`, over `getTranscript` and compares counts and transcript digest with the node.
 
 ## Screens
 
-1. **Sign in**: what Mero Vote is (encrypted here, shared key, audited by everyone) and "Sign in
-   with Calimero". An invitation that arrived while signed out is named here.
+1. **Sign in**: what Mero Vote is (encrypted here, shared key, audited by everyone); a Calimero
+   Cloud passkey (sign in or create an account) or a development node. An invitation that arrived
+   while signed out is named here.
 2. **Voting groups**: each workspace with its voting groups (newest poll's question, poll count,
-   how many are open); New workspace (founds the namespace and its first group), New group in a
-   workspace, Join with a link, Account (ids behind Details, Sign out). Pull to refresh.
+   how many are open); New workspace (founds the org and its first group), New group in a
+   workspace, Join with a link, Account (Approvals, ids behind Details, Sign out). Pull to refresh.
 3. **Polls** (a voting group): a "Pick a name" prompt until you are on the roster; open / in key
    ceremony / closed counts; poll cards with phase, creator, ballots and a four-step progress strip;
    a lime New poll button; Members (your name, everyone on the roster) and Invite (share or copy).
@@ -92,13 +133,16 @@ Same as the web: workspaces and voting groups (create; join by invitation), the 
 name, creating polls with every option the web has, the whole key ceremony including complaints,
 casting and replacing a ballot, close and seal, partial decryption, the result, the node's audit,
 the independent re-verification, the transcript download (shared as a file), the public anchor,
-trustee key backup and restore (same file format), invitation links in the web's format both ways
-(`https://links.calimero.network/com.calimero.mero-vote/join?invitation=…` and `calimero://…`).
+trustee key backup and restore (same file format), invitation links. The apps mint the SDK's link
+(`https://links.calimero.network/com.calimero.mero-vote/join?invitation=…` and `calimero://…`,
+payload `{invitation: "inv_…", namespaceId, contextId}`) and also read the web app's
+(`…?invite=inv_…`, or a bare `inv_…` token), which names no group: after joining, the org's first
+voting group opens. A pre-1.0 signed invitation is refused.
 
 Left out, and why:
 
 - **Namespace-wide member names** (`@calimero-apps/names`, `publishMemberName`): `MeroAppBackend`
-  has no group-metadata calls; names come from the contract's roster (`set_name`), which is what
+  is not used; names come from the contract's roster (`setName`), which is what
   trustee and voter pickers use anyway.
 - **Context and namespace ids as the primary label, the session menu, the theme switch**: there
   is no node on the phone, and the apps are light only. Ids are behind Details.
@@ -106,17 +150,14 @@ Left out, and why:
 - **Names for voting groups**: `listContexts` returns ids only, so a group is shown by its newest
   poll's question and its poll counts.
 
-## Generated contract client
+## Contract client
 
-The contract calls are generated, never hand-written: `ios/VoteCore/Sources/VoteCore/VoteClient.swift`
-and `android/app/src/main/kotlin/network/calimero/vote/generated/VoteClient.kt`, from
-`../logic/res/abi.json` with mero-devtools-js's abi-codegen and `--transport-import`, so each takes
-the SDK's `ContextContractCalling` and `VoteClient(transport: contract.bound(to: contextId))` needs
-no adapter. Regenerate both after a contract change:
-
-```sh
-ABI_CODEGEN=/path/to/abi-codegen/dist/cli.js ./scripts/regenerate-client.sh
-```
+`ios/VoteCore/Sources/VoteCore/VoteClient.swift` and
+`android/app/src/main/kotlin/network/calimero/vote/generated/VoteClient.kt` are kept by hand
+against the component ABI (`../logic/res/abi.json`), in step with `../app/src/meroVote.ts`; each
+takes the SDK's `ContextContractCalling` (`contract.bound(to: contextId)`). `WireTests` /
+`WireTest` pin the method names, `pollId`, `closesAt` and the u64 decoding. The v1 abi-codegen
+does not read the component ABI, so `scripts/regenerate-client.sh` refuses to run.
 
 ## Build and test
 
@@ -146,13 +187,13 @@ The view-model tests on both platforms run against the SDKs' fakes (`InMemoryApp
 
 ## Configuration
 
-- **Sign-in callback**: `mero-vote://enrol` (iOS `MeroVoteCallbackScheme` in `project.yml`,
-  Android `meroEnrolCallback` in `gradle.properties`). The hosted wallet currently returns only to
-  `https://` callbacks, so production sign-in needs that wallet change or a verified https
-  callback, as for the other native apps.
-- **Environment**: empty values use the SDK defaults (hosted Cloud manager, wallet, registry).
-  iOS: `MeroCloudBaseURL`, `MeroWalletURL`, `MeroRegistryURL` in `project.yml`. Android:
-  `-PmeroCloudUrl=… -PmeroWalletUrl=… -PmeroRegistryUrl=…`.
+- **iOS**: `MeroNodeURL` (your Cloud cluster by name or a node's URL; empty: the sign-in screen
+  asks) and `MeroDevNodeURL` (the development node it offers) in `project.yml`; the node's consent
+  page returns to `mero-vote://consent` (`MeroVoteCallbackScheme`).
+- **Android**: `-PmeroNodeUrl=…` (the same), `-PmeroDevNodeUrl=…` (default
+  `http://10.0.2.2:2501`; debug builds allow cleartext to localhost and 10.0.2.2 only) and
+  `meroConsentCallback` (default `mero-vote://consent`, also the manifest's intent filter) in
+  `gradle.properties`.
 - **Font**: Power Grotesk, converted from the web's WOFF2 files.
 
 ## CI

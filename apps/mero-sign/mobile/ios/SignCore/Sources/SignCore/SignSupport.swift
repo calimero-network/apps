@@ -6,23 +6,19 @@ import MeroKit
 public enum SignConstants {
     /// The registry package and invitation-link slug (`PACKAGE_NAME` on the web).
     public static let packageName = "com.calimero.mero-sign"
-    /// The metadata marker on the namespace that holds this account's private
-    /// store (`PERSONAL_KIND`). Found by marker, never by name.
-    public static let personalKind = "mero-sign:personal"
-    /// The personal namespace's name (`PERSONAL_WORKSPACE_NAME`).
-    public static let personalWorkspaceName = "Personal"
-    /// The restricted subgroup the private context is bound to (`PERSONAL_GROUP_NAME`).
-    public static let personalGroupName = "Private"
-    /// The private context's `context_name` (`is_default_private_context` answers on it).
+    /// The name of the account's signature-library instance (`LIBRARY_NAME`):
+    /// owned by the account, in no organization.
+    public static let libraryName = "mero-sign:library"
+    /// The library's `contextName` (`isDefaultPrivateContext` answers on it).
     public static let privateContextName = "default"
-    /// How often an open agreement is re-read when the relay cannot stream events.
+    /// How often an open agreement is re-read when the node cannot stream events.
     public static let pollInterval: Duration = .seconds(10)
 }
 
 // MARK: - The contract client
 
 extension SignClient {
-    /// The contract client for one context, over the account's relay. The
+    /// The contract client for one app instance, through the signed-in backend. The
     /// generated client takes MeroKit's `ContextContractCalling` directly.
     public static func make(contract: any ContextContract, contextId: String) -> SignClient {
         SignClient(transport: contract.bound(to: contextId))
@@ -47,9 +43,11 @@ extension ContractBytes {
 
 /// Ids as the contract takes them back: 32 bytes, lowercase hex.
 public enum SignIds {
-    /// An account or context id, trimmed and lowercased.
+    /// An account or app id, trimmed; a 64-hex id lowercased. Any other id
+    /// is kept as the node spelled it, since it goes back to the contract.
     public static func hex(_ value: String) -> String {
-        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return Hex.is32(trimmed) ? trimmed.lowercased() : trimmed
     }
 
     public static func hex(_ value: ContractBytes) -> String { value.hex }
@@ -106,18 +104,39 @@ public enum SignModelError: Error, LocalizedError, Equatable {
 /// A failure, in words a person can act on.
 public enum SignErrorText {
     public static func describe(_ error: Error) -> String {
-        if let model = error as? SignModelError { return model.errorDescription ?? "" }
-        if let account = error as? AccountError, case .noRelay = account {
-            return "No relay serves your account yet. Open an invitation link to get one."
+        switch error {
+        case let model as SignModelError:
+            return model.errorDescription ?? ""
+        case let error as ReleaseDeadlineError:
+            let release = error.release.isEmpty ? "a node release" : "node release \(error.release)"
+            return "Your cluster takes no new work until \(release) is approved. Review it under Needs your approval."
+        case is NotFound:
+            return "This isn't shared with you, or it was deleted."
+        case is LoginRequired, is SignedOutError:
+            return "Your session ended. Sign in again."
+        case is WrongNode:
+            return "This node doesn't serve your workspace. Try another node of the cluster."
+        case let error as UnavailableError:
+            return "Your cluster is busy (\(error.reason)). Try again shortly."
+        case is ConfirmCancelled, is PasskeyCancelled:
+            return "The passkey prompt was cancelled, so nothing changed."
+        case is ConsentStale:
+            return "What you were approving changed in the meantime. Review it again under Needs your approval."
+        case let error as AppError:
+            return appError(error)
+        case let error as CalimeroError:
+            return error.message.isEmpty ? error.code : error.message
+        default:
+            break
         }
         if let url = error as? URLError {
             switch url.code {
             case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed:
                 return "You're offline. Check your connection and try again."
             case .timedOut:
-                return "The relay took too long to answer. Try again."
+                return "Your cluster took too long to answer. Try again."
             default:
-                return "Couldn't reach the relay. Try again."
+                return "Couldn't reach your cluster. Try again."
             }
         }
         if error is DecodingError {
@@ -128,9 +147,40 @@ public enum SignErrorText {
         return text.isEmpty ? "Something went wrong. Try again." : text
     }
 
+    /// The contract's own refusals (`422 APP_ERROR`, `{code, fields}`): `NotFound
+    /// {what, id}`, and `Invalid`, `Forbidden`, `Conflict` with v1's sentence in `message`.
+    public static func appError(_ error: AppError) -> String {
+        let message = error.fields["message"]?.stringValue.map(sentence)
+        switch error.appCode {
+        case "NotFound":
+            let what = error.fields["what"]?.stringValue ?? "item"
+            return "That \(what) isn't there any more. Pull to refresh."
+        case "Forbidden":
+            return message ?? "You can't do that in this agreement."
+        case "Conflict":
+            return message ?? "Someone changed this first. Pull to refresh and try again."
+        default:
+            return message ?? (error.message.isEmpty ? "The agreement refused this (\(error.appCode))." : error.message)
+        }
+    }
+
+    /// `already registered` as a sentence.
+    static func sentence(_ text: String) -> String {
+        guard let first = text.first else { return text }
+        let body = first.uppercased() + text.dropFirst()
+        return body.hasSuffix(".") ? body : body + "."
+    }
+
+    /// The contract's `Conflict` (already registered, already joined, a stale version).
+    public static func isConflict(_ error: Error) -> Bool { (error as? AppError)?.appCode == "Conflict" }
+
+    /// The contract's `Forbidden`.
+    public static func isForbidden(_ error: Error) -> Bool { (error as? AppError)?.appCode == "Forbidden" }
+
     /// The raw message of an error, for matching the contract's own words.
     public static func message(_ error: Error) -> String {
-        (error as? LocalizedError)?.errorDescription ?? "\(error)"
+        if let app = error as? AppError, let text = app.fields["message"]?.stringValue { return text }
+        return (error as? LocalizedError)?.errorDescription ?? "\(error)"
     }
 
     /// A freshly joined context answers "Uninitialized" until its first sync.

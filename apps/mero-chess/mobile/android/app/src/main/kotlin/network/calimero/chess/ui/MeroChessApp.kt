@@ -16,34 +16,43 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import network.calimero.chess.app.ChessAppViewModel
+import network.calimero.chess.app.ChessConstants
 
 /** Restoring → a splash. Signed out → sign-in. Signed in → the tables, and the table opened. (iOS `RootView`.) */
 @Composable
 fun MeroChessApp(
     vm: ChessAppViewModel,
-    onSignIn: () -> Unit,
+    onCloud: (cluster: String, create: Boolean, name: String) -> Unit,
     onShare: (String) -> Unit,
 ) {
     ChessTheme {
-        val session = vm.session
         val restored by vm.restored.collectAsState()
-        val restoring by session.isRestoring.collectAsState()
-        val auth by session.client.state.collectAsState()
-        val backend by session.backend.collectAsState()
-        val revision by session.revision.collectAsState()
-        val pending by session.pendingInvitation.collectAsState()
+        val session by vm.session.collectAsState()
+        val backend by vm.backend.collectAsState()
+        val revision by vm.revision.collectAsState()
+        val signIn by vm.signIn.collectAsState()
+        val pendingLink by vm.pendingLink.collectAsState()
         val joining by vm.joining.collectAsState()
         val open by vm.openTable.collectAsState()
+        val consentReturned by vm.consentReturned.collectAsState()
+        val restoring = session?.isRestoring?.collectAsState()?.value ?: false
+        val sessionInvite = session?.pendingInvitation?.collectAsState()?.value
 
+        val current = backend
         when {
             !restored || restoring -> Splash("Restoring your session…")
-            !auth.isDelegated -> SignInScreen(auth = auth, invited = pending != null, onSignIn = onSignIn, onCancel = vm::cancelSignIn)
-            backend == null ->
-                Splash("Connecting to your relay…") {
-                    SecondaryButton(onClick = vm::signOut, fullWidth = false) { ButtonLabel("Sign out") }
-                }
+            current == null ->
+                SignInScreen(
+                    state = signIn,
+                    invited = pendingLink != null || sessionInvite != null,
+                    initialMode = vm.mode,
+                    initialCluster = vm.lastCluster,
+                    initialDevNode = vm.lastDevNode,
+                    onCloud = onCloud,
+                    onDevelopment = vm::signInDev,
+                    onDismissError = vm::dismissSignInError,
+                )
             else -> {
-                val current = backend!!
                 key(revision) {
                     val table = open
                     if (table != null) {
@@ -52,8 +61,10 @@ fun MeroChessApp(
                     } else {
                         LobbyScreen(
                             backend = current,
-                            applicationId = session.applicationId,
-                            account = auth.account.orEmpty(),
+                            applicationId = ChessConstants.PACKAGE_NAME,
+                            account = current.account,
+                            approvals = vm.approvals,
+                            consentReturned = consentReturned,
                             onOpen = vm::open,
                             onJoin = vm::ask,
                             onShare = onShare,
@@ -67,6 +78,7 @@ fun MeroChessApp(
         joining?.let { invitation ->
             JoinSheet(invitation = invitation, onJoin = { vm.join(invitation) }, onDismiss = vm::dismissJoin)
         }
+        ConsentCodeSheet(vm.approvals)
     }
 }
 

@@ -9,10 +9,10 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
-import network.calimero.kombat.generated.ArenaView
-import network.calimero.kombat.generated.FighterView
-import network.calimero.kombat.generated.HitView
-import network.calimero.kombat.generated.MatchSummary
+import network.calimero.kombat.contract.ArenaView
+import network.calimero.kombat.contract.FighterView
+import network.calimero.kombat.contract.HitView
+import network.calimero.kombat.contract.MatchSummary
 
 object Fixtures {
     val me = "ab".repeat(32)

@@ -61,10 +61,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import network.calimero.forum.contract.PostView
 import network.calimero.forum.core.ForumConstants
 import network.calimero.forum.core.ForumErrorText
 import network.calimero.forum.core.ForumFormat
-import network.calimero.forum.generated.PostView
 
 /** Name, handle and age on one line, the timeline way. */
 @Composable

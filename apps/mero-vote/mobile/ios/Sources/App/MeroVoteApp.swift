@@ -4,22 +4,19 @@ import Security
 import SwiftUI
 import VoteCore
 
-/// Where sign-in goes, from Info.plist (empty = the SDK's defaults).
-enum AppConfig {
-    static var callback: CloudCallback { .scheme(string("MeroVoteCallbackScheme") ?? "mero-vote") }
+/// The app's voting-group reference, not MeroKit's (an org/team id) of the same name.
+typealias GroupRef = VoteCore.GroupRef
 
-    static var config: MeroProviderConfig {
-        MeroProviderConfig(
-            packageName: VoteConstants.packageName,
-            registryURL: string("MeroRegistryURL"),
-            cloudBaseURL: string("MeroCloudBaseURL").flatMap(URL.init(string:)))
+/// Which Calimero 1.0 cluster the app talks to, from Info.plist: `MeroNodeURL` (a node of
+/// your Cloud cluster; empty = the sign-in screen asks) and `MeroDevNodeURL`. See ../README.md.
+enum AppConfig {
+    /// Where the node's consent page returns (`mero-vote://consent`).
+    static var callback: CloudCallback {
+        .scheme(CloudSettings.string("MeroVoteCallbackScheme") ?? "mero-vote", path: "consent")
     }
 
-    static var walletURL: URL? { string("MeroWalletURL").flatMap(URL.init(string:)) }
-
-    private static func string(_ key: String) -> String? {
-        let value = (Bundle.main.object(forInfoDictionaryKey: key) as? String)?.trimmingCharacters(in: .whitespaces)
-        return value?.isEmpty == false ? value : nil
+    static var config: MeroProviderConfig {
+        MeroProviderConfig(nodeURL: CloudSettings.clusterURL, packageName: VoteConstants.packageName)
     }
 }
 
@@ -27,7 +24,7 @@ enum AppConfig {
 struct MeroVoteApp: App {
     @StateObject private var session = MeroAppSession(
         packageName: VoteConstants.packageName, callback: AppConfig.callback, config: AppConfig.config,
-        walletURL: AppConfig.walletURL, keychainService: "network.calimero.vote")
+        keychainService: "network.calimero.vote")
 
     var body: some Scene {
         WindowGroup {
@@ -109,7 +106,7 @@ struct InvitationSheet: View {
             case .confirm:
                 header(symbol: "envelope.open", tone: Palette.limeSoft, title: "Join this voting group?")
                 Text(
-                    "Joining makes your account a member of the workspace it lives in, and its polls and ballots sync to you from the other members."
+                    "Joining makes your account a member of the workspace it lives in, so you can see its polls and vote in them."
                 )
                 .font(.system(size: 16)).foregroundStyle(Palette.muted).multilineTextAlignment(.center)
                 Spacer(minLength: 0)
@@ -118,7 +115,7 @@ struct InvitationSheet: View {
             case .joining:
                 ProgressView().tint(Palette.ink).controlSize(.large).padding(.top, 12)
                 Text("Joining…").font(Typeface.display(22)).foregroundStyle(Palette.ink)
-                Text("This can take up to a minute when no other member is online.")
+                Text("Your cluster is adding you to the workspace.")
                     .font(.system(size: 15)).foregroundStyle(Palette.muted).multilineTextAlignment(.center)
                 Spacer(minLength: 0)
             case .joined(let group):
@@ -130,6 +127,12 @@ struct InvitationSheet: View {
                     model.reset()
                 }
                 .buttonStyle(PrimaryButtonStyle())
+            case .joinedWorkspace(let workspace):
+                header(symbol: "checkmark", tone: Palette.lime, title: "You're in \(workspace)")
+                Text("It has no voting group yet. Its groups show on your home screen as they are made.")
+                    .font(.system(size: 16)).foregroundStyle(Palette.muted).multilineTextAlignment(.center)
+                Spacer(minLength: 0)
+                Button("Done") { model.reset() }.buttonStyle(PrimaryButtonStyle())
             case .failed(let message):
                 header(symbol: "exclamationmark.triangle", tone: Palette.dangerSoft, title: "Couldn't join")
                 Text(message).font(.system(size: 16)).foregroundStyle(Palette.muted).multilineTextAlignment(.center)
@@ -161,7 +164,10 @@ struct InvitationSheet: View {
         Haptics.tap()
         Task {
             await model.accept(backend: { session.backend }, didJoin: { await session.didJoinNamespace() })
-            if case .joined = model.stage { Haptics.success() } else { Haptics.failure() }
+            switch model.stage {
+            case .joined, .joinedWorkspace: Haptics.success()
+            default: Haptics.failure()
+            }
         }
     }
 }

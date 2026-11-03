@@ -15,10 +15,13 @@ features and SDK notes.
 ./gradlew ktlintCheck detekt testDebugUnitTest lint assembleDebug
 ```
 
-Package `network.calimero.sheets`. Sign-in returns to `meroEnrolCallback` (default
-`mero-sheets://enrol`, in `gradle.properties`); invitation links arrive on
+Package `network.calimero.sheets`. The app runs on Calimero 1.0: sign-in is a passkey on a
+Calimero Cloud cluster (by name or node URL, `meroNodeUrl`), or a `merod local` development node
+(`meroDevNodeUrl`, default `http://10.0.2.2:2501`, the host as the emulator sees it; debug builds
+allow cleartext to it). The node's consent page returns to `meroConsentCallback` (default
+`mero-sheets://consent`). Invitation links arrive on
 `https://links.calimero.network/com.calimero.mero-sheets/join?…` and
-`calimero://com.calimero.mero-sheets/join?…`. Pass `-PmeroCloudUrl`, `-PmeroWalletUrl` or
-`-PmeroRegistryUrl` for another environment.
+`calimero://com.calimero.mero-sheets/join?…`.
 
-`kotlin-sdk.ref` pins the SDK's `main` merge commit of PR #67.
+`kotlin-sdk.ref` pins kotlin-sdk `v0.2.0` (Calimero 1.0) by its tag commit; for a new release, set it to
+that tag's commit.

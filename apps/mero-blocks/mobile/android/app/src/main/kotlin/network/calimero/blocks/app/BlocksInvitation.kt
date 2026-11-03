@@ -1,41 +1,45 @@
 package network.calimero.blocks.app
 
-import com.calimero.mero.admin.SignedGroupOpenInvitation
-import com.calimero.mero.invite.AppInvitation
+import com.calimero.mero.app.OrgInvitation
 import com.calimero.mero.invite.InviteCodec
 import com.calimero.mero.invite.InviteLink
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 
 /**
- * An invitation to one world, in the web app's form (`app/src/net/inviteCodec.ts`), so a link made
- * on the phone opens in the browser and the other way round:
+ * An invitation to one world: the SDK's [OrgInvitation] (the link payload every Calimero 1.0 app
+ * shares), plus the world's team for links from the earlier 1.0 build. (Swift `BlocksInvitation`.)
  *
- * - payload: JSON `{"invitation": <SignedGroupOpenInvitation>, "groupAlias": "…", "contextId": "…", "groupId": "…"}`
+ * - payload: JSON `{"invitation": "inv_…", "namespaceId": "…", "contextId": "…", "name": "…", "groupId"?: "…"}`
  * - token: `base58(deflate(payload))` ([InviteCodec])
  * - link: `https://links.calimero.network/com.calimero.mero-blocks/join?invitation=<token>`
  *
- * A world is its own namespace, so the namespace invitation admits to exactly that world; `contextId`
- * and `groupId` say which context to enter once in. (Swift `BlocksInvitation`.)
+ * A world is its own organization (one per world), so the invite token admits to exactly that
+ * world; `contextId` (its app instance) says what to enter once in.
+ *
+ * The web app's own link (`<frontend>/?invite=inv_…`) is read too: it names no world, so the
+ * organization's first world opens once the token is redeemed.
  */
-data class BlocksInvitation(
-    val invitation: SignedGroupOpenInvitation,
-    val name: String?,
-    val contextId: String?,
+class BlocksInvitation(
+    invitation: OrgInvitation,
+    name: String?,
+    contextId: String?,
     val groupId: String?,
 ) {
-    val namespaceId: String get() = AppInvitation(invitation).namespaceId
+    val invitation: OrgInvitation = OrgInvitation(invitation.namespaceId, invitation.token, contextId ?: invitation.contextId, name ?: invitation.name)
 
-    /** The shareable token. The signed invitation is passed through exactly as core sent it. */
+    /** The world's organization: the one the node minted the token for. */
+    val namespaceId: String get() = invitation.namespaceId
+    val name: String? get() = invitation.name
+    val contextId: String? get() = invitation.contextId
+    val id: String get() = contextId ?: namespaceId
+
+    /** The shareable token. */
     fun token(): String {
-        val fields = linkedMapOf<String, JsonElement>("invitation" to invitation.raw)
-        name?.let { fields["groupAlias"] = JsonPrimitive(it) }
-        contextId?.let { fields["contextId"] = JsonPrimitive(it) }
-        groupId?.let { fields["groupId"] = JsonPrimitive(it) }
-        return InviteCodec.encode(JsonObject(fields).toString())
+        val payload = invitation.toJson()
+        return InviteCodec.encode(JsonObject(if (groupId == null) payload else payload + ("groupId" to JsonPrimitive(groupId))).toString())
     }
 
     /** The shareable link. */
@@ -44,22 +48,43 @@ data class BlocksInvitation(
     companion object {
         /**
          * A pasted link, a deep link or a bare token; null when it is not a Mero Blocks invitation
-         * (another app's link is refused: redeeming it would join that app's namespace).
+         * (another app's link is refused: redeeming it would join that app's organization).
          */
         fun parse(input: String): BlocksInvitation? {
+            parseWebLink(input)?.let { return it }
             val token = InviteLink.tokenFromPasted(input, BlocksConstants.PACKAGE_NAME) ?: return null
             val json = InviteCodec.decode(token) ?: return null
             return parseJson(json)
         }
 
-        /** The wrapped form the web app mints, or a bare signed invitation (which carries no world ids). */
+        /**
+         * The decoded payload. Only an [OrgInvitation] (an `inv_…` token and its organization) is an
+         * invitation; a pre-1.0 signed one is not. A link without `contextId` opens the world's first
+         * app instance.
+         */
         fun parseJson(json: String): BlocksInvitation? {
-            val app = AppInvitation.decodeJson(json) ?: return null
+            val invitation = OrgInvitation.decodeJson(json) ?: return null
             val root = runCatching { Json.parseToJsonElement(json) as? JsonObject }.getOrNull()
-            val inner = root?.get("data") as? JsonObject ?: root
 
-            fun text(key: String): String? = (inner?.get(key) as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
-            return BlocksInvitation(app.invitation, app.name, text("contextId"), text("groupId"))
+            fun trimmed(value: String?): String? = value?.trim()?.takeIf { it.isNotEmpty() }
+            val groupId = (root?.get("groupId") as? JsonPrimitive)?.contentOrNull
+            return BlocksInvitation(invitation, trimmed(invitation.name), trimmed(invitation.contextId), trimmed(groupId))
+        }
+
+        /** The web frontend's link, `?invite=inv_…`: a token with no organization named, learnt by redeeming it. */
+        fun parseWebLink(input: String): BlocksInvitation? {
+            val trimmed = input.trim()
+            if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) return null
+            val token =
+                trimmed
+                    .substringAfter('?', "")
+                    .substringBefore('#')
+                    .split('&')
+                    .map { it.split('=', limit = 2) }
+                    .firstOrNull { it.size == 2 && it[0] == "invite" }
+                    ?.let { java.net.URLDecoder.decode(it[1], "UTF-8") }
+                    ?.takeIf { it.startsWith("inv_") } ?: return null
+            return BlocksInvitation(OrgInvitation("", token), null, null, null)
         }
     }
 }

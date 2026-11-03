@@ -1,0 +1,289 @@
+[
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "worldMeta",
+  "args": {},
+  "save": "meta"
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "worldMeta",
+  "args": {},
+  "expect": {
+   "ok": "$meta"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "join",
+  "args": {
+   "name": "Alice",
+   "now": "1752264001"
+  },
+  "expect": {
+   "ok": {
+    "id": "@owner",
+    "account": "@owner",
+    "device": "",
+    "name": "Alice",
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.0,
+    "yaw": 0.0,
+    "pitch": 0.0,
+    "sel": 0,
+    "online": true
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getPlayers",
+  "args": {
+   "now": "1752264002"
+  },
+  "expect": {
+   "ok": {
+    "items": [
+     {
+      "id": "@owner",
+      "account": "@owner",
+      "device": "",
+      "name": "Alice",
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0,
+      "yaw": 0.0,
+      "pitch": 0.0,
+      "sel": 0,
+      "online": true
+     }
+    ],
+    "next": null
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "join",
+  "args": {
+   "name": "Bob",
+   "now": "1752264002"
+  },
+  "expect": {
+   "ok": {
+    "id": "@bob",
+    "account": "@bob",
+    "device": "",
+    "name": "Bob",
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.0,
+    "yaw": 0.0,
+    "pitch": 0.0,
+    "sel": 0,
+    "online": true
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "worldStats",
+  "args": {},
+  "expect": {
+   "ok": {
+    "overrides": "0",
+    "players": "2"
+   }
+  },
+  "events": {
+   "bob": [
+    "Initialized",
+    "PlayerJoined",
+    "PlayerJoined"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setBlocks",
+  "args": {
+   "edits": [
+    {
+     "x": 33,
+     "y": 44,
+     "z": 55,
+     "b": 12
+    },
+    {
+     "x": 33,
+     "y": 45,
+     "z": 55,
+     "b": 12
+    },
+    {
+     "x": 33,
+     "y": 46,
+     "z": 55,
+     "b": 3
+    }
+   ],
+   "now": "1752264010"
+  },
+  "expect": {
+   "ok": 3
+  },
+  "events": {
+   "bob": [
+    "Initialized",
+    "PlayerJoined",
+    "PlayerJoined",
+    "BlocksChanged"
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getOverrides",
+  "args": {},
+  "expect": {
+   "ok": {
+    "items": [
+     {
+      "k": "33,44,55",
+      "b": 12
+     },
+     {
+      "k": "33,45,55",
+      "b": 12
+     },
+     {
+      "k": "33,46,55",
+      "b": 3
+     }
+    ],
+    "next": null
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setBlocks",
+  "args": {
+   "edits": [
+    {
+     "x": 33,
+     "y": 46,
+     "z": 55,
+     "b": 0
+    }
+   ],
+   "now": "1752264020"
+  },
+  "expect": {
+   "ok": 1
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getOverrides",
+  "args": {},
+  "expect": {
+   "ok": {
+    "items": [
+     {
+      "k": "33,44,55",
+      "b": 12
+     },
+     {
+      "k": "33,45,55",
+      "b": 12
+     },
+     {
+      "k": "33,46,55",
+      "b": 0
+     }
+    ],
+    "next": null
+   }
+  },
+  "events": {
+   "owner": [
+    "Initialized",
+    "PlayerJoined",
+    "PlayerJoined",
+    "BlocksChanged",
+    "BlocksChanged"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "overrideCount",
+  "args": {},
+  "expect": {
+   "ok": 3
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "heartbeat",
+  "args": {
+   "t": {
+    "name": "Bob",
+    "x": 64.5,
+    "y": 44.0,
+    "z": 64.5,
+    "yaw": 0.0,
+    "pitch": 0.0,
+    "sel": 0
+   },
+   "now": "1752264021"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "leave",
+  "args": {
+   "now": "1752264022"
+  },
+  "expect": {
+   "ok": null
+  },
+  "events": {
+   "owner": [
+    "Initialized",
+    "PlayerJoined",
+    "PlayerJoined",
+    "BlocksChanged",
+    "BlocksChanged",
+    "PlayerLeft"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "worldMeta",
+  "args": {},
+  "expect": {
+   "ok": "$meta"
+  }
+ }
+]

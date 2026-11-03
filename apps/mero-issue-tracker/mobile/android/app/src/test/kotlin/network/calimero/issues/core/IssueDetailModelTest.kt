@@ -1,7 +1,7 @@
 package network.calimero.issues.core
 
 import kotlinx.coroutines.test.runTest
-import network.calimero.issues.generated.CommentView
+import network.calimero.issues.contract.CommentView
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -41,10 +41,11 @@ class IssueDetailModelTest {
                 m.state.value.issue!!
                     .assignee,
             )
-            assertFalse(
-                "assignee" in
+            // An explicit null (`option<string>`) unassigns.
+            assertTrue(
+                "\"assignee\":null" in
                     fake.backend.recording
-                        .calls("set_assignee")
+                        .calls("setAssignee")
                         .last()
                         .args
                         .toString(),
@@ -85,10 +86,10 @@ class IssueDetailModelTest {
             val draft = SectionsDraft(m.state.value.issue!!).copy(impact = "Everyone", repro = "1. boot\n2. crash")
             assertTrue(m.saveSections(draft))
             assertEquals(
-                listOf("set_impact", "set_repro"),
+                listOf("setImpact", "setRepro"),
                 fake.backend.recording.calls
                     .map { it.method }
-                    .filter { it.startsWith("set_") },
+                    .filter { it.startsWith("set") },
             )
             assertEquals(
                 "1. boot\n2. crash",

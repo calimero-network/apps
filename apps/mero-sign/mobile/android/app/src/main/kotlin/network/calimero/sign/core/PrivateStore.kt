@@ -1,14 +1,11 @@
 package network.calimero.sign.core
 
-import com.calimero.mero.app.AppNamespace
 import com.calimero.mero.app.MeroAppBackend
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
 import network.calimero.sign.generated.SignClient
 
 /** A signature in the library, with its PNG when it could be fetched. (Swift `SavedSignature`.) */
@@ -17,7 +14,7 @@ data class SavedSignature(
     val name: String,
     val blobId: String,
     val size: ULong,
-    /** Nanoseconds. */
+    /** Milliseconds since the epoch. */
     val createdAt: ULong,
     val png: ByteArray?,
 ) {
@@ -50,17 +47,16 @@ class MemoryPrivateContextCache : PrivateContextCache {
 }
 
 /**
- * The account's PRIVATE context: its signature library and the registry of the agreements it
- * joined, with the identity it joined each one with (`identity_mappings`). Mirrors the web's
- * `DefaultContextService` + `ensurePersonalWorkspace` + `createPersonalContext`: a namespace of its
- * own found by its metadata MARKER, a RESTRICTED "Private" subgroup, and a context initialised
- * `{is_private: true, context_name: "default"}`, confirmed by `is_default_private_context`.
+ * The account's PRIVATE library: its signature library and the registry of the agreements it
+ * joined, with the identity it joined each one with (`identity_mappings`). Exactly the web's
+ * `ensurePrivateLibrary`: an app instance named [SignConstants.LIBRARY_NAME] that the account owns
+ * outside any organization, `setup(isPrivate = true, contextName = "default")` once, confirmed by
+ * `isDefaultPrivateContext`. A phone and a browser on the same account share one library.
  * (Swift `PrivateStore`.)
  */
 class PrivateStore(
     val backend: MeroAppBackend,
     val admin: SignAdmin,
-    private val applicationId: String?,
     private val cache: PrivateContextCache = MemoryPrivateContextCache(),
 ) {
     private val ensuring = Mutex()
@@ -69,63 +65,37 @@ class PrivateStore(
 
     private fun client(contextId: String): SignClient = signClient(backend.contract, contextId)
 
-    suspend fun personalNamespace(): AppNamespace? = backend.listNamespaces().firstOrNull { isPersonal(it.id) }
+    /** The account's library instances: named the library, owned by the account, in no organization. */
+    private suspend fun candidates(): List<String> =
+        admin
+            .instances()
+            .filter { it.name == SignConstants.LIBRARY_NAME && it.org == null && SignIds.same(it.owner, backend.account) }
+            .map { it.appId }
 
-    /** Whether a namespace carries the personal marker. A failed read is "no". */
-    suspend fun isPersonal(namespaceId: String): Boolean = attempt { admin.groupMetadata(namespaceId) }.getOrNull()?.data?.get("kind") == SignConstants.PERSONAL_KIND
-
-    /** The private context, without creating it. Null when there is none yet. */
+    /** The library, without creating it. Null when there is none yet. */
     suspend fun find(): String? {
         contextId?.let { return it }
         cache.load(backend.account)?.let { cached ->
             if (isPrivate(cached)) return cached.also { contextId = it }
         }
-        val personal = personalNamespace() ?: return null
-        val candidates =
-            backend.listSubgroups(personal.id).flatMap { it.contextIds } +
-                attempt { backend.listContexts(personal.id) }.getOrDefault(emptyList())
-        for (candidate in candidates) {
+        for (candidate in candidates()) {
             if (isPrivate(candidate)) return candidate.also(::remember)
         }
         return null
     }
 
-    /** The private context, found or created. One creation at a time. */
+    /** The library, found or created. One creation at a time. */
     suspend fun ensure(): String =
         ensuring.withLock {
             contextId ?: find() ?: create()
         }
 
     private suspend fun create(): String {
-        val personal = personalNamespace()
-        val namespaceId: String
-        val appId: String
-        if (personal != null) {
-            namespaceId = personal.id
-            appId = applicationId?.takeIf { it.isNotEmpty() } ?: personal.applicationId
-        } else {
-            namespaceId = backend.foundNamespace(SignConstants.PERSONAL_WORKSPACE_NAME).namespaceId
-            // NOT swallowed: the marker IS this namespace's identity.
-            admin.setGroupMetadata(namespaceId, SignConstants.PERSONAL_WORKSPACE_NAME, mapOf("kind" to SignConstants.PERSONAL_KIND))
-            appId = applicationId?.takeIf { it.isNotEmpty() }
-                ?: backend.listNamespaces().let { all -> all.firstOrNull { it.id == namespaceId }?.applicationId ?: all.firstOrNull()?.applicationId }
-                ?: ""
-        }
-        if (appId.isEmpty()) throw SignModelException("Mero Sign's application isn't known to your account yet. Try again shortly.")
-        // RESTRICTED: open, anybody admitted to the namespace could reach the library.
-        val groupId = backend.createSubgroup(namespaceId, SignConstants.PERSONAL_GROUP_NAME, isPublic = false)
-        val created =
-            backend.createContext(
-                groupId,
-                appId,
-                SignConstants.PRIVATE_CONTEXT_NAME,
-                buildJsonObject {
-                    put("is_private", JsonPrimitive(true))
-                    put("context_name", JsonPrimitive(SignConstants.PRIVATE_CONTEXT_NAME))
-                },
-            )
-        remember(created)
-        return created
+        // An instance whose setup never ran (created, then interrupted) is set up now.
+        val appId = candidates().firstOrNull() ?: admin.createInstance(SignConstants.LIBRARY_NAME, null)
+        client(appId).setup(true, SignConstants.PRIVATE_CONTEXT_NAME)
+        remember(appId)
+        return appId
     }
 
     private suspend fun isPrivate(contextId: String): Boolean = attempt { client(contextId).isDefaultPrivateContext() }.getOrDefault(false)
@@ -137,8 +107,8 @@ class PrivateStore(
 
     /**
      * Record an agreement in the private registry with the identity this account holds in it
-     * (`join_shared_context`, which writes the `IdentityMapping`). Through a relay the identity is
-     * the account itself. Best-effort: "Already joined this context" is the normal second answer.
+     * (`joinSharedContext`, which writes the `IdentityMapping`). On Calimero 1.0 the identity is the
+     * account itself. Best-effort: `Conflict` ("already joined") is the normal second answer.
      */
     suspend fun record(
         agreementContextId: String,
@@ -150,7 +120,7 @@ class PrivateStore(
             val store = ensure()
             client(store).joinSharedContext(agreementContextId, sharedIdentity, name)
             true
-        }.getOrElse { SignErrorText.message(it).contains("already joined", ignoreCase = true) }
+        }.getOrElse { SignErrorText.isConflict(it) }
     }
 
     /** The identity this account recorded for an agreement, if it recorded one. */
@@ -175,16 +145,16 @@ class PrivateStore(
         }.sortedByDescending { it.createdAt }
     }
 
-    /** Store a drawn signature (PNG): the blob into the private context, then `create_signature`. */
+    /** Store a drawn signature (PNG): the blob into the library, then `createSignature`. */
     suspend fun saveSignature(
         png: ByteArray,
         name: String,
     ): SavedSignature {
         val store = ensure()
-        val blobId = SignIds.blobHex(admin.uploadBlob(png, store))
-        if (blobId.isEmpty()) throw SignModelException("Your relay returned a blob id this app can't use.")
+        val blobId = SignIds.blobHex(admin.uploadBlob(png, "image/png", store))
+        if (blobId.isEmpty()) throw SignModelException("Your cluster returned a blob id this app can't use.")
         val id = client(store).createSignature(name, blobId, png.size.toULong())
-        return SavedSignature(id, name, blobId, png.size.toULong(), (System.currentTimeMillis() * 1_000_000).toULong(), png)
+        return SavedSignature(id, name, blobId, png.size.toULong(), System.currentTimeMillis().toULong(), png)
     }
 
     suspend fun deleteSignature(id: ULong) {

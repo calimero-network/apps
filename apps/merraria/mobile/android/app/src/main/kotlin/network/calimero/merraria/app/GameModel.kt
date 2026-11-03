@@ -51,7 +51,7 @@ data class GameState(
 
 /**
  * One world being played: the bridge to the bundled game, the touch controls, the native HUD
- * (hotbar, status) and the relay's live events. (Swift `GameModel`.)
+ * (hotbar, status) and the world's live events. (Swift `GameModel`.)
  *
  * The page is told things through [send] (the web view sets it to evaluate the message's script);
  * what the page posts arrives at [receive]. [scope] runs contract calls and the event stream.
@@ -199,10 +199,10 @@ class GameModel(
         _state.value = _state.value.copy(phase = GamePhase.Left)
     }
 
-    // ---- relay events --------------------------------------------------------------------------
+    // ---- live events ---------------------------------------------------------------------------
 
     /**
-     * Each relay event is a nudge for the game to re-read the tiles. A stream that drops is opened
+     * Each event of the world is a nudge for the game to re-read the tiles. A stream that drops is opened
      * again after a pause, and the game re-reads everything ("reconnected"); polling covers the gap.
      */
     private fun startEvents() {

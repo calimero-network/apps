@@ -1,11 +1,12 @@
 import Foundation
 import MeroKit
 
-/// One forum in a space: an open subgroup with one context running the contract.
+/// One forum in a space: an app instance of Mero Forum in the space's org (the web
+/// app's `createApp(name, source, { org })`). Its id is the app instance id.
 public struct ForumRow: Identifiable, Hashable, Sendable {
     public let id: String
     public let name: String
-    /// `nil` while the forum exists but its context has not replicated yet.
+    /// The app instance (the same as ``id`` on 1.0; kept optional for the screens).
     public let contextId: String?
     public var joined: Bool
 
@@ -17,8 +18,11 @@ public struct ForumRow: Identifiable, Hashable, Sendable {
     }
 }
 
-/// The forums in one space: list, create, join, and invite people.
-/// (Kotlin `ForumsModel`; the web app's `ForumsPage` + `lib/groups.ts`.)
+/// The forums in one space: list, create, open, and invite people.
+/// (Kotlin `ForumsModel`; the web app's `ForumsPage` + `lib/spaces.ts`.)
+///
+/// On Calimero 1.0 every member of the org reaches its app instances, so there
+/// is nothing to join and nothing waits to sync.
 @MainActor
 public final class ForumsModel: ObservableObject {
     @Published public private(set) var forums: [ForumRow] = []
@@ -42,27 +46,21 @@ public final class ForumsModel: ObservableObject {
     public func load() async {
         if forums.isEmpty { phase = .loading }
         do {
-            let subgroups = try await backend.listSubgroups(namespaceId: namespaceId)
-            var rows: [ForumRow] = []
-            for group in subgroups {
-                let contextId = group.contextIds.first
-                var joined = false
-                if let contextId { joined = (try? await backend.isMember(contextId: contextId)) ?? false }
-                rows.append(
-                    ForumRow(
-                        id: group.groupId,
-                        name: group.name?.nilIfEmpty ?? "Forum \(group.groupId.prefix(6))",
-                        contextId: contextId, joined: joined))
+            let entries = try await backend.listContextEntries(groupId: namespaceId)
+            forums = entries.map { entry in
+                ForumRow(
+                    id: entry.id, name: entry.name?.nilIfEmpty ?? "Forum \(entry.id.prefix(6))", contextId: entry.id,
+                    joined: true)
             }
-            forums = rows.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
             phase = .loaded
         } catch {
             phase = forums.isEmpty ? .failed(ForumErrorText.describe(error)) : .loaded
         }
     }
 
-    /// Create a forum: an OPEN subgroup (so everyone in the space can join it)
-    /// with a context running the contract, whose `init` takes no arguments.
+    /// Create a forum: an app instance of Mero Forum directly in the space's
+    /// org, whose `init` takes no arguments.
     @discardableResult
     public func create(name: String) async throws -> ForumRef {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -73,34 +71,19 @@ public final class ForumsModel: ObservableObject {
         isCreating = true
         defer { isCreating = false }
         do {
-            let groupId = try await backend.createSubgroup(namespaceId: namespaceId, name: trimmed, isPublic: true)
             let contextId = try await backend.createContext(
-                groupId: groupId, applicationId: applicationId, name: trimmed, initArgs: .object([:]))
-            forums.append(ForumRow(id: groupId, name: trimmed, contextId: contextId, joined: true))
+                groupId: namespaceId, applicationId: applicationId, name: trimmed, initArgs: .object([:]))
+            forums.append(ForumRow(id: contextId, name: trimmed, contextId: contextId, joined: true))
             forums.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-            return ref(groupId: groupId, name: trimmed, contextId: contextId)
+            return ref(groupId: contextId, name: trimmed, contextId: contextId)
         } catch {
             throw ForumModelError.message(ForumErrorText.describe(error))
         }
     }
 
-    /// Open a forum, joining its context first when this account is not in it yet.
+    /// Open a forum. Every member of the space reaches it on 1.0.
     public func enter(_ forum: ForumRow) async throws -> ForumRef {
-        guard let contextId = forum.contextId else {
-            throw ForumModelError.message("This forum is still syncing. Try again in a moment.")
-        }
-        if forum.joined { return ref(groupId: forum.id, name: forum.name, contextId: contextId) }
-        entering = forum.id
-        defer { entering = nil }
-        do {
-            if !((try? await backend.isMember(contextId: contextId)) ?? false) {
-                try await backend.joinContext(contextId: contextId)
-            }
-            if let index = forums.firstIndex(where: { $0.id == forum.id }) { forums[index].joined = true }
-            return ref(groupId: forum.id, name: forum.name, contextId: contextId)
-        } catch {
-            throw ForumModelError.message(ForumErrorText.describe(error))
-        }
+        ref(groupId: forum.id, name: forum.name, contextId: forum.contextId ?? forum.id)
     }
 
     /// An invitation link to the whole space.
