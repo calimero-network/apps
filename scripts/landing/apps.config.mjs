@@ -535,21 +535,25 @@ export const APPS = {
   },
 
   'mero-updates': {
+    // A component app (Calimero 1.0): sign-in is the app's own passkey dialog,
+    // handed to the landing page as `onConnect`; there is no mero-react popup.
+    ownConnect: true,
     e2eDir: 'tests',
     // Same light/dark key as the app shell (src/theme.ts), so the landing
     // choice carries through sign-in.
     themeStorageKey: 'mero-updates:theme',
-    availability: 'web+desktop',
-    trust: ['Investors are the membership', 'Drafts never leave your node', 'No send list to leak'],
+    // Calimero 1.0 is reached from the browser (passkeys); no desktop node hand-off.
+    availability: 'web',
+    trust: ['Investors are the membership', 'Drafts stay yours until you publish', 'No send list to leak'],
     explainer: [
-      'Investor updates the way Visible, Cabal and Paperstreet do them — categories, KPIs, asks — but the update is not emailed from a SaaS database. It lives in a Calimero context the company and its investors share, replicated between their own nodes.',
+      'Investor updates the way Visible, Cabal and Paperstreet do them — categories, KPIs, asks — but the update is not emailed from a SaaS database. It lives in an app the company and its investors share, on attested Calimero nodes.',
       'And it is two-way by design: investors react, reply, offer help on an ask in one click and ask the team questions of their own. The team sees who read what, accepts offers, and thanks contributors in the next update.',
     ],
     features: [
       { icon: 'FileText', title: 'Updates with structure', body: 'Templates, categories, TL;DR, KPI tiles with the change since last time, and asks — never retype last month’s numbers.' },
       { icon: 'MessageCircle', title: 'Two-way by default', body: 'Reactions, threaded replies, investor questions, and “I can help” on every ask.' },
       { icon: 'LineChart', title: 'KPIs and engagement', body: 'Every metric as a trend, and a per-investor read list for the follow-ups that matter.' },
-      { icon: 'Shield', title: 'Your investors, not a vendor’s', body: 'The audience is the membership of a context. There is no platform holding your cap table’s inbox.' },
+      { icon: 'Shield', title: 'Your investors, not a vendor’s', body: 'The audience is the membership of your company’s organization. There is no platform holding your cap table’s inbox.' },
     ],
   },
   'mero-forum': {
@@ -597,19 +601,23 @@ export const APPS = {
 
   'mero-forms': {
     displayName: 'Mero Forms',
+    // A component app (Calimero 1.0): sign-in is the app's own passkey modal,
+    // handed to the landing page as `onConnect`; there is no mero-react popup.
+    ownConnect: true,
     e2eDir: 'e2e',
     // Same light/dark key as the app shell (src/ui.tsx), so the landing
     // choice carries through sign-in.
     themeStorageKey: 'mero-forms:theme',
-    availability: 'web+desktop',
+    // Calimero 1.0 is reached from the browser (passkeys); no desktop node hand-off.
+    availability: 'web',
     overview: {
-      headline: 'Forms whose answers stay on your nodes.',
+      headline: 'Forms whose answers stay with your team.',
       comparison: {
         heading: 'A form builder, without the form vendor',
         sub: 'The builder, the questions and the response table you expect. The difference is who holds the answers.',
         themLabel: 'A typical online form service',
         rows: [
-          { label: 'Where responses live', them: 'In the vendor’s database', us: 'On your team’s own nodes, nobody else’s' },
+          { label: 'Where responses live', them: 'In the vendor’s database', us: 'In your workspace on attested Calimero nodes, read only by your team' },
           { label: 'Who can read them', them: 'Your team, and the vendor', us: 'Your team. A website key can add a response and read nothing' },
           { label: 'Checking answers', them: 'In the form page, if at all', us: 'In the contract, against every question, whoever sends it' },
           { label: 'Your website’s form', them: 'An embed or a third-party script', us: 'Your own backend, answering with a key issued from the app' },
@@ -618,13 +626,13 @@ export const APPS = {
       },
       closing: {
         title: 'Build your first form',
-        body: 'Connect a node, or install the desktop app that bundles one, then start from a template.',
+        body: 'Sign in with a passkey, start a workspace, then start from a template.',
       },
     },
     trust: ['No form vendor', 'Answers checked by the contract', 'Hands off to Mero CRM'],
     explainer: [
       'A form builder for a team: short answer, paragraph, email, phone, number, website, date, multiple choice and checkboxes, each required or not, with help text. Responses come in from your website or are entered by hand, and read back as a summary, a table and one response at a time, with a CSV export.',
-      'A workspace of forms is a Calimero context replicated between your team’s own nodes. A website answers through a key that is bound to one form and can do nothing else, and any response worth following up goes on to Mero CRM as a contact and a deal.',
+      'A workspace of forms is a Calimero app in your organization, and only its team reads the responses. A website answers through a key that is bound to one form and can do nothing else, and any response worth following up goes on to Mero CRM as a contact and a deal.',
     ],
     features: [
       { icon: 'FileCheck', title: 'Nine kinds of question', body: 'Short answer to checkboxes, required or optional, with help text, reordered and duplicated in a builder that reads like the form it makes.' },
@@ -637,7 +645,7 @@ export const APPS = {
     faq: [
       {
         q: 'Can my website read the responses?',
-        a: 'No. A form key is an account bound to one form: it can add a response to that form and nothing else. Only the team can read responses, and the website never holds a node.',
+        a: 'No. A form key is an API key bound to one form: it can add a response to that form and read its questions, nothing else. Only the team can read responses.',
       },
       {
         q: 'What happens to old responses when I change a question?',

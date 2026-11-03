@@ -1,12 +1,4 @@
-import { useEffect, useRef, useState } from "react";
-import {
-  InvitationDialog,
-  InvitationGate,
-  clearContextId,
-  useContextGroup,
-  useMero,
-} from "@calimero-network/mero-react";
-import { ContextPicker } from "./ContextPicker";
+import { useCallback, useEffect, useRef, useState } from "react";
 import LandingPage from "./pages/landing/LandingPage";
 import { FormView as FormPage } from "./FormView";
 import { FormsHome } from "./FormsHome";
@@ -14,55 +6,34 @@ import { PublicForm } from "./PublicForm";
 import { PUBLIC_PATH } from "./lib/publicLink";
 import { CaptchaCard } from "./CaptchaCard";
 import { TeamCard } from "./TeamCard";
+import { InvitationPrompt, SignInModal } from "./SignIn";
+import { WorkspacePicker } from "./WorkspacePicker";
 import { Avatar, Icon, useTheme, type Theme } from "./ui";
 import { PersonName, TeamNamespace, useSpaceNames } from "./names";
-import { readInvitation, useJoinFromInvitation } from "./useJoinFromInvitation";
+import { getActive, setActive, type ActiveWorkspace } from "./lib/workspaceStore";
 import { BASE, appPath, useRoute, type Route } from "./route";
 import { useWorkspace, useRead, type Workspace } from "./useWorkspace";
+import type { SessionDeps } from "./session";
+import { SessionProvider, useMaybeSignedIn, useSessionApi } from "./sessionContext";
 
-/** A workspace opened in this page, ahead of the one the provider read from storage. */
-interface OpenedTeam {
-  contextId: string;
-  namespaceId: string;
+export function App({ deps }: { deps?: SessionDeps } = {}) {
+  return (
+    <SessionProvider deps={deps}>
+      <Root />
+    </SessionProvider>
+  );
 }
 
-export function App() {
-  const { isAuthenticated, isLoading, applicationId, contextId: stored, logout } =
-    useMero();
-  const [opened, setOpened] = useState<OpenedTeam | null>(null);
-  const contextId = opened?.contextId ?? stored;
-  // Mounted at the root, unconditionally: an invitation captured before login
-  // has to be redeemed as soon as the session exists. Joining opens the
-  // workspace in place.
-  const invitation = useJoinFromInvitation({
-    onOpen: (contextId, namespaceId) => setOpened({ contextId, namespaceId }),
-  });
+function Root() {
   const [theme, setTheme] = useTheme();
-
+  // Bumped when an invitation is redeemed, so the remembered workspace (the
+  // one the link named) is read again.
+  const [joined, setJoined] = useState(0);
+  const onJoined = useCallback(() => setJoined((n) => n + 1), []);
   return (
     <>
-      {/* Logged out with a link opened: "you're invited" and the login, not the landing page. */}
-      <InvitationGate parse={readInvitation} noun="workspace" appName="Mero Forms" />
-      <InvitationDialog
-        redemption={invitation}
-        noun="workspace"
-        appName="Mero Forms"
-        // The grant is the namespace, and the person accepting should know that
-        // before they click; reading responses also needs an admin's "add to team".
-        detail="Joining makes this node a member of the namespace this workspace lives in. An admin then adds you to the team to give you its forms and responses."
-      />
-      <Screen
-        isLoading={isLoading}
-        isAuthenticated={isAuthenticated}
-        applicationId={applicationId}
-        contextId={contextId}
-        joinedNamespace={
-          opened && opened.contextId === contextId ? opened.namespaceId : null
-        }
-        theme={theme}
-        setTheme={setTheme}
-        logout={logout}
-      />
+      <InvitationPrompt onJoined={onJoined} />
+      <Screen key={joined} theme={theme} setTheme={setTheme} />
     </>
   );
 }
@@ -85,31 +56,16 @@ function usePathname() {
   return path;
 }
 
-/** Whichever of the four states the session is in. */
-function Screen({
-  isLoading,
-  isAuthenticated,
-  applicationId,
-  contextId,
-  joinedNamespace,
-  theme,
-  setTheme,
-  logout,
-}: {
-  isLoading: boolean;
-  isAuthenticated: boolean;
-  applicationId: string | null;
-  contextId: string | null;
-  joinedNamespace: string | null;
-  theme: Theme;
-  setTheme: (t: Theme) => void;
-  logout: () => void;
-}) {
+/** Whichever state the session is in. */
+function Screen({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) => void }) {
+  const { api } = useSessionApi();
+  const signedIn = useMaybeSignedIn();
   const path = usePathname();
+  const [signingIn, setSigningIn] = useState(false);
   // A form opened from its public link: whoever opened it, signed in or not,
   // sees only the form, answered with the key the link carries.
   if (path.replace(/\/+$/, "") === PUBLIC_PATH) return <PublicForm />;
-  if (isLoading) {
+  if (api.session.status === "connecting") {
     return (
       <Shell>
         <div className="card">
@@ -120,30 +76,53 @@ function Screen({
   }
 
   // The shared landing page: the front door when signed out, and its `/docs`
-  // and `/preview` pages for anyone, since a signed-in teammate is exactly who
-  // is likely to read them. It manages those three paths itself; the app's own
-  // routes live in the hash, so the two never meet.
-  if (!isAuthenticated || isLandingPath(path)) {
+  // and `/preview` pages for anyone. It manages those three paths itself; the
+  // app's own routes live in the hash, so the two never meet.
+  if (!signedIn || isLandingPath(path)) {
     return (
-      <LandingPage
-        isAuthenticated={isAuthenticated}
-        onOpenApp={() => {
-          window.history.pushState(null, "", BASE);
-          window.dispatchEvent(new PopStateEvent("popstate"));
-        }}
-      />
+      <>
+        <LandingPage
+          isAuthenticated={!!signedIn}
+          onConnect={() => setSigningIn(true)}
+          onOpenApp={() => {
+            window.history.pushState(null, "", BASE);
+            window.dispatchEvent(new PopStateEvent("popstate"));
+          }}
+        />
+        <SignInModal open={signingIn} onClose={() => setSigningIn(false)} />
+      </>
     );
   }
 
-  if (!contextId) {
+  return (
+    <SignedInApp key={signedIn.accountId} theme={theme} setTheme={setTheme} onLogout={() => void signedIn.signOut()} />
+  );
+}
+
+/** Signed in: the workspace picker, or the open workspace. */
+function SignedInApp({
+  theme,
+  setTheme,
+  onLogout,
+}: {
+  theme: Theme;
+  setTheme: (t: Theme) => void;
+  onLogout: () => void;
+}) {
+  const [active, setOpen] = useState<ActiveWorkspace | null>(() => getActive());
+  const open = (w: ActiveWorkspace | null) => {
+    setActive(w);
+    setOpen(w);
+  };
+
+  if (!active) {
     return (
-      <Shell right={<Menu theme={theme} setTheme={setTheme} onLogout={logout} />}>
-        <ContextPicker applicationId={applicationId} />
+      <Shell right={<Menu theme={theme} setTheme={setTheme} onLogout={onLogout} />}>
+        <WorkspacePicker onOpen={open} />
         <div className="card">
           <h2>Join with an invitation</h2>
           <p className="empty">
-            Open an invitation link someone sent you. It opens this app and asks
-            before joining.
+            Open an invitation link someone sent you. It opens this app and asks before joining.
           </p>
         </div>
       </Shell>
@@ -152,13 +131,17 @@ function Screen({
 
   return (
     // Keyed, so a workspace opened in place starts from nothing of the last one's.
-    <TeamNamespace key={contextId} contextId={contextId}>
+    <TeamNamespace key={active.appId} org={active.org}>
       <WorkspaceView
-        contextId={contextId}
-        joinedNamespace={joinedNamespace}
+        appId={active.appId}
+        org={active.org}
         theme={theme}
         setTheme={setTheme}
-        onLogout={logout}
+        onSwitchWorkspace={() => {
+          window.location.hash = "";
+          open(null);
+        }}
+        onLogout={onLogout}
       />
     </TeamNamespace>
   );
@@ -189,36 +172,27 @@ function Shell({
 }
 
 function WorkspaceView({
-  contextId,
-  joinedNamespace,
+  appId,
+  org,
   theme,
   setTheme,
+  onSwitchWorkspace,
   onLogout,
 }: {
-  contextId: string;
-  /** The namespace, when the workspace was just joined in this page. */
-  joinedNamespace: string | null;
+  appId: string;
+  /** The organization the workspace lives in. */
+  org: string | null;
   theme: Theme;
   setTheme: (t: Theme) => void;
+  onSwitchWorkspace: () => void;
   onLogout: () => void;
 }) {
-  const workspace = useWorkspace(contextId);
-  // This app's contexts live directly in the namespace (see ContextPicker), so
-  // the context's group is the namespace an invitation joined.
-  const { groupId } = useContextGroup(joinedNamespace ? null : contextId);
-  const namespaceId = joinedNamespace ?? groupId;
+  const workspace = useWorkspace(appId);
   const [route, go] = useRoute();
   const me = useRead(workspace.client, 0, (c) => c.myAccount(), []);
   const onTeam = useRead(workspace.client, workspace.version, (c) => c.amITeam(), []);
   const isAdmin = useRead(workspace.client, workspace.version, (c) => c.amIAdmin(), []);
-
-  function switchWorkspace() {
-    // The provider reads the stored context on mount, so a reload keeps the
-    // two in agreement.
-    clearContextId();
-    window.location.hash = "";
-    window.location.reload();
-  }
+  const switchWorkspace = onSwitchWorkspace;
 
   const shell = (children: React.ReactNode) => (
     <Shell
@@ -245,7 +219,7 @@ function WorkspaceView({
       <div className="card" data-testid="not-on-team">
         <h2>Waiting to be added to the team</h2>
         <p className="empty">
-          You are in this workspace&apos;s namespace, but only the team builds forms and reads
+          You are in this workspace&apos;s organization, but only the team builds forms and reads
           responses. Ask an admin to open <strong>Team</strong> and add you; you are listed there
           as a member. Your account:
         </p>
@@ -288,8 +262,7 @@ function WorkspaceView({
           onTab={(tab) => go({ page: "form", id: route.id, tab })}
           onBack={() => go({ page: "forms" })}
           workspace={workspace}
-          contextId={contextId}
-          namespaceId={namespaceId}
+          appId={appId}
           isAdmin={isAdmin.data === true}
         />
       )}
@@ -297,8 +270,8 @@ function WorkspaceView({
         <>
           <TeamCard
             workspace={workspace}
-            contextId={contextId}
-            namespaceId={namespaceId}
+            appId={appId}
+            org={org}
             isAdmin={isAdmin.data === true}
             me={me.data}
           />
@@ -426,7 +399,7 @@ function Menu({
                   className="row"
                   onSubmit={(e) => {
                     e.preventDefault();
-                    // Your name is the namespace's, shared by every app on it.
+                    // Your name is the organization's, shared by every app in it.
                     publish(me, renaming);
                     setRenaming(null);
                   }}
