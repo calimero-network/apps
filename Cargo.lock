@@ -906,16 +906,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mero-forms"
-version = "0.1.0"
-dependencies = [
- "calimero-sdk",
- "calimero-storage",
- "calimero-storage-macros",
- "hex",
-]
-
-[[package]]
 name = "mero-issue-tracker"
 version = "0.1.0"
 dependencies = [
