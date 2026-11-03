@@ -5,7 +5,6 @@
  * `makeAliases` adapts it into the small `UseAliasesReturn` surface the
  * members list, issue detail, and sidebar already consume.
  */
-import { canonicalAccount } from '@calimero-apps/names';
 import { truncateKey } from '../utils/display';
 
 export interface UseAliasesReturn {
@@ -23,11 +22,10 @@ export interface UseAliasesReturn {
   loaded: boolean;
 }
 
-/** The map key for an identity: canonical hex for an account (the admin API
- *  lists members in hex, the contract stamps `created_by`/`author` in base58),
- *  the raw string for anything else. */
+/** The map key for an identity: the account id, spelled the same by the org's
+ *  member list and by the contract's `createdBy`/`author`. */
 function aliasKey(publicKey: string): string {
-  return canonicalAccount(publicKey) ?? publicKey;
+  return publicKey;
 }
 
 /** publicKey -> name, given the raw {name, value} entries. Keyed canonically,

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
+import { useAuth } from "../sessionContext";
 import { EmptyTeamsArt } from "../components/Artwork";
 import { useShell } from "../components/shell/shellContext";
 import { useToast } from "../contexts/ToastContext";
@@ -18,7 +18,7 @@ import styles from "./TeamHome.module.css";
  */
 export default function TeamIndex() {
   const { teams } = useShell();
-  const { nodeUrl } = useMero();
+  const { nodeUrl } = useAuth();
   const navigate = useNavigate();
   const { showToast } = useToast();
   const [name, setName] = useState("");
@@ -54,8 +54,8 @@ export default function TeamIndex() {
     if (!trimmed || busy) return;
     setBusy(true);
     try {
-      const { id, haError } = await teams.createTeam(trimmed);
-      if (haError) showToast(`Team created, but it is not hosted yet: ${haError}`);
+      const { id, warning } = await teams.createTeam(trimmed);
+      if (warning) showToast(warning);
       if (id) navigate(`/teams/${id}/projects`);
     } catch (err) {
       showToast(extractErrorMessage(err, "Could not create team."));

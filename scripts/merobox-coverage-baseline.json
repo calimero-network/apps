@@ -21,61 +21,11 @@
     "save_draft",
     "set_member_role"
   ],
-  "mero-design": [
-    "add_comment",
-    "add_reply",
-    "can_edit",
-    "clear_comments",
-    "clear_elements",
-    "delete_comment",
-    "delete_reply",
-    "get_comments",
-    "get_cursors",
-    "get_role",
-    "grant_editor",
-    "list_roles",
-    "my_role",
-    "revoke_editor",
-    "set_layer_index",
-    "transfer_ownership",
-    "update_cursor",
-    "update_member_username",
-    "update_shadow"
-  ],
   "mero-forum": [
     "delete_comment",
     "get_nickname",
     "set_nickname",
     "vote_comment"
-  ],
-  "mero-issue-tracker": [
-    "delete_issue",
-    "get_repo_info",
-    "get_status_counts",
-    "set_impact",
-    "set_repo_url",
-    "set_repro",
-    "set_resolution_criteria",
-    "set_summary"
-  ],
-  "mero-pixart": [
-    "can_edit",
-    "clear_layers",
-    "get_cursors",
-    "get_role",
-    "grant_editor",
-    "list_roles",
-    "move_layer",
-    "move_layers",
-    "reorder_layers",
-    "revoke_editor",
-    "transfer_ownership",
-    "update_cursor",
-    "update_layer_content",
-    "update_layer_mask",
-    "update_member_username",
-    "update_text",
-    "update_transform"
   ],
   "mero-sign": [
     "get_identity_mapping",
@@ -95,9 +45,5 @@
   ],
   "merraria": [
     "leave"
-  ],
-  "scaffolding-e2e": [
-    "get_counter",
-    "increment_counter"
   ]
 }

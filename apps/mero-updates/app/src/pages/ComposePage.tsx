@@ -16,7 +16,7 @@ import {
   SparkleIcon,
   XIcon,
 } from "../components/icons";
-import type { MetricSeries } from "../generated/UpdatesClient";
+import type { MetricSeries } from "../lib/updatesClient";
 import {
   TEMPLATES,
   fromPost,
@@ -194,7 +194,7 @@ export default function ComposePage() {
         <div className="grow" />
         {!editId && (
           <span className="muted small" data-testid="draft-status">
-            {savedAt ? `Draft saved on this node · ${timeAgo(savedAt)}` : "Drafts stay on this node until you publish"}
+            {savedAt ? `Draft saved · only you can see it · ${timeAgo(savedAt)}` : "Drafts are yours alone until you publish"}
           </span>
         )}
         <div className="tabs" role="tablist">

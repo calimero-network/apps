@@ -6,7 +6,7 @@
  */
 import { test, expect } from '@playwright/test';
 
-const DOC_SECTIONS = ["concepts","start","sharing","storage","offline","trouble"];
+const DOC_SECTIONS = ["concepts","start","sharing","storage","trouble"];
 
 test.describe('Mero Issue Tracker landing page', () => {
   test.beforeEach(async ({ page }) => {
@@ -23,7 +23,7 @@ test.describe('Mero Issue Tracker landing page', () => {
     // again in the trust strip, and an unscoped getByText is a strict-mode
     // violation the moment an app says both.
     await expect(
-      page.locator('.cal-lp-badge').filter({ hasText: "Web + Desktop" }),
+      page.locator('.cal-lp-badge').filter({ hasText: "Web only" }),
     ).toHaveCount(1);
   });
 
@@ -129,7 +129,7 @@ test.describe('Mero Issue Tracker landing page', () => {
   test('the docs page has a table of contents that points at real sections', async ({ page }) => {
     await page.goto('/docs');
     const links = page.locator('.cal-lp-toclink');
-    await expect(links).toHaveCount(9);
+    await expect(links).toHaveCount(8);
     // Every entry must resolve to an element that exists - a TOC pointing at a
     // renamed section is worse than no TOC.
     const hrefs = await links.evaluateAll((els) => els.map((e) => e.getAttribute('href')));
@@ -182,11 +182,6 @@ test.describe('Mero Issue Tracker landing page', () => {
     // that happens over the page you were already reading. True whether that
     // is the shared popup, mero-sign's sidebar, or a game's launcher.
     await expect(page).toHaveURL(before);
-  });
-
-  test('and the landing page stays put underneath it', async ({ page }) => {
-    await page.locator('button').filter({ hasText: /^Connect to node$/ }).first().click();
-    await expect(page.locator('.cal-lp-root')).toHaveAttribute('data-cal-lp-view', 'overview');
   });
 
 

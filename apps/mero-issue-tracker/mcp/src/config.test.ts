@@ -1,56 +1,65 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadConfig } from './config.ts';
+import { DEFAULT_PACKAGE, LOCAL_NODES, loadConfig } from './config.ts';
 
-test('loadConfig defaults nodeUrl and strips trailing slash', () => {
-  const cfg = loadConfig({ TRACKER_CONTEXT: 'my-tracker' });
-  assert.equal(cfg.nodeUrl, 'http://localhost:2428');
-  assert.equal(cfg.contextRaw, 'my-tracker');
-  assert.equal(cfg.authToken, undefined);
-  assert.equal(cfg.serviceName, 'issue-tracker');
+const BASE = { TRACKER_WORKSPACE: 'Platform', CALIMERO_API_KEY: 'key' };
+
+test('loadConfig defaults to the three merod local nodes and the package', () => {
+  const cfg = loadConfig(BASE);
+  assert.deepEqual(cfg.target, { kind: 'local', nodes: LOCAL_NODES });
+  assert.equal(cfg.workspaceRaw, 'Platform');
+  assert.equal(cfg.apiKey, 'key');
+  assert.deepEqual(cfg.source, { package: DEFAULT_PACKAGE });
+  assert.equal(cfg.appRaw, undefined);
 });
 
-test('loadConfig reads TRACKER_SERVICE, defaulting to "issue-tracker"', () => {
-  assert.equal(loadConfig({ TRACKER_CONTEXT: 'ctx' }).serviceName, 'issue-tracker');
-  assert.equal(
-    loadConfig({ TRACKER_CONTEXT: 'ctx', TRACKER_SERVICE: 'custom-service' }).serviceName,
-    'custom-service',
-  );
-});
-
-test('loadConfig reads all env vars and trims a trailing slash off the node URL', () => {
+test('loadConfig reads local nodes, a dev bundle, a default repo and an app pin', () => {
   const cfg = loadConfig({
-    CALIMERO_NODE_URL: 'http://node.example:9999/',
-    TRACKER_CONTEXT: 'ctx-abc',
-    CALIMERO_AUTH_TOKEN: 'secret-token',
+    ...BASE,
+    CALIMERO_NODES: 'http://127.0.0.1:2601/, http://127.0.0.1:2602',
+    TRACKER_BUNDLE: 'bundle-hash',
+    TRACKER_REPO: 'web',
+    TRACKER_APP: 'app-1',
   });
-  assert.equal(cfg.nodeUrl, 'http://node.example:9999');
-  assert.equal(cfg.contextRaw, 'ctx-abc');
-  assert.equal(cfg.authToken, 'secret-token');
+  assert.deepEqual(cfg.target, { kind: 'local', nodes: ['http://127.0.0.1:2601', 'http://127.0.0.1:2602'] });
+  assert.equal(cfg.source, 'bundle-hash');
+  assert.equal(cfg.repoDefault, 'web');
+  assert.equal(cfg.appRaw, 'app-1');
 });
 
-test('loadConfig throws when neither TRACKER_CONTEXT nor TRACKER_NAMESPACE is set', () => {
-  assert.throws(() => loadConfig({}), /TRACKER_NAMESPACE|TRACKER_CONTEXT/);
+test('loadConfig connects to a cloud cluster by name, with a release floor', () => {
+  const cfg = loadConfig({
+    ...BASE,
+    CALIMERO_TARGET: 'cloud',
+    CALIMERO_CLUSTER: 'eu-shared-1',
+    CALIMERO_MIN_RELEASE: '2.3.109',
+    CALIMERO_ZONE: 'europe-west4-a',
+  });
+  assert.deepEqual(cfg.target, {
+    kind: 'cloud',
+    cluster: 'eu-shared-1',
+    minReleaseVersion: '2.3.109',
+    zone: 'europe-west4-a',
+  });
+  assert.throws(() => loadConfig({ ...BASE, CALIMERO_TARGET: 'cloud', CALIMERO_MIN_RELEASE: '1' }), /CALIMERO_CLUSTER/);
+  assert.throws(() => loadConfig({ ...BASE, CALIMERO_TARGET: 'cloud', CALIMERO_CLUSTER: 'c' }), /CALIMERO_MIN_RELEASE/);
 });
 
-test('loadConfig throws when TRACKER_CONTEXT is blank and TRACKER_NAMESPACE is unset', () => {
-  assert.throws(() => loadConfig({ TRACKER_CONTEXT: '   ' }), /TRACKER_NAMESPACE|TRACKER_CONTEXT/);
+test('loadConfig refuses a missing workspace, API key, or an unknown target', () => {
+  assert.throws(() => loadConfig({ CALIMERO_API_KEY: 'key' }), /TRACKER_WORKSPACE/);
+  assert.throws(() => loadConfig({ TRACKER_WORKSPACE: 'w' }), /CALIMERO_API_KEY/);
+  assert.throws(() => loadConfig({ ...BASE, CALIMERO_TARGET: 'relay' }), /"local", "cloud" or "node"/);
+  assert.throws(() => loadConfig({ ...BASE, CALIMERO_NODES: 'ftp://x' }), /not an http/);
 });
 
-test('loadConfig accepts TRACKER_NAMESPACE alone (no TRACKER_CONTEXT)', () => {
-  const cfg = loadConfig({ TRACKER_NAMESPACE: 'my-team' });
-  assert.equal(cfg.namespaceRaw, 'my-team');
-  assert.equal(cfg.contextRaw, undefined);
-  assert.equal(cfg.repoDefault, undefined);
-});
-
-test('loadConfig reads TRACKER_REPO as the default repo', () => {
-  const cfg = loadConfig({ TRACKER_NAMESPACE: 'my-team', TRACKER_REPO: 'frontend' });
-  assert.equal(cfg.repoDefault, 'frontend');
-});
-
-test('loadConfig allows both TRACKER_CONTEXT and TRACKER_NAMESPACE to be set', () => {
-  const cfg = loadConfig({ TRACKER_CONTEXT: 'ctx-abc', TRACKER_NAMESPACE: 'my-team' });
-  assert.equal(cfg.contextRaw, 'ctx-abc');
-  assert.equal(cfg.namespaceRaw, 'my-team');
+test('loadConfig reaches an attested node by URL, with a release floor', () => {
+  const cfg = loadConfig({
+    ...BASE,
+    CALIMERO_TARGET: 'node',
+    CALIMERO_NODES: 'https://node.example/',
+    CALIMERO_MIN_RELEASE: '2.3.109',
+  });
+  assert.deepEqual(cfg.target, { kind: 'node', nodes: ['https://node.example'], minReleaseVersion: '2.3.109' });
+  assert.throws(() => loadConfig({ ...BASE, CALIMERO_TARGET: 'node', CALIMERO_MIN_RELEASE: '1' }), /CALIMERO_NODES/);
+  assert.throws(() => loadConfig({ ...BASE, CALIMERO_TARGET: 'node', CALIMERO_NODES: 'https://n' }), /CALIMERO_MIN_RELEASE/);
 });

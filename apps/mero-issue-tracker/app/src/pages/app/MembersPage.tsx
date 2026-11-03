@@ -12,8 +12,8 @@ import { truncateKey } from '../../utils/display';
 import { describeError } from '../../utils/errors';
 import AvatarGlyph from '../../components/AvatarGlyph';
 import SetAliasModal from '../../components/SetAliasModal';
+import AgentKeyModal from '../../components/AgentKeyModal';
 import MemberRoleControl from '../../components/MemberRoleControl';
-import TeeBadge from '../../components/TeeBadge';
 import { effectiveFor } from '../../hooks/useMemberRoles';
 import {
   CAP,
@@ -58,6 +58,7 @@ export default function MembersPage(): React.ReactElement {
   const roles = ws.roles;
   const selfAccount = ws.selfIdentity ?? '';
   const [showAliasModal, setShowAliasModal] = useState(false);
+  const [showAgentKey, setShowAgentKey] = useState(false);
   const [firstJoin, setFirstJoin] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyAccount, setBusyAccount] = useState<string | null>(null);
@@ -138,8 +139,6 @@ export default function MembersPage(): React.ReactElement {
         <div className="titles">
           <div className="title-row">
             <h2>Members</h2>
-            {/* The TEE node is not listed below; this is where it shows. */}
-            <TeeBadge mode={ws.teeMode} />
           </div>
           <span className="sub">{accounts.length} {accounts.length === 1 ? 'person' : 'people'} in this workspace, and what each of them can do.</span>
         </div>
@@ -150,6 +149,14 @@ export default function MembersPage(): React.ReactElement {
             onClick={() => { setFirstJoin(false); setShowAliasModal(true); }}
           >
             Set my alias
+          </button>
+          <button
+            className="secondary"
+            data-testid="agent-key-btn"
+            onClick={() => setShowAgentKey(true)}
+            title="An API key for the MCP server, so a coding agent can work as you"
+          >
+            Agent key
           </button>
           <button
             className="primary"
@@ -230,7 +237,13 @@ export default function MembersPage(): React.ReactElement {
                   isSelf={you}
                   canManage={roles.canManageMembers}
                   busy={busyAccount === account}
-                  lockReason={isAdminRole(role) && adminCount <= 1 ? LAST_ADMIN_REASON : undefined}
+                  lockReason={
+                    roles.orgRoles.get(account) === 'owner'
+                      ? 'The workspace owner keeps that role.'
+                      : isAdminRole(role) && adminCount <= 1
+                        ? LAST_ADMIN_REASON
+                        : undefined
+                  }
                   onChange={(next) => run(account, () => roles.setRole(account, next))}
                 />
               </span>
@@ -266,7 +279,7 @@ export default function MembersPage(): React.ReactElement {
                   isSelf: you,
                   role,
                   adminCount,
-                }).allowed && (
+                }).allowed && roles.orgRoles.get(account) !== 'owner' && (
                   <RemoveMemberButton
                     label={label}
                     disabled={busyAccount === account}
@@ -291,6 +304,13 @@ export default function MembersPage(): React.ReactElement {
           permissions above.
         </span>
       </Foot>
+
+      {showAgentKey && (
+        <AgentKeyModal
+          workspace={ws.activeNs ?? ''}
+          onClose={() => setShowAgentKey(false)}
+        />
+      )}
 
       {showAliasModal && selfAccount && (
         <SetAliasModal

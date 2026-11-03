@@ -1,1583 +1,681 @@
 {
-  "schema_version": "wasm-abi/1",
-  "types": {
-    "Adjustments": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "brightness",
-          "type": {
-            "kind": "i32"
-          },
-          "doc": "-100..=100, 0 = neutral"
-        },
-        {
-          "name": "contrast",
-          "type": {
-            "kind": "i32"
-          },
-          "doc": "-100..=100, 0 = neutral"
-        },
-        {
-          "name": "saturation",
-          "type": {
-            "kind": "i32"
-          },
-          "doc": "-100..=100, 0 = neutral"
-        },
-        {
-          "name": "hue",
-          "type": {
-            "kind": "i32"
-          },
-          "doc": "-180..=180 degrees, 0 = neutral"
-        },
-        {
-          "name": "exposure",
-          "type": {
-            "kind": "i32"
-          },
-          "doc": "-100..=100, 0 = neutral"
-        },
-        {
-          "name": "blur",
-          "type": {
-            "kind": "u32"
-          },
-          "doc": "0..=100 blur radius in px (filter), 0 = none"
-        },
-        {
-          "name": "invert",
-          "type": {
-            "kind": "bool"
-          },
-          "doc": "invert colors"
-        },
-        {
-          "name": "curves",
-          "type": {
-            "kind": "string"
-          },
-          "doc": "JSON-encoded curve control points (per-channel splines). Opaque to the\ncontract; the frontend interprets it. Empty = identity curve."
-        }
-      ]
+  "abiVersion": 1,
+  "errors": {
+    "Invalid": {
+      "message": "string"
     },
-    "Canvas": {
-      "kind": "record",
-      "doc": "The owner-gated canvas settings: size and background.",
-      "fields": [
-        {
-          "name": "width",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "height",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "background",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
+    "OwnerOnly": {},
+    "ViewOnly": {}
+  },
+  "events": {
+    "CursorMoved": {
+      "identity": "string"
     },
-    "CursorState": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "identity",
-          "type": {
-            "kind": "string"
-          },
-          "doc": "The device this pointer belongs to (hex context key) — unique per open\ninstallation, so it is what the map is keyed by."
-        },
-        {
-          "name": "account",
-          "type": {
-            "kind": "string"
-          },
-          "doc": "The member (account) behind that device, so the overlay can label the\npointer with a username without a second lookup table. Filled from the\nentry's owner stamp on read, so nobody can put a pointer under someone\nelse's name."
-        },
-        {
-          "name": "x",
-          "type": {
-            "kind": "i64"
-          }
-        },
-        {
-          "name": "y",
-          "type": {
-            "kind": "i64"
-          }
-        },
-        {
-          "name": "updatedAt",
-          "type": {
-            "kind": "u64"
-          }
-        }
-      ]
+    "DocumentUpdated": {},
+    "LayerAdded": {
+      "id": "string"
     },
-    "DocumentInfo": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "name",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "description",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "width",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "height",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "background",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "layerCount",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "memberCount",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "owner",
-          "type": {
-            "kind": "string"
-          },
-          "nullable": true
-        }
-      ]
+    "LayerDeleted": {
+      "id": "string"
     },
-    "Layer": {
-      "kind": "record",
-      "doc": "`parent_id` and `layer_index` are indexed, so a group's children and the\ntop or bottom of the stack are seeks rather than scans.",
-      "fields": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "name",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "kind",
-          "type": {
-            "kind": "string"
-          },
-          "doc": "\"raster\" | \"group\" | \"text\" | \"adjustment\" | \"fill\""
-        },
-        {
-          "name": "parentId",
-          "type": {
-            "kind": "string"
-          },
-          "nullable": true,
-          "doc": "Parent group layer id (folder nesting); None = top level."
-        },
-        {
-          "name": "layerIndex",
-          "type": {
-            "kind": "u32"
-          },
-          "doc": "Order within the parent (ascending = bottom→top)."
-        },
-        {
-          "name": "visible",
-          "type": {
-            "kind": "bool"
-          }
-        },
-        {
-          "name": "locked",
-          "type": {
-            "kind": "bool"
-          }
-        },
-        {
-          "name": "opacity",
-          "type": {
-            "kind": "u32"
-          },
-          "doc": "0..=100"
-        },
-        {
-          "name": "blendMode",
-          "type": {
-            "kind": "string"
-          },
-          "doc": "\"normal\" | \"multiply\" | \"screen\" | \"overlay\" | \"darken\" | \"lighten\" | …"
-        },
-        {
-          "name": "x",
-          "type": {
-            "kind": "i64"
-          }
-        },
-        {
-          "name": "y",
-          "type": {
-            "kind": "i64"
-          }
-        },
-        {
-          "name": "width",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "height",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "rotation",
-          "type": {
-            "kind": "i32"
-          }
-        },
-        {
-          "name": "scaleX",
-          "type": {
-            "kind": "i32"
-          },
-          "doc": "percent, 100 = 1:1"
-        },
-        {
-          "name": "scaleY",
-          "type": {
-            "kind": "i32"
-          }
-        },
-        {
-          "name": "skewX",
-          "type": {
-            "kind": "i32"
-          },
-          "doc": "Horizontal shear in degrees (-80..=80), 0 = none."
-        },
-        {
-          "name": "skewY",
-          "type": {
-            "kind": "i32"
-          },
-          "doc": "Vertical shear in degrees (-80..=80), 0 = none."
-        },
-        {
-          "name": "flipH",
-          "type": {
-            "kind": "bool"
-          },
-          "doc": "Mirror across the layer's vertical centre line."
-        },
-        {
-          "name": "flipV",
-          "type": {
-            "kind": "bool"
-          },
-          "doc": "Mirror across the layer's horizontal centre line."
-        },
-        {
-          "name": "warp",
-          "type": {
-            "kind": "string"
-          },
-          "doc": "Corner-pin warp: JSON `{\"tl\":[dx,dy],\"tr\":[…],\"br\":[…],\"bl\":[…]}` in the\nlayer's own pixel units. Opaque to the contract (like `adjustments.curves`)\n— the renderer subdivides the quad into a triangle mesh. Empty = no warp."
-        },
-        {
-          "name": "blobId",
-          "type": {
-            "kind": "string"
-          },
-          "doc": "PNG pixel data for raster layers (blob id). Empty for non-raster kinds."
-        },
-        {
-          "name": "maskBlobId",
-          "type": {
-            "kind": "string"
-          },
-          "nullable": true,
-          "doc": "Grayscale PNG layer mask (blob id). None = no mask."
-        },
-        {
-          "name": "fill",
-          "type": {
-            "kind": "string"
-          },
-          "doc": "Solid color for `fill` layers (and a tint reference otherwise)."
-        },
-        {
-          "name": "adjustments",
-          "type": {
-            "$ref": "Adjustments"
-          }
-        },
-        {
-          "name": "text",
-          "type": {
-            "$ref": "TextProps"
-          },
-          "nullable": true
-        },
-        {
-          "name": "createdBy",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "createdAt",
-          "type": {
-            "kind": "u64"
-          }
-        },
-        {
-          "name": "updatedAt",
-          "type": {
-            "kind": "u64"
-          }
-        }
-      ]
+    "LayerUpdated": {
+      "id": "string"
     },
-    "Member": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "username",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "avatar",
-          "type": {
-            "kind": "string"
-          },
-          "nullable": true
-        },
-        {
-          "name": "joinedAt",
-          "type": {
-            "kind": "u64"
-          }
-        },
-        {
-          "name": "usernameUpdatedAt",
-          "type": {
-            "kind": "u64"
-          },
-          "doc": "Dedicated LWW clock for username/avatar edits (joined_at never changes,\nso merging on it would freeze a member's username at its first value)."
-        }
-      ]
+    "LayersReordered": {},
+    "MemberJoined": {
+      "member": "string"
     },
-    "MemberRole": {
-      "kind": "record",
-      "doc": "A member paired with their effective role, for the settings/members UI.",
-      "fields": [
-        {
-          "name": "member",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "role",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
+    "MemberUsernameUpdated": {
+      "member": "string"
     },
-    "MeroPixArt": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "doc_name",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "shared_storage",
-            "inner_type": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "kind": "string"
-              }
-            }
-          }
-        },
-        {
-          "name": "doc_description",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "shared_storage",
-            "inner_type": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "kind": "string"
-              }
-            }
-          }
-        },
-        {
-          "name": "canvas",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "shared_storage",
-            "inner_type": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "$ref": "Canvas"
-              }
-            }
-          },
-          "doc": "`None` until the owner first resizes or recolours; `initial_canvas`\nanswers until then."
-        },
-        {
-          "name": "initial_name",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "shared_storage",
-            "inner_type": {
-              "kind": "string"
-            }
-          },
-          "doc": "What `init` was given. The `Ownable` cells above cannot be seeded at init\non rc.20 (the value is silently dropped — see `init`), so the opening\nvalues live here and the owner-gated cells take over from the first\nowner edit onwards. `Frozen`: written once at init, changeable by nobody,\nso a member cannot rename the document by rewriting the fallback. Read\nthrough `doc_name_str` / `canvas_now`."
-        },
-        {
-          "name": "initial_description",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "shared_storage",
-            "inner_type": {
-              "kind": "string"
-            }
-          }
-        },
-        {
-          "name": "initial_canvas",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "shared_storage",
-            "inner_type": {
-              "$ref": "Canvas"
-            }
-          }
-        },
-        {
-          "name": "layers",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "shared_storage",
-            "inner_type": {
-              "kind": "map",
-              "key": {
-                "kind": "string"
-              },
-              "value": {
-                "$ref": "Layer"
-              },
-              "crdt_type": "unordered_map"
-            }
-          },
-          "doc": "Writer-set guarded: only accounts holding a role mask projected from\n`roles` (editors, admins) may write an entry, on every node."
-        },
-        {
-          "name": "members",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "Member"
-            }
-          },
-          "doc": "One slot per account, written only by that account."
-        },
-        {
-          "name": "cursors",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "CursorState"
-            },
-            "crdt_type": "authored_map"
-          },
-          "doc": "Keyed by DEVICE, not by member — see `CursorState`. The only map here\nthat is. Each entry is owned by the account that wrote it."
-        },
-        {
-          "name": "roles",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "kind": "bool"
-            },
-            "crdt_type": "shared_storage"
-          }
-        }
-      ]
+    "OwnerTransferred": {
+      "member": "string"
     },
-    "TextProps": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "content",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "fontFamily",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "fontSize",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "color",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "bold",
-          "type": {
-            "kind": "bool"
-          }
-        },
-        {
-          "name": "italic",
-          "type": {
-            "kind": "bool"
-          }
-        },
-        {
-          "name": "align",
-          "type": {
-            "kind": "string"
-          },
-          "nullable": true
-        }
-      ]
+    "RoleUpdated": {
+      "member": "string"
     }
   },
-  "methods": [
-    {
-      "name": "add_layer",
+  "methods": {
+    "addLayer": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
       "params": [
-        {
-          "name": "layer",
-          "type": {
-            "$ref": "Layer"
-          }
-        }
+        [
+          "layer",
+          "Layer"
+        ]
       ],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "mutating"
+      "public": false,
+      "returns": "string"
     },
-    {
-      "name": "bring_to_front",
-      "doc": "The top of the stack is one seek on the `layer_index` index.",
+    "bringToFront": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
       "params": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "updated_at",
-          "type": {
-            "kind": "u64"
-          }
-        }
+        [
+          "id",
+          "string"
+        ],
+        [
+          "updatedAt",
+          "u64"
+        ]
       ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "can_edit",
+    "canEdit": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
       "params": [],
-      "returns": {
-        "kind": "bool"
-      },
-      "intent": "read_only"
+      "public": false,
+      "returns": "bool"
     },
-    {
-      "name": "clear_layers",
+    "clearLayers": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
       "params": [],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "delete_layer",
+    "deleteLayer": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
       "params": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        }
+        [
+          "id",
+          "string"
+        ]
       ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "get_cursors",
-      "doc": "Every pointer, labelled with the account on its owner stamp.\n\n`entries_with_owners`, not a key-only `owner_of`: keys are per owner,\nso `owner_of` would only ever name the caller.",
+    "getCursors": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
       "params": [],
-      "returns": {
-        "kind": "list",
-        "items": {
-          "$ref": "CursorState"
-        }
-      },
-      "intent": "read_only"
+      "public": false,
+      "returns": "list<CursorState>"
     },
-    {
-      "name": "get_document",
+    "getDocument": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
       "params": [],
-      "returns": {
-        "$ref": "DocumentInfo"
-      },
-      "intent": "read_only"
+      "public": false,
+      "returns": "DocumentInfo"
     },
-    {
-      "name": "get_layer",
+    "getLayer": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
       "params": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        }
+        [
+          "id",
+          "string"
+        ]
       ],
-      "returns": {
-        "$ref": "Layer"
-      },
-      "returns_nullable": true,
-      "intent": "read_only"
+      "public": false,
+      "returns": "option<Layer>"
     },
-    {
-      "name": "get_layers",
-      "doc": "Every layer, bottom to top: the `layer_index` index already holds them\nin that order.",
+    "getLayers": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
       "params": [],
-      "returns": {
-        "kind": "list",
-        "items": {
-          "$ref": "Layer"
-        }
-      },
-      "intent": "read_only"
+      "public": false,
+      "returns": "list<Layer>"
     },
-    {
-      "name": "get_members",
-      "doc": "Every member, with `id` taken from the slot's account rather than from\nthe stored value.",
+    "getMembers": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
       "params": [],
-      "returns": {
-        "kind": "list",
-        "items": {
-          "$ref": "Member"
-        }
-      },
-      "intent": "read_only"
+      "public": false,
+      "returns": "list<Member>"
     },
-    {
-      "name": "get_role",
+    "getRole": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
       "params": [
-        {
-          "name": "member",
-          "type": {
-            "kind": "string"
-          }
-        }
+        [
+          "member",
+          "string"
+        ]
       ],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "read_only"
+      "public": false,
+      "returns": "string"
     },
-    {
-      "name": "grant_editor",
+    "grantEditor": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
       "params": [
-        {
-          "name": "member",
-          "type": {
-            "kind": "string"
-          }
-        }
+        [
+          "member",
+          "string"
+        ]
       ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "init",
+    "init": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "init",
       "params": [
-        {
-          "name": "name",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "description",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "width",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "height",
-          "type": {
-            "kind": "u32"
-          }
-        }
+        [
+          "name",
+          "option<string>"
+        ],
+        [
+          "description",
+          "option<string>"
+        ],
+        [
+          "width",
+          "option<u32>"
+        ],
+        [
+          "height",
+          "option<u32>"
+        ]
       ],
-      "returns": {
-        "kind": "unit"
-      }
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "join",
-      "doc": "Add the caller to the roster. Keyed by account, so opening the document\non a second machine does not add a second \"member\". The roster is one\n`UserStorage` slot per account, so nobody can rename anyone else.",
+    "join": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
       "params": [
-        {
-          "name": "username",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "avatar",
-          "type": {
-            "kind": "string"
-          },
-          "nullable": true
-        },
-        {
-          "name": "timestamp",
-          "type": {
-            "kind": "u64"
-          }
-        }
+        [
+          "username",
+          "string"
+        ],
+        [
+          "avatar",
+          "option<string>"
+        ],
+        [
+          "timestamp",
+          "u64"
+        ]
       ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "list_roles",
+    "listRoles": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
       "params": [],
-      "returns": {
-        "kind": "list",
-        "items": {
-          "$ref": "MemberRole"
-        }
-      },
-      "intent": "read_only"
+      "public": false,
+      "returns": "list<MemberRole>"
     },
-    {
-      "name": "move_layer",
-      "doc": "Move a layer into / out of a group and set its index in one call.",
+    "moveLayer": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
       "params": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "parent_id",
-          "type": {
-            "kind": "string"
-          },
-          "nullable": true
-        },
-        {
-          "name": "layer_index",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "updated_at",
-          "type": {
-            "kind": "u64"
-          }
-        }
+        [
+          "id",
+          "string"
+        ],
+        [
+          "parentId",
+          "option<string>"
+        ],
+        [
+          "layerIndex",
+          "u32"
+        ],
+        [
+          "updatedAt",
+          "u64"
+        ]
       ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "move_layers",
-      "doc": "Re-parent several layers in one call, so \"group the selection\" is a single\nstate transition rather than one RPC per layer.\n\nA layer may not become its own ancestor: every requested parent is walked\nup the (pre-move) tree first and the pair is dropped if the move would\nclose a cycle, which would otherwise make `get_layers` unrenderable for\nevery peer. Unknown ids are skipped.",
+    "moveLayers": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
       "params": [
-        {
-          "name": "moves",
-          "type": {
-            "kind": "list",
-            "items": {
-              "kind": "tuple",
-              "elements": [
-                {
-                  "kind": "string"
-                },
-                {
-                  "kind": "string"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "name": "updated_at",
-          "type": {
-            "kind": "u64"
-          }
-        }
+        [
+          "moves",
+          "list<tuple<string, option<string>>>"
+        ],
+        [
+          "updatedAt",
+          "u64"
+        ]
       ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "my_role",
+    "myRole": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
       "params": [],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "read_only"
+      "public": false,
+      "returns": "string"
     },
-    {
-      "name": "reorder_layers",
-      "doc": "Apply an explicit ordering: each (id, index) pair sets that layer's\n`layer_index`. Used after a drag-reorder in the layers panel.",
+    "reorderLayers": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
       "params": [
-        {
-          "name": "order",
-          "type": {
-            "kind": "list",
-            "items": {
-              "kind": "tuple",
-              "elements": [
-                {
-                  "kind": "string"
-                },
-                {
-                  "kind": "u32"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "name": "updated_at",
-          "type": {
-            "kind": "u64"
-          }
-        }
+        [
+          "order",
+          "list<tuple<string, u32>>"
+        ],
+        [
+          "updatedAt",
+          "u64"
+        ]
       ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "revoke_editor",
+    "revokeEditor": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
       "params": [
-        {
-          "name": "member",
-          "type": {
-            "kind": "string"
-          }
-        }
+        [
+          "member",
+          "string"
+        ]
       ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "send_to_back",
-      "doc": "Put a layer below every other one. When the bottom of the stack has room\n(its index is above 0) this writes one layer; only a stack already\nstarting at 0 has to shift the others up.",
+    "sendToBack": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
       "params": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "updated_at",
-          "type": {
-            "kind": "u64"
-          }
-        }
+        [
+          "id",
+          "string"
+        ],
+        [
+          "updatedAt",
+          "u64"
+        ]
       ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "transfer_ownership",
-      "doc": "Hand the document (and its owner-gated config) to another member. Owner-only.",
+    "transferOwnership": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
       "params": [
-        {
-          "name": "new_owner",
-          "type": {
-            "kind": "string"
-          }
-        }
+        [
+          "newOwner",
+          "string"
+        ]
       ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "update_adjustments",
-      "doc": "Patch non-destructive adjustments on a layer (or adjustment layer).",
+    "updateAdjustments": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
       "params": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "brightness",
-          "type": {
-            "kind": "i32"
-          },
-          "nullable": true
-        },
-        {
-          "name": "contrast",
-          "type": {
-            "kind": "i32"
-          },
-          "nullable": true
-        },
-        {
-          "name": "saturation",
-          "type": {
-            "kind": "i32"
-          },
-          "nullable": true
-        },
-        {
-          "name": "hue",
-          "type": {
-            "kind": "i32"
-          },
-          "nullable": true
-        },
-        {
-          "name": "exposure",
-          "type": {
-            "kind": "i32"
-          },
-          "nullable": true
-        },
-        {
-          "name": "blur",
-          "type": {
-            "kind": "u32"
-          },
-          "nullable": true
-        },
-        {
-          "name": "invert",
-          "type": {
-            "kind": "bool"
-          },
-          "nullable": true
-        },
-        {
-          "name": "curves",
-          "type": {
-            "kind": "string"
-          },
-          "nullable": true
-        },
-        {
-          "name": "updated_at",
-          "type": {
-            "kind": "u64"
-          }
-        }
+        [
+          "id",
+          "string"
+        ],
+        [
+          "brightness",
+          "option<i32>"
+        ],
+        [
+          "contrast",
+          "option<i32>"
+        ],
+        [
+          "saturation",
+          "option<i32>"
+        ],
+        [
+          "hue",
+          "option<i32>"
+        ],
+        [
+          "exposure",
+          "option<i32>"
+        ],
+        [
+          "blur",
+          "option<u32>"
+        ],
+        [
+          "invert",
+          "option<bool>"
+        ],
+        [
+          "curves",
+          "option<string>"
+        ],
+        [
+          "updatedAt",
+          "u64"
+        ]
       ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "update_cursor",
-      "doc": "Broadcast the caller's cursor. Presence is open to all members\n(including viewers); both ids are the real signer's, not client-supplied.",
+    "updateCursor": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
       "params": [
-        {
-          "name": "x",
-          "type": {
-            "kind": "i64"
-          }
-        },
-        {
-          "name": "y",
-          "type": {
-            "kind": "i64"
-          }
-        },
-        {
-          "name": "updated_at",
-          "type": {
-            "kind": "u64"
-          }
-        }
+        [
+          "x",
+          "i64"
+        ],
+        [
+          "y",
+          "i64"
+        ],
+        [
+          "updatedAt",
+          "u64"
+        ]
       ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "update_document",
-      "doc": "Rename / re-describe / resize the document. Owner-only — only converges\nfrom the document owner.",
+    "updateDocument": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
       "params": [
-        {
-          "name": "name",
-          "type": {
-            "kind": "string"
-          },
-          "nullable": true
-        },
-        {
-          "name": "description",
-          "type": {
-            "kind": "string"
-          },
-          "nullable": true
-        },
-        {
-          "name": "width",
-          "type": {
-            "kind": "u32"
-          },
-          "nullable": true
-        },
-        {
-          "name": "height",
-          "type": {
-            "kind": "u32"
-          },
-          "nullable": true
-        },
-        {
-          "name": "background",
-          "type": {
-            "kind": "string"
-          },
-          "nullable": true
-        }
+        [
+          "name",
+          "option<string>"
+        ],
+        [
+          "description",
+          "option<string>"
+        ],
+        [
+          "width",
+          "option<u32>"
+        ],
+        [
+          "height",
+          "option<u32>"
+        ],
+        [
+          "background",
+          "option<string>"
+        ]
       ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "update_layer",
-      "doc": "Update layer metadata / transform / compositing params. Each arg is\noptional so callers patch only what changed.",
+    "updateLayer": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
       "params": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "name",
-          "type": {
-            "kind": "string"
-          },
-          "nullable": true
-        },
-        {
-          "name": "visible",
-          "type": {
-            "kind": "bool"
-          },
-          "nullable": true
-        },
-        {
-          "name": "locked",
-          "type": {
-            "kind": "bool"
-          },
-          "nullable": true
-        },
-        {
-          "name": "opacity",
-          "type": {
-            "kind": "u32"
-          },
-          "nullable": true
-        },
-        {
-          "name": "blend_mode",
-          "type": {
-            "kind": "string"
-          },
-          "nullable": true
-        },
-        {
-          "name": "x",
-          "type": {
-            "kind": "i64"
-          },
-          "nullable": true
-        },
-        {
-          "name": "y",
-          "type": {
-            "kind": "i64"
-          },
-          "nullable": true
-        },
-        {
-          "name": "width",
-          "type": {
-            "kind": "u32"
-          },
-          "nullable": true
-        },
-        {
-          "name": "height",
-          "type": {
-            "kind": "u32"
-          },
-          "nullable": true
-        },
-        {
-          "name": "rotation",
-          "type": {
-            "kind": "i32"
-          },
-          "nullable": true
-        },
-        {
-          "name": "scale_x",
-          "type": {
-            "kind": "i32"
-          },
-          "nullable": true
-        },
-        {
-          "name": "scale_y",
-          "type": {
-            "kind": "i32"
-          },
-          "nullable": true
-        },
-        {
-          "name": "fill",
-          "type": {
-            "kind": "string"
-          },
-          "nullable": true
-        },
-        {
-          "name": "updated_at",
-          "type": {
-            "kind": "u64"
-          }
-        }
+        [
+          "id",
+          "string"
+        ],
+        [
+          "name",
+          "option<string>"
+        ],
+        [
+          "visible",
+          "option<bool>"
+        ],
+        [
+          "locked",
+          "option<bool>"
+        ],
+        [
+          "opacity",
+          "option<u8>"
+        ],
+        [
+          "blendMode",
+          "option<string>"
+        ],
+        [
+          "x",
+          "option<i64>"
+        ],
+        [
+          "y",
+          "option<i64>"
+        ],
+        [
+          "width",
+          "option<u32>"
+        ],
+        [
+          "height",
+          "option<u32>"
+        ],
+        [
+          "rotation",
+          "option<i32>"
+        ],
+        [
+          "scaleX",
+          "option<i32>"
+        ],
+        [
+          "scaleY",
+          "option<i32>"
+        ],
+        [
+          "fill",
+          "option<string>"
+        ],
+        [
+          "updatedAt",
+          "u64"
+        ]
       ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "update_layer_content",
-      "doc": "Replace a raster layer's pixel data with a freshly rendered blob (after a\ndestructive edit: brush, eraser, fill, crop bake, filter, transform bake).",
+    "updateLayerContent": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
       "params": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "blob_id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "width",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "height",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "updated_at",
-          "type": {
-            "kind": "u64"
-          }
-        }
+        [
+          "id",
+          "string"
+        ],
+        [
+          "blobId",
+          "string"
+        ],
+        [
+          "width",
+          "u32"
+        ],
+        [
+          "height",
+          "u32"
+        ],
+        [
+          "updatedAt",
+          "u64"
+        ]
       ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "update_layer_mask",
-      "doc": "Set / clear a layer mask (grayscale PNG blob; None clears it).",
+    "updateLayerMask": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
       "params": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "mask_blob_id",
-          "type": {
-            "kind": "string"
-          },
-          "nullable": true
-        },
-        {
-          "name": "updated_at",
-          "type": {
-            "kind": "u64"
-          }
-        }
+        [
+          "id",
+          "string"
+        ],
+        [
+          "maskBlobId",
+          "option<string>"
+        ],
+        [
+          "updatedAt",
+          "u64"
+        ]
       ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "update_member_username",
+    "updateMemberUsername": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
       "params": [
-        {
-          "name": "username",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "timestamp",
-          "type": {
-            "kind": "u64"
-          }
-        }
+        [
+          "username",
+          "string"
+        ],
+        [
+          "timestamp",
+          "u64"
+        ]
       ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "update_text",
-      "doc": "Update text-layer properties.",
+    "updateText": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
       "params": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "content",
-          "type": {
-            "kind": "string"
-          },
-          "nullable": true
-        },
-        {
-          "name": "font_family",
-          "type": {
-            "kind": "string"
-          },
-          "nullable": true
-        },
-        {
-          "name": "font_size",
-          "type": {
-            "kind": "u32"
-          },
-          "nullable": true
-        },
-        {
-          "name": "color",
-          "type": {
-            "kind": "string"
-          },
-          "nullable": true
-        },
-        {
-          "name": "bold",
-          "type": {
-            "kind": "bool"
-          },
-          "nullable": true
-        },
-        {
-          "name": "italic",
-          "type": {
-            "kind": "bool"
-          },
-          "nullable": true
-        },
-        {
-          "name": "align",
-          "type": {
-            "kind": "string"
-          },
-          "nullable": true
-        },
-        {
-          "name": "updated_at",
-          "type": {
-            "kind": "u64"
-          }
-        }
+        [
+          "id",
+          "string"
+        ],
+        [
+          "content",
+          "option<string>"
+        ],
+        [
+          "fontFamily",
+          "option<string>"
+        ],
+        [
+          "fontSize",
+          "option<u32>"
+        ],
+        [
+          "color",
+          "option<string>"
+        ],
+        [
+          "bold",
+          "option<bool>"
+        ],
+        [
+          "italic",
+          "option<bool>"
+        ],
+        [
+          "align",
+          "option<string>"
+        ],
+        [
+          "updatedAt",
+          "u64"
+        ]
       ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "update_transform",
-      "doc": "Patch the free-transform params of a layer: rotation, scale, shear, mirror\nand corner-pin warp.\n\nSeparate from `update_layer` (which already carries fifteen arguments) so\nthe transform gizmo and the Transform panel commit exactly the fields they\nown. Every arg is optional — an untouched control sends `None` and the\nstored value survives. `warp` is round-tripped verbatim; an empty string\nclears the warp.",
+    "updateTransform": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
       "params": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "rotation",
-          "type": {
-            "kind": "i32"
-          },
-          "nullable": true
-        },
-        {
-          "name": "scale_x",
-          "type": {
-            "kind": "i32"
-          },
-          "nullable": true
-        },
-        {
-          "name": "scale_y",
-          "type": {
-            "kind": "i32"
-          },
-          "nullable": true
-        },
-        {
-          "name": "skew_x",
-          "type": {
-            "kind": "i32"
-          },
-          "nullable": true
-        },
-        {
-          "name": "skew_y",
-          "type": {
-            "kind": "i32"
-          },
-          "nullable": true
-        },
-        {
-          "name": "flip_h",
-          "type": {
-            "kind": "bool"
-          },
-          "nullable": true
-        },
-        {
-          "name": "flip_v",
-          "type": {
-            "kind": "bool"
-          },
-          "nullable": true
-        },
-        {
-          "name": "warp",
-          "type": {
-            "kind": "string"
-          },
-          "nullable": true
-        },
-        {
-          "name": "updated_at",
-          "type": {
-            "kind": "u64"
-          }
-        }
+        [
+          "id",
+          "string"
+        ],
+        [
+          "rotation",
+          "option<i32>"
+        ],
+        [
+          "scaleX",
+          "option<i32>"
+        ],
+        [
+          "scaleY",
+          "option<i32>"
+        ],
+        [
+          "skewX",
+          "option<i32>"
+        ],
+        [
+          "skewY",
+          "option<i32>"
+        ],
+        [
+          "flipH",
+          "option<bool>"
+        ],
+        [
+          "flipV",
+          "option<bool>"
+        ],
+        [
+          "warp",
+          "option<string>"
+        ],
+        [
+          "updatedAt",
+          "u64"
+        ]
       ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
+      "public": false,
+      "returns": null
     }
-  ],
-  "events": [
-    {
-      "name": "CursorMoved",
-      "payload": {
-        "kind": "string"
-      }
+  },
+  "state": {
+    "fields": {
+      "cursors": "unorderedMap",
+      "document": "cell",
+      "editors": "set",
+      "layers": "unorderedMap",
+      "members": "unorderedMap"
     },
-    {
-      "name": "DocumentUpdated"
+    "search": {
+      "cursors": [],
+      "document": [],
+      "editors": [],
+      "layers": [],
+      "members": []
     },
-    {
-      "name": "LayerAdded",
-      "payload": {
-        "kind": "string"
-      }
-    },
-    {
-      "name": "LayerDeleted",
-      "payload": {
-        "kind": "string"
-      }
-    },
-    {
-      "name": "LayerUpdated",
-      "payload": {
-        "kind": "string"
-      }
-    },
-    {
-      "name": "LayersReordered"
-    },
-    {
-      "name": "MemberJoined",
-      "payload": {
-        "kind": "string"
-      }
-    },
-    {
-      "name": "MemberUsernameUpdated",
-      "payload": {
-        "kind": "string"
-      }
-    },
-    {
-      "name": "OwnerTransferred",
-      "payload": {
-        "kind": "string"
-      }
-    },
-    {
-      "name": "RoleUpdated",
-      "payload": {
-        "kind": "string"
-      }
-    }
-  ],
-  "state_root": "MeroPixArt",
-  "state_version": 1
+    "version": 1
+  },
+  "world": "calimero:app@0.5.0"
 }
