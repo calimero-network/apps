@@ -968,17 +968,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mero-pass"
-version = "0.1.0"
-dependencies = [
- "calimero-sdk",
- "calimero-storage",
- "calimero-storage-macros",
- "hex",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "mero-pixart"
 version = "0.0.2"
 dependencies = [
@@ -1021,26 +1010,6 @@ dependencies = [
 
 [[package]]
 name = "mero-sign"
-version = "0.1.0"
-dependencies = [
- "calimero-sdk",
- "calimero-storage",
- "calimero-storage-macros",
- "hex",
-]
-
-[[package]]
-name = "mero-standup"
-version = "0.1.0"
-dependencies = [
- "calimero-sdk",
- "calimero-storage",
- "calimero-storage-macros",
- "hex",
-]
-
-[[package]]
-name = "mero-standup-v1"
 version = "0.1.0"
 dependencies = [
  "calimero-sdk",

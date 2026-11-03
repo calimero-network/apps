@@ -15,14 +15,12 @@
  */
 import { useEffect, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
-import { LoginModal, useMero } from '@calimero-network/mero-react';
 import {
   ArrowRight,
   ArrowUpRight,
   Clock,
   Cloud,
   CloudX,
-  Download,
   Eye,
   FileClock,
   Heart,
@@ -35,6 +33,7 @@ import {
 } from '@calimero-network/mero-icons';
 
 import BrandMark from '../../components/BrandMark';
+import SignInDialog from '../../components/SignInDialog';
 import Wordmark from '../../components/Wordmark';
 import { MARK_BG } from '../../lib/brandMark';
 import VaultPreview from './VaultPreview';
@@ -132,8 +131,8 @@ const STEPS = [
     body: 'Names, passwords, notes and tags are encrypted in your browser, each bound to its secret and field, before anything is sent.',
   },
   {
-    title: 'Synced peer to peer',
-    body: 'Changes replicate between members’ nodes as CRDTs. Two people editing different fields both win; roles are checked by every peer.',
+    title: 'Shared with your team',
+    body: 'Every change lands in one ordered log on attested Calimero nodes. Edits to different fields both stick; roles are checked by the vault itself on every write.',
   },
 ];
 
@@ -196,7 +195,7 @@ const RISKS: { icon: typeof Lock; title: string; body: string }[] = [
 const COMPARE: [string, string, string][] = [
   [
     'Where the vault lives',
-    'On your team’s own nodes',
+    'On attested Calimero nodes, as ciphertext',
     'In the provider’s cloud, with every customer’s',
   ],
   [
@@ -206,12 +205,12 @@ const COMPARE: [string, string, string][] = [
   ],
   [
     'Who enforces roles',
-    'Every peer, when it merges a change',
+    'The vault’s own contract, on every write',
     'The provider’s servers',
   ],
   [
     'Works offline',
-    'Yes — local-first, syncs later',
+    'Not yet: a vault opens online',
     'Read-only cache, usually',
   ],
   [
@@ -226,7 +225,7 @@ const COMPARE: [string, string, string][] = [
 const FAQ: [string, string][] = [
   [
     'Can the node operator read my passwords?',
-    'No. Nodes — yours, a teammate’s, or a Calimero Cloud node — only ever hold ciphertext and key wraps. Decryption happens in a browser that holds a device key the vault key was wrapped to.',
+    'No. Calimero nodes only ever hold ciphertext and key wraps. Decryption happens in a browser that holds a device key the vault key was wrapped to.',
   ],
   [
     'What if I lose every device?',
@@ -242,16 +241,15 @@ const FAQ: [string, string][] = [
   ],
   [
     'Do I need to run a server?',
-    'You need a Calimero node. Calimero Desktop bundles one, so there is nothing to configure; Calimero Cloud keeps one online for you around the clock.',
+    'No. Mero Pass runs on Calimero Cloud: sign in with a passkey and create a vault. Developers run the same app on merod local.',
   ],
   [
     'What happens when two people edit the same secret?',
-    'Every field is its own register. Edits to different fields both survive; edits to the same field resolve by time, and the earlier value stays in history.',
+    'Every change is applied in order. Edits to different fields both survive; on the same field the later one wins, and the earlier value stays in history.',
   ],
 ];
 
 export default function LandingPage() {
-  const { connectToNode } = useMero();
   const { pathname } = useLocation();
   const [loginOpen, setLoginOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -298,8 +296,8 @@ export default function LandingPage() {
             className="mp-ld-btn mp-ld-btn--secondary mp-ld-btn--small"
             onClick={connect}
           >
-            <span className="mp-ld-long">Connect to node</span>
-            <span className="mp-ld-short">Connect</span>
+            <span className="mp-ld-long">Sign in</span>
+            <span className="mp-ld-short">Sign in</span>
           </button>
         </div>
       </header>
@@ -317,7 +315,8 @@ export default function LandingPage() {
               <p className="mp-ld-lede">
                 A password manager with no vault in someone else’s cloud.
                 Secrets are encrypted in your browser, synced between your
-                team’s own nodes, and readable only on the devices you approve.
+                team’s Calimero nodes, and readable only on the devices you
+                approve.
               </p>
               <div className="mp-ld-actions">
                 <button
@@ -325,14 +324,8 @@ export default function LandingPage() {
                   className="mp-ld-btn mp-ld-btn--primary"
                   onClick={connect}
                 >
-                  Connect to node
+                  Sign in
                 </button>
-                <Ext
-                  href={LINKS.download}
-                  className="mp-ld-btn mp-ld-btn--secondary"
-                >
-                  Get Calimero Desktop
-                </Ext>
               </div>
               <p className="mp-ld-meta">
                 End-to-end encrypted · Web · macOS · Windows · Linux · Open
@@ -371,12 +364,14 @@ export default function LandingPage() {
                 Your team holds its own, sealed
               </h3>
               <ul className="mp-ld-ticks">
-                <li>Vaults replicate only between your team’s nodes.</li>
+                <li>Vaults are reachable only by the people in your team.</li>
                 <li>
                   Nodes store ciphertext and key wraps. There is no master
                   password to guess.
                 </li>
-                <li>Roles are checked by every peer, not by a vendor.</li>
+                <li>
+                  Roles are checked by the vault’s own contract, in the open.
+                </li>
               </ul>
             </div>
           </div>
@@ -574,8 +569,8 @@ export default function LandingPage() {
                 <span>Own it.</span>
               </h2>
               <p className="mp-ld-lede">
-                Connect a node you already run, or get Calimero Desktop — it
-                bundles one, so there is nothing to host.
+                Sign in with a passkey and create your first vault. There is
+                nothing to host.
               </p>
               <div className="mp-ld-actions mp-ld-actions--center">
                 <button
@@ -583,14 +578,8 @@ export default function LandingPage() {
                   className="mp-ld-btn mp-ld-btn--primary"
                   onClick={connect}
                 >
-                  Connect to node
+                  Sign in
                 </button>
-                <Ext
-                  href={LINKS.download}
-                  className="mp-ld-btn mp-ld-btn--secondary"
-                >
-                  <Download size={16} /> Get Calimero Desktop
-                </Ext>
                 <Ext
                   href={LINKS.repo}
                   className="mp-ld-btn mp-ld-btn--secondary"
@@ -621,7 +610,7 @@ export default function LandingPage() {
                 com.calimero.mero-pass
               </p>
               <p className="mp-ld-footer__tag">
-                A peer-to-peer password manager, built on Calimero.
+                An end-to-end encrypted password manager, built on Calimero.
               </p>
             </div>
             <nav className="mp-ld-footer__cols" aria-label="Footer">
@@ -669,19 +658,7 @@ export default function LandingPage() {
         </div>
       </footer>
 
-      {/* The node picker in the same language: glass.css maps mero-react's
-          `--mero-*` variables onto glass tokens, so it is solid glass here and
-          follows light and dark like every other app's connect dialog. */}
-      <LoginModal
-        isOpen={loginOpen}
-        onClose={() => setLoginOpen(false)}
-        onConnect={(url: string) => {
-          // Closed first: `connectToNode` navigates away to the node's sign-in,
-          // and a modal still mounted over a page that is leaving flashes.
-          setLoginOpen(false);
-          connectToNode(url);
-        }}
-      />
+      <SignInDialog open={loginOpen} onClose={() => setLoginOpen(false)} />
     </div>
   );
 }

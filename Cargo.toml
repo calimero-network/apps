@@ -45,6 +45,8 @@ members  = [
 exclude = [
   "apps/kv-store/logic",
   "apps/hyperfeed/logic",
+  "apps/mero-pass/logic",
+  "apps/mero-standup/logic",
 ]
 
 [workspace.package]

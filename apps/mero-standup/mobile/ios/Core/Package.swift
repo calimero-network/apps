@@ -12,11 +12,11 @@ let package = Package(
         .library(name: "StandupCore", targets: ["StandupCore"])
     ],
     dependencies: [
-        // swift-sdk `main`, the merge commit of PR #84 (app session); keep it
-        // equal to the revision in ../project.yml.
+        // swift-sdk v0.5.0 (Calimero 1.0). Keep it equal to the
+        // exactVersion in ../project.yml.
         .package(
             url: "https://github.com/calimero-network/swift-sdk",
-            revision: "c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f")
+            exact: "0.5.0")
     ],
     targets: [
         .target(
