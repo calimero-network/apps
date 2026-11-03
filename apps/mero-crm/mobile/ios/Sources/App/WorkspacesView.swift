@@ -11,6 +11,7 @@ struct WorkspacesView: View {
     let onOpen: (PipelineRef) -> Void
     let onSignOut: () -> Void
     @State private var creating = false
+    @State private var approvals = false
     @State private var joining = false
     @State private var addingTo: Workspace?
 
@@ -34,9 +35,7 @@ struct WorkspacesView: View {
                         Card {
                             EmptyState(
                                 icon: "building.2", title: "No workspaces yet",
-                                message: model.hasRelay
-                                    ? "Start one for your team, or open an invitation link someone sent you."
-                                    : "Your account has no relay yet. Join a workspace with an invitation link first.")
+                                message: "Start one for your team, or open an invitation link someone sent you.")
                         }
                     } else {
                         ForEach(Array(model.workspaces.enumerated()), id: \.element.id) { index, workspace in
@@ -73,6 +72,9 @@ struct WorkspacesView: View {
                         if let account = DemoMode.backend?.account ?? session.account {
                             Text("Signed in as \(Account.short(account))")
                         }
+                        if !DemoMode.isOn {
+                            Button { approvals = true } label: { Label("Approvals", systemImage: "checkmark.seal") }
+                        }
                         Button(role: .destructive, action: onSignOut) {
                             Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
                         }
@@ -80,6 +82,9 @@ struct WorkspacesView: View {
                         Image(systemName: "person.crop.circle").accessibilityLabel("Account")
                     }
                 }
+            }
+            .sheet(isPresented: $approvals) {
+                ApprovalsSheet(style: .app, orgs: model.workspaces.map { ($0.id, $0.title) })
             }
             .sheet(isPresented: $creating) {
                 NewWorkspaceSheet(model: model) { pipeline in

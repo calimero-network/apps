@@ -146,7 +146,7 @@ struct IconTile: View {
     }
 }
 
-/// An empty, relayless or failed state: an icon, a title, a line, actions.
+/// An empty, signed-out or failed state: an icon, a title, a line, actions.
 struct EmptyStateView<Actions: View>: View {
     let symbol: String
     let title: String

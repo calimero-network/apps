@@ -35,6 +35,7 @@ import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.AddBox
 import androidx.compose.material.icons.outlined.ContentPaste
 import androidx.compose.material.icons.outlined.Groups
+import androidx.compose.material.icons.outlined.VerifiedUser
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -84,6 +85,7 @@ import network.calimero.battleships.core.Names
 fun LobbiesScreen(
     model: LobbiesModel,
     vm: BattleshipsViewModel,
+    activity: android.content.Context,
     open: (AppNamespace) -> Unit,
     openInvitation: (String) -> Unit,
 ) {
@@ -96,6 +98,7 @@ fun LobbiesScreen(
     var menu by remember { mutableStateOf(false) }
     var account by remember { mutableStateOf(false) }
     var confirmSignOut by remember { mutableStateOf(false) }
+    var approvals by remember { mutableStateOf(false) }
 
     LaunchedEffect(model) { model.load() }
 
@@ -107,9 +110,17 @@ fun LobbiesScreen(
                         Icon(Icons.Outlined.AccountCircle, contentDescription = "Account", tint = Palette.Ink)
                     }
                     DropdownMenu(expanded = account, onDismissRequest = { account = false }) {
-                        vm.session.account?.let {
+                        vm.account?.let {
                             DropdownMenuItem(text = { Text("Signed in as ${Names.short(it)}", color = Palette.Muted) }, onClick = {}, enabled = false)
                         }
+                        DropdownMenuItem(
+                            text = { Text("Approvals") },
+                            leadingIcon = { Icon(Icons.Outlined.VerifiedUser, contentDescription = null) },
+                            onClick = {
+                                account = false
+                                approvals = true
+                            },
+                        )
                         DropdownMenuItem(
                             text = { Text("Sign out", color = Palette.Danger) },
                             leadingIcon = { Icon(Icons.AutoMirrored.Outlined.Logout, contentDescription = null, tint = Palette.Danger) },
@@ -201,6 +212,9 @@ fun LobbiesScreen(
             openInvitation(it)
         }
     }
+    if (approvals) {
+        ApprovalsSheet(vm, activity, lobbies.map { it.id to Names.lobby(it) }) { approvals = false }
+    }
     if (confirmSignOut) {
         AlertDialog(
             onDismissRequest = { confirmSignOut = false },
@@ -209,7 +223,7 @@ fun LobbiesScreen(
             confirmButton = {
                 TextButton(onClick = {
                     confirmSignOut = false
-                    scope.launch { vm.session.signOut() }
+                    vm.signOut()
                 }) { Text("Sign out", color = Palette.Danger) }
             },
             dismissButton = { TextButton(onClick = { confirmSignOut = false }) { Text("Cancel", color = Palette.Ink) } },

@@ -1,6 +1,5 @@
 import Foundation
 import ForumCore
-import ForumGenerated
 import MeroKit
 import MeroKitTestSupport
 

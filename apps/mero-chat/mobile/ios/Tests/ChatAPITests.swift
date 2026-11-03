@@ -115,11 +115,12 @@ final class ChatAPITests: XCTestCase {
         XCTAssertEqual(calls[5].args, ["timestamp": ts])
     }
 
+    /// The component `init`'s names, as the web's `initArgsFrom` sends them.
     func testChannelInitArgsMatchTheWebAppsCreateChannel() {
-        let args = ChatAPI.channelInitArgs(name: "random", createdAt: 1_760_000_000)
+        let args = ChatAPI.channelInitArgs(name: "random")
         XCTAssertEqual(
             CanonicalJSON.string(args),
-            #"{"context_type":"Channel","created_at":1760000000,"creator_username":"","description":"","name":"random"}"#)
+            #"{"contextType":"Channel","creatorUsername":"","description":"","name":"random"}"#)
         XCTAssertEqual(ChatJSON.bytes(args), Array(CanonicalJSON.string(args).utf8).map { Int($0) })
     }
 

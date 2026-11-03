@@ -1,4 +1,5 @@
 import Foundation
+import MeroKit
 
 /// Copy, names and formatting shared by every screen. (Kotlin `ModelsFormat`.)
 public enum ModelsFormat {
@@ -97,16 +98,53 @@ public enum ModelsFormat {
         return s.hasSuffix(".0") ? String(s.dropLast(2)) : s
     }
 
-    /// Words a person can act on, from an error.
+    /// Words a person can act on, from an error: the node's typed 1.0 errors,
+    /// and the contract's `APP_ERROR` codes (`Forbidden`, `Invalid`, `Locked`).
     public static func errorText(_ error: Error) -> String {
-        let text = (error as? LocalizedError)?.errorDescription ?? String(describing: error)
-        let lower = text.lowercased()
-        if lower.contains("noRelay".lowercased()) || lower.contains("no relay") {
-            return "Your account has no relay yet. Join a studio from an invitation link, or try again shortly."
+        switch error {
+        case is ConfirmCancelled, is PasskeyCancelled:
+            return "You dismissed the passkey prompt, so nothing changed."
+        case let error as ReleaseDeadlineError:
+            let release = error.release.isEmpty ? "a node release" : "node release \(error.release)"
+            return "Your cluster takes no new work until \(release) is approved. Review it under Needs your approval."
+        case is ConsentStale:
+            return "What you were asked to approve changed in the meantime. Review it again."
+        case is NotFound:
+            return "This isn't shared with you, or it was deleted."
+        case is LoginRequired, is SignedOutError:
+            return "Your session ended. Sign in again."
+        case is WrongNode:
+            return "This node runs a release your account hasn't approved. Try another node of the cluster."
+        case is UnavailableError:
+            return "Your cluster can't be reached right now. Try again shortly."
+        case let error as AppError:
+            return appErrorText(code: error.appCode, message: error.fields["message"]?.stringValue)
+        case let error as CalimeroError:
+            return error.message.isEmpty ? error.code : error.message
+        case let error as DirectoryError:
+            return "No cluster called \"\(error.cluster)\" was found. Check the name, or paste a node address."
+        case is TeeTrustError:
+            return "The node could not prove it runs a trusted Calimero release, so nothing was sent to it."
+        default:
+            break
         }
         if let url = error as? URLError, url.code == .notConnectedToInternet {
             return "You're offline. Check your connection and try again."
         }
-        return text
+        if error is URLError { return "Can't reach the node. Check the address and your connection." }
+        return (error as? LocalizedError)?.errorDescription ?? String(describing: error)
+    }
+
+    /// The contract's errors (`logic/res/abi.json`: `Forbidden`, `Invalid`,
+    /// `Locked`, each with a `message`). The contract's own message is kept
+    /// when it sent one.
+    public static func appErrorText(code: String, message: String?) -> String {
+        if let message, !message.isEmpty { return message }
+        switch code {
+        case "Forbidden": return "Your role in this scene doesn't allow that."
+        case "Invalid": return "The scene refused that request."
+        case "Locked": return "Someone else has this checked out."
+        default: return code.isEmpty ? "The scene refused that request." : code
+        }
     }
 }

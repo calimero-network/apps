@@ -1,5 +1,6 @@
 package network.calimero.design.ui
 
+import android.content.Context
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -16,6 +17,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -24,43 +29,68 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import network.calimero.design.app.DesignAppViewModel
+import network.calimero.design.core.DesignFormat
 
 /** Restoring → a splash. Signed out → sign in. Signed in → teams, boards, a board. */
 @Composable
 fun MeroDesignApp(
     vm: DesignAppViewModel,
-    onSignIn: () -> Unit,
+    activity: Context,
 ) {
     DesignMaterialTheme {
         val restored by vm.restored.collectAsState()
-        val restoring by vm.session.isRestoring.collectAsState()
-        val backend by vm.session.backend.collectAsState()
-        val revision by vm.session.revision.collectAsState()
-        val auth by vm.session.client.state
-            .collectAsState()
-        val pendingInvitation by vm.session.pendingInvitation.collectAsState()
+        val backend by vm.backend.collectAsState()
+        val revision by vm.revision.collectAsState()
+        val invitation by vm.pendingInvitation.collectAsState()
+        val scope = rememberCoroutineScope()
+        var joining by remember { mutableStateOf(false) }
+        var joinError by remember { mutableStateOf<String?>(null) }
+        var joinedTeam by remember { mutableStateOf<String?>(null) }
 
+        val current = backend
         when {
-            !restored || restoring -> Splash("Restoring your session…")
-            auth.isDelegated && backend != null ->
-                key(revision) {
-                    SignedIn(vm, backend!!)
-                }
-            auth.isDelegated -> Splash("Connecting to your relay…") { SecondaryButton(onClick = vm::signOut, fullWidth = false) { Text("Sign out") } }
-            else -> SignInScreen(auth = auth, onSignIn = onSignIn, onCancel = { vm.session.cancelSignIn() })
+            !restored -> Splash("Restoring your session…")
+            current != null -> key(revision) { SignedIn(vm, current, joinedTeam) { joinedTeam = null } }
+            else -> SignInScreen(vm, activity)
         }
 
-        if (pendingInvitation != null) {
+        if (invitation != null && current != null && !joining) {
             AlertDialog(
-                onDismissRequest = { vm.session.dismissPendingInvitation() },
-                confirmButton = { TextButton(onClick = { vm.session.dismissPendingInvitation() }) { Text("OK") } },
-                title = { Text("Open the invitation on the web") },
-                text = {
-                    Text(
-                        "This app views boards in teams you are already in. Accept the invitation in Mero Design on the web or desktop, and the team appears here.",
-                    )
+                onDismissRequest = { vm.dismissInvitation() },
+                title = { Text(invitation?.name?.let { "Join $it?" } ?: "Join this team?") },
+                text = { Text("You were invited to a team on Mero Design. Its boards show up here once you join.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        joining = true
+                        scope.launch {
+                            try {
+                                joinedTeam = vm.joinInvitation()
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (
+                                @Suppress("TooGenericExceptionCaught") e: Exception,
+                            ) {
+                                vm.dismissInvitation()
+                                joinError = DesignFormat.errorText(e)
+                            } finally {
+                                joining = false
+                            }
+                        }
+                    }) { Text("Join") }
                 },
+                dismissButton = { TextButton(onClick = { vm.dismissInvitation() }) { Text("Not now") } },
+            )
+        }
+        if (joining) Splash("Joining…")
+        joinError?.let {
+            AlertDialog(
+                onDismissRequest = { joinError = null },
+                title = { Text("Couldn't join") },
+                text = { Text(it) },
+                confirmButton = { TextButton(onClick = { joinError = null }) { Text("OK") } },
             )
         }
     }
@@ -70,9 +100,16 @@ fun MeroDesignApp(
 private fun SignedIn(
     vm: DesignAppViewModel,
     backend: com.calimero.mero.app.MeroAppBackend,
+    joinedTeam: String?,
+    onJoinedShown: () -> Unit,
 ) {
     val nav = rememberNavController()
     val openBoard by vm.openBoard.collectAsState()
+    LaunchedEffect(joinedTeam) {
+        val team = joinedTeam ?: return@LaunchedEffect
+        nav.navigate("team/$team?name=${Uri.encode("Boards")}") { popUpTo("teams") }
+        onJoinedShown()
+    }
     LaunchedEffect(openBoard) {
         val link = openBoard ?: return@LaunchedEffect
         nav.navigate("team/${link.teamId}?name=${Uri.encode("Boards")}") { popUpTo("teams") }
@@ -83,7 +120,7 @@ private fun SignedIn(
         composable("teams") {
             TeamsScreen(
                 backend = backend,
-                session = vm.session,
+                vm = vm,
                 onSignOut = vm::signOut,
                 onOpen = { team -> nav.navigate("team/${team.id}?name=${Uri.encode(team.name)}") },
             )

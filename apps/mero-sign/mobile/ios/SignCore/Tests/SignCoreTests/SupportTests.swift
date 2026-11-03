@@ -6,16 +6,16 @@ import XCTest
 @testable import SignCore
 
 final class WireAndIdTests: XCTestCase {
-    func testIdsDecodeFromBytesOrTextAndBecomeHex() throws {
+    func testIdsDecodeFromTextAndU64sFromDecimalStrings() throws {
         let raw = """
-            {"signer":\(bytes(IDs.alice)), "signed_at":1788952411519000123}
+            {"signer":"\(IDs.alice)", "signedAt":"18446744073709551615"}
             """
         let decoded = try JSONDecoder().decode(DocumentSignature.self, from: Data(raw.utf8))
         XCTAssertEqual(decoded.signer.hex, IDs.alice)
-        // A nanosecond u64 past 2^53 survives digit for digit.
-        XCTAssertEqual(decoded.signedAt, 1_788_952_411_519_000_123)
+        // A u64 past 2^53 survives digit for digit.
+        XCTAssertEqual(decoded.signedAt, UInt64.max)
         let text = try JSONDecoder().decode(DocumentSignature.self, from: Data(
-            "{\"signer\":\"\(IDs.bob.uppercased())\",\"signed_at\":1}".utf8))
+            "{\"signer\":\"\(IDs.bob.uppercased())\",\"signedAt\":1}".utf8))
         XCTAssertEqual(text.signer.hex, IDs.bob)
         XCTAssertTrue(SignIds.same(decoded.signer, IDs.alice))
         let base58 = InviteCodec.base58Encode(try Hex.decode(IDs.blob, label: "b", bytes: 32))
@@ -49,7 +49,7 @@ final class WireAndIdTests: XCTestCase {
         XCTAssertEqual(SignFormat.initials(nil, id: IDs.alice), "A1")
         XCTAssertEqual(SignFormat.fileName("NDA", signed: true), "signed-NDA.pdf")
         XCTAssertEqual(SignFormat.tone(IDs.alice), SignFormat.tone(IDs.alice))
-        let date = SignFormat.date(nanos: 1_700_000_000_000_000_000)
+        let date = SignFormat.date(millis: 1_700_000_000_000)
         XCTAssertEqual(date.timeIntervalSince1970, 1_700_000_000, accuracy: 0.001)
     }
 }
@@ -137,12 +137,37 @@ final class InvitationCodecTests: XCTestCase {
         XCTAssertNil(SignInvitation.parse("hello"))
     }
 
-    func testReadsAnEnvelopeAndSnakeCase() throws {
-        let signed = InMemoryAppBackend.invitation(namespaceId: IDs.workspace)
-        let inner = String(decoding: try JSONEncoder().encode(signed), as: UTF8.self)
-        let json = "{\"data\":{\"invitation\":\(inner),\"context_name\":\"NDA\"}}"
+    func testReadsTheOrgInvitationPayload() throws {
+        let json = #"{"invitation":"inv_abc","namespaceId":"org1","name":"NDA","workspaceName":"Acme","extra":1}"#
         let parsed = try XCTUnwrap(SignInvitation.parse(json: json))
+        XCTAssertEqual(parsed.namespaceId, "org1")
+        XCTAssertEqual(parsed.invitation.token, "inv_abc")
         XCTAssertEqual(parsed.contextName, "NDA")
+        XCTAssertEqual(parsed.workspaceName, "Acme")
         XCTAssertNil(parsed.contextId)
     }
+
+    func testTheLinkCarriesAnOrgInviteAndPre10InvitationsAreRefused() throws {
+        let invite = SignInvitation(invitation: OrgInvitation(namespaceId: "org1", token: "inv_abc"), contextId: "app1")
+        let json = try XCTUnwrap(InviteCodec.decode(token: try invite.token()))
+        XCTAssertTrue(json.contains(#""invitation":"inv_abc""#))
+        XCTAssertTrue(json.contains(#""namespaceId":"org1""#))
+        // The SDK reads the same link as a plain OrgInvitation.
+        XCTAssertEqual(OrgInvitation.decode(try invite.token())?.contextId, "app1")
+        let old = #"{"invitation":{"invitation":{"group_id":[170]},"inviter_signature":"sig"},"contextId":"c"}"#
+        XCTAssertNil(SignInvitation.parse(json: old))
+    }
+
+    func testTheNodesErrorsReadAsWords() {
+        XCTAssertEqual(
+            SignErrorText.describe(ReleaseDeadlineError("deadline", details: ["release": "2.3.110"])),
+            "Your cluster takes no new work until node release 2.3.110 is approved. Review it under Needs your approval.")
+        XCTAssertEqual(SignErrorText.describe(NotFound("no such app")), "This isn't shared with you, or it was deleted.")
+        XCTAssertEqual(SignErrorText.describe(LoginRequired("expired")), "Your session ended. Sign in again.")
+        XCTAssertEqual(SignErrorText.describe(appError("Forbidden", "only admins may do this")), "Only admins may do this.")
+        XCTAssertEqual(SignErrorText.describe(ConfirmCancelled()), "The passkey prompt was cancelled, so nothing changed.")
+        XCTAssertTrue(SignErrorText.describe(ConsentStale("")).contains("Review it again"))
+        XCTAssertTrue(SignErrorText.isConflict(appError("Conflict", "already registered")))
+    }
+
 }

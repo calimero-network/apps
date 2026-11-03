@@ -24,28 +24,25 @@ object CalendarConstants {
 
     const val TYPE_TIMED = "event"
     const val TYPE_ALL_DAY = "long-event"
-    const val LOCAL_PREFIX = "local-"
 }
 
-/** One event as the screens draw it: shared (from the contract) or private (on this device). */
+/** One event as the screens draw it: shared, or one of the person's private events, both from the contract. */
 data class CalEvent(
     val id: String,
     val title: String,
     val description: String,
-    /** The owner's account, 64 hex. */
+    /** The owner's account id. */
     val owner: String,
     val start: Instant,
     val end: Instant,
     val allDay: Boolean,
     val color: String,
-    /** Invited accounts, 64 hex. */
+    /** Invited account ids. */
     val peers: List<String>,
+    /** One of the owner's private rows, which only their own calls read. */
     val isPrivate: Boolean,
 ) {
-    /** Kept on this device ([PrivateEventStore]), never sent anywhere. */
-    val isLocal: Boolean get() = id.startsWith(CalendarConstants.LOCAL_PREFIX)
-
-    fun isOwnedBy(account: String?): Boolean = isLocal || (account != null && owner.equals(account, ignoreCase = true))
+    fun isOwnedBy(account: String?): Boolean = account != null && owner == account
 }
 
 /** A team member with the name they set in this calendar. */

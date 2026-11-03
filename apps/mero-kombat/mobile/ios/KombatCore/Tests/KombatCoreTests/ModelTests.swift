@@ -37,7 +37,7 @@ final class ArenaModelTests: XCTestCase {
         XCTAssertEqual(page.boots, [.boot(mode: .net, local: 0, fighters: ["cryo", "jinzo"], muted: false)])
         let state = try XCTUnwrap(page.states.first)
         let wire = try JSONSerialization.jsonObject(with: Data(state.utf8)) as? [String: Any]
-        XCTAssertEqual(wire?["my_seat"] as? String, "p1", "the page reads the ABI's field names")
+        XCTAssertEqual(wire?["my_seat"] as? String, "p1", "the page reads its own snake_case wire")
         XCTAssertEqual(wire?["match_index"] as? Int, 0)
         XCTAssertEqual(backend.recording.calls("arena").first?.path, .query)
 
@@ -65,7 +65,7 @@ final class ArenaModelTests: XCTestCase {
         XCTAssertEqual(page.states.count, 1)
     }
 
-    func testAnActFromThePageIsOneTransactionThroughTheGeneratedClient() async throws {
+    func testAnActFromThePageIsOneTransactionThroughTheClient() async throws {
         let model = model()
         let page = PageSpy()
         page.attach(model)
@@ -78,7 +78,9 @@ final class ArenaModelTests: XCTestCase {
         XCTAssertEqual(call.contextId, ref.contextId)
         XCTAssertEqual(args("act")?["kind"], .string("uppercut"))
         XCTAssertEqual(args("act")?["id"], .number(42))
-        XCTAssertEqual(args("act")?["match_index"], .number(0))
+        XCTAssertEqual(args("act")?["matchIndex"], .number(0), "the contract takes camelCase")
+        XCTAssertNil(args("act")?["match_index"])
+        XCTAssertEqual(args("act")?["now"], .string("1700000000000"), "a u64 is a decimal string")
         XCTAssertTrue(page.messages.contains(.result(id: 9, valueJSON: "null")))
         XCTAssertEqual(model.meter.sent, 1)
         XCTAssertEqual(model.meter.ok, 1)

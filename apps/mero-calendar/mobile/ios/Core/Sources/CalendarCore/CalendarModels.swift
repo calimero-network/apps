@@ -1,21 +1,21 @@
-import CalendarGenerated
+import CalendarContract
 import Foundation
 
-/// One event as the screens draw it: a shared event from the contract, or a
-/// private one kept on this device.
+/// One event as the screens draw it: a shared event, or one of the person's
+/// private events, both from the contract.
 public struct CalendarItem: Identifiable, Hashable, Sendable, Codable {
     public var id: String
     public var title: String
     public var description: String
-    /// The owner's account, 64 hex (lowercase).
+    /// The owner's account id.
     public var owner: String
     public var start: Date
     public var end: Date
     public var isAllDay: Bool
     public var color: String
-    /// Invited accounts, 64 hex each.
+    /// Invited account ids.
     public var peers: [String]
-    /// Private: lives on this device only (never sent to the relay).
+    /// Private: one of the owner's private rows, which only their own calls read.
     public var isPrivate: Bool
 
     public init(
@@ -40,14 +40,11 @@ public struct CalendarItem: Identifiable, Hashable, Sendable, Codable {
         guard let start = EventTime.parse(event.start) else { return nil }
         let end = EventTime.parse(event.end) ?? start
         self.init(
-            id: event.id, title: event.title, description: event.description, owner: event.owner.hexString,
+            id: event.id, title: event.title, description: event.description, owner: event.owner,
             start: start, end: max(end, start), isAllDay: event.eventType == CalendarConstants.allDayType,
             color: event.color.isEmpty ? CalendarConstants.defaultColor : event.color,
-            peers: event.peers.map(\.hexString), isPrivate: isPrivate)
+            peers: event.peers, isPrivate: isPrivate)
     }
-
-    /// Whether this item was minted by the device-local store.
-    public var isLocal: Bool { PrivateEventStore.isLocalId(id) }
 
     /// Whether the event touches the day starting at `dayStart` (local calendar).
     public func occurs(on dayStart: Date, calendar: Calendar = .current) -> Bool {
@@ -58,9 +55,9 @@ public struct CalendarItem: Identifiable, Hashable, Sendable, Codable {
     }
 }
 
-/// A member of the calendar, from `get_members`.
+/// A member of the calendar, from `getMembers`.
 public struct CalendarPerson: Identifiable, Hashable, Sendable {
-    /// The account, 64 hex.
+    /// The account id.
     public let id: String
     public let name: String
 
@@ -70,7 +67,7 @@ public struct CalendarPerson: Identifiable, Hashable, Sendable {
     }
 }
 
-/// A team: a namespace running Mero Calendar.
+/// A team: a Calimero org running Mero Calendar.
 public struct Team: Identifiable, Hashable, Sendable {
     public let id: String
     public let name: String

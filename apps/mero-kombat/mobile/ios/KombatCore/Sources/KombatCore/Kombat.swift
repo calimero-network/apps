@@ -22,7 +22,7 @@ public func nowMillis() -> UInt64 { UInt64(Date().timeIntervalSince1970 * 1000) 
 
 extension KombatClient {
     /// `KombatClient` for `contextId` in the account's backend: the SDK's bound contract is the
-    /// generated client's transport as is (`--transport-import MeroKit`).
+    /// typed client's transport as is.
     public static func bound(_ backend: any MeroAppBackend, contextId: String) -> KombatClient {
         KombatClient(transport: backend.contract.bound(to: contextId))
     }
@@ -95,14 +95,14 @@ public enum KombatError: Error, LocalizedError, Equatable {
     case noNamespace
     case noApplication
     case notAnInvitation
-    case noRelay
+    case signedOut
 
     public var errorDescription: String? {
         switch self {
-        case .noNamespace: return "This arena's namespace is not known on this device yet. Open it from Arenas and try again."
-        case .noApplication: return "Mero Kombat is still being looked up in the app registry. Try again in a moment."
+        case .noNamespace: return "This arena's organization is not known on this device yet. Open it from Arenas and try again."
+        case .noApplication: return "Mero Kombat is not published on this cluster yet."
         case .notAnInvitation: return "That is not a Mero Kombat invitation link."
-        case .noRelay: return "Your account has no relay yet. Join an arena from an invitation link first."
+        case .signedOut: return "You're signed out. Sign in again to fight."
         }
     }
 }
@@ -149,8 +149,36 @@ public enum KombatText {
     /// An error as one sentence. A contract refusal is already written for a player, so it is
     /// shown as it came.
     public static func error(_ error: Error) -> String {
+        switch error {
+        case let error as ReleaseDeadlineError:
+            let release = error.release.isEmpty ? "a node release" : "node release \(error.release)"
+            return "Your cluster takes no new work until \(release) is approved. Review it under Needs your approval."
+        case is NotFound:
+            return "This isn't shared with you, or it was deleted."
+        case is LoginRequired:
+            return "Your session ended. Sign in again."
+        case is WrongNode:
+            return "This node doesn't serve your arena. Try another node of the cluster."
+        case let error as TrapError:
+            return "The arena stopped that move (\(error.kind.isEmpty ? "trap" : error.kind)). Try again."
+        case let error as UnavailableError:
+            return "Your cluster is busy (\(error.reason)). Try again shortly."
+        case let error as AppError:
+            if let words = KombatRefusal.message(code: error.appCode) { return words }
+            return error.message.isEmpty ? error.appCode : error.message
+        case is ConfirmCancelled:
+            return "Cancelled. Nothing was sent."
+        case is ConsentStale:
+            return "That approval is out of date. Refresh and review it again."
+        case is SignedOutError:
+            return "You're signed out. Sign in again to fight."
+        case let error as CalimeroError:
+            return error.message.isEmpty ? error.code : error.message
+        default:
+            break
+        }
         if let described = (error as? LocalizedError)?.errorDescription, !described.isEmpty { return described }
         let text = String(describing: error)
-        return text.isEmpty ? "Something went wrong talking to the relay." : text
+        return text.isEmpty ? "Something went wrong talking to your cluster." : text
     }
 }

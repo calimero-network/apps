@@ -1,38 +1,33 @@
 import Foundation
 import MeroKit
 
-/// The two ways the app reaches the chat contract in a context.
+/// The two ways the app reaches the chat contract in an app instance.
 ///
 /// There is no third: the phone holds no node, so there is no JSON-RPC. A
-/// read is the relay's account-scoped query, a write is a signed warrant.
+/// read is a view, a write is an intent, both as the signed-in account.
 protocol ChatContract: Sendable {
-    /// Run a view (`#[app::view]`) through the relay's query path.
+    /// Run a view (`#[app::view]`): `POST /apps/{app}/views`.
     func query(contextId: String, method: String, args: JSONValue) async throws -> JSONValue?
-    /// Run a mutation as the account: a warrant posted to the relay's intents route.
+    /// Run a mutation as the account: `POST /apps/{app}/intents`.
     func execute(contextId: String, method: String, args: JSONValue) async throws -> JSONValue?
 }
 
-/// ``ChatContract`` over the account's ``RelayClient``.
-///
-/// - `query` is `POST /admin-api/contexts/{id}/query` with the relay session's
-///   Bearer token (``RelayClient/query(contextId:method:argsJson:)``). Without a
-///   session, or when the relay says the method is a write, the SDK falls back
-///   to a warrant, which reads too.
-/// - `execute` is `POST /admin-api/contexts/{id}/intents` carrying a warrant the
-///   device key signs (``RelayClient/execute(contextId:method:argsJson:)``).
-struct RelayChatContract: ChatContract {
-    let relay: RelayClient
+/// ``ChatContract`` over the swift-sdk's `ContextContract`: on 1.0
+/// `CloudContextContract`, so `query` is `POST /apps/{app}/views` and
+/// `execute` is `POST /apps/{app}/intents`, both over the sealed channel.
+struct AppChatContract: ChatContract {
+    let inner: any ContextContract
 
     func query(contextId: String, method: String, args: JSONValue) async throws -> JSONValue? {
-        try await relay.query(contextId: contextId, method: method, argsJson: args)
+        try await inner.query(contextId: contextId, method: method, args: args)
     }
 
     func execute(contextId: String, method: String, args: JSONValue) async throws -> JSONValue? {
-        try await relay.execute(contextId: contextId, method: method, argsJson: args).returns
+        try await inner.execute(contextId: contextId, method: method, args: args)
     }
 }
 
-/// A contract for a session with no relay: every call says so.
+/// A contract for a session that isn't connected: every call says so.
 struct NoRelayChatContract: ChatContract {
     func query(contextId: String, method: String, args: JSONValue) async throws -> JSONValue? {
         throw ChatError.noRelay
