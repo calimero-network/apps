@@ -69,13 +69,13 @@ final class Script: @unchecked Sendable {
     func answer(_ call: RecordedContractCall) throws -> Data? {
         if let failRead, call.path == .query { throw failRead }
         switch call.method {
-        case "list_stages": return encode(stages)
-        case "list_deals": return encode(deals)
-        case "list_contacts": return encode(contacts)
-        case "list_activities": return encode(activities)
-        case "list_automations": return encode([AutomationView]())
-        case "get_settings": return encode(settings)
-        case "create_deal", "create_contact", "add_activity", "add_note", "add_stage": return encode("new-\(call.method)")
+        case "listStages": return encode(stages)
+        case "listDeals": return encode(deals)
+        case "listContacts": return encode(contacts)
+        case "listActivities": return encode(activities)
+        case "listAutomations": return encode([AutomationView]())
+        case "getSettings": return encode(settings)
+        case "createDeal", "createContact", "addActivity", "addNote", "addStage": return encode("new-\(call.method)")
         default: return Data("null".utf8)
         }
     }
