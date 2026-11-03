@@ -535,21 +535,25 @@ export const APPS = {
   },
 
   'mero-updates': {
+    // A component app (Calimero 1.0): sign-in is the app's own passkey dialog,
+    // handed to the landing page as `onConnect`; there is no mero-react popup.
+    ownConnect: true,
     e2eDir: 'tests',
     // Same light/dark key as the app shell (src/theme.ts), so the landing
     // choice carries through sign-in.
     themeStorageKey: 'mero-updates:theme',
-    availability: 'web+desktop',
-    trust: ['Investors are the membership', 'Drafts never leave your node', 'No send list to leak'],
+    // Calimero 1.0 is reached from the browser (passkeys); no desktop node hand-off.
+    availability: 'web',
+    trust: ['Investors are the membership', 'Drafts stay yours until you publish', 'No send list to leak'],
     explainer: [
-      'Investor updates the way Visible, Cabal and Paperstreet do them — categories, KPIs, asks — but the update is not emailed from a SaaS database. It lives in a Calimero context the company and its investors share, replicated between their own nodes.',
+      'Investor updates the way Visible, Cabal and Paperstreet do them — categories, KPIs, asks — but the update is not emailed from a SaaS database. It lives in an app the company and its investors share, on attested Calimero nodes.',
       'And it is two-way by design: investors react, reply, offer help on an ask in one click and ask the team questions of their own. The team sees who read what, accepts offers, and thanks contributors in the next update.',
     ],
     features: [
       { icon: 'FileText', title: 'Updates with structure', body: 'Templates, categories, TL;DR, KPI tiles with the change since last time, and asks — never retype last month’s numbers.' },
       { icon: 'MessageCircle', title: 'Two-way by default', body: 'Reactions, threaded replies, investor questions, and “I can help” on every ask.' },
       { icon: 'LineChart', title: 'KPIs and engagement', body: 'Every metric as a trend, and a per-investor read list for the follow-ups that matter.' },
-      { icon: 'Shield', title: 'Your investors, not a vendor’s', body: 'The audience is the membership of a context. There is no platform holding your cap table’s inbox.' },
+      { icon: 'Shield', title: 'Your investors, not a vendor’s', body: 'The audience is the membership of your company’s organization. There is no platform holding your cap table’s inbox.' },
     ],
   },
   'mero-forum': {
