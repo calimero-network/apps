@@ -24,17 +24,17 @@ struct NewArenaSheet: View {
                     Text("Title")
                 }
                 Section {
-                    Picker("Namespace", selection: $namespaceId) {
-                        Text("New namespace").tag(String?.none)
+                    Picker("Organization", selection: $namespaceId) {
+                        Text("New organization").tag(String?.none)
                         ForEach(namespaces) { namespace in
                             Text(namespace.name ?? KombatText.shortId(namespace.id)).tag(Optional(namespace.id))
                         }
                     }
                 } header: {
-                    Text("Namespace")
+                    Text("Organization")
                 } footer: {
                     Text(
-                        "A namespace is who can fight in its arenas: one invitation lets someone into every arena in it."
+                        "An organization is who can fight in its arenas: one invitation lets someone into every arena in it."
                     )
                 }
                 if let error {
@@ -159,13 +159,13 @@ struct JoinSheet: View {
                 }
             }
             Text(
-                "Joining adds your account to the namespace this arena belongs to, and opens the arena. You can take a corner or watch."
+                "Joining adds your account to the organization this arena belongs to, and opens the arena. You can take a corner or watch."
             )
             .font(Theme.body(15)).foregroundStyle(Theme.ink2)
             DisclosureGroup("Details") {
                 VStack(spacing: 12) {
-                    DetailRow(label: "Namespace", value: invitation.namespaceId)
-                    DetailRow(label: "Arena (context)", value: invitation.contextId)
+                    DetailRow(label: "Organization", value: invitation.namespaceId)
+                    DetailRow(label: "Arena (app instance)", value: invitation.contextId)
                 }
                 .padding(.top, 8)
             }
