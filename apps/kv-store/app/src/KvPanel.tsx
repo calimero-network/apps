@@ -1,25 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
-import {
-  JOIN_SYNC_POLL_MS,
-  useContextGroup,
-  useJoinSync,
-} from "@calimero-network/mero-react";
-import { useKvStore } from "./useKvStore";
+import { describeError } from "@calimero-apps/connect";
+
+import type { KvStore } from "./kvStore";
 
 type Result = { ok: unknown } | { err: string } | null;
 
 /**
- * Which panel a call's output belongs under.
- *
- * Results used to be ONE piece of state rendered once, at the bottom of the
- * Remove card. So pressing `set` in Write printed `{"set": null}` two cards
- * further down, under a heading that had nothing to do with it — and pressing
- * `get` replaced it in the same faraway place. The output was correct and read
- * as noise.
- *
- * Keyed by section instead: every card shows its own last result, directly under
- * the buttons that produced it, and one section's call no longer wipes another's
- * output.
+ * Which panel a call's output belongs under: every card shows its own last
+ * result, directly under the buttons that produced it, and one section's call
+ * does not wipe another's output.
  */
 type Section = "write" | "read" | "remove" | "entries";
 
@@ -29,43 +18,39 @@ function ResultView({ result }: { result: Result }) {
   return <pre>{JSON.stringify(result.ok, null, 2)}</pre>;
 }
 
-export function KvPanel({ contextId }: { contextId: string }) {
-  const kv = useKvStore(contextId);
-
+/**
+ * The store's methods, one card per kind of operation. `subscribe` (the app's
+ * event stream) refreshes the table when anyone changes the store.
+ */
+export function KvPanel({
+  kv,
+  subscribe,
+}: {
+  kv: KvStore;
+  subscribe?: (onChange: () => void) => () => void;
+}) {
   const [entries, setEntries] = useState<Record<string, string>>({});
   const [listErr, setListErr] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const [key, setKey] = useState("");
   const [value, setValue] = useState("");
-  // The read section owns its key. It used to share `key` with Write, which
-  // meant you could not look up one entry while composing another, and the
-  // read buttons went disabled the moment the write field was cleared.
+  // Read and Remove own their keys: you can look one entry up, or delete one,
+  // while composing another.
   const [readKey, setReadKey] = useState("");
-  // Remove owns its key for the same reason, and it is the more surprising of
-  // the two: `remove` was wired to the WRITE field, so deleting an entry meant
-  // typing its name into a box labelled "key" under a heading called Write,
-  // three cards above the button you were about to press.
   const [removeKey, setRemoveKey] = useState("");
   const [results, setResults] = useState<Partial<Record<Section, Result>>>({});
   const [busy, setBusy] = useState(false);
-  // Two-step, because this button now sits next to Refresh under the table
-  // where a mis-click is a plausible way to lose every entry. It resets on any
-  // other call, so it cannot stay armed by accident.
+  // Two-step: "remove all" sits next to Refresh, where a mis-click is plausible.
+  // Any other call disarms it.
   const [confirmClear, setConfirmClear] = useState(false);
 
-  // Whether a read of the entries has come back at all, empty or not. That is
-  // the answer the invitation dialog waits on after a join: an empty map is a
-  // settled one, and waiting for a non-empty read would hold a genuinely empty
-  // context on "Syncing…" forever.
-  const [loaded, setLoaded] = useState(false);
-
   const refresh = useCallback(async () => {
-    if (!kv) return;
     try {
       setEntries(await kv.entries());
       setListErr(null);
       setLoaded(true);
     } catch (e) {
-      setListErr(e instanceof Error ? e.message : String(e));
+      setListErr(describeError(e));
     }
   }, [kv]);
 
@@ -73,20 +58,9 @@ export function KvPanel({ contextId }: { contextId: string }) {
     void refresh();
   }, [refresh]);
 
-  // The joined namespace's flag is what the dialog watches, and these contexts
-  // live directly in their namespace (see `ContextPicker`), so the context's
-  // group is that namespace.
-  const { groupId: namespaceId } = useContextGroup(contextId);
-  const sync = useJoinSync({ namespaceId, settled: loaded });
-
-  // Right after a join the node may not hold the context's state yet, and the
-  // read fails rather than coming back empty. Keep reading while that lasts;
-  // the first read that answers ends the wait.
-  useEffect(() => {
-    if (!sync.isSyncing || loaded) return;
-    const timer = setInterval(() => void refresh(), JOIN_SYNC_POLL_MS);
-    return () => clearInterval(timer);
-  }, [sync.isSyncing, loaded, refresh]);
+  // Another member's write arrives as an event: re-read rather than patch, so
+  // the table is always what the contract says.
+  useEffect(() => (subscribe ? subscribe(() => void refresh()) : undefined), [subscribe, refresh]);
 
   // Every call refreshes the listing afterwards. A KV store where the table
   // disagrees with the contract is worse than one that reloads too often.
@@ -100,20 +74,12 @@ export function KvPanel({ contextId }: { contextId: string }) {
     } catch (e) {
       setResults((r) => ({
         ...r,
-        [section]: { err: e instanceof Error ? e.message : String(e) },
+        [section]: { err: describeError(e) },
       }));
     } finally {
       setBusy(false);
       await refresh();
     }
-  }
-
-  if (!kv) {
-    return (
-      <div className="card">
-        <p className="empty">No node client — the session is not connected.</p>
-      </div>
-    );
   }
 
   const rows = Object.entries(entries);
@@ -139,30 +105,30 @@ export function KvPanel({ contextId }: { contextId: string }) {
         <div className="row" style={{ marginTop: 10 }}>
           <button
             disabled={busy || !key}
-            onClick={() => run("write", "set", () => kv.set({ key, value }))}
+            onClick={() => run("write", "set", () => kv.set(key, value))}
           >
             set
           </button>
           {/*
-            `update_if_exists` returns false rather than inserting — it is the
-            `get_mut` path, an in-place mutation with no read-modify-write.
+            `updateIfExists` returns false rather than inserting: an absent
+            key stays absent.
           */}
           <button
             className="ghost"
             disabled={busy || !key}
             onClick={() =>
-              run("write", "update_if_exists", () => kv.updateIfExists({ key, value }))
+              run("write", "updateIfExists", () => kv.updateIfExists(key, value))
             }
           >
-            update_if_exists
+            updateIfExists
           </button>
-          {/* `entry().or_insert()` — returns the EXISTING value if there is one. */}
+          {/* Returns the EXISTING value if there is one, not the argument. */}
           <button
             className="ghost"
             disabled={busy || !key}
-            onClick={() => run("write", "get_or_insert", () => kv.getOrInsert({ key, value }))}
+            onClick={() => run("write", "getOrInsert", () => kv.getOrInsert(key, value))}
           >
-            get_or_insert
+            getOrInsert
           </button>
         </div>
         <ResultView result={results.write ?? null} />
@@ -179,11 +145,11 @@ export function KvPanel({ contextId }: { contextId: string }) {
           />
         </div>
         <div className="row" style={{ marginTop: 10 }}>
-          {/* Typed `Promise<string>`, actually nullable — see useKvStore. */}
+          {/* `null` for an absent key: the component ABI keeps the Option. */}
           <button
             className="ghost"
             disabled={busy || !readKey}
-            onClick={() => run("read", "get", () => kv.get({ key: readKey }))}
+            onClick={() => run("read", "get", () => kv.get(readKey))}
           >
             get
           </button>
@@ -191,9 +157,9 @@ export function KvPanel({ contextId }: { contextId: string }) {
           <button
             className="ghost"
             disabled={busy || !readKey}
-            onClick={() => run("read", "get_result", () => kv.getResult({ key: readKey }))}
+            onClick={() => run("read", "getResult", () => kv.getResult(readKey))}
           >
-            get_result
+            getResult
           </button>
           {/*
             This one PANICS on a missing key. It is in the contract on purpose,
@@ -203,9 +169,9 @@ export function KvPanel({ contextId }: { contextId: string }) {
           <button
             className="ghost"
             disabled={busy || !readKey}
-            onClick={() => run("read", "get_unchecked", () => kv.getUnchecked({ key: readKey }))}
+            onClick={() => run("read", "getUnchecked", () => kv.getUnchecked(readKey))}
           >
-            get_unchecked
+            getUnchecked
           </button>
           <button
             className="ghost"
@@ -232,7 +198,7 @@ export function KvPanel({ contextId }: { contextId: string }) {
           <button
             className="ghost"
             disabled={busy || !removeKey}
-            onClick={() => run("remove", "remove", () => kv.remove({ key: removeKey }))}
+            onClick={() => run("remove", "remove", () => kv.remove(removeKey))}
           >
             remove
           </button>
@@ -245,7 +211,7 @@ export function KvPanel({ contextId }: { contextId: string }) {
         {listErr && <pre className="err">{listErr}</pre>}
         {rows.length === 0 ? (
           <p className="empty">
-            {sync.isSyncing ? "Syncing from the other members…" : "Empty."}
+            {loaded ? "Empty." : "Loading…"}
           </p>
         ) : (
           <table>

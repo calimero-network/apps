@@ -10,12 +10,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import network.calimero.standup.contract.MemberView
+import network.calimero.standup.contract.StandupClient
 import network.calimero.standup.core.ErrorText
 import network.calimero.standup.core.People
 import network.calimero.standup.core.StandupInvitation
 import network.calimero.standup.core.standupClient
-import network.calimero.standup.generated.MemberView
-import network.calimero.standup.generated.StandupClient
 
 /**
  * One open team: who you are in it, its name, the people the contract knows, and a [version] that
@@ -121,10 +121,11 @@ class TeamModel(
         _myName.value = trimmed
     }
 
-    /** An invitation link to this team's namespace, in the web app's format. */
+    /** An org invitation link that opens this team, its name in the payload. Minting it is a passkey step-up. */
     suspend fun inviteLink(): String {
-        val signed = backend.createInvitation(namespaceId)
-        return StandupInvitation(signed, namespaceId, contextId).link()
+        val minted = backend.createInvitation(namespaceId)
+        val name = _teamName.value.trim().ifEmpty { null }
+        return StandupInvitation(minted.copy(contextId = contextId, name = name), contextId).link()
     }
 
     /**

@@ -1,13 +1,16 @@
 import Foundation
 import MeroKit
 
-/// One stream's rooms (the web's `/streams/:namespaceId`): listing them,
-/// creating one (an open subgroup plus the context that is its call), entering
-/// one, and minting room or stream links.
+/// One stream's rooms (the web's `/streams/:orgId`): listing them, creating
+/// one (an app instance in the stream's organization, initialised with its
+/// name), entering one, and minting room or stream links.
+///
+/// There is no per-room join any more: the organization grants every room in
+/// it, and the contract's own `join` (in the call) records the display name.
 @MainActor
 public final class RoomsModel: ObservableObject {
     @Published public private(set) var rooms: [RoomSummary] = []
-    /// Who is in each room, by context id, when the roster could be read.
+    /// Who is in each room, by room id, when the roster could be read.
     @Published public private(set) var rosters: [String: [Member]] = [:]
     @Published public private(set) var isLoading = false
     @Published public private(set) var hasLoaded = false
@@ -19,16 +22,11 @@ public final class RoomsModel: ObservableObject {
     public let stream: StreamSummary
     public let backend: any MeroAppBackend
     private let applicationId: String?
-    private let sleep: @Sendable (UInt64) async -> Void
 
-    public init(
-        stream: StreamSummary, backend: any MeroAppBackend, applicationId: String?,
-        sleep: @escaping @Sendable (UInt64) async -> Void = { try? await Task.sleep(nanoseconds: $0 * 1_000_000) }
-    ) {
+    public init(stream: StreamSummary, backend: any MeroAppBackend, applicationId: String?) {
         self.stream = stream
         self.backend = backend
         self.applicationId = applicationId
-        self.sleep = sleep
     }
 
     public func load() async {
@@ -38,11 +36,9 @@ public final class RoomsModel: ObservableObject {
             hasLoaded = true
         }
         do {
-            let subgroups = try await backend.listSubgroups(namespaceId: stream.id)
-            rooms = subgroups.map {
-                RoomSummary(id: $0.groupId, namespaceId: stream.id, name: $0.name ?? "", contextId: $0.contextIds.first)
-            }
-            .sorted { $0.title.localizedCompare($1.title) == .orderedAscending }
+            rooms = try await backend.listContextEntries(groupId: stream.id)
+                .map { RoomSummary(id: $0.id, namespaceId: stream.id, name: $0.name ?? "") }
+                .sorted(by: Self.order)
             error = nil
             await loadRosters()
         } catch {
@@ -50,23 +46,21 @@ public final class RoomsModel: ObservableObject {
         }
     }
 
-    /// Each room's roster, read in parallel. Best effort: a room we are not in
-    /// may refuse the read.
+    /// Each room's roster, read in parallel. Best effort.
     private func loadRosters() async {
         let backend = backend
-        let contexts = rooms.compactMap(\.contextId)
-        let found = await withTaskGroup(of: (String, [Member]?).self) { group in
-            for contextId in contexts {
-                group.addTask { (contextId, try? await StreamClient(backend: backend, contextId: contextId).getMembers()) }
+        let ids = rooms.map(\.id)
+        rosters = await withTaskGroup(of: (String, [Member]?).self) { group in
+            for id in ids {
+                group.addTask { (id, try? await StreamClient(backend: backend, contextId: id).getMembers()) }
             }
             var out: [String: [Member]] = [:]
             for await (id, members) in group { if let members { out[id] = members } }
             return out
         }
-        rosters = found
     }
 
-    /// Create a room and its call. Returns it, ready to enter.
+    /// Create a room: its call's app instance, named and initialised with the name.
     public func create(name: String) async -> RoomSummary? {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -77,13 +71,11 @@ public final class RoomsModel: ObservableObject {
         }
         do {
             status = "Creating the room…"
-            let groupId = try await backend.createSubgroup(namespaceId: stream.id, name: trimmed, isPublic: true)
-            status = "Creating the call context…"
-            let app = try await resolveApplicationId()
-            let contextId = try await backend.createContext(
-                groupId: groupId, applicationId: app, name: trimmed, initArgs: .object(["name": .string(trimmed)]))
-            let room = RoomSummary(id: groupId, namespaceId: stream.id, name: trimmed, contextId: contextId)
-            rooms = (rooms + [room]).sorted { $0.title.localizedCompare($1.title) == .orderedAscending }
+            let app = try resolveApplicationId()
+            let appId = try await backend.createContext(
+                groupId: stream.id, applicationId: app, name: trimmed, initArgs: .object(["name": .string(trimmed)]))
+            let room = RoomSummary(id: appId, namespaceId: stream.id, name: trimmed)
+            rooms = (rooms.filter { $0.id != appId } + [room]).sorted(by: Self.order)
             error = nil
             return room
         } catch {
@@ -92,72 +84,47 @@ public final class RoomsModel: ObservableObject {
         }
     }
 
-    /// Join the room's call context if needed. Returns the room to open.
+    /// The room to open. The stream's organization already grants it.
     public func enter(_ room: RoomSummary) async -> RoomSummary? {
-        guard let contextId = room.contextId else {
-            error = StreamError.noRoomContext(room.title).errorDescription
-            return nil
-        }
-        pending = "enter:\(room.id)"
-        defer {
-            pending = nil
-            status = nil
-        }
-        status = "Checking your membership…"
-        if (try? await backend.isMember(contextId: contextId)) == true { return room }
-        status = "Joining the room…"
-        var lastError: Error?
-        // Membership of a stream you just joined can take a moment to reach
-        // the relay; the web waits for it the same way.
-        for attempt in 0..<4 {
-            do {
-                try await backend.joinContext(contextId: contextId)
-                error = nil
-                return room
-            } catch {
-                lastError = error
-                if attempt == 0 { status = "Waiting for your membership to reach the room…" }
-                await sleep(1_500)
-            }
-        }
-        error = lastError.map(ErrorText.describe)
-        return nil
+        error = nil
+        return room
     }
 
     /// A link that drops someone straight into this room's call.
     public func inviteLink(for room: RoomSummary) async -> String? {
-        await mint(key: "invite:\(room.id)") { signed in
+        await mint(key: "invite:\(room.id)") { minted in
             StreamInvitation(
-                invitation: signed, kind: .room, namespaceId: stream.id, namespaceName: stream.title, roomId: room.id,
-                contextId: room.contextId, roomName: room.title)
+                invitation: minted, kind: .room, namespaceName: stream.title, roomId: room.id, contextId: room.id,
+                roomName: room.title)
         }
     }
 
     /// A link that joins the whole stream and lands on its rooms.
     public func streamInviteLink() async -> String? {
-        await mint(key: "invite") { signed in
-            StreamInvitation(invitation: signed, kind: .namespace, namespaceId: stream.id, namespaceName: stream.title)
+        await mint(key: "invite") { minted in
+            StreamInvitation(invitation: minted, kind: .namespace, namespaceName: stream.title)
         }
     }
 
-    private func mint(key: String, _ make: (SignedGroupOpenInvitation) -> StreamInvitation) async -> String? {
+    private func mint(key: String, _ make: (OrgInvitation) -> StreamInvitation) async -> String? {
         pending = key
         defer { pending = nil }
         do {
-            let signed = try await backend.createInvitation(namespaceId: stream.id)
-            return try make(signed).link()
+            let minted = try await backend.createInvitation(namespaceId: stream.id)
+            return try make(minted).link()
         } catch {
             self.error = ErrorText.describe(error)
             return nil
         }
     }
 
-    private func resolveApplicationId() async throws -> String {
-        if let applicationId, !applicationId.isEmpty { return applicationId }
-        let namespaces = try await backend.listNamespaces()
-        guard let app = namespaces.first(where: { $0.id == stream.id })?.applicationId, !app.isEmpty else {
-            throw StreamError.noApplication
-        }
-        return app
+    private func resolveApplicationId() throws -> String {
+        guard let applicationId, !applicationId.isEmpty else { throw StreamError.noApplication }
+        return applicationId
+    }
+
+    private static func order(_ a: RoomSummary, _ b: RoomSummary) -> Bool {
+        let byName = a.title.localizedCompare(b.title)
+        return byName == .orderedSame ? a.id < b.id : byName == .orderedAscending
     }
 }

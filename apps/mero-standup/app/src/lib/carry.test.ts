@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { UpdateView } from "../generated/StandupClient";
+import type { UpdateView } from "../standup";
 import { carryForward, EMPTY_DRAFT } from "./carry";
 
 const last: UpdateView = {

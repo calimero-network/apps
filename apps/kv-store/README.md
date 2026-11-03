@@ -1,149 +1,122 @@
 # KV Store
 
-The reference Calimero app, and the template every other app in this repo is
-shaped after.
-
-An `UnorderedMap<String, LwwRegister<String>>` in a Rust/WASM contract, driven
-from a TypeScript client **generated out of that contract's own ABI**.
+The reference Calimero app, and the template every other app's port to the
+1.0 runtime follows. A string key-value store: a contract on core's **component
+SDK** (`calimero-app-sdk`, a `calimero:app` WebAssembly component on the node's
+wasmtime runtime), developed on **`merod local`**, with a frontend on mero-js's
+**`CalimeroClient`** that talks to a **Calimero Cloud** cluster in production
+and to the local nodes in development.
 
 ```
 apps/kv-store/
-├── logic/                 Rust → WASM. The whole backend.
-│   ├── src/lib.rs         #[app::state], #[app::logic], #[app::event] + TestHost tests
-│   ├── tests/converge.rs  3-replica convergence, no node, no wasm
-│   ├── res/               abi.json + state-schema.json, emitted by `cargo mero build`
-│   └── workflows/         merobox e2e across two real nodes
-└── app/                   Vite + React + TypeScript
-    └── src/generated/     the typed client — generated, committed, diffed in CI
+├── logic/                   a standalone crate (own [workspace] + Cargo.lock)
+│   ├── src/lib.rs           #[app::state], #[app::logic], #[app::event], #[app::error]
+│   ├── tests/harness.rs     TestApp: the built component on core's real engine
+│   ├── tests/scenarios.rs   every scenarios/*.json in the harness
+│   ├── scenarios/           simple-store, converge, access (+ .org.json): harness AND merod local
+│   └── res/abi.json         the component's ABI (committed, diffed in CI)
+└── app/                     Vite + React; @calimero-apps/connect + mero-js CalimeroClient
 ```
+
+See [docs/COMPONENT-APPS.md](../../docs/COMPONENT-APPS.md) for how component
+apps are built, run and tested in this repo.
 
 ## Run it
 
 ```bash
 pnpm install                     # once, at the repo root
-cargo mero build -p kv-store     # emits res/kv_store.wasm + res/abi.json
-pnpm -F kv-store codegen         # regenerates src/generated from that ABI
-pnpm -F kv-store dev             # http://localhost:5173
+rustup target add wasm32-wasip2  # once
+pnpm dev:local kv-store          # merod local + build + deploy + http://localhost:5173/
 ```
 
-Install the wasm on a node, then use the app's own **Choose a context** screen —
-under `AppMode.MultiContext` the auth callback returns tokens and an application
-id and nothing else, so context selection is the app's job.
+`merod` at the pinned core release must be on the `PATH` (or in `MEROD_BIN`);
+`pnpm dev:local` prints how to get it when it is missing. In the browser,
+**create an account** (a passkey), **create a store** (shared stores live in an
+organization of their own, so you can invite others), and use it. A second
+browser profile with its own passkey and the invitation link is a second member.
 
 ## Test it
 
 | | what it covers | needs a node |
 |---|---|---|
-| `cargo test -p kv-store` | `TestHost` unit tests + 3-replica convergence | no |
-| `pnpm -F kv-store test` | the generated client covers the ABI | no |
-| `merobox bootstrap run workflows/simple-store.yml` | two real nodes converging | yes |
+| `cargo test --manifest-path apps/kv-store/logic/Cargo.toml` | v1's `TestHost` tests method for method, v1's convergence tests as what they become under one log, access and wire checks, and every `scenarios/*.json`, on core's wasmtime engine | no |
+| `pnpm -F kv-store test` | the methods the UI calls are exactly the committed ABI's, with its parameter names; the panel, sign-in, stores, invitations, session restore (mocked client) | no |
+| `pnpm merod-local e2e kv-store` | every `scenarios/*.json` on `merod local`: real accounts with passkeys, an org per scenario, each account on a different node, event streams | yes |
 
-The `cargo test` layer is the one worth knowing about: `converge_app` and
-`TestHost` drive real CRDT state through a native mock host, so convergence is
-testable with no node and no wasm at all.
+The scenarios are ported from the two merobox workflows: `simple-store.json`
+walks the whole surface with writes from one account read back by another;
+`converge.json` keeps what `converge.yml` checked that still means something
+under one log (every account's write survives, one key holds one value, an
+account that wrote nothing reads everything). `access.json` adds what merobox
+never could: anonymous callers and accounts outside the org refused, a guest
+allowed, typed errors, a trap, malformed arguments.
 
-## The three behaviours the e2e pins down
+## The behaviours the tests pin down
 
-Easy to get subtly wrong, and all three pass a naive test:
+- **`updateIfExists` must not insert.** Asserted *before* any write, so the map
+  is genuinely empty.
+- **`getOrInsert` returns the EXISTING value**, not the argument.
+- **`remove` and `clear` emit nothing for a no-op.** An event for an absent key
+  announces a change that never happened.
+- **`getUnchecked` panics on purpose**: the node answers `422 TRAP` and nothing
+  in that run commits. It is the cheapest demonstration of why `getResult` exists.
 
-- **`update_if_exists` must not insert.** Asserted *before* any write, so the map
-  is genuinely empty — run it after a `set` and it passes either way.
-- **`get_or_insert` returns the EXISTING value**, not the argument. If it
-  returned the argument, `or_insert` would be overwriting, which is the opposite
-  of the entry API's point.
-- **`remove` and `clear` emit nothing for a no-op.** Emitting for an absent key
-  broadcasts a change that never happened.
+## What changed in the port, and why
 
-## Invitations and deep links
+Same methods, same arguments, same events. What a client sees differently:
 
-Ported from `mero-chat-pwa`, which is the reference implementation, with the
-payload adapted: chat invites you to a chat group, this invites you to a KV
-**context**, so the payload carries the signed namespace invitation plus the
-namespace and context ids.
+| | v1 (`calimero-sdk`, wasmer) | now (component SDK) | why |
+|---|---|---|---|
+| method names | `update_if_exists`, `get_or_insert`, `get_result`, `get_unchecked` | `updateIfExists`, `getOrInsert`, `getResult`, `getUnchecked` (others unchanged) | the ABI names methods and arguments in camelCase |
+| transport | JSON-RPC `execute` on your own node, a context id | `POST /apps/{app}/intents` (calls) and `/views` (reads) on any node of the cluster, an app id | one app per replicated log; any node serves any request |
+| `len` result | the number `2` | the string `"2"` | `u64` travels as a decimal string (no precision loss in JSON) |
+| `entries` | every entry | at most the first 1,000, in key order | multi-row reads are pages of at most 1,000 |
+| reads | any method | `entries`, `len`, `get`, `getUnchecked`, `getResult` are views (`#[app::view]`); calling a write as a view is `NotAView` | a view is answered without touching the log |
+| `getResult` on a missing key | `{"kind":"NotFound","data":"k"}` | `422 APP_ERROR` `{ code: "NotFound", fields: { key: "k" } }` | `#[app::error]`'s wire shape |
+| `getUnchecked` on a missing key | the execution aborted | `422 TRAP` | the same panic, reported by the node |
+| a concurrent write to one key | `LwwRegister` picks by timestamp | the leader's log orders them; the later one holds | no CRDT merge under one log |
+| events | emitted before the write | emitted after it, to everyone the app reaches (`Audience::All`) | an event describes a write that happened |
+| who may call | any member of the context | any member, admin or guest of the app's org, and the owner; anonymous `401`, others `404` | the org is the access boundary |
+| malformed arguments | depends on the decoder | `BadArgs` (unknown keys refused, every parameter required) | the generated dispatcher |
+| `Option` results in the ABI | lost (`get` typed `string`) | kept (`option<string>`) | the component ABI records it |
+
+The frontend changed with it: mero-react's provider, the node login, the
+context picker, the namespace invitations, the desktop SSO hand-off and the
+generated `KvStoreClient` are gone. It now resolves its target from the build
+(`@calimero-apps/connect`: `merod local` under `vite`, a Cloud cluster under
+`vite build`), signs in with a **passkey**, lists and creates **stores** (app
+instances: v1's contexts), shares one through an **organization** (v1's
+namespace) with an **invite link** (making it is approved with your passkey;
+opening it after signing in redeems it), and calls the contract by method
+name through a small typed wrapper (`src/kvStore.ts`) whose method list a test
+checks against `logic/res/abi.json`.
+
+## Production
+
+`vite build` connects to a Calimero Cloud cluster by name, and refuses to start
+without two variables set where the bundle's frontend is built:
 
 ```
-InviteCard   createNamespaceInvitation → payload → deflate → base58 → createLink
-             → https://links.calimero.network/com.calimero.kv-store/join?invitation=…
-
-main.tsx     primeInvitationCapture() (mero-react), BEFORE createRoot
-App          mero-react's <InvitationDialog>: names what the link joins, Join / Not now,
-             then joins, opens the context in place and shows "Syncing…"
-KvPanel      useJoinSync: the first read of the entries (empty included) ends "Syncing…"
+VITE_CALIMERO_CLUSTER=<cluster name in the cloud's node directory>
+VITE_CALIMERO_MIN_RELEASE=<lowest mero-tee release a node may run>
 ```
 
-Four things here are deliberate, and each exists because the naive version
-breaks:
+The production frontend is the one **packed into the `.mpk`** (`frontend-dir`),
+which the cluster serves from the package's own origin: a Cloud node trusts
+passkey ceremonies only from its own origins and from frontends it serves from a
+bundle, so a copy on another origin cannot sign in. On that page the client
+takes the cluster's nodes from `/.well-known/calimero.json` (the page's CSP
+allows only those), and instances are created from the package
+(`com.calimero.kv-store`). The `frontend` link in `logic/Cargo.toml` and the
+Vercel project (`app/vercel.json`) stay as the listing's link; they are not
+where people sign in.
 
-- **Capture happens before React mounts.** On a cold invite open the user is not
-  authenticated, so the component that would read the invitation never mounts
-  until after the auth reload — by which point the URL is gone. A component
-  effect is always too late.
-- **The intent is durable and only acked on success.** `PendingIntentStore`
-  keeps it in localStorage across the login reload, and the shared
-  `shouldRetain` discards it *only* for errors that can never succeed (expired,
-  invalid, refused); already being a member counts as joined. Anything
-  unrecognised — a timeout, "no online member" — is kept and retried. The
-  asymmetry is the point: a dropped invitation is unrecoverable for the user, a
-  retried one costs a round trip.
-- **The invitation object is passed through opaquely.** It carries a signature
-  over a signed body plus unsigned bootstrap fields that sit outside it, so
-  re-modelling it through a local type drops fields and invalidates the
-  signature. `parseInvitationPayload` shape-checks only far enough to see the
-  envelope, and a unit test asserts an unknown field survives the round trip.
-- **One link, HTTPS.** The https link already hands off to the desktop launcher;
-  a second `calimero://` link would ask the user to choose between two things
-  they cannot tell apart.
+```bash
+pnpm -F kv-store build
+cargo run --release --manifest-path tools/component-bundle/Cargo.toml -- \
+  bundle apps/kv-store/logic --key <production key> --app-version <x.y.z>
+```
 
-### ⚠️ The launcher path needs the frontend actually deployed
-
-Opening the link is the only way in: there is no paste field. Opening it from a
-browser or Calimero Desktop needs the *published bundle* to declare
-`links.frontend`: the launcher resolves the link to an installed app, reads that
-field, and **forgets the link** when it is missing — `"app has no frontend URL;
-cannot open"`.
-
-`logic/Cargo.toml` now declares `frontend = "https://mero-kv-store.vercel.app"`,
-so the next release carries it. Two things still have to be true, and neither is
-enforced by CI:
-
-1. **The Vercel project must exist, named `mero-kv-store`**, with Root Directory
-   `apps/kv-store/app`. The project name is what owns `<project>.vercel.app`, so
-   a project named anything else produces a different origin and silently
-   invalidates the declared one.
-2. **It must exist before the release publishes.** The release workflow runs on
-   a push to main, so linking Vercel and merging are the same step. A merge
-   without the project leaves a published bundle authorizing a login callback at
-   an origin nobody controls — this field is the registered redirect URI, and it
-   is compared by exact origin.
-
-Until a release has actually published, the launcher path stays dark: what
-matters to the launcher is the field in the *published* bundle, not the one in
-this repo.
-
-### `vercel.json`
-
-`app/vercel.json` is an SPA fallback rewrite and nothing else.
-
-⚠️ **It cannot carry comments.** Vercel's schema sets `additionalProperties:
-false`, so a `"// note"` key — the usual JSON comment trick — fails the deploy
-outright with *should NOT have additional property `// note`*. The file declares
-`$schema`, which is a real supported property, so an editor flags this before a
-deploy does.
-
-The note that used to live in that file, kept here because it is the part worth
-remembering: **the Vercel PROJECT owns the production domain**
-(`<project>.vercel.app`), not the repo. That is why moving an app into this
-monorepo keeps its URL, and therefore keeps its published bundle's
-`links.frontend` valid, with no republish.
-
-## Two caveats worth carrying to the next app
-
-**The ABI loses `Option<T>`.** `get(key) -> Option<String>` is recorded as
-`"kind": "string"`, so the generated client types it `Promise<string>` when a
-missing key really returns `null`. Codegen makes **method names and argument
-names** compile-time facts; it does not make nullability one. Needs fixing in
-core's ABI emitter.
-
-**`get_unchecked` panics on purpose.** It is in the contract as the
-counter-example — a panic aborts the whole execution, so nothing in that call
-commits. Keep it; it is the cheapest demonstration of why `get_result` exists.
+⚠️ Known gap: mero-js checks a Cloud node's release against
+`cloud.calimero.network` mirrors, which the served page's CSP does not list
+(docs/COMPONENT-APPS.md, "What the component SDK does not have yet").
