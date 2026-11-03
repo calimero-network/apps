@@ -668,6 +668,13 @@
       "layers": "unorderedMap",
       "members": "unorderedMap"
     },
+    "search": {
+      "cursors": [],
+      "document": [],
+      "editors": [],
+      "layers": [],
+      "members": []
+    },
     "version": 1
   },
   "world": "calimero:app@0.5.0"
