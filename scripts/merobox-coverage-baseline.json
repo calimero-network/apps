@@ -50,9 +50,5 @@
   ],
   "merraria": [
     "leave"
-  ],
-  "scaffolding-e2e": [
-    "get_counter",
-    "increment_counter"
   ]
 }

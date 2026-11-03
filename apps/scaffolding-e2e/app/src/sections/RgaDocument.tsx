@@ -37,6 +37,8 @@ export function RgaDocument() {
   const appendCall = useCall();
   const setTitleCall = useCall();
   const clearCall = useCall();
+  const lengthCall = useCall();
+  const emptyCall = useCall();
 
   const poll = useCallback(async () => {
     const [textRes, titleRes] = await Promise.all([api.rgaGetText(), api.rgaGetTitle()]);
@@ -55,7 +57,7 @@ export function RgaDocument() {
         <p className="section-desc">
           Replicated Growable Array (RGA) for collaborative text editing.
           Concurrent insertions/deletions merge automatically across nodes. The live
-          preview below updates every 2 s — edit on Node A and watch Node B's view change.
+          preview below updates every 2 s — edit as one account and watch another account's view change.
         </p>
       </div>
 
@@ -217,6 +219,23 @@ export function RgaDocument() {
             {clearCall.loading ? "..." : "Execute"}
           </button>
           <ResultBox result={clearCall.result} />
+        </div>
+
+        <div className="method-card">
+          <div className="method-name">rga_get_length() · rga_is_empty()</div>
+          <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 10 }}>
+            The length is the document&apos;s stored count of live characters, one read.
+          </p>
+          <div className="input-row">
+            <button className="btn-calimero-outline" disabled={lengthCall.loading} onClick={() => lengthCall.run(() => api.rgaGetLength())}>
+              rga_get_length
+            </button>
+            <button className="btn-calimero-outline" disabled={emptyCall.loading} onClick={() => emptyCall.run(() => api.rgaIsEmpty())}>
+              rga_is_empty
+            </button>
+          </div>
+          <ResultBox result={lengthCall.result} />
+          <ResultBox result={emptyCall.result} />
         </div>
       </div>
     </div>
