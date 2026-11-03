@@ -1,534 +1,169 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// A Calimero 1.0 cluster in memory: one org, the chat instances in it.
+const h = vi.hoisted(() => {
+  const state = {
+    orgs: new Map<string, Record<string, unknown>>(),
+    apps: new Map<string, Record<string, unknown>>(),
+    seq: 0,
+  };
+  const client = {
+    me: vi.fn(async () => ({
+      orgs: [...state.orgs.values()].map((o) => ({ orgId: o.orgId, name: o.name, role: (o.members as Record<string, string>)["acct-me"] })),
+    })),
+    getOrg: vi.fn(async (org: string) => {
+      const o = state.orgs.get(org);
+      if (!o) throw Object.assign(new Error("404"), { status: 404 });
+      return o;
+    }),
+    getApp: vi.fn(async (app: string) => {
+      const a = state.apps.get(app);
+      if (!a) throw Object.assign(new Error("404"), { status: 404 });
+      return a;
+    }),
+    listApps: vi.fn(async () =>
+      [...state.apps.values()].map((a) => ({ appId: a.appId, name: a.name, owner: a.owner, org: a.org, bundle: "b", package: null, version: null })),
+    ),
+    createOrg: vi.fn(async (name: string) => {
+      const orgId = `org-${(state.seq += 1)}`;
+      state.orgs.set(orgId, { orgId, name, members: { "acct-me": "owner" }, memberMetadata: {}, defaultCapabilities: 4, capabilities: {}, metadata: null });
+      return orgId;
+    }),
+    setCapabilities: vi.fn(async () => {}),
+    createApp: vi.fn(async (name: string, _source: unknown, options: { org: string; access: unknown; initArgs: unknown }) => {
+      const appId = `app-${(state.seq += 1)}`;
+      state.apps.set(appId, { appId, name, owner: "acct-me", org: options.org, access: options.access, metadata: null, initArgs: options.initArgs });
+      return appId;
+    }),
+    setAccess: vi.fn(async (app: string, access: unknown) => {
+      const a = state.apps.get(app)!;
+      a.access = access;
+    }),
+    invite: vi.fn(async () => "tok-1"),
+    redeemInvite: vi.fn(async () => ({ org: "org-joined" })),
+    setMemberMetadata: vi.fn(async () => {}),
+    setMember: vi.fn(async () => {}),
+    removeMember: vi.fn(async () => ({})),
+    deleteOrg: vi.fn(async () => {}),
+    deleteApp: vi.fn(async () => {}),
+  };
+  return { state, client };
+});
+
+vi.mock("../calimero", () => ({
+  after: () => {},
+  getClient: () => h.client,
+  getAccountId: () => "acct-me",
+  chatSource: () => "bundle-hash",
+  passkey: () => ({ create: vi.fn(), get: vi.fn() }),
+}));
+
+import { invalidate } from "../platform";
 import { GroupApiDataSource } from "./groupApiDataSource";
+import { ContextApiDataSource } from "./nodeApiDataSource";
+import { createChannel } from "../../utils/createChannel";
+import { DEFAULT_MEMBER_CAPABILITIES } from "../../utils/groupCapabilities";
 
-const {
-  session,
-  mockCreateNamespace,
-  mockCreateNamespaceInvitation,
-  mockJoinNamespace,
-  mockJoinContext,
-  mockListGroupContexts,
-  mockSetMemberMetadata,
-  mockCreateGroupInNamespace,
-  mockListNamespaces,
-  mockListNamespacesForApplication,
-  mockListApplications,
-  mockReparentGroup,
-  mockUpgradeGroup,
-  mockListGroupMembers,
-} = vi.hoisted(() => ({
-  // What `MeroJsBridge` records about the session; flipped per test.
-  session: { isDelegated: false, applicationId: null as string | null },
-  mockCreateNamespace: vi.fn(),
-  mockCreateNamespaceInvitation: vi.fn(),
-  mockJoinNamespace: vi.fn(),
-  mockJoinContext: vi.fn(),
-  mockListGroupContexts: vi.fn(),
-  mockSetMemberMetadata: vi.fn(),
-  mockCreateGroupInNamespace: vi.fn(),
-  mockListNamespaces: vi.fn(),
-  mockListNamespacesForApplication: vi.fn(),
-  mockListApplications: vi.fn(),
-  mockReparentGroup: vi.fn(),
-  mockUpgradeGroup: vi.fn(),
-  mockListGroupMembers: vi.fn(),
-}));
+const api = new GroupApiDataSource();
 
-// mero-js's `HTTPError`, as mero-react re-exports it: `status` plus the
-// node's own words in `explanation`. The data source maps it with
-// `instanceof`, so the mock must be a real class, hoisted with the mock.
-const { MockHTTPError } = vi.hoisted(() => ({
-  MockHTTPError: class MockHTTPError extends Error {
-    status: number;
-    explanation: string | undefined;
-    constructor(status: number, explanation?: string) {
-      super(`HTTP ${status} : ${explanation ?? ""}`);
-      this.status = status;
-      this.explanation = explanation;
-    }
-  },
-}));
-
-vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  getNodeUrl: () => "http://localhost:2428",
-  HTTPError: MockHTTPError,
-}));
-
-vi.mock("../../constants/config", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../constants/config")>()),
-  getApplicationId: () => "runtime-app-id",
-}));
-
-// The data source issues every call through the session admin `MeroJsBridge`
-// hands it (the node's own on a node, the account admin on an account), so the
-// assertions below check the SDK method and its arguments. The SDK unwraps
-// core's `{ data: ... }` envelope, so mocks resolve the inner payload directly.
-vi.mock("../meroJsClient", () => ({
-  getMeroJs: () => ({
-    isDelegated: session.isDelegated,
-    applicationId: session.applicationId,
-    admin: {
-      createNamespace: mockCreateNamespace,
-      listGroupContexts: mockListGroupContexts,
-      setMemberMetadata: mockSetMemberMetadata,
-      createNamespaceInvitation: mockCreateNamespaceInvitation,
-      joinNamespace: mockJoinNamespace,
-      joinContext: mockJoinContext,
-      createGroupInNamespace: mockCreateGroupInNamespace,
-      listNamespaces: mockListNamespaces,
-      listNamespacesForApplication: mockListNamespacesForApplication,
-      listApplications: mockListApplications,
-      reparentGroup: mockReparentGroup,
-      upgradeGroup: mockUpgradeGroup,
-      listGroupMembers: mockListGroupMembers,
-    },
-  }),
-}));
-
-// core's `CreateNamespaceApiRequest` (server/primitives admin/mod.rs), which is
-// `deny_unknown_fields`. `bytecodeId` is a deserialize alias of `appKey`.
-const CREATE_NAMESPACE_KEYS = new Set(["applicationId", "name", "appKey", "bytecodeId"]);
-
-describe("closed admin request bodies", () => {
-  beforeEach(() => {
-    mockReparentGroup.mockReset();
-    mockUpgradeGroup.mockReset();
-  });
-
-  it("reparents with camelCase `newParentId` — core refused `new_parent_id`", async () => {
-    mockReparentGroup.mockResolvedValue(undefined);
-    const parent = "a".repeat(64);
-
-    const response = await new GroupApiDataSource().reparentGroup("g-1", { newParentId: parent });
-
-    expect(response.error).toBeNull();
-    expect(mockReparentGroup).toHaveBeenCalledWith("g-1", { newParentId: parent });
-  });
-
-  it("upgrades with only `targetApplicationId` — `migrateMethod` is not a core field", async () => {
-    mockUpgradeGroup.mockResolvedValue({ groupId: "g-1", status: "InProgress" });
-
-    await new GroupApiDataSource().triggerUpgrade("g-1", { targetApplicationId: "app-2" });
-
-    expect(mockUpgradeGroup).toHaveBeenCalledWith("g-1", { targetApplicationId: "app-2" });
-  });
+beforeEach(() => {
+  h.state.orgs.clear();
+  h.state.apps.clear();
+  h.state.seq = 0;
+  invalidate();
+  vi.clearAllMocks();
 });
 
-describe("listMembers", () => {
-  // A TEE fleet node is admitted to the namespace and its subgroups as a
-  // member row. It used to show up in the channel's Members tab as a nameless
-  // `cb62…4c3c` user; it is infrastructure, so it is split out instead.
-  it("keeps TEE nodes out of `members` and reports them as `teeMembers`", async () => {
-    const replica = "c".repeat(64);
-    const relay = "d".repeat(64);
-    mockListGroupMembers.mockResolvedValue({
-      members: [
-        { identity: "a".repeat(64), role: "Admin", name: "Ronit" },
-        { identity: "b".repeat(64), role: "Member", name: "Xabi" },
-        { identity: replica, role: "ReadOnlyTee" },
-        { identity: relay, role: "RelayTee" },
-      ],
-    });
-
-    const response = await new GroupApiDataSource().listMembers("tee-group");
-
-    expect(response.data?.members.map((m) => m.alias)).toEqual(["Ronit", "Xabi"]);
-    expect(response.data?.teeMembers.map((m) => m.identity)).toEqual([replica, relay]);
-  });
-});
-
-describe("GroupApiDataSource", () => {
-  // A node holds every installed app's namespaces. Chat must list ONLY its
-  // own: it used to fall back to the node's whole list when the id filter
-  // failed, and showed mero-design's workspaces as chat workspaces.
-  const ns = (namespaceId: string, targetApplicationId: string, name: string) => ({
-    namespaceId,
-    targetApplicationId,
-    name,
-    appKey: "",
-    createdAt: 1,
+describe("a workspace is an org", () => {
+  it("is created with the member capabilities v1 gave a namespace", async () => {
+    const res = await api.createGroup({ applicationId: "x", name: "Team" });
+    expect(res.data).toEqual({ groupId: "org-1" });
+    expect(h.client.setCapabilities).toHaveBeenCalledWith("org-1", DEFAULT_MEMBER_CAPABILITIES, expect.anything(), {});
   });
 
-  it("lists only namespaces of the configured (runtime) app — never another app's", async () => {
-    mockListApplications.mockResolvedValue({ apps: [] });
-    mockListNamespaces.mockResolvedValue({
-      namespaces: [
-        ns("ns-chat", "runtime-app-id", "Calimero"),
-        ns("ns-design", "design-app-id", "Design Board"),
-      ],
-    });
-
-    const response = await new GroupApiDataSource().listGroups();
-
-    expect(response.data?.map((g) => g.groupId)).toEqual(["ns-chat"]);
+  it("lists the orgs the account is in", async () => {
+    await api.createGroup({ applicationId: "x", name: "Team" });
+    const res = await api.listGroups();
+    expect(res.data).toEqual([expect.objectContaining({ groupId: "org-1", alias: "Team" })]);
   });
 
-  it("after an app-id change, finds chat's namespaces by PACKAGE — still never another app's", async () => {
-    // The configured id is stale; the node has chat under a new id.
-    mockListApplications.mockResolvedValue({
-      apps: [
-        { id: "chat-v2", package: "com.calimero.chat" },
-        { id: "design-app-id", package: "com.calimero.mero-design" },
-      ],
-    });
-    mockListNamespaces.mockResolvedValue({
-      namespaces: [ns("ns-chat", "chat-v2", "Calimero"), ns("ns-design", "design-app-id", "Design Board")],
-    });
-
-    const response = await new GroupApiDataSource().listGroups();
-
-    expect(response.data?.map((g) => g.groupId)).toEqual(["ns-chat"]);
-  });
-
-  it("filters by the configured id alone when the node will not list its applications", async () => {
-    mockListApplications.mockRejectedValue(new Error("403"));
-    mockListNamespaces.mockResolvedValue({
-      namespaces: [ns("ns-chat", "runtime-app-id", "Calimero"), ns("ns-design", "design-app-id", "Design Board")],
-    });
-
-    const response = await new GroupApiDataSource().listGroups();
-
-    expect(response.data?.map((g) => g.groupId)).toEqual(["ns-chat"]);
-  });
-
-  beforeEach(() => {
-    session.isDelegated = false;
-    session.applicationId = null;
-    mockListApplications.mockReset();
-    mockListNamespaces.mockReset();
-    mockCreateNamespace.mockReset();
-    mockCreateNamespaceInvitation.mockReset();
-    mockJoinNamespace.mockReset();
-    mockJoinContext.mockReset();
-    mockListGroupContexts.mockReset();
-    mockSetMemberMetadata.mockReset();
-  });
-
-  it("sends ONLY the keys core's closed CreateNamespaceApiRequest accepts", async () => {
-    // core refuses any other key with a 400 — this test used to assert that
-    // `upgradePolicy` and `alias` WERE sent, and the first real create
-    // failed with `unknown field \`upgradePolicy\``. Assert the key set, not
-    // `toHaveBeenCalledWith` a literal a stray key can hide beside.
-    mockCreateNamespace.mockResolvedValue({ namespaceId: "group-1" });
-
-    const dataSource = new GroupApiDataSource();
-    const response = await dataSource.createGroup({
-      applicationId: "app-1",
-      name: "Product Team",
-    });
-
-    const body = mockCreateNamespace.mock.calls[0][0];
-    expect(Object.keys(body).every((k) => CREATE_NAMESPACE_KEYS.has(k))).toBe(true);
-    expect(body).toEqual({ applicationId: "app-1", name: "Product Team" });
-    expect(response).toEqual({
-      data: {
-        groupId: "group-1",
-      },
-      error: null,
-    });
-  });
-
-  it("on an account, lists the account's own namespaces by the registry id and never lists applications", async () => {
-    // The account admin's `listNamespaces` is already the account's own; the
-    // one id that is chat for it is the registry-derived one. A relay's
-    // `/admin-api/applications` is not the account's to read (403), and the
-    // node path used to ask for it on every listing.
-    session.isDelegated = true;
-    session.applicationId = "runtime-app-id";
-    mockListNamespaces.mockResolvedValue({
-      namespaces: [ns("ns-chat", "runtime-app-id", "Calimero"), ns("ns-design", "design-app-id", "Design Board")],
-    });
-
-    const response = await new GroupApiDataSource().listGroups();
-
-    expect(response.data?.map((g) => g.groupId)).toEqual(["ns-chat"]);
-    expect(mockListApplications).not.toHaveBeenCalled();
-  });
-
-  it("carries the cloud's hosting answer (`haEnabled` / `haError`) out of an account's founding", async () => {
-    // mero-react's account admin founds through the relay and then asks the
-    // cloud to host the namespace; a refusal comes back beside the id, not as
-    // an error. The popup shows it, so it must survive the envelope.
-    mockCreateNamespace.mockResolvedValue({
-      namespaceId: "group-3",
-      haEnabled: false,
-      haError: "link this account to your cloud user in the wallet so invitees can find this namespace",
-    });
-
-    const response = await new GroupApiDataSource().createGroup({ applicationId: "app-1" });
-
-    expect(response).toEqual({
-      data: {
-        groupId: "group-3",
-        haEnabled: false,
-        haError: "link this account to your cloud user in the wallet so invitees can find this namespace",
-      },
-      error: null,
-    });
-  });
-
-  it("maps an HTTPError to its status and the node's own explanation", async () => {
-    // What the caller branches on (403 from a route an account's token cannot
-    // pass, 404 on a missing member row) and what a person reads — the body's
-    // `error`, not `HTTP 403 : ...`. This used to be axios's job.
-    mockCreateNamespace.mockRejectedValue(
-      new MockHTTPError(403, "Token does not carry the permissions this route requires"),
-    );
-
-    const response = await new GroupApiDataSource().createGroup({ applicationId: "app-1" });
-
-    expect(response).toEqual({
-      data: null,
-      error: { code: 403, message: "Token does not carry the permissions this route requires" },
-    });
-  });
-
-  it("keeps a numeric `status` from any other thrown error, and defaults to 500", async () => {
-    mockCreateNamespace.mockRejectedValue(Object.assign(new Error("not for an account"), { status: 405 }));
-    expect((await new GroupApiDataSource().createGroup({ applicationId: "app-1" })).error).toEqual({
-      code: 405,
-      message: "not for an account",
-    });
-
-    mockCreateNamespace.mockRejectedValue(new Error("boom"));
-    expect((await new GroupApiDataSource().createGroup({ applicationId: "app-1" })).error).toEqual({
-      code: 500,
-      message: "boom",
-    });
-  });
-
-  it("also accepts groupId in namespace creation response for backward compatibility", async () => {
-    mockCreateNamespace.mockResolvedValue({ groupId: "group-2" });
-
-    const dataSource = new GroupApiDataSource();
-    const response = await dataSource.createGroup({
-      applicationId: "app-1",
-    });
-
-    expect(mockCreateNamespace).toHaveBeenCalledWith({ applicationId: "app-1" });
-    expect(response).toEqual({ data: { groupId: "group-2" }, error: null });
-  });
-
-  it("returns the invitation group alias when the backend wraps the payload", async () => {
-    mockCreateNamespaceInvitation.mockResolvedValue({
-          invitation: {
-            invitation: {
-              inviter_identity: "admin",
-              group_id: "group-1",
-              expiration_height: 42,
-              secret_salt: [1, 2, 3],
-              protocol: "near",
-              network: "testnet",
-              contract_id: "contract.testnet",
-            },
-            inviter_signature: "signature",
-          },
-          groupAlias: "Product Team",
-    });
-
-    const dataSource = new GroupApiDataSource();
-    const response = await dataSource.createInvitation("group-1");
-
-    expect(response).toEqual({
-      data: {
-        invitation: {
-          invitation: {
-            inviter_identity: "admin",
-            group_id: "group-1",
-            expiration_height: 42,
-            secret_salt: [1, 2, 3],
-            protocol: "near",
-            network: "testnet",
-            contract_id: "contract.testnet",
-          },
-          inviter_signature: "signature",
-        },
-        groupAlias: "Product Team",
-      },
-      error: null,
-    });
-  });
-
-  it("joins a namespace by POSTing to /namespaces/{id}/join with only the invitation in the body", async () => {
-    const invitation = {
-      invitation: {
-        inviter_identity: "admin",
-        group_id: "group-1",
-        expiration_height: 42,
-        secret_salt: [1, 2, 3],
-        protocol: "near",
-        network: "testnet",
-        contract_id: "contract.testnet",
-      },
-      inviter_signature: "signature",
-    };
-    mockJoinNamespace.mockResolvedValue({
-      namespaceId: "group-1",
-      memberIdentity: "member-1",
-    });
-
-    const dataSource = new GroupApiDataSource();
-    const response = await dataSource.joinGroup({
-      invitation,
-      groupAlias: "Product Team",
-    });
-
-    // namespace ID is extracted from invitation.invitation.group_id = "group-1"
-    expect(mockJoinNamespace).toHaveBeenCalledWith("group-1", { invitation });
-    expect(response).toEqual({
-      data: {
-        groupId: "group-1",
-        memberIdentity: "member-1",
-      },
-      error: null,
-    });
-  });
-
-  it("converts byte-array group_id in invitation to hex namespace ID in the join URL", async () => {
-    const invitation = {
-      invitation: {
-        inviter_identity: "admin",
-        group_id: [0xab, 0xcd, 0xef],
-        expiration_height: 42,
-        secret_salt: [1, 2, 3],
-        protocol: "near",
-        network: "testnet",
-        contract_id: "contract.testnet",
-      },
-      inviter_signature: "signature",
-    };
-    mockJoinNamespace.mockResolvedValue({
-      namespaceId: "abcdef",
-      memberIdentity: "member-1",
-    });
-
-    const dataSource = new GroupApiDataSource();
-    await dataSource.joinGroup({ invitation: invitation as never, groupAlias: "Team" });
-
-    expect(mockJoinNamespace).toHaveBeenCalledWith("abcdef", { invitation });
-  });
-
-  it("joins a context by POSTing to /contexts/{contextId}/join without a group ID in URL", async () => {
-    mockJoinContext.mockResolvedValue({
-      contextId: "ctx-1",
-      memberPublicKey: "pk-1",
-    });
-
-    const dataSource = new GroupApiDataSource();
-    const response = await dataSource.joinGroupContext("ignored-group-id", {
-      contextId: "ctx-1",
-    });
-
-    expect(mockJoinContext).toHaveBeenCalledWith("ctx-1");
-    expect(response).toEqual({
-      data: { contextId: "ctx-1", memberPublicKey: "pk-1" },
-      error: null,
-    });
-  });
-
-  it("preserves optional aliases when listing group contexts", async () => {
-    // The id is passed through as the node reported it.
-    //
-    // This used to assert a hex -> base58 conversion, which was right while the
-    // node spelled ContextId in base58 and refused hex. rc.27 made every id hex
-    // (`Hash::from_str` is hex-only), so converting now produces an id the node
-    // cannot parse.
-    const hexContextId = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
-
-    mockListGroupContexts.mockResolvedValue([
-      {
-        contextId: hexContextId,
-        alias: "Project Alpha",
-      },
+  it("maps org roles to v1 member roles and names from member metadata", async () => {
+    await api.createGroup({ applicationId: "x", name: "Team" });
+    const org = h.state.orgs.get("org-1")!;
+    org.members = { "acct-me": "owner", "acct-bob": "member", "acct-gus": "guest" };
+    org.memberMetadata = { "acct-bob": { name: "Bob" } };
+    invalidate();
+    const res = await api.listMembers("org-1");
+    expect(res.data?.members).toEqual([
+      { identity: "acct-me", role: "Admin", alias: undefined },
+      { identity: "acct-bob", role: "Member", alias: "Bob" },
+      { identity: "acct-gus", role: "ReadOnly", alias: undefined },
     ]);
+    expect(res.data?.selfIdentity).toBe("acct-me");
+  });
 
-    const dataSource = new GroupApiDataSource();
-    const response = await dataSource.listGroupContexts("group-1");
+  it("invites with an org invite token and joins by redeeming one", async () => {
+    await api.createGroup({ applicationId: "x", name: "Team" });
+    const invite = await api.createInvitation("org-1");
+    expect(invite.data).toEqual({ invitation: "tok-1", groupAlias: "Team" });
+    expect(h.client.invite).toHaveBeenCalledWith("org-1", "member", expect.anything());
+    const joined = await api.joinGroup({ invitation: "tok-1" });
+    expect(joined.data).toEqual({ groupId: "org-joined", memberIdentity: "acct-me" });
+  });
+});
 
-    expect(response).toEqual({
-      data: [
-        {
-          contextId: hexContextId,
-          alias: "Project Alpha",
-        },
-      ],
-      error: null,
+describe("a channel is a chat instance in the org", () => {
+  it("is created from v1's steps: subgroup, visibility, members, then context", async () => {
+    await api.createGroup({ applicationId: "x", name: "Team" });
+    const sg = await api.createSubgroup("org-1", { groupName: "secret", visibility: "restricted" });
+    const pending = sg.data!.groupId;
+    await api.setSubgroupVisibility(pending, { subgroupVisibility: "restricted" });
+    await api.addGroupMember(pending, "acct-bob");
+    const ctx = await new ContextApiDataSource().createGroupContext({
+      applicationId: "x",
+      groupId: pending,
+      name: "secret",
+      initializationParams: { name: "secret", context_type: "Channel", description: "", created_at: 1, creator_username: "me" },
+    });
+    expect(ctx.data).toEqual({ contextId: "app-2", memberPublicKey: "acct-me" });
+    expect(h.client.createApp).toHaveBeenCalledWith("secret", "bundle-hash", {
+      org: "org-1",
+      access: { kind: "accounts", accounts: ["acct-bob"] },
+      initArgs: { name: "secret", contextType: "Channel", description: "", creatorUsername: "me" },
     });
   });
 
-  it("updates a member alias through the admin member alias endpoint", async () => {
-    mockSetMemberMetadata.mockResolvedValue(undefined);
+  it("an open channel reaches every org member; a private one its owner and the listed accounts", async () => {
+    await api.createGroup({ applicationId: "x", name: "Team" });
+    h.state.orgs.get("org-1")!.members = { "acct-me": "owner", "acct-bob": "member" };
+    invalidate();
+    const general = await createChannel("org-1", "general", true, {
+      createSubgroup: (...a) => api.createSubgroup(...a),
+      setSubgroupVisibility: (...a) => api.setSubgroupVisibility(...a),
+      createGroupContext: (...a) => new ContextApiDataSource().createGroupContext(...a),
+      joinChat: async () => ({ data: "ok", error: null }),
+    });
+    const id = (general as { contextId: string }).contextId;
+    expect(h.state.apps.get(id)!.access).toEqual({ kind: "org" });
 
-    const dataSource = new GroupApiDataSource();
-    const response = await dataSource.setMemberMetadata("group-1", "member-1", {
-      name: "Taylor",
-    });
+    const info = await api.getGroup(id);
+    expect(info.data).toMatchObject({ subgroupVisibility: "open", memberCount: 2, alias: "general" });
+    const subgroups = await api.listSubgroups("org-1");
+    expect(subgroups.data).toEqual([{ groupId: id, alias: "general" }]);
+    const contexts = await api.listGroupContexts(id);
+    expect(contexts.data?.[0]).toMatchObject({ contextId: id, alias: "general" });
 
-    expect(mockSetMemberMetadata).toHaveBeenCalledWith("group-1", "member-1", {
-      name: "Taylor",
-    });
-    expect(response).toEqual({
-      data: undefined,
-      error: null,
-    });
+    await api.setSubgroupVisibility(id, { subgroupVisibility: "restricted" });
+    expect(h.state.apps.get(id)!.access).toEqual({ kind: "accounts", accounts: [] });
+    await api.addGroupMember(id, "acct-bob");
+    expect(h.state.apps.get(id)!.access).toEqual({ kind: "accounts", accounts: ["acct-bob"] });
+    const members = await api.listMembers(id);
+    expect(members.data?.members.map((m) => m.identity)).toEqual(["acct-me", "acct-bob"]);
   });
 
-  // ── The 64-byte name cap ─────────────────────────────────────────────────
-  //
-  // Over the cap the server keeps the group and DROPS the name, returning 200.
-  // Nothing downstream can tell that apart from "the user chose no name", which
-  // is how every DM ever created ended up nameless: a 140-byte alias written to
-  // a 64-byte field, silently, on every single write.
-
-  it("refuses a subgroup name the server would silently drop", async () => {
-    mockCreateGroupInNamespace.mockResolvedValue({ groupId: "g-1" });
-    const dataSource = new GroupApiDataSource();
-
-    const response = await dataSource.createSubgroup("ns-1", {
-      groupName: "a".repeat(65),
-    });
-
-    expect(response.error?.message).toMatch(/too long/i);
-    expect(mockCreateGroupInNamespace).not.toHaveBeenCalled();
-  });
-
-  it("refuses a name that is short in characters but over the byte cap", async () => {
-    mockCreateGroupInNamespace.mockResolvedValue({ groupId: "g-1" });
-    const dataSource = new GroupApiDataSource();
-
-    // 20 emoji: well under any character limit, 80 bytes on the wire.
-    const response = await dataSource.createSubgroup("ns-1", {
-      groupName: "🎉".repeat(20),
-    });
-
-    expect(response.error).not.toBeNull();
-    expect(mockCreateGroupInNamespace).not.toHaveBeenCalled();
-  });
-
-  it("still creates a subgroup with an acceptable name", async () => {
-    mockCreateGroupInNamespace.mockResolvedValue({ groupId: "g-1" });
-    const dataSource = new GroupApiDataSource();
-
-    const response = await dataSource.createSubgroup("ns-1", {
-      groupName: "general",
-    });
-
-    expect(response.data).toEqual({ groupId: "g-1" });
-    expect(mockCreateGroupInNamespace).toHaveBeenCalledWith("ns-1", {
-      groupName: "general",
-    });
-  });
-
-  it("refuses an over-long namespace name too", async () => {
-    const dataSource = new GroupApiDataSource();
-
-    const response = await dataSource.createGroup({
-      applicationId: "app-1",
-      name: "n".repeat(80),
-    });
-
-    expect(response.error).not.toBeNull();
-    expect(mockCreateNamespace).not.toHaveBeenCalled();
+  it("joining a channel needs nothing but reaching it", async () => {
+    h.state.apps.set("app-9", { appId: "app-9", name: "x", owner: "o", org: "org-1", access: { kind: "org" } });
+    const res = await api.joinGroupContext("org-1", { contextId: "app-9" });
+    expect(res.data).toEqual({ contextId: "app-9", memberPublicKey: "acct-me" });
   });
 });

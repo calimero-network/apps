@@ -1,14 +1,17 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { CalimeroError } from '@calimero-network/mero-js';
+import { appSource, targetKey } from '@calimero-apps/connect';
 import {
-} from '@calimero-network/mero-ui';
-import { useMero } from '@calimero-network/mero-react';
-import { publishMemberName, useMemberNames } from '@calimero-apps/names';
-import { createLobbyClient, createGameClient, LobbyClient, GameClient } from '../../features/kv/api';
-import type { ContextRole } from '../../features/kv/api';
-import { CalimeroBytes } from '../../generated/game/GameClient';
-import type { MatchStateView } from '../../generated/game/GameClient';
-import type { MatchSummary, MatchRecord, PlayerStatsView } from '../../generated/lobby/LobbyClient';
+  PACKAGE,
+  isMatchFinishedError,
+  isShipsNotPlacedError,
+  messageOf,
+  type MatchRecord,
+  type MatchStateView,
+  type MatchSummary,
+  type PlayerStatsView,
+} from '../../battleships';
 import {
   cellsFromShips,
   computeCommitment,
@@ -21,20 +24,16 @@ import { loadBoard, saltBytes, saltHex, saveBoard } from '../../lib/boardStore';
 import type { AllGameEvents } from '../../types/events';
 import { useGameSubscriptions } from '../../hooks/useGameSubscriptions';
 import { useBattleshipsLobby } from '../../hooks/useBattleshipsLobby';
-import { useLobbyJoinSync } from '../../hooks/useLobbyJoinSync';
-import { resolveEffectiveMatchId, SHIP_TARGETS, validateFleetPayload } from './config';
+import { dropInvite, pendingInvite } from '../../lobbies';
+import { describeTarget, useSessionApi } from '../../session';
+import { SHIP_TARGETS, validateFleetPayload } from './config';
 
 import NavBar from '../../components/NavBar';
 import LobbySelect from '../../components/LobbySelect';
 import AppFooter from '../../components/AppFooter';
+import ConnectCard from '../../components/ConnectCard';
 import { useToast } from '../../contexts/ToastContext';
-import CopyButton from '../../components/CopyButton';
-import { generateInvitationUrl } from '../../utils/invitation';
-import { friendlyContractMessage, isMatchFinishedError, isPlayerKeyShaped, isShipsNotPlacedError } from '../../utils/contractError';
-import { EMBEDDED_NAME_KEY, getStoredLobbyName, setStoredLobbyName } from '../../utils/lobbyName';
-import { INVITER_KEY } from '../../utils/knownPlayers';
 import { forgetLastLobby, pickResumeLobby, readLastLobby, rememberLobby } from '../../utils/lastLobby';
-import type { JoinedLobbyState } from '../../components/InvitationPrompt';
 import LobbyView from '../../components/LobbyView';
 import { playerName } from '../../utils/playerName';
 import GameBoard from '../../components/GameBoard';
@@ -42,66 +41,43 @@ import ShotGrid from '../../components/ShotGrid';
 import PlacementGrid from '../../components/PlacementGrid';
 import ShipSelector from '../../components/ShipSelector';
 
-// Pure error-shape predicates — hoisted out of the component so they have a
-// stable identity and don't fight react-hooks/exhaustive-deps.
-const errorMessage = (error: unknown): string =>
-  error instanceof Error ? error.message : typeof error === 'string' ? error : '';
-
-const isUninitializedError = (error: unknown): boolean =>
-  errorMessage(error).includes('Uninitialized');
-
-// merod returns one of two strings when a node touches a context whose state
-// hasn't been bootstrapped locally yet. Both recover via admin.joinContext.
-const isContextNotAvailableError = (error: unknown): boolean => {
-  const m = errorMessage(error).toLowerCase();
-  return m.includes('not available on this node') || m.includes('context not found');
-};
-
-// Fired when joinContext races ahead of the subgroup-membership delta on the
-// joiner's node. Transient — caller retries with backoff.
-const isNotMemberError = (error: unknown): boolean => {
-  const m = errorMessage(error).toLowerCase();
-  return m.includes('not a member of group') || m.includes('not a member');
-};
-
-/** How long to keep re-reading the lobby list for one that was just joined. */
-const JOINED_LOBBY_LISTING_MS = 90_000;
-
 export default function MatchPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const {
-    isAuthenticated,
-    isLoading: authLoading,
-    logout,
-    mero,
-    admin,
-    nodeUrl,
-    contextIdentity,
-  } = useMero();
-  // `admin`, NOT `mero.admin`, for membership. `mero` is the raw client, and on
-  // a delegated (account) session its transport is the relay: `mero.admin
-  // .joinContext` is the relay's node route under the account's bearer token,
-  // which does not carry it (403). `admin` is the session-aware one (apps#348):
-  // the node's own client on a node login, and on an account the account
-  // admin, whose `joinContext` joins the context's group as the account and
-  // whose `getContextIdentitiesOwned` answers with the account itself.
-
-  const defaultNodeUrl =
-    import.meta.env.VITE_NODE_URL?.trim() || 'http://node1.127.0.0.1.nip.io';
+  const sessionApi = useSessionApi();
+  const { session, store } = sessionApi;
   const { show } = useToast();
 
-  const lobby = useBattleshipsLobby();
-  // People by the name they set for the namespace, not by key.
-  const { nameOf } = useMemberNames(admin, lobby.namespaceId);
+  const client = session.status === 'signed-in' ? session.client : null;
+  const accountId = session.status === 'signed-in' ? session.accountId : null;
+  // Where "the lobby you had open last" is remembered: per target and account,
+  // as v1 kept it per node.
+  const scope = session.status === 'signed-in' ? `${targetKey(session.target)}:${session.accountId}` : null;
+  const source = useMemo(() => appSource(sessionApi.env, PACKAGE), [sessionApi.env]);
+  const after = useCallback(() => {
+    if (client) store?.sync(client);
+  }, [client, store]);
+
+  const lobby = useBattleshipsLobby({
+    client,
+    accountId,
+    source,
+    passkey: sessionApi.passkey,
+    after,
+    selectionKey: scope ? `battleships:selected-lobby:${scope}` : null,
+  });
+  // One app instance is the lobby and every match in it.
+  const lobbyApi = lobby.api;
+  const { nameOf } = lobby;
   const saveName = useCallback(
     (name: string) => {
-      if (!admin || !lobby.namespaceId || !lobby.selfIdentity || !name) return;
-      publishMemberName(admin, lobby.namespaceId, lobby.selfIdentity, name)
+      if (!name) return;
+      lobby
+        .saveName(name)
         .then(() => show({ title: 'Name saved', variant: 'success' }))
         .catch(() => show({ title: 'Could not save your name', variant: 'error' }));
     },
-    [admin, lobby.namespaceId, lobby.selfIdentity, show],
+    [lobby, show],
   );
 
   // View state
@@ -110,33 +86,10 @@ export default function MatchPage() {
 
   // Lobby creation form
   const [newLobbyName, setNewLobbyName] = useState('');
-  const [invitationJson, setInvitationJson] = useState<string | null>(null);
-
-  // Lobby API and context
-  const [lobbyApi, setLobbyApi] = useState<LobbyClient | null>(null);
-  // The lobby whose match list has come back from the node, empty or not.
-  // Keyed by namespace AND context: for one render after the selection moves
-  // the hook still reports the previous lobby's context, and a read of that
-  // must not count for the new namespace.
-  const [lobbyReadFor, setLobbyReadFor] = useState<{
-    namespaceId: string;
-    contextId: string;
-  } | null>(null);
-  const namespaceIdRef = useRef(lobby.namespaceId);
-  namespaceIdRef.current = lobby.namespaceId;
-  const [currentContext, setCurrentContext] = useState<{
-    applicationId: string;
-    contextId: string;
-    nodeUrl: string;
-  } | null>(null);
-
-  // Match API client
-  const [matchApi, setMatchApi] = useState<GameClient | null>(null);
-  const [matchContextId, setMatchContextId] = useState<string | null>(null);
+  const [invitationLink, setInvitationLink] = useState<string | null>(null);
 
   // Match management
   const [matchId, setMatchId] = useState<string>('');
-  const [runtimeMatchId, setRuntimeMatchId] = useState<string | null>(null);
   const [player2, setPlayer2] = useState<string>('');
   const [myMatches, setMyMatches] = useState<MatchSummary[]>([]);
   const [creatingMatch, setCreatingMatch] = useState(false);
@@ -149,8 +102,8 @@ export default function MatchPage() {
   const [shotsBoard, setShotsBoard] = useState<number[]>([]);
   const [placed, setPlaced] = useState<boolean>(false);
   /**
-   * The match as the contract derives it from the rows — standing, who has
-   * committed, the pending shot, who has revealed — in one read per refresh.
+   * The match as the contract derives it — standing, who has committed, the
+   * pending shot, who has revealed — in one read per refresh.
    */
   const [matchState, setMatchState] = useState<MatchStateView | null>(null);
   /**
@@ -159,15 +112,10 @@ export default function MatchPage() {
    * answered from here and the board cannot be revealed from here.
    */
   const [boardMissing, setBoardMissing] = useState<boolean>(false);
-  /**
-   * The opponent has not deployed yet: `get_match_state` lists who has
-   * committed. Also set when a shot is refused for that reason, in case the
-   * read and the refusal disagree for a moment.
-   */
+  /** The opponent has not deployed yet (`getMatchState` lists who has committed). */
   const [opponentNotReady, setOpponentNotReady] = useState<boolean>(false);
   const [currentTurn, setCurrentTurn] = useState<string | null>(null);
   const [isMyTurn, setIsMyTurn] = useState<boolean>(false);
-  const [currentUser, setCurrentUser] = useState<string | null>(null);
   const [pendingShot, setPendingShot] = useState<{ x: number; y: number } | null>(null);
 
   // Ship placement
@@ -185,33 +133,19 @@ export default function MatchPage() {
   const [selectedShotY, setSelectedShotY] = useState<number | null>(null);
 
   const loadingRef = useRef<boolean>(false);
-  const effectiveMatchId = resolveEffectiveMatchId(matchId, runtimeMatchId);
-  const [matchApiReady, setMatchApiReady] = useState(false);
+  const effectiveMatchId = matchId;
+  // The match runs in the lobby's own instance: ready as soon as the lobby is.
+  const matchApi = view === 'game' ? lobbyApi : null;
+  const matchApiReady = matchApi !== null;
 
-  // Match-join progress, surfaced in the UI as a loader card while the
-  // joiner side waits for subgroup membership / context state to converge.
-  // Mirrors merobox's `wait_for_sync` semantics in the UX: each phase only
-  // advances when the local node has actually observed the precondition.
-  type MatchJoinPhase = 'idle' | 'connecting' | 'joining' | 'syncing' | 'failed';
-  const [matchJoinPhase, setMatchJoinPhase] = useState<MatchJoinPhase>('idle');
-  const [matchJoinError, setMatchJoinError] = useState<string | null>(null);
-
-  // Finish-state derived from the lobby match list. Needed because the on-chain
-  // `MatchEnded` / `Winner` event can be dropped when its state-delta arrives
-  // via periodic sync instead of gossipsub broadcast (see calimero core #2139),
-  // so we fall back to reading the lobby's authoritative `status` / `winner`.
-  /**
-   * The key the match names this player by, and the key the board on this
-   * device is filed under. The same value on a node and on an account: it is
-   * what `init` was given as `player1` / `player2`, and what the contract
-   * reports in `committed`, `pending_shot.target` and `winner`.
-   */
-  const boardOwner = lobby.executorPublicKey ?? contextIdentity ?? currentUser;
+  /** The id this player plays as, and the key the board on this device is filed under. */
+  const currentUser = accountId;
+  const boardOwner = accountId;
 
   const currentMatch = myMatches.find((m) => m.match_id === effectiveMatchId);
-  // The game context's own standing is read directly too: it ends on the
-  // answers before the lobby hears of it, and the reveal that decides it is
-  // ours to make while the lobby still says Active.
+  // The match's own standing is read directly too: it ends on the answers
+  // before a winner is recorded, and the reveal that decides it is ours to
+  // make while the lobby still says Active.
   const standing = matchState?.standing ?? 'playing';
   const matchFinished = currentMatch?.status === 'Finished' || standing !== 'playing';
   const matchWinner = currentMatch?.winner ?? matchState?.winner ?? null;
@@ -221,179 +155,123 @@ export default function MatchPage() {
   const auditFailed = matchState?.audit_failed ?? [];
 
   // ---------------------------------------------------------------------------
-  // Utilities
+  // Navigation
   // ---------------------------------------------------------------------------
 
-  const sleep = (ms: number) => new Promise<void>((resolve) => { setTimeout(resolve, ms); });
-
-  const ensureMatchContextReady = useCallback(
-    async (client: GameClient, attempts = 10, delayMs = 400): Promise<void> => {
-      for (let attempt = 0; attempt < attempts; attempt += 1) {
-        try {
-          await client.getActiveMatchId();
-          return;
-        } catch (error) {
-          if (!isUninitializedError(error)) throw error;
-          if (attempt === attempts - 1) throw error;
-          await sleep(delayMs);
-        }
-      }
-    },
-    [],
-  );
-
-  // ---------------------------------------------------------------------------
-  // Navigation & auth
-  // ---------------------------------------------------------------------------
-
-  useEffect(() => {
-    // Wait for the auth SDK to finish initializing before redirecting —
-    // otherwise a transient `isAuthenticated = false` during the loading
-    // phase navigates to '/', the Authenticate page bounces back to
-    // '/lobby' (without the ?id param), and the query-string is lost.
-    if (!authLoading && !isAuthenticated) {
-      navigate('/', { state: { returnTo: location.pathname + location.search } });
-    }
-  }, [authLoading, isAuthenticated, navigate, location.pathname, location.search]);
-
-  // URL-driven lobby entry: if `/lobby?id=<ns_id>` is in the address bar,
-  // select that namespace and advance to 'lobby' view once it's ready.
-  // A bare `/lobby` (no ?id) stays on 'lobby-select', unless the resume effect
-  // below hands it the lobby you had open last.
+  // URL-driven lobby entry: `/lobby?id=<lobby>` selects that lobby and enters
+  // it once its contract is ready. A bare `/lobby` stays on 'lobby-select',
+  // unless the resume effect below hands it the lobby you had open last.
   useEffect(() => {
     if (view !== 'lobby-select') return;
     if (manualLobbySelect.current) return;
     const params = new URLSearchParams(location.search);
-    const urlNsId = params.get('id');
-    if (!urlNsId) return; // bare /lobby → stay on select screen
-    // If the URL says ?id=X but we haven't selected it yet, select it.
-    if (lobby.selectedLobby?.namespaceId !== urlNsId) {
-      lobby.selectLobby(urlNsId);
+    const urlLobbyId = params.get('id');
+    if (!urlLobbyId) return;
+    if (lobby.selectedLobby?.namespaceId !== urlLobbyId) {
+      if (lobby.lobbies.some((l) => l.namespaceId === urlLobbyId)) lobby.selectLobby(urlLobbyId);
       return;
     }
-    if (lobby.selectedLobby && lobby.lobbyJoined && lobby.lobbyContextId) {
+    if (lobby.selectedLobby && lobby.lobbyContextId) {
       setView('lobby');
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- lobby is an object ref that changes every render; we only need the specific fields listed
-  }, [view, location.search, lobby.selectedLobby, lobby.lobbyJoined, lobby.lobbyContextId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- lobby is an object that changes every render; only the fields listed matter
+  }, [view, location.search, lobby.selectedLobby, lobby.lobbies, lobby.lobbyContextId]);
 
-  // An invitation accepted from the app-level prompt lands on `/lobby` with
-  // router state naming the lobby. The list was read before the join, and a
-  // joining node may not list the namespace for this app until its metadata
-  // syncs, so re-read until it does, then hand over to `?id=` — the URL effect
-  // above enters the lobby once its context resolves. Keyed on the navigation,
-  // so a second join refreshes again, whatever screen was showing.
-  const joinedLobbyId = (location.state as JoinedLobbyState | null)?.joinedLobbyId;
-  const lobbyIdsRef = useRef<string[]>([]);
-  lobbyIdsRef.current = lobby.lobbies.map((l) => l.namespaceId);
-  const refetchLobbiesRef = useRef(lobby.refetchLobbies);
-  refetchLobbiesRef.current = lobby.refetchLobbies;
+  // An invitation link opened before signing in is redeemed once a session
+  // exists (it joins the lobby's organization), and the lobby it names opened.
   useEffect(() => {
-    if (!joinedLobbyId) return undefined;
-    manualLobbySelect.current = false;
-    setView('lobby-select');
-    let cancelled = false;
-    (async () => {
-      const deadline = Date.now() + JOINED_LOBBY_LISTING_MS;
-      while (!cancelled && Date.now() < deadline) {
-        await refetchLobbiesRef.current().catch(() => undefined);
-        // Read after a render has picked the refetch up.
-        await new Promise((resolve) => setTimeout(resolve, 1_500));
-        if (cancelled) return;
-        if (lobbyIdsRef.current.includes(joinedLobbyId)) {
-          navigate(`/lobby?id=${encodeURIComponent(joinedLobbyId)}`, { replace: true });
-          return;
+    if (!client) return;
+    const invite = pendingInvite();
+    if (!invite) return;
+    let live = true;
+    client
+      .redeemInvite(invite.token)
+      .then(async () => {
+        dropInvite();
+        if (!live) return;
+        await lobby.refetchLobbies();
+        if (!live) return;
+        show({ title: 'Invitation accepted', variant: 'success' });
+        if (invite.lobby) {
+          manualLobbySelect.current = false;
+          setView('lobby-select');
+          navigate(`/lobby?id=${encodeURIComponent(invite.lobby)}`, { replace: true });
         }
-      }
-    })();
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- once per navigation that carries a join
-  }, [location.key, joinedLobbyId]);
+      })
+      .catch((e: unknown) => {
+        // A refusal (used, expired, revoked) can never succeed: drop it.
+        // Anything else (the cluster unreachable) is kept for the next load.
+        if (e instanceof CalimeroError && e.status < 500) dropInvite();
+        if (live) show({ title: `The invitation could not be accepted: ${messageOf(e)}`, variant: 'error' });
+      })
+      .finally(after);
+    return () => {
+      live = false;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- once per session
+  }, [client]);
 
-  // A lobby just joined from an invitation link holds the invitation dialog on
-  // "Syncing…" until its match list has been read here, re-reading while a
-  // read fails because the lobby has not synced yet.
-  const rereadLobby = useCallback(async () => {
-    const namespaceId = namespaceIdRef.current;
-    const contextId = currentContext?.contextId;
-    if (!lobbyApi || !contextId) return;
-    try {
-      const summaries = await lobbyApi.getMatches();
-      setMyMatches(summaries);
-      if (namespaceId) setLobbyReadFor({ namespaceId, contextId });
-    } catch { /* not synced yet; the next poll retries */ }
-  }, [lobbyApi, currentContext?.contextId]);
-  useLobbyJoinSync({
-    namespaceId: lobby.namespaceId,
-    contextId: lobby.lobbyContextId,
-    readFor: lobbyReadFor,
-    reread: rereadLobby,
-  });
-
-  // A bare `/lobby` — a reload, or signing in (`/` → `/home` → `/lobby` drops
-  // any query) — resumes the lobby you had open last, if the node still lists
-  // it (see `utils/lastLobby`). Handed to `?id=`, so the URL effect above
-  // enters it exactly as a link would. Decided once per visit: a `?id=`
-  // already in the URL, an invitation, or "All lobbies" win. A lobby no longer
-  // listed is forgotten and the picker shows.
+  // A bare `/lobby` — a reload, or signing in — resumes the lobby you had
+  // open last, if it is still listed (see `utils/lastLobby`). Decided once
+  // per visit: a `?id=` already in the URL or "All lobbies" win. A lobby no
+  // longer listed is forgotten and the picker shows.
   const resumeDecided = useRef(false);
   useEffect(() => {
-    if (resumeDecided.current) return;
+    if (resumeDecided.current || !scope) return;
     if (
       location.pathname !== '/lobby'
       || view !== 'lobby-select'
       || manualLobbySelect.current
-      || joinedLobbyId
+      || pendingInvite()
       || new URLSearchParams(location.search).get('id')
     ) {
       resumeDecided.current = true;
       return;
     }
-    const remembered = readLastLobby(nodeUrl);
+    const remembered = readLastLobby(scope);
     if (!remembered) {
       resumeDecided.current = true;
       return;
     }
-    const listed = lobby.lobbies.map((l) => l.namespaceId);
-    // An empty list before the list answered says nothing (not asked yet, or
-    // on an account the app id has not landed); a failed one says nothing
-    // either. Only an answered list may forget the remembered lobby.
-    if (listed.length === 0 && !lobby.lobbiesAnswered) return;
+    if (!lobby.lobbiesAnswered) return;
     resumeDecided.current = true;
-    const target = pickResumeLobby(listed, remembered);
+    const target = pickResumeLobby(lobby.lobbies.map((l) => l.namespaceId), remembered);
     if (target) {
       navigate(`/lobby?id=${encodeURIComponent(target)}`, { replace: true, state: { resume: true } });
     } else {
-      forgetLastLobby(nodeUrl);
+      forgetLastLobby(scope);
     }
-  }, [view, location.pathname, location.search, joinedLobbyId, lobby.lobbies, lobby.lobbiesAnswered, nodeUrl, navigate]);
+  }, [view, location.pathname, location.search, lobby.lobbies, lobby.lobbiesAnswered, scope, navigate]);
 
   // Remember the lobby once you are in it — never on the picker, where a
   // selection is only a preselection.
   useEffect(() => {
-    if (view === 'lobby' && lobby.namespaceId) rememberLobby(nodeUrl, lobby.namespaceId);
-  }, [view, lobby.namespaceId, nodeUrl]);
+    if (view === 'lobby' && lobby.namespaceId && scope) rememberLobby(scope, lobby.namespaceId);
+  }, [view, lobby.namespaceId, scope]);
 
+  // `/match?match_id=…&id=…` opens a match (v1's links also carried a
+  // `context_id`, which is ignored: the match is in the lobby's instance).
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const urlMatchId = params.get('match_id');
-    const urlContextId = params.get('context_id');
-    if (urlMatchId && urlContextId && location.pathname === '/match') {
-      setMatchId(urlMatchId);
-      setRuntimeMatchId(null);
-      setMatchContextId(urlContextId);
-      setView('game');
+    const urlLobbyId = params.get('id');
+    if (!urlMatchId || location.pathname !== '/match') return;
+    if (urlLobbyId && lobby.selectedLobby?.namespaceId !== urlLobbyId) {
+      if (lobby.lobbies.some((l) => l.namespaceId === urlLobbyId)) lobby.selectLobby(urlLobbyId);
+      return;
     }
-  }, [location.pathname, location.search]);
+    setMatchId(urlMatchId);
+    setView('game');
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- lobby is an object that changes every render
+  }, [location.pathname, location.search, lobby.selectedLobby, lobby.lobbies]);
 
   // ---------------------------------------------------------------------------
   // Board & turn loading
   // ---------------------------------------------------------------------------
 
-  // The last shot this device answered, and whether a reveal is in flight:
-  // a refresh can run several times while one write is still on its way, and
-  // a second answer to the same shot (or a second reveal) is at best a
-  // refused call and at worst, with a different value, an equivocation.
+  // The last shot this device answered, and whether a reveal is in flight: a
+  // refresh can run several times while one write is still on its way, and a
+  // second answer to the same shot (or a second reveal) is a refused call.
   const answeredShotRef = useRef<number | null>(null);
   const revealingRef = useRef<boolean>(false);
 
@@ -418,10 +296,10 @@ export default function MatchPage() {
         });
         return true;
       } catch (e) {
-        // Let a later refresh try again — unless the row is in, in which
+        // Let a later refresh try again — unless the answer is in, in which
         // case the next read shows no pending shot and nothing retries.
         answeredShotRef.current = null;
-        console.warn('[match] acknowledge_shot failed', e);
+        console.warn('[match] acknowledgeShot failed', e);
         return false;
       }
     },
@@ -430,8 +308,8 @@ export default function MatchPage() {
 
   /**
    * Open this device's board once the answers have ended the match and the
-   * contract has not seen ours yet. Every reader audits it; the win is not a
-   * win until the winner's board has passed.
+   * contract has not seen ours yet. The win is not a win until the winner's
+   * board has passed the audit.
    */
   const revealIfDue = useCallback(
     async (state: MatchStateView, cells: number[], salt: Uint8Array): Promise<boolean> => {
@@ -442,12 +320,12 @@ export default function MatchPage() {
       try {
         await matchApi.revealBoard({
           match_id: effectiveMatchId,
-          board_bytes: new CalimeroBytes(encodeBoardBytes(cells)),
-          salt: new CalimeroBytes(salt),
+          board_bytes: encodeBoardBytes(cells),
+          salt,
         });
         return true;
       } catch (e) {
-        console.warn('[match] reveal_board failed', e);
+        console.warn('[match] revealBoard failed', e);
         return false;
       } finally {
         revealingRef.current = false;
@@ -464,7 +342,7 @@ export default function MatchPage() {
       const incoming = await matchApi.getIncomingShots({ match_id: effectiveMatchId });
       setSize(shots.size);
       setMatchState(state);
-      setShotsBoard(shots.shots.toArray());
+      setShotsBoard(shots.shots);
 
       const committed = boardOwner ? state.committed.includes(boardOwner) : false;
       setPlaced(committed);
@@ -476,10 +354,10 @@ export default function MatchPage() {
         setOwnBoard([]);
         return;
       }
-      setOwnBoard(overlayOwnBoard(stored.cells, incoming.shots.toArray()));
+      setOwnBoard(overlayOwnBoard(stored.cells, incoming.shots));
 
       // Our move, if it is ours: answer the shot, then open the board if that
-      // answer (or an earlier one) ended the match. Each writes a row that
+      // answer (or an earlier one) ended the match. Each writes something that
       // changes what the reads above said, so read again after each.
       let latest = state;
       if (await answerPendingShot(latest, stored.cells)) {
@@ -491,18 +369,17 @@ export default function MatchPage() {
       if (latest !== state) {
         const nextIncoming = await matchApi.getIncomingShots({ match_id: effectiveMatchId });
         setMatchState(latest);
-        setOwnBoard(overlayOwnBoard(stored.cells, nextIncoming.shots.toArray()));
+        setOwnBoard(overlayOwnBoard(stored.cells, nextIncoming.shots));
       }
     } catch {
-      // board not yet available
+      // not readable yet; the next event or poll retries
     }
   }, [matchApi, effectiveMatchId, boardOwner, answerPendingShot, revealIfDue]);
 
   const loadTurnInfo = useCallback(async () => {
     if (!matchApi || !effectiveMatchId) return;
     try {
-      const turn = await matchApi.getCurrentTurn();
-      setCurrentTurn(turn);
+      setCurrentTurn(await matchApi.getCurrentTurn({ match_id: effectiveMatchId }));
     } catch {
       // turn info not yet available
     }
@@ -511,20 +388,14 @@ export default function MatchPage() {
   useEffect(() => {
     if (currentUser && currentTurn) {
       setIsMyTurn(currentUser === currentTurn);
+    } else {
+      setIsMyTurn(false);
     }
   }, [currentTurn, currentUser]);
 
   /**
-   * Keep the member list fresh while the lobby is on screen.
-   *
-   * ⚠️ POLLED, not evented. A member joining a namespace produces no execution
-   * event on this context — the join happens in the group layer, not the app's
-   * WASM — so there is nothing for `useGameSubscriptions` to deliver and the
-   * roster simply sat there until a manual reload. Ten seconds is slow enough
-   * to be invisible on the node and fast enough that someone accepting an
-   * invitation appears while you are still looking at the screen.
-   *
-   * Scoped to the two views that show members, so nothing polls during a match.
+   * Keep the member list fresh while the lobby is on screen. Someone joining
+   * the organization is no event of this app's, so the roster is polled.
    */
   useEffect(() => {
     if (view !== 'lobby-select' && view !== 'lobby') return undefined;
@@ -532,78 +403,60 @@ export default function MatchPage() {
     const id = setInterval(() => {
       void lobby.refetchMembers();
       void lobby.refetchPlayerKeys();
-      // ⚠️ The map has to be on the SAME poll as the roster. It is what turns a
-      // member row into a challengeable player, and it changes when someone
-      // ELSE opens the lobby — an event this node has no subscription for.
-      // Left off, a new player stays "hasn't opened the lobby yet" until reload.
-      void lobby.refetchPlayerMap();
     }, 10_000);
     return () => clearInterval(id);
-  }, [view, lobby.namespaceId, lobby.refetchMembers, lobby]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the two refetchers are what matter
+  }, [view, lobby.namespaceId, lobby.refetchMembers, lobby.refetchPlayerKeys]);
 
   /**
    * Any state change from the other side clears the "opponent not deployed"
-   * latch.
-   *
-   * ⚠️ WITHOUT THIS THE LATCH IS A DEAD END. It disables Fire, and the only
-   * other thing that cleared it was a successful shot — which you cannot make
-   * while it is set. So the moment the opponent actually deploys, the UI would
-   * stay stuck refusing to fire, with no way out but a reload. An event from
-   * the match is exactly the signal that the standing refusal may be stale.
+   * latch, which otherwise disables Fire with no way out but a reload.
    */
   const handleBoardUpdate = useCallback(() => {
     setOpponentNotReady(false);
-    loadBoards();
-    loadTurnInfo();
+    void loadBoards();
+    void loadTurnInfo();
   }, [loadBoards, loadTurnInfo]);
   const handleTurnUpdate = useCallback(() => {
     setOpponentNotReady(false);
-    loadTurnInfo();
+    void loadTurnInfo();
   }, [loadTurnInfo]);
 
   const refreshMatchList = useCallback(async () => {
     if (!lobbyApi) return;
     try {
-      const summaries = await lobbyApi.getMatches();
-      setMyMatches(summaries);
+      setMyMatches(await lobbyApi.getMatches());
     } catch { /* non-critical */ }
   }, [lobbyApi]);
 
   const refreshHistory = useCallback(async () => {
     if (!lobbyApi) return;
     try {
-      const records = await lobbyApi.getHistory();
-      setHistory(records);
+      setHistory(await lobbyApi.getHistory());
     } catch { /* non-critical */ }
   }, [lobbyApi]);
 
   const refreshPlayerStats = useCallback(async () => {
     if (!lobbyApi || !currentUser) return;
     try {
-      const stats = await lobbyApi.getPlayerStats({ player: currentUser });
-      setPlayerStats(stats);
+      setPlayerStats(await lobbyApi.getPlayerStats({ player: currentUser }));
     } catch { /* non-critical — no record yet for this player */ }
   }, [lobbyApi, currentUser]);
 
-  // Initial fetch + refresh whenever the lobby client or current user changes.
-  useEffect(() => { refreshHistory(); }, [refreshHistory]);
-  useEffect(() => { refreshPlayerStats(); }, [refreshPlayerStats]);
-
-  // Safety-net poll for match status. The `MatchEnded` / `Winner` events are
-  // emitted from the game context and delivered over SSE, but when the winning
-  // delta arrives on the losing node via sync catch-up instead of a gossipsub
-  // broadcast the event handler never fires (calimero core #2139). Polling the
-  // lobby's authoritative match list every 5s while a game is active lets the
-  // UI transition to the finish state within the poll interval even when the
-  // event is dropped.
-  //
-  // The boards are re-read on the same poll: a shot to answer or a reveal to
-  // make is this client's job now, and a dropped `ShotProposed` or
-  // `RevealRequested` would otherwise leave the opponent waiting on a device
-  // that never looked.
+  // Initial fetch + refresh whenever the lobby changes.
   useEffect(() => {
-    if (view !== 'game' || !lobbyApi) return;
-    const interval = setInterval(() => { refreshMatchList(); loadBoards(); }, 5000);
+    setMyMatches([]);
+    void refreshMatchList();
+  }, [refreshMatchList]);
+  useEffect(() => { void refreshHistory(); }, [refreshHistory]);
+  useEffect(() => { void refreshPlayerStats(); }, [refreshPlayerStats]);
+
+  // A safety-net poll while a match is open: events are the fast path, but a
+  // shot to answer or a reveal to make is this client's job, and a stream that
+  // was reconnecting would otherwise leave the opponent waiting.
+  useEffect(() => {
+    if (view !== 'game' || !lobbyApi) return undefined;
+    const interval = setInterval(() => { void refreshMatchList(); void loadBoards(); }, 5000);
     return () => clearInterval(interval);
   }, [view, lobbyApi, refreshMatchList, loadBoards]);
 
@@ -616,322 +469,73 @@ export default function MatchPage() {
         setPendingShot(null);
       }
       if (event.type === 'MatchListUpdated' || event.type === 'MatchCreated' || event.type === 'MatchEnded' || event.type === 'Winner') {
-        refreshMatchList();
-        refreshHistory();
+        void refreshMatchList();
+        void refreshHistory();
       }
       if (event.type === 'PlayerStatsUpdated') {
-        refreshPlayerStats();
+        void refreshPlayerStats();
+      }
+      if (event.type === 'PlayersUpdated') {
+        void lobby.refetchPlayerKeys();
       }
     },
-    [isMyTurn, refreshMatchList, refreshHistory, refreshPlayerStats],
+    [isMyTurn, refreshMatchList, refreshHistory, refreshPlayerStats, lobby],
   );
 
   // ---------------------------------------------------------------------------
-  // Subscriptions
+  // Subscriptions: the lobby instance's one event stream
   // ---------------------------------------------------------------------------
 
-  const subscriptionContextId = view === 'game' && matchContextId
-    ? matchContextId
-    : (currentContext?.contextId || '');
-
-  const lobbySubscriptionContextId =
-    view === 'game' ? (currentContext?.contextId ?? undefined) : undefined;
-
+  const fromIndex = useCallback(() => lobbyApi?.index() ?? 0, [lobbyApi]);
   const { isSubscribed: isEventSubscribed } = useGameSubscriptions({
-    contextId: subscriptionContextId,
-    lobbyContextId: lobbySubscriptionContextId,
-    matchId: effectiveMatchId,
+    client,
+    appId: view === 'lobby-select' ? null : lobby.namespaceId,
+    fromIndex,
+    matchId: view === 'game' ? effectiveMatchId : undefined,
     onBoardUpdate: handleBoardUpdate,
     onTurnUpdate: handleTurnUpdate,
     onGameEvent: handleGameEvent,
   });
 
   // ---------------------------------------------------------------------------
-  // Lobby API init
-  // ---------------------------------------------------------------------------
-
-  useEffect(() => {
-    if (!mero || !admin || !lobby.lobbyContextId) {
-      return;
-    }
-
-    const lobbyContextId = lobby.lobbyContextId;
-    const namespaceId = namespaceIdRef.current;
-    let cancelled = false;
-
-    (async () => {
-      try {
-        // Resolve executor identity
-        let executorKey = lobby.executorPublicKey;
-        if (!executorKey) {
-          try {
-            const { identities } = await admin.getContextIdentitiesOwned(lobbyContextId);
-            if (identities.length > 0) executorKey = identities[0];
-          } catch {
-            // context identity lookup failed
-          }
-        }
-
-        /**
-         * Join the lobby context if this node is not in it yet.
-         *
-         * ⚠️ NOBODY WAS DOING THIS. `joinContext` was called for MATCH contexts
-         * only. Joining a namespace does not put you in a context that already
-         * exists — auto-follow covers contexts created AFTER you are a member,
-         * and the lobby context is created when the lobby is, before anyone is
-         * invited. So an invited player had a namespace membership, no lobby
-         * identity, and therefore no player key: the lobby listed one player on
-         * every node, each seeing only itself, and a match could not be started
-         * without someone pasting a key from another machine.
-         */
-        if (!executorKey) {
-          try {
-            await admin.joinContext(lobbyContextId);
-            const { identities } = await admin.getContextIdentitiesOwned(lobbyContextId);
-            if (identities.length > 0) executorKey = identities[0];
-          } catch (e) {
-            console.warn('[lobby] joinContext failed', e);
-          }
-        }
-
-        if (!executorKey) executorKey = contextIdentity;
-        if (!executorKey || cancelled) return;
-
-        const { client, context } = await createLobbyClient(mero, admin, {
-          contextId: lobbyContextId,
-          contextIdentity: executorKey,
-          role: 'lobby' as ContextRole,
-        });
-        if (cancelled) return;
-        setLobbyApi(client);
-        setCurrentContext({
-          applicationId: context.applicationId,
-          contextId: context.contextId,
-          nodeUrl: nodeUrl || defaultNodeUrl,
-        });
-        try {
-          const summaries = await client.getMatches();
-          if (!cancelled) {
-            setMyMatches(summaries);
-            if (namespaceId) setLobbyReadFor({ namespaceId, contextId: lobbyContextId });
-          }
-        } catch { /* noop */ }
-        if (!cancelled) setCurrentUser(executorKey);
-      } catch (e) {
-        console.error('Lobby API init failed:', e);
-      }
-    })();
-
-    return () => { cancelled = true; };
-  }, [admin, contextIdentity, defaultNodeUrl, lobby.lobbyContextId, lobby.executorPublicKey, mero, nodeUrl]);
-
-  // ---------------------------------------------------------------------------
-  // Match API init
-  // ---------------------------------------------------------------------------
-
-  useEffect(() => {
-    const executorKey = lobby.executorPublicKey ?? contextIdentity;
-    // Reset all join state on any precondition miss — including a missing
-    // executor identity. Without resetting, a previous run that set
-    // matchJoinPhase = 'connecting' could leave the loader card visible
-    // forever if a dep change drops executorKey before the join completes.
-    if (!mero || !admin || !matchContextId || view !== 'game' || !executorKey) {
-      setMatchApi(null);
-      setMatchApiReady(false);
-      setMatchJoinPhase('idle');
-      setMatchJoinError(null);
-      return;
-    }
-
-    let cancelled = false;
-    setMatchApiReady(false);
-    setMatchJoinError(null);
-    setMatchJoinPhase('connecting');
-
-    // Build the match GameClient, retrying through the two transient races
-    // the joiner-side hits when match deltas arrive in any order:
-    //
-    //   1. The match context-state hasn't been bootstrapped on this node yet
-    //      → createGameClient throws "context not available" → we explicitly
-    //        admin.joinContext() and retry.
-    //   2. The subgroup-membership delta hasn't been processed yet, so
-    //      joinContext throws "not a member of group" → retry with backoff
-    //        until the membership op converges.
-    //
-    // Each phase advances the visible loader so the user sees the same
-    // sync progression merobox enforces with `wait_for_sync` between steps.
-    const buildClient = () =>
-      createGameClient(mero, admin, {
-        contextId: matchContextId,
-        contextIdentity: executorKey,
-        role: 'match' as ContextRole,
-      });
-
-    // Up to ~30s of joinContext retries (10 attempts: 200ms, 400ms, ... up
-    // to 3s, then 3s thereafter). Three full broadcast/heartbeat cycles is
-    // typically enough for the membership op to land even on a noisy mesh.
-    const joinContextWithBackoff = async (): Promise<void> => {
-      const attempts = 10;
-      for (let i = 0; i < attempts; i += 1) {
-        if (cancelled) return;
-        try {
-          await admin.joinContext(matchContextId);
-          return;
-        } catch (joinErr) {
-          if (!isNotMemberError(joinErr) || i === attempts - 1) throw joinErr;
-          const delay = Math.min(3000, 200 * 2 ** i);
-          await sleep(delay);
-        }
-      }
-    };
-
-    (async () => {
-      try {
-        let client: GameClient;
-        try {
-          ({ client } = await buildClient());
-        } catch (firstErr) {
-          if (!isContextNotAvailableError(firstErr)) throw firstErr;
-          if (cancelled) return;
-          setMatchJoinPhase('joining');
-          await joinContextWithBackoff();
-          if (cancelled) return;
-          ({ client } = await buildClient());
-        }
-
-        if (cancelled) return;
-        setMatchJoinPhase('syncing');
-        await ensureMatchContextReady(client);
-        if (cancelled) return;
-        setMatchApi(client);
-        setMatchApiReady(true);
-        setMatchJoinPhase('idle');
-      } catch (e) {
-        if (cancelled) return;
-        console.error('Match join failed:', e);
-        setMatchApi(null);
-        setMatchApiReady(false);
-        setMatchJoinError(errorMessage(e) || 'Failed to join match');
-        setMatchJoinPhase('failed');
-        show({ title: 'Failed to join match', variant: 'error' });
-      }
-    })();
-
-    return () => { cancelled = true; };
-  }, [admin, contextIdentity, lobby.executorPublicKey, matchContextId, mero, show, view, ensureMatchContextReady]);
-
-  // Fetch runtime match ID
-  useEffect(() => {
-    if (!matchApi || view !== 'game') { setRuntimeMatchId(null); return; }
-    let cancelled = false;
-    (async () => {
-      try {
-        const activeId = await matchApi.getActiveMatchId();
-        if (!cancelled) { setRuntimeMatchId(typeof activeId === 'string' && activeId.trim().length > 0 ? activeId : null); }
-      } catch { if (!cancelled) setRuntimeMatchId(null); }
-    })();
-    return () => { cancelled = true; };
-  }, [matchApi, view]);
-
-  // ---------------------------------------------------------------------------
   // Actions
   // ---------------------------------------------------------------------------
 
+  const openGame = useCallback((id: string) => {
+    setMatchId(id);
+    setView('game');
+    const lobbyId = lobby.namespaceId ? `&id=${encodeURIComponent(lobby.namespaceId)}` : '';
+    navigate(`/match?match_id=${encodeURIComponent(id)}${lobbyId}`, { replace: true });
+  }, [navigate, lobby.namespaceId]);
+
   const createMatch = useCallback(async () => {
-    if (!lobbyApi || !mero || !currentContext || !lobby.namespaceId) {
-      console.warn('[createMatch] blocked:', { lobbyApi: !!lobbyApi, mero: !!mero, currentContext: !!currentContext, namespaceId: lobby.namespaceId });
+    if (!lobbyApi) {
       show({ title: 'Lobby not ready yet — please wait a moment', variant: 'warning' });
       return;
     }
-    // Caught here rather than at the node: a typo or a half-pasted key comes
-    // back otherwise as `player2 is not a valid hex key: Invalid character…`,
-    // which names a parameter the player has never heard of.
-    if (!isPlayerKeyShaped(player2)) {
-      show({
-        title: 'That is not a valid player key — it should be 64 hex characters',
-        variant: 'error',
-      });
-      return;
-    }
-    if (player2.trim().toLowerCase() === (currentUser ?? '').toLowerCase()) {
+    const opponent = player2.trim();
+    if (opponent === (currentUser ?? '')) {
       show({ title: 'You cannot challenge yourself', variant: 'error' });
       return;
     }
     setCreatingMatch(true);
     try {
-      const id = await lobbyApi.createMatch({ player2: player2.trim() });
-      show({ title: `Match allocated: ${id}`, variant: 'success' });
-
-      // ⚠️ The game context is attached to the NAMESPACE ROOT group, the same
-      // group the lobby context lives in — NOT to a per-match subgroup.
-      //
-      // A per-match subgroup is the more natural isolation, and it is what this
-      // did before. It also made `on_match_finished` impossible: core allows an
-      // `env::xcall` only between two contexts in the SAME owning group
-      // (`xcall_same_owning_group` compares `get_group_for_context` for source
-      // and target, and both must be Some and equal). With the game in
-      // `match-<id>` and the lobby in the namespace root the node denied every
-      // dispatch — `xcall denied: owning group boundary` in its log — so a
-      // finished match recorded no winner, no history and no stats, silently.
-      //
-      // The subgroup was defence-in-depth rather than the actual control: the
-      // game contract already refuses a non-participant ("not a player",
-      // Forbidden) and each player's board lives in `UserStorage`, which is
-      // per-identity. So this trades a second lock on the same door for a match
-      // result that is recorded by the contract instead of not at all.
-      // The game checks every row player 2 writes against the ACCOUNT the lobby
-      // recorded for their key — so it is read back from the match, not
-      // guessed here.
-      const created = (await lobbyApi.getMatches()).find((m) => m.match_id === id);
-      if (!created) throw new Error('unknown match_id');
-      const executorKey = lobby.executorPublicKey ?? contextIdentity;
-      const initParams = JSON.stringify({
-        player1: executorKey,
-        player2,
-        player2_account: created.player2_account,
-        lobby_context_id: currentContext.contextId,
-        match_id: id,
-      });
-      const initBytes = Array.from(new TextEncoder().encode(initParams));
-
-      // `admin`, not `mero.admin`: on an account the raw client's createContext
-      // is the relay's node route (403); the session admin creates it as the
-      // account (a delegated context creation).
-      if (!admin) throw new Error('Still connecting. Try again in a moment.');
-      const { contextId: newContextId } = await admin.createContext({
-        applicationId: currentContext.applicationId,
-        initializationParams: initBytes,
-        groupId: lobby.namespaceId,
-        serviceName: 'game',
-      });
-
-      await lobbyApi.setMatchContextId({ match_id: id, context_id: newContextId });
-      try { const summaries = await lobbyApi.getMatches(); setMyMatches(summaries); } catch { /* noop */ }
-
-      setMatchId(id);
-      setRuntimeMatchId(null);
-      setMatchContextId(newContextId);
-      setView('game');
-      navigate(`/match?match_id=${encodeURIComponent(id)}&context_id=${encodeURIComponent(newContextId)}`, { replace: true });
+      // The match is created and playable in the same call: there is no game
+      // context to create, link or join any more.
+      const id = await lobbyApi.createMatch({ player2: opponent });
+      void refreshMatchList();
+      openGame(id);
       show({ title: 'Match created', variant: 'success' });
     } catch (e) {
       console.error('createMatch', e);
-      show({ title: friendlyContractMessage(e, 'Failed to create match'), variant: 'error' });
+      show({ title: messageOf(e, 'Failed to create match'), variant: 'error' });
     } finally {
       setCreatingMatch(false);
     }
-  }, [lobbyApi, admin, currentContext, player2, lobby.executorPublicKey, lobby.namespaceId, contextIdentity, show, navigate]);
-
-  const openGame = useCallback((id: string, contextId: string) => {
-    setMatchId(id);
-    setRuntimeMatchId(null);
-    setMatchContextId(contextId);
-    setView('game');
-    navigate(`/match?match_id=${encodeURIComponent(id)}&context_id=${encodeURIComponent(contextId)}`, { replace: true });
-  }, [navigate]);
+  }, [lobbyApi, player2, currentUser, show, refreshMatchList, openGame]);
 
   useEffect(() => {
-    if (view === 'game') { loadBoards(); loadTurnInfo(); }
+    if (view === 'game') { void loadBoards(); void loadTurnInfo(); }
   }, [view, loadBoards, loadTurnInfo]);
 
   // ---------------------------------------------------------------------------
@@ -1003,7 +607,7 @@ export default function MatchPage() {
   );
 
   const placeShips = useCallback(async () => {
-    if (!matchApi || !matchApiReady) { show({ title: 'Match context is still syncing', variant: 'warning' }); return; }
+    if (!matchApi || !matchApiReady) { show({ title: 'Lobby not ready yet — please wait a moment', variant: 'warning' }); return; }
     if (!effectiveMatchId) { show({ title: 'Set match id first', variant: 'error' }); return; }
     if (loadingRef.current) return;
     loadingRef.current = true;
@@ -1021,12 +625,12 @@ export default function MatchPage() {
       if (groups.length === 0) { show({ title: 'Place ships on the grid', variant: 'error' }); loadingRef.current = false; return; }
       const fleetError = validateFleetPayload(groups);
       if (fleetError) { show({ title: fleetError, variant: 'error' }); loadingRef.current = false; return; }
-      if (!boardOwner) { show({ title: 'No player identity yet — try again in a moment', variant: 'warning' }); loadingRef.current = false; return; }
+      if (!boardOwner) { show({ title: 'Not signed in', variant: 'warning' }); loadingRef.current = false; return; }
 
       // The board never leaves this device. What the contract gets is the
       // commitment; the cells and the salt are saved here FIRST, so a request
-      // that fails after the node recorded it cannot leave a commitment with
-      // nothing to answer shots from or reveal at the end.
+      // that fails after the cluster recorded it cannot leave a commitment
+      // with nothing to answer shots from or reveal at the end.
       const cells = cellsFromShips(groups, size);
       const salt = randomSalt();
       const commitment = await computeCommitment(cells, salt);
@@ -1035,18 +639,17 @@ export default function MatchPage() {
         loadingRef.current = false;
         return;
       }
-      await ensureMatchContextReady(matchApi);
       await matchApi.commitBoard({ match_id: effectiveMatchId, commitment });
       show({ title: 'Fleet deployed', variant: 'success' });
       await loadBoards();
       await loadTurnInfo();
     } catch (e) {
       console.error('placeShips', e);
-      show({ title: friendlyContractMessage(e, 'Failed to place ships'), variant: 'error' });
+      show({ title: messageOf(e, 'Failed to place ships'), variant: 'error' });
     } finally {
       loadingRef.current = false;
     }
-  }, [matchApi, matchApiReady, effectiveMatchId, boardOwner, grid, size, show, loadBoards, loadTurnInfo, ensureMatchContextReady]);
+  }, [matchApi, matchApiReady, effectiveMatchId, boardOwner, grid, size, show, loadBoards, loadTurnInfo]);
 
   // ---------------------------------------------------------------------------
   // Shooting logic
@@ -1060,14 +663,13 @@ export default function MatchPage() {
 
   const proposeShot = useCallback(async (shotX?: number, shotY?: number) => {
     if (matchFinished) return;
-    if (!matchApi || !matchApiReady) { show({ title: 'Match context is still syncing', variant: 'warning' }); return; }
+    if (!matchApi || !matchApiReady) { show({ title: 'Lobby not ready yet — please wait a moment', variant: 'warning' }); return; }
     if (!effectiveMatchId) { show({ title: 'Set match id first', variant: 'error' }); return; }
     if (loadingRef.current) return;
     loadingRef.current = true;
     try {
       const finalX = shotX !== undefined ? shotX : 0;
       const finalY = shotY !== undefined ? shotY : 0;
-      await ensureMatchContextReady(matchApi);
       await matchApi.proposeShot({ match_id: effectiveMatchId, x: finalX, y: finalY });
       setOpponentNotReady(false);
       show({ title: `Shot fired at (${finalX}, ${finalY})`, variant: 'success' });
@@ -1078,28 +680,21 @@ export default function MatchPage() {
       setPendingShot(null);
     } catch (e) {
       console.error('proposeShot', e);
-      // Match-over errors arrive as a JSON payload from the game WASM, e.g.
-      // `{"kind":"Finished"}`. Translate into a refresh instead of an error
-      // toast so the UI transitions cleanly even if the winner event was lost
-      // to core #2139.
-      //
-      // ⚠️ This branch was DEAD. The node returns the error body as the UTF-8
-      // BYTES of that JSON — `[123, 34, ...]` — so a substring test for
-      // "Finished" never matched, and the player got a wall of numbers instead
-      // of either outcome. `isMatchFinishedError` decodes first.
+      // A match that is over refreshes instead of showing an error, so the UI
+      // moves to the finish state even if the event that said so was missed.
       if (isMatchFinishedError(e)) {
-        refreshMatchList();
+        void refreshMatchList();
         show({ title: 'Match already finished', variant: 'info' });
       } else if (isShipsNotPlacedError(e)) {
         setOpponentNotReady(true);
         show({ title: 'Your opponent has not deployed their fleet yet', variant: 'warning' });
       } else {
-        show({ title: friendlyContractMessage(e, 'Failed to fire shot'), variant: 'error' });
+        show({ title: messageOf(e, 'Failed to fire shot'), variant: 'error' });
       }
     } finally {
       loadingRef.current = false;
     }
-  }, [matchApi, matchApiReady, effectiveMatchId, matchFinished, refreshMatchList, show, loadBoards, loadTurnInfo, ensureMatchContextReady]);
+  }, [matchApi, matchApiReady, effectiveMatchId, matchFinished, refreshMatchList, show, loadBoards, loadTurnInfo]);
 
   // ---------------------------------------------------------------------------
   // Lobby actions
@@ -1107,57 +702,39 @@ export default function MatchPage() {
 
   // The next sign-in starts at the picker, not inside this session's lobby.
   const doLogout = useCallback(() => {
-    forgetLastLobby(nodeUrl);
-    logout();
+    if (scope) forgetLastLobby(scope);
+    void sessionApi.signOut();
     navigate('/');
-  }, [logout, navigate, nodeUrl]);
+  }, [sessionApi, navigate, scope]);
 
   const handleCreateLobby = useCallback(async () => {
     const name = newLobbyName.trim();
-    let id: string;
     try {
-      id = await lobby.createLobby(name || undefined);
+      await lobby.createLobby(name || undefined);
     } catch (e) {
-      // From the rejection, not `lobby.createLobbyError`: that state is the
-      // previous render's here, so a first failure used to show nothing.
-      show({ title: e instanceof Error ? e.message : 'Failed to create lobby', variant: 'error' });
+      show({ title: messageOf(e, 'Failed to create lobby'), variant: 'error' });
       return;
     }
-    // Cache it here too: the creator typed the name, and the server may stop
-    // returning it. This is also what `invitePlayer` embeds for the joiner.
-    if (name) setStoredLobbyName(id, name);
     setNewLobbyName('');
-    show({ title: 'Namespace created', variant: 'success' });
+    show({ title: 'Lobby created', variant: 'success' });
   }, [lobby, newLobbyName, show]);
 
   const handleCreateInvitation = useCallback(async () => {
-    const result = await lobby.invitePlayer();
-    // Embed the lobby's human name BESIDE the signed invitation, so the joiner
-    // has something to render before the namespace metadata syncs. A sibling
-    // key — inside the invitation it would invalidate the signature.
-    const lobbyName = lobby.namespaceId ? getStoredLobbyName(lobby.namespaceId) : '';
-    // Both ride BESIDE the signed invitation, never inside it.
-    // ⚠️ `__inviterKey` is the only way the joiner learns an opponent: a node
-    // that JOINS a context lists only its own identity, and never learns the
-    // creator's — measured, and it does not resolve with time. Without this the
-    // invited player opens the lobby, sees nobody to challenge, and concludes
-    // that starting a game is admin-only.
-    const payload = result && typeof result === 'object'
-      ? {
-          ...(result as Record<string, unknown>),
-          ...(lobbyName ? { [EMBEDDED_NAME_KEY]: lobbyName } : {}),
-          ...(lobby.executorPublicKey ? { [INVITER_KEY]: lobby.executorPublicKey } : {}),
-        }
-      : result;
-    // Share a LINK, not the raw JSON. The payload is passed through opaquely —
-    // the invitation is signed over its own body, so re-modelling it would
-    // drop unknown fields and invalidate the signature with them.
-    if (result) { setInvitationJson(generateInvitationUrl(JSON.stringify(payload))); show({ title: 'Invitation link created', variant: 'success' }); }
+    try {
+      // An org invitation, approved with your passkey: the link carries the
+      // token and the lobby to open once it is redeemed.
+      const link = await lobby.invitePlayer();
+      if (link) {
+        setInvitationLink(link);
+        show({ title: 'Invitation link created', variant: 'success' });
+      }
+    } catch (e) {
+      show({ title: messageOf(e, 'Could not create an invitation'), variant: 'error' });
+    }
   }, [lobby, show]);
 
   const handleEnterLobby = useCallback(() => {
-    if (!lobby.lobbyContextId) { show({ title: 'No namespace context available', variant: 'error' }); return; }
-    if (!lobby.namespaceId) { show({ title: 'No namespace selected', variant: 'error' }); return; }
+    if (!lobby.namespaceId) { show({ title: 'No lobby selected', variant: 'error' }); return; }
     manualLobbySelect.current = false;
     setView('lobby');
     navigate(`/lobby?id=${encodeURIComponent(lobby.namespaceId)}`, { replace: true });
@@ -1165,9 +742,6 @@ export default function MatchPage() {
 
   const resetToLobby = useCallback(() => {
     setMatchId('');
-    setRuntimeMatchId(null);
-    setMatchContextId(null);
-    setMatchApi(null);
     setPlaced(false);
     setMatchState(null);
     setBoardMissing(false);
@@ -1183,20 +757,43 @@ export default function MatchPage() {
     setGrid(Array.from({ length: 10 }, () => Array(10).fill(false)));
     setShipCounts([0, 0, 0, 0]);
     setView('lobby');
-    navigate('/lobby', { replace: true });
-  }, [navigate]);
+    const lobbyId = lobby.namespaceId ? `?id=${encodeURIComponent(lobby.namespaceId)}` : '';
+    navigate(`/lobby${lobbyId}`, { replace: true });
+  }, [navigate, lobby.namespaceId]);
 
   // ===========================================================================
   // RENDER
   // ===========================================================================
 
   const navProps = {
-    namespaceName: lobby.selectedLobby?.alias,
-    namespaceId: lobby.namespaceId,
-    contextId: currentContext?.contextId || null,
+    namespaceName: view === 'lobby-select' ? null : lobby.selectedLobby?.alias,
+    namespaceId: view === 'lobby-select' ? null : lobby.namespaceId,
     currentUser,
     onLogout: doLogout,
   };
+
+  // --- Not signed in: where the build connects, and a passkey ---
+  if (session.status !== 'signed-in') {
+    return (
+      <div className="app-bg">
+        <div className="page-shell">
+          <div className="page-content">
+            {session.status === 'connecting' && <span className="mono-sm">Connecting…</span>}
+            {session.status === 'unconfigured' && (
+              <div className="lobby-banner-error" role="alert">
+                <span className="lobby-banner-error-glyph" aria-hidden>!</span>
+                <span>{session.message}</span>
+              </div>
+            )}
+            {session.status === 'signed-out' && (
+              <ConnectCard api={sessionApi} where={describeTarget(session.target)} />
+            )}
+            <AppFooter />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // --- Lobby Select ---
   if (view === 'lobby-select') {
@@ -1245,7 +842,7 @@ export default function MatchPage() {
               className="page-back"
               onClick={() => {
                 // Back to the picker on purpose: a reload keeps you there.
-                forgetLastLobby(nodeUrl);
+                if (scope) forgetLastLobby(scope);
                 manualLobbySelect.current = true;
                 setView('lobby-select');
                 navigate('/lobby', { replace: true });
@@ -1265,9 +862,9 @@ export default function MatchPage() {
               selfIdentity={lobby.selfIdentity}
               executorPublicKey={lobby.executorPublicKey}
               inviteLoading={lobby.inviteLoading}
-              invitationJson={invitationJson}
+              invitationJson={invitationLink}
               onCreateInvitation={handleCreateInvitation}
-              onDismissInvitation={() => setInvitationJson(null)}
+              onDismissInvitation={() => setInvitationLink(null)}
               player2={player2}
               creatingMatch={creatingMatch}
               onPlayer2Change={setPlayer2}
@@ -1315,49 +912,12 @@ export default function MatchPage() {
                     Your board for this match is not on this device — shots cannot be answered from here.
                   </span>
                 )}
-                {matchContextId && (
-                  <div className="info-pair">
-                    <span className="info-label">CTX</span>
-                    <span className="info-value">
-                      {matchContextId.slice(0, 6)}...{matchContextId.slice(-6)}
-                    </span>
-                    <CopyButton text={matchContextId} label="Copy" copiedLabel="Copied" className="btn-icon" />
-                  </div>
-                )}
                 <span className={`badge ${isEventSubscribed ? 'badge-live' : 'badge-offline'}`}>
                   {isEventSubscribed ? 'Live' : 'Offline'}
                 </span>
               </div>
             </div>
           </div>
-
-          {/* Match-join progress: surfaced while the joiner side waits for
-               subgroup membership and match-context state to converge.
-               Mirrors merobox's wait_for_sync pacing in the UI so the user
-               sees deterministic progress instead of a permanently disabled
-               Deploy Fleet button. */}
-          {!matchApiReady && matchJoinPhase !== 'idle' && (
-            <div className="naval-card fade-in fade-in-delay-1">
-              <div className="naval-card-header">
-                <div className="naval-card-title">
-                  {matchJoinPhase === 'failed' ? 'Could not join match' : 'Joining match…'}
-                </div>
-              </div>
-              <div className="naval-card-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <span className="mono-sm">
-                  {matchJoinPhase === 'connecting' && 'Connecting to match context on this node…'}
-                  {matchJoinPhase === 'joining' && 'Waiting for match group membership to propagate…'}
-                  {matchJoinPhase === 'syncing' && 'Synchronizing match state with peers…'}
-                  {matchJoinPhase === 'failed' && (matchJoinError ?? 'Unknown error.')}
-                </span>
-                {matchJoinPhase === 'failed' && (
-                  <span className="mono-sm" style={{ opacity: 0.8 }}>
-                    The other player may not have shared this match yet. Try again in a moment.
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
 
           {/* Ship placement */}
           {!placed && matchApiReady && (

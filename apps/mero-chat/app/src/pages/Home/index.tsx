@@ -14,11 +14,7 @@ import {
 import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
 import { ContextApiDataSource } from "../../api/dataSource/nodeApiDataSource";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
-import {
-  setContextId,
-  setContextIdentity as setExecutorPublicKey,
-  useMero as useCalimero,
-} from "@calimero-network/mero-react";
+import { setContextId, setContextIdentity as setExecutorPublicKey, useCalimero as useCalimero } from "../../api/calimero";
 import type { CreateContextResult } from "../../components/popups/StartDMPopup";
 import type { DMContextInfo } from "../../hooks/useDMs";
 import { useAppNotifications } from "../../hooks/useAppNotifications";

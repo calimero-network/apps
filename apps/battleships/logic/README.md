@@ -1,48 +1,21 @@
-# Battleship Game Logic
+# Battleships contract
 
-This directory contains the Rust implementation of the battleship game logic using the Calimero SDK.
+A `calimero:app` component on core's component SDK: the lobby (players,
+matches, results, stats) and every match's game in one app instance. See the
+app's [README](../README.md) for the design, the trust model and what changed
+from v1.
 
-## Architecture
-
-The codebase is organized using Domain-Driven Design (DDD) principles with the following modules:
-
-- **`board.rs`** - Board representation, coordinates, and cell types
-- **`ships.rs`** - Ship definitions, fleet management, and ship validation
-- **`players.rs`** - Player management and private board logic
-- **`game.rs`** - Core game logic and match management
-- **`events.rs`** - Game events and state changes
-- **`validation.rs`** - Comprehensive validation strategy pattern implementation
-
-## Key Features
-
-### Validation Strategy Pattern
-The validation system uses a sophisticated Strategy Pattern implementation that provides:
-
-- **Extensibility**: Easy to add new validation rules
-- **Composability**: Mix and match validation strategies
-- **Testability**: Each strategy can be tested independently
-- **Maintainability**: Validation logic is organized and separated
-
-For detailed documentation on the validation system, see the [validation module documentation](src/validation.rs) or run:
+- `src/lib.rs` — the contract: `#[app::state]`, every method, the typed
+  errors and the events.
+- `crates/rules` — the rules with no SDK: the board and its cells (`board`),
+  ships and the fleet (`ships`, `validation`), the reference placement the
+  client's `lib/board.ts` mirrors (`players`), the board commitment and the
+  audit every reveal goes through (`audit`). Its unit tests pin the commitment
+  vector the client test shares.
+- `tests/harness.rs` — whole matches on core's wasmtime engine (`TestApp`).
+- `scenarios/*.json` — neutral steps run by `cargo test` and on `merod local`.
 
 ```bash
-cargo doc --open
+cargo test                                                                    # rules + harness + scenarios
+cargo run --release --manifest-path ../../../tools/component-bundle/Cargo.toml -- build .   # res/abi.json
 ```
-
-## Building
-
-```bash
-./build.sh
-```
-
-This will compile the Rust code to WebAssembly for use with the Calimero SDK.
-
-## Documentation
-
-To generate and view the complete API documentation:
-
-```bash
-cargo doc --open
-```
-
-The documentation includes comprehensive examples and usage patterns for all modules.

@@ -20,6 +20,16 @@ export function describeError(err: unknown): string {
   if (typeof err === 'string') return cleanString(err);
 
   const e = err as Record<string, unknown>;
+
+  // The contract's own error on Calimero 1.0 (mero-js `AppError`, `422
+  // APP_ERROR`): `{ appCode: "Forbidden", fields: { message } }`. Said the way
+  // v1's `{ kind, data }` read: "Forbidden: A1 is in a protected range".
+  if (typeof e.appCode === 'string' && e.appCode) {
+    const fields = e.fields as Record<string, unknown> | undefined;
+    const message = typeof fields?.message === 'string' ? fields.message : '';
+    return message ? `${e.appCode}: ${message}` : e.appCode;
+  }
+
   const parts: string[] = [];
 
   const top = typeof e.message === 'string' && e.message ? cleanString(e.message) : '';

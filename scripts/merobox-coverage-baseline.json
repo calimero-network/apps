@@ -1,49 +1,13 @@
 {
-  "battleships": [
-    "get_current_user",
-    "get_history",
-    "get_players"
-  ],
-  "mero-chat": [
-    "delete_draft",
-    "delete_message",
-    "edit_message",
-    "get_channel_info",
-    "get_draft",
-    "get_member_role",
-    "get_message_count",
-    "get_messages_from",
-    "get_unread_count",
-    "get_unread_mentions",
-    "list_roles",
-    "mark_as_read",
-    "mark_messages_as_read",
-    "save_draft",
-    "set_member_role"
-  ],
   "mero-forum": [
     "delete_comment",
     "get_nickname",
     "set_nickname",
     "vote_comment"
   ],
-  "mero-sign": [
-    "get_identity_mapping",
-    "get_shared_identity",
-    "join_shared_context",
-    "leave_shared_context",
-    "list_joined_contexts",
-    "remove_participant",
-    "resolve_private_identity",
-    "search_document_by_embedding",
-    "set_participant_permission"
-  ],
   "mero-stream": [
     "is_member_admin",
     "prune_frames",
     "rename_stream"
-  ],
-  "merraria": [
-    "leave"
   ]
 }

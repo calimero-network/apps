@@ -1,477 +1,172 @@
 {
-  "schema_version": "wasm-abi/1",
-  "types": {
-    "Avatars": {
-      "kind": "record",
-      "doc": "One account's avatars, keyed by device (see `caller`). The slot and the\nmap nested in it belong to the account: every node refuses another\naccount's write to either.",
-      "fields": [
-        {
-          "name": "devices",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "Player"
-            },
-            "crdt_type": "unordered_map"
-          }
-        }
-      ]
+  "abiVersion": 1,
+  "errors": {
+    "NoWorld": {},
+    "TooManyEdits": {
+      "max": "u32"
     },
-    "Edit": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "x",
-          "type": {
-            "kind": "i32"
-          }
-        },
-        {
-          "name": "y",
-          "type": {
-            "kind": "i32"
-          }
-        },
-        {
-          "name": "t",
-          "type": {
-            "kind": "u32"
-          }
-        }
-      ]
-    },
-    "Merraria": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "meta",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "shared_storage",
-            "inner_type": {
-              "$ref": "WorldMeta"
-            }
-          },
-          "doc": "name + seed + day-clock anchor, frozen: the terrain is derived from the\nseed, so nobody (the creator included) may change it after creation."
-        },
-        {
-          "name": "overrides",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "TileOverride"
-            },
-            "crdt_type": "unordered_map"
-          },
-          "doc": "\"x,y\" -> override. Set-only (dig = t:0), never removed. Public on\npurpose: the world is collaborative."
-        },
-        {
-          "name": "players",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "Avatars"
-            }
-          }
-        }
-      ]
-    },
-    "Player": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "name",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "x",
-          "type": {
-            "kind": "f64"
-          }
-        },
-        {
-          "name": "y",
-          "type": {
-            "kind": "f64"
-          }
-        },
-        {
-          "name": "dir",
-          "type": {
-            "kind": "f64"
-          },
-          "doc": "facing: -1 | 1"
-        },
-        {
-          "name": "sel",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "action",
-          "type": {
-            "kind": "string"
-          },
-          "doc": "what the player is doing: \"idle\" | \"walking\" | \"mining\" | \"building\" | \"swimming\""
-        },
-        {
-          "name": "left",
-          "type": {
-            "kind": "bool"
-          }
-        },
-        {
-          "name": "joinedAt",
-          "type": {
-            "kind": "u64"
-          }
-        },
-        {
-          "name": "updatedAt",
-          "type": {
-            "kind": "u64"
-          }
-        }
-      ]
-    },
-    "PlayerView": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "name",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "x",
-          "type": {
-            "kind": "f64"
-          }
-        },
-        {
-          "name": "y",
-          "type": {
-            "kind": "f64"
-          }
-        },
-        {
-          "name": "dir",
-          "type": {
-            "kind": "f64"
-          }
-        },
-        {
-          "name": "sel",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "action",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "online",
-          "type": {
-            "kind": "bool"
-          }
-        }
-      ]
-    },
-    "TileEntry": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "k",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "t",
-          "type": {
-            "kind": "u32"
-          }
-        }
-      ]
-    },
-    "TileOverride": {
-      "kind": "record",
-      "doc": "One tile override: `t` is the tile id (0 = air / dug out).",
-      "fields": [
-        {
-          "name": "t",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "updatedAt",
-          "type": {
-            "kind": "u64"
-          }
-        }
-      ]
-    },
-    "Transform": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "name",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "x",
-          "type": {
-            "kind": "f64"
-          }
-        },
-        {
-          "name": "y",
-          "type": {
-            "kind": "f64"
-          }
-        },
-        {
-          "name": "dir",
-          "type": {
-            "kind": "f64"
-          }
-        },
-        {
-          "name": "sel",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "action",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "WorldMeta": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "name",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "seed",
-          "type": {
-            "kind": "u64"
-          }
-        },
-        {
-          "name": "createdAt",
-          "type": {
-            "kind": "u64"
-          }
-        }
-      ]
+    "WorldExists": {},
+    "WorldFull": {
+      "max": "u32"
     }
   },
-  "methods": [
-    {
-      "name": "get_overrides",
-      "params": [],
-      "returns": {
-        "kind": "list",
-        "items": {
-          "$ref": "TileEntry"
-        }
-      },
-      "intent": "read_only"
+  "events": {
+    "Initialized": {},
+    "PlayerJoined": {
+      "0": "string"
     },
-    {
-      "name": "get_players",
-      "doc": "Roster with liveness. A player who vanished without `leave` ages out\nof the TTL here; nobody writes to another account's row to mark it.",
-      "params": [
-        {
-          "name": "now",
-          "type": {
-            "kind": "u64"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "list",
-        "items": {
-          "$ref": "PlayerView"
-        }
-      },
-      "intent": "read_only"
+    "PlayerLeft": {
+      "0": "string"
     },
-    {
-      "name": "heartbeat",
-      "doc": "Silent presence + transform write (no SSE churn).",
-      "params": [
-        {
-          "name": "t",
-          "type": {
-            "$ref": "Transform"
-          }
-        },
-        {
-          "name": "now",
-          "type": {
-            "kind": "u64"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "init",
-      "params": [
-        {
-          "name": "name",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "seed",
-          "type": {
-            "kind": "u64"
-          }
-        },
-        {
-          "name": "now",
-          "type": {
-            "kind": "u64"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      }
-    },
-    {
-      "name": "join",
-      "params": [
-        {
-          "name": "name",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "now",
-          "type": {
-            "kind": "u64"
-          }
-        }
-      ],
-      "returns": {
-        "$ref": "PlayerView"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "leave",
-      "params": [
-        {
-          "name": "now",
-          "type": {
-            "kind": "u64"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "set_tiles",
-      "params": [
-        {
-          "name": "edits",
-          "type": {
-            "kind": "list",
-            "items": {
-              "$ref": "Edit"
-            }
-          }
-        },
-        {
-          "name": "now",
-          "type": {
-            "kind": "u64"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "u32"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "world_meta",
-      "params": [],
-      "returns": {
-        "$ref": "WorldMeta"
-      },
-      "intent": "read_only"
+    "TilesChanged": {
+      "0": "string"
     }
-  ],
-  "events": [
-    {
-      "name": "Initialized"
+  },
+  "methods": {
+    "createWorld": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "name",
+          "string"
+        ],
+        [
+          "seed",
+          "u32"
+        ],
+        [
+          "now",
+          "u32"
+        ]
+      ],
+      "public": false,
+      "returns": null
     },
-    {
-      "name": "PlayerJoined",
-      "payload": {
-        "kind": "string"
-      }
+    "getOverrides": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "cursor",
+          "option<string>"
+        ],
+        [
+          "limit",
+          "option<u32>"
+        ]
+      ],
+      "public": false,
+      "returns": "OverridesPage"
     },
-    {
-      "name": "PlayerLeft",
-      "payload": {
-        "kind": "string"
-      }
+    "getPlayers": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [
+        [
+          "now",
+          "u32"
+        ]
+      ],
+      "public": false,
+      "returns": "list<PlayerView>"
     },
-    {
-      "name": "TilesChanged",
-      "payload": {
-        "kind": "string"
-      },
-      "doc": "Tiles changed by this member. Clients re-pull `get_overrides` — the\nevent is a nudge, the state is the truth."
+    "heartbeat": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "t",
+          "Transform"
+        ],
+        [
+          "now",
+          "u32"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "init": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "init",
+      "params": [],
+      "public": false,
+      "returns": null
+    },
+    "join": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "name",
+          "string"
+        ],
+        [
+          "now",
+          "u32"
+        ]
+      ],
+      "public": false,
+      "returns": "PlayerView"
+    },
+    "leave": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "now",
+          "u32"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "setTiles": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "call",
+      "params": [
+        [
+          "edits",
+          "list<Edit>"
+        ],
+        [
+          "now",
+          "u32"
+        ]
+      ],
+      "public": false,
+      "returns": "u32"
+    },
+    "worldMeta": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "WorldMeta"
     }
-  ],
-  "state_root": "Merraria",
-  "state_version": 1
+  },
+  "state": {
+    "fields": {
+      "meta": "cell",
+      "overrides": "unorderedMap",
+      "players": "unorderedMap"
+    },
+    "search": {
+      "meta": [],
+      "overrides": [],
+      "players": []
+    },
+    "version": 1
+  },
+  "world": "calimero:app@0.5.0"
 }

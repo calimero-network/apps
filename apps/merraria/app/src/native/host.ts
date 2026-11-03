@@ -26,10 +26,29 @@
 //                {type:"pause"}                               backgrounded / menu open
 //                {type:"leave"}                               save and leave the world
 
-import type { GameEvent } from "../net/events";
-import type { Exec } from "../net/rpc";
+//
+// The bridge speaks the v1 method names (`get_overrides`, `set_tiles`, …):
+// `V1_METHOD` maps the engine's component names onto them, so a game bundle
+// built before or after the component port runs in the same apps. The apps
+// translate on their side (`BridgeDispatcher` in the iOS/Android `GameBridge`)
+// onto the component ABI, and answer `get_overrides` with every override as one
+// array, which `exec` hands back as a single last page.
 
-/** The contract's views: everything else is a write (see logic/res/abi.json). */
+import type { GameEvent } from "../net/events";
+import type { Exec, MethodName } from "../net/merraria";
+
+/** The bridge's (v1) name for each of the engine's methods: what the apps' bridge dispatchers answer. */
+export const V1_METHOD: Readonly<Record<Exclude<MethodName, "createWorld">, string>> = {
+  setTiles: "set_tiles",
+  getOverrides: "get_overrides",
+  getPlayers: "get_players",
+  worldMeta: "world_meta",
+  join: "join",
+  heartbeat: "heartbeat",
+  leave: "leave",
+};
+
+/** The contract's views (by their v1 names): everything else is a write. */
 export const VIEW_METHODS: ReadonlySet<string> = new Set(["get_overrides", "get_players", "world_meta"]);
 
 export interface NativeConfig {
@@ -191,15 +210,19 @@ export class NativeGameClient {
     readonly contextId: string,
   ) {}
 
-  exec: Exec = async <T = unknown>(method: string, args: Record<string, unknown>): Promise<T> => {
+  exec: Exec = async <T = unknown>(method: MethodName, args: Record<string, unknown>): Promise<T> => {
+    if (method === "createWorld") throw new Error("rpc createWorld: the app creates worlds itself");
+    const v1 = V1_METHOD[method];
+    // v1's `get_overrides` takes no arguments and answers every override as
+    // one array: sent bare, and handed back as the component's single last page.
+    const sent = method === "getOverrides" ? {} : args;
     let out: unknown;
     try {
-      out = VIEW_METHODS.has(method)
-        ? await this.bridge.query(method, args)
-        : await this.bridge.execute(method, args);
+      out = VIEW_METHODS.has(v1) ? await this.bridge.query(v1, sent) : await this.bridge.execute(v1, sent);
     } catch (err) {
-      throw new Error(`rpc ${method}: ${err instanceof Error ? err.message : String(err)}`);
+      throw new Error(`rpc ${v1}: ${err instanceof Error ? err.message : String(err)}`);
     }
+    if (method === "getOverrides") return { items: Array.isArray(out) ? out : [], next: null } as T;
     if (method === "join" && out && typeof (out as { id?: unknown }).id === "string") {
       this.identity = (out as { id: string }).id;
     }
@@ -211,7 +234,7 @@ export class NativeGameClient {
   }
 
   async fetchWorldMeta(): Promise<{ name: string; seed: number; createdAt: number }> {
-    return this.exec("world_meta", {});
+    return this.exec("worldMeta", {});
   }
 
   /** Relay events are nudges with no payload: each one re-reads the tiles. */

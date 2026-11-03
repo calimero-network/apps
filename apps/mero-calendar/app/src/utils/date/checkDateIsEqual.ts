@@ -1,4 +1,3 @@
-import { createDate } from "./createDate";
 
 export const checkDateIsEqual = (date1: Date, date2: Date) => {
   const isCurrentYear = date1.getFullYear() === date2.getFullYear();

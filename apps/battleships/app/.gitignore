@@ -1,2 +1,4 @@
 node_modules/
 dist/
+dist-types/
+.env.development.local

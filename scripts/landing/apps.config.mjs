@@ -226,19 +226,21 @@ export const APPS = {
     ],
   },
   battleships: {
-    e2eDir: 'e2e',
-    availability: 'web+desktop',
-    trust: ['Boards never leave your device', 'Commit-reveal placement', 'Node or account'],
+    // A component app (calimero-app-sdk, merod local, CalimeroClient): no
+    // Playwright, so no generated landing spec. docs/COMPONENT-APPS.md.
+    e2eDir: null,
+    availability: 'web',
+    trust: ['Boards never leave your device', 'Commit-reveal placement', 'No passwords'],
     explainer: [
-      'Turn-based Battleships for two players, where the interesting part is not the game — it is the trust model. Your fleet lives on your own device and nowhere else: not on your opponent’s node, not on yours, and not on the relay if you play from an account.',
-      'Placement is commit-reveal: you commit to a board up front and reveal it at the end, so neither side can quietly move a ship after seeing where the shots are going. A lobby service handles matchmaking and a separate game service runs each match.',
+      'Turn-based Battleships for two players, where the interesting part is not the game — it is the trust model. Your fleet lives on your own device and nowhere else: not with your opponent, not on the cluster, not in the app.',
+      'Placement is commit-reveal: you commit to a board up front and reveal it at the end, so neither side can quietly move a ship after seeing where the shots are going. A lobby is one app instance that pairs players, runs every match and keeps the record.',
     ],
     features: [
-      { icon: 'EyeOff', title: 'A board your opponent cannot read', body: 'Ships live in your browser’s storage. The contract holds only a hash of them, so there is no copy on any node to inspect.' },
+      { icon: 'EyeOff', title: 'A board your opponent cannot read', body: 'Ships live in your browser’s storage. The contract holds only a hash of them, so there is no copy anywhere to inspect.' },
       { icon: 'LockCheck', title: 'Commit-reveal placement', body: 'You commit to a fleet before play and reveal it after. Every answer you gave is replayed against it, so a lie costs the game.' },
-      { icon: 'Target', title: 'Matchmaking without a server', body: 'A lobby service pairs players and a game service runs each match, both inside the same bundle.' },
-      { icon: 'ArrowUpRight', title: 'Results reported back', body: 'A finished match tells the lobby who won through a cross-context call, so history survives the game.' },
-      { icon: 'ExternalLink', title: 'Invite by link', body: 'Recursive namespace invitations. Play from a node you run, or from a Calimero account through its relay.' },
+      { icon: 'Target', title: 'Matchmaking without a game server', body: 'The lobby pairs players and runs each match in the same contract, one log ordering every shot.' },
+      { icon: 'ArrowUpRight', title: 'Results recorded with the game', body: 'The call that decides a match records its winner, history and stats in the lobby at once.' },
+      { icon: 'ExternalLink', title: 'Invite by link', body: 'One link joins the lobby’s organization. Sign in with a passkey: no password, no email.' },
     ],
   },
 
@@ -270,7 +272,8 @@ export const APPS = {
     // Keeps its own sign-in — a sidebar, or the game launcher — so the
     // landing gets an onConnect callback and never mounts the shared popup.
     ownConnect: true,
-    e2eDir: 'e2e',
+    // A component app: no Playwright, its e2e is `pnpm merod-local e2e merraria`.
+    e2eDir: null,
     availability: 'web+desktop',
     playableOffline: true,
     trust: ['No game server', 'Deterministic world', 'Plays offline'],
@@ -288,46 +291,53 @@ export const APPS = {
   },
 
   'mero-calendar': {
+    // A component app (Calimero 1.0): sign-in is the app's own passkey modal,
+    // handed to the landing page as `onConnect`; there is no mero-react popup.
+    ownConnect: true,
     e2eDir: 'e2e',
     // This app ships its own light/dark switch; the landing toggle writes the
     // same key so the choice carries through sign-in instead of resetting.
     themeStorageKey: 'mc-theme',
-    availability: 'web+desktop',
-    trust: ['Teams are namespaces', 'Private events never sync', 'Light and dark'],
+    // Calimero 1.0 is reached from the browser (passkeys); no desktop node hand-off.
+    availability: 'web',
+    trust: ['Teams you invite', 'Private events stay yours', 'Light and dark'],
     explainer: [
-      'A shared calendar for a team that does not want its schedule sitting in someone else’s cloud. A team is a Calimero namespace, so the people in it are exactly the people you invited, and the calendar lives on their nodes and yours.',
-      'Shared events are owner-gated: only the person who created an event can change or delete it, and every node enforces that. Your calendar shows what you own or were invited to, but every shared event replicates to the whole team, so anything confidential belongs in a private event. Private events use node-local storage and never replicate at all — they exist on your machine and nowhere else.',
+      'A shared calendar for a team that does not want its schedule sitting in someone else’s cloud. A team is a Calimero organization, so the people in it are exactly the people you invited, and its calendars run on attested Calimero nodes.',
+      'Shared events are owner-gated: only the person who created an event can change or delete it, and only its owner and the people invited to it can read it. Private events are yours alone: no other member can read them through the app. Booking links let someone with no account book a meeting with you.',
     ],
     features: [
-      { icon: 'Grid', title: 'Teams are namespaces', body: 'Everyone in the namespace syncs the same calendar. Membership is the access model.' },
-      { icon: 'Shield', title: 'Owner-gated shared events', body: 'Only an event’s owner can edit or delete it, on every node. Your view shows what you own or were invited to; the team can still read every shared event.' },
-      { icon: 'EyeOff', title: 'Genuinely private events', body: 'Node-local storage that never replicates. Not "private" as a flag on a shared record.' },
+      { icon: 'Grid', title: 'Teams you invite', body: 'A team is an organization; its members are the people you invited, and each team can hold several calendars.' },
+      { icon: 'Shield', title: 'Owner-gated shared events', body: 'Only an event’s owner can edit or delete it. Only its owner and invitees can read it.' },
+      { icon: 'EyeOff', title: 'Private events', body: 'Events with nobody else in them are yours alone: no other member reads them.' },
       { icon: 'Moon', title: 'Light and dark themes', body: 'With an accessible palette, because a calendar is something people stare at all day.' },
-      { icon: 'HeartCheck', title: 'Readable identities', body: 'Display names instead of key hashes, so a shared calendar reads like one.' },
+      { icon: 'HeartCheck', title: 'Readable identities', body: 'Display names instead of account ids, so a shared calendar reads like one.' },
     ],
   },
 
   'mero-chat': {
     e2eDir: 'e2e',
+    // A component app (calimero-app-sdk, merod local, CalimeroClient); it
+    // passes its own passkey sign-in to the landing page as `onConnect`.
+    ownConnect: true,
     // Its icons live under /icons/; there is no /favicon.svg or /icon-512.png.
     markSrc: '/icons/icon-192x192.png',
     iconSrc: '/icons/icon-512x512.png',
-    availability: 'web+desktop',
-    trust: ['Channels, threads and DMs', 'No central server', 'Messages on your nodes'],
+    availability: 'web',
+    trust: ['Channels, threads and DMs', 'No passwords', 'Only members can read it'],
     explainer: [
-      'Team chat in the shape you already know — a workspace with public and private channels, threads, reactions and direct messages. The difference is where it lives: every channel is a Calimero context on your own nodes and the nodes of the people you invite, not on a vendor’s servers.',
-      'Nobody in the middle can read, mine or lose your conversations. There is no seat to pay for when someone joins, and nothing to export if you ever leave, because the history is already yours.',
+      'Team chat in the shape you already know — a workspace with public and private channels, threads, reactions and direct messages. The difference is who can read it: every channel is a Calimero app instance that only the members it names can reach, on attested nodes.',
+      'Nobody in the middle can read or mine your conversations. Your account is a passkey, a workspace is an organization you own, and an invitation is a link only you can mint.',
     ],
     features: [
       { icon: 'MessageBubble', title: 'Channels and threads', body: 'Public and private channels, with threaded replies so a side conversation never buries the main one.' },
-      { icon: 'Lock', title: 'Private by construction', body: 'A private channel is its own restricted group. Only its members’ nodes hold the messages, and there is no server copy to leak.' },
+      { icon: 'Lock', title: 'Private by construction', body: 'A private channel reaches only the people added to it. Everyone else is refused before the app runs, and is not even told it exists.' },
       { icon: 'Heart', title: 'Reactions, edits and mentions', body: 'React with any emoji, edit or delete your own messages, and @mention a teammate to get their attention.' },
-      { icon: 'CloudUpload', title: 'Files and images', body: 'Attach files and images to any message. They are stored as blobs on the nodes in the channel, not on a CDN.' },
-      { icon: 'Zap', title: 'Live, peer to peer', body: 'See who is typing and watch messages arrive as they are sent, synced node to node with no server deciding the order.' },
-      { icon: 'ShieldCheck', title: 'Real moderation', body: 'Admin, moderator, member and banned roles, enforced when changes merge — not just hidden in the interface.' },
+      { icon: 'CloudUpload', title: 'Files and images', body: 'Attach files and images to any message. They are stored as blobs of the channel itself, readable only by its members.' },
+      { icon: 'Zap', title: 'Live', body: 'See who is typing and watch messages arrive as they are sent, every change ordered by the channel’s own log.' },
+      { icon: 'ShieldCheck', title: 'Real moderation', body: 'Admin, moderator, member and banned roles, enforced by the channel’s own code on every call — not just hidden in the interface.' },
     ],
     overview: {
-      headline: 'Team chat that lives on your nodes, not someone else’s servers.',
+      headline: 'Team chat only its members can read.',
       // Recorded from the real app by `pnpm landing:media` in apps/mero-chat/app,
       // against an invented node (e2e/media) — the pages, composer and thread
       // panel are production code. The chapter times match CHAPTERS in
@@ -340,10 +350,10 @@ export const APPS = {
           poster: '/landing/demo-poster.jpg',
           chapters: [
             { at: 0, title: 'Open a channel', body: 'The team’s launch channel, with mentions, reactions and a busy thread.' },
-            { at: 3, title: 'Send a message', body: 'Type and press Enter. It is written to your node and sent to everyone in the channel.' },
+            { at: 3, title: 'Send a message', body: 'Type and press Enter. It is written to the channel and reaches everyone in it.' },
             { at: 8, title: 'Reply in a thread', body: 'Open the thread and answer there, so the channel stays readable.' },
-            { at: 14, title: 'React', body: 'A thumbs-up says it faster. Reactions sync like everything else.' },
-            { at: 18, title: 'Direct messages', body: 'Switch to a DM and see Theo typing, live, from his own node.' },
+            { at: 14, title: 'React', body: 'A thumbs-up says it faster. Reactions arrive live like everything else.' },
+            { at: 18, title: 'Direct messages', body: 'Switch to a DM and see Theo typing, live.' },
           ],
         },
       },
@@ -352,21 +362,21 @@ export const APPS = {
         sub: 'Everything you expect from a team chat. The difference is who holds the conversation.',
         themLabel: 'A typical cloud team chat',
         rows: [
-          { label: 'Where messages live', them: 'On the vendor’s servers', us: 'On your node, and the nodes of the people in the channel' },
+          { label: 'Where messages live', them: 'On the vendor’s servers', us: 'In the channel’s app instance, sealed on attested nodes' },
           { label: 'Who can read them', them: 'The vendor, and whoever it grants access', us: 'Only the members of that channel' },
           { label: 'Adding a teammate', them: 'Another seat on the monthly bill', us: 'An invite. The app is open source and free' },
-          { label: 'Message history', them: 'Limited or paywalled on cheaper plans', us: 'All of it, kept on your node' },
-          { label: 'If the vendor goes away', them: 'Your history may go with it', us: 'Your node still has every channel' },
+          { label: 'Message history', them: 'Limited or paywalled on cheaper plans', us: 'All of it, paged as you scroll' },
+          { label: 'Signing in', them: 'A password, and a reset link when it leaks', us: 'A passkey on your device' },
         ],
       },
       collaboration: {
-        heading: 'How a channel stays in sync',
-        sub: 'Each channel is its own context, replicated across the nodes of its members. Messages, threads and reactions merge without a server deciding the order.',
+        heading: 'How a channel works',
+        sub: 'Each channel is its own app instance with its own log. Messages, threads and reactions are applied in one order, so every member sees the same channel.',
         points: [
-          { title: 'Every channel is its own context', body: 'Channels and DMs are separate, so a busy channel never slows a quiet one, and a private channel is only on its members’ nodes.' },
+          { title: 'Every channel is its own instance', body: 'Channels and DMs are separate, so a busy channel never slows a quiet one, and a private channel reaches only its members.' },
           { title: 'Threads are kept apart', body: 'Replies live beside the message they answer, so a long thread never crowds the channel.' },
           { title: 'Typing stays out of history', body: '“Is typing” travels as presence, so it shows live and never ends up in the record.' },
-          { title: 'Drafts never leave your node', body: 'An unsent message is kept locally and is never synced to anyone.' },
+          { title: 'Drafts are yours alone', body: 'An unsent message is kept for you only: no call of anyone else’s reads it.' },
         ],
         roles: [
           { name: 'Admin', can: 'Grants and revokes roles, deletes any message and edits the channel info.' },
@@ -374,14 +384,14 @@ export const APPS = {
           { name: 'Member', can: 'Reads and writes, and edits or deletes their own messages.' },
           { name: 'Banned', can: 'Can no longer post in the channel.' },
         ],
-        rolesNote: 'Roles are checked when changes merge, not only hidden in the interface — a delete from someone without the right is refused, wherever it came from.',
+        rolesNote: 'Roles are checked by the channel’s code on every call, not only hidden in the interface — a delete from someone without the right is refused.',
       },
       audiences: {
         heading: 'Made for conversations that are nobody else’s business',
         items: [
-          { label: 'Startups & product teams', title: 'Plan the roadmap without handing it to a vendor', body: 'Launch plans, hiring and customer feedback stay on your team’s own nodes.', uses: ['Private channels', 'Threads', 'File sharing'] },
+          { label: 'Startups & product teams', title: 'Plan the roadmap without handing it to a vendor', body: 'Launch plans, hiring and customer feedback stay with the people in the channel.', uses: ['Private channels', 'Threads', 'File sharing'] },
           { label: 'Communities & DAOs', title: 'A place to talk that the community owns', body: 'No platform that can change the rules, read the members or shut the server down.', uses: ['Invite links', 'Moderator roles', 'Open source'] },
-          { label: 'Regulated & public sector', title: 'Real-time chat on infrastructure you control', body: 'For finance, health and government teams whose conversations cannot sit on a third party’s cloud.', uses: ['Self-hosted nodes', 'Roles enforced at merge', 'Works offline'] },
+          { label: 'Regulated & public sector', title: 'Real-time chat on infrastructure you control', body: 'For finance, health and government teams whose conversations cannot sit on a third party’s cloud.', uses: ['Attested nodes', 'Roles enforced on every call', 'Passkey sign-in'] },
           { label: 'Friends & families', title: 'Group chat without an advertiser in the room', body: 'Share photos and plans in a space where nobody is mining the conversation.', uses: ['Direct messages', 'Images', 'Reactions'] },
         ],
       },
@@ -391,14 +401,13 @@ export const APPS = {
           '# fork calimero-network/apps on GitHub, then',
           'git clone https://github.com/<you>/apps',
           'cd apps && pnpm install',
-          'cargo mero build -p mero-chat',
-          'pnpm -F mero-chat dev   # app on :5173',
+          'pnpm dev:local mero-chat   # merod local + the app on :5173',
         ],
       },
       alwaysOn: true,
       closing: {
         title: 'Start your first workspace',
-        body: 'Connect a node, or install the desktop app that bundles one, then invite the people you talk to.',
+        body: 'Sign in with a passkey, create a workspace, then invite the people you talk to.',
       },
     },
   },
@@ -815,19 +824,23 @@ export const APPS = {
 
   'mero-sheets': {
     displayName: 'Mero Sheets',
-    e2eDir: 'e2e',
+    // A component app (calimero-app-sdk, merod local, CalimeroClient): no
+    // Playwright, so no generated landing spec. docs/COMPONENT-APPS.md.
+    e2eDir: null,
+    // Passes its own passkey sign-in to the landing page as `onConnect`.
+    ownConnect: true,
     // This app ships its own light/dark switch; the landing toggle writes the
     // same key so the choice carries through sign-in instead of resetting.
     // The app's own key: it reads the old `app:theme` only while this is unset.
     themeStorageKey: 'mero-sheets:theme',
-    availability: 'web+desktop',
-    trust: ['Live collaboration', 'Formulas recompute for all peers', 'Sheet on your node'],
+    availability: 'web',
+    trust: ['Live collaboration', 'Formulas recompute for everyone', 'No passwords'],
     explainer: [
-      'A collaborative spreadsheet where you can see everyone’s cursor and nobody can see your data except the people you invited. The sheet lives in a Calimero context on your own node.',
+      'A collaborative spreadsheet where you can see everyone’s cursor and nobody can see your data except the people you invited. The workbook is a Calimero app instance only the members of your workspace can open.',
       'Formulas are stored raw and re-evaluated for every peer whenever a cell they reference changes, so nobody is looking at a stale total — which is the failure that makes shared spreadsheets untrustworthy in the first place.',
     ],
     features: [
-      { icon: 'Lock', title: 'Truly private sheets', body: 'The data lives in a context you control. It never passes through a central server.' },
+      { icon: 'Lock', title: 'Truly private sheets', body: 'Only the people in your workspace can open it, and your account is a passkey.' },
       { icon: 'Zap', title: 'Live collaboration', body: 'Every collaborator’s cursor in their own colour, and their edits on your screen as they make them.' },
       { icon: 'BarChart', title: 'Formulas that always compute', body: '94 functions, from SUMIFS and XLOOKUP to TEXT and EOMONTH, re-evaluated per peer whenever a referenced cell changes.' },
       { icon: 'Table', title: 'Multiple sheet tabs', body: 'Split a workbook the way you would expect, with tabs that sync like everything else.' },
@@ -836,9 +849,8 @@ export const APPS = {
     ],
     overview: {
       headline: 'The spreadsheet your team actually owns.',
-      // Recorded from the real app on a real node by `pnpm landing:media` in
-      // apps/mero-sheets/app. The chapter times match CHAPTERS in
-      // e2e/media/capture-landing-media.spec.ts.
+      // Recorded from the v1 app on a real node (the Playwright capture that
+      // made it went with the move to Calimero 1.0).
       showcase: {
         heading: 'A budget, filled in together',
         sub: 'Recorded from the real app, running on a real node — the totals are the app’s own formula engine at work.',
@@ -846,7 +858,7 @@ export const APPS = {
           src: '/landing/demo.webm',
           poster: '/landing/demo-poster.jpg',
           chapters: [
-            { at: 0, title: 'Open a workbook', body: 'A Q3 budget on your node, with Ada from your team already in it.' },
+            { at: 0, title: 'Open a workbook', body: 'A Q3 budget in your workspace, with Ada from your team already in it.' },
             { at: 3, title: 'Type a number', body: 'Fill in a cell and every total that reads it recomputes.' },
             { at: 8, title: 'Write a formula', body: 'Start typing =AV and autocomplete offers AVERAGE, with its arguments.' },
             { at: 14.5, title: 'Ada edits, live', body: 'Her cursor walks up to Wages, her number lands, and the totals update on your screen.' },
@@ -858,11 +870,11 @@ export const APPS = {
         sub: 'Everything you expect from a shared spreadsheet. The difference is who holds the numbers.',
         themLabel: 'A typical cloud spreadsheet',
         rows: [
-          { label: 'Where the sheet lives', them: 'On the vendor’s servers', us: 'On your node, and the nodes of the people you invite' },
+          { label: 'Where the sheet lives', them: 'On the vendor’s servers', us: 'In an app instance only your workspace can open' },
           { label: 'Who can read it', them: 'The vendor, and whoever it grants access', us: 'Only members of the workbook’s namespace' },
           { label: 'Adding a collaborator', them: 'Another seat on the monthly bill', us: 'An invite. The app is open source and free' },
           { label: 'Formulas', them: 'Computed on their servers', us: 'Stored raw and recomputed on every peer, so nobody sees a stale total' },
-          { label: 'If the vendor goes away', them: 'Your data may go with it', us: 'Your node still has every workbook, and you can download it any time' },
+          { label: 'If the vendor goes away', them: 'Your data may go with it', us: 'You can download every workbook, any time, as CSV or XLSX' },
         ],
       },
       collaboration: {
@@ -880,7 +892,7 @@ export const APPS = {
         items: [
           {
             label: 'Finance & operations',
-            title: 'Budgets and forecasts that never leave your nodes',
+            title: 'Budgets and forecasts only your team can open',
             body: 'Plan the quarter together, live, without the figures sitting on a third party’s servers.',
             uses: ['Budgets', 'Forecasts', 'CSV export'],
           },
@@ -900,54 +912,53 @@ export const APPS = {
             label: 'Regulated & public sector',
             title: 'Live collaboration on infrastructure you already control',
             body: 'For finance, health and government data that cannot leave your own servers, without giving up working together in real time.',
-            uses: ['Self-hosted nodes', 'Works offline', 'No third-party cloud'],
+            uses: ['Invite-only workspaces', 'Passkey accounts', 'No ad-funded cloud'],
           },
         ],
       },
       openSource: {
-        // The workspace licence logic/Cargo.toml inherits (the app README still
-        // says TBD). Commands run and checked: without the app's wasm-rustflags
-        // the build fails in wasm-opt on `i64.trunc_sat_f64_s` (see ci.yml);
-        // the dev server uses the app's own vite port.
+        // The licence logic/Cargo.toml declares. A component app: the
+        // contract builds with tools/component-bundle, and `pnpm dev:local`
+        // runs merod local, the contract and the app on :5173.
         license: 'MIT or Apache-2.0',
         commands: [
           '# fork calimero-network/apps on GitHub, then',
           'git clone https://github.com/<you>/apps',
           'cd apps && pnpm install',
-          'export RUSTFLAGS="$(cat apps/mero-sheets/logic/wasm-rustflags)"',
-          'cargo mero build -p mero-sheets',
-          'pnpm -F mero-sheets dev   # app on :5185',
+          'cargo test --manifest-path apps/mero-sheets/logic/Cargo.toml',
+          'pnpm dev:local mero-sheets   # app on :5173',
         ],
       },
       alwaysOn: true,
       closing: {
         title: 'Start your first workbook',
-        body: 'Connect a node, or install the desktop app that bundles one, then invite the people you work with.',
+        body: 'Sign in with a passkey, create a workbook, then invite the people you work with.',
       },
     },
   },
 
   'mero-sign': {
-    // Keeps its own sign-in — a sidebar, or the game launcher — so the
-    // landing gets an onConnect callback and never mounts the shared popup.
+    // A component app (calimero-app-sdk, merod local, CalimeroClient): no
+    // Playwright, so no generated landing spec. docs/COMPONENT-APPS.md.
+    // Passes its own passkey sign-in to the landing page as `onConnect`.
     ownConnect: true,
     displayName: 'Mero Sign',
-    e2eDir: 'tests',
+    e2eDir: null,
     // Same light/dark key as the app shell (src/theme.ts), so the landing
     // choice carries through sign-in.
     themeStorageKey: 'mero-sign:theme',
-    availability: 'web+desktop',
-    trust: ['No signing service', 'Roles per signatory', 'Verify peer-to-peer'],
+    availability: 'web',
+    trust: ['No signing service', 'Roles per signatory', 'No passwords'],
     explainer: [
-      'Upload a PDF, collect signatures from the people you invite, and verify them — with no e-signature company in the middle holding your contracts and charging per envelope.',
-      'An agreement is a shared context you administer. Signatories join by invitation and sign in the roles you assigned them, and your own signature library stays in a private context that only you can read.',
+      'Upload a PDF, collect signatures from the people you invite, and keep every signed version — with no e-signature company in the middle holding your contracts and charging per envelope.',
+      'An agreement is a Calimero app instance in your workspace, and you administer it. Signatories sign in the roles you assigned them, and your own signature library is a private instance only you can open.',
     ],
     features: [
-      { icon: 'FileCheck', title: 'Agreements as contexts', body: 'Create one and you administer it. Membership and roles are yours to set.' },
+      { icon: 'FileCheck', title: 'Agreements you administer', body: 'Create one and you are its admin. Membership and roles are yours to set.' },
       { icon: 'ShieldCheck', title: 'Role-based signing', body: 'Each signatory signs in the role you assigned, so the document knows who still owes a signature.' },
-      { icon: 'LockBox', title: 'A private signature library', body: 'Your signatures live in a local context only you can read, not in a vendor’s account.' },
-      { icon: 'ExternalLink', title: 'Invitations tied to identities', body: 'Scoped invite payloads with permissions, bound to Calimero identities rather than email addresses.' },
-      { icon: 'GlobeCheck', title: 'Verify peer-to-peer', body: 'Check a signature without asking a service whether it is genuine.' },
+      { icon: 'LockBox', title: 'A private signature library', body: 'Your signatures live in an instance only you can open, not in a vendor’s account.' },
+      { icon: 'ExternalLink', title: 'Invitations to a workspace', body: 'One link, approved with your passkey, covers the workspace and every agreement in it.' },
+      { icon: 'GlobeCheck', title: 'Every version kept', body: 'Each signature records the version it signed and the one it produced, and the document’s hash is checked when it opens.' },
     ],
   },
 

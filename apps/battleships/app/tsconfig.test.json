@@ -1,0 +1,13 @@
+{
+  "// note": "Unit tests and the app code they import. Node types on purpose: battleships.test.ts reads logic/res/abi.json off disk to assert the client covers the contract.",
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist-types/test",
+    "tsBuildInfoFile": "./dist-types/test.tsbuildinfo",
+    "types": ["node", "vite/client"],
+    "jsx": "react-jsx",
+    "noUncheckedIndexedAccess": false
+  },
+  "// include": "Tests plus everything they import. tsc -b will not let a test reference a file the project does not list.",
+  "include": ["src"]
+}
