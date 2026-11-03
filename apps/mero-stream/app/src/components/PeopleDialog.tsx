@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { shortAccount } from "@calimero-apps/names";
 import { useDialogOpen } from "../hooks/useDialogOpen";
-import { initials, type Person } from "../lib/people";
+import { initials, shortAccount, type Person } from "../lib/people";
 import { CheckIcon, XIcon } from "./icons";
 import styles from "./PeopleDialog.module.css";
 

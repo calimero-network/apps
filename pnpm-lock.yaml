@@ -304,49 +304,6 @@ importers:
         specifier: 'catalog:'
         version: 6.4.5(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13)
 
-  apps/delegated-execution/app:
-    dependencies:
-      '@calimero-apps/node-served':
-        specifier: workspace:*
-        version: link:../../../packages/node-served
-      '@calimero-network/mero-js':
-        specifier: 'catalog:'
-        version: 26.11.0
-      '@phala/dcap-qvl':
-        specifier: 0.5.3
-        version: 0.5.3
-      react:
-        specifier: 'catalog:'
-        version: 19.2.8
-      react-dom:
-        specifier: 'catalog:'
-        version: 19.2.8(react@19.2.8)
-    devDependencies:
-      '@types/node':
-        specifier: 'catalog:'
-        version: 22.20.1
-      '@types/react':
-        specifier: 'catalog:'
-        version: 19.2.18
-      '@types/react-dom':
-        specifier: 'catalog:'
-        version: 19.2.5(@types/react@19.2.18)
-      '@vitejs/plugin-react':
-        specifier: 'catalog:'
-        version: 4.7.0(vite@6.4.5(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13))
-      jsdom:
-        specifier: 'catalog:'
-        version: 25.0.1
-      typescript:
-        specifier: 'catalog:'
-        version: 5.8.3
-      vite:
-        specifier: 'catalog:'
-        version: 6.4.5(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13)
-      vitest:
-        specifier: 'catalog:'
-        version: 4.1.11(@types/node@22.20.1)(jsdom@25.0.1)(vite@6.4.5(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13))
-
   apps/hyperfeed/app:
     dependencies:
       '@calimero-apps/glass':
@@ -1755,36 +1712,21 @@ importers:
 
   apps/mero-pass/app:
     dependencies:
+      '@calimero-apps/connect':
+        specifier: workspace:*
+        version: link:../../../packages/connect
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
-      '@calimero-apps/names':
-        specifier: workspace:*
-        version: link:../../../packages/names
-      '@calimero-apps/node-served':
-        specifier: workspace:*
-        version: link:../../../packages/node-served
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
-        specifier: 'catalog:'
-        version: 26.11.0
+        specifier: catalog:component
+        version: 28.0.0
       '@calimero-network/mero-pass':
         specifier: workspace:*
         version: link:../../../packages/mero-pass
-      '@calimero-network/mero-platform':
-        specifier: 'catalog:'
-        version: 0.1.0
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 10.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      bs58:
-        specifier: 'catalog:'
-        version: 6.0.0
-      fflate:
-        specifier: 'catalog:'
-        version: 0.8.3
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -1795,18 +1737,9 @@ importers:
         specifier: 'catalog:'
         version: 7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
     devDependencies:
-      '@calimero-apps/e2e-node':
-        specifier: workspace:*
-        version: link:../../../packages/e2e-node
-      '@calimero-network/abi-codegen':
-        specifier: 'catalog:'
-        version: 2.4.0
       '@eslint/js':
         specifier: 'catalog:'
         version: 9.39.5
-      '@playwright/test':
-        specifier: 'catalog:'
-        version: 1.62.1
       '@testing-library/jest-dom':
         specifier: 'catalog:'
         version: 6.10.0(@testing-library/dom@10.4.1)
@@ -2272,33 +2205,15 @@ importers:
 
   apps/mero-standup/app:
     dependencies:
+      '@calimero-apps/connect':
+        specifier: workspace:*
+        version: link:../../../packages/connect
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
-      '@calimero-apps/names':
-        specifier: workspace:*
-        version: link:../../../packages/names
-      '@calimero-apps/node-served':
-        specifier: workspace:*
-        version: link:../../../packages/node-served
       '@calimero-network/mero-js':
-        specifier: 'catalog:'
-        version: 26.11.0
-      '@calimero-network/mero-platform':
-        specifier: 'catalog:'
-        version: 0.1.0
-      '@calimero-network/mero-platform-react':
-        specifier: 'catalog:'
-        version: 0.1.0(react@19.2.8)
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 10.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      bs58:
-        specifier: 'catalog:'
-        version: 6.0.0
-      fflate:
-        specifier: 'catalog:'
-        version: 0.8.3
+        specifier: catalog:component
+        version: 28.0.0
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -2306,15 +2221,9 @@ importers:
         specifier: 'catalog:'
         version: 19.2.8(react@19.2.8)
     devDependencies:
-      '@calimero-apps/e2e-node':
-        specifier: workspace:*
-        version: link:../../../packages/e2e-node
-      '@calimero-network/abi-codegen':
+      '@eslint/js':
         specifier: 'catalog:'
-        version: 2.4.0
-      '@playwright/test':
-        specifier: 'catalog:'
-        version: 1.62.1
+        version: 9.39.5
       '@testing-library/react':
         specifier: 'catalog:'
         version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -2330,15 +2239,27 @@ importers:
       '@vitejs/plugin-react':
         specifier: 'catalog:'
         version: 4.7.0(vite@6.4.5(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13))
+      eslint:
+        specifier: 'catalog:'
+        version: 9.39.5(jiti@2.7.0)
+      eslint-plugin-react-hooks:
+        specifier: 'catalog:'
+        version: 5.2.0(eslint@9.39.5(jiti@2.7.0))
+      eslint-plugin-react-refresh:
+        specifier: 'catalog:'
+        version: 0.4.26(eslint@9.39.5(jiti@2.7.0))
+      globals:
+        specifier: 'catalog:'
+        version: 16.5.0
       jsdom:
         specifier: 'catalog:'
         version: 25.0.1
-      tweetnacl:
-        specifier: ^1.0.3
-        version: 1.0.3
       typescript:
         specifier: 'catalog:'
         version: 5.8.3
+      typescript-eslint:
+        specifier: 'catalog:'
+        version: 8.68.0(eslint@9.39.5(jiti@2.7.0))(typescript@5.8.3)
       vite:
         specifier: 'catalog:'
         version: 6.4.5(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13)
@@ -2348,12 +2269,12 @@ importers:
 
   apps/mero-stream/app:
     dependencies:
+      '@calimero-apps/connect':
+        specifier: workspace:*
+        version: link:../../../packages/connect
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
-      '@calimero-apps/names':
-        specifier: workspace:*
-        version: link:../../../packages/names
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
@@ -2361,23 +2282,11 @@ importers:
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
-        specifier: 'catalog:'
-        version: 26.11.0
-      '@calimero-network/mero-platform':
-        specifier: 'catalog:'
-        version: 0.1.0
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 10.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: catalog:component
+        version: 28.0.0
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      bs58:
-        specifier: 'catalog:'
-        version: 6.0.0
-      fflate:
-        specifier: 'catalog:'
-        version: 0.8.3
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -2387,19 +2296,10 @@ importers:
       react-router-dom:
         specifier: ^7.15.1
         version: 7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      zustand:
-        specifier: ^5.0.14
-        version: 5.0.15(@types/react@19.2.18)(immer@9.0.21)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
     devDependencies:
-      '@calimero-apps/e2e-node':
-        specifier: workspace:*
-        version: link:../../../packages/e2e-node
       '@eslint/js':
         specifier: ^9.25.0
         version: 9.39.5
-      '@playwright/test':
-        specifier: 'catalog:'
-        version: 1.62.1
       '@testing-library/dom':
         specifier: ^10.4.1
         version: 10.4.1

@@ -1,7 +1,7 @@
 package network.calimero.standup.core
 
-import network.calimero.standup.generated.MemberView
-import network.calimero.standup.generated.UpdateView
+import network.calimero.standup.contract.MemberView
+import network.calimero.standup.contract.UpdateView
 
 /** Names, initials and avatar colours (the web app's `lib/people.ts`). */
 object People {

@@ -926,28 +926,30 @@ export const APPS = {
   },
 
   'mero-stream': {
-    e2eDir: 'tests',
+    // A component app (calimero-app-sdk, merod local, CalimeroClient): no
+    // Playwright, so no generated landing spec. docs/COMPONENT-APPS.md.
+    e2eDir: null,
     availability: 'web',
     experimental: true,
     trust: ['Measured, not promised', 'Deterministic codec', 'Web only'],
     explainer: [
       'An honest experiment rather than a finished product: how far can the Calimero network carry live video? Mero Stream exists to find the ceiling and report it, and the number it produces is the point.',
-      'There are two paths. One runs a deliberately simple integer-only codec inside the WASM app itself; the other stores browser-encoded H.264 fragments and treats the network as transport. Comparing them is what makes the limit legible.',
+      'There are three paths. One runs a deliberately simple integer-only codec inside the app component itself; one stores browser-encoded H.264 in the app\u2019s log; the call carries it over the node\u2019s ephemeral presence channel and stores nothing. Comparing them is what makes the limit legible.',
     ],
     features: [
-      { icon: 'ArrowsUpDown', title: 'Two codec paths', body: 'A deterministic codec inside the WASM app, or browser WebCodecs H.264 through the same context.' },
+      { icon: 'ArrowsUpDown', title: 'Three transports', body: 'A deterministic codec inside the app component, or browser WebCodecs H.264 through the app\u2019s log or its presence channel.' },
       { icon: 'BarChart', title: 'Measured, not promised', body: 'Built to find the real capacity ceiling and report it, rather than to claim one.' },
       { icon: 'CheckSquare', title: 'Deterministic by construction', body: 'Integer-only, with no float, no SIMD and no threads, so every peer decodes identically.' },
-      { icon: 'Trash', title: 'Delete is a tombstone', body: 'Fragment keys are monotone and never reused, so a deletion cannot be confused with a gap.' },
+      { icon: 'Trash', title: 'Keys are never reused', body: 'Fragment and chunk sequences are monotone, so a pruned frame cannot be confused with a gap.' },
     ],
     faq: [
       {
         q: 'Is this production-ready?',
-        a: 'No, and it does not claim to be. Mero Stream is a capacity probe: it exists to measure how much live media a Calimero context can carry. Treat its numbers as findings, not guarantees.',
+        a: 'No, and it does not claim to be. Mero Stream is a capacity probe: it exists to measure how much live media a Calimero app can carry. Treat its numbers as findings, not guarantees.',
       },
       {
         q: 'Why web only?',
-        a: 'Not because it breaks on the desktop — it renders and runs there. What is unsupported is the desktop integration around it, so anything you see in a desktop window should be reproduced in a browser before it is believed.',
+        a: 'It needs a browser with WebCodecs and a camera, and signs in with a passkey on the cluster that serves it. The native iOS and Android apps follow in their own release.',
       },
     ],
   },
