@@ -5,7 +5,6 @@
  * `makeAliases` adapts it into the small `UseAliasesReturn` surface the
  * members list, deal pages, and sidebar already consume.
  */
-import { canonicalAccount } from '@calimero-apps/names';
 import { truncateKey } from '../utils/display';
 
 export interface UseAliasesReturn {
@@ -25,14 +24,13 @@ export interface UseAliasesReturn {
   loaded: boolean;
 }
 
-/** The map key for an identity: canonical hex for an account (the admin API
- *  speaks hex, contracts stamp base58), the raw string for anything else. */
+/** The map key for an identity: the account id, spelled the same by the org's
+ *  member list and by the contract's `createdBy`/`author`. */
 function aliasKey(publicKey: string): string {
-  return canonicalAccount(publicKey) ?? publicKey;
+  return publicKey;
 }
 
-/** publicKey -> name, given the raw {name, value} entries. Keyed canonically,
- *  so a hex and a base58 spelling of one account find the same name. */
+/** publicKey -> name, given the raw {name, value} entries. */
 export function buildAliasMap(entries: { name: string; value: string }[]): Map<string, string> {
   return new Map(entries.map((e) => [aliasKey(e.value), e.name]));
 }
@@ -46,10 +44,10 @@ export function resolveFromMap(map: Map<string, string>, publicKey: string): str
 /**
  * The label for a stored `owner`, resolved at display time.
  *
- * New deals store the owner's ACCOUNT, so a rename (or a name set after the
- * deal was assigned) shows everywhere. Older deals stored the label itself:
- * a name is shown as-is, and a frozen truncated key (`4f8a…c2e1`, stored when
- * that member had no name yet) is matched back to its member and resolved.
+ * A deal stores the owner's ACCOUNT id, so a rename (or a name set after the
+ * deal was assigned) shows everywhere. A free-text owner (an integration, or a
+ * former member) is shown as-is, and a truncated key (`4f8a…c2e1`) is matched
+ * back to its member and resolved.
  */
 export function ownerLabel(
   owner: string | null | undefined,
@@ -57,9 +55,14 @@ export function ownerLabel(
   members: readonly string[],
 ): string {
   if (!owner) return '';
-  if (canonicalAccount(owner)) return resolve(owner);
+  if (members.includes(owner) || memberNamed(resolve, owner)) return resolve(owner);
   const member = owner.includes('…') ? members.find((m) => truncateKey(m) === owner) : undefined;
   return member ? resolve(member) : owner;
+}
+
+/** True when `owner` is an account the name map knows. */
+function memberNamed(resolve: (publicKey: string) => string, owner: string): boolean {
+  return resolve(owner) !== truncateKey(owner);
 }
 
 /** Adapt the namespace member-name map into the `UseAliasesReturn` surface. */

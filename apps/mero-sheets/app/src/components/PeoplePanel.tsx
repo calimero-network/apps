@@ -4,16 +4,11 @@
  * Two layers, shown side by side:
  *  - The workbook role (owner, editor, commenter, viewer), kept by the
  *    contract and enforced on every write. Owners set it.
- *  - Access to the workspace itself, which is core's group membership: an
- *    Admin manages people, a Member reads and writes, and Read only is refused
- *    by every node, not just this app. Removing someone takes them out of
- *    every spreadsheet in the workspace and rotates the group key, so they get
- *    nothing written after that.
- *
- * And an always-on copy: TEEs (hardware-attested nodes) that admit
- * themselves when they run a release the workspace's admission policy names,
- * so the data stays available while everyone is offline. Admitted as relays,
- * they also carry members' writes; as replicas, they only hold a copy.
+ *  - Access to the workspace itself, which is the organization's membership:
+ *    an Admin manages people, a Member reads and writes, and a Guest is let in
+ *    to read (the workbook roles still decide what they may change). Removing
+ *    someone takes them out of every spreadsheet in the workspace at once.
+ *    Both changes are approved with the admin's passkey.
  */
 import React, { useEffect, useState } from 'react';
 import styled from 'styled-components';
@@ -21,20 +16,16 @@ import { C } from '../theme';
 import { closeButton, overlay, sheetHeader, sideSheet } from './glass';
 import type { Member } from '../hooks/useSpreadsheet';
 import { ROLE_HELP, ROLE_NOTE, WORKBOOK_ROLES } from '../spreadsheet/access';
-import { REPLICA_PROFILES, isReleaseVersion, isTeeRole, teeRoleLabel, type ReplicaPolicy, type TeeMode } from '../spreadsheet/replicas';
-
-export type { ReplicaPolicy };
-
-/** One entry of core's group roster. */
+/** One entry of the workspace org's roster. */
 export interface GroupPerson {
   identity: string;
   role: string;
 }
 
 const NETWORK_ROLES: { value: string; label: string }[] = [
-  { value: 'Admin', label: 'Admin' },
-  { value: 'Member', label: 'Member' },
-  { value: 'ReadOnly', label: 'Read only' },
+  { value: 'admin', label: 'Admin' },
+  { value: 'member', label: 'Member' },
+  { value: 'guest', label: 'Guest' },
 ];
 
 
@@ -47,20 +38,11 @@ interface PeoplePanelProps {
   nameOf: (memberId: string) => string;
   /** This user may change workbook roles (an owner, or nobody owns it yet). */
   canManageRoles: boolean;
-  /** This user administers the workspace group. */
+  /** This user administers the workspace (an owner or admin of its org). */
   isGroupAdmin: boolean;
   onSetRole: (memberId: string, role: string) => Promise<void>;
   onSetGroupRole: (account: string, role: string) => Promise<void>;
   onRemove: (account: string) => Promise<void>;
-  /** The replica admission policy, once read (null while unknown). */
-  policy: ReplicaPolicy | null;
-  /** Stores the policy; resolves to a warning when the node stored less than asked. */
-  onSetPolicy: (policy: ReplicaPolicy) => Promise<string | null>;
-  /**
-   * The policy is a node's own setting, with no delegated form: on a cloud
-   * account it can be neither read nor changed, and the section says so.
-   */
-  policyUnavailable?: boolean;
   onClose: () => void;
 }
 
@@ -71,21 +53,17 @@ interface Row {
 }
 
 /**
- * Workbook members, matched to the group roster by account; then anyone in the
- * group who has not opened this workbook yet. A TEE node is in the group but is
- * not a person, so it is left out of the rows and only counted, for the
- * always-on section.
+ * Workbook members, matched to the org roster by account; then anyone in the
+ * org who has not opened this workbook yet.
  */
-export function peopleRows(members: Member[], group: GroupPerson[]): { rows: Row[]; tees: number } {
-  const people = group.filter((g) => !isTeeRole(g.role));
-  const teeIds = new Set(group.filter((g) => isTeeRole(g.role)).map((g) => g.identity));
-  const rows: Row[] = members.filter((m) => !m.account || !teeIds.has(m.account)).map((m) => ({
-    key: m.id, member: m, person: people.find((g) => m.account && g.identity === m.account) ?? null,
+export function peopleRows(members: Member[], group: GroupPerson[]): { rows: Row[] } {
+  const rows: Row[] = members.map((m) => ({
+    key: m.id, member: m, person: group.find((g) => m.account && g.identity === m.account) ?? null,
   }));
-  for (const g of people) {
+  for (const g of group) {
     if (!rows.some((r) => r.person?.identity === g.identity)) rows.push({ key: g.identity, member: null, person: g });
   }
-  return { rows, tees: teeIds.size };
+  return { rows };
 }
 
 /**
@@ -108,7 +86,7 @@ export default function PeoplePanel(props: PeoplePanelProps) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const { rows, tees } = peopleRows(members, group);
+  const { rows } = peopleRows(members, group);
 
   const run = async (fn: () => Promise<void>) => {
     setError(null);
@@ -157,18 +135,18 @@ export default function PeoplePanel(props: PeoplePanelProps) {
                       <span>Workspace</span>
                       <select
                         value={person.role}
-                        disabled={!props.isGroupAdmin || self}
+                        disabled={!props.isGroupAdmin || self || person.role === 'owner'}
                         data-testid="field-network-role"
                         onChange={(e) => void run(() => props.onSetGroupRole(person.identity, e.target.value))}
                       >
                         {NETWORK_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
                         {!NETWORK_ROLES.some((r) => r.value === person.role) && (
-                          <option value={person.role}>{teeRoleLabel(person.role) ?? person.role}</option>
+                          <option value={person.role}>{person.role[0].toUpperCase() + person.role.slice(1)}</option>
                         )}
                       </select>
                     </label>
                   )}
-                  {person && props.isGroupAdmin && !self && (
+                  {person && props.isGroupAdmin && !self && person.role !== 'owner' && (
                     <RemoveBtn type="button" onClick={() => setConfirming(person.identity)} data-testid="action-remove-member">
                       Remove
                     </RemoveBtn>
@@ -177,8 +155,8 @@ export default function PeoplePanel(props: PeoplePanelProps) {
                 {confirming === person?.identity && (
                   <Confirm role="alertdialog" aria-label={`Remove ${name}`}>
                     <p>
-                      Remove {name} from every spreadsheet in {props.workspaceName}? They keep what they already
-                      synced, but the group key rotates, so nothing written after this reaches them.
+                      Remove {name} from every spreadsheet in {props.workspaceName}? They lose access to all of
+                      them at once.
                     </p>
                     <div>
                       <button type="button" onClick={() => setConfirming(null)}>Cancel</button>
@@ -197,149 +175,12 @@ export default function PeoplePanel(props: PeoplePanelProps) {
             );
           })}
         </List>
-        <AlwaysOn
-          tees={tees}
-          policy={props.policy}
-          unavailable={!!props.policyUnavailable}
-          canEdit={props.isGroupAdmin && !props.policyUnavailable}
-          onSave={props.onSetPolicy}
-        />
         <Help>
           <p><b>Workbook</b> roles are this spreadsheet&apos;s: owners set them, and the contract checks every write.</p>
-          <p><b>Workspace</b> access is the network&apos;s: <i>Read only</i> is refused by every node, and removing someone rotates the key.</p>
+          <p><b>Workspace</b> access is the organization&apos;s: admins invite and remove people, and approve each change with their passkey.</p>
         </Help>
       </Panel>
     </Overlay>
-  );
-}
-
-/** The roles an admitted TEE may take, relays first: they are what a cloud TEE is for. */
-const TEE_MODES: { value: TeeMode; label: string; help: string }[] = [
-  { value: 'relay', label: 'Relays', help: 'Hold a copy and carry members\' writes while they are offline.' },
-  { value: 'replica', label: 'Replicas', help: 'Hold a read-only copy, and carry no one\'s writes.' },
-];
-
-function AlwaysOn({ tees, policy, unavailable, canEdit, onSave }: {
-  tees: number;
-  policy: ReplicaPolicy | null;
-  unavailable: boolean;
-  canEdit: boolean;
-  onSave: (p: ReplicaPolicy) => Promise<string | null>;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [profiles, setProfiles] = useState<string[]>([]);
-  const [minRelease, setMinRelease] = useState('');
-  const [mode, setMode] = useState<TeeMode>('relay');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [warning, setWarning] = useState<string | null>(null);
-  const on = !!policy && policy.profiles.length > 0;
-  const legacy = !!policy && !on && policy.legacyMeasurements > 0;
-  const minValid = minRelease.trim() === '' || isReleaseVersion(minRelease);
-  const labelOf = (value: string) => REPLICA_PROFILES.find((p) => p.value === value)?.label ?? value;
-
-  const startEditing = () => {
-    setProfiles(on ? policy.profiles : ['locked-read-only']);
-    setMinRelease(policy?.minRelease ?? '');
-    setMode(on ? policy.mode : 'relay');
-    setError(null);
-    setEditing(true);
-  };
-  const toggle = (value: string) =>
-    setProfiles((current) => current.includes(value) ? current.filter((p) => p !== value) : [...current, value]);
-  const save = async () => {
-    setSaving(true);
-    setError(null);
-    setWarning(null);
-    try {
-      setWarning(await onSave({ profiles, minRelease: minRelease.trim().replace(/^v/, '') || null, legacyMeasurements: 0, mode }));
-      setEditing(false);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Section data-testid="always-on">
-      <h4>Always-on copy</h4>
-      <p>
-        {tees > 0
-          ? `${tees} always-on TEE${tees === 1 ? '' : 's'} hold${tees === 1 ? 's' : ''} a copy, so the workspace stays available while everyone is offline.`
-          : 'No always-on TEE yet: the workspace is available while at least one member is online.'}
-      </p>
-      <p className="muted" data-testid="replica-policy">
-        {unavailable ? 'The TEE admission policy is not available for cloud accounts yet: set it from a node.'
-          : policy === null ? 'Reading the admission policy…'
-          : on ? `TEEs running a signed release${policy.minRelease ? ` (${policy.minRelease} or newer)` : ''} of ${policy.profiles.map(labelOf).join(' or ')} admit themselves, ${policy.mode === 'relay' ? 'as relays for members\' writes' : 'as read-only replicas'}.`
-            : legacy ? `The policy lists ${policy.legacyMeasurements} image measurement${policy.legacyMeasurements === 1 ? '' : 's'} by hand, which no longer identifies an image. Switch it to signed releases.`
-              : 'TEEs are not admitted.'}
-      </p>
-      {warning && <p className="muted" role="status" data-testid="replica-warning">{warning}</p>}
-      {canEdit && !editing && (
-        <div className="row">
-          <button type="button" onClick={startEditing} data-testid="action-edit-replicas">
-            {on ? 'Change admission' : legacy ? 'Switch to signed releases…' : 'Admit TEEs…'}
-          </button>
-        </div>
-      )}
-      {canEdit && editing && (
-        <div>
-          <fieldset>
-            <legend>Admit TEEs as</legend>
-            {TEE_MODES.map((option) => (
-              <label key={option.value} className="check">
-                <input
-                  type="radio"
-                  name="tee-mode"
-                  checked={mode === option.value}
-                  onChange={() => setMode(option.value)}
-                  data-testid={`field-mode-${option.value}`}
-                />
-                <span><b>{option.label}</b> — {option.help}</span>
-              </label>
-            ))}
-          </fieldset>
-          <fieldset>
-            <legend>Running a signed mero-tee release of</legend>
-            {REPLICA_PROFILES.map((profile) => (
-              <label key={profile.value} className="check">
-                <input
-                  type="checkbox"
-                  checked={profiles.includes(profile.value)}
-                  onChange={() => toggle(profile.value)}
-                  data-testid={`field-profile-${profile.value}`}
-                />
-                <span><b>{profile.label}</b> — {profile.help}</span>
-              </label>
-            ))}
-          </fieldset>
-          <label htmlFor="min-release">Oldest release to admit (optional, e.g. 2.3.86)</label>
-          <input
-            id="min-release"
-            type="text"
-            value={minRelease}
-            onChange={(e) => setMinRelease(e.target.value)}
-            placeholder="any signed release"
-            data-testid="field-min-release"
-          />
-          {!minValid && <p className="muted">A release is three numbers, like 2.3.86.</p>}
-          <p className="muted">
-            A new release is admitted without changing this. Once admitted, a TEE stays in the workspace: nodes have no way to switch admission off, so choose the profiles with care.
-          </p>
-          {error && <p className="muted" role="alert">Not saved: {error}</p>}
-          <div className="row">
-            <button type="button" disabled={profiles.length === 0 || !minValid || saving}
-              onClick={() => void save()}
-              data-testid="action-save-replicas">
-              {saving ? 'Saving…' : 'Admit'}
-            </button>
-            <button type="button" onClick={() => setEditing(false)}>Cancel</button>
-          </div>
-        </div>
-      )}
-    </Section>
   );
 }
 
@@ -385,22 +226,6 @@ const Confirm = styled.div`
   button { font-size: 12px; padding: 5px 10px; border-radius: 8px; cursor: pointer; background: none; border: 1px solid ${C.line}; color: ${C.ink}; }
   .danger { color: #fff; background: ${C.danger}; border-color: ${C.danger}; }
 `;
-const Section = styled.section`
-  padding: 12px 18px; border-top: 1px solid ${C.line};
-  h4 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: ${C.mutedSoft}; }
-  p { margin: 0 0 6px; font-size: 12.5px; line-height: 1.45; color: ${C.ink}; }
-  .muted { color: ${C.muted}; }
-  label { display: block; font-size: 11.5px; color: ${C.muted}; margin: 4px 0; }
-  fieldset { border: 0; margin: 0 0 6px; padding: 0; min-width: 0; }
-  legend { font-size: 11.5px; color: ${C.muted}; padding: 0; margin-bottom: 2px; }
-  label.check { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; color: ${C.ink}; line-height: 1.4; }
-  label.check input { margin-top: 2px; flex: none; }
-  input[type='text'] { width: 100%; box-sizing: border-box; font: 12px ui-monospace, 'SF Mono', Menlo, monospace; color: ${C.ink}; background: var(--glass-sunken); border: 1px solid var(--glass-line); border-radius: 8px; padding: 6px 8px; }
-  .row { display: flex; gap: 8px; margin-top: 6px; }
-  button { font-size: 12px; padding: 5px 10px; border-radius: 8px; cursor: pointer; background: none; border: 1px solid ${C.line}; color: ${C.ink}; }
-  button:disabled { opacity: 0.5; }
-`;
-
 const Help = styled.div`
   padding: 10px 18px 16px; border-top: 1px solid ${C.line};
   p { margin: 4px 0; font-size: 11.5px; line-height: 1.45; color: ${C.mutedSoft}; }

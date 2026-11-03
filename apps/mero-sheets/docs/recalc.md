@@ -86,9 +86,7 @@ stored).
 
 A formula can reference a cell in another sheet with the `[id]!A1` syntax,
 where `id` is the target sheet's id. This lets a summary sheet aggregate
-totals computed elsewhere in the same workbook — the financial-model
-scenario in the [performance report](performance) is built entirely around
-this pattern. If the referenced sheet id doesn't exist, the reference
+totals computed elsewhere in the same workbook. If the referenced sheet id doesn't exist, the reference
 evaluates to `#REF!` rather than failing the whole computation.
 
 ## Errors

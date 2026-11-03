@@ -3,10 +3,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   formatWhen,
   guest,
+  guestCalendar,
   parseBookingFragment,
   type BookingPage,
   type BookingLinkTarget,
 } from "../../api/booking";
+import { messageOf, type Calendar } from "../../api/calendar";
+import { useSessionApi } from "../../api/sessionContext";
 import ThemeToggle from "../../components/common/theme-toggle/ThemeToggle";
 import styles from "./book.module.scss";
 
@@ -15,7 +18,7 @@ const DAY_MS = 86_400_000;
 const SLOT_PAGE_DAYS = 14;
 
 function errorText(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
+  return messageOf(err);
 }
 
 /** Slots grouped by the guest's own calendar day. */
@@ -35,10 +38,12 @@ export function groupByDay(slots: number[]): Array<{ day: string; slots: number[
 }
 
 function SlotPicker({
+  cal,
   target,
   selected,
   onSelect,
 }: {
+  cal: Calendar;
   target: BookingLinkTarget;
   selected: number | null;
   onSelect: (slot: number) => void;
@@ -50,13 +55,13 @@ function SlotPicker({
   useEffect(() => {
     let live = true;
     guest
-      .slots(target, Date.now(), until)
+      .slots(cal, target, Date.now(), until)
       .then((found) => live && setSlots(found ?? []))
       .catch((err) => live && setError(errorText(err)));
     return () => {
       live = false;
     };
-  }, [target, until]);
+  }, [cal, target, until]);
 
   if (error) return <p className={styles.error}>{error}</p>;
   if (!slots) return <p className={styles.dim}>Finding open times…</p>;
@@ -102,13 +107,22 @@ function SlotPicker({
 
 /**
  * The page a booking link opens. No login: the token in the URL's fragment is
- * the guest's whole credential, and it reaches the owner's node and nothing
- * else.
+ * the guest's whole credential: an API key that reaches this calendar's five
+ * guest methods and nothing else.
  */
 export default function BookPage() {
   const target = useMemo(() => parseBookingFragment(window.location.hash), []);
+  const { api, deps } = useSessionApi();
+  // The cluster this frontend talks to; the guest's own client, never the
+  // page's signed-in one, carries the link's API key.
+  const where =
+    api.session.status === "signed-out" || api.session.status === "signed-in"
+      ? api.session.target
+      : null;
+  const unconfigured = api.session.status === "unconfigured" ? api.session.message : null;
+  const [cal, setCal] = useState<Calendar | null>(null);
   const [page, setPage] = useState<BookingPage | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(unconfigured);
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
   const [rescheduling, setRescheduling] = useState(false);
@@ -116,14 +130,30 @@ export default function BookPage() {
   const [email, setEmail] = useState("");
   const [note, setNote] = useState("");
 
+  useEffect(() => {
+    if (!target || !where) return;
+    let live = true;
+    deps
+      .makeClient(where)
+      .then((client) => live && setCal(guestCalendar(client, target)))
+      .catch((err) => live && setError(errorText(err)));
+    return () => {
+      live = false;
+    };
+  }, [target, where, deps]);
+
+  useEffect(() => {
+    if (unconfigured) setError(unconfigured);
+  }, [unconfigured]);
+
   const load = useCallback(async () => {
-    if (!target) return;
+    if (!target || !cal) return;
     try {
-      setPage(await guest.page(target));
+      setPage(await guest.page(cal, target));
     } catch (err) {
       setError(errorText(err));
     }
-  }, [target]);
+  }, [target, cal]);
 
   useEffect(() => {
     void load();
@@ -198,7 +228,7 @@ export default function BookPage() {
                     <button
                       className="mc-btn mc-btn--danger"
                       disabled={busy}
-                      onClick={() => void run(() => guest.cancel(target))}
+                      onClick={() => void run(() => guest.cancel(cal as Calendar, target))}
                     >
                       Cancel meeting
                     </button>
@@ -212,7 +242,7 @@ export default function BookPage() {
                 <h2 className={styles.subhead}>
                   {rescheduling ? "Pick a new time" : "Pick a time"}
                 </h2>
-                <SlotPicker target={target} selected={selected} onSelect={setSelected} />
+                <SlotPicker cal={cal as Calendar} target={target} selected={selected} onSelect={setSelected} />
               </>
             )}
 
@@ -243,7 +273,7 @@ export default function BookPage() {
                   disabled={!canBook || busy}
                   onClick={() =>
                     void run(() =>
-                      guest.book(target, selected as number, { name, email, note }),
+                      guest.book(cal as Calendar, target, selected as number, { name, email, note }),
                     )
                   }
                   data-testid="book-submit"
@@ -261,7 +291,7 @@ export default function BookPage() {
                 <button
                   className="mc-btn mc-btn--primary"
                   disabled={selected === null || busy}
-                  onClick={() => void run(() => guest.reschedule(target, selected as number))}
+                  onClick={() => void run(() => guest.reschedule(cal as Calendar, target, selected as number))}
                 >
                   Move meeting
                 </button>

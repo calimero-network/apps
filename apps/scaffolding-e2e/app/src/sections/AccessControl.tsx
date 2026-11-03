@@ -46,6 +46,8 @@ export function AccessControlSection() {
   const membersCall = useCall();
   const myRolesCall = useCall();
   const adminsCall = useCall();
+  const isAdminCall = useCall();
+  const [isAdminAccount, setIsAdminAccount] = useState("");
   const grantAdminCall = useCall();
   const revokeAdminCall = useCall();
   const projectCall = useCall();
@@ -74,7 +76,7 @@ export function AccessControlSection() {
   }, []);
 
   const accountHelp =
-    "An ACCOUNT id, not a device key. Both are 64 hex characters since core rc.27, so the shape will not warn you — only whoami (Identity, top of the sidebar) tells you which is which. Every authorization subject here is an account.";
+    "An account id, as whoami returns it (your own is also at the bottom of the sidebar). A grant must name the instance's owner or an account in its organization; anything else is refused as Invalid.";
 
   return (
     <div>
@@ -158,7 +160,7 @@ export function AccessControlSection() {
             <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
               <input
                 className="form-control"
-                placeholder="account (64 hex)"
+                placeholder="account id"
                 value={grantAccount}
                 onChange={(e) => setGrantAccount(e.target.value)}
               />
@@ -196,7 +198,7 @@ export function AccessControlSection() {
             </select>
             <input
               className="form-control"
-              placeholder="account (64 hex)"
+              placeholder="account id"
               value={revokeAccount}
               onChange={(e) => setRevokeAccount(e.target.value)}
             />
@@ -228,7 +230,7 @@ export function AccessControlSection() {
             </select>
             <input
               className="form-control"
-              placeholder="account (64 hex)"
+              placeholder="account id"
               value={grantAccount}
               onChange={(e) => setGrantAccount(e.target.value)}
             />
@@ -302,6 +304,27 @@ export function AccessControlSection() {
         </div>
 
         <div className="method-card">
+          <div className="method-name">acl_is_admin(account_hex) → bool</div>
+          <div className="method-inputs">
+            <input
+              className="form-control"
+              placeholder="account id"
+              aria-label="account to check"
+              value={isAdminAccount}
+              onChange={(e) => setIsAdminAccount(e.target.value)}
+            />
+          </div>
+          <button
+            className="btn-calimero-outline"
+            disabled={isAdminCall.loading}
+            onClick={() => isAdminCall.run(() => api.aclIsAdmin(isAdminAccount))}
+          >
+            {isAdminCall.loading ? "..." : "Execute"}
+          </button>
+          <ResultBox result={isAdminCall.result} />
+        </div>
+
+        <div className="method-card">
           <div className="method-name">acl_grant_admin(account_hex)</div>
           <p className="method-hint">
             <code>init</code> seeds exactly ONE admin — a deterministic
@@ -315,7 +338,7 @@ export function AccessControlSection() {
             <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
               <input
                 className="form-control"
-                placeholder="account (64 hex)"
+                placeholder="account id"
                 value={adminAccount}
                 onChange={(e) => setAdminAccount(e.target.value)}
               />
@@ -342,7 +365,7 @@ export function AccessControlSection() {
           <div className="method-inputs">
             <input
               className="form-control"
-              placeholder="account (64 hex)"
+              placeholder="account id"
               value={revokeAdminAccount}
               onChange={(e) => setRevokeAdminAccount(e.target.value)}
             />
@@ -449,7 +472,7 @@ export function AccessControlSection() {
           <div className="method-inputs">
             <input
               className="form-control"
-              placeholder="account (64 hex)"
+              placeholder="account id"
               value={transferTo}
               onChange={(e) => setTransferTo(e.target.value)}
             />
@@ -506,7 +529,7 @@ export function AccessControlSection() {
             <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
               <input
                 className="form-control"
-                placeholder="new owner (64 hex)"
+                placeholder="new owner account id"
                 value={transferTo}
                 onChange={(e) => setTransferTo(e.target.value)}
               />

@@ -1,0 +1,244 @@
+[
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "createEvent",
+  "args": {
+   "eventData": {
+    "title": "guest-event",
+    "description": "",
+    "start": "2026-07-01T09:00:00",
+    "end": "2026-07-01T09:30:00",
+    "event_type": "event",
+    "color": "rgb(51, 182, 121)",
+    "peers": [
+     "@bob"
+    ]
+   }
+  },
+  "save": "g"
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getEvents",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "id": "$g",
+     "title": "guest-event",
+     "description": "",
+     "owner": "@gus",
+     "start": "2026-07-01T09:00:00",
+     "end": "2026-07-01T09:30:00",
+     "event_type": "event",
+     "color": "rgb(51, 182, 121)",
+     "peers": [
+      "@bob"
+     ],
+     "private": false
+    }
+   ]
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "view",
+  "method": "getEvents",
+  "args": {},
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "call",
+  "method": "createEvent",
+  "args": {
+   "eventData": {
+    "title": "x",
+    "description": "",
+    "start": "2026-07-01T09:00:00",
+    "end": "2026-07-01T09:30:00",
+    "event_type": "event",
+    "color": "rgb(51, 182, 121)",
+    "peers": []
+   }
+  },
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "view",
+  "method": "getBookingPage",
+  "args": {
+   "token": "t"
+  },
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "view",
+  "method": "getEvents",
+  "args": {},
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "call",
+  "method": "setUsername",
+  "args": {
+   "username": "m"
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "updateEvent",
+  "args": {
+   "eventId": "$g",
+   "eventData": {
+    "title": "x"
+   }
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "create_event",
+  "args": {
+   "eventData": {
+    "title": "x",
+    "description": "",
+    "start": "2026-07-01T09:00:00",
+    "end": "2026-07-01T09:30:00",
+    "event_type": "event",
+    "color": "rgb(51, 182, 121)",
+    "peers": []
+   }
+  },
+  "expect": {
+   "error": "UnknownMethod"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "createEvent",
+  "args": {
+   "eventData": {
+    "title": "x",
+    "description": "",
+    "start": "2026-07-01T09:00:00",
+    "end": "2026-07-01T09:30:00",
+    "event_type": "event",
+    "color": "rgb(51, 182, 121)",
+    "peers": []
+   }
+  },
+  "expect": {
+   "error": "NotAView"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createEvent",
+  "args": {
+   "eventData": {
+    "title": "x",
+    "description": "",
+    "start": "2026-07-01T09:00:00",
+    "end": "2026-07-01T09:30:00",
+    "event_type": "event",
+    "color": "rgb(51, 182, 121)",
+    "peers": []
+   },
+   "timestamp": "1"
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "deleteEvent",
+  "args": {
+   "eventId": "$g"
+  },
+  "expect": {
+   "ok": "$g"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "createEvent",
+  "args": {
+   "eventData": {
+    "title": "bob-event",
+    "description": "",
+    "start": "2026-07-01T09:00:00",
+    "end": "2026-07-01T09:30:00",
+    "event_type": "event",
+    "color": "rgb(51, 182, 121)",
+    "peers": [
+     "@gus"
+    ]
+   }
+  },
+  "save": "b"
+ },
+ {
+  "as": "owner",
+  "op": "removeMember",
+  "args": "bob"
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getEvents",
+  "args": {},
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "view",
+  "method": "getEvents",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "id": "$b",
+     "title": "bob-event",
+     "description": "",
+     "owner": "@bob",
+     "start": "2026-07-01T09:00:00",
+     "end": "2026-07-01T09:30:00",
+     "event_type": "event",
+     "color": "rgb(51, 182, 121)",
+     "peers": [
+      "@gus"
+     ],
+     "private": false
+    }
+   ]
+  }
+ }
+]

@@ -14,6 +14,11 @@ const APPS = path.resolve(__dirname, "../../../..");
  */
 const FROZEN_V1: Record<string, string> = {
   "mero-pass": path.join(__dirname, "../fixtures/abi/mero-pass-v1.json"),
+  "mero-issue-tracker": path.join(__dirname, "../fixtures/abi/mero-issue-tracker-v1.json"),
+  "mero-crm": path.join(__dirname, "../fixtures/abi/mero-crm-v1.json"),
+  "mero-sign": path.join(__dirname, "../fixtures/v1-abi/mero-sign.json"),
+  "mero-sheets": path.join(__dirname, "../fixtures/abi/mero-sheets-v1.json"),
+  "mero-calendar": path.join(__dirname, "../fixtures/abi/mero-calendar-v1.json"),
   "mero-chat": path.join(__dirname, "../fixtures/abi/mero-chat-v1.json"),
 };
 const abiOf = (app: string) =>

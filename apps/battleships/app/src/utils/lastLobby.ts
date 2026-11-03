@@ -9,8 +9,9 @@
  * set to the first lobby whether or not you ever entered it. This is only
  * written once you are IN a lobby.
  *
- * Scoped to the NODE: one browser can sign in to several nodes, and a
- * namespace id from one means nothing on another. It is only a hint — checked
+ * Scoped by the caller (`nodeUrl` is any scope string; the match page passes
+ * the target and the account): one browser can sign in to several clusters
+ * and accounts, and a lobby id from one means nothing on another. It is only a hint — checked
  * against what the node lists right now before anything opens, so a lobby you
  * have since left falls back to the picker instead of a screen that can only
  * fail (the rule mero-design's `lastVisit` uses).

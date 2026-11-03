@@ -1,0 +1,417 @@
+[
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "aclIsAdmin",
+  "args": {
+   "accountHex": "@owner"
+  },
+  "expect": {
+   "ok": true
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "aclIsAdmin",
+  "args": {
+   "accountHex": "@bob"
+  },
+  "expect": {
+   "ok": false
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "aclAdmins",
+  "args": {},
+  "expect": {
+   "ok": [
+    "@owner"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "aclRoles",
+  "args": {},
+  "expect": {
+   "ok": {
+    "editor": [
+     "write"
+    ],
+    "moderator": [
+     "write",
+     "delete"
+    ]
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "aclCapabilities",
+  "args": {}
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "aclGrant",
+  "args": {
+   "role": "editor",
+   "accountHex": "@bob"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "aclGrant",
+  "args": {
+   "role": "typo",
+   "accountHex": "@bob"
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "aclGrant",
+  "args": {
+   "role": "editor",
+   "accountHex": "nobody"
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "aclGrant",
+  "args": {
+   "role": "editor",
+   "accountHex": "@bob"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "aclHasRole",
+  "args": {
+   "role": "editor",
+   "accountHex": "@bob"
+  },
+  "expect": {
+   "ok": true
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "aclMembersOf",
+  "args": {
+   "role": "editor"
+  },
+  "expect": {
+   "ok": [
+    "@bob"
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "aclMyRoles",
+  "args": {},
+  "expect": {
+   "ok": [
+    "editor"
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "aclDocSet",
+  "args": {
+   "value": "by bob"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "aclProject",
+  "args": {},
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "aclProject",
+  "args": {},
+  "expect": {
+   "ok": "2"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "aclDocSet",
+  "args": {
+   "value": "by bob"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "view",
+  "method": "aclDocGet",
+  "args": {},
+  "expect": {
+   "ok": "by bob"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "aclDocSet",
+  "args": {
+   "value": "by carol"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "aclRevoke",
+  "args": {
+   "role": "editor",
+   "accountHex": "@bob"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "aclHasRole",
+  "args": {
+   "role": "editor",
+   "accountHex": "@bob"
+  },
+  "expect": {
+   "ok": false
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "aclDocSet",
+  "args": {
+   "value": "still bob"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "aclProject",
+  "args": {},
+  "expect": {
+   "ok": "1"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "aclDocSet",
+  "args": {
+   "value": "after revoke"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "aclGrantAdmin",
+  "args": {
+   "accountHex": "@carol"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "aclIsAdmin",
+  "args": {
+   "accountHex": "@carol"
+  },
+  "expect": {
+   "ok": true
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "aclDocSet",
+  "args": {
+   "value": "by admin carol"
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "aclRevokeAdmin",
+  "args": {
+   "accountHex": "@owner"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "aclIsAdmin",
+  "args": {
+   "accountHex": "@owner"
+  },
+  "expect": {
+   "ok": false
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "aclRevokeAdmin",
+  "args": {
+   "accountHex": "@carol"
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "aclAdmins",
+  "args": {},
+  "expect": {
+   "ok": [
+    "@carol"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "ownedOwner",
+  "args": {},
+  "expect": {
+   "ok": "@owner"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "ownedIsOwner",
+  "args": {
+   "accountHex": "@owner"
+  },
+  "expect": {
+   "ok": true
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "ownedSet",
+  "args": {
+   "value": "mine"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "ownedGet",
+  "args": {},
+  "expect": {
+   "ok": "mine"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "ownedSet",
+  "args": {
+   "value": "theirs"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "ownedTransfer",
+  "args": {
+   "accountHex": "@bob"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "ownedTransfer",
+  "args": {
+   "accountHex": "@bob"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "ownedOwner",
+  "args": {},
+  "expect": {
+   "ok": "@bob"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "ownedSet",
+  "args": {
+   "value": "back"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "ownedSet",
+  "args": {
+   "value": "bob's now"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "ownedGet",
+  "args": {},
+  "expect": {
+   "ok": "bob's now"
+  }
+ }
+]

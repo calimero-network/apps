@@ -1,0 +1,1014 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "BookingLinkView": {
+      "kind": "record",
+      "doc": "What the owner sees of a link.",
+      "fields": [
+        {
+          "name": "linkId",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "grantId",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "durationMinutes",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "weeklyHours",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "WeeklyWindow"
+            }
+          }
+        },
+        {
+          "name": "utcOffsetMinutes",
+          "type": {
+            "kind": "i32"
+          }
+        },
+        {
+          "name": "horizonDays",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "minNoticeMinutes",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "createdAtMs",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "expiresAtMs",
+          "type": {
+            "kind": "u64"
+          },
+          "nullable": true
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "booking",
+          "type": {
+            "$ref": "BookingView"
+          },
+          "nullable": true
+        }
+      ]
+    },
+    "BookingPage": {
+      "kind": "record",
+      "doc": "What a guest sees of a link.",
+      "fields": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ownerName",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "durationMinutes",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`open`, `booked` or `cancelled`."
+        },
+        {
+          "name": "expiresAtMs",
+          "type": {
+            "kind": "u64"
+          },
+          "nullable": true
+        },
+        {
+          "name": "booking",
+          "type": {
+            "$ref": "BookingView"
+          },
+          "nullable": true
+        }
+      ]
+    },
+    "BookingView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "startMs",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "endMs",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "guestName",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "guestEmail",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "guestNote",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bookedAtMs",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "rescheduledCount",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "CalendarEvent": {
+      "kind": "record",
+      "doc": "A calendar event as returned to the frontend. `private` distinguishes\nnode-local entries from shared ones so the UI can render them uniformly.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "owner",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "start",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "end",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "event_type",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "peers",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "bytes",
+              "size": 32
+            }
+          }
+        },
+        {
+          "name": "private",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
+    "CalendarEventState": {
+      "kind": "record",
+      "doc": "One shared event. Its real owner is the entry's owner stamp; `owner` here is\nonly the key of the `owner` index, and a row whose field disagrees with the\nstamp — what a patched node would write — is dropped on read.",
+      "fields": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "owner",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "start",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "end",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "event_type",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "peers",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "bytes",
+              "size": 32
+            }
+          },
+          "doc": "One `peers` index row per invitee."
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "CalendarState": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "events",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "CalendarEventState"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "Key is the event id; the value is the shared event, owned by the\naccount that created it. Only that account edits or deletes it."
+        },
+        {
+          "name": "members",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Member"
+            }
+          },
+          "doc": "Each member's display name, in their own slot."
+        }
+      ]
+    },
+    "CreateBookingLink": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "tokenHash",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Hex SHA-256 of the access grant's token. The token itself never reaches\nthe contract from the owner."
+        },
+        {
+          "name": "grantId",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "durationMinutes",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "weeklyHours",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "WeeklyWindow"
+            }
+          }
+        },
+        {
+          "name": "utcOffsetMinutes",
+          "type": {
+            "kind": "i32"
+          },
+          "doc": "The owner's UTC offset in minutes, east positive (UTC+2 is 120)."
+        },
+        {
+          "name": "horizonDays",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "How far ahead a guest may book."
+        },
+        {
+          "name": "minNoticeMinutes",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "How soon a guest may book."
+        },
+        {
+          "name": "expiresAtMs",
+          "type": {
+            "kind": "u64"
+          },
+          "nullable": true
+        }
+      ]
+    },
+    "CreateCalendarEvent": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "start",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "end",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "event_type",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "peers",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "bytes",
+              "size": 32
+            }
+          }
+        }
+      ]
+    },
+    "GuestDetails": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "email",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "note",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Member": {
+      "kind": "record",
+      "doc": "A context member with a human-readable display name, in the member's own\n`UserStorage` slot (keyed by ACCOUNT), so the UI can resolve `owner`/`peers`\nto names. `id` is filled from the slot's key on read, never trusted from\nthe stored value.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "username",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "joinedAt",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "usernameUpdatedAt",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Dedicated LWW clock for username edits. Merging on `joined_at` (which\nnever changes after first join) would freeze a username at its first\nvalue across nodes; this is the real last-writer-wins timestamp."
+        }
+      ]
+    },
+    "UpdateCalendarEvent": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "start",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "end",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "event_type",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "peers",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "bytes",
+              "size": 32
+            }
+          },
+          "nullable": true
+        }
+      ]
+    },
+    "WeeklyWindow": {
+      "kind": "record",
+      "doc": "One stretch of the week the owner takes bookings in: `weekday` 0 is Monday,\nminutes are wall-clock minutes of that day at the link's UTC offset.",
+      "fields": [
+        {
+          "name": "weekday",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "startMinute",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "endMinute",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    }
+  },
+  "methods": [
+    {
+      "name": "book_slot",
+      "doc": "Book the slot starting at `start_ms`. A link books once: after this it\ncan only reschedule or cancel.",
+      "params": [
+        {
+          "name": "token",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "start_ms",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "guest",
+          "type": {
+            "$ref": "GuestDetails"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "BookingView"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "cancel_booking",
+      "doc": "Cancel the link's meeting. The link is spent afterwards.",
+      "params": [
+        {
+          "name": "token",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "create_booking_link",
+      "doc": "Create a booking link for the access-grant token whose SHA-256 is\n`link.token_hash`. The owner's client issued the grant first; the token\nitself never reaches the contract from the owner.",
+      "params": [
+        {
+          "name": "link",
+          "type": {
+            "$ref": "CreateBookingLink"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "BookingLinkView"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "create_event",
+      "doc": "Create an event, routing it to private or shared storage BY WHETHER\nANYONE ELSE IS IN IT.\n\nAn event with no peers is one person's own entry. Writing it to\n`#[app::state]` would replicate it to every node in the context and put\nit in the DAG permanently — for data that, by definition, nobody else is\nparty to. So it goes to `#[app::private]` instead: node-local, never\ngossiped, no DAG growth.\n\nPeers are what make an event shared. The moment there is someone to share\nit WITH, replication is the point, and it goes to the DAG.\n\n⚠️ This is enforced HERE and not in the client, deliberately. The\nfrontend already had a `private` flag it could route on, but a client\nchoosing whether data enters the permanent replicated log is a client\ndeciding someone else's privacy. The contract is the only place that\ncannot be bypassed.\n\n`create_private_event` remains for \"private even though peers were\nnamed\" — an explicit override rather than the default path.",
+      "params": [
+        {
+          "name": "event_data",
+          "type": {
+            "$ref": "CreateCalendarEvent"
+          }
+        },
+        {
+          "name": "timestamp",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "create_private_event",
+      "doc": "Private events live in `#[app::private]` storage, so they are never\nreplicated to peers. `peers` on the request is ignored — a private event\nis, by definition, not shared.\n\nTakes `&mut self` so the runtime commits and flushes the private write;\na `&self` method's private writes would be silently discarded.",
+      "params": [
+        {
+          "name": "event_data",
+          "type": {
+            "$ref": "CreateCalendarEvent"
+          }
+        },
+        {
+          "name": "timestamp",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "delete_booking_link",
+      "doc": "Delete a link. A meeting it booked stays in the calendar; delete that\nevent to drop it. The caller revokes the link's access grant too.",
+      "params": [
+        {
+          "name": "link_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "delete_event",
+      "params": [
+        {
+          "name": "event_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "delete_private_event",
+      "params": [
+        {
+          "name": "event_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "get_available_slots",
+      "doc": "The start times, in Unix milliseconds, the link behind `token` offers in\n`[from_ms, to_ms)`.\n\nThe window is clamped, never refused: it starts no earlier than now and\nspans at most `MAX_SLOT_RANGE_DAYS`. So `(0, u64::MAX)` asks for the next\nopen slots without the caller knowing the time.",
+      "params": [
+        {
+          "name": "token",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "from_ms",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "to_ms",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "u64"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_booking_page",
+      "doc": "What the link behind `token` offers, and its booking if it has one.",
+      "params": [
+        {
+          "name": "token",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "BookingPage"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_events",
+      "doc": "The shared events the caller owns or is invited to — two seeks, on the\n`owner` and `peers` indexes.\n\nThis is a view filter, not access control: every member's node holds\nevery shared event. See the module docs.",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "CalendarEvent"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_members",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Member"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_private_events",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "CalendarEvent"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "init",
+      "params": [],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "list_booking_links",
+      "doc": "Every booking link this node holds, newest first.",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "BookingLinkView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "reschedule_booking",
+      "doc": "Move the link's meeting to the slot starting at `start_ms`.",
+      "params": [
+        {
+          "name": "token",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "start_ms",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "BookingView"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_username",
+      "doc": "Register or refresh the caller's display name. Idempotent: first call\njoins, later calls rename. The id is the real signer, so a member can\nonly ever name themselves.",
+      "params": [
+        {
+          "name": "username",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "timestamp",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "update_event",
+      "doc": "Update a shared event.\n\n⚠️ Emptying `peers` does NOT move the event back to private storage.\nOnce shared, the event is in the DAG on every node in the context, and the\nDAG is append-only — nothing here can retract it. Moving the local copy\ninto private storage would leave that replicated history in place while\nmaking the UI report the event as private, which is worse than saying\nplainly that sharing is one-way.\n\nRemoving peers changes the audience, not who holds it: `get_events`\nlists an event only to its owner and peers, so it drops out of a\nremoved peer's calendar — but that is a view filter, and every member's\nnode still holds the event.\n\nOnly the owner may update it; every node refuses anyone else's edit.",
+      "params": [
+        {
+          "name": "event_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "event_data",
+          "type": {
+            "$ref": "UpdateCalendarEvent"
+          }
+        },
+        {
+          "name": "timestamp",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "update_private_event",
+      "doc": "Update a private event — and PROMOTE it to shared storage if this update\nis what adds the first peer.\n\nThis is the other half of `create_event`'s routing. Without it, an event\ncreated alone and later shared with someone would stay node-local, so the\npeer would never receive it and the share would silently do nothing.\n\nPromotion is one-way, and that is not an omission. Removing every peer\nfrom a shared event does NOT move it back: by then the event is already in\nthe DAG on every node in the context, and the DAG is append-only. Moving\nthe local copy into private storage would leave the replicated history\nuntouched while making the UI claim the event had become private — which\nis a worse outcome than being honest that sharing cannot be undone. See\n`update_event`.",
+      "params": [
+        {
+          "name": "event_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "event_data",
+          "type": {
+            "$ref": "UpdateCalendarEvent"
+          }
+        },
+        {
+          "name": "timestamp",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    }
+  ],
+  "events": [
+    {
+      "name": "CalendarEventCreated",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "CalendarEventDeleted",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "CalendarEventEdited",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "MemberJoined",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "MemberUsernameUpdated",
+      "payload": {
+        "kind": "string"
+      }
+    }
+  ],
+  "state_root": "CalendarState",
+  "state_version": 1
+}

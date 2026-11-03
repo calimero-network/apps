@@ -1,33 +1,34 @@
-//! Booking links: a Calendly-style link that lets someone with no account book
-//! one meeting on the owner's calendar, and later reschedule or cancel it.
+//! Booking links: a link that lets someone with no account book one meeting
+//! on the owner's calendar, and later reschedule or cancel it.
 //!
 //! # Who calls what
 //!
-//! The owner calls `create_booking_link`, `list_booking_links` and
-//! `delete_booking_link` from their own node, as with every other method.
+//! The owner calls `createBookingLink`, `listBookingLinks` and
+//! `deleteBookingLink`, as with every other method.
 //!
-//! The guest has no account and no node. The owner's node issues them a core
-//! **access grant** (`POST /admin-api/contexts/:id/grants`) naming only the five
-//! guest methods below, and the guest calls them through the public
-//! `/grant-calls` route with the grant's token. The node runs those calls as
-//! itself, so inside the contract the caller is the owner; what tells one guest
-//! from another is the token, which every guest method takes as `token`. The
-//! link is stored under the SHA-256 of that token, so the contract keeps no
-//! secret and a token opens exactly one link.
+//! The guest has no account. The owner's client creates a core **API key** for
+//! the owner's account (`createApiKey`, a passkey step-up) limited to this app
+//! and to the five guest methods below, and hands it to the guest in the link.
+//! The guest's browser calls those methods with the key, so inside the contract
+//! the caller is `Caller::ApiKey { account: <owner> }`: the methods act on the
+//! owner's links and calendar. What tells one guest from another is the key
+//! itself, which every guest method also takes as `token`. A link is stored
+//! under the SHA-256 of that token, so the contract keeps no secret and a token
+//! opens exactly one link of exactly one owner.
 //!
-//! - `get_booking_page(token)` — what the link offers, and the booking if any
-//! - `get_available_slots(token, from_ms, to_ms)` — free start times
-//! - `book_slot(token, start_ms, guest)` — book once
-//! - `reschedule_booking(token, start_ms)` — move that booking
-//! - `cancel_booking(token)` — cancel it; the link is then spent
+//! - `getBookingPage(token)`: what the link offers, and the booking if any
+//! - `getAvailableSlots(token, fromMs, toMs)`: free start times
+//! - `bookSlot(token, startMs, guest)`: book once
+//! - `rescheduleBooking(token, startMs)`: move that booking
+//! - `cancelBooking(token)`: cancel it; the link is then spent
 //!
-//! # Why everything here is private storage
+//! # Where it lives
 //!
-//! Links, guests' names and emails, and the booked meetings live in
-//! `#[app::private]` storage on the owner's node and never replicate. A team
-//! member has no business holding the owner's booking links, and a guest's email
-//! is not team data. It also means only the owner's node can ever answer a
-//! guest: on any other node the link does not exist.
+//! v1 kept links, guests' names and emails and the booked meetings in
+//! `#[app::private]` node-local storage on the owner's node. The component
+//! runtime has no node-local storage: they are rows of the app's state keyed
+//! by the owner's account, and every method that reads them reads only the
+//! caller's own. No method answers another account's links or bookings.
 //!
 //! # Time
 //!
@@ -38,19 +39,15 @@
 //! either ISO 8601 or the format a browser's `Date.toString()` produces, and
 //! [`parse_event_time_ms`] reads both so they can block slots.
 
-use calimero_sdk::abi::AbiType;
-use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
-use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::{app, env};
-use calimero_storage::collections::UnorderedMap;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 /// One minute, in milliseconds.
 const MINUTE_MS: i64 = 60_000;
 /// One day, in milliseconds.
-const DAY_MS: i64 = 86_400_000;
-/// The widest window `get_available_slots` answers for, so a guest cannot make
-/// the owner's node enumerate a year of slots in one call.
+pub const DAY_MS: i64 = 86_400_000;
+/// The widest window `getAvailableSlots` answers for, so a guest cannot make
+/// the cluster enumerate a year of slots in one call.
 pub const MAX_SLOT_RANGE_DAYS: i64 = 62;
 /// The most slots one answer carries.
 pub const MAX_SLOTS: usize = 1_000;
@@ -59,27 +56,24 @@ pub const MAX_DESCRIPTION_LEN: usize = 2_000;
 pub const MAX_GUEST_NAME_LEN: usize = 100;
 pub const MAX_GUEST_EMAIL_LEN: usize = 254;
 pub const MAX_GUEST_NOTE_LEN: usize = 2_000;
+/// The most weekly windows a link holds: eight a day.
+pub const MAX_WEEKLY_WINDOWS: usize = 7 * 8;
 /// The color a booked meeting is drawn in.
 const BOOKING_COLOR: &str = "rgb(121, 134, 203)";
 
-// ── Stored state (node-local) ───────────────────────────────────────────────
+// ── Stored state ────────────────────────────────────────────────────────────
 
 /// One stretch of the week the owner takes bookings in: `weekday` 0 is Monday,
 /// minutes are wall-clock minutes of that day at the link's UTC offset.
-#[derive(
-    Clone, Debug, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType,
-)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WeeklyWindow {
     pub weekday: u8,
     pub start_minute: u16,
     pub end_minute: u16,
 }
 
-#[derive(Clone, Debug, BorshSerialize, BorshDeserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BookingState {
     /// The private event the meeting is in the owner's calendar as.
     pub event_id: String,
@@ -92,8 +86,7 @@ pub struct BookingState {
     pub rescheduled_count: u32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LinkStatus {
     /// Nothing booked yet.
     Open,
@@ -113,15 +106,19 @@ impl LinkStatus {
     }
 }
 
-#[derive(Clone, Debug, BorshSerialize, BorshDeserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
+/// One booking link, stored under `(owner, linkId)`. A plain value in a map,
+/// not a table record: it holds lists (`weeklyHours`) and a nested booking.
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BookingLinkState {
-    /// The core access grant the token belongs to, so the owner's client can
-    /// revoke it with the link. Opaque here.
+    /// The core API key the token is, so the owner's client can revoke it with
+    /// the link. Opaque here. (v1: the access grant's id.)
     pub grant_id: String,
     pub title: String,
     pub description: String,
     pub duration_minutes: u32,
+    /// A short list kept inside the value: at most `MAX_WEEKLY_WINDOWS` (56),
+    /// enforced by `validate_link` before the only write that sets it
+    /// (`createBookingLink`).
     pub weekly_hours: Vec<WeeklyWindow>,
     pub utc_offset_minutes: i32,
     pub horizon_days: u32,
@@ -132,31 +129,18 @@ pub struct BookingLinkState {
     pub booking: Option<BookingState>,
 }
 
-/// The owner's booking links, keyed by the hex SHA-256 of each link's token.
-#[derive(BorshSerialize, BorshDeserialize, Debug)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[app::private]
-pub struct BookingLinks {
-    pub links: UnorderedMap<String, BookingLinkState>,
-}
-
-impl Default for BookingLinks {
-    fn default() -> Self {
-        Self {
-            links: UnorderedMap::new(),
-        }
-    }
-}
-
 // ── Requests and views ──────────────────────────────────────────────────────
+//
+// 64-bit integers are decimal strings in JSON (core's D20 rule), in both
+// directions.
 
-#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CreateBookingLink {
-    /// Hex SHA-256 of the access grant's token. The token itself never reaches
-    /// the contract from the owner.
+    /// Hex SHA-256 of the API key (the guest's token). The token itself never
+    /// reaches the contract from the owner.
     pub token_hash: String,
+    /// The API key's id.
     pub grant_id: String,
     pub title: String,
     #[serde(default)]
@@ -170,13 +154,12 @@ pub struct CreateBookingLink {
     /// How soon a guest may book.
     #[serde(default)]
     pub min_notice_minutes: u32,
-    #[serde(default)]
+    #[serde(default, with = "calimero_app_sdk::json::opt_u64_str")]
     pub expires_at_ms: Option<u64>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GuestDetails {
     pub name: String,
     pub email: String,
@@ -184,22 +167,23 @@ pub struct GuestDetails {
     pub note: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BookingView {
+    #[serde(with = "calimero_app_sdk::json::u64_str")]
     pub start_ms: u64,
+    #[serde(with = "calimero_app_sdk::json::u64_str")]
     pub end_ms: u64,
     pub guest_name: String,
     pub guest_email: String,
     pub guest_note: String,
+    #[serde(with = "calimero_app_sdk::json::u64_str")]
     pub booked_at_ms: u64,
     pub rescheduled_count: u32,
 }
 
 /// What a guest sees of a link.
-#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BookingPage {
     pub title: String,
@@ -208,13 +192,13 @@ pub struct BookingPage {
     pub duration_minutes: u32,
     /// `open`, `booked` or `cancelled`.
     pub status: String,
+    #[serde(with = "calimero_app_sdk::json::opt_u64_str")]
     pub expires_at_ms: Option<u64>,
     pub booking: Option<BookingView>,
 }
 
 /// What the owner sees of a link.
-#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BookingLinkView {
     pub link_id: String,
@@ -226,7 +210,9 @@ pub struct BookingLinkView {
     pub utc_offset_minutes: i32,
     pub horizon_days: u32,
     pub min_notice_minutes: u32,
+    #[serde(with = "calimero_app_sdk::json::u64_str")]
     pub created_at_ms: u64,
+    #[serde(with = "calimero_app_sdk::json::opt_u64_str")]
     pub expires_at_ms: Option<u64>,
     pub status: String,
     pub booking: Option<BookingView>,
@@ -289,12 +275,17 @@ impl BookingLinkState {
 
 // ── Validation ──────────────────────────────────────────────────────────────
 
-/// The id a token's link is stored under: hex SHA-256 of the token's text.
-///
-/// The owner's browser computes the same value (Web Crypto) when it creates the
-/// link, so the token itself never has to be handed to the contract by the owner.
+/// The id a token's link is stored under: lowercase hex SHA-256 of the token's
+/// text. The owner's browser computes the same value (Web Crypto) when it
+/// creates the link.
 pub fn link_id_of(token: &str) -> String {
-    hex::encode(Sha256::digest(token.as_bytes()))
+    let digest = Sha256::digest(token.as_bytes());
+    let mut out = String::with_capacity(64);
+    for byte in digest {
+        out.push(char::from(b"0123456789abcdef"[usize::from(byte >> 4)]));
+        out.push(char::from(b"0123456789abcdef"[usize::from(byte & 0xf)]));
+    }
+    out
 }
 
 fn is_hex_sha256(value: &str) -> bool {
@@ -304,59 +295,62 @@ fn is_hex_sha256(value: &str) -> bool {
             .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
 }
 
-fn check_len(value: &str, field: &str, max: usize) -> app::Result<()> {
+/// A validation failure: the message v1 bailed with.
+pub type Invalid = String;
+
+fn check_len(value: &str, field: &str, max: usize) -> Result<(), Invalid> {
     if value.chars().count() > max {
-        app::bail!("{field} cannot be longer than {max} characters");
+        return Err(format!("{field} cannot be longer than {max} characters"));
     }
     Ok(())
 }
 
-pub fn validate_link(link: &CreateBookingLink) -> app::Result<()> {
+pub fn validate_link(link: &CreateBookingLink) -> Result<(), Invalid> {
     if !is_hex_sha256(&link.token_hash) {
-        app::bail!("tokenHash must be a lowercase hex SHA-256");
+        return Err("tokenHash must be a lowercase hex SHA-256".to_owned());
     }
     if link.title.trim().is_empty() {
-        app::bail!("title cannot be empty");
+        return Err("title cannot be empty".to_owned());
     }
     check_len(&link.title, "title", MAX_TITLE_LEN)?;
     check_len(&link.description, "description", MAX_DESCRIPTION_LEN)?;
+    check_len(&link.grant_id, "grantId", 256)?;
     if !(5..=480).contains(&link.duration_minutes) {
-        app::bail!("durationMinutes must be between 5 and 480");
+        return Err("durationMinutes must be between 5 and 480".to_owned());
     }
     if !(1..=365).contains(&link.horizon_days) {
-        app::bail!("horizonDays must be between 1 and 365");
+        return Err("horizonDays must be between 1 and 365".to_owned());
     }
     if !(-14 * 60..=14 * 60).contains(&link.utc_offset_minutes) {
-        app::bail!("utcOffsetMinutes must be within ±14 hours");
+        return Err("utcOffsetMinutes must be within ±14 hours".to_owned());
     }
     if link.weekly_hours.is_empty() {
-        app::bail!("weeklyHours cannot be empty");
+        return Err("weeklyHours cannot be empty".to_owned());
     }
-    if link.weekly_hours.len() > 7 * 8 {
-        app::bail!("weeklyHours has too many windows");
+    if link.weekly_hours.len() > MAX_WEEKLY_WINDOWS {
+        return Err("weeklyHours has too many windows".to_owned());
     }
     for window in &link.weekly_hours {
         if window.weekday > 6
             || window.end_minute > 1440
             || window.start_minute >= window.end_minute
         {
-            app::bail!(
-                "weekly window {:?} must have weekday 0-6 and 0 <= start < end <= 1440",
-                window
-            );
+            return Err(format!(
+                "weekly window {window:?} must have weekday 0-6 and 0 <= start < end <= 1440"
+            ));
         }
     }
     Ok(())
 }
 
-pub fn validate_guest(guest: &GuestDetails) -> app::Result<()> {
+pub fn validate_guest(guest: &GuestDetails) -> Result<(), Invalid> {
     if guest.name.trim().is_empty() {
-        app::bail!("name cannot be empty");
+        return Err("name cannot be empty".to_owned());
     }
     check_len(&guest.name, "name", MAX_GUEST_NAME_LEN)?;
     let email = guest.email.trim();
     if email.is_empty() || !email.contains('@') {
-        app::bail!("email must be an email address");
+        return Err("email must be an email address".to_owned());
     }
     check_len(email, "email", MAX_GUEST_EMAIL_LEN)?;
     check_len(&guest.note, "note", MAX_GUEST_NOTE_LEN)?;
@@ -430,11 +424,6 @@ pub fn available_slots(
     slots.sort_unstable();
     slots.dedup();
     slots
-}
-
-/// The current time, in Unix milliseconds.
-pub fn now_ms() -> u64 {
-    env::time_now() / 1_000_000
 }
 
 // ── Reading event times ─────────────────────────────────────────────────────

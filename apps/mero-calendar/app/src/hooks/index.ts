@@ -9,7 +9,7 @@ import { useTypedSelector } from "./useTypedSelector";
 import { useWindowSize } from "./useWindowSize";
 import { useForm } from "./useForm";
 import { useMembers } from "./useMembers";
-import { useSse } from "./useSse";
+import { useAppEvents } from "./useAppEvents";
 
 export {
   useCalendar,
@@ -23,5 +23,5 @@ export {
   useWindowSize,
   useForm,
   useMembers,
-  useSse,
+  useAppEvents,
 };

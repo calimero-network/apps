@@ -1,24 +1,27 @@
 import '@calimero-apps/glass/glass.css';
-import React from 'react';
+import { StrictMode, type ReactNode } from 'react';
 import ReactDOM from 'react-dom/client';
 import '@calimero-network/mero-ui/styles.css';
 import '@fontsource-variable/jetbrains-mono';
 import './index.css';
 import App from './App';
-import { primeInvitationCapture } from '@calimero-network/mero-react';
-import { APP_SLUG } from './utils/invitation';
+import { captureInvite } from './lobbies';
 
-// An invitation reaches this app only as an opened link: the links page (or a
-// cold desktop start) appends `?invitation=…` to this URL, and a running
-// desktop sends a `deep-link` event. Captured before the router can rewrite
-// the URL; a link addressed to another app is dropped, not offered.
-primeInvitationCapture('battleships', { slug: APP_SLUG });
+// Before React mounts: a person opening an invitation link is usually not
+// signed in yet, and the token has to survive the passkey sign-up.
+captureInvite();
 
-const root = ReactDOM.createRoot(
-  document.getElementById('root') as HTMLElement,
-);
-root.render(
-  <React.StrictMode>
+// StrictMode in dev only. Double-invoking effects is useful for catching
+// missing cleanup and actively misleading when you are reading a call log.
+const Wrapper = import.meta.env.DEV
+  ? StrictMode
+  : ({ children }: { children: ReactNode }) => <>{children}</>;
+
+const root = document.getElementById('root');
+if (!root) throw new Error('#root is missing from index.html');
+
+ReactDOM.createRoot(root).render(
+  <Wrapper>
     <App />
-  </React.StrictMode>,
+  </Wrapper>,
 );

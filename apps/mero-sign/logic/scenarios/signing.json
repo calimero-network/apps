@@ -1,0 +1,244 @@
+[
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setup",
+  "args": {
+   "isPrivate": false,
+   "contextName": "Series A Agreement"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "whoami",
+  "args": {},
+  "expect": {
+   "ok": "@owner"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "registerSelfAsParticipant",
+  "args": {},
+  "expect": {
+   "ok": null
+  },
+  "events": {
+   "owner": [
+    "ParticipantJoined"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getUserPermission",
+  "args": {
+   "userIdStr": "@bob"
+  },
+  "expect": {
+   "ok": "Sign"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "uploadDocument",
+  "args": {
+   "name": "Series A Agreement.pdf",
+   "hash": "h0",
+   "pdfBlobIdStr": "abababababababababababababababababababababababababababababababab",
+   "fileSize": "1024",
+   "embeddings": null,
+   "extractedText": null,
+   "chunks": null
+  },
+  "save": "doc",
+  "events": {
+   "bob": [
+    "ParticipantJoined",
+    "DocumentUploaded"
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setConsent",
+  "args": {
+   "documentId": "$doc"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "hasConsented",
+  "args": {
+   "userIdStr": "@bob",
+   "documentId": "$doc"
+  },
+  "expect": {
+   "ok": true
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "signDocument",
+  "args": {
+   "documentId": "$doc",
+   "baseHash": "h0",
+   "pdfBlobIdStr": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+   "fileSize": "2048",
+   "newHash": "h1"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setConsent",
+  "args": {
+   "documentId": "$doc"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "signDocument",
+  "args": {
+   "documentId": "$doc",
+   "baseHash": "h0",
+   "pdfBlobIdStr": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+   "fileSize": "2048",
+   "newHash": "h2"
+  },
+  "expect": {
+   "error": "Conflict"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "signDocument",
+  "args": {
+   "documentId": "$doc",
+   "baseHash": "h1",
+   "pdfBlobIdStr": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+   "fileSize": "2048",
+   "newHash": "h2"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "markParticipantSigned",
+  "args": {
+   "documentId": "$doc"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "signDocument",
+  "args": {
+   "documentId": "$doc",
+   "baseHash": "h2",
+   "pdfBlobIdStr": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+   "fileSize": "2048",
+   "newHash": "h3"
+  },
+  "expect": {
+   "error": "Conflict",
+   "fields": {
+    "message": "This document is fully signed and takes no more signatures"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "deleteDocument",
+  "args": {
+   "documentId": "$doc"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "Admin permissions required for this operation"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setParticipantPermission",
+  "args": {
+   "userIdStr": "@bob",
+   "permission": "Admin"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "deleteDocument",
+  "args": {
+   "documentId": "$doc"
+  },
+  "expect": {
+   "ok": null
+  },
+  "events": {
+   "owner": [
+    "ParticipantJoined",
+    "DocumentUploaded",
+    "DocumentSigned",
+    "DocumentSigned",
+    "ParticipantPermissionChanged",
+    "DocumentDeleted"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "listDocuments",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getDocumentSignatures",
+  "args": {
+   "documentId": "$doc"
+  },
+  "expect": {
+   "ok": []
+  }
+ }
+]
