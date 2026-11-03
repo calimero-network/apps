@@ -11,7 +11,7 @@ final class GroupsModelTests: XCTestCase {
         let (backend, script) = makeBackend()
         backend.namespaces = [AppNamespace(id: ns, name: "Design", applicationId: backend.applicationId)]
         backend.rootContexts = [ns: [ctx]]
-        script.on("list_polls") { _ in
+        script.on("listPolls") { _ in
             [
                 PollSummary(pollId: "p1", title: "Old", creator: me, phase: .closed, createdAt: 1, ballots: 3),
                 PollSummary(pollId: "p2", title: "New", creator: me, phase: .voting, createdAt: 2, ballots: 0),
@@ -26,7 +26,7 @@ final class GroupsModelTests: XCTestCase {
         XCTAssertEqual(row?.polls, 2)
         XCTAssertEqual(row?.open, 1)
         XCTAssertEqual(row?.latest, "New")
-        XCTAssertEqual(backend.recording.calls("list_polls").first?.path, .query)
+        XCTAssertEqual(backend.recording.calls("listPolls").first?.path, .query)
     }
 
     func testNewWorkspaceFoundsItAndCreatesItsFirstGroup() async throws {
@@ -45,7 +45,7 @@ final class GroupsModelTests: XCTestCase {
 
     func testAnotherGroupGoesDirectlyInTheNamespace() async throws {
         let (backend, script) = makeBackend()
-        script.on("list_polls") { _ in [PollSummary]() }
+        script.on("listPolls") { _ in [PollSummary]() }
         backend.namespaces = [AppNamespace(id: ns, name: "Design", applicationId: backend.applicationId)]
         let model = GroupsModel(backend: backend, applicationId: "")
         await model.load()
@@ -69,7 +69,7 @@ final class GroupModelTests: XCTestCase {
         let (backend, script) = makeBackend()
         script.on("whoami") { _ in Identity(account: me) }
         script.on("roster") { _ in [Member(account: bob, name: "Bob")] }
-        script.on("list_polls") { _ in
+        script.on("listPolls") { _ in
             [
                 PollSummary(pollId: "a", title: "A", creator: bob, phase: .keyCeremony, createdAt: 1, ballots: 0),
                 PollSummary(pollId: "b", title: "B", creator: me, phase: .voting, createdAt: 2, ballots: 1),
@@ -94,15 +94,15 @@ final class GroupModelTests: XCTestCase {
 
     func testSetNameTrimsAndSends() async throws {
         let (backend, script, model) = scripted()
-        script.on("set_name") { _ in JSONValue.null }
+        script.on("setName") { _ in JSONValue.null }
         try await model.setName("  Ada ")
-        XCTAssertEqual(backend.recording.calls("set_name").first?.string("name"), "Ada")
-        XCTAssertEqual(backend.recording.calls("set_name").first?.path, .execute)
+        XCTAssertEqual(backend.recording.calls("setName").first?.string("name"), "Ada")
+        XCTAssertEqual(backend.recording.calls("setName").first?.path, .execute)
     }
 
     func testCreatePollSendsTheWebsArguments() async throws {
         let (backend, script, model) = scripted()
-        script.on("create_poll") { _ in "poll-1" }
+        script.on("createPoll") { _ in "poll-1" }
         await model.refresh()
         var draft = PollDraft(me: me, roster: model.roster)
         draft.title = " Lunch? "
@@ -112,11 +112,11 @@ final class GroupModelTests: XCTestCase {
         XCTAssertEqual(draft.trusteeNote(me: me)?.warning, false)
         let id = try await model.createPoll(draft)
         XCTAssertEqual(id, "poll-1")
-        let call = try XCTUnwrap(backend.recording.calls("create_poll").first)
+        let call = try XCTUnwrap(backend.recording.calls("createPoll").first)
         XCTAssertEqual(call.string("title"), "Lunch?")
         XCTAssertEqual(try call.decode([String].self, "options"), ["Pizza", "Sushi"])
-        XCTAssertEqual(call.args["min_choices"]?.intValue, 1)
-        XCTAssertEqual(call.args["max_choices"]?.intValue, 1)
+        XCTAssertEqual(call.args["minChoices"]?.intValue, 1)
+        XCTAssertEqual(call.args["maxChoices"]?.intValue, 1)
         XCTAssertEqual(call.args["threshold"]?.intValue, 2)
         XCTAssertEqual(try call.decode([String].self, "voters"), [])
         XCTAssertEqual(Set(try call.decode([String].self, "trustees")), [me, bob])
@@ -126,9 +126,9 @@ final class GroupModelTests: XCTestCase {
         draft.everyone = false
         draft.voters = [bob]
         _ = try await model.createPoll(draft)
-        let multi = try XCTUnwrap(backend.recording.calls("create_poll").last)
-        XCTAssertEqual(multi.args["min_choices"]?.intValue, 0)
-        XCTAssertEqual(multi.args["max_choices"]?.intValue, 2, "clamped to the options filled in")
+        let multi = try XCTUnwrap(backend.recording.calls("createPoll").last)
+        XCTAssertEqual(multi.args["minChoices"]?.intValue, 0)
+        XCTAssertEqual(multi.args["maxChoices"]?.intValue, 2, "clamped to the options filled in")
         XCTAssertEqual(try multi.decode([String].self, "voters"), [bob])
     }
 
@@ -141,16 +141,35 @@ final class GroupModelTests: XCTestCase {
             _ = try await model.createPoll(draft)
             XCTFail("expected a refusal")
         } catch {}
-        XCTAssertTrue(backend.recording.calls("create_poll").isEmpty)
+        XCTAssertTrue(backend.recording.calls("createPoll").isEmpty)
     }
 
-    func testInviteLinkIsTheWebFormatAndNamesThisGroup() async throws {
+    func testInviteLinkIsTheSDKFormatAndNamesThisGroup() async throws {
         let (_, _, model) = scripted()
         let link = try await model.inviteLink()
         XCTAssertTrue(link.hasPrefix("https://links.calimero.network/com.calimero.mero-vote/join?invitation="))
         let parsed = try XCTUnwrap(VoteInvitation.parse(link))
         XCTAssertEqual(parsed.contextId, ctx)
         XCTAssertEqual(parsed.namespaceId, ns)
+        let sdk = try XCTUnwrap(OrgInvitation.parse(link, expectedSlug: VoteConstants.packageName))
+        XCTAssertEqual(sdk.namespaceId, ns)
+        XCTAssertEqual(sdk.contextId, ctx)
+    }
+
+    func testRefusesPre10SignedInvitations() {
+        let pre10 = #"{"invitation":{"invitation":{"group_id":[1]},"inviter_signature":"ff"},"namespaceId":"ab","contextId":"cd"}"#
+        XCTAssertNil(VoteInvitation.parse(pre10))
+        let orgOnly = VoteInvitation.parse(#"{"invitation":"inv_x","namespaceId":"ab"}"#)
+        XCTAssertNotNil(orgOnly)
+        XCTAssertNil(orgOnly?.contextId, "no voting group named: the org's first one opens")
+    }
+
+    func testReadsTheWebAppsInviteLinks() throws {
+        let web = try XCTUnwrap(VoteInvitation.parse("https://vote.example.com/?invite=inv_abc123"))
+        XCTAssertEqual(web.invitation.token, "inv_abc123")
+        XCTAssertNil(web.contextId)
+        XCTAssertEqual(try XCTUnwrap(VoteInvitation.parse("inv_abc123")).invitation.token, "inv_abc123")
+        XCTAssertNil(VoteInvitation.parse("https://vote.example.com/?other=1"))
     }
 }
 
@@ -182,6 +201,15 @@ final class InvitationModelTests: XCTestCase {
         XCTAssertTrue(backend.members.contains(ctx))
     }
 
+    func testAWebLinkJoinsTheOrgTheNodeNames() async throws {
+        let (backend, _) = makeBackend()
+        let model = InvitationModel(attempts: 1, retryDelay: .milliseconds(1))
+        XCTAssertTrue(model.open("https://vote.example.com/?invite=inv_abc123"))
+        await model.accept(backend: { backend }, didJoin: {})
+        XCTAssertTrue(backend.log.contains("joinNamespace "))
+        guard case .joinedWorkspace = model.stage else { return XCTFail("expected the workspace joined: \(model.stage)") }
+    }
+
     func testAJoinFailureIsShown() async throws {
         let (backend, _) = makeBackend()
         let link = try VoteInvitation(invitation: try await backend.createInvitation(namespaceId: ns), contextId: ctx).link()
@@ -206,8 +234,8 @@ final class PollModelTests: XCTestCase {
         let (key, election) = vectorElection()
         let def = definition()
         script.on("whoami") { _ in Identity(account: me) }
-        script.on("get_poll") { _ in pollView(def, phase: .voting, election: election) }
-        script.on("cast_ballot") { _ in "receipt" }
+        script.on("getPoll") { _ in pollView(def, phase: .voting, election: election) }
+        script.on("castBallot") { _ in "receipt" }
         let model = PollModel(backend: backend, group: groupRef(), pollId: pollId, keys: MemoryTrusteeKeyStore())
         await model.load()
         XCTAssertFalse(model.canCast, "nothing picked yet")
@@ -219,7 +247,7 @@ final class PollModelTests: XCTestCase {
         XCTAssertNil(model.error)
         XCTAssertNotNil(model.note)
         XCTAssertEqual(model.selection, [false, false, false], "the plaintext is forgotten")
-        let call = try XCTUnwrap(backend.recording.calls("cast_ballot").first)
+        let call = try XCTUnwrap(backend.recording.calls("castBallot").first)
         XCTAssertEqual(call.path, .execute)
         let wire = try call.decode(WireBallot.self, "ballot")
         let ballot = try VoteWire.ballot(wire)
@@ -233,11 +261,11 @@ final class PollModelTests: XCTestCase {
         let (backend, script) = makeBackend()
         let def = definition(trustees: [me, bob], threshold: 2)
         script.on("whoami") { _ in Identity(account: me) }
-        script.on("get_poll") { _ in pollView(def, phase: .keyCeremony) }
+        script.on("getPoll") { _ in pollView(def, phase: .keyCeremony) }
         script.on("ceremony") { _ in
             Ceremony(threshold: 2, trustees: [CeremonyTrustee(account: me, index: 1), CeremonyTrustee(account: bob, index: 2)], complaints: [])
         }
-        script.on("publish_transport_key") { _ in JSONValue.null }
+        script.on("publishTransportKey") { _ in JSONValue.null }
         let store = MemoryTrusteeKeyStore()
         let model = PollModel(
             backend: backend, group: groupRef(), pollId: pollId, keys: store, rng: VoteProtocol.seededRngSendable("t"))
@@ -246,7 +274,7 @@ final class PollModelTests: XCTestCase {
         XCTAssertEqual(model.myIndex, 1)
         await model.publishTransportKey()
         let saved = try XCTUnwrap(store.load(contextId: ctx, pollId: pollId, account: me))
-        let call = try XCTUnwrap(backend.recording.calls("publish_transport_key").first)
+        let call = try XCTUnwrap(backend.recording.calls("publishTransportKey").first)
         let published = try RistrettoPoint(hex: try XCTUnwrap(call.string("key")))
         XCTAssertEqual(RistrettoPoint.base.multiply(try Scalar(hex: saved.secret)).hex, published.hex)
         let proof = try VoteWire.branch(try call.decode(WireBranch.self, "proof"))
@@ -256,7 +284,7 @@ final class PollModelTests: XCTestCase {
     func testARefusedKeyStoreStopsBeforePublishing() async {
         let (backend, script) = makeBackend()
         script.on("whoami") { _ in Identity(account: me) }
-        script.on("get_poll") { _ in pollView(definition(), phase: .keyCeremony) }
+        script.on("getPoll") { _ in pollView(definition(), phase: .keyCeremony) }
         script.on("ceremony") { _ in Ceremony(threshold: 1, trustees: [CeremonyTrustee(account: me, index: 1)], complaints: []) }
         let store = MemoryTrusteeKeyStore()
         store.refuses = true
@@ -264,7 +292,7 @@ final class PollModelTests: XCTestCase {
         await model.load()
         await model.publishTransportKey()
         XCTAssertNotNil(model.error)
-        XCTAssertTrue(backend.recording.calls("publish_transport_key").isEmpty)
+        XCTAssertTrue(backend.recording.calls("publishTransportKey").isEmpty)
     }
 
     func testRestoreRefusesAKeyForAnotherPollOrAMismatchedSecret() async throws {
@@ -273,7 +301,7 @@ final class PollModelTests: XCTestCase {
         let mySecret = transport[0]["secret"] as! String
         let myKey = transport[0]["key"] as! String
         script.on("whoami") { _ in Identity(account: me) }
-        script.on("get_poll") { _ in pollView(definition(trustees: [me, bob], threshold: 2), phase: .keyCeremony) }
+        script.on("getPoll") { _ in pollView(definition(trustees: [me, bob], threshold: 2), phase: .keyCeremony) }
         script.on("ceremony") { _ in
             Ceremony(
                 threshold: 2,
@@ -309,19 +337,19 @@ final class PollModelTests: XCTestCase {
             key: v["election_key"] as! String, threshold: 2, transport: transport.map { $0["key"] as! String },
             qualified: qualified, disqualified: [], openedAt: 1)
         script.on("whoami") { _ in Identity(account: alice) }
-        script.on("get_poll") { _ in
+        script.on("getPoll") { _ in
             PollView(
                 pollId: vPoll, definition: def, state: PollState(phase: .closed, election: election),
                 trustees: trustees.enumerated().map { trusteeStatus($1, index: UInt32($0 + 1), transport: true, dealt: true) },
                 turnout: [], canVote: true)
         }
-        script.on("get_result") { _ in
+        script.on("getResult") { _ in
             AuditReport(
                 pollId: vPoll, phase: .closed, verified: true, checks: [], countedBallots: 5, decryptedBy: [], uncounted: [])
         }
         let aggregate = (v["aggregate"] as! [[String: String]]).map { WireCiphertext(a: $0["a"]!, b: $0["b"]!) }
-        script.on("tally_inputs") { _ in TallyInputs(aggregate: aggregate, counted: 5) }
-        script.on("publish_partial") { _ in JSONValue.null }
+        script.on("tallyInputs") { _ in TallyInputs(aggregate: aggregate, counted: 5) }
+        script.on("publishPartial") { _ in JSONValue.null }
         let store = MemoryTrusteeKeyStore()
         _ = store.save(TrusteeKey(contextId: ctx, pollId: vPoll, account: alice, secret: transport[0]["secret"] as! String))
         let model = PollModel(
@@ -331,7 +359,7 @@ final class PollModelTests: XCTestCase {
         XCTAssertNotNil(model.trusteeKey)
         await model.publishPartial(label: { $0 })
         XCTAssertNil(model.error)
-        let call = try XCTUnwrap(backend.recording.calls("publish_partial").first)
+        let call = try XCTUnwrap(backend.recording.calls("publishPartial").first)
         let partials = try call.decode([WirePartial].self, "partials")
         let expected = ((v["partials"] as! [[String: Any]])[0]["options"] as! [[String: Any]]).map { $0["d"] as! String }
         XCTAssertEqual(partials.map(\.d), expected, "the same partials the web computes from the same seed")
@@ -343,13 +371,13 @@ final class PollModelTests: XCTestCase {
         let transcript = try Vectors.decode(Transcript.self, honest["transcript"]!)
         let def = definition(trustees: [me, bob], threshold: 2)
         script.on("whoami") { _ in Identity(account: me) }
-        script.on("get_poll") { _ in
+        script.on("getPoll") { _ in
             pollView(def, phase: .keyCeremony, trustees: [
                 trusteeStatus(me, index: 1, transport: true, dealt: true), trusteeStatus(bob, index: 2, transport: true),
             ])
         }
         script.on("ceremony") { _ in Ceremony(threshold: 2, trustees: [], complaints: []) }
-        script.on("get_transcript") { _ in transcript }
+        script.on("getTranscript") { _ in transcript }
         let model = PollModel(backend: backend, group: groupRef(), pollId: pollId, keys: MemoryTrusteeKeyStore())
         await model.load()
         XCTAssertTrue(model.isCreator)
