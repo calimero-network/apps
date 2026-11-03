@@ -1,23 +1,24 @@
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
-import { nodePolyfills } from 'vite-plugin-node-polyfills';
-import { servedAssetsFallback } from '@calimero-apps/node-served/vite';
+// `defineConfig` from `vitest/config`, not from `vite`: vite's own type has no
+// `test` key, so a `test` block under the vite import fails `tsc -b`.
+import { defineConfig } from "vitest/config";
+import react from "@vitejs/plugin-react";
+import { servedAssetsFallback } from "@calimero-apps/node-served/vite";
 
 export default defineConfig({
-  // Relative, so the same build runs at / and under the node's /{version}/.
-  base: './',
-  plugins: [react(), nodePolyfills(), servedAssetsFallback()],
-  server: {
-    // PINNED, and `strictPort` so a clash fails loudly instead of silently
-    // sliding to the next free port.
-    //
-    // Two mero apps served from one origin share a `localStorage`, so when Vite
-    // quietly reassigns a port the app that lands on 5173 inherits whatever
-    // session and application id the previous occupant left there. That is the
-    // same failure `utils/appId` defends against from the other side, and it is
-    // also how a run of e2e screenshots came back sharp and of the wrong
-    // product. 5179 is this app's; the low 5170s and 5180s are spoken for.
-    port: 5179,
-    strictPort: true,
+  // Relative, so the same build runs at / and under the node's /{version}/,
+  // where the cluster serves the bundle's frontend.
+  base: "./",
+  plugins: [react(), servedAssetsFallback()],
+  // `pnpm dev:local` opens exactly http://localhost:5173/: the origin
+  // `merod local` trusts passkey ceremonies from.
+  server: { port: 5173, strictPort: true },
+  test: {
+    environment: "jsdom",
+    // App.test.tsx waits on chains of mocked requests; a parallel run is slow.
+    testTimeout: 20_000,
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    // `tsc -b` writes declarations under dist-types/; without this vitest also
+    // runs the compiled copies of the tests.
+    exclude: ["**/node_modules/**", "**/dist/**", "**/dist-types/**"],
   },
 });

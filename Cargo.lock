@@ -727,16 +727,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "issue-tracker-types"
-version = "0.1.0"
-dependencies = [
- "borsh",
- "hex",
- "serde",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "itoa"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -894,18 +884,6 @@ dependencies = [
  "calimero-sdk",
  "serde",
  "thiserror 1.0.69",
-]
-
-[[package]]
-name = "mero-issue-tracker"
-version = "0.1.0"
-dependencies = [
- "calimero-sdk",
- "calimero-storage",
- "calimero-storage-macros",
- "hex",
- "issue-tracker-types",
- "serial_test",
 ]
 
 [[package]]
