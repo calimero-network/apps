@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { FormView, ResponseView } from "../generated/FormsClient";
+import type { FormView, ResponseView } from "../formsApi";
 import {
   examplePayload,
   headline,
@@ -28,7 +28,7 @@ function response(answers: [string, string, string, string[]][], extra: Partial<
     form_id: "f1",
     answers: answers.map(([field_id, label, kind, values]) => ({ field_id, label, kind, values })),
     source: "",
-    created_at: 1_700_000_000_000_000_000,
+    created_at: 1_700_000_000_000,
     submitted_by: "",
     archived: false,
     crm_context: "",
@@ -97,8 +97,8 @@ describe("reading responses", () => {
 
   it("shows a website the body it sends", () => {
     const body = JSON.parse(examplePayload(form));
-    expect(body.form_id).toBe("f1");
-    expect(body.answers.map((a: { field_id: string }) => a.field_id)).toEqual(["name", "email", "plan", "tags"]);
+    expect(body.formId).toBe("f1");
+    expect(body.answers.map((a: { fieldId: string }) => a.fieldId)).toEqual(["name", "email", "plan", "tags"]);
     expect(body.answers[2].values).toEqual(["Free"]);
   });
 });

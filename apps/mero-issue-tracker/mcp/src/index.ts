@@ -6,23 +6,25 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { loadConfig, type Config } from './config.ts';
 import {
   callMethod,
-  createContext,
-  createContextAlias,
+  connect,
   createRepoLister,
   createTargetResolver,
-  listNamespaceRepos,
-  resolveNamespaceApp,
-  type NamespaceRepo,
+  describe,
+  findWorkspace,
+  listWorkspaceRepos,
+  viewMethod,
+  type Client,
   type ResolvedTarget,
-} from './rpc.ts';
+  type WorkspaceRepo,
+} from './node.ts';
 import { buildFixPrompt, type IssueForPrompt } from './fixPrompt.ts';
 
-// A repo (context alias) to target within the namespace; defaults to
-// TRACKER_REPO, else the namespace's only repo.
+// A repo (by name) to target within the workspace; defaults to
+// TRACKER_REPO, else the workspace's only repo.
 const repoParam = z
   .string()
   .optional()
-  .describe("Repo (context alias) to target; defaults to TRACKER_REPO or the namespace's only repo.");
+  .describe("Repo (by name) to target; defaults to TRACKER_REPO or the workspace's only repo.");
 
 // ---- Tool input schemas ----
 
@@ -104,118 +106,122 @@ type DeleteIssueArgs = z.infer<z.ZodObject<typeof deleteIssueShape>>;
 type GetFixPromptArgs = z.infer<z.ZodObject<typeof getFixPromptShape>>;
 type AddRepoArgs = z.infer<z.ZodObject<typeof addRepoShape>>;
 
+/** An issue as the contract answers it (camelCase; 64-bit integers as decimal strings). */
+interface WireIssue {
+  id: string;
+  title: string;
+  summary: string;
+  impact: string;
+  repro: string;
+  resolutionCriteria: string;
+  [key: string]: unknown;
+}
+
 interface IssueDetail {
-  issue: IssueForPrompt & Record<string, unknown>;
+  issue: WireIssue;
   comments: unknown[];
 }
 
-/** The logic app's get_repo_info view. */
+/** The contract's getRepoInfo view. */
 interface RepoInfo {
-  repo_url: string;
+  repoUrl: string;
 }
 
-// ---- Tool request shaping - pure functions, unit-tested against a mocked fetch ----
+// ── the tools' work, against a client and a resolved repo ───────────────────
 
-export function createIssue(cfg: Config, target: ResolvedTarget, args: CreateIssueArgs) {
-  return callMethod<string>(cfg, target, 'create_issue', {
+export function createIssue(client: Client, target: ResolvedTarget, args: CreateIssueArgs) {
+  return callMethod<string>(client, target, 'createIssue', {
     title: args.title,
     summary: args.summary,
     impact: args.impact,
     repro: args.repro,
-    resolution_criteria: args.resolution_criteria,
+    resolutionCriteria: args.resolution_criteria,
     priority: args.priority,
     labels: args.labels,
   });
 }
 
-export function listIssues(cfg: Config, target: ResolvedTarget, args: ListIssuesArgs) {
-  return callMethod(cfg, target, 'list_issues', {
+export function listIssues(client: Client, target: ResolvedTarget, args: ListIssuesArgs) {
+  return viewMethod(client, target, 'listIssues', {
     status: args.status ?? null,
     assignee: args.assignee ?? null,
     label: args.label ?? null,
   });
 }
 
-export function getIssue(cfg: Config, target: ResolvedTarget, args: GetIssueArgs) {
-  return callMethod<IssueDetail>(cfg, target, 'get_issue', { issue_id: args.id });
+export function getIssue(client: Client, target: ResolvedTarget, args: GetIssueArgs) {
+  return viewMethod<IssueDetail>(client, target, 'getIssue', { issueId: args.id });
 }
 
-export function addComment(cfg: Config, target: ResolvedTarget, args: AddCommentArgs) {
-  return callMethod<string>(cfg, target, 'add_comment', { issue_id: args.issue_id, body: args.body });
+export function addComment(client: Client, target: ResolvedTarget, args: AddCommentArgs) {
+  return callMethod<string>(client, target, 'addComment', { issueId: args.issue_id, body: args.body });
 }
 
-export function assignIssue(cfg: Config, target: ResolvedTarget, args: AssignIssueArgs) {
-  return callMethod(cfg, target, 'set_assignee', { issue_id: args.issue_id, assignee: args.assignee });
+export function assignIssue(client: Client, target: ResolvedTarget, args: AssignIssueArgs) {
+  return callMethod(client, target, 'setAssignee', { issueId: args.issue_id, assignee: args.assignee });
 }
 
-export function setStatus(cfg: Config, target: ResolvedTarget, args: SetStatusArgs) {
-  return callMethod(cfg, target, 'set_status', { issue_id: args.issue_id, status: args.status });
+export function setStatus(client: Client, target: ResolvedTarget, args: SetStatusArgs) {
+  return callMethod(client, target, 'setStatus', { issueId: args.issue_id, status: args.status });
 }
 
-export function setPriority(cfg: Config, target: ResolvedTarget, args: SetPriorityArgs) {
-  return callMethod(cfg, target, 'set_priority', { issue_id: args.issue_id, priority: args.priority });
+export function setPriority(client: Client, target: ResolvedTarget, args: SetPriorityArgs) {
+  return callMethod(client, target, 'setPriority', { issueId: args.issue_id, priority: args.priority });
 }
 
-export function deleteIssue(cfg: Config, target: ResolvedTarget, args: DeleteIssueArgs) {
-  return callMethod(cfg, target, 'delete_issue', { issue_id: args.issue_id });
+export function deleteIssue(client: Client, target: ResolvedTarget, args: DeleteIssueArgs) {
+  return callMethod(client, target, 'deleteIssue', { issueId: args.issue_id });
 }
 
-export async function getFixPrompt(cfg: Config, target: ResolvedTarget, args: GetFixPromptArgs) {
+export async function getFixPrompt(client: Client, target: ResolvedTarget, args: GetFixPromptArgs) {
   const [detail, repoInfo] = await Promise.all([
-    callMethod<IssueDetail>(cfg, target, 'get_issue', { issue_id: args.id }),
-    callMethod<RepoInfo>(cfg, target, 'get_repo_info', {}),
+    viewMethod<IssueDetail>(client, target, 'getIssue', { issueId: args.id }),
+    viewMethod<RepoInfo>(client, target, 'getRepoInfo', {}),
   ]);
-  return buildFixPrompt({ ...detail.issue, repo_url: repoInfo.repo_url });
+  const i = detail.issue;
+  return buildFixPrompt({
+    id: i.id,
+    title: i.title,
+    summary: i.summary,
+    impact: i.impact,
+    repro: i.repro,
+    resolution_criteria: i.resolutionCriteria,
+    repo_url: repoInfo.repoUrl,
+  });
 }
 
-/** Lists repos in the namespace with their repo_url, fetched per repo's own context. */
+/** Every repo of the workspace with its repo_url, read from each repo's own app. */
 export async function listRepos(
-  cfg: Config,
-  repos: NamespaceRepo[],
+  client: Client,
+  repos: WorkspaceRepo[],
 ): Promise<Array<{ name: string; repo_url: string }>> {
   return Promise.all(
     repos.map(async (repo) => {
-      const info = await callMethod<RepoInfo>(cfg, { contextId: repo.contextId }, 'get_repo_info', {});
-      return { name: repo.name, repo_url: info.repo_url };
+      const info = await viewMethod<RepoInfo>(client, { appId: repo.appId }, 'getRepoInfo', {});
+      return { name: repo.name, repo_url: info.repoUrl };
     }),
   );
 }
 
-/** Onboards a new repo: creates its context in the namespace, sets repo_url, and aliases it. Mirrors useWorkspace.ts's addRepo. */
+/** Onboards a new repo: an app instance in the workspace's org, with its repo_url set. Mirrors the app's addRepo. */
 export async function addRepo(
+  client: Client,
   cfg: Config,
   args: AddRepoArgs,
-): Promise<{ contextId: string; name: string; url: string }> {
-  if (!cfg.namespaceRaw) {
-    throw new Error('add_repo requires TRACKER_NAMESPACE (TRACKER_CONTEXT pins a single context directly with no namespace to create a repo in).');
+): Promise<{ appId: string; name: string; url: string }> {
+  if (!cfg.workspaceRaw) {
+    throw new Error('add_repo requires TRACKER_WORKSPACE (TRACKER_APP pins one repo, with no workspace to add to).');
   }
   const name = args.name.trim();
   const url = args.github_url.trim();
-
-  const { namespaceId, applicationId } = await resolveNamespaceApp(cfg);
-  const existing = await listNamespaceRepos(cfg, namespaceId);
+  const org = await findWorkspace(client, cfg);
+  const existing = await listWorkspaceRepos(client, cfg, org.orgId);
   if (existing.some((r) => r.name === name)) {
     throw new Error(`Repo "${name}" already exists.`);
   }
-
-  const { contextId } = await createContext(cfg, {
-    applicationId,
-    groupId: namespaceId,
-    serviceName: cfg.serviceName,
-    name,
-  });
-  await callMethod(cfg, { contextId }, 'set_repo_url', { url });
-
-  try {
-    await createContextAlias(cfg, name, contextId);
-  } catch (err) {
-    // stderr only - stdout is reserved for the MCP protocol stream.
-    console.error(
-      `[issue-tracker-mcp] alias creation for "${name}" failed (${err instanceof Error ? err.message : String(err)}); repo created without an alias.`,
-    );
-  }
-
-  return { contextId, name, url };
+  const appId = await client.createApp(name, cfg.source, { org: org.orgId });
+  await callMethod(client, { appId }, 'setRepoUrl', { url });
+  return { appId, name, url };
 }
 
 // ---- MCP result helpers ----
@@ -226,18 +232,26 @@ function textResult(data: unknown) {
 }
 
 function errorResult(err: unknown) {
-  const message = err instanceof Error ? err.message : String(err);
+  const message = describe(err);
   return { content: [{ type: 'text' as const, text: `Error: ${message}` }], isError: true };
 }
 
 // ---- Server wiring ----
 
-export function createServer(cfg: Config = loadConfig()): McpServer {
+export function createServer(cfg: Config = loadConfig(), getClient?: () => Promise<Client>): McpServer {
   const server = new McpServer({ name: 'issue-tracker-mcp', version: '0.1.0' });
 
-  // Resolved per repo and reused across every tool call in the process's lifetime.
-  const target = createTargetResolver(cfg);
-  const listReposCache = createRepoLister(cfg);
+  // One client per process, connected (and its node attested) on first use.
+  let clientCached: Promise<Client> | null = null;
+  const client =
+    getClient ??
+    (() =>
+      (clientCached ??= connect(cfg).catch((err) => {
+        clientCached = null;
+        throw err;
+      })));
+  const listReposCache = createRepoLister(cfg, client);
+  const target = createTargetResolver(cfg, listReposCache);
 
   server.registerTool(
     'create_issue',
@@ -248,7 +262,7 @@ export function createServer(cfg: Config = loadConfig()): McpServer {
     },
     async (args) => {
       try {
-        const id = await createIssue(cfg, await target(args.repo), args);
+        const id = await createIssue(await client(), await target(args.repo), args);
         return textResult({ id });
       } catch (err) {
         return errorResult(err);
@@ -261,7 +275,7 @@ export function createServer(cfg: Config = loadConfig()): McpServer {
     { description: 'List issues, optionally filtered by status, assignee, or label.', inputSchema: listIssuesShape },
     async (args) => {
       try {
-        return textResult(await listIssues(cfg, await target(args.repo), args));
+        return textResult(await listIssues(await client(), await target(args.repo), args));
       } catch (err) {
         return errorResult(err);
       }
@@ -273,7 +287,7 @@ export function createServer(cfg: Config = loadConfig()): McpServer {
     { description: 'Get an issue and its comments by id.', inputSchema: getIssueShape },
     async (args) => {
       try {
-        return textResult(await getIssue(cfg, await target(args.repo), args));
+        return textResult(await getIssue(await client(), await target(args.repo), args));
       } catch (err) {
         return errorResult(err);
       }
@@ -285,7 +299,7 @@ export function createServer(cfg: Config = loadConfig()): McpServer {
     { description: 'Add a comment to an issue.', inputSchema: addCommentShape },
     async (args) => {
       try {
-        const id = await addComment(cfg, await target(args.repo), args);
+        const id = await addComment(await client(), await target(args.repo), args);
         return textResult({ id });
       } catch (err) {
         return errorResult(err);
@@ -298,7 +312,7 @@ export function createServer(cfg: Config = loadConfig()): McpServer {
     { description: 'Assign an issue to a member.', inputSchema: assignIssueShape },
     async (args) => {
       try {
-        await assignIssue(cfg, await target(args.repo), args);
+        await assignIssue(await client(), await target(args.repo), args);
         return textResult({ ok: true });
       } catch (err) {
         return errorResult(err);
@@ -311,7 +325,7 @@ export function createServer(cfg: Config = loadConfig()): McpServer {
     { description: 'Set an issue\'s status (Open, In progress, Blocked, or Done).', inputSchema: setStatusShape },
     async (args) => {
       try {
-        await setStatus(cfg, await target(args.repo), args);
+        await setStatus(await client(), await target(args.repo), args);
         return textResult({ ok: true });
       } catch (err) {
         return errorResult(err);
@@ -324,7 +338,7 @@ export function createServer(cfg: Config = loadConfig()): McpServer {
     { description: 'Set an issue\'s priority (low, medium, high, or urgent).', inputSchema: setPriorityShape },
     async (args) => {
       try {
-        await setPriority(cfg, await target(args.repo), args);
+        await setPriority(await client(), await target(args.repo), args);
         return textResult({ ok: true });
       } catch (err) {
         return errorResult(err);
@@ -336,12 +350,12 @@ export function createServer(cfg: Config = loadConfig()): McpServer {
     'delete_issue',
     {
       description:
-        "Delete an issue. Only the issue's author may delete it; cascade-removes its comments and labels.",
+        "Delete an issue. Only the issue's creator may delete it; removes its comments and labels.",
       inputSchema: deleteIssueShape,
     },
     async (args) => {
       try {
-        await deleteIssue(cfg, await target(args.repo), args);
+        await deleteIssue(await client(), await target(args.repo), args);
         return textResult({ deleted: args.issue_id });
       } catch (err) {
         return errorResult(err);
@@ -357,7 +371,7 @@ export function createServer(cfg: Config = loadConfig()): McpServer {
     },
     async (args) => {
       try {
-        return textResult(await getFixPrompt(cfg, await target(args.repo), args));
+        return textResult(await getFixPrompt(await client(), await target(args.repo), args));
       } catch (err) {
         return errorResult(err);
       }
@@ -366,10 +380,10 @@ export function createServer(cfg: Config = loadConfig()): McpServer {
 
   server.registerTool(
     'list_repos',
-    { description: 'List repos (contexts) in the namespace, each with its name (alias) and repo_url.', inputSchema: listReposShape },
+    { description: 'List the repos in the workspace, each with its name and repo_url.', inputSchema: listReposShape },
     async () => {
       try {
-        return textResult(await listRepos(cfg, await listReposCache()));
+        return textResult(await listRepos(await client(), await listReposCache()));
       } catch (err) {
         return errorResult(err);
       }
@@ -380,12 +394,12 @@ export function createServer(cfg: Config = loadConfig()): McpServer {
     'add_repo',
     {
       description:
-        'Onboard a new repo: creates a context in TRACKER_NAMESPACE, sets its repo_url, and aliases it by name.',
+        'Onboard a new repo: creates an instance of the tracker in TRACKER_WORKSPACE named after the repo, and sets its repo_url.',
       inputSchema: addRepoShape,
     },
     async (args) => {
       try {
-        return textResult(await addRepo(cfg, args));
+        return textResult(await addRepo(await client(), cfg, args));
       } catch (err) {
         return errorResult(err);
       }

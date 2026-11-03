@@ -1,53 +1,63 @@
 [package]
 name = "mero-models"
-description = "Mero Models — a collaborative 3D modelling scene on Calimero"
-# NOT the release version. The registry owns the number: the release workflow
-# takes the highest published appVersion for this package and increments it.
+description = "Mero Models — a collaborative 3D modelling scene, on the component SDK"
+# NOT the release version: the release workflow takes the next appVersion from
+# the registry and passes it to `mero-component bundle --app-version`. Cargo
+# requires the field; bundling locally without --app-version uses it.
 version = "0.0.1"
-edition.workspace    = true
-authors.workspace    = true
-license.workspace    = true
-repository.workspace = true
+edition = "2021"
+authors = ["Calimero Limited <info@calimero.network>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/calimero-network/apps"
 publish = false
 
 [lib]
-# `cdylib` for the wasm the node loads; `rlib` so `cargo test` can link it.
-crate-type = ["cdylib", "rlib"]
+# A `calimero:app` component. No `rlib`: the tests run the BUILT component on
+# core's engine (tests/common/mod.rs), not the crate linked natively.
+crate-type = ["cdylib"]
 
-# Read by `cargo mero build` / `cargo mero bundle`. `appVersion` is absent on
-# purpose — the release workflow resolves it from the registry.
-#
-# None of this can be inherited from the workspace: `[package.metadata]` is not
-# on cargo's inheritable list. `scripts/check-app-metadata.sh` asserts the
-# fleet-wide values instead.
+# Core at `component-core-tag` (root Cargo.toml), the same tag for every core
+# crate; scripts/check-component-pins.py asserts it. A standalone crate cannot
+# inherit `[workspace.dependencies]`.
+[dependencies]
+calimero-app-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8" }
+serde = { version = "1", features = ["derive"] }
+# `BlobRef` (src/blob.rs) writes core's CBOR blob-reference tag itself until the
+# pinned SDK has one; the SDK stores values with the same ciborium.
+ciborium = "0.2"
+
+# The harness (`TestApp`, `run_scenario`) and the builder the tests build this
+# crate with, for `cargo test` on the host only.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+calimero-app-sdk   = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8", features = ["testing"] }
+calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8" }
+serde_json = "1"
+
+# Read by `mero-component bundle` (tools/component-bundle), with the keys
+# `cargo mero bundle` reads for a v1 app.
 [package.metadata.calimero]
 package = "com.calimero.mero-models"
 name = "Mero Models"
-description = "Blender-style 3D modelling with no server. A scene is a Calimero context: objects, meshes and materials replicate peer to peer between the members' own nodes, and everyone edits the same model at once."
+description = "Blender-style 3D modelling, shared. A scene is a Calimero app instance: objects, meshes and materials are edited by everyone in it at once, and the heavy data lives in the app's own blobs."
 author = "Calimero"
 # The slug IS the package id: deep links resolve by `Application.package`.
 slug = "com.calimero.mero-models"
-# Required: `cargo mero bundle` refuses to run without an icon decision.
 icon = "../app/public/icon-512.png"
 category = "art-design"
-tags = ["3d", "modelling", "design", "collaboration", "crdt"]
+tags = ["3d", "modelling", "design", "collaboration"]
 github = "https://github.com/calimero-network/apps"
-# Asserted equal to [workspace.metadata.mero-apps] in CI.
-min-runtime-version = "0.12.0-rc.3"
-# Also this app's registered login redirect origin, compared by EXACT origin —
-# no trailing slash. Resolves to nothing until the Vercel project
-# `mero-models` (Root Directory `apps/mero-models/app`) exists.
+# `component-min-runtime-version` in the root Cargo.toml: a node compares it
+# with its own release.
+min-runtime-version = "1.0.0-rc.8"
+# The listing's link, and an origin the node may send a person back to from
+# its consent page. NOT where the production frontend runs: a Cloud node trusts
+# passkey ceremonies only from frontends it serves from a bundle, so the
+# production frontend is the one packed below (docs/COMPONENT-APPS.md).
 frontend = "https://mero-models.vercel.app"
-# The built frontend `cargo mero bundle` packs, so the node serves it from the app\'s own origin.
+# The built frontend the bundle carries; the cluster serves it from the
+# package's own origin. Build it first: `pnpm -F mero-models build`.
 frontend-dir = "../app/dist"
 
-# ⚠️ The dependency tables stay AFTER the calimero table: the landing generator
-# finds that table by matching up to the next `[` header.
-[dependencies]
-calimero-sdk.workspace            = true
-calimero-storage.workspace        = true
-calimero-storage-macros.workspace = true
-
-[dev-dependencies]
-# The native mock host, so `TestHost` drives real CRDT state under `cargo test`.
-calimero-storage = { workspace = true, features = ["testing"] }
+# Standalone: excluded from the root workspace (root Cargo.toml), its own
+# Cargo.lock, as core's component apps are.
+[workspace]

@@ -274,6 +274,60 @@ PNPM_ROOT_IMPORTER_CHANGE = PNPM_BASE.replace(
 )
 
 
+# A port drops the last user of an old dependency: its `packages:` and
+# `snapshots:` entries go, and nothing else names that version any more.
+PNPM_WITH_TOASTIFY = PNPM_BASE.replace(
+    """      react:
+        specifier: 'catalog:'
+        version: 19.0.0
+    devDependencies:""",
+    """      react:
+        specifier: 'catalog:'
+        version: 19.0.0
+      react-toastify:
+        specifier: ^11.1.0
+        version: 11.1.0
+    devDependencies:""",
+).replace(
+    """  react@19.0.0:
+    resolution: {integrity: sha512-aaa}""",
+    """  react@19.0.0:
+    resolution: {integrity: sha512-aaa}
+
+  react-toastify@11.1.0:
+    resolution: {integrity: sha512-ttt}""",
+).replace(
+    "  react@19.0.0: {}",
+    "  react@19.0.0: {}\n\n  react-toastify@11.1.0: {}",
+)
+PNPM_DROP_LAST_USER = PNPM_BASE
+
+# The same removal while another importer still names that exact version.
+PNPM_DROP_BUT_STILL_NAMED = PNPM_BASE.replace(
+    """      react:
+        specifier: 'catalog:'
+        version: 19.0.0
+    devDependencies:""",
+    """      react:
+        specifier: 'catalog:'
+        version: 19.0.0
+      react-toastify:
+        specifier: ^11.1.0
+        version: 11.1.0
+    devDependencies:""",
+)
+
+# A removed entry whose version string another package happens to share.
+PNPM_DROP_SAME_VERSION_OTHER_NAME = PNPM_BASE.replace(
+    "        version: 19.0.0\n    devDependencies:",
+    "        version: 19.0.0\n      web-vitals:\n        specifier: ^11.1.0\n        version: 11.1.0\n    devDependencies:",
+)
+PNPM_WITH_TOASTIFY_AND_VITALS = PNPM_WITH_TOASTIFY.replace(
+    "        version: 11.1.0\n    devDependencies:",
+    "        version: 11.1.0\n      web-vitals:\n        specifier: ^11.1.0\n        version: 11.1.0\n    devDependencies:",
+)
+
+
 def test_pnpm() -> None:
     print("pnpm-lock.yaml")
     check("unchanged → no fan-out", lf.pnpm_fanout(PNPM_BASE, PNPM_BASE), [])
@@ -320,6 +374,26 @@ def test_pnpm() -> None:
     check(
         "the root importer changing → all",
         lf.pnpm_fanout(PNPM_BASE, PNPM_ROOT_IMPORTER_CHANGE),
+        ["all"],
+    )
+    check(
+        "dropping the last user of a package → only the importer that dropped it",
+        lf.pnpm_fanout(PNPM_WITH_TOASTIFY, PNPM_DROP_LAST_USER),
+        ["apps/kv-store/app"],
+    )
+    check(
+        "dropping a package something still names → all",
+        lf.pnpm_fanout(PNPM_WITH_TOASTIFY, PNPM_DROP_BUT_STILL_NAMED),
+        ["all"],
+    )
+    check(
+        "another package sharing the dropped version string does not count",
+        lf.pnpm_fanout(PNPM_WITH_TOASTIFY_AND_VITALS, PNPM_DROP_SAME_VERSION_OTHER_NAME),
+        ["apps/kv-store/app"],
+    )
+    check(
+        "a packages entry rewritten in place → all",
+        lf.pnpm_fanout(PNPM_BASE, PNPM_BASE.replace("sha512-aaa", "sha512-zzz")),
         ["all"],
     )
     check(

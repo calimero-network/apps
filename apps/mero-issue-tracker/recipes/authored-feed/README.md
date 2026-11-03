@@ -1,19 +1,16 @@
-# Recipe: authored feed (`AuthoredVector<T>`)
+# Recipe: authored feed (a `Vector` with an `author` field)
 
-The base stores messages in `AuthoredMap<String, Message>` — author-owned but
-**hash-ordered**, so it sorts by `(timestamp, id)` on every read. When you want
-an **append-ordered, author-owned** log (activity feeds, comments, posts,
-event logs), use `AuthoredVector<T>`:
+An **append-ordered, author-owned** log (activity feeds, posts, event logs).
+v1 used `AuthoredVector<T>`, whose store refused anyone but the pusher at
+merge time. On Calimero 1.0 every write is a method run by the app's leader, so:
 
-- `push(value) -> index` — appends; the pusher becomes the entry's **author**.
-- `update(i, value)` / `tombstone(i)` — **only the author** may edit/remove (the
-  store rejects others at merge time, like AuthoredMap).
-- `iter()` — entries in insertion order; `owner_of(i)` / `len()`.
+- `post(text) -> index`: appends; the author is `env::caller()`'s account.
+- `editPost(index, text)` / `deletePost(index)`: refused (`NotAuthor`) for
+  anyone but the author; delete leaves a tombstone so indexes stay put.
+- `getFeed(offset, limit)`: insertion order, tombstones skipped, at most 1,000
+  positions read; `feedLen()`: a stored count.
 
-So you get free per-entry authorship + chronological order without manual
-sorting. `feed.rs` is a reference `#[app::state]` + methods — drop the field into
-a service's state and the methods into its `#[app::logic]` impl, then rebuild
-WASM + regenerate the client.
-
-Frontend usage mirrors the base's generated client:
-`await client.post({ body })`, `await client.getFeed({ offset, limit })`.
+`feed.rs` is a complete app module (state, methods, error, events). From a
+frontend: `client.call(app, 'post', { text })`,
+`client.view(app, 'getFeed', { offset: '0', limit: '50' })` (u64 arguments are
+decimal strings).

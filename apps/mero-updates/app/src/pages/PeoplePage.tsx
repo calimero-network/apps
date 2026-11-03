@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useAudience } from "../components/AudienceShell";
 import { Avatar, CategoryChip } from "../components/bits";
 import { CheckCircleIcon, ChevronDownIcon, CircleIcon, EditIcon } from "../components/icons";
-import type { EngagementRow, PersonView } from "../generated/UpdatesClient";
+import type { EngagementRow, PersonView } from "../lib/updatesClient";
 import {
   formatDate,
   usePersonLabel,
