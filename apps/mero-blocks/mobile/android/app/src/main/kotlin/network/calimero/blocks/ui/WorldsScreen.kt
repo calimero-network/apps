@@ -1,5 +1,6 @@
 package network.calimero.blocks.ui
 
+import android.content.Context
 import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -59,6 +60,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -66,6 +68,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.calimero.mero.app.MeroAppBackend
 import kotlinx.coroutines.launch
+import network.calimero.blocks.app.ApprovalsModel
 import network.calimero.blocks.app.BlocksInvitation
 import network.calimero.blocks.app.BlocksText
 import network.calimero.blocks.app.WorldEntry
@@ -78,6 +81,7 @@ import network.calimero.blocks.app.WorldsModel
 fun WorldsScreen(
     backend: MeroAppBackend,
     applicationId: String?,
+    approvals: (Context) -> ApprovalsModel,
     onOpen: (WorldRef) -> Unit,
     onJoin: (BlocksInvitation) -> Unit,
     onShare: (String) -> Unit,
@@ -94,7 +98,23 @@ fun WorldsScreen(
     var actionError by remember { mutableStateOf<String?>(null) }
     var refreshing by remember { mutableStateOf(false) }
 
-    LaunchedEffect(model) { model.load() }
+    val context = LocalContext.current
+    val approvalsModel = remember(model) { approvals(context) }
+    val approvalItems by approvalsModel.items.collectAsState()
+    val approvalBusy by approvalsModel.busy.collectAsState()
+    val approvalMessage by approvalsModel.message.collectAsState()
+    val confirmation by approvalsModel.confirmation.collectAsState()
+
+    /** The worlds, then what waits for approval in the account and in each world's organization. */
+    suspend fun loadAll() {
+        model.load()
+        approvalsModel.refresh(
+            model.state.value.worlds
+                .map { it.ref.namespaceId },
+        )
+    }
+
+    LaunchedEffect(model) { loadAll() }
 
     fun invite(ref: WorldRef) {
         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -158,7 +178,7 @@ fun WorldsScreen(
             onRefresh = {
                 scope.launch {
                     refreshing = true
-                    model.load()
+                    loadAll()
                     refreshing = false
                 }
             },
@@ -178,21 +198,16 @@ fun WorldsScreen(
                     }
                 }
                 state.notice?.let { notice -> item { NoticeBanner(notice) { model.dismissNotice() } } }
+                approvalsSection(approvalItems, approvalBusy, approvalMessage) { item ->
+                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    scope.launch { approvalsModel.approve(item) }
+                }
                 when {
                     !state.loaded ->
                         item {
                             Box(Modifier.fillMaxWidth().padding(vertical = 48.dp), contentAlignment = Alignment.Center) {
                                 CircularProgressIndicator(color = BlocksColors.Ink, strokeWidth = 2.dp)
                             }
-                        }
-                    !model.hasRelay ->
-                        item {
-                            EmptyState(
-                                icon = { Icon(Icons.Filled.Link, contentDescription = null, tint = BlocksColors.Ink, modifier = Modifier.size(30.dp)) },
-                                title = "Join your first world",
-                                text = "Your account has no relay yet. Open an invitation link a friend sent you, or paste it here.",
-                                action = "Join with a link",
-                            ) { pasting = true }
                         }
                     state.worlds.isEmpty() ->
                         item {
@@ -217,6 +232,7 @@ fun WorldsScreen(
         }
     }
 
+    confirmation?.let { ConsentCodeSheet(it, onAnswer = approvalsModel::answerConfirmation) }
     if (creating) {
         NewWorldSheet(
             onCreate = { name, seed -> onOpen(model.create(name, seed)) },
