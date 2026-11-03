@@ -16,9 +16,8 @@ Measured on this repo before they were removed — of 182 open Dependabot alerts
 single installed byte. Chasing them would have meant bumping dependencies that
 were already patched.
 
-A lockfile OUTSIDE the workspace globs is fine and expected — e.g.
-`apps/scaffolding-e2e/sync-test-server/package-lock.json`, a standalone npm
-package that is not an `apps/*/app` member and is run by hand.
+A lockfile OUTSIDE the workspace globs is fine and expected — e.g. a
+standalone npm package that is not an `apps/*/app` member and is run by hand.
 """
 
 import fnmatch

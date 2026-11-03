@@ -1,0 +1,35 @@
+[
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "tracingProbe",
+  "args": {
+   "debug": false
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "tracingProbe",
+  "args": {
+   "debug": true
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "get",
+  "args": {
+   "key": "probe_key"
+  },
+  "expect": {
+   "ok": "probe_value"
+  }
+ }
+]

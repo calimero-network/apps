@@ -63,7 +63,7 @@ Start here. These exist to be read, not shipped.
 | --- | --- | --- | --- |
 | [kv-store](apps/kv-store) | [↗](https://mero-kv-store.vercel.app) | The first component app (Calimero 1.0): a string key-value store on `calimero-app-sdk`, developed on `merod local`, its frontend on mero-js `CalimeroClient` (Cloud in production). | `com.calimero.kv-store` |
 | [conformance](apps/conformance) | — | Not a product: the conformance matrix. Every call a component app's client (mero-js `CalimeroClient`) makes, run as two accounts on `merod local` with one report row per check, and the contract it calls; the 0.x rig it replaces is kept beside it in `v0/`. | `com.calimero.conformance` |
-| [scaffolding-e2e](apps/scaffolding-e2e) | [↗](https://scaffolding-e2e-application.vercel.app/) | Full-stack scaffold — KV, CRDTs, blobs, private storage and namespace management behind an interactive test suite that exercises every SDK surface. | `com.calimero.scaffolding-e2e` |
+| [scaffolding-e2e](apps/scaffolding-e2e) | [↗](https://scaffolding-e2e-application.vercel.app/) | The SDK test bench, on the component SDK: KV, collections, per-user, frozen and shared storage, roles and a workspace directory, every method reachable from the UI behind an interactive test suite, and scenarios run on `merod local`. | `com.calimero.scaffolding-e2e` |
 
 ### Collaboration & productivity
 
@@ -87,7 +87,7 @@ Start here. These exist to be read, not shipped.
 | App | Live | What it is | Package |
 | --- | --- | --- | --- |
 | [mero-pass](apps/mero-pass) | [↗](https://mero-pass.vercel.app) | Secret manager on Calimero 1.0 (component SDK) — a vault is an app instance in your team's org. Secrets are sealed in the browser, versioned and attributed, with no master password to phish. | `com.calimero.mero-pass` |
-| [mero-sign](apps/mero-sign) | [↗](https://mero-sign.vercel.app) | Document signing — upload a PDF, collect signatures from namespace members, verify them peer-to-peer. | `com.calimero.mero-sign` |
+| [mero-sign](apps/mero-sign) | [↗](https://mero-sign.vercel.app) | A component app (Calimero 1.0): upload a PDF, collect signatures from the members of your organization and keep every signed version, on `calimero-app-sdk` with the PDFs as app blobs, its frontend on mero-js `CalimeroClient`. | `com.calimero.mero-sign` |
 | [mero-vote](apps/mero-vote) | — | Private polls with verifiable tallies — ballots encrypted in the browser (ElGamal on ristretto255) with zero-knowledge well-formedness proofs, t-of-n threshold-decrypted totals (distributed key generation, no trusted dealer), and a tally every member re-verifies in their own browser. A component app (Calimero 1.0) on `calimero-app-sdk`: v1's storage-tier write rules as method checks; frontend on mero-js `CalimeroClient`. | `com.calimero.mero-vote` |
 
 ### Games
@@ -96,7 +96,7 @@ Start here. These exist to be read, not shipped.
 | --- | --- | --- | --- |
 | [mero-blocks](apps/mero-blocks) | [↗](https://mero-blocks.vercel.app/) | Minecraft-style multiplayer voxel sandbox, a component app (Calimero 1.0). No game server — a world is an app instance: seed + block-edit diff + player presence. Its native iOS/Android apps move to 1.0 in #700. | `com.calimero.mero-blocks` |
 | [merraria](apps/merraria) | [↗](https://merraria.vercel.app/) | Terraria-style 2D mining sandbox — seed-generated terrain, CRDT tile diff, player presence. | `com.calimero.merraria` |
-| [battleships](apps/battleships) | [↗](https://battleships-fawn.vercel.app) | Two-player Battleships — a lobby service for matchmaking and one game service per match, with commit-reveal ship placement. | `com.calimero.battleships` |
+| [battleships](apps/battleships) | [↗](https://battleships-fawn.vercel.app) | Two-player Battleships with commit-reveal ship placement: boards stay on the device, every answer is audited at the reveal. A component app (Calimero 1.0) on `calimero-app-sdk`: the lobby and every match in one app instance, the result recorded by the call that decides it; frontend on mero-js `CalimeroClient`. | `com.calimero.battleships` |
 | [mero-chess](apps/mero-chess) | [↗](https://mero-chess.vercel.app) | Two-player chess, a component app (Calimero 1.0). A table is an app instance: every move is a transaction ordered by its log, and the rules — legal moves, check, mate, the draws — run inside the contract. | `com.calimero.mero-chess` |
 | [mero-kombat](apps/mero-kombat) | [↗](https://mero-kombat.vercel.app) | One-on-one arcade fighter, a component app (Calimero 1.0). An arena is an app instance: movement streams over ephemeral presence, every punch and kick is a contract transaction, and the contract keeps health, rounds and the winner. | `com.calimero.mero-kombat` |
 

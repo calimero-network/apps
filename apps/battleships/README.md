@@ -1,176 +1,182 @@
-# Battleships on Calimero
+# Battleships
 
-A two-player P2P battleship game built on [Calimero](https://calimero.network), using namespaces, multi-service bundles, client-side commit-reveal boards, and CRDT-based state sync.
+Two-player Battleships where your fleet never leaves your device.
 
-**[View Architecture Docs](https://calimero-network.github.io/battleships/)**
-
-## How It Works
-
-Two players — each on their own node, or playing as an **account** through a relay — play battleships with fully decentralized state. Ship placements stay **on the player's device** (the contract holds only a SHA-256 commitment, then the reveal), while game state syncs automatically via **CRDTs** over gossipsub. The app uses four core Calimero features:
-
-- **Namespaces** — identity scoping, recursive invitations, subgroup-based access control
-- **Multi-Service Bundles** — two WASM services (lobby + game) in one `.mpk` bundle
-- **Commit-reveal boards** — the board and salt live in the browser's storage; `commit_board` records the hash, `reveal_board` opens it at the end and every reader audits it. No `#[app::private]` storage, which is what lets an account play through a relay (a delegated execution has none)
-- **xcall** — cross-context calls from game to lobby when a match ends
-
-## Project Structure
+A lobby is a Calimero **app instance** on the 1.0 runtime: a contract on core's
+**component SDK** (`calimero-app-sdk`, a `calimero:app` WebAssembly component
+on the node's wasmtime runtime), developed on **`merod local`**, with a
+frontend on mero-js's **`CalimeroClient`** that talks to a **Calimero Cloud**
+cluster in production and to the local nodes in development. The lobby pairs
+players, runs every match and keeps the record; every shot is one contract
+call, ordered by the lobby's log.
 
 ```
-battleships/
-├── app/                          # React + TypeScript frontend
-│   ├── src/hooks/                # useBattleshipsLobby, useNamespaceBootstrap
-│   ├── src/api/lobby/            # LobbyClient (codegen from lobby-abi.json)
-│   └── src/api/game/             # GameClient (codegen from game-abi.json)
-├── logic/                        # Cargo workspace (3 crates)
-│   ├── crates/types/             # GameError, PublicKey (shared, no SDK dep)
-│   ├── crates/lobby/             # LobbyState + 6 methods → lobby.wasm
-│   ├── crates/game/              # GameState + 11 methods → game.wasm
-│   └── build-bundle.sh           # Builds both WASMs + packages .mpk
-├── e2e/                          # Merobox E2E workflow
-└── architecture/                 # Architecture docs (GitHub Pages)
+apps/battleships/
+├── logic/                   a standalone crate (own [workspace] + Cargo.lock)
+│   ├── src/lib.rs           #[app::state], #[app::logic], #[app::event], #[app::error]: lobby + matches
+│   ├── crates/rules/        the rules with no SDK: board, fleet, commitment, the audit (+ unit tests)
+│   ├── tests/harness.rs     TestApp: the built component on core's real engine
+│   ├── tests/scenarios.rs   every scenarios/*.json in the harness
+│   ├── scenarios/           match-lifecycle, access (+ .org.json): harness AND merod local
+│   └── res/abi.json         the component's ABI (committed, diffed in CI)
+├── app/                     Vite + React; @calimero-apps/connect + mero-js CalimeroClient
+│   └── src/battleships.ts   the contract's methods, typed (tested against res/abi.json)
+└── mobile/                  native iOS / Android apps (still v1: see mobile/README.md)
 ```
 
-### Multi-Service Bundle
+See [docs/COMPONENT-APPS.md](../../docs/COMPONENT-APPS.md) for how component
+apps are built, run and tested in this repo.
 
-The `battleships-0.3.2.mpk` bundle contains:
-
-| File | Description |
-|------|-------------|
-| `manifest.json` | Multi-service manifest with services array |
-| `lobby.wasm` | Lobby service — matchmaking, player stats, match history |
-| `game.wasm` | Game service — commitments, shots, answers, reveals and the audit |
-| `lobby-abi.json` | ABI for LobbyClient codegen |
-| `game-abi.json` | ABI for GameClient codegen |
-
-Each context specifies which service to run via `service_name` at creation time.
-
-## Quick Start
-
-### Prerequisites
-
-- Node.js 20+ and pnpm 9+
-- Rust (stable) with `wasm32-unknown-unknown` target
-- [Merobox](https://github.com/calimero-network/merobox) for local dev/E2E
-
-### Build
+## Run it
 
 ```bash
-# Install frontend dependencies
-pnpm --dir app install
-
-# Build WASM bundle (.mpk)
-cd logic && ./build-bundle.sh
-
-# Start frontend dev server
-pnpm --dir app dev
+pnpm install                     # once, at the repo root
+rustup target add wasm32-wasip2  # once
+pnpm dev:local battleships       # merod local + build + deploy + http://localhost:5173/
 ```
 
-### E2E Testing
+`merod` at the pinned core release must be on the `PATH` (or in `MEROD_BIN`).
+In the browser, **create an account** (a passkey), create a lobby, and
+**Invite player** for your opponent: a second browser profile with its own
+passkey that opens the link joins the lobby's organization. Each of you opens
+the lobby once (that is what puts you on its roster), then one challenges the
+other, both deploy a fleet, and you take turns.
 
-```bash
-pip install "merobox @ git+https://github.com/calimero-network/merobox.git@master"
-cd e2e
-merobox bootstrap run workflow-battleships-e2e.yml --e2e-mode
-```
+## The design
 
-## Game Flow
+**The board stays on the device.** The contract never holds a board. Each
+player's board and salt are kept in this browser's storage; the contract
+stores only `SHA256(borsh(board) || salt)` (`commitBoard`). The defender's
+client answers every shot from that local board (`acknowledgeShot`, a signed
+statement, written once), and at match end both clients publish
+`(board, salt)` (`revealBoard`). The reveal is checked against the commitment,
+checked to be a legal fleet, and every answer its owner gave is replayed
+against it. The declared winner must pass that audit to win; a winner who lied
+loses to the player they lied to; a match both players cheated in is void. A
+defender who answers "miss" forever cannot stall the game: a fleet is 17
+cells, so an 84th miss on a 100-cell board is a lie on its face.
 
-1. **Create Namespace** — host creates namespace with battleships app, sets default capabilities
-2. **Create Lobby** — lobby context in namespace root group (`service_name: lobby`)
-3. **Invite Player** — recursive namespace invitation covers root + all subgroups
-4. **Player Joins** — `joinNamespace` → auto-gets identity → joins lobby context
-5. **Create Match** — lobby allocates match ID → create subgroup → add P2 → create game context (`service_name: game`)
-6. **Place Ships** — each client lays out its fleet, saves `(board, salt)` in the browser (`app/src/lib/boardStore.ts`, keyed by player key and match id), and files `commit_board(match_id, SHA256(borsh(board) || salt))` — write-once
-7. **Take Turns** — `propose_shot` → the defender's client reads the pending shot from `get_match_state`, answers it from the board on its device with `acknowledge_shot(match_id, shot_id, hit)` — automatically, no prompt — and the answer is on record for every reader
-8. **Game Ends** — the answers show a fleet sunk → each client calls `reveal_board(match_id, board_bytes, salt)` → every reader checks the reveal against the commitment, checks it is a legal fleet, and replays every answer its owner gave; an answer that does not match marks that player a cheater and the game goes to the opponent → the audited winner is reported by `xcall` to the lobby → stats/history derived from it
+**One instance, one log.** v1 was two services: a lobby context per namespace
+and a game context per match, the game reporting its result to the lobby with
+a cross-context call. Here the lobby and every match are one app instance, so
+the call that decides a match (the reveal that passes or fails the audit)
+records the winner, the history and both players' stats in the same run.
+There is no context to create or join per match, and no report from another
+context to trust.
 
-## What holds against a patched node
+**Turn, pending shot and result are derived.** Whose turn it is, which shot
+waits for an answer, how the answers ended the match and who won are worked
+out on every read from the stored commitments, shots, answers and reveals
+(`getMatchState` in one read), never stored as a field a call could set.
 
-A member can run a node that skips every check in the contract, so the game
-rests on storage types every node enforces:
+## Trust
 
-- **Who plays is `Frozen` at init** — player keys, their accounts, the match id
-  and the lobby. Nobody can swap a player or point the result elsewhere.
-- **Every commitment, shot, answer and reveal is a `WriteOnce` row**, owned by
-  its author's account and immutable for everyone, the author included. Turn,
-  pending shot, placement and winner are derived from those rows, never stored.
-- **The contract never holds a board.** Boards and salts stay on the device
-  that placed them. A node — the player's own, the opponent's, or the relay an
-  account plays through — has only the commitment until the reveal.
-- **Equivocation loses.** A second, different shot, answer or commitment from
-  one player is a forfeit rather than a choice.
-- **The commit-reveal is audited by every reader.** At match end both players
-  publish `(board, salt)`; each node checks it against the commitment, checks
-  it is a legal fleet, and replays every answer. The declared winner must pass
-  to win; a winner who lied loses. A defender who never admits a hit runs out
-  of misses: the 84th miss on a 100-cell board is a lie on its face.
-- **The lobby** keeps each member's account → player key pairing in their own
-  `UserStorage` slot, each match owned by its creator, and results write-once.
-  A result counts only if the match's own game context reported it, it names
-  the match's two players, and every report agrees.
+v1 ran each service on every member's node, and a peer's node folded deltas
+into storage without running the contract, so v1 leaned on storage types every
+node enforced (`UserStorage`, `Authored`, `WriteOnce`, `Frozen`), per-author
+rows, owner stamps, equivocation rules, and a lobby that checked which context
+a result came from. Under one log every write IS this code, so each of those
+rules is a check against `env::caller()`:
 
-What remains: a player who stops answering, or a winner who never reveals,
-stalls the match (no timeouts); a member can register someone else's player key
-as their own, which blocks matches against that key rather than stealing them;
-two devices of one account writing different rows at the same millisecond
-collide on one write-once key; and a board lives in one browser's storage —
-place the fleet on another device, or clear site data mid-match, and that
-device can neither answer shots nor reveal.
+| attempt | what stops it |
+|---|---|
+| playing in someone else's match, or reading its shots | every game method checks the caller is one of its two players (`Forbidden`) |
+| shooting out of turn, twice, before both fleets are in, or at a cell already shot | `proposeShot` (`Forbidden: not your turn`, `Invalid`) |
+| answering your own shot, an old shot, or a shot twice | `acknowledgeShot` answers only the pending shot, only as its target, once |
+| a second commitment, to open whichever board suits at the end | `commitBoard` (`AlreadyCommitted`) |
+| revealing a board other than the one committed | `revealBoard` (`CommitmentMismatch`) |
+| a board revealed mid-match | `revealBoard` waits for the answers to end the match (`Invalid`) |
+| a lie about a hit or a miss | the reveal's replay: the liar fails the audit and loses |
+| a result for a match you did not win | results are written only by the audit's decision, once |
+| changing who plays a match | the players are fixed by `createMatch`; nothing edits them |
 
-## Game Rules
+Who reaches a lobby is its organization's business: members, admins, guests
+and the owner. Anyone who reaches it may open it and play; the lobby's events
+go to everyone in it, a match's events to its two players.
 
-- **Fleet**: 1x5 (carrier), 1x4 (battleship), 2x3 (cruiser, submarine), 1x2 (destroyer)
-- **Placement**: Ships must be straight, contiguous, and non-adjacent
-- **Turns**: Players alternate shots. The target's client answers hit/miss from the board on its device; the reveal is replayed against every answer
-- **Win**: First player to sink all opponent ships wins — once their own revealed board passes the audit
+What remains, as before: a player who never answers, or never reveals, stalls
+the match. There is no clock in the contract to forfeit them on.
 
-## Development
+## Test it
 
-```bash
-# Frontend
-pnpm --dir app lint              # Lint
-pnpm --dir app exec tsc --noEmit # Typecheck
-pnpm --dir app build             # Production build
-pnpm --dir app test              # Tests
+| | what it covers | needs a node |
+|---|---|---|
+| `cargo test --manifest-path apps/battleships/logic/Cargo.toml` | the rules (`crates/rules`: fleet validation, the commitment vector shared with the client, the audit), v1's lobby and game `TestHost` tests method for method (matches, players, stats, history, commits, shots, answers, sinking a fleet, a lie caught at the reveal, a void match, the impossible-misses rule), the method checks that replace v1's forged-row tests, events, access and wire checks, and every `scenarios/*.json`, on core's wasmtime engine | no |
+| `pnpm -F battleships test` | the board helpers and the commitment vector; the methods the UI calls are exactly the committed ABI's, with its parameter names; the adapter back to the screens' shapes; event parsing; sign-up, lobbies, invitations, names, a challenge and the placement grid (mocked client) | no |
+| `pnpm merod-local e2e battleships` | every `scenarios/*.json` on `merod local`: real accounts with passkeys, an org per scenario, each account on a different node | yes |
 
-# Logic (Rust)
-cd logic
-cargo fmt --check                                        # Format check
-cargo clippy --target wasm32-unknown-unknown -- -D warnings  # Clippy
-cargo build --target wasm32-unknown-unknown --profile app-release  # Build WASM
+`match-lifecycle.json` is v1's two-node Docker workflow (`logic/workflows/e2e.yml`) with two accounts
+instead of two nodes: both open the lobby, a refused self-challenge and an
+unregistered opponent, a match, both fleets committed (a second commitment
+refused), shots out of turn and by a bystander refused, Alice sinking Bob's
+fleet with every answer given by the defender, a reveal with the wrong salt
+refused, both boards revealed, the winner, stats and history read back.
+`access.json` adds what that workflow could not express: anonymous callers and
+accounts outside the org refused, a guest playing, a bystander refused,
+typed errors with their fields.
 
-# Generate ABI clients for frontend (LobbyClient + GameClient)
-pnpm --dir app codegen
-```
+## What changed in the port, and why
 
-## Architecture Docs
+The same methods (in camelCase), the same arguments where a lobby still has
+them, the same answers and events, with these differences a client sees:
 
-The [architecture documentation](https://calimero-network.github.io/battleships/) covers:
+| | v1 (`calimero-sdk`, wasmer, two services) | now (component SDK, one app instance) | why |
+|---|---|---|---|
+| transport | JSON-RPC `execute` on your own node, a context id per service | `POST /apps/{app}/intents` (calls) and `/views` (reads) on any node of the cluster, an app id | one app per replicated log |
+| services | `lobby` (one context per namespace) + `game` (one context per match, `init(player1, player2, player2_account, lobby_context_id, match_id)`) | one contract; a lobby is an app instance in an org, a match is rows in it | the component runtime runs one component per bundle, and one instance needs no cross-context call |
+| `set_match_context_id` | linked a match to its game context (Pending → Active) | **removed** (`UnknownMethod`) | there is no game context; `createMatch` starts the match |
+| `on_match_finished` (`#[app::xcall(from_same_app)]`) | the game context reported the result to the lobby | **removed**; `revealBoard` records the result when the audit decides | the match is in the lobby's instance. (Component xcall, core#4816/#4820, landed after `1.0.0-rc.7`, the pinned tag, and is not in it.) |
+| `get_current_turn`, `get_winner` | no arguments (per game context) | take `matchId` | one instance holds every match |
+| `get_active_match_id` | the match the game context was created for | the caller's newest match not over yet (being played or awaiting a reveal), or `null` | no per-match context |
+| identities | a player is a context member's device key; `register_player` paired account → key; `player2_account` was a separate account | a player is an **account**; `registerPlayer` returns the caller's account and puts it on the roster; `getPlayers` answers `{account, player}` with both the account; `player2_account` equals `player2` | identity is an account (passkeys); there are no context identities |
+| match ids | `{player1 key}-{ms}-{nonce}` | `{player1 account}-{ms}-{nonce}` | the same |
+| `MatchSummary.context_id` | the linked game context | **removed** | no game context |
+| `MatchSummary.status` | `Pending` until the game context was linked, `Active`, `Finished` once a counting result exists | `Pending` until both fleets are committed, `Active`, `Finished` once the audited result is recorded | nothing to link; a void match stays `Active`, as before |
+| `createMatch` | opponent must have registered a key, exactly once | opponent must have opened the lobby and still be in its org | no key pairing to disambiguate |
+| method names | `create_match`, `get_match_state`, … | `createMatch`, `getMatchState`, … | the ABI names methods in camelCase |
+| argument names | `match_id`, `shot_id`, `board_bytes` | `matchId`, `shotId`, `boardBytes` (unknown keys are `BadArgs`) | the same |
+| `revealBoard` bytes | `board_bytes` and `salt` as arrays of numbers (`salt` a `[u8; 16]`) | base64url strings; a salt that is not 16 bytes is `Invalid` | `Vec<u8>` travels as base64url (D20) |
+| `u64` result fields | numbers (`created_ms`, `finished_ms`, `wins`, `losses`, `games_played`) | decimal strings (the frontend converts them back in `src/battleships.ts`) | D20 |
+| result field names | snake_case | unchanged (snake_case) | |
+| errors | `GameError` as `{ kind, data }` strings | typed codes: `NotFound{matchId}`, `Invalid{message}`, `Forbidden{message}`, `Finished`, `MatchIdCollision`, `AlreadyCommitted`, `CommitmentMismatch` (`422 APP_ERROR`) | `#[app::error]`; v1's never-raised `AuditFailed` and `BoardNotFound` kinds are gone |
+| equivocation | a second, different commitment, shot or answer filed around the contract ended the match against its author (`ended_by: "equivocation"`) | impossible: the call is refused (`AlreadyCommitted`, `Invalid: no pending shot`), so `ended_by` is `sunk` or `impossible_misses` | every write runs the contract |
+| a refused reveal | emitted `AuditFailed { reason: "commitment_mismatch" }`, then failed | fails with `CommitmentMismatch` and emits nothing | a failed call applies nothing, events included |
+| `Winner` / `MatchEnded` | emitted on every reveal after the decision, and every node could report the result | emitted once, by the call that decides the match; the result is counted once | one log |
+| stats | derived on every read from the reported results | counters kept with the result | only the contract writes them |
+| events | lobby events on the lobby context, match events on the game context | one event stream per lobby: `MatchCreated`, `MatchListUpdated` (now also when a fleet is committed), `PlayersUpdated`, `PlayerStatsUpdated` to everyone the lobby reaches; a match's events (with its `id`) to its two players. `MatchIdCollision` (never emitted) is gone | `Audience` |
+| access | anyone in the namespace's contexts | the lobby org's members, admins, guests and owner; anonymous `401`, outsiders `404`; a match's views (`getShots`, `getIncomingShots`, `getMatchState`) to its players only, as before | the node's access gate |
+| frontend | node login / Calimero account through a relay, namespaces, contexts, namespace invitations, names via `@calimero-apps/names`, the desktop SSO hand-off | passkey sign-in or sign-up (no node to pick: the build sets the target), lobbies as app instances in orgs, org invite links (`?invite=&lobby=`, a passkey step-up), names as org member metadata | `@calimero-apps/connect` |
 
-- Namespace hierarchy and capability configuration
-- Multi-service bundle structure (lobby + game services)
-- Device-held boards vs shared, write-once rows
-- Cross-context calls (xcall) from game to lobby
-- CRDT state sync and delta propagation
-- Complete game flow from namespace creation to match completion
-- Calimero platform features used (9 features)
+No migrations existed in v1 and the component SDK has none, so v1 lobby and
+game state does not carry over: lobbies are created anew.
 
-## Owned keys are per owner (core 0.11.0-rc.57)
+### Removed
 
-Since core 0.11.0-rc.57 every owned collection (`Authored…`, `WriteOnce`, `Moderated`,
-`ModeratedOnce`) is one namespace per account: two accounts writing one key hold two
-independent entries, and a key-only `get`, `contains`, `owner_of`, `owned_by_me` or `remove`
-acts on the CALLER's own entry only. This app was migrated:
+- **Contract**: `crates/game` and `crates/types` (the pure modules moved into
+  `crates/rules`; the game contract into `src/lib.rs`), `src/events.rs`,
+  `crates/game/build.sh`, `res/state-schema.json` and the game service's ABI,
+  `logic/workflows/` (the v1 Docker workflows), v1's `calimero-sdk`/`calimero-storage`.
+- **Frontend**: the abi-codegen `src/generated/` clients, `features/kv`, the
+  namespace bootstrap, join-sync and stream-reconnect hooks, the invitation
+  codec, `InvitationPrompt`, `knownPlayers`, `lobbyName`, `redeemLobby`,
+  `contractError` (replaced by `messageOf` in `src/battleships.ts`), the
+  landing `loginPopup.tsx` (pruned by `pnpm landing:generate`), the Playwright
+  `e2e/` suites and configs, and mero-react / mero-platform / names / abi-codegen
+  / e2e-node / Playwright / bs58 / fflate.
+- **Elsewhere**: `architecture/` (the v1 two-service architecture page),
+  `apps/battleships/package.json` and `scripts/` (v1-era wasm sync to
+  local node data dirs), and the app's entry in the v1 workflow-coverage baseline
+  (`scripts/`).
 
-- **Lobby.** A match is read through `match_of`: among the holders of its id, the entry
-  owned by the account that registered the id's `player1` key (the lowest such holder
-  otherwise). Result rows are read per key with every holder's account (`entries_at`),
-  because both players' nodes can now file a report under the same key. Creating a match
-  still refuses an id **any** account holds. Test:
-  `an_entry_filed_under_someone_elses_match_id_is_never_the_match`.
-- **Game.** A player's commitments, shots, answers and reveals are read as that player's
-  own entry at each key (`get_by`), once per key.
+## Production
+
+`pnpm -F battleships build` with `VITE_CALIMERO_CLUSTER` and
+`VITE_CALIMERO_MIN_RELEASE` set (see `app/.env.example`), then
+`mero-component bundle apps/battleships/logic` packs that build as the bundle's
+frontend: a Cloud node serves it from the package's own origin, which is the
+only origin it trusts passkey ceremonies from. Instances are created from the
+package `com.calimero.battleships`.
 
 ## License
 
-MIT
+See [LICENSE](LICENSE).

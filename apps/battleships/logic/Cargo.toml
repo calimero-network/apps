@@ -1,84 +1,67 @@
 [package]
-# The LOBBY service crate, promoted to logic/ and renamed. `apps/*/logic` must be
-# a PACKAGE (a members-glob match cannot be a nested `[workspace]`), and the
-# directory / cargo package / npm package must be one value.
-#
-# Lobby rather than game because it is the entry service: the app bootstraps a
-# namespace with `serviceName: 'lobby'` before any game context exists. The
-# SERVICE names are unchanged (`lobby`, `game`) — the frontend passes them at
-# createContext and every scenario asserts on them.
-name        = "battleships"
-version     = "0.3.3"
-edition.workspace    = true
-authors.workspace    = true
-license.workspace    = true
-repository.workspace = true
+name = "battleships"
+description = "Two-player Battleships with commit-reveal boards, on the component SDK"
+# NOT the release version: the release workflow takes the next appVersion from
+# the registry and passes it to `mero-component bundle --app-version`. Cargo
+# requires the field; bundling locally without --app-version uses it.
+version = "0.0.1"
+edition = "2021"
+authors = ["Calimero Limited <info@calimero.network>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/calimero-network/apps"
+publish = false
 
 [lib]
-# `rlib` added alongside cdylib so TestHost tests can link the crate.
-crate-type = ["cdylib", "rlib"]
+# A `calimero:app` component. No `rlib`: the tests run the BUILT component on
+# core's engine (tests/common/mod.rs), not the crate linked natively.
+crate-type = ["cdylib"]
 
-# NEW. The standalone repo had NO [package.metadata.calimero] anywhere — not at
-# workspace level either — so this app was never bundled by cargo-mero and never
-# published. The registry has nothing under any battleships id, so the id below is
-# a FIRST publish with no installed copies and no invite links to orphan.
+# Core at `component-core-tag` (root Cargo.toml), the same tag for every core
+# crate; scripts/check-component-pins.py asserts it. A standalone crate cannot
+# inherit `[workspace.dependencies]`.
+[dependencies]
+calimero-app-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8" }
+battleships-rules = { path = "crates/rules" }
+serde = { version = "1", features = ["derive"] }
+hex = "0.4.3"
+
+# The harness (`TestApp`, `run_scenario`) and the builder the tests build this
+# crate with, for `cargo test` on the host only. The rules crate plays the
+# browser's half (placing a fleet, committing to it) in tests/harness.rs.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+calimero-app-sdk   = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8", features = ["testing"] }
+calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8" }
+serde_json = "1"
+
+# Read by `mero-component bundle` (tools/component-bundle), with the keys
+# `cargo mero bundle` reads for a v1 app.
 [package.metadata.calimero]
 package     = "com.calimero.battleships"
 name        = "Battleships"
-description = "Two-player Battleships over Calimero: a lobby service for matchmaking and a game service per match, with commit-reveal ship placement."
+description = "Two-player Battleships: a lobby of matches and stats, and every match played with commit-reveal boards that stay on the player's device."
 author      = "Calimero"
 slug        = "com.calimero.battleships"
-# A real icon, not the placeholder — this is what gives the app an icon in the
-# registry and, via tauri-app's `ensure_app_launcher_icon`, in the macOS Dock.
 # Regenerate with `node app/scripts/gen-icons.mjs`.
 icon        = "../app/public/icon-512.png"
-category = "games"
+category    = "games"
 tags        = ["game", "multiplayer", "turn-based"]
 github      = "https://github.com/calimero-network/apps"
-min-runtime-version = "0.12.0-rc.3"
-# ⚠️ `battleships.vercel.app` is NOT ours. It serves a third-party
-# single-player battleships game (create-react-app, "Start the game against the
-# computer"), and `battleships-app.vercel.app` is a different third-party one —
-# neither bundle carries a `com.calimero.*` id or any mero-react. A Vercel
-# project name decides its domain and the plain name was already claimed, which
-# is why every other app here carries a prefix or suffix: mero-kv-store,
-# mero-stream-neon, mero-issue-tracker-app, scaffolding-e2e-application.
-#
-# This value is published as the registry's `links.frontend`, so while it was
-# wrong the launcher, every invite link and the login-callback check all pointed
-# at a stranger's site.
-#
-# Bare origin, no trailing slash: the auth frontend compares it by EXACT ORIGIN
-# against `window.location.origin`, which never has one.
+# `component-min-runtime-version` in the root Cargo.toml: a node compares it
+# with its own release.
+min-runtime-version = "1.0.0-rc.8"
+# The listing's link, and an origin the node may send a person back to from
+# its consent page. NOT where the production frontend runs: a Cloud node trusts
+# passkey ceremonies only from frontends it serves from a bundle, so the
+# production frontend is the one packed below (docs/COMPONENT-APPS.md).
+# ⚠️ `battleships.vercel.app` is NOT ours (a third-party game); this is.
 frontend    = "https://battleships-fawn.vercel.app"
-# The built frontend `cargo mero bundle` packs, so the node serves it from the app's own origin.
+# The built frontend the bundle carries; the cluster serves it from the
+# package's own origin. Build it first: `pnpm -F battleships build`.
 frontend-dir = "../app/dist"
 
-# Two services, one bundle. PACKAGE level, because cargo-mero REPLACES an app's
-# package table with `[workspace.metadata.calimero]` when both exist — which in a
-# many-app workspace masks every other app.
-[[package.metadata.calimero.services]]
-name  = "lobby"
-crate = "battleships"
-
-[[package.metadata.calimero.services]]
-name  = "game"
-crate = "battleships-game"
-
-[dependencies]
-battleships-types       = { path = "crates/types" }
-# `hex`, not `bs58`: core rc.27 removed base58 from ids entirely.
-hex                     = { workspace = true }
-# WAS `branch = "master"`, which rides unreleased protocol work against nodes
-# running a release and drifts silently between builds.
-calimero-sdk            = { workspace = true }
-calimero-storage        = { workspace = true }
-calimero-storage-macros = { workspace = true }
-
-# NOTE: build.rs and its calimero-wasm-abi [build-dependencies] are GONE, in both
-# service crates. Core deleted all 60 per-app ABI build scripts (#3319) and
-# derives the ABI from the type system (#3364); `cargo mero build` is the emitter.
-# calimero-wasm-abi is not even resolvable as an app dependency at the workspace
-# tag any more.
-#
-# NOTE: no [profile.*] — cargo ignores profiles in a workspace member.
+# Standalone: excluded from the root workspace (root Cargo.toml), its own
+# Cargo.lock, as core's component apps are. The rules crate is a member, and a
+# default one, so `cargo test` here also runs its unit tests.
+[workspace]
+members = ["crates/rules"]
+default-members = [".", "crates/rules"]

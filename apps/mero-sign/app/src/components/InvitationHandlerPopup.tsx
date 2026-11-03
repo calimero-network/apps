@@ -1,149 +1,155 @@
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { CalimeroError } from '@calimero-network/mero-js';
+
+import { useMaybeSignedIn, useSessionApi } from '../sessionContext';
+import { setActiveWorkspace } from '../lib/activeWorkspace';
+import { enterAgreement } from '../lib/agreements';
 import {
-  InvitationDialog,
-  useInviteRedemption,
-  type ParsedInvitation,
-  type RedeemOutcome,
-} from '@calimero-network/mero-react';
-import { useCalimero } from '../lib/useCalimero';
-import {
-  InvitationRedeemError,
-  joinWorkspaceFromInvitation,
-  parseInvitation,
-  type RedeemStage,
-} from '../api/invitationJoin';
-import {
-  namespaceIdOfInvite,
-  type MeroSignInvitePayload,
-} from '../lib/inviteCodec';
+  dropInvite,
+  joinedOrg,
+  pendingInvite,
+  type PendingInvite,
+} from '../lib/invites';
+import { errorMessage, setContextId } from '../lib/node';
+import styles from '../pages/app/AgreementsPage.module.css';
 
-// ── The invitation prompt ────────────────────────────────────────────────────
-//
-// Mounted at APP level (see App.tsx), not on a page: an invitation link can land
-// on any route — `/`, `/docs`, a deep link the launcher rewrote, a path that
-// does not exist — and the prompt has to be there wherever it lands.
-//
-// It ASKS FIRST. Opening a link is not consent to join: the prompt names what
-// the invitation is for and joins only on "Join". It used to start the join
-// the moment it mounted, so any page that could get a link opened in your
-// browser could put your node into a workspace.
-//
-// The prompt is mero-react's `InvitationDialog`; the join itself lives in
-// `api/invitationJoin.ts`. The dialog stays on "Syncing…" until the page the
-// join lands on has read the workspace: AgreementsPage's or AgreementPage's
-// `useJoinSync`.
-
-const ASK_COPY =
-  'You were invited to a Mero Sign workspace. Joining adds your node to it, ' +
-  'and its agreements sync to you.';
-
-// The slow steps after the workspace join, shown under "Joining…". The join
-// itself keeps the dialog's own words about waiting for a member.
-const STAGE_COPY: Record<RedeemStage, string | null> = {
-  joining: null,
-  entering:
-    'An invitation is to a workspace; this is finding the agreement inside it.',
-  syncing:
-    'Waiting for the agreement to replicate onto your node. This can take a moment.',
-  registering: 'Recording you as a participant so you can sign.',
-  naming: 'Saving the agreement to your dashboard.',
-};
-
-interface SignInvitation extends ParsedInvitation {
-  token: string;
-  payload: MeroSignInvitePayload;
-}
-
+/**
+ * "Join this workspace?" for an invitation that arrived as a link
+ * (`?invite=<token>[&agreement=<app id>]`, taken into storage before the first
+ * render, see `captureInvite`).
+ *
+ * Mounted at the APP level because a link can land on any route. It asks
+ * rather than joins: joining puts you in someone's workspace, and a forwarded
+ * link should not do that silently. Signed out, it offers the passkey sign-in
+ * first; the token survives the sign-up.
+ *
+ * Joining redeems the org invite, then, for a link that names an agreement,
+ * puts you on its roster as a signer (`registerSelfAsParticipant`) and records
+ * it in your private library before opening it. There is no "waiting for the
+ * agreement to replicate" stage any more: nothing has to sync before a new
+ * member can read.
+ */
 export default function InvitationHandlerPopup() {
-  const { app, isAuthenticated } = useCalimero();
+  const { api, openSignIn, signInOpen } = useSessionApi();
+  const signedIn = useMaybeSignedIn();
   const navigate = useNavigate();
-  const [stage, setStage] = useState<RedeemStage | null>(null);
-  // Set for a legacy targeted invitation only. It joins one agreement and no
-  // workspace, so no page's `useJoinSync` watches it; the join has already
-  // waited for that agreement's state, which is the read the dialog waits on.
-  const [legacySynced, setLegacySynced] = useState(false);
+  const [invite, setInvite] = useState<PendingInvite | null>(() =>
+    pendingInvite(),
+  );
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const parse = useCallback((token: string): SignInvitation | null => {
-    const payload = parseInvitation(token);
-    if (!payload) return null;
-    return {
-      // A legacy targeted invitation names no workspace; the token stands in
-      // so it is still asked about, and `joinWorkspaceFromInvitation` decides
-      // what it can redeem.
-      namespaceId: namespaceIdOfInvite(payload) || token,
-      invitation: payload.invitation,
-      // The invitation's own name, so the prompt can say WHAT you are joining.
-      // Untrusted, it is outside the signature, and superseded by the
-      // contract's name the moment the join completes.
-      teamName: payload.contextName || payload.workspaceName,
-      token,
-      payload,
-    };
+  const dismiss = useCallback(() => {
+    dropInvite();
+    setInvite(null);
+    setError(null);
   }, []);
 
-  const redeem = useCallback(
-    async ({ token, teamName }: SignInvitation): Promise<RedeemOutcome> => {
-      setLegacySynced(false);
-      try {
-        const result = await joinWorkspaceFromInvitation(token, app, setStage);
-        // ⚠️ An invitation grants membership of a WORKSPACE. It resolves to a
-        // single agreement only when the workspace holds exactly one, or when
-        // the link named one that is in it. With none or several — both
-        // ordinary — the workspace is where the person belongs, and
-        // `/agreements/undefined` is where they used to end up.
-        if (result.contextId) {
-          navigate(`/agreements/${result.contextId}`, { replace: true });
-        } else if (result.namespaceId) {
-          navigate(`/workspaces/${result.namespaceId}`, { replace: true });
-        } else {
-          navigate('/workspaces', { replace: true });
-        }
-        if (!result.namespaceId) setLegacySynced(true);
-        return {
-          status: 'joined',
-          // The workspace the landing page's `useJoinSync` watches.
-          namespaceId: result.namespaceId ?? result.contextId ?? token,
-          teamName: result.name || result.workspaceName || teamName,
-        };
-      } catch (error) {
-        if (error instanceof InvitationRedeemError) return error.outcome;
-        // Everything else is this app's own words about a link it cannot use
-        // or a step that broke after the join; worth another try.
-        return {
-          status: 'failed',
-          namespaceId: null,
-          message:
-            error instanceof Error
-              ? error.message
-              : 'An unexpected error occurred while joining.',
-          reason: 'unknown',
-          retryable: true,
-        };
-      } finally {
-        setStage(null);
+  const join = useCallback(async () => {
+    if (!signedIn || !invite) return;
+    setBusy(true);
+    setError(null);
+    try {
+      setStatus('Joining the workspace…');
+      const org = joinedOrg(await signedIn.client.redeemInvite(invite.token));
+      dropInvite();
+      if (org) setActiveWorkspace(org);
+      if (invite.agreement) {
+        setStatus('Recording you as a participant so you can sign.');
+        const apps = await signedIn.client.listApps().catch(() => []);
+        const name =
+          apps.find((a) => a.appId === invite.agreement)?.name ?? 'Agreement';
+        await enterAgreement(
+          signedIn.client,
+          {
+            source: signedIn.source,
+            appId: invite.agreement,
+            accountId: signedIn.accountId,
+            name,
+          },
+          signedIn.after,
+        );
+        setContextId(invite.agreement);
+        setInvite(null);
+        navigate(`/agreements/${invite.agreement}`, { replace: true });
+      } else {
+        setInvite(null);
+        navigate(org ? `/workspaces/${org}` : '/workspaces', { replace: true });
       }
-    },
-    [app, navigate],
-  );
+    } catch (e) {
+      // A refusal (used, expired, revoked) can never succeed: drop it.
+      // Anything else (the cluster unreachable) is kept for another try.
+      if (e instanceof CalimeroError && e.status < 500) dropInvite();
+      setError(`The invitation could not be accepted: ${errorMessage(e)}`);
+    } finally {
+      setBusy(false);
+      setStatus(null);
+      signedIn.after();
+    }
+  }, [signedIn, invite, navigate]);
 
-  const redemption = useInviteRedemption({
-    parse,
-    redeem,
-    // `app` is created asynchronously by the provider; joining without it puts
-    // every call on the apiClient fallback path. The invitation is buffered
-    // meanwhile, so one opened signed out survives the login.
-    enabled: !!isAuthenticated && !!app,
-  });
+  const ready =
+    api.session.status === 'signed-out' || api.session.status === 'signed-in';
+  if (!invite || !ready || signInOpen) return null;
 
   return (
-    <InvitationDialog
-      redemption={redemption}
-      noun="workspace"
-      appName="Mero Sign"
-      detail={ASK_COPY}
-      status={stage ? STAGE_COPY[stage] : null}
-      synced={legacySynced}
-    />
+    <div className={styles.modalBackdrop}>
+      <div
+        className={styles.modal}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="invitation-title"
+        data-testid="invitation-dialog"
+      >
+        <h2 className={styles.modalTitle} id="invitation-title">
+          You&apos;re invited to Mero Sign
+        </h2>
+        <p className={styles.modalDesc}>
+          {invite.agreement
+            ? 'Joining gives you access to the workspace and takes you straight into the agreement you were invited to sign.'
+            : 'Joining gives you access to the workspace and every agreement in it.'}
+        </p>
+        {status && <p className={styles.hint}>{status}</p>}
+        {error && (
+          <p className={styles.error} role="alert" data-testid="invitation-error">
+            {error}
+          </p>
+        )}
+        <div className={styles.modalRow}>
+          <button
+            type="button"
+            className={styles.btnGhost}
+            onClick={dismiss}
+            disabled={busy}
+            data-testid="invitation-dismiss"
+          >
+            Not now
+          </button>
+          {signedIn ? (
+            <button
+              type="button"
+              className={styles.btn}
+              onClick={() => void join()}
+              disabled={busy}
+              data-testid="invitation-join"
+            >
+              {busy ? <span className={styles.spinner} /> : null}
+              {busy ? 'Joining…' : 'Join'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={styles.btn}
+              onClick={openSignIn}
+              data-testid="invitation-signin"
+            >
+              Sign in to join
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

@@ -1,0 +1,202 @@
+[
+ {
+  "as": "@anonymous",
+  "op": "view",
+  "method": "getMatches",
+  "args": {},
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "call",
+  "method": "registerPlayer",
+  "args": {},
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "eve",
+  "op": "view",
+  "method": "getMatches",
+  "args": {},
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "eve",
+  "op": "call",
+  "method": "registerPlayer",
+  "args": {},
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "registerPlayer",
+  "args": {},
+  "expect": {
+   "ok": "@gus"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "registerPlayer",
+  "args": {},
+  "expect": {
+   "ok": "@bob"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "createMatch",
+  "args": {
+   "player2": "@bob"
+  },
+  "save": "match"
+ },
+ {
+  "as": "carol",
+  "op": "view",
+  "method": "getMatchState",
+  "args": {
+   "matchId": "$match"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "not a player"
+   }
+  }
+ },
+ {
+  "as": "carol",
+  "op": "view",
+  "method": "getShots",
+  "args": {
+   "matchId": "$match"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "not a player"
+   }
+  }
+ },
+ {
+  "as": "carol",
+  "op": "call",
+  "method": "commitBoard",
+  "args": {
+   "matchId": "$match",
+   "commitment": "37188894d025229c47a83365463dbc5e15d7a267aa13ef63f4d963b0d03def4f"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "not a player"
+   }
+  }
+ },
+ {
+  "as": "eve",
+  "op": "view",
+  "method": "getMatchState",
+  "args": {
+   "matchId": "$match"
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getMatchState",
+  "args": {
+   "matchId": "nope"
+  },
+  "expect": {
+   "error": "NotFound",
+   "fields": {
+    "matchId": "nope"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getMatchState",
+  "args": {
+   "match_id": "$match"
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "noSuchMethod",
+  "args": {},
+  "expect": {
+   "error": "UnknownMethod"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "proposeShot",
+  "args": {
+   "matchId": "$match",
+   "x": 0,
+   "y": 0
+  },
+  "expect": {
+   "error": "NotAView"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setMatchContextId",
+  "args": {
+   "matchId": "$match",
+   "contextId": "ab"
+  },
+  "expect": {
+   "error": "UnknownMethod"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "commitBoard",
+  "args": {
+   "matchId": "$match",
+   "commitment": "abc"
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "commitBoard",
+  "args": {
+   "matchId": "$match",
+   "commitment": "37188894d025229c47a83365463dbc5e15d7a267aa13ef63f4d963b0d03def4f"
+  },
+  "expect": {
+   "ok": null
+  }
+ }
+]
