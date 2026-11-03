@@ -303,6 +303,15 @@
       "stats": "unorderedMap",
       "turns": "unorderedMap"
     },
+    "search": {
+      "history": [],
+      "matches": [],
+      "players": [],
+      "results": [],
+      "reveals": [],
+      "stats": [],
+      "turns": []
+    },
     "version": 1
   },
   "world": "calimero:app@0.5.0"
