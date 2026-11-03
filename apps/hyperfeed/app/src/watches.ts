@@ -1,4 +1,4 @@
-import type { WatchInput, WatchView } from "./generated/HyperfeedClient";
+import type { WatchInput, WatchView } from "./hyperfeedTypes";
 import type { Tone } from "./format";
 
 /**

@@ -1,6 +1,6 @@
 // The generated client's types (`CalendarEvent`, `Member`, …) are part of this
 // module's surface.
-@_exported import CalendarGenerated
+@_exported import CalendarContract
 import Foundation
 
 /// The names Mero Calendar is known by on the wire.

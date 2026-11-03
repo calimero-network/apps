@@ -71,10 +71,10 @@ object Fixtures {
         table: MutableMap<String, String> = mutableMapOf(),
         memberOfProject: Boolean = true,
     ): InMemoryAppBackend {
-        table.putIfAbsent("get_layers", "[]")
-        table.putIfAbsent("get_document", document())
-        table.putIfAbsent("get_members", "[]")
-        table.putIfAbsent("my_role", "\"viewer\"")
+        table.putIfAbsent("getLayers", "[]")
+        table.putIfAbsent("getDocument", document())
+        table.putIfAbsent("getMembers", "[]")
+        table.putIfAbsent("myRole", "\"viewer\"")
         val backend = InMemoryAppBackend(account = me)
         backend.namespaces = listOf(AppNamespace(team, "Studio", backend.applicationId, 3))
         backend.subgroups = mapOf(team to listOf(AppSubgroup(group, "poster", listOf(project))))

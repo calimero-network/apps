@@ -447,3 +447,10 @@ extension View {
 
     func notices(_ notice: Binding<Notice?>) -> some View { modifier(NoticeOverlay(notice: notice)) }
 }
+
+extension CloudStyle {
+    /// The sign-in and approvals views in Mero CRM's colours.
+    static let app = CloudStyle(
+        ink: Palette.ink, muted: Palette.ink2, accent: Palette.lime, onAccent: Palette.ink, danger: Palette.danger,
+        field: Palette.surface, hairline: Palette.hairline)
+}

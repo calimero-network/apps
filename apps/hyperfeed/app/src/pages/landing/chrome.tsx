@@ -3,10 +3,9 @@ import { Link } from "react-router-dom";
 import { useTheme } from "../../theme";
 import LoginPopup from "./loginPopup";
 import { BrandLockup } from "../../brand";
-import { nodeBasename } from "../../servedByNode";
+import { nodeBasename } from "../../served";
 
 export const GITHUB = "https://github.com/calimero-network/apps/tree/main/apps/hyperfeed";
-export const DOWNLOAD = "https://calimero.network/download";
 
 /** The connect dialog every "Open your feed" button opens. */
 export function useConnect() {

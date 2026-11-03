@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import network.calimero.issues.app.IssuesAppViewModel
+import network.calimero.issues.contract.IssueView
 import network.calimero.issues.core.IssueDraft
 import network.calimero.issues.core.IssuesModel
 import network.calimero.issues.core.SectionsDraft
@@ -63,7 +64,6 @@ import network.calimero.issues.core.Tracker
 import network.calimero.issues.core.TrackerFormat
 import network.calimero.issues.core.TrackerInvitation
 import network.calimero.issues.core.WorkspaceModel
-import network.calimero.issues.generated.IssueView
 import kotlin.coroutines.cancellation.CancellationException
 
 /** Sheet chrome: title bar with Cancel, a scrolling body, a pinned primary button. */
@@ -425,7 +425,7 @@ fun JoinInvitationSheet(
     val scope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = true, confirmValueChange = { !busy })
-    ModalBottomSheet(onDismissRequest = { if (!busy) vm.session.dismissPendingInvitation() }, sheetState = state, containerColor = Palette.ground) {
+    ModalBottomSheet(onDismissRequest = { if (!busy) vm.dismissPendingInvitation() }, sheetState = state, containerColor = Palette.ground) {
         Column(
             Modifier.padding(Palette.gutter).navigationBarsPadding(),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -470,7 +470,7 @@ fun JoinInvitationSheet(
                     }
                 }, busy = busy)
             }
-            SecondaryButton("Not now", { vm.session.dismissPendingInvitation() }, enabled = !busy)
+            SecondaryButton("Not now", { vm.dismissPendingInvitation() }, enabled = !busy)
         }
     }
 }

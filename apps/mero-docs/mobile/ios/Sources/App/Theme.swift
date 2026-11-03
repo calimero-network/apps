@@ -93,3 +93,10 @@ enum Haptics {
     static func success() { UINotificationFeedbackGenerator().notificationOccurred(.success) }
     static func error() { UINotificationFeedbackGenerator().notificationOccurred(.error) }
 }
+
+extension CloudStyle {
+    /// The sign-in and approvals views in Mero Docs' colours.
+    static let app = CloudStyle(
+        ink: Theme.ink, muted: Theme.muted, accent: Theme.lime, onAccent: Theme.ink, danger: Theme.danger,
+        field: Theme.surface, hairline: Theme.lineStrong)
+}

@@ -1,0 +1,2240 @@
+[
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setPolicy",
+  "args": {
+   "appKey": "chat",
+   "agent": "act",
+   "notifications": "push"
+  },
+  "expect": {
+   "ok": {
+    "app": "chat",
+    "agent": "act",
+    "notifications": "push"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setGuard",
+  "args": {
+   "category": "invite",
+   "enabled": true
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setAccess",
+  "args": {
+   "agent": "mero-bot@laptop",
+   "folders": [
+    {
+     "path": "~/workspace",
+     "write": true
+    },
+    {
+     "path": "/srv/specs",
+     "write": false
+    }
+   ],
+   "shell": false,
+   "web": true
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "agentReach",
+  "args": {
+   "name": "mero-bot@laptop",
+   "lines": [
+    {
+     "serves": "default",
+     "profile": "near",
+     "model": "glm",
+     "attested": true,
+     "folders": [],
+     "shell": false,
+     "web": false
+    }
+   ]
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setAssignment",
+  "args": {
+   "appKey": "mero-bot",
+   "agent": "mero-bot@laptop"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "settings",
+  "args": {}
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addAgentAccount",
+  "args": {
+   "account": "@cloudbot",
+   "name": "cloud"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addAgentAccount",
+  "args": {
+   "account": "@otherbot",
+   "name": "cloud"
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "settings",
+  "args": {}
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "removeAgentAccount",
+  "args": {
+   "account": "@cloudbot"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "settings",
+  "args": {}
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "checkAction",
+  "args": {
+   "appKey": "chat",
+   "category": "",
+   "writes": true
+  },
+  "expect": {
+   "ok": {
+    "decision": "act",
+    "reason": "your agent may act in chat"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "checkAction",
+  "args": {
+   "appKey": "sign",
+   "category": "sign",
+   "writes": true
+  },
+  "expect": {
+   "ok": {
+    "decision": "ask",
+    "reason": "\"sign\" always needs you"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "proposeActions",
+  "args": {
+   "appKey": "issues",
+   "applicationId": "issues-app-1",
+   "summary": "Reading and closing issues",
+   "actions": [
+    {
+     "id": "read",
+     "label": "Read issues",
+     "description": "",
+     "category": "",
+     "writes": false,
+     "methods": [
+      "get_issue"
+     ]
+    },
+    {
+     "id": "close",
+     "label": "Close issues",
+     "description": "",
+     "category": "",
+     "writes": true,
+     "methods": [
+      "close_issue"
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "decideActions",
+  "args": {
+   "appKey": "issues",
+   "applicationId": "issues-app-1",
+   "decision": "approve"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setActionMode",
+  "args": {
+   "appKey": "issues",
+   "action": "close",
+   "mode": "act"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "checkAction",
+  "args": {
+   "appKey": "issues",
+   "category": "",
+   "writes": true,
+   "method": "close_issue"
+  },
+  "expect": {
+   "ok": {
+    "decision": "act",
+    "reason": "you let your agent \"Close issues\" in issues"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "checkAction",
+  "args": {
+   "appKey": "issues",
+   "category": "",
+   "writes": false,
+   "method": "drop_board"
+  },
+  "expect": {
+   "ok": {
+    "decision": "ask",
+    "reason": "this isn't one of issues's actions yet"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "actionSets",
+  "args": {}
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "recordAction",
+  "args": {
+   "input": {
+    "app": "chat",
+    "source_context": "ctx-standup",
+    "source_label": "#eng-standup",
+    "method": "send_message",
+    "category": "",
+    "writes": true,
+    "undoable": true,
+    "title": "Posted your stand-up",
+    "body": "",
+    "why": "Daily routine you set up.",
+    "outcome": "done",
+    "intent_hash": "a91f3c07",
+    "executor": "relay-account",
+    "note": "",
+    "chain": "standup",
+    "ask": {
+     "kind": "",
+     "prompt": "",
+     "options": [],
+     "draft": ""
+    }
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "recordAction",
+  "args": {
+   "input": {
+    "app": "sign",
+    "source_context": "ctx-legal",
+    "source_label": "Acme · Legal",
+    "method": "request_signature",
+    "category": "sign",
+    "writes": true,
+    "undoable": false,
+    "title": "Prepared the vendor NDA for your signature",
+    "body": "",
+    "why": "Asked for in #launch.",
+    "outcome": "proposed",
+    "intent_hash": "",
+    "executor": "",
+    "note": "",
+    "chain": "nda",
+    "ask": {
+     "kind": "",
+     "prompt": "",
+     "options": [],
+     "draft": ""
+    }
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "recordNotification",
+  "args": {
+   "input": {
+    "key": "ctx-launch:root-1:0",
+    "app": "chat",
+    "source_context": "ctx-launch",
+    "source_label": "#launch",
+    "from": "Maya",
+    "title": "Mentioned you",
+    "body": "Can your agent pull the numbers?",
+    "event": "MessageSent",
+    "needs_you": true,
+    "chain": "",
+    "ask": {
+     "kind": "",
+     "prompt": "",
+     "options": [],
+     "draft": ""
+    }
+   }
+  },
+  "save": "mention"
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "recordNotification",
+  "args": {
+   "input": {
+    "key": "ctx-launch:root-1:0",
+    "app": "chat",
+    "source_context": "ctx-launch",
+    "source_label": "#launch",
+    "from": "Maya",
+    "title": "Mentioned you",
+    "body": "Can your agent pull the numbers?",
+    "event": "MessageSent",
+    "needs_you": true,
+    "chain": "",
+    "ask": {
+     "kind": "",
+     "prompt": "",
+     "options": [],
+     "draft": ""
+    }
+   }
+  },
+  "expect": {
+   "ok": "$mention"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "recordNotification",
+  "args": {
+   "input": {
+    "key": "ctx-offsite:root-7:0",
+    "app": "vote",
+    "source_context": "ctx-offsite",
+    "source_label": "Team offsite",
+    "from": "Priya",
+    "title": "Poll closes tomorrow",
+    "body": "",
+    "event": "PollClosingSoon",
+    "needs_you": false,
+    "chain": "",
+    "ask": {
+     "kind": "",
+     "prompt": "",
+     "options": [],
+     "draft": ""
+    }
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "feed",
+  "args": {
+   "filter": "all",
+   "appKey": "none",
+   "limit": 0,
+   "before": "0"
+  },
+  "expect": {
+   "ok": {
+    "items": [],
+    "counts": {
+     "all": 4,
+     "agent": 2,
+     "notifications": 2,
+     "needs_you": 2,
+     "archived": 0
+    },
+    "apps": [
+     {
+      "app": "chat",
+      "count": 2
+     },
+     {
+      "app": "sign",
+      "count": 1
+     },
+     {
+      "app": "vote",
+      "count": 1
+     }
+    ],
+    "next_before": 0
+   }
+  },
+  "events": {
+   "owner": [
+    "SettingsChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "ActionsChanged",
+    "ActionsChanged",
+    "SettingsChanged",
+    "ActionRecorded",
+    "ActionRecorded",
+    "NotificationRecorded",
+    "NotificationRecorded"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "markSeen",
+  "args": {
+   "ids": [
+    "ctx-launch:root-1:0"
+   ]
+  },
+  "expect": {
+   "ok": 1
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "markAllSeen",
+  "args": {},
+  "expect": {
+   "ok": 1
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setPolicy",
+  "args": {
+   "appKey": "vote",
+   "agent": "off",
+   "notifications": "mute"
+  },
+  "expect": {
+   "ok": {
+    "app": "vote",
+    "agent": "off",
+    "notifications": "mute"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setPaused",
+  "args": {
+   "paused": true
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "recordNotification",
+  "args": {
+   "input": {
+    "key": "ctx-launch:r1>r2:0",
+    "app": "chat",
+    "source_context": "ctx-launch",
+    "source_label": "#launch",
+    "from": "Maya",
+    "title": "Mentioned you",
+    "body": "Can your agent pull the numbers?",
+    "event": "MessageSent",
+    "needs_you": true,
+    "chain": "",
+    "ask": {
+     "kind": "reply",
+     "prompt": "Reply in #launch",
+     "options": [
+      "On it",
+      "After 2pm"
+     ],
+     "draft": ""
+    }
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "recordAction",
+  "args": {
+   "input": {
+    "app": "calendar",
+    "source_context": "ctx-cal",
+    "source_label": "Design team",
+    "method": "create_event",
+    "category": "",
+    "writes": true,
+    "undoable": true,
+    "title": "Book a slot to go through the numbers with Maya",
+    "body": "",
+    "why": "Maya asked for the numbers before 2.",
+    "outcome": "proposed",
+    "intent_hash": "",
+    "executor": "",
+    "note": "",
+    "chain": "ctx-launch:r1>r2:0",
+    "ask": {
+     "kind": "choose",
+     "prompt": "Pick a slot",
+     "options": [
+      "Thu 15:00",
+      "Fri 10:00"
+     ],
+     "draft": ""
+    }
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "chain",
+  "args": {
+   "chain": "ctx-launch:r1>r2:0"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "answerNotification",
+  "args": {
+   "id": "ctx-launch:r1>r2:0",
+   "answer": "Numbers are in the deck, slide 4."
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "completeAnswer",
+  "args": {
+   "id": "ctx-launch:r1>r2:0",
+   "outcome": "delivered",
+   "note": "Sent in #launch"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "say",
+  "args": {
+   "chain": "ctx-launch:r1>r2:0",
+   "text": "Which numbers did you send Maya?",
+   "mode": "private"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "openQuestions",
+  "args": {}
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "agentSay",
+  "args": {
+   "chain": "ctx-launch:r1>r2:0",
+   "replyTo": "",
+   "text": "The numbers, slide by slide: revenue, churn, pipeline, and what changed since Q2.",
+   "headline": "The Q3 numbers"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "agentAsk",
+  "args": {
+   "chain": "ctx-launch:r1>r2:0",
+   "replyTo": "",
+   "text": "Send Maya the deck too?",
+   "ask": {
+    "kind": "choose",
+    "prompt": "Send the deck?",
+    "options": [
+     "Send it",
+     "Not now"
+    ],
+    "draft": ""
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "say",
+  "args": {
+   "chain": "ctx-launch:r1>r2:0",
+   "text": "Send it"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "agentAsk",
+  "args": {
+   "chain": "ctx-launch:r1>r2:0",
+   "replyTo": "",
+   "text": "Share the deck with the whole channel?",
+   "ask": {
+    "kind": "choose",
+    "prompt": "Share it?",
+    "options": [
+     "Share",
+     "Only Maya"
+    ],
+    "draft": ""
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "agentAsk",
+  "args": {
+   "chain": "ctx-launch:r1>r2:0",
+   "replyTo": "",
+   "text": "Maya left the channel. DM her the deck instead?",
+   "ask": {
+    "kind": "choose",
+    "prompt": "DM it?",
+    "options": [
+     "DM her",
+     "Not now"
+    ],
+    "draft": ""
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "say",
+  "args": {
+   "chain": "ctx-launch:r1>r2:0",
+   "text": "Rewrite the whole deck"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "proposeLens",
+  "args": {
+   "appKey": "chat",
+   "applicationId": "chat-app-1",
+   "spec": "{\"events\":{\"MessageSent\":{\"type\":\"message\"},\"TextChanged\":\"ignore\"}}",
+   "summary": "DMs and mentions of you; answers with send_message"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "decideLens",
+  "args": {
+   "appKey": "chat",
+   "applicationId": "chat-app-1",
+   "decision": "approve"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "lenses",
+  "args": {}
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "recordNotification",
+  "args": {
+   "input": {
+    "key": "ctx-vote:r1>r2:0",
+    "app": "vote",
+    "source_context": "ctx-vote",
+    "source_label": "Team offsite",
+    "from": "Priya",
+    "title": "Offsite location",
+    "body": "",
+    "event": "PollCreated",
+    "needs_you": false,
+    "chain": "",
+    "ask": {
+     "kind": "",
+     "prompt": "",
+     "options": [],
+     "draft": ""
+    },
+    "item_type": "poll",
+    "fields": "{\"question\":\"Offsite location\",\"options\":[\"Lisbon\",\"Berlin\"]}",
+    "reply_call": ""
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "item",
+  "args": {
+   "id": "ctx-vote:r1>r2:0"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "feed",
+  "args": {
+   "filter": "all",
+   "appKey": "",
+   "limit": 0,
+   "before": "0"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "settings",
+  "args": {}
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "feed",
+  "args": {
+   "filter": "all",
+   "appKey": "none",
+   "limit": 0,
+   "before": "0"
+  },
+  "expect": {
+   "ok": {
+    "items": [],
+    "counts": {
+     "all": 4,
+     "agent": 3,
+     "notifications": 2,
+     "needs_you": 2,
+     "archived": 0
+    },
+    "apps": [
+     {
+      "app": "chat",
+      "count": 3
+     },
+     {
+      "app": "calendar",
+      "count": 1
+     },
+     {
+      "app": "sign",
+      "count": 1
+     }
+    ],
+    "next_before": 0
+   }
+  },
+  "events": {
+   "owner": [
+    "SettingsChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "ActionsChanged",
+    "ActionsChanged",
+    "SettingsChanged",
+    "ActionRecorded",
+    "ActionRecorded",
+    "NotificationRecorded",
+    "NotificationRecorded",
+    "NotificationsSeen",
+    "NotificationsSeen",
+    "SettingsChanged",
+    "SettingsChanged",
+    "NotificationRecorded",
+    "ActionRecorded",
+    "NotificationChanged",
+    "NotificationChanged",
+    "MessagePosted",
+    "MessagePosted",
+    "MessagePosted",
+    "MessageChanged",
+    "MessagePosted",
+    "MessagePosted",
+    "MessagePosted",
+    "MessageChanged",
+    "MessagePosted",
+    "LensChanged",
+    "LensChanged",
+    "NotificationRecorded"
+   ],
+   "bob": [
+    "SettingsChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "ActionsChanged",
+    "ActionsChanged",
+    "SettingsChanged",
+    "ActionRecorded",
+    "ActionRecorded",
+    "NotificationRecorded",
+    "NotificationRecorded",
+    "NotificationsSeen",
+    "NotificationsSeen",
+    "SettingsChanged",
+    "SettingsChanged",
+    "NotificationRecorded",
+    "ActionRecorded",
+    "NotificationChanged",
+    "NotificationChanged",
+    "MessagePosted",
+    "MessagePosted",
+    "MessagePosted",
+    "MessageChanged",
+    "MessagePosted",
+    "MessagePosted",
+    "MessagePosted",
+    "MessageChanged",
+    "MessagePosted",
+    "LensChanged",
+    "LensChanged",
+    "NotificationRecorded"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "sayWith",
+  "args": {
+   "chain": "ctx-launch:r1>r2:0",
+   "text": "",
+   "attachments": [
+    {
+     "blob_id": "bafyimage01",
+     "name": "deck.png",
+     "mime": "image/png",
+     "size": 48213
+    }
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "sayWith",
+  "args": {
+   "chain": "ctx-launch:r1>r2:0",
+   "text": "the contract",
+   "attachments": [
+    {
+     "blob_id": "bafypdf01",
+     "name": "contract.pdf",
+     "mime": "application/pdf",
+     "size": 1200
+    }
+   ]
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "recordAction",
+  "args": {
+   "input": {
+    "app": "chat",
+    "source_context": "",
+    "source_label": "",
+    "method": "send_message",
+    "category": "",
+    "writes": true,
+    "undoable": false,
+    "title": "Forged",
+    "body": "",
+    "why": "",
+    "outcome": "done",
+    "intent_hash": "",
+    "executor": "",
+    "note": "",
+    "chain": "",
+    "ask": {
+     "kind": "",
+     "prompt": "",
+     "options": [],
+     "draft": ""
+    }
+   }
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setPaused",
+  "args": {
+   "paused": false
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "say",
+  "args": {
+   "chain": "",
+   "text": "Forged question"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "decideLens",
+  "args": {
+   "appKey": "chat",
+   "applicationId": "chat-app-1",
+   "decision": "reject"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setAccess",
+  "args": {
+   "agent": "mero-bot@laptop",
+   "folders": [
+    {
+     "path": "/",
+     "write": true
+    }
+   ],
+   "shell": true,
+   "web": true
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setAssignment",
+  "args": {
+   "appKey": "chat",
+   "agent": "mero-bot@theirs"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "lenses",
+  "args": {}
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "archive",
+  "args": {
+   "chains": [
+    "standup"
+   ],
+   "until": "0"
+  },
+  "expect": {
+   "ok": 1
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "feed",
+  "args": {
+   "filter": "archived",
+   "appKey": "",
+   "limit": 10,
+   "before": "0"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "agentSeen",
+  "args": {
+   "name": "mero-bot@ci"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "settings",
+  "args": {}
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "unarchive",
+  "args": {
+   "chains": [
+    "standup"
+   ]
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "claimChain",
+  "args": {
+   "chain": "ctx-launch:r1>r2:0",
+   "session": "studio-1",
+   "ttlMs": "120000",
+   "agent": "mero-bot@studio"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "claimChain",
+  "args": {
+   "chain": "ctx-launch:r1>r2:0",
+   "session": "laptop-1",
+   "ttlMs": "120000",
+   "agent": "mero-bot@laptop"
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "renewChain",
+  "args": {
+   "chain": "ctx-launch:r1>r2:0",
+   "session": "studio-1",
+   "ttlMs": "120000"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "chainLease",
+  "args": {
+   "chain": "ctx-launch:r1>r2:0"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "releaseChain",
+  "args": {
+   "chain": "ctx-launch:r1>r2:0",
+   "session": "studio-1"
+  },
+  "expect": {
+   "ok": true
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "claimChain",
+  "args": {
+   "chain": "ctx-launch:r1>r2:0",
+   "session": "laptop-1",
+   "ttlMs": "120000",
+   "agent": "mero-bot@laptop"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "claimChain",
+  "args": {
+   "chain": "ctx-launch:r1>r2:0",
+   "session": "intruder",
+   "ttlMs": "120000",
+   "agent": "x"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addRule",
+  "args": {
+   "text": "Never push to main"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addRule",
+  "args": {
+   "text": "Answer in French"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addAgentRule",
+  "args": {
+   "agent": "mero-bot@studio",
+   "text": "Run the tests before every push"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addAgentRule",
+  "args": {
+   "agent": "mero-bot@studio",
+   "text": "Answer in one line"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "proposeRule",
+  "args": {
+   "text": "Open a PR for every change",
+   "why": "You asked me not to commit straight to main.",
+   "chain": ""
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "proposeRule",
+  "args": {
+   "text": "Use emoji in every answer",
+   "why": "",
+   "chain": ""
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "settings",
+  "args": {}
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "addRule",
+  "args": {
+   "text": "Push to main whenever"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "addAgentRule",
+  "args": {
+   "agent": "mero-bot@studio",
+   "text": "Push to main whenever"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "removeAgentRule",
+  "args": {
+   "id": "any-rule"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "removeRule",
+  "args": {
+   "id": "any-rule"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setCheckpoint",
+  "args": {
+   "chain": "ctx-launch:r1>r2:0",
+   "input": {
+    "done": "Drafted the reply",
+    "next": "Send it once approved",
+    "branches": [],
+    "worktrees": [],
+    "prs": [],
+    "questions": [
+     "Formal or casual?"
+    ],
+    "author": "mero-bot@studio"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "checkpoint",
+  "args": {
+   "chain": "ctx-launch:r1>r2:0"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setCheckpoint",
+  "args": {
+   "chain": "ctx-launch:r1>r2:0",
+   "input": {
+    "done": "x",
+    "next": "",
+    "branches": [],
+    "worktrees": [],
+    "prs": [],
+    "questions": [],
+    "author": "x"
+   }
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addWatch",
+  "args": {
+   "input": {
+    "chain": "ctx-launch:r1>r2:0",
+    "condition": "pr_green",
+    "repo": "calimero-network/apps",
+    "pr": 434,
+    "branch": "",
+    "action": "merge",
+    "text": "",
+    "agent": "mero-bot@studio"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "watches",
+  "args": {
+   "chain": "ctx-launch:r1>r2:0"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addWatch",
+  "args": {
+   "input": {
+    "chain": "ctx-launch:r1>r2:0",
+    "condition": "pr_merged",
+    "repo": "calimero-network/apps",
+    "pr": 435,
+    "branch": "",
+    "action": "notify",
+    "text": "#435 merged",
+    "agent": "mero-bot@studio"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "addWatch",
+  "args": {
+   "input": {
+    "chain": "ctx-launch:r1>r2:0",
+    "condition": "pr_merged",
+    "repo": "calimero-network/apps",
+    "pr": 434,
+    "branch": "",
+    "action": "notify",
+    "text": "x",
+    "agent": "x"
+   }
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "recordPr",
+  "args": {
+   "input": {
+    "chain": "ctx-launch:r1>r2:0",
+    "repo": "calimero-network/apps",
+    "draft": false,
+    "default_branch": "master",
+    "conflicts": false,
+    "checks_pending": 0,
+    "pr": 429,
+    "title": "Safe merge button",
+    "state": "open",
+    "base": "master",
+    "head_sha": "abc123",
+    "checks": "red",
+    "checks_total": 5,
+    "checks_passed": 4,
+    "failing": [
+     "E2E (hyperfeed / feed)"
+    ],
+    "stacked_on": 0,
+    "stacked_merged": false
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "recordPr",
+  "args": {
+   "input": {
+    "chain": "ctx-launch:r1>r2:0",
+    "repo": "calimero-network/apps",
+    "draft": false,
+    "default_branch": "master",
+    "conflicts": false,
+    "checks_pending": 0,
+    "pr": 430,
+    "title": "Stacked follow-up",
+    "state": "open",
+    "base": "mero-bot/chain-429",
+    "head_sha": "def456",
+    "checks": "green",
+    "checks_total": 5,
+    "checks_passed": 5,
+    "failing": [],
+    "stacked_on": 429,
+    "stacked_merged": false
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "prs",
+  "args": {
+   "chain": "ctx-launch:r1>r2:0"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "recordPr",
+  "args": {
+   "input": {
+    "chain": "",
+    "repo": "calimero-network/apps",
+    "draft": false,
+    "default_branch": "master",
+    "conflicts": false,
+    "checks_pending": 0,
+    "pr": 431,
+    "title": "x",
+    "state": "open",
+    "base": "master",
+    "head_sha": "",
+    "checks": "green",
+    "checks_total": 0,
+    "checks_passed": 0,
+    "failing": [],
+    "stacked_on": 0,
+    "stacked_merged": false
+   }
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "putMemos",
+  "args": {
+   "agent": "mero-bot@studio",
+   "memos": [
+    {
+     "key": "00000000000000000000000000000000000000000000000000000000000000a1",
+     "scope": "node",
+     "tool": "list_contexts",
+     "args": "{}",
+     "value": "[{\"id\":\"ctx\"}]",
+     "class": "slow",
+     "ttl_ms": 600000,
+     "fetched_at": 1,
+     "unchanged": 0,
+     "hits": 3,
+     "last_hit_at": 1,
+     "attested": false
+    },
+    {
+     "key": "00000000000000000000000000000000000000000000000000000000000000a2",
+     "scope": "chat:ctx",
+     "tool": "chat_get_messages",
+     "args": "{\"limit\":20}",
+     "value": "[]",
+     "class": "fast",
+     "ttl_ms": 30000,
+     "fetched_at": 1,
+     "unchanged": 0,
+     "hits": 1,
+     "last_hit_at": 1,
+     "attested": false
+    }
+   ]
+  },
+  "expect": {
+   "ok": 2
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "memos",
+  "args": {
+   "since": "0"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "putMemos",
+  "args": {
+   "agent": "mero-bot@studio",
+   "memos": [
+    {
+     "key": "00000000000000000000000000000000000000000000000000000000000000ff",
+     "scope": "node",
+     "tool": "list_contexts",
+     "args": "{}",
+     "value": "[]",
+     "class": "slow",
+     "ttl_ms": 1,
+     "fetched_at": 1,
+     "unchanged": 0,
+     "hits": 1,
+     "last_hit_at": 1,
+     "attested": false
+    }
+   ]
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "dropMemos",
+  "args": {
+   "agent": "mero-bot@studio",
+   "keys": [
+    "00000000000000000000000000000000000000000000000000000000000000a2"
+   ]
+  },
+  "expect": {
+   "ok": 1
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "clearMemos",
+  "args": {},
+  "expect": {
+   "ok": 1
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "memos",
+  "args": {
+   "since": "0"
+  },
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "recordNotification",
+  "args": {
+   "input": {
+    "key": "mero-bot:subject-task",
+    "app": "mero-bot",
+    "source_context": "",
+    "source_label": "",
+    "from": "",
+    "title": "Fix the sync bug",
+    "body": "",
+    "event": "Prompt",
+    "needs_you": false,
+    "chain": "",
+    "ask": {
+     "kind": "",
+     "prompt": "",
+     "options": [],
+     "draft": ""
+    }
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "recordAction",
+  "args": {
+   "input": {
+    "app": "issue-tracker",
+    "source_context": "ctx-repo",
+    "source_label": "",
+    "method": "set_status",
+    "category": "",
+    "writes": true,
+    "undoable": false,
+    "title": "Moved the sync bug to In progress",
+    "body": "",
+    "why": "",
+    "outcome": "done",
+    "intent_hash": "",
+    "executor": "",
+    "note": "",
+    "chain": "mero-bot:subject-task",
+    "ask": {
+     "kind": "",
+     "prompt": "",
+     "options": [],
+     "draft": ""
+    },
+    "subject": "issue-tracker:ctx-repo:issue-7"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "recordNotification",
+  "args": {
+   "input": {
+    "key": "ctx-repo:s1>s2:0",
+    "app": "issue-tracker",
+    "source_context": "ctx-repo",
+    "source_label": "",
+    "from": "Xabi",
+    "title": "Commented on your issue Sync bug",
+    "body": "",
+    "event": "CommentAdded",
+    "needs_you": false,
+    "chain": "",
+    "ask": {
+     "kind": "reply",
+     "prompt": "Reply in the thread",
+     "options": [],
+     "draft": ""
+    },
+    "item_type": "message",
+    "fields": "{\"text\":\"Repro attached\"}",
+    "reply_call": "{\"method\":\"add_comment\",\"args\":{\"issue_id\":\"issue-7\",\"body\":\"=answer\"}}"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "touchSubject",
+  "args": {
+   "chain": "mero-bot:subject-task",
+   "subject": "drive-docs:ctx-docs:doc-1"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "recordNotification",
+  "args": {
+   "input": {
+    "key": "ctx-docs:d1>d2:0",
+    "app": "drive-docs",
+    "source_context": "ctx-docs",
+    "source_label": "",
+    "from": "Maya",
+    "title": "Commented on your doc",
+    "body": "",
+    "event": "CommentAdded",
+    "needs_you": false,
+    "chain": "",
+    "ask": {
+     "kind": "reply",
+     "prompt": "Reply in the doc",
+     "options": [],
+     "draft": ""
+    },
+    "item_type": "message",
+    "fields": "{\"text\":\"Typo in section 2\"}",
+    "reply_call": "{\"method\":\"add_comment\",\"args\":{\"doc_id\":\"doc-1\",\"body\":\"=answer\"}}"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "touchSubject",
+  "args": {
+   "chain": "mero-bot:subject-task",
+   "subject": "drive-docs:ctx-docs:doc-1"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "feed",
+  "args": {
+   "filter": "all",
+   "appKey": "none",
+   "limit": 0,
+   "before": "0"
+  },
+  "expect": {
+   "ok": {
+    "items": [],
+    "counts": {
+     "all": 4,
+     "agent": 3,
+     "notifications": 3,
+     "needs_you": 3,
+     "archived": 1
+    },
+    "apps": [
+     {
+      "app": "chat",
+      "count": 2
+     },
+     {
+      "app": "calendar",
+      "count": 1
+     },
+     {
+      "app": "drive-docs",
+      "count": 1
+     },
+     {
+      "app": "issue-tracker",
+      "count": 1
+     },
+     {
+      "app": "mero-bot",
+      "count": 1
+     },
+     {
+      "app": "sign",
+      "count": 1
+     }
+    ],
+    "next_before": 0
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addLink",
+  "args": {
+   "chain": "mero-bot:subject-task",
+   "input": {
+    "subject": "design:ctx-board",
+    "label": "Feed redesign",
+    "by": "you"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "links",
+  "args": {
+   "chain": "mero-bot:subject-task"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "removeLink",
+  "args": {
+   "chain": "mero-bot:subject-task",
+   "subject": "design:ctx-board"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "addLink",
+  "args": {
+   "chain": "mero-bot:subject-task",
+   "input": {
+    "subject": "chat:ctx-launch",
+    "label": "",
+    "by": "you"
+   }
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "startTask",
+  "args": {
+   "from": "mero-bot:subject-task",
+   "text": "Build safe merge: merge only green PRs on main.",
+   "headline": "Safe merge"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "startTask",
+  "args": {
+   "from": "mero-bot:subject-task",
+   "text": "Not yours",
+   "headline": null
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setPushKey",
+  "args": {
+   "publicKey": "BKey-runtime_1",
+   "by": "mero-bot"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addPushDevice",
+  "args": {
+   "input": {
+    "endpoint": "https://push.example.com/send/phone-1",
+    "p256dh": "BPhonePublicKey",
+    "auth": "phoneAuth",
+    "name": "Phone",
+    "quiet": false,
+    "key": "BKey-runtime_1"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "pushKey",
+  "args": {}
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "pushDevices",
+  "args": {}
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "removePushDevice",
+  "args": {
+   "endpoint": "https://push.example.com/send/phone-1"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "pushDevices",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "addPushDevice",
+  "args": {
+   "input": {
+    "endpoint": "https://push.example.com/send/intruder",
+    "p256dh": "BIntruder",
+    "auth": "intruderAuth",
+    "name": "",
+    "quiet": false,
+    "key": "BKey-runtime_1"
+   }
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setPushKey",
+  "args": {
+   "publicKey": "BIntruderKey",
+   "by": "intruder"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setSituation",
+  "args": {
+   "chain": "ctx-launch:r1>r2:0",
+   "input": {
+    "headline": "Maya needs the numbers before 2",
+    "summary": "Maya asked in #launch for last week's numbers in the board deck.",
+    "recommend": "Take the Thursday slot.",
+    "reason": "The deck review is at 2pm.",
+    "score": 80,
+    "due_at": 0,
+    "sources": 3,
+    "apps": 2,
+    "author": "mero-bot@studio"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "situations",
+  "args": {}
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setSituation",
+  "args": {
+   "chain": "ctx-launch:r1>r2:0",
+   "input": {
+    "headline": "x",
+    "summary": "x",
+    "recommend": "",
+    "reason": "",
+    "score": 0,
+    "due_at": 0,
+    "sources": 0,
+    "apps": 0,
+    "author": "x"
+   }
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "clearSituation",
+  "args": {
+   "chain": "ctx-launch:r1>r2:0"
+  },
+  "expect": {
+   "ok": true
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "situations",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setPaused",
+  "args": {
+   "paused": false
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "recordAction",
+  "args": {
+   "input": {
+    "app": "chat",
+    "source_context": "ctx-dm",
+    "source_label": "DM · Jordan",
+    "method": "send_message",
+    "category": "",
+    "writes": true,
+    "undoable": true,
+    "title": "Reply to Jordan with the terms",
+    "body": "",
+    "why": "Jordan asked for the terms.",
+    "outcome": "proposed",
+    "intent_hash": "",
+    "executor": "",
+    "note": "",
+    "chain": "dm-jordan",
+    "ask": {
+     "kind": "reply",
+     "prompt": "Send to Jordan",
+     "options": [],
+     "draft": "Terms attached: 12 months, net 30."
+    }
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "recordAction",
+  "args": {
+   "input": {
+    "app": "chat",
+    "source_context": "ctx-dm",
+    "source_label": "DM · Priya",
+    "method": "send_message",
+    "category": "",
+    "writes": true,
+    "undoable": true,
+    "title": "Reply to Priya about the budget",
+    "body": "",
+    "why": "Priya asked.",
+    "outcome": "proposed",
+    "intent_hash": "",
+    "executor": "",
+    "note": "",
+    "chain": "dm-priya",
+    "ask": {
+     "kind": "reply",
+     "prompt": "Send to Priya",
+     "options": [],
+     "draft": "Budget is fine."
+    }
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "stopAutorun",
+  "args": {
+   "id": "any-action"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "autoruns",
+  "args": {},
+  "expect": {
+   "ok": []
+  },
+  "events": {
+   "owner": [
+    "SettingsChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "ActionsChanged",
+    "ActionsChanged",
+    "SettingsChanged",
+    "ActionRecorded",
+    "ActionRecorded",
+    "NotificationRecorded",
+    "NotificationRecorded",
+    "NotificationsSeen",
+    "NotificationsSeen",
+    "SettingsChanged",
+    "SettingsChanged",
+    "NotificationRecorded",
+    "ActionRecorded",
+    "NotificationChanged",
+    "NotificationChanged",
+    "MessagePosted",
+    "MessagePosted",
+    "MessagePosted",
+    "MessageChanged",
+    "MessagePosted",
+    "MessagePosted",
+    "MessagePosted",
+    "MessageChanged",
+    "MessagePosted",
+    "LensChanged",
+    "LensChanged",
+    "NotificationRecorded",
+    "MessagePosted",
+    "ArchiveChanged",
+    "ChainLeaseChanged",
+    "ChainLeaseChanged",
+    "ChainLeaseChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "CheckpointChanged",
+    "WatchChanged",
+    "WatchChanged",
+    "PrChanged",
+    "PrChanged",
+    "MemosChanged",
+    "MemosChanged",
+    "MemosCleared",
+    "NotificationRecorded",
+    "LinksChanged",
+    "ActionRecorded",
+    "NotificationRecorded",
+    "LinksChanged",
+    "NotificationRecorded",
+    "LinksChanged",
+    "LinksChanged",
+    "MessagePosted",
+    "LinksChanged",
+    "LinksChanged",
+    "PushChanged",
+    "PushChanged",
+    "PushChanged",
+    "SituationChanged",
+    "SituationChanged",
+    "SettingsChanged",
+    "ActionRecorded",
+    "ActionRecorded"
+   ],
+   "bob": [
+    "SettingsChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "ActionsChanged",
+    "ActionsChanged",
+    "SettingsChanged",
+    "ActionRecorded",
+    "ActionRecorded",
+    "NotificationRecorded",
+    "NotificationRecorded",
+    "NotificationsSeen",
+    "NotificationsSeen",
+    "SettingsChanged",
+    "SettingsChanged",
+    "NotificationRecorded",
+    "ActionRecorded",
+    "NotificationChanged",
+    "NotificationChanged",
+    "MessagePosted",
+    "MessagePosted",
+    "MessagePosted",
+    "MessageChanged",
+    "MessagePosted",
+    "MessagePosted",
+    "MessagePosted",
+    "MessageChanged",
+    "MessagePosted",
+    "LensChanged",
+    "LensChanged",
+    "NotificationRecorded",
+    "MessagePosted",
+    "ArchiveChanged",
+    "ChainLeaseChanged",
+    "ChainLeaseChanged",
+    "ChainLeaseChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "SettingsChanged",
+    "CheckpointChanged",
+    "WatchChanged",
+    "WatchChanged",
+    "PrChanged",
+    "PrChanged",
+    "MemosChanged",
+    "MemosChanged",
+    "MemosCleared",
+    "NotificationRecorded",
+    "LinksChanged",
+    "ActionRecorded",
+    "NotificationRecorded",
+    "LinksChanged",
+    "NotificationRecorded",
+    "LinksChanged",
+    "LinksChanged",
+    "MessagePosted",
+    "LinksChanged",
+    "LinksChanged",
+    "PushChanged",
+    "PushChanged",
+    "PushChanged",
+    "SituationChanged",
+    "SituationChanged",
+    "SettingsChanged",
+    "ActionRecorded",
+    "ActionRecorded"
+   ]
+  }
+ }
+]

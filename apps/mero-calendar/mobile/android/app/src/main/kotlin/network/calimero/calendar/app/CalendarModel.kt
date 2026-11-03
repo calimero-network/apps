@@ -6,16 +6,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import network.calimero.calendar.contract.CalendarClient
 import network.calimero.calendar.data.CalEvent
 import network.calimero.calendar.data.CalMember
 import network.calimero.calendar.data.CalendarRepository
 import network.calimero.calendar.data.ErrorText
 import network.calimero.calendar.data.EventDraft
-import network.calimero.calendar.data.HexIdTransport
 import network.calimero.calendar.data.LocalNames
-import network.calimero.calendar.data.PrivateEventStore
 import network.calimero.calendar.data.shortId
-import network.calimero.calendar.generated.CalendarClient
 import java.time.LocalDate
 import java.time.ZoneId
 
@@ -45,20 +43,11 @@ class CalendarModel(
     val team: Team,
     val calendar: CalendarRef,
     private val names: LocalNames,
-    privateStore: PrivateEventStore,
     private val zone: ZoneId = ZoneId.systemDefault(),
-    now: () -> Long = System::currentTimeMillis,
 ) {
-    val account: String = backend.account.lowercase()
-    private val repository =
-        CalendarRepository(
-            client = CalendarClient(HexIdTransport(backend.contract.bound(calendar.contextId))),
-            privateStore = privateStore,
-            account = account,
-            namespaceId = team.id,
-            contextId = calendar.contextId,
-            now = now,
-        )
+    /** The signed-in account id. */
+    val account: String = backend.account
+    private val repository = CalendarRepository(CalendarClient(backend.contract.bound(calendar.contextId)))
 
     private val _state = MutableStateFlow(CalendarState())
     val state: StateFlow<CalendarState> = _state.asStateFlow()
@@ -133,7 +122,7 @@ class CalendarModel(
 
     /** A member's name in this calendar, else a short id. */
     fun nameOf(id: String): String {
-        val member = _state.value.members.firstOrNull { it.id.equals(id, ignoreCase = true) }
+        val member = _state.value.members.firstOrNull { it.id == id }
         return member?.name?.ifEmpty { null } ?: shortId(id)
     }
 

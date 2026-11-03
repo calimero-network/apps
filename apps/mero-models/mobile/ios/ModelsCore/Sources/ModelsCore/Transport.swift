@@ -10,10 +10,9 @@ extension MeroAppBackend {
     }
 }
 
-/// Mesh and texture bytes, stored as blobs on the scene's context.
-/// `MeroAppBackend` has no blob call yet, so the app reads them through the
-/// signed-in client's admin surface (`getBlob(_:contextId:)`, which the
-/// account's relay serves).
+/// Mesh and texture bytes, stored as blobs of the scene's app instance. The
+/// app reads them with `MeroAppBackend.getBlob(blobId:contextId:)`
+/// (`/apps/{app}/blobs` on the node).
 public protocol BlobLoading: Sendable {
     func blob(id: String, contextId: String) async throws -> Data
 }

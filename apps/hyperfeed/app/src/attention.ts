@@ -1,4 +1,4 @@
-import type { FeedItem } from "./generated/HyperfeedClient";
+import type { FeedItem } from "./hyperfeedTypes";
 import { headlineOf, line } from "./team";
 
 /**

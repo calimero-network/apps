@@ -2,16 +2,16 @@ import Foundation
 
 /// Words and numbers as the screens show them. Android `SignFormat.kt` matches.
 public enum SignFormat {
-    /// A contract timestamp (nanoseconds, `env::time_now`) as a date.
-    public static func date(nanos: UInt64) -> Date {
-        Date(timeIntervalSince1970: TimeInterval(nanos / 1_000_000) / 1000)
+    /// A contract timestamp (milliseconds since the epoch) as a date.
+    public static func date(millis: UInt64) -> Date {
+        Date(timeIntervalSince1970: TimeInterval(millis) / 1000)
     }
 
     /// "Today, 14:05", "Yesterday", or "12 Mar 2026".
-    public static func when(nanos: UInt64, now: Date = Date(), calendar: Calendar = .current, locale: Locale = .current)
+    public static func when(millis: UInt64, now: Date = Date(), calendar: Calendar = .current, locale: Locale = .current)
         -> String
     {
-        let date = date(nanos: nanos)
+        let date = date(millis: millis)
         if calendar.isDate(date, inSameDayAs: now) {
             let time = DateFormatter()
             time.locale = locale
