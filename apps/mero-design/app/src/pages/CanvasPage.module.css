@@ -110,7 +110,7 @@
 }
 .previewHint:hover { color: #fff; }
 
-/* Not readable yet: the sheet stays, with mero-react's JoinSyncBanner on it. */
+/* Not readable yet: the sheet stays, with a status line on it. */
 .syncWrap {
   position: absolute;
   top: 16px;
@@ -121,6 +121,9 @@
   color: var(--glass-ink);
 }
 .syncWrap > [role="status"] {
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 13px;
   background: var(--glass-surface-solid);
   box-shadow: var(--glass-shadow);
 }

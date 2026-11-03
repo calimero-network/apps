@@ -1,23 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import {
-  JOIN_SYNC_POLL_MS,
-  JoinSyncBanner,
-  isNamespaceJustJoined,
-  useJoinSync,
-  useMero,
-} from "@calimero-network/mero-react";
 import { useApi } from "../api/useApi";
-import { listGroupContextRows, listSubgroupRows } from "../api/teamContexts";
-import { isSelfAdmin, selfIsGroupAdmin } from "../api/selfRole";
+import { messageOf } from "../api/pixart";
+import { useSignedIn } from "../api/sessionContext";
+import { createProject as createInstance, inviteLink, inviteToken, isAdmin, listProjects } from "../api/teams";
+import { useTeam } from "../api/useTeam";
 import Logo from "../components/Logo";
 import SettingsModal from "../components/SettingsModal";
 import { useToast } from "../contexts/ToastContext";
-import { extractErrorMessage, humanizeError } from "../utils/errorMessage";
-import { encodeInvitationObject, invitationLink } from "../utils/invitation";
 import { truncateMiddle } from "../utils/format";
-import { getStoredTeamName, useTeamName } from "../utils/teamName";
-import { splitTeeMembers } from "../utils/teeMembers";
+import { teamLabel } from "../utils/teamName";
 import { clearLastVisit, forgetProject, pickRemembered, readLastVisit, rememberTeam, resumeRequested } from "../utils/lastVisit";
 import { SHOWCASE_PROJECTS } from "../showcase";
 import type { Project, DocumentInfo } from "../types";
@@ -34,15 +26,14 @@ const DIMENSION_PRESETS: { label: string; width: number; height: number }[] = [
 ];
 const DEFAULT_PRESET = 1; // 1280 × 720
 
-// A project enriched with the document metadata read from the contract. The
-// dimensions / member count are best-effort: a project created by a peer may not
-// have synced its document yet, in which case these stay undefined and the card
-// shows placeholders.
+// A project (an app instance in the team's org) enriched with the document
+// metadata read from the contract. Best-effort: a read that fails leaves these
+// undefined and the card shows placeholders.
 interface ProjectCard extends Project {
   width?: number;
   height?: number;
   memberCount?: number;
-  /** This session is an Admin of the team or of the project's subgroup. */
+  /** This account created the project, or is an owner or admin of the team. */
   canDelete?: boolean;
 }
 
@@ -51,21 +42,17 @@ export default function ProjectsPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { showToast } = useToast();
-  const { logout, nodeUrl } = useMero();
-  // The session-aware API (see api/useApi): contract reads over the session's
-  // transport, governance and contexts through `useMero().admin` — the account
-  // admin on a delegated session, where the raw node routes are a 403.
+  const { client, accountId, passkey, after, source, targetKey, signOut } = useSignedIn();
   const api = useApi();
-  const { admin, isDelegated } = api;
-  const teamTitle = useTeamName(teamId);
+  const team = useTeam(teamId);
+  const teamTitle = teamId ? teamLabel(teamId, team.name) : "Team";
+  const myTeamRole = team.roles.get(accountId);
 
   const [tab, setTab] = useState<Tab>("projects");
   const [projects, setProjects] = useState<ProjectCard[]>([]);
   const [loading, setLoading] = useState(true);
-  // The team whose project list last came back from the node, empty or not.
+  // The team whose project list last came back from the cluster, empty or not.
   const [listedFor, setListedFor] = useState<string | null>(null);
-  // Bumped to re-read the projects while a just-joined team syncs.
-  const [reload, setReload] = useState(0);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [settingsProject, setSettingsProject] = useState<Project | null>(null);
   const [opening, setOpening] = useState<string | null>(null);
@@ -88,87 +75,55 @@ export default function ProjectsPage() {
   const [inviteError, setInviteError] = useState("");
   const inviteResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  function handleLogout() {
-    // Before `logout()`, which drops the node URL the entry is keyed by.
-    clearLastVisit(nodeUrl);
-    logout();
+  async function handleLogout() {
+    clearLastVisit(targetKey);
+    await signOut();
     navigate("/");
   }
 
-  useEffect(() => {
+  const loadProjects = useCallback(async () => {
     if (!teamId) return;
-    let cancelled = false;
-    async function loadProjects() {
-      try {
-        const subgroups = await listSubgroupRows(admin, teamId!);
-        // Who may delete: a team Admin, or an Admin of the project's own
-        // subgroup. Anyone else is not offered the control.
-        let self = "";
-        try { self = (await api.getNodeIdentity()).accountId ?? ""; } catch { /* unknown: no delete */ }
-        const teamAdmin = await selfIsGroupAdmin(admin, teamId!, self);
-
-        const resolved: ProjectCard[] = [];
-        for (const sg of subgroups) {
-          const sgId = sg.groupId;
-          const sgName = sg.name ?? sgId.slice(0, 8);
-          try {
-            const ctxs = await listGroupContextRows(admin, sgId);
-            if (ctxs.length > 0) {
-              const ctx = ctxs[0];
-              const contextId = ctx.contextId;
-              // Best-effort: read the document so the card can show real
-              // dimensions / member count + name. Failures (not joined yet,
-              // unsynced) leave them undefined.
-              let doc: DocumentInfo | null = null;
-              try { doc = await api.call<DocumentInfo>(contextId, "get_document", {}); } catch { /* unsynced */ }
-              // Member count comes from the governance group, not the contract's
-              // `doc.memberCount` (which counts in-contract registrations and reads
-              // 0 for peers who joined the subgroup but never registered). The
-              // subgroup id is hex, so the members listing accepts it.
-              let memberCount: number | undefined = doc?.memberCount;
-              let sgAdmin = false;
-              try {
-                const m = await admin.listGroupMembers(sgId);
-                // People only: a Born Open subgroup admits the TEE node too.
-                if (Array.isArray(m?.members)) memberCount = splitTeeMembers(m.members).members.length;
-                sgAdmin = isSelfAdmin(m, self);
-              } catch { /* keep the doc fallback */ }
-              resolved.push({
-                contextId,
-                groupId: sgId,
-                name: doc?.name?.trim() || ctx.name || sgName,
-                description: doc?.description ?? "",
-                width: doc?.width,
-                height: doc?.height,
-                memberCount,
-                canDelete: teamAdmin || sgAdmin,
-              });
-            }
-          } catch {
-            // no context yet
-          }
-        }
-        if (!cancelled) {
-          setProjects(resolved);
-          setListedFor(teamId!);
-        }
-      } catch {
-        if (!cancelled) setProjects([]);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+    try {
+      const entries = await listProjects(client, source, teamId);
+      // Best-effort: read each document so the card can show its real
+      // dimensions, member count and name.
+      const resolved = await Promise.all(
+        entries.map(async (entry): Promise<ProjectCard> => {
+          let doc: DocumentInfo | null = null;
+          try { doc = await api.call<DocumentInfo>(entry.contextId, "get_document", {}); } catch { /* unreadable */ }
+          return {
+            contextId: entry.contextId,
+            groupId: teamId,
+            name: doc?.name?.trim() || entry.name,
+            description: doc?.description ?? "",
+            width: doc?.width,
+            height: doc?.height,
+            memberCount: doc?.memberCount,
+            canDelete: entry.owner === accountId,
+          };
+        }),
+      );
+      setProjects(resolved);
+      setListedFor(teamId);
+    } catch {
+      /* the last answer stays; the next poll tries again */
+    } finally {
+      setLoading(false);
+      after();
     }
-    loadProjects();
+  }, [teamId, client, source, api, accountId, after]);
+
+  useEffect(() => {
+    void loadProjects();
     const id = setInterval(loadProjects, 30_000);
-    return () => { cancelled = true; clearInterval(id); };
-    // `reload` re-runs this read on demand (the join sync below).
-  }, [teamId, api, admin, reload]);
+    return () => clearInterval(id);
+  }, [loadProjects]);
 
   // Remember this team for the next open (utils/lastVisit). Every read checks
   // it against what the node lists, so a stale URL is never resumed into.
   useEffect(() => {
-    if (teamId) rememberTeam(nodeUrl, teamId);
-  }, [teamId, nodeUrl]);
+    if (teamId) rememberTeam(targetKey, teamId);
+  }, [teamId, targetKey]);
 
   // Arriving with `state.resume` (the teams list's resume path) goes straight
   // on to the project last open in this team, once the team has listed it and
@@ -179,40 +134,17 @@ export default function ProjectsPage() {
   useEffect(() => {
     if (!resume || !teamId || listedFor !== teamId || resumed.current) return;
     resumed.current = true;
-    const remembered = readLastVisit(nodeUrl).projects?.[teamId];
+    const remembered = readLastVisit(targetKey).projects?.[teamId];
     const target = pickRemembered(projects.map((p) => p.contextId), remembered);
     if (target) {
       void openProject(target, { replace: true });
       return;
     }
-    if (remembered) forgetProject(nodeUrl, teamId, remembered);
+    if (remembered) forgetProject(targetKey, teamId, remembered);
     navigate(location.pathname + location.search, { replace: true, state: null });
     // `openProject` is a plain function, re-made each render; the ref keeps this to one run.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resume, teamId, listedFor, projects, nodeUrl, navigate, location.pathname, location.search]);
-
-  // A team just joined by invitation has not replicated yet, and a node that
-  // has not synced it lists none of its projects: the first read comes back
-  // empty. So while the team is just-joined an empty list does not settle the
-  // invitation's "Syncing…" (the page shows the syncing banner, not "No
-  // projects yet"); a list with projects does, and so does any list once the
-  // flag is gone (the watchdog's ceiling, for a team that really has none).
-  const { isSyncing, dismiss: dismissSyncing } = useJoinSync({
-    namespaceId: teamId ?? null,
-    settled:
-      !!teamId &&
-      listedFor === teamId &&
-      (projects.length > 0 || !isNamespaceJustJoined(teamId)),
-    // Still empty: let the gate wait up to its ceiling, not the base window.
-    active: projects.length === 0,
-  });
-  // No live event follows the team's data landing, so while the gate is up
-  // re-read on its poll rather than the 30s one.
-  useEffect(() => {
-    if (!isSyncing) return;
-    const id = setInterval(() => setReload((n) => n + 1), JOIN_SYNC_POLL_MS);
-    return () => clearInterval(id);
-  }, [isSyncing]);
+  }, [resume, teamId, listedFor, projects, targetKey, navigate, location.pathname, location.search]);
 
   // Close menu on outside click
   useEffect(() => {
@@ -254,68 +186,25 @@ export default function ProjectsPage() {
     }
     setCreating(true);
     try {
-      // Resolve the app id up front. Never POST an empty one — the node rejects
-      // it ("applicationId: invalid length 0, expected a base58 encoded hash").
-      const appId = await api.ensureAppId();
-      if (!appId) {
-        showToast("Select or install the Mero PixArt application first.");
-        return;
-      }
-
-      // `CreateGroupInNamespaceBody` accepts `groupName` and `visibility`, nothing
-      // else, and is `deny_unknown_fields` — so an extra key is a 400 for the
-      // whole create. On an account the subgroup is created as a governance op
-      // signed by the account, through the same `admin`.
-      // Born Open, not flipped to it: created Restricted, core admits the TEE with
-      // an op sealed under the subgroup's own key, and the later Open flip cites
-      // it - a namespace member outside the subgroup can read the flip but never
-      // that ancestry, so their node stops applying the namespace's governance.
-      const sgData = await admin.createGroupInNamespace(teamId, {
-        groupName: newName.trim(),
-        visibility: "open",
-      });
-      const subgroupId = sgData?.groupId ?? "";
-
-      if (subgroupId) {
-        await admin.setSubgroupVisibility(subgroupId, { subgroupVisibility: "open" }).catch(() => {});
-      }
-
-      // Editor document init params: name, description, width, height. Encoded as
-      // the UTF-8 byte array of the JSON object — the node passes these straight
-      // into the WASM contract's init.
-      const initJson = JSON.stringify({
+      // The document's `init` arguments travel with the create: name,
+      // description, width, height.
+      const id = await createInstance(client, source, teamId, {
         name: newName.trim(),
         description: "",
         width: dims.width,
         height: dims.height,
       });
-      const initBytes = Array.from(new TextEncoder().encode(initJson));
-
-      // `CreateContextRequest` is `deny_unknown_fields` and accepts only
-      // applicationId / serviceName / contextSeed / initializationParams /
-      // groupId / identitySecret / name. `protocol` went with the external
-      // chain config and `alias` with core#2338; either one is a 400.
-      const ctxData = await admin.createContext({
-        applicationId: appId,
-        groupId: subgroupId || teamId,
-        name: newName.trim(),
-        initializationParams: initBytes,
-      });
-      const id = ctxData?.contextId ?? "";
-      // Store the same group the context was created under (`subgroupId || teamId`).
-      // An empty groupId would make Settings fall back to the base58 contextId for
-      // `/groups/{id}/members`, which the admin API rejects.
       setProjects((prev) => [
         ...prev,
         {
           contextId: id,
-          groupId: subgroupId || teamId,
+          groupId: teamId,
           name: newName.trim(),
           description: "",
           width: dims.width,
           height: dims.height,
           memberCount: 1,
-          // The creator is the new subgroup's Admin.
+          // The creator may delete what they created.
           canDelete: true,
         },
       ]);
@@ -330,54 +219,38 @@ export default function ProjectsPage() {
         return;
       }
     } catch (err) {
-      // Surface node rejections (e.g. the namespace-admin gate on subgroup
-      // creation) instead of failing silently in the network console.
-      showToast(humanizeError(extractErrorMessage(err, "Could not create project.")));
+      showToast(`Could not create project: ${messageOf(err)}`);
     } finally {
       setCreating(false);
+      after();
     }
   }
 
-  // A project is a subgroup holding one document context, so it is deleted as
-  // the subgroup: allowed to a team Admin or the subgroup's Admin, with an
-  // account form, and it takes the project out of every listing. Core's group
-  // delete only UNREGISTERS the context (its data stays on the node), so the
-  // context goes first — best-effort: the app's token carries no
-  // `context:delete` (the node answers 403) and an account has no form of it,
-  // and neither may stop the delete. A document created straight in the team
-  // (no subgroup) is deleted as the context alone. The card goes once the node
-  // has accepted the delete; a refusal is said, not swallowed.
+  // A project is an app instance: its creator, or a team owner or admin,
+  // deletes it (with its layers and blobs). The card goes once the cluster has
+  // accepted the delete; a refusal is said, not swallowed.
   async function deleteProject(project: ProjectCard) {
     setMenuOpenId(null);
     try {
-      if (project.groupId && project.groupId !== teamId) {
-        await admin.deleteContext(project.contextId).catch(() => {});
-        await admin.deleteGroup(project.groupId);
-      } else {
-        await admin.deleteContext(project.contextId);
-      }
+      await client.deleteApp(project.contextId);
     } catch (err) {
-      showToast(humanizeError(extractErrorMessage(err, "Could not delete project.")));
+      showToast(`Could not delete project: ${messageOf(err)}`);
       return;
+    } finally {
+      after();
     }
     setProjects((prev) => prev.filter((p) => p.contextId !== project.contextId));
-    if (teamId) forgetProject(nodeUrl, teamId, project.contextId);
+    if (teamId) forgetProject(targetKey, teamId, project.contextId);
   }
 
-  // Open a project: ensure this node has joined the context (it may have been
-  // created on a peer after we joined the team), then navigate into the editor.
-  // joinContext is idempotent node-side, so a no-op for projects we created.
-  async function openProject(contextId: string, opts?: { replace?: boolean }) {
+  // Open a project. Nothing to join first: the instance is on the cluster.
+  function openProject(contextId: string, opts?: { replace?: boolean }) {
     if (!teamId) return;
     setOpening(contextId);
-    try {
-      await admin.joinContext(contextId).catch(() => { /* already joined / not required */ });
-      const to = `/teams/${teamId}/projects/${contextId}`;
-      if (opts?.replace) navigate(to, { replace: true });
-      else navigate(to);
-    } finally {
-      setOpening(null);
-    }
+    const to = `/teams/${teamId}/projects/${contextId}`;
+    if (opts?.replace) navigate(to, { replace: true });
+    else navigate(to);
+    setOpening(null);
   }
 
   async function generateInvite() {
@@ -385,30 +258,23 @@ export default function ProjectsPage() {
     setInviteError("");
     setInviteLoading(true);
     try {
-      // Signed by the account itself on a delegated session (see InviteModal).
-      const data = (await admin.createNamespaceInvitation(teamId)) as unknown as Record<string, unknown>;
-      if (data) {
-        // Embed the team's human name so the joiner doesn't see a raw ID before
-        // the namespace metadata syncs. `__teamName` is a sibling of the signed
-        // invitation, so the existing decode path (invObj.invitation) is unchanged.
-        const teamName = getStoredTeamName(teamId);
-        const payload = teamName ? { ...data, __teamName: teamName } : data;
-        setInvitation(encodeInvitationObject(payload));
-      }
+      // An org invite, approved with this account's passkey. The link is all
+      // there is to share: opening it (and signing in) joins the team.
+      const token = await inviteToken(client, teamId, passkey());
+      setInvitation(inviteLink(token));
     } catch (err) {
-      const msg = extractErrorMessage(err, "Failed to generate invitation. Check node connection.");
+      const msg = `Failed to generate invitation: ${messageOf(err)}`;
       setInviteError(msg);
       showToast(msg);
     } finally {
       setInviteLoading(false);
+      after();
     }
   }
 
   async function copyInvite() {
     if (!invitation || inviteCopying) return;
-    // Share the canonical link, not the bare token: it opens the desktop app
-    // where installed and the published web build otherwise.
-    await navigator.clipboard.writeText(invitationLink(invitation));
+    await navigator.clipboard.writeText(invitation);
     showToast("Invitation link copied to clipboard.", "success");
     // Brief loader, then reset to the "generate" state so each share is fresh.
     setInviteCopying(true);
@@ -425,7 +291,7 @@ export default function ProjectsPage() {
         <button className={styles.back} onClick={() => navigate("/teams")}>← Teams</button>
         <span className={styles.logo}><Logo size={22} /> Mero PixArt</span>
         <div className={styles.headerRight}>
-          <button className="mp-btn mp-btn--ghost" onClick={handleLogout}>Logout</button>
+          <button className="mp-btn mp-btn--ghost" onClick={() => void handleLogout()}>Logout</button>
         </div>
       </header>
 
@@ -459,9 +325,7 @@ export default function ProjectsPage() {
 
         {tab === "projects" && (
           <>
-            {isSyncing && projects.length === 0 ? (
-              <JoinSyncBanner show what="projects" onDismiss={dismissSyncing} />
-            ) : loading ? (
+            {loading ? (
               <p className={styles.empty}>Loading…</p>
             ) : projects.length === 0 ? (
               <div className={styles.emptyState} data-testid="empty-projects">
@@ -512,7 +376,7 @@ export default function ProjectsPage() {
                         <button className={styles.dropdownItem} onClick={() => { setMenuOpenId(null); setSettingsProject(p); }}>
                           Settings
                         </button>
-                        {p.canDelete && (p.groupId !== teamId || !isDelegated) && (
+                        {(p.canDelete || isAdmin(myTeamRole)) && (
                           <button className={`${styles.dropdownItem} ${styles.dropdownDanger}`} onClick={() => deleteProject(p)}>
                             Delete
                           </button>
@@ -529,9 +393,8 @@ export default function ProjectsPage() {
         {tab === "invitations" && (
           <div className={styles.inviteSection}>
             <p className={styles.inviteDesc}>
-              Generate an invitation link and share it with teammates. Opening it launches
-              the desktop app where installed, and the web build otherwise, and asks
-              them to join.
+              Generate an invitation link and share it with teammates. Opening it and
+              signing in with a passkey joins the team. Each link works once.
             </p>
             {invitation ? (
               inviteCopying ? (
@@ -544,9 +407,9 @@ export default function ProjectsPage() {
                   <code
                     className={styles.token}
                     data-testid="invite-token"
-                    title={invitationLink(invitation)}
+                    title={invitation}
                   >
-                    {truncateMiddle(invitationLink(invitation), 28, 10)}
+                    {truncateMiddle(invitation, 28, 10)}
                   </code>
                   <button className="mp-btn" onClick={copyInvite} data-testid="copy-invite">
                     Copy
@@ -679,7 +542,6 @@ export default function ProjectsPage() {
         <SettingsModal
           type="project"
           id={settingsProject.contextId}
-          groupId={settingsProject.groupId}
           namespaceId={teamId}
           name={settingsProject.name || settingsProject.contextId.slice(0, 8)}
           onClose={() => setSettingsProject(null)}

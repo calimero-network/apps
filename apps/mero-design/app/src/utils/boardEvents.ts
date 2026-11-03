@@ -1,8 +1,9 @@
 /**
- * What one SSE `StateMutation` asks the canvas to re-read.
+ * What a batch of the board's events asks the canvas to re-read.
  *
- * The node sends `{ newRoot, events: [{ kind, data: u8[] }] }`, where `data` is
- * the contract-emitted payload as JSON bytes. This used to be handled event by
+ * `hooks/useSse` hands over `{ events: [{ kind, data }] }`, where `data` is the
+ * contract's event payload (`{ id }`, `{ ids }`, `{ member }`, …); v1's node
+ * sent it as JSON bytes, which are still read. This used to be handled event by
  * event — one `get_element` per `ElementAdded` — so a paste of 3000 shapes came
  * back as 3000 more reads, on every peer AND as the author's own echo. Folding
  * a mutation into one plan first means a batch costs one `get_elements_by_ids`
@@ -26,21 +27,29 @@ export interface BoardChanges {
 
 interface RawEvent {
   kind?: string;
-  data?: number[];
+  data?: unknown;
 }
 
-function decode(data: number[] | undefined): unknown {
-  if (!Array.isArray(data) || data.length === 0) return null;
-  try {
-    return JSON.parse(new TextDecoder().decode(new Uint8Array(data)));
-  } catch {
-    return null;
+/** An event's payload: the value itself, or (v1) its JSON as bytes. */
+function decode(data: unknown): unknown {
+  if (Array.isArray(data) && data.length > 0 && data.every((b) => typeof b === "number")) {
+    try {
+      return JSON.parse(new TextDecoder().decode(new Uint8Array(data as number[])));
+    } catch {
+      return null;
+    }
   }
+  return data ?? null;
 }
 
 function idsOf(value: unknown): string[] {
   if (typeof value === "string") return [value];
   if (Array.isArray(value)) return value.filter((v): v is string => typeof v === "string");
+  if (value && typeof value === "object") {
+    const o = value as { id?: unknown; ids?: unknown };
+    if (o.ids !== undefined) return idsOf(o.ids);
+    if (o.id !== undefined) return idsOf(o.id);
+  }
   return [];
 }
 

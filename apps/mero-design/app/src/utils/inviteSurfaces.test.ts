@@ -11,8 +11,8 @@ import mainSrc from "../main.tsx?raw";
 // layer was never the problem; the call site was.
 //
 // No behavioural test catches this: it is a one-argument wiring mistake, and
-// rendering every surface would mean standing up mero-react, the router and the
-// admin API to assert one string. So assert it against the source, which is
+// rendering every surface would mean standing up the session, the router and the
+// client to assert one string. So assert it against the source, which is
 // where the bug lives. Sources arrive through Vite's `?raw` (typed by
 // vite/client) — this app has no @types/node.
 //
@@ -33,7 +33,7 @@ const SOURCES = import.meta.glob<string>(["../**/*.tsx", "!../**/*.test.tsx"], {
 describe("where invitations are minted", () => {
   it("is only the invite surfaces listed above", () => {
     const minting = Object.entries(SOURCES)
-      .filter(([, src]) => /createNamespaceInvitation\(/.test(src))
+      .filter(([, src]) => /createTeamInvitation\(/.test(src))
       .map(([path]) => path.replace(/^\.\.\//, ""));
     expect(minting.sort()).toEqual(INVITE_SURFACES.map(([name]) => name).sort());
   });
@@ -65,12 +65,11 @@ describe("invite surfaces", () => {
 });
 
 describe("invitation capture at boot", () => {
-  // Without the slug, a link addressed to another app — opened inside this
-  // one, or a misrouted desktop event — is offered here, and accepting it puts
-  // this node into a namespace of an app it cannot run.
-  it("is primed for this app's slug only", () => {
-    expect(mainSrc).toMatch(
-      /primeInvitationCapture\(\s*"mero-design",\s*\{\s*slug:\s*APP_SLUG\s*\}\s*\)/,
-    );
+  // The router replaces the URL on its first navigation, and a person opening
+  // a link is usually not signed in yet: the token is taken into storage
+  // before React mounts, or it is lost.
+  it("captures ?invite= before the app renders", () => {
+    expect(mainSrc.indexOf("captureInvite()")).toBeGreaterThan(-1);
+    expect(mainSrc.indexOf("captureInvite()")).toBeLessThan(mainSrc.indexOf("createRoot("));
   });
 });

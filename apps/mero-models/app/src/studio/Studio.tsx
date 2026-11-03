@@ -1,13 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import {
-  clearContextId,
-  useContextGroup,
-  useJoinSync,
-  useMero,
-} from "@calimero-network/mero-react";
 import * as cmd from "../editor/commands";
-import { rememberName, storedName, useJoin, usePresence, useSceneSync, useSpaceNames } from "../editor/hooks";
+import { rememberName, storedName, useJoin, usePresence, useSceneSync } from "../editor/hooks";
 import { IMPORT_ACCEPT, download, exportScene, importFile, type ExportFormat } from "../editor/io";
 import { EXAMPLES } from "../editor/examples";
 import { LIGHTS, PRIMITIVES, isSolid, type Environment, type ObjectKind } from "../editor/model";
@@ -16,6 +10,7 @@ import { messageOf } from "../editor/sync";
 import { Viewport, type Peer } from "../editor/viewport";
 import { TextureCache } from "../editor/textures";
 import { StudioContext } from "./StudioContext";
+import { useScene } from "../scene";
 import {
   IconCursor,
   IconGrid,
@@ -46,14 +41,7 @@ import { GameExportDialog } from "./GameExport";
  * The modeller: menu bar across the top, tools down the left, the 3D view in
  * the middle, outliner and properties on the right, status along the bottom.
  */
-export function Studio({
-  contextId,
-  namespaceId: joinedNamespace = null,
-}: {
-  contextId: string;
-  /** The namespace, when the scene was just joined and the caller knows it. */
-  namespaceId?: string | null;
-}) {
+export function Studio({ contextId }: { contextId: string }) {
   const { sync, saving } = useSceneSync(contextId);
   // One texture cache per open scene, shared by the viewport, the panels and export.
   const textures = useMemo(() => (sync ? new TextureCache(sync.blobs) : null), [sync]);
@@ -63,15 +51,8 @@ export function Studio({
   }, [textures]);
   const services = useMemo(() => ({ sync, textures }), [sync, textures]);
   const [storedOwn, setName] = useState(storedName);
-  const me = useEditor((s) => s.me);
-  const { nameOf: spaceNameOf, publish } = useSpaceNames(contextId);
-  // The check-out and history labels read namespace names through the store.
-  useEffect(() => {
-    useEditor.setState({ spaceNameOf });
-  }, [spaceNameOf]);
-  // Someone who never named themselves here joins under the name they set for
-  // the namespace rather than as "Guest".
-  const name = storedOwn || spaceNameOf(me) || "";
+  // Someone who never named themselves joins as "Guest" (store.GUEST).
+  const name = storedOwn;
   useJoin(contextId, name);
   const { peers, publishCamera } = usePresence(contextId, name);
   const viewport = useRef<Viewport | null>(null);
@@ -80,23 +61,11 @@ export function Studio({
   const [arrayOpen, setArrayOpen] = useState(false);
   const [gameExportOpen, setGameExportOpen] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
-  const { logout } = useMero();
+  const { logout, leave } = useScene();
 
   const state = useEditor();
   const active = activeObject(state);
 
-  // Ends the invitation dialog's "Syncing…" for a scene just joined. `loaded`
-  // is set by the first read of the scene that came back, an empty scene
-  // included; a joined scene whose state has not arrived yet fails that read
-  // and is retried on every event and poll. `sync` is this mount's own, so a
-  // `loaded` left over from the previous scene cannot count.
-  // This app's scenes live directly in the namespace (see ScenePicker), so the
-  // context's group is the namespace the invitation joined.
-  const { groupId } = useContextGroup(joinedNamespace ? null : contextId);
-  useJoinSync({
-    namespaceId: joinedNamespace ?? groupId,
-    settled: sync !== null && state.loaded,
-  });
   const canEdit = state.role !== "viewer";
 
   const onEnvironment = useCallback(
@@ -108,15 +77,10 @@ export function Studio({
     [sync],
   );
 
-  const onName = useCallback(
-    (next: string) => {
-      setName(next);
-      rememberName(next);
-      // The namespace-wide name too, so every app on it shows this name.
-      if (next) publish(useEditor.getState().me, next);
-    },
-    [publish],
-  );
+  const onName = useCallback((next: string) => {
+    setName(next);
+    rememberName(next);
+  }, []);
 
   // ── file actions ──
   async function onImport(file: File) {
@@ -156,11 +120,6 @@ export function Studio({
   async function onRender() {
     const blob = await viewport.current?.capture();
     if (blob) download(blob, `${(useEditor.getState().sceneName || "render").replace(/[^\w.-]+/g, "_")}.png`);
-  }
-
-  function leave() {
-    clearContextId();
-    window.location.reload();
   }
 
   // ── menus ──
@@ -687,7 +646,7 @@ function ViewportHost({
     const v = new Viewport(host.current, {
       onCamera: (cam, target) => {
         if (pending !== null) return;
-        // Presence is throttled again in mero-react; this keeps the vectors
+        // Presence is throttled again in usePresence; this keeps the vectors
         // from being copied on every frame of an orbit.
         pending = window.setTimeout(() => {
           pending = null;

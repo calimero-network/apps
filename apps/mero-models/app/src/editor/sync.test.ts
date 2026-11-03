@@ -6,7 +6,7 @@ import type {
   SceneObject,
   TextureRef,
   VersionView,
-} from "../generated/MeroModelsClient";
+} from "../meroModels";
 import { BlobStore, type BlobTransport } from "./blobs";
 import { makeShape } from "./geometry";
 import { encodeMesh } from "./meshcodec";

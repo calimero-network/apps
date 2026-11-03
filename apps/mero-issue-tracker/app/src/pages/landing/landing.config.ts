@@ -11,7 +11,6 @@
 import { FileCheck, Package, Refresh, Shield, Zap } from '@calimero-network/mero-icons';
 
 import Animation from './animation';
-import LoginPopup from './loginPopup';
 import type { LandingConfig } from './landingTypes';
 
 export const CONFIG: LandingConfig = {
@@ -21,13 +20,13 @@ export const CONFIG: LandingConfig = {
   dir: "mero-issue-tracker",
   markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
-  availability: "web+desktop",
+  availability: "web",
   tint: "#84cc16",
   themeStorageKey: "mero-issue-tracker:theme",
   trust: ["Structured issues", "MCP server included", "Private to your team"],
   explainer: [
     "A real-time issue board for a small engineering team. Issues are structured around what actually makes a bug actionable — a summary, who it affects, how to reproduce it, and what \"fixed\" has to satisfy — rather than a free-text box and a pile of labels.",
-    "It also ships an MCP server, so an AI coding agent can pull an issue with its full context and hand you back a fix. The board is private to your namespace, not a tenant in someone else’s SaaS.",
+    "It also ships an MCP server, so an AI coding agent can pull an issue with its full context and hand you back a fix. The board is private to your workspace, held on attested Calimero nodes, not a tenant in someone else’s SaaS.",
   ],
   features: [
     {
@@ -38,7 +37,7 @@ export const CONFIG: LandingConfig = {
     {
       icon: Refresh,
       title: "Real-time board",
-      body: "Triage together. Status moves and comments land on every member’s node as they happen.",
+      body: "Triage together. Status moves and comments reach every member’s screen as they happen.",
     },
     {
       icon: Zap,
@@ -53,7 +52,7 @@ export const CONFIG: LandingConfig = {
     {
       icon: Shield,
       title: "Private to your team",
-      body: "A namespace you own, not a workspace in a product that reserves the right to read it.",
+      body: "A workspace you own, on attested nodes, not a product that reserves the right to read it.",
     },
   ],
   animation: Animation,
@@ -65,10 +64,10 @@ export const CONFIG: LandingConfig = {
         "Issues here are shaped around what actually makes a bug actionable, which is why an issue has four required sections rather than one free-text box.",
       ],
       concepts: [
-        { term: "Namespace", def: "A team. Its members are the people who can see and triage the board." },
-        { term: "Context", def: "The board itself — issues, comments and labels." },
-        { term: "Issue", def: "Title plus summary, impact, repro steps and resolution criteria, each stored as its own register so two people editing different fields never collide." },
-        { term: "Label", def: "An entry in a flat index keyed by issue and label together. That keying is why two people adding the same label at the same time produce one label, not two." },
+        { term: "Workspace", def: "A team: an organization whose members are the people who can see and triage its boards." },
+        { term: "Repository", def: "One board in the workspace, named after the repo it tracks: its issues, comments, labels and the repo URL." },
+        { term: "Issue", def: "Title plus summary, impact, repro steps and resolution criteria, with a status, a priority, an assignee and labels." },
+        { term: "Label", def: "A row keyed by issue and label together, which is why adding the same label twice leaves one label, not two." },
         { term: "MCP server", def: "A Model Context Protocol server exposing the board, so an AI coding agent can read an issue and its context directly rather than being pasted a screenshot." },
       ],
     },
@@ -76,10 +75,10 @@ export const CONFIG: LandingConfig = {
       id: "start",
       heading: "Getting started",
       steps: [
-        { title: "Connect a node", body: "Press Connect to node and pick your node in the popup." },
-        { title: "Create a board", body: "A namespace you own, with one board in it." },
-        { title: "File an issue", body: "Fill in summary, impact, repro and resolution criteria. The structure is the point — it is what makes the issue usable by someone who is not you." },
-        { title: "Triage together", body: "Status, priority, assignee and labels are all editable by any member, and everyone sees the board move as nodes sync." },
+        { title: "Sign in", body: "Press Sign in and use a passkey, or create an account with a new one." },
+        { title: "Create a workspace", body: "A workspace you own, then a repository in it." },
+        { title: "File an issue", body: "Fill in summary, impact, repro and resolution criteria. The structure is the point: it is what makes the issue usable by someone who is not you." },
+        { title: "Triage together", body: "Invite your team from Members. Status, priority, assignee and labels are editable by any member, and everyone sees the board move." },
       ],
     },
     {
@@ -87,43 +86,35 @@ export const CONFIG: LandingConfig = {
       heading: "Working with an agent",
       paragraphs: [
         "Any issue can be rendered as a prompt for a coding agent in one click, carrying the four sections as written.",
-        "For a tighter loop, the MCP server exposes the board directly, so an agent can list issues and read one without a human relaying the text.",
-        "Comment authorship is enforced in the contract: only the author of a comment may edit or delete it.",
+        "For a tighter loop, the MCP server exposes the board directly, with an agent key you create on the Members page, so an agent can list issues and read one without a human relaying the text.",
+        "Authorship is enforced in the contract: only the author of a comment may edit or delete it, and only the creator of an issue may delete it.",
       ],
     },
     {
       id: "storage",
       heading: "What is stored, and where",
       bullets: [
-        "Issues, keyed by id, with every mutable field as its own last-writer-wins register.",
-        "Comments, each carrying an immutable author.",
-        "A flat label index keyed by issue and label, so concurrent adds converge to one entry and removals are conflict-free.",
+        "Issues, keyed by id, with indexes by status, assignee and creation time, and a maintained count per status.",
+        "Comments, each carrying its author.",
+        "Labels, one row per issue and label.",
         "The repository URL for the board, if one is set.",
-      ],
-    },
-    {
-      id: "offline",
-      heading: "Offline, and what happens when you reconnect",
-      paragraphs: [
-        "Your node holds the whole state, so the app keeps working with no network — every change is written locally and queued.",
-        "When your node reaches a peer again, the two exchange changes and merge them. Merging is CRDT-based, not last-write-wins-by-clock, so two people editing different things at the same time both keep their work. Where two people genuinely changed the same single value, the later write wins on that one value and nothing else is lost.",
+        "All of it in one app on attested Calimero nodes, which apply every change in one ordered log.",
       ],
     },
     {
       id: "trouble",
       heading: "When something looks wrong",
       concepts: [
-        { term: "A label appears twice", def: "It should not — the index is keyed by issue and label together. If you see a duplicate, the two differ by case or whitespace." },
-        { term: "Your edit was replaced", def: "Per-field registers mean only the same field collides. Two people rewriting the same summary converge on the later one; a summary and a priority edit both survive." },
-        { term: "A teammate’s column is stale", def: "Their node is behind. The board catches up on sync without any action." },
+        { term: "A label appears twice", def: "It should not: a label is keyed by issue and label together. If you see a duplicate, the two differ by case or whitespace." },
+        { term: "Your edit was replaced", def: "Two people rewriting the same field leave the later write; edits to different fields both survive." },
+        { term: "You cannot delete an issue", def: "Only the person who filed it may delete it. Anyone may change its status, priority, assignee and labels." },
       ],
     },
   ],
   previewSteps: [
-    { title: "Three columns", body: "Todo, in progress, done — the board every member replicates, with no service hosting it." },
-    { title: "A card moves", body: "Status is one register on the issue. Moving a card collides with nothing else on it." },
-    { title: "A teammate drags one back", body: "Concurrent triage converges: the later status wins, and every other field is untouched." },
+    { title: "Four columns", body: "Open, in progress, blocked, done: the board every member of the workspace sees." },
+    { title: "A card moves", body: "A status change is one call; the board updates for everyone watching." },
+    { title: "A teammate moves one back", body: "The calls are ordered: the later status holds, and every other field is untouched." },
     { title: "An agent reads it", body: "The same issue is available over MCP, so a coding agent gets the repro steps as written." },
   ],
-  loginPopup: LoginPopup,
 };
