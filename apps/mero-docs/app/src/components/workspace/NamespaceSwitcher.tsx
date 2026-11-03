@@ -107,7 +107,7 @@ export function NamespaceSwitcher() {
                   // workspace's are known, so only its count drops them.
                   const count =
                     n.namespaceId === selectedNamespaceId
-                      ? peopleCount(n.memberCount, namespaceMembers.teeMembers.length)
+                      ? peopleCount(n.memberCount ?? 0, namespaceMembers.teeMembers.length)
                       : n.memberCount;
                   return (
                     <DropdownMenuRadioItem

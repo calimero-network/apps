@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Mock } from 'vitest';
 import { renderHook, render, act, fireEvent, screen } from '@testing-library/react';
 import { createElement, type ChangeEvent } from 'react';
-import type { DocsClient } from '@/generated/docs/DocsClient';
+import type { DocsClient } from '@/lib/docsApi';
 import { useFugueTitle } from '../useFugueTitle';
 
 const publish = vi.fn();
@@ -13,11 +13,13 @@ let deliver: ((event: unknown) => void) | null = null;
 // The shared stream's `connect` listeners, so a test can reopen it.
 const connectHandlers = new Set<() => void>();
 const events = {
-  on: (_: 'connect', h: () => void) => connectHandlers.add(h),
-  off: (_: 'connect', h: () => void) => connectHandlers.delete(h),
+  onConnect: (h: () => void) => {
+    connectHandlers.add(h);
+    return () => connectHandlers.delete(h);
+  },
 };
 
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@/calimero/react', () => ({
   useSubscription: (_ids: string[], handler: (event: unknown) => void) => {
     deliver = handler;
   },

@@ -13,7 +13,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   useMemberMetadata,
   useSetMemberMetadata,
-} from '@calimero-network/mero-react';
+} from '@/calimero/react';
 import { useContextEvents } from './useContextEvents';
 import { useDriveWorkspace } from './useDriveWorkspace';
 

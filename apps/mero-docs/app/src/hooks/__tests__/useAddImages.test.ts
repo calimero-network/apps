@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import { useCreateBlockNote } from '@blocknote/react';
-import { HTTPError } from '@calimero-network/mero-js';
+import { HTTPError } from '@/calimero/errors';
 import { toast } from 'sonner';
 import { schema, type DriveEditor } from '@/components/editor/blocknote/schema';
 import { MAX_IMAGE_BYTES } from '@/lib/images';
@@ -10,7 +10,7 @@ import { IMAGE_SIZE_REFUSED, IMAGE_TYPE_REFUSED, useAddImages } from '../useAddI
 
 const uploadBlob = vi.fn();
 const mero = { admin: { uploadBlob } };
-vi.mock('@calimero-network/mero-react', () => ({ useMero: () => ({ mero, admin: mero.admin }) }));
+vi.mock('@/calimero/react', () => ({ useMero: () => ({ mero, admin: mero.admin }) }));
 vi.mock('sonner', () => ({
   toast: { error: vi.fn(), loading: vi.fn(), dismiss: vi.fn() },
 }));
@@ -90,7 +90,7 @@ describe('useAddImages', () => {
   it('says so when this session may not upload, and adds no block', async () => {
     const { editor, add } = setup([{ type: 'paragraph' }]);
     uploadBlob.mockRejectedValue(
-      new HTTPError(403, 'Forbidden', '/admin-api/blobs', new Headers(), ''),
+      new HTTPError(403, 'ERROR', ''),
     );
     await act(() => add([png()], editor.document[0].id));
     expect(images(editor)).toEqual([]);

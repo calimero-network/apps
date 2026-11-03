@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { HTTPError } from '@calimero-network/mero-js';
+import { HTTPError } from '@/calimero/errors';
 import { applyAcross, inheritReadOnly, type FolderRoleWriter } from '../applyFolderRole';
 import { FOLDER_ROLE_GRANTS } from '../roles';
 
@@ -14,7 +14,7 @@ const writer = {
   admin: {
     listGroupMembers: vi.fn(async (g: string) => ({ members: rows[g] ?? [] })),
     updateMemberRole: vi.fn(async (g: string, id: string, { role }: { role: string }) => {
-      if (!direct.has(g)) throw new HTTPError(404, '', `/groups/${g}`, new Headers());
+      if (!direct.has(g)) throw new HTTPError(404, 'ERROR', `/groups/${g}`);
       rows[g] = rows[g].map((m) => (m.identity === id ? { ...m, role } : m));
     }),
     addGroupMembers: vi.fn(async (g: string) => {
@@ -104,7 +104,7 @@ describe('applyAcross', () => {
     rows = { a: [{ identity: BOB, role: 'Member' }], b: [{ identity: BOB, role: 'Member' }] };
     direct = new Set(['a', 'b']);
     writer.admin.updateMemberRole.mockRejectedValueOnce(
-      new HTTPError(403, '', '/groups/a', new Headers()),
+      new HTTPError(403, 'ERROR', '/groups/a'),
     );
     expect(await applyAcross(w, ['a', 'b'], BOB, true)).toEqual(['a']);
     expect(writer.admin.setMemberCapabilities).toHaveBeenCalledWith('b', BOB, {

@@ -10,7 +10,7 @@
 
 import React, { useState } from 'react';
 import { LogOut, Trash2 } from 'lucide-react';
-import { useMero } from '@calimero-network/mero-react';
+import { useMero } from '@/calimero/react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
@@ -20,7 +20,7 @@ import { namespaceLabel } from '@/lib/namespaceLabel';
 export function WorkspaceExitPanel() {
   const { namespaceId, rootGroupId, namespaces, clearNamespace, refetch } =
     useDriveWorkspace();
-  const { admin, isDelegated } = useMero();
+  const { admin } = useMero();
   const { caps, isAdmin } = useMemberCaps(namespaceId ?? '', rootGroupId ?? '');
   const confirm = useConfirm();
   const [busy, setBusy] = useState(false);
@@ -28,7 +28,6 @@ export function WorkspaceExitPanel() {
 
   // Unknown until the caller's role has loaded: offer nothing rather than guess.
   if (!namespaceId || caps === null) return null;
-  if (isAdmin && isDelegated) return null;
 
   const name = namespaceLabel(
     namespaces.find((n) => n.namespaceId === namespaceId)?.name,

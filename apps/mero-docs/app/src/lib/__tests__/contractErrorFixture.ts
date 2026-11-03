@@ -1,14 +1,20 @@
-/** How core renders the contract's JSON behind the prefix: text (rc.81 on) or a decimal byte list (older nodes). */
-export type ContractErrorShape = 'text' | 'bytes';
+import { AppError, UnavailableError, errorFrom } from '@calimero-network/mero-js';
 
-export const CONTRACT_ERROR_SHAPES: readonly ContractErrorShape[] = ['text', 'bytes'];
+/** The error mero-js throws for the contract's own refusal: `422 APP_ERROR`, its code and `message`. */
+export function contractErrorFixture(code: string, message: string): Error {
+  return new AppError('the app refused the call', { code, fields: { message } });
+}
 
-/** The error mero-js throws for a contract error, in either shape core has used. */
-export function contractErrorFixture(kind: string, data: string, shape: ContractErrorShape = 'text'): Error {
-  const json = JSON.stringify({ kind, data });
-  const rendered = shape === 'text' ? json : `[${Array.from(new TextEncoder().encode(json)).join(', ')}]`;
-  return Object.assign(new Error('FunctionCallError'), {
-    type: 'FunctionCallError',
-    data: `the method call returned an error: ${rendered}`,
-  });
+const CODES: Record<number, string> = {
+  401: 'UNAUTHENTICATED',
+  403: 'FORBIDDEN',
+  404: 'NOT_FOUND',
+  413: 'ARGS_TOO_LARGE',
+  500: 'INTERNAL',
+};
+
+/** The error mero-js throws for a node's answer with `status`; 0 is no answer at all. */
+export function nodeError(status: number): Error {
+  if (status === 0) return new UnavailableError('NETWORK', 'fetch failed');
+  return errorFrom(status, { error: CODES[status] ?? 'ERROR', message: 'refused' });
 }

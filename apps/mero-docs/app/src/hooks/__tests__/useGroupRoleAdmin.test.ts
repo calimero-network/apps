@@ -28,7 +28,7 @@ const registryAdmin = {
   removeManager,
 };
 
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@/calimero/react', () => ({
   useMero: () => ({ mero: {}, admin: { setMemberCapabilities } }),
   useUpdateMemberRole: () => ({
     updateMemberRole,

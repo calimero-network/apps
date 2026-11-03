@@ -5,7 +5,7 @@
 //
 // `FolderTree` renders a single "Loading folders…" line whenever the workspace
 // reports `loading`, which unmounts the entire `<ul>` and every row in it. And
-// mero-react's `useAsyncResource.refetch` calls `setLoading(true)` on EVERY
+// the @/calimero/react `useAsyncResource.refetch` calls `setLoading(true)` on EVERY
 // refetch - so an SSE ding, which refetches the whole workspace, flipped
 // `regLoading` / `subLoading` / `contextsLoading` true a few times a minute and
 // the sidebar was torn down and rebuilt each time. That is the flicker.

@@ -7,7 +7,7 @@ import {
 
 const setMemberMetadataFn = vi.fn();
 const useMemberCapsMock = vi.fn();
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@/calimero/react', () => ({
   useSubscription: vi.fn(),
   useSetMemberMetadata: () => ({
     setMemberMetadata: setMemberMetadataFn,

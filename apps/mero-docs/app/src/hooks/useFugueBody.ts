@@ -10,9 +10,9 @@ import type { EditorView } from 'prosemirror-view';
 import {
   useSubscription,
   type SubscriptionEventData,
-} from '@calimero-network/mero-react';
-import { classifyError } from '@calimero-network/mero-js';
-import type { Change as WireChange, DocsClient } from '@/generated/docs/DocsClient';
+} from '@/calimero/react';
+import { classifyError } from '@/calimero/errors';
+import type { Change as WireChange, DocsClient } from '@/lib/docsApi';
 import {
   diffBlocks,
   isPlaceholder,

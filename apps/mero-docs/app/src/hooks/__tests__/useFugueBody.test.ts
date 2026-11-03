@@ -4,8 +4,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Mock } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useCreateBlockNote } from '@blocknote/react';
-import { HTTPError, RpcError } from '@calimero-network/mero-js';
-import type { DocsClient } from '@/generated/docs/DocsClient';
+import type { CalimeroError } from '@calimero-network/mero-js';
+import { nodeError } from '@/lib/__tests__/contractErrorFixture';
+import type { DocsClient } from '@/lib/docsApi';
 import { useFugueBody, type BodyEditor } from '../useFugueBody';
 import { schema } from '@/components/editor/blocknote/schema';
 
@@ -13,11 +14,13 @@ let deliver: ((event: unknown) => void) | null = null;
 // The shared stream's `connect` listeners, so a test can reopen it.
 const connectHandlers = new Set<() => void>();
 const events = {
-  on: (_: 'connect', h: () => void) => connectHandlers.add(h),
-  off: (_: 'connect', h: () => void) => connectHandlers.delete(h),
+  onConnect: (h: () => void) => {
+    connectHandlers.add(h);
+    return () => connectHandlers.delete(h);
+  },
 };
 
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@/calimero/react', () => ({
   useSubscription: (_ids: string[], handler: (event: unknown) => void) => {
     deliver = handler;
   },
@@ -250,18 +253,12 @@ describe('useFugueBody', () => {
   // The node answers the same edit the same way every time: a 413 (the edit is
   // over its body limit) or a 403 is not about the moment. Resending it at once
   // looped for as long as the editor stayed open.
-  it.each([413, 403])(
+  it.each([413])(
     'sends an edit the node refuses with %i once, not in a loop',
     async (status) => {
       const client = fakeClient([row('blk-1', 'The fox.')]);
       client.applyDeltaOn.mockRejectedValue(
-        new HTTPError(
-          status,
-          'Refused',
-          'http://node/jsonrpc',
-          new Headers(),
-          '{"error":"no"}',
-        ),
+        nodeError(status),
       );
       const editor = new FakeEditor();
       const { result } = await mount(client, editor);
@@ -272,7 +269,7 @@ describe('useFugueBody', () => {
 
       expect(client.applyDeltaOn).toHaveBeenCalledTimes(1);
       expect(result.current.status).toBe('error');
-      expect((result.current.error as HTTPError | null)?.status).toBe(status);
+      expect((result.current.error as CalimeroError | null)?.status).toBe(status);
       // The edit is still in the editor, and the next one tries again.
       expect(editor.textOf('blk-1')).toBe('The fox. huge paste');
       editor.type('blk-1', 'The fox. small');
@@ -310,7 +307,8 @@ describe('useFugueBody', () => {
   it('drops an edit the node refuses as read-only and shows the node text', async () => {
     const client = fakeClient([row('blk-1', 'before')]);
     client.applyDeltaOn.mockRejectedValue(
-      new RpcError(-1, 'ReadOnlyWriteRefused', { context_id: CTX }, 'ReadOnlyWriteRefused'),
+      // A read-only team row: the node refuses every write with 403.
+      nodeError(403),
     );
     const editor = new FakeEditor();
     const { result } = await mount(client, editor);
@@ -318,7 +316,7 @@ describe('useFugueBody', () => {
     editor.type('blk-1', 'before phantom');
     await settle();
     expect(editor.textOf('blk-1')).toBe('before');
-    expect((result.current.error as RpcError | null)?.type).toBe('ReadOnlyWriteRefused');
+    expect((result.current.error as CalimeroError | null)?.status).toBe(403);
     await settle(20_000);
     expect(client.applyDeltaOn).toHaveBeenCalledTimes(1);
   });
@@ -339,7 +337,7 @@ describe('useFugueBody', () => {
       down.applyDeltaOn
         .mockResolvedValueOnce(applied('The fox. a'))
         .mockRejectedValue(
-          new HTTPError(0, 'Network Error', 'http://node/jsonrpc', new Headers(), ''),
+          nodeError(0),
         );
       const editor = new FakeEditor();
       const view = renderHook(

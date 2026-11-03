@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 // vi.mock is hoisted above imports, so this import still resolves to
-// the mocked '@calimero-network/mero-react' below.
-import { HTTPError } from '@calimero-network/mero-js';
+// the mocked '@/calimero/react' below.
+import { HTTPError } from '@/calimero/errors';
 import { useFolderOperations } from '../useFolderOperations';
 import { CAPABILITIES } from '@/constants/config';
 
-// Capture the mero-react mutation mocks so assertions can read call args.
+// Capture the @/calimero/react mutation mocks so assertions can read call args.
 const createGroupInNamespace = vi.fn();
 const setSubgroupVisibility = vi.fn();
 const setGroupMetadata = vi.fn();
@@ -20,7 +20,7 @@ const setMemberCapabilities = vi.fn();
 const reparentGroup = vi.fn();
 const getGroupInfo = vi.fn();
 
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@/calimero/react', () => ({
   useCreateGroupInNamespace: () => ({ createGroupInNamespace }),
   useCreateContext: () => ({ createContext }),
   useDeleteContext: () => ({ deleteContext }),
@@ -62,8 +62,8 @@ beforeEach(() => {
   getGroupInfo.mockResolvedValue({ metadata: { name: 'Old', data: {} } });
 });
 
-describe('useFolderOperations.create - reparenting', () => {
-  it('reparents a sub-folder through the admin client, before it is named', async () => {
+describe('useFolderOperations.create - placement', () => {
+  it('creates a sub-folder as a team under its parent, named as the folder', async () => {
     const { result } = renderHook(() =>
       useFolderOperations(ROOT, 'app-1', vi.fn().mockResolvedValue(undefined)),
     );
@@ -73,23 +73,10 @@ describe('useFolderOperations.create - reparenting', () => {
       alias: 'Nested',
       visibility: 'Restricted',
     });
-    expect(reparentGroup).toHaveBeenCalledWith('new-folder', { newParentId: 'parent-folder' });
-    // The name op must encrypt on the chain the folder ends up on, so the
-    // reparent lands first.
-    expect(reparentGroup.mock.invocationCallOrder[0]).toBeLessThan(
-      setGroupMetadata.mock.invocationCallOrder[0],
-    );
-  });
-
-  it('does not reparent a folder created directly under the root', async () => {
-    const { result } = renderHook(() =>
-      useFolderOperations(ROOT, 'app-1', vi.fn().mockResolvedValue(undefined)),
-    );
-    await result.current.create({
-      namespaceId: 'ns-1',
-      parentGroupId: ROOT,
-      alias: 'Top level',
-      visibility: 'Restricted',
+    expect(createGroupInNamespace).toHaveBeenCalledWith('ns-1', {
+      visibility: 'restricted',
+      parentId: 'parent-folder',
+      name: 'Nested',
     });
     expect(reparentGroup).not.toHaveBeenCalled();
   });
@@ -122,7 +109,7 @@ describe('useFolderOperations.create - Read only', () => {
       members: [{ identity: BOB, role: 'ReadOnly' }],
     }));
     updateMemberRole.mockRejectedValue(
-      new HTTPError(404, '', '/groups/new-folder', new Headers()),
+      new HTTPError(404, 'ERROR', '/groups/new-folder'),
     );
     const { result } = renderHook(() =>
       useFolderOperations(ROOT, 'app-1', vi.fn().mockResolvedValue(undefined)),
@@ -157,12 +144,17 @@ describe('useFolderOperations.create - visibility', () => {
       alias: 'Open one',
       visibility: 'Open',
     });
-    expect(createGroupInNamespace).toHaveBeenCalledWith('ns-1', { visibility: 'open' });
+    expect(createGroupInNamespace).toHaveBeenCalledWith('ns-1', {
+      visibility: 'open',
+      parentId: ROOT,
+      name: 'Open one',
+    });
     expect(setSubgroupVisibility).not.toHaveBeenCalled();
-    expect(setGroupMetadata).toHaveBeenCalledWith('new-folder', { name: 'Open one', data: {} });
+    // No colour, nothing more to write.
+    expect(setGroupMetadata).not.toHaveBeenCalled();
   });
 
-  it('still flips a nested Open folder after reparenting it', async () => {
+  it('still flips a nested Open folder once it is created', async () => {
     const { result } = renderHook(() =>
       useFolderOperations(ROOT, 'app-1', vi.fn().mockResolvedValue(undefined)),
     );
@@ -172,11 +164,12 @@ describe('useFolderOperations.create - visibility', () => {
       alias: 'Nested',
       visibility: 'Open',
     });
-    expect(createGroupInNamespace).toHaveBeenCalledWith('ns-1', { visibility: 'restricted' });
+    expect(createGroupInNamespace).toHaveBeenCalledWith('ns-1', {
+      visibility: 'restricted',
+      parentId: 'parent-folder',
+      name: 'Nested',
+    });
     expect(setSubgroupVisibility).toHaveBeenCalledWith('new-folder', { subgroupVisibility: 'open' });
-    expect(reparentGroup.mock.invocationCallOrder[0]).toBeLessThan(
-      setSubgroupVisibility.mock.invocationCallOrder[0],
-    );
   });
 });
 
@@ -215,8 +208,7 @@ describe('useFolderOperations.create - members', () => {
     );
   });
 
-  // Sealed with the folder: a Restricted folder's under its own key.
-  it("writes the name and colour into the folder's own metadata", async () => {
+  it("writes the colour into the folder's own metadata", async () => {
     const { result } = renderHook(() =>
       useFolderOperations(ROOT, 'app-1', vi.fn().mockResolvedValue(undefined)),
     );
@@ -228,7 +220,6 @@ describe('useFolderOperations.create - members', () => {
       color: '#ff0000',
     });
     expect(setGroupMetadata).toHaveBeenCalledWith('new-folder', {
-      name: 'Finance',
       data: { color: '#ff0000' },
     });
   });
@@ -442,6 +433,7 @@ describe('useFolderOperations.create - drift on partial failure', () => {
         alias: 'Docs',
         parentGroupId: ROOT,
         visibility: 'Restricted',
+        color: '#ff0000',
         members: [],
       }),
     ).rejects.toThrow();

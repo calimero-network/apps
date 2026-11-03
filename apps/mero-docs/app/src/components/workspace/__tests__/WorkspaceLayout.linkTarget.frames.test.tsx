@@ -100,7 +100,7 @@ vi.mock('@/hooks/useDriveWorkspace', async () => {
     },
   };
 });
-vi.mock('@/generated/docs/DocsClient', () => ({
+vi.mock('@/lib/docsApi', () => ({
   DocsClient: class {
     constructor(
       _mero: unknown,
@@ -119,7 +119,7 @@ vi.mock('@/generated/docs/DocsClient', () => ({
 vi.mock('@/hooks/useMemberDisplayName', () => ({
   useMemberDisplayName: () => ({ name: null }),
 }));
-vi.mock('@calimero-network/mero-react', async (importOriginal) => ({
+vi.mock('@/calimero/react', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useMero: () => h.fixed.mero,
   useJoinContext: () => h.fixed.join,

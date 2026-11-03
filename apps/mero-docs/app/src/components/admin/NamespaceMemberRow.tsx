@@ -16,7 +16,7 @@
 
 import React, { useCallback, useRef, useState } from 'react';
 import { Pencil, Check, X, Trash2 } from 'lucide-react';
-import { useGroupCapabilities } from '@calimero-network/mero-react';
+import { useGroupCapabilities } from '@/calimero/react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { MemberLabel } from '@/components/common/MemberLabel';
@@ -93,7 +93,7 @@ export function NamespaceMemberRow({
   const [removing, setRemoving] = useState(false);
   // Caps change without a context event; the registry's sync run is the tick.
   //
-  // Depend on `caps.refetch` (stable useCallback inside mero-react)
+  // Depend on `caps.refetch` (stable useCallback)
   // rather than the whole `caps` object - the object is a fresh
   // literal each render and would otherwise churn the SSE handler.
   const capsRefetch = caps.refetch;

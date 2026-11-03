@@ -8,12 +8,12 @@
 //   - `capabilities` (u32 bitmask): per-member delegation for
 //     non-admin members.
 //
-// Why we DON'T use mero-react's useGroupCapabilities / useGroupMembers:
+// Why we DON'T use useGroupCapabilities / useGroupMembers:
 //   Right after `create_group_in_namespace`, the creator's membership row
 //   is published as a governance op but materialised asynchronously. For a
 //   short window (~0-2s) both `listGroupMembers` shows no matching identity
 //   and `getMemberCapabilities` answers a 403 "identity is not a member".
-//   mero-react's hooks fire once on mount and don't retry - we'd stay
+//   the @/calimero/react hooks fire once on mount and don't retry - we'd stay
 //   stuck on that transient 403 until the next rerender. So we own the
 //   fetch here and retry on propagation-lag errors.
 //
@@ -32,7 +32,7 @@
 //     `denied` is set when every attempt was refused as a non-member.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useMero } from '@calimero-network/mero-react';
+import { useMero } from '@/calimero/react';
 import { useContextEvents } from './useContextEvents';
 import { useDriveWorkspace } from './useDriveWorkspace';
 import { isForbidden, isMemberGone } from '@/utils/accessDenied';

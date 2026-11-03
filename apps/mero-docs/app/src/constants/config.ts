@@ -1,53 +1,28 @@
-// v9 namespace-based mero-docs config.
+// mero-docs config.
 //
-// ⚠️ The applicationId is resolved FROM THE NODE, by package - see
-// `src/lib/appId.ts` and `src/hooks/useApplicationId.ts`. Neither
-// `useMero().applicationId` (whoever logged in last on this origin) nor
-// `VITE_APPLICATION_ID` (an id that is per-INSTALL, so a baked one goes stale
-// the moment the bundle is republished) says which app this is. They survive
-// below only as the fallback for a node whose application list carries no
-// package at all - a raw-`.wasm` dev install - where matching cannot answer.
+// The package id names the app everywhere: instances are created from it in
+// production (`appSource`, @calimero-apps/connect), and invite links are this
+// frontend's own URL. Which cluster the frontend connects to is set by the
+// VITE_CALIMERO_* variables (see .env.example), not here.
 
-import { CAPABILITIES } from '@calimero-network/mero-js';
+import { CAPABILITIES } from '@/calimero/capabilities';
 
-/** Env-configured app id. Last-resort fallback ONLY for a node that reports no
- *  package on any installed application; see the file header. */
-export const ENV_APPLICATION_ID: string =
-  (import.meta.env.VITE_APPLICATION_ID as string | undefined)?.trim() || '';
-
-/** The app's reverse-DNS package id - the single source for the
- *  MeroProvider registry lookup, invite links (the deep-link slug IS the
- *  package; links.calimero.network resolves the app by it) and the
- *  invitation capture's slug filter. */
+/** The app's reverse-DNS package id. Kept from v1 (`com.calimero.mero-drive-docs`):
+ *  a new id would publish a separate app. */
 export const PACKAGE_NAME: string =
-  (import.meta.env.VITE_PACKAGE_NAME as string | undefined)?.trim() ||
+  (import.meta.env.VITE_CALIMERO_PACKAGE as string | undefined)?.trim() ||
   'com.calimero.mero-drive-docs';
 
-// Service ids inside the multi-service bundle. Must match the
-// `services[].name` fields in logic/Cargo.toml [workspace.metadata.calimero].
-export const REGISTRY_SERVICE_ID = 'registry';
-export const DOCS_SERVICE_ID = 'docs';
-
-// Alias used to find (or create) the Registry context inside a namespace.
-export const REGISTRY_CONTEXT_ALIAS = 'Registry';
-
-// Member-capability bitmask bits - re-exported verbatim from
-// @calimero-network/mero-js's CAPABILITIES (core's `MemberCapabilities`,
-// crates/context/config). This is the ONLY capability vocabulary in the
-// app; the per-(folder,member) "viewer vs editor on docs" concept is the
-// registry `Role`, not a cap bit. See design spec §5.1.
-export {
-  CAPABILITIES,
-  hasCap,
-  withCap,
-  withoutCap,
-} from '@calimero-network/mero-js';
-export type { CapabilityName, CapabilityBit } from '@calimero-network/mero-js';
+// Capability bits: Calimero 1.0's organization capabilities under the names
+// v1 gave them (the bits are the same). The per-(folder,member) "viewer vs
+// editor on docs" concept is the folder role, not a cap bit.
+export { CAPABILITIES, hasCap, withCap, withoutCap } from '@/calimero/capabilities';
+export type { CapabilityName, CapabilityBit } from '@/calimero/capabilities';
 
 /** Default capability bitmask granted to members who join a workspace
  *  (namespace) by invite - the "Editor" preset: join open folders +
  *  create folders + create document contexts. Set via
- *  `admin.setDefaultCapabilities(namespaceId, DEFAULT_NEW_MEMBER_CAPS)`
+ *  `setCapabilities(org, DEFAULT_NEW_MEMBER_CAPS)`
  *  at workspace-creation time (see `useDriveWorkspace.createWorkspace`),
  *  and re-used as the Editor grant in `WORKSPACE_ROLE_GRANTS`. Equals 37
  *  (`CAN_CREATE_CONTEXT | CAN_JOIN_OPEN_SUBGROUPS | CAN_CREATE_SUBGROUP`).

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { AuthRevokedError, HTTPError } from '@calimero-network/mero-js';
+import { CalimeroError, LoginRequired } from '@calimero-network/mero-js';
 import {
   isGroupAccessDenied,
   isGroupNotOnNode,
@@ -7,8 +7,8 @@ import {
   lacksFolderAccess,
 } from '../accessDenied';
 
-const httpError = (status: number, body: string) =>
-  new HTTPError(status, '', '/admin-api/groups/g', new Headers(), body);
+const httpError = (status: number, message: string) =>
+  new CalimeroError(status, 'ERROR', message);
 
 const internal = httpError(500, '{"error":"Internal server error"}');
 const denied = httpError(403, '{"error":"refused"}');
@@ -43,14 +43,7 @@ describe('isGroupAccessDenied', () => {
   });
 
   it('keeps a folder visible when the 403 is a revoked session', async () => {
-    const revoked = new AuthRevokedError(
-      'token_revoked',
-      403,
-      '',
-      '/',
-      new Headers(),
-      '',
-    );
+    const revoked = new LoginRequired('session revoked');
     const admin = { listGroupMembers: vi.fn().mockRejectedValue(revoked) };
     await expect(isGroupAccessDenied(admin, 'g', internal)).resolves.toBe(
       false,
@@ -99,20 +92,17 @@ describe('lacksFolderAccess', () => {
 });
 
 describe('isGroupNotOnNode / isMemberGone', () => {
-  const groupMissing = httpError(404, '{"error":"group \'1ea8d3a4\' not found"}');
-  const memberMissing = httpError(404, '{"error":"member bob not found in group 1ea8d3a4"}');
+  const missing = httpError(404, "member 'bob' not found");
 
-  it('reads a missing group as not synced, not as a removal', () => {
-    expect(isGroupNotOnNode(groupMissing)).toBe(true);
-    expect(isMemberGone(groupMissing)).toBe(false);
+  it('reads a 404 for a member as removed', () => {
+    expect(isMemberGone(missing)).toBe(true);
   });
 
-  it('still reads a missing member as removed', () => {
-    expect(isGroupNotOnNode(memberMissing)).toBe(false);
-    expect(isMemberGone(memberMissing)).toBe(true);
+  it('never waits for a group to reach this node: every node reads one system state', () => {
+    expect(isGroupNotOnNode(missing)).toBe(false);
   });
 
   it('ignores other statuses', () => {
-    expect(isGroupNotOnNode(httpError(500, '{"error":"group \'g\' not found"}'))).toBe(false);
+    expect(isMemberGone(httpError(500, 'boom'))).toBe(false);
   });
 });

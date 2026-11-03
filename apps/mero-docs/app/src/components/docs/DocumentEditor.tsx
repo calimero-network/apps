@@ -14,11 +14,11 @@ import { useLocation } from 'react-router-dom';
 import {
   useSubscription,
   type SubscriptionEventData,
-} from '@calimero-network/mero-react';
+} from '@/calimero/react';
 import { toast } from 'sonner';
 import { EditorShell } from '@/components/editor/EditorShell';
 import { useConfirm } from '@/components/ui/confirm-dialog';
-import type { DocDto } from '@/generated/docs/DocsClient';
+import type { DocDto } from '@/lib/docsApi';
 import { DocTags } from '@/components/tags/DocTags';
 import { isContextEvent } from '@/hooks/useContextEvents';
 import { useDocs } from '@/hooks/useDocs';
@@ -37,7 +37,6 @@ import { useCanManageTags } from '@/hooks/useTags';
 import type { DriveEditor } from '@/components/editor/blocknote/schema';
 import { ArchivedBanner } from '@/components/editor/ArchivedBanner';
 import { DocDetails } from './DocDetails';
-import { DocumentInspector } from './DocumentInspector';
 import { UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
 import { copyLink } from '@/lib/copyLink';
 import { parseMetaChanges } from '@/lib/rich/events';
@@ -381,7 +380,6 @@ export function DocumentEditor({
           onClose={() => setDetailsOpen(false)}
         />
       )}
-      <DocumentInspector client={client} docId={docId} />
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { HTTPError, type AdminApiClient } from '@calimero-network/mero-js';
+import { HTTPError } from '@/calimero/errors';
+import type { OrgAdmin as AdminApiClient } from '@/calimero/orgs';
 import { clearOpenSubtree, removedFrom, restoreTo } from '../openFolderRemoval';
 import type { FolderRoleWriter } from '../applyFolderRole';
 import { CAPABILITIES } from '@/constants/config';
@@ -23,7 +24,7 @@ const admin = {
   removeGroupMembers: vi.fn(async (_g: string, _r: { members: string[] }) => {}),
   addGroupMembers: vi.fn(async (_g: string, _r: unknown) => {}),
   updateMemberRole: vi.fn(async (g: string) => {
-    throw new HTTPError(404, '', `/groups/${g}`, new Headers());
+    throw new HTTPError(404, 'ERROR', `/groups/${g}`);
   }),
   setMemberCapabilities: vi.fn(async () => {}),
   getMemberCapabilities: vi.fn(async (_g: string, m: string) => ({ capabilities: caps[m] ?? 0 })),

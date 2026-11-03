@@ -1,0 +1,229 @@
+[
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "createDoc",
+  "args": {
+   "title": "Bob's"
+  },
+  "save": "d"
+ },
+ {
+  "as": "@anonymous",
+  "op": "view",
+  "method": "getDoc",
+  "args": {
+   "id": "$d"
+  },
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "call",
+  "method": "createDoc",
+  "args": {
+   "title": "x"
+  },
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "view",
+  "method": "getDoc",
+  "args": {
+   "id": "$d"
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "call",
+  "method": "editDoc",
+  "args": {
+   "id": "$d",
+   "title": "Hijacked"
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "view",
+  "method": "getTitle",
+  "args": {
+   "doc": "$d"
+  },
+  "expect": {
+   "ok": "Bob's"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "deleteDoc",
+  "args": {
+   "id": "$d"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "cy",
+  "op": "call",
+  "method": "deleteDoc",
+  "args": {
+   "id": "$d"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "addComment",
+  "args": {
+   "docId": "$d",
+   "body": "guest note"
+  },
+  "save": "g"
+ },
+ {
+  "as": "cy",
+  "op": "call",
+  "method": "editComment",
+  "args": {
+   "id": "$g",
+   "body": "not mine"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "cy",
+  "op": "call",
+  "method": "deleteComment",
+  "args": {
+   "id": "$g"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "deleteComment",
+  "args": {
+   "id": "$g"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deleteComment",
+  "args": {
+   "id": "$g"
+  }
+ },
+ {
+  "as": "cy",
+  "op": "call",
+  "method": "addManager",
+  "args": {
+   "member": "@cy"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addManager",
+  "args": {
+   "member": "@mallory"
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "createDoc",
+  "args": {},
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "createDoc",
+  "args": {
+   "title": "x",
+   "createdBy": "@cy"
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "create_doc",
+  "args": {
+   "title": "x"
+  },
+  "expect": {
+   "error": "UnknownMethod"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "createDoc",
+  "args": {
+   "title": "x"
+  },
+  "expect": {
+   "error": "NotAView"
+  }
+ },
+ {
+  "op": "removeMember",
+  "args": "cy"
+ },
+ {
+  "as": "cy",
+  "op": "view",
+  "method": "getDoc",
+  "args": {
+   "id": "$d"
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deleteDoc",
+  "args": {
+   "id": "$d"
+  }
+ }
+]

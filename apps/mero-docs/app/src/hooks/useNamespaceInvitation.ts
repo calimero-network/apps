@@ -1,363 +1,155 @@
-// Invite creation + join, for both namespace-scoped and folder-scoped
-// invites. We bypass mero-react's hooks because both wrap mero-js in
-// `useAsyncMutation`, which swallows exceptions into a `null` return
-// - callers can't distinguish "server rejected" from "still loading".
-// Calling the admin client directly surfaces real errors to the user.
+// Invitations into a workspace or one folder, on Calimero 1.0's org invites.
 //
-// That client is `useMero().admin`, NOT `mero.admin`. `mero` is the raw
-// client, and on a delegated (account) session its transport is the relay:
-// `mero.admin.joinNamespace` became `POST {relay}/admin-api/namespaces/{ns}
-// /join` with the account's bearer token, which carries no `namespace:manage`
-// - a 403. `admin` is the session-aware one (apps#348): the node's own client
-// on a node login, and on an account the account admin, whose `joinNamespace`
-// redeems the invitation through the admitter's unauthenticated route and
-// moves the session onto that relay, and whose `createNamespaceInvitation` is
-// signed by the account itself. Folder (subgroup) invitations have no account
-// form yet: `createGroupInvitation` and `joinGroup` reject with mero-react's
-// `NotForAccountError`, which the callers show like any other refusal.
-//
-// Invite URL shape (canonical deep link; the slug IS the package):
-//   https://links.calimero.network/{PACKAGE_NAME}/join
-//     ?invitation={base64url(JSON(SignedGroupOpenInvitation))}&kind={kind}&id={targetId}[&name=…]
-//
-// The landing page requires a non-empty `invitation` param for the join
-// action and forwards the FULL query string to both the desktop scheme
-// bridge and the registry-published web frontend, so the sibling params
-// survive on every path. It is always this link: the host is a constant,
-// so there is no environment (dev server, desktop shell) without one.
-// Nobody pastes it - opening it is the only way in (see index.tsx).
-//
-// `kind` is either `'namespace'` or `'group'`. Namespace invites drop
-// the invitee into the namespace root group; group invites add them
-// to exactly the named folder subgroup. Back-compat on parse: `invite=`
-// (the pre-deep-link param) and `ns=` (alias for `id=`) are accepted, and
-// a link with no `id` falls back to the group the signed invitation names.
-//
-// `name=` carries the target's HUMAN NAME, for both kinds. It is not the
-// authority on the name - core's group metadata is, and it replicates - but a
-// joiner cannot read a group's metadata until it holds an identity in that
-// group, which is after the join it is being asked to confirm. Without the
-// param the accept card can only offer `9f3c1a2b…`, so the name is minted into
-// the link by the inviter's node (`groupName` on the create-invitation
-// response) and handed straight back to the joiner's node on the join call
-// (`groupName` on the join request), which files it against the joiner's own
-// governance row. That is the whole path by which a name typed on one node is
-// on the other node's screen, and it needs no app-level replication.
+// v1 minted a signed group invitation, carried it in the link as a base64 JSON
+// payload, and the joiner's node joined the namespace or the subgroup with it.
+// Here an invitation is an org invite token (`client.invite`, a passkey
+// step-up for the inviter): a workspace invite makes the joiner a member of
+// the org, a folder invite does that and gives them a row in the folder's
+// team, so they reach the folder whether or not it is Restricted. The link is
+// this frontend's own URL with `?invite=<token>`; the token is redeemed after
+// sign-in, once the person says yes (InvitationPrompt).
 
 import { useCallback } from 'react';
-import { buildInviteLink } from '@calimero-network/mero-react';
-import { PACKAGE_NAME } from '@/constants/config';
-import {
-  useMero,
-  type SignedGroupOpenInvitation,
-  type CreateNamespaceInvitationResponseData,
-  type CreateRecursiveInvitationResponseData,
-  type CreateGroupInvitationResponseData,
-  type CreateRecursiveGroupInvitationResponseData,
-} from '@calimero-network/mero-react';
+import { useMero } from '@/calimero/react';
+import { nodeUrl } from '@/lib/servedByNode';
 
 export type InviteKind = 'namespace' | 'group';
 
 export interface InviteCreation {
   kind: InviteKind;
+  /** The workspace (org) id, or the folder (team) id. */
   targetId: string;
-  invitation: SignedGroupOpenInvitation;
-  /** The target's name as the minting node resolved it, when it had one. */
+  token: string;
+  /** The target's name, shown to the person invited. */
   name?: string;
   url: string;
 }
 
-export interface ParsedInvite {
+/** A link opened with an invitation in it. */
+export interface PendingInvite {
+  token: string;
   kind: InviteKind;
-  targetId: string;
-  invitation: SignedGroupOpenInvitation;
-  /** The target's display name carried on the invite URL (`&name=`) - the
-   *  workspace for a `namespace` invite, the folder for a `group` one. Absent
-   *  on links minted before the param existed, and on links whose minting node
-   *  had no name for the group. */
+  /** The workspace for a workspace invite, the folder for a folder invite. */
+  targetId: string | null;
+  /** The workspace the invite is into, when the link names it. */
+  workspaceId: string | null;
   targetName?: string;
 }
 
-// UTF-8-safe base64url codec. Earlier versions used
-// `btoa(unescape(encodeURIComponent(s)))`, which relies on the
-// deprecated `unescape` and throws `InvalidCharacterError` from
-// `btoa` if the JSON payload contains non-Latin1 characters (e.g.
-// emoji or non-ASCII text in invitation metadata). We route bytes
-// through `TextEncoder`/`TextDecoder` so the codec is UTF-8 across
-// the full code-point range.
-function base64urlEncode(s: string): string {
-  const bytes = new TextEncoder().encode(s);
-  let binary = '';
-  for (const b of bytes) binary += String.fromCharCode(b);
-  return btoa(binary)
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
-}
+const PENDING_KEY = 'mero-docs:pending-invite';
 
-function base64urlDecode(s: string): string {
-  const padded =
-    s.replace(/-/g, '+').replace(/_/g, '/') +
-    '='.repeat((4 - (s.length % 4)) % 4);
-  const binary = atob(padded);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return new TextDecoder().decode(bytes);
-}
-
+/** The link that opens this frontend with `token` to redeem. */
 export function buildInviteUrl(
   kind: InviteKind,
-  targetId: string,
-  invitation: SignedGroupOpenInvitation,
-  // The target's display name, as the minting node resolved it
-  // (`groupName` on both create-invitation responses). Carried on the URL
-  // because the joiner cannot read it from anywhere else before joining:
-  // `listNamespacesForApplication` omits a namespace's name until the joined
-  // node has synced the root-group metadata, and a folder's metadata is not
-  // readable at all without an identity in that folder.
+  token: string,
+  ids: { workspace: string; folder?: string },
   name?: string,
 ): string {
-  // Ids are hex today; `buildInviteLink` encodes every param regardless, so
-  // an `&` or `#` cannot truncate the link into something that fails at the
-  // joiner rather than here.
-  return buildInviteLink(
-    PACKAGE_NAME,
-    base64urlEncode(JSON.stringify(invitation)),
-    { kind, id: targetId, name },
-  );
+  const url = new URL(nodeUrl('/'));
+  url.searchParams.set('invite', token);
+  url.searchParams.set('kind', kind);
+  url.searchParams.set('ws', ids.workspace);
+  if (ids.folder) url.searchParams.set('folder', ids.folder);
+  if (name) url.searchParams.set('name', name);
+  return url.toString();
 }
 
-/** Parse an invite URL. Returns null-shape error if the params are
- *  missing or the payload can't be decoded. */
-export function parseInviteUrl(
-  params: URLSearchParams,
-): ParsedInvite | { error: string } {
-  const rawKind = params.get('kind');
-  const id = params.get('id') ?? params.get('ns'); // `ns` for back-compat
-  const raw = params.get('invitation') ?? params.get('invite'); // `invite` pre-deep-link
-
-  // Validate kind first so the type narrowing below is sound - older
-  // versions of this code chained ternaries with an unreachable IIFE
-  // returning `null as never`, which type-checked but would have leaked
-  // a runtime null if the validation guard was ever moved or removed.
-  if (rawKind !== null && rawKind !== 'namespace' && rawKind !== 'group') {
-    return { error: `Unknown invite kind: ${rawKind}` };
-  }
-  // Back-compat: early links had no `kind` - treat as namespace
-  // (the only invite shape that existed before the param was added).
-  const kind: InviteKind = rawKind === 'group' ? 'group' : 'namespace';
-
-  if (!raw) return { error: 'Missing invitation payload in invite link.' };
-
-  const name = params.get('name');
-  let invitation: SignedGroupOpenInvitation;
-  try {
-    invitation = JSON.parse(base64urlDecode(raw)) as SignedGroupOpenInvitation;
-  } catch {
-    return {
-      error:
-        'Invitation payload could not be decoded. The link may be truncated or corrupted.',
-    };
-  }
-  // The signed invitation names its group, which for a namespace invite IS
-  // the namespace id (the root group) - so `id` is a convenience, not a need.
-  const targetId = id ?? groupIdOf(invitation);
-  if (!targetId) return { error: 'Missing target id in invite link.' };
+/** The invitation in `params`, or null when there is none. */
+export function parseInviteUrl(params: URLSearchParams): PendingInvite | null {
+  const token = params.get('invite');
+  if (!token || !token.trim()) return null;
+  const kind: InviteKind = params.get('kind') === 'group' ? 'group' : 'namespace';
+  const workspaceId = params.get('ws');
+  const folder = params.get('folder');
   return {
+    token: token.trim(),
     kind,
-    targetId,
-    invitation,
-    targetName: name ?? undefined,
+    targetId: kind === 'group' ? folder : workspaceId,
+    workspaceId,
+    targetName: params.get('name') ?? undefined,
   };
 }
 
-/** The group a signed invitation names, as hex, or `null` if it names none. */
-function groupIdOf(invitation: SignedGroupOpenInvitation): string | null {
-  const raw = (invitation?.invitation as { group_id?: unknown } | undefined)
-    ?.group_id;
-  if (typeof raw === 'string' && raw) return raw;
-  if (
-    !Array.isArray(raw) ||
-    raw.length === 0 ||
-    !raw.every((b) => Number.isInteger(b) && b >= 0 && b <= 255)
-  ) {
+/**
+ * Takes an invitation off the address bar into storage before anything
+ * renders: a person opening a link is usually not signed in yet, and the
+ * token has to survive the passkey sign-in.
+ */
+export function captureInvite(storage: Storage = localStorage, loc: Location = window.location): void {
+  const url = new URL(loc.href);
+  const invite = parseInviteUrl(url.searchParams);
+  if (!invite) return;
+  try {
+    storage.setItem(PENDING_KEY, JSON.stringify(invite));
+  } catch {
+    return;
+  }
+  for (const key of ['invite', 'kind', 'ws', 'folder', 'name']) url.searchParams.delete(key);
+  window.history.replaceState(window.history.state, '', url.toString());
+}
+
+export function pendingInvite(storage: Storage = localStorage): PendingInvite | null {
+  try {
+    const raw = storage.getItem(PENDING_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<PendingInvite>;
+    if (typeof parsed.token !== 'string' || !parsed.token) return null;
+    return {
+      token: parsed.token,
+      kind: parsed.kind === 'group' ? 'group' : 'namespace',
+      targetId: typeof parsed.targetId === 'string' ? parsed.targetId : null,
+      workspaceId: typeof parsed.workspaceId === 'string' ? parsed.workspaceId : null,
+      targetName: typeof parsed.targetName === 'string' ? parsed.targetName : undefined,
+    };
+  } catch {
     return null;
   }
-  return (raw as number[]).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-/** Normalize an invitation `expirationTimestamp` to epoch milliseconds.
- *  Core's units are not pinned across versions, so infer from magnitude:
- *  >1e15 nanoseconds, >1e11 milliseconds, else seconds. */
-export function inviteExpiryMs(ts: number): number {
-  if (ts > 1e15) return Math.floor(ts / 1e6);
-  if (ts > 1e11) return ts;
-  return ts * 1000;
+export function dropInvite(storage: Storage = localStorage): void {
+  try {
+    storage.removeItem(PENDING_KEY);
+  } catch {
+    /* nothing stored */
+  }
 }
 
-/** True when the parsed invite carries a positive expiration timestamp
- *  that is already in the past. Missing/zero timestamps never expire.
- *
- *  ⚠️ The wire key is `expiration_timestamp`. `GroupInvitationFromAdmin`
- *  mirrors a core PRIMITIVE (`calimero_context_config::types`), which carries
- *  no camelCase rename - unlike the admin DTOs that wrap it, where every other
- *  field in this file is camelCase. This read was spelled
- *  `expirationTimestamp`, so it was `undefined` on every invitation core has
- *  ever minted, the guard below returned `false` unconditionally, and the
- *  "this invitation has expired" card could not appear: an expired link went
- *  to the server and came back as a raw rejection string. Both spellings are
- *  accepted here so a link minted by a node that does rename it still reads. */
-export function isInviteExpired(
-  invitation: SignedGroupOpenInvitation,
-): boolean {
-  const inner = invitation?.invitation as
-    | { expiration_timestamp?: number; expirationTimestamp?: number }
-    | undefined;
-  const ts = inner?.expiration_timestamp ?? inner?.expirationTimestamp;
-  if (typeof ts !== 'number' || !Number.isFinite(ts) || ts <= 0) return false;
-  return inviteExpiryMs(ts) < Date.now();
-}
-
+/** A workspace invitation link (an org invite, as a member). */
 export function useCreateNamespaceInvite() {
   const { admin } = useMero();
-
   const create = useCallback(
-    async (namespaceId: string): Promise<InviteCreation> => {
-      if (!admin) throw new Error('Mero client not ready');
-      const response = await admin.createNamespaceInvitation(namespaceId, {
-        recursive: false,
-      });
-      if (
-        'invitations' in (response as CreateRecursiveInvitationResponseData)
-      ) {
-        throw new Error(
-          'Unexpected recursive invitation response: asked for single',
-        );
-      }
-      const single = response as CreateNamespaceInvitationResponseData;
-      const url = buildInviteUrl(
-        'namespace',
-        namespaceId,
-        single.invitation,
-        // core resolves the namespace's metadata name here; carrying it on
-        // the URL lets the joiner display it without waiting for a metadata
-        // sync that may never converge on a small cluster.
-        single.groupName,
-      );
+    async (namespaceId: string, name?: string): Promise<InviteCreation> => {
+      if (!admin) throw new Error('Not signed in');
+      const token = await admin.createNamespaceInvitation(namespaceId);
       return {
         kind: 'namespace',
         targetId: namespaceId,
-        invitation: single.invitation,
-        name: single.groupName,
-        url,
+        token,
+        name,
+        url: buildInviteUrl('namespace', token, { workspace: namespaceId }, name),
       };
     },
     [admin],
   );
-
   return { create };
 }
 
-export function useJoinNamespaceByInvite() {
-  const { admin } = useMero();
-
-  const join = useCallback(
-    async (
-      namespaceId: string,
-      invitation: SignedGroupOpenInvitation,
-      // The name the invite carried. `JoinNamespaceRequest.groupName` is how
-      // the joiner's node files a name for a group whose metadata it cannot
-      // read yet, so passing it is what makes the creator's chosen workspace
-      // name appear on the joiner's machine instead of a 64-hex id. Omitted
-      // when the link carried none, rather than sent as '' - a blank name
-      // would overwrite a real one the node may already hold.
-      groupName?: string,
-    ): Promise<string> => {
-      if (!admin) throw new Error('Mero client not ready');
-      const response = await admin.joinNamespace(namespaceId, {
-        invitation,
-        ...(groupName ? { groupName } : {}),
-      });
-      // ⚠️ `groupId` was renamed to `namespaceId` in core 0.11.0-rc.25
-      // and this read was never updated: it returned `undefined`
-      // on every current node, silently. mero-js back-fills `namespaceId` from
-      // whichever spelling the node sent, so reading it works on both sides of
-      // that release; the `groupId` fall-back is belt and braces.
-      return response.namespaceId ?? response.groupId ?? namespaceId;
-    },
-    [admin],
-  );
-
-  return { join };
-}
-
+/** A folder invitation link (an org invite naming the folder's team). */
 export function useCreateFolderInvite() {
   const { admin } = useMero();
-
   const create = useCallback(
-    async (folderId: string): Promise<InviteCreation> => {
-      if (!admin) throw new Error('Mero client not ready');
-      const response = await admin.createGroupInvitation(folderId, {
-        recursive: false,
-      });
-      if (
-        'invitations' in
-        (response as CreateRecursiveGroupInvitationResponseData)
-      ) {
-        throw new Error(
-          'Unexpected recursive invitation response: asked for single',
-        );
-      }
-      const single = response as CreateGroupInvitationResponseData;
-      // `createGroupInvitation` resolves the folder's metadata name into
-      // `groupName` exactly as the namespace call does, and this discarded it
-      // - so every folder invite asked its recipient to accept `9f3c1a2b…`
-      // while the namespace ones showed a real name. A folder invitee is the
-      // person who can LEAST identify a group by id: the folder may be
-      // restricted, so the id is all they will ever be shown.
-      const url = buildInviteUrl(
-        'group',
-        folderId,
-        single.invitation,
-        single.groupName,
-      );
+    async (folderId: string, name?: string): Promise<InviteCreation> => {
+      if (!admin) throw new Error('Not signed in');
+      const { token, namespaceId } = await admin.createGroupInvitation(folderId);
       return {
         kind: 'group',
         targetId: folderId,
-        invitation: single.invitation,
-        name: single.groupName,
-        url,
+        token,
+        name,
+        url: buildInviteUrl('group', token, { workspace: namespaceId, folder: folderId }, name),
       };
     },
     [admin],
   );
-
   return { create };
-}
-
-export function useJoinFolderByInvite() {
-  const { admin } = useMero();
-
-  const join = useCallback(
-    async (
-      invitation: SignedGroupOpenInvitation,
-      // Same pass-through as the namespace join: the folder's name, so the
-      // joiner's node has one for a subgroup whose metadata it cannot read
-      // until it is a member of it.
-      groupName?: string,
-    ): Promise<string> => {
-      if (!admin) throw new Error('Mero client not ready');
-      // mero-js's joinGroup uses the `group_id` carried inside the
-      // signed invitation - no separate groupId path param, unlike
-      // joinNamespace.
-      const response = await admin.joinGroup({
-        invitation,
-        ...(groupName ? { groupName } : {}),
-      });
-      return response.groupId;
-    },
-    [admin],
-  );
-
-  return { join };
 }

@@ -1,0 +1,313 @@
+[
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getOwner",
+  "args": {},
+  "expect": {
+   "ok": "@owner"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listTags",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listViews",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setTag",
+  "args": {
+   "key": "q3-plan",
+   "name": "Q3 plan",
+   "color": "#ff0000"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setTag",
+  "args": {
+   "key": "q3-plan",
+   "name": "Q3 plan",
+   "color": "#00ff00"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "listTags",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "key": "q3-plan",
+     "name": "Q3 plan",
+     "color": "#00ff00",
+     "deleted": false
+    }
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setTag",
+  "args": {
+   "key": "launch",
+   "name": "Launch",
+   "color": "#123456"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setTag",
+  "args": {
+   "key": "launch",
+   "name": "  Go live ",
+   "color": "#123456"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deleteTag",
+  "args": {
+   "key": "launch"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listTags",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "key": "launch",
+     "name": "Go live",
+     "color": "#123456",
+     "deleted": true
+    },
+    {
+     "key": "q3-plan",
+     "name": "Q3 plan",
+     "color": "#00ff00",
+     "deleted": false
+    }
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setTag",
+  "args": {
+   "key": "launch",
+   "name": "Back",
+   "color": "#123456"
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setTag",
+  "args": {
+   "key": "Bad Key",
+   "name": "x",
+   "color": "#123456"
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setTag",
+  "args": {
+   "key": "ok",
+   "name": "x",
+   "color": "red"
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "deleteTag",
+  "args": {
+   "key": "never"
+  },
+  "expect": {
+   "error": "NotFound"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "saveView",
+  "args": {
+   "id": "v-1",
+   "name": "Launch docs",
+   "query": "tag:launch"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "saveView",
+  "args": {
+   "id": "v-1",
+   "name": "Launch",
+   "query": "tag:launch archived:no"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "listViews",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "id": "v-1",
+     "name": "Launch",
+     "query": "tag:launch archived:no",
+     "createdBy": "@bob"
+    }
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "saveView",
+  "args": {
+   "id": "bad id",
+   "name": "x",
+   "query": ""
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deleteView",
+  "args": {
+   "id": "v-1"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deleteView",
+  "args": {
+   "id": "v-1"
+  },
+  "expect": {
+   "error": "NotFound"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "addManager",
+  "args": {
+   "member": "@bob"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addManager",
+  "args": {
+   "member": "@bob"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listManagers",
+  "args": {},
+  "expect": {
+   "ok": [
+    "@bob"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addManager",
+  "args": {
+   "member": "@owner"
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "removeManager",
+  "args": {
+   "member": "@bob"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "removeManager",
+  "args": {
+   "member": "@bob"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "removeManager",
+  "args": {
+   "member": "@bob"
+  },
+  "expect": {
+   "error": "NotFound"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listManagers",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ }
+]

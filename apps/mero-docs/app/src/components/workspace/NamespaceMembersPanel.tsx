@@ -11,7 +11,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { ShieldCheck, UserPlus } from 'lucide-react';
-import { useMero } from '@calimero-network/mero-react';
+import { useMero } from '@/calimero/react';
 import { Button } from '@/components/ui/button';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { namespaceLabel } from '@/lib/namespaceLabel';
@@ -85,7 +85,7 @@ export function NamespaceMembersPanel() {
     setRemoveError(null);
     try {
       if (!admin || !rootGroupId) throw new Error('Workspace not ready');
-      // The admin client throws on a refusal, where the mero-react hook would not.
+      // The admin client throws on a refusal, where the v1 hook would not.
       await admin.removeGroupMembers(rootGroupId, { members: [identity] });
       await membership.refetch();
       if (identity === selfIdentity) return;

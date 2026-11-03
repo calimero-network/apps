@@ -9,7 +9,7 @@
 
 import React, { useCallback, useState } from 'react';
 import { Trash2 } from 'lucide-react';
-import { useGroupCapabilities, useMero } from '@calimero-network/mero-react';
+import { useGroupCapabilities, useMero } from '@/calimero/react';
 import { Button } from '@/components/ui/button';
 import { useContextEvents } from '@/hooks/useContextEvents';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
@@ -71,8 +71,8 @@ export function FolderMemberRoleRow({
   // Caps change without a context event; the registry's sync run is the tick.
   //
   // Depend on `caps.refetch` (the stable useCallback inside
-  // mero-react's useGroupCapabilities), NOT the whole `caps`
-  // object - mero-react returns a fresh object literal each
+  // useGroupCapabilities), NOT the whole `caps`
+  // object - @/calimero/react returns a fresh object literal each
   // render, which would otherwise churn the SSE handler identity.
   const capsRefetch = caps.refetch;
   const onCapsEvent = useCallback(() => {

@@ -13,7 +13,7 @@
 //
 // The checklist is the namespace-relevant subset of core's
 // `MemberCapabilities` bits. Toggling a checkbox edits a local `draft`
-// mask; "Save defaults" pushes it via mero-react's
+// mask; "Save defaults" pushes it via the
 // `useSetDefaultCapabilities`. The "Editor" preset
 // (`DEFAULT_NEW_MEMBER_CAPS`, = 37) is the default and the
 // reset target.
@@ -24,7 +24,7 @@ import {
   useDefaultCapabilities,
   useMero,
   useSetDefaultCapabilities,
-} from '@calimero-network/mero-react';
+} from '@/calimero/react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import {

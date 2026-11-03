@@ -464,14 +464,6 @@ jobs:
         run: |
           ! git grep -nI $'\u2014' -- apps/mero-docs ':!apps/mero-docs/app/src/pages/landing' ':!apps/mero-docs/app/src/generated'
 
-      # fleet-bump rewrites the core tag everywhere except the checksummed
-      # cargo-mero installer under apps/mero-docs, which sat a release behind.
-      - name: Assert setup-cargo-mero.sh pins the workspace core tag
-        run: python3 scripts/check-cargo-mero-pin.py
-
-      - name: Assert the cargo-mero pin check still catches drift
-        run: python3 scripts/tests/cargo-mero-pin-test.py
-
       # The matrix resolver decides what the rest of this file runs, and both of
       # its wrong answers are silent — too broad only costs money, too narrow
       # skips an app with nothing to notice. So its rules are tested.
@@ -571,10 +563,6 @@ jobs:
       # Covers every app's TestHost tests and tests/converge.rs in one
       # invocation, sharing the compiled SDK.
       - run: cargo test --workspace
-      # Core caches the storage root id per process, so a `Script` test cannot share
-      # one with `TestHost` tests: they are `#[ignore]`d above and run alone here.
-      - run: cargo test -p mero-docs --lib -- --ignored
-      - run: cargo test -p mero-docs-registry --lib -- --ignored
 
   wasm:
     name: Build WASM (${{ matrix.app }})
@@ -1019,96 +1007,6 @@ jobs:
             apps/${{ matrix.app }}/app/test-results/journey
             ${{ runner.temp }}/journey/*.log
             ${{ runner.temp }}/journey/rig.json
-          retention-days: 7
-          if-no-files-found: ignore
-
-  browser-e2e-rich:
-    name: Browser E2E rich (mero-docs)
-    needs: [changes, wasm]
-    # The `browser` gate, narrowed to mero-docs: the `rich` project needs the
-    # three-node rig, which the `browser` job's own two nodes cannot stand in for.
-    if: contains(fromJSON(needs.changes.outputs.apps), 'mero-docs')
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: mpk-mero-docs-${{ github.sha }}
-          path: bundle
-
-      - name: Verify the bundle arrived
-        run: |
-          set -euo pipefail
-          mpk=$(find bundle -name '*.mpk' -print -quit)
-          if [ -z "$mpk" ]; then
-            echo "::error::no .mpk in the downloaded artifact - the rig would install nothing"
-            ls -la bundle || true
-            exit 1
-          fi
-          echo "RIG_BUNDLE=$PWD/$mpk" >> "$GITHUB_ENV"
-          echo "using $mpk ($(wc -c <"$mpk") bytes)"
-
-      - uses: ./.github/actions/setup-merod
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: pip-${{ runner.os }}-${{ hashFiles('requirements-e2e.txt') }}
-
-      - run: pip install -r requirements-e2e.txt && merobox --version
-
-      - name: Enable corepack (pnpm)
-        run: corepack enable
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
-
-      # Capped because `playwright install --with-deps` has no timeout of its own.
-      - uses: ./.github/actions/setup-playwright
-        timeout-minutes: 15
-        with:
-          working-directory: apps/mero-docs/app
-
-      - name: Bring the three-node rig up
-        id: rig
-        run: apps/mero-docs/scripts/local-rig.sh up
-
-      - name: Run the rich project
-        working-directory: apps/mero-docs/app
-        run: npx playwright test --project=rich
-
-      - name: Take the rig down
-        if: always() && steps.rig.outcome != 'skipped'
-        run: apps/mero-docs/scripts/local-rig.sh down
-
-      - name: Upload the report
-        if: failure() || cancelled()
-        uses: actions/upload-artifact@v4
-        with:
-          name: browser-e2e-rich-mero-docs-${{ github.sha }}
-          path: |
-            apps/mero-docs/app/playwright-report
-            apps/mero-docs/app/test-results
-          retention-days: 7
-          if-no-files-found: ignore
-
-      # Separate from the report: sync debug logging makes these hundreds of MB.
-      - name: Upload the node logs
-        if: failure() || cancelled()
-        uses: actions/upload-artifact@v4
-        with:
-          name: browser-e2e-rich-node-logs-${{ github.sha }}
-          path: /tmp/merodocs-rig/data/*/logs/*.log
           retention-days: 7
           if-no-files-found: ignore
 

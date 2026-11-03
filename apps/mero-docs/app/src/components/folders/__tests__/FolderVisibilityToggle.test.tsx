@@ -1,7 +1,7 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { HTTPError } from '@calimero-network/mero-js';
+import { HTTPError } from '@/calimero/errors';
 import { FolderVisibilityToggle } from '../FolderVisibilityToggle';
 
 const BOB = 'b'.repeat(64);
@@ -18,7 +18,7 @@ const workspace: { folders: { id: string; parent_id: string | null; visibility?:
   folders: BASE,
 };
 
-vi.mock('@calimero-network/mero-react', () => ({
+vi.mock('@/calimero/react', () => ({
   useSetSubgroupVisibility: () => ({ setSubgroupVisibility }),
   useMero: () => ({
     mero: {},
@@ -54,7 +54,7 @@ beforeEach(() => {
   for (const fn of [setSubgroupVisibility, addGroupMembers, setMemberCapabilities]) {
     fn.mockReset().mockResolvedValue(undefined);
   }
-  updateMemberRole.mockReset().mockRejectedValue(new HTTPError(404, '', '/groups/child', new Headers()));
+  updateMemberRole.mockReset().mockRejectedValue(new HTTPError(404, 'ERROR', '/groups/child'));
   listGroupMembers.mockReset().mockImplementation(async () => ({
     // Opened, the child lists Bob with his parent row's role.
     members: [{ identity: BOB, role: 'ReadOnly' }],

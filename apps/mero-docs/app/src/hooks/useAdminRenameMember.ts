@@ -5,7 +5,7 @@
 // validates the same authz, so this is also defense-in-depth.
 
 import { useCallback } from 'react';
-import { useSetMemberMetadata } from '@calimero-network/mero-react';
+import { useSetMemberMetadata } from '@/calimero/react';
 import { CAPABILITIES, hasCap } from '../constants/config';
 import { useDriveWorkspace } from './useDriveWorkspace';
 import { useMemberCaps } from './useMemberCaps';
