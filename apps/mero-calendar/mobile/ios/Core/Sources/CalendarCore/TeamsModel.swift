@@ -5,7 +5,7 @@ import MeroKit
 import Combine
 #endif
 
-/// The teams list: the account's namespaces running Mero Calendar, founding
+/// The teams list: the account's orgs running Mero Calendar, founding
 /// one, inviting to one and joining one. (`app/src/pages/teams/TeamsPage.tsx`.)
 @MainActor
 public final class TeamsModel: ObservableObject {
@@ -18,7 +18,7 @@ public final class TeamsModel: ObservableObject {
 
     public let backend: any MeroAppBackend
     public let names: NameBook
-    /// Called after a join, so a relayless session reconnects (`MeroAppSession.didJoinNamespace`).
+    /// Called after a join, so the session re-reads what the account sees (`MeroAppSession.didJoinNamespace`).
     private let didJoin: @MainActor () async -> Void
 
     public init(backend: any MeroAppBackend, names: NameBook, didJoin: @escaping @MainActor () async -> Void = {}) {
@@ -27,7 +27,7 @@ public final class TeamsModel: ObservableObject {
         self.didJoin = didJoin
     }
 
-    /// Whether a relay serves the account. Without one only joining works.
+    /// Whether the account is connected (always, once signed in on 1.0). Without it only joining works.
     public var hasRelay: Bool { backend.hasRelay }
 
     public func load() async {

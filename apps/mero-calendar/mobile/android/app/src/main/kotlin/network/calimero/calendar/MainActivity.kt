@@ -11,8 +11,12 @@ import network.calimero.calendar.ui.MeroCalendarApp
 
 /**
  * The one activity. Links arrive here — on the launch intent (cold start) or through
- * [onNewIntent] — and go to [CalendarAppViewModel.handleLink]: the wallet's sign-in redirect, or a
- * team invitation (`https://links.calimero.network/com.calimero.mero-calendar/join?invitation=…`).
+ * [onNewIntent] — and go to [CalendarAppViewModel.handleLink]: the node's consent page sending the
+ * person back (`mero-calendar://consent?request_id=…&result=…`), or a team invitation
+ * (`https://links.calimero.network/com.calimero.mero-calendar/join?invitation=…`).
+ *
+ * While it lives, the view model holds it ([CalendarAppViewModel.attach]): its passkey approves
+ * invites and member changes, and it opens the consent page.
  */
 class MainActivity : ComponentActivity() {
     private val vm: CalendarAppViewModel by viewModels()
@@ -20,14 +24,16 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        vm.attach(this)
         if (savedInstanceState == null) consume(intent)
         setContent {
-            MeroCalendarApp(
-                vm = vm,
-                onSignIn = { vm.signIn(this) },
-                onShare = ::share,
-            )
+            MeroCalendarApp(vm = vm, onShare = ::share)
         }
+    }
+
+    override fun onDestroy() {
+        vm.attach(null)
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {
