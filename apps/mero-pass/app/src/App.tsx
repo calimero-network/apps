@@ -1,7 +1,7 @@
 import { type ReactNode } from 'react';
 import { Navigate, Route, Routes, useParams } from 'react-router-dom';
-import { useMero } from '@calimero-network/mero-react';
 
+import { useCalimero } from './calimero';
 import InvitationPrompt from './components/InvitationPrompt';
 import { useAutoLock, useAutoLockMinutes } from './hooks/useDeviceLock';
 import LandingPage from './pages/landing/LandingPage';
@@ -26,11 +26,9 @@ const RESUME = { resume: true } as const;
 /**
  * An authenticated visitor has no business on the marketing page.
  *
- * ⚠️ THIS IS THE STEP THAT CARRIES YOU INTO THE APP. The SSO callback returns
- * to wherever login started — `connectToNode` uses `window.location.href` as
- * the callback URL — which for a visitor who pressed Connect on the landing
- * page is `/`. Without this the tokens land, `isAuthenticated` flips true, and
- * the router renders the landing page again.
+ * ⚠️ THIS IS THE STEP THAT CARRIES YOU INTO THE APP: a passkey sign-in on the
+ * landing page flips `isAuthenticated`, and without this the router would
+ * render the landing page again.
  *
  * `replace`, always: a redirect that pushes leaves the guarded path in history,
  * so Back returns to it and is immediately redirected forward again — a trap
@@ -42,7 +40,7 @@ const RESUME = { resume: true } as const;
  * and shows the list, which is what keeps the list reachable.
  */
 function RedirectIfAuthed({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isLoading } = useMero();
+  const { isAuthenticated, isLoading } = useCalimero();
   if (isLoading) return null; // the auth probe is still in flight
   if (isAuthenticated) return <Navigate to="/teams" replace state={RESUME} />;
   return <>{children}</>;
@@ -58,11 +56,11 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
  * Back button returned to it and rendered the whole frame — rail, top bar,
  * "Signed in", Log out — around no data, for nobody.
  *
- * "Signed in" is mero-react's own `isAuthenticated`, the same answer the
+ * "Signed in" is the Calimero session's `isAuthenticated`, the same answer the
  * landing redirect and the catch-all use; there is no second flag to drift.
  *
- * ⚠️ `isLoading` FIRST. On a cold load mero-react starts signed out and
- * loading, then validates the stored token with the node. Redirecting before
+ * ⚠️ `isLoading` FIRST. On a cold load the session starts connecting, then
+ * restores the stored session. Redirecting before
  * that settles would throw a signed-in visitor opening `/vault/<id>` (or
  * reloading it) onto the landing page — and from there, signed in, to
  * `/teams`, losing the deep link. So: nothing until it is known.
@@ -71,7 +69,7 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
  * the guarded path in history and Back walks straight into it again.
  */
 function RequireAuth({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isLoading } = useMero();
+  const { isAuthenticated, isLoading } = useCalimero();
   if (isLoading) return null; // restoring a stored session; don't bounce it
   if (!isAuthenticated) return <Navigate to="/" replace />;
   return <>{children}</>;
@@ -110,7 +108,7 @@ function RequireAuth({ children }: { children: ReactNode }) {
  * OPPOSITE answers to the same question, so there is no cycle to enter.
  */
 function CatchAll() {
-  const { isAuthenticated, isLoading } = useMero();
+  const { isAuthenticated, isLoading } = useCalimero();
   // Navigating before the probe resolves would send a signed-in visitor to the
   // marketing page and then bounce them forward — two redirects where one will
   // do, and a flash of the wrong page.

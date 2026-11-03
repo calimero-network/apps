@@ -56,7 +56,11 @@ final class ModelTests: XCTestCase {
         let vault = try await team.create(name: "Bank logins")
         XCTAssertEqual(vault.vaultName, "Bank logins")
         XCTAssertTrue(backend.publicSubgroups.contains(vault.vaultId))
-        XCTAssertEqual(backend.initArgs[vault.contextId], .object(["name": .string("Bank logins")]))
+        XCTAssertEqual(backend.initArgs[vault.contextId], .object([:]), "init takes no arguments on 1.0")
+        let rename = try XCTUnwrap(backend.recording.calls("renameVault").first)
+        XCTAssertEqual(rename.path, .execute)
+        XCTAssertEqual(rename.contextId, vault.contextId)
+        XCTAssertEqual(rename.args["name"]?.stringValue, "Bank logins")
         await team.load()
         XCTAssertEqual(team.vaults.map(\.name), ["Bank logins"])
         XCTAssertEqual(team.vaults.first?.joined, true)
@@ -323,5 +327,36 @@ final class ModelTests: XCTestCase {
         XCTAssertFalse(SecretKind.isSensitive(kind: "login", field: "username"))
         XCTAssertTrue(SecretKind.isSensitive(kind: "custom", field: "api_token"))
         XCTAssertEqual(ItemView.orderedFields(login).map(\.label), ["Website"])
+    }
+}
+
+final class PassInvitationTests: XCTestCase {
+    private let org = String(repeating: "5e", count: 32)
+
+    func testVaultLinkRoundTripsAndTheSDKReadsIt() throws {
+        let invite = PassInvitation(
+            invitation: OrgInvitation(namespaceId: org, token: "inv_team"), kind: .vault, teamName: "Ops",
+            vaultId: "v1", vaultName: "Servers", contextId: "ctx")
+        let link = try invite.link()
+        XCTAssertTrue(link.hasPrefix("https://links.calimero.network/com.calimero.mero-pass/join?invitation="))
+        let back = try XCTUnwrap(PassInvitation.parse(link))
+        XCTAssertEqual(back.namespaceId, org)
+        XCTAssertEqual(back.invitation.token, "inv_team")
+        XCTAssertEqual(back.kind, .vault)
+        XCTAssertEqual(back.title, "Servers")
+        XCTAssertEqual(back.vaultId, "v1")
+        XCTAssertEqual(back.contextId, "ctx")
+        XCTAssertFalse(back.isInviteOnlyVault)
+        let sdk = try XCTUnwrap(OrgInvitation.parse(link, expectedSlug: PassConstants.packageName))
+        XCTAssertEqual(sdk.namespaceId, org)
+        XCTAssertEqual(sdk.name, "Ops")
+    }
+
+    func testRefusesPre10AndOtherAppsLinks() throws {
+        let pre10 = #"{"invitation":{"invitation":{"group_id":[1]},"inviter_signature":"ff"},"kind":"namespace"}"#
+        XCTAssertNil(PassInvitation.parse(json: pre10))
+        let link = try PassInvitation(invitation: OrgInvitation(namespaceId: org, token: "inv_x")).link()
+        XCTAssertNil(PassInvitation.parse(link.replacingOccurrences(of: "com.calimero.mero-pass", with: "com.calimero.chat")))
+        XCTAssertNotNil(PassInvitation.parse(#"{"data":{"invitation":"inv_x","namespaceId":"\#(org)","roomName":"Legacy"}}"#))
     }
 }

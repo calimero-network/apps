@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useSubscription } from "@calimero-network/mero-react";
-import { useMeroStream } from "./useMeroStream";
+import { useClient, useMeroStream } from "./useMeroStream";
+import { subscribeEvents } from "../lib/events";
 import { captureFrameLuma, paintLuma } from "../lib/luma";
 import { acquireCamera } from "../lib/media";
 import { ProbeRecorder, type ProbeSnapshot } from "../lib/metrics";
@@ -255,19 +255,15 @@ export function useStream(enabled: boolean): StreamController {
     return () => clearInterval(id);
   }, [running, fps, captureTick]);
 
-  // ── React to SSE events (snappy receive) ─────────────────────────────────────
-  const onEvent = useCallback(
-    (evt: { data: unknown }) => {
-      const data = evt.data as Record<string, unknown> | null;
-      const type = data && typeof data === "object" ? Object.keys(data)[0] : "";
-      if (type === "FramePosted") void drain();
-    },
-    [drain],
-  );
-  useSubscription(
-    enabled && stream.contextId ? [stream.contextId] : [],
-    onEvent,
-  );
+  // ── React to room events (snappy receive) ───────────────────────────────────
+  // `FramePosted` is the nudge; the poll below catches anything missed.
+  const { client } = useClient();
+  useEffect(() => {
+    if (!enabled || !client || !stream.contextId) return;
+    return subscribeEvents(client, stream.contextId, (kind) => {
+      if (kind === "FramePosted") void drain();
+    });
+  }, [enabled, client, stream.contextId, drain]);
 
   // Poll fallback for the receive side + an initial drain when enabled.
   useEffect(() => {

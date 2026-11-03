@@ -1,46 +1,53 @@
 # Mero Standup for Android
 
 Jetpack Compose + Material3, minSdk 26. Same screens, copy and behaviour as the iOS app
-(`../ios`): sign in with Calimero, teams (start, join from an invitation link), and per team the
-Standup, Week, Decisions and Team tabs. Delegated execution only: the phone holds no node; reads
-are the account relay's query, writes are warrants signed on the device.
+(`../ios`): sign in to a Calimero 1.0 cluster, teams (start, join from an invitation link,
+approvals), and per team the Standup, Week, Decisions and Team tabs.
+
+## On Calimero 1.0
+
+- **Sign-in** (`StandupViewModel`, `SignInScreen`): Calimero Cloud by cluster name (node directory,
+  `CalimeroClient.connect`) or node URL, every node attested (`CloudPolicy.production`), then the
+  device's passkey (Credential Manager), or "Create an account". **Development node**: a
+  `merod local` URL (`http://10.0.2.2:2501` from the emulator), mock attestation, a software passkey
+  kept on the device. The session and the cluster's nodes are kept encrypted and restored on launch.
+- The Activity hands the session its passkey while it lives (`attach` → `session.passkey`), so
+  invites and member changes get their passkey step-ups.
+- **Invitations** are org invite links (`OrgInvitation`, with the team's app instance and name).
+- **Approvals** on Teams: Review shows the confirmation code, then opens the node's consent page in
+  a Custom Tab, which returns to `mero-standup://consent`.
+- **Contract**: `contract/StandupClient.kt`, a typed client of the component ABI (web PR #709):
+  camelCase methods, arguments and results, absent options as `null`, timestamps as decimal
+  strings, error codes (`StandupAppCode`) put into words by `ErrorText`.
 
 ## Build
 
 ```bash
 ./scripts/fetch-sdk.sh          # kotlin-sdk at the SHA in kotlin-sdk.ref, into .sdk/
-./gradlew ktlintCheck detekt testDebugUnitTest lintDebug assembleDebug
+./gradlew ktlintCheck detekt testDebugUnitTest lint assembleDebug
 ```
 
 Needs JDK 17 and an Android SDK (`ANDROID_HOME` or `local.properties`). The debug APK lands in
 `app/build/outputs/apk/debug/`.
 
-Gradle properties (`-P` or `gradle.properties`): `meroCloudUrl`, `meroWalletUrl`,
-`meroRegistryUrl` (empty = the SDK's hosted defaults) and `meroEnrolCallback`
-(default `mero-standup://enrol`; its scheme and host become the manifest's intent filter).
+Gradle properties (`-P` or `gradle.properties`): `meroCluster` (the cluster name or node URL the
+sign-in screen prefills), `meroDevNodeUrl` (default `http://10.0.2.2:2501`) and
+`meroConsentCallback` (default `mero-standup://consent`; its scheme and host become the manifest's
+intent filter). Plain http is allowed only to `10.0.2.2` and `localhost`.
 
 ## SDK pin
 
-`kotlin-sdk.ref` pins kotlin-sdk `ea8ded7380b94676b6156231c3f5291a8a3d8dd8`, the `main`
-merge commit of kotlin-sdk PR #67 (`MeroAppSession`, `MeroAppBackend`, `ContextContract`,
-mero-testkit's `InMemoryAppBackend`). `settings.gradle.kts` includes the checkout as a composite build.
+`kotlin-sdk.ref` pins kotlin-sdk `v0.2.0` (Calimero 1.0) by its tag commit; for a new release, set it
+to that tag's commit.
+`settings.gradle.kts` includes the checkout as a composite build.
 
 ## Layout
 
-- `app/src/main/kotlin/network/calimero/standup/generated/StandupClient.kt`: the contract client,
-  generated from `logic/res/abi.json`. Do not edit; regenerate (from the repo root):
-
-  ```bash
-  node <abi-codegen>/dist/cli.js -i apps/mero-standup/logic/res/abi.json \
-    -o apps/mero-standup/mobile/android/app/src/main/kotlin/network/calimero/standup/generated \
-    --target kotlin --package network.calimero.standup.generated --client-name StandupClient
-  ```
-
+- `contract/StandupClient.kt`: the typed component-contract client.
 - `core/`: pure helpers ported from the web app's `lib/` (days, people, carry-forward, digest,
-  tags, rich text) and the invitation link format (`base58(deflate({invitation, namespaceId,
-  contextId}))`, byte-compatible with the web).
-- `app/`: view models on `MeroAppBackend` (teams, team, board, week, decisions) and the
+  tags, rich text), the invitation link format and `ErrorText`.
+- `app/`: view models on `MeroAppBackend` (teams, team, board, week, decisions, approvals) and the
   `AndroidViewModel` holding the `MeroAppSession`.
 - `ui/`: Compose screens.
-- `app/src/test/`: JVM tests of the helpers and view models on `InMemoryAppBackend` +
-  `RecordingContextContract`. No emulator.
+- `app/src/test/`: JVM tests of the contract client, helpers and view models on
+  `InMemoryAppBackend` + `RecordingContextContract`. No emulator.

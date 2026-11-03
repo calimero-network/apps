@@ -1,4 +1,4 @@
-import type { DayView, UpdateView } from "../generated/StandupClient";
+import type { DayView, UpdateView } from "../standup";
 import { describeWeek, weekdayShort } from "./days";
 import { displayName } from "./people";
 
