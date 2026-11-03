@@ -1,86 +1,57 @@
-import { useMemo } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import type { SignedGroupOpenInvitation } from "@calimero-network/mero-js";
-import {
-  InvitationDialog,
-  InvitationGate,
-  useInviteRedemption,
-  useMero,
-  type ParsedInvitation,
-} from "@calimero-network/mero-react";
-import { useApi } from "../api/useApi";
-import { decodeInvitationObject } from "../utils/invitation";
-import { setStoredTeamName } from "../utils/teamName";
 
-/** Read a raw invitation token into the parts the join needs. */
-function parseTeamInvitation(raw: string): ParsedInvitation | null {
-  const invObj = decodeInvitationObject<Record<string, unknown>>(raw);
-  const outer = (invObj.invitation as Record<string, unknown>) ?? invObj;
-  const inner = (outer?.invitation as Record<string, unknown>) ?? outer;
-  const rawGroupId =
-    inner?.group_id ?? inner?.groupId ?? outer?.group_id ?? outer?.groupId;
-  const namespaceId = Array.isArray(rawGroupId)
-    ? (rawGroupId as number[])
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("")
-    : String(rawGroupId ?? "");
-  if (!namespaceId) return null;
-
-  // The inviter embeds the human team name so the joiner doesn't render a raw ID.
-  const teamName =
-    typeof invObj.__teamName === "string" ? invObj.__teamName.trim() : "";
-  if (teamName) setStoredTeamName(namespaceId, teamName);
-
-  return { namespaceId, invitation: outer, teamName: teamName || undefined };
-}
+import { messageOf } from "../api/pixart";
+import { useSessionApi } from "../api/sessionContext";
+import { dropInvite, joinedOrg, pendingInvite } from "../api/teams";
+import { useToast } from "../contexts/ToastContext";
 
 /**
- * An invitation link opened this app: mero-react's `InvitationDialog`.
+ * Redeems an invitation link once there is a session.
  *
- * Mounted once, above the routes, so a link opened on any page — the landing
- * page, the editor, the teams list — is offered wherever the person is.
- * Capture is primed in `main.tsx` and buffers the invitation until the session
- * can join, so arriving before login loses nothing. It asks first: joining
- * puts this node into someone else's team, which a forwarded link must not do
- * on its own. Once joined it opens the team, as the teams list would, and
- * stays on "Syncing…" until ProjectsPage's `useJoinSync` sees the team's
- * project list come back from the node.
+ * A link is `?invite=<token>` (an org invite; `api/teams`). `main.tsx` moves
+ * the token into storage before anything renders, so it survives the passkey
+ * sign-up a new person goes through first; here it is redeemed and dropped,
+ * and the team it opened is shown. v1's signed namespace invitation, the
+ * desktop deep link, the confirm dialog and the join sync are gone: the token
+ * is single-use, only ever reaches the cluster this frontend talks to, and a
+ * team's projects are there as soon as it is joined.
  */
 export default function InvitationPrompt() {
   const navigate = useNavigate();
-  const { isAuthenticated, isLoading } = useMero();
-  // The session-aware API (see api/useApi): on an account the join redeems
-  // through the admitter's route; the raw node route is a 403 there.
-  const api = useApi();
+  const { showToast } = useToast();
+  const { api } = useSessionApi();
+  const [busy, setBusy] = useState(false);
+  const tried = useRef<string | null>(null);
+  const signedIn = api.session.status === "signed-in" ? api.session : null;
 
-  /** The two calls the standard join needs from this app. */
-  const redeemer = useMemo(
-    () => ({
-      join: async (namespaceId: string, invitation: unknown) => {
-        await api.admin.joinNamespace(namespaceId, {
-          invitation: invitation as SignedGroupOpenInvitation,
-        });
-      },
-      memberships: async () => {
-        const items = await api.listNamespaces(await api.ensureAppId());
-        return items.map((n) => n.namespaceId ?? "");
-      },
-    }),
-    [api],
-  );
+  useEffect(() => {
+    if (!signedIn) return;
+    const token = pendingInvite();
+    if (!token || tried.current === token) return;
+    tried.current = token;
+    setBusy(true);
+    (async () => {
+      try {
+        const redeemed = await signedIn.client.redeemInvite(token);
+        api.store?.sync(signedIn.client);
+        dropInvite();
+        const org = joinedOrg(redeemed);
+        showToast("You joined the team.", "success");
+        navigate(org ? `/teams/${org}/projects` : "/teams");
+      } catch (err) {
+        dropInvite();
+        showToast(`Could not join the team: ${messageOf(err)}`);
+      } finally {
+        setBusy(false);
+      }
+    })();
+  }, [signedIn, api.store, navigate, showToast]);
 
-  const redemption = useInviteRedemption({
-    parse: parseTeamInvitation,
-    redeemer,
-    enabled: isAuthenticated && !isLoading,
-    onJoined: (namespaceId) => navigate(`/teams/${namespaceId}/projects`),
-  });
-
+  if (!busy) return null;
   return (
-    <>
-      {/* Logged out with a link opened: "you're invited" and the login, not the landing page. */}
-      <InvitationGate parse={parseTeamInvitation} noun="team" appName="Mero PixArt" />
-      <InvitationDialog redemption={redemption} noun="team" appName="Mero PixArt" />
-    </>
+    <div className="mp-overlay" data-testid="invitation-redeeming">
+      <p className="mp-modal">Joining the team…</p>
+    </div>
   );
 }
