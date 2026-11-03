@@ -192,9 +192,9 @@ jobs:
         run: |
           set -uo pipefail
 
-          # The workspace manifest and the shared JS config are everyone's
-          # business on their own; the lockfiles only sometimes are.
-          shared="$MANIFEST"
+          # The shared JS config is everyone's business on its own; the
+          # manifest and the lockfiles only sometimes are.
+          shared=false
           js_deps="$JS_CONFIG"
           extra_paths=""
 
@@ -203,6 +203,22 @@ jobs:
           # leaves `verdict` empty, which reads as "no fan-out" and SKIPS apps
           # — the one direction that fails silently. So a failure is forced to
           # mean `all`.
+          # Porting an app to the component SDK appends its crate to
+          # `[workspace].exclude` and nothing else here; that cannot change
+          # another member's bytes, so it must not cost the full matrix.
+          if [ "$MANIFEST" = "true" ]; then
+            if ! verdict=$(python3 scripts/lockfile-fanout.py manifest --base "$BASE" --head HEAD); then
+              verdict=all
+              echo "::warning::lockfile-fanout.py failed on Cargo.toml — covering every app"
+            fi
+            if [ "$verdict" = "all" ]; then
+              shared=true
+              echo "::notice::Cargo.toml changed the workspace — covering every app"
+            else
+              echo "::notice::Cargo.toml only changed [workspace].exclude or the component pins — no fan-out"
+            fi
+          fi
+
           if [ "$CARGO_LOCK" = "true" ] && [ "$shared" != "true" ]; then
             if ! verdict=$(python3 scripts/lockfile-fanout.py cargo --base "$BASE" --head HEAD); then
               verdict=all
