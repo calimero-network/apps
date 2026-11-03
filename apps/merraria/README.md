@@ -162,9 +162,9 @@ The game itself (engine, renderer, HUD, menu, sync engine) is unchanged.
 
 ### Mobile
 
-The native iOS and Android apps (`mobile/`) move to Calimero 1.0 and this
-component ABI in their own PR, #702, which depends on this one and is not
-part of it: nothing under `mobile/` changes here. Their contract clients call
+The native iOS and Android apps (`mobile/`) were moved to Calimero 1.0 and
+this component ABI in their own PR, #702 (see `mobile/README.md`). Their
+contract clients call
 the same methods, arguments and answers as `logic/res/abi.json`. The game page
 they host keeps speaking v1 method names over the bridge
 (`src/native/host.ts`, `V1_METHOD`), which the apps map onto the component
