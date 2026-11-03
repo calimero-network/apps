@@ -14,7 +14,7 @@ public enum ItemFilter: Hashable, Sendable {
 @MainActor
 public final class VaultModel: ObservableObject {
     public enum Phase: Equatable {
-        /// Opening; `notice` says what the relay is still doing while it retries.
+        /// Opening; `notice` says what is still pending while it retries.
         case opening(notice: String?)
         /// Open, in one of the session's states.
         case open(SessionState)
@@ -53,7 +53,7 @@ public final class VaultModel: ObservableObject {
             api: api, device: device, fingerprint: PassCrypto.fingerprint(of: device.publicRaw), label: label)
     }
 
-    /// The model for a vault over the account's relay.
+    /// The model for a vault over the account's node session.
     public convenience init(
         ref: VaultRef, backend: any MeroAppBackend, device: DeviceKeyPair, label: String, preferences: PassPreferences
     ) {
@@ -115,7 +115,7 @@ public final class VaultModel: ObservableObject {
 
     // MARK: Lifecycle
 
-    /// Open the session, retrying while the relay is still joining or syncing
+    /// Open the session, retrying while the vault is still joining or syncing
     /// the vault, then read it once. `false` when it cannot open.
     @discardableResult
     public func open() async -> Bool {
@@ -139,7 +139,7 @@ public final class VaultModel: ObservableObject {
     }
 
     /// Open, then keep the vault fresh until the task is cancelled: live
-    /// events when the relay streams, a poll otherwise and while waiting.
+    /// events when the node streams, a poll otherwise and while waiting.
     public func run() async {
         guard await open() else { return }
         let streaming = events != nil

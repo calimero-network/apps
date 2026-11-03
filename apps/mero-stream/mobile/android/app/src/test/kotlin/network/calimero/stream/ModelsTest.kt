@@ -1,7 +1,7 @@
 package network.calimero.stream
 
+import com.calimero.mero.app.AppMember
 import com.calimero.mero.app.AppNamespace
-import com.calimero.mero.app.AppSubgroup
 import com.calimero.mero.testkit.InMemoryAppBackend
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -32,7 +32,6 @@ import network.calimero.stream.core.StreamInvitation
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -65,8 +64,8 @@ private fun member(
 ) = buildJsonObject {
     put("memberId", id)
     put("username", name)
-    put("joinedAt", 1)
-    put("updatedAt", 1)
+    put("joinedAt", "1")
+    put("updatedAt", "1")
 }
 
 class StreamsModelTest {
@@ -74,7 +73,7 @@ class StreamsModelTest {
         runTest {
             val backend = InMemoryAppBackend()
             backend.namespaces = listOf(AppNamespace("ns1", "Studio", backend.applicationId, 3))
-            backend.subgroups = mapOf("ns1" to listOf(AppSubgroup("g1", "Daily", listOf("c1"))))
+            backend.rootContexts = mapOf("ns1" to listOf("c1"))
             val model = StreamsModel(backend)
             model.load()
             assertEquals(listOf(StreamSummary("ns1", "Studio", 3, 1)), model.streams.value)
@@ -107,38 +106,39 @@ class StreamsModelTest {
 class RoomsModelTest {
     private val stream = StreamSummary("ns1", "Studio")
 
-    @Test fun `creating a room makes an open subgroup and its call`() =
+    @Test fun `creating a room makes an app instance in the stream's org`() =
         runTest {
             val backend = InMemoryAppBackend()
-            val model = RoomsModel(stream, backend, "app1")
+            val model = RoomsModel(stream, backend, "com.calimero.mero-stream")
             val room = model.create("Standup")!!
-            assertNotNull(room.contextId)
-            assertEquals(setOf(room.id), backend.publicSubgroups)
-            assertEquals(JsonPrimitive("Standup"), backend.initArgs[room.contextId]!!.jsonObject["name"])
+            assertEquals(room.id, room.contextId)
+            assertTrue("createContext ns1 com.calimero.mero-stream Standup" in backend.log)
+            assertTrue("a room is no longer a team", backend.publicSubgroups.isEmpty())
+            assertEquals(JsonPrimitive("Standup"), backend.initArgs[room.id]!!.jsonObject["name"])
             assertEquals(listOf(room), model.rooms.value)
         }
 
-    @Test fun `load lists rooms and enter joins the call`() =
+    @Test fun `load lists the org's rooms with their rosters and entering needs no join`() =
         runTest {
             val backend = InMemoryAppBackend()
-            backend.subgroups = mapOf("ns1" to listOf(AppSubgroup("g1", "Daily", listOf("c1"))))
-            backend.recording.handler = { if (it.method == "get_members") JsonArray(listOf(member("x", "Xia"))) else JsonNull }
+            val appId = backend.createContext("ns1", "app1", "Daily", JsonNull)
+            backend.recording.handler = { if (it.method == "getMembers") JsonArray(listOf(member("x", "Xia"))) else JsonNull }
             val model = RoomsModel(stream, backend, "app1")
             model.load()
             assertEquals(listOf("Daily"), model.rooms.value.map { it.title })
-            assertEquals(listOf("Xia"), model.rosters.value["c1"]?.map { it.username })
-            assertEquals("c1", model.enter(model.rooms.value[0])?.contextId)
-            assertTrue("joinContext c1" in backend.log)
+            assertEquals(listOf("Xia"), model.rosters.value[appId]?.map { it.username })
+            assertEquals(appId, model.enter(model.rooms.value[0])?.contextId)
+            assertFalse(backend.log.any { it.startsWith("joinContext") })
         }
 
     @Test fun `a room invite carries the room and another app's link is refused`() =
         runTest {
             val model = RoomsModel(stream, InMemoryAppBackend(), "app1")
-            val link = model.inviteLink(RoomSummary("g1", "ns1", "Daily", "c1"))!!
+            val link = model.inviteLink(RoomSummary("app9", "ns1", "Daily"))!!
             val invitation = StreamInvitation.parse(link)!!
             assertTrue(invitation.opensRoom)
-            assertEquals("g1", invitation.roomId)
-            assertEquals("c1", invitation.contextId)
+            assertEquals("app9", invitation.roomId)
+            assertEquals("app9", invitation.contextId)
             assertEquals("Daily", invitation.roomName)
             assertNull(StreamInvitation.parse(link.replace("mero-stream", "mero-chat")))
         }
@@ -146,14 +146,14 @@ class RoomsModelTest {
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class CallModelTest {
-    private val room = RoomSummary("g1", "ns1", "Daily", "c1")
+    private val room = RoomSummary("c1", "ns1", "Daily")
 
     private fun TestScope.make(channel: FakeChannel = FakeChannel()): Triple<CallModel, InMemoryAppBackend, FakeChannel> {
         val backend = InMemoryAppBackend()
         backend.recording.handler = {
             when (it.method) {
                 "join" -> member("me-device", "Ana")
-                "get_members" -> JsonArray(listOf(member("me-device", "Ana"), member("bo", "Bo")))
+                "getMembers" -> JsonArray(listOf(member("me-device", "Ana"), member("bo", "")))
                 else -> JsonNull
             }
         }
@@ -182,6 +182,17 @@ class CallModelTest {
                     .first()
                     .args.jsonObject["username"],
             )
+            // u64 travels as a decimal string: unix seconds.
+            assertEquals(
+                JsonPrimitive("1000"),
+                backend.recording
+                    .calls("join")
+                    .first()
+                    .args.jsonObject["now"],
+            )
+            // Bo set no room name: the stream-wide one (org member metadata) shows.
+            backend.groupMembers = mapOf("ns1" to listOf(AppMember("bo", "Member", "Bo")))
+            model.refreshStreamNames()
             assertEquals(listOf("Ana", "Bo"), model.people().map { it.name })
             model.stop()
         }
@@ -244,11 +255,13 @@ class CallModelTest {
             val unit = ByteArray(20_000) { 7 }
             model.sendVideo(unit, true, 33, 480, 640, "avc1.42c01f")
             runCurrent()
-            assertEquals(2, channel.published.size)
+            // 20 kB in 1.0 presence's 4 KiB slices: five fragments.
+            assertEquals(5, channel.published.size)
+            assertTrue(channel.published.all { it.size <= 4_096 })
             val reassembler = FrameReassembler()
             val fragments = channel.published.map { LiveFrames.decodeFragment(it)!! }
-            assertNull(reassembler.push("x", fragments[0]))
-            val frame = reassembler.push("x", fragments[1])!!
+            fragments.dropLast(1).forEach { assertNull(reassembler.push("x", it)) }
+            val frame = reassembler.push("x", fragments[4])!!
             assertArrayEquals(unit, frame.bytes)
             assertEquals(0, frame.track)
             assertEquals(480, frame.width)

@@ -5,7 +5,7 @@ import MeroKit
 public enum PassConstants {
     /// The registry package and invitation-link slug (`APP_PACKAGE` / `APP_SLUG` on the web).
     public static let packageName = "com.calimero.mero-pass"
-    /// How often an open vault is re-read when the relay cannot stream events,
+    /// How often an open vault is re-read when the node cannot stream events,
     /// and while this device waits for the vault key (the web's 5 seconds).
     public static let pollInterval: Duration = .seconds(5)
     /// Auto-lock choices in minutes, and the default (the web's `AUTO_LOCK_CHOICES`).
@@ -45,17 +45,33 @@ public enum PassErrorText {
     public static func describe(_ error: Error) -> String {
         if let model = error as? PassModelError { return model.errorDescription ?? "Something went wrong." }
         if let session = error as? VaultSessionError { return session.errorDescription ?? "Something went wrong." }
-        if let account = error as? AccountError, case .noRelay = account {
-            return "No relay serves your account yet. Join a team from an invitation link to get one."
+        if error is SignedOutError { return "You're signed out. Sign in again." }
+        if error is ConfirmCancelled || error is PasskeyCancelled {
+            return "You cancelled the passkey prompt, so nothing changed."
         }
+        if let app = error as? AppError { return describe(app: app) }
+        if error is LoginRequired { return "Your session ended. Sign in again." }
+        if error is WrongNode || error is NotLeader {
+            return "This node can't serve your account right now. Try again in a moment."
+        }
+        if let busy = error as? UnavailableError {
+            return "Your cluster is unavailable (\(busy.reason)). Try again in a moment."
+        }
+        if let deadline = error as? ReleaseDeadlineError {
+            let release = deadline.release.isEmpty ? "A node release" : "Node release \(deadline.release)"
+            return "\(release) is waiting for your approval. Open Security, then Approvals."
+        }
+        if error is ConsentStale { return "That approval was already decided or has expired. Refresh and try again." }
+        if error is NotFound { return "This vault isn't on your cluster, or you're no longer a member." }
+        if let trust = error as? TeeTrustError { return "The node could not be verified: \(trust.message)" }
         if let url = error as? URLError {
             switch url.code {
             case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed:
                 return "You're offline. Check your connection and try again."
             case .timedOut:
-                return "The relay took too long to answer. Try again."
+                return "The cluster took too long to answer. Try again."
             default:
-                return "Couldn't reach the relay. Try again."
+                return "Couldn't reach the cluster. Try again."
             }
         }
         if error is DecodingError {
@@ -68,13 +84,35 @@ public enum PassErrorText {
         return text.isEmpty ? "Something went wrong. Try again." : text
     }
 
+    /// The contract's refusals (`APP_ERROR {code, fields: {message}}`). Its messages are v1's
+    /// texts, so the known ones are reworded as before; the code is the fallback.
+    public static func describe(app: AppError) -> String {
+        let detail = app.fields["message"]?.stringValue ?? ""
+        let lower = detail.lowercased()
+        for (needles, words) in reworded where needles.contains(where: { lower.contains($0) }) { return words }
+        switch app.appCode {
+        case "Forbidden": return detail.isEmpty ? "Your role in this vault can't do that." : sentence(detail)
+        case "NotFound": return detail.isEmpty ? "That item or member isn't in this vault." : sentence(detail)
+        case "Conflict": return detail.isEmpty ? "Someone changed this at the same time. Refresh and try again." : sentence(detail)
+        case "BadArgs": return "This app is out of step with the vault. Update the app and try again."
+        default: return detail.isEmpty ? "The vault refused that (\(app.appCode))." : sentence(detail)
+        }
+    }
+
+    /// `text` with a capital first letter and a full stop.
+    static func sentence(_ text: String) -> String {
+        guard let first = text.first else { return text }
+        let capped = first.uppercased() + text.dropFirst()
+        return capped.hasSuffix(".") || capped.hasSuffix("!") || capped.hasSuffix("?") ? capped : capped + "."
+    }
+
     /// The web's `TRANSIENT`: refusals that clear on their own while a vault
     /// just joined syncs, said in words.
     private static let transient: [([String], String)] = [
-        (["not a member of this context"], "Your relay has not finished joining the vault yet."),
-        (["awaiting state sync", "uninitialized"], "Your relay is still downloading the vault from its peers."),
-        (["group key not yet delivered", "groupkeypending"], "Your relay is still waiting for the team key from a peer."),
-        (["no owned identity"], "Your relay has no identity in the vault yet."),
+        (["not a member of this context"], "Your account has not finished joining the vault yet."),
+        (["awaiting state sync", "uninitialized"], "The vault is still being set up on the cluster."),
+        (["group key not yet delivered", "groupkeypending"], "The vault is still waiting for the team key."),
+        (["no owned identity"], "Your account has no identity in the vault yet."),
     ]
 
     private static let reworded: [([String], String)] = [
