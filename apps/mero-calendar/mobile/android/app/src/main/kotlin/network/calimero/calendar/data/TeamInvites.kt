@@ -1,89 +1,67 @@
 package network.calimero.calendar.data
 
-import com.calimero.mero.admin.SignedGroupOpenInvitation
+import com.calimero.mero.app.OrgInvitation
 import com.calimero.mero.invite.InviteCodec
 import com.calimero.mero.invite.InviteLink
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.put
 
 /** A team invitation, read from a link or a pasted code. */
 data class TeamInvitation(
-    /** The namespace (team) it admits to, 64 hex. */
-    val namespaceId: String,
-    /** The signed envelope, verbatim: re-encoding it any other way breaks its signature. */
-    val invitation: SignedGroupOpenInvitation,
-    /** The team's name, when the inviter put it in the payload. */
-    val teamName: String?,
-)
+    val invitation: OrgInvitation,
+) {
+    /** The org (team) it admits to. */
+    val namespaceId: String get() = invitation.namespaceId
+
+    /** The team's name, for the "Join …?" prompt (unsigned: a hint only). */
+    val teamName: String? get() = invitation.name
+}
 
 /**
- * Invitation links in the web app's format (`app/src/utils/invitation.ts` + `TeamsPage`), so a
- * link minted on either side opens on the other:
+ * Team invitations on Calimero 1.0: an org invite token in the SDK's link payload ([OrgInvitation],
+ * shared with swift-sdk and the iOS app), the team's name in its `name`:
  *
- * - payload `{"invitation": <SignedGroupOpenInvitation>, "__teamName": "<team>"}`,
+ * - payload `{"invitation": "inv_…", "namespaceId": "<org>", "contextId"?: "…", "name"?: "<team>"}`,
  * - token `base58(deflate(payload))` ([InviteCodec]),
  * - link `https://links.calimero.network/com.calimero.mero-calendar/join?invitation=<token>`.
+ *
+ * The token is a bearer secret the org's node minted (`POST /orgs/{org}/invites`); joining redeems
+ * it (`POST /invites/{token}/redeem`). Reading also takes a `data` envelope and the web app's
+ * `__teamName` / `teamName` / `groupName` / `groupAlias`. A pre-1.0 signed group invitation is
+ * refused: a 1.0 cluster can't redeem it.
  */
 object TeamInvites {
     private val json = Json { ignoreUnknownKeys = true }
 
-    fun payload(
-        invitation: SignedGroupOpenInvitation,
-        teamName: String?,
-    ): String =
-        buildJsonObject {
-            put("invitation", invitation.raw)
-            teamName?.trim()?.takeIf { it.isNotEmpty() }?.let { put("__teamName", it) }
-        }.toString()
-
     fun link(
-        invitation: SignedGroupOpenInvitation,
+        invitation: OrgInvitation,
         teamName: String?,
-    ): String = InviteLink.invitation(InviteCodec.encode(payload(invitation, teamName)), CalendarConstants.PACKAGE_NAME)
+    ): String = invitation.copy(name = teamName?.trim()?.ifEmpty { null } ?: invitation.name).link(CalendarConstants.PACKAGE_NAME)
 
     /** Read a link (https or calimero://), a bare token or raw JSON; null when it is no invitation to this app. */
     fun parse(input: String): TeamInvitation? {
-        val trimmed = input.trim()
-        if (isForeignLink(trimmed)) return null
-        val root = decodeRoot(trimmed) ?: return null
-        val outer = root["invitation"] as? JsonObject ?: root
-        val inner = outer["invitation"] as? JsonObject ?: return null
-        val namespaceId = groupIdOf(inner) ?: return null
-        val name =
-            listOf("__teamName", "groupName", "groupAlias")
-                .firstNotNullOfOrNull { (root[it] as? JsonPrimitive)?.contentOrNull?.trim()?.ifEmpty { null } }
-        return TeamInvitation(namespaceId, SignedGroupOpenInvitation(outer), name)
+        val token = InviteLink.tokenFromPasted(input.trim(), CalendarConstants.PACKAGE_NAME) ?: return null
+        val decoded = if (token.startsWith("{")) token else InviteCodec.decode(token) ?: return null
+        return parseJson(decoded)
     }
 
-    /** The payload object behind a link, a bare token or raw JSON. */
-    private fun decodeRoot(input: String): JsonObject? {
-        val token = InviteLink.tokenFromPasted(input) ?: return null
-        val decoded = if (token.startsWith("{")) token else InviteCodec.decode(token)
-        return decoded?.let { runCatching { json.parseToJsonElement(it).jsonObject }.getOrNull() }
-    }
+    /** Read the decoded payload JSON. */
+    fun parseJson(payload: String): TeamInvitation? {
+        val root = runCatching { json.parseToJsonElement(payload).jsonObject }.getOrNull() ?: return null
+        val o = root["data"] as? JsonObject ?: root
 
-    /** A link whose path names another app: its invitation would join that app's namespace. */
-    private fun isForeignLink(input: String): Boolean {
-        val lower = input.lowercase()
-        if (!lower.startsWith("http") && !lower.startsWith("calimero://")) return false
-        val path = lower.substringBefore('?')
-        return !path.contains(CalendarConstants.PACKAGE_NAME)
+        fun s(key: String) =
+            (o[key] as? JsonPrimitive)
+                ?.takeIf { it.isString }
+                ?.contentOrNull
+                ?.trim()
+                ?.ifEmpty { null }
+        val token = s("invitation") ?: return null
+        val org = s("namespaceId") ?: return null
+        val name = listOf("name", "__teamName", "teamName", "groupName", "groupAlias").firstNotNullOfOrNull(::s)
+        return TeamInvitation(OrgInvitation(org, token, s("contextId"), name))
     }
-
-    private fun groupIdOf(inner: JsonObject): String? =
-        when (val raw = inner["group_id"] ?: inner["groupId"]) {
-            is JsonArray -> {
-                val bytes = raw.mapNotNull { (it as? JsonPrimitive)?.intOrNull }
-                if (bytes.size == raw.size && bytes.isNotEmpty()) bytes.joinToString("") { "%02x".format(it and 0xff) } else null
-            }
-            is JsonPrimitive -> raw.contentOrNull?.ifEmpty { null }?.lowercase()
-            else -> null
-        }
 }

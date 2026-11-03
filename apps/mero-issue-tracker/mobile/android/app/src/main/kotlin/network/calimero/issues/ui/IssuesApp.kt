@@ -1,5 +1,6 @@
 package network.calimero.issues.ui
 
+import android.app.Activity
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -11,12 +12,15 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
@@ -57,6 +61,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -66,6 +71,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import network.calimero.issues.app.IssuesAppViewModel
+import network.calimero.issues.app.SignInMode
+import network.calimero.issues.core.ApprovalsModel
 import network.calimero.issues.core.IssuesModel
 import network.calimero.issues.core.IssuesState
 import network.calimero.issues.core.LiveUpdates
@@ -85,20 +92,20 @@ data class IssueRoute(
 @Composable
 fun IssuesApp(
     vm: IssuesAppViewModel,
-    onSignIn: () -> Unit,
+    activity: Activity,
     onShare: (String) -> Unit,
 ) {
-    val backend by vm.session.backend.collectAsStateWithLifecycle()
-    val restoring by vm.session.isRestoring.collectAsStateWithLifecycle()
-    val revision by vm.session.revision.collectAsStateWithLifecycle()
-    val pending by vm.session.pendingInvitation.collectAsStateWithLifecycle()
+    val backend by vm.backend.collectAsStateWithLifecycle()
+    val restoring by vm.restoring.collectAsStateWithLifecycle()
+    val revision by vm.revision.collectAsStateWithLifecycle()
+    val pending by vm.pendingInvitation.collectAsStateWithLifecycle()
     IssuesTheme {
         Surface(Modifier.fillMaxSize(), color = Palette.ground) {
             val current = backend
             when {
-                current != null -> key(revision) { TrackerScreen(current, vm, onShare) }
+                current != null -> key(revision) { TrackerScreen(current, vm, activity, onShare) }
                 restoring -> CenteredProgress()
-                else -> SignInScreen(vm, onSignIn)
+                else -> SignInScreen(vm, activity)
             }
             val link = pending
             if (link != null && current != null) {
@@ -108,23 +115,45 @@ fun IssuesApp(
     }
 }
 
+private enum class SignInForm { SIGN_IN, CREATE, DEVELOPMENT }
+
+/**
+ * Signed out: what the app is, then sign-in to a Calimero 1.0 cluster.
+ *
+ * - Calimero Cloud: the cluster's name (its nodes come from the node directory) or one of its node
+ *   URLs, then the device's passkey. "Create an account" registers a new passkey under a name.
+ * - Development node: a `merod local` URL with mock attestation allowed; a software passkey is
+ *   kept on the device for that node.
+ */
 @Composable
 fun SignInScreen(
     vm: IssuesAppViewModel,
-    onSignIn: () -> Unit,
+    activity: Activity,
 ) {
-    val state by vm.session.client.state
-        .collectAsStateWithLifecycle()
+    val busy by vm.busy.collectAsStateWithLifecycle()
+    val error by vm.error.collectAsStateWithLifecycle()
     val haptics = LocalHapticFeedback.current
+    var form by rememberSaveable { mutableStateOf(if (vm.savedMode == SignInMode.DEV) SignInForm.DEVELOPMENT else SignInForm.SIGN_IN) }
+    var cluster by rememberSaveable { mutableStateOf(vm.savedCluster) }
+    var devNode by rememberSaveable { mutableStateOf(vm.savedDevNode) }
+    var name by rememberSaveable { mutableStateOf("") }
+    val canSubmit =
+        when (form) {
+            SignInForm.SIGN_IN -> cluster.isNotBlank()
+            SignInForm.CREATE -> cluster.isNotBlank() && name.isNotBlank()
+            SignInForm.DEVELOPMENT -> devNode.isNotBlank()
+        }
     Column(
         Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .statusBarsPadding()
             .navigationBarsPadding()
+            .imePadding()
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.height(40.dp))
         Box(Modifier.size(76.dp).clip(RoundedCornerShape(22.dp)).background(Palette.lime), contentAlignment = Alignment.Center) {
             Icon(Icons.Outlined.Checklist, contentDescription = null, tint = Palette.ink, modifier = Modifier.size(38.dp))
         }
@@ -138,27 +167,67 @@ fun SignInScreen(
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(horizontal = 8.dp),
         )
-        Spacer(Modifier.weight(1f))
-        val error = state.error
-        if (error != null && !state.isLoading) {
-            Text(error, fontSize = 14.sp, color = Palette.danger, textAlign = TextAlign.Center)
-            Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(28.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (form == SignInForm.DEVELOPMENT) {
+                LabeledField("Development node URL", devNode, { devNode = it }, "http://10.0.2.2:2501", KeyboardType.Uri)
+                LabeledField("Your name", name, { name = it }, "e.g. Ada")
+                Text(
+                    "For a merod local cluster: mock attestation is allowed and a passkey is kept on this device for that node.",
+                    fontSize = 13.sp,
+                    color = Palette.text3,
+                )
+            } else {
+                LabeledField("Cluster", cluster, { cluster = it }, "Cluster name or node URL", KeyboardType.Uri)
+                if (form == SignInForm.CREATE) LabeledField("Your name", name, { name = it }, "e.g. Ada Lovelace")
+            }
+            val shown = error
+            if (shown != null && !busy) ErrorLine(shown)
+            PrimaryButton(
+                when {
+                    busy -> "Waiting for your passkey…"
+                    form == SignInForm.SIGN_IN -> "Sign in with passkey"
+                    form == SignInForm.CREATE -> "Create account"
+                    else -> "Connect"
+                },
+                onClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    when (form) {
+                        SignInForm.SIGN_IN -> vm.signInCloud(activity, cluster, create = false, name = name)
+                        SignInForm.CREATE -> vm.signInCloud(activity, cluster, create = true, name = name)
+                        SignInForm.DEVELOPMENT -> vm.signInDev(devNode, name)
+                    }
+                },
+                enabled = canSubmit,
+                busy = busy,
+            )
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                when (form) {
+                    SignInForm.SIGN_IN -> FormLink("Create an account", !busy) { form = SignInForm.CREATE }
+                    SignInForm.CREATE -> FormLink("I have an account", !busy) { form = SignInForm.SIGN_IN }
+                    SignInForm.DEVELOPMENT -> FormLink("Use Calimero Cloud", !busy) { form = SignInForm.SIGN_IN }
+                }
+                Spacer(Modifier.weight(1f))
+                if (form != SignInForm.DEVELOPMENT) FormLink("Development node", !busy) { form = SignInForm.DEVELOPMENT }
+            }
+            Text(
+                "Your board lives on your team's Calimero cluster. Your device's passkey opens your account; no password.",
+                fontSize = 13.sp,
+                color = Palette.text3,
+                modifier = Modifier.padding(top = 4.dp),
+            )
         }
-        PrimaryButton(
-            if (state.isLoading) "Waiting for the wallet…" else "Sign in with Calimero",
-            onClick = {
-                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                onSignIn()
-            },
-            busy = state.isLoading,
-        )
-        Spacer(Modifier.height(12.dp))
-        Text(
-            "Your board lives with your team, not on a server. Sign-in approves this phone with your Calimero account.",
-            fontSize = 13.sp,
-            color = Palette.text3,
-            textAlign = TextAlign.Center,
-        )
+    }
+}
+
+@Composable
+private fun FormLink(
+    text: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    TextButton(onClick = onClick, enabled = enabled) {
+        Text(text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Palette.ink)
     }
 }
 
@@ -170,9 +239,20 @@ fun SignInScreen(
 fun TrackerScreen(
     backend: MeroAppBackend,
     vm: IssuesAppViewModel,
+    activity: Activity,
     onShare: (String) -> Unit,
 ) {
-    val workspace = remember(backend) { WorkspaceModel(backend, vm.session.applicationId, vm.store) }
+    val workspace = remember(backend) { WorkspaceModel(backend, Tracker.PACKAGE_NAME, vm.store) }
+    val approvals =
+        remember(backend) {
+            ApprovalsModel(
+                Tracker.PACKAGE_NAME,
+                "Mero Issue Tracker",
+                fetch = { org -> vm.pendingApprovals(org) },
+                consent = { request, confirm -> vm.requestConsent(activity, request, confirm) },
+            )
+        }
+    val consentResult by vm.consentResult.collectAsStateWithLifecycle()
     val ws by workspace.state.collectAsStateWithLifecycle()
     val justJoined by vm.justJoined.collectAsStateWithLifecycle()
     var issues by remember { mutableStateOf<IssuesModel?>(null) }
@@ -187,6 +267,10 @@ fun TrackerScreen(
     LaunchedEffect(workspace) {
         workspace.markSyncing(justJoined)
         workspace.load()
+    }
+    LaunchedEffect(ws.workspaces, consentResult) {
+        // What waits for approval: on load, and again when the consent page sent the person back.
+        approvals.load(ws.workspaces.map { it.id })
     }
     LaunchedEffect(ws.activeRepoId) {
         val repoId = ws.activeRepoId
@@ -291,7 +375,7 @@ fun TrackerScreen(
                         }
                     }
                 }
-                else -> WorkspaceScreen(workspace, ws, { sheet = it }, vm::signOut)
+                else -> WorkspaceScreen(workspace, ws, approvals, { sheet = it }, vm::signOut)
             }
         }
     }

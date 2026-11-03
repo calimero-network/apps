@@ -1,9 +1,9 @@
 // swift-tools-version: 5.9
 // Battleships' logic, outside the app target so it builds and tests on macOS with `swift test`
-// (no simulator): the two generated contract clients, the board and its commit-reveal, the
-// invitation codec and the view models the SwiftUI screens bind.
+// (no simulator): the typed contract client, the board and its commit-reveal, the invitation
+// codec and the view models the SwiftUI screens bind.
 //
-// The swift-sdk pin must match the one in ../project.yml (one revision for both).
+// The swift-sdk pin must match the one in ../project.yml (one version for both).
 import PackageDescription
 
 let package = Package(
@@ -13,33 +13,25 @@ let package = Package(
         .macOS(.v13),
     ],
     products: [
-        .library(name: "BattleshipsCore", targets: ["BattleshipsCore", "LobbyGenerated", "GameGenerated"]),
+        .library(name: "BattleshipsCore", targets: ["BattleshipsCore"]),
     ],
     dependencies: [
-        // swift-sdk `main`, the merge commit of swift-sdk#84. Keep it identical to ../project.yml.
+        // swift-sdk release v0.5.0 (Calimero 1.0).
+        // Keep it identical to ../project.yml.
         .package(
             url: "https://github.com/calimero-network/swift-sdk",
-            revision: "c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f"),
+            exact: "0.5.0"),
     ],
     targets: [
-        // `scripts/codegen.sh`: one module per service. Each generated file declares its own
-        // `ContextContractCalling`, which would collide with the other's (and shadow MeroKit's)
-        // in one module.
-        .target(name: "LobbyGenerated"),
-        .target(name: "GameGenerated"),
         .target(
             name: "BattleshipsCore",
             dependencies: [
-                "LobbyGenerated",
-                "GameGenerated",
                 .product(name: "MeroKit", package: "swift-sdk"),
             ]),
         .testTarget(
             name: "BattleshipsCoreTests",
             dependencies: [
                 "BattleshipsCore",
-                "LobbyGenerated",
-                "GameGenerated",
                 .product(name: "MeroKit", package: "swift-sdk"),
                 .product(name: "MeroKitTestSupport", package: "swift-sdk"),
             ]),

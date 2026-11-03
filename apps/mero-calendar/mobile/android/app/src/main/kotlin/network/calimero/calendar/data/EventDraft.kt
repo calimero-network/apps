@@ -87,3 +87,15 @@ data class EventDraft(
             )
     }
 }
+
+/** An event's fields in wire form, ready for the contract. */
+data class EventFields(
+    val title: String,
+    val description: String,
+    val start: String,
+    val end: String,
+    val type: String,
+    val color: String,
+    val peers: List<String>,
+    val isPrivate: Boolean,
+)

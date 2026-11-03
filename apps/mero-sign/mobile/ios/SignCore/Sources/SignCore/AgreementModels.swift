@@ -30,8 +30,6 @@ public final class AgreementsModel: ObservableObject {
 
     public init(directory: AgreementDirectory) { self.directory = directory }
 
-    public var hasRelay: Bool { directory.backend.hasRelay }
-
     public func load() async {
         if sections.isEmpty { phase = .loading }
         do {
@@ -40,7 +38,7 @@ public final class AgreementsModel: ObservableObject {
                 let agreements = (try? await directory.agreements(in: workspace)) ?? []
                 var rows: [AgreementRow] = []
                 for agreement in agreements {
-                    let joined = (try? await directory.backend.isMember(contextId: agreement.contextId)) == true
+                    let joined = await directory.isJoined(agreement.contextId)
                     rows.append(AgreementRow(agreement: agreement, joined: joined))
                 }
                 out.append(WorkspaceSection(workspace: workspace, agreements: rows))

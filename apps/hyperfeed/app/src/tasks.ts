@@ -1,4 +1,4 @@
-import type { FeedItem } from "./generated/HyperfeedClient";
+import type { FeedItem } from "./hyperfeedTypes";
 import { flowOf, laneOf, progressLine, type Tone } from "./format";
 import { headlineOf, isAgent, line } from "./team";
 import { milestonesOf, type Milestone } from "./milestones";

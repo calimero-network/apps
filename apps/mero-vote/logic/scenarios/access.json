@@ -1,0 +1,602 @@
+[
+ {
+  "as": "@anonymous",
+  "op": "view",
+  "method": "listPolls",
+  "args": {},
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "call",
+  "method": "setName",
+  "args": {
+   "name": "Anon"
+  },
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "eve",
+  "op": "view",
+  "method": "listPolls",
+  "args": {},
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "eve",
+  "op": "call",
+  "method": "setName",
+  "args": {
+   "name": "Eve"
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "setName",
+  "args": {
+   "name": "Gus"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "gus",
+  "op": "view",
+  "method": "roster",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "account": "@gus",
+     "name": "Gus"
+    }
+   ]
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "createPoll",
+  "args": {
+   "title": "Offsite",
+   "description": "Where do we meet?",
+   "options": [
+    "Lisbon",
+    "Split",
+    "Tallinn"
+   ],
+   "minChoices": 1,
+   "maxChoices": 1,
+   "trustees": [
+    "@gus"
+   ],
+   "threshold": 1,
+   "voters": [],
+   "closesAt": null
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "guests cannot create polls"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createPoll",
+  "args": {
+   "title": "Offsite",
+   "description": "Where do we meet?",
+   "options": [
+    "Lisbon",
+    "Split",
+    "Tallinn"
+   ],
+   "minChoices": 1,
+   "maxChoices": 1,
+   "trustees": [
+    "@owner",
+    "@eve"
+   ],
+   "threshold": 1,
+   "voters": [],
+   "closesAt": null
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createPoll",
+  "args": {
+   "title": "Offsite",
+   "description": "Where do we meet?",
+   "options": [
+    "Lisbon",
+    "Split",
+    "Tallinn"
+   ],
+   "minChoices": 1,
+   "maxChoices": 1,
+   "trustees": [
+    "@owner"
+   ],
+   "threshold": 1,
+   "voters": [
+    "@eve"
+   ],
+   "closesAt": null
+  },
+  "expect": {
+   "error": "Invalid"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createPoll",
+  "args": {
+   "title": "Offsite",
+   "description": "Where do we meet?",
+   "options": [
+    "Lisbon",
+    "Split",
+    "Tallinn"
+   ],
+   "minChoices": 1,
+   "maxChoices": 1,
+   "trustees": [
+    "@owner",
+    "@bob"
+   ],
+   "threshold": 0,
+   "voters": [],
+   "closesAt": null
+  },
+  "expect": {
+   "error": "Invalid",
+   "fields": {
+    "message": "the threshold must be 1..=2 (the number of trustees)"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createPoll",
+  "args": {
+   "title": "Offsite",
+   "description": "Where do we meet?",
+   "options": [
+    "Lisbon",
+    "Split",
+    "Tallinn"
+   ],
+   "minChoices": 1,
+   "maxChoices": 1,
+   "trustees": [
+    "@owner",
+    "@bob"
+   ],
+   "threshold": 3,
+   "voters": [],
+   "closesAt": null
+  },
+  "expect": {
+   "error": "Invalid",
+   "fields": {
+    "message": "the threshold must be 1..=2 (the number of trustees)"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createPoll",
+  "args": {
+   "title": "Offsite",
+   "description": "Where do we meet?",
+   "options": [
+    "Lisbon",
+    "Split",
+    "Tallinn"
+   ],
+   "minChoices": 1,
+   "maxChoices": 1,
+   "trustees": [],
+   "threshold": 1,
+   "voters": [],
+   "closesAt": null
+  },
+  "expect": {
+   "error": "Invalid",
+   "fields": {
+    "message": "a poll needs at least one trustee"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createPoll",
+  "args": {
+   "title": "Offsite",
+   "description": "Where do we meet?",
+   "options": [
+    "Lisbon",
+    "Lisbon"
+   ],
+   "minChoices": 1,
+   "maxChoices": 1,
+   "trustees": [
+    "@owner"
+   ],
+   "threshold": 1,
+   "voters": [],
+   "closesAt": null
+  },
+  "expect": {
+   "error": "Invalid",
+   "fields": {
+    "message": "options must be distinct"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createPoll",
+  "args": {
+   "title": "  ",
+   "description": "Where do we meet?",
+   "options": [
+    "Lisbon",
+    "Split",
+    "Tallinn"
+   ],
+   "minChoices": 1,
+   "maxChoices": 1,
+   "trustees": [
+    "@owner"
+   ],
+   "threshold": 1,
+   "voters": [],
+   "closesAt": null
+  },
+  "expect": {
+   "error": "Invalid",
+   "fields": {
+    "message": "a title is 1..=200 characters"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createPoll",
+  "args": {
+   "title": "Offsite",
+   "description": "Where do we meet?",
+   "options": [
+    "Lisbon",
+    "Split",
+    "Tallinn"
+   ],
+   "minChoices": 1,
+   "maxChoices": 1,
+   "trustees": [
+    "@owner",
+    "@gus"
+   ],
+   "threshold": 1,
+   "voters": [
+    "@gus",
+    "@bob"
+   ],
+   "closesAt": null
+  },
+  "save": "poll"
+ },
+ {
+  "as": "gus",
+  "op": "view",
+  "method": "getResult",
+  "args": {
+   "pollId": "$poll"
+  },
+  "expect": {
+   "ok": {
+    "poll_id": "$poll",
+    "phase": "KeyCeremony",
+    "verified": true,
+    "checks": [
+     {
+      "name": "written once",
+      "ok": true,
+      "detail": "the election and the seal are each one entry, written once by the creator"
+     },
+     {
+      "name": "definition",
+      "ok": true,
+      "detail": "3 options, choose 1..=1; 1-of-2 trustees"
+     },
+     {
+      "name": "election key",
+      "ok": true,
+      "detail": "key ceremony in progress"
+     }
+    ],
+    "counts": null,
+    "counted_ballots": 0,
+    "decrypted_by": [],
+    "transcript_digest": null,
+    "anchor": null,
+    "uncounted": []
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "publishTransportKey",
+  "args": {
+   "pollId": "$poll",
+   "key": "0000000000000000000000000000000000000000000000000000000000000000",
+   "proof": {
+    "c": "0000000000000000000000000000000000000000000000000000000000000000",
+    "z": "0000000000000000000000000000000000000000000000000000000000000000"
+   }
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only a named trustee takes part in the key ceremony"
+   }
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "publishTransportKey",
+  "args": {
+   "pollId": "$poll",
+   "key": "0000000000000000000000000000000000000000000000000000000000000000",
+   "proof": {
+    "c": "0000000000000000000000000000000000000000000000000000000000000000",
+    "z": "0000000000000000000000000000000000000000000000000000000000000000"
+   }
+  },
+  "expect": {
+   "error": "Crypto",
+   "fields": {
+    "message": "transport key proof of knowledge does not verify"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "fileComplaint",
+  "args": {
+   "pollId": "$poll",
+   "dealer": "@owner",
+   "secret": "0000000000000000000000000000000000000000000000000000000000000000",
+   "proof": {
+    "c": "0000000000000000000000000000000000000000000000000000000000000000",
+    "z": "0000000000000000000000000000000000000000000000000000000000000000"
+   }
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only a named trustee takes part in the key ceremony"
+   }
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "openVoting",
+  "args": {
+   "pollId": "$poll"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the poll's creator can do this"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "closePoll",
+  "args": {
+   "pollId": "$poll"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the poll's creator can do this"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "sealPoll",
+  "args": {
+   "pollId": "$poll"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the poll's creator can do this"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "anchorResult",
+  "args": {
+   "pollId": "$poll",
+   "network": "git",
+   "reference": "v1"
+  },
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "only the poll's creator can do this"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "anchorResult",
+  "args": {
+   "pollId": "$poll",
+   "network": "",
+   "reference": "v1"
+  },
+  "expect": {
+   "error": "Invalid",
+   "fields": {
+    "message": "network is 1..=64 and reference 1..=512 characters"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getPoll",
+  "args": {
+   "pollId": "nope"
+  },
+  "expect": {
+   "error": "NotFound",
+   "fields": {
+    "pollId": "nope"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getPoll",
+  "args": {
+   "poll_id": "$poll"
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "noSuchMethod",
+  "args": {},
+  "expect": {
+   "error": "UnknownMethod"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "closePoll",
+  "args": {
+   "pollId": "$poll"
+  },
+  "expect": {
+   "error": "NotAView"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createPoll",
+  "args": {
+   "title": "Offsite",
+   "description": "Where do we meet?",
+   "options": [
+    "Lisbon",
+    "Split",
+    "Tallinn"
+   ],
+   "minChoices": 1,
+   "maxChoices": 1,
+   "trustees": [
+    "@owner"
+   ],
+   "threshold": 1,
+   "voters": [],
+   "closesAt": 5
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getResult",
+  "args": {
+   "pollId": "$poll"
+  },
+  "expect": {
+   "ok": {
+    "poll_id": "$poll",
+    "phase": "KeyCeremony",
+    "verified": true,
+    "checks": [
+     {
+      "name": "written once",
+      "ok": true,
+      "detail": "the election and the seal are each one entry, written once by the creator"
+     },
+     {
+      "name": "definition",
+      "ok": true,
+      "detail": "3 options, choose 1..=1; 1-of-2 trustees"
+     },
+     {
+      "name": "election key",
+      "ok": true,
+      "detail": "key ceremony in progress"
+     }
+    ],
+    "counts": null,
+    "counted_ballots": 0,
+    "decrypted_by": [],
+    "transcript_digest": null,
+    "anchor": null,
+    "uncounted": []
+   }
+  },
+  "events": {
+   "gus": [
+    "MemberNamed",
+    "PollCreated"
+   ],
+   "bob": [
+    "MemberNamed",
+    "PollCreated"
+   ]
+  }
+ }
+]

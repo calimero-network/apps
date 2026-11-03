@@ -2,29 +2,26 @@ import Foundation
 import MeroKit
 import MeroKitUI
 
-/// Where the app signs in and which cloud it routes through, read from the
-/// Info.plist keys `project.yml` sets. Empty means the SDK's default (the
-/// hosted Calimero wallet, Cloud manager and registry).
+/// Which Calimero 1.0 cluster the app talks to, read from the Info.plist keys
+/// `project.yml` sets: `MeroNodeURL` (a node of your Cloud cluster; empty = the
+/// sign-in screen asks) and `MeroDevNodeURL` (the development node it offers).
 enum AppConfig {
     /// The registry package: what workspaces are founded with and links carry.
     static let packageName = "com.calimero.mero-crm"
 
-    /// The wallet callback: `mero-crm://enrol`, or a verified https host.
+    /// Where the node's consent page returns: `mero-crm://consent`, or a verified https host.
     static var callback: CloudCallback {
-        if let host = string("CrmCallbackHost") { return .https(host: host, path: string("CrmCallbackPath") ?? "/enrol") }
-        return .scheme(string("CrmCallbackScheme") ?? "mero-crm")
+        if let host = string("CrmCallbackHost") {
+            return .https(host: host, path: string("CrmCallbackPath") ?? "/consent")
+        }
+        return .scheme(string("CrmCallbackScheme") ?? "mero-crm", path: "consent")
     }
 
     static var config: MeroProviderConfig {
-        var config = MeroProviderConfig()
-        if let cloud = string("MeroCloudBaseURL").flatMap(URL.init(string:)) { config.cloudBaseURL = cloud }
-        if let registry = string("MeroRegistryURL") { config.registryURL = registry }
-        return config
+        MeroProviderConfig(nodeURL: CloudSettings.clusterURL, packageName: packageName)
     }
 
-    static var walletURL: URL? { string("MeroWalletURL").flatMap(URL.init(string:)) }
-
-    /// The Keychain service the device key and the account session live under.
+    /// The Keychain service the session and the development passkey live under.
     static let keychainService = "network.calimero.crm"
 
     private static func string(_ key: String) -> String? {

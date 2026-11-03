@@ -1,32 +1,34 @@
+import ChessCore
 import Foundation
 import MeroKit
 import MeroKitUI
 
-/// Where the app signs in and which cloud it routes through, read from the Info.plist keys
-/// `project.yml` sets. An empty value means the SDK's default (the hosted Calimero wallet, Cloud
-/// manager and app registry).
+/// Which Calimero 1.0 cluster the app signs in to, from the Info.plist keys `project.yml` sets.
+/// An empty value means "ask on the sign-in screen".
 enum AppConfig {
-    /// The app scheme the wallet returns to (`mero-chess://enrol#credential=…`).
-    static var callbackScheme: String { string("MeroChessCallbackScheme") ?? "mero-chess" }
-
-    /// An https host the wallet returns to instead (a verified Associated Domain, iOS 17.4+).
-    static var callbackHost: String? { string("MeroChessCallbackHost") }
-    static var callbackPath: String { string("MeroChessCallbackPath") ?? "/enrol" }
-
+    /// Where the node's consent page sends the person back
+    /// (`mero-chess://consent?request_id=…&result=…`).
     static var callback: CloudCallback {
-        if let host = callbackHost { return .https(host: host, path: callbackPath) }
-        return .scheme(callbackScheme)
+        if let host = string("MeroChessCallbackHost") {
+            return .https(host: host, path: string("MeroChessCallbackPath") ?? "/consent")
+        }
+        return .scheme(string("MeroChessCallbackScheme") ?? "mero-chess", path: "consent")
     }
+
+    /// The Calimero Cloud cluster: a node URL from the console. Signing in verifies the node's
+    /// attestation (`CloudPolicy.production`).
+    static var clusterURL: String? { string("CalimeroClusterURL") }
+
+    /// The development cluster (`merod local`) the sign-in screen prefills.
+    static var devNodeURL: String { string("DefaultNodeURL") ?? "http://localhost:2501" }
 
     static var config: MeroProviderConfig {
         MeroProviderConfig(
-            registryURL: string("MeroRegistryURL") ?? ApplicationRegistry.defaultURL,
-            cloudBaseURL: string("MeroCloudBaseURL").flatMap { URL(string: $0) })
+            nodeURL: clusterURL, policy: .production, packageName: ChessConstants.packageName,
+            packageVersion: string("MeroPackageVersion"))
     }
 
-    static var walletURL: URL? { string("MeroWalletURL").flatMap { URL(string: $0) } }
-
-    /// The Keychain service the device key, the account session and the relay tokens live under.
+    /// The Keychain service the session (and a development cluster's soft passkey) live under.
     static let keychainService = "network.calimero.chess"
 
     private static func string(_ key: String) -> String? {

@@ -22,16 +22,16 @@
             </intent-filter>
 
             <!--
-              Calimero Cloud sign-in: the wallet redirects to the enrolment callback
-              (BuildConfig.ENROL_CALLBACK_URL, default mero-chess://enrol) with the device
-              certificate in the fragment. Scheme and host come from the `meroEnrolCallback`
-              Gradle property, so this filter always matches what the app asks the wallet for.
+              The node's consent page sends the person back here after an approval
+              (BuildConfig.CONSENT_CALLBACK_URL, default mero-chess://consent?request_id=…&result=…).
+              Scheme and host come from the `meroConsentCallback` Gradle property, so this filter
+              always matches the returnTo the app asks for.
             -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="${enrolScheme}" android:host="${enrolHost}" />
+                <data android:scheme="${consentScheme}" android:host="${consentHost}" />
             </intent-filter>
 
             <!--

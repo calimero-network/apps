@@ -35,12 +35,24 @@ What can: an existing entry's version moving or being deleted, and any change
 outside the catalog (`packages:` globs, `onlyBuiltDependencies`, …), which is
 workspace configuration by definition.
 
+Cargo.toml is the workspace manifest, and it was a flat trigger for the same
+reason: any edit covered every app. But porting an app to the component SDK
+(docs/COMPONENT-APPS.md) edits it in exactly one place, appending the app's
+crate to `[workspace].exclude`. Taking a crate OUT of the workspace cannot
+change another member's bytes (whatever it does to resolution shows up in
+Cargo.lock, which is judged on its own). So `manifest` compares the two
+manifests with `[workspace].exclude` set aside, and for the v1 pipeline also
+the `component-*` keys of `[workspace.metadata.mero-apps]`, which only the
+component apps build against. Anything else that differs covers every app, and
+so does a manifest that does not parse.
+
 USAGE
 
   lockfile-fanout.py cargo   --base-file A --head-file B
   lockfile-fanout.py pnpm    --base-file A --head-file B
   lockfile-fanout.py catalog --base-file A --head-file B
-  lockfile-fanout.py {cargo,pnpm,catalog} --base REV --head REV [--path FILE]
+  lockfile-fanout.py manifest [--for components] --base-file A --head-file B
+  lockfile-fanout.py {cargo,pnpm,catalog,manifest} --base REV --head REV [--path FILE]
 
 Prints either the single word `all`, or zero or more paths whose apps this
 change reaches (for pnpm: the importer directories), one per line. Empty output
@@ -53,8 +65,10 @@ be able to run its own CI logic on macOS's bash 3.2 (no associative arrays).
 from __future__ import annotations
 
 import argparse
+import copy
 import subprocess
 import sys
+import tomllib
 
 ALL = "all"
 
@@ -288,6 +302,30 @@ def catalog_fanout(base: str, head: str) -> list[str]:
     return []
 
 
+# ── Cargo.toml ──────────────────────────────────────────────────────────────
+
+
+def _manifest_without_exclusions(text: str, audience: str) -> dict:
+    """The manifest with what cannot reach `audience`'s apps set aside."""
+    doc = copy.deepcopy(tomllib.loads(text))
+    ws = doc.get("workspace", {})
+    ws.pop("exclude", None)
+    if audience == "v1":
+        meta = ws.get("metadata", {}).get("mero-apps", {})
+        for key in [k for k in meta if k.startswith("component-")]:
+            del meta[key]
+    return doc
+
+
+def manifest_fanout(base: str, head: str, audience: str = "v1") -> list[str]:
+    try:
+        before = _manifest_without_exclusions(base, audience)
+        after = _manifest_without_exclusions(head, audience)
+    except tomllib.TOMLDecodeError:
+        return [ALL]
+    return [] if before == after else [ALL]
+
+
 # ── entry point ─────────────────────────────────────────────────────────────
 
 
@@ -295,12 +333,20 @@ DEFAULT_PATHS = {
     "cargo": "Cargo.lock",
     "pnpm": "pnpm-lock.yaml",
     "catalog": "pnpm-workspace.yaml",
+    "manifest": "Cargo.toml",
 }
 
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("kind", choices=["cargo", "pnpm", "catalog"])
+    parser.add_argument("kind", choices=["cargo", "pnpm", "catalog", "manifest"])
+    parser.add_argument(
+        "--for",
+        dest="audience",
+        choices=["v1", "components"],
+        default="v1",
+        help="manifest only: whose apps (ci.yml: v1, components.yml: components)",
+    )
     parser.add_argument("--base")
     parser.add_argument("--head", default="HEAD")
     parser.add_argument("--path")
@@ -333,11 +379,14 @@ def main(argv: list[str]) -> int:
             return 0
         base, head = base_text, head_text
 
-    fanout = {
-        "cargo": cargo_fanout,
-        "pnpm": pnpm_fanout,
-        "catalog": catalog_fanout,
-    }[args.kind](base, head)
+    if args.kind == "manifest":
+        fanout = manifest_fanout(base, head, args.audience)
+    else:
+        fanout = {
+            "cargo": cargo_fanout,
+            "pnpm": pnpm_fanout,
+            "catalog": catalog_fanout,
+        }[args.kind](base, head)
     for line in fanout:
         print(line)
     return 0

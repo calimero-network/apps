@@ -1,11 +1,24 @@
 package network.calimero.sign.core
 
-import com.calimero.mero.account.NoRelayException
+import com.calimero.mero.AppError
+import com.calimero.mero.CalimeroError
+import com.calimero.mero.ConfirmCancelled
+import com.calimero.mero.ConsentStale
+import com.calimero.mero.LoginRequired
+import com.calimero.mero.NotFound
+import com.calimero.mero.PasskeyCancelled
+import com.calimero.mero.ReleaseDeadlineError
+import com.calimero.mero.UnavailableError
+import com.calimero.mero.WrongNode
 import com.calimero.mero.app.ContextContract
+import com.calimero.mero.app.SignedOutException
 import com.calimero.mero.crypto.Hex
 import com.calimero.mero.invite.InviteCodec
+import com.calimero.mero.tee.TeeTrustException
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import network.calimero.sign.generated.ContractBytes
 import network.calimero.sign.generated.SignClient
 import java.io.IOException
@@ -17,19 +30,13 @@ object SignConstants {
     /** The registry package and invitation-link slug (`PACKAGE_NAME` on the web). */
     const val PACKAGE_NAME = "com.calimero.mero-sign"
 
-    /** The metadata marker on the namespace that holds the private store (`PERSONAL_KIND`). */
-    const val PERSONAL_KIND = "mero-sign:personal"
+    /** The name of the account's signature-library instance (`LIBRARY_NAME`): owned by the account, in no organization. */
+    const val LIBRARY_NAME = "mero-sign:library"
 
-    /** The personal namespace's name (`PERSONAL_WORKSPACE_NAME`). */
-    const val PERSONAL_WORKSPACE_NAME = "Personal"
-
-    /** The restricted subgroup the private context is bound to (`PERSONAL_GROUP_NAME`). */
-    const val PERSONAL_GROUP_NAME = "Private"
-
-    /** The private context's `context_name`. */
+    /** The library's `contextName`. */
     const val PRIVATE_CONTEXT_NAME = "default"
 
-    /** How often an open agreement is re-read when the relay cannot stream events. */
+    /** How often an open agreement is re-read. */
     const val POLL_INTERVAL_MS = 10_000L
 }
 
@@ -52,7 +59,11 @@ val ContractBytes.hex: String
 
 /** Ids as the contract takes them back: 32 bytes, lowercase hex. (Swift `SignIds`.) */
 object SignIds {
-    fun hex(value: String): String = value.trim().lowercase()
+    /** An account or app id, trimmed; a 64-hex id lowercased. Any other id is kept as the node spelled it. */
+    fun hex(value: String): String {
+        val trimmed = value.trim()
+        return if (Hex.isHex32(trimmed.lowercase())) trimmed.lowercase() else trimmed
+    }
 
     fun hex(value: ContractBytes): String = value.hex
 
@@ -110,19 +121,55 @@ class SignModelException(
 
 /** A failure, in words a person can act on. (Swift `SignErrorText`.) */
 object SignErrorText {
+    @Suppress("CyclomaticComplexMethod")
     fun describe(error: Throwable): String =
         when {
             error is SignModelException -> error.message.orEmpty()
-            error is NoRelayException -> "No relay serves your account yet. Open an invitation link to get one."
+            error is ReleaseDeadlineError -> {
+                val release = if (error.release.isEmpty()) "a node release" else "node release ${error.release}"
+                "Your cluster takes no new work until $release is approved. Review it under Needs your approval."
+            }
+            error is NotFound -> "This isn't shared with you, or it was deleted."
+            error is LoginRequired || error is SignedOutException -> "Your session ended. Sign in again."
+            error is WrongNode -> "This node doesn't serve your workspace. Try another node of the cluster."
+            error is UnavailableError -> "Your cluster is busy (${error.reason}). Try again shortly."
+            error is ConfirmCancelled || error is PasskeyCancelled -> "The passkey prompt was cancelled, so nothing changed."
+            error is ConsentStale -> "What you were approving changed in the meantime. Review it again under Needs your approval."
+            error is AppError -> appError(error)
+            error is CalimeroError -> error.nodeMessage.ifEmpty { error.code }
+            error is TeeTrustException -> "The node could not be verified: ${error.message}"
             error is UnknownHostException -> "You're offline. Check your connection and try again."
-            error is SocketTimeoutException -> "The relay took too long to answer. Try again."
+            error is SocketTimeoutException -> "Your cluster took too long to answer. Try again."
             error is SerializationException -> "The agreement answered in a shape this app doesn't understand. Update the app and try again."
-            error is IOException && error.message.isNullOrBlank() -> "Couldn't reach the relay. Try again."
+            error is IOException && error.message.isNullOrBlank() -> "Couldn't reach your cluster. Try again."
             isSyncing(message(error)) -> "This agreement is still syncing to your account. Give it a moment and try again."
             else -> message(error).ifBlank { "Something went wrong. Try again." }
         }
 
-    fun message(error: Throwable): String = error.message ?: error.toString()
+    /** The contract's own refusals (`422 APP_ERROR`): `NotFound {what, id}`; `Invalid`, `Forbidden`, `Conflict` with v1's sentence. */
+    fun appError(error: AppError): String {
+        val message = (error.fields["message"] as? JsonPrimitive)?.contentOrNull?.let(::sentence)
+        return when (error.appCode) {
+            "NotFound" -> "That ${(error.fields["what"] as? JsonPrimitive)?.contentOrNull ?: "item"} isn't there any more. Pull to refresh."
+            "Forbidden" -> message ?: "You can't do that in this agreement."
+            "Conflict" -> message ?: "Someone changed this first. Pull to refresh and try again."
+            else -> message ?: error.nodeMessage.ifEmpty { "The agreement refused this (${error.appCode})." }
+        }
+    }
+
+    fun sentence(text: String): String {
+        if (text.isEmpty()) return text
+        val body = text.replaceFirstChar { it.uppercase() }
+        return if (body.endsWith(".")) body else "$body."
+    }
+
+    /** The contract's `Conflict` (already registered, already joined, a stale version). */
+    fun isConflict(error: Throwable): Boolean = (error as? AppError)?.appCode == "Conflict"
+
+    fun isForbidden(error: Throwable): Boolean = (error as? AppError)?.appCode == "Forbidden"
+
+    fun message(error: Throwable): String =
+        (error as? AppError)?.let { (it.fields["message"] as? JsonPrimitive)?.contentOrNull } ?: error.message ?: error.toString()
 
     fun isSyncing(text: String): Boolean = text.contains("uninitialized", ignoreCase = true) || text.contains("syncing state", ignoreCase = true)
 

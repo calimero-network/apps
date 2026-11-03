@@ -16,27 +16,59 @@ and the matching Material icons) and behaviour.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `c9ca1a0` (`main` merge commit of PR #84) |
-| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `ea8ded7` (`main` merge commit of PR #67), composite build from `android/kotlin-sdk.ref` |
+| iOS | `ios/` | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `v0.5.0`. **Calimero 1.0.** |
+| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `v0.2.0` (Calimero 1.0), composite build from `android/kotlin-sdk.ref`. **Calimero 1.0.** |
 
-**The pins are the `main` merge commits of those two SDK PRs; bump them together.** On iOS that means
-`ios/project.yml` and `ios/PixartCore/Package.swift`; on Android, `android/kotlin-sdk.ref`.
+**Both apps run on Calimero 1.0**, with the same screens and flows. On iOS the pin lives in `ios/project.yml` and `ios/PixartCore/Package.swift` (keep them
+equal); on Android, `android/kotlin-sdk.ref`.
+
+## Calimero 1.0
+
+- **Sign in** with a passkey on the team's cluster (`MeroAppSession.signIn()`, the device's
+  platform passkey), or **create an account** (`signUp(name:)`). The session (a 15-minute access
+  token and a 30-day refresh token) is kept in the Keychain and refreshed at launch. Every request
+  goes over the sealed channel to an attested node.
+- **The cluster** is `MeroNodeURL` in `ios/project.yml` / `meroNodeUrl` in
+  `android/gradle.properties`. Left empty, the sign-in screen asks for one: a cluster **name**
+  (`eu-shared-1`, its nodes read from the node directory) or a node URL from Calimero Cloud's console.
+- **Development**: on the sign-in screen, "Choose your cluster" (or "Change") takes any node URL
+  and a "Development cluster" switch, which trusts mock attestation (`allowMock`) as `merod local`
+  serves it (`cargo run -p merod -- local`, nodes on `http://127.0.0.1:2501-2503`). The app then
+  keeps a soft passkey for that node and creates its account on the first sign-in. Or set
+  `MeroNodeURL` and `MeroAllowMock: "YES"` in `project.yml`. On Android the switch suggests
+  `meroDevNodeUrl` (`http://10.0.2.2:2501`, the host as the emulator sees it); debug builds allow
+  cleartext to localhost / 10.0.2.2 only.
+- **Words**: a PixArt team is a Calimero **organization**; a project is one of its Calimero
+  **teams**, holding one **app instance** of `com.calimero.mero-pixart`.
+- **Invitations** are org invite tokens (`POST /orgs/{org}/invites`, redeemed with
+  `POST /invites/{token}/redeem`). The link keeps its URL; its payload is swift-sdk's
+  `OrgInvitation`, `{"invitation": "inv_…", "namespaceId": "<team>", "name": "<team name>"}`, the
+  shape every 1.0 client of the package reads (iOS, Android and the ported web app). Pre-1.0 signed
+  invitations are refused. Minting one is a passkey step-up (on Android the Activity's
+  `PlatformPasskey`).
+- **Approvals**: when a node release or an app upgrade waits for the account (or an organization it
+  owns), the teams list shows it under "Needs your approval". "Review" opens the **node's consent page in
+  the system browser** (a Custom Tab on Android) after showing the request's **confirmation code**,
+  which the page shows too; the page returns to `mero-pixart://consent`. The app never approves by itself.
+  A call refused because a release deadline has passed says so in words.
+- A real cluster's passkeys need the app to carry the `webcredentials:<rp-id>` Associated Domain of
+  that cluster; it is not set in `project.yml` yet.
 
 ## View only, plus a few light actions
 
 The editor (tools, brushes, masks, curves, transforms) stays on the web and desktop. What both apps do:
 
-- **Sign in** with a Calimero account (`MeroAppSession`): the wallet certifies the phone's key. The
-  session is kept in the Keychain / Keystore and restored at launch.
-- **Teams**: the account's namespaces running Mero PixArt. Pull to refresh.
+- **Sign in** with a Calimero account (`MeroAppSession`): a passkey on the 1.0 cluster (see
+  above). The session is kept in the Keychain / Keystore and restored at launch.
+- **Teams**: the account's organizations running Mero PixArt, and what needs your approval. Pull to refresh.
 - **Projects**: a team's projects as a two-column gallery, each card a real thumbnail of the artwork
   (composited on the phone, at most 360 px), with its size and layer count. Long-press (Android) or
   touch and hold (iOS) to share the project's link. Pull to refresh. **Invite** (person-plus icon)
   makes a team invitation link in the web's format and opens the share sheet.
 - **Artwork**: the composed image over a checkerboard. Pinch to zoom, drag to pan, double-tap to go
-  between fit and 2.5×. Live: it follows the relay's event stream, or polls every 5 s when the relay
+  between fit and 2.5×. Live: it follows the node's event stream, or polls every 5 s when it
   cannot stream, and redraws only when the document or a layer changed. Opening a project this
-  account is not in yet joins its context (an open subgroup of the team).
+  account is not in yet joins it (an open team).
 - **Layers**: the folder tree, front-most first, with each layer's kind, blend mode, opacity and lock.
   The eye shows or hides a layer **on this phone only**: it never writes to the contract, and the
   layer list and a pill over the artwork say so, with a Reset.
@@ -76,25 +108,25 @@ Known gaps: curves are not applied (the web bakes them into the pixels, so a sto
 shows them); a layer that has both a blur and a warp is drawn blurred but unwarped; text uses the
 platform's faces for the web's font families.
 
-## Delegated execution only
+## Through `MeroAppBackend`
 
-Neither app runs or logs into a node. `MeroAppSession` signs in, finds the account's relay, and gives
-a `MeroAppBackend`: namespaces, subgroups, membership, invitations and events go through it, contract
-reads through the relay's query. Blobs are read with the signed-in client's
-`admin.getBlob(blobId, contextId)`, because `MeroAppBackend` has no blob call yet, and decoded once
-into a cache shared by the gallery and the artwork.
+Neither app runs a node. `MeroAppSession` signs in and gives a `MeroAppBackend`: teams, projects,
+membership, invitations and events go through it. That is the SDKs' `CalimeroAppBackend` over the 1.0
+`CalimeroClient` (contract reads are `/apps/{app}/views`, writes `/apps/{app}/intents`, blobs
+`MeroAppBackend.getBlob` on `/apps/{app}/blobs`). Blobs are decoded
+once into a cache shared by the gallery and the artwork.
 
-## Generated contract client
+## The contract clients
 
-`PixartClient` is generated from `../logic/res/abi.json` with `--transport-import`, so it takes the
-SDKs' own `ContextContractCalling` and `PixartClient(transport: contract.bound(to: id))` needs no
-adapter. Never edit it by hand:
-
-- iOS: `ios/PixartCore/Sources/PixartCore/Generated/PixartClient.swift`
-- Android: `android/app/src/main/kotlin/network/calimero/pixart/generated/PixartClient.kt`
-
-After a contract change, regenerate both with `scripts/regenerate-client.sh` (set `ABI_CODEGEN` to an
-abi-codegen `dist/cli.js` with the `swift` and `kotlin` targets) and commit the result.
+`PixartClient` (`ios/PixartCore/Sources/PixartCore/Generated/PixartClient.swift`,
+`android/app/src/main/kotlin/network/calimero/pixart/generated/PixartClient.kt`) calls the
+component contract's surface (`../logic/res/abi.json` on the component SDK): camelCase method and
+argument names (`updateLayer { id, blendMode, scaleX, updatedAt, … }`); the top-level u64 / i64
+arguments (`updatedAt`, `timestamp`, `x`, `y`) go out as decimal strings (`WireNumbers.swift`,
+`WireNumbers.kt`), while integers inside records (`Layer`, `Member`, cursors) stay JSON numbers.
+Refusals are `422 APP_ERROR` (`ViewOnly`, `OwnerOnly`, `Invalid { message }`), shown in plain words
+(`PixartFormat.errorText`). `WireTests` / `WireTest` pin the wire. The 0.x abi-codegen does not read
+a component ABI, so after a contract change update both clients by hand against `abi.json`.
 
 ## Build and test
 
@@ -102,7 +134,7 @@ iOS (Xcode 15+, `brew install xcodegen`):
 
 ```bash
 cd ios
-swift test --package-path PixartCore   # compositor, view models, invitations, on macOS
+swift test --package-path PixartCore   # compositor, view models, invitations, approvals, on macOS
 xcodegen generate && open MeroPixart.xcodeproj
 ```
 
@@ -114,11 +146,10 @@ cd android
 ./gradlew ktlintCheck detekt testDebugUnitTest lint assembleDebug
 ```
 
-Sign-in returns to `mero-pixart://enrol`. Point the apps at another environment with the
-`MeroCloudBaseURL` / `MeroWalletURL` / `MeroRegistryURL` Info.plist keys in `ios/project.yml`, or
-`-PmeroCloudUrl=` / `-PmeroWalletUrl=` / `-PmeroRegistryUrl=` / `-PmeroEnrolCallback=` on Android.
-The hosted wallet currently returns only to `https://` callbacks, so production sign-in needs that
-wallet change or a verified https callback (as in Mero Chat).
+iOS: point the app at a cluster with the `MeroNodeURL` / `MeroNodes` / `MeroAllowMock` Info.plist
+keys in `ios/project.yml` (or from the sign-in screen); the consent page returns to
+`mero-pixart://consent`. Android: `-PmeroNodeUrl=` (cluster name or node URL),
+`-PmeroDevNodeUrl=` and `-PmeroConsentCallback=` (default `mero-pixart://consent`).
 
 CI: `.github/workflows/mero-pixart-ios.yml` (PixartCore tests on macOS, app build) and
 `.github/workflows/mero-pixart-android.yml` (ktlint, detekt, unit tests, Android Lint,

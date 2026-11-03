@@ -15,13 +15,13 @@ struct DemoCall: @unchecked Sendable {
     func strings(_ key: String) -> [String]? { args[key] as? [String] }
 }
 
-/// A contract error, in the words the relay would use.
+/// A contract error, in the words the node would use.
 struct DemoContractError: LocalizedError {
     let errorDescription: String?
     init(_ text: String) { errorDescription = text }
 }
 
-/// The relay and contract of a signed-in account, in memory: namespaces,
+/// The cluster and contract of a signed-in account, in memory: orgs (namespaces),
 /// subgroups, contexts and membership, plus a handler that answers contract
 /// calls with the return value's JSON bytes. Same idea as MeroKitTestSupport's
 /// `InMemoryAppBackend` + `RecordingContextContract`, without linking test
@@ -99,6 +99,13 @@ final class DemoBackend: MeroAppBackend, ContextContract, @unchecked Sendable {
     func createContext(groupId: String, applicationId: String, name: String, initArgs: JSONValue) async throws -> String {
         locked {
             let id = mint()
+            if subgroups[groupId] != nil {
+                // An app instance directly in the org (how forums are made on 1.0): kept as a
+                // one-instance entry so the demo's forum list reads it back.
+                subgroups[groupId]?.append(AppSubgroup(groupId: id, name: name, contextIds: [id]))
+                members.insert(id)
+                return id
+            }
             for (namespace, list) in subgroups {
                 guard let index = list.firstIndex(where: { $0.groupId == groupId }) else { continue }
                 let old = list[index]
@@ -109,24 +116,29 @@ final class DemoBackend: MeroAppBackend, ContextContract, @unchecked Sendable {
         }
     }
 
-    func createInvitation(namespaceId: String) async throws -> SignedGroupOpenInvitation {
+    /// The forums of a space: each demo forum's app instance, under the forum's name.
+    func listContextEntries(groupId: String) async throws -> [AppContextEntry] {
         try await pause()
-        let group = (try? Hex.decode(namespaceId, label: "namespaceId", bytes: 32)).map { $0.map(Int.init) }
-        return SignedGroupOpenInvitation(
-            invitation: GroupInvitationFromAdmin(
-                inviterIdentity: Array(repeating: 7, count: 32), groupId: group ?? Array(repeating: 0, count: 32),
-                expirationTimestamp: 4_102_444_800, secretSalt: Array(repeating: 3, count: 32)),
-            inviterSignature: String(repeating: "5a", count: 64))
+        return locked {
+            (subgroups[groupId] ?? []).compactMap { group in
+                group.contextIds.first.map { AppContextEntry(id: $0, name: group.name) }
+            }
+        }
     }
 
-    func joinNamespace(namespaceId: String, invitation: SignedGroupOpenInvitation) async throws -> AppJoinedNamespace {
+    func createInvitation(namespaceId: String) async throws -> OrgInvitation {
+        try await pause()
+        return OrgInvitation(namespaceId: namespaceId, token: "inv_demo" + String(namespaceId.prefix(12)))
+    }
+
+    func joinNamespace(namespaceId: String, invitation: OrgInvitation) async throws -> AppJoinedNamespace {
         try await pause()
         locked {
             if !namespaces.contains(where: { $0.id == namespaceId }) {
                 namespaces.append(AppNamespace(id: namespaceId, name: nil, applicationId: applicationId))
             }
         }
-        return AppJoinedNamespace(namespaceId: namespaceId, published: true, relayURL: "https://relay.demo")
+        return AppJoinedNamespace(namespaceId: namespaceId, published: true, nodeURL: "https://node.demo")
     }
 
     /// Open, never yields: every screen reloads after its own writes, so nothing needs pushing.

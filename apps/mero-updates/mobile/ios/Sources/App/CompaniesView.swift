@@ -12,6 +12,7 @@ struct CompaniesView: View {
     let onSignOut: () -> Void
     @State private var creating = false
     @State private var joining = false
+    @State private var approvals = false
 
     init(
         backend: any MeroAppBackend, applicationId: String?, path: Binding<[CompanyRoute]>,
@@ -46,9 +47,7 @@ struct CompaniesView: View {
                         Card {
                             EmptyState(
                                 icon: "square.stack.3d.up", title: "No companies yet",
-                                message: model.hasRelay
-                                    ? "Founders: create yours below. Investors: open the invitation link a founder sent you."
-                                    : "Your account has no relay yet. Join a company with an invitation link first.")
+                                message: "Founders: create yours below. Investors: open the invitation link a founder sent you.")
                         }
                     } else {
                         ForEach(model.companies) { company in
@@ -78,6 +77,7 @@ struct CompaniesView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
+                        Button { approvals = true } label: { Label("Approvals", systemImage: "checkmark.seal") }
                         Button(role: .destructive, action: onSignOut) {
                             Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
                         }
@@ -89,6 +89,9 @@ struct CompaniesView: View {
             .navigationDestination(for: CompanyRoute.self) { route in
                 CompanyView(
                     route: route, backend: model.backend, applicationId: applicationId, onOpen: onOpen)
+            }
+            .sheet(isPresented: $approvals) {
+                ApprovalsSheet(style: .app, orgs: model.companies.map { ($0.id, $0.title) })
             }
             .sheet(isPresented: $creating) {
                 NewCompanySheet(model: model) { company in

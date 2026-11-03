@@ -5,7 +5,7 @@
  * Nothing here talks to a node or a relay. The native app owns the session:
  * it pushes the contract's arena reads and the opponent's presence in, and
  * every contract call the engine makes goes out through `window.meroBridge`
- * to the native generated client. The fight pad is native too; its presses
+ * to the native typed client. The fight pad is native too; its presses
  * arrive as `press` messages and feed the engine's own `Controls`, the same
  * path the web app's on-screen keycaps take.
  */
