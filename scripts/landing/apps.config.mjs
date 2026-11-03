@@ -243,7 +243,9 @@ export const APPS = {
     // Keeps its own sign-in — a sidebar, or the game launcher — so the
     // landing gets an onConnect callback and never mounts the shared popup.
     ownConnect: true,
-    e2eDir: 'e2e',
+    // A component app (calimero-app-sdk, merod local, CalimeroClient): no
+    // Playwright, so no generated landing spec. docs/COMPONENT-APPS.md.
+    e2eDir: null,
     availability: 'web+desktop',
     playableOffline: true,
     trust: ['No game server', 'Deterministic world', 'Plays offline'],
