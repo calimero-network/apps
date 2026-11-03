@@ -6,16 +6,15 @@ import {
   useRef,
   useState,
 } from "react";
-import { useJoinSync, useMero } from "@calimero-network/mero-react";
-import { publishMemberName, useMemberNames } from "@calimero-apps/names";
+import { useConn } from "../hooks/useConn";
 import { useMeroStream } from "../hooks/useMeroStream";
+import { publishMyName, streamInfo } from "../lib/streams";
 import { useLiveStream } from "../hooks/useLiveStream";
 import { fmt } from "../lib/format";
 import DataDialog from "../components/DataDialog";
 import { MetricValue } from "../components/MetricValue";
 import PeopleDialog from "../components/PeopleDialog";
 import { buildRoster, initials, shortId } from "../lib/people";
-import { JOIN_DEADLINE_MS, retryUntilValue } from "../lib/joinRetry";
 import SessionMenu from "../components/SessionMenu";
 import { useNavigate } from "react-router-dom";
 import {
@@ -47,8 +46,8 @@ import styles from "./CallPage.module.css";
 /**
  * The call.
  *
- * 640×480 H.264, encoded in the browser, carried on ephemeral presence — never
- * persisted, never in the DAG, no WASM run per frame. Up to
+ * 640×480 H.264, encoded in the browser, carried on the node's presence
+ * channel — never persisted, never in the app's log, no contract run per frame. Up to
  * {@link MAX_BROADCASTERS} people broadcast at once and everyone else spectates
  * (decoding every broadcaster, publishing nothing). The cap is derived from
  * gossipsub's fan-out, not chosen: see lib/slots.ts.
@@ -85,10 +84,28 @@ export default function CallPage() {
   const [namespaceId] = useState(() => getActiveNamespaceId());
   const stream = useMeroStream();
   const s = useLiveStream(true);
-  // Names people set for the whole stream (namespace member metadata), for
-  // anyone the contract has no nickname for — see @calimero-apps/names.
-  const { admin } = useMero();
-  const { nameOf } = useMemberNames(admin, namespaceId);
+  // Names people set for the whole stream (org member metadata; v1: namespace
+  // member metadata through @calimero-apps/names), for anyone the contract has
+  // no nickname for.
+  const conn = useConn();
+  const [streamNames, setStreamNames] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (!conn || !namespaceId) return;
+    let cancelled = false;
+    void streamInfo(conn.client, namespaceId)
+      .then((info) => {
+        if (!cancelled) setStreamNames(info.names);
+      })
+      .catch(() => {})
+      .finally(conn.after);
+    return () => {
+      cancelled = true;
+    };
+  }, [conn, namespaceId]);
+  const nameOf = useCallback(
+    (id: string): string | undefined => streamNames[id],
+    [streamNames],
+  );
 
   // The STORED nickname — "" when never set, which is a state worth knowing:
   // it is what makes the identity control worth pointing at on first run.
@@ -127,28 +144,18 @@ export default function CallPage() {
     };
   }, []);
 
-  // Retried, not one-shot: entering a room this node has only just learned
-  // about races the context's first sync, and until it lands `join` is refused
-  // (core's Uninitialized, which useExecute resolves as null). One attempt left
-  // the page on "joining…" for good. See lib/joinRetry.ts.
+  // One attempt per name: on the component runtime a room exists as soon as
+  // it is created, so v1's retry-until-synced loop has nothing to wait for. A
+  // later rename supersedes an earlier join still in flight.
   const join = useCallback(async (name: string) => {
     const trimmed = name.trim();
     if (!trimmed) return;
     setUsername(trimmed);
     const generation = ++joinGeneration.current;
-    const m = await retryUntilValue(() => streamRef.current.join(trimmed), {
-      deadlineMs: JOIN_DEADLINE_MS,
-      isCancelled: () =>
-        !alive.current || joinGeneration.current !== generation,
-    });
+    const m = await streamRef.current.join(trimmed);
+    if (!alive.current || joinGeneration.current !== generation) return;
     if (m) setJoined(true);
   }, []);
-
-  // A room invitation lands here, not on the room list, so this is the page
-  // that knows the stream's data has arrived: `join` is refused until the
-  // room's state has synced to this node, so a landed join is that read. That
-  // ends the invitation dialog's "Syncing…".
-  useJoinSync({ namespaceId, settled: joined });
 
   useEffect(() => {
     if (joinAttempted.current) return;
@@ -172,22 +179,17 @@ export default function CallPage() {
     (next: string) => {
       setNickname(next);
       void join(next);
-      // The stream-wide name too, so every room and every other app on the
-      // namespace shows it. Best-effort: the room nickname is what was asked
-      // for, and a refusal here must not undo it. Published as the EXECUTOR
-      // (the account, or the node's identity), which is who the namespace
-      // knows — not the device key the contract records.
+      // The stream-wide name too (org member metadata), so every room shows
+      // it. Best-effort: the room nickname is what was asked for, and a
+      // refusal here must not undo it.
       const trimmed = next.trim();
-      if (admin && namespaceId && stream.executorId && trimmed) {
-        void publishMemberName(
-          admin,
-          namespaceId,
-          stream.executorId,
-          trimmed,
-        ).catch(() => {});
+      if (conn && namespaceId && trimmed) {
+        void publishMyName(conn.client, namespaceId, conn.accountId, trimmed)
+          .catch(() => {})
+          .finally(conn.after);
       }
     },
-    [join, admin, namespaceId, stream.executorId],
+    [join, conn, namespaceId],
   );
 
   // Adopt the name this person already set for the stream. A blank nickname
@@ -282,9 +284,8 @@ export default function CallPage() {
   // The roster, with "is this person broadcasting" folded in from the media
   // stream rather than from the contract — the contract knows who JOINED, and
   // only the presence traffic knows who is publishing right now.
-  // `myId`, not `executorId`: the roster is keyed by what the CONTRACT calls
-  // the caller, which on an account is the certified device key rather than
-  // the account the writes go out as. See lib/identity.
+  // Keyed by account: what the contract records as a member and what
+  // presence names as the author.
   const me = stream.myId ?? "me";
   const people = useMemo(
     () =>

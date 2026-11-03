@@ -5,8 +5,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.JsonObject
 
 /** A team: a namespace, the people, and the vaults they share. */
 data class TeamRow(
@@ -34,7 +33,7 @@ data class VaultRef(
     val contextId: String,
 )
 
-/** A readable label, given whatever the relay told us (the web's `displayName`). */
+/** A readable label, given whatever the node told us (the web's `displayName`). */
 fun displayName(
     candidates: List<String?>,
     id: String,
@@ -124,7 +123,10 @@ class TeamModel(
         }
     }
 
-    /** Create a vault everyone in the team can open: an OPEN subgroup with a context whose `init(name)` stores the name. */
+    /**
+     * Create a vault everyone in the team can open: an OPEN subgroup with an app instance in it,
+     * named with `renameVault` right after (on 1.0 `init` takes no arguments).
+     */
     suspend fun create(name: String): VaultRef {
         val trimmed = name.nullIfBlank() ?: throw PassModelException("Give the vault a name.")
         if (applicationId.isEmpty()) throw PassModelException("Still connecting to Calimero. Try again in a moment.")
@@ -133,7 +135,8 @@ class TeamModel(
             return worded {
                 val groupId = backend.createSubgroup(namespaceId, trimmed, isPublic = true)
                 val contextId =
-                    backend.createContext(groupId, applicationId, trimmed, buildJsonObject { put("name", JsonPrimitive(trimmed)) })
+                    backend.createContext(groupId, applicationId, trimmed, JsonObject(emptyMap()))
+                passClient(backend.contract, contextId).renameVault(trimmed)
                 _vaults.value = (_vaults.value + VaultRow(groupId, trimmed, contextId, true)).sortedWith(compareBy(byName) { it.name })
                 ref(groupId, trimmed, contextId)
             }
@@ -252,7 +255,7 @@ class InvitationModel(
         return true
     }
 
-    /** Join. [backend] is read again after [didJoin], which may hand the session the admitting relay. */
+    /** Join. [backend] is read again after [didJoin], then screens re-read. */
     suspend fun accept(
         backend: () -> MeroAppBackend?,
         didJoin: suspend () -> Unit,
@@ -264,8 +267,15 @@ class InvitationModel(
             return
         }
         _stage.value = Stage.Joining(invitation.title)
-        val namespaceId = invitation.namespaceId
-        attempt { current.joinNamespace(namespaceId, invitation.invitation) }.exceptionOrNull()?.let { error ->
+        var namespaceId = invitation.namespaceId
+        val joined = attempt { current.joinNamespace(namespaceId, invitation.invitation) }
+        // A web link carries the token alone: the node names the team it opened.
+        joined
+            .getOrNull()
+            ?.namespaceId
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { namespaceId = it }
+        joined.exceptionOrNull()?.let { error ->
             val text = (error.message ?: error.toString()).lowercase()
             val already = listOf("already a member", "already member", "already joined", "alreadyjoined", "duplicate member")
             if (already.none { it in text }) {
@@ -274,7 +284,14 @@ class InvitationModel(
             }
         }
         didJoin()
-        val teamName = invitation.teamName ?: "Team"
+        val teamName =
+            invitation.teamName
+                ?: attempt { backend()?.listNamespaces() }
+                    .getOrNull()
+                    ?.firstOrNull { it.id == namespaceId }
+                    ?.name
+                    ?.nullIfBlank()
+                ?: "Team"
         val contextId = invitation.contextId
         val vaultId = invitation.vaultId
         val vault =

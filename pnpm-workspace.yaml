@@ -42,8 +42,7 @@ catalog:
   # SIGNED_NAMESPACE_OP_SCHEMA_VERSION 20. 21.x signs at 11 and 22.x signs at 20
   # without the salt or the root proof, so rc.70 refuses their ops. The 22.0.0
   # break (#202) dropped the chosen `groupId` from CreateGroupRequest; no app
-  # sent one. 22.4.0 (#214) added RelayClient.describeCreation/createContext,
-  # which lets delegated-execution drop its own ^22.1.0 pin for `catalog:`.
+  # sent one. 22.4.0 (#214) added RelayClient.describeCreation/createContext.
   # 23.4.2 (mero-js#239) is the first release that signs namespace ops at schema
   # 21, which core 0.11.0-rc.75 requires: on 23.4.0/23.4.1 every account join,
   # create and governance op against an rc.75 relay is refused.
@@ -96,7 +95,7 @@ catalog:
   # merod 0.11.0-rc.90 (core#4605) admits, so it moves with the rc.90 pin and
   # `merod-image`: rc.89 refuses 26 and rc.90 refuses 25. 26.2.2 (mero-js#284)
   # binds a cloud link grant to the browser that began the link and makes the
-  # handoff async; delegated-execution is the only app that links.
+  # handoff async.
   "@calimero-network/mero-js": 26.11.0
   # mero-react 9.6.0 (#80): the connect dialog has Node and Cloud tabs, so
   # every app on ConnectButton signs in with an account as well as a node, and

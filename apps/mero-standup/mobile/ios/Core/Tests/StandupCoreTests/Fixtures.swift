@@ -22,18 +22,18 @@ func update(
     helpers: [JSONValue] = []
 ) -> JSONValue {
     [
-        "day": .string(day), "author": .string(author), "author_name": .string(name), "done": .string(done),
-        "next": .string(next), "blockers": .string(blockers), "created_at": 1, "edited_at": 1,
+        "day": .string(day), "author": .string(author), "authorName": .string(name), "done": .string(done),
+        "next": .string(next), "blockers": .string(blockers), "createdAt": 1, "editedAt": 1,
         "helpers": .array(helpers),
     ]
 }
 
 func decision(_ id: String, title: String, supersededBy: String = "", tags: [String] = []) -> JSONValue {
     [
-        "id": .string(id), "author": .string(ana), "author_name": "Ana", "title": .string(title),
-        "decision": "We do it", "rationale": "Because", "supersedes": "", "superseded_by": .string(supersededBy),
-        "created_at": 1_761_652_800_000_000_000, "tags": .array(tags.map { .string($0) }), "with": [],
-        "from_day": "",
+        "id": .string(id), "author": .string(ana), "authorName": "Ana", "title": .string(title),
+        "decision": "We do it", "rationale": "Because", "supersedes": "", "supersededBy": .string(supersededBy),
+        "createdAt": 1_761_652_800_000_000_000, "tags": .array(tags.map { .string($0) }), "with": [],
+        "fromDay": "",
     ]
 }
 
@@ -58,20 +58,20 @@ final class FakeTeam: @unchecked Sendable {
     func answer(_ call: RecordedContractCall) -> JSONValue? {
         switch call.method {
         case "whoami": return .string(me)
-        case "team_name": return .string(teamName)
-        case "get_name": return .string(names[call.args["account"]?.stringValue ?? ""] ?? "")
+        case "teamName": return .string(teamName)
+        case "getName": return .string(names[call.args["account"]?.stringValue ?? ""] ?? "")
         case "members": return .array(members)
-        case "get_day":
+        case "getDay":
             let day = call.args["day"]?.stringValue ?? ""
             return ["day": .string(day), "updates": .array(days[day] ?? [])]
-        case "get_week":
+        case "getWeek":
             let start = call.args["start"]?.stringValue ?? ""
             return .array(
                 Days.weekDays(start, calendar: utc).map { ["day": .string($0), "updates": .array(days[$0] ?? [])] })
-        case "current_blockers": return .array(blockers)
-        case "list_decisions": return ["items": .array(decisions), "next_cursor": nextCursor]
+        case "currentBlockers": return .array(blockers)
+        case "listDecisions": return ["items": .array(decisions), "nextCursor": nextCursor]
         case "tags": return .array(tags)
-        case "log_decision": return "new-decision"
+        case "logDecision": return "new-decision"
         default: return .null
         }
     }

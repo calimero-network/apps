@@ -1,5 +1,4 @@
 import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
-import { shareableInvitation } from "../lib/inviteLink";
 import { useToast } from "../contexts/ToastContext";
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import { CopyIcon, LinkIcon, UserPlusIcon, XIcon } from "./icons";
@@ -19,19 +18,19 @@ import styles from "./InviteModal.module.css";
  *     was yours to make every single time, and the answer is the link ~always.
  *
  * So: one link, and copying it closes the dialog. It is the only form there
- * is: the links page opens it in the web app or hands it to an installed
- * desktop, so there is no desktop variant or raw code to pick between, and
- * nowhere to paste either.
+ * is: it opens this app, which redeems the org invitation after the passkey
+ * sign-in (lib/streams `captureInvite`).
  */
 export default function InviteModal({
   open,
-  code,
+  link,
   scope,
   hint,
   onClose,
 }: {
   open: boolean;
-  code: string;
+  /** The invitation link (lib/streams `inviteLink`); "" while none is minted. */
+  link: string;
   /** What the invitation grants — "Whole stream · Foo" or "Opens Bar". */
   scope: string;
   hint?: ReactNode;
@@ -44,10 +43,7 @@ export default function InviteModal({
   // `open` drives it, not a conditional render — so it renders many times with
   // no invitation minted yet. `shareableInvitation` THROWS on an empty code,
   // which took the whole page down on load until this returned null instead.
-  const share = useMemo(
-    () => (code.trim() ? shareableInvitation(code) : null),
-    [code],
-  );
+  const share = useMemo(() => (link.trim() ? { link: link.trim() } : null), [link]);
 
   useDialogOpen(dialogRef, open && !!share);
 

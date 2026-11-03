@@ -44,7 +44,7 @@ final class StreamsModelTests: XCTestCase {
     func testLoadsStreamsWithRoomCounts() async {
         let backend = InMemoryAppBackend()
         backend.namespaces = [AppNamespace(id: "ns1", name: "Studio", applicationId: backend.applicationId, memberCount: 3)]
-        backend.subgroups = ["ns1": [AppSubgroup(groupId: "g1", name: "Daily", contextIds: ["c1"])]]
+        _ = try? await backend.createContext(groupId: "ns1", applicationId: "app1", name: "Daily", initArgs: .null)
         let model = StreamsModel(backend: backend)
         await model.load()
         XCTAssertEqual(model.streams, [StreamSummary(id: "ns1", name: "Studio", memberCount: 3, roomCount: 1)])
@@ -80,44 +80,45 @@ final class StreamsModelTests: XCTestCase {
 final class RoomsModelTests: XCTestCase {
     let stream = StreamSummary(id: "ns1", name: "Studio")
 
-    func testCreateRoomMakesAnOpenSubgroupAndItsCall() async throws {
+    func testCreateRoomMakesAnAppInstanceInTheStreamsOrg() async throws {
         let backend = InMemoryAppBackend()
-        let model = RoomsModel(stream: stream, backend: backend, applicationId: "app1", sleep: { _ in })
+        let model = RoomsModel(stream: stream, backend: backend, applicationId: "com.calimero.mero-stream")
         let created = await model.create(name: "Standup")
         let room = try XCTUnwrap(created)
-        XCTAssertNotNil(room.contextId)
-        XCTAssertEqual(backend.publicSubgroups, [room.id])
-        XCTAssertEqual(backend.initArgs[room.contextId!], .object(["name": .string("Standup")]))
+        XCTAssertEqual(room.contextId, room.id)
+        XCTAssertTrue(backend.log.contains("createContext ns1 com.calimero.mero-stream Standup"))
+        XCTAssertTrue(backend.publicSubgroups.isEmpty, "a room is no longer a team")
+        XCTAssertEqual(backend.initArgs[room.id], .object(["name": .string("Standup")]))
         XCTAssertEqual(model.rooms, [room])
     }
 
-    func testLoadListsRoomsAndEnterJoinsTheCall() async throws {
+    func testLoadListsTheOrgsRoomsWithTheirRostersAndEnterNeedsNoJoin() async throws {
         let backend = InMemoryAppBackend()
-        backend.subgroups = ["ns1": [AppSubgroup(groupId: "g1", name: "Daily", contextIds: ["c1"])]]
+        let appId = try await backend.createContext(groupId: "ns1", applicationId: "app1", name: "Daily", initArgs: .null)
         backend.recording.setHandler { call in
-            call.method == "get_members"
-                ? .array([.object(["memberId": "x", "username": "Xia", "joinedAt": 1, "updatedAt": 1])]) : .null
+            call.method == "getMembers"
+                ? .array([.object(["memberId": "x", "username": "Xia", "joinedAt": "1", "updatedAt": "1"])]) : .null
         }
-        let model = RoomsModel(stream: stream, backend: backend, applicationId: "app1", sleep: { _ in })
+        let model = RoomsModel(stream: stream, backend: backend, applicationId: "app1")
         await model.load()
         XCTAssertEqual(model.rooms.map(\.title), ["Daily"])
-        XCTAssertEqual(model.rosters["c1"]?.map(\.username), ["Xia"])
+        XCTAssertEqual(model.rosters[appId]?.map(\.username), ["Xia"])
 
         let entered = await model.enter(model.rooms[0])
-        XCTAssertEqual(entered?.contextId, "c1")
-        XCTAssertTrue(backend.log.contains("joinContext c1"))
+        XCTAssertEqual(entered?.contextId, appId)
+        XCTAssertFalse(backend.log.contains { $0.hasPrefix("joinContext") })
     }
 
     func testRoomInviteCarriesTheRoom() async throws {
         let backend = InMemoryAppBackend()
-        let model = RoomsModel(stream: stream, backend: backend, applicationId: "app1", sleep: { _ in })
-        let room = RoomSummary(id: "g1", namespaceId: "ns1", name: "Daily", contextId: "c1")
+        let model = RoomsModel(stream: stream, backend: backend, applicationId: "app1")
+        let room = RoomSummary(id: "app9", namespaceId: "ns1", name: "Daily")
         let minted = await model.inviteLink(for: room)
         let link = try XCTUnwrap(minted)
         let invitation = try XCTUnwrap(StreamInvitation.parse(link))
         XCTAssertTrue(invitation.opensRoom)
-        XCTAssertEqual(invitation.roomId, "g1")
-        XCTAssertEqual(invitation.contextId, "c1")
+        XCTAssertEqual(invitation.roomId, "app9")
+        XCTAssertEqual(invitation.contextId, "app9")
         XCTAssertEqual(invitation.roomName, "Daily")
         XCTAssertNil(StreamInvitation.parse(link.replacingOccurrences(of: "mero-stream", with: "mero-chat")))
     }
@@ -125,18 +126,18 @@ final class RoomsModelTests: XCTestCase {
 
 @MainActor
 final class CallModelTests: XCTestCase {
-    let room = RoomSummary(id: "g1", namespaceId: "ns1", name: "Daily", contextId: "c1")
+    let room = RoomSummary(id: "c1", namespaceId: "ns1", name: "Daily")
 
     private func make(_ clock: TestClock, channel: FakeChannel = FakeChannel()) -> (CallModel, InMemoryAppBackend, FakeChannel) {
         let backend = InMemoryAppBackend()
         backend.recording.setHandler { call in
             switch call.method {
             case "join":
-                return .object(["memberId": "me-device", "username": "Ana", "joinedAt": 1, "updatedAt": 1])
-            case "get_members":
+                return .object(["memberId": "me-device", "username": "Ana", "joinedAt": "1", "updatedAt": "1"])
+            case "getMembers":
                 return .array([
-                    .object(["memberId": "me-device", "username": "Ana", "joinedAt": 1, "updatedAt": 1]),
-                    .object(["memberId": "bo", "username": "Bo", "joinedAt": 1, "updatedAt": 1]),
+                    .object(["memberId": "me-device", "username": "Ana", "joinedAt": "1", "updatedAt": "1"]),
+                    .object(["memberId": "bo", "username": "", "joinedAt": "1", "updatedAt": "1"]),
                 ])
             default:
                 return .null
@@ -168,6 +169,11 @@ final class CallModelTests: XCTestCase {
         XCTAssertTrue(model.joined)
         let join = backend.recording.calls("join").first
         XCTAssertEqual(join?.args["username"], .string("Ana"))
+        // u64 travels as a decimal string: unix seconds.
+        XCTAssertEqual(join?.args["now"], .string(String(clock.now / 1000)))
+        // Bo set no room name: the stream-wide one (org member metadata) shows.
+        backend.groupMembers = ["ns1": [AppMember(identity: "bo", role: "Member", name: "Bo")]]
+        await model.refreshStreamNames()
         XCTAssertEqual(model.people.map(\.name), ["Ana", "Bo"])
         model.stop()
     }
@@ -231,12 +237,14 @@ final class CallModelTests: XCTestCase {
         XCTAssertTrue(model.takeKeyframeRequest())
         let unit = [UInt8](repeating: 7, count: 20_000)
         model.sendVideo(unit, isKeyframe: true, timestampUs: 33, width: 480, height: 640, codec: "avc1.42c01f")
-        await waitUntil(channel.slicesPublished.count == 2)
+        // 20 kB in 1.0 presence's 4 KiB slices: five fragments.
+        await waitUntil(channel.slicesPublished.count == 5)
+        XCTAssertTrue(channel.slicesPublished.allSatisfy { $0.count <= 4_096 })
         let published = channel.slicesPublished.compactMap(LiveFrames.decodeFragment)
-        XCTAssertEqual(published.count, 2)
+        XCTAssertEqual(published.count, 5)
         let reassembler = FrameReassembler()
-        XCTAssertNil(reassembler.push("x", published[0]))
-        let frame = try XCTUnwrap(reassembler.push("x", published[1]))
+        for fragment in published.dropLast() { XCTAssertNil(reassembler.push("x", fragment)) }
+        let frame = try XCTUnwrap(reassembler.push("x", published[4]))
         XCTAssertEqual(frame.bytes, unit)
         XCTAssertEqual(frame.track, 0)
         XCTAssertEqual(frame.width, 480)

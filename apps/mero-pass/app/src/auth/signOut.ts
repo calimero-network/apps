@@ -1,8 +1,7 @@
 import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useMero } from '@calimero-network/mero-react';
 
-import { clearApplicationIdCache } from '../hooks/useApplicationId';
+import { useCalimero } from '../calimero';
 import { clearCopiedSecretNow } from '../lib/clipboard';
 import { deviceKeeper } from '../lib/deviceKey';
 import { forgetLastVisits } from '../lib/lastVisit';
@@ -18,29 +17,25 @@ import { forgetLastVisits } from '../lib/lastVisit';
  *      opens a vault is left in memory;
  *   2. clear a copied secret from the clipboard now, rather than when its
  *      30-second timer would have;
- *   3. forget which installed application this browser resolved for the node
- *      (the app selection; the next sign-in may be to another node), and the
- *      team and vault it had open last (`lib/lastVisit`), so the next sign-in
- *      is not resumed into somebody else's vault;
- *   4. let mero-react drop the session: its token store, the `mero:*` keys and
- *      any delegated account.
+ *   3. forget the team and vault it had open last (`lib/lastVisit`), so the
+ *      next sign-in is not resumed into somebody else's vault;
+ *   4. end the Calimero session and forget the stored copy.
  *
  * What stays: the light/dark choice and the auto-lock delay belong to the
  * browser, not the account, and the device key itself stays sealed at rest in
  * IndexedDB (locking is what makes it unusable; deleting it would lose every
  * vault only this browser holds).
  */
-export function signOut(logout: () => void): void {
+export function signOut(logout: () => unknown): void {
   deviceKeeper.lock();
   void clearCopiedSecretNow();
-  clearApplicationIdCache();
   forgetLastVisits();
   logout();
 }
 
 /** `signOut`, then back to the front door with nothing in history to return to. */
 export function useSignOut(): () => void {
-  const { logout } = useMero();
+  const { signOut: logout } = useCalimero();
   const navigate = useNavigate();
   return useCallback(() => {
     signOut(logout);
