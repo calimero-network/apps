@@ -553,20 +553,25 @@ export const APPS = {
     ],
   },
   'mero-forum': {
-    e2eDir: 'tests',
-    availability: 'web+desktop',
-    trust: ['Invite-only threads', 'No feed ranking', 'Replicated peer-to-peer'],
+    // A component app (calimero-app-sdk, merod local, CalimeroClient): no
+    // Playwright, so no generated landing spec. docs/COMPONENT-APPS.md.
+    e2eDir: null,
+    availability: 'web',
+    // Passes its own passkey sign-in to the landing page as `onConnect`.
+    ownConnect: true,
+    trust: ['Invite-only threads', 'No feed ranking', 'No passwords'],
     explainer: [
-      'A discussion forum for a group that wants threads without a platform. Posts and comments live in a Calimero context shared by its members, replicated between their own nodes.',
-      'There is no operator to rank your feed, sell against it, or change the rules — the members of the namespace are the whole system. It is the shape a mailing list would have if it were designed now.',
+      'A discussion forum for a group that wants threads without a platform. Posts, comments and votes live in a Calimero app instance shared by the members of its space, and nobody else can read them.',
+      'There is no operator to rank your feed, sell against it, or change the rules \u2014 the members of the space are the whole audience. It is the shape a mailing list would have if it were designed now.',
     ],
     features: [
-      { icon: 'MessageCircle', title: 'Threads and comments', body: 'Post, reply, and follow a conversation, replicated across every member’s node.' },
-      { icon: 'Shield', title: 'Members are the namespace', body: 'Invite-only by construction. There is no public firehose and no lurking stranger.' },
-      { icon: 'CloudX', title: 'No platform in the middle', body: 'Nothing ranks your feed, nothing advertises against it, and no account is required.' },
-      { icon: 'Refresh', title: 'Real-time', body: 'New posts and replies appear as peers sync, without a refresh button.' },
+      { icon: 'MessageCircle', title: 'Threads and comments', body: 'Post, reply, vote and follow a conversation, every change ordered by one log.' },
+      { icon: 'Shield', title: 'Members are the space', body: 'Invite-only by construction. There is no public firehose and no lurking stranger.' },
+      { icon: 'CloudX', title: 'No platform in the middle', body: 'Nothing ranks your feed, nothing advertises against it, and your account is a passkey.' },
+      { icon: 'Refresh', title: 'Real-time', body: 'New posts and replies appear as they are written, without a refresh button.' },
     ],
   },
+
 
   'mero-crm': {
     displayName: 'Mero CRM',
