@@ -1,13 +1,5 @@
 # Mero Sheets: native mobile apps
 
-> **Status: still v1.** The contract and the web frontend moved to the 1.0 runtime (component SDK,
-> app instances, orgs, passkeys; see [`../README.md`](../README.md)). These native apps still go
-> through the v1 Swift and Kotlin SDKs (`MeroAppSession`: relay, contexts, namespace invitations)
-> and a client generated from the v1 ABI, and their pinned SDKs have no 1.0 client to replace that
-> with. Until they do, the apps work only against a v1 deployment of the app. Do not run
-> `scripts/codegen.sh` until then: `../logic/res/abi.json` is now the component ABI, which the
-> committed v1 clients do not match (the script refuses it).
-
 Native iOS (SwiftUI) and Android (Jetpack Compose) clients for Mero Sheets, next to the web
 frontend (`../app`) and the contract (`../logic`, package `com.calimero.mero-sheets`). The two apps
 have the same screens, in the same order, with the same copy, icons (SF Symbols / Material Symbols,
