@@ -12,17 +12,14 @@
 //! No shared task space: a link is stored with the task, and your teammates
 //! keep working in their apps.
 
-use calimero_sdk::abi::AbiType;
-use calimero_sdk::app;
-use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
-use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::types::Error as AppError;
-use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::Mergeable;
+use calimero_app_sdk::prelude::*;
+
+use crate::store::{emit, invalid};
+use serde::{Deserialize, Serialize};
 
 use crate::members::Caller;
 use crate::{
-    headline, lww, now_ms, reply_subject, Event, FeedItem, Hyperfeed, FROM_YOU, MAX_KEY, MAX_TITLE,
+    headline, now_ms, reply_subject, Ev, FeedItem, Hyperfeed, FROM_YOU, MAX_KEY, MAX_TITLE,
     STATUS_WAITING,
 };
 
@@ -38,10 +35,7 @@ pub const LINK_BY: &[&str] = &["agent", "you"];
 /// One link of a task, kept by `<chain>|<subject>`. Taking it off keeps the
 /// row with `removed: true`, so your agent touching the thing again does not
 /// bring it back; only you adding it does.
-#[app::mergeable(id = "hyperfeed::Link")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Link {
     pub chain: String,
     pub subject: String,
@@ -52,17 +46,8 @@ pub struct Link {
     pub updated_at: u64,
 }
 
-impl Mergeable for Link {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        let at = self.updated_at;
-        lww(self, at, other, other.updated_at);
-        Ok(())
-    }
-}
-
 /// What [`crate::Hyperfeed::add_link`] takes.
-#[derive(AbiType, Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct LinkInput {
     /// `<app>:<context>[:<id>]`, as [`crate::subject_key`] makes it.
     pub subject: String,
@@ -74,8 +59,7 @@ pub struct LinkInput {
 }
 
 /// A link as [`crate::Hyperfeed::links`] returns it.
-#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(crate = "calimero_sdk::serde")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LinkView {
     pub chain: String,
     pub subject: String,
@@ -102,7 +86,7 @@ pub fn split_subject(subject: &str) -> app::Result<(String, String, String)> {
     let item = parts.next().unwrap_or("");
     Hyperfeed::check_app(app)?;
     if context.is_empty() || context.contains(char::is_whitespace) {
-        return Err(AppError::msg(
+        return Err(invalid(
             "subject must be <app>:<context>[:<id>], with a context",
         ));
     }
@@ -136,7 +120,7 @@ impl Hyperfeed {
     ) -> app::Result<()> {
         let key = link_key(chain, subject);
         let now = now_ms();
-        let link = match self.links.get(&key)?.map(|l| l.clone()) {
+        let link = match self.links.get(&key)? {
             Some(l) if l.removed && by != "you" => return Ok(()),
             Some(l) if !l.removed && (label.is_empty() || label == l.label) => return Ok(()),
             Some(mut l) => {
@@ -159,7 +143,7 @@ impl Hyperfeed {
                     .count();
                 if on >= MAX_LINKS {
                     return if strict {
-                        Err(AppError::msg(format!(
+                        Err(invalid(format!(
                             "a task has at most {MAX_LINKS} links; take one off first"
                         )))
                     } else {
@@ -178,7 +162,7 @@ impl Hyperfeed {
             }
         };
         self.links.insert(key, link)?;
-        app::emit!(Event::LinksChanged { chain });
+        emit(Ev::LinksChanged { chain })?;
         Ok(())
     }
 
@@ -186,20 +170,20 @@ impl Hyperfeed {
         let caller = self.require_agent()?;
         Self::check_len("chain", &chain, MAX_KEY, true)?;
         if !self.chain_exists(&chain)? {
-            return Err(AppError::msg(format!("no chain {chain}")));
+            return Err(invalid(format!("no chain {chain}")));
         }
         let subject = input.subject.trim().to_owned();
         split_subject(&subject)?;
         Self::check_one_of("by", &input.by, LINK_BY)?;
         if caller != Caller::Owner && input.by == "you" {
-            return Err(AppError::msg(
+            return Err(invalid(
                 "an agent adds links as \"agent\"; only you add them as \"you\"",
             ));
         }
         let label = input.label.trim().replace(['\n', '\r'], " ");
         Self::check_len("label", &label, MAX_TITLE, false)?;
         if input.by != "you" && self.link_removed(&chain, &subject)? {
-            return Err(AppError::msg(
+            return Err(invalid(
                 "you took this link off the task; only you can add it back",
             ));
         }
@@ -216,7 +200,7 @@ impl Hyperfeed {
         self.link_list(&chain)?
             .into_iter()
             .find(|l| l.subject == subject)
-            .ok_or_else(|| AppError::msg("the link was not kept"))
+            .ok_or_else(|| invalid("the link was not kept"))
     }
 
     /// Start a task from the chat in `from`: your message `text` opens a
@@ -231,7 +215,7 @@ impl Hyperfeed {
         self.require_agent()?;
         Self::check_len("from", &from, MAX_KEY, true)?;
         if !self.chain_exists(&from)? {
-            return Err(AppError::msg(format!("no chain {from}")));
+            return Err(invalid(format!("no chain {from}")));
         }
         let title = Self::check_message(&text, title, true)?;
         // The chat takes one more link, or nothing is written.
@@ -241,7 +225,7 @@ impl Hyperfeed {
             .filter(|(_, l)| l.chain == from && !l.removed)
             .count();
         if on >= MAX_LINKS {
-            return Err(AppError::msg(format!(
+            return Err(invalid(format!(
                 "a chat has at most {MAX_LINKS} links; take one off first"
             )));
         }
@@ -285,8 +269,8 @@ impl Hyperfeed {
     pub(crate) fn link_remove(&mut self, chain: String, subject: String) -> app::Result<()> {
         self.require_owner()?;
         let key = link_key(&chain, &subject);
-        let Some(mut link) = self.links.get(&key)?.map(|l| l.clone()) else {
-            return Err(AppError::msg(format!("{subject} is not linked to {chain}")));
+        let Some(mut link) = self.links.get(&key)? else {
+            return Err(invalid(format!("{subject} is not linked to {chain}")));
         };
         if link.removed {
             return Ok(());
@@ -302,7 +286,7 @@ impl Hyperfeed {
         {
             self.subject_chains.remove(&subject)?;
         }
-        app::emit!(Event::LinksChanged { chain: &chain });
+        emit(Ev::LinksChanged { chain: &chain })?;
         Ok(())
     }
 

@@ -1,5 +1,4 @@
 import Foundation
-import ForumGenerated
 import MeroKit
 
 /// One post and its replies: read, reply, vote, edit, delete, moderate.

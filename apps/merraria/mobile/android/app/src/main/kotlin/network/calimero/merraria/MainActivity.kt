@@ -11,8 +11,8 @@ import network.calimero.merraria.ui.MerrariaApp
 
 /**
  * The one activity, landscape (the manifest locks it). Links arrive here, on the launch intent (cold
- * start) or through [onNewIntent], and go to [MerrariaAppViewModel.handleLink]: the wallet's sign-in
- * redirect, or a world invitation (`https://links.calimero.network/com.calimero.merraria/join?invitation=…`).
+ * start) or through [onNewIntent], and go to [MerrariaAppViewModel.handleLink]: the node's consent
+ * page sending the person back (`merraria://consent?request_id=…&result=…`), or a world invitation (`https://links.calimero.network/com.calimero.merraria/join?invitation=…`).
  */
 class MainActivity : ComponentActivity() {
     private val vm: MerrariaAppViewModel by viewModels()
@@ -20,10 +20,23 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        // The passkey that approves the account's step-ups (inviting) while this activity lives.
+        vm.attach(this)
         if (savedInstanceState == null) consume(intent)
         setContent {
-            MerrariaApp(vm = vm, onSignIn = { vm.signIn(this) }, onShare = ::share)
+            MerrariaApp(
+                vm = vm,
+                onSignIn = { vm.signIn(this) },
+                onSignUp = { vm.signUp(this, it) },
+                onShare = ::share,
+                consent = { session, request, confirm -> session.requestConsent(this, request, confirm) },
+            )
         }
+    }
+
+    override fun onDestroy() {
+        vm.attach(null)
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {

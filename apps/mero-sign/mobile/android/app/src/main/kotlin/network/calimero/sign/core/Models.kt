@@ -29,8 +29,6 @@ class InboxModel(
     val opening: StateFlow<String?> = _opening.asStateFlow()
     val notice = MutableStateFlow<String?>(null)
 
-    val hasRelay: Boolean get() = directory.backend.hasRelay
-
     fun entries(bucket: InboxBucket): List<DocumentEntry> = _entries.value.filter { it.bucket == bucket }.sortedByDescending { it.document.uploadedAt }
 
     fun count(bucket: InboxBucket): Int = _entries.value.count { it.bucket == bucket }
@@ -41,8 +39,7 @@ class InboxModel(
             .onFailure {
                 if (_entries.value.isEmpty()) _phase.value = LoadPhase.Failed(SignErrorText.describe(it)) else _phase.value = LoadPhase.Loaded
             }.onSuccess { agreements ->
-                val backend = directory.backend
-                val (joined, notJoined) = agreements.partition { attempt { backend.isMember(it.contextId) }.getOrDefault(false) }
+                val (joined, notJoined) = agreements.partition { directory.isJoined(it.contextId) }
                 val results =
                     coroutineScope {
                         joined.map { agreement -> async { agreement to attempt { directory.snapshot(agreement) } } }.awaitAll()
@@ -110,15 +107,13 @@ class AgreementsModel(
     val opening: StateFlow<String?> = _opening.asStateFlow()
     val notice = MutableStateFlow<String?>(null)
 
-    val hasRelay: Boolean get() = directory.backend.hasRelay
-
     suspend fun load() {
         if (_sections.value.isEmpty()) _phase.value = LoadPhase.Loading
         attempt {
             directory.workspaces().map { workspace ->
                 val rows =
                     attempt { directory.agreements(workspace) }.getOrDefault(emptyList()).map {
-                        AgreementRow(it, attempt { directory.backend.isMember(it.contextId) }.getOrDefault(false))
+                        AgreementRow(it, directory.isJoined(it.contextId))
                     }
                 WorkspaceSection(workspace, rows)
             }

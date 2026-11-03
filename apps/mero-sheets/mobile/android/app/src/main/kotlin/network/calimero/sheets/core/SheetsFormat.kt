@@ -1,6 +1,19 @@
 package network.calimero.sheets.core
 
-import com.calimero.mero.account.NoRelayException
+import com.calimero.mero.AppError
+import com.calimero.mero.CalimeroError
+import com.calimero.mero.ConfirmCancelled
+import com.calimero.mero.ConfirmRequired
+import com.calimero.mero.ConsentStale
+import com.calimero.mero.LoginRequired
+import com.calimero.mero.PasskeyCancelled
+import com.calimero.mero.ReleaseDeadlineError
+import com.calimero.mero.UnavailableError
+import com.calimero.mero.WrongNode
+import com.calimero.mero.app.SignedOutException
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
@@ -14,7 +27,7 @@ object MeroSheets {
     /** The registry package: what workspaces are founded with and invitation links carry. */
     const val PACKAGE_NAME = "com.calimero.mero-sheets"
 
-    /** How often to re-read while the relay's event stream is not available, in ms. */
+    /** How often to re-read while the node's event stream is not available, in ms. */
     const val POLL_INTERVAL_MS = 5_000L
 
     /** The tab a new spreadsheet starts with, as on the web. */
@@ -62,15 +75,46 @@ object SheetsFormat {
     }
 
     /** Plain words for a failure. */
+    @Suppress("CyclomaticComplexMethod")
     fun errorText(error: Throwable): String =
         when (error) {
-            is NoRelayException -> "No relay serves this account yet. Join a workspace from an invitation link to get one."
+            is SignedOutException -> "You're signed out. Sign in again."
+            is PasskeyCancelled, is ConfirmCancelled -> "You cancelled the passkey prompt, so nothing changed."
+            is ConfirmRequired -> "This needs your passkey. Open the app again and retry."
+            is LoginRequired -> "Your session ended. Sign in again."
+            is WrongNode -> "This node can't serve your account right now. Try again."
+            is UnavailableError -> "The cluster is busy (${error.reason}). Try again in a moment."
+            is ReleaseDeadlineError ->
+                "Your workspace has to approve ${if (error.release.isEmpty()) "a node release" else "node release ${error.release}"} first. " +
+                    "Open Workspace, then Approvals."
+            is ConsentStale -> "That approval expired. Start it again."
+            is AppError -> appErrorText(error.appCode, error.fields, error.nodeMessage)
+            is CalimeroError -> error.nodeMessage.ifBlank { error.code }
             is SheetsException -> error.message.orEmpty()
-            is SocketTimeoutException -> "The relay took too long to answer. Try again."
+            is SocketTimeoutException -> "The cluster took too long to answer. Try again."
             is UnknownHostException -> "You are offline. Check your connection and try again."
             is IOException -> error.message?.takeIf { it.isNotBlank() } ?: "You are offline. Check your connection and try again."
             else -> error.message?.takeIf { it.isNotBlank() } ?: "Something went wrong. Try again."
         }
+
+    /**
+     * The contract's refusal (`APP_ERROR {code, fields}`) in plain words: its own `fields.message`
+     * when it gave one, else a sentence for the code.
+     */
+    fun appErrorText(
+        code: String,
+        fields: JsonObject,
+        message: String,
+    ): String {
+        val own = (fields["message"] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull?.trim()
+        if (!own.isNullOrEmpty()) return own
+        return when (code) {
+            "NotFound" -> "That is no longer in the spreadsheet. Pull to refresh."
+            "Forbidden" -> "Your role in this spreadsheet doesn't allow that."
+            "Invalid" -> "That value isn't accepted here."
+            else -> message.ifBlank { code.ifBlank { "The spreadsheet refused that change." } }
+        }
+    }
 }
 
 /** A failure the app words itself. */

@@ -17,7 +17,7 @@ data class CompanySummary(
 data class AudienceSummary(
     val companyId: String,
     val audienceId: String,
-    /** Null while the audience's context has not reached the relay yet. */
+    /** Null while the audience's app instance is not known yet. */
     val contextId: String?,
     val name: String,
     val companyName: String,

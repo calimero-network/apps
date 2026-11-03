@@ -157,17 +157,34 @@ final class InvitationTests: XCTestCase {
         XCTAssertEqual(parsed.scope, "Opens Angels")
     }
 
-    func testReadsTheWebPayloadAndTakesTheNamespaceFromTheSignature() throws {
-        let signed = json(InMemoryAppBackend.invitation(namespaceId: ns))
-        let payload: JSONValue = ["invitation": signed, "kind": "namespace", "groupId": "tampered", "groupAlias": "Acme"]
+    func testReadsTheSDKPayloadAndRefusesPre10Invitations() throws {
+        let payload: JSONValue = [
+            "invitation": "inv_abc", "namespaceId": .string(ns), "kind": "namespace", "name": "Acme",
+        ]
         let text = String(data: try JSONEncoder().encode(payload), encoding: .utf8)!
         let token = try XCTUnwrap(InviteCodec.encode(json: text))
         let parsed = try XCTUnwrap(UpdatesInvitation.parse(token))
         XCTAssertEqual(parsed.namespaceId, ns)
+        XCTAssertEqual(parsed.invitation.token, "inv_abc")
+        XCTAssertEqual(OrgInvitation.decode(token)?.namespaceId, ns, "the SDK reads the same link")
         XCTAssertEqual(parsed.kind, .namespace)
         XCTAssertEqual(parsed.scope, "Whole company · Acme")
         // The older `?invite=` link form.
         XCTAssertNotNil(UpdatesInvitation.parse("https://updates.example.com/spaces?invite=\(token)"))
+        // A 0.x signed group invitation: a 1.0 cluster cannot redeem it.
+        let pre10 = #"{"invitation":{"invitation":{"group_id":[1]},"inviter_signature":"ff"},"kind":"namespace"}"#
+        XCTAssertNil(UpdatesInvitation.parse(json: pre10))
+    }
+
+    func testTheLinkCarriesTheSDKShape() throws {
+        let invitation = UpdatesInvitation(
+            invitation: InMemoryAppBackend.invitation(namespaceId: ns), kind: .audience, namespaceId: ns,
+            audienceId: "grp", contextId: "ctx")
+        let token = try XCTUnwrap(InviteLink.token(fromPasted: try invitation.link()))
+        let value = try JSONDecoder().decode(JSONValue.self, from: Data(try XCTUnwrap(InviteCodec.decode(token: token)).utf8))
+        XCTAssertEqual(value["invitation"]?.stringValue, invitation.invitation.token)
+        XCTAssertEqual(value["namespaceId"]?.stringValue, ns)
+        XCTAssertEqual(value["contextId"]?.stringValue, "ctx")
     }
 
     func testRejectsAnotherAppsLinkAndGarbage() throws {

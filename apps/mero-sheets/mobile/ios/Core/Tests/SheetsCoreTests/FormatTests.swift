@@ -1,3 +1,4 @@
+import MeroKit
 import XCTest
 
 @testable import SheetsCore
@@ -61,5 +62,23 @@ final class FormatTests: XCTestCase {
         XCTAssertEqual(ChartModel.niceTicks(min: 0, max: 9), [0, 2, 4, 6, 8, 10])
         XCTAssertEqual(ChartModel.formatTick(1_500_000), "1.5M")
         XCTAssertEqual(ChartModel.formatTick(1234.567), "1,234.57")
+    }
+}
+
+final class ErrorTextTests: XCTestCase {
+    func testCalimero10ErrorsReadAsWords() {
+        XCTAssertEqual(SheetsFormat.errorText(SignedOutError(method: "get_cells")), "You're signed out. Sign in again.")
+        XCTAssertEqual(SheetsFormat.errorText(LoginRequired("expired")), "Your session ended. Sign in again.")
+        XCTAssertEqual(SheetsFormat.errorText(AppError("Sheet not found")), "Sheet not found")
+        XCTAssertEqual(
+            SheetsFormat.errorText(
+                AppError("app error", details: ["code": "Forbidden", "fields": ["message": "Viewers can't edit"]])),
+            "Viewers can't edit")
+        XCTAssertEqual(
+            SheetsFormat.errorText(AppError("app error", details: ["code": "Forbidden"])),
+            "Your role in this spreadsheet doesn't allow that.")
+        XCTAssertEqual(
+            SheetsFormat.errorText(ConfirmCancelled()), "You cancelled the passkey prompt, so nothing changed.")
+        XCTAssertEqual(SheetsFormat.errorText(ConsentStale("stale")), "That approval expired. Start it again.")
     }
 }

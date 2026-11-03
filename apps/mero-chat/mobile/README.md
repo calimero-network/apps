@@ -5,30 +5,39 @@ contract (`../logic`, package `com.calimero.chat`).
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | [`ios/`](ios/README.md) | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI`, by SPM revision in `ios/project.yml` |
-| Android | [`android/`](android/README.md) | Jetpack Compose + Material3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose`, composite build at the SHA in `android/kotlin-sdk.ref` |
+| iOS | [`ios/`](ios/README.md) | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `v0.5.0`, by SPM version in `ios/project.yml` |
+| Android | [`android/`](android/README.md) | Jetpack Compose + Material3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `v0.2.0` (not on Maven Central), composite build at the SHA in `android/kotlin-sdk.ref` |
 
-## Delegated execution only
+Both pins are SDK releases (kotlin-sdk is not on Maven Central, so Android builds it from source).
+To bump: iOS, the `exactVersion` / `exact:` values; Android, `kotlin-sdk.ref` (the new tag's commit).
 
-Neither app runs or logs into a node. The phone holds a device key that the person's account
-certifies through the wallet/cloud enrolment, and everything else goes through the account's
-relay:
+## On Calimero 1.0
 
-- **Relay:** found with the Cloud manager's `getAccountRelays` after sign-in.
-- **Reads:** the relay's account-scoped `POST /admin-api/contexts/{id}/query`.
-- **Writes:** signed warrants on `POST /admin-api/contexts/{id}/intents`. Nothing calls `/jsonrpc`.
-- **Workspaces:** founded as a namespace through the relay; joined from the web app's invitation
-  links by direct admission (`POST /admin-api/namespaces/{id}/admit`).
-- **Channels:** the web app's model — one subgroup per channel with one context in it, created
-  through context intents.
-- **Live updates:** the relay's event stream, with 5-second polling of the open channel as the
+Both apps sign in to a Calimero 1.0 cluster with a passkey and talk to it over the SDKs' sealed
+channel. They call the component contract the web port (#730) ships in `../logic/res/abi.json`.
+
+- **Sign in:** **Calimero Cloud** takes the cluster's name (its nodes from the node directory) or a
+  node's URL, then the device's passkey or a new account. **Development node** takes a
+  `merod local` URL and trusts its mock attestation, with a software passkey kept per node.
+- **Contract:** `ComponentChatContract` (both platforms) is the one place that maps v1's method
+  names and shapes to the ABI's: camelCase names and fields, `u64`s as decimal strings, as the
+  web's `src/api/meroChat.ts` does. Errors are `422 APP_ERROR` (`Invalid`, `Forbidden`,
+  `NotFound`, `Banned`), shown with the contract's own message.
+- **Workspaces** are orgs. **Channels** are app instances of chat: open ones in the org itself (as
+  the web makes them), private ones in a team that admits by invitation. Accounts are the node's
+  account ids (v1 used base58 `UserId`s).
+- **Invitations** are org invite tokens (minting is a passkey step-up). Links are the SDKs'
+  `OrgInvitation` form; the web app's `?invite=inv_…` links and bare tokens open too.
+- **Approvals:** releases and Mero Chat upgrades that wait for the account. Review shows the
+  request's confirmation code, then opens the node's consent page in the system browser, which
+  returns to `mero-chat://consent`.
+- **Live updates:** the app instance's event stream, with polling of the open channel as the
   fallback.
 
 ## What both apps do
 
 Sign in / out with the session kept in the platform keystore; list, create and join workspaces
-and share invitation links (the web app's `links.calimero.network/com.calimero.chat/join` format,
-plus `calimero://`); list and create channels and join open ones; list and open existing DMs;
+and share invitation links; approvals; list and create channels and join open ones; list and open existing DMs;
 paged message history, send, edit and delete your own messages, reactions, your display name
 (`set_profile`), unread counts and mark-as-read.
 
@@ -41,14 +50,16 @@ README lists them with the reason.
 
 ## Open points
 
-- **Sign-in callback.** Both apps default to `mero-chat://enrol`. The hosted wallet currently
-  returns only to `https://` callbacks, so production sign-in needs that wallet change or a
-  verified https callback (iOS Associated Domains, Android App Links). See each README.
-- **Unreleased SDKs.** Both pin the SDKs' default branches by commit, because the delegated layer
-  is not in a tagged release yet. Bumping a pin is one line (see each README).
+- **Passkeys on a real cluster** need the cluster's relying party as an associated domain (iOS
+  `webcredentials:`) and Digital Asset Links (Android). Neither is set up yet; development nodes
+  use software passkeys and need neither.
+- **Blobs** (attachments, avatars) need a node past core `1.0.0-rc.7` (#730).
+- **Links across clients:** the web app shares `?invite=` links to its own origin and does not
+  read the `links.calimero.network` form the phones share.
 
 ## CI
 
 `.github/workflows/mero-chat-ios.yml` (macOS: XcodeGen, simulator build + unit tests) and
 `.github/workflows/mero-chat-android.yml` (fetch the SDK, ktlint, detekt, unit tests, Android
-lint, `assembleDebug`), each path-filtered to its folder. `ci.yml` does not scope `mobile/`.
+lint, `assembleDebug`), each path-filtered to its folder. `ci.yml` does not scope `mobile/`. The
+live relay suites are gone: relays do not exist on 1.0.

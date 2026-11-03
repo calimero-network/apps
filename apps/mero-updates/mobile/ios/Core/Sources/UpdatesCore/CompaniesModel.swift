@@ -25,7 +25,7 @@ public struct CompanySummary: Identifiable, Hashable, Sendable {
 public struct AudienceSummary: Identifiable, Hashable, Sendable, Codable {
     public let companyId: String
     public let audienceId: String
-    /// Nil while the audience's context has not reached the relay yet.
+    /// Nil while the audience has no app instance yet.
     public let contextId: String?
     public var name: String
     public var companyName: String
@@ -70,7 +70,7 @@ public final class CompaniesModel: ObservableObject {
         self.backend = backend
     }
 
-    /// Whether a relay serves the account. Without one only joining works.
+    /// Whether a node serves the account: always once signed in on Calimero 1.0.
     public var hasRelay: Bool { backend.hasRelay }
 
     public func load() async {

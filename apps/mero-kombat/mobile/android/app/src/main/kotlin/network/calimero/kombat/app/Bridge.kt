@@ -1,19 +1,21 @@
 package network.calimero.kombat.app
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNamingStrategy
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
-import network.calimero.kombat.generated.ArenaView
-import network.calimero.kombat.generated.KombatClient
-import network.calimero.kombat.generated.MatchSummary
+import network.calimero.kombat.contract.ArenaView
+import network.calimero.kombat.contract.KombatClient
+import network.calimero.kombat.contract.MatchSummary
 
 /** The game page's mode: the web engine's `Mode`. (Swift `GameMode`.) */
 enum class GameMode(
@@ -94,7 +96,7 @@ sealed class BridgeOutbound {
         val muted: Boolean,
     ) : BridgeOutbound()
 
-    /** The contract's latest `arena()` read, as the generated client serialises `ArenaView`. */
+    /** The contract's latest `arena()` read, in the page's snake_case wire form (`GameCalls.encode`). */
     data class State(
         val viewJson: String,
     ) : BridgeOutbound()
@@ -158,14 +160,17 @@ sealed class BridgeOutbound {
 }
 
 /**
- * Where the game page's contract calls go: the generated client, method by method. Only what the
+ * Where the game page's contract calls go: the typed client, method by method. Only what the
  * engine calls is open to it (`act`, and the two reads); anything else is refused, so a page can
  * never sit, stand or rematch on the player's behalf. (Swift `GameCalls`.)
  */
 class GameCalls(
     private val client: KombatClient,
 ) {
-    /** The `act` arguments as the web engine sends them (the ABI's snake_case). */
+    /**
+     * The `act` arguments as the web engine sends them (the page protocol's snake_case, `now` a
+     * number); the client sends them on in the contract's camelCase with `now` a decimal string.
+     */
     @Serializable
     @Suppress("ConstructorParameterNaming")
     private data class ActArgs(
@@ -202,7 +207,7 @@ class GameCalls(
                     BridgeOutbound.Result(id, encode(client.arena(a?.now ?: nowMillis())))
                 }
                 kind == BridgeInbound.CallKind.QUERY && method == "history" ->
-                    BridgeOutbound.Result(id, JSON.encodeToString(ListSerializer(MatchSummary.serializer()), client.history()))
+                    BridgeOutbound.Result(id, encode(client.history()))
                 else -> BridgeOutbound.Failure(id, "$method is not open to the game page")
             }
         } catch (e: CancellationException) {
@@ -214,7 +219,18 @@ class GameCalls(
     companion object {
         private val JSON = Json { ignoreUnknownKeys = true }
 
-        /** An `ArenaView` as the page reads it (the ABI's field names). */
-        fun encode(view: ArenaView): String = JSON.encodeToString(ArenaView.serializer(), view)
+        /**
+         * The page protocol predates the component ABI and is unchanged, so its field names stay
+         * snake_case (`match_index`, `my_seat`, `rounds_won`): the contract's camelCase is converted
+         * here, the one place the two meet.
+         */
+        @OptIn(ExperimentalSerializationApi::class)
+        private val PAGE = Json { namingStrategy = JsonNamingStrategy.SnakeCase }
+
+        /** An `ArenaView` as the page reads it. */
+        fun encode(view: ArenaView): String = PAGE.encodeToString(ArenaView.serializer(), view)
+
+        /** The arena's record as the page reads it. */
+        fun encode(history: List<MatchSummary>): String = PAGE.encodeToString(ListSerializer(MatchSummary.serializer()), history)
     }
 }

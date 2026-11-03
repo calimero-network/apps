@@ -11,12 +11,16 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.Logout
@@ -24,11 +28,12 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.ContentPaste
+import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.Drafts
 import androidx.compose.material.icons.outlined.Draw
 import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.HowToReg
 import androidx.compose.material.icons.outlined.Inbox
+import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.AlertDialog
@@ -48,7 +53,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -65,10 +69,13 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import network.calimero.sign.BuildConfig
 import network.calimero.sign.Services
 import network.calimero.sign.SignViewModel
 import network.calimero.sign.core.AgreementRef
@@ -102,21 +109,13 @@ sealed interface Route {
 @Composable
 fun SignApp(
     vm: SignViewModel,
-    onSignIn: () -> Unit,
+    onSignIn: (cluster: String, create: Boolean, name: String) -> Unit,
 ) {
     SignTheme {
-        val backend by vm.session.backend.collectAsState()
-        val revision by vm.session.revision.collectAsState()
-        val restoring by vm.session.isRestoring.collectAsState()
+        val backend by vm.backend.collectAsState()
+        val revision by vm.revision.collectAsState()
+        val restoring by vm.restoring.collectAsState()
         val stage by vm.invitation.stage.collectAsState()
-        val pending by vm.session.pendingInvitation.collectAsState()
-
-        LaunchedEffect(pending) {
-            pending?.let {
-                vm.invitation.open(it)
-                vm.session.dismissPendingInvitation()
-            }
-        }
 
         val current = backend
         Box(Modifier.fillMaxSize().background(Palette.Surface)) {
@@ -162,7 +161,15 @@ private fun SignedIn(
             when (val top = stack.lastOrNull()) {
                 null ->
                     when (tab) {
-                        Tab.INBOX -> InboxScreen(services.inbox, vm, push, openInvitation = { pasting = true })
+                        Tab.INBOX ->
+                            InboxScreen(
+                                services.inbox,
+                                vm,
+                                push,
+                                openInvitation = { pasting = true },
+                                approvals = services.approvals,
+                                refreshApprovals = { services.refreshApprovals() },
+                            )
                         Tab.AGREEMENTS -> AgreementsScreen(services.agreements, push, openInvitation = { pasting = true })
                         Tab.SIGNATURES -> SignaturesScreen(services.signatures, vm)
                     }
@@ -194,25 +201,32 @@ private fun SignedIn(
     if (pasting) PasteInvitationSheet(dismiss = { pasting = false }) { vm.invitation.open(it) }
 }
 
-/** The front door: what Mero Sign is, and one way in. */
+/** The front door: what Mero Sign is, and Calimero sign-in (a Cloud passkey, or a development node). */
 @Composable
 private fun SignInScreen(
     vm: SignViewModel,
     invitedTo: String?,
-    onSignIn: () -> Unit,
+    onSignIn: (cluster: String, create: Boolean, name: String) -> Unit,
 ) {
-    val state by vm.session.client.state
-        .collectAsState()
+    val busy by vm.busy.collectAsState()
+    val error by vm.error.collectAsState()
+    var cluster by remember { mutableStateOf(vm.savedCluster) }
+    var devNode by remember { mutableStateOf(vm.savedDevNode) }
+    var name by remember { mutableStateOf("") }
+    var creating by remember { mutableStateOf(false) }
+    var development by remember { mutableStateOf(false) }
     Column(
         Modifier
             .fillMaxSize()
             .background(Palette.Ground)
             .statusBarsPadding()
             .navigationBarsPadding()
+            .imePadding()
+            .verticalScroll(rememberScrollState())
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.height(32.dp))
         Box(
             Modifier.size(84.dp).clip(RoundedCornerShape(24.dp)).background(Palette.Lime),
             contentAlignment = Alignment.Center,
@@ -221,7 +235,7 @@ private fun SignInScreen(
         Text("Mero Sign", fontFamily = Display, fontWeight = FontWeight.SemiBold, fontSize = 34.sp, color = Palette.Ink)
         Spacer(Modifier.height(10.dp))
         Text(
-            "Review and sign agreements peer to peer. Documents live on the nodes of the people who sign them.",
+            "Review and sign agreements with the people who sign them. Documents live on your workspace's attested Calimero cluster.",
             fontSize = 17.sp,
             color = Palette.Muted,
             textAlign = TextAlign.Center,
@@ -241,18 +255,71 @@ private fun SignInScreen(
                 Text("You're invited to sign “$invitedTo”. Sign in to accept.", fontSize = 15.sp, fontWeight = FontWeight.Medium, color = Palette.Ink)
             }
         }
-        Spacer(Modifier.weight(1f))
-        state.error?.let {
+        Spacer(Modifier.height(28.dp))
+        error?.let {
             Text(it, fontSize = 14.sp, color = Palette.Danger, textAlign = TextAlign.Center)
             Spacer(Modifier.height(12.dp))
         }
-        PrimaryButton("Sign in with Calimero", onSignIn, busy = state.isLoading, icon = Icons.Outlined.HowToReg)
-        if (state.isLoading) {
-            TextButton(onClick = { vm.session.cancelSignIn() }) { Text("Cancel", color = Palette.Ink) }
-        } else {
-            Spacer(Modifier.height(12.dp))
-            Text("You'll approve this device in your Calimero wallet.", fontSize = 13.sp, color = Palette.Muted)
+        if (!development && BuildConfig.CLUSTER.isEmpty()) {
+            SignInField("Cluster", cluster, { cluster = it }, "your-team, or https://node.your-team.calimero.network", KeyboardType.Uri)
         }
+        if (creating || development) SignInField("Your name", name, { name = it }, "Ada", KeyboardType.Text)
+        when {
+            development -> {
+                SignInField("Development node", devNode, { devNode = it }, "http://10.0.2.2:2501", KeyboardType.Uri)
+                PrimaryButton("Connect", { vm.signInDev(devNode, name) }, busy = busy, enabled = devNode.isNotBlank(), icon = Icons.Outlined.Dns)
+            }
+            creating ->
+                PrimaryButton("Create account", { onSignIn(cluster, true, name) }, busy = busy, enabled = cluster.isNotBlank() && name.isNotBlank(), icon = Icons.Outlined.Key)
+            else -> PrimaryButton("Sign in with passkey", { onSignIn(cluster, false, "") }, busy = busy, enabled = cluster.isNotBlank(), icon = Icons.Outlined.Key)
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+            if (!development) {
+                TextButton(onClick = { creating = !creating }, enabled = !busy) {
+                    Text(if (creating) "I have an account" else "Create an account", color = Palette.Ink, fontWeight = FontWeight.Medium)
+                }
+            }
+            TextButton(onClick = {
+                development = !development
+                creating = false
+            }, enabled = !busy) {
+                Text(if (development) "Use Calimero Cloud" else "Development node", color = Palette.Ink, fontWeight = FontWeight.Medium)
+            }
+        }
+        Text(
+            if (development) {
+                "For a node from `merod local`: its mock attestation is trusted and a test passkey is kept on this phone."
+            } else {
+                "Your passkey stays on this device. Calimero verifies the node before anything is sent."
+            },
+            fontSize = 13.sp,
+            color = Palette.Muted,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+/** A labelled single-line field on the sign-in screen. */
+@Composable
+private fun SignInField(
+    label: String,
+    value: String,
+    onChange: (String) -> Unit,
+    placeholder: String,
+    keyboard: KeyboardType,
+) {
+    Column(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(label, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Palette.Muted)
+        OutlinedTextField(
+            value = value,
+            onValueChange = onChange,
+            placeholder = { Text(placeholder, color = Palette.Muted) },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = keyboard, capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 
@@ -269,7 +336,7 @@ private fun InvitationSheet(
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true, confirmValueChange = { !joining })
 
     fun accept() {
-        scope.launch { vm.invitation.accept(directory = { vm.directory() }, didJoin = { vm.session.didJoinNamespace() }) }
+        scope.launch { vm.invitation.accept(directory = { vm.directory() }, didJoin = { vm.didJoin() }) }
     }
     ModalBottomSheet(onDismissRequest = { if (!joining) vm.invitation.reset() }, sheetState = sheet, containerColor = Palette.Surface) {
         Column(
@@ -361,7 +428,7 @@ fun AccountMenu(
     Box {
         IconButton(onClick = { open = true }) { Icon(Icons.Outlined.AccountCircle, contentDescription = "Account", tint = Palette.Ink) }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }, containerColor = Palette.Surface) {
-            vm.session.account?.let { account ->
+            vm.account?.let { account ->
                 Text(
                     "Signed in as ${SignIds.short(account)}",
                     fontSize = 13.sp,
@@ -404,7 +471,7 @@ fun AccountMenu(
             confirmButton = {
                 TextButton(onClick = {
                     confirm = false
-                    scope.launch { vm.session.signOut() }
+                    vm.signOut()
                 }) { Text("Sign out", color = Palette.Danger) }
             },
             dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancel", color = Palette.Ink) } },

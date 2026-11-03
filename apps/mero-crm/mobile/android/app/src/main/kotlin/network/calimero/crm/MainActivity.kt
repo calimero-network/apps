@@ -17,7 +17,9 @@ import network.calimero.crm.ui.Platform
 
 /**
  * The one activity. Links arrive here, on the launch intent (cold start) or through
- * [onNewIntent], and go to the session: the wallet's sign-in redirect, or a workspace invitation.
+ * [onNewIntent], and go to the view model: the node's consent page coming back, or a workspace
+ * invitation. While it lives, its passkey (Credential Manager) approves the account's step-ups
+ * (inviting someone), so it is attached in [onCreate] and detached in [onDestroy].
  */
 class MainActivity : ComponentActivity() {
     private val vm: CrmViewModel by viewModels()
@@ -25,15 +27,21 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        vm.attach(this)
         if (savedInstanceState == null) consume(intent)
         val platform =
             Platform(
-                signIn = { vm.signIn(this) },
+                signIn = { cluster, create, name -> vm.signInCloud(this, cluster, create, name) },
                 share = ::share,
                 copy = ::copy,
                 open = ::openUrl,
             )
         setContent { CrmApp(vm, platform) }
+    }
+
+    override fun onDestroy() {
+        vm.attach(null)
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {
