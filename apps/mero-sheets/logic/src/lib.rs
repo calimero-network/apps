@@ -1,353 +1,189 @@
-//! Spreadsheet service for mero-sheets.
+//! Mero Sheets: a collaborative spreadsheet on core's component SDK
+//! (`calimero-app-sdk`). One app instance is one workbook.
 //!
-//! Provides: project initialisation, sheet management (create/rename/delete/list),
-//! cell editing with basic formula evaluation, live cursor tracking, built-in
-//! function help, and data export.
+//! Sheets, cells with formulas (the `mero-sheets-recalc` engine, shared with
+//! the browser), inserted and deleted rows and columns, named ranges, styles,
+//! conditional formats and validations, charts, comments, notes, attachments,
+//! workbook roles and protected ranges, an activity log, private sheets and
+//! linked workbooks.
+//!
+//! The app runs on its cluster's leader, which applies every write in one
+//! replicated log, so state is plain maps: v1's hand-written `Mergeable`
+//! rules, owner-stamped keys (`Moderated`, `WriteOnce`, `UserStorage`) and
+//! writer sets (`SharedStorage`, `AccessControl`) have nothing left to decide.
+//! What they enforced is checked here, in each method, against `env::caller()`.
+//!
+//! | v1 (`calimero-storage`) | here |
+//! |---|---|
+//! | `Frozen<Founding>` | `founding: Cell<Founding>`, written once in `init` |
+//! | `SharedStorage<LwwRegister<String>>` (the name, owners write) | `projectName: Cell<String>`, owners only |
+//! | `AccessControl` (admins = owners, named roles `viewer` / `commenter`) | `owners: Set<account>` (the app owner at `init`) + `roles: UnorderedMap<account, role>` |
+//! | `UserStorage<MemberData>` | `members: UnorderedMap<account, MemberData>`, written only for the caller |
+//! | `SortedMap` / `UnorderedMap` keyed `"{sheet}\|{row}\|{col}"` (cells, formats, cell meta, styles, axes, sizes) | the same keys in `UnorderedMap<String, _>`; one sheet is `starts_with("{sheet}\|")` |
+//! | `WriteOnce<IndexedMap<String, ActivityData>>`, author = owner stamp | `activity: UnorderedMap<(at, author, nonce), ActivityData>`, read newest first from `since` |
+//! | `Moderated<UnorderedMap<String, CommentData>>` + `resolved` registers | `comments` (with an `author` field) + `resolved: Set<id>` |
+//! | `UnorderedMap<String, RichText<DefaultMarks>>` | `notes: UnorderedMap<String, NoteDoc>` (formatted runs; see `notes.rs`) |
+//! | `SharedStorage<IndexedMap<String, ProtectionData>>` | `protections: UnorderedMap<id, ProtectionData>`, owners only |
+//! | `IndexedMap<String, RuleData>`, `UnorderedMap<String, ChartData>` | the same maps |
+//! | `Moderated<…AttachmentData>`, `Moderated<IndexedMap<…PublicationData>>` | maps with a `created_by` field |
+//! | `#[app::private] Scratch` (node-local) | `privateSheets` / `privateCells`, keyed by the caller's account |
+//!
+//! Who may do what is v1's: the workbook's owners (the app owner first) name
+//! it, change roles and protect ranges; editors change cells and structure;
+//! commenters comment; viewers read. The organization decides who reaches the
+//! workbook at all. Everything a client sees differently from v1 is in
+//! `apps/mero-sheets/README.md`, "What changed in the port".
 
-use calimero_sdk::abi::AbiType;
-use calimero_sdk::app;
-use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
-use calimero_sdk::env;
-use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::types::Error as AppError;
-use calimero_sdk::{AccountId, ContextId};
-use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::rich_text::{Attrs, DeltaOp};
-use calimero_storage::collections::{
-    AccessControl, DefaultMarks, Frozen, IndexedMap, LwwRegister, Mergeable, Moderated, Op,
-    RichText, SharedStorage, SortedMap, Span, UnorderedMap, UserStorage, WriteOnce,
-};
-use calimero_storage::env as storage_env;
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
+
+use calimero_app_sdk::prelude::*;
+use calimero_app_sdk::StorageError;
+use serde::{Deserialize, Serialize};
 
 use mero_sheets_recalc::{formula, layout, recalc, rules};
-use mero_sheets_types::{generate_id, validate_label, validate_sheet_name, Error};
+use mero_sheets_types::{generate_id, validate_label, validate_sheet_name};
 
-pub mod events;
-use events::Event;
+mod notes;
+pub use notes::{NoteChange, NoteDoc, Span};
 
 // ---------------------------------------------------------------------------
-// Internal data structs (Borsh-only — stored in collections)
+// Limits
 // ---------------------------------------------------------------------------
 
-/// What a workbook is from the moment it exists: its id and creation time,
-/// fixed in `init` and changeable by nobody (`founding`).
-#[derive(Debug, Clone, Default, BorshSerialize, BorshDeserialize, AbiType)]
-#[borsh(crate = "calimero_sdk::borsh")]
+/// The most ops one `applyCellOps` (or style, size, axis) call accepts.
+pub const MAX_OPS_PER_APPLY: usize = 100;
+/// The largest attachment recorded, in bytes.
+pub const MAX_ATTACHMENT_BYTES: u64 = 50 * 1024 * 1024;
+/// The most cells one link carries, and the longest value.
+pub const MAX_LINK_CELLS: u32 = 2000;
+const MAX_LINK_VALUE_CHARS: usize = 256;
+/// The most rows and columns a sheet can freeze.
+pub const MAX_FROZEN: u32 = 20;
+/// Row and column sizes, in pixels.
+pub const MIN_AXIS_SIZE: u32 = 16;
+pub const MAX_AXIS_SIZE: u32 = 1000;
+/// How many cell changes one activity entry keeps.
+pub const MAX_LOGGED_CHANGES: usize = 50;
+/// The longest comment accepted, in characters.
+pub const MAX_COMMENT_CHARS: usize = 2000;
+/// The longest cell note accepted, in characters.
+pub const MAX_NOTE_CHARS: usize = 5000;
+/// How much of a note `getNotedCells` returns as its preview.
+const NOTE_PREVIEW_CHARS: usize = 200;
+/// The most activity entries one `getActivity` returns.
+const MAX_ACTIVITY: u32 = 500;
+/// Rows read per storage page.
+const PAGE: u32 = 1000;
+
+// ---------------------------------------------------------------------------
+// Stored values
+// ---------------------------------------------------------------------------
+
+/// What a workbook is from the moment it exists: its id and creation time.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Founding {
     pub id: String,
     pub created_at: u64,
 }
 
-/// A sheet tab stored in the shared UnorderedMap.
-#[app::mergeable(id = "mero_sheets::SheetData")]
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
-#[borsh(crate = "calimero_sdk::borsh")]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SheetData {
     pub id: String,
     pub name: String,
     /// Tab ordering hint (lower = further left).
     pub position: u32,
     pub created_at: u64,
-    /// Timestamp of the last rename — used for LWW name merge.
     pub updated_at: u64,
 }
 
-impl Mergeable for SheetData {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        // created_at: keep the earlier value.
-        if other.created_at < self.created_at {
-            self.created_at = other.created_at;
-        }
-        // name: newer rename wins; tie-break lexicographically.
-        if other.updated_at > self.updated_at
-            || (other.updated_at == self.updated_at && other.name > self.name)
-        {
-            self.name = other.name.clone();
-            self.updated_at = other.updated_at;
-        }
-        // position: lower index wins on conflict.
-        if other.position < self.position {
-            self.position = other.position;
-        }
-        Ok(())
-    }
-}
-
-/// A cell's value, stored in the shared UnorderedMap under
-/// `"{sheet_id}|{row_id}|{col_id}"`. Its format is a separate field
-/// (`formats`), so a value edit and a format edit never overwrite each other.
-#[app::mergeable(id = "mero_sheets::CellData")]
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
-#[borsh(crate = "calimero_sdk::borsh")]
+/// A cell's raw value, keyed `"{sheet_id}|{row_id}|{col_id}"`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CellData {
-    /// Mirrors the map key for ABI convenience.
     pub id: String,
     pub sheet_id: String,
-    /// Raw user input (may be a formula like `=SUM(A1:A5)`).
     pub raw_value: String,
     pub updated_at: u64,
 }
 
-impl Mergeable for CellData {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        // LWW: newer update wins, tie-broken on the value so an exact clock
-        // tie still converges.
-        if (other.updated_at, &other.raw_value) > (self.updated_at, &self.raw_value) {
-            self.raw_value = other.raw_value.clone();
-            self.updated_at = other.updated_at;
-        }
-        Ok(())
-    }
-}
-
-/// A collaborator's chosen nickname, in their account's own slot (`members`),
-/// so only they can set it.
-///
-/// This exists because the only thing the app could previously put next to a
-/// cursor was a raw 64-hex device key, which answers no question anyone has.
-/// A nickname has to live HERE and not in `localStorage`: localStorage is
-/// per-browser, so a name kept there is visible to exactly the one person who
-/// does not need it.
-#[app::mergeable(id = "mero_sheets::MemberData")]
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
-#[borsh(crate = "calimero_sdk::borsh")]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MemberData {
     pub nickname: String,
-    /// First time this member announced themselves. Earliest wins on merge — a
-    /// later rename must not look like a later arrival.
     pub joined_at: u64,
     pub updated_at: u64,
 }
 
-impl Mergeable for MemberData {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        // Newer rename wins; an exact clock tie breaks on the nickname itself so
-        // two devices of one account cannot settle on different strings. The
-        // tie-break spans the assigned field, not a field beside it — an
-        // equal-clock compare that ignores the value is how a write gets
-        // silently discarded.
-        if (other.updated_at, &other.nickname) > (self.updated_at, &self.nickname) {
-            self.nickname = other.nickname.clone();
-            self.updated_at = other.updated_at;
-        }
-        // Arrival is a minimum, not a last-write: whichever replica saw this
-        // member first is the truth, regardless of which rename landed last.
-        if other.joined_at < self.joined_at {
-            self.joined_at = other.joined_at;
-        }
-        Ok(())
-    }
-}
-
 /// A protected range: only owners and the listed editors may change its cells.
-/// Corners are row and column ids, so the range follows its cells as rows and
-/// columns move; all four empty protects the whole sheet. Keyed by id.
-#[app::mergeable(id = "mero_sheets::ProtectionData")]
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType, app::Indexed)]
-#[borsh(crate = "calimero_sdk::borsh")]
+/// All four corners empty protects the whole sheet.
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ProtectionData {
-    #[index]
     pub sheet_id: String,
     pub top_row_id: String,
     pub left_col_id: String,
     pub bottom_row_id: String,
     pub right_col_id: String,
     pub description: String,
-    /// Member ids allowed to edit it besides owners.
+    /// Member ids allowed to edit it besides owners. Bounded by the
+    /// workbook's members (`protectRange` keeps the first 1,000).
     pub editors: Vec<String>,
     pub created_by: String,
-    pub deleted: bool,
     pub updated_at: u64,
 }
 
-impl Mergeable for ProtectionData {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        // Description, editors and deleted change together, last writer wins;
-        // the range is fixed when it is made.
-        if (
-            other.updated_at,
-            other.deleted,
-            &other.editors,
-            &other.description,
-        ) > (
-            self.updated_at,
-            self.deleted,
-            &self.editors,
-            &self.description,
-        ) {
-            self.description = other.description.clone();
-            self.editors = other.editors.clone();
-            self.deleted = other.deleted;
-            self.updated_at = other.updated_at;
-        }
-        Ok(())
-    }
-}
-
-/// A resized row or column. Keyed `"{sheet_id}|r|{id}"` or `"{sheet_id}|c|{id}"`.
-#[app::mergeable(id = "mero_sheets::SizeData")]
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
-#[borsh(crate = "calimero_sdk::borsh")]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SizeData {
-    /// Pixels.
     pub size: u32,
     pub updated_at: u64,
 }
 
-impl Mergeable for SizeData {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        if (other.updated_at, other.size) > (self.updated_at, self.size) {
-            self.size = other.size;
-            self.updated_at = other.updated_at;
-        }
-        Ok(())
-    }
-}
-
-/// How a sheet is shown: its frozen rows and columns. Keyed by sheet id.
-#[app::mergeable(id = "mero_sheets::SheetViewData")]
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
-#[borsh(crate = "calimero_sdk::borsh")]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SheetViewData {
     pub frozen_rows: u32,
     pub frozen_cols: u32,
     pub updated_at: u64,
 }
 
-impl Mergeable for SheetViewData {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        if (other.updated_at, other.frozen_rows, other.frozen_cols)
-            > (self.updated_at, self.frozen_rows, self.frozen_cols)
-        {
-            self.frozen_rows = other.frozen_rows;
-            self.frozen_cols = other.frozen_cols;
-            self.updated_at = other.updated_at;
-        }
-        Ok(())
-    }
-}
-
-/// A cell's style, one last-writer-wins value per field, so one person
-/// making a cell bold and another colouring it both keep their change.
-/// Keyed like `cells`.
-#[app::mergeable(id = "mero_sheets::StyleData")]
-#[derive(Debug, Clone, Default, BorshSerialize, BorshDeserialize, AbiType)]
-#[borsh(crate = "calimero_sdk::borsh")]
+/// A cell's style: one value per field (at most the eight style fields).
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct StyleData {
-    /// One entry per field, sorted by field. An empty value is a cleared field.
-    pub fields: Vec<StyleField>,
+    pub fields: BTreeMap<String, String>,
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
-#[borsh(crate = "calimero_sdk::borsh")]
-pub struct StyleField {
-    pub field: String,
-    pub value: String,
-    pub updated_at: u64,
-}
-
-impl StyleData {
-    /// Set a field, keeping the newer of this and what is there.
-    fn set(&mut self, theirs: StyleField) {
-        match self.fields.binary_search_by(|f| f.field.cmp(&theirs.field)) {
-            Ok(i) => {
-                let mine = &self.fields[i];
-                if (theirs.updated_at, &theirs.value) > (mine.updated_at, &mine.value) {
-                    self.fields[i] = theirs;
-                }
-            }
-            Err(i) => self.fields.insert(i, theirs),
-        }
-    }
-}
-
-impl Mergeable for StyleData {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        for theirs in &other.fields {
-            self.set(theirs.clone());
-        }
-        Ok(())
-    }
-}
-
-/// A conditional format, colour scale or validation over a range, anchored on
-/// corner row and column ids like a protected range. Keyed by id.
-#[app::mergeable(id = "mero_sheets::RuleData")]
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType, app::Indexed)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[index(by_sheet_kind(sheet_id, kind))]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RuleData {
     pub sheet_id: String,
     pub top_row_id: String,
     pub left_col_id: String,
     pub bottom_row_id: String,
     pub right_col_id: String,
-    /// `format`, `scale` or `validate`.
     pub kind: String,
     pub condition: String,
+    /// At most 2,000 characters in all (`check_rule`).
     pub args: Vec<String>,
-    /// The style a matching `format` rule applies, as (field, value) pairs.
-    pub style: Vec<StylePair>,
-    /// A `validate` rule that refuses values instead of marking them.
+    /// Style fields: at most the eight there are.
+    pub style: BTreeMap<String, String>,
     pub strict: bool,
-    /// Who an `alert` rule tells (member ids).
+    /// Members an alert tells; each must be a member (`check_rule`).
     pub recipients: Vec<String>,
     pub created_by: String,
-    pub deleted: bool,
     pub updated_at: u64,
 }
 
-impl Mergeable for RuleData {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        // A rule changes as a whole; last writer wins.
-        if (other.updated_at, other.deleted) > (self.updated_at, self.deleted) {
-            *self = other.clone();
-        }
-        Ok(())
-    }
-}
-
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
-#[borsh(crate = "calimero_sdk::borsh")]
-pub struct StylePair {
-    pub field: String,
-    pub value: String,
-}
-
-/// A chart of a range, anchored on corner row and column ids. Keyed by id.
-#[app::mergeable(id = "mero_sheets::ChartData")]
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
-#[borsh(crate = "calimero_sdk::borsh")]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ChartData {
     pub sheet_id: String,
     pub top_row_id: String,
     pub left_col_id: String,
     pub bottom_row_id: String,
     pub right_col_id: String,
-    /// `bar` or `line`.
     pub kind: String,
     pub title: String,
     pub created_by: String,
-    pub deleted: bool,
     pub updated_at: u64,
 }
 
-impl Mergeable for ChartData {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        if (other.updated_at, other.deleted) > (self.updated_at, self.deleted) {
-            *self = other.clone();
-        }
-        Ok(())
-    }
-}
-
-/// A file attached to a cell. The bytes are a blob in the node's blob store,
-/// announced to this context so members' nodes can fetch it; this is its
-/// record. Keyed by id, owned by whoever attached it (`attachments`).
-#[app::mergeable(id = "mero_sheets::AttachmentData")]
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
-#[borsh(crate = "calimero_sdk::borsh")]
+/// A file attached to a cell. The bytes are a blob in the node's per-app
+/// blob store (uploaded by the client); this is its record.
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AttachmentData {
     pub sheet_id: String,
     pub row_id: String,
@@ -356,49 +192,28 @@ pub struct AttachmentData {
     pub name: String,
     pub size: u64,
     pub mime: String,
+    pub created_by: String,
     pub created_at: u64,
 }
 
-impl Mergeable for AttachmentData {
-    fn merge(&mut self, _other: &Self) -> Result<(), MergeError> {
-        // Written once by its owner and never changed; removal is the only edit.
-        Ok(())
-    }
-}
-
-/// The largest attachment recorded, in bytes.
-pub const MAX_ATTACHMENT_BYTES: u64 = 50 * 1024 * 1024;
-
-/// A range this workbook pushes to another workbook in the workspace (the
-/// source side of a link). Keyed by id, owned by whoever linked it.
-#[app::mergeable(id = "mero_sheets::PublicationData")]
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType, app::Indexed)]
-#[borsh(crate = "calimero_sdk::borsh")]
+/// A range this workbook links to another workbook (the source side).
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PublicationData {
-    #[index]
     pub sheet_id: String,
     pub top_row_id: String,
     pub left_col_id: String,
     pub bottom_row_id: String,
     pub right_col_id: String,
-    /// The receiving workbook's context id, hex.
+    /// The receiving workbook (an app instance id).
     pub target_context: String,
-    /// What the linked sheet is called there.
     pub name: String,
+    pub created_by: String,
 }
 
-impl Mergeable for PublicationData {
-    fn merge(&mut self, _other: &Self) -> Result<(), MergeError> {
-        // Written once by its owner and never changed; removal stops the link.
-        Ok(())
-    }
-}
-
-/// A range pushed here from another workbook (the receiving side of a link),
-/// shown as a read-only sheet whose id is the key. Values are row-major.
-#[app::mergeable(id = "mero_sheets::LinkedData")]
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
-#[borsh(crate = "calimero_sdk::borsh")]
+/// A range pushed here from another workbook (the receiving side), shown as a
+/// read-only sheet whose id is the key. Values are row-major, at most
+/// [`MAX_LINK_CELLS`] of at most 256 characters.
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LinkedData {
     pub source_context: String,
     pub source_name: String,
@@ -406,6 +221,8 @@ pub struct LinkedData {
     pub rows: u32,
     pub cols: u32,
     pub values: Vec<String>,
+    /// The account that delivered the last push.
+    pub pushed_by: String,
     pub created_at: u64,
     /// Removed here: later pushes are ignored.
     pub blocked: bool,
@@ -414,75 +231,2258 @@ pub struct LinkedData {
     pub updated_at: u64,
 }
 
-impl Mergeable for LinkedData {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        let blocked = self.blocked || other.blocked;
-        if (other.updated_at, other.deleted) > (self.updated_at, self.deleted) {
-            *self = other.clone();
-        }
-        // Once removed here, a link stays removed.
-        self.blocked = blocked;
-        Ok(())
-    }
-}
-
-/// Which cells of an alert rule met its condition when last checked, so it
-/// tells only about cells that start meeting it. Keyed by rule id.
-#[app::mergeable(id = "mero_sheets::AlertState")]
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
-#[borsh(crate = "calimero_sdk::borsh")]
+/// The cells of an alert rule that met its condition when last checked.
+/// Bounded by the rule's range.
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AlertState {
     pub cells: Vec<String>,
     pub updated_at: u64,
 }
 
-impl Mergeable for AlertState {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        if (other.updated_at, &other.cells) > (self.updated_at, &self.cells) {
-            *self = other.clone();
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AxisData {
+    /// Fractional position: decimal digits, compared as strings.
+    pub pos: String,
+    pub deleted: bool,
+    pub updated_at: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FormatData {
+    /// Empty means Automatic.
+    pub format: String,
+    pub updated_at: u64,
+}
+
+/// Keyed by the upper-case name; an empty target means deleted.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct NamedRangeData {
+    pub name: String,
+    pub target: String,
+    pub updated_at: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CellMeta {
+    pub author: String,
+    pub at: u64,
+}
+
+/// One cell's change within an activity entry.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CellChange {
+    pub row_id: String,
+    pub col_id: String,
+    pub before_raw: String,
+    pub before_format: String,
+    pub after_raw: String,
+    pub after_format: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ActivityData {
+    pub sheet_id: String,
+    pub kind: String,
+    pub summary: String,
+    pub count: u32,
+    /// At most [`MAX_LOGGED_CHANGES`].
+    pub changes: Vec<CellChange>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CommentData {
+    pub sheet_id: String,
+    pub row_id: String,
+    pub col_id: String,
+    pub author: String,
+    pub text: String,
+    /// Members named with `@nickname`: bounded by the text's length.
+    pub mentions: Vec<String>,
+    pub parent: String,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ScratchSheet {
+    pub name: String,
+    pub position: u32,
+    pub created_at: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ScratchCell {
+    pub raw_value: String,
+    pub format: String,
+    pub updated_at: u64,
+}
+
+// ---------------------------------------------------------------------------
+// Arguments and results (v1's field names; u64 as decimal strings)
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Debug, Serialize)]
+pub struct Project {
+    pub id: String,
+    /// Empty until `initProject` runs.
+    pub name: String,
+    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    pub created_at: u64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct Member {
+    /// The member's account (`whoami`).
+    pub id: String,
+    pub nickname: String,
+    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    pub joined_at: u64,
+    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    pub updated_at: u64,
+    /// The same value as `id`.
+    pub account: String,
+    /// `owner`, `editor`, `commenter` or `viewer`.
+    pub role: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct StyleOp {
+    pub row_id: String,
+    pub col_id: String,
+    pub field: String,
+    pub value: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct CellStyle {
+    pub sheet_id: String,
+    pub row_id: String,
+    pub col_id: String,
+    pub style: BTreeMap<String, String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RuleInput {
+    pub sheet_id: String,
+    pub top_row_id: String,
+    pub left_col_id: String,
+    pub bottom_row_id: String,
+    pub right_col_id: String,
+    /// `format`, `scale`, `validate` or `alert`.
+    pub kind: String,
+    pub condition: String,
+    pub args: Vec<String>,
+    pub style: BTreeMap<String, String>,
+    pub strict: bool,
+    pub recipients: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ChartInput {
+    pub sheet_id: String,
+    pub top_row_id: String,
+    pub left_col_id: String,
+    pub bottom_row_id: String,
+    pub right_col_id: String,
+    pub kind: String,
+    pub title: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct Chart {
+    pub id: String,
+    pub chart: ChartInput,
+    pub created_by: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct Attachment {
+    pub id: String,
+    pub sheet_id: String,
+    pub row_id: String,
+    pub col_id: String,
+    pub blob_id: String,
+    pub name: String,
+    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    pub size: u64,
+    pub mime: String,
+    pub created_by: String,
+    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    pub created_at: u64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct Publication {
+    pub id: String,
+    pub sheet_id: String,
+    pub top_row_id: String,
+    pub left_col_id: String,
+    pub bottom_row_id: String,
+    pub right_col_id: String,
+    pub target_context: String,
+    pub name: String,
+    pub created_by: String,
+}
+
+/// What a link pushes to its workbook: the client delivers it there with
+/// `receiveLink` (core rc.7 has no cross-app call for components).
+#[derive(Clone, Debug, Serialize)]
+pub struct LinkPush {
+    pub publication_id: String,
+    pub target_context: String,
+    pub name: String,
+    pub source_name: String,
+    pub rows: u32,
+    pub cols: u32,
+    pub values: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct Link {
+    pub id: String,
+    pub source_context: String,
+    pub source_name: String,
+    pub name: String,
+    pub rows: u32,
+    pub cols: u32,
+    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    pub updated_at: u64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct Rule {
+    pub id: String,
+    pub rule: RuleInput,
+    pub created_by: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AxisSize {
+    /// `row` or `col`.
+    pub axis: String,
+    pub id: String,
+    pub size: u32,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct SheetView {
+    pub sheet_id: String,
+    pub frozen_rows: u32,
+    pub frozen_cols: u32,
+    pub sizes: Vec<AxisSize>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct Protection {
+    pub id: String,
+    pub sheet_id: String,
+    pub top_row_id: String,
+    pub left_col_id: String,
+    pub bottom_row_id: String,
+    pub right_col_id: String,
+    pub description: String,
+    pub editors: Vec<String>,
+    pub created_by: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct Sheet {
+    pub id: String,
+    pub name: String,
+    pub position: u32,
+    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    pub created_at: u64,
+    /// For a linked sheet, the name of the workbook it comes from.
+    pub linked_from: String,
+}
+
+/// A cell, by row and column id.
+#[derive(Clone, Debug, Serialize)]
+pub struct Cell {
+    pub id: String,
+    pub sheet_id: String,
+    pub row_id: String,
+    pub col_id: String,
+    pub raw_value: String,
+    pub computed_value: String,
+    pub format: String,
+    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    pub updated_at: u64,
+    pub last_editor: String,
+    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    pub last_edited_at: u64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct NotedCell {
+    pub sheet_id: String,
+    pub row_id: String,
+    pub col_id: String,
+    pub preview: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct Comment {
+    pub id: String,
+    pub sheet_id: String,
+    pub row_id: String,
+    pub col_id: String,
+    pub author: String,
+    pub text: String,
+    pub mentions: Vec<String>,
+    pub parent: String,
+    pub resolved: bool,
+    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    pub created_at: u64,
+    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    pub updated_at: u64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ActivityEntry {
+    pub id: String,
+    pub author: String,
+    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    pub at: u64,
+    pub sheet_id: String,
+    pub kind: String,
+    pub summary: String,
+    pub count: u32,
+    pub changes: Vec<CellChange>,
+}
+
+/// v1's adjacently tagged `{ name, payload }` form.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "name", content = "payload")]
+pub enum CellOp {
+    Set {
+        row_id: String,
+        col_id: String,
+        raw_value: String,
+    },
+    Format {
+        row_id: String,
+        col_id: String,
+        format: String,
+    },
+    Clear {
+        row_id: String,
+        col_id: String,
+    },
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "name", content = "payload")]
+pub enum AxisOp {
+    InsertRow { id: String, pos: String },
+    InsertCol { id: String, pos: String },
+    DeleteRow { id: String },
+    DeleteCol { id: String },
+    RestoreRow { id: String },
+    RestoreCol { id: String },
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct AxisEntryView {
+    pub id: String,
+    pub pos: String,
+    pub deleted: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct SheetLayout {
+    pub sheet_id: String,
+    pub rows: Vec<AxisEntryView>,
+    pub cols: Vec<AxisEntryView>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct NamedRange {
+    pub name: String,
+    pub target: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct FunctionDef {
+    pub name: String,
+    pub category: String,
+    pub syntax: String,
+    pub description: String,
+    pub example: String,
+}
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+
+/// The workbook.
+#[app::state(version = 1)]
+pub struct Spreadsheet {
+    /// The workbook's id and creation time, fixed in `init`.
+    founding: calimero_app_sdk::Cell<Founding>,
+    /// The workbook's name, set once by `initProject`. Owners only.
+    project_name: calimero_app_sdk::Cell<String>,
+    /// The workbook's owners: the app's owner at `init`, then whoever an
+    /// owner makes one.
+    owners: Set<String>,
+    /// `viewer` or `commenter` by account; anyone else (not an owner) edits.
+    roles: UnorderedMap<String, String>,
+    sheets: UnorderedMap<String, SheetData>,
+    /// Keyed `"{sheet_id}|{row_id}|{col_id}"`, so one sheet is one prefix.
+    cells: UnorderedMap<String, CellData>,
+    /// Chosen nicknames by account, each written only by its account.
+    members: UnorderedMap<String, MemberData>,
+    /// Keyed `"{sheet_id}|r|{id}"` / `"{sheet_id}|c|{id}"`.
+    axes: UnorderedMap<String, AxisData>,
+    formats: UnorderedMap<String, FormatData>,
+    names: UnorderedMap<String, NamedRangeData>,
+    cell_meta: UnorderedMap<String, CellMeta>,
+    /// `(at, author, nonce)`: written once, read newest first.
+    activity: UnorderedMap<(u64, String, String), ActivityData>,
+    comments: UnorderedMap<String, CommentData>,
+    /// Comment ids whose thread is resolved.
+    resolved: Set<String>,
+    notes: UnorderedMap<String, NoteDoc>,
+    protections: UnorderedMap<String, ProtectionData>,
+    sizes: UnorderedMap<String, SizeData>,
+    views: UnorderedMap<String, SheetViewData>,
+    styles: UnorderedMap<String, StyleData>,
+    rules: UnorderedMap<String, RuleData>,
+    charts: UnorderedMap<String, ChartData>,
+    attachments: UnorderedMap<String, AttachmentData>,
+    publications: UnorderedMap<String, PublicationData>,
+    linked: UnorderedMap<String, LinkedData>,
+    alert_state: UnorderedMap<String, AlertState>,
+    /// Each account's private sheets, `(account, sheet id)`.
+    private_sheets: UnorderedMap<(String, String), ScratchSheet>,
+    /// Their cells, `(account, "{sheet}|{row}|{col}")`.
+    private_cells: UnorderedMap<(String, String), ScratchCell>,
+}
+
+/// A typed failure: `422 APP_ERROR` with `{ code, fields: { message } }`.
+#[app::error]
+pub enum Error {
+    /// No such sheet, cell, comment, member, rule, ….
+    NotFound { message: String },
+    /// The arguments break a rule of the workbook.
+    Invalid { message: String },
+    /// The caller's role (or authorship) does not allow it.
+    Forbidden { message: String },
+}
+
+/// A change, emitted to everyone the workbook reaches.
+#[app::event]
+pub enum Event {
+    ProjectInitialized {
+        id: String,
+        name: String,
+    },
+    SheetCreated {
+        id: String,
+        name: String,
+    },
+    SheetRenamed {
+        id: String,
+        name: String,
+    },
+    SheetDeleted {
+        id: String,
+    },
+    CellUpdated {
+        id: String,
+        sheet_id: String,
+    },
+    CellCleared {
+        sheet_id: String,
+        row_id: String,
+        col_id: String,
+    },
+    CellsChanged {
+        sheet_id: String,
+        count: u32,
+    },
+    AxesChanged {
+        sheet_id: String,
+        count: u32,
+    },
+    NamedRangesChanged {
+        name: String,
+    },
+    CommentAdded {
+        id: String,
+        sheet_id: String,
+        author: String,
+        mentions: Vec<String>,
+    },
+    CommentChanged {
+        id: String,
+        sheet_id: String,
+    },
+    RolesChanged {
+        member_id: String,
+    },
+    ProtectionsChanged {
+        sheet_id: String,
+    },
+    PublicationsChanged {
+        sheet_id: String,
+    },
+    LinkedChanged {
+        sheet_id: String,
+    },
+    AlertTriggered {
+        rule_id: String,
+        sheet_id: String,
+        recipients: Vec<String>,
+        message: String,
+    },
+    AttachmentsChanged {
+        sheet_id: String,
+    },
+    ChartsChanged {
+        sheet_id: String,
+    },
+    StylesChanged {
+        sheet_id: String,
+    },
+    RulesChanged {
+        sheet_id: String,
+    },
+    SheetViewChanged {
+        sheet_id: String,
+    },
+    NoteChanged {
+        sheet_id: String,
+        row_id: String,
+        col_id: String,
+    },
+    MemberJoined {
+        id: String,
+        nickname: String,
+    },
+    MemberRenamed {
+        id: String,
+        nickname: String,
+    },
+}
+
+fn not_found(message: impl Into<String>) -> AppError {
+    Error::NotFound {
+        message: message.into(),
+    }
+    .into()
+}
+
+fn invalid(message: impl Into<String>) -> AppError {
+    Error::Invalid {
+        message: message.into(),
+    }
+    .into()
+}
+
+fn forbidden(message: impl Into<String>) -> AppError {
+    Error::Forbidden {
+        message: message.into(),
+    }
+    .into()
+}
+
+/// The shared crate's validation errors as this app's.
+fn types_err(e: mero_sheets_types::Error) -> AppError {
+    match e {
+        mero_sheets_types::Error::NotFound(m) => not_found(m),
+        mero_sheets_types::Error::Invalid(m) => invalid(m),
+        mero_sheets_types::Error::Forbidden(m) => forbidden(m),
+    }
+}
+
+fn emit(event: Event) -> app::Result<()> {
+    env::emit(event, Audience::All)
+}
+
+#[app::logic]
+#[allow(clippy::too_many_arguments)]
+impl Spreadsheet {
+    /// The empty workbook; the app's owner is its first owner.
+    #[app::init]
+    pub fn init() -> app::Result<Self> {
+        let mut s = Self::load();
+        let now = now();
+        s.founding.set(&Founding {
+            id: generate_id("proj", now, &nonce()),
+            created_at: now,
+        })?;
+        let _ = s.owners.insert(&env::app_owner())?;
+        Ok(s)
+    }
+
+    // ---- Project ----
+
+    /// Name the workbook, once. Owners only. Returns the workbook's id.
+    pub fn init_project(&mut self, name: String) -> app::Result<String> {
+        self.require_owner("name the workbook")?;
+        if !self.project_name.get()?.unwrap_or_default().is_empty() {
+            return Err(invalid("project already initialised"));
+        }
+        validate_label(&name).map_err(types_err)?;
+        self.project_name.set(&name)?;
+        let id = self.founding()?.id;
+        emit(Event::ProjectInitialized {
+            id: id.clone(),
+            name,
+        })?;
+        Ok(id)
+    }
+
+    /// The project's id, name (empty until `initProject`) and creation time.
+    #[app::view]
+    pub fn get_project(&self) -> app::Result<Project> {
+        let founding = self.founding()?;
+        Ok(Project {
+            id: founding.id,
+            name: self.project_name.get()?.unwrap_or_default(),
+            created_at: founding.created_at,
+        })
+    }
+
+    // ---- Members ----
+
+    /// The caller's account: the id its roster row, comments and cursor carry.
+    #[app::view]
+    pub fn whoami(&self) -> app::Result<String> {
+        me()
+    }
+
+    /// Announce the caller under a nickname, or rename it. Idempotent;
+    /// `joined_at` is kept across calls.
+    pub fn join(&mut self, nickname: String) -> app::Result<()> {
+        let nickname = nickname.trim().to_string();
+        validate_label(&nickname).map_err(types_err)?;
+        let me = me()?;
+        let now = now();
+        let existing = self.members.get(&me)?;
+        let joined_at = existing.as_ref().map_or(now, |m| m.joined_at);
+        let _ = self.members.insert(
+            &me,
+            &MemberData {
+                nickname: nickname.clone(),
+                joined_at,
+                updated_at: now,
+            },
+        )?;
+        emit(if existing.is_none() {
+            Event::MemberJoined { id: me, nickname }
+        } else {
+            Event::MemberRenamed { id: me, nickname }
+        })
+    }
+
+    /// Everyone who has announced themselves, oldest arrival first.
+    #[app::view]
+    pub fn get_members(&self) -> app::Result<Vec<Member>> {
+        let mut members = Vec::new();
+        for (id, d) in all(|o| self.members.page(o))? {
+            members.push(Member {
+                account: id.clone(),
+                role: self.role_of(&id)?.as_str().into(),
+                id,
+                nickname: d.nickname,
+                joined_at: d.joined_at,
+                updated_at: d.updated_at,
+            });
+        }
+        members.sort_by(|a, b| a.joined_at.cmp(&b.joined_at).then(a.id.cmp(&b.id)));
+        Ok(members)
+    }
+
+    // ---- Sheets ----
+
+    /// Add a sheet; a taken name gets ` (2)`, ` (3)`, …. Editors. Returns its id.
+    pub fn create_sheet(&mut self, name: String) -> app::Result<String> {
+        self.require_role(Role::Editor)?;
+        validate_sheet_name(&name).map_err(types_err)?;
+        let name = self.unique_sheet_name(&name, None)?;
+        let now = now();
+        let id = generate_id("sheet", now, &nonce());
+        let position = u32::try_from(self.sheets.len()?).unwrap_or(u32::MAX);
+        let _ = self.sheets.insert(
+            &id,
+            &SheetData {
+                id: id.clone(),
+                name: name.clone(),
+                position,
+                created_at: now,
+                updated_at: now,
+            },
+        )?;
+        self.log(&id, "sheet", format!("added sheet {name}"), 0, Vec::new())?;
+        emit(Event::SheetCreated {
+            id: id.clone(),
+            name,
+        })?;
+        Ok(id)
+    }
+
+    /// Rename a sheet; a name another sheet has is refused.
+    pub fn rename_sheet(&mut self, sheet_id: String, new_name: String) -> app::Result<()> {
+        self.require_sheet_writable(&sheet_id)?;
+        validate_sheet_name(&new_name).map_err(types_err)?;
+        let collides = all(|o| self.sheets.page(o))?
+            .into_iter()
+            .any(|(id, d)| id != sheet_id && d.name == new_name);
+        if collides {
+            return Err(invalid(format!(
+                "a sheet named '{new_name}' already exists"
+            )));
+        }
+        let mut sheet = self
+            .sheets
+            .get(&sheet_id)?
+            .ok_or_else(|| not_found(sheet_id.clone()))?;
+        sheet.name = new_name.clone();
+        sheet.updated_at = now();
+        let _ = self.sheets.insert(&sheet_id, &sheet)?;
+        self.log(
+            &sheet_id,
+            "sheet",
+            format!("renamed a sheet to {new_name}"),
+            0,
+            Vec::new(),
+        )?;
+        emit(Event::SheetRenamed {
+            id: sheet_id,
+            name: new_name,
+        })
+    }
+
+    /// Delete a sheet. Its cells stay stored and are never read again.
+    pub fn delete_sheet(&mut self, sheet_id: String) -> app::Result<()> {
+        self.require_sheet_writable(&sheet_id)?;
+        let Some(removed) = self.sheets.remove(&sheet_id)? else {
+            return Err(not_found(sheet_id));
+        };
+        self.log(
+            &sheet_id,
+            "sheet",
+            format!("deleted sheet {}", removed.name),
+            0,
+            Vec::new(),
+        )?;
+        emit(Event::SheetDeleted { id: sheet_id })
+    }
+
+    /// The workbook's sheets in tab order, then the linked ones.
+    #[app::view]
+    pub fn list_sheets(&self) -> app::Result<Vec<Sheet>> {
+        let mut out: Vec<Sheet> = all(|o| self.sheets.page(o))?
+            .into_iter()
+            .map(|(_, d)| Sheet {
+                id: d.id,
+                name: d.name,
+                position: d.position,
+                created_at: d.created_at,
+                linked_from: String::new(),
+            })
+            .collect();
+        out.sort_by_key(|s| (s.position, s.created_at));
+        let base = u32::try_from(out.len()).unwrap_or(u32::MAX);
+        let mut linked: Vec<Sheet> = self
+            .live_links()?
+            .into_iter()
+            .map(|(id, l)| Sheet {
+                id,
+                name: l.name,
+                position: 0,
+                created_at: l.created_at,
+                linked_from: l.source_name,
+            })
+            .collect();
+        linked.sort_by(|a, b| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)));
+        for (i, s) in linked.iter_mut().enumerate() {
+            s.position = base.saturating_add(u32::try_from(i).unwrap_or(u32::MAX));
+        }
+        out.extend(linked);
+        Ok(out)
+    }
+
+    // ---- Cells ----
+
+    /// Set a cell's raw value (a literal or a formula). Returns the cell's key.
+    pub fn set_cell(
+        &mut self,
+        sheet_id: String,
+        row_id: String,
+        col_id: String,
+        raw_value: String,
+    ) -> app::Result<String> {
+        let key = cell_key(&sheet_id, &row_id, &col_id);
+        self.edit_cells(
+            &sheet_id,
+            vec![CellOp::Set {
+                row_id,
+                col_id,
+                raw_value,
+            }],
+        )?;
+        emit(Event::CellUpdated {
+            id: key.clone(),
+            sheet_id,
+        })?;
+        Ok(key)
+    }
+
+    /// Set only a cell's display format ("" = Automatic), keeping its value.
+    pub fn set_cell_format(
+        &mut self,
+        sheet_id: String,
+        row_id: String,
+        col_id: String,
+        format: String,
+    ) -> app::Result<String> {
+        let key = cell_key(&sheet_id, &row_id, &col_id);
+        self.edit_cells(
+            &sheet_id,
+            vec![CellOp::Format {
+                row_id,
+                col_id,
+                format,
+            }],
+        )?;
+        emit(Event::CellUpdated {
+            id: key.clone(),
+            sheet_id,
+        })?;
+        Ok(key)
+    }
+
+    /// Blank a cell's value and format.
+    pub fn clear_cell(
+        &mut self,
+        sheet_id: String,
+        row_id: String,
+        col_id: String,
+    ) -> app::Result<()> {
+        self.edit_cells(
+            &sheet_id,
+            vec![CellOp::Clear {
+                row_id: row_id.clone(),
+                col_id: col_id.clone(),
+            }],
+        )?;
+        emit(Event::CellCleared {
+            sheet_id,
+            row_id,
+            col_id,
+        })
+    }
+
+    /// Apply up to [`MAX_OPS_PER_APPLY`] cell ops to one sheet in one call,
+    /// with one `CellsChanged` event.
+    pub fn apply_cell_ops(&mut self, sheet_id: String, ops: Vec<CellOp>) -> app::Result<()> {
+        if ops.len() > MAX_OPS_PER_APPLY {
+            return Err(invalid(format!(
+                "{} cell ops in one apply_cell_ops; the limit is {MAX_OPS_PER_APPLY}, split the batch",
+                ops.len()
+            )));
+        }
+        let count = u32::try_from(ops.len()).unwrap_or(u32::MAX);
+        self.edit_cells(&sheet_id, ops)?;
+        emit(Event::CellsChanged { sheet_id, count })
+    }
+
+    /// Activity since `since` (nanoseconds), newest first, at most `limit`
+    /// (capped at 500) entries.
+    #[app::view]
+    pub fn get_activity(&self, since: u64, limit: u32) -> app::Result<Vec<ActivityEntry>> {
+        let limit = limit.min(MAX_ACTIVITY);
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+        let page = self.activity.page(
+            FindOpts::default()
+                .from(vec![since.to_key_part()])
+                .reverse()
+                .limit(limit),
+        )?;
+        Ok(page
+            .items
+            .into_iter()
+            .map(|((at, author, nonce), d)| ActivityEntry {
+                id: format!("{at:020}|{author}|{nonce}"),
+                author,
+                at,
+                sheet_id: d.sheet_id,
+                kind: d.kind,
+                summary: d.summary,
+                count: d.count,
+                changes: d.changes,
+            })
+            .collect())
+    }
+
+    // ---- Comments ----
+
+    /// Comment on a cell, or reply to a comment (`parent`). Commenters and up.
+    /// `@nickname` mentions a member. Returns the comment id.
+    pub fn add_comment(
+        &mut self,
+        sheet_id: String,
+        row_id: String,
+        col_id: String,
+        text: String,
+        parent: String,
+    ) -> app::Result<String> {
+        self.require_role(Role::Commenter)?;
+        self.require_sheet(&sheet_id)?;
+        check_id(&row_id)?;
+        check_id(&col_id)?;
+        let text = check_comment(text)?;
+        if !parent.is_empty() && !self.comments.contains(&parent)? {
+            return Err(not_found(parent));
+        }
+        let author = me()?;
+        let now = now();
+        let id = generate_id("comment", now, &nonce());
+        let mentions = self.mentions_in(&text)?;
+        let _ = self.comments.insert(
+            &id,
+            &CommentData {
+                sheet_id: sheet_id.clone(),
+                row_id,
+                col_id,
+                author: author.clone(),
+                text,
+                mentions: mentions.clone(),
+                parent: parent.clone(),
+                created_at: now,
+                updated_at: now,
+            },
+        )?;
+        let summary = if parent.is_empty() {
+            "commented"
+        } else {
+            "replied to a comment"
+        };
+        self.log(&sheet_id, "comment", summary.to_string(), 0, Vec::new())?;
+        emit(Event::CommentAdded {
+            id: id.clone(),
+            sheet_id,
+            author,
+            mentions,
+        })?;
+        Ok(id)
+    }
+
+    /// Change a comment's text. Only its author may.
+    pub fn edit_comment(&mut self, id: String, text: String) -> app::Result<()> {
+        let text = check_comment(text)?;
+        let mentions = self.mentions_in(&text)?;
+        let mut c = self
+            .comments
+            .get(&id)?
+            .ok_or_else(|| not_found(id.clone()))?;
+        if c.author != me()? {
+            return Err(forbidden("only its author can change a comment"));
+        }
+        c.text = text;
+        c.mentions = mentions;
+        c.updated_at = now();
+        let _ = self.comments.insert(&id, &c)?;
+        emit(Event::CommentChanged {
+            id,
+            sheet_id: c.sheet_id,
+        })
+    }
+
+    /// Resolve or reopen a comment thread. Commenters and up.
+    pub fn set_comment_resolved(&mut self, id: String, resolved: bool) -> app::Result<()> {
+        self.require_role(Role::Commenter)?;
+        let c = self
+            .comments
+            .get(&id)?
+            .ok_or_else(|| not_found(id.clone()))?;
+        let _ = if resolved {
+            self.resolved.insert(&id)?
+        } else {
+            self.resolved.remove(&id)?
+        };
+        emit(Event::CommentChanged {
+            id,
+            sheet_id: c.sheet_id,
+        })
+    }
+
+    /// Delete a comment. Its author or an owner may.
+    pub fn delete_comment(&mut self, id: String) -> app::Result<()> {
+        let c = self
+            .comments
+            .get(&id)?
+            .ok_or_else(|| not_found(id.clone()))?;
+        let me = me()?;
+        if c.author != me && !self.owners.contains(&me)? {
+            return Err(forbidden(
+                "only its author or an owner can delete a comment",
+            ));
+        }
+        let _ = self.comments.remove(&id)?;
+        let _ = self.resolved.remove(&id)?;
+        emit(Event::CommentChanged {
+            id,
+            sheet_id: c.sheet_id,
+        })
+    }
+
+    /// Every comment, oldest first.
+    #[app::view]
+    pub fn get_comments(&self) -> app::Result<Vec<Comment>> {
+        let mut out = Vec::new();
+        for (id, c) in all(|o| self.comments.page(o))? {
+            out.push(Comment {
+                resolved: self.resolved.contains(&id)?,
+                id,
+                sheet_id: c.sheet_id,
+                row_id: c.row_id,
+                col_id: c.col_id,
+                author: c.author,
+                text: c.text,
+                mentions: c.mentions,
+                parent: c.parent,
+                created_at: c.created_at,
+                updated_at: c.updated_at,
+            });
+        }
+        out.sort_by(|a, b| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)));
+        Ok(out)
+    }
+
+    // ---- Notes ----
+
+    /// Edit a cell's note with one Quill-shaped delta (text and formatting).
+    /// Formats: `bold`, `italic`, `underline`, `strike`, `code`, `highlight`,
+    /// `link`. At most [`MAX_NOTE_CHARS`] characters.
+    pub fn edit_note(
+        &mut self,
+        sheet_id: String,
+        row_id: String,
+        col_id: String,
+        ops: Vec<NoteChange>,
+    ) -> app::Result<()> {
+        self.require_sheet(&sheet_id)?;
+        check_id(&row_id)?;
+        check_id(&col_id)?;
+        self.require_cells_writable(&sheet_id, [(row_id.as_str(), col_id.as_str())])?;
+        let key = cell_key(&sheet_id, &row_id, &col_id);
+        let mut note = self.notes.get(&key)?.unwrap_or_default();
+        let (added, removed) = ops.iter().fold((0usize, 0usize), |(a, r), op| match op {
+            NoteChange::Insert { insert, .. } => (a + insert.chars().count(), r),
+            NoteChange::Delete { delete } => (a, r.saturating_add(*delete)),
+            NoteChange::Retain { .. } => (a, r),
+        });
+        if (note.len() + added).saturating_sub(removed) > MAX_NOTE_CHARS {
+            return Err(invalid(format!(
+                "a note is at most {MAX_NOTE_CHARS} characters"
+            )));
+        }
+        note.apply(&ops)
+            .map_err(|e| invalid(format!("note edit: {e}")))?;
+        if note.runs.is_empty() {
+            let _ = self.notes.remove(&key)?;
+        } else {
+            let _ = self.notes.insert(&key, &note)?;
+        }
+        emit(Event::NoteChanged {
+            sheet_id,
+            row_id,
+            col_id,
+        })
+    }
+
+    /// A cell's note as formatted runs; empty when it has none.
+    #[app::view]
+    pub fn get_note(
+        &self,
+        sheet_id: String,
+        row_id: String,
+        col_id: String,
+    ) -> app::Result<Vec<Span>> {
+        Ok(self
+            .notes
+            .get(&cell_key(&sheet_id, &row_id, &col_id))?
+            .map(|n| n.runs)
+            .unwrap_or_default())
+    }
+
+    /// Every cell with a non-empty note, with the start of its text.
+    #[app::view]
+    pub fn get_noted_cells(&self) -> app::Result<Vec<NotedCell>> {
+        let mut out = Vec::new();
+        for (key, note) in all(|o| self.notes.page(o))? {
+            let text = note.text();
+            let Some((sheet_id, row_id, col_id)) = split_key(&key) else {
+                continue;
+            };
+            if text.trim().is_empty() {
+                continue;
+            }
+            out.push(NotedCell {
+                sheet_id: sheet_id.to_string(),
+                row_id: row_id.to_string(),
+                col_id: col_id.to_string(),
+                preview: text.chars().take(NOTE_PREVIEW_CHARS).collect(),
+            });
+        }
+        Ok(out)
+    }
+
+    // ---- Roles and protected ranges ----
+
+    /// Set a member's workbook role: `owner`, `editor`, `commenter` or
+    /// `viewer`. Owners only; the last owner stays one.
+    pub fn set_role(&mut self, member_id: String, role: String) -> app::Result<()> {
+        let Some(new_role) = Role::parse(&role) else {
+            return Err(invalid(format!(
+                "{role:?} is not a role: owner, editor, commenter or viewer"
+            )));
+        };
+        self.require_owner("change roles")?;
+        let Some(member) = self.members.get(&member_id)? else {
+            return Err(not_found(member_id));
+        };
+        let was_owner = self.owners.contains(&member_id)?;
+        if was_owner && new_role != Role::Owner && self.owners.len()? == 1 {
+            return Err(invalid(
+                "a workbook keeps at least one owner: make someone else an owner first",
+            ));
+        }
+        match new_role {
+            Role::Viewer | Role::Commenter => {
+                let _ = self
+                    .roles
+                    .insert(&member_id, &new_role.as_str().to_string())?;
+            }
+            Role::Editor | Role::Owner => {
+                let _ = self.roles.remove(&member_id)?;
+            }
+        }
+        let _ = if new_role == Role::Owner {
+            self.owners.insert(&member_id)?
+        } else {
+            self.owners.remove(&member_id)?
+        };
+        self.log(
+            "",
+            "role",
+            format!(
+                "made {} {} {}",
+                member.nickname,
+                article(new_role),
+                new_role.as_str()
+            ),
+            0,
+            Vec::new(),
+        )?;
+        emit(Event::RolesChanged { member_id })
+    }
+
+    /// Protect a range (corner row and column ids; all four empty for the
+    /// whole sheet): only owners and `editors` may then change its cells.
+    /// Owners only. Returns the protection id.
+    pub fn protect_range(
+        &mut self,
+        sheet_id: String,
+        top_row_id: String,
+        left_col_id: String,
+        bottom_row_id: String,
+        right_col_id: String,
+        description: String,
+        editors: Vec<String>,
+    ) -> app::Result<String> {
+        self.require_owner("manage protected ranges")?;
+        self.require_sheet(&sheet_id)?;
+        let corners = [&top_row_id, &left_col_id, &bottom_row_id, &right_col_id];
+        if !corners.iter().all(|c| c.is_empty()) {
+            for c in corners {
+                check_id(c)?;
+            }
+        }
+        let description = check_description(description)?;
+        let editors = check_editors(editors)?;
+        let now = now();
+        let id = generate_id("prot", now, &nonce());
+        let _ = self.protections.insert(
+            &id,
+            &ProtectionData {
+                sheet_id: sheet_id.clone(),
+                top_row_id,
+                left_col_id,
+                bottom_row_id,
+                right_col_id,
+                description,
+                editors,
+                created_by: me()?,
+                updated_at: now,
+            },
+        )?;
+        self.log(
+            &sheet_id,
+            "protect",
+            "protected a range".into(),
+            0,
+            Vec::new(),
+        )?;
+        emit(Event::ProtectionsChanged { sheet_id })?;
+        Ok(id)
+    }
+
+    /// Change who may edit a protected range, and its description. Owners only.
+    pub fn update_protection(
+        &mut self,
+        id: String,
+        description: String,
+        editors: Vec<String>,
+    ) -> app::Result<()> {
+        self.require_owner("manage protected ranges")?;
+        let description = check_description(description)?;
+        let editors = check_editors(editors)?;
+        let mut p = self
+            .protections
+            .get(&id)?
+            .ok_or_else(|| not_found(id.clone()))?;
+        p.description = description;
+        p.editors = editors;
+        p.updated_at = now();
+        let _ = self.protections.insert(&id, &p)?;
+        self.log(
+            &p.sheet_id,
+            "protect",
+            "changed a protected range".into(),
+            0,
+            Vec::new(),
+        )?;
+        emit(Event::ProtectionsChanged {
+            sheet_id: p.sheet_id,
+        })
+    }
+
+    /// Remove a protection. Owners only.
+    pub fn remove_protection(&mut self, id: String) -> app::Result<()> {
+        self.require_owner("manage protected ranges")?;
+        let Some(p) = self.protections.remove(&id)? else {
+            return Err(not_found(id));
+        };
+        self.log(
+            &p.sheet_id,
+            "protect",
+            "removed a protected range".into(),
+            0,
+            Vec::new(),
+        )?;
+        emit(Event::ProtectionsChanged {
+            sheet_id: p.sheet_id,
+        })
+    }
+
+    /// Every protected range.
+    #[app::view]
+    pub fn get_protections(&self) -> app::Result<Vec<Protection>> {
+        Ok(all(|o| self.protections.page(o))?
+            .into_iter()
+            .map(|(id, p)| Protection {
+                id,
+                sheet_id: p.sheet_id,
+                top_row_id: p.top_row_id,
+                left_col_id: p.left_col_id,
+                bottom_row_id: p.bottom_row_id,
+                right_col_id: p.right_col_id,
+                description: p.description,
+                editors: p.editors,
+                created_by: p.created_by,
+            })
+            .collect())
+    }
+
+    // ---- Styles and rules ----
+
+    /// Change cells' styles: bold, italic, underline, strike, wrap (`1`),
+    /// color and fill (`#rrggbb`), align (`left`, `center`, `right`); an
+    /// empty value clears the field.
+    pub fn apply_style_ops(&mut self, sheet_id: String, ops: Vec<StyleOp>) -> app::Result<()> {
+        if ops.len() > MAX_OPS_PER_APPLY {
+            return Err(invalid(format!(
+                "{} style ops in one call; the limit is {MAX_OPS_PER_APPLY}",
+                ops.len()
+            )));
+        }
+        self.require_sheet(&sheet_id)?;
+        for op in &ops {
+            check_id(&op.row_id)?;
+            check_id(&op.col_id)?;
+            check_style_field(&op.field, &op.value)?;
+        }
+        self.require_cells_writable(
+            &sheet_id,
+            ops.iter().map(|o| (o.row_id.as_str(), o.col_id.as_str())),
+        )?;
+        let mut by_cell: BTreeMap<String, Vec<StyleOp>> = BTreeMap::new();
+        for op in ops {
+            by_cell
+                .entry(cell_key(&sheet_id, &op.row_id, &op.col_id))
+                .or_default()
+                .push(op);
+        }
+        let count = u32::try_from(by_cell.len()).unwrap_or(u32::MAX);
+        for (key, cell_ops) in by_cell {
+            let mut style = self.styles.get(&key)?.unwrap_or_default();
+            for op in cell_ops {
+                if op.value.is_empty() {
+                    let _ = style.fields.remove(&op.field);
+                } else {
+                    let _ = style.fields.insert(op.field, op.value);
+                }
+            }
+            let _ = if style.fields.is_empty() {
+                self.styles.remove(&key)?
+            } else {
+                self.styles.insert(&key, &style)?
+            };
+        }
+        self.log(
+            &sheet_id,
+            "style",
+            format!(
+                "formatted {count} cell{}",
+                if count == 1 { "" } else { "s" }
+            ),
+            count,
+            Vec::new(),
+        )?;
+        emit(Event::StylesChanged { sheet_id })
+    }
+
+    /// Every styled cell, with its set fields.
+    #[app::view]
+    pub fn get_styles(&self) -> app::Result<Vec<CellStyle>> {
+        Ok(all(|o| self.styles.page(o))?
+            .into_iter()
+            .filter_map(|(key, s)| {
+                let (sheet_id, row_id, col_id) = split_key(&key)?;
+                (!s.fields.is_empty()).then(|| CellStyle {
+                    sheet_id: sheet_id.to_string(),
+                    row_id: row_id.to_string(),
+                    col_id: col_id.to_string(),
+                    style: s.fields,
+                })
+            })
+            .collect())
+    }
+
+    /// Add a conditional format, colour scale, validation or alert. Editors.
+    pub fn add_rule(&mut self, rule: RuleInput) -> app::Result<String> {
+        self.require_role(Role::Editor)?;
+        self.check_rule(&rule)?;
+        let now = now();
+        let id = generate_id("rule", now, &nonce());
+        let sheet_id = rule.sheet_id.clone();
+        self.put_rule(&id, rule, now)?;
+        self.log(&sheet_id, "rule", "added a rule".into(), 0, Vec::new())?;
+        emit(Event::RulesChanged { sheet_id })?;
+        Ok(id)
+    }
+
+    /// Replace a rule. Editors.
+    pub fn update_rule(&mut self, id: String, rule: RuleInput) -> app::Result<()> {
+        self.require_role(Role::Editor)?;
+        self.check_rule(&rule)?;
+        let _ = self.live_rule(&id)?;
+        let sheet_id = rule.sheet_id.clone();
+        self.put_rule(&id, rule, now())?;
+        self.log(&sheet_id, "rule", "changed a rule".into(), 0, Vec::new())?;
+        emit(Event::RulesChanged { sheet_id })
+    }
+
+    /// Remove a rule. Editors.
+    pub fn remove_rule(&mut self, id: String) -> app::Result<()> {
+        self.require_role(Role::Editor)?;
+        let rule = self.live_rule(&id)?;
+        let _ = self.rules.remove(&id)?;
+        let _ = self.alert_state.remove(&id)?;
+        self.log(
+            &rule.sheet_id,
+            "rule",
+            "removed a rule".into(),
+            0,
+            Vec::new(),
+        )?;
+        emit(Event::RulesChanged {
+            sheet_id: rule.sheet_id,
+        })
+    }
+
+    /// Every rule.
+    #[app::view]
+    pub fn get_rules(&self) -> app::Result<Vec<Rule>> {
+        Ok(all(|o| self.rules.page(o))?
+            .into_iter()
+            .map(|(id, r)| Rule {
+                id,
+                created_by: r.created_by,
+                rule: RuleInput {
+                    sheet_id: r.sheet_id,
+                    top_row_id: r.top_row_id,
+                    left_col_id: r.left_col_id,
+                    bottom_row_id: r.bottom_row_id,
+                    right_col_id: r.right_col_id,
+                    kind: r.kind,
+                    condition: r.condition,
+                    args: r.args,
+                    style: r.style,
+                    strict: r.strict,
+                    recipients: r.recipients,
+                },
+            })
+            .collect())
+    }
+
+    // ---- Linked workbooks ----
+    //
+    // v1 pushed a range's values to another workbook with a cross-context
+    // call the node ran after the commit. Core 1.0.0-rc.7 has no cross-app
+    // call for components, so the client delivers: it reads `pushPublication`
+    // here and calls `receiveLink` on the target workbook, as itself.
+
+    /// Link a range to another workbook (its app instance id), where it shows
+    /// as a read-only sheet called `name`. Editors. Returns the link's id.
+    pub fn publish_range(
+        &mut self,
+        sheet_id: String,
+        top_row_id: String,
+        left_col_id: String,
+        bottom_row_id: String,
+        right_col_id: String,
+        target_context: String,
+        name: String,
+    ) -> app::Result<String> {
+        self.require_role(Role::Editor)?;
+        self.require_sheet(&sheet_id)?;
+        for c in [&top_row_id, &left_col_id, &bottom_row_id, &right_col_id] {
+            check_id(c)?;
+        }
+        check_workbook_id(&target_context)?;
+        if target_context == env::app_id() {
+            return Err(invalid("a workbook cannot link to itself"));
+        }
+        validate_sheet_name(&name).map_err(types_err)?;
+        let id = generate_id("pub", now(), &nonce());
+        let publication = PublicationData {
+            sheet_id: sheet_id.clone(),
+            top_row_id,
+            left_col_id,
+            bottom_row_id,
+            right_col_id,
+            target_context,
+            name: name.clone(),
+            created_by: me()?,
+        };
+        // Refuses a range whose rows are gone or that is too large, as v1's
+        // first push did.
+        let _ = self.link_push(&id, &publication)?;
+        let _ = self.publications.insert(&id, &publication)?;
+        self.log(
+            &sheet_id,
+            "link",
+            format!("linked a range as {name:?}"),
+            0,
+            Vec::new(),
+        )?;
+        emit(Event::PublicationsChanged { sheet_id })?;
+        Ok(id)
+    }
+
+    /// A link's current values, for the client to deliver to its workbook
+    /// with `receiveLink`. Editors.
+    #[app::view]
+    pub fn push_publication(&self, id: String) -> app::Result<LinkPush> {
+        self.require_role(Role::Editor)?;
+        let p = self.live_publication(&id)?;
+        self.link_push(&id, &p)
+    }
+
+    /// Stop a link. Whoever linked it, or an owner, may. The client removes
+    /// its sheet from the other workbook with `dropLink`.
+    pub fn unpublish(&mut self, id: String) -> app::Result<()> {
+        self.require_role(Role::Editor)?;
+        let p = self.live_publication(&id)?;
+        let me = me()?;
+        if p.created_by != me && !self.owners.contains(&me)? {
+            return Err(forbidden(
+                "only whoever linked a range, or an owner, can stop the link",
+            ));
+        }
+        let _ = self.publications.remove(&id)?;
+        emit(Event::PublicationsChanged {
+            sheet_id: p.sheet_id,
+        })
+    }
+
+    /// Every live link from this workbook: those whose maker may still edit.
+    #[app::view]
+    pub fn get_publications(&self) -> app::Result<Vec<Publication>> {
+        let mut out = Vec::new();
+        for (id, p) in all(|o| self.publications.page(o))? {
+            if self.role_of(&p.created_by)? < Role::Editor {
+                continue;
+            }
+            out.push(Publication {
+                id,
+                sheet_id: p.sheet_id,
+                top_row_id: p.top_row_id,
+                left_col_id: p.left_col_id,
+                bottom_row_id: p.bottom_row_id,
+                right_col_id: p.right_col_id,
+                target_context: p.target_context,
+                name: p.name,
+                created_by: p.created_by,
+            });
+        }
+        Ok(out)
+    }
+
+    /// Receive a linked range from another workbook (`fromContext`, its app
+    /// instance id). Editors of this workbook: the person relaying it.
+    pub fn receive_link(
+        &mut self,
+        from_context: String,
+        publication_id: String,
+        name: String,
+        source_name: String,
+        rows: u32,
+        cols: u32,
+        values: Vec<String>,
+    ) -> app::Result<()> {
+        self.require_role(Role::Editor)?;
+        check_workbook_id(&from_context)?;
+        check_publication_id(&publication_id)?;
+        if from_context == env::app_id() {
+            return Err(invalid("a workbook cannot link to itself"));
+        }
+        if rows.saturating_mul(cols) > MAX_LINK_CELLS
+            || values.len() != (rows.saturating_mul(cols)) as usize
+        {
+            return Err(invalid("a link's values do not match its size"));
+        }
+        validate_sheet_name(&name).map_err(types_err)?;
+        let id = link_id(&from_context, &publication_id);
+        let existing = self.linked.get(&id)?;
+        if existing.as_ref().is_some_and(|l| l.blocked) {
+            return Ok(());
+        }
+        let now = now();
+        let _ = self.linked.insert(
+            &id,
+            &LinkedData {
+                source_context: from_context,
+                source_name: source_name.chars().take(100).collect(),
+                name,
+                rows,
+                cols,
+                values: values.iter().map(|v| link_value(v)).collect(),
+                pushed_by: me()?,
+                created_at: existing.map_or(now, |l| l.created_at),
+                blocked: false,
+                deleted: false,
+                updated_at: now,
+            },
+        )?;
+        emit(Event::LinkedChanged { sheet_id: id })
+    }
+
+    /// The source withdrew a link: remove its sheet. Editors.
+    pub fn drop_link(&mut self, from_context: String, publication_id: String) -> app::Result<()> {
+        self.require_role(Role::Editor)?;
+        check_workbook_id(&from_context)?;
+        check_publication_id(&publication_id)?;
+        let id = link_id(&from_context, &publication_id);
+        if let Some(mut l) = self.linked.get(&id)? {
+            l.deleted = true;
+            l.updated_at = now();
+            let _ = self.linked.insert(&id, &l)?;
+            emit(Event::LinkedChanged { sheet_id: id })?;
         }
         Ok(())
     }
-}
 
-/// The most cells one link carries, and the longest value.
-pub const MAX_LINK_CELLS: u32 = 2000;
-const MAX_LINK_VALUE_CHARS: usize = 256;
-
-/// Style fields and what each takes (besides empty, which clears it).
-fn check_style_field(field: &str, value: &str) -> app::Result<()> {
-    let ok = value.is_empty()
-        || match field {
-            "bold" | "italic" | "underline" | "strike" | "wrap" => value == "1",
-            "color" | "fill" => {
-                value.len() == 7
-                    && value.starts_with('#')
-                    && value[1..].bytes().all(|b| b.is_ascii_hexdigit())
-            }
-            "align" => matches!(value, "left" | "center" | "right"),
-            _ => {
-                return Err(AppError::from(Error::Invalid(format!(
-            "{field:?} is not a style: bold, italic, underline, strike, wrap, color, fill or align"
-        ))))
-            }
+    /// Remove a linked sheet here; later pushes of it are ignored. Editors.
+    pub fn unlink(&mut self, id: String) -> app::Result<()> {
+        self.require_role(Role::Editor)?;
+        let Some(mut l) = self.linked.get(&id)? else {
+            return Err(not_found(id));
         };
-    if ok {
+        l.blocked = true;
+        l.updated_at = now();
+        let _ = self.linked.insert(&id, &l)?;
+        emit(Event::LinkedChanged { sheet_id: id })
+    }
+
+    /// Every live link into this workbook.
+    #[app::view]
+    pub fn get_links(&self) -> app::Result<Vec<Link>> {
+        Ok(self
+            .live_links()?
+            .into_iter()
+            .map(|(id, l)| Link {
+                id,
+                source_context: l.source_context,
+                source_name: l.source_name,
+                name: l.name,
+                rows: l.rows,
+                cols: l.cols,
+                updated_at: l.updated_at,
+            })
+            .collect())
+    }
+
+    // ---- Attachments ----
+
+    /// Record a file attached to a cell. Upload the bytes to the app's blob
+    /// store first; this stores what the cell shows. Returns its id.
+    pub fn add_attachment(
+        &mut self,
+        sheet_id: String,
+        row_id: String,
+        col_id: String,
+        blob_id: String,
+        name: String,
+        size: u64,
+        mime: String,
+    ) -> app::Result<String> {
+        self.require_sheet(&sheet_id)?;
+        check_id(&row_id)?;
+        check_id(&col_id)?;
+        self.require_cells_writable(&sheet_id, [(row_id.as_str(), col_id.as_str())])?;
+        if blob_id.is_empty()
+            || blob_id.len() > 128
+            || !blob_id
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        {
+            return Err(invalid(format!("{blob_id:?} is not a blob id")));
+        }
+        let name = name.trim().to_string();
+        if name.is_empty() || name.chars().count() > 200 {
+            return Err(invalid("a file name is 1 to 200 characters"));
+        }
+        if size > MAX_ATTACHMENT_BYTES {
+            return Err(invalid(format!(
+                "an attachment is at most {} MB",
+                MAX_ATTACHMENT_BYTES / 1024 / 1024
+            )));
+        }
+        if mime.len() > 100 {
+            return Err(invalid("a media type is at most 100 characters"));
+        }
+        let now = now();
+        let id = generate_id("file", now, &nonce());
+        let _ = self.attachments.insert(
+            &id,
+            &AttachmentData {
+                sheet_id: sheet_id.clone(),
+                row_id,
+                col_id,
+                blob_id,
+                name: name.clone(),
+                size,
+                mime,
+                created_by: me()?,
+                created_at: now,
+            },
+        )?;
+        self.log(&sheet_id, "file", format!("attached {name}"), 0, Vec::new())?;
+        emit(Event::AttachmentsChanged { sheet_id })?;
+        Ok(id)
+    }
+
+    /// Remove an attachment. Whoever attached it, or an owner, may.
+    pub fn remove_attachment(&mut self, id: String) -> app::Result<()> {
+        let Some(a) = self.attachments.get(&id)? else {
+            return Err(not_found(id));
+        };
+        self.require_role(Role::Editor)?;
+        let me = me()?;
+        if a.created_by != me && !self.owners.contains(&me)? {
+            return Err(forbidden(
+                "only whoever attached a file, or an owner, can remove it",
+            ));
+        }
+        let _ = self.attachments.remove(&id)?;
+        self.log(
+            &a.sheet_id,
+            "file",
+            format!("removed {}", a.name),
+            0,
+            Vec::new(),
+        )?;
+        emit(Event::AttachmentsChanged {
+            sheet_id: a.sheet_id,
+        })
+    }
+
+    /// Every attachment, oldest first.
+    #[app::view]
+    pub fn get_attachments(&self) -> app::Result<Vec<Attachment>> {
+        let mut out: Vec<Attachment> = all(|o| self.attachments.page(o))?
+            .into_iter()
+            .map(|(id, a)| Attachment {
+                id,
+                sheet_id: a.sheet_id,
+                row_id: a.row_id,
+                col_id: a.col_id,
+                blob_id: a.blob_id,
+                name: a.name,
+                size: a.size,
+                mime: a.mime,
+                created_by: a.created_by,
+                created_at: a.created_at,
+            })
+            .collect();
+        out.sort_by(|a, b| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)));
+        Ok(out)
+    }
+
+    // ---- Charts ----
+
+    /// Chart a range. Editors. Returns the chart's id.
+    pub fn add_chart(&mut self, chart: ChartInput) -> app::Result<String> {
+        self.require_role(Role::Editor)?;
+        self.check_chart(&chart)?;
+        let now = now();
+        let id = generate_id("chart", now, &nonce());
+        self.put_chart(&id, chart, now)?;
+        Ok(id)
+    }
+
+    /// Replace a chart's range, kind or title. Editors.
+    pub fn update_chart(&mut self, id: String, chart: ChartInput) -> app::Result<()> {
+        self.require_role(Role::Editor)?;
+        self.check_chart(&chart)?;
+        let _ = self.live_chart(&id)?;
+        self.put_chart(&id, chart, now())
+    }
+
+    /// Remove a chart. Editors.
+    pub fn remove_chart(&mut self, id: String) -> app::Result<()> {
+        self.require_role(Role::Editor)?;
+        let chart = self.live_chart(&id)?;
+        let _ = self.charts.remove(&id)?;
+        emit(Event::ChartsChanged {
+            sheet_id: chart.sheet_id,
+        })
+    }
+
+    /// Every chart.
+    #[app::view]
+    pub fn get_charts(&self) -> app::Result<Vec<Chart>> {
+        Ok(all(|o| self.charts.page(o))?
+            .into_iter()
+            .map(|(id, c)| Chart {
+                id,
+                created_by: c.created_by,
+                chart: ChartInput {
+                    sheet_id: c.sheet_id,
+                    top_row_id: c.top_row_id,
+                    left_col_id: c.left_col_id,
+                    bottom_row_id: c.bottom_row_id,
+                    right_col_id: c.right_col_id,
+                    kind: c.kind,
+                    title: c.title,
+                },
+            })
+            .collect())
+    }
+
+    // ---- Sheet view: sizes and frozen panes ----
+
+    /// Resize rows and columns (`axis` `row` or `col`, size in pixels). Editors.
+    pub fn set_sizes(&mut self, sheet_id: String, sizes: Vec<AxisSize>) -> app::Result<()> {
+        self.require_role(Role::Editor)?;
+        self.require_sheet(&sheet_id)?;
+        if sizes.len() > MAX_OPS_PER_APPLY {
+            return Err(invalid(format!(
+                "{} sizes in one call; the limit is {MAX_OPS_PER_APPLY}",
+                sizes.len()
+            )));
+        }
+        let now = now();
+        for s in sizes {
+            let axis = match s.axis.as_str() {
+                "row" => 'r',
+                "col" => 'c',
+                other => return Err(invalid(format!("axis is row or col, got {other:?}"))),
+            };
+            check_id(&s.id)?;
+            if !(MIN_AXIS_SIZE..=MAX_AXIS_SIZE).contains(&s.size) {
+                return Err(invalid(format!(
+                    "a size is {MIN_AXIS_SIZE} to {MAX_AXIS_SIZE} pixels, got {}",
+                    s.size
+                )));
+            }
+            let _ = self.sizes.insert(
+                &format!("{sheet_id}|{axis}|{}", s.id),
+                &SizeData {
+                    size: s.size,
+                    updated_at: now,
+                },
+            )?;
+        }
+        emit(Event::SheetViewChanged { sheet_id })
+    }
+
+    /// Freeze the first `rows` rows and `cols` columns (0 unfreezes). Editors.
+    pub fn set_frozen(&mut self, sheet_id: String, rows: u32, cols: u32) -> app::Result<()> {
+        self.require_role(Role::Editor)?;
+        self.require_sheet(&sheet_id)?;
+        if rows > MAX_FROZEN || cols > MAX_FROZEN {
+            return Err(invalid(format!(
+                "a sheet freezes at most {MAX_FROZEN} rows and {MAX_FROZEN} columns"
+            )));
+        }
+        let _ = self.views.insert(
+            &sheet_id,
+            &SheetViewData {
+                frozen_rows: rows,
+                frozen_cols: cols,
+                updated_at: now(),
+            },
+        )?;
+        emit(Event::SheetViewChanged { sheet_id })
+    }
+
+    /// Every sheet's frozen panes and resized rows and columns.
+    #[app::view]
+    pub fn get_sheet_views(&self) -> app::Result<Vec<SheetView>> {
+        let mut by_sheet: BTreeMap<String, SheetView> = BTreeMap::new();
+        let blank = |sheet_id: &str| SheetView {
+            sheet_id: sheet_id.to_string(),
+            frozen_rows: 0,
+            frozen_cols: 0,
+            sizes: Vec::new(),
+        };
+        for (sheet_id, v) in all(|o| self.views.page(o))? {
+            let view = by_sheet
+                .entry(sheet_id.clone())
+                .or_insert_with(|| blank(&sheet_id));
+            view.frozen_rows = v.frozen_rows;
+            view.frozen_cols = v.frozen_cols;
+        }
+        for (key, d) in all(|o| self.sizes.page(o))? {
+            let Some((sheet_id, axis, id)) = split_key(&key) else {
+                continue;
+            };
+            let axis = if axis == "r" { "row" } else { "col" };
+            by_sheet
+                .entry(sheet_id.to_string())
+                .or_insert_with(|| blank(sheet_id))
+                .sizes
+                .push(AxisSize {
+                    axis: axis.into(),
+                    id: id.to_string(),
+                    size: d.size,
+                });
+        }
+        Ok(by_sheet.into_values().collect())
+    }
+
+    // ---- Private sheets ----
+    //
+    // v1 kept these in node-local private storage. Here they are the
+    // caller's own rows in the workbook's state: no method shows them to
+    // anyone else, and no role is needed (a viewer has private sheets too).
+
+    /// Make a private sheet. Returns its id.
+    pub fn create_private_sheet(&mut self, name: String) -> app::Result<String> {
+        validate_sheet_name(&name).map_err(types_err)?;
+        let me = me()?;
+        let now = now();
+        let id = generate_id("private", now, &nonce());
+        let position = u32::try_from(self.my_private_sheets(&me)?.len()).unwrap_or(u32::MAX);
+        let _ = self.private_sheets.insert(
+            &(me, id.clone()),
+            &ScratchSheet {
+                name,
+                position,
+                created_at: now,
+            },
+        )?;
+        Ok(id)
+    }
+
+    /// Rename one of the caller's private sheets.
+    pub fn rename_private_sheet(&mut self, sheet_id: String, name: String) -> app::Result<()> {
+        validate_sheet_name(&name).map_err(types_err)?;
+        let key = (me()?, sheet_id);
+        let Some(mut sheet) = self.private_sheets.get(&key)? else {
+            return Err(not_found(key.1));
+        };
+        sheet.name = name;
+        let _ = self.private_sheets.insert(&key, &sheet)?;
         Ok(())
-    } else {
-        Err(AppError::from(Error::Invalid(format!(
-            "{value:?} is not a value for {field}"
-        ))))
+    }
+
+    /// Delete one of the caller's private sheets and its cells.
+    pub fn delete_private_sheet(&mut self, sheet_id: String) -> app::Result<()> {
+        let me = me()?;
+        if self
+            .private_sheets
+            .remove(&(me.clone(), sheet_id.clone()))?
+            .is_none()
+        {
+            return Err(not_found(sheet_id));
+        }
+        let prefix = [
+            KeyPart::Str(me.clone()),
+            KeyPart::Str(format!("{sheet_id}|")),
+        ];
+        for ((_, key), _) in all(|o| self.private_cells.starts_with(&prefix, o))? {
+            let _ = self.private_cells.remove(&(me.clone(), key))?;
+        }
+        Ok(())
+    }
+
+    /// Write cells of one of the caller's private sheets: the same ops as
+    /// `applyCellOps`, on implicit (position) row and column ids.
+    pub fn apply_private_cell_ops(
+        &mut self,
+        sheet_id: String,
+        ops: Vec<CellOp>,
+    ) -> app::Result<()> {
+        let me = me()?;
+        if !self
+            .private_sheets
+            .contains(&(me.clone(), sheet_id.clone()))?
+        {
+            return Err(not_found(sheet_id));
+        }
+        if ops.len() > MAX_OPS_PER_APPLY {
+            return Err(invalid(format!(
+                "{} cell ops in one call; the limit is {MAX_OPS_PER_APPLY}, split the batch",
+                ops.len()
+            )));
+        }
+        let now = now();
+        for op in ops {
+            let (row_id, col_id) = op_cell(&op);
+            if layout::implicit_index(row_id).is_none() || layout::implicit_index(col_id).is_none()
+            {
+                return Err(invalid(format!(
+                    "a private sheet has no inserted rows or columns: {row_id}/{col_id}"
+                )));
+            }
+            let key = (me.clone(), cell_key(&sheet_id, row_id, col_id));
+            let mut cell = self.private_cells.get(&key)?.unwrap_or(ScratchCell {
+                raw_value: String::new(),
+                format: String::new(),
+                updated_at: now,
+            });
+            match op {
+                CellOp::Set { raw_value, .. } => cell.raw_value = raw_value,
+                CellOp::Format { format, .. } => cell.format = format,
+                CellOp::Clear { .. } => {
+                    let _ = self.private_cells.remove(&key)?;
+                    continue;
+                }
+            }
+            cell.updated_at = now;
+            let _ = if cell.raw_value.is_empty() && cell.format.is_empty() {
+                self.private_cells.remove(&key)?
+            } else {
+                self.private_cells.insert(&key, &cell)?
+            };
+        }
+        Ok(())
+    }
+
+    /// The caller's private sheets, in the order they were made.
+    #[app::view]
+    pub fn get_private_sheets(&self) -> app::Result<Vec<Sheet>> {
+        let mut out: Vec<Sheet> = self
+            .my_private_sheets(&me()?)?
+            .into_iter()
+            .map(|((_, id), s)| Sheet {
+                id,
+                name: s.name,
+                position: s.position,
+                created_at: s.created_at,
+                linked_from: String::new(),
+            })
+            .collect();
+        out.sort_by(|a, b| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)));
+        Ok(out)
+    }
+
+    /// Every cell of the caller's private sheets. `computed_value` is empty:
+    /// the client evaluates them, with the shared sheets they read.
+    #[app::view]
+    pub fn get_private_cells(&self) -> app::Result<Vec<Cell>> {
+        let prefix = [KeyPart::Str(me()?)];
+        Ok(all(|o| self.private_cells.prefix(&prefix, o))?
+            .into_iter()
+            .filter_map(|((_, key), c)| {
+                let (sheet_id, row_id, col_id) = split_key(&key)?;
+                Some(Cell {
+                    id: key.clone(),
+                    sheet_id: sheet_id.to_string(),
+                    row_id: row_id.to_string(),
+                    col_id: col_id.to_string(),
+                    raw_value: c.raw_value,
+                    computed_value: String::new(),
+                    format: c.format,
+                    updated_at: c.updated_at,
+                    last_editor: String::new(),
+                    last_edited_at: 0,
+                })
+            })
+            .collect())
+    }
+
+    // ---- Rows and columns ----
+
+    /// Insert, delete or restore rows and columns; each op is one write.
+    /// The client picks ids (a letter first) and fractional positions.
+    pub fn apply_axis_ops(&mut self, sheet_id: String, ops: Vec<AxisOp>) -> app::Result<()> {
+        if ops.len() > MAX_OPS_PER_APPLY {
+            return Err(invalid(format!(
+                "{} axis ops in one apply_axis_ops; the limit is {MAX_OPS_PER_APPLY}",
+                ops.len()
+            )));
+        }
+        self.require_sheet(&sheet_id)?;
+        let deleting: Vec<(char, &str)> = ops
+            .iter()
+            .filter_map(|op| match op {
+                AxisOp::DeleteRow { id } => Some(('r', id.as_str())),
+                AxisOp::DeleteCol { id } => Some(('c', id.as_str())),
+                _ => None,
+            })
+            .collect();
+        self.require_axes_writable(&sheet_id, &deleting)?;
+        let count = u32::try_from(ops.len()).unwrap_or(u32::MAX);
+        let now = now();
+        let mut tally: BTreeMap<(&str, &str), u32> = BTreeMap::new();
+        for op in &ops {
+            let entry = match op {
+                AxisOp::InsertRow { .. } => ("inserted", "row"),
+                AxisOp::InsertCol { .. } => ("inserted", "column"),
+                AxisOp::DeleteRow { .. } => ("deleted", "row"),
+                AxisOp::DeleteCol { .. } => ("deleted", "column"),
+                AxisOp::RestoreRow { .. } => ("restored", "row"),
+                AxisOp::RestoreCol { .. } => ("restored", "column"),
+            };
+            *tally.entry(entry).or_default() += 1;
+        }
+        let summary = tally
+            .iter()
+            .map(|((verb, noun), n)| format!("{verb} {n} {noun}{}", if *n == 1 { "" } else { "s" }))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let kind = if tally.keys().any(|(_, noun)| *noun == "row") {
+            "rows"
+        } else {
+            "cols"
+        };
+        for op in ops {
+            let (axis, id, insert_pos, deleted) = match op {
+                AxisOp::InsertRow { id, pos } => ('r', id, Some(pos), false),
+                AxisOp::InsertCol { id, pos } => ('c', id, Some(pos), false),
+                AxisOp::DeleteRow { id } => ('r', id, None, true),
+                AxisOp::DeleteCol { id } => ('c', id, None, true),
+                AxisOp::RestoreRow { id } => ('r', id, None, false),
+                AxisOp::RestoreCol { id } => ('c', id, None, false),
+            };
+            check_id(&id)?;
+            let key = format!("{sheet_id}|{axis}|{id}");
+            let existing = self.axes.get(&key)?;
+            match (insert_pos, existing) {
+                (Some(pos), existing) => {
+                    if layout::implicit_index(&id).is_some()
+                        || !id.starts_with(|c: char| c.is_ascii_alphabetic())
+                    {
+                        return Err(invalid(format!(
+                            "a new row/column id must start with a letter, got {id:?}"
+                        )));
+                    }
+                    if pos.is_empty() || !pos.bytes().all(|b| b.is_ascii_digit()) {
+                        return Err(invalid(format!(
+                            "a position is decimal digits, got {pos:?}"
+                        )));
+                    }
+                    if existing.is_some() {
+                        return Err(invalid(format!("{id} already exists")));
+                    }
+                    let _ = self.axes.insert(
+                        &key,
+                        &AxisData {
+                            pos,
+                            deleted: false,
+                            updated_at: now,
+                        },
+                    )?;
+                }
+                (None, Some(mut entry)) => {
+                    entry.deleted = deleted;
+                    entry.updated_at = now;
+                    let _ = self.axes.insert(&key, &entry)?;
+                }
+                // An implicit row that was never deleted is already there.
+                (None, None) if !deleted => {}
+                // Deleting an implicit row writes its tombstone at its fixed position.
+                (None, None) => {
+                    let k = layout::implicit_index(&id).ok_or_else(|| not_found(id.clone()))?;
+                    let _ = self.axes.insert(
+                        &key,
+                        &AxisData {
+                            pos: layout::implicit_pos(k),
+                            deleted: true,
+                            updated_at: now,
+                        },
+                    )?;
+                }
+            }
+        }
+        self.log(&sheet_id, kind, summary, 0, Vec::new())?;
+        emit(Event::AxesChanged {
+            sheet_id: sheet_id.clone(),
+            count,
+        })?;
+        self.after_change(&sheet_id)
+    }
+
+    /// Every sheet's explicit row and column entries.
+    #[app::view]
+    pub fn get_layouts(&self) -> app::Result<Vec<SheetLayout>> {
+        Ok(layouts(all(|o| self.axes.page(o))?))
+    }
+
+    // ---- Named ranges ----
+
+    /// Define or redefine a named range (`target` in stored form). Editors.
+    pub fn set_named_range(&mut self, name: String, target: String) -> app::Result<()> {
+        self.require_role(Role::Editor)?;
+        let name = name.trim().to_string();
+        if !formula::is_valid_name(&name) {
+            return Err(invalid(format!(
+                "{name:?} cannot be a name: use letters, digits and _, starting with a letter or _, \
+                 and not something that reads as a cell, a column or TRUE/FALSE"
+            )));
+        }
+        if !formula::is_reference(&target) {
+            return Err(invalid(format!(
+                "{target:?} is not a cell or range reference"
+            )));
+        }
+        self.store_name(name, target)
+    }
+
+    /// Delete a named range. Editors.
+    pub fn delete_named_range(&mut self, name: String) -> app::Result<()> {
+        self.require_role(Role::Editor)?;
+        let key = name.trim().to_ascii_uppercase();
+        if self.names.remove(&key)?.is_none() {
+            return Err(not_found(name));
+        }
+        let name = name.trim().to_string();
+        self.log(
+            "",
+            "name",
+            format!("deleted the name {name}"),
+            0,
+            Vec::new(),
+        )?;
+        emit(Event::NamedRangesChanged { name })
+    }
+
+    /// Every named range, sorted by name.
+    #[app::view]
+    pub fn get_named_ranges(&self) -> app::Result<Vec<NamedRange>> {
+        let mut out: Vec<NamedRange> = all(|o| self.names.page(o))?
+            .into_iter()
+            .map(|(_, d)| NamedRange {
+                name: d.name,
+                target: d.target,
+            })
+            .collect();
+        out.sort_by(|a, b| {
+            a.name
+                .to_ascii_uppercase()
+                .cmp(&b.name.to_ascii_uppercase())
+        });
+        Ok(out)
+    }
+
+    // ---- Reading cells ----
+
+    /// One sheet's cells with computed values. Evaluates the sheet and the
+    /// sheets it transitively references.
+    #[app::view]
+    pub fn get_cells(&self, sheet_id: String) -> app::Result<Vec<Cell>> {
+        let env = self.formula_env()?;
+        let (stored, sheet_ids) = self.closure_cells(&sheet_id, &env)?;
+        let computed = evaluate(&stored, sheet_ids, env);
+        let mut out = self.cells_from_stored(
+            stored.into_iter().filter(|d| d.sheet_id == sheet_id),
+            &computed,
+        )?;
+        out.sort_by(|a, b| (&a.row_id, &a.col_id).cmp(&(&b.row_id, &b.col_id)));
+        Ok(out)
+    }
+
+    /// Every non-blank cell across all sheets, raw and computed.
+    #[app::view]
+    pub fn get_all_cells(&self) -> app::Result<Vec<Cell>> {
+        let sheet_ids = self.live_sheet_ids()?;
+        let mut stored = Vec::new();
+        for id in &sheet_ids {
+            stored.extend(self.stored_cells(id)?);
+        }
+        let computed = evaluate(&stored, sheet_ids, self.formula_env()?);
+        let mut out = self.cells_from_stored(stored, &computed)?;
+        out.sort_by(|a, b| {
+            (&a.sheet_id, &a.row_id, &a.col_id).cmp(&(&b.sheet_id, &b.row_id, &b.col_id))
+        });
+        Ok(out)
+    }
+
+    // ---- Function help ----
+
+    /// Every formula function, sorted by name.
+    #[app::view]
+    pub fn get_functions(&self) -> app::Result<Vec<FunctionDef>> {
+        Ok(builtin_functions())
+    }
+
+    /// The functions whose name starts with `prefix` (case ignored).
+    #[app::view]
+    pub fn search_functions(&self, prefix: String) -> app::Result<Vec<FunctionDef>> {
+        let upper = prefix.to_uppercase();
+        Ok(builtin_functions()
+            .into_iter()
+            .filter(|f| f.name.starts_with(&upper))
+            .collect())
+    }
+
+    // ---- Export ----
+
+    /// All sheets (as `listSheets`); the client assembles the file.
+    #[app::view]
+    pub fn export_all(&self) -> app::Result<Vec<Sheet>> {
+        self.list_sheets()
     }
 }
 
-/// The most rows and columns a sheet can freeze.
-pub const MAX_FROZEN: u32 = 20;
-/// Row and column sizes, in pixels.
-pub const MIN_AXIS_SIZE: u32 = 16;
-pub const MAX_AXIS_SIZE: u32 = 1000;
+// ---------------------------------------------------------------------------
+// Private helpers
+// ---------------------------------------------------------------------------
 
 /// What a role may do.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Role {
     Viewer,
     Commenter,
@@ -511,1030 +2511,38 @@ impl Role {
     }
 }
 
-/// One row or column added to a sheet, or one deleted. Keyed by
-/// `"{sheet_id}|r|{id}"` / `"{sheet_id}|c|{id}"`; see the recalc crate's
-/// `layout` module for how entries order a sheet.
-#[app::mergeable(id = "mero_sheets::AxisData")]
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
-#[borsh(crate = "calimero_sdk::borsh")]
-pub struct AxisData {
-    /// Fractional position: decimal digits, compared as strings.
-    pub pos: String,
-    pub deleted: bool,
-    pub updated_at: u64,
-}
-
-impl Mergeable for AxisData {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        // Deleted or not is last-writer-wins, so an undo can restore a row;
-        // an exact clock tie keeps it deleted.
-        if (other.updated_at, other.deleted) > (self.updated_at, self.deleted) {
-            self.deleted = other.deleted;
-            self.updated_at = other.updated_at;
-        }
-        // A position is fixed when the id is created; the smaller string wins
-        // so two replicas can never disagree on it.
-        if self.pos.is_empty() || (!other.pos.is_empty() && other.pos < self.pos) {
-            self.pos = other.pos.clone();
-        }
-        Ok(())
-    }
-}
-
-/// A cell's display format, kept apart from its value so that formatting a
-/// cell and typing in it at the same moment both survive. Keyed like the cell.
-#[app::mergeable(id = "mero_sheets::FormatData")]
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
-#[borsh(crate = "calimero_sdk::borsh")]
-pub struct FormatData {
-    /// Empty means Automatic, and overrides a format the cell carried from v1.
-    pub format: String,
-    pub updated_at: u64,
-}
-
-impl Mergeable for FormatData {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        if (other.updated_at, &other.format) > (self.updated_at, &self.format) {
-            self.format = other.format.clone();
-            self.updated_at = other.updated_at;
-        }
-        Ok(())
-    }
-}
-
-/// A named range: a name that formulas can use in place of a reference.
-/// Keyed by the upper-case name; an empty target means deleted (a removed key
-/// would tombstone the name and block defining it again).
-#[app::mergeable(id = "mero_sheets::NamedRangeData")]
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
-#[borsh(crate = "calimero_sdk::borsh")]
-pub struct NamedRangeData {
-    /// The name as it was typed, for display.
-    pub name: String,
-    /// A reference in stored form (`[sheet-id]!A1:B9`).
-    pub target: String,
-    pub updated_at: u64,
-}
-
-impl Mergeable for NamedRangeData {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        if (other.updated_at, &other.target, &other.name)
-            > (self.updated_at, &self.target, &self.name)
-        {
-            self.name = other.name.clone();
-            self.target = other.target.clone();
-            self.updated_at = other.updated_at;
-        }
-        Ok(())
-    }
-}
-
-/// Who last changed a cell and when, keyed like the cell.
-#[app::mergeable(id = "mero_sheets::CellMeta")]
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
-#[borsh(crate = "calimero_sdk::borsh")]
-pub struct CellMeta {
-    /// Member id (`whoami`).
-    pub author: String,
-    pub at: u64,
-}
-
-impl Mergeable for CellMeta {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        if (other.at, &other.author) > (self.at, &self.author) {
-            self.author = other.author.clone();
-            self.at = other.at;
-        }
-        Ok(())
-    }
-}
-
-/// One cell's change within an activity entry: its raw value and format
-/// before and after.
-#[derive(
-    Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType,
-)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct CellChange {
-    pub row_id: String,
-    pub col_id: String,
-    pub before_raw: String,
-    pub before_format: String,
-    pub after_raw: String,
-    pub after_format: String,
-}
-
-/// One entry of the workbook's activity log: what was done, when. Keyed by
-/// `"{at:020}|{author}|{nonce}"`; its author is the entry's owner stamp, and a
-/// "since" query is a seek on the `at` index.
-#[app::mergeable(id = "mero_sheets::ActivityData")]
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType, app::Indexed)]
-#[borsh(crate = "calimero_sdk::borsh")]
-pub struct ActivityData {
-    #[index]
-    pub at: u64,
-    /// Empty for workbook-level actions (a named range).
-    pub sheet_id: String,
-    /// `cells`, `rows`, `cols`, `sheet` or `name`.
-    pub kind: String,
-    pub summary: String,
-    /// How many cells changed; `changes` holds at most [`MAX_LOGGED_CHANGES`].
-    pub count: u32,
-    pub changes: Vec<CellChange>,
-}
-
-impl Mergeable for ActivityData {
-    fn merge(&mut self, _other: &Self) -> Result<(), MergeError> {
-        // Entries are written once under a unique key and never changed.
-        Ok(())
-    }
-}
-
-/// How many cell changes one activity entry keeps (a 200-cell paste logs
-/// its first 50 and the count).
-pub const MAX_LOGGED_CHANGES: usize = 50;
-
-/// A comment on a cell, or a reply to one. Keyed by comment id, owned by its
-/// author (`comments`). Whether its thread is resolved is kept apart
-/// (`resolved`), since anyone may resolve and only the author edits.
-#[app::mergeable(id = "mero_sheets::CommentData")]
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
-#[borsh(crate = "calimero_sdk::borsh")]
-pub struct CommentData {
-    pub sheet_id: String,
-    pub row_id: String,
-    pub col_id: String,
-    pub text: String,
-    /// Member ids named with `@nickname` in the text.
-    pub mentions: Vec<String>,
-    /// The comment this replies to; empty for a thread's first comment.
-    pub parent: String,
-    pub created_at: u64,
-    pub updated_at: u64,
-}
-
-impl Mergeable for CommentData {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        // Only the author writes it: the newer edit of the text wins; the rest
-        // is fixed when the comment is made.
-        if (other.updated_at, &other.text) > (self.updated_at, &self.text) {
-            self.text = other.text.clone();
-            self.mentions = other.mentions.clone();
-            self.updated_at = other.updated_at;
-        }
-        Ok(())
-    }
-}
-
-/// The longest comment accepted, in characters.
-pub const MAX_COMMENT_CHARS: usize = 2000;
-
-/// The longest cell note accepted, in characters.
-pub const MAX_NOTE_CHARS: usize = 5000;
-
-/// How much of a note `get_noted_cells` returns as its preview.
-const NOTE_PREVIEW_CHARS: usize = 200;
-
-/// One step of a note edit, in the Quill delta shape: keep, insert or delete
-/// characters, with formatting on kept or inserted text. Mirrors `DeltaOp`,
-/// which has no `AbiType`.
-#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde", untagged)]
-pub enum NoteChange {
-    Retain {
-        retain: usize,
-        #[serde(default)]
-        attributes: Option<Attrs>,
-    },
-    Insert {
-        insert: String,
-        #[serde(default)]
-        attributes: Option<Attrs>,
-    },
-    Delete {
-        delete: usize,
-    },
-}
-
-impl From<NoteChange> for DeltaOp {
-    fn from(change: NoteChange) -> Self {
-        match change {
-            NoteChange::Retain { retain, attributes } => Self::Retain { retain, attributes },
-            NoteChange::Insert { insert, attributes } => Self::Insert { insert, attributes },
-            NoteChange::Delete { delete } => Self::Delete { delete },
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// View types returned to callers (must derive Serialize + Deserialize)
-// ---------------------------------------------------------------------------
-
-/// The project's own identity, as the UI titles it.
-///
-/// `init_project` has always written `project_name`, and until now NOTHING
-/// could read it back — there was no view method over the register at all. That
-/// is the whole reason the workspace list fell back to names cached in
-/// `localStorage`, which meant every peer but the creator saw "Workspace 1".
-#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct Project {
-    /// Fixed when the workbook is created.
-    pub id: String,
-    /// Empty until `init_project` runs.
-    pub name: String,
-    pub created_at: u64,
-}
-
-/// One collaborator, by the name they chose.
-#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct Member {
-    /// Account hex (`whoami`) — the same key `Cursor.author` carries, so a
-    /// roster and the live cursors join on it without a translation step.
-    pub id: String,
-    pub nickname: String,
-    pub joined_at: u64,
-    pub updated_at: u64,
-    /// The member's account (hex), as core's group roster names them: the
-    /// same value as `id`.
-    pub account: String,
-    /// `owner`, `editor`, `commenter` or `viewer`.
-    pub role: String,
-}
-
-/// One style change: set `field` of a cell to `value` (empty clears it).
-#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct StyleOp {
-    pub row_id: String,
-    pub col_id: String,
-    pub field: String,
-    pub value: String,
-}
-
-/// A styled cell.
-#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct CellStyle {
-    pub sheet_id: String,
-    pub row_id: String,
-    pub col_id: String,
-    pub style: BTreeMap<String, String>,
-}
-
-/// A rule as written or read: its range by corner ids, and what it does.
-#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct RuleInput {
-    pub sheet_id: String,
-    pub top_row_id: String,
-    pub left_col_id: String,
-    pub bottom_row_id: String,
-    pub right_col_id: String,
-    /// `format` (style cells that meet the condition), `scale` (shade numbers
-    /// from `args[0]` at the lowest to `args[1]` at the highest), `validate`
-    /// (values must meet the condition) or `alert` (tell `recipients` when a
-    /// value starts meeting it).
-    pub kind: String,
-    pub condition: String,
-    pub args: Vec<String>,
-    pub style: BTreeMap<String, String>,
-    pub strict: bool,
-    pub recipients: Vec<String>,
-}
-
-/// A chart as written or read: its range by corner ids, its kind and title.
-/// The range's first column labels the points; each other column is a
-/// series, named by the first row when that row is text.
-#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct ChartInput {
-    pub sheet_id: String,
-    pub top_row_id: String,
-    pub left_col_id: String,
-    pub bottom_row_id: String,
-    pub right_col_id: String,
-    pub kind: String,
-    pub title: String,
-}
-
-/// A live chart.
-#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct Chart {
-    pub id: String,
-    pub chart: ChartInput,
-    pub created_by: String,
-}
-
-/// A live attachment.
-#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct Attachment {
-    pub id: String,
-    pub sheet_id: String,
-    pub row_id: String,
-    pub col_id: String,
-    pub blob_id: String,
-    pub name: String,
-    pub size: u64,
-    pub mime: String,
-    pub created_by: String,
-    pub created_at: u64,
-}
-
-/// A live publication.
-#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct Publication {
-    pub id: String,
-    pub sheet_id: String,
-    pub top_row_id: String,
-    pub left_col_id: String,
-    pub bottom_row_id: String,
-    pub right_col_id: String,
-    pub target_context: String,
-    pub name: String,
-    pub created_by: String,
-}
-
-/// A live incoming link.
-#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct Link {
-    /// Also the linked sheet's id.
-    pub id: String,
-    pub source_context: String,
-    pub source_name: String,
-    pub name: String,
-    pub rows: u32,
-    pub cols: u32,
-    pub updated_at: u64,
-}
-
-/// A live rule.
-#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct Rule {
-    pub id: String,
-    pub rule: RuleInput,
-    pub created_by: String,
-}
-
-/// A row's or column's size: `axis` is `row` or `col`.
-#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct AxisSize {
-    pub axis: String,
-    pub id: String,
-    pub size: u32,
-}
-
-/// A sheet's frozen rows and columns and resized rows and columns.
-#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct SheetView {
-    pub sheet_id: String,
-    pub frozen_rows: u32,
-    pub frozen_cols: u32,
-    pub sizes: Vec<AxisSize>,
-}
-
-/// A live protected range.
-#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct Protection {
-    pub id: String,
-    pub sheet_id: String,
-    pub top_row_id: String,
-    pub left_col_id: String,
-    pub bottom_row_id: String,
-    pub right_col_id: String,
-    pub description: String,
-    pub editors: Vec<String>,
-    pub created_by: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct Sheet {
-    pub id: String,
-    pub name: String,
-    pub position: u32,
-    pub created_at: u64,
-    /// For a linked sheet (read-only, pushed from another workbook), that
-    /// workbook's name; empty otherwise.
-    pub linked_from: String,
-}
-
-/// A cell, by row and column id. An implicit id is a 0-based position
-/// (`"3"` is the fourth row until rows move); the client places ids with the
-/// sheet's layout (`get_layouts`).
-#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct Cell {
-    pub id: String,
-    pub sheet_id: String,
-    pub row_id: String,
-    pub col_id: String,
-    /// As stored: references name rows and columns by id.
-    pub raw_value: String,
-    pub computed_value: String,
-    pub format: String,
-    pub updated_at: u64,
-    /// Member id of whoever last changed the cell; empty for a cell last
-    /// written before the activity log existed.
-    pub last_editor: String,
-    pub last_edited_at: u64,
-}
-
-/// A cell that has a note, with the start of its text.
-#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct NotedCell {
-    pub sheet_id: String,
-    pub row_id: String,
-    pub col_id: String,
-    pub preview: String,
-}
-
-/// A live (not deleted) comment.
-#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct Comment {
-    pub id: String,
-    pub sheet_id: String,
-    pub row_id: String,
-    pub col_id: String,
-    pub author: String,
-    pub text: String,
-    pub mentions: Vec<String>,
-    pub parent: String,
-    pub resolved: bool,
-    pub created_at: u64,
-    pub updated_at: u64,
-}
-
-/// An activity-log entry, newest first from `get_activity`.
-#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct ActivityEntry {
-    pub id: String,
-    pub author: String,
-    pub at: u64,
-    pub sheet_id: String,
-    pub kind: String,
-    pub summary: String,
-    pub count: u32,
-    pub changes: Vec<CellChange>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-// Adjacently tagged as {name, payload} — the canonical calimero enum wire form
-// that `AbiType` describes and `calimero-abi-codegen` generates a client for.
-// (`tag = "kind"` produced a flat {kind, ...} wire the ABI never reflected, so
-// the generated client and the contract disagreed on the wire.)
-#[serde(tag = "name", content = "payload")]
-pub enum CellOp {
-    Set {
-        row_id: String,
-        col_id: String,
-        raw_value: String,
-    },
-    Format {
-        row_id: String,
-        col_id: String,
-        format: String,
-    },
-    Clear {
-        row_id: String,
-        col_id: String,
-    },
-}
-
-/// A structural edit: add a row or column at a fractional position, delete
-/// one by id, or restore a deleted one (an undo). Every op is one write,
-/// however many cells the sheet holds.
-#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-#[serde(tag = "name", content = "payload")]
-pub enum AxisOp {
-    InsertRow { id: String, pos: String },
-    InsertCol { id: String, pos: String },
-    DeleteRow { id: String },
-    DeleteCol { id: String },
-    RestoreRow { id: String },
-    RestoreCol { id: String },
-}
-
-/// One explicit row or column entry of a sheet.
-#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct AxisEntryView {
-    pub id: String,
-    pub pos: String,
-    pub deleted: bool,
-}
-
-/// A sheet's explicit row and column entries. A sheet with none has the
-/// implicit layout: row id `k` at row `k`.
-#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct SheetLayout {
-    pub sheet_id: String,
-    pub rows: Vec<AxisEntryView>,
-    pub cols: Vec<AxisEntryView>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct NamedRange {
-    pub name: String,
-    /// A reference in stored form.
-    pub target: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct FunctionDef {
-    pub name: String,
-    pub category: String,
-    pub syntax: String,
-    pub description: String,
-    pub example: String,
-}
-
-/// The most ops one `apply_cell_ops` call accepts; see its doc. Measured on a
-/// 0.11.0-rc.43 node, with every op also stamping the cell's last editor: the
-/// costliest op (a format on an empty cell: cell, format and editor writes)
-/// fits 160 to a call and not 200, so 100 keeps a wide margin. A commit's cost
-/// does not grow with the context's size (a 200-op commit took ~115 ms at 0
-/// and at 4000 cells). The client's `MAX_OPS_PER_APPLY`
-/// (app/src/spreadsheet/ops.ts) and the perf harness's `APPLY_CHUNK` split
-/// batches to this size.
-pub const MAX_OPS_PER_APPLY: usize = 100;
-
-// ---------------------------------------------------------------------------
-// State
-// ---------------------------------------------------------------------------
-
-// `#[app::state]` injects borsh derives itself (SDK 0.11+).
-#[app::state(emits = for<'a> Event<'a>)]
-pub struct Spreadsheet {
-    /// The workbook's id and creation time, fixed in `init`.
-    founding: Frozen<Founding>,
-    /// The workbook's name, set by `init_project`; empty until then. Only
-    /// owners write it.
-    project_name: SharedStorage<LwwRegister<String>>,
-    /// Workbook roles. Its admins are the owners; `viewer` and `commenter`
-    /// are named roles. A member with neither and not an owner is an editor.
-    acl: AccessControl,
-    /// Sheet tabs keyed by sheet id.
-    sheets: UnorderedMap<String, SheetData>,
-    /// Cell values keyed by `"{sheet_id}|{row_id}|{col_id}"`, so one sheet's
-    /// cells are one prefix.
-    cells: SortedMap<String, CellData>,
-    /// Chosen nicknames, one slot per account that only it writes.
-    members: UserStorage<MemberData>,
-    /// Added and deleted rows and columns, keyed `"{sheet_id}|r|{id}"` and
-    /// `"{sheet_id}|c|{id}"`.
-    axes: SortedMap<String, AxisData>,
-    /// Cell formats, keyed like `cells`.
-    formats: SortedMap<String, FormatData>,
-    /// Named ranges keyed by upper-case name.
-    names: UnorderedMap<String, NamedRangeData>,
-    /// Who last changed each cell, keyed like `cells`.
-    cell_meta: SortedMap<String, CellMeta>,
-    /// The activity log: each entry owned by its author and never changed.
-    activity: WriteOnce<IndexedMap<String, ActivityData>>,
-    /// Cell comments and replies, keyed by comment id: the author edits and
-    /// deletes, owners (the moderators) delete.
-    comments: Moderated<UnorderedMap<String, CommentData>>,
-    /// Whether a comment's thread is resolved, keyed by comment id. Anyone
-    /// in the workbook may resolve, so it is not part of the comment.
-    resolved: UnorderedMap<String, LwwRegister<bool>>,
-    /// Cell notes, keyed like `cells`: rich text that merges concurrent edits
-    /// character by character.
-    notes: UnorderedMap<String, RichText<DefaultMarks>>,
-    /// Protected ranges, keyed by id. Only owners write them.
-    protections: SharedStorage<IndexedMap<String, ProtectionData>>,
-    /// Resized rows and columns, keyed like `axes`.
-    sizes: UnorderedMap<String, SizeData>,
-    /// Frozen rows and columns per sheet.
-    views: UnorderedMap<String, SheetViewData>,
-    /// Cell styles, keyed like `cells`.
-    styles: UnorderedMap<String, StyleData>,
-    /// Conditional formats, colour scales and validations, keyed by id.
-    rules: IndexedMap<String, RuleData>,
-    /// Charts, keyed by id.
-    charts: UnorderedMap<String, ChartData>,
-    /// Files attached to cells, keyed by id: whoever attached one removes
-    /// it, and owners (the moderators) may.
-    attachments: Moderated<UnorderedMap<String, AttachmentData>>,
-    /// Ranges this workbook pushes to others, keyed by id: whoever linked
-    /// one stops it, and owners (the moderators) may.
-    publications: Moderated<IndexedMap<String, PublicationData>>,
-    /// Ranges pushed here from other workbooks, keyed by linked sheet id.
-    linked: UnorderedMap<String, LinkedData>,
-    /// Alert rules' last matching cells, keyed by rule id.
-    alert_state: UnorderedMap<String, AlertState>,
-}
-
-/// This node's private sheets: scratch space for what-if work that never
-/// leaves the node. Nothing here is synced, so there is no merge and no role
-/// check; formulas in a private sheet may read the shared sheets.
-#[derive(BorshSerialize, BorshDeserialize, Debug)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[app::private]
-pub struct Scratch {
-    /// Private sheets keyed by id. Few and small: kept in the private blob.
-    sheets: BTreeMap<String, ScratchSheet>,
-    /// Their cells, keyed like `cells`, by implicit (position) ids: a private
-    /// sheet has no inserted or deleted rows.
-    cells: UnorderedMap<String, ScratchCell>,
-}
-
-impl Default for Scratch {
-    fn default() -> Self {
-        Self {
-            sheets: BTreeMap::new(),
-            cells: UnorderedMap::new(),
-        }
-    }
-}
-
-#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
-#[borsh(crate = "calimero_sdk::borsh")]
-pub struct ScratchSheet {
-    pub name: String,
-    pub position: u32,
-    pub created_at: u64,
-}
-
-#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
-#[borsh(crate = "calimero_sdk::borsh")]
-pub struct ScratchCell {
-    pub raw_value: String,
-    pub format: String,
-    pub updated_at: u64,
-}
-
-#[app::logic]
 impl Spreadsheet {
-    #[app::init]
-    pub fn init() -> Spreadsheet {
-        // Whoever creates the workbook owns it: the first admin of `acl`, the
-        // first writer of the owner cells and the first moderator. The storage
-        // layer's account, which the moderators' founder stamp also names.
-        let me: AccountId = storage_env::account_id().into();
-        let now = storage_env::time_now();
-        let mut nonce = [0u8; 4];
-        env::random_bytes(&mut nonce);
-        Spreadsheet {
-            founding: Frozen::new(Founding {
-                id: generate_id("proj", now, &nonce),
-                created_at: now,
-            }),
-            project_name: SharedStorage::new_with_field_name(
-                "spreadsheet:project_name",
-                BTreeSet::from([me]),
-                false,
-            ),
-            acl: AccessControl::new(me),
-            sheets: UnorderedMap::new_with_field_name("spreadsheet:sheets"),
-            cells: SortedMap::new_with_field_name("spreadsheet:cells"),
-            members: UserStorage::new_with_field_name("spreadsheet:members"),
-            axes: SortedMap::new_with_field_name("spreadsheet:axes"),
-            formats: SortedMap::new_with_field_name("spreadsheet:formats"),
-            names: UnorderedMap::new_with_field_name("spreadsheet:names"),
-            cell_meta: SortedMap::new_with_field_name("spreadsheet:cell_meta"),
-            activity: WriteOnce::new_with_field_name("spreadsheet:activity"),
-            comments: Moderated::new(),
-            resolved: UnorderedMap::new_with_field_name("spreadsheet:resolved"),
-            notes: UnorderedMap::new_with_field_name("spreadsheet:notes"),
-            protections: SharedStorage::new_with_field_name(
-                "spreadsheet:protections",
-                BTreeSet::from([me]),
-                false,
-            ),
-            sizes: UnorderedMap::new_with_field_name("spreadsheet:sizes"),
-            views: UnorderedMap::new_with_field_name("spreadsheet:views"),
-            styles: UnorderedMap::new_with_field_name("spreadsheet:styles"),
-            rules: IndexedMap::new_with_field_name("spreadsheet:rules"),
-            charts: UnorderedMap::new_with_field_name("spreadsheet:charts"),
-            attachments: Moderated::new(),
-            publications: Moderated::new(),
-            linked: UnorderedMap::new_with_field_name("spreadsheet:linked"),
-            alert_state: UnorderedMap::new_with_field_name("spreadsheet:alert_state"),
-        }
+    fn founding(&self) -> app::Result<Founding> {
+        Ok(self.founding.get()?.unwrap_or_default())
     }
 
-    // ---- Project ----
-
-    /// Name the workbook, once. Owners only; the creator is the first owner.
-    /// Returns the workbook's id, fixed when it was created.
-    pub fn init_project(&mut self, name: String) -> app::Result<String> {
-        self.require_owner("name the workbook")?;
-        if !self.project_name.get()?.get().is_empty() {
-            return Err(AppError::from(Error::Invalid(
-                "project already initialised".into(),
-            )));
-        }
-        validate_label(&name).map_err(AppError::from)?;
-        self.project_name.insert(LwwRegister::new(name.clone()))?;
-        let id = self.founding.get()?.id.clone();
-        app::emit!(Event::ProjectInitialized {
-            id: &id,
-            name: &name,
-        });
-        Ok(id)
-    }
-
-    /// The project's id, name and creation time.
-    ///
-    /// New. `init_project` wrote the name into `project_name` from the first
-    /// version of this contract and no method ever read it, so the name was
-    /// replicated to every peer and visible to none of them.
-    ///
-    /// Never 404s: an unnamed project is a real, transient state (a context
-    /// exists the moment it is created, `init_project` lands a round-trip
-    /// later) and it answers with an empty name so a caller can render a
-    /// placeholder instead of an error.
-    pub fn get_project(&self) -> app::Result<Project> {
-        let founding = self.founding.get()?;
-        Ok(Project {
-            id: founding.id.clone(),
-            name: self.project_name.get()?.get().clone(),
-            created_at: founding.created_at,
-        })
-    }
-
-    // ---- Members ----
-
-    /// The id THIS caller is known by in here — the key its cursor is authored
-    /// by and its roster row is stored under.
-    ///
-    /// Exists so the frontend never has to guess which row is "me". It had been
-    /// comparing `Cursor.author` against the context's executor public key,
-    /// which is a different value from a different family: a device key and a
-    /// context identity are both 64 hex, so the comparison type-checks, returns
-    /// false forever, and shows the local user as a stranger in their own
-    /// spreadsheet. Asking the contract costs one read and cannot be wrong.
-    pub fn whoami(&self) -> app::Result<String> {
-        Ok(self.caller_hex())
-    }
-
-    /// Announce this member under a chosen nickname, or rename it.
-    ///
-    /// Idempotent by design — it is called on every open, not only on the first
-    /// one, because there is no reliable "first" for a replicated context and a
-    /// join that only registers once leaves anyone whose first attempt failed
-    /// permanently anonymous. `joined_at` is preserved across re-calls so a
-    /// rename does not reorder the roster.
-    pub fn join(&mut self, nickname: String) -> app::Result<()> {
-        let nickname = nickname.trim().to_string();
-        validate_label(&nickname).map_err(AppError::from)?;
-        let me = self.caller_hex();
-        let now = storage_env::time_now();
-
-        let existing = self.members.get()?;
-        let joined_at = existing.as_ref().map_or(now, |m| m.joined_at);
-        let is_new = existing.is_none();
-
-        self.members.insert(MemberData {
-            nickname: nickname.clone(),
-            joined_at,
-            updated_at: now,
-        })?;
-
-        if is_new {
-            app::emit!(Event::MemberJoined {
-                id: &me,
-                nickname: &nickname,
-            });
-        } else {
-            app::emit!(Event::MemberRenamed {
-                id: &me,
-                nickname: &nickname,
-            });
-        }
-        Ok(())
-    }
-
-    /// Everyone who has ever announced themselves, oldest arrival first.
-    ///
-    /// Sorted here rather than in the UI so every peer renders the same order;
-    /// the map's own iteration order is not a stable thing to show a person.
-    pub fn get_members(&self) -> app::Result<Vec<Member>> {
-        let mut members = Vec::new();
-        for (account, d) in self.members.entries()? {
-            let id = hex::encode(account.as_bytes());
-            members.push(Member {
-                account: id.clone(),
-                role: self.role_of(&id)?.as_str().into(),
-                id,
-                nickname: d.nickname,
-                joined_at: d.joined_at,
-                updated_at: d.updated_at,
-            });
-        }
-        members.sort_by(|a, b| a.joined_at.cmp(&b.joined_at).then(a.id.cmp(&b.id)));
-        Ok(members)
-    }
-
-    // ---- Sheets ----
-
-    /// Make `desired` unique among existing sheet names (excluding `exclude_id`),
-    /// auto-suffixing ` (2)`, ` (3)`, … on collision.
     fn unique_sheet_name(&self, desired: &str, exclude_id: Option<&str>) -> app::Result<String> {
-        let existing: Vec<String> = self
-            .sheets
-            .entries()
-            .map_err(|e| AppError::msg(format!("sheets.entries: {e}")))?
+        let existing: Vec<String> = all(|o| self.sheets.page(o))?
+            .into_iter()
             .filter(|(id, _)| exclude_id != Some(id.as_str()))
-            .map(|(_, d)| d.name.clone())
+            .map(|(_, d)| d.name)
             .collect();
         if !existing.iter().any(|n| n == desired) {
             return Ok(desired.to_string());
         }
-        for n in 2u32.. {
+        let mut n = 2u32;
+        loop {
             let cand = format!("{desired} ({n})");
-            if !existing.iter().any(|x| x == &cand) {
+            if !existing.contains(&cand) {
                 return Ok(cand);
             }
+            n += 1;
         }
-        Ok(desired.to_string()) // unreachable in practice
     }
-
-    pub fn create_sheet(&mut self, name: String) -> app::Result<String> {
-        self.require_role(Role::Editor)?;
-        validate_sheet_name(&name).map_err(AppError::from)?;
-        let name = self.unique_sheet_name(&name, None)?;
-        let now = storage_env::time_now();
-        let mut nonce = [0u8; 4];
-        env::random_bytes(&mut nonce);
-        let id = generate_id("sheet", now, &nonce);
-        let position = self
-            .sheets
-            .len()
-            .map_err(|e| AppError::msg(format!("sheets.len: {e}")))? as u32;
-        let data = SheetData {
-            id: id.clone(),
-            name: name.clone(),
-            position,
-            created_at: now,
-            updated_at: now,
-        };
-        self.sheets
-            .insert(id.clone(), data)
-            .map_err(|e| AppError::msg(format!("sheets.insert: {e}")))?;
-        self.log(&id, "sheet", format!("added sheet {name}"), 0, Vec::new())?;
-        app::emit!(Event::SheetCreated {
-            id: &id,
-            name: &name,
-        });
-        Ok(id)
-    }
-
-    pub fn rename_sheet(&mut self, sheet_id: String, new_name: String) -> app::Result<()> {
-        self.require_sheet_writable(&sheet_id)?;
-        validate_sheet_name(&new_name).map_err(AppError::from)?;
-        // Reject a rename that collides with a DIFFERENT sheet (renaming to the
-        // current name is a no-op below).
-        let collides = self
-            .sheets
-            .entries()
-            .map_err(|e| AppError::msg(format!("sheets.entries: {e}")))?
-            .any(|(id, d)| id != sheet_id && d.name == new_name);
-        if collides {
-            return Err(AppError::from(Error::Invalid(format!(
-                "a sheet named '{new_name}' already exists"
-            ))));
-        }
-        let now = storage_env::time_now();
-        {
-            let mut guard = self
-                .sheets
-                .get_mut(&sheet_id)
-                .map_err(|e| AppError::msg(format!("sheets.get_mut: {e}")))?
-                .ok_or_else(|| AppError::from(Error::NotFound(sheet_id.clone())))?;
-            guard.name = new_name.clone();
-            guard.updated_at = now;
-        }
-
-        // Cross-sheet references are id-based ([id]!...), so a rename changes
-        // no formula and no computed value: nothing to rewrite, nothing to
-        // recompute.
-        self.log(
-            &sheet_id,
-            "sheet",
-            format!("renamed a sheet to {new_name}"),
-            0,
-            Vec::new(),
-        )?;
-        app::emit!(Event::SheetRenamed {
-            id: &sheet_id,
-            name: &new_name,
-        });
-        Ok(())
-    }
-
-    pub fn delete_sheet(&mut self, sheet_id: String) -> app::Result<()> {
-        self.require_sheet_writable(&sheet_id)?;
-        let removed = self
-            .sheets
-            .remove(&sheet_id)
-            .map_err(|e| AppError::msg(format!("sheets.remove: {e}")))?;
-        let Some(removed) = removed else {
-            return Err(AppError::from(Error::NotFound(sheet_id.clone())));
-        };
-        self.log(
-            &sheet_id,
-            "sheet",
-            format!("deleted sheet {}", removed.name),
-            0,
-            Vec::new(),
-        )?;
-        // The sheet's cells are left in storage and skipped on every read:
-        // removing them one by one costs gas per cell, and a big sheet would
-        // not fit one execution.
-        app::emit!(Event::SheetDeleted { id: &sheet_id });
-        Ok(())
-    }
-
-    pub fn list_sheets(&self) -> app::Result<Vec<Sheet>> {
-        let mut out: Vec<Sheet> = self
-            .sheets
-            .entries()
-            .map_err(|e| AppError::msg(format!("sheets.entries: {e}")))?
-            .map(|(_, d)| Sheet {
-                id: d.id.clone(),
-                name: d.name.clone(),
-                position: d.position,
-                created_at: d.created_at,
-                linked_from: String::new(),
-            })
-            .collect();
-        out.sort_by_key(|s| (s.position, s.created_at));
-        // Linked sheets come after the workbook's own.
-        let base = out.len() as u32;
-        let mut linked: Vec<Sheet> = self
-            .live_links()?
-            .into_iter()
-            .map(|(id, l)| Sheet {
-                id,
-                name: l.name,
-                position: 0,
-                created_at: l.created_at,
-                linked_from: l.source_name,
-            })
-            .collect();
-        linked.sort_by(|a, b| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)));
-        for (i, s) in linked.iter_mut().enumerate() {
-            s.position = base + i as u32;
-        }
-        out.extend(linked);
-        Ok(out)
-    }
-
-    // ---- Cells ----
-    //
-    // A cell is keyed by `"{sheet_id}|{row_id}|{col_id}"` (see the recalc
-    // crate's `layout`): rows and columns nobody has added or moved use their
-    // implicit id, their 0-based position, so an untouched grid stores no axis.
-    //
-    // Storage helpers emit nothing. Single-cell methods emit their own event
-    // and `apply_cell_ops` one for the whole batch, which keeps a bulk apply
-    // under the runtime's per-execution event cap.
 
     fn require_sheet(&self, sheet_id: &str) -> app::Result<()> {
-        if self
-            .sheets
-            .get(sheet_id)
-            .map_err(|e| AppError::msg(format!("sheets.get: {e}")))?
-            .is_none()
-        {
-            return Err(AppError::from(Error::NotFound(sheet_id.to_string())));
+        if !self.sheets.contains(&sheet_id.to_string())? {
+            return Err(not_found(sheet_id));
         }
         Ok(())
     }
 
-    /// A row or column id goes into storage keys and stored formulas, so it
-    /// must be short and alphanumeric.
-    fn check_id(id: &str) -> app::Result<()> {
-        if id.is_empty() || id.len() > 32 || !id.bytes().all(|b| b.is_ascii_alphanumeric()) {
-            return Err(AppError::from(Error::Invalid(format!(
-                "row/column id {id:?} must be 1-32 ASCII letters and digits"
-            ))));
-        }
-        Ok(())
-    }
-
-    /// Store a raw value (literal or formula, stored verbatim). The format is
-    /// not touched: it lives in `formats`. Creates the cell if absent. No event.
+    /// Store a raw value; the format is left as it is. Creates the cell.
     fn store_value(
         &mut self,
         sheet_id: &str,
@@ -1542,228 +2550,75 @@ impl Spreadsheet {
         col_id: &str,
         raw_value: String,
     ) -> app::Result<String> {
-        Spreadsheet::check_id(row_id)?;
-        Spreadsheet::check_id(col_id)?;
-        let key = Spreadsheet::cell_key(sheet_id, row_id, col_id);
-        let now = storage_env::time_now();
-        let exists = self
-            .cells
-            .get(&key)
-            .map_err(|e| AppError::msg(format!("cells.get: {e}")))?
-            .is_some();
-        if exists {
-            if let Some(mut guard) = self
-                .cells
-                .get_mut(&key)
-                .map_err(|e| AppError::msg(format!("cells.get_mut: {e}")))?
-            {
-                guard.raw_value = raw_value;
-                guard.updated_at = now;
-            }
-        } else {
-            self.cells
-                .insert(
-                    key.clone(),
-                    CellData {
-                        id: key.clone(),
-                        sheet_id: sheet_id.to_string(),
-                        raw_value,
-                        updated_at: now,
-                    },
-                )
-                .map_err(|e| AppError::msg(format!("cells.insert: {e}")))?;
-        }
+        check_id(row_id)?;
+        check_id(col_id)?;
+        let key = cell_key(sheet_id, row_id, col_id);
+        let _ = self.cells.insert(
+            &key,
+            &CellData {
+                id: key.clone(),
+                sheet_id: sheet_id.to_string(),
+                raw_value,
+                updated_at: now(),
+            },
+        )?;
         Ok(key)
     }
 
-    /// Store only the display format, in its own register so it merges apart
-    /// from the value. Creates an empty cell if absent, so a cell can be
-    /// formatted before anything is typed in it. No event.
+    /// Store only the display format; an absent cell is created empty.
     fn store_format(
         &mut self,
         sheet_id: &str,
         row_id: &str,
         col_id: &str,
         format: String,
-    ) -> app::Result<String> {
-        let key = Spreadsheet::cell_key(sheet_id, row_id, col_id);
-        let has_cell = self
-            .cells
-            .get(&key)
-            .map_err(|e| AppError::msg(format!("cells.get: {e}")))?
-            .is_some();
-        if !has_cell {
-            self.store_value(sheet_id, row_id, col_id, String::new())?;
+    ) -> app::Result<()> {
+        let key = cell_key(sheet_id, row_id, col_id);
+        if !self.cells.contains(&key)? {
+            let _ = self.store_value(sheet_id, row_id, col_id, String::new())?;
         }
-        let entry = FormatData {
-            format,
-            updated_at: storage_env::time_now(),
-        };
-        let exists = self
-            .formats
-            .get(&key)
-            .map_err(|e| AppError::msg(format!("formats.get: {e}")))?
-            .is_some();
-        if exists {
-            if let Some(mut guard) = self
-                .formats
-                .get_mut(&key)
-                .map_err(|e| AppError::msg(format!("formats.get_mut: {e}")))?
-            {
-                *guard = entry;
-            }
-        } else {
-            self.formats
-                .insert(key.clone(), entry)
-                .map_err(|e| AppError::msg(format!("formats.insert: {e}")))?;
-        }
-        Ok(key)
+        let _ = self.formats.insert(
+            &key,
+            &FormatData {
+                format,
+                updated_at: now(),
+            },
+        )?;
+        Ok(())
     }
 
-    /// Soft-clear value and format: blank in place rather than removed, since
-    /// removing tombstones the deterministic key and blocks a later write to
-    /// the same cell. A fully blank cell is treated as absent everywhere.
-    /// No event.
+    /// Blank value and format.
     fn store_clear(&mut self, sheet_id: &str, row_id: &str, col_id: &str) -> app::Result<()> {
-        let key = Spreadsheet::cell_key(sheet_id, row_id, col_id);
-        let exists = self
-            .cells
-            .get(&key)
-            .map_err(|e| AppError::msg(format!("cells.get: {e}")))?
-            .is_some();
-        if !exists {
+        let key = cell_key(sheet_id, row_id, col_id);
+        if !self.cells.contains(&key)? {
             return Ok(());
         }
-        self.store_value(sheet_id, row_id, col_id, String::new())?;
-        self.store_format(sheet_id, row_id, col_id, String::new())?;
-        Ok(())
+        let _ = self.store_value(sheet_id, row_id, col_id, String::new())?;
+        self.store_format(sheet_id, row_id, col_id, String::new())
     }
 
-    pub fn set_cell(
-        &mut self,
-        sheet_id: String,
-        row_id: String,
-        col_id: String,
-        raw_value: String,
-    ) -> app::Result<String> {
-        let key = Spreadsheet::cell_key(&sheet_id, &row_id, &col_id);
-        self.edit_cells(
-            &sheet_id,
-            vec![CellOp::Set {
-                row_id,
-                col_id,
-                raw_value,
-            }],
-        )?;
-        app::emit!(Event::CellUpdated {
-            id: &key,
-            sheet_id: &sheet_id
-        });
-        Ok(key)
-    }
-
-    /// Set only the display format of a cell, preserving its value. `format`
-    /// is a keyword like "number"/"currency"/"percent"/"date" ("" = Automatic).
-    pub fn set_cell_format(
-        &mut self,
-        sheet_id: String,
-        row_id: String,
-        col_id: String,
-        format: String,
-    ) -> app::Result<String> {
-        let key = Spreadsheet::cell_key(&sheet_id, &row_id, &col_id);
-        self.edit_cells(
-            &sheet_id,
-            vec![CellOp::Format {
-                row_id,
-                col_id,
-                format,
-            }],
-        )?;
-        app::emit!(Event::CellUpdated {
-            id: &key,
-            sheet_id: &sheet_id
-        });
-        Ok(key)
-    }
-
-    pub fn clear_cell(
-        &mut self,
-        sheet_id: String,
-        row_id: String,
-        col_id: String,
-    ) -> app::Result<()> {
-        self.edit_cells(
-            &sheet_id,
-            vec![CellOp::Clear {
-                row_id: row_id.clone(),
-                col_id: col_id.clone(),
-            }],
-        )?;
-        app::emit!(Event::CellCleared {
-            sheet_id: &sheet_id,
-            row_id: &row_id,
-            col_id: &col_id,
-        });
-        Ok(())
-    }
-
-    /// Apply a batch of cell operations to one sheet in a single mutation, with
-    /// ONE `CellsChanged` event for the whole batch.
-    ///
-    /// At most [`MAX_OPS_PER_APPLY`] ops. One execution has a fixed gas budget
-    /// (1e9 points on 0.11.0-rc.43), and a batch that exhausts it fails as a
-    /// whole with nothing written. Refusing early says why; callers split
-    /// larger range ops.
-    pub fn apply_cell_ops(&mut self, sheet_id: String, ops: Vec<CellOp>) -> app::Result<()> {
-        if ops.len() > MAX_OPS_PER_APPLY {
-            return Err(AppError::from(Error::Invalid(format!(
-                "{} cell ops in one apply_cell_ops; the limit is {MAX_OPS_PER_APPLY}, split the batch",
-                ops.len()
-            ))));
-        }
-        let count = ops.len() as u32;
-        self.edit_cells(&sheet_id, ops)?;
-        app::emit!(Event::CellsChanged {
-            sheet_id: &sheet_id,
-            count
-        });
-        Ok(())
-    }
-
-    /// A cell's raw value and effective format.
-    fn cell_state(&self, key: &str) -> app::Result<(String, String)> {
-        let cell = self
+    /// A cell's raw value and format.
+    fn cell_state(&self, key: &String) -> app::Result<(String, String)> {
+        let raw = self
             .cells
-            .get(key)
-            .map_err(|e| AppError::msg(format!("cells.get: {e}")))?;
-        let format = self
-            .formats
-            .get(key)
-            .map_err(|e| AppError::msg(format!("formats.get: {e}")))?;
-        Ok(match (cell, format) {
-            (Some(c), Some(f)) => (c.raw_value.clone(), f.format.clone()),
-            (Some(c), None) => (c.raw_value.clone(), String::new()),
-            (None, Some(f)) => (String::new(), f.format.clone()),
-            (None, None) => (String::new(), String::new()),
-        })
+            .get(key)?
+            .map(|c| c.raw_value)
+            .unwrap_or_default();
+        let format = self.formats.get(key)?.map(|f| f.format).unwrap_or_default();
+        Ok((raw, format))
     }
 
     /// Apply cell ops and record them: each changed cell's last editor, and
-    /// one activity entry for the whole batch.
+    /// one activity entry for the batch.
     fn edit_cells(&mut self, sheet_id: &str, ops: Vec<CellOp>) -> app::Result<()> {
         self.require_sheet(sheet_id)?;
         let mut touched: BTreeMap<String, (String, String, (String, String))> = BTreeMap::new();
         for op in &ops {
-            let (row_id, col_id) = match op {
-                CellOp::Set { row_id, col_id, .. }
-                | CellOp::Format { row_id, col_id, .. }
-                | CellOp::Clear { row_id, col_id } => (row_id, col_id),
-            };
-            let key = Spreadsheet::cell_key(sheet_id, row_id, col_id);
+            let (row_id, col_id) = op_cell(op);
+            let key = cell_key(sheet_id, row_id, col_id);
             if let std::collections::btree_map::Entry::Vacant(slot) = touched.entry(key) {
                 let before = self.cell_state(slot.key())?;
-                slot.insert((row_id.clone(), col_id.clone(), before));
+                let _ = slot.insert((row_id.to_string(), col_id.to_string(), before));
             }
         }
         self.require_cells_writable(
@@ -1778,33 +2633,31 @@ impl Spreadsheet {
                     col_id,
                     raw_value,
                 } => {
-                    self.store_value(sheet_id, &row_id, &col_id, raw_value)?;
+                    let _ = self.store_value(sheet_id, &row_id, &col_id, raw_value)?;
                 }
                 CellOp::Format {
                     row_id,
                     col_id,
                     format,
-                } => {
-                    self.store_format(sheet_id, &row_id, &col_id, format)?;
-                }
-                CellOp::Clear { row_id, col_id } => {
-                    self.store_clear(sheet_id, &row_id, &col_id)?;
-                }
+                } => self.store_format(sheet_id, &row_id, &col_id, format)?,
+                CellOp::Clear { row_id, col_id } => self.store_clear(sheet_id, &row_id, &col_id)?,
             }
         }
-        let author = self.caller_hex();
-        let at = storage_env::time_now();
+        let author = me()?;
+        let at = now();
         let mut changes = Vec::new();
         for (key, (row_id, col_id, before)) in touched {
             let after = self.cell_state(&key)?;
             if after == before {
                 continue;
             }
-            let meta = CellMeta {
-                author: author.clone(),
-                at,
-            };
-            self.put(|s| &mut s.cell_meta, key, meta)?;
+            let _ = self.cell_meta.insert(
+                &key,
+                &CellMeta {
+                    author: author.clone(),
+                    at,
+                },
+            )?;
             changes.push(CellChange {
                 row_id,
                 col_id,
@@ -1817,7 +2670,7 @@ impl Spreadsheet {
         if changes.is_empty() {
             return Ok(());
         }
-        let count = changes.len() as u32;
+        let count = u32::try_from(changes.len()).unwrap_or(u32::MAX);
         let summary = match changes.as_slice() {
             [one] if one.after_raw.is_empty() && one.after_format.is_empty() => {
                 "cleared a cell".to_string()
@@ -1833,36 +2686,7 @@ impl Spreadsheet {
         self.after_change(sheet_id)
     }
 
-    /// Insert or replace a map entry.
-    fn put<V>(
-        &mut self,
-        map: impl Fn(&mut Self) -> &mut SortedMap<String, V>,
-        key: String,
-        value: V,
-    ) -> app::Result<()>
-    where
-        V: BorshSerialize + BorshDeserialize + Mergeable,
-    {
-        let exists = map(self)
-            .get(&key)
-            .map_err(|e| AppError::msg(format!("get: {e}")))?
-            .is_some();
-        if exists {
-            if let Some(mut guard) = map(self)
-                .get_mut(&key)
-                .map_err(|e| AppError::msg(format!("get_mut: {e}")))?
-            {
-                *guard = value;
-            }
-        } else {
-            map(self)
-                .insert(key, value)
-                .map_err(|e| AppError::msg(format!("insert: {e}")))?;
-        }
-        Ok(())
-    }
-
-    /// Append an activity entry.
+    /// Append an activity entry, authored by the caller.
     fn log(
         &mut self,
         sheet_id: &str,
@@ -1871,271 +2695,29 @@ impl Spreadsheet {
         count: u32,
         changes: Vec<CellChange>,
     ) -> app::Result<()> {
-        let author = self.caller_hex();
-        let at = storage_env::time_now();
-        let mut nonce = [0u8; 4];
-        env::random_bytes(&mut nonce);
-        let key = format!("{at:020}|{author}|{}", hex::encode(nonce));
-        self.activity
-            .insert(
-                key,
-                ActivityData {
-                    at,
-                    sheet_id: sheet_id.to_string(),
-                    kind: kind.to_string(),
-                    summary,
-                    count,
-                    changes,
-                },
-            )
-            .map_err(|e| AppError::msg(format!("activity.insert: {e}")))?;
-        Ok(())
-    }
-
-    /// Activity since `since` (nanoseconds), newest first, at most `limit`
-    /// (capped at 500) entries: one seek on the `at` index. The author is the
-    /// entry's owner stamp.
-    pub fn get_activity(&self, since: u64, limit: u32) -> app::Result<Vec<ActivityEntry>> {
-        let mut out = Vec::new();
-        for (id, d) in self
-            .activity
-            .query("at")
-            .range(since..)
-            .desc()
-            .limit(limit.min(500) as usize)
-            .entries()
-            .map_err(|e| AppError::msg(format!("activity.query: {e}")))?
-        {
-            // A row its author signed twice is sealed and matches no row.
-            let holders = self
-                .activity
-                .entries_at(&id)?
-                .into_iter()
-                .filter_map(|(owner, held)| Some((owner, held.value()?)))
-                .collect();
-            out.push(ActivityEntry {
-                author: owner_hex(owner_among(holders, &d)),
-                id,
-                at: d.at,
-                sheet_id: d.sheet_id,
-                kind: d.kind,
-                summary: d.summary,
-                count: d.count,
-                changes: d.changes,
-            });
-        }
-        Ok(out)
-    }
-
-    // ---- Comments ----
-
-    /// Comment on a cell, or reply to a comment (`parent`). `@nickname` in the
-    /// text mentions that member: the `CommentAdded` event carries their ids,
-    /// and their client tells them. Returns the comment id.
-    pub fn add_comment(
-        &mut self,
-        sheet_id: String,
-        row_id: String,
-        col_id: String,
-        text: String,
-        parent: String,
-    ) -> app::Result<String> {
-        self.require_role(Role::Commenter)?;
-        self.require_sheet(&sheet_id)?;
-        Spreadsheet::check_id(&row_id)?;
-        Spreadsheet::check_id(&col_id)?;
-        let text = Spreadsheet::check_comment(text)?;
-        // Anyone's comment: keys are per owner, so a key-only `contains`
-        // would only find a parent the caller wrote.
-        if !parent.is_empty() && self.comments.entries_at(&parent)?.is_empty() {
-            return Err(AppError::from(Error::NotFound(parent)));
-        }
-        let author = self.caller_hex();
-        let now = storage_env::time_now();
-        let mut nonce = [0u8; 4];
-        env::random_bytes(&mut nonce);
-        let id = generate_id("comment", now, &nonce);
-        let mentions = self.mentions_in(&text)?;
-        self.comments
-            .insert(
-                id.clone(),
-                CommentData {
-                    sheet_id: sheet_id.clone(),
-                    row_id,
-                    col_id,
-                    text,
-                    mentions: mentions.clone(),
-                    parent: parent.clone(),
-                    created_at: now,
-                    updated_at: now,
-                },
-            )
-            .map_err(|e| AppError::msg(format!("comments.insert: {e}")))?;
-        let summary = if parent.is_empty() {
-            "commented"
-        } else {
-            "replied to a comment"
-        };
-        self.log(&sheet_id, "comment", summary.to_string(), 0, Vec::new())?;
-        app::emit!(Event::CommentAdded {
-            id: &id,
-            sheet_id: &sheet_id,
-            author: &author,
-            mentions: &mentions,
-        });
-        Ok(id)
-    }
-
-    /// Change a comment's text. Only its author may: storage refuses anyone
-    /// else's edit on every node.
-    pub fn edit_comment(&mut self, id: String, text: String) -> app::Result<()> {
-        let text = Spreadsheet::check_comment(text)?;
-        let mentions = self.mentions_in(&text)?;
-        let sheet_id = self.comment_sheet(&id)?;
-        if !self.comments.owned_by_me(&id)? {
-            return Err(AppError::from(Error::Forbidden(
-                "only its author can change a comment".into(),
-            )));
-        }
-        let now = storage_env::time_now();
-        self.comments.modify(&id, |c| {
-            c.text = text;
-            c.mentions = mentions;
-            c.updated_at = now;
-        })?;
-        app::emit!(Event::CommentChanged {
-            id: &id,
-            sheet_id: &sheet_id
-        });
-        Ok(())
-    }
-
-    /// Resolve or reopen a comment thread. Anyone in the workbook may.
-    pub fn set_comment_resolved(&mut self, id: String, resolved: bool) -> app::Result<()> {
-        self.require_role(Role::Commenter)?;
-        let sheet_id = self.comment_sheet(&id)?;
-        self.resolved
-            .insert(id.clone(), LwwRegister::new(resolved))
-            .map_err(|e| AppError::msg(format!("resolved.insert: {e}")))?;
-        app::emit!(Event::CommentChanged {
-            id: &id,
-            sheet_id: &sheet_id
-        });
-        Ok(())
-    }
-
-    /// Delete a comment. Its author or an owner may; storage refuses anyone
-    /// else on every node.
-    pub fn delete_comment(&mut self, id: String) -> app::Result<()> {
-        let sheet_id = self.comment_sheet(&id)?;
-        if !self.comments.owned_by_me(&id)? && !self.comments.is_moderator(&caller_account()) {
-            return Err(AppError::from(Error::Forbidden(
-                "only its author or an owner can delete a comment".into(),
-            )));
-        }
-        self.remove_every(Owned::Comments, &id)?;
-        self.resolved
-            .remove(&id)
-            .map_err(|e| AppError::msg(format!("resolved.remove: {e}")))?;
-        app::emit!(Event::CommentChanged {
-            id: &id,
-            sheet_id: &sheet_id
-        });
-        Ok(())
-    }
-
-    /// Every comment, oldest first. The author is the entry's owner stamp.
-    pub fn get_comments(&self) -> app::Result<Vec<Comment>> {
-        let mut out = Vec::new();
-        for (owner, id, c) in self
-            .comments
-            .entries_with_owners()
-            .map_err(|e| AppError::msg(format!("comments.entries: {e}")))?
-        {
-            let resolved = self
-                .resolved
-                .get(&id)
-                .map_err(|e| AppError::msg(format!("resolved.get: {e}")))?
-                .is_some_and(|r| *r.get());
-            out.push(Comment {
-                author: owner_hex(Some(owner)),
-                id,
-                sheet_id: c.sheet_id,
-                row_id: c.row_id,
-                col_id: c.col_id,
-                text: c.text,
-                mentions: c.mentions,
-                parent: c.parent,
-                resolved,
-                created_at: c.created_at,
-                updated_at: c.updated_at,
-            });
-        }
-        out.sort_by(|a, b| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)));
-        Ok(out)
-    }
-
-    fn check_comment(text: String) -> app::Result<String> {
-        let text = text.trim().to_string();
-        if text.is_empty() || text.chars().count() > MAX_COMMENT_CHARS {
-            return Err(AppError::from(Error::Invalid(format!(
-                "a comment is 1 to {MAX_COMMENT_CHARS} characters"
-            ))));
-        }
-        Ok(text)
-    }
-
-    /// The sheet a comment is on; `NotFound` for no such comment.
-    /// The sheet of the comment at `id`, whoever wrote it (the lowest
-    /// account's, if several did): a key-only `get` reads the caller's own.
-    fn comment_sheet(&self, id: &str) -> app::Result<String> {
-        lowest(
-            self.comments
-                .entries_at(&id.to_string())
-                .map_err(|e| AppError::msg(format!("comments.entries_at: {e}")))?,
-        )
-        .map(|(_, c)| c.sheet_id)
-        .ok_or_else(|| AppError::from(Error::NotFound(id.to_string())))
-    }
-
-    /// Remove the entry at `id` of a moderated collection: the caller's own
-    /// if they hold one, else every holder's, by name (`remove_by`), which
-    /// storage allows a moderator only. A key-only `remove` removes only the
-    /// caller's own entry.
-    fn remove_every(&mut self, which: Owned, id: &String) -> app::Result<()> {
-        let me = caller_account();
-        macro_rules! remove_in {
-            ($map:expr) => {{
-                let holders: Vec<AccountId> = $map
-                    .entries_at(id)?
-                    .into_iter()
-                    .map(|(owner, _)| owner)
-                    .collect();
-                if holders.contains(&me) {
-                    let _ = $map.remove(id)?;
-                } else {
-                    for owner in holders {
-                        let _ = $map.remove_by(&owner, id)?;
-                    }
-                }
-            }};
-        }
-        match which {
-            Owned::Comments => remove_in!(self.comments),
-            Owned::Attachments => remove_in!(self.attachments),
-            Owned::Publications => remove_in!(self.publications),
-        }
+        let key = (now(), me()?, hex(&nonce()));
+        let _ = self.activity.insert(
+            &key,
+            &ActivityData {
+                sheet_id: sheet_id.to_string(),
+                kind: kind.to_string(),
+                summary,
+                count,
+                changes,
+            },
+        )?;
         Ok(())
     }
 
     /// Members named in `text` as `@nickname` (longest nickname wins, case
     /// ignored; a nickname may contain spaces).
     fn mentions_in(&self, text: &str) -> app::Result<Vec<String>> {
-        let mut members: Vec<(String, String)> = self
-            .members
-            .entries()
-            .map_err(|e| AppError::msg(format!("members.entries: {e}")))?
-            .map(|(id, m)| (m.nickname.to_lowercase(), hex::encode(id.as_bytes())))
+        if !text.contains('@') {
+            return Ok(Vec::new());
+        }
+        let mut members: Vec<(String, String)> = all(|o| self.members.page(o))?
+            .into_iter()
+            .map(|(id, m)| (m.nickname.to_lowercase(), id))
             .collect();
         members.sort_by(|a, b| b.0.len().cmp(&a.0.len()).then(a.1.cmp(&b.1)));
         let lower = text.to_lowercase();
@@ -2154,479 +2736,6 @@ impl Spreadsheet {
         Ok(found)
     }
 
-    // ---- Notes ----
-
-    /// Edit a cell's note: one editor transaction (text and formatting) in the
-    /// Quill delta shape, counted against the note as this node holds it.
-    /// Concurrent edits from others merge character by character. Formatting
-    /// keys are `bold`, `italic`, `underline`, `strike`, `code`, `highlight`
-    /// and `link`.
-    pub fn edit_note(
-        &mut self,
-        sheet_id: String,
-        row_id: String,
-        col_id: String,
-        ops: Vec<NoteChange>,
-    ) -> app::Result<()> {
-        self.require_sheet(&sheet_id)?;
-        Spreadsheet::check_id(&row_id)?;
-        Spreadsheet::check_id(&col_id)?;
-        self.require_cells_writable(&sheet_id, [(row_id.as_str(), col_id.as_str())])?;
-        let ops: Vec<DeltaOp> = ops.into_iter().map(Into::into).collect();
-        let key = Spreadsheet::cell_key(&sheet_id, &row_id, &col_id);
-        let mut note = self
-            .notes
-            .entry(key)
-            .and_then(|e| e.or_default())
-            .map_err(|e| AppError::msg(format!("notes.entry: {e}")))?;
-        let len = note
-            .len()
-            .map_err(|e| AppError::msg(format!("note.len: {e}")))?;
-        let (added, removed) = ops.iter().fold((0, 0), |(a, r), op| match op {
-            DeltaOp::Insert { insert, .. } => (a + insert.chars().count(), r),
-            DeltaOp::Delete { delete } => (a, r + delete),
-            DeltaOp::Retain { .. } => (a, r),
-        });
-        if (len + added).saturating_sub(removed) > MAX_NOTE_CHARS {
-            return Err(AppError::from(Error::Invalid(format!(
-                "a note is at most {MAX_NOTE_CHARS} characters"
-            ))));
-        }
-        let _undo = note
-            .apply_delta(&ops)
-            .map_err(|e| AppError::from(Error::Invalid(format!("note edit: {e}"))))?;
-        drop(note);
-        app::emit!(Event::NoteChanged {
-            sheet_id: &sheet_id,
-            row_id: &row_id,
-            col_id: &col_id,
-        });
-        Ok(())
-    }
-
-    /// A cell's note as formatted runs; empty when it has none.
-    pub fn get_note(
-        &self,
-        sheet_id: String,
-        row_id: String,
-        col_id: String,
-    ) -> app::Result<Vec<Span>> {
-        let key = Spreadsheet::cell_key(&sheet_id, &row_id, &col_id);
-        match self
-            .notes
-            .get(&key)
-            .map_err(|e| AppError::msg(format!("notes.get: {e}")))?
-        {
-            Some(note) => note
-                .to_delta()
-                .map_err(|e| AppError::msg(format!("note.to_delta: {e}"))),
-            None => Ok(Vec::new()),
-        }
-    }
-
-    /// Every cell with a non-empty note, with the start of its text.
-    pub fn get_noted_cells(&self) -> app::Result<Vec<NotedCell>> {
-        let mut out = Vec::new();
-        for (key, note) in self
-            .notes
-            .entries()
-            .map_err(|e| AppError::msg(format!("notes.entries: {e}")))?
-        {
-            let text = note
-                .get_text()
-                .map_err(|e| AppError::msg(format!("note.get_text: {e}")))?;
-            let Some((sheet_id, row_id, col_id)) = split_key(&key) else {
-                continue;
-            };
-            if text.trim().is_empty() {
-                continue;
-            }
-            out.push(NotedCell {
-                sheet_id: sheet_id.to_string(),
-                row_id: row_id.to_string(),
-                col_id: col_id.to_string(),
-                preview: text.chars().take(NOTE_PREVIEW_CHARS).collect(),
-            });
-        }
-        Ok(out)
-    }
-
-    // ---- Roles and protected ranges ----
-    //
-    // Who is an owner, and who is a viewer or commenter, lives in `acl`, whose
-    // writers are the owners: every node refuses anyone else's change to it.
-    // Owner-only data (the name, protections) sits in cells the owners write,
-    // and owners moderate comments, attachments and links, so those hold
-    // against a patched node too. A viewer's or commenter's limits on shared
-    // data (cells, styles, rules, ...) are checked here only, on the node that
-    // makes the change: that data is open to every member by design. Who is in
-    // the workbook at all is core's group membership, which the app manages
-    // separately (and which removal rotates the group key for).
-
-    /// Set a member's workbook role: `owner`, `editor`, `commenter` or
-    /// `viewer`. Owners only.
-    pub fn set_role(&mut self, member_id: String, role: String) -> app::Result<()> {
-        let Some(new_role) = Role::parse(&role) else {
-            return Err(AppError::from(Error::Invalid(format!(
-                "{role:?} is not a role: owner, editor, commenter or viewer"
-            ))));
-        };
-        self.require_owner("change roles")?;
-        let who = parse_account(&member_id)?;
-        if !self.members.contains_user(&who)? {
-            return Err(AppError::from(Error::NotFound(member_id)));
-        }
-        let was_owner = self.acl.is_admin(&who);
-        if was_owner && new_role != Role::Owner && self.acl.admins().len() == 1 {
-            return Err(AppError::from(Error::Invalid(
-                "a workbook keeps at least one owner: make someone else an owner first".into(),
-            )));
-        }
-        // The named roles first: granting them takes an owner, and the caller
-        // may be about to step down.
-        for named in [Role::Viewer, Role::Commenter] {
-            if named == new_role {
-                self.acl.grant(named.as_str(), who)?;
-            } else if self.acl.has_role(named.as_str(), &who)? {
-                self.acl.revoke(named.as_str(), &who)?;
-            }
-        }
-        match (was_owner, new_role == Role::Owner) {
-            (false, true) => self.acl.grant_admin(who)?,
-            (true, false) => self.acl.revoke_admin(&who)?,
-            _ => {}
-        }
-        if was_owner != (new_role == Role::Owner) {
-            self.sync_owners()?;
-        }
-        let nickname = self
-            .members
-            .get_for_user(&who)?
-            .map(|m| m.nickname)
-            .unwrap_or_default();
-        self.log(
-            "",
-            "role",
-            format!(
-                "made {nickname} {} {}",
-                article(new_role),
-                new_role.as_str()
-            ),
-            0,
-            Vec::new(),
-        )?;
-        app::emit!(Event::RolesChanged {
-            member_id: &member_id
-        });
-        Ok(())
-    }
-
-    /// Protect a range (corner row and column ids; all four empty for the
-    /// whole sheet). Only owners and `editors` may then change its cells.
-    /// Owners only. Returns the protection id.
-    #[allow(clippy::too_many_arguments, reason = "one argument per corner")]
-    pub fn protect_range(
-        &mut self,
-        sheet_id: String,
-        top_row_id: String,
-        left_col_id: String,
-        bottom_row_id: String,
-        right_col_id: String,
-        description: String,
-        editors: Vec<String>,
-    ) -> app::Result<String> {
-        self.require_owner("manage protected ranges")?;
-        self.require_sheet(&sheet_id)?;
-        let corners = [&top_row_id, &left_col_id, &bottom_row_id, &right_col_id];
-        if !corners.iter().all(|c| c.is_empty()) {
-            for c in corners {
-                Spreadsheet::check_id(c)?;
-            }
-        }
-        let description = Spreadsheet::check_description(description)?;
-        let now = storage_env::time_now();
-        let mut nonce = [0u8; 4];
-        env::random_bytes(&mut nonce);
-        let id = generate_id("prot", now, &nonce);
-        let me = self.caller_hex();
-        self.protections_mut()?
-            .insert(
-                id.clone(),
-                ProtectionData {
-                    sheet_id: sheet_id.clone(),
-                    top_row_id,
-                    left_col_id,
-                    bottom_row_id,
-                    right_col_id,
-                    description,
-                    editors,
-                    created_by: me,
-                    deleted: false,
-                    updated_at: now,
-                },
-            )
-            .map_err(|e| AppError::msg(format!("protections.insert: {e}")))?;
-        self.log(
-            &sheet_id,
-            "protect",
-            "protected a range".into(),
-            0,
-            Vec::new(),
-        )?;
-        app::emit!(Event::ProtectionsChanged {
-            sheet_id: &sheet_id
-        });
-        Ok(id)
-    }
-
-    /// Change who may edit a protected range, and its description. Owners only.
-    pub fn update_protection(
-        &mut self,
-        id: String,
-        description: String,
-        editors: Vec<String>,
-    ) -> app::Result<()> {
-        let description = Spreadsheet::check_description(description)?;
-        self.change_protection(&id, "changed a protected range", |p| {
-            p.description = description;
-            p.editors = editors;
-        })
-    }
-
-    /// Remove a protection. Owners only.
-    pub fn remove_protection(&mut self, id: String) -> app::Result<()> {
-        self.change_protection(&id, "removed a protected range", |p| p.deleted = true)
-    }
-
-    /// Every live protected range.
-    pub fn get_protections(&self) -> app::Result<Vec<Protection>> {
-        let mut out: Vec<Protection> = self
-            .protections
-            .get()?
-            .entries()
-            .map_err(|e| AppError::msg(format!("protections.entries: {e}")))?
-            .filter(|(_, p)| !p.deleted)
-            .map(|(id, p)| Protection {
-                id,
-                sheet_id: p.sheet_id,
-                top_row_id: p.top_row_id,
-                left_col_id: p.left_col_id,
-                bottom_row_id: p.bottom_row_id,
-                right_col_id: p.right_col_id,
-                description: p.description,
-                editors: p.editors,
-                created_by: p.created_by,
-            })
-            .collect();
-        out.sort_by(|a, b| a.id.cmp(&b.id));
-        Ok(out)
-    }
-
-    fn change_protection(
-        &mut self,
-        id: &str,
-        summary: &str,
-        change: impl FnOnce(&mut ProtectionData),
-    ) -> app::Result<()> {
-        self.require_owner("manage protected ranges")?;
-        let Some(mut p) = self
-            .protections
-            .get()?
-            .get(id)
-            .map_err(|e| AppError::msg(format!("protections.get: {e}")))?
-            .filter(|p| !p.deleted)
-            .map(|p| p.clone())
-        else {
-            return Err(AppError::from(Error::NotFound(id.to_string())));
-        };
-        change(&mut p);
-        p.updated_at = storage_env::time_now();
-        let sheet_id = p.sheet_id.clone();
-        self.protections_mut()?
-            .insert(id.to_string(), p)
-            .map_err(|e| AppError::msg(format!("protections.insert: {e}")))?;
-        self.log(&sheet_id, "protect", summary.into(), 0, Vec::new())?;
-        app::emit!(Event::ProtectionsChanged {
-            sheet_id: &sheet_id
-        });
-        Ok(())
-    }
-
-    fn check_description(description: String) -> app::Result<String> {
-        let description = description.trim().to_string();
-        if description.chars().count() > 200 {
-            return Err(AppError::from(Error::Invalid(
-                "a description is at most 200 characters".into(),
-            )));
-        }
-        Ok(description)
-    }
-
-    // ---- Styles and rules ----
-
-    /// Change cells' styles: bold, italic, underline, strike, wrap (`1`),
-    /// color and fill (`#rrggbb`), align (`left`, `center`, `right`); an
-    /// empty value clears the field. Each field merges on its own.
-    pub fn apply_style_ops(&mut self, sheet_id: String, ops: Vec<StyleOp>) -> app::Result<()> {
-        if ops.len() > MAX_OPS_PER_APPLY {
-            return Err(AppError::from(Error::Invalid(format!(
-                "{} style ops in one call; the limit is {MAX_OPS_PER_APPLY}",
-                ops.len()
-            ))));
-        }
-        self.require_sheet(&sheet_id)?;
-        for op in &ops {
-            Spreadsheet::check_id(&op.row_id)?;
-            Spreadsheet::check_id(&op.col_id)?;
-            check_style_field(&op.field, &op.value)?;
-        }
-        self.require_cells_writable(
-            &sheet_id,
-            ops.iter().map(|o| (o.row_id.as_str(), o.col_id.as_str())),
-        )?;
-        let now = storage_env::time_now();
-        let mut by_cell: BTreeMap<String, Vec<StyleOp>> = BTreeMap::new();
-        for op in ops {
-            by_cell
-                .entry(Spreadsheet::cell_key(&sheet_id, &op.row_id, &op.col_id))
-                .or_default()
-                .push(op);
-        }
-        let count = by_cell.len() as u32;
-        for (key, cell_ops) in by_cell {
-            let mut style = self
-                .styles
-                .get(&key)
-                .map_err(|e| AppError::msg(format!("styles.get: {e}")))?
-                .map(|s| s.clone())
-                .unwrap_or_default();
-            for op in cell_ops {
-                style.set(StyleField {
-                    field: op.field,
-                    value: op.value,
-                    updated_at: now,
-                });
-            }
-            self.styles
-                .insert(key, style)
-                .map_err(|e| AppError::msg(format!("styles.insert: {e}")))?;
-        }
-        self.log(
-            &sheet_id,
-            "style",
-            format!(
-                "formatted {count} cell{}",
-                if count == 1 { "" } else { "s" }
-            ),
-            count,
-            Vec::new(),
-        )?;
-        app::emit!(Event::StylesChanged {
-            sheet_id: &sheet_id
-        });
-        Ok(())
-    }
-
-    /// Every styled cell, with its set fields.
-    pub fn get_styles(&self) -> app::Result<Vec<CellStyle>> {
-        Ok(self
-            .styles
-            .entries()
-            .map_err(|e| AppError::msg(format!("styles.entries: {e}")))?
-            .filter_map(|(key, s)| {
-                let (sheet_id, row_id, col_id) = split_key(&key)?;
-                let style: BTreeMap<String, String> = s
-                    .fields
-                    .into_iter()
-                    .filter(|f| !f.value.is_empty())
-                    .map(|f| (f.field, f.value))
-                    .collect();
-                (!style.is_empty()).then(|| CellStyle {
-                    sheet_id: sheet_id.to_string(),
-                    row_id: row_id.to_string(),
-                    col_id: col_id.to_string(),
-                    style,
-                })
-            })
-            .collect())
-    }
-
-    /// Add a conditional format, colour scale or validation. Returns its id.
-    pub fn add_rule(&mut self, rule: RuleInput) -> app::Result<String> {
-        self.require_role(Role::Editor)?;
-        self.check_rule(&rule)?;
-        let now = storage_env::time_now();
-        let mut nonce = [0u8; 4];
-        env::random_bytes(&mut nonce);
-        let id = generate_id("rule", now, &nonce);
-        let sheet_id = rule.sheet_id.clone();
-        self.put_rule(&id, rule, now)?;
-        self.log(&sheet_id, "rule", "added a rule".into(), 0, Vec::new())?;
-        app::emit!(Event::RulesChanged {
-            sheet_id: &sheet_id
-        });
-        Ok(id)
-    }
-
-    /// Replace a rule.
-    pub fn update_rule(&mut self, id: String, rule: RuleInput) -> app::Result<()> {
-        self.require_role(Role::Editor)?;
-        self.check_rule(&rule)?;
-        self.live_rule(&id)?;
-        let sheet_id = rule.sheet_id.clone();
-        self.put_rule(&id, rule, storage_env::time_now())?;
-        self.log(&sheet_id, "rule", "changed a rule".into(), 0, Vec::new())?;
-        app::emit!(Event::RulesChanged {
-            sheet_id: &sheet_id
-        });
-        Ok(())
-    }
-
-    pub fn remove_rule(&mut self, id: String) -> app::Result<()> {
-        self.require_role(Role::Editor)?;
-        let mut rule = self.live_rule(&id)?;
-        rule.deleted = true;
-        rule.updated_at = storage_env::time_now();
-        let sheet_id = rule.sheet_id.clone();
-        self.rules
-            .insert(id, rule)
-            .map_err(|e| AppError::msg(format!("rules.insert: {e}")))?;
-        self.log(&sheet_id, "rule", "removed a rule".into(), 0, Vec::new())?;
-        app::emit!(Event::RulesChanged {
-            sheet_id: &sheet_id
-        });
-        Ok(())
-    }
-
-    /// Every live rule.
-    pub fn get_rules(&self) -> app::Result<Vec<Rule>> {
-        let mut out: Vec<Rule> = self
-            .rules
-            .entries()
-            .map_err(|e| AppError::msg(format!("rules.entries: {e}")))?
-            .filter(|(_, r)| !r.deleted)
-            .map(|(id, r)| Rule {
-                id,
-                created_by: r.created_by,
-                rule: RuleInput {
-                    sheet_id: r.sheet_id,
-                    top_row_id: r.top_row_id,
-                    left_col_id: r.left_col_id,
-                    bottom_row_id: r.bottom_row_id,
-                    right_col_id: r.right_col_id,
-                    kind: r.kind,
-                    condition: r.condition,
-                    args: r.args,
-                    style: r.style.into_iter().map(|p| (p.field, p.value)).collect(),
-                    strict: r.strict,
-                    recipients: r.recipients,
-                },
-            })
-            .collect();
-        out.sort_by(|a, b| a.id.cmp(&b.id));
-        Ok(out)
-    }
-
     fn check_rule(&self, rule: &RuleInput) -> app::Result<()> {
         self.require_sheet(&rule.sheet_id)?;
         for c in [
@@ -2635,16 +2744,15 @@ impl Spreadsheet {
             &rule.bottom_row_id,
             &rule.right_col_id,
         ] {
-            Spreadsheet::check_id(c)?;
+            check_id(c)?;
         }
-        let bad = |why: &str| Err(AppError::from(Error::Invalid(why.into())));
         match rule.kind.as_str() {
             "format" => {
                 if !rules::is_valid(&rule.condition, &rule.args) {
-                    return bad("that condition does not take those values");
+                    return Err(invalid("that condition does not take those values"));
                 }
                 if rule.style.is_empty() {
-                    return bad("a conditional format needs a style");
+                    return Err(invalid("a conditional format needs a style"));
                 }
                 for (field, value) in &rule.style {
                     check_style_field(field, value)?;
@@ -2652,7 +2760,7 @@ impl Spreadsheet {
             }
             "scale" => {
                 if rule.args.len() != 2 {
-                    return bad("a colour scale takes two colours");
+                    return Err(invalid("a colour scale takes two colours"));
                 }
                 for colour in &rule.args {
                     check_style_field("fill", colour)?;
@@ -2660,71 +2768,67 @@ impl Spreadsheet {
             }
             "validate" => {
                 if !rules::is_valid(&rule.condition, &rule.args) {
-                    return bad("that condition does not take those values");
+                    return Err(invalid("that condition does not take those values"));
                 }
             }
             "alert" => {
                 if !rules::is_valid(&rule.condition, &rule.args) {
-                    return bad("that condition does not take those values");
+                    return Err(invalid("that condition does not take those values"));
                 }
                 if rule.recipients.is_empty() {
-                    return bad("an alert tells at least one member");
+                    return Err(invalid("an alert tells at least one member"));
                 }
                 for m in &rule.recipients {
-                    if !self.members.contains_user(&parse_account(m)?)? {
-                        return Err(AppError::from(Error::NotFound(m.clone())));
+                    if !self.members.contains(m)? {
+                        return Err(not_found(m.clone()));
                     }
                 }
             }
-            _ => return bad("a rule is format, scale, validate or alert"),
+            _ => return Err(invalid("a rule is format, scale, validate or alert")),
         }
         if rule.args.iter().map(String::len).sum::<usize>() > 2000 {
-            return bad("a rule's values are at most 2000 characters");
+            return Err(invalid("a rule's values are at most 2000 characters"));
         }
         Ok(())
     }
 
     fn put_rule(&mut self, id: &str, rule: RuleInput, now: u64) -> app::Result<()> {
-        let me = self.caller_hex();
-        self.rules
-            .insert(
-                id.to_string(),
-                RuleData {
-                    sheet_id: rule.sheet_id,
-                    top_row_id: rule.top_row_id,
-                    left_col_id: rule.left_col_id,
-                    bottom_row_id: rule.bottom_row_id,
-                    right_col_id: rule.right_col_id,
-                    kind: rule.kind,
-                    condition: rule.condition,
-                    args: rule.args,
-                    style: rule
-                        .style
-                        .into_iter()
-                        .map(|(field, value)| StylePair { field, value })
-                        .collect(),
-                    strict: rule.strict,
-                    recipients: rule.recipients,
-                    created_by: me,
-                    deleted: false,
-                    updated_at: now,
-                },
-            )
-            .map_err(|e| AppError::msg(format!("rules.insert: {e}")))?;
+        let _ = self.rules.insert(
+            &id.to_string(),
+            &RuleData {
+                sheet_id: rule.sheet_id,
+                top_row_id: rule.top_row_id,
+                left_col_id: rule.left_col_id,
+                bottom_row_id: rule.bottom_row_id,
+                right_col_id: rule.right_col_id,
+                kind: rule.kind,
+                condition: rule.condition,
+                args: rule.args,
+                style: rule.style,
+                strict: rule.strict,
+                recipients: rule.recipients,
+                created_by: me()?,
+                updated_at: now,
+            },
+        )?;
         Ok(())
     }
 
     fn live_rule(&self, id: &str) -> app::Result<RuleData> {
         self.rules
-            .get(id)
-            .map_err(|e| AppError::msg(format!("rules.get: {e}")))?
-            .filter(|r| !r.deleted)
-            .map(|r| r.clone())
-            .ok_or_else(|| AppError::from(Error::NotFound(id.to_string())))
+            .get(&id.to_string())?
+            .ok_or_else(|| not_found(id))
     }
 
-    /// Refuse a literal value a strict validation over its cell would not
-    /// accept. Formulas are not checked: their value is not known here.
+    /// A sheet's rules of one kind.
+    fn rules_of(&self, sheet_id: &str, kind: &str) -> app::Result<Vec<(String, RuleData)>> {
+        Ok(all(|o| self.rules.page(o))?
+            .into_iter()
+            .filter(|(_, r)| r.sheet_id == sheet_id && r.kind == kind)
+            .collect())
+    }
+
+    /// Refuse a literal a strict validation over its cell would not accept.
     fn require_valid_values(&self, sheet_id: &str, ops: &[CellOp]) -> app::Result<()> {
         let strict: Vec<RuleData> = self
             .rules_of(sheet_id, "validate")?
@@ -2763,403 +2867,16 @@ impl Spreadsheet {
                 )
                 .is_some_and(|x| x.contains(r, c));
                 if inside && !rules::matches(&rule.condition, &rule.args, raw_value) {
-                    return Err(AppError::from(Error::Invalid(format!(
+                    return Err(invalid(format!(
                         "{}{} must be {}",
                         formula::col_label(c as u32),
                         r + 1,
                         rules::describe(&rule.condition, &rule.args)
-                    ))));
+                    )));
                 }
             }
         }
         Ok(())
-    }
-
-    // ---- Linked workbooks ----
-    //
-    // A link pushes a range's values from this workbook to another in the
-    // workspace with a cross-context call (`xcall`), which the node runs on
-    // the target after this call commits. The target keeps them as a
-    // read-only sheet its formulas can use. Pushes happen when the link is
-    // made, whenever a cell on its sheet changes, and on demand.
-
-    /// Link a range to another workbook (its context id, hex), where it
-    /// appears as a read-only sheet called `name`. Returns the link's id.
-    #[allow(clippy::too_many_arguments, reason = "one argument per corner")]
-    pub fn publish_range(
-        &mut self,
-        sheet_id: String,
-        top_row_id: String,
-        left_col_id: String,
-        bottom_row_id: String,
-        right_col_id: String,
-        target_context: String,
-        name: String,
-    ) -> app::Result<String> {
-        self.require_role(Role::Editor)?;
-        self.require_sheet(&sheet_id)?;
-        for c in [&top_row_id, &left_col_id, &bottom_row_id, &right_col_id] {
-            Spreadsheet::check_id(c)?;
-        }
-        let target = parse_context(&target_context)?;
-        if target == env::context_id() {
-            return Err(AppError::from(Error::Invalid(
-                "a workbook cannot link to itself".into(),
-            )));
-        }
-        validate_sheet_name(&name).map_err(AppError::from)?;
-        let now = storage_env::time_now();
-        let mut nonce = [0u8; 4];
-        env::random_bytes(&mut nonce);
-        let id = generate_id("pub", now, &nonce);
-        let publication = PublicationData {
-            sheet_id: sheet_id.clone(),
-            top_row_id,
-            left_col_id,
-            bottom_row_id,
-            right_col_id,
-            target_context: hex::encode(target),
-            name: name.clone(),
-        };
-        self.push(&id, &publication, &self.sheet_values(&sheet_id)?)?;
-        self.publications.insert(id.clone(), publication)?;
-        self.log(
-            &sheet_id,
-            "link",
-            format!("linked a range as {name:?}"),
-            0,
-            Vec::new(),
-        )?;
-        app::emit!(Event::PublicationsChanged {
-            sheet_id: &sheet_id
-        });
-        Ok(id)
-    }
-
-    /// Push a link's values again now.
-    pub fn push_publication(&mut self, id: String) -> app::Result<()> {
-        self.require_role(Role::Editor)?;
-        let p = self.live_publication(&id)?;
-        self.push(&id, &p, &self.sheet_values(&p.sheet_id)?)
-    }
-
-    /// Stop a link, and remove its sheet from the other workbook. Whoever
-    /// linked it, or an owner, may: storage refuses anyone else.
-    pub fn unpublish(&mut self, id: String) -> app::Result<()> {
-        self.require_role(Role::Editor)?;
-        let p = self.live_publication(&id)?;
-        if !self.publications.owned_by_me(&id)?
-            && !self.publications.is_moderator(&caller_account())
-        {
-            return Err(AppError::from(Error::Forbidden(
-                "only whoever linked a range, or an owner, can stop the link".into(),
-            )));
-        }
-        #[derive(Serialize)]
-        #[serde(crate = "calimero_sdk::serde")]
-        struct Params {
-            from_context: ContextId,
-            publication_id: String,
-        }
-        let params = calimero_sdk::serde_json::to_vec(&Params {
-            from_context: ContextId::from(env::context_id()),
-            publication_id: id.clone(),
-        })?;
-        send_xcall(&parse_context(&p.target_context)?, "drop_link", params);
-        let sheet_id = p.sheet_id.clone();
-        self.remove_every(Owned::Publications, &id)?;
-        app::emit!(Event::PublicationsChanged {
-            sheet_id: &sheet_id
-        });
-        Ok(())
-    }
-
-    /// Every live link from this workbook: those an editor or owner made.
-    pub fn get_publications(&self) -> app::Result<Vec<Publication>> {
-        let mut out = Vec::new();
-        let ids: BTreeSet<String> = self
-            .publications
-            .entries()
-            .map_err(|e| AppError::msg(format!("publications.entries: {e}")))?
-            .map(|(id, _)| id)
-            .collect();
-        for id in ids {
-            let Some((created_by, p)) = self.live_publication_entry(&id)? else {
-                continue;
-            };
-            out.push(Publication {
-                id,
-                sheet_id: p.sheet_id,
-                top_row_id: p.top_row_id,
-                left_col_id: p.left_col_id,
-                bottom_row_id: p.bottom_row_id,
-                right_col_id: p.right_col_id,
-                target_context: p.target_context,
-                name: p.name,
-                created_by,
-            });
-        }
-        out.sort_by(|a, b| a.id.cmp(&b.id));
-        Ok(out)
-    }
-
-    /// Receive a linked range from another workbook running this app. Only
-    /// the node calls it, from the source's `xcall`; the origin it sets must
-    /// be the workbook the call says it is from.
-    #[allow(
-        clippy::too_many_arguments,
-        reason = "the pushed range, field by field"
-    )]
-    #[app::xcall(from_same_app)]
-    pub fn receive_link(
-        &mut self,
-        from_context: ContextId,
-        publication_id: String,
-        name: String,
-        source_name: String,
-        rows: u32,
-        cols: u32,
-        values: Vec<String>,
-    ) -> app::Result<()> {
-        Spreadsheet::require_origin(&from_context)?;
-        self.store_link(
-            &hex::encode(from_context.as_ref()),
-            &publication_id,
-            name,
-            source_name,
-            rows,
-            cols,
-            values,
-        )
-    }
-
-    /// The source withdrew a link: remove its sheet.
-    #[app::xcall(from_same_app)]
-    pub fn drop_link(
-        &mut self,
-        from_context: ContextId,
-        publication_id: String,
-    ) -> app::Result<()> {
-        Spreadsheet::require_origin(&from_context)?;
-        let id = link_id(&hex::encode(from_context.as_ref()), &publication_id);
-        if let Some(mut l) = self.linked.get(&id)?.map(|l| l.clone()) {
-            l.deleted = true;
-            l.updated_at = storage_env::time_now();
-            self.linked.insert(id.clone(), l)?;
-            app::emit!(Event::LinkedChanged { sheet_id: &id });
-        }
-        Ok(())
-    }
-
-    /// Remove a linked sheet here; later pushes of it are ignored.
-    pub fn unlink(&mut self, id: String) -> app::Result<()> {
-        self.require_role(Role::Editor)?;
-        let Some(mut l) = self.linked.get(&id)?.map(|l| l.clone()) else {
-            return Err(AppError::from(Error::NotFound(id)));
-        };
-        l.blocked = true;
-        l.updated_at = storage_env::time_now();
-        self.linked.insert(id.clone(), l)?;
-        app::emit!(Event::LinkedChanged { sheet_id: &id });
-        Ok(())
-    }
-
-    /// Every live link into this workbook.
-    pub fn get_links(&self) -> app::Result<Vec<Link>> {
-        Ok(self
-            .live_links()?
-            .into_iter()
-            .map(|(id, l)| Link {
-                id,
-                source_context: l.source_context,
-                source_name: l.source_name,
-                name: l.name,
-                rows: l.rows,
-                cols: l.cols,
-                updated_at: l.updated_at,
-            })
-            .collect())
-    }
-
-    // ---- Attachments ----
-
-    /// Record a file attached to a cell. Upload the bytes as a blob announced
-    /// to this context first; this stores what the cell shows. Returns its id.
-    #[allow(clippy::too_many_arguments, reason = "one argument per recorded field")]
-    pub fn add_attachment(
-        &mut self,
-        sheet_id: String,
-        row_id: String,
-        col_id: String,
-        blob_id: String,
-        name: String,
-        size: u64,
-        mime: String,
-    ) -> app::Result<String> {
-        self.require_sheet(&sheet_id)?;
-        Spreadsheet::check_id(&row_id)?;
-        Spreadsheet::check_id(&col_id)?;
-        self.require_cells_writable(&sheet_id, [(row_id.as_str(), col_id.as_str())])?;
-        let bad = |why: String| Err(AppError::from(Error::Invalid(why)));
-        if blob_id.is_empty()
-            || blob_id.len() > 128
-            || !blob_id.bytes().all(|b| b.is_ascii_alphanumeric())
-        {
-            return bad(format!("{blob_id:?} is not a blob id"));
-        }
-        let name = name.trim().to_string();
-        if name.is_empty() || name.chars().count() > 200 {
-            return bad("a file name is 1 to 200 characters".into());
-        }
-        if size > MAX_ATTACHMENT_BYTES {
-            return bad(format!(
-                "an attachment is at most {} MB",
-                MAX_ATTACHMENT_BYTES / 1024 / 1024
-            ));
-        }
-        if mime.len() > 100 {
-            return bad("a media type is at most 100 characters".into());
-        }
-        let now = storage_env::time_now();
-        let mut nonce = [0u8; 4];
-        env::random_bytes(&mut nonce);
-        let id = generate_id("file", now, &nonce);
-        self.attachments.insert(
-            id.clone(),
-            AttachmentData {
-                sheet_id: sheet_id.clone(),
-                row_id,
-                col_id,
-                blob_id,
-                name: name.clone(),
-                size,
-                mime,
-                created_at: now,
-            },
-        )?;
-        self.log(&sheet_id, "file", format!("attached {name}"), 0, Vec::new())?;
-        app::emit!(Event::AttachmentsChanged {
-            sheet_id: &sheet_id
-        });
-        Ok(id)
-    }
-
-    /// Remove an attachment. Whoever attached it, or an owner, may: storage
-    /// refuses anyone else on every node.
-    pub fn remove_attachment(&mut self, id: String) -> app::Result<()> {
-        let Some((_, a)) = lowest(
-            self.attachments
-                .entries_at(&id)
-                .map_err(|e| AppError::msg(format!("attachments.entries_at: {e}")))?,
-        ) else {
-            return Err(AppError::from(Error::NotFound(id)));
-        };
-        self.require_role(Role::Editor)?;
-        if !self.attachments.owned_by_me(&id)? && !self.attachments.is_moderator(&caller_account())
-        {
-            return Err(AppError::from(Error::Forbidden(
-                "only whoever attached a file, or an owner, can remove it".into(),
-            )));
-        }
-        self.remove_every(Owned::Attachments, &id)?;
-        self.log(
-            &a.sheet_id,
-            "file",
-            format!("removed {}", a.name),
-            0,
-            Vec::new(),
-        )?;
-        app::emit!(Event::AttachmentsChanged {
-            sheet_id: &a.sheet_id
-        });
-        Ok(())
-    }
-
-    /// Every attachment, oldest first. `created_by` is the owner stamp.
-    pub fn get_attachments(&self) -> app::Result<Vec<Attachment>> {
-        let mut out = Vec::new();
-        for (owner, id, a) in self
-            .attachments
-            .entries_with_owners()
-            .map_err(|e| AppError::msg(format!("attachments.entries: {e}")))?
-        {
-            out.push(Attachment {
-                created_by: owner_hex(Some(owner)),
-                id,
-                sheet_id: a.sheet_id,
-                row_id: a.row_id,
-                col_id: a.col_id,
-                blob_id: a.blob_id,
-                name: a.name,
-                size: a.size,
-                mime: a.mime,
-                created_at: a.created_at,
-            });
-        }
-        out.sort_by(|a, b| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)));
-        Ok(out)
-    }
-
-    // ---- Charts ----
-
-    /// Chart a range. Returns the chart's id.
-    pub fn add_chart(&mut self, chart: ChartInput) -> app::Result<String> {
-        self.require_role(Role::Editor)?;
-        self.check_chart(&chart)?;
-        let now = storage_env::time_now();
-        let mut nonce = [0u8; 4];
-        env::random_bytes(&mut nonce);
-        let id = generate_id("chart", now, &nonce);
-        self.put_chart(&id, chart, now)?;
-        Ok(id)
-    }
-
-    /// Replace a chart's range, kind or title.
-    pub fn update_chart(&mut self, id: String, chart: ChartInput) -> app::Result<()> {
-        self.require_role(Role::Editor)?;
-        self.check_chart(&chart)?;
-        self.live_chart(&id)?;
-        self.put_chart(&id, chart, storage_env::time_now())
-    }
-
-    pub fn remove_chart(&mut self, id: String) -> app::Result<()> {
-        self.require_role(Role::Editor)?;
-        let mut chart = self.live_chart(&id)?;
-        chart.deleted = true;
-        chart.updated_at = storage_env::time_now();
-        let sheet_id = chart.sheet_id.clone();
-        self.charts
-            .insert(id, chart)
-            .map_err(|e| AppError::msg(format!("charts.insert: {e}")))?;
-        app::emit!(Event::ChartsChanged {
-            sheet_id: &sheet_id
-        });
-        Ok(())
-    }
-
-    /// Every live chart.
-    pub fn get_charts(&self) -> app::Result<Vec<Chart>> {
-        let mut out: Vec<Chart> = self
-            .charts
-            .entries()
-            .map_err(|e| AppError::msg(format!("charts.entries: {e}")))?
-            .filter(|(_, c)| !c.deleted)
-            .map(|(id, c)| Chart {
-                id,
-                created_by: c.created_by,
-                chart: ChartInput {
-                    sheet_id: c.sheet_id,
-                    top_row_id: c.top_row_id,
-                    left_col_id: c.left_col_id,
-                    bottom_row_id: c.bottom_row_id,
-                    right_col_id: c.right_col_id,
-                    kind: c.kind,
-                    title: c.title,
-                },
-            })
-            .collect();
-        out.sort_by(|a, b| a.id.cmp(&b.id));
-        Ok(out)
     }
 
     fn check_chart(&self, chart: &ChartInput) -> app::Result<()> {
@@ -3170,612 +2887,82 @@ impl Spreadsheet {
             &chart.bottom_row_id,
             &chart.right_col_id,
         ] {
-            Spreadsheet::check_id(c)?;
+            check_id(c)?;
         }
         if !matches!(chart.kind.as_str(), "bar" | "line") {
-            return Err(AppError::from(Error::Invalid(
-                "a chart is bar or line".into(),
-            )));
+            return Err(invalid("a chart is bar or line"));
         }
         if chart.title.chars().count() > 120 {
-            return Err(AppError::from(Error::Invalid(
-                "a chart title is at most 120 characters".into(),
-            )));
+            return Err(invalid("a chart title is at most 120 characters"));
         }
         Ok(())
     }
 
     fn put_chart(&mut self, id: &str, chart: ChartInput, now: u64) -> app::Result<()> {
         let sheet_id = chart.sheet_id.clone();
-        let me = self.caller_hex();
-        self.charts
-            .insert(
-                id.to_string(),
-                ChartData {
-                    sheet_id: chart.sheet_id,
-                    top_row_id: chart.top_row_id,
-                    left_col_id: chart.left_col_id,
-                    bottom_row_id: chart.bottom_row_id,
-                    right_col_id: chart.right_col_id,
-                    kind: chart.kind,
-                    title: chart.title.trim().to_string(),
-                    created_by: me,
-                    deleted: false,
-                    updated_at: now,
-                },
-            )
-            .map_err(|e| AppError::msg(format!("charts.insert: {e}")))?;
-        app::emit!(Event::ChartsChanged {
-            sheet_id: &sheet_id
-        });
-        Ok(())
+        let _ = self.charts.insert(
+            &id.to_string(),
+            &ChartData {
+                sheet_id: chart.sheet_id,
+                top_row_id: chart.top_row_id,
+                left_col_id: chart.left_col_id,
+                bottom_row_id: chart.bottom_row_id,
+                right_col_id: chart.right_col_id,
+                kind: chart.kind,
+                title: chart.title.trim().to_string(),
+                created_by: me()?,
+                updated_at: now,
+            },
+        )?;
+        emit(Event::ChartsChanged { sheet_id })
     }
 
     fn live_chart(&self, id: &str) -> app::Result<ChartData> {
         self.charts
-            .get(id)
-            .map_err(|e| AppError::msg(format!("charts.get: {e}")))?
-            .filter(|c| !c.deleted)
-            .map(|c| c.clone())
-            .ok_or_else(|| AppError::from(Error::NotFound(id.to_string())))
+            .get(&id.to_string())?
+            .ok_or_else(|| not_found(id))
     }
 
-    // ---- Sheet view: sizes and frozen panes ----
-
-    /// Resize rows and columns (`axis` `row` or `col`, size in pixels).
-    pub fn set_sizes(&mut self, sheet_id: String, sizes: Vec<AxisSize>) -> app::Result<()> {
-        self.require_role(Role::Editor)?;
-        self.require_sheet(&sheet_id)?;
-        if sizes.len() > MAX_OPS_PER_APPLY {
-            return Err(AppError::from(Error::Invalid(format!(
-                "{} sizes in one call; the limit is {MAX_OPS_PER_APPLY}",
-                sizes.len()
-            ))));
-        }
-        let now = storage_env::time_now();
-        // Strictly increasing per entry, like `apply_axis_ops`: sizing the same
-        // row twice in one batch must end on the last size on every replica.
-        for (i, s) in sizes.into_iter().enumerate() {
-            let axis = match s.axis.as_str() {
-                "row" => 'r',
-                "col" => 'c',
-                other => {
-                    return Err(AppError::from(Error::Invalid(format!(
-                        "axis is row or col, got {other:?}"
-                    ))))
-                }
-            };
-            Spreadsheet::check_id(&s.id)?;
-            if !(MIN_AXIS_SIZE..=MAX_AXIS_SIZE).contains(&s.size) {
-                return Err(AppError::from(Error::Invalid(format!(
-                    "a size is {MIN_AXIS_SIZE} to {MAX_AXIS_SIZE} pixels, got {}",
-                    s.size
-                ))));
-            }
-            self.sizes
-                .insert(
-                    format!("{sheet_id}|{axis}|{}", s.id),
-                    SizeData {
-                        size: s.size,
-                        updated_at: now + i as u64,
-                    },
-                )
-                .map_err(|e| AppError::msg(format!("sizes.insert: {e}")))?;
-        }
-        app::emit!(Event::SheetViewChanged {
-            sheet_id: &sheet_id
-        });
-        Ok(())
-    }
-
-    /// Freeze the first `rows` rows and `cols` columns of a sheet (0 unfreezes).
-    pub fn set_frozen(&mut self, sheet_id: String, rows: u32, cols: u32) -> app::Result<()> {
-        self.require_role(Role::Editor)?;
-        self.require_sheet(&sheet_id)?;
-        if rows > MAX_FROZEN || cols > MAX_FROZEN {
-            return Err(AppError::from(Error::Invalid(format!(
-                "a sheet freezes at most {MAX_FROZEN} rows and {MAX_FROZEN} columns"
-            ))));
-        }
-        self.views
-            .insert(
-                sheet_id.clone(),
-                SheetViewData {
-                    frozen_rows: rows,
-                    frozen_cols: cols,
-                    updated_at: storage_env::time_now(),
-                },
-            )
-            .map_err(|e| AppError::msg(format!("views.insert: {e}")))?;
-        app::emit!(Event::SheetViewChanged {
-            sheet_id: &sheet_id
-        });
-        Ok(())
-    }
-
-    /// Every sheet's frozen panes and resized rows and columns (sheets with
-    /// neither are left out).
-    pub fn get_sheet_views(&self) -> app::Result<Vec<SheetView>> {
-        let mut by_sheet: BTreeMap<String, SheetView> = BTreeMap::new();
-        let blank = |sheet_id: &str| SheetView {
-            sheet_id: sheet_id.to_string(),
-            frozen_rows: 0,
-            frozen_cols: 0,
-            sizes: Vec::new(),
-        };
-        for (sheet_id, v) in self
-            .views
-            .entries()
-            .map_err(|e| AppError::msg(format!("views.entries: {e}")))?
-        {
-            let view = by_sheet
-                .entry(sheet_id.clone())
-                .or_insert_with(|| blank(&sheet_id));
-            view.frozen_rows = v.frozen_rows;
-            view.frozen_cols = v.frozen_cols;
-        }
-        for (key, d) in self
-            .sizes
-            .entries()
-            .map_err(|e| AppError::msg(format!("sizes.entries: {e}")))?
-        {
-            let Some((sheet_id, axis, id)) = split_key(&key) else {
-                continue;
-            };
-            let axis = if axis == "r" { "row" } else { "col" };
-            by_sheet
-                .entry(sheet_id.to_string())
-                .or_insert_with(|| blank(sheet_id))
-                .sizes
-                .push(AxisSize {
-                    axis: axis.into(),
-                    id: id.to_string(),
-                    size: d.size,
-                });
-        }
-        Ok(by_sheet.into_values().collect())
-    }
-
-    // ---- Private sheets ----
-    //
-    // Node-local (`Scratch`): these write only private storage, so they
-    // produce no delta and reach nobody. They take `&mut self` because the
-    // runtime only commits private writes from mutating methods.
-
-    /// Make a private sheet on this node. Returns its id.
-    pub fn create_private_sheet(&mut self, name: String) -> app::Result<String> {
-        validate_sheet_name(&name).map_err(AppError::from)?;
-        let mut scratch = Scratch::private_load_or_default()?;
-        let now = storage_env::time_now();
-        let mut nonce = [0u8; 4];
-        env::random_bytes(&mut nonce);
-        let id = generate_id("private", now, &nonce);
-        let mut s = scratch.as_mut();
-        let position = s.sheets.len() as u32;
-        s.sheets.insert(
-            id.clone(),
-            ScratchSheet {
-                name,
-                position,
-                created_at: now,
-            },
-        );
-        Ok(id)
-    }
-
-    pub fn rename_private_sheet(&mut self, sheet_id: String, name: String) -> app::Result<()> {
-        validate_sheet_name(&name).map_err(AppError::from)?;
-        let mut scratch = Scratch::private_load_or_default()?;
-        let mut s = scratch.as_mut();
-        match s.sheets.get_mut(&sheet_id) {
-            Some(sheet) => sheet.name = name,
-            None => return Err(AppError::from(Error::NotFound(sheet_id))),
-        }
-        Ok(())
-    }
-
-    /// Delete a private sheet and its cells.
-    pub fn delete_private_sheet(&mut self, sheet_id: String) -> app::Result<()> {
-        let mut scratch = Scratch::private_load_or_default()?;
-        let mut s = scratch.as_mut();
-        if s.sheets.remove(&sheet_id).is_none() {
-            return Err(AppError::from(Error::NotFound(sheet_id)));
-        }
-        let prefix = format!("{sheet_id}|");
-        let keys: Vec<String> = s
-            .cells
-            .entries()?
-            .map(|(k, _)| k)
-            .filter(|k| k.starts_with(&prefix))
-            .collect();
-        for key in keys {
-            let _ = s.cells.remove(&key)?;
-        }
-        Ok(())
-    }
-
-    /// Write cells of a private sheet: the same ops as `apply_cell_ops`.
-    pub fn apply_private_cell_ops(
-        &mut self,
-        sheet_id: String,
-        ops: Vec<CellOp>,
-    ) -> app::Result<()> {
-        let mut scratch = Scratch::private_load_or_default()?;
-        let mut s = scratch.as_mut();
-        if !s.sheets.contains_key(&sheet_id) {
-            return Err(AppError::from(Error::NotFound(sheet_id)));
-        }
-        let now = storage_env::time_now();
-        for op in ops {
-            let (row_id, col_id) = match &op {
-                CellOp::Set { row_id, col_id, .. }
-                | CellOp::Format { row_id, col_id, .. }
-                | CellOp::Clear { row_id, col_id } => (row_id.clone(), col_id.clone()),
-            };
-            if layout::implicit_index(&row_id).is_none()
-                || layout::implicit_index(&col_id).is_none()
-            {
-                return Err(AppError::from(Error::Invalid(format!(
-                    "a private sheet has no inserted rows or columns: {row_id}/{col_id}"
-                ))));
-            }
-            let key = Spreadsheet::cell_key(&sheet_id, &row_id, &col_id);
-            let mut cell = s
-                .cells
-                .get(&key)?
-                .map(|c| c.clone())
-                .unwrap_or(ScratchCell {
-                    raw_value: String::new(),
-                    format: String::new(),
-                    updated_at: now,
-                });
-            match op {
-                CellOp::Set { raw_value, .. } => cell.raw_value = raw_value,
-                CellOp::Format { format, .. } => cell.format = format,
-                CellOp::Clear { .. } => {
-                    let _ = s.cells.remove(&key)?;
-                    continue;
-                }
-            }
-            cell.updated_at = now;
-            if cell.raw_value.is_empty() && cell.format.is_empty() {
-                let _ = s.cells.remove(&key)?;
-            } else {
-                let _ = s.cells.insert(key, cell)?;
-            }
-        }
-        Ok(())
-    }
-
-    /// This node's private sheets, in the order they were made.
-    pub fn get_private_sheets(&self) -> app::Result<Vec<Sheet>> {
-        let scratch = Scratch::private_load_or_default()?;
-        let mut out: Vec<Sheet> = scratch
-            .sheets
-            .iter()
-            .map(|(id, s)| Sheet {
-                id: id.clone(),
-                name: s.name.clone(),
-                position: s.position,
-                created_at: s.created_at,
-                linked_from: String::new(),
-            })
-            .collect();
-        out.sort_by(|a, b| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)));
-        Ok(out)
-    }
-
-    /// Every cell of this node's private sheets. `computed_value` is empty:
-    /// the client evaluates them, with the shared sheets they read.
-    pub fn get_private_cells(&self) -> app::Result<Vec<Cell>> {
-        let scratch = Scratch::private_load_or_default()?;
-        let out = scratch
-            .cells
-            .entries()?
-            .filter_map(|(key, c)| {
-                let (sheet_id, row_id, col_id) = split_key(&key)?;
-                Some(Cell {
-                    id: key.clone(),
-                    sheet_id: sheet_id.to_string(),
-                    row_id: row_id.to_string(),
-                    col_id: col_id.to_string(),
-                    raw_value: c.raw_value,
-                    computed_value: String::new(),
-                    format: c.format,
-                    updated_at: c.updated_at,
-                    last_editor: String::new(),
-                    last_edited_at: 0,
-                })
-            })
-            .collect();
-        Ok(out)
-    }
-
-    // ---- Rows and columns ----
-
-    /// Insert or delete rows and columns. Each op is one write, whatever the
-    /// sheet holds: cells keep their keys, and formulas that name rows by id
-    /// keep pointing at the same cells. A deleted row's cells stay stored but
-    /// out of the layout, so references to them read `#REF!`.
-    ///
-    /// The client picks ids (letters first, never an implicit number) and
-    /// positions (see the recalc crate's `layout`).
-    pub fn apply_axis_ops(&mut self, sheet_id: String, ops: Vec<AxisOp>) -> app::Result<()> {
-        if ops.len() > MAX_OPS_PER_APPLY {
-            return Err(AppError::from(Error::Invalid(format!(
-                "{} axis ops in one apply_axis_ops; the limit is {MAX_OPS_PER_APPLY}",
-                ops.len()
-            ))));
-        }
-        self.require_sheet(&sheet_id)?;
-        let deleting: Vec<(char, &str)> = ops
-            .iter()
-            .filter_map(|op| match op {
-                AxisOp::DeleteRow { id } => Some(('r', id.as_str())),
-                AxisOp::DeleteCol { id } => Some(('c', id.as_str())),
-                _ => None,
-            })
-            .collect();
-        self.require_axes_writable(&sheet_id, &deleting)?;
-        let count = ops.len() as u32;
-        let now = storage_env::time_now();
-        // "inserted 2 rows, deleted 1 column", for the activity log.
-        let mut tally: BTreeMap<(&str, &str), u32> = BTreeMap::new();
-        for op in &ops {
-            let entry = match op {
-                AxisOp::InsertRow { .. } => ("inserted", "row"),
-                AxisOp::InsertCol { .. } => ("inserted", "column"),
-                AxisOp::DeleteRow { .. } => ("deleted", "row"),
-                AxisOp::DeleteCol { .. } => ("deleted", "column"),
-                AxisOp::RestoreRow { .. } => ("restored", "row"),
-                AxisOp::RestoreCol { .. } => ("restored", "column"),
-            };
-            *tally.entry(entry).or_default() += 1;
-        }
-        let summary = tally
-            .iter()
-            .map(|((verb, noun), n)| format!("{verb} {n} {noun}{}", if *n == 1 { "" } else { "s" }))
-            .collect::<Vec<_>>()
-            .join(", ");
-        let kind = if tally.keys().any(|(_, noun)| *noun == "row") {
-            "rows"
-        } else {
-            "cols"
-        };
-        // One timestamp per op, strictly increasing: a replica replays these
-        // writes through `AxisData::merge`, where an exact tie keeps a row
-        // deleted, so a Delete then Restore sharing one clock reading would
-        // stay restored here and deleted on every other node.
-        for (i, op) in ops.into_iter().enumerate() {
-            let at = now + i as u64;
-            let (axis, id, insert_pos, deleted) = match op {
-                AxisOp::InsertRow { id, pos } => ('r', id, Some(pos), false),
-                AxisOp::InsertCol { id, pos } => ('c', id, Some(pos), false),
-                AxisOp::DeleteRow { id } => ('r', id, None, true),
-                AxisOp::DeleteCol { id } => ('c', id, None, true),
-                AxisOp::RestoreRow { id } => ('r', id, None, false),
-                AxisOp::RestoreCol { id } => ('c', id, None, false),
-            };
-            Spreadsheet::check_id(&id)?;
-            let key = format!("{sheet_id}|{axis}|{id}");
-            let existing = self
-                .axes
-                .get(&key)
-                .map_err(|e| AppError::msg(format!("axes.get: {e}")))?;
-            match insert_pos {
-                Some(pos) => {
-                    if layout::implicit_index(&id).is_some()
-                        || !id.starts_with(|c: char| c.is_ascii_alphabetic())
-                    {
-                        return Err(AppError::from(Error::Invalid(format!(
-                            "a new row/column id must start with a letter, got {id:?}"
-                        ))));
-                    }
-                    if pos.is_empty() || !pos.bytes().all(|b| b.is_ascii_digit()) {
-                        return Err(AppError::from(Error::Invalid(format!(
-                            "a position is decimal digits, got {pos:?}"
-                        ))));
-                    }
-                    if existing.is_some() {
-                        return Err(AppError::from(Error::Invalid(format!(
-                            "{id} already exists"
-                        ))));
-                    }
-                    self.axes
-                        .insert(
-                            key,
-                            AxisData {
-                                pos,
-                                deleted: false,
-                                updated_at: at,
-                            },
-                        )
-                        .map_err(|e| AppError::msg(format!("axes.insert: {e}")))?;
-                }
-                None if existing.is_some() => {
-                    if let Some(mut guard) = self
-                        .axes
-                        .get_mut(&key)
-                        .map_err(|e| AppError::msg(format!("axes.get_mut: {e}")))?
-                    {
-                        guard.deleted = deleted;
-                        guard.updated_at = at;
-                    }
-                }
-                // An implicit row that was never deleted is already there.
-                None if !deleted => {}
-                // Deleting an implicit row writes its tombstone at its fixed position.
-                None => {
-                    let k = layout::implicit_index(&id)
-                        .ok_or_else(|| AppError::from(Error::NotFound(id.clone())))?;
-                    self.axes
-                        .insert(
-                            key,
-                            AxisData {
-                                pos: layout::implicit_pos(k),
-                                deleted: true,
-                                updated_at: at,
-                            },
-                        )
-                        .map_err(|e| AppError::msg(format!("axes.insert: {e}")))?;
-                }
-            }
-        }
-        self.log(&sheet_id, kind, summary, 0, Vec::new())?;
-        app::emit!(Event::AxesChanged {
-            sheet_id: &sheet_id,
-            count
-        });
-        self.after_change(&sheet_id)
-    }
-
-    /// Every sheet's explicit row and column entries.
-    pub fn get_layouts(&self) -> app::Result<Vec<SheetLayout>> {
-        Ok(Spreadsheet::layouts(self.axes.entries().map_err(|e| {
-            AppError::msg(format!("axes.entries: {e}"))
-        })?))
-    }
-
-    /// Axis entries grouped into each sheet's layout.
-    fn layouts(axes: impl Iterator<Item = (String, AxisData)>) -> Vec<SheetLayout> {
-        let mut by_sheet: BTreeMap<String, SheetLayout> = BTreeMap::new();
-        for (key, d) in axes {
-            let Some((sheet_id, axis, id)) = split_key(&key) else {
-                continue;
-            };
-            let l = by_sheet
-                .entry(sheet_id.to_string())
-                .or_insert_with(|| SheetLayout {
-                    sheet_id: sheet_id.to_string(),
-                    rows: Vec::new(),
-                    cols: Vec::new(),
-                });
-            let entry = AxisEntryView {
-                id: id.to_string(),
-                pos: d.pos,
-                deleted: d.deleted,
-            };
-            match axis {
-                "r" => l.rows.push(entry),
-                "c" => l.cols.push(entry),
-                _ => {}
-            }
-        }
-        by_sheet.into_values().collect()
-    }
-
-    // ---- Named ranges ----
-
-    /// Define or redefine a named range. `target` is a reference in stored form.
-    pub fn set_named_range(&mut self, name: String, target: String) -> app::Result<()> {
-        self.require_role(Role::Editor)?;
-        let name = name.trim().to_string();
-        if !formula::is_valid_name(&name) {
-            return Err(AppError::from(Error::Invalid(format!(
-                "{name:?} cannot be a name: use letters, digits and _, starting with a letter or _, \
-                 and not something that reads as a cell, a column or TRUE/FALSE"
-            ))));
-        }
-        if !formula::is_reference(&target) {
-            return Err(AppError::from(Error::Invalid(format!(
-                "{target:?} is not a cell or range reference"
-            ))));
-        }
-        self.store_name(name, target)
-    }
-
-    pub fn delete_named_range(&mut self, name: String) -> app::Result<()> {
-        self.require_role(Role::Editor)?;
-        let key = name.trim().to_ascii_uppercase();
-        let existing = self
-            .names
-            .get(&key)
-            .map_err(|e| AppError::msg(format!("names.get: {e}")))?;
-        if existing.is_none_or(|d| d.target.is_empty()) {
-            return Err(AppError::from(Error::NotFound(name)));
-        }
-        self.store_name(name.trim().to_string(), String::new())
+    fn my_private_sheets(&self, me: &str) -> app::Result<Vec<((String, String), ScratchSheet)>> {
+        let prefix = [KeyPart::Str(me.to_string())];
+        all(|o| self.private_sheets.prefix(&prefix, o))
     }
 
     fn store_name(&mut self, name: String, target: String) -> app::Result<()> {
-        let key = name.to_ascii_uppercase();
-        let entry_target_empty = target.is_empty();
-        let entry = NamedRangeData {
-            name: name.clone(),
-            target,
-            updated_at: storage_env::time_now(),
-        };
-        let exists = self
-            .names
-            .get(&key)
-            .map_err(|e| AppError::msg(format!("names.get: {e}")))?
-            .is_some();
-        if exists {
-            if let Some(mut guard) = self
-                .names
-                .get_mut(&key)
-                .map_err(|e| AppError::msg(format!("names.get_mut: {e}")))?
-            {
-                *guard = entry;
-            }
-        } else {
-            self.names
-                .insert(key, entry)
-                .map_err(|e| AppError::msg(format!("names.insert: {e}")))?;
-        }
-        let summary = if entry_target_empty {
-            format!("deleted the name {name}")
-        } else {
-            format!("defined the name {name}")
-        };
-        self.log("", "name", summary, 0, Vec::new())?;
-        app::emit!(Event::NamedRangesChanged { name: &name });
-        Ok(())
+        let _ = self.names.insert(
+            &name.to_ascii_uppercase(),
+            &NamedRangeData {
+                name: name.clone(),
+                target,
+                updated_at: now(),
+            },
+        )?;
+        self.log(
+            "",
+            "name",
+            format!("defined the name {name}"),
+            0,
+            Vec::new(),
+        )?;
+        emit(Event::NamedRangesChanged { name })
     }
-
-    /// Every defined named range, sorted by name.
-    pub fn get_named_ranges(&self) -> app::Result<Vec<NamedRange>> {
-        let mut out: Vec<NamedRange> = self
-            .names
-            .entries()
-            .map_err(|e| AppError::msg(format!("names.entries: {e}")))?
-            .filter(|(_, d)| !d.target.is_empty())
-            .map(|(_, d)| NamedRange {
-                name: d.name,
-                target: d.target,
-            })
-            .collect();
-        out.sort_by(|a, b| {
-            a.name
-                .to_ascii_uppercase()
-                .cmp(&b.name.to_ascii_uppercase())
-        });
-        Ok(out)
-    }
-
-    // ---- Reading cells ----
 
     /// The live sheet ids: the workbook's own and the linked ones.
-    fn live_sheet_ids(&self) -> app::Result<HashSet<String>> {
-        let mut ids: HashSet<String> = self
-            .sheets
-            .entries()
-            .map_err(|e| AppError::msg(format!("sheets.entries: {e}")))?
+    fn live_sheet_ids(&self) -> app::Result<BTreeSet<String>> {
+        let mut ids: BTreeSet<String> = all(|o| self.sheets.page(o))?
+            .into_iter()
             .map(|(id, _)| id)
             .collect();
         ids.extend(self.live_links()?.into_iter().map(|(id, _)| id));
         Ok(ids)
     }
 
-    /// One live sheet's stored cells: one prefix of `cells`, or a linked
-    /// sheet's pushed values as literal cells by position. A deleted sheet's
-    /// cells stay stored (removing them one by one would not fit one
-    /// execution's gas for a big sheet) and are never read.
+    /// One live sheet's stored cells, or a linked sheet's pushed values as
+    /// literal cells by position.
     fn stored_cells(&self, sheet_id: &str) -> app::Result<Vec<CellData>> {
         if let Some(l) = self
             .linked
-            .get(sheet_id)
-            .map_err(|e| AppError::msg(format!("linked.get: {e}")))?
+            .get(&sheet_id.to_string())?
             .filter(|l| !l.deleted && !l.blocked)
         {
             let mut out = Vec::new();
@@ -3788,7 +2975,7 @@ impl Spreadsheet {
                         continue;
                     }
                     out.push(CellData {
-                        id: Spreadsheet::cell_key(sheet_id, &r.to_string(), &c.to_string()),
+                        id: cell_key(sheet_id, &r.to_string(), &c.to_string()),
                         sheet_id: sheet_id.to_string(),
                         raw_value: v.clone(),
                         updated_at: l.updated_at,
@@ -3797,24 +2984,23 @@ impl Spreadsheet {
             }
             return Ok(out);
         }
-        Ok(self
-            .cells
-            .prefix(format!("{sheet_id}|").as_bytes())
-            .map_err(|e| AppError::msg(format!("cells.prefix: {e}")))?
+        let prefix = [KeyPart::Str(format!("{sheet_id}|"))];
+        Ok(all(|o| self.cells.starts_with(&prefix, o))?
+            .into_iter()
             .map(|(_, d)| d)
             .collect())
     }
 
-    /// The cells of `sheet_id` and of every sheet its formulas reach, each
-    /// sheet read once, and the live sheet ids.
+    /// The cells of `sheet_id` and of every sheet its formulas reach, and the
+    /// live sheet ids.
     fn closure_cells(
         &self,
         sheet_id: &str,
         env: &formula::Env,
-    ) -> app::Result<(Vec<CellData>, HashSet<String>)> {
+    ) -> app::Result<(Vec<CellData>, BTreeSet<String>)> {
         let sheet_ids = self.live_sheet_ids()?;
         let mut stored = Vec::new();
-        recalc::sheet_closure(env, sheet_id, |s| {
+        let _ = recalc::sheet_closure(env, sheet_id, |s| {
             if !sheet_ids.contains(s) {
                 return Ok(Vec::new());
             }
@@ -3826,36 +3012,8 @@ impl Spreadsheet {
         Ok((stored, sheet_ids))
     }
 
-    /// Evaluate stored cells: the recalc input of each non-blank one.
-    fn evaluate(
-        stored: &[CellData],
-        sheet_ids: HashSet<String>,
-        env: formula::Env,
-    ) -> BTreeMap<recalc::CellRef, String> {
-        let cells = stored
-            .iter()
-            .filter(|d| !d.raw_value.is_empty())
-            .filter_map(|d| {
-                let (_, row, col) = split_key(&d.id)?;
-                Some((
-                    recalc::CellRef {
-                        sheet_id: d.sheet_id.clone(),
-                        row: row.to_string(),
-                        col: col.to_string(),
-                    },
-                    d.raw_value.clone(),
-                ))
-            })
-            .collect();
-        recalc::evaluate(&recalc::WorkbookInputs {
-            cells,
-            sheet_ids,
-            env,
-        })
-    }
-
-    /// The cells to show: effective format applied, computed value looked up,
-    /// fully blank cells (no value and no format) hidden.
+    /// The cells to show: format applied, computed value looked up, fully
+    /// blank cells hidden.
     fn cells_from_stored(
         &self,
         stored: impl IntoIterator<Item = CellData>,
@@ -3865,9 +3023,8 @@ impl Spreadsheet {
         for d in stored {
             let format = self
                 .formats
-                .get(&d.id)
-                .map_err(|e| AppError::msg(format!("formats.get: {e}")))?
-                .map(|f| f.format.clone())
+                .get(&d.id)?
+                .map(|f| f.format)
                 .unwrap_or_default();
             if d.raw_value.is_empty() && format.is_empty() {
                 continue;
@@ -3884,11 +3041,7 @@ impl Spreadsheet {
                 })
                 .cloned()
                 .unwrap_or_else(|| d.raw_value.clone());
-            let edited = self
-                .cell_meta
-                .get(&d.id)
-                .map_err(|e| AppError::msg(format!("cell_meta.get: {e}")))?
-                .map(|m| m.clone());
+            let edited = self.cell_meta.get(&d.id)?;
             let last_editor = edited
                 .as_ref()
                 .map(|m| m.author.clone())
@@ -3910,129 +3063,33 @@ impl Spreadsheet {
         Ok(out)
     }
 
-    /// One sheet's cells with computed values. Reads and evaluates only the
-    /// sheet and the sheets it transitively references, which gives the same
-    /// values as evaluating the whole workbook.
-    pub fn get_cells(&self, sheet_id: String) -> app::Result<Vec<Cell>> {
-        let env = self.formula_env()?;
-        let (stored, sheet_ids) = self.closure_cells(&sheet_id, &env)?;
-        let computed = Spreadsheet::evaluate(&stored, sheet_ids, env);
-        let mut out = self.cells_from_stored(
-            stored.into_iter().filter(|d| d.sheet_id == sheet_id),
-            &computed,
-        )?;
-        out.sort_by(|a, b| (&a.row_id, &a.col_id).cmp(&(&b.row_id, &b.col_id)));
-        Ok(out)
-    }
-
-    /// Every non-blank cell across all sheets, raw and computed: the client's
-    /// warm store, read in one call.
-    pub fn get_all_cells(&self) -> app::Result<Vec<Cell>> {
-        let sheet_ids = self.live_sheet_ids()?;
-        let mut stored = Vec::new();
-        for id in &sheet_ids {
-            stored.extend(self.stored_cells(id)?);
-        }
-        let computed = Spreadsheet::evaluate(&stored, sheet_ids, self.formula_env()?);
-        let mut out = self.cells_from_stored(stored, &computed)?;
-        out.sort_by(|a, b| {
-            (&a.sheet_id, &a.row_id, &a.col_id).cmp(&(&b.sheet_id, &b.row_id, &b.col_id))
-        });
-        Ok(out)
-    }
-
-    // ---- Function help ----
-
-    /// Every formula function, sorted by name.
-    pub fn get_functions(&self) -> app::Result<Vec<FunctionDef>> {
-        Ok(builtin_functions())
-    }
-
-    pub fn search_functions(&self, prefix: String) -> app::Result<Vec<FunctionDef>> {
-        let upper = prefix.to_uppercase();
-        Ok(builtin_functions()
-            .into_iter()
-            .filter(|f| f.name.starts_with(&upper))
-            .collect())
-    }
-
-    // ---- Export ----
-
-    /// Returns all sheets (same as list_sheets). The frontend assembles CSV
-    /// by calling get_cells per sheet.
-    pub fn export_all(&self) -> app::Result<Vec<Sheet>> {
-        self.list_sheets()
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Private helpers
-// ---------------------------------------------------------------------------
-
-impl Spreadsheet {
-    /// This caller's account, hex: the member id (`whoami`) roles, comments
-    /// and the roster name, and the id their live cursor carries. The account,
-    /// not the device, because it is the person: their second device is the
-    /// same member, with the same role.
-    fn caller_hex(&self) -> String {
-        hex::encode(env::account_id())
-    }
-
-    /// What formulas see besides cells: the execution's clock (so `NOW()` and
-    /// `TODAY()` read the node's time; `time_now` is nanoseconds), the named
-    /// ranges, and each sheet's row and column order.
+    /// What formulas see besides cells: the clock, the named ranges and each
+    /// sheet's row and column order.
     fn formula_env(&self) -> app::Result<formula::Env> {
-        let names = self
-            .names
-            .entries()
-            .map_err(|e| AppError::msg(format!("names.entries: {e}")))?
-            .filter(|(_, d)| !d.target.is_empty())
+        let names = all(|o| self.names.page(o))?
+            .into_iter()
             .map(|(k, d)| (k, d.target))
             .collect();
-        let layouts = self
-            .get_layouts()?
+        let layouts = layouts(all(|o| self.axes.page(o))?)
             .into_iter()
             .map(|l| (l.sheet_id.clone(), build_layout(l)))
             .collect();
         Ok(formula::Env {
-            now_ms: storage_env::time_now() / 1_000_000,
+            now_ms: env::time_now(),
             names,
             layouts,
         })
     }
 
-    fn cell_key(sheet_id: &str, row_id: &str, col_id: &str) -> String {
-        format!("{sheet_id}|{row_id}|{col_id}")
-    }
-
-    /// Work that follows any change to a sheet: push its links, check its
-    /// alerts. Both evaluate the sheet, so both are skipped (and cost
-    /// nothing) when the sheet has neither.
+    /// Work that follows a change to a sheet: check its alerts (evaluating the
+    /// sheet only when it has any). v1 also pushed its links here; now the
+    /// client that made the change relays them.
     fn after_change(&mut self, sheet_id: &str) -> app::Result<()> {
-        let mut pubs: Vec<(String, PublicationData)> = Vec::new();
-        let ids: BTreeSet<String> = self
-            .publications
-            .query("sheet_id")
-            .eq(sheet_id)
-            .keys()
-            .map_err(|e| AppError::msg(format!("publications.query: {e}")))?
-            .into_iter()
-            .collect();
-        for id in ids {
-            if let Some((_, p)) = self.live_publication_entry(&id)? {
-                if p.sheet_id == sheet_id {
-                    pubs.push((id, p));
-                }
-            }
-        }
         let alerts = self.rules_of(sheet_id, "alert")?;
-        if pubs.is_empty() && alerts.is_empty() {
+        if alerts.is_empty() {
             return Ok(());
         }
         let values = self.sheet_values(sheet_id)?;
-        for (id, p) in &pubs {
-            self.push(id, p, &values)?;
-        }
         for (id, rule) in alerts {
             self.check_alert(&id, &rule, &values)?;
         }
@@ -4043,7 +3100,7 @@ impl Spreadsheet {
     fn sheet_values(&self, sheet_id: &str) -> app::Result<SheetValues> {
         let env = self.formula_env()?;
         let (stored, sheet_ids) = self.closure_cells(sheet_id, &env)?;
-        let computed = Spreadsheet::evaluate(&stored, sheet_ids, env);
+        let computed = evaluate(&stored, sheet_ids, env);
         let values = computed
             .into_iter()
             .filter(|(k, _)| k.sheet_id == sheet_id)
@@ -4055,8 +3112,9 @@ impl Spreadsheet {
         })
     }
 
-    /// Send a link's current values to its workbook.
-    fn push(&self, id: &str, p: &PublicationData, sheet: &SheetValues) -> app::Result<()> {
+    /// A link's current values, as v1 pushed them.
+    fn link_push(&self, id: &str, p: &PublicationData) -> app::Result<LinkPush> {
+        let sheet = self.sheet_values(&p.sheet_id)?;
         let rect = corner_rect(
             [
                 &p.top_row_id,
@@ -4066,19 +3124,13 @@ impl Spreadsheet {
             ],
             &sheet.layout,
         )
-        .ok_or_else(|| {
-            AppError::from(Error::Invalid(
-                "the linked range's rows or columns are gone".into(),
-            ))
-        })?;
-        let (rows, cols) = (
-            (rect.bottom - rect.top + 1) as u32,
-            (rect.right - rect.left + 1) as u32,
-        );
-        if rows * cols > MAX_LINK_CELLS {
-            return Err(AppError::from(Error::Invalid(format!(
+        .ok_or_else(|| invalid("the linked range's rows or columns are gone"))?;
+        let rows = u32::try_from(rect.bottom - rect.top + 1).unwrap_or(u32::MAX);
+        let cols = u32::try_from(rect.right - rect.left + 1).unwrap_or(u32::MAX);
+        if rows.saturating_mul(cols) > MAX_LINK_CELLS {
+            return Err(invalid(format!(
                 "a link carries at most {MAX_LINK_CELLS} cells"
-            ))));
+            )));
         }
         let mut values = Vec::with_capacity((rows * cols) as usize);
         for r in rect.top..=rect.bottom {
@@ -4102,137 +3154,29 @@ impl Spreadsheet {
                 ));
             }
         }
-        #[derive(Serialize)]
-        #[serde(crate = "calimero_sdk::serde")]
-        struct Params {
-            from_context: ContextId,
-            publication_id: String,
-            name: String,
-            source_name: String,
-            rows: u32,
-            cols: u32,
-            values: Vec<String>,
-        }
-        let params = calimero_sdk::serde_json::to_vec(&Params {
-            from_context: ContextId::from(env::context_id()),
+        Ok(LinkPush {
             publication_id: id.to_string(),
+            target_context: p.target_context.clone(),
             name: p.name.clone(),
-            source_name: self.project_name.get()?.get().clone(),
+            source_name: self.project_name.get()?.unwrap_or_default(),
             rows,
             cols,
             values,
-        })?;
-        send_xcall(&parse_context(&p.target_context)?, "receive_link", params);
-        Ok(())
-    }
-
-    #[allow(
-        clippy::too_many_arguments,
-        reason = "the pushed range, field by field"
-    )]
-    fn store_link(
-        &mut self,
-        from_hex: &str,
-        publication_id: &str,
-        name: String,
-        source_name: String,
-        rows: u32,
-        cols: u32,
-        values: Vec<String>,
-    ) -> app::Result<()> {
-        if rows.saturating_mul(cols) > MAX_LINK_CELLS || values.len() != (rows * cols) as usize {
-            return Err(AppError::from(Error::Invalid(
-                "a link's values do not match its size".into(),
-            )));
-        }
-        validate_sheet_name(&name).map_err(AppError::from)?;
-        let id = link_id(from_hex, publication_id);
-        let existing = self.linked.get(&id)?.map(|l| l.clone());
-        if existing.as_ref().is_some_and(|l| l.blocked) {
-            return Ok(());
-        }
-        let now = storage_env::time_now();
-        self.linked.insert(
-            id.clone(),
-            LinkedData {
-                source_context: from_hex.to_string(),
-                source_name: source_name.chars().take(100).collect(),
-                name,
-                rows,
-                cols,
-                values: values.into_iter().map(|v| link_value(&v)).collect(),
-                created_at: existing.map_or(now, |l| l.created_at),
-                blocked: false,
-                deleted: false,
-                updated_at: now,
-            },
-        )?;
-        app::emit!(Event::LinkedChanged { sheet_id: &id });
-        Ok(())
+        })
     }
 
     fn live_links(&self) -> app::Result<Vec<(String, LinkedData)>> {
-        Ok(self
-            .linked
-            .entries()
-            .map_err(|e| AppError::msg(format!("linked.entries: {e}")))?
+        Ok(all(|o| self.linked.page(o))?
+            .into_iter()
             .filter(|(_, l)| !l.deleted && !l.blocked)
             .collect())
     }
 
-    /// A link an editor or owner made; `NotFound` otherwise.
+    /// A link whose maker may still edit; `NotFound` otherwise.
     fn live_publication(&self, id: &str) -> app::Result<PublicationData> {
-        match self.live_publication_entry(id)? {
-            Some((_, p)) => Ok(p),
-            None => Err(AppError::from(Error::NotFound(id.to_string()))),
-        }
-    }
-
-    /// The link at `id` and who made it, if they may edit: a patched viewer's
-    /// node can store a link, but no honest node lists it or pushes cell
-    /// values through it.
-    ///
-    /// Keys are per owner, so several accounts can hold a link at one id; the
-    /// lowest account among those who may edit is the one read, on every node.
-    fn live_publication_entry(&self, id: &str) -> app::Result<Option<(String, PublicationData)>> {
-        let mut holders = self
-            .publications
-            .entries_at(&id.to_string())
-            .map_err(|e| AppError::msg(format!("publications.entries_at: {e}")))?;
-        holders.sort_by_key(|(owner, _)| *owner);
-        for (owner, p) in holders {
-            let author = owner_hex(Some(owner));
-            if self.role_of(&author)? >= Role::Editor {
-                return Ok(Some((author, p)));
-            }
-        }
-        Ok(None)
-    }
-
-    /// A sheet's live rules of one kind: one seek on `by_sheet_kind`.
-    fn rules_of(&self, sheet_id: &str, kind: &str) -> app::Result<Vec<(String, RuleData)>> {
-        Ok(self
-            .rules
-            .query("by_sheet_kind")
-            .eq(sheet_id)
-            .eq(kind)
-            .entries()
-            .map_err(|e| AppError::msg(format!("rules.query: {e}")))?
-            .into_iter()
-            .filter(|(_, r)| !r.deleted)
-            .collect())
-    }
-
-    /// Accept a call only from the node's xcall dispatch, from `from`.
-    fn require_origin(from: &ContextId) -> app::Result<()> {
-        match env::xcall_origin() {
-            Some(origin) if origin == *from.as_ref() => Ok(()),
-            Some(_) => Err(AppError::from(Error::Forbidden(
-                "the call's origin is not the workbook it names".into(),
-            ))),
-            None => Err(AppError::from(Error::Forbidden(
-                "only another workbook can push a link".into(),
-            ))),
+        match self.publications.get(&id.to_string())? {
+            Some(p) if self.role_of(&p.created_by)? >= Role::Editor => Ok(p),
+            _ => Err(not_found(id)),
         }
     }
 
@@ -4267,10 +3211,11 @@ impl Spreadsheet {
                 }
             }
         }
+        let key = id.to_string();
         let before = self
             .alert_state
-            .get(id)?
-            .map(|s| s.cells.clone())
+            .get(&key)?
+            .map(|s| s.cells)
             .unwrap_or_default();
         if matching == before {
             return Ok(());
@@ -4280,11 +3225,11 @@ impl Spreadsheet {
             .filter(|c| !before.contains(c))
             .cloned()
             .collect();
-        self.alert_state.insert(
-            id.to_string(),
-            AlertState {
+        let _ = self.alert_state.insert(
+            &key,
+            &AlertState {
                 cells: matching,
-                updated_at: storage_env::time_now(),
+                updated_at: now(),
             },
         )?;
         if !fresh.is_empty() {
@@ -4298,104 +3243,70 @@ impl Spreadsheet {
                 },
                 rules::describe(&rule.condition, &rule.args)
             );
-            app::emit!(Event::AlertTriggered {
-                rule_id: id,
-                sheet_id: &rule.sheet_id,
-                recipients: &rule.recipients,
-                message: &message,
-            });
+            emit(Event::AlertTriggered {
+                rule_id: key,
+                sheet_id: rule.sheet_id.clone(),
+                recipients: rule.recipients.clone(),
+                message,
+            })?;
         }
         Ok(())
     }
 
-    /// A member's role: an owner is an admin of `acl`; otherwise `viewer`
-    /// or `commenter` if granted; otherwise an editor.
+    /// A member's role: an owner; else `viewer` or `commenter` if set; else
+    /// an editor.
     fn role_of(&self, member: &str) -> app::Result<Role> {
-        let Ok(who) = parse_account(member) else {
-            return Ok(Role::Editor);
-        };
-        if self.acl.is_admin(&who) {
+        let member = member.to_string();
+        if self.owners.contains(&member)? {
             return Ok(Role::Owner);
         }
-        for named in [Role::Viewer, Role::Commenter] {
-            if self.acl.has_role(named.as_str(), &who)? {
-                return Ok(named);
-            }
-        }
-        Ok(Role::Editor)
+        Ok(match self.roles.get(&member)?.as_deref() {
+            Some("viewer") => Role::Viewer,
+            Some("commenter") => Role::Commenter,
+            _ => Role::Editor,
+        })
     }
 
     /// The caller's role, if it is at least `at_least`.
     fn require_role(&self, at_least: Role) -> app::Result<Role> {
-        let role = self.role_of(&self.caller_hex())?;
+        let role = self.role_of(&me()?)?;
         if role < at_least {
-            return Err(AppError::from(Error::Forbidden(format!(
+            return Err(forbidden(format!(
                 "you are {} {} in this workbook",
                 article(role),
                 role.as_str()
-            ))));
+            )));
         }
         Ok(role)
     }
 
-    /// Refuse unless the caller is an owner (`what` they tried, for the error).
+    /// Refuse unless the caller is an owner.
     fn require_owner(&self, what: &str) -> app::Result<()> {
         if self.require_role(Role::Viewer)? != Role::Owner {
-            return Err(AppError::from(Error::Forbidden(format!(
-                "only an owner can {what}"
-            ))));
+            return Err(forbidden(format!("only an owner can {what}")));
         }
         Ok(())
     }
 
-    /// Make every owner-held writer set the owners again: the owner cells'
-    /// writers and the moderators. Run after the owners change; a node that
-    /// rotates them concurrently with another owner converges on one set.
-    fn sync_owners(&mut self) -> app::Result<()> {
-        let owners = self.acl.admins();
-        self.project_name.rotate_writers(owners.clone())?;
-        self.protections.rotate_writers(owners.clone())?;
-        self.comments.set_moderators(owners.clone())?;
-        self.attachments.set_moderators(owners.clone())?;
-        self.publications.set_moderators(owners)?;
-        Ok(())
-    }
-
-    /// The protected ranges, to write. Refused locally for a non-owner, as
-    /// every other node refuses it on apply.
-    fn protections_mut(&mut self) -> app::Result<&mut IndexedMap<String, ProtectionData>> {
-        self.protections.guard(Op::Write)?;
-        Ok(self.protections.get_mut()?)
-    }
-
     /// The protected ranges on a sheet that stop the caller: none for an
-    /// owner, and none the caller is listed on. Errors if the caller may not
-    /// edit at all.
+    /// owner, none the caller is listed on. Errors if the caller may not edit.
     fn binding_protections(&self, sheet_id: &str) -> app::Result<Vec<ProtectionData>> {
         if self.require_role(Role::Editor)? == Role::Owner {
             return Ok(Vec::new());
         }
-        let me = self.caller_hex();
-        Ok(self
-            .protections
-            .get()?
-            .query("sheet_id")
-            .eq(sheet_id)
-            .entries()
-            .map_err(|e| AppError::msg(format!("protections.query: {e}")))?
+        let me = me()?;
+        Ok(all(|o| self.protections.page(o))?
             .into_iter()
             .map(|(_, p)| p)
-            .filter(|p| !p.deleted && !p.editors.contains(&me))
+            .filter(|p| p.sheet_id == sheet_id && !p.editors.contains(&me))
             .collect())
     }
 
-    /// One sheet's layout: one prefix of `axes`.
+    /// One sheet's layout.
     fn sheet_layout(&self, sheet_id: &str) -> app::Result<layout::Layout> {
-        let axes = self
-            .axes
-            .prefix(format!("{sheet_id}|").as_bytes())
-            .map_err(|e| AppError::msg(format!("axes.prefix: {e}")))?;
-        Ok(Spreadsheet::layouts(axes)
+        let prefix = [KeyPart::Str(format!("{sheet_id}|"))];
+        let axes = all(|o| self.axes.starts_with(&prefix, o))?;
+        Ok(layouts(axes)
             .into_iter()
             .next()
             .map(build_layout)
@@ -4421,19 +3332,18 @@ impl Spreadsheet {
                 .iter()
                 .find(|p| protected_rect(p, &l).is_some_and(|x| x.contains(r, c)))
             {
-                return Err(AppError::from(Error::Forbidden(format!(
+                return Err(forbidden(format!(
                     "{}{} is in a protected range{}",
                     formula::col_label(c as u32),
                     r + 1,
                     describe(p)
-                ))));
+                )));
             }
         }
         Ok(())
     }
 
-    /// Refuse deleting a row or column that runs through a range protected
-    /// from the caller.
+    /// Refuse deleting a row or column through a range protected from the caller.
     fn require_axes_writable(&self, sheet_id: &str, deleting: &[(char, &str)]) -> app::Result<()> {
         let binding = self.binding_protections(sheet_id)?;
         if binding.is_empty() || deleting.is_empty() {
@@ -4457,11 +3367,11 @@ impl Spreadsheet {
                 })
             });
             if let Some(p) = hit {
-                return Err(AppError::from(Error::Forbidden(format!(
+                return Err(forbidden(format!(
                     "that {} runs through a protected range{}",
                     if axis == 'r' { "row" } else { "column" },
                     describe(p)
-                ))));
+                )));
             }
         }
         Ok(())
@@ -4475,13 +3385,224 @@ impl Spreadsheet {
             .iter()
             .find(|p| is_whole_sheet(p))
         {
-            return Err(AppError::from(Error::Forbidden(format!(
-                "this sheet is protected{}",
-                describe(p)
-            ))));
+            return Err(forbidden(format!("this sheet is protected{}", describe(p))));
         }
         Ok(())
     }
+}
+
+// ---------------------------------------------------------------------------
+// Free helpers
+// ---------------------------------------------------------------------------
+
+/// The calling account: the member id roles, comments and cells name.
+fn me() -> app::Result<String> {
+    match env::caller() {
+        Caller::Account(a) => Ok(a),
+        Caller::ApiKey { account, .. } => Ok(account),
+        _ => Err(AppError::login_required()),
+    }
+}
+
+/// The clock in nanoseconds, as v1 stored and answered every time.
+fn now() -> u64 {
+    env::time_now().saturating_mul(1_000_000)
+}
+
+fn nonce() -> [u8; 4] {
+    let bytes = env::random_bytes(4);
+    let mut out = [0u8; 4];
+    out.copy_from_slice(&bytes[..4]);
+    out
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Every page of a paged read (each page at most [`PAGE`] rows).
+fn all<T>(mut read: impl FnMut(FindOpts) -> Result<Page<T>, StorageError>) -> app::Result<Vec<T>> {
+    let mut out = Vec::new();
+    let mut cursor: Option<String> = None;
+    loop {
+        let mut opts = FindOpts::default().limit(PAGE);
+        if let Some(c) = cursor.take() {
+            opts = opts.cursor(c);
+        }
+        let page = read(opts)?;
+        out.extend(page.items);
+        match page.next {
+            Some(next) => cursor = Some(next),
+            None => return Ok(out),
+        }
+    }
+}
+
+fn cell_key(sheet_id: &str, row_id: &str, col_id: &str) -> String {
+    format!("{sheet_id}|{row_id}|{col_id}")
+}
+
+fn op_cell(op: &CellOp) -> (&str, &str) {
+    match op {
+        CellOp::Set { row_id, col_id, .. }
+        | CellOp::Format { row_id, col_id, .. }
+        | CellOp::Clear { row_id, col_id } => (row_id, col_id),
+    }
+}
+
+/// A row or column id goes into storage keys and stored formulas.
+fn check_id(id: &str) -> app::Result<()> {
+    if id.is_empty() || id.len() > 32 || !id.bytes().all(|b| b.is_ascii_alphanumeric()) {
+        return Err(invalid(format!(
+            "row/column id {id:?} must be 1-32 ASCII letters and digits"
+        )));
+    }
+    Ok(())
+}
+
+/// An app instance id, as a link names a workbook.
+fn check_workbook_id(id: &str) -> app::Result<()> {
+    if id.is_empty()
+        || id.len() > 128
+        || !id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    {
+        return Err(invalid(format!("{id:?} is not a workbook id")));
+    }
+    Ok(())
+}
+
+fn check_publication_id(id: &str) -> app::Result<()> {
+    if id.is_empty() || id.len() > 64 || !id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+    {
+        return Err(invalid(format!("{id:?} is not a link id")));
+    }
+    Ok(())
+}
+
+fn check_comment(text: String) -> app::Result<String> {
+    let text = text.trim().to_string();
+    if text.is_empty() || text.chars().count() > MAX_COMMENT_CHARS {
+        return Err(invalid(format!(
+            "a comment is 1 to {MAX_COMMENT_CHARS} characters"
+        )));
+    }
+    Ok(text)
+}
+
+fn check_description(description: String) -> app::Result<String> {
+    let description = description.trim().to_string();
+    if description.chars().count() > 200 {
+        return Err(invalid("a description is at most 200 characters"));
+    }
+    Ok(description)
+}
+
+/// A protection's editor list, bounded so it fits one stored value.
+fn check_editors(editors: Vec<String>) -> app::Result<Vec<String>> {
+    if editors.len() > 1000 {
+        return Err(invalid("a protected range lists at most 1000 editors"));
+    }
+    Ok(editors)
+}
+
+/// Style fields and what each takes (besides empty, which clears it).
+fn check_style_field(field: &str, value: &str) -> app::Result<()> {
+    let ok = value.is_empty()
+        || match field {
+            "bold" | "italic" | "underline" | "strike" | "wrap" => value == "1",
+            "color" | "fill" => {
+                value.len() == 7
+                    && value.starts_with('#')
+                    && value[1..].bytes().all(|b| b.is_ascii_hexdigit())
+            }
+            "align" => matches!(value, "left" | "center" | "right"),
+            _ => {
+                return Err(invalid(format!(
+            "{field:?} is not a style: bold, italic, underline, strike, wrap, color, fill or align"
+        )))
+            }
+        };
+    if ok {
+        Ok(())
+    } else {
+        Err(invalid(format!("{value:?} is not a value for {field}")))
+    }
+}
+
+/// The linked sheet id for a publication of a source workbook.
+fn link_id(from: &str, publication_id: &str) -> String {
+    let short: String = from
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .take(12)
+        .collect();
+    format!("link-{short}-{publication_id}")
+}
+
+/// A value as a linked sheet keeps it: a literal, at most 256 characters.
+fn link_value(v: &str) -> String {
+    v.trim_start_matches('=')
+        .chars()
+        .take(MAX_LINK_VALUE_CHARS)
+        .collect()
+}
+
+/// Evaluate stored cells: the recalc input of each non-blank one.
+fn evaluate(
+    stored: &[CellData],
+    sheet_ids: BTreeSet<String>,
+    env: formula::Env,
+) -> BTreeMap<recalc::CellRef, String> {
+    let cells = stored
+        .iter()
+        .filter(|d| !d.raw_value.is_empty())
+        .filter_map(|d| {
+            let (_, row, col) = split_key(&d.id)?;
+            Some((
+                recalc::CellRef {
+                    sheet_id: d.sheet_id.clone(),
+                    row: row.to_string(),
+                    col: col.to_string(),
+                },
+                d.raw_value.clone(),
+            ))
+        })
+        .collect();
+    recalc::evaluate(&recalc::WorkbookInputs {
+        cells,
+        sheet_ids,
+        env,
+    })
+}
+
+/// Axis entries grouped into each sheet's layout.
+fn layouts(axes: Vec<(String, AxisData)>) -> Vec<SheetLayout> {
+    let mut by_sheet: BTreeMap<String, SheetLayout> = BTreeMap::new();
+    for (key, d) in axes {
+        let Some((sheet_id, axis, id)) = split_key(&key) else {
+            continue;
+        };
+        let l = by_sheet
+            .entry(sheet_id.to_string())
+            .or_insert_with(|| SheetLayout {
+                sheet_id: sheet_id.to_string(),
+                rows: Vec::new(),
+                cols: Vec::new(),
+            });
+        let entry = AxisEntryView {
+            id: id.to_string(),
+            pos: d.pos,
+            deleted: d.deleted,
+        };
+        match axis {
+            "r" => l.rows.push(entry),
+            "c" => l.cols.push(entry),
+            _ => {}
+        }
+    }
+    by_sheet.into_values().collect()
 }
 
 /// A resolved rectangle of positions, inclusive.
@@ -4496,6 +3617,12 @@ impl Rect {
     fn contains(&self, r: usize, c: usize) -> bool {
         (self.top..=self.bottom).contains(&r) && (self.left..=self.right).contains(&c)
     }
+}
+
+/// A sheet's computed values and its layout.
+struct SheetValues {
+    values: BTreeMap<(String, String), String>,
+    layout: layout::Layout,
 }
 
 fn is_whole_sheet(p: &ProtectionData) -> bool {
@@ -4530,114 +3657,7 @@ fn protected_rect(p: &ProtectionData, l: &layout::Layout) -> Option<Rect> {
     )
 }
 
-/// A sheet's computed values and its layout (see `Spreadsheet::sheet_values`).
-struct SheetValues {
-    values: BTreeMap<(String, String), String>,
-    layout: layout::Layout,
-}
-
-/// The calling account, as owner stamps and writer sets name it.
-fn caller_account() -> AccountId {
-    env::account_id().into()
-}
-
-/// An owner stamp as a member id; empty for none.
-fn owner_hex(owner: Option<AccountId>) -> String {
-    owner.map(|a| hex::encode(a.as_bytes())).unwrap_or_default()
-}
-
-/// The account, among `holders` of one key, whose entry is `row`.
-///
-/// Keys of an owned collection are per owner (core rc.57): one key appears
-/// once per account holding it, a row read by key or by index does not say
-/// whose it is, and a key-only `owner_of` names only the CALLER. The owner is
-/// recovered by matching the row's bytes against every holder's entry; the
-/// lowest matching account if two are byte-identical. Ids here are random, so
-/// a second holder of one only exists if a patched node copied it.
-fn owner_among<V: BorshSerialize>(holders: Vec<(AccountId, V)>, row: &V) -> Option<AccountId> {
-    let row = calimero_sdk::borsh::to_vec(row).ok()?;
-    holders
-        .into_iter()
-        .filter(|(_, held)| calimero_sdk::borsh::to_vec(held).is_ok_and(|bytes| bytes == row))
-        .map(|(owner, _)| owner)
-        .min()
-}
-
-/// The moderated collections `Spreadsheet::remove_every` removes from.
-enum Owned {
-    Comments,
-    Attachments,
-    Publications,
-}
-
-/// The entry at one key of the lowest account holding it: the same pick on
-/// every node when several accounts hold one key.
-fn lowest<V>(holders: Vec<(AccountId, V)>) -> Option<(AccountId, V)> {
-    holders.into_iter().min_by_key(|(owner, _)| *owner)
-}
-
-/// A member id (64 hex characters) as an account.
-fn parse_account(member: &str) -> app::Result<AccountId> {
-    let bytes: [u8; 32] = hex::decode(member)
-        .ok()
-        .and_then(|b| b.try_into().ok())
-        .ok_or_else(|| AppError::from(Error::NotFound(member.to_string())))?;
-    Ok(AccountId::from(bytes))
-}
-
-/// A context id given as 64 hex characters.
-fn parse_context(hex_id: &str) -> app::Result<[u8; 32]> {
-    let bytes = hex::decode(hex_id)
-        .map_err(|_| AppError::from(Error::Invalid(format!("{hex_id:?} is not a workbook id"))))?;
-    bytes
-        .try_into()
-        .map_err(|_| AppError::from(Error::Invalid(format!("{hex_id:?} is not a workbook id"))))
-}
-
-/// The linked sheet id for a publication of a source workbook.
-fn link_id(from_hex: &str, publication_id: &str) -> String {
-    format!(
-        "link-{}-{publication_id}",
-        &from_hex[..from_hex.len().min(12)]
-    )
-}
-
-/// A value as a linked sheet keeps it: a literal (a leading `=` would read as
-/// a formula), at most 256 characters.
-fn link_value(v: &str) -> String {
-    v.trim_start_matches('=')
-        .chars()
-        .take(MAX_LINK_VALUE_CHARS)
-        .collect()
-}
-
-/// Queue a cross-context call, run by the node after this one commits.
-#[cfg(target_arch = "wasm32")]
-fn send_xcall(context: &[u8; 32], function: &str, params: Vec<u8>) {
-    env::xcall(context, function, &params);
-}
-
-/// A queued cross-context call: target context, function, JSON params.
-#[cfg(not(target_arch = "wasm32"))]
-type SentXcall = ([u8; 32], String, Vec<u8>);
-
-#[cfg(not(target_arch = "wasm32"))]
-thread_local! {
-    /// The in-process test host has no xcall: calls are recorded here instead.
-    static SENT_XCALLS: std::cell::RefCell<Vec<SentXcall>> =
-        const { std::cell::RefCell::new(Vec::new()) };
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn send_xcall(context: &[u8; 32], function: &str, params: Vec<u8>) {
-    SENT_XCALLS.with(|s| {
-        s.borrow_mut()
-            .push((*context, function.to_string(), params))
-    });
-}
-
-/// A range given by corner ids (top row, left column, bottom row, right
-/// column) as positions, or `None` when a corner row or column is gone.
+/// A range given by corner ids as positions, or `None` when one is gone.
 fn corner_rect(corners: [&String; 4], l: &layout::Layout) -> Option<Rect> {
     let [top, left, bottom, right] = corners;
     let (r1, r2) = (l.rows.index_of(top)?, l.rows.index_of(bottom)?);
@@ -4693,8 +3713,7 @@ fn display_format(format: &str) -> &str {
     }
 }
 
-/// `"{sheet}|{a}|{b}"` → its three parts. The sheet id is everything before
-/// the last two separators; row, column and axis parts never contain one.
+/// `"{sheet}|{a}|{b}"` → its three parts.
 fn split_key(key: &str) -> Option<(&str, &str, &str)> {
     let mut parts = key.rsplitn(3, '|');
     let b = parts.next()?;
@@ -4703,12 +3722,7 @@ fn split_key(key: &str) -> Option<(&str, &str, &str)> {
     Some((sheet, a, b))
 }
 
-// ---------------------------------------------------------------------------
-// Built-in function list
-// ---------------------------------------------------------------------------
-
-/// The function help, straight from the engine's own catalog, so every
-/// function listed is one the evaluator implements.
+/// The function help, straight from the engine's catalog.
 fn builtin_functions() -> Vec<FunctionDef> {
     formula::CATALOG
         .iter()
@@ -4720,2285 +3734,4 @@ fn builtin_functions() -> Vec<FunctionDef> {
             example: f.example.into(),
         })
         .collect()
-}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-#[cfg(test)]
-mod tests {
-    use calimero_sdk::testing::TestHost;
-
-    use super::*;
-
-    /// A workbook, called as its creator (its first owner) by default.
-    fn make_app() -> TestHost<Spreadsheet> {
-        let mut app = TestHost::new(Spreadsheet::init);
-        let founder = app.view(|s| s.acl.admins().into_iter().next().unwrap());
-        app.set_account(*founder.as_bytes());
-        app
-    }
-
-    /// A device of `account`'s own: a different person on their own machine.
-    fn dev(account: [u8; 32]) -> [u8; 32] {
-        let mut device = account;
-        device[0] ^= 0x80;
-        device
-    }
-
-    #[test]
-    fn init_project_sets_id_and_name() {
-        let mut app = make_app();
-        let id = app.call(|s| s.init_project("Q3 Budget".into())).unwrap();
-        assert!(!id.is_empty());
-        assert_eq!(app.events().len(), 1);
-    }
-
-    #[test]
-    fn get_project_reads_back_the_name_init_project_wrote() {
-        // The gap this closes: `project_name` was written from day one and no
-        // method could read it, so every peer but the creator saw a placeholder.
-        let mut app = make_app();
-        let id = app.call(|s| s.init_project("Q3 Budget".into())).unwrap();
-        let project = app.view(|s| s.get_project()).unwrap();
-        assert_eq!(project.id, id);
-        assert_eq!(project.name, "Q3 Budget");
-        assert!(project.created_at > 0);
-    }
-
-    #[test]
-    fn get_project_on_an_uninitialised_context_is_empty_not_an_error() {
-        // A context exists before `init_project` lands. That window must render
-        // a placeholder, not an error page.
-        let app = make_app();
-        let project = app.view(|s| s.get_project()).unwrap();
-        assert!(!project.id.is_empty(), "the id is fixed when it is created");
-        assert_eq!(project.name, "");
-    }
-
-    #[test]
-    fn join_records_a_nickname_and_get_members_reads_it() {
-        let mut app = make_app();
-        app.call(|s| s.init_project("P".into())).unwrap();
-        app.call(|s| s.join("Ada".into())).unwrap();
-        let members = app.view(|s| s.get_members()).unwrap();
-        assert_eq!(members.len(), 1);
-        assert_eq!(members[0].nickname, "Ada");
-        assert!(!members[0].id.is_empty());
-    }
-
-    #[test]
-    fn join_is_idempotent_and_renames_in_place() {
-        // Called on every open, not only the first — so a second call must
-        // rename rather than add a second row for the same member.
-        let mut app = make_app();
-        app.call(|s| s.join("Ada".into())).unwrap();
-        let first = app.view(|s| s.get_members()).unwrap()[0].joined_at;
-        app.call(|s| s.join("Ada Lovelace".into())).unwrap();
-        let members = app.view(|s| s.get_members()).unwrap();
-        assert_eq!(members.len(), 1);
-        assert_eq!(members[0].nickname, "Ada Lovelace");
-        assert_eq!(
-            members[0].joined_at, first,
-            "a rename must not look like a later arrival"
-        );
-    }
-
-    #[test]
-    fn join_trims_and_rejects_an_empty_or_overlong_nickname() {
-        let mut app = make_app();
-        app.call(|s| s.join("  Ada  ".into())).unwrap();
-        assert_eq!(app.view(|s| s.get_members()).unwrap()[0].nickname, "Ada");
-        assert!(app.call(|s| s.join("   ".into())).is_err());
-        assert!(app.call(|s| s.join("n".repeat(65))).is_err());
-    }
-
-    #[test]
-    fn whoami_is_the_key_this_caller_writes_under() {
-        let mut app = make_app();
-        app.call(|s| s.init_project("P".into())).unwrap();
-        app.call(|s| s.join("Ada".into())).unwrap();
-        let me = app.view(|s| s.whoami()).unwrap();
-        assert_eq!(me.len(), 64, "an account id is 64 hex");
-        assert_eq!(app.view(|s| s.get_members()).unwrap()[0].id, me);
-    }
-
-    #[test]
-    fn member_merge_keeps_the_newer_name_and_the_earlier_arrival() {
-        let mut mine = MemberData {
-            nickname: "Ada".into(),
-            joined_at: 100,
-            updated_at: 100,
-        };
-        let theirs = MemberData {
-            nickname: "Ada Lovelace".into(),
-            joined_at: 50,
-            updated_at: 200,
-        };
-        mine.merge(&theirs).unwrap();
-        assert_eq!(mine.nickname, "Ada Lovelace");
-        assert_eq!(mine.updated_at, 200);
-        assert_eq!(mine.joined_at, 50);
-    }
-
-    #[test]
-    fn member_merge_breaks_an_equal_clock_tie_on_the_nickname() {
-        // An equal-clock compare that ignores the value silently discards one
-        // side's write and leaves two replicas showing different names.
-        let mut a = MemberData {
-            nickname: "Ada".into(),
-            joined_at: 10,
-            updated_at: 100,
-        };
-        let mut b = MemberData {
-            nickname: "Bob".into(),
-            joined_at: 10,
-            updated_at: 100,
-        };
-        let (a0, b0) = (a.clone(), b.clone());
-        a.merge(&b0).unwrap();
-        b.merge(&a0).unwrap();
-        assert_eq!(a.nickname, b.nickname);
-    }
-
-    #[test]
-    fn init_project_twice_errors() {
-        let mut app = make_app();
-        app.call(|s| s.init_project("First".into())).unwrap();
-        assert!(app.call(|s| s.init_project("Second".into())).is_err());
-    }
-
-    #[test]
-    fn create_and_list_sheets() {
-        let mut app = make_app();
-        app.call(|s| s.init_project("P".into())).unwrap();
-        let sid = app.call(|s| s.create_sheet("Revenue".into())).unwrap();
-        let sheets = app.view(|s| s.list_sheets()).unwrap();
-        assert_eq!(sheets.len(), 1);
-        assert_eq!(sheets[0].id, sid);
-        assert_eq!(sheets[0].name, "Revenue");
-    }
-
-    #[test]
-    fn rename_sheet_updates_name() {
-        let mut app = make_app();
-        app.call(|s| s.init_project("P".into())).unwrap();
-        let sid = app.call(|s| s.create_sheet("Old".into())).unwrap();
-        app.call(|s| s.rename_sheet(sid.clone(), "New".into()))
-            .unwrap();
-        let sheets = app.view(|s| s.list_sheets()).unwrap();
-        assert_eq!(sheets[0].name, "New");
-    }
-
-    #[test]
-    fn delete_sheet_removes_it_and_cells() {
-        let mut app = make_app();
-        app.call(|s| s.init_project("P".into())).unwrap();
-        let sid = app.call(|s| s.create_sheet("Tab".into())).unwrap();
-        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "42".into()))
-            .unwrap();
-        app.call(|s| s.delete_sheet(sid.clone())).unwrap();
-        let sheets = app.view(|s| s.list_sheets()).unwrap();
-        assert!(sheets.is_empty());
-        let cells = app.view(|s| s.get_cells(sid)).unwrap();
-        assert!(cells.is_empty());
-    }
-
-    #[test]
-    fn set_cell_and_get_cells() {
-        let mut app = make_app();
-        app.call(|s| s.init_project("P".into())).unwrap();
-        let sid = app.call(|s| s.create_sheet("Sheet1".into())).unwrap();
-        let cid = app
-            .call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "1500".into()))
-            .unwrap();
-        let cells = app.view(|s| s.get_cells(sid)).unwrap();
-        assert_eq!(cells.len(), 1);
-        assert_eq!(cells[0].id, cid);
-        assert_eq!(cells[0].raw_value, "1500");
-        assert_eq!(cells[0].computed_value, "1500");
-    }
-
-    #[test]
-    fn set_cell_format_persists_and_preserves_value() {
-        let mut app = make_app();
-        app.call(|s| s.init_project("P".into())).unwrap();
-        let sid = app.call(|s| s.create_sheet("S".into())).unwrap();
-        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "1234.5".into()))
-            .unwrap();
-        app.call(|s| s.set_cell_format(sid.clone(), "0".into(), "0".into(), "currency".into()))
-            .unwrap();
-        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
-        let a1 = cells
-            .iter()
-            .find(|c| c.row_id == "0" && c.col_id == "0")
-            .unwrap();
-        assert_eq!(a1.format, "currency");
-        assert_eq!(a1.raw_value, "1234.5", "value preserved when format is set");
-    }
-
-    #[test]
-    fn setting_value_preserves_existing_format() {
-        let mut app = make_app();
-        app.call(|s| s.init_project("P".into())).unwrap();
-        let sid = app.call(|s| s.create_sheet("S".into())).unwrap();
-        // Format an empty cell, then type a value into it.
-        app.call(|s| s.set_cell_format(sid.clone(), "0".into(), "0".into(), "percent".into()))
-            .unwrap();
-        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "0.25".into()))
-            .unwrap();
-        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
-        let a1 = cells
-            .iter()
-            .find(|c| c.row_id == "0" && c.col_id == "0")
-            .unwrap();
-        assert_eq!(a1.format, "percent", "format survives a later value edit");
-        assert_eq!(a1.computed_value, "0.25");
-    }
-
-    #[test]
-    fn cell_merge_is_last_writer_wins() {
-        let mut a = CellData {
-            id: "k".into(),
-            sheet_id: "s".into(),
-            raw_value: "1".into(),
-            updated_at: 1,
-        };
-        let b = CellData {
-            id: "k".into(),
-            sheet_id: "s".into(),
-            raw_value: "2".into(),
-            updated_at: 2,
-        };
-        a.merge(&b).unwrap();
-        assert_eq!(a.raw_value, "2");
-        // An exact clock tie converges on the same value from either side.
-        let mut c = CellData {
-            raw_value: "3".into(),
-            ..b.clone()
-        };
-        let mut d = b.clone();
-        c.merge(&b).unwrap();
-        d.merge(&CellData {
-            raw_value: "3".into(),
-            ..b.clone()
-        })
-        .unwrap();
-        assert_eq!(c.raw_value, d.raw_value);
-    }
-
-    #[test]
-    fn set_cell_formula_sum_evaluates() {
-        let mut app = make_app();
-        app.call(|s| s.init_project("P".into())).unwrap();
-        let sid = app.call(|s| s.create_sheet("S".into())).unwrap();
-        // Seed A1..A3 with values 10, 20, 30.
-        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "10".into()))
-            .unwrap();
-        app.call(|s| s.set_cell(sid.clone(), "1".into(), "0".into(), "20".into()))
-            .unwrap();
-        app.call(|s| s.set_cell(sid.clone(), "2".into(), "0".into(), "30".into()))
-            .unwrap();
-        // SUM(A1:A3) should be 60.
-        let fid = app
-            .call(|s| s.set_cell(sid.clone(), "3".into(), "0".into(), "=SUM(A1:A3)".into()))
-            .unwrap();
-        let cells = app.view(|s| s.get_cells(sid)).unwrap();
-        let formula_cell = cells.iter().find(|c| c.id == fid).unwrap();
-        assert_eq!(formula_cell.computed_value, "60");
-    }
-
-    #[test]
-    fn absolute_refs_evaluate_like_relative() {
-        let mut app = make_app();
-        app.call(|s| s.init_project("P".into())).unwrap();
-        let sid = app.call(|s| s.create_sheet("S".into())).unwrap();
-        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "10".into()))
-            .unwrap(); // A1 = 10
-        app.call(|s| s.set_cell(sid.clone(), "1".into(), "0".into(), "20".into()))
-            .unwrap(); // A2 = 20
-                       // $ anchors are evaluation no-ops: these must all compute like the bare refs.
-        app.call(|s| s.set_cell(sid.clone(), "0".into(), "1".into(), "=$A$1".into()))
-            .unwrap(); // B1
-        app.call(|s| s.set_cell(sid.clone(), "1".into(), "1".into(), "=A$1+$A2".into()))
-            .unwrap(); // B2
-        app.call(|s| {
-            s.set_cell(
-                sid.clone(),
-                "2".into(),
-                "1".into(),
-                "=SUM($A$1:$A$2)".into(),
-            )
-        })
-        .unwrap(); // B3
-        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
-        let get = |r: u32, c: u32| {
-            cells
-                .iter()
-                .find(|x| x.row_id == r.to_string() && x.col_id == c.to_string())
-                .unwrap()
-                .computed_value
-                .clone()
-        };
-        assert_eq!(get(0, 1), "10", "=$A$1");
-        assert_eq!(get(1, 1), "30", "=A$1+$A2");
-        assert_eq!(get(2, 1), "30", "=SUM($A$1:$A$2)");
-    }
-
-    #[test]
-    fn dependent_formulas_recompute_when_source_changes() {
-        let mut app = make_app();
-        app.call(|s| s.init_project("P".into())).unwrap();
-        let sid = app.call(|s| s.create_sheet("S".into())).unwrap();
-        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "1".into()))
-            .unwrap(); // A1 = 1
-        app.call(|s| s.set_cell(sid.clone(), "1".into(), "0".into(), "2".into()))
-            .unwrap(); // A2 = 2
-                       // A3 = SUM(A1,A2) = 3
-        app.call(|s| s.set_cell(sid.clone(), "2".into(), "0".into(), "=SUM(A1,A2)".into()))
-            .unwrap();
-        // B1 = A3 * 10 = 30 (chained: B1 → A3 → A2)
-        app.call(|s| s.set_cell(sid.clone(), "0".into(), "1".into(), "=A3*10".into()))
-            .unwrap();
-
-        // Change A2 to 5. A3 must recompute to 6, and B1 (which depends on A3)
-        // must recompute to 60.
-        app.call(|s| s.set_cell(sid.clone(), "1".into(), "0".into(), "5".into()))
-            .unwrap();
-
-        let cells = app.view(|s| s.get_cells(sid)).unwrap();
-        let a3 = cells
-            .iter()
-            .find(|c| c.row_id == "2" && c.col_id == "0")
-            .unwrap();
-        let b1 = cells
-            .iter()
-            .find(|c| c.row_id == "0" && c.col_id == "1")
-            .unwrap();
-        assert_eq!(a3.computed_value, "6", "A3 = SUM(A1,A2) after A2→5");
-        assert_eq!(b1.computed_value, "60", "B1 = A3*10 after chain recompute");
-    }
-
-    #[test]
-    fn clearing_a_cell_recomputes_dependents() {
-        let mut app = make_app();
-        app.call(|s| s.init_project("P".into())).unwrap();
-        let sid = app.call(|s| s.create_sheet("S".into())).unwrap();
-        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "10".into()))
-            .unwrap(); // A1
-        app.call(|s| s.set_cell(sid.clone(), "1".into(), "0".into(), "20".into()))
-            .unwrap(); // A2
-        app.call(|s| s.set_cell(sid.clone(), "2".into(), "0".into(), "=SUM(A1:A2)".into()))
-            .unwrap(); // A3 = 30
-                       // Clear A2 → A3 should recompute to 10.
-        app.call(|s| s.clear_cell(sid.clone(), "1".into(), "0".into()))
-            .unwrap();
-        let cells = app.view(|s| s.get_cells(sid)).unwrap();
-        let a3 = cells
-            .iter()
-            .find(|c| c.row_id == "2" && c.col_id == "0")
-            .unwrap();
-        assert_eq!(a3.computed_value, "10");
-    }
-
-    #[test]
-    fn cross_sheet_cell_and_range_references() {
-        let mut app = make_app();
-        app.call(|s| s.init_project("P".into())).unwrap();
-        let s1 = app.call(|s| s.create_sheet("Sheet1".into())).unwrap();
-        let data = app.call(|s| s.create_sheet("Data".into())).unwrap();
-        // Data!A1 = 10, Data!A2 = 20
-        app.call(|s| s.set_cell(data.clone(), "0".into(), "0".into(), "10".into()))
-            .unwrap();
-        app.call(|s| s.set_cell(data.clone(), "1".into(), "0".into(), "20".into()))
-            .unwrap();
-        // Sheet1!B1 = =[data]!A1 + [data]!A2 → 30
-        app.call(|s| {
-            s.set_cell(
-                s1.clone(),
-                "0".into(),
-                "1".into(),
-                format!("=[{data}]!A1+[{data}]!A2"),
-            )
-        })
-        .unwrap();
-        // Sheet1!B2 = =SUM([data]!A1:A2) → 30
-        app.call(|s| {
-            s.set_cell(
-                s1.clone(),
-                "1".into(),
-                "1".into(),
-                format!("=SUM([{data}]!A1:A2)"),
-            )
-        })
-        .unwrap();
-        let cells = app.view(|s| s.get_cells(s1.clone())).unwrap();
-        let b1 = cells
-            .iter()
-            .find(|c| c.row_id == "0" && c.col_id == "1")
-            .unwrap();
-        let b2 = cells
-            .iter()
-            .find(|c| c.row_id == "1" && c.col_id == "1")
-            .unwrap();
-        assert_eq!(b1.computed_value, "30", "=[data]!A1+[data]!A2");
-        assert_eq!(b2.computed_value, "30", "=SUM([data]!A1:A2)");
-    }
-
-    #[test]
-    fn reference_to_unknown_sheet_is_ref_error() {
-        let mut app = make_app();
-        app.call(|s| s.init_project("P".into())).unwrap();
-        let sid = app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
-        // No sheet has this id, so the reference must surface as #REF!, not a
-        // silent 0 that looks like the cell is empty.
-        app.call(|s| {
-            s.set_cell(
-                sid.clone(),
-                "0".into(),
-                "0".into(),
-                "=[sheet-does-not-exist]!A1".into(),
-            )
-        })
-        .unwrap();
-        // resolves to #REF! because no sheet has that id
-        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
-        let a1 = cells
-            .iter()
-            .find(|c| c.row_id == "0" && c.col_id == "0")
-            .unwrap();
-        assert_eq!(a1.computed_value, "#REF!", "unknown sheet id → #REF!");
-    }
-
-    #[test]
-    fn cross_sheet_recompute_propagates() {
-        let mut app = make_app();
-        app.call(|s| s.init_project("P".into())).unwrap();
-        let a = app.call(|s| s.create_sheet("A".into())).unwrap();
-        let b = app.call(|s| s.create_sheet("B".into())).unwrap();
-        app.call(|s| s.set_cell(a.clone(), "0".into(), "0".into(), "5".into()))
-            .unwrap(); // [a]!A1 = 5
-        app.call(|s| s.set_cell(b.clone(), "0".into(), "0".into(), format!("=[{a}]!A1*10")))
-            .unwrap(); // [b]!A1 = 50
-                       // Change [a]!A1 → 8; [b]!A1 (on the other sheet) must recompute to 80.
-        app.call(|s| s.set_cell(a.clone(), "0".into(), "0".into(), "8".into()))
-            .unwrap();
-        let cells = app.view(|s| s.get_cells(b.clone())).unwrap();
-        let a1 = cells
-            .iter()
-            .find(|c| c.row_id == "0" && c.col_id == "0")
-            .unwrap();
-        assert_eq!(a1.computed_value, "80");
-    }
-
-    #[test]
-    fn clear_cell_removes_it() {
-        let mut app = make_app();
-        app.call(|s| s.init_project("P".into())).unwrap();
-        let sid = app.call(|s| s.create_sheet("S".into())).unwrap();
-        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "99".into()))
-            .unwrap();
-        app.call(|s| s.clear_cell(sid.clone(), "0".into(), "0".into()))
-            .unwrap();
-        let cells = app.view(|s| s.get_cells(sid)).unwrap();
-        assert!(cells.is_empty());
-    }
-
-    #[test]
-    fn cleared_cell_can_be_rewritten() {
-        let mut app = make_app();
-        app.call(|s| s.init_project("P".into())).unwrap();
-        let sid = app.call(|s| s.create_sheet("S".into())).unwrap();
-        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "first".into()))
-            .unwrap();
-        app.call(|s| s.clear_cell(sid.clone(), "0".into(), "0".into()))
-            .unwrap();
-        // Writing the same coordinate again after a clear must persist — a paste
-        // or a fresh type into a previously-deleted cell.
-        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "second".into()))
-            .unwrap();
-        let cells = app.view(|s| s.get_cells(sid)).unwrap();
-        let a1 = cells.iter().find(|c| c.row_id == "0" && c.col_id == "0");
-        assert!(
-            a1.is_some(),
-            "cell missing after re-write of a cleared cell"
-        );
-        assert_eq!(a1.unwrap().raw_value, "second");
-    }
-
-    #[test]
-    fn apply_cell_ops_refuses_an_oversized_batch() {
-        let mut app = make_app();
-        app.call(|s| s.init_project("P".into())).unwrap();
-        let sid = app.call(|s| s.create_sheet("S".into())).unwrap();
-        let ops = |n: usize| -> Vec<CellOp> {
-            (0..n)
-                .map(|i| CellOp::Set {
-                    row_id: i.to_string(),
-                    col_id: "0".into(),
-                    raw_value: "1".into(),
-                })
-                .collect()
-        };
-        let err = app
-            .call(|s| s.apply_cell_ops(sid.clone(), ops(MAX_OPS_PER_APPLY + 1)))
-            .unwrap_err();
-        assert!(format!("{err:?}").contains("split the batch"), "{err:?}");
-        app.call(|s| s.apply_cell_ops(sid.clone(), ops(MAX_OPS_PER_APPLY)))
-            .unwrap();
-        let cells = app.view(|s| s.get_cells(sid)).unwrap();
-        assert_eq!(cells.len(), MAX_OPS_PER_APPLY);
-    }
-
-    #[test]
-    fn apply_cell_ops_applies_mixed_batch() {
-        let mut app = make_app();
-        app.call(|s| s.init_project("P".into())).unwrap();
-        let sid = app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
-        app.call(|s| s.set_cell(sid.clone(), "5".into(), "5".into(), "old".into()))
-            .unwrap();
-        let ev_before = app.events().len();
-        app.call(|s| {
-            s.apply_cell_ops(
-                sid.clone(),
-                vec![
-                    CellOp::Set {
-                        row_id: "0".into(),
-                        col_id: "0".into(),
-                        raw_value: "7".into(),
-                    },
-                    CellOp::Set {
-                        row_id: "1".into(),
-                        col_id: "0".into(),
-                        raw_value: "=A1*2".into(),
-                    },
-                    CellOp::Format {
-                        row_id: "0".into(),
-                        col_id: "0".into(),
-                        format: "number".into(),
-                    },
-                    CellOp::Clear {
-                        row_id: "5".into(),
-                        col_id: "5".into(),
-                    },
-                ],
-            )
-        })
-        .unwrap();
-        // ONE batch event for the whole apply (not one per op) — so a large batch
-        // never trips the runtime's per-commit event cap (max_events = 100).
-        assert_eq!(
-            app.events().len() - ev_before,
-            1,
-            "one batch event, not one per op"
-        );
-        let cells = app.view(|s| s.get_cells(sid)).unwrap();
-        let a1 = cells
-            .iter()
-            .find(|c| c.row_id == "0" && c.col_id == "0")
-            .unwrap();
-        let a2 = cells
-            .iter()
-            .find(|c| c.row_id == "1" && c.col_id == "0")
-            .unwrap();
-        assert_eq!(a1.computed_value, "7");
-        assert_eq!(a1.format, "number");
-        assert_eq!(a2.computed_value, "14"); // derived on read
-        assert!(
-            cells.iter().all(|c| !(c.row_id == "5" && c.col_id == "5")),
-            "cleared cell hidden"
-        );
-    }
-
-    #[test]
-    fn get_functions_returns_all() {
-        let app = make_app();
-        let fns = app.view(|s| s.get_functions()).unwrap();
-        // The engine's whole catalog, sorted alphabetically.
-        assert_eq!(fns.len(), formula::CATALOG.len());
-        assert!(fns.windows(2).all(|w| w[0].name < w[1].name));
-        assert!(fns
-            .iter()
-            .any(|f| f.name == "VLOOKUP" && f.category == "Lookup"));
-    }
-
-    #[test]
-    fn search_functions_filters_by_prefix() {
-        let app = make_app();
-        let fns = app.view(|s| s.search_functions("su".into())).unwrap();
-        let names: Vec<&str> = fns.iter().map(|f| f.name.as_str()).collect();
-        assert_eq!(
-            names,
-            ["SUBSTITUTE", "SUM", "SUMIF", "SUMIFS", "SUMPRODUCT"]
-        );
-    }
-
-    #[test]
-    fn get_all_cells_spans_sheets_with_computed_values() {
-        let mut app = make_app();
-        app.call(|s| s.init_project("P".into())).unwrap();
-        let s1 = app.call(|s| s.create_sheet("One".into())).unwrap();
-        let s2 = app.call(|s| s.create_sheet("Two".into())).unwrap();
-        app.call(|s| s.set_cell(s1.clone(), "0".into(), "0".into(), "10".into()))
-            .unwrap();
-        app.call(|s| s.set_cell(s2.clone(), "0".into(), "0".into(), format!("=[{s1}]!A1*2")))
-            .unwrap();
-
-        let all = app.view(|s| s.get_all_cells()).unwrap();
-        // Both sheets' cells present; cross-sheet computed value derived (20).
-        let c2 = all
-            .iter()
-            .find(|c| c.sheet_id == s2 && c.row_id == "0" && c.col_id == "0")
-            .unwrap();
-        assert_eq!(c2.computed_value, "20");
-        assert!(all.iter().any(|c| c.sheet_id == s1 && c.raw_value == "10"));
-    }
-
-    #[test]
-    fn export_all_returns_sheets() {
-        let mut app = make_app();
-        app.call(|s| s.init_project("P".into())).unwrap();
-        app.call(|s| s.create_sheet("A".into())).unwrap();
-        app.call(|s| s.create_sheet("B".into())).unwrap();
-        let sheets = app.view(|s| s.export_all()).unwrap();
-        assert_eq!(sheets.len(), 2);
-    }
-
-    #[test]
-    fn set_cell_unknown_sheet_errors() {
-        let mut app = make_app();
-        app.call(|s| s.init_project("P".into())).unwrap();
-        assert!(app
-            .call(|s| s.set_cell("no-such-sheet".into(), "0".into(), "0".into(), "v".into()))
-            .is_err());
-    }
-
-    #[test]
-    fn formula_average_and_count() {
-        let mut app = make_app();
-        app.call(|s| s.init_project("P".into())).unwrap();
-        let sid = app.call(|s| s.create_sheet("S".into())).unwrap();
-        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "10".into()))
-            .unwrap();
-        app.call(|s| s.set_cell(sid.clone(), "1".into(), "0".into(), "20".into()))
-            .unwrap();
-        app.call(|s| {
-            s.set_cell(
-                sid.clone(),
-                "2".into(),
-                "0".into(),
-                "=AVERAGE(A1:A2)".into(),
-            )
-        })
-        .unwrap();
-        app.call(|s| s.set_cell(sid.clone(), "3".into(), "0".into(), "=COUNT(A1:A2)".into()))
-            .unwrap();
-        let cells = app.view(|s| s.get_cells(sid)).unwrap();
-        let avg = cells.iter().find(|c| c.row_id == "2").unwrap();
-        let cnt = cells.iter().find(|c| c.row_id == "3").unwrap();
-        assert_eq!(avg.computed_value, "15");
-        assert_eq!(cnt.computed_value, "2");
-    }
-
-    #[test]
-    fn create_sheet_auto_suffixes_duplicate_names() {
-        let mut app = make_app();
-        app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
-        app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
-        app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
-        let names: Vec<String> = app
-            .call(|s| -> app::Result<Vec<String>> {
-                Ok(s.list_sheets()?.into_iter().map(|x| x.name).collect())
-            })
-            .unwrap();
-        assert!(names.contains(&"Sheet 1".to_string()));
-        assert!(names.contains(&"Sheet 1 (2)".to_string()));
-        assert!(names.contains(&"Sheet 1 (3)".to_string()));
-    }
-
-    #[test]
-    fn rename_to_an_existing_name_is_rejected() {
-        let mut app = make_app();
-        let a = app.call(|s| s.create_sheet("Alpha".into())).unwrap();
-        let _b = app.call(|s| s.create_sheet("Beta".into())).unwrap();
-        assert!(app
-            .call(|s| s.rename_sheet(a.clone(), "Beta".into()))
-            .is_err());
-    }
-
-    #[test]
-    fn rename_to_own_name_is_ok() {
-        let mut app = make_app();
-        let a = app.call(|s| s.create_sheet("Alpha".into())).unwrap();
-        assert!(app
-            .call(|s| s.rename_sheet(a.clone(), "Alpha".into()))
-            .is_ok());
-    }
-
-    #[test]
-    fn rename_rejects_forbidden_chars() {
-        let mut app = make_app();
-        let a = app.call(|s| s.create_sheet("Alpha".into())).unwrap();
-        assert!(app
-            .call(|s| s.rename_sheet(a.clone(), "Bad!Name".into()))
-            .is_err());
-    }
-
-    #[test]
-    fn rename_does_not_touch_formulas_or_values() {
-        let mut app = make_app();
-        let data = app.call(|s| s.create_sheet("Data".into())).unwrap();
-        let main = app.call(|s| s.create_sheet("Main".into())).unwrap();
-        app.call(|s| s.set_cell(data.clone(), "0".into(), "0".into(), "10".into()))
-            .unwrap();
-        let formula = format!("=[{data}]!A1*2");
-        app.call(|s| s.set_cell(main.clone(), "0".into(), "0".into(), formula.clone()))
-            .unwrap();
-        let before = app.view(|s| s.get_cells(main.clone())).unwrap();
-        let cell_before = before
-            .iter()
-            .find(|c| c.row_id == "0" && c.col_id == "0")
-            .unwrap()
-            .clone();
-        assert_eq!(cell_before.computed_value, "20");
-
-        app.call(|s| s.rename_sheet(data.clone(), "Renamed".into()))
-            .unwrap();
-
-        let after = app.view(|s| s.get_cells(main.clone())).unwrap();
-        let cell_after = after
-            .iter()
-            .find(|c| c.row_id == "0" && c.col_id == "0")
-            .unwrap();
-        // raw formula unchanged (id-based), computed value unchanged.
-        assert_eq!(
-            cell_after.raw_value, formula,
-            "rename must not rewrite the formula"
-        );
-        assert_eq!(
-            cell_after.computed_value, "20",
-            "rename must not change values"
-        );
-    }
-
-    #[test]
-    fn self_referential_formula_is_cycle_error() {
-        let mut app = make_app();
-        let sid = app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
-        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "1".into()))
-            .unwrap(); // A1 = 1
-                       // B1 = SUM(A1, B1) — references itself; must not diverge into a number.
-        app.call(|s| s.set_cell(sid.clone(), "0".into(), "1".into(), "=SUM(A1,B1)".into()))
-            .unwrap();
-        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
-        let b1 = cells
-            .iter()
-            .find(|c| c.row_id == "0" && c.col_id == "1")
-            .unwrap();
-        assert_eq!(b1.computed_value, "#CYCLE!");
-    }
-
-    #[test]
-    fn mutual_divergent_cycle_is_cycle_error() {
-        let mut app = make_app();
-        let sid = app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
-        // A1 = B1 + 1, B1 = A1 + 1 — a mutual cycle that diverges.
-        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "=B1+1".into()))
-            .unwrap();
-        app.call(|s| s.set_cell(sid.clone(), "0".into(), "1".into(), "=A1+1".into()))
-            .unwrap();
-        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
-        let a1 = cells
-            .iter()
-            .find(|c| c.row_id == "0" && c.col_id == "0")
-            .unwrap();
-        let b1 = cells
-            .iter()
-            .find(|c| c.row_id == "0" && c.col_id == "1")
-            .unwrap();
-        assert_eq!(a1.computed_value, "#CYCLE!");
-        assert_eq!(b1.computed_value, "#CYCLE!");
-    }
-
-    #[test]
-    fn long_acyclic_chain_still_converges() {
-        let mut app = make_app();
-        let sid = app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
-        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "1".into()))
-            .unwrap(); // A1 = 1
-        app.call(|s| s.set_cell(sid.clone(), "1".into(), "0".into(), "=A1+1".into()))
-            .unwrap(); // A2
-        app.call(|s| s.set_cell(sid.clone(), "2".into(), "0".into(), "=A2+1".into()))
-            .unwrap(); // A3
-        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
-        let a3 = cells
-            .iter()
-            .find(|c| c.row_id == "2" && c.col_id == "0")
-            .unwrap();
-        // A well-formed chain must converge, never be misflagged as a cycle.
-        assert_eq!(a3.computed_value, "3");
-    }
-
-    #[test]
-    fn get_cells_derives_dependent_values_on_read() {
-        let mut app = make_app();
-        let sid = app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
-        // Store inputs only — set_cell must NOT recompute.
-        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "2".into()))
-            .unwrap();
-        app.call(|s| s.set_cell(sid.clone(), "1".into(), "0".into(), "=A1*10".into()))
-            .unwrap();
-        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
-        let b = cells
-            .iter()
-            .find(|c| c.row_id == "1" && c.col_id == "0")
-            .unwrap();
-        assert_eq!(b.computed_value, "20", "dependent derived on read");
-        // Change the precedent; the dependent re-derives with no extra write to B1.
-        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "3".into()))
-            .unwrap();
-        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
-        let b = cells
-            .iter()
-            .find(|c| c.row_id == "1" && c.col_id == "0")
-            .unwrap();
-        assert_eq!(b.computed_value, "30");
-    }
-
-    #[test]
-    fn get_cells_scoped_matches_cross_sheet_and_ignores_unrelated() {
-        let mut app = make_app();
-        let s1 = app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
-        let s2 = app.call(|s| s.create_sheet("Sheet 2".into())).unwrap();
-        let s3 = app.call(|s| s.create_sheet("Sheet 3".into())).unwrap();
-
-        // S2!A1 = 5 ; S1!A1 = S2!A1 + 100 (cross-sheet dependency).
-        app.call(|s| s.set_cell(s2.clone(), "0".into(), "0".into(), "5".into()))
-            .unwrap();
-        app.call(|s| {
-            s.set_cell(
-                s1.clone(),
-                "0".into(),
-                "0".into(),
-                format!("=[{s2}]!A1+100"),
-            )
-        })
-        .unwrap();
-        // S3 has an unrelated self-cycle — must never affect S1's read.
-        app.call(|s| s.set_cell(s3.clone(), "0".into(), "0".into(), "=A1".into()))
-            .unwrap();
-
-        // Scoped get_cells(S1) still resolves the cross-sheet ref correctly.
-        let s1_cells = app.view(|s| s.get_cells(s1.clone())).unwrap();
-        let a1 = s1_cells
-            .iter()
-            .find(|c| c.row_id == "0" && c.col_id == "0")
-            .unwrap();
-        assert_eq!(a1.computed_value, "105");
-
-        // get_cells(S3) still flags its own cycle — scoping doesn't hide it.
-        let s3_cells = app.view(|s| s.get_cells(s3.clone())).unwrap();
-        let c = s3_cells
-            .iter()
-            .find(|c| c.row_id == "0" && c.col_id == "0")
-            .unwrap();
-        assert_eq!(c.computed_value, "#CYCLE!");
-    }
-
-    #[test]
-    fn get_cells_scoped_preserves_ref_to_missing_sheet() {
-        let mut app = make_app();
-        let s1 = app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
-        // Reference a sheet id that does not exist → #REF! (all sheet ids are
-        // passed to the evaluator, so this stays exact under scoping).
-        app.call(|s| s.set_cell(s1.clone(), "0".into(), "0".into(), "=[nope]!A1".into()))
-            .unwrap();
-        let cells = app.view(|s| s.get_cells(s1.clone())).unwrap();
-        let a1 = cells
-            .iter()
-            .find(|c| c.row_id == "0" && c.col_id == "0")
-            .unwrap();
-        assert_eq!(a1.computed_value, "#REF!");
-    }
-
-    fn cell_at<'a>(cells: &'a [Cell], row_id: &str, col_id: &str) -> Option<&'a Cell> {
-        cells
-            .iter()
-            .find(|c| c.row_id == row_id && c.col_id == col_id)
-    }
-
-    fn new_sheet(app: &mut TestHost<Spreadsheet>) -> String {
-        app.call(|s| s.init_project("P".into())).unwrap();
-        app.call(|s| s.create_sheet("S".into())).unwrap()
-    }
-
-    #[test]
-    fn an_inserted_row_is_one_write_and_ranges_take_it_in() {
-        let mut app = make_app();
-        let sid = new_sheet(&mut app);
-        for (r, v) in [("0", "1"), ("1", "2"), ("2", "3")] {
-            app.call(|s| s.set_cell(sid.clone(), r.into(), "0".into(), v.into()))
-                .unwrap();
-        }
-        app.call(|s| s.set_cell(sid.clone(), "0".into(), "1".into(), "=SUM(A1:A3)".into()))
-            .unwrap();
-        // A row between implicit rows 0 and 1, holding 10.
-        let pos = format!("{}5", layout::implicit_pos(0));
-        app.call(|s| {
-            s.apply_axis_ops(
-                sid.clone(),
-                vec![AxisOp::InsertRow {
-                    id: "nab".into(),
-                    pos,
-                }],
-            )
-        })
-        .unwrap();
-        app.call(|s| s.set_cell(sid.clone(), "nab".into(), "0".into(), "10".into()))
-            .unwrap();
-        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
-        assert_eq!(cell_at(&cells, "0", "1").unwrap().computed_value, "16");
-        assert_eq!(cell_at(&cells, "nab", "0").unwrap().raw_value, "10");
-        let layouts = app.view(|s| s.get_layouts()).unwrap();
-        assert_eq!(layouts.len(), 1);
-        assert_eq!(layouts[0].rows[0].id, "nab");
-    }
-
-    #[test]
-    fn a_deleted_row_turns_references_to_it_into_ref_errors() {
-        let mut app = make_app();
-        let sid = new_sheet(&mut app);
-        app.call(|s| s.set_cell(sid.clone(), "1".into(), "0".into(), "5".into()))
-            .unwrap();
-        app.call(|s| s.set_cell(sid.clone(), "0".into(), "1".into(), "=A2*2".into()))
-            .unwrap();
-        app.call(|s| s.apply_axis_ops(sid.clone(), vec![AxisOp::DeleteRow { id: "1".into() }]))
-            .unwrap();
-        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
-        assert_eq!(cell_at(&cells, "0", "1").unwrap().computed_value, "#REF!");
-    }
-
-    #[test]
-    fn axis_ops_reject_bad_ids_and_positions() {
-        let mut app = make_app();
-        let sid = new_sheet(&mut app);
-        let bad = [
-            AxisOp::InsertRow {
-                id: "7".into(),
-                pos: "5".into(),
-            },
-            AxisOp::InsertRow {
-                id: "n|x".into(),
-                pos: "5".into(),
-            },
-            AxisOp::InsertCol {
-                id: "nab".into(),
-                pos: "".into(),
-            },
-            AxisOp::InsertCol {
-                id: "nab".into(),
-                pos: "1a".into(),
-            },
-            AxisOp::DeleteRow { id: "nzz".into() },
-        ];
-        for op in bad {
-            assert!(
-                app.call(|s| s.apply_axis_ops(sid.clone(), vec![op.clone()]))
-                    .is_err(),
-                "{op:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn a_value_write_leaves_a_concurrent_format_alone() {
-        let mut app = make_app();
-        let sid = new_sheet(&mut app);
-        app.call(|s| s.set_cell_format(sid.clone(), "0".into(), "0".into(), "currency".into()))
-            .unwrap();
-        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "12".into()))
-            .unwrap();
-        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
-        let a1 = cell_at(&cells, "0", "0").unwrap();
-        assert_eq!(
-            (a1.raw_value.as_str(), a1.format.as_str()),
-            ("12", "currency")
-        );
-        // The value lives in the cell, the format in its own register: a
-        // replica that only changed the value cannot win over the format.
-        let mut mine = FormatData {
-            format: "currency".into(),
-            updated_at: 5,
-        };
-        mine.merge(&FormatData {
-            format: "percent".into(),
-            updated_at: 9,
-        })
-        .unwrap();
-        assert_eq!(mine.format, "percent");
-    }
-
-    #[test]
-    fn clear_blanks_value_and_format() {
-        let mut app = make_app();
-        let sid = new_sheet(&mut app);
-        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "3".into()))
-            .unwrap();
-        app.call(|s| s.set_cell_format(sid.clone(), "0".into(), "0".into(), "percent".into()))
-            .unwrap();
-        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
-        assert_eq!(cell_at(&cells, "0", "0").unwrap().format, "percent");
-        app.call(|s| s.clear_cell(sid.clone(), "0".into(), "0".into()))
-            .unwrap();
-        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
-        assert!(cell_at(&cells, "0", "0").is_none());
-    }
-
-    #[test]
-    fn axis_merge_is_last_writer_wins_and_keeps_the_smaller_position() {
-        let mut a = AxisData {
-            pos: "0000000015".into(),
-            deleted: false,
-            updated_at: 1,
-        };
-        a.merge(&AxisData {
-            pos: "0000000014".into(),
-            deleted: true,
-            updated_at: 2,
-        })
-        .unwrap();
-        assert!(a.deleted);
-        assert_eq!(a.pos, "0000000014");
-        a.merge(&AxisData {
-            pos: "0000000019".into(),
-            deleted: false,
-            updated_at: 3,
-        })
-        .unwrap();
-        // A newer restore wins over the delete.
-        assert!(!a.deleted);
-        assert_eq!(a.pos, "0000000014");
-        // An older delete does not.
-        a.merge(&AxisData {
-            pos: "0000000014".into(),
-            deleted: true,
-            updated_at: 2,
-        })
-        .unwrap();
-        assert!(!a.deleted);
-    }
-
-    #[test]
-    fn a_restored_row_is_back_with_its_cells() {
-        let mut app = make_app();
-        let sid = new_sheet(&mut app);
-        app.call(|s| s.set_cell(sid.clone(), "1".into(), "0".into(), "5".into()))
-            .unwrap();
-        app.call(|s| s.set_cell(sid.clone(), "0".into(), "1".into(), "=A2".into()))
-            .unwrap();
-        app.call(|s| s.apply_axis_ops(sid.clone(), vec![AxisOp::DeleteRow { id: "1".into() }]))
-            .unwrap();
-        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
-        assert_eq!(cell_at(&cells, "0", "1").unwrap().computed_value, "#REF!");
-        app.call(|s| s.apply_axis_ops(sid.clone(), vec![AxisOp::RestoreRow { id: "1".into() }]))
-            .unwrap();
-        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
-        assert_eq!(cell_at(&cells, "0", "1").unwrap().computed_value, "5");
-    }
-
-    #[test]
-    fn named_ranges_feed_formulas_and_can_be_deleted() {
-        let mut app = make_app();
-        let sid = new_sheet(&mut app);
-        for (r, v) in [("0", "4"), ("1", "6")] {
-            app.call(|s| s.set_cell(sid.clone(), r.into(), "1".into(), v.into()))
-                .unwrap();
-        }
-        let target = format!("[{sid}]!B1:B2");
-        app.call(|s| s.set_named_range("Costs".into(), target.clone()))
-            .unwrap();
-        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "=SUM(costs)".into()))
-            .unwrap();
-        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
-        assert_eq!(cell_at(&cells, "0", "0").unwrap().computed_value, "10");
-        let names = app.view(|s| s.get_named_ranges()).unwrap();
-        assert_eq!(
-            (names[0].name.as_str(), names[0].target.as_str()),
-            ("Costs", target.as_str())
-        );
-
-        app.call(|s| s.delete_named_range("COSTS".into())).unwrap();
-        assert!(app.view(|s| s.get_named_ranges()).unwrap().is_empty());
-        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
-        assert_eq!(cell_at(&cells, "0", "0").unwrap().computed_value, "#NAME?");
-        // Defining it again after a delete works: the key was never removed.
-        app.call(|s| s.set_named_range("Costs".into(), "B1".into()))
-            .unwrap();
-    }
-
-    #[test]
-    fn named_ranges_reject_bad_names_and_targets() {
-        let mut app = make_app();
-        new_sheet(&mut app);
-        assert!(app
-            .call(|s| s.set_named_range("Q1".into(), "A1".into()))
-            .is_err());
-        assert!(app
-            .call(|s| s.set_named_range("Tax".into(), "A1+1".into()))
-            .is_err());
-        assert!(app.call(|s| s.delete_named_range("Nope".into())).is_err());
-    }
-
-    #[test]
-    fn edits_are_logged_with_before_and_after_and_stamp_the_editor() {
-        let mut app = make_app();
-        let sid = new_sheet(&mut app);
-        let me = app.view(|s| s.whoami()).unwrap();
-        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "5".into()))
-            .unwrap();
-        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "7".into()))
-            .unwrap();
-        app.call(|s| s.set_cell_format(sid.clone(), "0".into(), "0".into(), "currency".into()))
-            .unwrap();
-        // Writing the same value again changes nothing and logs nothing.
-        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "7".into()))
-            .unwrap();
-        let log = app.view(|s| s.get_activity(0, 100)).unwrap();
-        let cell_entries: Vec<&ActivityEntry> = log.iter().filter(|e| e.kind == "cells").collect();
-        assert_eq!(cell_entries.len(), 3, "{log:?}");
-        // Newest first.
-        assert_eq!(cell_entries[0].summary, "formatted a cell as currency");
-        let edit = &cell_entries[1].changes[0];
-        assert_eq!(
-            (edit.before_raw.as_str(), edit.after_raw.as_str()),
-            ("5", "7")
-        );
-        assert!(cell_entries.iter().all(|e| e.author == me));
-        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
-        assert_eq!(cell_at(&cells, "0", "0").unwrap().last_editor, me);
-        // The sheet creation was logged too.
-        assert!(log
-            .iter()
-            .any(|e| e.kind == "sheet" && e.summary == "added sheet S"));
-    }
-
-    #[test]
-    fn a_big_batch_logs_one_entry_with_the_count() {
-        let mut app = make_app();
-        let sid = new_sheet(&mut app);
-        let ops: Vec<CellOp> = (0..90)
-            .map(|i| CellOp::Set {
-                row_id: i.to_string(),
-                col_id: "0".into(),
-                raw_value: "1".into(),
-            })
-            .collect();
-        app.call(|s| s.apply_cell_ops(sid.clone(), ops)).unwrap();
-        let log = app.view(|s| s.get_activity(0, 100)).unwrap();
-        let entry = log.iter().find(|e| e.kind == "cells").unwrap();
-        assert_eq!(entry.count, 90);
-        assert_eq!(entry.summary, "changed 90 cells");
-        assert_eq!(entry.changes.len(), MAX_LOGGED_CHANGES);
-    }
-
-    #[test]
-    fn structural_and_name_actions_are_logged() {
-        let mut app = make_app();
-        let sid = new_sheet(&mut app);
-        app.call(|s| {
-            s.apply_axis_ops(
-                sid.clone(),
-                vec![
-                    AxisOp::InsertRow {
-                        id: "na".into(),
-                        pos: "4".into(),
-                    },
-                    AxisOp::InsertRow {
-                        id: "nb".into(),
-                        pos: "3".into(),
-                    },
-                    AxisOp::DeleteCol { id: "2".into() },
-                ],
-            )
-        })
-        .unwrap();
-        app.call(|s| s.set_named_range("Tax".into(), "A1".into()))
-            .unwrap();
-        let summaries: Vec<String> = app
-            .view(|s| s.get_activity(0, 100))
-            .unwrap()
-            .into_iter()
-            .map(|e| e.summary)
-            .collect();
-        assert!(
-            summaries.contains(&"deleted 1 column, inserted 2 rows".to_string()),
-            "{summaries:?}"
-        );
-        assert!(summaries.contains(&"defined the name Tax".to_string()));
-    }
-
-    #[test]
-    fn comments_resolve_mentions_thread_and_resolve() {
-        let mut app = make_app();
-        let sid = new_sheet(&mut app);
-        let ada = [7u8; 32];
-        app.call_as_account(ada, dev(ada), |s| s.join("Ada Lovelace".into()))
-            .unwrap();
-        app.call(|s| s.join("Sam".into())).unwrap();
-        let ada_id = hex::encode(ada);
-        let id = app
-            .call(|s| {
-                s.add_comment(
-                    sid.clone(),
-                    "0".into(),
-                    "1".into(),
-                    "@ada lovelace can you check this? cc @Nobody".into(),
-                    String::new(),
-                )
-            })
-            .unwrap();
-        let reply = app
-            .call_as_account(ada, dev(ada), |s| {
-                s.add_comment(
-                    sid.clone(),
-                    "0".into(),
-                    "1".into(),
-                    "Looks right".into(),
-                    id.clone(),
-                )
-            })
-            .unwrap();
-        let comments = app.view(|s| s.get_comments()).unwrap();
-        assert_eq!(comments.len(), 2);
-        assert_eq!(comments[0].mentions, vec![ada_id.clone()]);
-        assert_eq!(comments[1].parent, id);
-        assert!(app.events().iter().any(|e| e.kind == "CommentAdded"));
-
-        // The author is the owner stamp.
-        assert_eq!(comments[1].author, ada_id);
-
-        // Anyone resolves; only the author edits; the author or an owner deletes.
-        app.call_as_account(ada, dev(ada), |s| s.set_comment_resolved(id.clone(), true))
-            .unwrap();
-        assert!(app.view(|s| s.get_comments()).unwrap()[0].resolved);
-        assert!(app
-            .call(|s| s.edit_comment(reply.clone(), "no".into()))
-            .is_err());
-        let sam = [9u8; 32];
-        assert!(app
-            .call_as_account(sam, dev(sam), |s| s.delete_comment(reply.clone()))
-            .is_err());
-        app.call_as_account(ada, dev(ada), |s| s.delete_comment(reply.clone()))
-            .unwrap();
-        assert_eq!(app.view(|s| s.get_comments()).unwrap().len(), 1);
-    }
-
-    #[test]
-    fn comments_reject_empty_text_and_unknown_parents() {
-        let mut app = make_app();
-        let sid = new_sheet(&mut app);
-        assert!(app
-            .call(|s| s.add_comment(
-                sid.clone(),
-                "0".into(),
-                "0".into(),
-                "   ".into(),
-                String::new()
-            ))
-            .is_err());
-        assert!(app
-            .call(|s| s.add_comment(
-                sid.clone(),
-                "0".into(),
-                "0".into(),
-                "hi".into(),
-                "nope".into()
-            ))
-            .is_err());
-    }
-
-    fn ins(text: &str) -> NoteChange {
-        NoteChange::Insert {
-            insert: text.into(),
-            attributes: None,
-        }
-    }
-
-    #[test]
-    fn a_note_takes_text_and_formatting_and_lists_its_cell() {
-        let mut app = make_app();
-        let sid = new_sheet(&mut app);
-        let edit = |app: &mut TestHost<Spreadsheet>, ops: Vec<NoteChange>| {
-            app.call(|s| s.edit_note(sid.clone(), "1".into(), "2".into(), ops))
-                .unwrap()
-        };
-        edit(&mut app, vec![ins("check totals")]);
-        edit(
-            &mut app,
-            vec![
-                NoteChange::Retain {
-                    retain: 5,
-                    attributes: Some(Attrs::from([("bold".into(), Some("true".into()))])),
-                },
-                NoteChange::Delete { delete: 1 },
-                ins(" all "),
-            ],
-        );
-        let spans = app
-            .view(|s| s.get_note(sid.clone(), "1".into(), "2".into()))
-            .unwrap();
-        let text: String = spans.iter().map(|s| s.text.as_str()).collect();
-        assert_eq!(text, "check all totals");
-        // Bold extends over text typed right after it, as in any editor.
-        assert_eq!(spans[0].text, "check all ");
-        assert_eq!(
-            spans[0].attributes.get("bold").map(String::as_str),
-            Some("true")
-        );
-
-        let noted = app.view(|s| s.get_noted_cells()).unwrap();
-        assert_eq!(noted.len(), 1);
-        assert_eq!(
-            (noted[0].row_id.as_str(), noted[0].col_id.as_str()),
-            ("1", "2")
-        );
-        assert_eq!(noted[0].preview, "check all totals");
-        assert!(app
-            .view(|s| s.get_note(sid.clone(), "0".into(), "0".into()))
-            .unwrap()
-            .is_empty());
-    }
-
-    #[test]
-    fn an_emptied_note_is_not_listed() {
-        let mut app = make_app();
-        let sid = new_sheet(&mut app);
-        app.call(|s| s.edit_note(sid.clone(), "0".into(), "0".into(), vec![ins("hi")]))
-            .unwrap();
-        app.call(|s| {
-            s.edit_note(
-                sid.clone(),
-                "0".into(),
-                "0".into(),
-                vec![NoteChange::Delete { delete: 2 }],
-            )
-        })
-        .unwrap();
-        assert!(app.view(|s| s.get_noted_cells()).unwrap().is_empty());
-    }
-
-    #[test]
-    fn a_note_past_the_limit_is_refused_and_left_as_it_was() {
-        let mut app = make_app();
-        let sid = new_sheet(&mut app);
-        app.call(|s| s.edit_note(sid.clone(), "0".into(), "0".into(), vec![ins("keep")]))
-            .unwrap();
-        let long = "x".repeat(MAX_NOTE_CHARS);
-        assert!(app
-            .call(|s| s.edit_note(sid.clone(), "0".into(), "0".into(), vec![ins(&long)]))
-            .is_err());
-        let spans = app
-            .view(|s| s.get_note(sid.clone(), "0".into(), "0".into()))
-            .unwrap();
-        assert_eq!(
-            spans.iter().map(|s| s.text.as_str()).collect::<String>(),
-            "keep"
-        );
-    }
-
-    #[test]
-    fn a_note_on_an_unknown_sheet_is_refused() {
-        let mut app = make_app();
-        let _ = new_sheet(&mut app);
-        assert!(app
-            .call(|s| s.edit_note("nope".into(), "0".into(), "0".into(), vec![ins("x")]))
-            .is_err());
-    }
-
-    /// Two people besides the host's default device, each with a nickname.
-    fn with_people(app: &mut TestHost<Spreadsheet>) -> ([u8; 32], [u8; 32]) {
-        let (ada, bob) = ([7u8; 32], [8u8; 32]);
-        app.call_as_account(ada, dev(ada), |s| s.join("Ada".into()))
-            .unwrap();
-        app.call_as_account(bob, dev(bob), |s| s.join("Bob".into()))
-            .unwrap();
-        (ada, bob)
-    }
-
-    fn set_as(
-        app: &mut TestHost<Spreadsheet>,
-        who: [u8; 32],
-        sid: &str,
-        row: &str,
-    ) -> app::Result<String> {
-        app.call_as_account(who, dev(who), |s| {
-            s.set_cell(sid.into(), row.into(), "0".into(), "x".into())
-        })
-    }
-
-    #[test]
-    fn the_creator_owns_the_workbook_and_members_carry_their_account() {
-        let mut app = make_app();
-        let _ = new_sheet(&mut app);
-        app.call(|s| s.join("Owner".into())).unwrap();
-        let (ada, _) = with_people(&mut app);
-        let members = app.view(|s| s.get_members()).unwrap();
-        let owner = members.iter().find(|m| m.nickname == "Owner").unwrap();
-        assert_eq!(owner.role, "owner");
-        let ada_m = members.iter().find(|m| m.id == hex::encode(ada)).unwrap();
-        assert_eq!(ada_m.role, "editor");
-        assert_eq!(ada_m.account, hex::encode(ada));
-    }
-
-    #[test]
-    fn viewers_cannot_edit_and_commenters_can_only_comment() {
-        let mut app = make_app();
-        let sid = new_sheet(&mut app);
-        let (ada, bob) = with_people(&mut app);
-        app.call(|s| s.set_role(hex::encode(ada), "viewer".into()))
-            .unwrap();
-        app.call(|s| s.set_role(hex::encode(bob), "commenter".into()))
-            .unwrap();
-
-        assert!(set_as(&mut app, ada, &sid, "0").is_err());
-        assert!(set_as(&mut app, bob, &sid, "0").is_err());
-        let comment = |app: &mut TestHost<Spreadsheet>, who| {
-            app.call_as_account(who, dev(who), |s| {
-                s.add_comment(
-                    sid.clone(),
-                    "0".into(),
-                    "0".into(),
-                    "hi".into(),
-                    String::new(),
-                )
-            })
-        };
-        assert!(comment(&mut app, ada).is_err());
-        assert!(comment(&mut app, bob).is_ok());
-        assert!(app
-            .call_as_account(ada, dev(ada), |s| s.create_sheet("Mine".into()))
-            .is_err());
-        // Back to editor: writes work again.
-        app.call(|s| s.set_role(hex::encode(ada), "editor".into()))
-            .unwrap();
-        assert!(set_as(&mut app, ada, &sid, "0").is_ok());
-    }
-
-    #[test]
-    fn only_owners_change_roles_and_the_last_owner_stays() {
-        let mut app = make_app();
-        let _ = new_sheet(&mut app);
-        app.call(|s| s.join("Owner".into())).unwrap();
-        let (ada, bob) = with_people(&mut app);
-        assert!(app
-            .call_as_account(ada, dev(ada), |s| s
-                .set_role(hex::encode(bob), "owner".into()))
-            .is_err());
-        let me = app
-            .view(|s| s.get_members())
-            .unwrap()
-            .into_iter()
-            .find(|m| m.nickname == "Owner")
-            .unwrap()
-            .id;
-        assert!(app
-            .call(|s| s.set_role(me.clone(), "editor".into()))
-            .is_err());
-        app.call(|s| s.set_role(hex::encode(ada), "owner".into()))
-            .unwrap();
-        // With a second owner, the first may step down.
-        app.call(|s| s.set_role(me.clone(), "editor".into()))
-            .unwrap();
-        assert!(app
-            .call(|s| s.set_role(hex::encode(bob), "viewer".into()))
-            .is_err());
-        assert!(app
-            .call(|s| s.set_role(hex::encode(bob), "boss".into()))
-            .is_err());
-    }
-
-    #[test]
-    fn only_an_owner_makes_owners_and_a_role_follows_the_person() {
-        let mut app = make_app();
-        let sid = app.call(|s| s.create_sheet("S".into())).unwrap();
-        let (ada, bob) = with_people(&mut app);
-        assert!(app
-            .call_as_account(ada, dev(ada), |s| s
-                .set_role(hex::encode(ada), "owner".into()))
-            .is_err());
-        // Storage refuses the grant itself, not only the method.
-        assert!(app
-            .call_as_account(ada, dev(ada), |s| s
-                .acl
-                .grant_admin(AccountId::from(ada))
-                .map_err(AppError::from))
-            .is_err());
-        app.call(|s| s.set_role(hex::encode(bob), "viewer".into()))
-            .unwrap();
-        // A viewer's second device is the same viewer.
-        let phone = [0x55u8; 32];
-        assert!(app
-            .call_as_account(bob, phone, |s| s.set_cell(
-                sid.clone(),
-                "0".into(),
-                "0".into(),
-                "x".into()
-            ))
-            .is_err());
-        // An owner's second device is the same owner.
-        app.call_as(phone, |s| s.set_role(hex::encode(bob), "editor".into()))
-            .unwrap();
-        assert!(set_as(&mut app, bob, &sid, "0").is_ok());
-    }
-
-    #[test]
-    fn only_an_owner_names_the_workbook_and_its_id_is_fixed() {
-        let mut app = make_app();
-        let id = app.view(|s| s.get_project()).unwrap().id;
-        let (ada, _) = with_people(&mut app);
-        assert!(app
-            .call_as_account(ada, dev(ada), |s| s.init_project("Mine".into()))
-            .is_err());
-        assert!(app
-            .call_as_account(ada, dev(ada), |s| s
-                .project_name
-                .insert(LwwRegister::new("Mine".into()))
-                .map_err(AppError::from))
-            .is_err());
-        assert_eq!(app.call(|s| s.init_project("Q3".into())).unwrap(), id);
-        let project = app.view(|s| s.get_project()).unwrap();
-        assert_eq!((project.id, project.name.as_str()), (id, "Q3"));
-    }
-
-    #[test]
-    fn a_new_owner_moderates_and_owns_the_owner_cells() {
-        let mut app = make_app();
-        let sid = new_sheet(&mut app);
-        let (ada, bob) = with_people(&mut app);
-        let comment = app
-            .call_as_account(bob, dev(bob), |s| {
-                s.add_comment(
-                    sid.clone(),
-                    "0".into(),
-                    "0".into(),
-                    "hi".into(),
-                    String::new(),
-                )
-            })
-            .unwrap();
-        // Storage keeps others out of Bob's comment even past the method.
-        assert!(app
-            .call_as_account(ada, dev(ada), |s| s
-                .comments
-                .modify(&comment, |c| c.text = "forged".into())
-                .map_err(AppError::from))
-            .is_err());
-        assert!(app
-            .call_as_account(ada, dev(ada), |s| s.delete_comment(comment.clone()))
-            .is_err());
-        app.call(|s| s.set_role(hex::encode(ada), "owner".into()))
-            .unwrap();
-        app.call_as_account(ada, dev(ada), |s| {
-            s.protect_range(
-                sid.clone(),
-                String::new(),
-                String::new(),
-                String::new(),
-                String::new(),
-                String::new(),
-                Vec::new(),
-            )
-        })
-        .unwrap();
-        app.call_as_account(ada, dev(ada), |s| s.delete_comment(comment.clone()))
-            .unwrap();
-        assert!(app.view(|s| s.get_comments()).unwrap().is_empty());
-        // Bob is no owner: storage refuses his write to the protections.
-        assert!(app
-            .call_as_account(bob, dev(bob), |s| s.protections_mut().map(|_| ()))
-            .is_err());
-    }
-
-    #[test]
-    fn the_activity_log_names_its_author_from_the_stamp_and_is_never_rewritten() {
-        let mut app = make_app();
-        let sid = new_sheet(&mut app);
-        let (ada, _) = with_people(&mut app);
-        set_as(&mut app, ada, &sid, "0").unwrap();
-        let log = app.view(|s| s.get_activity(0, 1)).unwrap();
-        assert_eq!(log.len(), 1, "limited");
-        assert_eq!(log[0].author, hex::encode(ada));
-        assert_eq!(log[0].summary, "edited a cell");
-        let id = log[0].id.clone();
-        // Ada's own entry, by name: keys are per owner.
-        let entry = app.view(|s| {
-            s.activity
-                .get_by(&AccountId::from(ada), &id)
-                .unwrap()
-                .unwrap()
-        });
-        assert!(
-            app.call_as_account(ada, dev(ada), |s| s
-                .activity
-                .insert(id.clone(), entry)
-                .map_err(AppError::from))
-                .is_err(),
-            "not even its author rewrites an entry"
-        );
-    }
-
-    #[test]
-    fn a_protected_range_stops_other_editors_and_follows_its_cells() {
-        let mut app = make_app();
-        let sid = new_sheet(&mut app);
-        let (ada, bob) = with_people(&mut app);
-        // Protect A2:B3 (implicit rows 1-2, columns 0-1); Ada may edit it.
-        app.call(|s| {
-            s.protect_range(
-                sid.clone(),
-                "1".into(),
-                "0".into(),
-                "2".into(),
-                "1".into(),
-                "Totals".into(),
-                vec![hex::encode(ada)],
-            )
-        })
-        .unwrap();
-        let err = set_as(&mut app, bob, &sid, "1").unwrap_err();
-        assert!(
-            format!("{err:?}").contains("A2 is in a protected range"),
-            "{err:?}"
-        );
-        assert!(set_as(&mut app, bob, &sid, "0").is_ok());
-        assert!(set_as(&mut app, ada, &sid, "2").is_ok());
-        // Owners are never stopped.
-        assert!(app
-            .call(|s| s.set_cell(sid.clone(), "1".into(), "0".into(), "y".into()))
-            .is_ok());
-
-        // A row inserted above moves the range down; the cell ids stay protected.
-        app.call_as_account(bob, dev(bob), |s| {
-            s.apply_axis_ops(
-                sid.clone(),
-                vec![AxisOp::InsertRow {
-                    id: "nab".into(),
-                    pos: "4".into(),
-                }],
-            )
-        })
-        .unwrap();
-        assert!(set_as(&mut app, bob, &sid, "2").is_err());
-        // Deleting a row through it is refused; one outside it is not.
-        let del = |app: &mut TestHost<Spreadsheet>, row: &str| {
-            app.call_as_account(bob, dev(bob), |s| {
-                s.apply_axis_ops(sid.clone(), vec![AxisOp::DeleteRow { id: row.into() }])
-            })
-        };
-        assert!(del(&mut app, "2").is_err());
-        assert!(del(&mut app, "5").is_ok());
-
-        // Removing the protection lets Bob in.
-        let id = app.view(|s| s.get_protections()).unwrap()[0].id.clone();
-        assert!(app
-            .call_as_account(bob, dev(bob), |s| s.remove_protection(id.clone()))
-            .is_err());
-        app.call(|s| s.remove_protection(id.clone())).unwrap();
-        assert!(set_as(&mut app, bob, &sid, "1").is_ok());
-        assert!(app.view(|s| s.get_protections()).unwrap().is_empty());
-    }
-
-    #[test]
-    fn a_protected_sheet_cannot_be_renamed_or_deleted_by_others() {
-        let mut app = make_app();
-        let sid = new_sheet(&mut app);
-        let (_, bob) = with_people(&mut app);
-        app.call(|s| {
-            s.protect_range(
-                sid.clone(),
-                String::new(),
-                String::new(),
-                String::new(),
-                String::new(),
-                String::new(),
-                Vec::new(),
-            )
-        })
-        .unwrap();
-        assert!(app
-            .call_as_account(bob, dev(bob), |s| s.rename_sheet(sid.clone(), "X".into()))
-            .is_err());
-        assert!(app
-            .call_as_account(bob, dev(bob), |s| s.delete_sheet(sid.clone()))
-            .is_err());
-        assert!(set_as(&mut app, bob, &sid, "900").is_err());
-        assert!(app
-            .call(|s| s.rename_sheet(sid.clone(), "X".into()))
-            .is_ok());
-    }
-
-    #[test]
-    fn a_private_sheet_keeps_its_cells_to_itself() {
-        let mut app = make_app();
-        let _ = new_sheet(&mut app);
-        let pid = app
-            .call(|s| s.create_private_sheet("Scratch".into()))
-            .unwrap();
-        app.call(|s| {
-            s.apply_private_cell_ops(
-                pid.clone(),
-                vec![
-                    CellOp::Set {
-                        row_id: "0".into(),
-                        col_id: "0".into(),
-                        raw_value: "=1+1".into(),
-                    },
-                    CellOp::Format {
-                        row_id: "0".into(),
-                        col_id: "0".into(),
-                        format: "bold".into(),
-                    },
-                ],
-            )
-        })
-        .unwrap();
-        let sheets = app.view(|s| s.get_private_sheets()).unwrap();
-        assert_eq!(sheets.len(), 1);
-        assert_eq!(sheets[0].name, "Scratch");
-        let cells = app.view(|s| s.get_private_cells()).unwrap();
-        assert_eq!(cells.len(), 1);
-        assert_eq!(
-            (cells[0].raw_value.as_str(), cells[0].format.as_str()),
-            ("=1+1", "bold")
-        );
-        // None of it is in the shared workbook.
-        assert!(app
-            .view(|s| s.list_sheets())
-            .unwrap()
-            .iter()
-            .all(|s| s.id != pid));
-        assert!(app.view(|s| s.get_all_cells()).unwrap().is_empty());
-
-        // Positions only: a private sheet has no inserted rows.
-        assert!(app
-            .call(|s| {
-                s.apply_private_cell_ops(
-                    pid.clone(),
-                    vec![CellOp::Clear {
-                        row_id: "nab".into(),
-                        col_id: "0".into(),
-                    }],
-                )
-            })
-            .is_err());
-
-        app.call(|s| s.rename_private_sheet(pid.clone(), "What if".into()))
-            .unwrap();
-        assert_eq!(
-            app.view(|s| s.get_private_sheets()).unwrap()[0].name,
-            "What if"
-        );
-        app.call(|s| s.delete_private_sheet(pid.clone())).unwrap();
-        assert!(app.view(|s| s.get_private_sheets()).unwrap().is_empty());
-        assert!(app.view(|s| s.get_private_cells()).unwrap().is_empty());
-    }
-
-    #[test]
-    fn sizes_and_frozen_panes_are_kept_per_sheet() {
-        let mut app = make_app();
-        let sid = new_sheet(&mut app);
-        let size = |axis: &str, id: &str, size| AxisSize {
-            axis: axis.into(),
-            id: id.into(),
-            size,
-        };
-        app.call(|s| {
-            s.set_sizes(
-                sid.clone(),
-                vec![size("col", "0", 180), size("row", "3", 40)],
-            )
-        })
-        .unwrap();
-        app.call(|s| s.set_frozen(sid.clone(), 1, 2)).unwrap();
-        // A later resize of the same column wins.
-        app.call(|s| s.set_sizes(sid.clone(), vec![size("col", "0", 120)]))
-            .unwrap();
-        let views = app.view(|s| s.get_sheet_views()).unwrap();
-        assert_eq!(views.len(), 1);
-        let v = &views[0];
-        assert_eq!((v.frozen_rows, v.frozen_cols), (1, 2));
-        let col0 = v
-            .sizes
-            .iter()
-            .find(|s| s.axis == "col" && s.id == "0")
-            .unwrap();
-        assert_eq!(col0.size, 120);
-        assert!(v
-            .sizes
-            .iter()
-            .any(|s| s.axis == "row" && s.id == "3" && s.size == 40));
-
-        assert!(app
-            .call(|s| s.set_sizes(sid.clone(), vec![size("col", "0", 5)]))
-            .is_err());
-        assert!(app
-            .call(|s| s.set_sizes(sid.clone(), vec![size("depth", "0", 50)]))
-            .is_err());
-        assert!(app.call(|s| s.set_frozen(sid.clone(), 99, 0)).is_err());
-    }
-
-    fn style_op(row: &str, field: &str, value: &str) -> StyleOp {
-        StyleOp {
-            row_id: row.into(),
-            col_id: "0".into(),
-            field: field.into(),
-            value: value.into(),
-        }
-    }
-
-    #[test]
-    fn concurrent_style_changes_to_different_fields_both_survive() {
-        let field = |f: &str, v: &str, at| StyleField {
-            field: f.into(),
-            value: v.into(),
-            updated_at: at,
-        };
-        let mut ada = StyleData {
-            fields: vec![field("bold", "1", 5)],
-        };
-        let bob = StyleData {
-            fields: vec![field("bold", "", 3), field("fill", "#ff0000", 4)],
-        };
-        ada.merge(&bob).unwrap();
-        let got: Vec<(&str, &str)> = ada
-            .fields
-            .iter()
-            .map(|f| (f.field.as_str(), f.value.as_str()))
-            .collect();
-        assert_eq!(got, vec![("bold", "1"), ("fill", "#ff0000")]);
-    }
-
-    #[test]
-    fn styles_are_set_and_cleared_per_field() {
-        let mut app = make_app();
-        let sid = new_sheet(&mut app);
-        app.call(|s| {
-            s.apply_style_ops(
-                sid.clone(),
-                vec![style_op("0", "bold", "1"), style_op("0", "fill", "#a4ff11")],
-            )
-        })
-        .unwrap();
-        app.call(|s| s.apply_style_ops(sid.clone(), vec![style_op("0", "bold", "")]))
-            .unwrap();
-        let styles = app.view(|s| s.get_styles()).unwrap();
-        assert_eq!(styles.len(), 1);
-        assert_eq!(
-            styles[0].style,
-            BTreeMap::from([("fill".to_string(), "#a4ff11".to_string())])
-        );
-        assert!(app
-            .call(|s| s.apply_style_ops(sid.clone(), vec![style_op("0", "fill", "red")]))
-            .is_err());
-        assert!(app
-            .call(|s| s.apply_style_ops(sid.clone(), vec![style_op("0", "blink", "1")]))
-            .is_err());
-    }
-
-    fn rule(sid: &str, kind: &str, condition: &str, args: &[&str], strict: bool) -> RuleInput {
-        RuleInput {
-            sheet_id: sid.into(),
-            top_row_id: "0".into(),
-            left_col_id: "0".into(),
-            bottom_row_id: "9".into(),
-            right_col_id: "0".into(),
-            kind: kind.into(),
-            condition: condition.into(),
-            args: args.iter().map(|a| a.to_string()).collect(),
-            style: if kind == "format" {
-                BTreeMap::from([("fill".to_string(), "#ff0000".to_string())])
-            } else {
-                BTreeMap::new()
-            },
-            strict,
-            recipients: Vec::new(),
-        }
-    }
-
-    #[test]
-    fn a_strict_validation_refuses_bad_values_and_a_loose_one_does_not() {
-        let mut app = make_app();
-        let sid = new_sheet(&mut app);
-        let id = app
-            .call(|s| s.add_rule(rule(&sid, "validate", "between", &["1", "10"], true)))
-            .unwrap();
-        let set = |app: &mut TestHost<Spreadsheet>, row: &str, v: &str| {
-            app.call(|s| s.set_cell(sid.clone(), row.into(), "0".into(), v.into()))
-        };
-        let err = set(&mut app, "2", "42").unwrap_err();
-        assert!(
-            format!("{err:?}").contains("A3 must be a number between 1 and 10"),
-            "{err:?}"
-        );
-        assert!(set(&mut app, "2", "7").is_ok());
-        // Formulas are not checked; cells outside the range are not either.
-        assert!(set(&mut app, "3", "=40+2").is_ok());
-        assert!(app
-            .call(|s| s.set_cell(sid.clone(), "2".into(), "1".into(), "42".into()))
-            .is_ok());
-
-        app.call(|s| {
-            s.update_rule(
-                id.clone(),
-                rule(&sid, "validate", "between", &["1", "10"], false),
-            )
-        })
-        .unwrap();
-        assert!(set(&mut app, "2", "42").is_ok());
-        app.call(|s| s.remove_rule(id.clone())).unwrap();
-        assert!(app.view(|s| s.get_rules()).unwrap().is_empty());
-    }
-
-    #[test]
-    fn rules_are_checked_when_made() {
-        let mut app = make_app();
-        let sid = new_sheet(&mut app);
-        assert!(app
-            .call(|s| s.add_rule(rule(&sid, "format", "gt", &["x"], false)))
-            .is_err());
-        assert!(app
-            .call(|s| s.add_rule(rule(&sid, "scale", "", &["#000000"], false)))
-            .is_err());
-        assert!(app
-            .call(|s| s.add_rule(rule(&sid, "glow", "gt", &["1"], false)))
-            .is_err());
-        let id = app
-            .call(|s| s.add_rule(rule(&sid, "format", "gt", &["100"], false)))
-            .unwrap();
-        let rules = app.view(|s| s.get_rules()).unwrap();
-        assert_eq!(rules.len(), 1);
-        assert_eq!(rules[0].id, id);
-        assert_eq!(
-            rules[0].rule.style.get("fill").map(String::as_str),
-            Some("#ff0000")
-        );
-    }
-
-    #[test]
-    fn charts_are_added_changed_and_removed() {
-        let mut app = make_app();
-        let sid = new_sheet(&mut app);
-        let chart = |kind: &str, title: &str| ChartInput {
-            sheet_id: sid.clone(),
-            top_row_id: "0".into(),
-            left_col_id: "0".into(),
-            bottom_row_id: "5".into(),
-            right_col_id: "2".into(),
-            kind: kind.into(),
-            title: title.into(),
-        };
-        let id = app.call(|s| s.add_chart(chart("bar", " Sales "))).unwrap();
-        app.call(|s| s.update_chart(id.clone(), chart("line", "Sales by month")))
-            .unwrap();
-        let charts = app.view(|s| s.get_charts()).unwrap();
-        assert_eq!(charts.len(), 1);
-        assert_eq!(
-            (
-                charts[0].chart.kind.as_str(),
-                charts[0].chart.title.as_str()
-            ),
-            ("line", "Sales by month")
-        );
-        assert!(app.call(|s| s.add_chart(chart("pie", "x"))).is_err());
-        app.call(|s| s.remove_chart(id.clone())).unwrap();
-        assert!(app.view(|s| s.get_charts()).unwrap().is_empty());
-    }
-
-    #[test]
-    fn attachments_are_recorded_and_removed_by_their_author() {
-        let mut app = make_app();
-        let sid = new_sheet(&mut app);
-        let (ada, bob) = with_people(&mut app);
-        let id = app
-            .call_as_account(ada, dev(ada), |s| {
-                s.add_attachment(
-                    sid.clone(),
-                    "0".into(),
-                    "0".into(),
-                    "Bxyz123".into(),
-                    " receipt.pdf ".into(),
-                    2048,
-                    "application/pdf".into(),
-                )
-            })
-            .unwrap();
-        let files = app.view(|s| s.get_attachments()).unwrap();
-        assert_eq!(files.len(), 1);
-        assert_eq!(
-            (files[0].name.as_str(), files[0].size),
-            ("receipt.pdf", 2048)
-        );
-        assert!(app
-            .call_as_account(bob, dev(bob), |s| s.remove_attachment(id.clone()))
-            .is_err());
-        assert_eq!(files[0].created_by, hex::encode(ada));
-        app.call_as_account(ada, dev(ada), |s| s.remove_attachment(id.clone()))
-            .unwrap();
-        assert!(app.view(|s| s.get_attachments()).unwrap().is_empty());
-        // An owner removes anyone's.
-        let id = app
-            .call_as_account(bob, dev(bob), |s| {
-                s.add_attachment(
-                    sid.clone(),
-                    "0".into(),
-                    "0".into(),
-                    "Babc".into(),
-                    "b.txt".into(),
-                    1,
-                    String::new(),
-                )
-            })
-            .unwrap();
-        app.call(|s| s.remove_attachment(id.clone())).unwrap();
-        assert!(app.view(|s| s.get_attachments()).unwrap().is_empty());
-        assert!(app
-            .call(|s| s.add_attachment(
-                sid.clone(),
-                "0".into(),
-                "0".into(),
-                "../etc".into(),
-                "x".into(),
-                1,
-                String::new()
-            ))
-            .is_err());
-    }
-
-    fn sent_xcalls() -> Vec<SentXcall> {
-        SENT_XCALLS.with(|s| s.borrow_mut().drain(..).collect())
-    }
-
-    #[test]
-    fn a_link_pushes_on_publish_on_every_edit_and_on_unpublish() {
-        let mut app = make_app();
-        let sid = new_sheet(&mut app);
-        let _ = sent_xcalls();
-        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "2".into()))
-            .unwrap();
-        app.call(|s| s.set_cell(sid.clone(), "1".into(), "0".into(), "=A1*10".into()))
-            .unwrap();
-        assert!(sent_xcalls().is_empty(), "no links, no pushes");
-        let target = hex::encode([9u8; 32]);
-        let id = app
-            .call(|s| {
-                s.publish_range(
-                    sid.clone(),
-                    "0".into(),
-                    "0".into(),
-                    "1".into(),
-                    "0".into(),
-                    target.clone(),
-                    "Totals".into(),
-                )
-            })
-            .unwrap();
-        let sent = sent_xcalls();
-        assert_eq!(sent.len(), 1);
-        assert_eq!((sent[0].0, sent[0].1.as_str()), ([9u8; 32], "receive_link"));
-        let params: calimero_sdk::serde_json::Value =
-            calimero_sdk::serde_json::from_slice(&sent[0].2).unwrap();
-        assert_eq!(
-            params["values"],
-            calimero_sdk::serde_json::json!(["2", "20"])
-        );
-        assert_eq!(params["name"], "Totals");
-
-        // Any edit on the sheet pushes again, with the new values.
-        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "3".into()))
-            .unwrap();
-        let sent = sent_xcalls();
-        assert_eq!(sent.len(), 1);
-        let params: calimero_sdk::serde_json::Value =
-            calimero_sdk::serde_json::from_slice(&sent[0].2).unwrap();
-        assert_eq!(
-            params["values"],
-            calimero_sdk::serde_json::json!(["3", "30"])
-        );
-
-        assert_eq!(app.view(|s| s.get_publications()).unwrap().len(), 1);
-        app.call(|s| s.unpublish(id.clone())).unwrap();
-        assert_eq!(sent_xcalls()[0].1, "drop_link");
-        assert!(app.view(|s| s.get_publications()).unwrap().is_empty());
-        assert!(app
-            .call(|s| s.publish_range(
-                sid.clone(),
-                "0".into(),
-                "0".into(),
-                "0".into(),
-                "0".into(),
-                "nothex".into(),
-                "X".into()
-            ))
-            .is_err());
-    }
-
-    #[test]
-    fn a_link_is_stopped_by_its_author_or_an_owner_and_a_viewers_is_ignored() {
-        let mut app = make_app();
-        let sid = new_sheet(&mut app);
-        let (ada, bob) = with_people(&mut app);
-        let publish = |app: &mut TestHost<Spreadsheet>, who: [u8; 32]| {
-            app.call_as_account(who, dev(who), |s| {
-                s.publish_range(
-                    sid.clone(),
-                    "0".into(),
-                    "0".into(),
-                    "0".into(),
-                    "0".into(),
-                    hex::encode([9u8; 32]),
-                    "L".into(),
-                )
-            })
-        };
-        let id = publish(&mut app, ada).unwrap();
-        assert_eq!(
-            app.view(|s| s.get_publications()).unwrap()[0].created_by,
-            hex::encode(ada)
-        );
-        assert!(app
-            .call_as_account(bob, dev(bob), |s| s.unpublish(id.clone()))
-            .is_err());
-        app.call(|s| s.unpublish(id.clone())).unwrap();
-
-        // A link whose author is a viewer is neither listed nor pushed, even
-        // one written straight into storage past the role check.
-        app.call(|s| s.set_role(hex::encode(bob), "viewer".into()))
-            .unwrap();
-        assert!(publish(&mut app, bob).is_err());
-        app.call_as_account(bob, dev(bob), |s| {
-            s.publications.insert(
-                "pub-forged".into(),
-                PublicationData {
-                    sheet_id: sid.clone(),
-                    top_row_id: "0".into(),
-                    left_col_id: "0".into(),
-                    bottom_row_id: "0".into(),
-                    right_col_id: "0".into(),
-                    target_context: hex::encode([9u8; 32]),
-                    name: "Leak".into(),
-                },
-            )
-        })
-        .unwrap();
-        let _ = sent_xcalls();
-        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "secret".into()))
-            .unwrap();
-        assert!(sent_xcalls().is_empty());
-        assert!(app.view(|s| s.get_publications()).unwrap().is_empty());
-    }
-
-    #[test]
-    fn a_received_link_is_a_read_only_sheet_formulas_can_use() {
-        let mut app = make_app();
-        let sid = new_sheet(&mut app);
-        let from = hex::encode([5u8; 32]);
-        app.call(|s| {
-            s.store_link(
-                &from,
-                "pub-1",
-                "Rates".into(),
-                "Finance".into(),
-                1,
-                2,
-                vec!["Rate".into(), "1.5".into()],
-            )
-        })
-        .unwrap();
-        let sheets = app.view(|s| s.list_sheets()).unwrap();
-        let linked = sheets.iter().find(|s| s.name == "Rates").unwrap();
-        assert_eq!(linked.linked_from, "Finance");
-        let lid = linked.id.clone();
-        let cells = app.view(|s| s.get_cells(lid.clone())).unwrap();
-        assert_eq!(cells.len(), 2);
-
-        app.call(|s| {
-            s.set_cell(
-                sid.clone(),
-                "0".into(),
-                "0".into(),
-                format!("=[{lid}]!B1*4"),
-            )
-        })
-        .unwrap();
-        let mine = app.view(|s| s.get_cells(sid.clone())).unwrap();
-        assert_eq!(mine[0].computed_value, "6");
-
-        // Read-only here, and not callable directly.
-        assert!(app
-            .call(|s| s.set_cell(lid.clone(), "0".into(), "0".into(), "x".into()))
-            .is_err());
-        assert!(app
-            .call(|s| s.receive_link(
-                ContextId::from([5u8; 32]),
-                "pub-1".into(),
-                "Rates".into(),
-                "Finance".into(),
-                0,
-                0,
-                Vec::new()
-            ))
-            .is_err());
-
-        // Removed here, it stays removed however often it is pushed.
-        app.call(|s| s.unlink(lid.clone())).unwrap();
-        app.call(|s| {
-            s.store_link(
-                &from,
-                "pub-1",
-                "Rates".into(),
-                "Finance".into(),
-                1,
-                1,
-                vec!["9".into()],
-            )
-        })
-        .unwrap();
-        assert!(app
-            .view(|s| s.list_sheets())
-            .unwrap()
-            .iter()
-            .all(|s| s.id != lid));
-    }
-
-    #[test]
-    fn an_alert_tells_its_recipients_when_a_value_starts_meeting_it() {
-        let mut app = make_app();
-        let sid = new_sheet(&mut app);
-        let (ada, _) = with_people(&mut app);
-        let mut alert = rule(&sid, "alert", "gt", &["100"], false);
-        alert.recipients = vec![hex::encode(ada)];
-        app.call(|s| s.add_rule(alert)).unwrap();
-        let alerts = |app: &TestHost<Spreadsheet>| {
-            app.take_events()
-                .into_iter()
-                .filter(|e| e.kind == "AlertTriggered")
-                .count()
-        };
-        let _ = alerts(&app);
-        let set = |app: &mut TestHost<Spreadsheet>, v: &str| {
-            app.call(|s| s.set_cell(sid.clone(), "1".into(), "0".into(), v.into()))
-                .unwrap();
-        };
-        set(&mut app, "150");
-        assert_eq!(alerts(&app), 1);
-        set(&mut app, "200");
-        assert_eq!(alerts(&app), 0, "still over: no second alert");
-        set(&mut app, "50");
-        set(&mut app, "300");
-        assert_eq!(alerts(&app), 1, "over again after dropping below");
-        let mut nobody = rule(&sid, "alert", "gt", &["1"], false);
-        nobody.recipients = Vec::new();
-        assert!(app.call(|s| s.add_rule(nobody)).is_err());
-    }
 }

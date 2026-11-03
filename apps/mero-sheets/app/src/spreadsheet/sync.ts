@@ -54,10 +54,10 @@ export function syncView({ connected, loaded, saving, info }: {
   info: SyncInfo | null;
 }): SyncView {
   if (!connected) {
-    return { label: 'Offline', tone: 'off', detail: 'Cannot reach your node. Changes resume when it is back.' };
+    return { label: 'Offline', tone: 'off', detail: 'Cannot reach Calimero. Changes resume when it is back.' };
   }
-  if (!loaded) return { label: 'Loading…', tone: 'busy', detail: 'Reading the workbook from your node.' };
-  if (saving) return { label: 'Saving…', tone: 'busy', detail: 'Writing your change to your node.' };
+  if (!loaded) return { label: 'Loading…', tone: 'busy', detail: 'Reading the workbook.' };
+  if (saving) return { label: 'Saving…', tone: 'busy', detail: 'Writing your change.' };
   switch (info?.phase.state) {
     case 'syncing':
       return { label: 'Syncing…', tone: 'busy', detail: 'Exchanging changes with peers.' };
@@ -76,6 +76,6 @@ export function syncView({ connected, loaded, saving, info }: {
       };
     }
     default:
-      return { label: 'Up to date', tone: 'ok', detail: 'Saved on your node, and in sync with the peers it can reach.' };
+      return { label: 'Up to date', tone: 'ok', detail: 'Saved, and everyone in the workbook sees the same values.' };
   }
 }

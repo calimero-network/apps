@@ -1,16 +1,17 @@
 /**
  * useSpreadsheet — live data hook for the mero-sheets spreadsheet app.
  *
- * Wire pass: replaces the shell stubs with real SpreadsheetClient calls and
- * wires useSubscription for live CRDT sync across peers.
+ * Reads and writes the open workbook (an app instance) through the typed
+ * SpreadsheetClient, and follows its events (`useAppEvents`) so everyone's
+ * changes show live.
  *
  * Pattern:
- *  - useMemo creates the typed client when mero + contextId + executorPublicKey resolve.
+ *  - useMemo creates the typed client once signed in with a workbook open.
  *  - refresh() fetches the whole workbook (get_all_cells) into a warm snapshot, then
  *    derives the active sheet's computed cells locally via the WASM recalc engine.
- *  - useSubscription re-reads what each context event changed (local + remote peers;
- *    see spreadsheet/events.ts), which reconciles the warm snapshot and retires
- *    confirmed overlay entries. Presence frames never trigger a read.
+ *  - useAppEvents re-reads what each app event changed (this user's and everyone
+ *    else's; see spreadsheet/events.ts), which reconciles the warm snapshot and
+ *    retires confirmed overlay entries.
  *  - Cell writes (setCell/clearCell/setCellFormat/applyCellOps) paint optimistically
  *    through the pending overlay and rely on the subscription refresh to reconcile —
  *    they do NOT call refresh() directly. Sheet-level ops (initProject/createSheet/
@@ -21,8 +22,8 @@
  *    formulas through the engine, which holds every sheet's layout.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useMero, useSubscription } from '@calimero-network/mero-react';
-import { useStreamReconnect } from './useStreamReconnect';
+import { useAppEvents } from './useAppEvents';
+import { useMaybeSignedIn } from '../sessionContext';
 import { SpreadsheetClient } from '../api/spreadsheet/SpreadsheetClient';
 import type {
   Sheet, FunctionDef, Member, Project, NamedRange, SheetLayout, ActivityEntry, Comment,
@@ -32,7 +33,7 @@ import type { AxisOp as AxisOpWire, CellOp as CellOpWire } from '../api/spreadsh
 import { chunkOps, MAX_OPS_PER_APPLY, type CellOp } from '../spreadsheet/ops';
 import { alertsIn, isNoop, mentionsIn, mergePlans, planFor, type Alert, type Mention, type RefreshPlan } from '../spreadsheet/events';
 import type { NoteOp, Span } from '../spreadsheet/notes';
-import { syncInfoFrom, type SyncInfo } from '../spreadsheet/sync';
+import type { SyncInfo } from '../spreadsheet/sync';
 import { newAxisId, positionOf, positionsBetween, type AxisEntry } from '../spreadsheet/axis';
 import { applicable, invert, pushBounded, type CellState, type UndoEntry } from '../spreadsheet/undo';
 import { rangeRef, type Rect } from '../spreadsheet/refs';
@@ -77,8 +78,8 @@ export type { Sheet, FunctionDef, Member, Project, NamedRange, ActivityEntry, Co
 // ── Hook interfaces ──────────────────────────────────────────────────────────
 
 export interface UseSpreadsheetArgs {
+  /** The open workbook: an app instance id. */
   contextId: string | null;
-  executorPublicKey: string | null;
   /** The sheet currently displayed — refresh() fetches only this sheet's cells. */
   activeSheetId: string | null;
 }
@@ -99,12 +100,8 @@ export interface UseSpreadsheetReturn {
    */
   project: Project | null;
   /**
-   * The id THIS node writes under, straight from the contract (`whoami`).
-   *
-   * Asked rather than inferred: a member id is a DEVICE key and
-   * `executorPublicKey` is a CONTEXT identity. Both are 64 hex, so comparing
-   * them type-checks and is false forever — which showed the local user as a
-   * stranger in their own spreadsheet.
+   * The id this account is known by in the workbook, straight from the
+   * contract (`whoami`): its account id.
    */
   selfId: string | null;
   /** True once `members` has been fetched at least once for this context. */
@@ -115,7 +112,7 @@ export interface UseSpreadsheetReturn {
   /** True while ≥1 state-changing mutation is in flight (serialization queue non-empty). */
   mutating: boolean;
   error: Error | null;
-  /** True when contextId + executorPublicKey are resolved and client is ready. */
+  /** True when signed in with a workbook open, and the client is ready. */
   ready: boolean;
   // Project init (called once by the workspace creator after bootstrap)
   initProject: (name: string) => Promise<void>;
@@ -152,7 +149,7 @@ export interface UseSpreadsheetReturn {
   loadNote: (sheetId: string, rowId: string, colId: string) => Promise<Span[]>;
   /** One note edit: text and formatting, as a delta. */
   editNote: (sheetId: string, rowId: string, colId: string, ops: NoteOp[]) => Promise<void>;
-  /** This node's private sheets: seen by nobody else, and able to read the shared ones. */
+  /** This account's private sheets: listed to nobody else, and able to read the shared ones. */
   privateSheets: Sheet[];
   createPrivateSheet: (name: string) => Promise<string | null>;
   renamePrivateSheet: (sheetId: string, name: string) => Promise<void>;
@@ -178,19 +175,19 @@ export interface UseSpreadsheetReturn {
   unpublish: (id: string) => Promise<void>;
   /** Remove a linked sheet here (later pushes of it are ignored). */
   unlink: (sheetId: string) => Promise<void>;
-  /** The node's latest sync status for this workbook (null until it reports). */
+  /** Always null on Calimero 1.0: one log orders every write, so there is no peer sync to report. */
   sync: SyncInfo | null;
-  /** Whether the node's event stream is up. */
+  /** Whether the workbook's event stream is up. */
   connected: boolean;
   /** Alerts that name this user, newest last, until dismissed. */
   alerts: Alert[];
   dismissAlert: (index: number) => void;
   /** Files attached to cells. */
   attachments: Attachment[];
-  /** Upload a file as a blob for this workbook and attach it to a cell. */
+  /** Upload a file as a blob of this workbook (app instance) and attach it to a cell. */
   attachFile: (sheetId: string, row: number, col: number, file: File) => Promise<void>;
   removeAttachment: (id: string) => Promise<void>;
-  /** An attachment's bytes, fetched from the network if this node lacks them. */
+  /** An attachment's bytes, from the workbook's blobs. */
   fetchAttachment: (blobId: string) => Promise<ArrayBuffer>;
   /** Charts, shared. */
   charts: Chart[];
@@ -241,10 +238,11 @@ export interface UseSpreadsheetReturn {
 
 export function useSpreadsheet({
   contextId,
-  executorPublicKey,
   activeSheetId,
 }: UseSpreadsheetArgs): UseSpreadsheetReturn {
-  const { mero, admin } = useMero();
+  const signedIn = useMaybeSignedIn();
+  const calimero = signedIn?.client ?? null;
+  const after = signedIn?.after;
   const [sheets, setSheets] = useState<Sheet[]>([]);
   const [cells, setCells] = useState<Cell[]>([]);
   const [functions, setFunctions] = useState<FunctionDef[]>([]);
@@ -277,18 +275,8 @@ export function useSpreadsheet({
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [publications, setPublications] = useState<Publication[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [sync, setSync] = useState<SyncInfo | null>(null);
-  const [connected, setConnected] = useState(true);
-  // The stream drops and returns with the node: track it for the status bar.
-  useEffect(() => {
-    const sse = mero?.events;
-    if (!sse) return;
-    const up = () => setConnected(true);
-    const down = () => setConnected(false);
-    sse.on('connect', up);
-    sse.on('error', down);
-    return () => { sse.off('connect', up); sse.off('error', down); };
-  }, [mero]);
+  // No peer-sync phases on 1.0: one log orders every write.
+  const sync: SyncInfo | null = null;
   // Why the node last refused a write, until dismissed.
   const [writeError, setWriteError] = useState<unknown>(null);
   // Bumps whenever rows or columns move, for anything that maps ids to positions.
@@ -306,13 +294,10 @@ export function useSpreadsheet({
     void initEngine().then(() => setEngineTick((t) => t + 1));
   }, []);
 
-  // Memoized typed client — null until mero + context + identity all resolve.
+  // Memoized typed client — null until signed in with a workbook open.
   const client = useMemo(
-    () =>
-      mero && contextId && executorPublicKey
-        ? new SpreadsheetClient(mero, contextId)
-        : null,
-    [mero, contextId, executorPublicKey],
+    () => (calimero && contextId ? new SpreadsheetClient(calimero, contextId, after) : null),
+    [calimero, contextId, after],
   );
 
   // Serialize state-changing rpc.execute calls. The node commits each mutation
@@ -598,19 +583,17 @@ export function useSpreadsheet({
 
   const selfIdRef = useRef(selfId);
   selfIdRef.current = selfId;
-  useSubscription(contextId ? [contextId] : [], (event) => {
+  // Every app event re-reads what it changed; after the stream comes back, a
+  // full read covers whatever happened while it was down.
+  const { connected } = useAppEvents(calimero, contextId, (event) => {
     schedule(planFor(event));
     const me = selfIdRef.current;
     const forMe = mentionsIn(event).filter((m) => me && m.author !== me && m.mentions.includes(me));
     if (forMe.length) setMentions((prev) => [...prev, ...forMe.filter((m) => !prev.some((p) => p.commentId === m.commentId))]);
-    const status = syncInfoFrom(event);
-    if (status) setSync(status);
     const told = alertsIn(event).filter((a) => me && a.recipients.includes(me));
     if (told.length) setAlerts((prev) => [...prev, ...told]);
-  });
-  useEffect(() => { setMentions([]); setComments([]); setNotedCells([]); setProtections([]); setWriteError(null); setPrivateSheets([]); setSheetViews([]); setStyles([]); setRules([]); setCharts([]); setAttachments([]); setPublications([]); setAlerts([]); setSync(null); }, [client]);
-  // …and after the stream reconnects: nothing replays what changed while it was down.
-  useStreamReconnect(() => schedule({ full: true }));
+  }, () => schedule({ full: true }));
+  useEffect(() => { setMentions([]); setComments([]); setNotedCells([]); setProtections([]); setWriteError(null); setPrivateSheets([]); setSheetViews([]); setStyles([]); setRules([]); setCharts([]); setAttachments([]); setPublications([]); setAlerts([]); }, [client]);
 
   // ── Mutations ─────────────────────────────────────────────────────────────
 
@@ -1232,16 +1215,16 @@ export function useSpreadsheet({
   const attachFile = useCallback(
     async (sheetId: string, row: number, col: number, file: File) => {
       const at = idsAt(sheetId, row, col);
-      if (!client || !admin || !contextId || !at) return;
-      // Announced to this context, so members' nodes can find the bytes.
-      // The session admin, so an account's upload goes the account's way.
-      const blob = await admin.uploadBlob({ data: file, contextId });
+      if (!client || !calimero || !contextId || !at) return;
+      // A blob of this workbook's app instance: every member of the workspace reads it.
+      const blob = await calimero.uploadBlob(contextId, new Uint8Array(await file.arrayBuffer()));
+      after?.();
       await enqueue(() => client.addAttachment({
         sheet_id: sheetId, ...at, blob_id: blob.blobId, name: file.name, size: file.size, mime: file.type,
       }));
       setAttachments(await client.getAttachments());
     },
-    [client, admin, contextId, enqueue],
+    [client, calimero, contextId, enqueue, after],
   );
   const removeAttachment = useCallback(
     async (id: string) => {
@@ -1253,10 +1236,15 @@ export function useSpreadsheet({
   );
   const fetchAttachment = useCallback(
     async (blobId: string) => {
-      if (!admin || !contextId) throw new Error('Not connected');
-      return admin.getBlob(blobId, { contextId });
+      if (!calimero || !contextId) throw new Error('Not connected');
+      try {
+        const bytes = await calimero.downloadBlob(contextId, blobId);
+        return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+      } finally {
+        after?.();
+      }
     },
-    [admin, contextId],
+    [calimero, contextId, after],
   );
 
   const addChart = useCallback(

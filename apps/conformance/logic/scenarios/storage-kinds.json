@@ -1,0 +1,302 @@
+[
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "set",
+  "args": {
+   "key": "conformance",
+   "value": "pub-primary"
+  },
+  "expect": {
+   "ok": null
+  },
+  "events": {
+   "bob": [
+    "Inserted"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "get",
+  "args": {
+   "key": "conformance"
+  },
+  "expect": {
+   "ok": "pub-primary"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "get",
+  "args": {
+   "key": "conformance"
+  },
+  "expect": {
+   "ok": "pub-primary"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "myAccount",
+  "args": {},
+  "expect": {
+   "ok": "@owner"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "myAccount",
+  "args": {},
+  "expect": {
+   "ok": "@bob"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "setUserSimple",
+  "args": {
+   "value": "user-primary"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getUserSimple",
+  "args": {},
+  "expect": {
+   "ok": "user-primary"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getUserSimple",
+  "args": {},
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getUserSimpleFor",
+  "args": {
+   "account": "@owner"
+  },
+  "expect": {
+   "ok": "user-primary"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addFrozen",
+  "args": {
+   "value": "frozen-primary"
+  },
+  "save": "hash"
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getFrozen",
+  "args": {
+   "hashHex": "$hash"
+  },
+  "expect": {
+   "ok": "frozen-primary"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "authoredInsert",
+  "args": {
+   "key": "primary",
+   "value": "by the primary"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "authoredGetOwner",
+  "args": {
+   "key": "primary"
+  },
+  "expect": {
+   "ok": "@owner"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "authoredGet",
+  "args": {
+   "key": "primary"
+  },
+  "expect": {
+   "ok": "by the primary"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "authoredUpdate",
+  "args": {
+   "key": "primary",
+   "value": "hijack"
+  },
+  "expect": {
+   "error": "NotAuthor",
+   "fields": {
+    "key": "primary"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "authoredInsert",
+  "args": {
+   "key": "second",
+   "value": "by the second session"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "authoredGetOwner",
+  "args": {
+   "key": "second"
+  },
+  "expect": {
+   "ok": "@bob"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "authoredVecPush",
+  "args": {
+   "value": "by the primary"
+  },
+  "expect": {
+   "ok": "0"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "authoredVecGetOwner",
+  "args": {
+   "index": "0"
+  },
+  "expect": {
+   "ok": "@owner"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "authoredVecUpdate",
+  "args": {
+   "index": "0",
+   "value": "hijack"
+  },
+  "expect": {
+   "error": "NotItemOwner",
+   "fields": {
+    "index": "0"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "sharedSet",
+  "args": {
+   "value": "shared-primary"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "sharedGet",
+  "args": {},
+  "expect": {
+   "ok": "shared-primary"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "sharedGetWriters",
+  "args": {},
+  "expect": {
+   "ok": [
+    "@owner"
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "sharedSet",
+  "args": {
+   "value": "not-a-writer"
+  },
+  "expect": {
+   "error": "NotAWriter",
+   "fields": {
+    "account": "@bob"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "sharedGet",
+  "args": {},
+  "expect": {
+   "ok": "shared-primary"
+  },
+  "events": {
+   "bob": [
+    "Inserted",
+    "UserSimpleSet",
+    "FrozenAdded",
+    "AuthoredInserted",
+    "AuthoredInserted",
+    "AuthoredVecPushed",
+    "SharedSet"
+   ],
+   "owner": [
+    "Inserted",
+    "UserSimpleSet",
+    "FrozenAdded",
+    "AuthoredInserted",
+    "AuthoredInserted",
+    "AuthoredVecPushed",
+    "SharedSet"
+   ]
+  }
+ }
+]

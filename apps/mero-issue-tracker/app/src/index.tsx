@@ -7,17 +7,16 @@ import '@calimero-network/mero-ui/styles.css';
 import './index.css';
 import App from './App';
 import { THEME } from './config';
-import { bootstrapSsoAndInvitation } from './auth/ssoBootstrap';
+import { captureInvite } from './workspaces';
 import { applyTheme, readStoredTheme } from './theme';
 
 // index.html already put the saved theme on <html> before the first paint;
 // this re-applies it in case that inline script could not run.
 applyTheme(readStoredTheme());
 
-// Desktop auth-skip + web invitation capture. MUST run before React mounts so
-// MeroProvider reads an already-authenticated desktop session on first render
-// (skipping the manual connect/accept steps when opened from the desktop app).
-bootstrapSsoAndInvitation();
+// Before React mounts: a person opening an invitation link is usually not
+// signed in yet, and the token has to survive the passkey sign-up.
+captureInvite();
 
 // Inject theme tokens as CSS vars so components can read them via
 // `var(--color-primary)` / `var(--color-accent)` regardless of selector scope.

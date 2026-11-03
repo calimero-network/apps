@@ -11,29 +11,28 @@
 import { BarChart, Download, FileText, Lock, Table, Zap } from '@calimero-network/mero-icons';
 
 import Animation from './animation';
-import LoginPopup from './loginPopup';
 import type { LandingConfig } from './landingTypes';
 
 export const CONFIG: LandingConfig = {
   name: "Mero Sheets",
   packageId: "com.calimero.mero-sheets",
-  tagline: "Collaborative peer-to-peer spreadsheet with live cursors, multiple sheet tabs, formula autocomplete, a built-in function help section, and download support",
+  tagline: "Collaborative spreadsheet with live cursors, multiple sheet tabs, formula autocomplete, a built-in function help section, and download support",
   dir: "mero-sheets",
   markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
-  availability: "web+desktop",
+  availability: "web",
   tint: "#4ade80",
   themeStorageKey: "mero-sheets:theme",
-  trust: ["Live collaboration", "Formulas recompute for all peers", "Sheet on your node"],
+  trust: ["Live collaboration", "Formulas recompute for everyone", "No passwords"],
   explainer: [
-    "A collaborative spreadsheet where you can see everyone’s cursor and nobody can see your data except the people you invited. The sheet lives in a Calimero context on your own node.",
+    "A collaborative spreadsheet where you can see everyone’s cursor and nobody can see your data except the people you invited. The workbook is a Calimero app instance only the members of your workspace can open.",
     "Formulas are stored raw and re-evaluated for every peer whenever a cell they reference changes, so nobody is looking at a stale total — which is the failure that makes shared spreadsheets untrustworthy in the first place.",
   ],
   features: [
     {
       icon: Lock,
       title: "Truly private sheets",
-      body: "The data lives in a context you control. It never passes through a central server.",
+      body: "Only the people in your workspace can open it, and your account is a passkey.",
     },
     {
       icon: Zap,
@@ -70,7 +69,7 @@ export const CONFIG: LandingConfig = {
         src: "/landing/demo.webm",
         poster: "/landing/demo-poster.jpg",
         chapters: [
-          { at: 0, title: "Open a workbook", body: "A Q3 budget on your node, with Ada from your team already in it." },
+          { at: 0, title: "Open a workbook", body: "A Q3 budget in your workspace, with Ada from your team already in it." },
           { at: 3, title: "Type a number", body: "Fill in a cell and every total that reads it recomputes." },
           { at: 8, title: "Write a formula", body: "Start typing =AV and autocomplete offers AVERAGE, with its arguments." },
           { at: 14.5, title: "Ada edits, live", body: "Her cursor walks up to Wages, her number lands, and the totals update on your screen." },
@@ -82,11 +81,11 @@ export const CONFIG: LandingConfig = {
       sub: "Everything you expect from a shared spreadsheet. The difference is who holds the numbers.",
       themLabel: "A typical cloud spreadsheet",
       rows: [
-        { label: "Where the sheet lives", them: "On the vendor’s servers", us: "On your node, and the nodes of the people you invite" },
+        { label: "Where the sheet lives", them: "On the vendor’s servers", us: "In an app instance only your workspace can open" },
         { label: "Who can read it", them: "The vendor, and whoever it grants access", us: "Only members of the workbook’s namespace" },
         { label: "Adding a collaborator", them: "Another seat on the monthly bill", us: "An invite. The app is open source and free" },
         { label: "Formulas", them: "Computed on their servers", us: "Stored raw and recomputed on every peer, so nobody sees a stale total" },
-        { label: "If the vendor goes away", them: "Your data may go with it", us: "Your node still has every workbook, and you can download it any time" },
+        { label: "If the vendor goes away", them: "Your data may go with it", us: "You can download every workbook, any time, as CSV or XLSX" },
       ],
     },
     collaboration: {
@@ -102,10 +101,10 @@ export const CONFIG: LandingConfig = {
     audiences: {
       heading: "Made for numbers that are nobody else’s business",
       items: [
-        { label: "Finance & operations", title: "Budgets and forecasts that never leave your nodes", body: "Plan the quarter together, live, without the figures sitting on a third party’s servers.", uses: ["Budgets", "Forecasts", "CSV export"] },
+        { label: "Finance & operations", title: "Budgets and forecasts only your team can open", body: "Plan the quarter together, live, without the figures sitting on a third party’s servers.", uses: ["Budgets", "Forecasts", "CSV export"] },
         { label: "Founders & small teams", title: "Metrics and cap tables, shared only with who you choose", body: "Invite a co-founder, an accountant or an investor into one workbook, and nobody else.", uses: ["KPI trackers", "Cap tables", "Multiple sheet tabs"] },
         { label: "Research & classrooms", title: "Collect data together, in the same sheet, at the same time", body: "Everyone types into their own rows while the totals update for the whole group.", uses: ["Shared data entry", "Live cursors", "SUM, AVERAGE, COUNT"] },
-        { label: "Regulated & public sector", title: "Live collaboration on infrastructure you already control", body: "For finance, health and government data that cannot leave your own servers, without giving up working together in real time.", uses: ["Self-hosted nodes", "Works offline", "No third-party cloud"] },
+        { label: "Regulated & public sector", title: "Live collaboration on infrastructure you already control", body: "For finance, health and government data that cannot leave your own servers, without giving up working together in real time.", uses: ["Invite-only workspaces", "Passkey accounts", "No ad-funded cloud"] },
       ],
     },
     openSource: {
@@ -114,13 +113,12 @@ export const CONFIG: LandingConfig = {
         "# fork calimero-network/apps on GitHub, then",
         "git clone https://github.com/<you>/apps",
         "cd apps && pnpm install",
-        "export RUSTFLAGS=\"$(cat apps/mero-sheets/logic/wasm-rustflags)\"",
-        "cargo mero build -p mero-sheets",
-        "pnpm -F mero-sheets dev   # app on :5185",
+        "cargo test --manifest-path apps/mero-sheets/logic/Cargo.toml",
+        "pnpm dev:local mero-sheets   # app on :5173",
       ],
     },
     alwaysOn: true,
-    closing: { title: "Start your first workbook", body: "Connect a node, or install the desktop app that bundles one, then invite the people you work with." },
+    closing: { title: "Start your first workbook", body: "Sign in with a passkey, create a workbook, then invite the people you work with." },
   },
   animation: Animation,
   docs: [
@@ -131,8 +129,8 @@ export const CONFIG: LandingConfig = {
         "The unusual thing about this spreadsheet is how formulas are stored: raw, never as a cached result. Every peer re-evaluates a formula whenever a cell it references changes, so nobody is ever looking at a stale total computed on someone else’s machine.",
       ],
       concepts: [
-        { term: "Namespace", def: "A project you own and invite collaborators into." },
-        { term: "Context", def: "One workbook: its sheets and its cells." },
+        { term: "Workspace", def: "An organization you own and invite collaborators into." },
+        { term: "Workbook", def: "One app instance in the workspace: its sheets and its cells." },
         { term: "Sheet", def: "A tab. Stored as a record; a workbook can hold several." },
         { term: "Cell", def: "One entry in a map keyed by sheet and coordinate. Value, formula and format are separate, so formatting a cell does not fight with typing in it." },
         { term: "Cursor", def: "Where each collaborator is and what they have selected, in their own colour. Live presence, never stored in the workbook." },
@@ -142,8 +140,8 @@ export const CONFIG: LandingConfig = {
       id: "start",
       heading: "Getting started",
       steps: [
-        { title: "Connect a node", body: "Press Connect to node and choose your node." },
-        { title: "Create a project", body: "A namespace you own, with one workbook in it." },
+        { title: "Sign in", body: "Sign in with a passkey, or create an account with a new one. There is no password and no email." },
+        { title: "Create a workbook", body: "Your first one creates a workspace you own, with the workbook in it." },
         { title: "Type something", body: "Enter values, or a formula: 94 functions are built in, from SUM and IF to XLOOKUP and TEXT, with autocomplete and inline help." },
         { title: "Invite collaborators", body: "Share the link. Their cursor appears in its own colour as soon as they arrive." },
       ],
@@ -163,24 +161,16 @@ export const CONFIG: LandingConfig = {
         "Project name and creation time.",
         "Sheets, keyed by id, with their names.",
         "Cells, keyed by sheet and coordinate, holding the raw value, the raw formula and the format separately.",
-        "Not stored: cursors and selections. They travel on the node's ephemeral presence channel and vanish when you close the sheet.",
-      ],
-    },
-    {
-      id: "offline",
-      heading: "Offline, and what happens when you reconnect",
-      paragraphs: [
-        "Your node holds the whole state, so the app keeps working with no network — every change is written locally and queued.",
-        "When your node reaches a peer again, the two exchange changes and merge them. Merging is CRDT-based, not last-write-wins-by-clock, so two people editing different things at the same time both keep their work. Where two people genuinely changed the same single value, the later write wins on that one value and nothing else is lost.",
+        "Not stored: cursors and selections. They travel on the app's presence channel and vanish when you close the sheet.",
       ],
     },
     {
       id: "trouble",
       heading: "When something looks wrong",
       concepts: [
-        { term: "A total looks wrong", def: "Totals are computed locally from the raw formula. A wrong total means a referenced cell has not arrived yet; it corrects itself on sync." },
+        { term: "A total looks wrong", def: "Totals are computed locally from the raw formula. A wrong total means a referenced cell has not been read yet; it corrects itself with the next update." },
         { term: "Your formatting was lost", def: "Value, formula and format are separate fields. Losing formatting but keeping the value means someone reformatted the same cell, not that the write failed." },
-        { term: "A collaborator’s cursor is stuck", def: "Presence stopped, not their edits. Cells continue to sync regardless." },
+        { term: "A collaborator’s cursor is stuck", def: "Presence stopped, not their edits. Cells keep updating regardless." },
       ],
     },
   ],
@@ -190,5 +180,4 @@ export const CONFIG: LandingConfig = {
     { title: "She edits at the same time", body: "Ada walks up to Wages and changes Q3 while you type. Neither waits for the other." },
     { title: "Every total agrees", body: "Formulas are stored raw and recomputed from the latest cells, so both totals reflect both edits." },
   ],
-  loginPopup: LoginPopup,
 };

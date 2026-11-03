@@ -46,39 +46,37 @@ describe('resolveFromMap (the actual resolve() logic)', () => {
   });
 });
 
-// Real account ids: the admin API lists members in hex, a contract stamps the
-// same account in base58, and a deal stores whichever its writer held.
-const HEX = '5926f2d2a4940fa2a62edd2cd7d833897c2c1596c697ea674dd0f49b89d11334';
-const B58 = '711jRM5BkBNcexvBDoEHuEd2ffTynNCBzRGNjfC4k4eX';
-const OTHER = '1111111111111111111111111111111111111111111111111111111111111111';
-
-describe('account spellings', () => {
-  it('resolves a base58 id to the name set for the same hex account', () => {
-    const aliases = makeAliases(buildAliasMap([{ name: 'Sandi', value: HEX }]), async () => {}, async () => {}, false, true);
-    expect(aliases.resolve(B58)).toBe('Sandi');
-    expect(aliases.hasAlias(B58)).toBe(true);
-    expect(aliases.hasAlias(HEX.toUpperCase())).toBe(true);
+// One spelling on Calimero 1.0: the org's member list and the contract's
+// `createdBy`/`author` (`env::caller()`) name the same account id.
+describe('account ids', () => {
+  it('names an author from the member name keyed by the same account id', () => {
+    const aliases = makeAliases(buildAliasMap([{ name: 'Sandi', value: 'acct-1' }]), async () => {}, async () => {}, false, true);
+    expect(aliases.hasAlias('acct-1')).toBe(true);
+    expect(aliases.resolve('acct-1')).toBe('Sandi');
+    expect(aliases.hasAlias('acct-2')).toBe(false);
   });
 });
 
 describe('ownerLabel (deal and activity owners)', () => {
-  const map = buildAliasMap([{ name: 'Sandi', value: HEX }]);
+  const ACCT = '5926f2d2a4940fa2a62edd2cd7d833897c2c1596c697ea674dd0f49b89d11334';
+  const OTHER = '1111111111111111111111111111111111111111111111111111111111111111';
+  const map = buildAliasMap([{ name: 'Sandi', value: ACCT }]);
   const resolve = (k: string) => resolveFromMap(map, k);
 
   it('names a stored account at display time', () => {
-    expect(ownerLabel(HEX, resolve, [HEX])).toBe('Sandi');
+    expect(ownerLabel(ACCT, resolve, [ACCT])).toBe('Sandi');
   });
 
-  it('falls back to a short id for an account with no name', () => {
+  it('falls back to a short id for a member with no name', () => {
     expect(ownerLabel(OTHER, resolve, [OTHER])).toBe('1111…1111');
   });
 
-  it('resolves an old frozen truncated key back to its member', () => {
-    expect(ownerLabel('5926…1334', resolve, [OTHER, HEX])).toBe('Sandi');
+  it('resolves a truncated key back to its member', () => {
+    expect(ownerLabel('5926…1334', resolve, [OTHER, ACCT])).toBe('Sandi');
   });
 
-  it('shows an old stored name as-is, and nothing for no owner', () => {
-    expect(ownerLabel('Ana', resolve, [HEX])).toBe('Ana');
-    expect(ownerLabel(null, resolve, [HEX])).toBe('');
+  it('shows a free-text owner as-is, and nothing for no owner', () => {
+    expect(ownerLabel('Ana', resolve, [ACCT])).toBe('Ana');
+    expect(ownerLabel(null, resolve, [ACCT])).toBe('');
   });
 });

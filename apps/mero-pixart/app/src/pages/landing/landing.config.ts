@@ -11,22 +11,21 @@
 import { Circle, Cube3D, Cube3DLayers, Eye, LineChart, Zap } from '@calimero-network/mero-icons';
 
 import Animation from './animation';
-import LoginPopup from './loginPopup';
 import type { LandingConfig } from './landingTypes';
 
 export const CONFIG: LandingConfig = {
   name: "Mero PixArt",
   packageId: "com.calimero.mero-pixart",
-  tagline: "Collaborative p2p image editor on the Calimero network. Photoshop-style layers, masks, and adjustments — your pixels on your nodes.",
+  tagline: "Collaborative p2p image editor on the Calimero network. Photoshop-style layers, masks, and adjustments.",
   dir: "mero-pixart",
   markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
-  availability: "web+desktop",
+  availability: "web",
   tint: "#e879f9",
-  trust: ["Non-destructive edits", "Real layer folders", "Pixels on your nodes"],
+  trust: ["Non-destructive edits", "Real layer folders", "Only your team reaches it"],
   explainer: [
     "A collaborative raster image editor with the depth of a desktop tool — layer folders, masks, blend modes, curves and a corner-pin warp — that several people can work in at the same time.",
-    "Adjustments are non-destructive and applied live, so you can reconsider an exposure change a week later. The project, including every uploaded image, lives as blobs on your node rather than in a cloud editor’s bucket.",
+    "Adjustments are non-destructive and applied live, so you can reconsider an exposure change a week later. The project, including every uploaded image, lives on attested Calimero nodes that only your team reaches, rather than in a cloud editor’s bucket.",
   ],
   features: [
     {
@@ -82,15 +81,15 @@ export const CONFIG: LandingConfig = {
       sub: "Layers, masks, blend modes and curves, the way a desktop editor does them. The difference is where the file lives.",
       themLabel: "A typical cloud image editor",
       rows: [
-        { label: "Where the file lives", them: "On the vendor’s servers", us: "On your node, and the nodes of the people you invite" },
-        { label: "Your uploaded images", them: "In the vendor’s storage bucket", us: "Stored as blobs on your node" },
-        { label: "Who can open it", them: "The vendor, and whoever it grants access", us: "Only members of the project’s namespace" },
+        { label: "Where the file lives", them: "On the vendor’s servers", us: "On attested Calimero nodes, sealed" },
+        { label: "Your uploaded images", them: "In the vendor’s storage bucket", us: "Blobs of the document, on the same nodes" },
+        { label: "Who can open it", them: "The vendor, and whoever it grants access", us: "Only the people in your team" },
         { label: "Adding a collaborator", them: "Another seat on the monthly bill", us: "An invite. The app is open source and free" },
         { label: "Getting your work out", them: "Often a proprietary format", us: "Export PNG, JPEG or SVG whenever you want" },
       ],
     },
     collaboration: {
-      heading: "Several people, one image, no server in the middle",
+      heading: "Several people, one image, at the same time",
       sub: "Everyone in a project sees each other’s cursors and changes, and two people can work on it at once without either losing work, because of how a document is stored.",
       points: [
         { title: "Every layer is its own record", body: "Two people working on different layers never queue behind each other." },
@@ -103,12 +102,12 @@ export const CONFIG: LandingConfig = {
         { name: "Editor", can: "Adds, paints, transforms, adjusts and deletes layers." },
         { name: "Viewer", can: "Watches the image change without being able to change it." },
       ],
-      rolesNote: "The contract checks these, not just the interface: a layer change from a viewer, or a rename from a non-owner, is refused wherever it came from.",
+      rolesNote: "The contract checks these, not just the interface: a layer change from a viewer, or a rename from a non-owner, is refused. The team’s owner and admins can always edit.",
     },
     audiences: {
       heading: "Made for images that are nobody else’s business",
       items: [
-        { label: "Design & marketing teams", title: "Campaign artwork that stays off a vendor’s cloud until launch day", body: "Posters, ads and social assets built in layers and folders by the whole team, on your own nodes.", uses: ["Layer folders", "Blend modes", "PNG and JPEG export"] },
+        { label: "Design & marketing teams", title: "Campaign artwork that stays off a vendor’s cloud until launch day", body: "Posters, ads and social assets built in layers and folders by the whole team, reachable by nobody else.", uses: ["Layer folders", "Blend modes", "PNG and JPEG export"] },
         { label: "Photographers & retouchers", title: "Non-destructive edits you can revisit a week later", body: "Curves, exposure and masks are stored as settings, so a client’s change of mind is a slider, not a redo.", uses: ["Curves", "Paintable masks", "Adjustments"] },
         { label: "Agencies & freelancers", title: "Client work shared with the client, and nobody else", body: "Invite the client as a viewer to watch the image take shape, or as an editor to work on it with you.", uses: ["Owner, editor and viewer roles", "Live cursors", "Invite links"] },
         { label: "Open-source communities", title: "An image editor the community owns", body: "No seats and no terms that can change under you. If a tool is missing, fork it and add it.", uses: ["Free for everyone", "MIT or Apache-2.0", "Fork and customise"] },
@@ -119,13 +118,12 @@ export const CONFIG: LandingConfig = {
       commands: [
         "# fork calimero-network/apps on GitHub, then",
         "git clone https://github.com/<you>/apps",
-        "cd apps/apps/mero-pixart",
-        "make setup   # check tools, build logic, install app deps",
-        "make dev     # 2 local nodes + app on :5176",
+        "cd apps && pnpm install",
+        "pnpm dev:local mero-pixart   # merod local + app on :5173",
       ],
     },
     alwaysOn: true,
-    closing: { title: "Start your first image", body: "Connect a node, or install the desktop app that bundles one, then invite the people you make things with." },
+    closing: { title: "Start your first image", body: "Sign in with a passkey, create a team, then invite the people you make things with." },
   },
   animation: Animation,
   docs: [
@@ -136,18 +134,18 @@ export const CONFIG: LandingConfig = {
         "A genuinely deep raster editor — layers, masks, blend modes, curves — that several people can work in at once. The reason that is possible is that a document is a set of layer records, not one image file.",
       ],
       concepts: [
-        { term: "Namespace", def: "A workspace you own and invite collaborators into." },
-        { term: "Context", def: "One document: its canvas size, its layers, its members and their cursors." },
+        { term: "Team", def: "A Calimero organization you own and invite collaborators into." },
+        { term: "Project", def: "One document, an app instance in the team: its canvas size, its layers, its members and their cursors." },
         { term: "Layer", def: "A record in a map keyed by layer id — raster, text or fill. Content, mask, transform and adjustments are separate fields, so painting on a layer does not conflict with moving it." },
         { term: "Adjustment", def: "Non-destructive. Brightness, contrast, saturation, hue, exposure, blur and invert are stored as parameters and applied at render time, so the pixels underneath are never rewritten." },
-        { term: "Owner / editor", def: "The document name and description are owner-gated: a rename from a non-owner is rejected when it merges, not merely hidden." },
+        { term: "Owner / editor", def: "The document name and size are owner-gated: a rename from a non-owner is refused by the contract, not merely hidden." },
       ],
     },
     {
       id: "start",
       heading: "Getting started",
       steps: [
-        { title: "Connect a node", body: "Press Connect to node and pick your node." },
+        { title: "Sign in", body: "Press Sign in and use a passkey, or create an account with a new one." },
         { title: "Create a document", body: "Choose a canvas size. You are the owner." },
         { title: "Work in layers", body: "Add raster, text and fill layers, group them in folders, and reorder freely." },
         { title: "Invite editors", body: "Grant the editor role. Everyone else can watch the document change without being able to change it." },
@@ -157,8 +155,8 @@ export const CONFIG: LandingConfig = {
       id: "sharing",
       heading: "Working together",
       paragraphs: [
-        "Because each layer is its own record with separate fields, two people working on different layers never contend, and two people doing different things to one layer — one painting, one transforming — usually do not either.",
-        "Cursors are presence, kept apart from the document, so watching someone move never touches the artwork.",
+        "Because each layer is its own record with separate fields, two people working on different layers never contend, and two people doing different things to one layer, one painting and one transforming, usually do not either.",
+        "Cursors are kept apart from the layers, so watching someone move never touches the artwork.",
       ],
     },
     {
@@ -168,7 +166,8 @@ export const CONFIG: LandingConfig = {
         "Canvas size and background.",
         "Layers, keyed by id, with content, mask, transform, adjustments and text as separate fields.",
         "Members and their usernames, plus roles.",
-        "Cursors, as presence.",
+        "Cursors, one per person.",
+        "Pixels and masks as PNG blobs of the document; the layers name them by id.",
       ],
     },
     {
@@ -183,8 +182,8 @@ export const CONFIG: LandingConfig = {
       id: "trouble",
       heading: "When something looks wrong",
       concepts: [
-        { term: "A layer jumped back", def: "Two people moved the same layer. The transform is one field and converges to the later move; the pixels are untouched." },
-        { term: "An adjustment looks different on their screen", def: "Adjustments render from parameters, so a difference means one node has not received the latest parameter yet. It resolves on sync." },
+        { term: "A layer jumped back", def: "Two people moved the same layer. The transform is one field and the later move wins; the pixels are untouched." },
+        { term: "An adjustment looks different on their screen", def: "Adjustments render from parameters, so a difference means their screen has not re-read the layer yet. It catches up with the next change." },
         { term: "You cannot edit", def: "You hold the viewer role. Ask the owner for editor." },
       ],
     },
@@ -195,5 +194,4 @@ export const CONFIG: LandingConfig = {
     { title: "Hide a layer", body: "Each eye hides one layer and leaves the others exactly as they were." },
     { title: "Tune the hue", body: "The slider is an adjustment on the selected layer: stored as a setting, so Reset brings the original pixels straight back." },
   ],
-  loginPopup: LoginPopup,
 };

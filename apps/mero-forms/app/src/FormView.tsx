@@ -21,8 +21,7 @@ export function FormView({
   onTab,
   onBack,
   workspace,
-  contextId,
-  namespaceId,
+  appId,
   isAdmin,
 }: {
   formId: string;
@@ -30,8 +29,8 @@ export function FormView({
   onTab: (tab: FormTab) => void;
   onBack: () => void;
   workspace: Workspace;
-  contextId: string;
-  namespaceId: string | null;
+  /** The workspace's app instance id. */
+  appId: string;
   isAdmin: boolean;
 }) {
   const form = useRead(workspace.client, workspace.version, (c) => c.getForm({ form_id: formId }), [formId]);
@@ -84,7 +83,7 @@ export function FormView({
       )}
       {tab === "preview" && <FormFill key={f.updated_at} form={f} workspace={workspace} />}
       {tab === "connect" && (
-        <FormConnect form={f} workspace={workspace} contextId={contextId} namespaceId={namespaceId} isAdmin={isAdmin} />
+        <FormConnect form={f} workspace={workspace} appId={appId} isAdmin={isAdmin} />
       )}
     </>
   );

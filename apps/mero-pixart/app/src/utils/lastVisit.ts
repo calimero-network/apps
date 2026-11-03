@@ -4,9 +4,9 @@
 // a project: three screens to get back to the canvas you closed. A cold open
 // now resumes there instead (the pattern mero-design's utils/lastVisit set).
 //
-// What is remembered is scoped to the NODE: one browser can sign in to several
-// nodes, and a team id from one means nothing on another. It is only a hint:
-// every read is checked against what this node lists right now, and an entry
+// What is remembered is scoped to the TARGET (`targetKey`: the local nodes, or
+// a Cloud cluster): a team id from one means nothing on another. It is only a
+// hint: every read is checked against what the cluster lists now, and an entry
 // it no longer lists (a team you left, a project someone deleted) is
 // forgotten, so a stale one never opens a screen that can only fail.
 
@@ -21,14 +21,14 @@ export interface LastVisit {
 
 const PREFIX = "mp-last-visit:";
 
-/** The storage key for one node. Exported for tests. */
-export function lastVisitKey(nodeUrl: string | null | undefined): string {
-  return `${PREFIX}${(nodeUrl ?? "").replace(/\/+$/, "") || "local"}`;
+/** The storage key for one target. Exported for tests. */
+export function lastVisitKey(target: string | null | undefined): string {
+  return `${PREFIX}${(target ?? "").replace(/\/+$/, "") || "local"}`;
 }
 
-export function readLastVisit(nodeUrl: string | null | undefined): LastVisit {
+export function readLastVisit(target: string | null | undefined): LastVisit {
   try {
-    const raw = localStorage.getItem(lastVisitKey(nodeUrl));
+    const raw = localStorage.getItem(lastVisitKey(target));
     if (!raw) return {};
     const parsed: unknown = JSON.parse(raw);
     return parsed && typeof parsed === "object" ? (parsed as LastVisit) : {};
@@ -38,50 +38,50 @@ export function readLastVisit(nodeUrl: string | null | undefined): LastVisit {
   }
 }
 
-function write(nodeUrl: string | null | undefined, next: LastVisit): void {
+function write(target: string | null | undefined, next: LastVisit): void {
   try {
-    localStorage.setItem(lastVisitKey(nodeUrl), JSON.stringify(next));
+    localStorage.setItem(lastVisitKey(target), JSON.stringify(next));
   } catch {
     /* quota / private mode: forgetting is fine */
   }
 }
 
-export function rememberTeam(nodeUrl: string | null | undefined, teamId: string): void {
+export function rememberTeam(target: string | null | undefined, teamId: string): void {
   if (!teamId) return;
-  const cur = readLastVisit(nodeUrl);
+  const cur = readLastVisit(target);
   if (cur.team === teamId) return;
-  write(nodeUrl, { ...cur, team: teamId });
+  write(target, { ...cur, team: teamId });
 }
 
-export function rememberProject(nodeUrl: string | null | undefined, teamId: string, projectId: string): void {
+export function rememberProject(target: string | null | undefined, teamId: string, projectId: string): void {
   if (!teamId || !projectId) return;
-  const cur = readLastVisit(nodeUrl);
+  const cur = readLastVisit(target);
   if (cur.team === teamId && cur.projects?.[teamId] === projectId) return;
-  write(nodeUrl, { ...cur, team: teamId, projects: { ...cur.projects, [teamId]: projectId } });
+  write(target, { ...cur, team: teamId, projects: { ...cur.projects, [teamId]: projectId } });
 }
 
 /** Forget a team (left, deleted, or no longer listed) and its last project. */
-export function forgetTeam(nodeUrl: string | null | undefined, teamId: string): void {
-  const cur = readLastVisit(nodeUrl);
+export function forgetTeam(target: string | null | undefined, teamId: string): void {
+  const cur = readLastVisit(target);
   if (cur.team !== teamId && !cur.projects?.[teamId]) return;
   const projects = { ...cur.projects };
   delete projects[teamId];
-  write(nodeUrl, { ...cur, team: cur.team === teamId ? undefined : cur.team, projects });
+  write(target, { ...cur, team: cur.team === teamId ? undefined : cur.team, projects });
 }
 
 /** Forget a team's last project (deleted, or no longer listed). */
-export function forgetProject(nodeUrl: string | null | undefined, teamId: string, projectId: string): void {
-  const cur = readLastVisit(nodeUrl);
+export function forgetProject(target: string | null | undefined, teamId: string, projectId: string): void {
+  const cur = readLastVisit(target);
   if (cur.projects?.[teamId] !== projectId) return;
   const projects = { ...cur.projects };
   delete projects[teamId];
-  write(nodeUrl, { ...cur, projects });
+  write(target, { ...cur, projects });
 }
 
 /** Everything remembered for a node: a logout starts the next sign-in cold. */
-export function clearLastVisit(nodeUrl: string | null | undefined): void {
+export function clearLastVisit(target: string | null | undefined): void {
   try {
-    localStorage.removeItem(lastVisitKey(nodeUrl));
+    localStorage.removeItem(lastVisitKey(target));
   } catch {
     /* blocked storage holds nothing to clear */
   }

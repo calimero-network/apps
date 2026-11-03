@@ -1,0 +1,50 @@
+[package]
+name = "conformance"
+description = "Calimero Conformance: the contract the 1.0 conformance matrix calls, one method set per storage kind"
+# NOT a release version: this app is never published. The matrix packs its own
+# 0.0.0 and 0.0.1 packages from the built component (app/src/conformance/mpk.ts).
+version = "0.0.0"
+edition = "2021"
+authors = ["Calimero Limited <info@calimero.network>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/calimero-network/apps"
+publish = false
+
+[lib]
+# A `calimero:app` component. No `rlib`: the tests run the BUILT component on
+# core's engine (tests/common/mod.rs), not the crate linked natively.
+crate-type = ["cdylib"]
+
+# Core at `component-core-tag` (root Cargo.toml), the same tag for every core
+# crate; scripts/check-component-pins.py asserts it. A standalone crate cannot
+# inherit `[workspace.dependencies]`.
+[dependencies]
+calimero-app-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8" }
+
+# The harness (`TestApp`, `run_scenario`) and the builder the tests build this
+# crate with, for `cargo test` on the host only.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+calimero-app-sdk   = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8", features = ["testing"] }
+calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8" }
+serde_json = "1"
+
+# Read by `mero-component bundle` (tools/component-bundle). The app is a test
+# rig with no listing: no icon, no landing page, never in the registry.
+[package.metadata.calimero]
+package = "com.calimero.conformance"
+name = "Conformance"
+description = "Every call a component app's client makes, checked on a 1.0 cluster: the contract the matrix drives."
+author = "Calimero"
+icon = "../app/public/icon-512.png"
+category = "developer-tools"
+tags = ["test", "conformance"]
+github = "https://github.com/calimero-network/apps"
+# `component-min-runtime-version` in the root Cargo.toml: a node compares it
+# with its own release.
+min-runtime-version = "1.0.0-rc.8"
+# The matrix page, packed when built (`pnpm -F conformance-1.0 build`).
+frontend-dir = "../app/dist"
+
+# Standalone: excluded from the root workspace (root Cargo.toml), its own
+# Cargo.lock, as core's component apps are.
+[workspace]

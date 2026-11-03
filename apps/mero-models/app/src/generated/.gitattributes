@@ -1,3 +1,0 @@
-# Generated, but COMMITTED on purpose: CI regenerates and diffs it, which is
-# what turns a contract/frontend mismatch into a failed build.
-MeroModelsClient.ts linguist-generated=true

@@ -24,12 +24,12 @@ import { PermissionLevel } from '../api/clientApi';
 import { initials } from './monogram';
 
 /**
- * Normalise an id the contract handed back into the hex string the contract
- * takes. `UserId` arrives as a byte array from a contract call and as a string
- * from anything that has already been through here.
+ * Normalise an id into the string the contract takes. On Calimero 1.0 the
+ * contract answers accounts as strings, passed through as they are (trimmed);
+ * a byte array (v1's `UserId`) is hex-encoded.
  */
 export function toHexId(value: string | number[] | Uint8Array): string {
-  if (typeof value === 'string') return value.trim().toLowerCase();
+  if (typeof value === 'string') return value.trim();
   const bytes = Array.isArray(value) ? value : Array.from(value);
   return bytes.map((b) => Number(b).toString(16).padStart(2, '0')).join('');
 }

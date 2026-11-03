@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { useMero } from "@calimero-network/mero-react";
-import { useMyName } from "@calimero-apps/names";
+import { useMyName } from "../../api/names";
+import { useSessionApi } from "../../sessionContext";
+import { describeTarget } from "../../session";
 import { initialsOf } from "../../utils/artwork";
 import { truncateMiddle } from "../../utils/format";
 import { IconLogout, IconSettings } from "../HomeIcons";
@@ -9,9 +10,9 @@ import styles from "./DesignShell.module.css";
 
 /** Who you are, in the top bar's corner: your name, team settings, Logout. */
 export default function UserMenu({ account, onLogout }: { account: string; onLogout: () => void }) {
-  const { admin, nodeUrl } = useMero();
+  const { api } = useSessionApi();
   const { teamId, openSettings } = useShell();
-  const me = useMyName(admin, teamId ?? undefined, account);
+  const me = useMyName(teamId ?? undefined, account);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -32,7 +33,10 @@ export default function UserMenu({ account, onLogout }: { account: string; onLog
   }, [open]);
 
   const name = me.name || (account ? truncateMiddle(account, 6, 4) : "You");
-  const node = (nodeUrl ?? "").replace(/^https?:\/\//, "");
+  const node =
+    api.session.status === "signed-in" || api.session.status === "signed-out"
+      ? describeTarget(api.session.target)
+      : "";
 
   return (
     <div className={styles.userWrap} ref={ref}>
@@ -52,7 +56,7 @@ export default function UserMenu({ account, onLogout }: { account: string; onLog
         <div className={`${styles.menu} ${styles.menuRight}`} role="menu">
           <div className={styles.userHead}>
             <span className={styles.userName}>{name}</span>
-            {node && <span className={styles.userNode} title={nodeUrl ?? ""}>{node}</span>}
+            {node && <span className={styles.userNode} title={node}>{node}</span>}
           </div>
           <div className={styles.menuSep} />
           {teamId && (

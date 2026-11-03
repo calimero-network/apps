@@ -1,0 +1,677 @@
+[
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createCategory",
+  "args": {
+   "name": "Monthly",
+   "emoji": "",
+   "color": ""
+  },
+  "save": "cat"
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "publishUpdate",
+  "args": {
+   "input": {
+    "title": "June 2026 update",
+    "summary": "First enterprise customer.",
+    "categoryId": "$cat",
+    "sections": [
+     {
+      "kind": "highlights",
+      "title": "Highlights",
+      "body": "Closed Globex."
+     }
+    ],
+    "metrics": [
+     {
+      "name": "MRR",
+      "value": "$48k",
+      "unit": ""
+     }
+    ],
+    "asks": [
+     {
+      "id": null,
+      "kind": "intro",
+      "title": "Intro to a fintech CFO",
+      "detail": ""
+     }
+    ]
+   }
+  },
+  "save": "update"
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "askQuestion",
+  "args": {
+   "title": "Bob's question",
+   "body": "",
+   "categoryId": null
+  },
+  "save": "q"
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "addComment",
+  "args": {
+   "postId": "$update",
+   "parentId": null,
+   "body": "Bob's reply"
+  },
+  "save": "c"
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setSettings",
+  "args": {
+   "companyName": "x",
+   "cadenceDays": 1
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "createCategory",
+  "args": {
+   "name": "x",
+   "emoji": "",
+   "color": ""
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "editCategory",
+  "args": {
+   "categoryId": "$cat",
+   "name": "x",
+   "emoji": "",
+   "color": ""
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "archiveCategory",
+  "args": {
+   "categoryId": "$cat"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "publishUpdate",
+  "args": {
+   "input": {
+    "title": "Forged",
+    "summary": "First enterprise customer.",
+    "categoryId": "",
+    "sections": [
+     {
+      "kind": "highlights",
+      "title": "Highlights",
+      "body": "Closed Globex."
+     }
+    ],
+    "metrics": [
+     {
+      "name": "MRR",
+      "value": "$48k",
+      "unit": ""
+     }
+    ],
+    "asks": [
+     {
+      "id": null,
+      "kind": "intro",
+      "title": "Intro to a fintech CFO",
+      "detail": ""
+     }
+    ]
+   }
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "editUpdate",
+  "args": {
+   "postId": "$update",
+   "input": {
+    "title": "Forged",
+    "summary": "First enterprise customer.",
+    "categoryId": "",
+    "sections": [
+     {
+      "kind": "highlights",
+      "title": "Highlights",
+      "body": "Closed Globex."
+     }
+    ],
+    "metrics": [
+     {
+      "name": "MRR",
+      "value": "$48k",
+      "unit": ""
+     }
+    ],
+    "asks": [
+     {
+      "id": null,
+      "kind": "intro",
+      "title": "Intro to a fintech CFO",
+      "detail": ""
+     }
+    ]
+   }
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "deletePost",
+  "args": {
+   "postId": "$update"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setQuestionStatus",
+  "args": {
+   "postId": "$q",
+   "status": "answered"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "addTeammate",
+  "args": {
+   "account": "@bob"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "removeTeammate",
+  "args": {
+   "account": "@owner"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "setSettings",
+  "args": {
+   "companyName": "x",
+   "cadenceDays": 1
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "createCategory",
+  "args": {
+   "name": "x",
+   "emoji": "",
+   "color": ""
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "editCategory",
+  "args": {
+   "categoryId": "$cat",
+   "name": "x",
+   "emoji": "",
+   "color": ""
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "archiveCategory",
+  "args": {
+   "categoryId": "$cat"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "publishUpdate",
+  "args": {
+   "input": {
+    "title": "Forged",
+    "summary": "First enterprise customer.",
+    "categoryId": "",
+    "sections": [
+     {
+      "kind": "highlights",
+      "title": "Highlights",
+      "body": "Closed Globex."
+     }
+    ],
+    "metrics": [
+     {
+      "name": "MRR",
+      "value": "$48k",
+      "unit": ""
+     }
+    ],
+    "asks": [
+     {
+      "id": null,
+      "kind": "intro",
+      "title": "Intro to a fintech CFO",
+      "detail": ""
+     }
+    ]
+   }
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "editUpdate",
+  "args": {
+   "postId": "$update",
+   "input": {
+    "title": "Forged",
+    "summary": "First enterprise customer.",
+    "categoryId": "",
+    "sections": [
+     {
+      "kind": "highlights",
+      "title": "Highlights",
+      "body": "Closed Globex."
+     }
+    ],
+    "metrics": [
+     {
+      "name": "MRR",
+      "value": "$48k",
+      "unit": ""
+     }
+    ],
+    "asks": [
+     {
+      "id": null,
+      "kind": "intro",
+      "title": "Intro to a fintech CFO",
+      "detail": ""
+     }
+    ]
+   }
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "deletePost",
+  "args": {
+   "postId": "$update"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "setQuestionStatus",
+  "args": {
+   "postId": "$q",
+   "status": "answered"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "addTeammate",
+  "args": {
+   "account": "@gus"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "removeTeammate",
+  "args": {
+   "account": "@owner"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "cy",
+  "op": "call",
+  "method": "editComment",
+  "args": {
+   "commentId": "$c",
+   "body": "forged"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "cy",
+  "op": "call",
+  "method": "deleteComment",
+  "args": {
+   "commentId": "$c"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "cy",
+  "op": "call",
+  "method": "deletePost",
+  "args": {
+   "postId": "$q"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "editComment",
+  "args": {
+   "commentId": "$c",
+   "body": "forged"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "cy",
+  "op": "call",
+  "method": "react",
+  "args": {
+   "postId": "$update",
+   "emoji": "👍",
+   "on": true,
+   "account": "@bob"
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "cy",
+  "op": "call",
+  "method": "markRead",
+  "args": {
+   "postId": "$update",
+   "account": "@bob"
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "cy",
+  "op": "call",
+  "method": "setProfile",
+  "args": {
+   "name": "Bob",
+   "firm": "",
+   "account": "@bob"
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getMe",
+  "args": {},
+  "expect": {
+   "ok": {
+    "account": "@bob",
+    "name": "",
+    "firm": "",
+    "isAdmin": false,
+    "isTeam": false,
+    "muted": []
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "saveDraft",
+  "args": {
+   "draftId": null,
+   "title": "Secret",
+   "payload": "{}"
+  },
+  "save": "draft"
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listDrafts",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "cy",
+  "op": "view",
+  "method": "listDrafts",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "addTeammate",
+  "args": {
+   "account": "@cy"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "cy",
+  "op": "view",
+  "method": "getMe",
+  "args": {},
+  "expect": {
+   "ok": {
+    "account": "@cy",
+    "name": "",
+    "firm": "",
+    "isAdmin": false,
+    "isTeam": true,
+    "muted": []
+   }
+  }
+ },
+ {
+  "as": "cy",
+  "op": "call",
+  "method": "setQuestionStatus",
+  "args": {
+   "postId": "$q",
+   "status": "answered"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "removeTeammate",
+  "args": {
+   "account": "@cy"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "cy",
+  "op": "call",
+  "method": "deleteComment",
+  "args": {
+   "commentId": "$c"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "cy",
+  "op": "call",
+  "method": "publishUpdate",
+  "args": {
+   "input": {
+    "title": "Late",
+    "summary": "First enterprise customer.",
+    "categoryId": "",
+    "sections": [
+     {
+      "kind": "highlights",
+      "title": "Highlights",
+      "body": "Closed Globex."
+     }
+    ],
+    "metrics": [
+     {
+      "name": "MRR",
+      "value": "$48k",
+      "unit": ""
+     }
+    ],
+    "asks": [
+     {
+      "id": null,
+      "kind": "intro",
+      "title": "Intro to a fintech CFO",
+      "detail": ""
+     }
+    ]
+   }
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "deleteComment",
+  "args": {
+   "commentId": "$c"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deletePost",
+  "args": {
+   "postId": "$q"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "listPosts",
+  "args": {
+   "kind": "question",
+   "categoryId": null,
+   "cursor": null,
+   "limit": 20
+  },
+  "expect": {
+   "ok": {
+    "items": [],
+    "nextCursor": null
+   }
+  }
+ }
+]

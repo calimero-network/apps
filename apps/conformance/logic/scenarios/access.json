@@ -1,0 +1,276 @@
+[
+ {
+  "as": "gus",
+  "op": "call",
+  "method": "set",
+  "args": {
+   "key": "g",
+   "value": "guest"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "get",
+  "args": {
+   "key": "g"
+  },
+  "expect": {
+   "ok": "guest"
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "view",
+  "method": "get",
+  "args": {
+   "key": "g"
+  },
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "view",
+  "method": "publicGet",
+  "args": {
+   "key": "g"
+  },
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "@anonymous",
+  "op": "call",
+  "method": "set",
+  "args": {
+   "key": "g",
+   "value": "x"
+  },
+  "expect": {
+   "refused": "UNAUTHENTICATED"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "view",
+  "method": "get",
+  "args": {
+   "key": "g"
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "mallory",
+  "op": "call",
+  "method": "set",
+  "args": {
+   "key": "g",
+   "value": "x"
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "confirmedSet",
+  "args": {
+   "key": "c",
+   "value": "1"
+  },
+  "expect": {
+   "confirmRequired": true
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "confirmedSet",
+  "args": {
+   "key": "c",
+   "value": "1"
+  },
+  "expect": {
+   "ok": null
+  },
+  "confirmed": true
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "get",
+  "args": {
+   "key": "c"
+  },
+  "expect": {
+   "ok": "1"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getResult",
+  "args": {
+   "key": "nope"
+  },
+  "expect": {
+   "error": "NotFound",
+   "fields": {
+    "key": "nope"
+   }
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getUnchecked",
+  "args": {
+   "key": "nope"
+  },
+  "expect": {
+   "trap": "Fault"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "set",
+  "args": {
+   "key": "g"
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "set",
+  "args": {
+   "key": "g",
+   "value": "v",
+   "extra": true
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "authoredVecGet",
+  "args": {
+   "index": 0
+  },
+  "expect": {
+   "error": "BadArgs"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "noSuchMethod",
+  "args": {},
+  "expect": {
+   "error": "UnknownMethod"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "my_account",
+  "args": {},
+  "expect": {
+   "error": "UnknownMethod"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "set",
+  "args": {
+   "key": "g",
+   "value": "v"
+  },
+  "expect": {
+   "error": "NotAView"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "sharedAddWriter",
+  "args": {
+   "account": "@bob"
+  },
+  "expect": {
+   "error": "NotAWriter",
+   "fields": {
+    "account": "@bob"
+   }
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "sharedAddWriter",
+  "args": {
+   "account": "@bob"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "sharedSet",
+  "args": {
+   "value": "bob writes"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "op": "removeMember",
+  "args": "bob"
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "get",
+  "args": {
+   "key": "g"
+  },
+  "expect": {
+   "refused": "NOT_FOUND"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "sharedGet",
+  "args": {},
+  "expect": {
+   "ok": "bob writes"
+  },
+  "events": {
+   "owner": [
+    "Inserted",
+    "Inserted",
+    "SharedWriterAdded",
+    "SharedSet"
+   ]
+  }
+ }
+]

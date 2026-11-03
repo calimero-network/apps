@@ -1,7 +1,6 @@
 import { create } from "zustand";
-import { shortAccount } from "@calimero-apps/names";
 import type { MeshShape } from "./geometry";
-import type { LockView, MeshRef, TextureRef } from "../generated/MeroModelsClient";
+import type { LockView, MeshRef, TextureRef } from "../meroModels";
 import {
   cloneObject,
   defaultEnvironment,
@@ -85,8 +84,8 @@ export interface EditorState {
   /** Display names by member id, for check-outs and history. */
   memberNames: Map<string, string>;
   /**
-   * The name a member set for the whole namespace, shared by every app on it:
-   * the fallback for anyone who has not named themselves in this scene.
+   * Another name the app knows for an account (none since the port: v1 read
+   * namespace-wide names): the fallback for anyone unnamed in this scene.
    */
   spaceNameOf: (id: string) => string | undefined;
   environment: Environment;
@@ -455,14 +454,21 @@ export const GUEST = "Guest";
 
 /**
  * The name a member chose for this scene. `useJoin` joins an unnamed member as
- * "Guest", so that placeholder is no name: the namespace name is a better one.
+ * "Guest", so that placeholder is no name: any other name is a better one.
  */
 export function chosenName(name: string | null | undefined): string {
   const trimmed = (name ?? "").trim();
   return trimmed === GUEST ? "" : trimmed;
 }
 
-/** A member's scene name, else their namespace name, else a short form of their id. */
+/** A member's scene name, else another name the app knows, else a short form of their id. */
+/** A short, still-distinct form of an account id. */
+export function shortAccount(id: string | null | undefined, head = 6, tail = 4): string {
+  const s = id?.trim() ?? "";
+  if (!s) return "unknown";
+  return s.length <= head + tail + 1 ? s : `${s.slice(0, head)}…${s.slice(-tail)}`;
+}
+
 export function nameOf(state: Pick<EditorState, "memberNames" | "me" | "spaceNameOf">, id: string): string {
   if (id && id === state.me) return "you";
   if (!id) return "someone";

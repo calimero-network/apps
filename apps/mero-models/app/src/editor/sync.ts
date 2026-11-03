@@ -1,11 +1,11 @@
-import type { LockView, MeroModelsClient, MeshRef, TextureRef, VersionView } from "../generated/MeroModelsClient";
+import type { LockView, MeroModelsClient, MeshRef, TextureRef, VersionView } from "../meroModels";
 import type { BlobStore } from "./blobs";
 import type { MeshShape } from "./geometry";
 import { decodeMesh, encodeMesh, meshCounts } from "./meshcodec";
 import { MAX_BATCH, type Environment, type SceneObject } from "./model";
 import { emptyChange, useEditor, type Change, type Outbox, type Role, type StoredMesh } from "./store";
 
-/** The slice of the generated client the sync needs — narrowed so tests can fake it. */
+/** The slice of the contract's client the sync needs — narrowed so tests can fake it. */
 export type SceneApi = Pick<
   MeroModelsClient,
   | "getScene"
@@ -64,6 +64,8 @@ export class SceneSync implements Outbox {
     private api: SceneApi,
     readonly blobs: BlobStore,
     private onError: (message: string) => void = () => {},
+    /** The scene's name until an editor sets one: the instance's name. */
+    private fallbackName = "",
   ) {}
 
   dispose(): void {
@@ -341,7 +343,7 @@ export class SceneSync implements Outbox {
       locks: new Map(locks.map((l: LockView) => [l.asset_id, l])),
       memberNames: new Map(members.map((m) => [m.id, m.name])),
       environment: this.fresh("env", start) ? scene.environment : undefined,
-      sceneName: scene.name,
+      sceneName: scene.name || this.fallbackName,
       role: scene.my_role as Role,
       me: scene.me,
     });
