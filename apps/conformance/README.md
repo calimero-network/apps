@@ -18,7 +18,7 @@ ever marked expected because it fails today.
 
 ## There is no `logic/` directory
 
-Like `delegated-execution`, this app drives core's `apps/scaffolding-e2e`
+This app drives core's `apps/scaffolding-e2e`
 contract (public storage, `UserStorage`, `FrozenStorage`, `AuthoredMap`,
 `AuthoredVector`, `SharedStorage`) and ships none of its own. So it is outside
 `scripts/check-app-metadata.sh`, has no landing page (`apps.config.mjs` does not
