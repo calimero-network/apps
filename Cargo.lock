@@ -950,15 +950,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mero-kombat"
-version = "0.0.1"
-dependencies = [
- "calimero-sdk",
- "calimero-storage",
- "calimero-storage-macros",
-]
-
-[[package]]
 name = "mero-models"
 version = "0.0.1"
 dependencies = [
