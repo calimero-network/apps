@@ -1,71 +1,92 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { AppError, TrapError } from "@calimero-network/mero-js";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-// ── When a just-joined context counts as arrived ─────────────────────────────
-//
-// The invitation dialog holds "Syncing…" until this panel clears the joined
-// namespace's flag. It must do so on the first read of the entries that comes
-// back, EMPTY included: an empty map is an answer, and only a read that fails
-// (the node does not hold the context's state yet) is still waiting.
+import { KvPanel } from "./KvPanel";
+import type { KvStore } from "./kvStore";
 
-const entries = vi.fn();
-vi.mock("./useKvStore", () => ({ useKvStore: () => ({ entries }) }));
+afterEach(cleanup);
 
-const NAMESPACE = "ns-1";
-vi.mock("@calimero-network/mero-react", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  useContextGroup: () => ({ groupId: NAMESPACE, loading: false, error: null }),
-}));
+function fakeStore(overrides: Partial<KvStore> = {}): KvStore {
+  return {
+    set: vi.fn().mockResolvedValue(null),
+    updateIfExists: vi.fn().mockResolvedValue(false),
+    getOrInsert: vi.fn().mockResolvedValue("first"),
+    entries: vi.fn().mockResolvedValue({}),
+    len: vi.fn().mockResolvedValue("0"),
+    get: vi.fn().mockResolvedValue(null),
+    getUnchecked: vi.fn().mockResolvedValue("v"),
+    getResult: vi.fn().mockResolvedValue("v"),
+    remove: vi.fn().mockResolvedValue(null),
+    clear: vi.fn().mockResolvedValue(null),
+    ...overrides,
+  };
+}
 
-const { isNamespaceJustJoined, markNamespaceJustJoined } = await import(
-  "@calimero-network/mero-react"
-);
-const { KvPanel } = await import("./KvPanel");
+const type = (label: string, value: string) =>
+  fireEvent.change(screen.getByLabelText(label), { target: { value } });
 
-beforeEach(() => {
-  entries.mockReset();
-  sessionStorage.clear();
-  markNamespaceJustJoined(NAMESPACE);
-});
+describe("KvPanel", () => {
+  it("lists the entries and re-reads them after a write", async () => {
+    const entries = vi.fn().mockResolvedValueOnce({}).mockResolvedValue({ greeting: "hello" });
+    const kv = fakeStore({ entries });
+    render(<KvPanel kv={kv} />);
+    await screen.findByText("Empty.");
 
-afterEach(() => {
-  cleanup();
-  vi.useRealTimers();
-  sessionStorage.clear();
-});
-
-describe("KvPanel after a join", () => {
-  it("counts an empty map as arrived", async () => {
-    entries.mockResolvedValue({});
-    render(<KvPanel contextId="ctx-1" />);
-
-    await waitFor(() => expect(isNamespaceJustJoined(NAMESPACE)).toBe(false));
-    expect(screen.getByText("Empty.")).toBeTruthy();
+    type("key", "greeting");
+    type("value", "hello");
+    fireEvent.click(screen.getByText("set"));
+    await screen.findByText("hello");
+    expect(kv.set).toHaveBeenCalledWith("greeting", "hello");
+    expect(screen.getByText("greeting")).toBeTruthy();
   });
 
-  it("keeps waiting while the read fails, and stops at the first one that answers", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    // The read after the failing one answers only when the test says so. With
-    // time still advancing, the poll can fire while the test is looking for
-    // the syncing text; an answer it gave on its own would clear the flag
-    // before the assertion below, which is a race in the test, not the panel.
-    let answer!: (value: Record<string, string>) => void;
-    const answered = new Promise<Record<string, string>>((resolve) => {
-      answer = resolve;
+  it("shows each card's own result under its buttons", async () => {
+    const kv = fakeStore({ getOrInsert: vi.fn().mockResolvedValue("existing") });
+    render(<KvPanel kv={kv} />);
+    type("key", "k");
+    type("value", "new");
+    fireEvent.click(screen.getByText("getOrInsert"));
+    await screen.findByText(/"getOrInsert": "existing"/);
+    expect(kv.getOrInsert).toHaveBeenCalledWith("k", "new");
+  });
+
+  it("names a contract error by its code and fields, and a panic as a trap", async () => {
+    const kv = fakeStore({
+      getResult: vi.fn().mockRejectedValue(new AppError("app error", { code: "NotFound", fields: { key: "nope" } })),
+      getUnchecked: vi.fn().mockRejectedValue(new TrapError("trapped", { kind: "Fault" })),
     });
-    entries
-      .mockRejectedValueOnce(new Error("context state not found"))
-      .mockImplementation(() => answered);
-    render(<KvPanel contextId="ctx-1" />);
+    render(<KvPanel kv={kv} />);
+    type("read key", "nope");
+    fireEvent.click(screen.getByText("getResult"));
+    await screen.findByText('NotFound {"key":"nope"}');
+    fireEvent.click(screen.getByText("getUnchecked"));
+    await screen.findByText("the app aborted the call (Fault)");
+  });
 
-    expect(
-      await screen.findByText("Syncing from the other members…"),
-    ).toBeTruthy();
-    expect(isNamespaceJustJoined(NAMESPACE)).toBe(true);
+  it("asks before removing everything", async () => {
+    const kv = fakeStore({ entries: vi.fn().mockResolvedValue({ a: "1" }) });
+    render(<KvPanel kv={kv} />);
+    await screen.findByText("a");
+    fireEvent.click(screen.getByText("Remove all"));
+    expect(kv.clear).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText("Confirm — remove all"));
+    await waitFor(() => expect(kv.clear).toHaveBeenCalledTimes(1));
+  });
 
-    answer({ greeting: "hello" });
-    await vi.advanceTimersByTimeAsync(2_500);
-    await waitFor(() => expect(isNamespaceJustJoined(NAMESPACE)).toBe(false));
-    expect(screen.getByText("hello")).toBeTruthy();
+  it("re-reads when another member changes the store", async () => {
+    let notify: () => void = () => {};
+    const stop = vi.fn();
+    const subscribe = vi.fn((onChange: () => void) => {
+      notify = onChange;
+      return stop;
+    });
+    const entries = vi.fn().mockResolvedValueOnce({}).mockResolvedValue({ beta: "from-bob" });
+    const { unmount } = render(<KvPanel kv={fakeStore({ entries })} subscribe={subscribe} />);
+    await screen.findByText("Empty.");
+    act(() => notify());
+    await screen.findByText("from-bob");
+    unmount();
+    expect(stop).toHaveBeenCalled();
   });
 });

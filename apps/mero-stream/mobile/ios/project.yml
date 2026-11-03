@@ -7,8 +7,9 @@
 # Everything that is not a view or a camera (the generated contract client,
 # the web app's media framing, slots, G.711, the H.264 helpers and the view
 # models) is the local Swift package in Core/, tested with `swift test` on
-# macOS. The swift-sdk is pinned by revision to its `main` merge commit of
-# PR #84. Keep it equal to the revision in Core/Package.swift.
+# macOS. The swift-sdk is pinned to its v0.5.0 release (Calimero
+# 1.0); bump `exactVersion` for a new release. Keep it equal to the version in
+# Core/Package.swift.
 name: MeroStream
 
 options:
@@ -20,7 +21,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: c9ca1a06ea3b04c24d943cbb0e1d9b30eb4c5a8f
+    exactVersion: 0.5.0
   StreamCore:
     path: Core
 
@@ -48,20 +49,26 @@ targets:
         # Keep sending audio while the screen locks mid-call.
         UIBackgroundModes: [audio]
         CFBundleURLTypes:
-          # The wallet returns here after Cloud sign-in (`mero-stream://enrol#credential=…`).
-          - CFBundleURLName: network.calimero.stream.enrol
+          # The node's consent page returns here (`mero-stream://consent?request_id=…&result=…`).
+          - CFBundleURLName: network.calimero.stream.consent
             CFBundleURLSchemes: [mero-stream]
           # Invitation deep links: `calimero://com.calimero.mero-stream/join?invitation=…`.
           - CFBundleURLName: network.calimero.stream.invite
             CFBundleURLSchemes: [calimero]
-        # Where sign-in goes. Empty = the SDK's defaults (the hosted Calimero
-        # wallet, Cloud manager and registry). See README.md.
+        # The Calimero 1.0 cluster. MeroCluster: a Calimero Cloud cluster by
+        # name (its nodes come from the node directory); or MeroNodeURL: one
+        # node (empty both = sign-in asks); MeroNodes: the cluster's other
+        # nodes, comma-separated, for failover; MeroAllowMock: YES only for a
+        # `merod local` development node (mock attestation). See ../README.md.
+        MeroCluster: ""
+        MeroNodeURL: ""
+        MeroNodes: ""
+        MeroAllowMock: "NO"
+        MeroPackageVersion: ""
+        # Where the node's consent page returns to.
         StreamCallbackScheme: mero-stream
         StreamCallbackHost: ""
-        StreamCallbackPath: /enrol
-        MeroCloudBaseURL: ""
-        MeroWalletURL: ""
-        MeroRegistryURL: ""
+        StreamCallbackPath: /consent
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: network.calimero.stream

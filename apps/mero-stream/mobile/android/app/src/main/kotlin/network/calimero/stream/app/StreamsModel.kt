@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import network.calimero.stream.core.ErrorText
 import network.calimero.stream.core.StreamInvitation
 
-/** A stream: a namespace you invite people to. Each room in it is one call. */
+/** A stream: an organization you invite people to. Each room in it is one call. */
 data class StreamSummary(
     val id: String,
     val name: String,
@@ -21,13 +21,19 @@ data class StreamSummary(
     val title: String get() = name.trim().ifEmpty { "Stream ${id.take(6)}" }
 }
 
-/** A room: a subgroup of the stream, and the context that is its call. */
+/**
+ * A room: an app instance in the stream's organization, which is its call. Everyone in the
+ * organization reaches every room in it (the web's model).
+ */
 data class RoomSummary(
+    /** The app instance's id. */
     val id: String,
     val namespaceId: String,
     val name: String,
-    val contextId: String?,
 ) {
+    /** The call's app instance: the room itself. */
+    val contextId: String? get() = id
+
     val title: String get() = name.trim().ifEmpty { "Room ${id.take(6)}" }
 }
 
@@ -45,7 +51,7 @@ sealed interface InvitationLanding {
 
 private val byTitle = compareBy(String.CASE_INSENSITIVE_ORDER) { s: StreamSummary -> s.title }
 
-/** The stream list (the web's `/streams`): the account's namespaces, creating, inviting, joining. */
+/** The stream list (the web's `/streams`): the account's organizations, creating, inviting, joining. */
 class StreamsModel(
     val backend: MeroAppBackend,
 ) {
@@ -59,17 +65,10 @@ class StreamsModel(
     val isWorking: StateFlow<Boolean> = _isWorking.asStateFlow()
     val error = MutableStateFlow<String?>(null)
 
-    /** Set when a stream was founded but the cloud would not host it. */
+    /** Something to point out that is not an error. */
     val notice = MutableStateFlow<String?>(null)
 
-    val hasRelay: Boolean get() = backend.hasRelay
-
     suspend fun load() {
-        if (!backend.hasRelay) {
-            _streams.value = emptyList()
-            _hasLoaded.value = true
-            return
-        }
         _isLoading.value = true
         try {
             val namespaces = backend.listNamespaces()
@@ -78,7 +77,7 @@ class StreamsModel(
                     namespaces
                         .map { ns ->
                             async {
-                                val rooms = runCatching { backend.listSubgroups(ns.id).size }.getOrNull()
+                                val rooms = runCatching { backend.listContextEntries(ns.id).size }.getOrNull()
                                 StreamSummary(ns.id, ns.name.orEmpty(), ns.memberCount, rooms)
                             }
                         }.awaitAll()
@@ -92,17 +91,13 @@ class StreamsModel(
         }
     }
 
-    /** Found a stream. Returns it, or null with [error] set. */
+    /** Create a stream (an organization the account owns). Returns it, or null with [error] set. */
     suspend fun create(name: String): StreamSummary? {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return null
         _isWorking.value = true
         return try {
             val founded = backend.foundNamespace(trimmed)
-            if (!founded.haEnabled) {
-                notice.value = founded.haError
-                    ?: "The cloud is not hosting this stream yet, so people you invite can't find it until it is."
-            }
             val stream = StreamSummary(founded.namespaceId, trimmed, memberCount = 1, roomCount = 0)
             _streams.value = (_streams.value.filter { it.id != stream.id } + stream).sortedWith(byTitle)
             error.value = null
@@ -115,12 +110,12 @@ class StreamsModel(
         }
     }
 
-    /** A link that joins the whole stream and lands on its rooms. */
+    /** A link that joins the whole stream and lands on its rooms. Minting it asks for the passkey (the node's step-up). */
     suspend fun inviteLink(stream: StreamSummary): String? {
         _isWorking.value = true
         return try {
-            val signed = backend.createInvitation(stream.id)
-            StreamInvitation(signed, StreamInvitation.Kind.NAMESPACE, stream.id, namespaceName = stream.title).link()
+            val minted = backend.createInvitation(stream.id)
+            StreamInvitation(minted, StreamInvitation.Kind.NAMESPACE, namespaceName = stream.title).link()
         } catch (e: Exception) {
             error.value = ErrorText.describe(e)
             null
@@ -129,7 +124,7 @@ class StreamsModel(
         }
     }
 
-    /** Redeem an invitation. Null with [error] set when the relay refused. */
+    /** Redeem an invitation. Null with [error] set when the node refused. */
     suspend fun join(invitation: StreamInvitation): InvitationLanding? {
         _isWorking.value = true
         return try {
@@ -141,7 +136,7 @@ class StreamsModel(
             if (invitation.opensRoom && roomId != null) {
                 InvitationLanding.Room(
                     stream,
-                    RoomSummary(roomId, invitation.namespaceId, invitation.roomName.orEmpty(), invitation.contextId),
+                    RoomSummary(roomId, invitation.namespaceId, invitation.roomName.orEmpty()),
                 )
             } else {
                 InvitationLanding.Stream(stream)

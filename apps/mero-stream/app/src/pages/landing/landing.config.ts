@@ -11,13 +11,12 @@
 import { ArrowsUpDown, BarChart, CheckSquare, Trash } from '@calimero-network/mero-icons';
 
 import Animation from './animation';
-import LoginPopup from './loginPopup';
 import type { LandingConfig } from './landingTypes';
 
 export const CONFIG: LandingConfig = {
   name: "Mero Stream",
   packageId: "com.calimero.mero-stream",
-  tagline: "Capacity probe: streaming media OVER Calimero. /stream runs a toy codec inside the WASM app (approach 3); /live stores opaque browser-encoded H.264 (approach 2). Experimental; not shippable media.",
+  tagline: "Capacity probe: streaming media OVER Calimero. /stream runs a toy codec inside the app component (approach 3); /live carries browser-encoded H.264 over presence or the app's log (approaches 1 and 2). Experimental; not shippable media.",
   dir: "mero-stream",
   markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
@@ -27,13 +26,13 @@ export const CONFIG: LandingConfig = {
   trust: ["Measured, not promised", "Deterministic codec", "Web only"],
   explainer: [
     "An honest experiment rather than a finished product: how far can the Calimero network carry live video? Mero Stream exists to find the ceiling and report it, and the number it produces is the point.",
-    "There are two paths. One runs a deliberately simple integer-only codec inside the WASM app itself; the other stores browser-encoded H.264 fragments and treats the network as transport. Comparing them is what makes the limit legible.",
+    "There are three paths. One runs a deliberately simple integer-only codec inside the app component itself; one stores browser-encoded H.264 in the app’s log; the call carries it over the node’s ephemeral presence channel and stores nothing. Comparing them is what makes the limit legible.",
   ],
   features: [
     {
       icon: ArrowsUpDown,
-      title: "Two codec paths",
-      body: "A deterministic codec inside the WASM app, or browser WebCodecs H.264 through the same context.",
+      title: "Three transports",
+      body: "A deterministic codec inside the app component, or browser WebCodecs H.264 through the app’s log or its presence channel.",
     },
     {
       icon: BarChart,
@@ -47,18 +46,18 @@ export const CONFIG: LandingConfig = {
     },
     {
       icon: Trash,
-      title: "Delete is a tombstone",
-      body: "Fragment keys are monotone and never reused, so a deletion cannot be confused with a gap.",
+      title: "Keys are never reused",
+      body: "Fragment and chunk sequences are monotone, so a pruned frame cannot be confused with a gap.",
     },
   ],
   faq: [
     {
       q: "Is this production-ready?",
-      a: "No, and it does not claim to be. Mero Stream is a capacity probe: it exists to measure how much live media a Calimero context can carry. Treat its numbers as findings, not guarantees.",
+      a: "No, and it does not claim to be. Mero Stream is a capacity probe: it exists to measure how much live media a Calimero app can carry. Treat its numbers as findings, not guarantees.",
     },
     {
       q: "Why web only?",
-      a: "Not because it breaks on the desktop — it renders and runs there. What is unsupported is the desktop integration around it, so anything you see in a desktop window should be reproduced in a browser before it is believed.",
+      a: "It needs a browser with WebCodecs and a camera, and signs in with a passkey on the cluster that serves it. The native iOS and Android apps follow in their own release.",
     },
   ],
   animation: Animation,
@@ -67,23 +66,23 @@ export const CONFIG: LandingConfig = {
       id: "concepts",
       heading: "The words, and what they mean here",
       paragraphs: [
-        "Mero Stream is a capacity probe, not a finished product, and this page would rather say so than oversell it. It exists to find out how far live media can be pushed through a peer-to-peer context, and to report the answer honestly.",
+        "Mero Stream is a capacity probe, not a finished product, and this page would rather say so than oversell it. It exists to find out how far live media can be pushed through a Calimero app, and to report the answer honestly.",
       ],
       concepts: [
-        { term: "Namespace", def: "A stream you own and invite viewers into." },
-        { term: "Context", def: "The stream: its members, its frames and its chunks." },
-        { term: "Frame", def: "A picture encoded by a deterministic, integer-only codec running inside the WASM app. No floating point, no SIMD, no threads — so every node computes a byte-identical result." },
+        { term: "Stream", def: "An organization you own and invite people into. Everyone in it reaches every room." },
+        { term: "Room", def: "One app instance in the stream: one call, with its members, its frames and its chunks." },
+        { term: "Frame", def: "A picture encoded by a deterministic, integer-only codec running inside the app component. No floating point, no SIMD, no threads — so every reader decodes a byte-identical result." },
         { term: "Chunk", def: "The other path: H.264 encoded by the browser’s WebCodecs and stored as fragments. Faster, but the browser is doing the encoding rather than the contract." },
-        { term: "Tombstone", def: "How a deleted fragment is recorded. Fragment keys are monotone and never reused, so a delete can never be confused with a fragment that has not arrived yet." },
+        { term: "Presence", def: "The node’s ephemeral channel: what the call carries its video on. Never stored, never in the app’s log, gone 7 seconds after the last update." },
       ],
     },
     {
       id: "start",
       heading: "Getting started",
       steps: [
-        { title: "Use a browser", body: "This app is web only. The desktop is not a supported target — it is not blocked there and does not crash; the integration around it is what is unsupported." },
-        { title: "Connect a node", body: "Press Connect to node and choose your node." },
-        { title: "Create a stream", body: "A namespace you own. You are its admin." },
+        { title: "Use a browser", body: "This app is web only: it needs WebCodecs and a camera." },
+        { title: "Sign in", body: "Sign in with a passkey, or create an account with a new one. There is no password and no email." },
+        { title: "Create a stream", body: "An organization you own, then a room in it. Invite people with a link, approved with your passkey." },
         { title: "Watch the numbers", body: "Throughput and delivery are reported as you go. That measurement is the actual output of this app." },
       ],
     },
@@ -99,10 +98,10 @@ export const CONFIG: LandingConfig = {
       id: "storage",
       heading: "What is stored, and where",
       bullets: [
-        "Members and their roles.",
+        "Each room’s members and the names they joined with. The stream’s owner is the room’s admin.",
         "Frames from the deterministic codec, with a sequence number and a checksum.",
         "Media chunks from the WebCodecs path, with cursors marking keyframes.",
-        "Pruning counters, so old frames can be dropped without breaking the monotone sequence.",
+        "Pruning counters, so old frames can be dropped without breaking the monotone sequence. Never the call’s video: that rides presence.",
       ],
     },
     {
@@ -119,15 +118,14 @@ export const CONFIG: LandingConfig = {
       concepts: [
         { term: "Frames are dropping", def: "Expected, and the point. The app reports what got through rather than pretending everything did." },
         { term: "The camera does not start", def: "WebCodecs H.264 needs a browser build that ships the codec. A stock Chromium without it will not encode." },
-        { term: "It behaves oddly in the desktop app", def: "Web only. Use a browser." },
+        { term: "Nobody sees my video", def: "Each presence update is at most 4 KiB, so a keyframe is a dozen of them; a slow link drops frames until the next keyframe. The data panel shows what got through." },
       ],
     },
   ],
   previewSteps: [
-    { title: "Two nodes", body: "An encoder and a decoder, with a real context between them rather than a media server." },
-    { title: "Frames flow", body: "Either deterministic frames computed inside the WASM app, or browser-encoded H.264 chunks." },
+    { title: "Two people", body: "An encoder and a decoder, with a real Calimero app between them rather than a media server." },
+    { title: "Frames flow", body: "Either deterministic frames computed inside the app component, or browser-encoded H.264 chunks." },
     { title: "Throughput is measured", body: "The bar is the actual figure, not an illustration. Measuring it is what this app is for." },
     { title: "The ceiling is reported", body: "Where delivery falls off, the app says so. An honest experiment beats a confident demo." },
   ],
-  loginPopup: LoginPopup,
 };

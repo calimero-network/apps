@@ -1,20 +1,14 @@
-import { useMero } from "@calimero-network/mero-react";
+import { describeTarget, useSessionApi } from "../session";
 import { clearActiveRoom } from "../lib/session";
 import { LogOutIcon, ServerIcon } from "./icons";
 import styles from "./SessionMenu.module.css";
 
 /**
- * Who you are connected as, and the way out.
+ * Who you are signed in as, where, and the way out.
  *
- * There was no logout anywhere in this app. `useMero()` has exposed `logout()`
- * all along; nothing called it, so the only way to leave a session was to clear
- * site data by hand. That also made the app impossible to test as a second
- * person on one machine, and it is why opening Mero Stream on an origin another
- * Calimero app had used dropped you straight into a session you never chose.
- *
- * The node URL is shown next to it deliberately: with several dev nodes on one
- * machine, "which node am I on" is the first question when something looks
- * empty, and the answer used to be nowhere on screen.
+ * v1 showed the node URL and called mero-react's `logout()`. Here it is the
+ * cluster the client talks to (`merod local (3 nodes)` in development, the
+ * Cloud cluster's name in production) and the passkey session's sign-out.
  */
 export default function SessionMenu({
   variant = "inline",
@@ -22,28 +16,16 @@ export default function SessionMenu({
   /** `inline` for a page header; `menu` for rows inside a dropdown. */
   variant?: "inline" | "menu";
 } = {}) {
-  const { nodeUrl, logout } = useMero();
+  const { session, signOut: endSession } = useSessionApi();
+  const signedIn = session.status === "signed-in" ? session : null;
 
-  // The active room is OUR state, not the SDK's — `logout()` clears tokens and
-  // knows nothing about it. Left behind, the next person to log in on this
-  // browser boots straight into the previous session's call: `/` redirects to
-  // /live whenever a context id is stored, and RequireStream only checks that
-  // the context EXISTS, not that it is theirs.
   const signOut = () => {
     clearActiveRoom();
-    logout();
+    void endSession();
   };
 
-  const host = (() => {
-    if (!nodeUrl) return null;
-    try {
-      const u = new URL(nodeUrl);
-      // Port included: two dev nodes differ only by it.
-      return u.port ? `${u.hostname}:${u.port}` : u.hostname;
-    } catch {
-      return nodeUrl;
-    }
-  })();
+  const host = signedIn ? describeTarget(signedIn.target) : null;
+  const nodeUrl = signedIn ? `${host} · ${signedIn.accountId}` : null;
 
   if (variant === "menu") {
     return (
@@ -56,7 +38,7 @@ export default function SessionMenu({
           >
             <ServerIcon size={16} />
             <span className={styles.menuNodeText}>
-              <span className={styles.menuNodeLabel}>Connected node</span>
+              <span className={styles.menuNodeLabel}>Signed in on</span>
               <span className={styles.menuNodeHost}>{host}</span>
             </span>
           </span>
@@ -67,7 +49,7 @@ export default function SessionMenu({
           className={styles.menuLogout}
           onClick={signOut}
           data-testid="logout"
-          title="Sign out of this node"
+          title="Sign out"
         >
           <LogOutIcon size={16} />
           Log out
@@ -93,7 +75,7 @@ export default function SessionMenu({
         className={styles.logout}
         onClick={signOut}
         data-testid="logout"
-        title="Sign out of this node"
+        title="Sign out"
         aria-label="Log out"
       >
         <LogOutIcon size={16} />
