@@ -1,8 +1,7 @@
-import { type ReactNode, useEffect } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
-import { bindSession } from "./api/session";
-import { loadAccountId } from "./api/identity";
+import { useState, type ReactNode } from "react";
+import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
+import { useSessionApi } from "./api/sessionContext";
+import { pendingInvite } from "./api/teams";
 import LandingPage from "./pages/landing/LandingPage";
 import TeamsPage from "./pages/teams/TeamsPage";
 import TeamCalendarsPage from "./pages/teams/TeamCalendarsPage";
@@ -10,101 +9,62 @@ import CalendarPage from "./pages/calendar";
 import BookPage from "./pages/book/BookPage";
 import { ToastProvider } from "./contexts/ToastContext";
 import InvitationPrompt from "./components/common/invitation-prompt/InvitationPrompt";
+import SignInModal from "./components/common/modals/sign-in-modal/SignInModal";
 
 /** Every path the shared landing page serves. See src/pages/landing. */
-const LANDING_PATHS = ['/', '/docs', '/preview'];
+const LANDING_PATHS = ["/", "/docs", "/preview"];
 
-
-/**
- * Hands the live session to the data layer, which cannot call `useMero()`.
- *
- * The redux thunks build their data source once at module load; it reads the
- * contract transport (`mero.rpc` — a node's JSON-RPC, or the relay for an
- * account) and whether the session is delegated from `api/session`, which this
- * keeps current. The account id is loaded here too, so the ownership gates
- * (Edit / Delete) know who "me" is on every page, not only the calendar.
- */
-function MeroSessionBridge() {
-  const { mero, admin, isDelegated } = useMero();
-  useEffect(() => {
-    bindSession({ rpc: mero?.rpc ?? null, isDelegated });
-  }, [mero, isDelegated]);
-  useEffect(() => {
-    if (admin) void loadAccountId(admin);
-  }, [admin]);
-  return null;
+/** The session while it connects; nothing to redirect on yet. */
+function useConnecting(): boolean {
+  return useSessionApi().api.session.status === "connecting";
 }
 
-// Route guards driven by mero-react auth state. `isLoading` gates the redirect
-// so we don't flash to /login while the auth probe is still in flight.
+/** Signed-in routes. Signed out, the front door (which offers the passkey sign-in). */
 function RequireAuth({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isLoading } = useMero();
-  if (isLoading) return null;
-  if (!isAuthenticated) return <Navigate to="/" replace />;
+  const { api } = useSessionApi();
+  if (api.session.status === "connecting") return null;
+  if (api.session.status !== "signed-in") return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
-
 /**
- * An authenticated visitor has no business on the marketing page.
- *
- * ⚠️ THIS IS THE STEP THAT CARRIES YOU INTO THE APP. The SSO callback returns
- * to wherever login started — `connectToNode` uses `window.location.href` as
- * the callback URL — which for a visitor who pressed Connect on the landing
- * page is `/`. Without this guard the tokens land, `isAuthenticated` flips
- * true, and the router renders the landing page again: you log in successfully
- * and end up exactly where you started.
- *
- * The app used to get this from a `RedirectIfAuthed` wrapped around its
- * `/login` route. Deleting that page took the redirect with it; the landing
- * routes need the same guard, because they are now where login begins and ends.
+ * The front door. A signed-in visitor goes on to their teams (resuming the
+ * team and calendar open last, utils/lastVisit). Signed out, the landing
+ * page's call to action opens the passkey sign-in; an invitation link opens it
+ * at once, since joining is what the visitor came for.
  */
-function RedirectIfAuthed({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isLoading } = useMero();
-  if (isLoading) return null; // the auth probe is still in flight
-  // `resume`: the teams list goes on to the team (and calendar) open last
-  // rather than asking again (utils/lastVisit).
-  if (isAuthenticated) {
-    return <Navigate to="/teams" replace state={{ resume: true }} />;
-  }
-  return <>{children}</>;
+function FrontDoor({ bounce }: { bounce: boolean }) {
+  const { api } = useSessionApi();
+  const navigate = useNavigate();
+  const [signingIn, setSigningIn] = useState(() => pendingInvite() !== null);
+  const signedIn = api.session.status === "signed-in";
+  if (useConnecting()) return null;
+  if (bounce && signedIn) return <Navigate to="/teams" replace state={{ resume: true }} />;
+  return (
+    <>
+      <LandingPage
+        onConnect={() => setSigningIn(true)}
+        isAuthenticated={signedIn}
+        onOpenApp={() => navigate("/teams")}
+      />
+      {signingIn && !signedIn && <SignInModal onClose={() => setSigningIn(false)} />}
+    </>
+  );
 }
 
 export default function App() {
   return (
     <ToastProvider>
-      <MeroSessionBridge />
       {/* Above the routes: an invitation link can open this app on any page. */}
       <InvitationPrompt />
       <Routes>
-        {/* The landing page is three pages: `/`, `/docs` and `/preview`. They are
-            real URLs so they can be shared and opened cold, which needs a route
-            here — otherwise this app's catch-all swallows the deep link before
-            the page ever renders. */}
         {LANDING_PATHS.map((landingPath) => (
-          <Route
-            key={landingPath}
-            path={landingPath}
-            // ⚠️ Only `/` bounces a signed-in visitor into the app. `/docs` and
-            // `/preview` are reference pages, and somebody already signed in is
-            // exactly the person most likely to want to read them.
-            element={
-              landingPath === '/' ? (
-                <RedirectIfAuthed>
-                  <LandingPage />
-                </RedirectIfAuthed>
-              ) : (
-                <LandingPage />
-              )
-            }
-          />
+          // Only `/` bounces a signed-in visitor into the app: `/docs` and
+          // `/preview` are reference pages.
+          <Route key={landingPath} path={landingPath} element={<FrontDoor bounce={landingPath === "/"} />} />
         ))}
-        {/* The /login PAGE is gone — every app had one, every one looked
-            different, and its whole content was a button the visitor had
-            already pressed to get there. The path stays as a redirect so a
-            bookmark lands on the front door instead of a blank route. */}
         <Route path="/login" element={<Navigate to="/" replace />} />
-        {/* A booking link's guest: no session, the link's token is the whole
+        {/* A booking link's guest: no session, the link's API key is the whole
             credential. Outside RequireAuth on purpose. */}
         <Route path="/book" element={<BookPage />} />
         <Route
@@ -115,7 +75,6 @@ export default function App() {
             </RequireAuth>
           }
         />
-        {/* Which calendar inside a team to open, and removing the stale ones. */}
         <Route
           path="/teams/:teamId"
           element={
@@ -124,7 +83,6 @@ export default function App() {
             </RequireAuth>
           }
         />
-        {/* The shared calendar for a context. teamId carried for "back to team". */}
         <Route
           path="/teams/:teamId/calendar/:contextId"
           element={

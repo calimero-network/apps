@@ -1,7 +1,6 @@
 import React, { FC, useRef, useState } from "react";
 import { colors } from "./colors";
 import ColorOption from "./components/color-option/ColorOption";
-import cn from "classnames";
 
 import styles from './color-picker.module.scss';
 import { useClickOutside } from "../../../../hooks/useClickOutside";

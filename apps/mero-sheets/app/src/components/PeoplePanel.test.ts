@@ -8,26 +8,15 @@ import type { Member } from '../hooks/useSpreadsheet';
 const member = (id: string, account: string) => ({ id, account, role: 'editor', nickname: '' }) as unknown as Member;
 
 describe('peopleRows', () => {
-  // A TEE node is in the workspace group but is not a person: it used to show
-  // as someone who "hasn't opened this workbook", with a Remove button for
-  // admins. It belongs only to the always-on section.
-  it('lists people only, and counts the TEE nodes apart', () => {
+  it('matches workbook members to the org roster, then lists who has not opened it', () => {
     const group = [
-      { identity: 'acc-ann', role: 'Admin' },
-      { identity: 'acc-bob', role: 'Member' },
-      { identity: 'tee-relay', role: 'RelayTee' },
-      { identity: 'tee-replica', role: 'ReadOnlyTee' },
+      { identity: 'acc-ann', role: 'admin' },
+      { identity: 'acc-bob', role: 'member' },
     ];
-    const { rows, tees } = peopleRows([member('m-ann', 'acc-ann'), member('m-tee', 'tee-relay')], group);
+    const { rows } = peopleRows([member('m-ann', 'acc-ann')], group);
     expect(rows.map((r) => r.key)).toEqual(['m-ann', 'acc-bob']);
     expect(rows[0].person?.identity).toBe('acc-ann');
-    expect(tees).toBe(2);
-  });
-
-  it('counts no TEE when none is admitted', () => {
-    const { rows, tees } = peopleRows([], [{ identity: 'acc-bob', role: 'Member' }]);
-    expect(rows.map((r) => r.key)).toEqual(['acc-bob']);
-    expect(tees).toBe(0);
+    expect(rows[1].member).toBeNull();
   });
 });
 
@@ -38,27 +27,24 @@ describe('rowName', () => {
   const nameOf = (id: string) => names[id] ?? `${id}?`;
 
   it('names a group person who has not opened the workbook by their account', () => {
-    const { rows } = peopleRows([], [{ identity: 'acc-bob', role: 'Member' }]);
+    const { rows } = peopleRows([], [{ identity: 'acc-bob', role: 'member' }]);
     expect(rowName(rows[0], nameOf)).toBe('Bob');
   });
 
   it('names a workbook member by their member id', () => {
-    const { rows } = peopleRows([member('m-ann', 'acc-ann')], [{ identity: 'acc-ann', role: 'Admin' }]);
+    const { rows } = peopleRows([member('m-ann', 'acc-ann')], [{ identity: 'acc-ann', role: 'admin' }]);
     expect(rowName(rows[0], nameOf)).toBe('Ann');
   });
 });
 
-// The TEE admission policy is a node's own setting: a cloud account can neither
-// read nor change it. The panel said "Reading the admission policy…" forever
-// and offered an editor whose save was refused.
-describe('PeoplePanel on a cloud account', () => {
+describe('PeoplePanel', () => {
   afterEach(() => cleanup());
-  const panel = (policyUnavailable: boolean) =>
+  const panel = (selfId: string | null) =>
     render(
       createElement(PeoplePanel, {
-        members: [],
-        group: [{ identity: 'acc-ann', role: 'Admin' }],
-        selfId: null,
+        members: [member('acc-ann', 'acc-ann')],
+        group: [{ identity: 'acc-ann', role: 'owner' }, { identity: 'acc-bob', role: 'member' }],
+        selfId,
         workspaceName: 'Team',
         nameOf: (id: string) => id,
         canManageRoles: false,
@@ -66,21 +52,12 @@ describe('PeoplePanel on a cloud account', () => {
         onSetRole: vi.fn(),
         onSetGroupRole: vi.fn(),
         onRemove: vi.fn(),
-        policy: null,
-        onSetPolicy: vi.fn(),
-        policyUnavailable,
         onClose: vi.fn(),
       }),
     );
 
-  it('says the admission policy is not available, and offers no editor', () => {
-    panel(true);
-    expect(screen.getByTestId('replica-policy').textContent).toMatch(/not available for cloud accounts yet/);
-    expect(screen.queryByTestId('action-edit-replicas')).toBeNull();
-  });
-
-  it('keeps the editor for a node admin', () => {
-    panel(false);
-    expect(screen.getByTestId('action-edit-replicas')).toBeTruthy();
+  it('lets an admin remove a member, but never the org owner', () => {
+    panel('acc-carl');
+    expect(screen.getAllByTestId('action-remove-member')).toHaveLength(1);
   });
 });

@@ -3,8 +3,8 @@ export interface IEvent {
   title: string;
   description: string;
   start: string;
-  // BUGFIX (peers collapse on edit): peers are a real `string[]` of hex
-  // public keys end-to-end now. The old code round-tripped them through a
+  // BUGFIX (peers collapse on edit): peers are a real `string[]` of account
+  // ids end-to-end now. The old code round-tripped them through a
   // single string joined with ',' but split on ', ', which silently merged all
   // peers into one on edit. The contract takes/returns `peers: string[]`, so we
   // keep them as an array everywhere.
@@ -13,8 +13,8 @@ export interface IEvent {
   type: TEventTypes;
   color: string;
   owner: string;
-  // FEATURE (private events): node-local events that never sync to peers. Routed
-  // to the *_private_event contract methods. Shared events have private:false.
+  // A private event: the owner's own, read by nobody else. Routed to the
+  // *PrivateEvent contract methods. Shared events have private:false.
   private: boolean;
 }
 
@@ -34,9 +34,9 @@ export interface IEventCreate {
 
 export type TEventTypes = "event" | "long-event";
 
-/** A team member, resolved from the contract's `get_members()` (camelCase). */
+/** A member, from the contract's `getMembers()` (u64s converted back to numbers). */
 export interface Member {
-  id: string; // 64-hex account id — `UserId::new(env::account_id())`
+  id: string; // the account id
   username: string;
   joinedAt: number;
   usernameUpdatedAt: number;

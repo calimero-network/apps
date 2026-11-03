@@ -1,0 +1,347 @@
+[
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "setUsername",
+  "args": {
+   "username": "bob"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createEvent",
+  "args": {
+   "eventData": {
+    "title": "solo-alice",
+    "description": "",
+    "start": "2026-07-01T09:00:00",
+    "end": "2026-07-01T09:30:00",
+    "event_type": "event",
+    "color": "rgb(51, 182, 121)",
+    "peers": []
+   }
+  },
+  "save": "solo"
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getEvents",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getPrivateEvents",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "id": "$solo",
+     "title": "solo-alice",
+     "description": "",
+     "owner": "@owner",
+     "start": "2026-07-01T09:00:00",
+     "end": "2026-07-01T09:30:00",
+     "event_type": "event",
+     "color": "rgb(51, 182, 121)",
+     "peers": [],
+     "private": true
+    }
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getEvents",
+  "args": {},
+  "expect": {
+   "ok": []
+  },
+  "events": {
+   "bob": [
+    "MemberJoined"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "createEvent",
+  "args": {
+   "eventData": {
+    "title": "shared-with-bob",
+    "description": "",
+    "start": "2026-07-01T09:00:00",
+    "end": "2026-07-01T09:30:00",
+    "event_type": "event",
+    "color": "rgb(51, 182, 121)",
+    "peers": [
+     "@bob"
+    ]
+   }
+  },
+  "save": "shared",
+  "events": {
+   "bob": [
+    "MemberJoined",
+    "CalendarEventCreated"
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getEvents",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "id": "$shared",
+     "title": "shared-with-bob",
+     "description": "",
+     "owner": "@owner",
+     "start": "2026-07-01T09:00:00",
+     "end": "2026-07-01T09:30:00",
+     "event_type": "event",
+     "color": "rgb(51, 182, 121)",
+     "peers": [
+      "@bob"
+     ],
+     "private": false
+    }
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getPrivateEvents",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "id": "$solo",
+     "title": "solo-alice",
+     "description": "",
+     "owner": "@owner",
+     "start": "2026-07-01T09:00:00",
+     "end": "2026-07-01T09:30:00",
+     "event_type": "event",
+     "color": "rgb(51, 182, 121)",
+     "peers": [],
+     "private": true
+    }
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "deleteEvent",
+  "args": {
+   "eventId": "$shared"
+  },
+  "expect": {
+   "ok": "$shared"
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "updatePrivateEvent",
+  "args": {
+   "eventId": "$solo",
+   "eventData": {
+    "peers": [
+     "@bob"
+    ]
+   }
+  },
+  "expect": {
+   "ok": "$solo"
+  },
+  "events": {
+   "bob": [
+    "MemberJoined",
+    "CalendarEventCreated",
+    "CalendarEventDeleted",
+    "CalendarEventCreated"
+   ]
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getEvents",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "id": "$solo",
+     "title": "solo-alice",
+     "description": "",
+     "owner": "@owner",
+     "start": "2026-07-01T09:00:00",
+     "end": "2026-07-01T09:30:00",
+     "event_type": "event",
+     "color": "rgb(51, 182, 121)",
+     "peers": [
+      "@bob"
+     ],
+     "private": false
+    }
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getEvents",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "id": "$solo",
+     "title": "solo-alice",
+     "description": "",
+     "owner": "@owner",
+     "start": "2026-07-01T09:00:00",
+     "end": "2026-07-01T09:30:00",
+     "event_type": "event",
+     "color": "rgb(51, 182, 121)",
+     "peers": [
+      "@bob"
+     ],
+     "private": false
+    }
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getPrivateEvents",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "updateEvent",
+  "args": {
+   "eventId": "$solo",
+   "eventData": {
+    "title": "hijacked"
+   }
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "deleteEvent",
+  "args": {
+   "eventId": "$solo"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getEvents",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "id": "$solo",
+     "title": "solo-alice",
+     "description": "",
+     "owner": "@owner",
+     "start": "2026-07-01T09:00:00",
+     "end": "2026-07-01T09:30:00",
+     "event_type": "event",
+     "color": "rgb(51, 182, 121)",
+     "peers": [
+      "@bob"
+     ],
+     "private": false
+    }
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "call",
+  "method": "updateEvent",
+  "args": {
+   "eventId": "$solo",
+   "eventData": {
+    "peers": []
+   }
+  },
+  "expect": {
+   "ok": "$solo"
+  },
+  "events": {
+   "bob": [
+    "MemberJoined",
+    "CalendarEventCreated",
+    "CalendarEventDeleted",
+    "CalendarEventCreated",
+    "CalendarEventEdited"
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getEvents",
+  "args": {},
+  "expect": {
+   "ok": [
+    {
+     "id": "$solo",
+     "title": "solo-alice",
+     "description": "",
+     "owner": "@owner",
+     "start": "2026-07-01T09:00:00",
+     "end": "2026-07-01T09:30:00",
+     "event_type": "event",
+     "color": "rgb(51, 182, 121)",
+     "peers": [],
+     "private": false
+    }
+   ]
+  }
+ },
+ {
+  "as": "owner",
+  "op": "view",
+  "method": "getPrivateEvents",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getEvents",
+  "args": {},
+  "expect": {
+   "ok": []
+  }
+ }
+]

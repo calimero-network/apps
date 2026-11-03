@@ -59,7 +59,7 @@ const Svg: FC<IconProps & { children: React.ReactNode }> = ({
   </svg>
 );
 
-/** Private event — node-local storage, never replicated. */
+/** Private event: the owner's own, read by nobody else. */
 export const LockIcon: FC<IconProps> = (p) => (
   <Svg {...p}>
     <rect x="4.5" y="10.5" width="15" height="9.5" rx="2" />

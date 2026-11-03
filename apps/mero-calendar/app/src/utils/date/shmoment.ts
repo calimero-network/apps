@@ -52,7 +52,7 @@ class Shmoment {
 }
 
 export const shmoment = (date: Date) => {
-  let result = new Date(date);
+  const result = new Date(date);
 
   const calculator = new Shmoment(result);
 

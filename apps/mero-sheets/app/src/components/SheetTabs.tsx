@@ -7,7 +7,7 @@
  *  - Hover × button → delete (disabled for the last sheet)
  *
  * "+" button adds a new sheet; the lock button adds a private one, which
- * lives only on this node (nobody else sees it) and shows a lock on its tab.
+ * is this account's own (nobody else sees it) and shows a lock on its tab.
  */
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import styled from 'styled-components';
@@ -16,7 +16,7 @@ import { type Sheet } from '../hooks/useSpreadsheet';
 import { describeError } from '../utils/errors';
 
 interface SheetTabsProps {
-  /** Shared sheets first, then this node's private ones. */
+  /** Shared sheets first, then this account's private ones. */
   sheets: Sheet[];
   /** Which of `sheets` are private. */
   privateIds: ReadonlySet<string>;
@@ -121,7 +121,7 @@ export default function SheetTabs({
               data-sheet-id={sheet.id}
               $active={isActive}
               data-private={isPrivate || undefined}
-              title={isPrivate ? 'Private: only on this node, nobody else sees it'
+              title={isPrivate ? 'Private: only yours, nobody else sees it'
                 : linkedFrom ? `Linked from ${linkedFrom}: read-only, kept up to date` : undefined}
               role="tab"
               aria-selected={isActive}
@@ -186,7 +186,7 @@ export default function SheetTabs({
         data-testid="action-create_private_sheet"
         onClick={onAddPrivate}
         aria-label="Add private sheet"
-        title="Add a private sheet: only on this node, nobody else sees it"
+        title="Add a private sheet: only yours, nobody else sees it"
       >
         🔒
       </AddBtn>

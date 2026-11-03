@@ -6,6 +6,16 @@ nav_order: 2
 
 # Architecture
 
+> **On Calimero 1.0.** This page was written for the v1 runtime, where every
+> peer held a replica and merged it as CRDTs. The workbook now runs as a
+> component on its cluster's leader, which applies every write in one log, so
+> there is nothing to merge: a later write replaces an earlier one. The rule
+> below still holds and still matters (only raw inputs are stored; computed
+> values are derived on read, by the same engine on the node and in the
+> browser). Where this page says "replica", "merge" or "CRDT", read "the
+> write the log applied last". What changed, method by method, is in the
+> app's README.
+
 mero-sheets is a peer-to-peer spreadsheet: there is no server holding the
 "real" copy of a workbook. Every peer runs the same logic against the same
 replicated data and computes the same answers. Getting that to hold under

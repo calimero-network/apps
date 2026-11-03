@@ -1,13 +1,6 @@
-import { useMero } from "@calimero-network/mero-react";
-import { placeholderName, useGroupName } from "@calimero-apps/names";
-
-// Human names for teams (namespaces) and calendars (contexts) aren't always
-// available from the server on the node that *joined* one — the metadata may not
-// have synced yet, and a context carries no alias in the admin API's response at
-// all, so either would otherwise render as a raw ID. We cache the name locally:
-//   - when a team or calendar is created (the creator knows the name)
-//   - when a team is joined (the inviter embeds the name in the invitation)
-// and fall back to it when the server returns no alias/name.
+// Labels for teams (orgs) and calendars (app instances). On Calimero 1.0 both
+// carry their name on the cluster, which every member reads; the local cache is
+// only a fallback for a name not read yet (the creator knows it at once).
 
 function readName(key: string): string {
   try {
@@ -53,26 +46,6 @@ export function teamLabel(groupId: string, serverName?: string): string {
   const cached = getStoredTeamName(groupId);
   if (cached) return cached;
   return `Team ${groupId.slice(0, 6)}`;
-}
-
-/**
- * A team's name for rendering: the namespace's replicated record first, so a
- * deep link or a new device shows the name rather than `Team fb884a`, then the
- * listing, then this browser's cache. A name only this browser knows is
- * promoted into the record once, so everyone else sees it too.
- */
-export function useTeamName(groupId: string | undefined, listedName?: string): string {
-  const { admin } = useMero();
-  return useGroupName(
-    admin,
-    groupId,
-    {
-      listedName,
-      localName: groupId ? getStoredTeamName(groupId) : "",
-      fallback: groupId ? placeholderName("Team", groupId) : "Team",
-    },
-    { backfillLocal: true },
-  );
 }
 
 export function setStoredCalendarName(contextId: string, name: string): void {
