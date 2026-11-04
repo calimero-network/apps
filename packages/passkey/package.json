@@ -1,0 +1,36 @@
+{
+  "name": "@calimero-apps/passkey",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Signing in to a component app: the passkey session hook (connect, restore, sign in or up, sign out) and the one sign-in control every app shows.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./passkey.css": "./src/passkey.css"
+  },
+  "types": "./src/index.ts",
+  "sideEffects": [
+    "*.css"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "@calimero-network/mero-js": ">=28.0.0",
+    "react": ">=18"
+  },
+  "dependencies": {
+    "@calimero-apps/connect": "workspace:*"
+  },
+  "devDependencies": {
+    "@calimero-network/mero-js": "catalog:component",
+    "@testing-library/react": "catalog:",
+    "@types/react": "^19.2.18",
+    "jsdom": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Input } from '@calimero-network/mero-ui';
+import { PasskeySignIn } from '@calimero-apps/passkey';
+import '@calimero-apps/passkey/passkey.css';
 
 import type { SessionApi } from '../session';
 
@@ -10,7 +10,6 @@ import type { SessionApi } from '../session';
  * to pick.
  */
 export default function ConnectCard({ api, where }: { api: SessionApi; where: string }) {
-  const [name, setName] = useState('');
   return (
     <div className="naval-card fade-in" data-testid="connect-card">
       <div className="naval-card-header">
@@ -22,37 +21,9 @@ export default function ConnectCard({ api, where }: { api: SessionApi; where: st
           Accounts are passkeys: nothing to remember, nothing to leak. Your fleet stays in this
           browser; the contract only ever sees its commitment.
         </span>
-        <div>
-          <button type="button" className="btn-deploy" disabled={api.busy} onClick={() => void api.signIn()}>
-            Sign in with a passkey
-          </button>
+        <div style={{ maxWidth: '360px' }}>
+          <PasskeySignIn api={api} />
         </div>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (name.trim()) void api.signUp(name.trim());
-          }}
-          style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}
-        >
-          <div style={{ flex: 1, minWidth: '160px' }}>
-            <Input
-              type="text"
-              placeholder="Your name"
-              aria-label="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </div>
-          <button type="submit" className="btn-ghost" disabled={api.busy || !name.trim()}>
-            Create an account
-          </button>
-        </form>
-        {api.error && (
-          <div className="lobby-banner-error" role="alert">
-            <span className="lobby-banner-error-glyph" aria-hidden>!</span>
-            <span>{api.error}</span>
-          </div>
-        )}
       </div>
     </div>
   );

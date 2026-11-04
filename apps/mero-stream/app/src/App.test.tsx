@@ -148,10 +148,9 @@ describe("App", () => {
 
     // Signed out: the landing page; its connect opens the passkey sign-in.
     fireEvent.click((await screen.findAllByText(/Connect to node|Sign in|Get started|Open/))[0]);
-    fireEvent.change(await screen.findByTestId("signup-name"), { target: { value: "alice" } });
-    fireEvent.click(screen.getByTestId("signup"));
+    fireEvent.click(await screen.findByTestId("signup-passkey"));
     await screen.findByText("Your streams");
-    expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "alice");
+    expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "");
     await screen.findByTestId("streams-empty");
 
     fireEvent.change(screen.getByTestId("stream-name-input"), { target: { value: "Team" } });
@@ -202,7 +201,7 @@ describe("App", () => {
     renderApp(client, "/");
 
     await screen.findByText("You're invited");
-    fireEvent.click(screen.getByTestId("signin"));
+    fireEvent.click(await screen.findByTestId("signin-passkey"));
     fireEvent.click(await screen.findByTestId("invitation-join"));
     await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith("tok-9"));
     await waitFor(() =>

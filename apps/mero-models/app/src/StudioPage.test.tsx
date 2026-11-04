@@ -104,7 +104,7 @@ describe("the studio's front door", () => {
     const client = fakeClient([scene("app-2", "Robot"), scene("app-1", "Castle")]);
     const storage = renderPage(client);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Sign in with a passkey" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Continue with passkey" }));
     expect(await screen.findByText("Castle")).toBeTruthy();
     expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" });
     // Sorted by name, and the studio they belong to listed once.
@@ -122,7 +122,7 @@ describe("the studio's front door", () => {
   it("makes a new scene in a studio of its own", async () => {
     const client = fakeClient();
     renderPage(client);
-    fireEvent.click(await screen.findByRole("button", { name: "Sign in with a passkey" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Continue with passkey" }));
     expect(await screen.findByText(/No scenes yet/)).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Scene name"), { target: { value: "Spaceship" } });
     fireEvent.click(screen.getByTestId("new-scene"));
@@ -134,7 +134,7 @@ describe("the studio's front door", () => {
   it("adds a scene to a studio it is already in", async () => {
     const client = fakeClient([scene("app-1", "Castle")]);
     renderPage(client);
-    fireEvent.click(await screen.findByRole("button", { name: "Sign in with a passkey" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Continue with passkey" }));
     fireEvent.click(await screen.findByRole("button", { name: "Add scene" }));
     await waitFor(() => expect(client.createApp).toHaveBeenCalledWith("Untitled scene", "bundle-hash", { org: "org-1" }));
     expect(client.createOrg).not.toHaveBeenCalled();
@@ -146,17 +146,16 @@ describe("the studio's front door", () => {
     storage.setItem(`${APP}:pending-invite`, "tok-9");
     renderPage(client, storage);
     expect(await screen.findByText("You're invited")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Sign in with a passkey" }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue with passkey" }));
     expect(await screen.findByText(/Invitation accepted/)).toBeTruthy();
     expect(client.redeemInvite).toHaveBeenCalledWith("tok-9");
     expect(storage.getItem(`${APP}:pending-invite`)).toBeNull();
   });
 
-  it("creates an account with a name", async () => {
+  it("creates an account with a new passkey, no name needed", async () => {
     const client = fakeClient();
     renderPage(client);
-    fireEvent.change(await screen.findByLabelText("Your name"), { target: { value: "Alice" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create an account" }));
-    await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "Alice"));
+    fireEvent.click(await screen.findByRole("button", { name: "Create a passkey" }));
+    await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), ""));
   });
 });

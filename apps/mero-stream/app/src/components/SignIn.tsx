@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { PasskeySignIn } from "@calimero-apps/passkey";
+import "@calimero-apps/passkey/passkey.css";
 import { describeTarget, type SessionApi } from "../session";
 import type { PendingInvite } from "../lib/streams";
-import { ActionButton, StatusNote } from "./ui";
-import { BrandMark, LayersIcon } from "./icons";
+import { StatusNote } from "./ui";
+import { BrandMark } from "./icons";
 import styles from "../pages/Manage.module.css";
 
 /**
@@ -20,7 +21,6 @@ export default function SignIn({
   /** An invitation link that was opened: said here, redeemed after sign-in. */
   invite?: PendingInvite | null;
 }) {
-  const [name, setName] = useState("");
   const { session } = api;
   const where =
     session.status === "signed-out" ? describeTarget(session.target) : null;
@@ -58,51 +58,10 @@ export default function SignIn({
           </StatusNote>
         )}
 
-        <div className={styles.toolbar}>
-          <ActionButton
-            onClick={() => void api.signIn()}
-            pending={api.busy}
-            pendingLabel="Waiting for your passkey…"
-            disabled={session.status !== "signed-out"}
-            testId="signin"
-          >
-            Sign in with a passkey
-          </ActionButton>
-        </div>
-
-        <form
-          className={styles.toolbar}
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (name.trim()) void api.signUp(name.trim());
-          }}
-        >
-          <span className={styles.toolbarIcon} aria-hidden="true">
-            <LayersIcon size={18} />
-          </span>
-          <input
-            className={styles.input}
-            placeholder="Your name"
-            aria-label="Your name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            maxLength={60}
-            data-testid="signup-name"
-          />
-          <button
-            type="submit"
-            className={styles.openBtn}
-            disabled={api.busy || !name.trim() || session.status !== "signed-out"}
-            data-testid="signup"
-          >
-            Create an account
-          </button>
-        </form>
-
-        {api.error && (
-          <StatusNote tone="error" testId="signin-error">
-            {api.error}
-          </StatusNote>
+        {session.status === "signed-out" && (
+          <div style={{ maxWidth: 360 }}>
+            <PasskeySignIn api={api} />
+          </div>
         )}
       </main>
     </div>

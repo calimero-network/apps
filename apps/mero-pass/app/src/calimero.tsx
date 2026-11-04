@@ -32,6 +32,7 @@ import {
   type KeyValueStorage,
   type Target,
 } from '@calimero-apps/connect';
+import { isPasskeyCancel } from '@calimero-apps/passkey';
 
 import { PACKAGE } from './lib/meroPass';
 
@@ -59,7 +60,8 @@ export interface Calimero {
   /** "merod local (3 nodes)" / "Calimero Cloud <cluster>" / "node <host>". */
   where: string;
   signIn(): Promise<void>;
-  signUp(name: string): Promise<void>;
+  /** Create an account with a new passkey; the name is optional. */
+  signUp(name?: string): Promise<void>;
   signOut(): Promise<void>;
   /** A passkey for a step-up (`412 CONFIRM_REQUIRED`): invites, member changes. */
   passkey(): PasskeyProvider;
@@ -164,7 +166,8 @@ export function CalimeroProvider({
           accountId,
         });
       } catch (e) {
-        setError(describeError(e));
+        // A dismissed passkey prompt is a quiet cancel, not an error to show.
+        if (!isPasskeyCancel(e)) setError(describeError(e));
       } finally {
         setBusy(false);
       }
@@ -177,7 +180,8 @@ export function CalimeroProvider({
     [ceremony, deps],
   );
   const signUp = useCallback(
-    (name: string) => ceremony((c) => c.signUp(deps.passkey(), name)),
+    (name?: string) =>
+      ceremony((c) => c.signUp(deps.passkey(), name?.trim() ?? '')),
     [ceremony, deps],
   );
   const signOut = useCallback(async () => {

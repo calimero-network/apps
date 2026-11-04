@@ -10,21 +10,12 @@ catalogs:
       specifier: 28.0.0
       version: 28.0.0
   default:
-    '@calimero-network/abi-codegen':
-      specifier: ^2.4.0
-      version: 2.4.0
     '@calimero-network/mero-icons':
       specifier: ^0.0.5
       version: 0.0.5
     '@calimero-network/mero-js':
       specifier: 26.11.0
       version: 26.11.0
-    '@calimero-network/mero-platform':
-      specifier: ^0.1.0
-      version: 0.1.0
-    '@calimero-network/mero-platform-react':
-      specifier: ^0.1.0
-      version: 0.1.0
     '@calimero-network/mero-react':
       specifier: ^10.3.0
       version: 10.3.0
@@ -136,6 +127,9 @@ importers:
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
+      '@calimero-apps/passkey':
+        specifier: workspace:*
+        version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -316,6 +310,9 @@ importers:
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
+      '@calimero-apps/passkey':
+        specifier: workspace:*
+        version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -389,6 +386,9 @@ importers:
       '@calimero-apps/connect':
         specifier: workspace:*
         version: link:../../../packages/connect
+      '@calimero-apps/passkey':
+        specifier: workspace:*
+        version: link:../../../packages/passkey
       '@calimero-network/mero-js':
         specifier: catalog:component
         version: 28.0.0
@@ -529,6 +529,9 @@ importers:
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
+      '@calimero-apps/passkey':
+        specifier: workspace:*
+        version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -629,6 +632,9 @@ importers:
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
+      '@calimero-apps/passkey':
+        specifier: workspace:*
+        version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -786,6 +792,9 @@ importers:
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
+      '@calimero-apps/passkey':
+        specifier: workspace:*
+        version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -865,6 +874,9 @@ importers:
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
+      '@calimero-apps/passkey':
+        specifier: workspace:*
+        version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -947,6 +959,9 @@ importers:
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
+      '@calimero-apps/passkey':
+        specifier: workspace:*
+        version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -1044,6 +1059,9 @@ importers:
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
+      '@calimero-apps/passkey':
+        specifier: workspace:*
+        version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -1219,6 +1237,9 @@ importers:
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
+      '@calimero-apps/passkey':
+        specifier: workspace:*
+        version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -1292,6 +1313,9 @@ importers:
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
+      '@calimero-apps/passkey':
+        specifier: workspace:*
+        version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -1374,6 +1398,9 @@ importers:
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
+      '@calimero-apps/passkey':
+        specifier: workspace:*
+        version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -1456,6 +1483,9 @@ importers:
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
+      '@calimero-apps/passkey':
+        specifier: workspace:*
+        version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -1532,6 +1562,9 @@ importers:
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
+      '@calimero-apps/passkey':
+        specifier: workspace:*
+        version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -1617,6 +1650,9 @@ importers:
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
+      '@calimero-apps/passkey':
+        specifier: workspace:*
+        version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -1702,6 +1738,9 @@ importers:
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
+      '@calimero-apps/passkey':
+        specifier: workspace:*
+        version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -1790,6 +1829,9 @@ importers:
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
+      '@calimero-apps/passkey':
+        specifier: workspace:*
+        version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -1875,6 +1917,9 @@ importers:
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
+      '@calimero-apps/passkey':
+        specifier: workspace:*
+        version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -2041,6 +2086,9 @@ importers:
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
+      '@calimero-apps/passkey':
+        specifier: workspace:*
+        version: link:../../../packages/passkey
       '@calimero-network/mero-js':
         specifier: catalog:component
         version: 28.0.0
@@ -2108,6 +2156,9 @@ importers:
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
+      '@calimero-apps/passkey':
+        specifier: workspace:*
+        version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -2193,6 +2244,9 @@ importers:
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
+      '@calimero-apps/passkey':
+        specifier: workspace:*
+        version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -2269,6 +2323,9 @@ importers:
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
+      '@calimero-apps/passkey':
+        specifier: workspace:*
+        version: link:../../../packages/passkey
       '@calimero-network/mero-js':
         specifier: catalog:component
         version: 28.0.0
@@ -2394,6 +2451,9 @@ importers:
       '@calimero-apps/connect':
         specifier: workspace:*
         version: link:../../../packages/connect
+      '@calimero-apps/passkey':
+        specifier: workspace:*
+        version: link:../../../packages/passkey
       '@calimero-network/mero-js':
         specifier: catalog:component
         version: 28.0.0
@@ -2581,6 +2641,37 @@ importers:
       jsdom:
         specifier: 'catalog:'
         version: 25.0.1
+      typescript:
+        specifier: 'catalog:'
+        version: 5.8.3
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.11(@types/node@26.4.0)(jsdom@25.0.1)(vite@7.3.7(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13))
+
+  packages/passkey:
+    dependencies:
+      '@calimero-apps/connect':
+        specifier: workspace:*
+        version: link:../connect
+    devDependencies:
+      '@calimero-network/mero-js':
+        specifier: catalog:component
+        version: 28.0.0
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@types/react':
+        specifier: ^19.2.18
+        version: 19.2.18
+      jsdom:
+        specifier: 'catalog:'
+        version: 25.0.1
+      react:
+        specifier: 'catalog:'
+        version: 19.2.8
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.8(react@19.2.8)
       typescript:
         specifier: 'catalog:'
         version: 5.8.3
@@ -3322,10 +3413,6 @@ packages:
     resolution: {integrity: sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw==}
     hasBin: true
 
-  '@calimero-network/abi-codegen@2.4.0':
-    resolution: {integrity: sha512-+9sJ2Tc2dANf4WRkobGltBFcQYIZwadhoNHC1dy0t2yTqQq1KwTFg/nBraC4YpDbQ0BiXakhlqcLWBZJgEUL9g==}
-    hasBin: true
-
   '@calimero-network/mero-icons@0.0.5':
     resolution: {integrity: sha512-rK8/qu7lJtqT51HvG2MUOWFOjpJXvR6kIgfTF7ZZCyVROcjPUhtPqSaGRKSGij0mz16WcY6agDELtXhqjIYR1Q==}
     peerDependencies:
@@ -3343,14 +3430,6 @@ packages:
   '@calimero-network/mero-js@28.0.0':
     resolution: {integrity: sha512-qsjldiSrPBXPUPqPtSKoKDkwjycazNvt/lMVIks0iG1IImvO8gUMHsMACXEqRKQbbNLCIT+SZm7AFew5H4P3Mg==}
     engines: {node: '>=18.0.0'}
-
-  '@calimero-network/mero-platform-react@0.1.0':
-    resolution: {integrity: sha512-W1QlIeaP5Nrri3djQW/OLTTd37iaZdssMNuxvVyLyhUjayxPuVSzUg5hceO5hMRuOFxPRYnKltLXXZwe+iuquA==}
-    peerDependencies:
-      react: '>=17'
-
-  '@calimero-network/mero-platform@0.1.0':
-    resolution: {integrity: sha512-ocEdeeou3GYdRlXxThuXtf4Klfi18g8Dpvl3urBGUgwHbhchMN/6KrGKr3jUj5XlcRnIPlvUmNEN1PoJ8oYp6w==}
 
   '@calimero-network/mero-react@10.3.0':
     resolution: {integrity: sha512-5kJhMti14hgy7x0px7n8IzFHXhDlLmeVEPe8H11PvsrmjlAfYxAU2gPpxetTXj5kzmJTm48Pgt9MhI+mV+yPKw==}
@@ -5591,14 +5670,6 @@ packages:
   agent-base@7.1.4:
     resolution: {integrity: sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ==}
     engines: {node: '>= 14'}
-
-  ajv-formats@2.1.1:
-    resolution: {integrity: sha512-Wx0Kx52hxE7C18hkMEggYlEifqWZtYaRgouJor+WMdPnQyEK13vgEWyVNup7SoeeoLMsr4kf5h6dOW11I15MUA==}
-    peerDependencies:
-      ajv: ^8.0.0
-    peerDependenciesMeta:
-      ajv:
-        optional: true
 
   ajv@6.15.0:
     resolution: {integrity: sha512-fgFx7Hfoq60ytK2c7DhnF8jIvzYgOMxfugjLOSMHjLIPgenqa7S7oaagATUq99mV6IYvN2tRmC0wnTYX6iPbMw==}
@@ -8211,11 +8282,6 @@ packages:
     resolution: {integrity: sha512-6tDA8g98We0zd0GvVeMT9arEOnTw9qM03L9cJXaCjrip1OO764RDBLBfrB4cwzNGDj5OA5ioymC9GkizgWJDUg==}
     engines: {node: '>=8'}
 
-  redos-detector@6.1.4:
-    resolution: {integrity: sha512-lPlka1rEH6kK42gtgokvvxMmpAvyc28DcRjQbGxeP5RJsJWgAduBOdGedVCDPdSyCr4ay/JDxq3nGYsJZyt8tA==}
-    engines: {node: '>=16.0.0'}
-    hasBin: true
-
   redux-thunk@2.4.2:
     resolution: {integrity: sha512-+P3TjtnP0k/FEjcBL5FZpoovtvrTNT/UXd4/sluaSyrURlSlhLSzEdfsTBW7WsKB6yPvgd7q/iZPICFjW4o57Q==}
     peerDependencies:
@@ -8251,10 +8317,6 @@ packages:
 
   regjsgen@0.8.0:
     resolution: {integrity: sha512-RvwtGe3d7LvWiDQXeQw8p5asZUmfU1G/l6WbUXeHta7Y2PEIvBTwH6E2EfmYUK8pxcxEdEmaomqyp0vZZ7C+3Q==}
-
-  regjsparser@0.13.0:
-    resolution: {integrity: sha512-NZQZdC5wOE/H3UT28fVGL+ikOZcEzfMGk/c3iN9UGxzWHMa1op7274oyiUVrAG4B2EuFhus8SvkaYnhvW92p9Q==}
-    hasBin: true
 
   regjsparser@0.13.2:
     resolution: {integrity: sha512-NgRBy2Nx/bE+9F27nVHnqcN5HjyLmecqsqx2PJHu3/IEtADD4WuxuXIVExD5PoSDFVrl78dOonfcOe5O+5nbzQ==}
@@ -10376,12 +10438,6 @@ snapshots:
     dependencies:
       css-tree: 3.2.1
 
-  '@calimero-network/abi-codegen@2.4.0':
-    dependencies:
-      ajv: 8.20.0
-      ajv-formats: 2.1.1(ajv@8.20.0)
-      redos-detector: 6.1.4
-
   '@calimero-network/mero-icons@0.0.5(react@19.2.8)':
     dependencies:
       react: 19.2.8
@@ -10401,13 +10457,6 @@ snapshots:
       '@phala/dcap-qvl': 0.5.3
     transitivePeerDependencies:
       - encoding
-
-  '@calimero-network/mero-platform-react@0.1.0(react@19.2.8)':
-    dependencies:
-      '@calimero-network/mero-platform': 0.1.0
-      react: 19.2.8
-
-  '@calimero-network/mero-platform@0.1.0': {}
 
   '@calimero-network/mero-react@10.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
@@ -12751,10 +12800,6 @@ snapshots:
   acorn@8.19.0: {}
 
   agent-base@7.1.4: {}
-
-  ajv-formats@2.1.1(ajv@8.20.0):
-    optionalDependencies:
-      ajv: 8.20.0
 
   ajv@6.15.0:
     dependencies:
@@ -16016,10 +16061,6 @@ snapshots:
       indent-string: 4.0.0
       strip-indent: 3.0.0
 
-  redos-detector@6.1.4:
-    dependencies:
-      regjsparser: 0.13.0
-
   redux-thunk@2.4.2(redux@4.2.1):
     dependencies:
       redux: 4.2.1
@@ -16068,10 +16109,6 @@ snapshots:
       unicode-match-property-value-ecmascript: 2.2.1
 
   regjsgen@0.8.0: {}
-
-  regjsparser@0.13.0:
-    dependencies:
-      jsesc: 3.1.0
 
   regjsparser@0.13.2:
     dependencies:

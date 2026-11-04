@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CalimeroError, type CalimeroClient } from "@calimero-network/mero-js";
 import { appSource, type KeyValueStorage } from "@calimero-apps/connect";
+import { PasskeySignIn } from "@calimero-apps/passkey";
+import "@calimero-apps/passkey/passkey.css";
 import { GroupPicker, type OpenedGroup } from "./GroupPicker";
 import { InviteCard } from "./InviteCard";
 import { PACKAGE, meroVote } from "./meroVote";
@@ -275,7 +277,6 @@ export function App({
 
 /** The front door: what the app is, and a passkey sign-in or sign-up. */
 function Welcome({ api, where, invited }: { api: SessionApi; where: string; invited: boolean }) {
-  const [name, setName] = useState("");
   return (
     <section className="welcome">
       <div className="welcome-copy">
@@ -329,23 +330,7 @@ function Welcome({ api, where, invited }: { api: SessionApi; where: string; invi
             : "Sign in to see your voting groups. "}
           Connected to {where}. Accounts are passkeys: nothing to remember, nothing to leak.
         </p>
-        <button disabled={api.busy} onClick={() => void api.signIn()}>
-          Sign in with a passkey
-        </button>
-        <form
-          className="row"
-          style={{ marginTop: 14 }}
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (name.trim()) void api.signUp(name.trim());
-          }}
-        >
-          <input placeholder="Your name" aria-label="name" value={name} onChange={(e) => setName(e.target.value)} />
-          <button className="ghost" type="submit" disabled={api.busy || !name.trim()}>
-            Create an account
-          </button>
-        </form>
-        {api.error && <pre className="err">{api.error}</pre>}
+        <PasskeySignIn api={api} />
       </div>
     </section>
   );

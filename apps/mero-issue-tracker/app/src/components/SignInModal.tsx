@@ -1,9 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
+import { PasskeySignIn } from '@calimero-apps/passkey';
+import '@calimero-apps/passkey/passkey.css';
 
 import { describeTarget } from '../session';
 import { useSessionApi } from '../sessionContext';
 import { pendingInvite } from '../workspaces';
-import { Overlay, Dialog, Close, Field, Actions, SecondaryBtn, PrimaryBtn, ErrorLine, Spin } from './modalKit';
+import { Overlay, Dialog, Close, ErrorLine } from './modalKit';
 
 /**
  * Sign in with a passkey, or create an account with a new one. Replaces v1's
@@ -13,7 +15,6 @@ import { Overlay, Dialog, Close, Field, Actions, SecondaryBtn, PrimaryBtn, Error
  */
 export default function SignInModal({ onClose }: { onClose: () => void }): React.ReactElement {
   const { api } = useSessionApi();
-  const [name, setName] = useState('');
   const invited = pendingInvite() !== null;
 
   useEffect(() => {
@@ -47,43 +48,7 @@ export default function SignInModal({ onClose }: { onClose: () => void }): React
         {api.session.status === 'connecting' && <p className="sub">Connecting…</p>}
         {api.session.status === 'unconfigured' && <ErrorLine>{api.session.message}</ErrorLine>}
 
-        {api.session.status === 'signed-out' && (
-          <>
-            <Actions style={{ justifyContent: 'stretch' }}>
-              <PrimaryBtn
-                data-testid="signin-passkey"
-                style={{ width: '100%' }}
-                disabled={api.busy}
-                onClick={() => void api.signIn()}
-              >
-                {api.busy ? <Spin /> : 'Sign in with a passkey'}
-              </PrimaryBtn>
-            </Actions>
-            <Field style={{ marginTop: 22 }}>
-              <label htmlFor="signup-name">New here? Your name</label>
-              <input
-                id="signup-name"
-                data-testid="signup-name"
-                value={name}
-                maxLength={64}
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && name.trim()) void api.signUp(name.trim()); }}
-                disabled={api.busy}
-              />
-            </Field>
-            <Actions>
-              <SecondaryBtn
-                data-testid="signup-passkey"
-                disabled={api.busy || !name.trim()}
-                onClick={() => void api.signUp(name.trim())}
-              >
-                Create an account
-              </SecondaryBtn>
-            </Actions>
-          </>
-        )}
-
-        {api.error && <ErrorLine>{api.error}</ErrorLine>}
+        {api.session.status === 'signed-out' && <PasskeySignIn api={api} />}
       </Dialog>
     </Overlay>
   );

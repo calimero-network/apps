@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { createPortal } from "react-dom";
+import { PasskeySignIn } from "@calimero-apps/passkey";
+import "@calimero-apps/passkey/passkey.css";
 import { describeTarget } from "../session";
 import { useSessionApi } from "../sessionContext";
 import { pendingInvite } from "../utils/inviteLink";
 import styles from "./InviteModal.module.css";
-import fieldStyles from "./UsernameModal.module.css";
 
 /**
  * Sign in with a passkey, or create an account with a new one. Replaces v1's
@@ -14,7 +15,6 @@ import fieldStyles from "./UsernameModal.module.css";
  */
 export default function SignInModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { api } = useSessionApi();
-  const [name, setName] = useState("");
   const invited = pendingInvite() !== null;
 
   useEffect(() => {
@@ -67,54 +67,7 @@ export default function SignInModal({ open, onClose }: { open: boolean; onClose:
           </p>
         )}
 
-        {api.session.status === "signed-out" && (
-          <>
-            <div className={styles.actions}>
-              <button
-                type="button"
-                className={styles.primaryBtn}
-                data-testid="signin-passkey"
-                disabled={api.busy}
-                onClick={() => void api.signIn()}
-              >
-                {api.busy ? "Waiting for your passkey…" : "Sign in with a passkey"}
-              </button>
-            </div>
-            <p className={styles.desc}>New here? Pick the name people will see.</p>
-            <form
-              className={fieldStyles.form}
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (name.trim()) void api.signUp(name.trim());
-              }}
-            >
-              <input
-                className={fieldStyles.input}
-                placeholder="Your name…"
-                aria-label="Your name"
-                data-testid="signup-name"
-                value={name}
-                maxLength={64}
-                onChange={(e) => setName(e.target.value)}
-                disabled={api.busy}
-              />
-              <button
-                type="submit"
-                className={styles.secondaryBtn}
-                data-testid="signup-passkey"
-                disabled={api.busy || !name.trim()}
-              >
-                Create an account
-              </button>
-            </form>
-          </>
-        )}
-
-        {api.error && (
-          <p className={styles.error} role="alert" data-testid="signin-error">
-            {api.error}
-          </p>
-        )}
+        {api.session.status === "signed-out" && <PasskeySignIn api={api} />}
       </div>
     </div>,
     document.body,
