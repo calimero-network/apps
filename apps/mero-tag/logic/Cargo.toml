@@ -36,7 +36,7 @@ github = "https://github.com/calimero-network/mero-tag"
 # Core 1.0: identity is the account (no devices), writes run on the leader and
 # `env::caller_org()` gates moderation — none of which a 0.x node provides, so
 # a 0.x node must refuse this bundle rather than run it with other meanings.
-min-runtime-version = "1.0.0-rc.3"
+min-runtime-version = "1.0.0-rc.8"
 # No `outbound`: the contract makes no outbound HTTP calls. Core 1.0 refuses any
 # that are not declared here (as URL prefixes) and approved.
 
@@ -48,9 +48,9 @@ borsh-derive = "0.10.3"
 # signed bundle is not reproducible — the same commit could publish twice with
 # different bytes. All SDK crates must share the exact same tag (the workspace
 # version at a tag is 0.0.0, so version strings cannot express this).
-calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.3" }
-calimero-storage = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.3" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.3" }
+calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8" }
+calimero-storage = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8" }
 thiserror = "1.0.56"
 serde_json = "1.0.113"
 

@@ -18,8 +18,8 @@ scripts/    setup
 
 Built for **Calimero core 1.0**:
 
-- the contract builds against `calimero-sdk` / `calimero-storage` tag `1.0.0-rc.3`
-  (`min-runtime-version = "1.0.0-rc.3"`)
+- the contract builds against `calimero-sdk` / `calimero-storage` tag `1.0.0-rc.8`
+  (`min-runtime-version = "1.0.0-rc.8"`)
 - the app uses [`calimero-network/swift-sdk`](https://github.com/calimero-network/swift-sdk) pinned to
   its `v0.5.0` release (`exactVersion` in `app/MeroTag/project.yml`)
 

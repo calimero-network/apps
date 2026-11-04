@@ -27,7 +27,7 @@ mero-tag/
 | Tool | Needed for | Install |
 |------|-----------|---------|
 | **Rust** + `wasm32-unknown-unknown` | building the contract | <https://rustup.rs>, then `rustup target add wasm32-unknown-unknown` |
-| **cargo-mero** (core 0.12.0-rc.3) | ABI embed + signed bundle | from the core tag pinned in `logic/Cargo.toml` |
+| **cargo-mero** (core 1.0.0-rc.8) | ABI embed + signed bundle | from the core tag pinned in `logic/Cargo.toml` |
 | **Full Xcode 16+** | building / running the app, XCTest, deploying to a device | Mac App Store, then `sudo xcode-select -s /Applications/Xcode.app` |
 | **XcodeGen** | generating the `.xcodeproj` | `brew install xcodegen` |
 | **A Calimero account** | signing in | created with a passkey in the Calimero wallet on first sign-in |
