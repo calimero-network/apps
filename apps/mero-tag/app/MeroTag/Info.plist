@@ -18,19 +18,26 @@
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>1.0</string>
-	<key>CFBundleVersion</key>
-	<string>1</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>network.calimero.merotag.enrol</string>
+			<string>network.calimero.merotag.join</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>merotag</string>
 			</array>
 		</dict>
 	</array>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Mero Tag connects to a development Calimero cluster on your network.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Mero Tag keeps sharing your location in the background so your group always sees where you are.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>

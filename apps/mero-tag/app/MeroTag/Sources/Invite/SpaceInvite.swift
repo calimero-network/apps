@@ -3,38 +3,35 @@ import MeroKit
 
 /// A shareable invitation to a space.
 ///
-/// A space is a context inside a namespace. The invitation is to the
-/// namespace, signed by the inviting account on its device; the context id and
-/// the space's name ride along so the joiner can open the space straight after
-/// joining and sees a name rather than an id.
+/// A space is an app instance in an organization. The invitation is an
+/// organization invite token (role member); the app instance id and the
+/// space's name ride along so the joiner opens the space straight after
+/// redeeming it, and sees a name rather than an id.
 ///
 /// The token is the fleet's (`InviteCodec`: `base58(deflate(JSON))`) and the
 /// link is the SDK's ``InviteLink`` (`https://links.calimero.network/<package>/join?invitation=…`),
-/// so the same link works pasted into Mero Tag on a phone, opened on a computer
-/// with Calimero Desktop, or handed to the app as a deep link.
-public struct SpaceInvite: Codable {
-    /// The namespace (root group) the space lives in.
-    public let namespaceId: String
-    /// The space's context.
-    public let contextId: String
+/// so the same link works pasted into Mero Tag or handed to it as a deep link.
+public struct SpaceInvite: Codable, Equatable, Sendable {
+    /// The organization the space belongs to.
+    public let orgId: String
+    /// The space's app instance.
+    public let appId: String
     /// The space's display name.
     public let spaceName: String
-    /// The account-signed invitation.
-    public let invitation: SignedGroupOpenInvitation
+    /// The organization invite token, redeemed at `/invites/{token}/redeem`.
+    public let token: String
 
-    public init(namespaceId: String, contextId: String, spaceName: String, invitation: SignedGroupOpenInvitation) {
-        self.namespaceId = namespaceId
-        self.contextId = contextId
+    public init(orgId: String, appId: String, spaceName: String, token: String) {
+        self.orgId = orgId
+        self.appId = appId
         self.spaceName = spaceName
-        self.invitation = invitation
+        self.token = token
     }
 
-    /// This app's registry package: the link's slug, and what a space is
-    /// founded for.
+    /// This app's registry package: the link's slug, and what a space runs.
     public static let appSlug = "com.calimero.mero-tag"
 
-    /// The app's own URL scheme (`AppState.callbackScheme`, which the wallet
-    /// also returns to).
+    /// The app's own URL scheme.
     public static let deepLinkScheme = "merotag"
 
     /// The compact token.
@@ -47,8 +44,7 @@ public struct SpaceInvite: Codable {
 
     /// Decode what someone pasted: the shareable link, a `calimero://` link, a
     /// `merotag://join?invitation=…` deep link, or the bare token. Another
-    /// app's link is rejected (its payload would decode, and join a namespace
-    /// that isn't a Mero Tag space). Nil when it isn't an invitation.
+    /// app's link is rejected. Nil when it isn't an invitation.
     public static func decode(pasted: String) -> SpaceInvite? {
         let text = pasted.trimmingCharacters(in: .whitespacesAndNewlines)
         if let url = URL(string: text), url.scheme?.lowercased() == deepLinkScheme {
@@ -58,8 +54,7 @@ public struct SpaceInvite: Codable {
         return decodeToken(token)
     }
 
-    /// `merotag://join?invitation=…` — the app's own scheme, which the wallet
-    /// also uses (`merotag://enrol`), so only the `join` host is an invite.
+    /// `merotag://join?invitation=…`.
     public static func decode(deepLink url: URL) -> SpaceInvite? {
         if url.scheme?.lowercased() != deepLinkScheme { return decode(pasted: url.absoluteString) }
         guard url.host?.lowercased() == InviteLink.joinAction,
@@ -71,7 +66,7 @@ public struct SpaceInvite: Codable {
 
     private static func decodeToken(_ token: String) -> SpaceInvite? {
         guard let invite = try? InviteCodec.decode(SpaceInvite.self, from: token),
-            !invite.namespaceId.isEmpty, !invite.contextId.isEmpty
+            !invite.orgId.isEmpty, !invite.appId.isEmpty, !invite.token.isEmpty
         else { return nil }
         return invite
     }

@@ -7,13 +7,12 @@ struct SpaceSetupView: View {
     @State private var displayName = ""
     @State private var spaceName = ""
     @State private var inviteText = ""
-    @State private var contextId = ""
+    @State private var appId = ""
     @State private var showsIdEntry = false
     @State private var confirmSignOut = false
 
     private var invite: SpaceInvite? { SpaceInvite.decode(pasted: inviteText) }
     private var isBusy: Bool { app.isCreatingSpace || app.isJoiningSpace || app.isOpeningSpace }
-    private var hasRelay: Bool { app.canCreateSpaces }
 
     var body: some View {
         NavigationStack {
@@ -76,7 +75,7 @@ struct SpaceSetupView: View {
         }
         .onAppear {
             if displayName.isEmpty { displayName = app.space?.displayName ?? "" }
-            if contextId.isEmpty { contextId = app.space?.contextId ?? "" }
+            if appId.isEmpty { appId = app.space?.appId ?? "" }
             if let pending = app.pendingInvite { inviteText = pending }
         }
         .onChange(of: app.pendingInvite) { _, pending in
@@ -91,7 +90,7 @@ struct SpaceSetupView: View {
             VStack(alignment: .leading, spacing: 16) {
                 CardHeader(
                     systemImage: "envelope.open", title: "Invite link",
-                    meta: app.node == nil ? "Joins with your account" : "Joins on your node", accent: invite != nil)
+                    meta: "Joins with your account", accent: invite != nil)
 
                 HStack(alignment: .bottom, spacing: 8) {
                     TagTextField(
@@ -111,7 +110,7 @@ struct SpaceSetupView: View {
                 if let invite {
                     Callout(
                         tone: .success, title: invite.spaceName.isEmpty ? "Invite recognised" : "Invite to \(invite.spaceName)",
-                        message: "You'll join the space with your account, then it opens.")
+                        message: "You'll join its organization with your account, then the space opens.")
                 } else if !inviteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Callout(tone: .warning, message: "That doesn't look like a Mero Tag invite link.")
                 }
@@ -133,8 +132,7 @@ struct SpaceSetupView: View {
                     systemImage: "plus.circle", title: "Create a space",
                     meta: "You'll be its owner, and can invite people")
 
-                if hasRelay {
-                    TagTextField(
+                TagTextField(
                         label: "Space name", placeholder: "e.g. Family", text: $spaceName,
                         submitLabel: .go, onSubmit: create)
                         .accessibilityIdentifier("spaceNameField")
@@ -144,12 +142,6 @@ struct SpaceSetupView: View {
                         kind: .secondary, action: create)
                         .disabled(spaceName.isEmpty || displayName.isEmpty || isBusy)
                         .accessibilityIdentifier("createSpaceButton")
-                } else {
-                    Callout(
-                        tone: .warning, title: "No relay yet",
-                        message: "Your account isn't served by a relay yet, so there's nowhere to create a space. "
-                            + "It gets one when you join a space from an invite.")
-                }
             }
         }
     }
@@ -178,14 +170,14 @@ struct SpaceSetupView: View {
 
             if showsIdEntry {
                 TagTextField(
-                    label: "Space ID", placeholder: "Paste the space ID", text: $contextId,
-                    help: "The context ID of a space your account is already a member of.", monospaced: true,
+                    label: "Space ID", placeholder: "Paste the space ID", text: $appId,
+                    help: "The app instance ID of a space your account can already reach.", monospaced: true,
                     keyboardKind: .identifier, submitLabel: .go, onSubmit: open)
                     .accessibilityIdentifier("spaceIdField")
                 LoadingButton(
                     title: "Open space", systemImage: "arrow.right", isLoading: app.isOpeningSpace,
                     kind: .secondary, size: .regular, action: open)
-                    .disabled(contextId.isEmpty || displayName.isEmpty || isBusy)
+                    .disabled(appId.isEmpty || displayName.isEmpty || isBusy)
                     .accessibilityIdentifier("openSpaceButton")
             }
         }
@@ -203,27 +195,23 @@ struct SpaceSetupView: View {
     }
 
     private func open() {
-        Task { await app.openSpace(contextId: contextId, displayName: displayName) }
+        Task { await app.openSpace(appId: appId, displayName: displayName) }
     }
 }
 
 /// The account/session values worth showing behind "Show technical details".
 enum AccountDetails {
     @MainActor
-    static func items(_ app: AppState, contextId: String? = nil) -> [DetailItem] {
+    static func items(_ app: AppState, appId: String? = nil) -> [DetailItem] {
         var items: [DetailItem] = []
-        if let contextId { items.append(DetailItem(label: "Space (context) ID", value: contextId)) }
-        if let node = app.node {
-            items.append(DetailItem(label: "Node", value: node.url))
-            items.append(DetailItem(label: "Node user", value: node.username, copyable: false))
-        }
+        if let appId { items.append(DetailItem(label: "Space (app instance) ID", value: appId)) }
+        if let org = app.me?.org { items.append(DetailItem(label: "Organization", value: org)) }
+        if let role = app.me?.orgRole { items.append(DetailItem(label: "Your role", value: role, copyable: false)) }
         if let account = app.account { items.append(DetailItem(label: "Account", value: account)) }
-        if let device = app.client.connection?.session.device {
-            items.append(DetailItem(label: "Device", value: device))
+        if let node = app.nodeURL { items.append(DetailItem(label: "Cluster node", value: node)) }
+        if app.isDevelopmentCluster {
+            items.append(DetailItem(label: "Attestation", value: "Mock (development cluster)", copyable: false))
         }
-        if let relay = app.client.relayURL { items.append(DetailItem(label: "Relay", value: relay)) }
-        if let key = app.client.connection?.nodeKey { items.append(DetailItem(label: "Relay node key", value: key)) }
-        if let note = app.client.cloudNote { items.append(DetailItem(label: "Session note", value: note, copyable: false)) }
         return items
     }
 }

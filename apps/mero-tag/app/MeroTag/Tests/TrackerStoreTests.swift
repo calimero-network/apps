@@ -6,7 +6,7 @@ import XCTest
 final class TrackerStoreTests: XCTestCase {
     private func store(_ t: FakeTransport) -> TrackerStore {
         TrackerStore(
-            service: MeroService(transport: t, contextId: Fixtures.context, memberId: Fixtures.account),
+            service: MeroService(transport: t, appId: Fixtures.app, memberId: Fixtures.account),
             pollInterval: 3600)
     }
 
@@ -18,7 +18,7 @@ final class TrackerStoreTests: XCTestCase {
         XCTAssertEqual(s.trackers.map(\.name), ["Alpha", "Bike"], "sorted by name")
         XCTAssertEqual(s.space?.name, "Family")
         XCTAssertTrue(s.isOnline("someone"))
-        XCTAssertEqual(s.connection, .polling, "no relay session → poll")
+        XCTAssertEqual(s.connection, .polling, "no event stream → poll")
         s.stop()
     }
 
@@ -34,14 +34,14 @@ final class TrackerStoreTests: XCTestCase {
 
     func testLiveEventsRefreshTrackers() async throws {
         let t = Fixtures.transport()
-        let (stream, continuation) = AsyncThrowingStream<JSONValue, Error>.makeStream()
+        let (stream, continuation) = AsyncThrowingStream<CloudEvent, Error>.makeStream()
         t.frames = stream
         let s = store(t)
         await s.bootstrap(displayName: "Fran")
         XCTAssertEqual(s.connection, .live)
 
         t.responses["get_trackers"] = []
-        continuation.yield(["type": "StateMutation", "data": ["events": [["kind": "TrackerDeleted", "data": "t1"]]]])
+        continuation.yield(CloudEvent(id: "1", kind: "TrackerDeleted", data: ["id": "t1"]))
         for _ in 0..<50 where !s.trackers.isEmpty { try await Task.sleep(nanoseconds: 20_000_000) }
         XCTAssertTrue(s.trackers.isEmpty)
 
@@ -53,8 +53,7 @@ final class TrackerStoreTests: XCTestCase {
 
     func testRevokedSessionIsReportedNotShown() async {
         let t = Fixtures.transport()
-        t.failures["create_tracker"] = MeroError.authRevoked(
-            reason: "token_revoked", http: HTTPError(status: 403, statusText: "Forbidden", url: "x", headers: [:]))
+        t.failures["create_tracker"] = LoginRequired("the refresh token was revoked")
         let s = store(t)
         var ended: String?
         s.onSessionEnded = { ended = $0 }
@@ -64,12 +63,21 @@ final class TrackerStoreTests: XCTestCase {
         XCTAssertNil(s.lastError)
     }
 
-    func testRefusedWriteShowsTheRelaysReason() async {
+    func testRefusedWriteShowsTheContractsReason() async {
         let t = Fixtures.transport()
-        t.failures["rename_tracker"] = AccountError.intentRefused(reason: "not a member", retryable: false, status: 403)
+        t.failures["rename_tracker"] = AppError("only the tracker's owner can rename it")
         let s = store(t)
         let ok = await s.renameTracker(id: "t1", name: "X")
         XCTAssertFalse(ok)
-        XCTAssertEqual(s.lastError, "The relay refused that change: not a member")
+        XCTAssertEqual(s.lastError, "only the tracker's owner can rename it")
+    }
+
+    func testAnUnreachableClusterSaysTheChangeWasNotSaved() async throws {
+        let t = Fixtures.transport()
+        t.failures["rename_tracker"] = UnavailableError(code: "NETWORK", message: "offline")
+        let s = store(t)
+        _ = await s.renameTracker(id: "t1", name: "X")
+        let error = try XCTUnwrap(s.lastError)
+        XCTAssertTrue(error.contains("Can't reach your Calimero cluster"), error)
     }
 }

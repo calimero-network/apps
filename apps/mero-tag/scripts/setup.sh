@@ -16,7 +16,6 @@ check() { command -v "$1" >/dev/null 2>&1 && ok "$1 found" || { err "$1 not foun
 check rustc   "install via https://rustup.rs"
 check cargo   "install via https://rustup.rs"
 check jq      "brew install jq"
-check merod   "install Calimero node (merod)"
 
 [[ ${#MISSING[@]} -gt 0 ]] && { err "Missing: ${MISSING[*]}"; exit 1; }
 
@@ -42,5 +41,5 @@ printf "\n${GREEN}${BOLD}✓  Setup complete!${RESET}\n\n"
 printf "  Next:\n"
 printf "    ${CYAN}make logic-test${RESET} → unit-test the contract\n"
 printf "    ${CYAN}make app-run${RESET}    → build + run the app in the Simulator (needs xcodegen + Xcode)\n"
-printf "    ${CYAN}make node${RESET}       → a local dev node, for contract work only (the app signs in with Calimero Cloud)\n\n"
+printf "    ${CYAN}cargo run -p merod -- local${RESET} (in core, Linux or Docker) → a development cluster for the app\n\n"
 printf "  See ${BOLD}requirements.md${RESET} for the full Mac / iPhone walkthrough.\n\n"

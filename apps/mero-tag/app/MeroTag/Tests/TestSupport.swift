@@ -3,12 +3,12 @@ import MeroKit
 import MeroKitUI
 @testable import MeroTag
 
-/// Records every call and answers reads from a canned table — the relay,
+/// Records every call and answers reads from a canned table: the cluster,
 /// without a network.
 final class FakeTransport: ContextTransport, @unchecked Sendable {
     struct Call: Equatable {
         let kind: String
-        let contextId: String
+        let appId: String
         let method: String
         let args: JSONValue
     }
@@ -17,61 +17,55 @@ final class FakeTransport: ContextTransport, @unchecked Sendable {
     private var _calls: [Call] = []
     var responses: [String: JSONValue] = [:]
     var failures: [String: Error] = [:]
-    var frames: AsyncThrowingStream<JSONValue, Error>?
+    var frames: AsyncThrowingStream<CloudEvent, Error>?
 
     var calls: [Call] { lock.withLock { _calls } }
     var writes: [Call] { calls.filter { $0.kind == "execute" } }
 
-    func query(contextId: String, method: String, args: JSONValue) async throws -> JSONValue? {
-        try record("query", contextId, method, args)
+    func query(appId: String, method: String, args: JSONValue) async throws -> JSONValue? {
+        try record("query", appId, method, args)
     }
 
-    func execute(contextId: String, method: String, args: JSONValue) async throws -> JSONValue? {
-        try record("execute", contextId, method, args)
+    func execute(appId: String, method: String, args: JSONValue) async throws -> JSONValue? {
+        try record("execute", appId, method, args)
     }
 
-    func events(contextId: String) -> AsyncThrowingStream<JSONValue, Error>? { frames }
+    func events(appId: String) -> AsyncThrowingStream<CloudEvent, Error>? { frames }
 
-    private func record(_ kind: String, _ ctx: String, _ method: String, _ args: JSONValue) throws -> JSONValue? {
-        lock.withLock { _calls.append(Call(kind: kind, contextId: ctx, method: method, args: args)) }
+    private func record(_ kind: String, _ app: String, _ method: String, _ args: JSONValue) throws -> JSONValue? {
+        lock.withLock { _calls.append(Call(kind: kind, appId: app, method: method, args: args)) }
         if let error = failures[method] { throw error }
         return responses[method]
     }
 }
 
-/// Never opens a browser.
-struct NoWallet: WebAuthenticating {
-    func authenticate(url: URL, callback: CloudCallback) async throws -> URL {
-        throw WebAuthenticationCancelled()
-    }
-}
-
+/// A client that talks to no cluster (nothing in its session store).
 @MainActor
 func makeClient() -> MeroClient {
-    MeroClient(
-        cloud: CloudSignIn(keyStore: .memory(), sessionStore: .memory(), nonces: MemoryWarrantNonceStore()),
-        webAuthenticator: NoWallet())
+    MeroClient(config: MeroProviderConfig(packageName: SpaceInvite.appSlug), store: MemoryCloudSessionStore())
 }
 
-/// A client with a Cloud session (relayless, so nothing touches the network).
+/// An app acting as ``Fixtures/account`` without a cluster.
 @MainActor
-func signedInClient(restored: Bool = true) async -> MeroClient {
-    let session = CloudSession(account: Fixtures.account, device: Fixtures.account, credential: "00")
-    let client = MeroClient(
-        cloud: CloudSignIn(keyStore: .memory(), sessionStore: .memory(session), nonces: MemoryWarrantNonceStore()),
-        webAuthenticator: NoWallet())
-    if restored { await client.restoreCloudSession() }
-    return client
+func signedInApp(
+    transport: FakeTransport = Fixtures.transport(), directory: FakeDirectory = FakeDirectory(),
+    defaults: UserDefaults = isolatedDefaults()
+) -> AppState {
+    let app = AppState(
+        client: makeClient(), preferences: SpacePreferences(defaults: defaults),
+        makeTransport: { _ in transport }, makeDirectory: { _ in directory })
+    app.syncDelay = 0
+    app.signInForTesting(account: Fixtures.account)
+    return app
 }
 
-/// Records what the app asked of the account layer.
+/// Records what the app asked of the organization layer.
 final class FakeDirectory: SpaceDirectory, @unchecked Sendable {
     private let lock = NSLock()
     private var _created: [String] = []
     private var _invited: [String] = []
     private var _joined: [String] = []
     var failure: Error?
-    var hosted = true
 
     var created: [String] { lock.withLock { _created } }
     var invited: [String] { lock.withLock { _invited } }
@@ -80,20 +74,18 @@ final class FakeDirectory: SpaceDirectory, @unchecked Sendable {
     func createSpace(named name: String) async throws -> CreatedSpace {
         if let failure { throw failure }
         lock.withLock { _created.append(name) }
-        return CreatedSpace(
-            namespaceId: Fixtures.namespace, contextId: "ctx-new", hosted: hosted,
-            hostingNote: hosted ? nil : "the relay did not attest the founding")
+        return CreatedSpace(orgId: Fixtures.org, appId: "app-new")
     }
 
-    func invite(contextId: String, spaceName: String) async throws -> SpaceInvite {
+    func invite(appId: String, spaceName: String) async throws -> SpaceInvite {
         if let failure { throw failure }
-        lock.withLock { _invited.append(contextId) }
+        lock.withLock { _invited.append(appId) }
         return Fixtures.invite()
     }
 
     func join(_ invite: SpaceInvite) async throws {
         if let failure { throw failure }
-        lock.withLock { _joined.append(invite.namespaceId) }
+        lock.withLock { _joined.append(invite.token) }
     }
 }
 
@@ -106,19 +98,11 @@ func isolatedDefaults() -> UserDefaults {
 
 enum Fixtures {
     static let account = String(repeating: "ab", count: 32)
-    static let context = "ctx-1"
-    static let namespace = String(repeating: "9a", count: 32)
+    static let app = "app-1"
+    static let org = "org-9a"
 
     static func invite() -> SpaceInvite {
-        SpaceInvite(
-            namespaceId: namespace, contextId: context, spaceName: "Family",
-            invitation: SignedGroupOpenInvitation(
-                invitation: GroupInvitationFromAdmin(
-                    inviterIdentity: Array(0..<32), groupId: Array(32..<64),
-                    expirationTimestamp: 1_787_740_000, secretSalt: Array(64..<96), invitedRole: 1,
-                    admitters: [account]),
-                inviterSignature: String(repeating: "5", count: 88),
-                inviterAccount: account))
+        SpaceInvite(orgId: org, appId: app, spaceName: "Family", token: "inv_5f3c2a")
     }
 
     static let trackers: JSONValue = [
@@ -138,11 +122,13 @@ enum Fixtures {
     static let space: JSONValue = ["name": "Family", "trackerCount": 2, "memberCount": 1, "groupCount": 0]
     static let members: JSONValue = [["id": "someone", "username": "Ana", "joinedAt": 1]]
     static let presence: JSONValue = [["userId": "someone", "online": true, "lastSeen": 5]]
+    static let me: JSONValue = ["memberId": .string(account), "org": .string(org), "orgRole": "member"]
 
     static func transport() -> FakeTransport {
         let t = FakeTransport()
         t.responses = [
             "get_trackers": trackers, "get_space": space, "get_members": members, "get_presence": presence,
+            "whoami": me,
         ]
         return t
     }

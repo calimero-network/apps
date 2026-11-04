@@ -16,11 +16,26 @@
 //! that "multiple nodes editing the same space converge" was untested. Two of
 //! them did not converge once actually dispatched; see `lww_wins` and
 //! `History::merge`.
+//!
+//! # Core 1.0
+//!
+//! - **One id per person.** There are no devices: `env::account_id()` is the
+//!   caller, and every owner, author and member id is taken from it rather than
+//!   from an argument. A member id is that account as 64 hex.
+//! - **Writes run on the leader.** Each app instance is one Raft group; the
+//!   leader runs a call and followers apply it. Record clocks come from the
+//!   leader's `env::time_now()`, not from each phone, and nothing is written
+//!   offline.
+//! - **Org standing.** `env::caller_org()` says whether the caller administers
+//!   the app instance's organization; org admins may moderate (rename the
+//!   space, remove anyone's tracker, group or geofence).
+//! - **Named event fields.** Every event is `Variant { id }` (core#4753).
 
 use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::app;
+use calimero_sdk::env::{self, OrgRole};
+use calimero_sdk::{app, AccountId};
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::{LwwRegister, Mergeable as MergeableTrait, UnorderedMap};
 
@@ -89,6 +104,23 @@ pub mod pure {
         }
     }
 
+    /// A record may be changed by its owner, or by an admin of the app
+    /// instance's organization.
+    pub fn may_manage(owner: &str, caller: &str, is_org_admin: bool) -> bool {
+        is_org_admin || owner == caller
+    }
+
+    /// A latitude/longitude pair a map can show.
+    pub fn valid_coordinates(lat: f64, lng: f64) -> bool {
+        lat.is_finite() && lng.is_finite() && (-90.0..=90.0).contains(&lat) && (-180.0..=180.0).contains(&lng)
+    }
+
+    /// A record clock: `now_ms`, unless that would not move past `after` (a new
+    /// leader whose wall clock trails the old one's), then one past `after`.
+    pub fn monotonic_ms(now_ms: u64, after: u64) -> u64 {
+        now_ms.max(after.saturating_add(1))
+    }
+
     /// Whether a history sample falls within the requested window (`since` = 0
     /// means "everything").
     pub fn within_window(sample_ts: u64, since: u64) -> bool {
@@ -115,6 +147,11 @@ pub mod pure {
 /// order over the whole record, so both replicas independently elect the same
 /// winner. WHICH side wins is arbitrary; that it is the same side everywhere is
 /// the property that matters.
+///
+/// Core 1.0: the stamps compared here now come from the leader's clock
+/// (`stamp_after`), never from a phone, so the hazard below is closed for every
+/// method except `update_location`, whose fix time only the phone knows — and
+/// which already drops a fix older than the stored one.
 ///
 /// ⚠️ **Every caller-supplied timestamp is now load-bearing.** `save_internal`
 /// merges a `Custom`-stamped entry against the stored one on every write, a
@@ -367,24 +404,44 @@ pub struct SpaceInfo {
     pub group_count:   u32,
 }
 
+// ── Caller ────────────────────────────────────────────────────────────────────
+
+/// What a view tells the app about the caller: the member id this space stores
+/// for them, and their standing in the organization the app instance belongs to.
+#[derive(AbiType, Serialize, Deserialize, Clone, Debug)]
+#[serde(crate = "calimero_sdk::serde")]
+#[serde(rename_all = "camelCase")]
+pub struct Me {
+    /// The caller's account (64 hex) — the id every record here is keyed by.
+    pub member_id: String,
+    /// The app instance's organization, when it belongs to one.
+    pub org:       Option<String>,
+    /// "guest" | "member" | "admin" | "owner", or `None` outside an org.
+    pub org_role:  Option<String>,
+}
+
 // ── Events ────────────────────────────────────────────────────────────────────
+//
+// Named fields, not tuple variants: core#4753 stops compiling tuple variants in
+// `#[app::event]`. Every variant carries the affected record as `id`, so the
+// payload is `{"id":"…"}` and a client reads one field whatever the kind.
 
 #[app::event]
 pub enum Event {
-    MemberJoined(String),
-    TrackerCreated(String),
-    TrackerUpdated(String),
-    TrackerRenamed(String),
-    TrackerDeleted(String),
-    TrackerShared(String),
-    GroupCreated(String),
-    GroupUpdated(String),
-    GroupDeleted(String),
-    GeofenceCreated(String),
-    GeofenceDeleted(String),
-    GeofenceEntered(String),
-    GeofenceExited(String),
-    PresenceUpdated(String),
+    MemberJoined { id: String },
+    TrackerCreated { id: String },
+    TrackerUpdated { id: String },
+    TrackerRenamed { id: String },
+    TrackerDeleted { id: String },
+    TrackerShared { id: String },
+    GroupCreated { id: String },
+    GroupUpdated { id: String },
+    GroupDeleted { id: String },
+    GeofenceCreated { id: String },
+    GeofenceDeleted { id: String },
+    GeofenceEntered { id: String },
+    GeofenceExited { id: String },
+    PresenceUpdated { id: String },
 }
 
 // ── App state ──────────────────────────────────────────────────────────────────
@@ -398,6 +455,46 @@ pub struct MeroTag {
     geofences:  UnorderedMap<GeofenceId, Geofence>,
     presence:   UnorderedMap<MemberId, Presence>,
     history:    UnorderedMap<TrackerId, History>,
+}
+
+// ── Identity and time (core 1.0) ──────────────────────────────────────────────
+//
+// Core 1.0 has no devices: `env::account_id()` is the person calling, and it is
+// the only member id this contract stores. Nothing takes an owner, author or
+// member id from the caller any more — a client could put anyone's name there.
+//
+// Every write runs once, on the app instance's Raft leader, and there are no
+// offline writes, so record clocks come from the leader (`env::time_now()`)
+// instead of each phone. That retires the 0.x requirement that every client
+// pass one monotonic clock (see `lww_wins`). The one caller-supplied time left
+// is a location fix's own `timestamp`: it is when the GPS took the fix, which
+// only the phone knows.
+
+fn caller_id() -> MemberId {
+    AccountId::from(env::account_id()).to_string()
+}
+
+/// The caller administers the app instance's organization (admin or owner).
+/// Org admins moderate the space: they may remove anyone's tracker, group or
+/// geofence, the way an admin removes content in any team tool.
+fn caller_is_org_admin() -> bool {
+    env::caller_org().is_some_and(|o| o.role >= OrgRole::Admin)
+}
+
+fn org_role_name(role: OrgRole) -> &'static str {
+    match role {
+        OrgRole::Guest => "guest",
+        OrgRole::Member => "member",
+        OrgRole::Admin => "admin",
+        OrgRole::Owner => "owner",
+    }
+}
+
+/// The leader's clock in milliseconds, never behind `after`. A new leader's
+/// wall clock may trail the old one's by a little; LWW on these stamps must
+/// still order a later write after an earlier one.
+fn stamp_after(after: u64) -> u64 {
+    pure::monotonic_ms(env::time_now() / 1_000_000, after)
 }
 
 // ── Logic ──────────────────────────────────────────────────────────────────────
@@ -428,15 +525,32 @@ impl MeroTag {
         }
     }
 
-    pub fn rename_space(&mut self, name: String) {
-        self.space_name.set(name);
+    /// Who the caller is here: their member id and org standing.
+    pub fn whoami(&self) -> Me {
+        let org = env::caller_org();
+        Me {
+            member_id: caller_id(),
+            org:       org.as_ref().map(|o| o.org.clone()),
+            org_role:  org.map(|o| org_role_name(o.role).to_owned()),
+        }
     }
 
-    pub fn join(&mut self, member_id: String, username: String, timestamp: u64) {
+    /// Rename the space. Org admins only — the space is the org's.
+    pub fn rename_space(&mut self, name: String) -> app::Result<()> {
+        if !caller_is_org_admin() {
+            app::bail!("only an admin of this organization can rename the space");
+        }
+        self.space_name.set(name);
+        Ok(())
+    }
+
+    /// Join the space as the caller's own account. Idempotent.
+    pub fn join(&mut self, username: String) {
+        let member_id = caller_id();
         if self.members.contains(&member_id).unwrap_or(false) { return; }
-        let m = Member { id: member_id.clone(), username, joined_at: timestamp };
+        let m = Member { id: member_id.clone(), username, joined_at: stamp_after(0) };
         let _ = self.members.insert(member_id.clone(), m);
-        app::emit!(Event::MemberJoined(member_id));
+        app::emit!(Event::MemberJoined { id: member_id });
     }
 
     pub fn get_members(&self) -> Vec<Member> {
@@ -445,34 +559,52 @@ impl MeroTag {
 
     // ── Trackers ────────────────────────────────────────────────────────────────
 
-    pub fn create_tracker(&mut self, id: String, name: String, owner_id: String, created_at: u64) -> String {
+    /// Create a tracker owned by the caller. Idempotent on `id`.
+    pub fn create_tracker(&mut self, id: String, name: String) -> String {
         if self.trackers.contains(&id).unwrap_or(false) { return id; }
+        let now = stamp_after(0);
         let t = Tracker {
-            id: id.clone(), name, owner_id, viewers: vec![],
-            latest: None, created_at, updated_at: created_at,
+            id: id.clone(), name, owner_id: caller_id(), viewers: vec![],
+            latest: None, created_at: now, updated_at: now,
         };
         let _ = self.trackers.insert(id.clone(), t);
-        app::emit!(Event::TrackerCreated(id.clone()));
+        app::emit!(Event::TrackerCreated { id: id.clone() });
         id
     }
 
-    pub fn rename_tracker(&mut self, id: String, name: String, updated_at: u64) {
+    pub fn rename_tracker(&mut self, id: String, name: String) -> app::Result<()> {
+        let me = caller_id();
+        let admin = caller_is_org_admin();
         if let Ok(Some(mut t)) = self.trackers.get_mut(&id) {
+            if !pure::may_manage(&t.owner_id, &me, admin) {
+                app::bail!("only the tracker's owner can rename it");
+            }
             t.name = name;
-            t.updated_at = updated_at;
+            t.updated_at = stamp_after(t.updated_at);
             drop(t);
-            app::emit!(Event::TrackerRenamed(id));
+            app::emit!(Event::TrackerRenamed { id });
         }
+        Ok(())
     }
 
-    pub fn delete_tracker(&mut self, id: String) {
+    pub fn delete_tracker(&mut self, id: String) -> app::Result<()> {
+        let me = caller_id();
+        if let Ok(Some(t)) = self.trackers.get(&id) {
+            if !pure::may_manage(&t.owner_id, &me, caller_is_org_admin()) {
+                app::bail!("only the tracker's owner can delete it");
+            }
+        }
         let _ = self.trackers.remove(&id);
         let _ = self.history.remove(&id);
-        app::emit!(Event::TrackerDeleted(id));
+        app::emit!(Event::TrackerDeleted { id });
+        Ok(())
     }
 
-    /// Ingest a location update for a tracker. Validates → stores latest →
-    /// appends a capped history sample → broadcasts.
+    /// Ingest a location fix for one of the caller's trackers. Validates →
+    /// stores latest → appends a capped history sample → broadcasts.
+    ///
+    /// Owner only, and not even an org admin: a location is the owner's to
+    /// report, and an admin moving someone's pin would be a forged sighting.
     #[allow(clippy::too_many_arguments)]
     pub fn update_location(
         &mut self,
@@ -484,26 +616,34 @@ impl MeroTag {
         heading:   f64,
         battery:   u8,
         timestamp: u64,
-    ) {
+    ) -> app::Result<()> {
+        if !pure::valid_coordinates(latitude, longitude) {
+            app::bail!("that location is not a valid latitude/longitude");
+        }
+        let me = caller_id();
         let loc = Location { latitude, longitude, altitude, speed, heading, battery, timestamp };
 
         let mut tracker_exists = false;
         if let Ok(Some(mut t)) = self.trackers.get_mut(&tracker_id) {
-            // Drop out-of-order updates.
+            if t.owner_id != me {
+                app::bail!("only the tracker's owner can report its location");
+            }
+            // Drop out-of-order fixes.
             if pure::location_is_newer(t.latest.as_ref().map(|l| l.timestamp), timestamp) {
                 t.latest = Some(loc.clone());
-                t.updated_at = timestamp;
+                t.updated_at = stamp_after(t.updated_at);
             }
             tracker_exists = true;
         }
-        if !tracker_exists { return; }
+        if !tracker_exists { return Ok(()); }
 
         // Append to bounded history.
         let mut h = self.history.get(&tracker_id).ok().flatten().map(|v| v.clone()).unwrap_or_default();
         pure::push_capped(&mut h.samples, LocationSample { latitude, longitude, timestamp }, MAX_HISTORY);
         let _ = self.history.insert(tracker_id.clone(), h);
 
-        app::emit!(Event::TrackerUpdated(tracker_id));
+        app::emit!(Event::TrackerUpdated { id: tracker_id });
+        Ok(())
     }
 
     pub fn get_trackers(&self) -> Vec<Tracker> {
@@ -516,78 +656,115 @@ impl MeroTag {
 
     // ── Sharing / permissions ─────────────────────────────────────────────────
 
-    pub fn share_tracker(&mut self, tracker_id: String, user_id: String, updated_at: u64) {
+    pub fn share_tracker(&mut self, tracker_id: String, user_id: String) -> app::Result<()> {
+        let me = caller_id();
+        let admin = caller_is_org_admin();
         if let Ok(Some(mut t)) = self.trackers.get_mut(&tracker_id) {
+            if !pure::may_manage(&t.owner_id, &me, admin) {
+                app::bail!("only the tracker's owner can share it");
+            }
             if !t.viewers.contains(&user_id) {
                 t.viewers.push(user_id);
-                t.updated_at = updated_at;
+                t.updated_at = stamp_after(t.updated_at);
             }
             drop(t);
-            app::emit!(Event::TrackerShared(tracker_id));
+            app::emit!(Event::TrackerShared { id: tracker_id });
         }
+        Ok(())
     }
 
-    pub fn unshare_tracker(&mut self, tracker_id: String, user_id: String, updated_at: u64) {
+    pub fn unshare_tracker(&mut self, tracker_id: String, user_id: String) -> app::Result<()> {
+        let me = caller_id();
+        let admin = caller_is_org_admin();
         if let Ok(Some(mut t)) = self.trackers.get_mut(&tracker_id) {
+            // A viewer may always take themselves off a tracker.
+            if !pure::may_manage(&t.owner_id, &me, admin) && user_id != me {
+                app::bail!("only the tracker's owner can unshare it");
+            }
             t.viewers.retain(|v| v != &user_id);
-            t.updated_at = updated_at;
+            t.updated_at = stamp_after(t.updated_at);
             drop(t);
-            app::emit!(Event::TrackerShared(tracker_id));
+            app::emit!(Event::TrackerShared { id: tracker_id });
         }
+        Ok(())
     }
 
     // ── Groups ────────────────────────────────────────────────────────────────
 
-    pub fn create_group(&mut self, id: String, name: String, owner_id: String, updated_at: u64) -> String {
+    /// Create a group owned by the caller. Idempotent on `id`.
+    pub fn create_group(&mut self, id: String, name: String) -> String {
         if self.groups.contains(&id).unwrap_or(false) { return id; }
+        let owner_id = caller_id();
         let g = Group {
             id: id.clone(), name, owner_id: owner_id.clone(),
-            member_ids: vec![owner_id], tracker_ids: vec![], updated_at,
+            member_ids: vec![owner_id], tracker_ids: vec![], updated_at: stamp_after(0),
         };
         let _ = self.groups.insert(id.clone(), g);
-        app::emit!(Event::GroupCreated(id.clone()));
+        app::emit!(Event::GroupCreated { id: id.clone() });
         id
     }
 
-    pub fn add_group_member(&mut self, group_id: String, member_id: String, updated_at: u64) {
-        if let Ok(Some(mut g)) = self.groups.get_mut(&group_id) {
+    pub fn add_group_member(&mut self, group_id: String, member_id: String) -> app::Result<()> {
+        self.edit_group(&group_id, |g| {
             if !g.member_ids.contains(&member_id) { g.member_ids.push(member_id); }
-            g.updated_at = updated_at;
-            drop(g);
-            app::emit!(Event::GroupUpdated(group_id));
-        }
+        })
     }
 
-    pub fn remove_group_member(&mut self, group_id: String, member_id: String, updated_at: u64) {
-        if let Ok(Some(mut g)) = self.groups.get_mut(&group_id) {
-            g.member_ids.retain(|m| m != &member_id);
-            g.updated_at = updated_at;
-            drop(g);
-            app::emit!(Event::GroupUpdated(group_id));
+    /// Remove a member. The group's owner may remove anyone; a member may
+    /// always leave.
+    pub fn remove_group_member(&mut self, group_id: String, member_id: String) -> app::Result<()> {
+        if member_id == caller_id() {
+            if let Ok(Some(mut g)) = self.groups.get_mut(&group_id) {
+                g.member_ids.retain(|m| m != &member_id);
+                g.updated_at = stamp_after(g.updated_at);
+                drop(g);
+                app::emit!(Event::GroupUpdated { id: group_id });
+            }
+            return Ok(());
         }
+        self.edit_group(&group_id, |g| g.member_ids.retain(|m| m != &member_id))
     }
 
-    pub fn add_tracker_to_group(&mut self, group_id: String, tracker_id: String, updated_at: u64) {
-        if let Ok(Some(mut g)) = self.groups.get_mut(&group_id) {
+    pub fn add_tracker_to_group(&mut self, group_id: String, tracker_id: String) -> app::Result<()> {
+        self.edit_group(&group_id, |g| {
             if !g.tracker_ids.contains(&tracker_id) { g.tracker_ids.push(tracker_id); }
-            g.updated_at = updated_at;
-            drop(g);
-            app::emit!(Event::GroupUpdated(group_id));
-        }
+        })
     }
 
-    pub fn delete_group(&mut self, id: String) {
+    pub fn delete_group(&mut self, id: String) -> app::Result<()> {
+        let me = caller_id();
+        if let Ok(Some(g)) = self.groups.get(&id) {
+            if !pure::may_manage(&g.owner_id, &me, caller_is_org_admin()) {
+                app::bail!("only the group's owner can delete it");
+            }
+        }
         let _ = self.groups.remove(&id);
-        app::emit!(Event::GroupDeleted(id));
+        app::emit!(Event::GroupDeleted { id });
+        Ok(())
     }
 
     pub fn get_groups(&self) -> Vec<Group> {
         self.groups.entries().unwrap().map(|(_, v)| v).collect()
     }
 
+    /// Owner- (or org-admin-) gated group edit, stamped and announced.
+    fn edit_group(&mut self, group_id: &str, edit: impl FnOnce(&mut Group)) -> app::Result<()> {
+        let me = caller_id();
+        let admin = caller_is_org_admin();
+        if let Ok(Some(mut g)) = self.groups.get_mut(group_id) {
+            if !pure::may_manage(&g.owner_id, &me, admin) {
+                app::bail!("only the group's owner can change it");
+            }
+            edit(&mut g);
+            g.updated_at = stamp_after(g.updated_at);
+            drop(g);
+            app::emit!(Event::GroupUpdated { id: group_id.to_owned() });
+        }
+        Ok(())
+    }
+
     // ── Geofences ─────────────────────────────────────────────────────────────
 
-    #[allow(clippy::too_many_arguments)]
     pub fn create_geofence(
         &mut self,
         id: String,
@@ -595,18 +772,39 @@ impl MeroTag {
         center_lat: f64,
         center_lng: f64,
         radius: f64,
-        created_by: String,
-        created_at: u64,
-    ) -> String {
-        let g = Geofence { id: id.clone(), name, center_lat, center_lng, radius, created_by, created_at };
+    ) -> app::Result<String> {
+        if !pure::valid_coordinates(center_lat, center_lng) {
+            app::bail!("that place is not a valid latitude/longitude");
+        }
+        if !(radius.is_finite() && radius > 0.0) {
+            app::bail!("a geofence needs a positive radius");
+        }
+        let me = caller_id();
+        if let Ok(Some(existing)) = self.geofences.get(&id) {
+            // Redefining someone else's place would move their alerts.
+            if !pure::may_manage(&existing.created_by, &me, caller_is_org_admin()) {
+                app::bail!("only the geofence's creator can change it");
+            }
+        }
+        let g = Geofence {
+            id: id.clone(), name, center_lat, center_lng, radius,
+            created_by: me, created_at: stamp_after(0),
+        };
         let _ = self.geofences.insert(id.clone(), g);
-        app::emit!(Event::GeofenceCreated(id.clone()));
-        id
+        app::emit!(Event::GeofenceCreated { id: id.clone() });
+        Ok(id)
     }
 
-    pub fn delete_geofence(&mut self, id: String) {
+    pub fn delete_geofence(&mut self, id: String) -> app::Result<()> {
+        let me = caller_id();
+        if let Ok(Some(g)) = self.geofences.get(&id) {
+            if !pure::may_manage(&g.created_by, &me, caller_is_org_admin()) {
+                app::bail!("only the geofence's creator can delete it");
+            }
+        }
         let _ = self.geofences.remove(&id);
-        app::emit!(Event::GeofenceDeleted(id));
+        app::emit!(Event::GeofenceDeleted { id });
+        Ok(())
     }
 
     pub fn get_geofences(&self) -> Vec<Geofence> {
@@ -618,18 +816,22 @@ impl MeroTag {
     pub fn report_geofence_event(&mut self, geofence_id: String, kind: String) {
         if !self.geofences.contains(&geofence_id).unwrap_or(false) { return; }
         if kind == "enter" {
-            app::emit!(Event::GeofenceEntered(geofence_id));
+            app::emit!(Event::GeofenceEntered { id: geofence_id });
         } else if kind == "exit" {
-            app::emit!(Event::GeofenceExited(geofence_id));
+            app::emit!(Event::GeofenceExited { id: geofence_id });
         }
     }
 
     // ── Presence ──────────────────────────────────────────────────────────────
 
-    pub fn update_presence(&mut self, user_id: String, online: bool, last_seen: u64) {
-        let p = Presence { user_id: user_id.clone(), online, last_seen };
+    /// The caller's own presence. One entry per person: with no devices in core
+    /// 1.0, a member on a phone and an iPad is one presence, not two.
+    pub fn update_presence(&mut self, online: bool) {
+        let user_id = caller_id();
+        let previous = self.presence.get(&user_id).ok().flatten().map_or(0, |p| p.last_seen);
+        let p = Presence { user_id: user_id.clone(), online, last_seen: stamp_after(previous) };
         let _ = self.presence.insert(user_id.clone(), p);
-        app::emit!(Event::PresenceUpdated(user_id));
+        app::emit!(Event::PresenceUpdated { id: user_id });
     }
 
     pub fn get_presence(&self) -> Vec<Presence> {
@@ -645,6 +847,7 @@ impl MeroTag {
         h.samples.into_iter().filter(|s| s.timestamp >= since).collect()
     }
 }
+
 
 // ── Tests (pure helpers — run with `cargo test`) ──────────────────────────────
 
@@ -926,5 +1129,140 @@ mod merge_laws {
         let b = History { samples: vec![LocationSample { latitude: 3.0, longitude: 4.0, timestamp: 9 }] };
         assert_eq!(merged(&a, &b).samples.len(), 2);
         assert_eq!(merged(&b, &a).samples.len(), 2);
+    }
+}
+
+// ── Core 1.0 semantics ──────────────────────────────────────────────────────────
+//
+// Run against the SDK's in-process `TestHost`: identities come from the host,
+// never from arguments, and org admins moderate.
+#[cfg(test)]
+mod core_1_0 {
+    use calimero_sdk::env::{CallerOrg, OrgRole};
+    use calimero_sdk::testing::TestHost;
+    use calimero_sdk::AccountId;
+
+    use super::MeroTag;
+
+    const ALICE: [u8; 32] = [1; 32];
+    const BOB: [u8; 32] = [2; 32];
+
+    fn hex(account: [u8; 32]) -> String {
+        AccountId::from(account).to_string()
+    }
+
+    fn space() -> TestHost<MeroTag> {
+        TestHost::new(|| MeroTag::init("Family".to_owned()))
+    }
+
+    fn org(role: OrgRole) -> Option<CallerOrg> {
+        Some(CallerOrg { org: "org-1".to_owned(), role, teams: vec![] })
+    }
+
+    #[test]
+    fn owner_and_member_ids_come_from_the_caller() {
+        let mut app = space();
+        app.set_account(ALICE);
+        app.call(|s| s.join("alice".to_owned()));
+        app.call(|s| s.create_tracker("t1".to_owned(), "Phone".to_owned()));
+
+        let tracker = app.view(|s| s.get_tracker("t1".to_owned())).expect("created");
+        assert_eq!(tracker.owner_id, hex(ALICE));
+        let members = app.view(|s| s.get_members());
+        assert_eq!(members.len(), 1);
+        assert_eq!(members[0].id, hex(ALICE));
+        assert_eq!(app.view(|s| s.whoami()).member_id, hex(ALICE));
+    }
+
+    #[test]
+    fn only_the_owner_reports_a_trackers_location() {
+        let mut app = space();
+        app.set_account(ALICE);
+        app.call(|s| s.create_tracker("t1".to_owned(), "Phone".to_owned()));
+
+        app.set_account(BOB);
+        let forged = app.call(|s| s.update_location("t1".to_owned(), 1.0, 2.0, 0.0, 0.0, 0.0, 90, 10));
+        assert!(forged.is_err(), "another member must not move my pin");
+        // Not even an org admin may forge a sighting.
+        app.set_caller_org(org(OrgRole::Admin));
+        assert!(app.call(|s| s.update_location("t1".to_owned(), 1.0, 2.0, 0.0, 0.0, 0.0, 90, 10)).is_err());
+
+        app.set_caller_org(None);
+        app.set_account(ALICE);
+        app.call(|s| s.update_location("t1".to_owned(), 1.0, 2.0, 0.0, 0.0, 0.0, 90, 10)).expect("owner");
+        let latest = app.view(|s| s.get_tracker("t1".to_owned())).and_then(|t| t.latest).expect("fix stored");
+        assert_eq!((latest.latitude, latest.longitude), (1.0, 2.0));
+        assert_eq!(app.view(|s| s.get_history("t1".to_owned(), 0)).len(), 1);
+    }
+
+    #[test]
+    fn an_org_admin_moderates_but_a_member_cannot() {
+        let mut app = space();
+        app.set_account(ALICE);
+        app.call(|s| s.create_tracker("t1".to_owned(), "Phone".to_owned()));
+
+        app.set_account(BOB);
+        app.set_caller_org(org(OrgRole::Member));
+        assert!(app.call(|s| s.delete_tracker("t1".to_owned())).is_err());
+        assert!(app.call(|s| s.rename_space("Mine".to_owned())).is_err());
+        assert!(app.view(|s| s.get_tracker("t1".to_owned())).is_some());
+
+        app.set_caller_org(org(OrgRole::Admin));
+        app.call(|s| s.delete_tracker("t1".to_owned())).expect("admin removes");
+        app.call(|s| s.rename_space("Ours".to_owned())).expect("admin renames");
+        assert!(app.view(|s| s.get_tracker("t1".to_owned())).is_none());
+        assert_eq!(app.view(|s| s.get_space()).name, "Ours");
+        assert_eq!(app.view(|s| s.whoami()).org_role.as_deref(), Some("admin"));
+    }
+
+    #[test]
+    fn a_member_may_leave_a_group_but_not_remove_others() {
+        let mut app = space();
+        app.set_account(ALICE);
+        app.call(|s| s.create_group("g1".to_owned(), "Hike".to_owned()));
+        app.call(|s| s.add_group_member("g1".to_owned(), hex(BOB))).expect("owner adds");
+
+        app.set_account(BOB);
+        assert!(app.call(|s| s.remove_group_member("g1".to_owned(), hex(ALICE))).is_err());
+        app.call(|s| s.remove_group_member("g1".to_owned(), hex(BOB))).expect("leaving is always allowed");
+        let group = app.view(|s| s.get_groups()).pop().expect("group");
+        assert_eq!(group.member_ids, vec![hex(ALICE)]);
+    }
+
+    #[test]
+    fn record_clocks_only_move_forward() {
+        let mut app = space();
+        app.set_account(ALICE);
+        app.call(|s| s.create_tracker("t1".to_owned(), "a".to_owned()));
+        let first = app.view(|s| s.get_tracker("t1".to_owned())).unwrap().updated_at;
+        app.call(|s| s.rename_tracker("t1".to_owned(), "b".to_owned())).unwrap();
+        let second = app.view(|s| s.get_tracker("t1".to_owned())).unwrap();
+        assert!(second.updated_at > first);
+        assert_eq!(second.name, "b");
+    }
+
+    #[test]
+    fn events_carry_a_named_id() {
+        let mut app = space();
+        app.set_account(ALICE);
+        app.call(|s| s.create_tracker("t1".to_owned(), "a".to_owned()));
+        let events = app.take_events();
+        let created = events.iter().find(|e| e.kind == "TrackerCreated").expect("emitted");
+        let payload: calimero_sdk::serde_json::Value =
+            calimero_sdk::serde_json::from_slice(&created.data).expect("json payload");
+        assert_eq!(payload["id"], "t1");
+    }
+
+    #[test]
+    fn helpers() {
+        use super::pure::{may_manage, monotonic_ms, valid_coordinates};
+        assert_eq!(monotonic_ms(100, 0), 100);
+        assert_eq!(monotonic_ms(100, 200), 201);
+        assert!(may_manage("a", "a", false));
+        assert!(may_manage("a", "b", true));
+        assert!(!may_manage("a", "b", false));
+        assert!(valid_coordinates(45.0, 15.0));
+        assert!(!valid_coordinates(91.0, 0.0));
+        assert!(!valid_coordinates(f64::NAN, 0.0));
     }
 }

@@ -1,18 +1,23 @@
 import SwiftUI
 
-/// Sign-in. Calimero Cloud first: one button opens the wallet in the system
-/// auth sheet and the person approves this device with their passkey. Under
-/// it, "Manually enter node URL" signs in to a node they run (a local `merod`)
-/// with its admin username and password — no Cloud account needed.
+/// Sign-in with a passkey on the person's Calimero cluster. They enter the
+/// cluster's address once (from the Calimero Cloud console; it is
+/// remembered), then sign in, or create an account, with this phone's
+/// passkey. Under it, "Development cluster" connects to a `merod local` node
+/// by URL, trusting its mock attestation, with a software passkey the SDK
+/// keeps for that node.
 struct SignInView: View {
     @EnvironmentObject private var app: AppState
-    @State private var manual = false
-    @State private var nodeURL = ""
-    @State private var username = ""
-    @State private var password = ""
+    @State private var mode: Mode = .signIn
+    @State private var clusterURL = ""
+    @State private var devURL = ""
+    @State private var name = ""
     @FocusState private var focus: Field?
 
-    fileprivate enum Field { case url, user, pass }
+    fileprivate enum Field { case cluster, name, dev }
+    fileprivate enum Mode { case signIn, create, development }
+
+    private var compact: Bool { mode != .signIn }
 
     var body: some View {
         ZStack {
@@ -20,59 +25,42 @@ struct SignInView: View {
             ScrollView {
                 VStack(spacing: 0) {
                     RadarMark()
-                        .frame(height: manual ? 150 : 230)
-                        .padding(.top, manual ? 12 : 40)
+                        .frame(height: compact ? 150 : 230)
+                        .padding(.top, compact ? 12 : 40)
 
                     VStack(spacing: 12) {
-                        Text(manual ? "Connect a node" : "Find your people.\nPrivately.")
+                        Text(title)
                             .font(Tag.Typeface.display)
                             .tracking(-1)
                             .multilineTextAlignment(.center)
                             .foregroundStyle(Tag.ink)
                             .fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("appTitle")
-                        Text(
-                            manual
-                                ? "Sign in to a Calimero node you run, like a local merod, with its admin login."
-                                : "Live location with the people you choose. It travels through your own account, "
-                                    + "never a tracking company."
-                        )
-                        .font(Tag.Typeface.body)
-                        .foregroundStyle(Tag.textDim)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
+                        Text(subtitle)
+                            .font(Tag.Typeface.body)
+                            .foregroundStyle(Tag.textDim)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     .padding(.top, 8)
 
-                    if !manual {
+                    if mode == .signIn {
                         FeatureChips().padding(.top, 22)
                     }
 
                     VStack(spacing: 14) {
                         notices
-                        if manual {
-                            nodeForm.transition(.move(edge: .bottom).combined(with: .opacity))
-                        } else {
-                            cloudButton.transition(.opacity)
+                        Group {
+                            switch mode {
+                            case .signIn, .create: clusterForm
+                            case .development: devForm
+                            }
                         }
-                        Button {
-                            Platform.tap()
-                            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { manual.toggle() }
-                            if manual { focus = .url }
-                        } label: {
-                            Text(manual ? "Use Calimero Cloud instead" : "Manually enter node URL")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(Tag.accentInk)
-                                .padding(.vertical, 10)
-                                .padding(.horizontal, 16)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier(manual ? "useCloud" : "manualNode")
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        footerLinks
                     }
                     .padding(.top, 28)
                     .animation(.easeOut(duration: 0.2), value: app.client.errorMessage)
-                    .animation(.easeOut(duration: 0.2), value: app.nodeError)
 
                     Spacer(minLength: 24)
                 }
@@ -84,10 +72,29 @@ struct SignInView: View {
             .scrollDismissesKeyboard(.interactively)
         }
         .onAppear {
-            if nodeURL.isEmpty { nodeURL = app.lastNodeURL }
-            if username.isEmpty { username = app.lastNodeUser }
-            // Demo recordings only (scripts/record-demo.sh): a password to show filled in.
-            if password.isEmpty { password = ProcessInfo.processInfo.environment["MEROTAG_PREFILL_PASS"] ?? "" }
+            if clusterURL.isEmpty { clusterURL = app.lastClusterURL }
+            if devURL.isEmpty { devURL = app.lastDevNodeURL }
+        }
+    }
+
+    private var title: String {
+        switch mode {
+        case .signIn: return "Find your people.\nPrivately."
+        case .create: return "Create your account"
+        case .development: return "Development cluster"
+        }
+    }
+
+    private var subtitle: String {
+        switch mode {
+        case .signIn:
+            return "Live location with the people you choose. It lives on your own Calimero cluster, "
+                + "never with a tracking company."
+        case .create:
+            return "Your account is a passkey on this phone. No password to remember, nothing to leak."
+        case .development:
+            return "Connect to a merod local cluster on your Mac. Its attestation is a mock, so use this only "
+                + "for development."
         }
     }
 
@@ -96,95 +103,118 @@ struct SignInView: View {
             Callout(tone: .warning, title: "Signed out", message: notice)
                 .accessibilityIdentifier("sessionNotice")
         }
-        if let error = app.client.errorMessage, !manual {
-            Callout(tone: .danger, title: "Couldn't sign in", message: error)
+        if let error = app.client.errorMessage {
+            Callout(tone: .danger, title: mode == .development ? "Couldn't connect" : "Couldn't sign in", message: error)
                 .accessibilityIdentifier("signInError")
         }
-        if let error = app.nodeError, manual {
-            Callout(tone: .danger, title: "Couldn't connect", message: error)
-                .accessibilityIdentifier("nodeError")
-        }
     }
 
-    private var cloudButton: some View {
-        VStack(spacing: 10) {
-            LoadingButton(
-                title: "Continue with Calimero Cloud", systemImage: "cloud.fill", isLoading: app.client.isLoading
-            ) {
-                Task { await app.signIn() }
-            }
-            .accessibilityIdentifier("cloudSignInButton")
-            Label("Approve this phone once with your passkey", systemImage: "person.badge.key")
-                .font(.system(size: 12.5))
-                .foregroundStyle(Tag.textFaint)
-        }
-    }
-
-    private var nodeForm: some View {
+    private var clusterForm: some View {
         Card(padding: 18) {
             VStack(spacing: 14) {
                 TagTextField(
-                    label: "Node URL", placeholder: "http://localhost:4001", text: $nodeURL,
-                    monospaced: true, keyboardKind: .url, submitLabel: .next
-                ) { focus = .user }
-                .focused($focus, equals: .url)
-                .accessibilityIdentifier("nodeURLField")
-                TagTextField(
-                    label: "Username", placeholder: "dev", text: $username, keyboardKind: .identifier,
-                    submitLabel: .next
-                ) { focus = .pass }
-                .focused($focus, equals: .user)
-                .accessibilityIdentifier("nodeUserField")
-                SecureEntry(label: "Password", text: $password, focus: $focus, onSubmit: connect)
-                    .accessibilityIdentifier("nodePassField")
+                    label: "Cluster address", placeholder: "https://your-cluster.calimero.network", text: $clusterURL,
+                    monospaced: true, keyboardKind: .url, submitLabel: mode == .create ? .next : .go
+                ) {
+                    if mode == .create { focus = .name } else { submit() }
+                }
+                .focused($focus, equals: .cluster)
+                .accessibilityIdentifier("clusterURLField")
+                if mode == .create {
+                    TagTextField(
+                        label: "Your name", placeholder: "How people in your spaces see you", text: $name,
+                        submitLabel: .go, onSubmit: submit
+                    )
+                    .focused($focus, equals: .name)
+                    .accessibilityIdentifier("accountNameField")
+                }
                 LoadingButton(
-                    title: "Connect to node", systemImage: "server.rack", isLoading: app.isConnectingNode,
-                    action: connect
+                    title: mode == .create ? "Create account with passkey" : "Sign in with passkey",
+                    systemImage: "person.badge.key.fill", isLoading: app.client.isLoading, action: submit
                 )
-                .disabled(nodeURL.isEmpty || username.isEmpty || password.isEmpty)
-                .accessibilityIdentifier("nodeConnectButton")
-                Text("In the Simulator, localhost is your Mac. On a phone, use your Mac's LAN address.")
-                    .font(.system(size: 12))
+                .disabled(clusterURL.isEmpty || (mode == .create && name.isEmpty))
+                .accessibilityIdentifier(mode == .create ? "createAccountButton" : "passkeySignInButton")
+                Label("Find the address in the Calimero Cloud console", systemImage: "info.circle")
+                    .font(.system(size: 12.5))
                     .foregroundStyle(Tag.textFaint)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
 
-    private func connect() {
-        guard !nodeURL.isEmpty, !username.isEmpty, !password.isEmpty else { return }
-        focus = nil
-        Task { await app.signInToNode(url: nodeURL, username: username, password: password) }
+    private var devForm: some View {
+        Card(padding: 18) {
+            VStack(spacing: 14) {
+                TagTextField(
+                    label: "Node URL", placeholder: AppState.defaultDevNodeURL, text: $devURL,
+                    monospaced: true, keyboardKind: .url, submitLabel: .next
+                ) { focus = .name }
+                .focused($focus, equals: .dev)
+                .accessibilityIdentifier("nodeURLField")
+                TagTextField(
+                    label: "Your name", placeholder: "dev", text: $name, submitLabel: .go, onSubmit: submit
+                )
+                .focused($focus, equals: .name)
+                .accessibilityIdentifier("devNameField")
+                LoadingButton(
+                    title: "Connect", systemImage: "server.rack", isLoading: app.client.isLoading, action: submit
+                )
+                .disabled(devURL.isEmpty)
+                .accessibilityIdentifier("devConnectButton")
+                Label("Trusts the node's mock attestation", systemImage: "exclamationmark.shield")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Tag.textFaint)
+            }
+        }
     }
-}
 
-/// A password field styled like ``TagTextField``.
-private struct SecureEntry: View {
-    let label: String
-    @Binding var text: String
-    var focus: FocusState<SignInView.Field?>.Binding
-    var onSubmit: () -> Void = {}
+    private var footerLinks: some View {
+        VStack(spacing: 2) {
+            switch mode {
+            case .signIn:
+                link("New here? Create an account", id: "showCreateAccount") { switchTo(.create, focus: .cluster) }
+                link("Development cluster", id: "showDevelopment") { switchTo(.development, focus: .dev) }
+            case .create:
+                link("I already have an account", id: "showSignIn") { switchTo(.signIn, focus: .cluster) }
+            case .development:
+                link("Use my Calimero cluster instead", id: "showSignIn") { switchTo(.signIn, focus: .cluster) }
+            }
+        }
+    }
 
-    private var focused: Bool { focus.wrappedValue == .pass }
+    private func link(_ title: String, id: String, action: @escaping () -> Void) -> some View {
+        Button {
+            Platform.tap()
+            action()
+        } label: {
+            Text(title)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Tag.accentInk)
+                .padding(.vertical, 8)
+                .padding(.horizontal, 16)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(id)
+    }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(label).font(Tag.Typeface.label).foregroundStyle(Tag.ink)
-            SecureField("", text: $text, prompt: Text("Admin password").foregroundColor(Tag.textFaint))
-                .font(.system(size: 15))
-                .foregroundStyle(Tag.ink)
-                .submitLabel(.go)
-                .onSubmit(onSubmit)
-                .focused(focus, equals: .pass)
-                .padding(.horizontal, 14)
-                .frame(minHeight: 50)
-                .background(
-                    RoundedRectangle(cornerRadius: Tag.Radius.control, style: .continuous).fill(Tag.surfaceSunken))
-                .overlay(
-                    RoundedRectangle(cornerRadius: Tag.Radius.control, style: .continuous)
-                        .strokeBorder(focused ? Tag.accent : Tag.border, lineWidth: focused ? 1.5 : 1))
-                .accessibilityLabel(label)
+    private func switchTo(_ next: Mode, focus field: Field) {
+        app.client.errorMessage = nil
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { mode = next }
+        focus = field
+    }
+
+    private func submit() {
+        focus = nil
+        switch mode {
+        case .signIn:
+            guard !clusterURL.isEmpty else { return }
+            Task { await app.signIn(clusterURL: clusterURL) }
+        case .create:
+            guard !clusterURL.isEmpty, !name.isEmpty else { return }
+            Task { await app.createAccount(clusterURL: clusterURL, name: name) }
+        case .development:
+            guard !devURL.isEmpty else { return }
+            Task { await app.signInToDevCluster(url: devURL, name: name) }
         }
     }
 }

@@ -8,17 +8,15 @@ options:
   createIntermediateGroups: true
 
 packages:
-  # The official Calimero Swift SDK (MeroKit + MeroKitUI): Cloud sign-in,
-  # the relay, and the node admin API / JSON-RPC used by node sign-in.
-  # Pinned to a release (0.4.0 brings the security-review fixes: https-only
-  # remote hosts, enrolment callbacks need a pending state, bounded invites
-  # and responses, Keychain account state cleared on sign-out; plus joins on
-  # core rc.90 relays and blobs through the relay), not `master`, so an
-  # unreleased SDK change can't break the build. To build against a local checkout instead, swap
-  # `url`/`from` for `path: ../../../swift-sdk` — but never commit that.
+  # The official Calimero Swift SDK (MeroKit + MeroKitUI), Calimero 1.0:
+  # `CalimeroClient` over the sealed channel (attestation, passkeys, app
+  # calls/views/events, orgs and invites, consent) and `MeroClient` for
+  # sign-in state. Pinned to the v0.5.0 release — never `master`. To build
+  # against a local checkout instead, swap `url`/`exactVersion` for
+  # `path: ../../../swift-sdk`, but never commit that.
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    from: 0.4.0
+    exactVersion: 0.5.0
 
 targets:
   MeroTag:
@@ -36,12 +34,16 @@ targets:
           UIApplicationSupportsMultipleScenes: false
         NSLocationWhenInUseUsageDescription: "Mero Tag shares your live location with people you authorize."
         NSLocationAlwaysAndWhenInUseUsageDescription: "Mero Tag keeps sharing your location in the background so your group always sees where you are."
+        # `merod local` development clusters are plain http on the LAN.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSLocalNetworkUsageDescription: "Mero Tag connects to a development Calimero cluster on your network."
         UIBackgroundModes:
           - location
           - fetch
-        # Cloud sign-in: the Calimero wallet returns to merotag://enrol.
+        # Invite deep links: merotag://join?invitation=…
         CFBundleURLTypes:
-          - CFBundleURLName: network.calimero.merotag.enrol
+          - CFBundleURLName: network.calimero.merotag.join
             CFBundleURLSchemes:
               - merotag
     settings:
