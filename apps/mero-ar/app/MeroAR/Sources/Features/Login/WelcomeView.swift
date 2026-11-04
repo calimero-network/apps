@@ -1,16 +1,16 @@
 import MeroKitUI
 import SwiftUI
 
-/// Sign-in. Calimero Cloud first; under it, "Manually enter node URL" swaps in
-/// a node URL, username and password for a node you run yourself.
+/// Sign-in. The cluster address from the Calimero Cloud console and the
+/// device's passkey first; under it, "Development cluster" swaps in a node URL
+/// for a local `merod local` cluster (mock attestation, a soft passkey).
 struct WelcomeView: View {
     @EnvironmentObject private var app: AppState
     @EnvironmentObject private var client: MeroClient
 
     @State private var manual = false
+    @State private var clusterURL = ""
     @State private var nodeURL = ""
-    @State private var username = ""
-    @State private var password = ""
     @State private var appeared = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -24,24 +24,24 @@ struct WelcomeView: View {
                         Spacer(minLength: manual ? 24 : max(48, geo.size.height * 0.16))
                         hero
                         VStack(spacing: 14) {
-                            if let error = manual ? app.nodeError : client.errorMessage {
+                            if let error = app.signInError {
                                 Callout(tone: .danger, title: "Couldn't sign in", message: error)
                                     .accessibilityIdentifier("loginError")
                                     .transition(.opacity)
                             }
                             if manual {
-                                nodeForm.transition(.move(edge: .bottom).combined(with: .opacity))
+                                devForm.transition(.move(edge: .bottom).combined(with: .opacity))
                             } else {
-                                cloudButton.transition(.opacity)
+                                cloudForm.transition(.opacity)
                             }
                             Button {
                                 Haptics.tap()
                                 withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
                                     manual.toggle()
-                                    app.nodeError = nil
+                                    app.signInError = nil
                                 }
                             } label: {
-                                Text(manual ? "Use Calimero Cloud instead" : "Manually enter node URL")
+                                Text(manual ? "Use Calimero Cloud instead" : "Development cluster (merod local)")
                                     .underline(!manual, color: Theme.textFaint)
                             }
                             .buttonStyle(LinkButtonStyle())
@@ -64,8 +64,8 @@ struct WelcomeView: View {
         }
         .preferredColorScheme(.dark)
         .onAppear {
-            if nodeURL.isEmpty { nodeURL = app.lastNodeURL }
-            if username.isEmpty { username = app.lastNodeUser }
+            if clusterURL.isEmpty { clusterURL = app.clusterURL }
+            if nodeURL.isEmpty { nodeURL = app.devNodeURL }
             withAnimation(reduceMotion ? nil : .spring(response: 0.8, dampingFraction: 0.85).delay(0.15)) {
                 appeared = true
             }
@@ -85,8 +85,8 @@ struct WelcomeView: View {
                     .accessibilityIdentifier("loginTitle")
                 Text(
                     manual
-                        ? "Connect to a node you run, like a local merod, with its admin username and password."
-                        : "Scan a room. Build in it together, in shared 3D space. Peer to peer, on your own nodes."
+                        ? "Connect to a local development cluster. Its attestation is a mock, so use it only for development."
+                        : "Scan a room. Build in it together, in shared 3D space, on your own Calimero cluster."
                 )
                 .font(.system(size: 17))
                 .foregroundStyle(Theme.textDim)
@@ -97,44 +97,63 @@ struct WelcomeView: View {
         }
     }
 
-    private var cloudButton: some View {
+    private var cloudForm: some View {
         VStack(spacing: 12) {
-            Button {
-                Haptics.tap()
-                Task { await app.signIn() }
-            } label: {
-                ButtonLabel(title: "Continue with Calimero Cloud", icon: "cloud.fill", isLoading: client.isLoading)
+            TextInput(
+                placeholder: "https://your-cluster.calimero.network", text: $clusterURL, icon: "network",
+                identifier: "clusterURLField", keyboard: .url
+            )
+            .submitLabel(.go)
+            .onSubmit(signIn)
+            Button(action: signIn) {
+                ButtonLabel(title: "Continue with passkey", icon: "person.badge.key.fill", isLoading: client.isLoading)
             }
             .buttonStyle(PrimaryButtonStyle())
-            .disabled(client.isLoading)
+            .disabled(!canUseCluster)
             .accessibilityIdentifier("cloudSignInButton")
-            Label("Approve this device with your passkey", systemImage: "person.badge.key.fill")
+            Button {
+                Haptics.tap()
+                Task { await app.createAccount(clusterAddress: clusterURL) }
+            } label: {
+                Label("Create an account with a new passkey", systemImage: "plus.circle")
+            }
+            .buttonStyle(LinkButtonStyle())
+            .disabled(!canUseCluster)
+            .accessibilityIdentifier("createAccountButton")
+            Label("Your cluster's address is in the Calimero Cloud console", systemImage: "info.circle")
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.textFaint)
         }
     }
 
-    private var nodeForm: some View {
+    private var canUseCluster: Bool {
+        !client.isLoading && !clusterURL.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    private func signIn() {
+        guard canUseCluster else { return }
+        Haptics.tap()
+        Task { await app.signIn(clusterAddress: clusterURL) }
+    }
+
+    private var devForm: some View {
         GlassCard {
             VStack(spacing: 14) {
                 TextInput(
-                    placeholder: "http://localhost:2450", text: $nodeURL, icon: "server.rack",
+                    placeholder: "http://localhost:2501", text: $nodeURL, icon: "server.rack",
                     identifier: "nodeURLField", keyboard: .url
-                )
-                TextInput(placeholder: "Username", text: $username, icon: "person.fill", identifier: "nodeUserField")
-                TextInput(
-                    placeholder: "Password", text: $password, icon: "key.fill", secure: true,
-                    identifier: "nodePassField"
                 )
                 .submitLabel(.go)
                 .onSubmit(connect)
                 Button(action: connect) {
-                    ButtonLabel(title: "Connect to node", icon: "bolt.horizontal.fill", isLoading: app.isConnectingNode)
+                    ButtonLabel(title: "Connect", icon: "bolt.horizontal.fill", isLoading: client.isLoading)
                 }
                 .buttonStyle(PrimaryButtonStyle(height: 52))
                 .disabled(!canConnect)
                 .accessibilityIdentifier("nodeConnectButton")
-                Text("In the Simulator, localhost is your Mac. On a phone, use your Mac's LAN address.")
+                Label(
+                    "Run `merod local` (in Docker on a Mac). On a phone, use your Mac's LAN address.",
+                    systemImage: "exclamationmark.shield")
                     .font(.system(size: 12.5))
                     .foregroundStyle(Theme.textFaint)
                     .multilineTextAlignment(.center)
@@ -143,20 +162,19 @@ struct WelcomeView: View {
     }
 
     private var canConnect: Bool {
-        !app.isConnectingNode && !nodeURL.trimmingCharacters(in: .whitespaces).isEmpty && !username.isEmpty
-            && !password.isEmpty
+        !client.isLoading && !nodeURL.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     private func connect() {
         guard canConnect else { return }
         Haptics.tap()
-        Task { await app.connectNode(nodeURL, username: username, password: password) }
+        Task { await app.signInToDevelopmentCluster(nodeURL: nodeURL) }
     }
 
     private var footer: some View {
         HStack(spacing: 6) {
             Image(systemName: "lock.fill").font(.system(size: 11))
-            Text("No central server. Rooms live on the nodes of the people in them.")
+            Text("Every node is attested before the app talks to it. Rooms stay on your cluster.")
         }
         .font(.system(size: 12))
         .foregroundStyle(Theme.textFaint)

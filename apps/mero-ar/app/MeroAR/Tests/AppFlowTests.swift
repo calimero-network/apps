@@ -2,8 +2,8 @@ import XCTest
 import MeroKit
 @testable import MeroAR
 
-/// The app's flows end to end, against ``FixtureNode``: an in-memory node with
-/// Mero AR's contract, so the real ``AppState``, ``NodeHomes``,
+/// The app's flows end to end, against ``FixtureCluster``: an in-memory
+/// Calimero 1.0 cluster with Mero AR's contract, so the real ``AppState``,
 /// ``MeroARService`` and ``SceneStore`` run with no network. Two `AppState`s
 /// on one fixture are two people (Maya, who builds, and Sam, who is invited).
 @MainActor
@@ -12,7 +12,7 @@ final class AppFlowTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        FixtureNode.reset()
+        FixtureCluster.reset()
     }
 
     override func tearDown() {
@@ -24,12 +24,13 @@ final class AppFlowTests: XCTestCase {
     /// A signed-in person with a nickname, in the lobby.
     private func person(_ name: String) async -> AppState {
         let defaults = UserDefaults(suiteName: "AppFlowTests-\(name)-\(UUID().uuidString)")!
-        let app = AppState(defaults: defaults, urlSession: FixtureNode.session)
+        let app = AppState(defaults: defaults)
         app.syncAttempts = 3
         app.syncDelay = 50_000_000
         app.displayName = name
-        await app.connectNode(FixtureNode.baseURL, username: name.lowercased(), password: "pw")
-        XCTAssertEqual(app.phase, .lobby, app.nodeError ?? "")
+        app.useFixture(FixtureCluster(username: name.lowercased()))
+        await app.restore()
+        XCTAssertEqual(app.phase, .lobby)
         apps.append(app)
         return app
     }
@@ -172,10 +173,9 @@ final class AppFlowTests: XCTestCase {
         let home = try XCTUnwrap(maya.homes.first)
         let realLink = try await maya.inviteLink(toHome: home)
         let real = try XCTUnwrap(RoomInvite.decode(pasted: realLink))
-        // The same signed invitation, pointed at a home it wasn't minted for.
+        // A token that was never minted, dressed as an invite to that home.
         let forged = RoomInvite(
-            namespaceId: String(repeating: "ee", count: 32), contextId: "", roomName: "", homeName: "Elsewhere",
-            invitation: real.invitation)
+            orgId: real.orgId, token: "inv_forged", appId: "", roomName: "", homeName: "Elsewhere")
 
         let sam = await person("Sam")
         await sam.enter(roomOrInvite: try forged.shareableLink())
@@ -364,11 +364,12 @@ final class AppFlowTests: XCTestCase {
 
     // MARK: - Nicknames
 
-    func testANewNodeSessionHasNoNicknameUntilChosen() async {
+    func testANewSessionHasNoNicknameUntilChosen() async {
         let defaults = UserDefaults(suiteName: "AppFlowTests-nick-\(UUID().uuidString)")!
-        let app = AppState(defaults: defaults, urlSession: FixtureNode.session)
-        await app.connectNode(FixtureNode.baseURL, username: "admin", password: "pw")
-        XCTAssertFalse(app.hasNickname, "the node's admin username was taken as the nickname")
+        let app = AppState(defaults: defaults)
+        app.useFixture(FixtureCluster(username: "robin"))
+        await app.restore()
+        XCTAssertFalse(app.hasNickname, "an account id was taken as the nickname")
         await app.setNickname("  Robin  ")
         XCTAssertEqual(app.displayName, "Robin")
         XCTAssertTrue(app.hasNickname)
@@ -399,11 +400,24 @@ final class AppFlowTests: XCTestCase {
         XCTAssertNil(maya.store)
     }
 
-    func testAWrongPasswordStaysOnSignIn() async {
-        let app = AppState(
-            defaults: UserDefaults(suiteName: "AppFlowTests-pw-\(UUID().uuidString)")!, urlSession: FixtureNode.session)
-        await app.connectNode(FixtureNode.baseURL, username: "maya", password: "wrong")
+    func testAClusterAddressMustBeHTTPS() async {
+        let app = AppState(defaults: UserDefaults(suiteName: "AppFlowTests-url-\(UUID().uuidString)")!)
+        await app.signIn(clusterAddress: "http://cluster.example.com")
         XCTAssertNotEqual(app.phase, .lobby)
-        XCTAssertNotNil(app.nodeError)
+        XCTAssertNotNil(app.signInError)
+        await app.signInToDevelopmentCluster(nodeURL: "not a url")
+        XCTAssertNotNil(app.signInError)
+    }
+
+    // MARK: - Updates
+
+    func testANewerReleaseIsOfferedForTheOpenRoom() async throws {
+        let maya = await mayaInHerRoom()
+        XCTAssertNil(maya.roomUpdate)
+        FixtureCluster.latestVersion = "0.0.2"
+        await maya.checkForUpdate()
+        XCTAssertEqual(maya.roomUpdate, RoomUpdate(current: "0.0.1", latest: "0.0.2"))
+        maya.leaveRoom()
+        XCTAssertNil(maya.roomUpdate)
     }
 }

@@ -15,10 +15,6 @@ struct MeroARApp: App {
                 .environmentObject(app.client)
                 .tint(Theme.accent)
                 .preferredColorScheme(.dark)
-                // The wallet returns to `meroar://enrol`. The auth sheet normally
-                // captures it; this catches a callback the system delivers to the
-                // app directly instead.
-                .onOpenURL { url in Task { await app.handle(url: url) } }
                 .task { await app.restore() }
         }
     }
@@ -44,7 +40,7 @@ struct RootView: View {
     }
 }
 
-/// Shown while a stored Cloud session reconnects to its relay.
+/// Shown while a stored session reconnects to the cluster.
 private struct RestoringView: View {
     var body: some View {
         ZStack {

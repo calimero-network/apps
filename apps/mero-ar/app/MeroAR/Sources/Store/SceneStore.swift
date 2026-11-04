@@ -1,8 +1,8 @@
 import Foundation
 import MeroKit
 
-/// Observable scene state. Hydrates from the contract through the relay, reconciles live via SSE
-/// (or by polling when the relay's Bearer session is unavailable).
+/// Observable scene state. Hydrates from the contract, then reconciles live from the
+/// room's event stream (re-reading whatever happened while the stream was down).
 /// The AR layer observes `objects`/`presence` and mirrors them into RealityKit.
 @MainActor
 public final class SceneStore: ObservableObject {
@@ -138,30 +138,22 @@ public final class SceneStore: ObservableObject {
         roles = (try? await service.listRoles()) ?? roles
     }
 
-    /// Whether changes arrive live (SSE over the relay's Bearer session) or by
-    /// polling, when that session could not be established.
-    public var isLive: Bool { service.hasBearerSession }
+    /// Whether the room's event stream is connected; while it is down the
+    /// store re-reads the room every few seconds instead.
+    @Published public private(set) var isLive = true
 
     private func startListening() {
         eventTask?.cancel()
         eventTask = Task { [weak self] in
             guard let self else { return }
-            guard self.service.hasBearerSession else {
-                // No Bearer session, so no SSE: poll instead. Slow enough not
-                // to load the relay, quick enough that a peer's edit appears.
-                while !Task.isCancelled {
-                    try? await Task.sleep(nanoseconds: 4_000_000_000)
-                    if Task.isCancelled { break }
-                    await self.refresh()
-                }
-                return
-            }
-            // The SDK's SSE client reconnects internally, but its stream still
-            // *ends* once it gives up. Without this outer loop the room would go
-            // quiet for the rest of the session with no sign anything was wrong.
+            // The stream ends when the connection drops (or a leader moves).
+            // Without this outer loop the room would go quiet for the rest of
+            // the session with no sign anything was wrong.
             while !Task.isCancelled {
+                self.isLive = true
                 await self.consumeEvents()
                 if Task.isCancelled { break }
+                self.isLive = false
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
                 // Re-read state: whatever happened while the stream was down was
                 // never delivered as an event.
@@ -239,15 +231,9 @@ public final class SceneStore: ObservableObject {
         }
     }
 
-    /// Hang a photo in the room: upload the JPEG into the room's blob space
-    /// (peers fetch it through the room's context), then add an `image` object
-    /// naming it. Blobs travel over the relay's Bearer session, so without one
-    /// this says so instead of failing somewhere deeper.
+    /// Hang a photo in the room: upload the JPEG to the room's blobs, then add
+    /// an `image` object naming it.
     public func addPicture(jpeg: Data, width: Int, height: Int, transform: Transform) async {
-        guard service.hasBearerSession else {
-            lastError = "Photos need the live connection to your relay, which isn't up yet. Try again in a moment."
-            return
-        }
         isUploadingPicture = true
         defer { isUploadingPicture = false }
         do {

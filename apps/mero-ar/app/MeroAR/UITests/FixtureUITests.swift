@@ -1,10 +1,10 @@
 import XCTest
 
 /// The UI end to end with no node: the app is launched with `MEROAR_FIXTURE=1`,
-/// which signs it in to an in-memory node with Mero AR's contract
-/// (`FixtureNode`, debug builds only). The fixture's state is kept in a file
+/// which signs it in to an in-memory Calimero cluster with Mero AR's contract
+/// (`FixtureCluster`, debug builds only). The fixture's state is kept in a file
 /// between launches, so relaunching as someone else is a second person on the
-/// same node.
+/// same cluster.
 final class FixtureUITests: XCTestCase {
     override func setUp() {
         continueAfterFailure = false
@@ -226,9 +226,7 @@ final class FixtureUITests: XCTestCase {
         app.launchEnvironment["MEROAR_FIXTURE"] = "1"
         app.launchEnvironment["MEROAR_FIXTURE_RESET"] = reset ? "1" : "0"
         app.launchEnvironment["MEROAR_FIXTURE_FRESH_USER"] = freshUser ? "1" : "0"
-        app.launchEnvironment["MEROAR_NODE"] = "http://fixture.meroar.test"
-        app.launchEnvironment["MEROAR_NODE_USER"] = user
-        app.launchEnvironment["MEROAR_NODE_PASS"] = "pw"
+        app.launchEnvironment["MEROAR_FIXTURE_USER"] = user
         app.launchEnvironment["MEROAR_PREVIEW"] = "1"
         if let nickname { app.launchArguments += ["-meroar.username", nickname] }
         app.launch()

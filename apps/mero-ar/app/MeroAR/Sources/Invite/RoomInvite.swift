@@ -1,51 +1,41 @@
 import Foundation
 import MeroKit
 
-/// A shareable invitation to an AR room.
+/// A shareable invitation to an AR room, or to a whole home.
 ///
-/// The room's namespace id travels with the signed invitation so the joiner does
-/// not have to decode the raw group-id bytes to know what to join, and the
-/// context id travels too so it can enter the room straight after joining rather
-/// than polling for which context appeared.
+/// On Calimero 1.0 a home is an organization and a room is one of its app
+/// instances. The invitation is an org invite token (`POST /orgs/{org}/invites`,
+/// role member), which the joiner redeems as their own account
+/// (`POST /invites/{token}/redeem`). The room's app id and the names ride
+/// along, so the joiner enters the room straight away and sees names, not ids.
 ///
-/// ## How this is meant to be used
-///
-/// The link is something you send someone. On a phone they paste it into the
-/// lobby, and the app redeems it with their Calimero account through the Cloud
-/// manager (the SDK's `CloudSignIn.join`). On a computer with Calimero Desktop
-/// the launcher resolves the slug, installs the app if it is missing, and joins
-/// the namespace there. The format is the fleet's, so both work.
-public struct RoomInvite: Codable {
-    /// The namespace (root group) the room lives in.
-    public let namespaceId: String
-    /// The room context, so the joiner can enter without guessing. Empty on
-    /// an invitation to a whole home (``isHomeInvite``).
-    public let contextId: String
-    /// The room's display name, so the joiner sees a name and not an id.
+/// The token is the fleet's (`InviteCodec`: `base58(deflate(JSON))`) and the
+/// link is the SDK's ``InviteLink``
+/// (`https://links.calimero.network/com.calimero.mero-ar/join?invitation=…`).
+public struct RoomInvite: Codable, Equatable {
+    /// The home (organization) the invite admits to.
+    public let orgId: String
+    /// The org invite token.
+    public let token: String
+    /// The room to enter after redeeming. Empty on an invitation to a whole
+    /// home (``isHomeInvite``).
+    public let appId: String
+    /// The room's display name.
     public let roomName: String
-    /// The home's (namespace's) display name. Absent from invitations minted
-    /// before homes existed.
+    /// The home's display name.
     public let homeName: String?
-    /// The node's signed invitation.
-    public let invitation: SignedGroupOpenInvitation
 
-    public init(
-        namespaceId: String,
-        contextId: String,
-        roomName: String,
-        homeName: String? = nil,
-        invitation: SignedGroupOpenInvitation
-    ) {
-        self.namespaceId = namespaceId
-        self.contextId = contextId
+    public init(orgId: String, token: String, appId: String, roomName: String, homeName: String? = nil) {
+        self.orgId = orgId
+        self.token = token
+        self.appId = appId
         self.roomName = roomName
         self.homeName = homeName
-        self.invitation = invitation
     }
 
     /// An invitation to a home rather than to one room in it: the joiner
     /// lands in the lobby with the home's rooms listed.
-    public var isHomeInvite: Bool { contextId.isEmpty }
+    public var isHomeInvite: Bool { appId.isEmpty }
 
     /// What the invitation is to, in words: the room, else the home.
     public var title: String {
@@ -53,8 +43,7 @@ public struct RoomInvite: Codable {
         return homeName ?? ""
     }
 
-    /// This app's deep-link slug — its registry package, which is what the
-    /// desktop launcher matches against `Application.package`.
+    /// This app's link slug: its registry package.
     public static let appSlug = "com.calimero.mero-ar"
 
     /// The compact token, in the format the rest of the fleet uses.
@@ -68,31 +57,22 @@ public struct RoomInvite: Codable {
     }
 
     /// Decode a pasted invite: a shareable link, a `calimero://` link, or the
-    /// bare token. Returns nil when the input is not an invitation at all, so
-    /// the caller can tell "not an invite" from "a broken invite".
-    ///
-    /// Rejects another app's invitation before trying to read it: a link for a
-    /// different app decodes perfectly well — the payload shape is shared across
-    /// the fleet — and redeeming it would join a namespace belonging to some
-    /// other app's context.
-    ///
-    /// `expectedSlug:` is swift-sdk#25, which this app's pin now carries; the
-    /// hand-rolled segment check that stood here until then is gone. The SDK
-    /// compares whole path segments (so `com.calimero.mero` cannot match
-    /// `com.calimero.mero-ar`), case-insensitively, and still accepts a *bare
-    /// token*, which carries no slug — the same latitude the web apps give a
-    /// pasted code.
+    /// bare token. Another app's link is rejected by its slug. Nil when the
+    /// input is not a Mero AR invitation.
     public static func decode(pasted: String) -> RoomInvite? {
         guard let token = InviteLink.token(fromPasted: pasted, expectedSlug: appSlug) else {
             return nil
         }
-        return try? InviteCodec.decode(RoomInvite.self, from: token)
+        guard let invite = try? InviteCodec.decode(RoomInvite.self, from: token),
+            !invite.orgId.isEmpty, !invite.token.isEmpty
+        else { return nil }
+        return invite
     }
 
     /// True when the text looks like an invitation rather than a bare room id.
     ///
-    /// Used by the lobby to decide what was pasted: a room
-    /// id is a plain context id, an invitation decodes to this type.
+    /// Used by the lobby to decide what was pasted: a room id is a plain app
+    /// id, an invitation decodes to this type.
     public static func looksLikeInvite(_ text: String) -> Bool {
         decode(pasted: text) != nil
     }

@@ -4,43 +4,29 @@ import MeroKit
 
 /// The invite a room hands out, and the paste that redeems it.
 ///
-/// The format is deliberately the fleet's (`base58(deflate(JSON))` via
-/// `InviteCodec`), so a link produced here is redeemable by Calimero Desktop and
-/// the web apps. These pin the parts this app owns: that a link round-trips, that
+/// The format is the fleet's (`base58(deflate(JSON))` via `InviteCodec`) on
+/// the SDK's link host. These pin the parts this app owns: that a link round-trips, that
 /// a pasted link and a bare token both work, and — the one that matters for the
 /// login screen — that a plain room id is NOT mistaken for an invitation.
 final class RoomInviteTests: XCTestCase {
 
-    private func invite(room: String = "Studio", context: String = "ctx-123", home: String? = nil) -> RoomInvite {
-        RoomInvite(
-            namespaceId: "ns-abc",
-            contextId: context,
-            roomName: room,
-            homeName: home,
-            invitation: SignedGroupOpenInvitation(
-                invitation: GroupInvitationFromAdmin(
-                    inviterIdentity: Array(0..<32),
-                    groupId: Array(32..<64),
-                    expirationTimestamp: 1_787_740_000_000,
-                    secretSalt: Array(64..<96)
-                ),
-                inviterSignature: String(repeating: "5", count: 88)
-            )
-        )
+    private func invite(room: String = "Studio", app: String = "app-123", home: String? = nil) -> RoomInvite {
+        RoomInvite(orgId: "org-abc", token: "inv_4f9c2e", appId: app, roomName: room, homeName: home)
     }
 
     func testRoundTripsThroughItsShareableLink() throws {
         let link = try invite().shareableLink()
         let back = RoomInvite.decode(pasted: link)
-        XCTAssertEqual(back?.namespaceId, "ns-abc")
-        XCTAssertEqual(back?.contextId, "ctx-123")
-        XCTAssertEqual(back?.roomName, "Studio")
+        XCTAssertEqual(back, invite())
+        XCTAssertEqual(back?.orgId, "org-abc")
+        XCTAssertEqual(back?.token, "inv_4f9c2e")
+        XCTAssertEqual(back?.appId, "app-123")
     }
 
     /// An invitation to a whole home carries no room: the joiner lands in the
     /// lobby with the home listed, rather than entering a room.
     func testAHomeInviteRoundTripsAndIsRecognisedAsOne() throws {
-        let link = try invite(room: "", context: "", home: "Our flat").shareableLink()
+        let link = try invite(room: "", app: "", home: "Our flat").shareableLink()
         let back = try XCTUnwrap(RoomInvite.decode(pasted: link))
         XCTAssertTrue(back.isHomeInvite)
         XCTAssertEqual(back.homeName, "Our flat")
@@ -49,7 +35,7 @@ final class RoomInviteTests: XCTestCase {
         XCTAssertEqual(invite(home: "Our flat").title, "Studio", "a room invite is titled by its room")
     }
 
-    /// Links minted before homes existed have no `homeName`, and still decode.
+    /// An invite minted without a home name still decodes.
     func testAnInviteWithoutAHomeNameStillDecodes() throws {
         let back = try XCTUnwrap(RoomInvite.decode(pasted: try invite().shareableLink()))
         XCTAssertNil(back.homeName)
@@ -64,7 +50,7 @@ final class RoomInviteTests: XCTestCase {
 
     func testABareTokenWorksToo() throws {
         let token = try invite().encoded()
-        XCTAssertEqual(RoomInvite.decode(pasted: token)?.contextId, "ctx-123")
+        XCTAssertEqual(RoomInvite.decode(pasted: token)?.appId, "app-123")
     }
 
     func testRoomNameSurvivesNonASCII() throws {
@@ -73,8 +59,8 @@ final class RoomInviteTests: XCTestCase {
     }
 
     /// The login field takes either an invite or a room id, and decides which by
-    /// trying to decode. A context id must therefore never decode, or entering a
-    /// room by id would be routed through the namespace-join path.
+    /// trying to decode. An app id must therefore never decode, or entering a
+    /// room by id would be routed through the invite path.
     func testAPlainRoomIdIsNotMistakenForAnInvite() {
         XCTAssertFalse(RoomInvite.looksLikeInvite("ctx-123"))
         XCTAssertFalse(RoomInvite.looksLikeInvite("6Uu8Kd3kQXcS2yQ9pTkYyLmR7NqW1vZaB4cD5eF6gH7j"))
@@ -95,86 +81,9 @@ final class RoomInviteTests: XCTestCase {
         XCTAssertNil(RoomInvite.decode(pasted: foreign))
     }
 
-    // MARK: - The invitation must survive the round trip byte for byte
-
-    /// An invitation shaped the way a live node actually mints one: `admitters`
-    /// non-empty (core#3714 made that true of every rc.29+ invitation), the
-    /// envelope's unsigned hints populated, and a key this app's SDK version
-    /// does not name.
-    ///
-    /// The fixtures above are built by this test file, so they can only ever
-    /// prove the model agrees with itself — which is exactly how the fleet
-    /// shipped a model that dropped four fields. This one pins the property that
-    /// matters instead: what comes out of a share link is what went in.
-    private func nodeShapedInvitation() -> SignedGroupOpenInvitation {
-        SignedGroupOpenInvitation(
-            invitation: GroupInvitationFromAdmin(
-                inviterIdentity: Array(0..<32),
-                groupId: Array(32..<64),
-                expirationTimestamp: 1_787_740_000,
-                secretSalt: Array(64..<96),
-                invitedRole: 1,
-                // Signed. Dropping this re-encodes to different borsh than the
-                // inviter signed, and the node refuses the join.
-                admitters: [String(repeating: "a", count: 64)],
-                // A field a later core release might add: it has to survive too,
-                // or the next rc repeats the same bug.
-                passthrough: ["someFutureField": JSONValue.string("keep me")]
-            ),
-            inviterSignature: String(repeating: "5", count: 88),
-            inviterAccount: String(repeating: "b", count: 64),
-            applicationId: Array(96..<128),
-            appKey: Array(128..<160)
-        )
-    }
-
-    /// The signed body must come back identical. `admitters` is the field that
-    /// decides whether an rc.29+ node accepts the join at all.
-    func testTheSignedBodySurvivesTheShareLink() throws {
-        let sent = nodeShapedInvitation()
-        let invite = RoomInvite(
-            namespaceId: "ns-abc", contextId: "ctx-123", roomName: "Studio", invitation: sent)
-
-        let back = RoomInvite.decode(pasted: try invite.shareableLink())
-        let got = try XCTUnwrap(back?.invitation)
-
-        XCTAssertEqual(got.invitation.admitters, sent.invitation.admitters)
-        XCTAssertEqual(got.invitation.invitedRole, sent.invitation.invitedRole)
-        XCTAssertEqual(got.invitation.expirationTimestamp, sent.invitation.expirationTimestamp)
-        XCTAssertEqual(got.invitation.secretSalt, sent.invitation.secretSalt)
-        XCTAssertEqual(got.invitation.groupId, sent.invitation.groupId)
-        XCTAssertEqual(got.invitation.inviterIdentity, sent.invitation.inviterIdentity)
-        XCTAssertEqual(got.inviterSignature, sent.inviterSignature)
-    }
-
-    /// A key the SDK does not name must come back too — that is what stops the
-    /// next core release from re-introducing the bug.
-    func testAnUnknownSignedFieldSurvivesTheShareLink() throws {
-        let sent = nodeShapedInvitation()
-        let invite = RoomInvite(
-            namespaceId: "ns-abc", contextId: "ctx-123", roomName: "Studio", invitation: sent)
-
-        let back = RoomInvite.decode(pasted: try invite.shareableLink())
-        let got = try XCTUnwrap(back?.invitation)
-
-        XCTAssertEqual(
-            got.invitation.passthrough["someFutureField"], JSONValue.string("keep me"),
-            "an unnamed signed field was dropped — the node will refuse this join")
-    }
-
-    /// The unsigned hints do not invalidate the signature, but losing them makes
-    /// the joiner record zeros for the group meta, and `compute_group_state_hash`
-    /// then diverges from the originator permanently.
-    func testTheUnsignedBootstrapHintsSurviveTheShareLink() throws {
-        let sent = nodeShapedInvitation()
-        let invite = RoomInvite(
-            namespaceId: "ns-abc", contextId: "ctx-123", roomName: "Studio", invitation: sent)
-
-        let back = RoomInvite.decode(pasted: try invite.shareableLink())
-        let got = try XCTUnwrap(back?.invitation)
-
-        XCTAssertEqual(got.inviterAccount, sent.inviterAccount)
-        XCTAssertEqual(got.applicationId, sent.applicationId)
-        XCTAssertEqual(got.appKey, sent.appKey)
+    /// An invite without the org or its token is useless, and is refused.
+    func testAnInviteMissingItsTokenIsRefused() throws {
+        let broken = try RoomInvite(orgId: "org-abc", token: "", appId: "app-123", roomName: "Studio").encoded()
+        XCTAssertNil(RoomInvite.decode(pasted: broken))
     }
 }

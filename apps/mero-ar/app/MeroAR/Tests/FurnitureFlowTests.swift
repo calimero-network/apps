@@ -5,33 +5,24 @@ import simd
 import MeroKit
 @testable import MeroAR
 
-/// The furniture, photo and scan flows end to end against a stubbed relay:
-/// what the store sends, what it keeps when the relay refuses, and that every
-/// catalogue piece renders. Headless: no simulator UI, no node.
+/// The furniture, photo and scan flows against a ``RecordingCluster``: what
+/// the store sends, what it keeps when the cluster refuses, and that every
+/// catalogue piece renders. Headless: no UI, no node.
 @MainActor
 final class FurnitureFlowTests: XCTestCase {
     private let blob = String(repeating: "9f", count: 32)
 
+    private var cluster = RecordingCluster()
+
     override func setUp() {
         super.setUp()
-        RelayStub.reset()
-    }
-
-    private func intents(_ method: String) -> [RecordedRequest] {
-        RelayStub.requests.filter { $0.method == "POST" && $0.path.hasSuffix("/intents") && $0.body?["method"]?.stringValue == method }
-    }
-
-    private func stubWrites(_ ctx: String) {
-        Fixture.stubDescribe(ctx)
-        RelayStub.on("POST", "/admin-api/contexts/\(ctx)/intents", json: #"{"data":{"rootHash":"r1"}}"#)
+        cluster = RecordingCluster()
     }
 
     // MARK: Furniture
 
     func testEveryPieceIsAddedUprightOnTheFloor() async throws {
-        let ctx = Fixture.context()
-        stubWrites(ctx)
-        let store = SceneStore(service: Fixture.service(context: ctx))
+        let store = SceneStore(service: cluster.service())
         // Where the 3D room's placement landed: a tabletop spot, ×3 for shapes.
         var placed = Transform.at(Vec3(0.4, 0.06, -0.3)).rotatedY(30)
         placed.scale = Vec3(3, 3, 3)
@@ -43,10 +34,10 @@ final class FurnitureFlowTests: XCTestCase {
             XCTAssertTrue(ok, "\(piece)")
         }
 
-        let adds = intents("add_object")
+        let adds = cluster.writes("add_object")
         XCTAssertEqual(adds.count, FurnitureItem.allCases.count)
         for (request, piece) in zip(adds, FurnitureItem.allCases) {
-            let object = try XCTUnwrap(request.body?["argsJson"]?["object"])
+            let object = try XCTUnwrap(request.args["object"])
             XCTAssertEqual(object["data"]?["kind"]?.stringValue, "furniture")
             XCTAssertEqual(object["data"]?["item"]?.stringValue, piece.rawValue)
             XCTAssertEqual(object["data"]?.objectValue?.count, 2, "only kind and item on the wire")
@@ -67,12 +58,8 @@ final class FurnitureFlowTests: XCTestCase {
     }
 
     func testARefusedAddLeavesNoGhost() async {
-        let ctx = Fixture.context()
-        Fixture.stubDescribe(ctx)
-        RelayStub.on(
-            "POST", "/admin-api/contexts/\(ctx)/intents", status: 403,
-            json: #"{"error":"view-only: editor or admin access is required to change this room"}"#)
-        let store = SceneStore(service: Fixture.service(context: ctx))
+        cluster.refuseWrites = "view-only: editor or admin access is required to change this room"
+        let store = SceneStore(service: cluster.service())
 
         let ok = await store.addObject(data: ObjectData(furniture: .sofa), transform: .at(Vec3(0, 0, 0)), color: "6D6A8C")
 
@@ -111,10 +98,8 @@ final class FurnitureFlowTests: XCTestCase {
     }
 
     func testAPhotoIsUploadedIntoTheRoomThenHung() async throws {
-        let ctx = Fixture.context()
-        stubWrites(ctx)
-        RelayStub.on("PUT", "/admin-api/blobs", json: #"{"data":{"blob_id":"\#(blob)","size":3}}"#)
-        let store = SceneStore(service: Fixture.service(context: ctx))
+        cluster.uploadId = blob
+        let store = SceneStore(service: cluster.service())
         let prepared = try XCTUnwrap(PictureCache.prepare(jpeg(width: 2048, height: 1536)))
 
         await store.addPicture(
@@ -122,30 +107,15 @@ final class FurnitureFlowTests: XCTestCase {
             transform: Transform.at(Vec3(0.5, 0.2, -1)).standing(keepHeight: false))
 
         XCTAssertNil(store.lastError)
-        let upload = try XCTUnwrap(RelayStub.requests.first { $0.method == "PUT" })
-        XCTAssertEqual(upload.path, "/admin-api/blobs")
-        XCTAssertEqual(upload.query, "context_id=\(ctx)")
-        let add = try XCTUnwrap(intents("add_object").first)
-        let data = try XCTUnwrap(add.body?["argsJson"]?["object"]?["data"])
+        XCTAssertEqual(cluster.uploads, [prepared.jpeg], "the photo goes to the room's blobs")
+        let add = try XCTUnwrap(cluster.writes("add_object").first)
+        let data = try XCTUnwrap(add.args["object"]?["data"])
         XCTAssertEqual(data["kind"]?.stringValue, "image")
         XCTAssertEqual(data["blobId"]?.stringValue, blob)
         XCTAssertEqual(data["naturalWidth"]?.doubleValue, 1024)
         XCTAssertEqual(data["naturalHeight"]?.doubleValue, 768)
         XCTAssertNotNil(PictureCache.shared.image(for: blob), "the uploader shows its photo without downloading it")
         XCTAssertFalse(store.isUploadingPicture)
-    }
-
-    func testWithoutTheBearerSessionAPhotoSaysWhyAndSendsNothing() async {
-        let ctx = Fixture.context()
-        let store = SceneStore(service: Fixture.service(context: ctx, withBearer: false))
-
-        await store.addPicture(jpeg: jpeg(width: 10, height: 10), width: 10, height: 10, transform: .at(Vec3(0, 0, 0)))
-
-        XCTAssertTrue(RelayStub.requests.isEmpty, "a request went out with no session to carry it")
-        XCTAssertTrue(store.objects.isEmpty)
-        XCTAssertEqual(
-            store.lastError,
-            "Photos need the live connection to your relay, which isn't up yet. Try again in a moment.")
     }
 
     // MARK: Scanned furniture
@@ -162,43 +132,39 @@ final class FurnitureFlowTests: XCTestCase {
 
     /// Publishing reads the scan back; answer with a record naming `blob`,
     /// whose bytes are `model`.
-    private func stubScan(_ ctx: String, model: RoomModel) throws {
-        RelayStub.on("PUT", "/admin-api/blobs", json: #"{"data":{"blob_id":"\#(blob)","size":10}}"#)
-        RelayStub.on(
-            "POST", "/admin-api/contexts/\(ctx)/query",
-            json: """
-                {"data":{"returns":{"jsonBlob":"\(blob)","jsonSize":10,"usdzBlob":null,"usdzSize":null,
-                "width":5.2,"length":4.2,"height":2.6,"objectCount":\(model.objects.count),"sample":true,
-                "scannedBy":"\(Fixture.account)","scannedAt":1,"version":1}}}
-                """)
-        RelayStub.on("GET", "/admin-api/blobs/\(blob)", json: String(decoding: try model.encoded(), as: UTF8.self))
+    private func stubScan(model: RoomModel) throws {
+        cluster.uploadId = blob
+        cluster.blobs[blob] = try model.encoded()
+        cluster.views["get_room_scan"] = [
+            "jsonBlob": .string(blob), "jsonSize": 10, "usdzBlob": .null, "usdzSize": .null,
+            "width": 5.2, "length": 4.2, "height": 2.6, "objectCount": .number(Double(model.objects.count)),
+            "sample": true, "scannedBy": .string(String(repeating: "ab", count: 32)), "scannedAt": 1, "version": 1,
+        ]
     }
 
     func testScannedFurnitureBecomesMovableAndLeavesTheRoom() async throws {
-        let ctx = Fixture.context()
-        stubWrites(ctx)
         let room = try roomWithAFixture()
-        try stubScan(ctx, model: room)
-        let store = SceneStore(service: Fixture.service(context: ctx))
+        try stubScan(model: room)
+        let store = SceneStore(service: cluster.service())
         let published = await store.publishRoomScan(room)
         XCTAssertTrue(published)
         XCTAssertEqual(store.roomModel?.objects.count, room.objects.count)
         // What the room will hold once the conversion republishes it.
         var remaining = room
         remaining.objects.removeAll { FurnitureItem.forScanCategory($0.category) != nil }
-        try stubScan(ctx, model: remaining)
-        let before = RelayStub.requests.count
+        try stubScan(model: remaining)
+        let before = cluster.calls.count
 
         let count = await store.makeScannedFurnitureMovable()
 
         let movable = room.objects.filter { FurnitureItem.forScanCategory($0.category) != nil }
         XCTAssertEqual(count, movable.count)
         XCTAssertEqual(count, 7, "sofa, table, two chairs, two storage units, television")
-        let sent = RelayStub.requests.dropFirst(before)
-        let adds = sent.filter { $0.body?["method"]?.stringValue == "add_object" }
+        let sent = cluster.calls.dropFirst(before)
+        let adds = sent.filter { $0.method == "add_object" }
         XCTAssertEqual(adds.count, movable.count)
         for (request, scanned) in zip(adds, movable) {
-            let object = try XCTUnwrap(request.body?["argsJson"]?["object"])
+            let object = try XCTUnwrap(request.args["object"])
             XCTAssertEqual(object["data"]?["item"]?.stringValue, FurnitureItem.forScanCategory(scanned.category)?.rawValue)
             let m = RoomModel.matrix(scanned.transform)
             XCTAssertEqual(object["transform"]?["position"]?["x"]?.doubleValue ?? .nan, Double(m.columns.3.x), accuracy: 1e-4)
@@ -210,27 +176,26 @@ final class FurnitureFlowTests: XCTestCase {
             }
         }
         // Then the room again, without the converted pieces.
-        let republish = try XCTUnwrap(sent.last { $0.body?["method"]?.stringValue == "set_room_scan" })
-        XCTAssertEqual(republish.body?["argsJson"]?["object_count"]?.doubleValue, 1, "only the sink is left")
+        let republish = try XCTUnwrap(sent.last { $0.method == "set_room_scan" })
+        XCTAssertEqual(republish.args["object_count"]?.doubleValue, 1, "only the sink is left")
+        XCTAssertNil(republish.args["scanned_at"], "the leader stamps the scan, not the phone")
         XCTAssertEqual(store.roomModel?.objects.map(\.category), ["sink"], "the fixture stays part of the room")
         XCTAssertEqual(store.objects.count, movable.count)
     }
 
     func testARefusedConversionKeepsTheScanWhole() async throws {
-        let ctx = Fixture.context()
-        stubWrites(ctx)
         let room = try roomWithAFixture()
-        try stubScan(ctx, model: room)
-        let store = SceneStore(service: Fixture.service(context: ctx))
+        try stubScan(model: room)
+        let store = SceneStore(service: cluster.service())
         _ = await store.publishRoomScan(room)
-        RelayStub.on("POST", "/admin-api/contexts/\(ctx)/intents", status: 403, json: #"{"error":"view-only"}"#)
-        let before = RelayStub.requests.count
+        cluster.refuseWrites = "view-only"
+        let before = cluster.calls.count
 
         let count = await store.makeScannedFurnitureMovable()
 
         XCTAssertEqual(count, 0)
         XCTAssertNil(
-            RelayStub.requests.dropFirst(before).first { $0.body?["method"]?.stringValue == "set_room_scan" },
+            cluster.calls.dropFirst(before).first { $0.method == "set_room_scan" },
             "the scan was republished without furniture nobody could move")
         XCTAssertEqual(store.roomModel?.objects.count, room.objects.count)
         XCTAssertTrue(store.objects.isEmpty)
@@ -278,7 +243,7 @@ final class FurnitureFlowTests: XCTestCase {
     private func object(_ data: ObjectData) -> SceneObject {
         SceneObject(
             id: "o-\(data.item ?? data.kind)", data: data, transform: .at(Vec3(0, 0, 0)), color: "8B5CF6",
-            lockedBy: nil, createdBy: Fixture.account, createdAt: 1, updatedAt: 1, version: 1)
+            lockedBy: nil, createdBy: String(repeating: "ab", count: 32), createdAt: 1, updatedAt: 1, version: 1)
     }
 
     func testEveryPieceRendersAtItsCatalogueSize() {

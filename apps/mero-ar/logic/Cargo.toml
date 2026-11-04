@@ -23,20 +23,20 @@ crate-type = ["cdylib", "rlib"]
 [package.metadata.calimero]
 package = "com.calimero.mero-ar"
 name = "Mero AR"
-description = "Mero AR — collaborative spatial editing on the Calimero p2p network."
+description = "Mero AR — collaborative spatial editing for your organization on Calimero."
 author = "Calimero"
-# The desktop resolves a deep link (calimero://<slug>/…) by Application.package,
-# so the slug IS the package id.
+# The slug IS the package id: the registry and the node's `/packages/install
+# {package, version}` both name the app by it.
 slug = "com.calimero.mero-ar"
 tags = ["ar", "spatial", "collaboration"]
 github = "https://github.com/calimero-network/mero-ar"
-# The oldest node that can run this bundle, and the SDK tag it was built and
-# tested against. It must name a real runtime: the roster, the admin tier and
-# the room's owner are all keyed by `env::account_id()`, and an rc.22-or-older
-# node hands the same 32 bytes a DIFFERENT meaning through the `executor_id`
-# shim — nothing errors, the room just counts one person twice. So an older node
-# must refuse the install rather than diverge quietly.
-min-runtime-version = "0.12.0-rc.3"
+# The oldest node that can run this bundle. Core 1.0: identity is the account
+# (no devices; presence is keyed by it), writes run once on the leader with its
+# clock, and `env::caller_org()` lets org admins moderate. A 0.x node gives
+# those calls other meanings, so it must refuse the install.
+min-runtime-version = "1.0.0-rc.3"
+# No `outbound`: the contract makes no outbound HTTP calls. Core 1.0 refuses any
+# that are not declared here (as URL prefixes) and approved.
 
 [dependencies]
 borsh = "0.10.3"
@@ -44,13 +44,11 @@ borsh-derive = "0.10.3"
 # Pin a real release tag, never `branch = "master"`: master rides unreleased
 # protocol work against nodes that run the release. All SDK crates must share
 # the exact same tag (the workspace version at a tag is 0.0.0).
-calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "0.12.0-rc.3" }
-calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.12.0-rc.3" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "0.12.0-rc.3" }
+calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.3" }
+calimero-storage = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.3" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.3" }
 thiserror = "1.0.56"
 serde_json = "1.0.113"
-# Renders a `DeviceId` the way core writes every id — see `caller_device`.
-hex = { version = "0.4", default-features = false, features = ["alloc"] }
 
 [profile.app-release]
 inherits = "release"

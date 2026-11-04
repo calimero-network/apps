@@ -1,8 +1,8 @@
 # Mero AR
 
-Collaborative spatial editing on the [Calimero](https://calimero.network) p2p
-node network — multiple people scan the same room and edit a shared 3D scene,
-with every change synchronized through Mero nodes (Figma-meets-ARKit).
+Collaborative spatial editing on [Calimero](https://calimero.network): several
+people scan the same room and edit a shared 3D scene, with every change kept by
+their organization's attested Calimero cluster (Figma-meets-ARKit).
 
 **Landing page:** [`landing/`](landing/), a static site explaining how Mero AR
 works, with real recordings from the app and a promo film. `cd landing && npm
@@ -14,34 +14,33 @@ app/
   MeroAR/   SwiftUI + ARKit + RealityKit app (SceneKit 3D preview where ARKit isn't available)
 landing/    the landing page (Vite + React + Framer Motion), media in landing/public/media
 promo/      the promo film (Remotion), rendered into landing/public/media
-scripts/    dev-node / dev-node2 / dev-invite / setup, record-demo.sh, demo-peer.py
-workflows/  merobox suites (logic-test.yml = 1 node, identity-and-roles.yml = 2 nodes)
+scripts/    setup.sh
 Makefile    every command has a `make` shortcut
 ```
 
-Built for **Calimero core 0.12.0-rc.3**: the contract pins `calimero-sdk`,
-`calimero-storage` and `calimero-storage-macros` to tag `0.12.0-rc.3`
-(`logic/Cargo.toml`, `min-runtime-version` too), and the merobox suites run
-`ghcr.io/calimero-network/merod:0.12.0-rc.3`.
+Built for **Calimero core 1.0** (`1.0.0-rc.3`): the contract pins
+`calimero-sdk`, `calimero-storage` and `calimero-storage-macros` to that tag
+(`logic/Cargo.toml`, `min-runtime-version` too), and the app uses the Swift
+SDK's 1.0 client (`CalimeroClient`: sealed channel, passkeys).
 
 ## The iOS app
 
 A dark, spatial design of its own: glass panels over the camera, an aurora
 (violet → cyan) accent, SF Symbols, spring animations and haptics.
 
-- **Sign in** with Calimero Cloud, or **Manually enter node URL** for a node you
-  run (URL + admin username and password).
+- **Sign in** with your cluster's address (from the Calimero Cloud console) and
+  a passkey, or create an account with a new one. **Development cluster** takes
+  a `merod local` node URL instead (mock attestation, a soft passkey kept for
+  that node).
 - **Nickname**: asked once after sign-in; it's the name on the roster, on
   notes and on what you place. Change it in Settings or from your row in People.
-- **Your homes**: a *home* is a Calimero namespace running Mero AR, and its
-  rooms are the namespace's contexts. **New home** founds one with its first
-  room: on Calimero Cloud through the account's relay
-  (`CloudSignIn.foundNamespace`, hosted in the cloud when it agrees), on a node
-  with the node's admin API (installing `com.calimero.mero-ar` from the registry
-  if needed). Each home lists its rooms, with **+** for another room and
-  **Invite** for a link to the whole home. **Join** takes a home or room invite
-  link, or a room ID. A Cloud account with no relay yet gets one from its first
-  invitation, and can found homes after that.
+- **Your homes**: a *home* is a Calimero organization holding Mero AR, and its
+  rooms are the organization's app instances of `com.calimero.mero-ar`. **New
+  home** creates the organization and its first room (`POST /orgs`,
+  `POST /apps` with access `org`, installed from the registry by the cluster).
+  Each home lists its rooms, with **+** for another room and **Invite** for a
+  link to the whole home. **Join** takes a home or room invite link (an org
+  invite token, redeemed as your account), or a room ID.
 - **The room**: a tool dock (Add, Notes, Share scan, People); an object library
   with **furniture** at real size (sofa, armchair, chair, dining and coffee
   tables, bed, bookcase, floor lamp, plant, rug, TV on a media unit, wall TV,
@@ -50,8 +49,10 @@ A dark, spatial design of its own: glass panels over the camera, an aurora
   marker, 3D labels, six colours); an inspector for the
   selected object (move, turn, resize, paint, lock, delete); notes pinned in
   space; other people's viewpoints; Apple's coaching overlay while scanning.
-- **People**: roles (admin / editor / viewer), editor toggles for admins, and
-  invites as a signed link (Share or Copy link) to the room's home.
+- **People**: roles (admin / editor / viewer), editor toggles for admins,
+  invites as a link (Share or Copy link) to the room's home, and **Update
+  available** when a newer Mero AR release is out: an admin reviews and approves
+  it on the node's consent page in Safari.
 - **No ARKit?** In the Simulator, on a Mac or an older device, the room opens as
   a **3D preview** (SceneKit, orbit with a finger) with the same tools. The UI
   says so; live AR needs an ARKit iPhone or iPad. `MEROAR_PREVIEW=1` forces the
@@ -69,11 +70,11 @@ room, and decorate it together.
 - **Share:** the scan becomes a small portable room model (`RoomModel`,
   `meroar.room/1`: walls, doors, windows, openings and detected objects with
   category, dimensions and transform, mirroring RoomPlan's `CapturedRoom`) plus
-  the parametric USDZ RoomPlan exports. Both are uploaded as blobs into the
-  room's context, and the contract's `set_room_scan` records them (blob ids,
-  sizes, dimensions, `scanned_by`, `scanned_at`, `version`; one current scan
-  per room, a new one bumps the version). Peers download the model through the
-  room's context, like the `ARWorldMap`.
+  the parametric USDZ RoomPlan exports. Both are uploaded as blobs of the
+  room's app instance, and the contract's `set_room_scan` records them (blob
+  ids, sizes, dimensions, `scanned_by`, `scanned_at`, `version`; one current
+  scan per room, a new one bumps the version). Peers download the model from
+  the room's blobs, like the `ARWorldMap`.
 - **View and edit:** the 3D room (SceneKit, non-AR, so it renders in the
   Simulator and on every device) rebuilds walls, floor, door and window
   frames and the detected furniture (labelled by category). Orbit and zoom, or
@@ -94,76 +95,58 @@ room, and decorate it together.
   RoomPlan can't run there. It is not a real scan.
 
 Contract: `set_room_scan`, `get_room_scan`, `clear_room_scan` (admin), event
-`RoomScanUpdated`. The registry's published Mero AR may predate them: for a
-local node, build this repo's contract (`make logic-bundle`) and launch the app
-with `MEROAR_APP_BUNDLE=$PWD/logic/res/mero-ar.mpk` so **New room** installs it.
-
-**End to end on two nodes:** `MERO_BIN=… scripts/e2e-room-scan.sh` runs the
-app (sample room → two items → drag one on the floor plan) on node A, then
-checks node B received the scan record, can download the room model, and has
-both items at A's positions.
+`RoomScanUpdated`.
 
 **Limits:** scanning needs LiDAR; the Simulator only has the sample room;
 aligning live AR to a shared scan uses ARKit relocalization and has not been
 tested on devices yet; the parametric USDZ is shared but the app renders the
 room from the model, not the USDZ.
 
-### Run it against a local node
+### Run it against a development cluster
 
 ```bash
-make node                 # or any merod 0.12.0-rc.3 you run yourself
-make app-run              # Simulator
+cargo run -p merod -- local       # in a core checkout: 3 nodes on 127.0.0.1:2501-2503, --dev, mock attestation
+                                  # merod is Linux only; on a Mac run it in Docker
+make logic-bundle                 # logic/res/mero-ar.mpk, signed with the dev key
+meroctl node add local http://127.0.0.1:2501/ --allow-mock
+meroctl login --dev-passkey ./dev-passkey.json --name ada
+meroctl app install --path logic/res/mero-ar.mpk
+make app-gen                      # then run from Xcode
 ```
 
-Then **Manually enter node URL** → `http://localhost:2450` (`make node`'s port),
-username `admin`, password `calimero1234`, and **New room**. In the Simulator
-`localhost` is your Mac; on a phone use the Mac's LAN address. For a second
-person, `make node2` and
-`scripts/demo-peer.py --a <node1> --b <node2> --context <room id>` brings
-"Leo" in from node 2: he joins, gets editor, and builds, over real
-peer-to-peer sync.
+In the app, **Development cluster (merod local)** → `http://localhost:2501` (on
+a phone, the Mac's LAN address). The app trusts that node's mock attestation and
+signs in with a soft passkey it keeps for the node, creating the account the
+first time.
 
-### Cloud sign-in, relay session
+### How the app talks to the cluster
 
 The Swift client is **not** vendored here: the app depends on
 [calimero-network/swift-sdk](https://github.com/calimero-network/swift-sdk)
-(`MeroKit` + `MeroKitUI`) as a SwiftPM package declared in
-`app/MeroAR/project.yml`, pinned to the
-[0.2.0 release](https://github.com/calimero-network/swift-sdk/releases/tag/v0.2.0) (`from: 0.2.0`).
+(`MeroKit` + `MeroKitUI`), declared in `app/MeroAR/project.yml` and pinned to
+the SDK's Calimero 1.0 release, v0.5.0 (`exactVersion`).
 
-**Continue with Calimero Cloud** opens the Calimero wallet in the system sign-in
-sheet (`ASWebAuthenticationSession`); the person approves this device with their
-passkey, and the wallet returns to `meroar://enrol` with a device certificate.
-The SDK verifies it, asks the Cloud manager which relay serves the account, and
-logs in there. Device keys, the session and relay tokens live in the Keychain
-(service `network.calimero.meroar`), so a relaunch reconnects without the wallet.
-
-Every contract call then goes through that relay:
+The app first verifies the node's TDX quote (`GET /attestation`, against signed
+mero-tee releases) and opens the sealed channel; everything else goes through
+it. Sign-in is a passkey (`PlatformPasskey`); the session and its refresh token
+live in the Keychain (service `network.calimero.meroar`), so a relaunch
+reconnects without a prompt.
 
 | What | How |
 | --- | --- |
-| Writes (`join`, `add_object`, `update_presence`, roles…) | warrant intents — `RelayClient.execute`, signed by the device, executed as the account |
-| Reads (`get_room`, `get_objects`, `my_role`…) | `RelayClient.query` with the relay's Bearer session |
-| World map blob | the relay's Bearer `Mero` — upload with `context_id`, download via `admin.getBlob(_:contextId:)` |
-| Live updates | SSE on the relay's Bearer session; the room polls if that session isn't up |
-| Invitations | signed by the account on the device (`CloudSignIn.createNamespaceInvitation`, naming the space's relays as admitters), redeemed with `CloudSignIn.join` |
-
-Rooms are entered from the lobby by pasting an invite link (the fleet format,
-`links.calimero.network/com.calimero.mero-ar/join?invitation=…`) or a room ID
-the account is already in. A new account with no relay gets one by redeeming
-its first invitation.
-
-On a Cloud session the app does not create rooms: a room is a context inside a
-space (namespace), created on a node (the app's node sign-in, `make node`, or
-the web build); the phone joins it by invitation. On a node session, **New
-room** creates one there: a namespace, an open group in it, and the room's
-context.
+| Writes (`join`, `add_object`, `update_presence`, roles…) | `POST /apps/{room}/intents`, run once on the room's leader as the signed-in account |
+| Reads (`get_room`, `get_objects`, `my_role`…) | `POST /apps/{room}/views` |
+| World map, room scan, photos | the room's blobs, `/apps/{room}/blobs` |
+| Live updates | the room's sealed SSE, `/apps/{room}/events`; while it is down the room re-reads every few seconds |
+| Homes | organizations: `POST /orgs` (+ metadata `{name, package}`), rooms `POST /apps` with access `org` |
+| Invitations | `POST /orgs/{org}/invites` (role member), redeemed with `POST /invites/{token}/redeem` |
+| Upgrades | `POST /consent/requests` → the node's consent page in Safari → `GET /consent/{id}/result` |
 
 ### Tests without a node
 
-Debug builds carry `FixtureNode` (`Sources/Debug/`): an in-memory node with
-Mero AR's contract, answering the admin API, JSON-RPC and blobs as a
-`URLProtocol`. The app's real code runs against it with no network.
+Debug builds carry `FixtureCluster` (`Sources/Debug/`): an in-memory Calimero
+cluster with Mero AR's contract, behind the app's own `RoomCluster` protocol.
+The app's real code runs against it with no network.
 
 - **`AppFlowTests`** (unit): two people on one fixture. They cover homes and
   rooms, home and room invitations (including a forged one), roles and edit
@@ -175,12 +158,13 @@ Mero AR's contract, answering the admin API, JSON-RPC and blobs as a
   person, played by relaunching as someone else, joins by link, sees the room
   view-only, is made an editor, and adds an object.
 
-`make app-test` runs them along with the rest.
+`FurnitureFlowTests` use a `RecordingCluster` that records what the store sends.
+`make app-test` runs the unit tests.
 
 ### Building against an unmerged SDK
 
 To try an SDK change that isn't released yet, build against a local checkout:
-in `app/MeroAR/project.yml` replace the package's `url:`/`from:` with
+in `app/MeroAR/project.yml` replace the package's `url:`/`revision:` with
 `path: /path/to/swift-sdk-checkout`, run `make app-gen`, and **don't commit
 that change**.
 
@@ -192,16 +176,14 @@ record — the roster, an object's author, a lock holder, a comment's author, th
 `AccessControl` admin tier and the `Ownable` room name. Someone in the room on a
 phone and an iPad is one member holding one role, not two.
 
-`env::device_id()` survives in exactly one place: **presence**. A camera pose is
-a property of the phone holding the camera, so two devices are genuinely two
-viewpoints and must not overwrite each other.
+Core 1.0 has no devices at all (`account_id == executor_id`), so presence is
+keyed by account too: one camera per member. A member id is a 64-hex
+`AccountId` everywhere, including in what an admin types to grant a role.
 
-There is no `accounts` map. rc.20 keyed the roster by device and carried a
-device→account self-registration map to reach the account a grant had to name;
-rc.23 retired that twice over — the legacy `executor_id()` shim resolves to the
-account (core#3510) and group membership is stated in accounts (core#3522) — so
-the bridge is gone and a member id is a 64-hex `AccountId` everywhere, including
-in what an admin types to grant a role.
+Admins of the room's organization (`env::caller_org()` role admin or owner) pass
+the room's admin and editor gates as well: they can moderate any room in their
+home. Granting roles and transferring ownership stay with the room's own admin
+tier.
 
 | Who | Can |
 | --- | --- |
@@ -213,46 +195,31 @@ So a second device that joins by invitation starts read-only: open the members
 sheet from the room and toggle it to **editor**. The app hides the tools for a
 viewer, and the contract rejects the write regardless.
 
-**No call names its own author.** A write is a warrant signed by this device's
-key under the account's certificate; the relay executes it and the contract
-sees `env::account_id()` = that account. Who a write is attributed to is decided
-by who signed it, not by an argument.
+**No call names its own author or its time.** A write runs as the passkey
+session's account, so the contract sees `env::account_id()` = that person; and
+it runs once, on the room's Raft leader, which stamps every record with its own
+clock. Who wrote something, and when, is never an argument.
 
-## The world map is a blob, and a blob needs a context (core 0.11.0-rc.39)
+## The world map is a blob
 
-Relocalization is the one thing here that does not travel on the DAG: the room's
-`ARWorldMap` is uploaded as a blob and the contract stores only its id.
-
-core#3823 (0.11.0-rc.39) removed the blob DHT. `?context_id=` is now the **only**
-index a node has — an upload without one is announced to nobody, and a download
-without one has nowhere to look. Neither fails loudly: the request is well
-formed, the node answers, and the bytes simply never arrive. It is also
-invisible from the device that published the map, which holds the bytes locally
-and relocalizes perfectly; it only breaks for everyone else in the room, which
-is the whole point of a *shared* world map. So both calls in `MeroARService`
-carry the room's context id, and `BlobRequestTests` asserts the requests still do.
-
-Two more things the same code depends on:
-
-- **A blob id is hex** (core#3691, rc.27 removed base58). It is stored on the
-  contract exactly as the node minted it and is never re-encoded.
-- **The transfer timeout is not the SDK default.** `MeroConfig.timeout` is 10s,
-  which is right for an admin call. Downloads use the SDK's context-blob timeout
-  (60s, covering the node's 30s peer probe); the upload carries 120s, since a
-  scanned room's `ARWorldMap` is megabytes on a phone uplink.
+Relocalization is the one thing here that isn't contract state: the room's
+`ARWorldMap` is uploaded as a blob of the room's app instance and the contract
+stores only its id. Core 1.0 keeps an app's blobs on every node of its cluster,
+so there is nothing to announce; anyone who can reach the room can download it.
 
 ## Status
 
-- ✅ WASM scene-graph contract (objects + transforms, presence, comments, locking, versioned LWW, world-map blob) — core rc.89, builds + unit-tested
-- ✅ Account identity model: account-attributed writes, account-keyed roles, owner-gated room name, admin lock-breaking — covered by both merobox suites
-- ✅ App on the shared swift-sdk: Cloud sign-in (wallet passkey → device certificate → relay), relay writes/reads, Keychain session resume, live SSE, roles UI
+- ✅ WASM scene-graph contract (objects + transforms, presence, comments, locking, versioned LWW, world-map blob) — core 1.0.0-rc.3, builds + unit-tested, TestHost tests of the 1.0 semantics
+- ✅ Account identity model: account-attributed writes, account-keyed roles and presence, owner-gated room name, admin lock-breaking, org admins moderate
+- ✅ App on the swift-sdk 1.0 client: passkey sign-in on an attested cluster, sealed intents/views/events, Keychain session resume, orgs as homes, invites, consent-page upgrades
 - ✅ Its own dark spatial design (glass panels, aurora accent, SF Symbols, ids behind "Technical details")
-- ✅ Node sign-in (URL + admin login), room list and room creation on a node, recent rooms
+- ✅ Development clusters (`merod local`, mock attestation), room list and room creation, recent rooms
+- 🔵 Not yet exercised end to end against a live 1.0 cluster from the app
 - ✅ Object library, inspector (move / turn / resize / paint / lock / delete), notes, invite links, presence of others
 - ✅ SceneKit 3D preview of the shared room where ARKit isn't available (Simulator, Mac)
 - ✅ ARKit/RealityKit room view: place/sync objects, camera-pose presence, publish + relocalize into a shared `ARWorldMap`
 - 🔵 Cross-device coordinate alignment via persisted `ARWorldMap` — needs on-device validation with two phones
-- ✅ Your room in 3D: RoomPlan scan (LiDAR) or the labelled sample room, shared as blobs + `room_scan` record, 3D room and floor plan, drag on the floor, two-node e2e
+- ✅ Your room in 3D: RoomPlan scan (LiDAR) or the labelled sample room, shared as blobs + `room_scan` record, 3D room and floor plan, drag on the floor
 - 🔵 Live AR alignment to a shared room scan — needs on-device validation
 - ⬜ Undo/redo, image objects, dragging objects by touch in AR (next tickets — see `../merointerier.md`)
 - ⬜ No Android client. [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) exists, but an Android AR app (ARCore) is greenfield work, not a port of this one.
@@ -262,12 +229,9 @@ Two more things the same code depends on:
 - **Landing page:** `landing/` (Vite + React + TypeScript + Framer Motion). `npm
   run dev` to work on it, `npm run build` for `dist/`. Respects reduced motion and
   the system light/dark setting.
-- **Recordings:** `MERO_BIN=/path/to/merod-rc89/bin scripts/record-demo.sh` boots
-  two local nodes, drives the app in the "iPhone 18 Pro Max" simulator through
-  the recording UI tests (`testRecord*`), brings a second person in over
-  `scripts/demo-peer.py`, and writes `clip-signin`, `clip-room` and
-  `clip-invite` (`.mp4` + poster `.jpg`) into `landing/public/media/`. They are
-  Simulator recordings, so the room shows as its 3D preview.
+- **Recordings:** the clips in `landing/public/media/` were filmed from the 0.x
+  app; the recording script went with the 0.x dev nodes and has not been
+  rebuilt for 1.0 yet.
 - **Promo film:** `cd promo && npm install && npm run render` renders `promo`
   (1920×1080) and `promo-vertical` (1080×1920) with Remotion into `promo/out/`,
   using the recordings above, plus the poster. Compress for the web with

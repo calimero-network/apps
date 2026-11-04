@@ -24,8 +24,23 @@
 //! member id is a 64-hex `AccountId` everywhere — including in what an admin
 //! types to grant a role.
 //!
-//! `env::device_id()` survives in exactly one place: presence. See
-//! [`MeroAR::update_presence`].
+//! # Core 1.0
+//!
+//! - **No devices.** `env::account_id()` is the only identity a call carries,
+//!   so presence — the last device-keyed state here — is keyed by account too:
+//!   one camera per person.
+//! - **Writes run once, on the leader**, and nothing is written offline. Every
+//!   record clock (`updated_at`, `created_at`, `joined_at`, `scanned_at`) comes
+//!   from the leader's `env::time_now()` rather than from each phone, which
+//!   retires the 0.x rule that every client pass one monotonic clock.
+//! - **Org standing.** `env::caller_org()` says whether the caller administers
+//!   the app instance's organization. Org admins pass the room's admin gates
+//!   (clear the scene or scan, break locks, remove comments) and its editor
+//!   gate. Granting roles and ownership stay with the room's own admin tier,
+//!   which `AccessControl` keeps as a signed writer set.
+//! - **Blobs live with the app instance** on every replica, so there is nothing
+//!   to announce: the 0.x `blob_announce_to_context` calls are gone.
+//! - **Named event fields** (core#4753): `Variant { id }`, no tuple variants.
 
 use std::cmp::Ordering;
 use std::str::FromStr;
@@ -33,7 +48,8 @@ use std::str::FromStr;
 use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{to_vec, BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::{app, env as sdk_env, AccountId, BlobId};
+use calimero_sdk::env::OrgRole;
+use calimero_sdk::{app, env as sdk_env, AccountId};
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::{
     AccessControl, LwwRegister, Mergeable as MergeableTrait, Ownable, UnorderedMap,
@@ -141,6 +157,12 @@ pub mod pure {
             return Err("that furniture item name is too long");
         }
         Ok(())
+    }
+
+    /// A record clock: `now_ms`, unless that would not move past `after` (a new
+    /// leader whose wall clock trails the old one's), then one past `after`.
+    pub fn monotonic_ms(now_ms: u64, after: u64) -> u64 {
+        now_ms.max(after.saturating_add(1))
     }
 
     /// The version a newly published scan gets: one past the scan it replaces.
@@ -339,7 +361,7 @@ impl MergeableTrait for Member {
     }
 }
 
-// ── Presence (camera pose per DEVICE) ─────────────────────────────────────────
+// ── Presence (camera pose per member) ─────────────────────────────────────────
 
 #[app::mergeable(id = "mero_ar::Presence")]
 #[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
@@ -347,10 +369,10 @@ impl MergeableTrait for Member {
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct Presence {
-    /// The device holding this camera — a room id for a viewpoint, not a member.
+    /// The viewpoint's key. Core 1.0 has no devices, so this is the member's
+    /// account, the same as `member`; kept so the wire shape is unchanged.
     pub identity:        String,
-    /// The member that device speaks for, so the roster can light up the person
-    /// a viewpoint belongs to. Two of these may name the same member.
+    /// The member whose camera this is.
     pub member:          MemberId,
     pub camera_position: Vec3,
     pub camera_rotation: Quat,
@@ -359,8 +381,8 @@ pub struct Presence {
 
 impl MergeableTrait for Presence {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        // Newest camera pose wins. Entries are keyed by device, so the two
-        // sides of a conflict are the same phone's own poses.
+        // Newest camera pose wins. Entries are keyed by member, so the two
+        // sides of a conflict are the same person's own poses.
         let clock = other.updated_at.cmp(&self.updated_at);
         take_if_greater(self, other, clock);
         Ok(())
@@ -467,25 +489,29 @@ pub struct MemberRole {
 
 // ── Events ────────────────────────────────────────────────────────────────────
 
+// Named fields, not tuple variants: core#4753 stops compiling tuple variants in
+// `#[app::event]`. Every variant that names a record carries it as `id`, so the
+// payload is `{"id":"…"}` whatever the kind.
 #[app::event]
 pub enum Event {
-    ObjectAdded(String),
-    ObjectUpdated(String),
-    ObjectDeleted(String),
-    ObjectLocked(String),
-    ObjectUnlocked(String),
-    CommentAdded(String),
-    CommentDeleted(String),
-    PresenceUpdated(String),
-    MemberJoined(String),
-    AnchorsUpdated(),
-    RoomUpdated(),
+    ObjectAdded { id: String },
+    ObjectUpdated { id: String },
+    ObjectDeleted { id: String },
+    ObjectLocked { id: String },
+    ObjectUnlocked { id: String },
+    CommentAdded { id: String },
+    CommentDeleted { id: String },
+    /// `id` is the member whose camera moved.
+    PresenceUpdated { id: String },
+    MemberJoined { id: String },
+    AnchorsUpdated,
+    RoomUpdated,
     /// A member's role changed — clients re-resolve `my_role` on this.
-    RoleUpdated(String),
-    OwnerTransferred(String),
-    /// The room's 3D scan was published or cleared; carries its version ("0"
+    RoleUpdated { id: String },
+    OwnerTransferred { id: String },
+    /// The room's 3D scan was published or cleared; `id` is its version ("0"
     /// when cleared). Clients re-read `get_room_scan`.
-    RoomScanUpdated(String),
+    RoomScanUpdated { id: String },
 }
 
 // ── App state ──────────────────────────────────────────────────────────────────
@@ -575,14 +601,19 @@ impl MeroAR {
         Self::caller_account().to_string()
     }
 
-    /// The installation executing this call, NOT the person behind it.
-    ///
-    /// The one place a device id is the right answer in this contract: a camera
-    /// pose is a property of the phone holding the camera, so a member in the
-    /// room on two devices is genuinely two viewpoints and must not overwrite
-    /// themselves. Rendered hex to match how every other id here is written.
-    fn caller_device() -> String {
-        hex::encode(sdk_env::device_id())
+    /// The caller administers the app instance's organization (admin or owner).
+    fn caller_is_org_admin() -> bool {
+        sdk_env::caller_org().is_some_and(|o| o.role >= OrgRole::Admin)
+    }
+
+    /// The leader's clock in milliseconds, never behind `after`.
+    fn stamp_after(after: u64) -> u64 {
+        pure::monotonic_ms(sdk_env::time_now() / 1_000_000, after)
+    }
+
+    /// Room admin, or an admin of the app instance's organization.
+    fn caller_is_admin(&self) -> bool {
+        Self::caller_is_org_admin() || self.roles.is_admin(&Self::caller_account())
     }
 
     /// Read a client-supplied member id back into the account a grant names.
@@ -601,10 +632,15 @@ impl MeroAR {
         self.roles.is_admin(who) || self.roles.has_role(ROLE_EDITOR, who).unwrap_or(false)
     }
 
+    /// The caller may edit: a room editor or admin, or an org admin.
+    fn caller_is_editor(&self) -> bool {
+        Self::caller_is_org_admin() || self.is_editor(&Self::caller_account())
+    }
+
     /// Gate a scene mutation. Viewers can look around and be present, but not
     /// place, move, or delete anything.
     fn require_editor(&self) -> app::Result<()> {
-        if self.is_editor(&Self::caller_account()) {
+        if self.caller_is_editor() {
             return Ok(());
         }
         app::bail!("view-only: editor or admin access is required to change this room");
@@ -612,7 +648,7 @@ impl MeroAR {
 
     /// Gate a room-level / destructive operation on admin.
     fn require_admin(&self) -> app::Result<()> {
-        if self.roles.is_admin(&Self::caller_account()) {
+        if self.caller_is_admin() {
             return Ok(());
         }
         app::bail!("admin access is required for this operation");
@@ -634,7 +670,7 @@ impl MeroAR {
     pub fn grant_editor(&mut self, member: String) -> app::Result<()> {
         let who = Self::parse_member(&member)?;
         self.roles.grant(ROLE_EDITOR, who)?;
-        app::emit!(Event::RoleUpdated(member));
+        app::emit!(Event::RoleUpdated { id: member });
         Ok(())
     }
 
@@ -642,7 +678,7 @@ impl MeroAR {
     pub fn revoke_editor(&mut self, member: String) -> app::Result<()> {
         let who = Self::parse_member(&member)?;
         self.roles.revoke(ROLE_EDITOR, &who)?;
-        app::emit!(Event::RoleUpdated(member));
+        app::emit!(Event::RoleUpdated { id: member });
         Ok(())
     }
 
@@ -658,21 +694,24 @@ impl MeroAR {
     /// The caller's own member id, so a client can mark "you" in the roster and
     /// recognise itself as the room's owner.
     ///
-    /// The node-level `GET /admin-api/identity` reports the same account, but it
-    /// needs an admin scope and a second round trip; this answers in the one
-    /// vocabulary the rest of these methods already speak.
+    ///
+    /// Core 1.0 has no admin API at all; this is how a client learns its id.
     pub fn whoami(&self) -> String {
         Self::caller_id()
     }
 
-    /// Effective role of the caller — what the app's edit gate reads.
+    /// Effective role of the caller — what the app's edit gate reads. An org
+    /// admin reads as "admin" here, since they pass every admin gate.
     pub fn my_role(&self) -> String {
+        if Self::caller_is_org_admin() {
+            return "admin".to_string();
+        }
         self.role_label(&Self::caller_account())
     }
 
     /// Whether the caller may change the scene.
     pub fn can_edit(&self) -> bool {
-        self.is_editor(&Self::caller_account())
+        self.caller_is_editor()
     }
 
     /// Every member with their effective role, for the members sheet.
@@ -707,7 +746,7 @@ impl MeroAR {
         if previous != owner && self.roles.is_admin(&previous) {
             self.roles.revoke_admin(&previous)?;
         }
-        app::emit!(Event::OwnerTransferred(new_owner));
+        app::emit!(Event::OwnerTransferred { id: new_owner });
         Ok(())
     }
 
@@ -740,28 +779,25 @@ impl MeroAR {
     pub fn rename_room(&mut self, name: String) -> app::Result<()> {
         self.room_name.only_owner()?;
         self.room_name.insert(LwwRegister::new(name))?;
-        app::emit!(Event::RoomUpdated());
+        app::emit!(Event::RoomUpdated);
         Ok(())
     }
 
-    /// Store the blob id of the shared ARWorldMap and announce it to the context
-    /// so peers can download it for relocalization. Editor-gated: a viewer's
+    /// Store the blob id of the shared ARWorldMap, uploaded to the app instance,
+    /// so every member can download it for relocalization. Editor-gated: a viewer's
     /// scan must not redefine where everyone else's objects are anchored.
     pub fn set_world_map(&mut self, blob_id: String) -> app::Result<()> {
         self.require_editor()?;
-        if let Ok(b) = blob_id.parse::<BlobId>() {
-            sdk_env::blob_announce_to_context(b.as_ref(), &sdk_env::context_id());
-        }
         self.world_map_blob.set(blob_id);
-        app::emit!(Event::AnchorsUpdated());
+        app::emit!(Event::AnchorsUpdated);
         Ok(())
     }
 
     // ── Room scan ─────────────────────────────────────────────────────────────
 
     /// Publish the room's 3D scan: the `CapturedRoom` JSON blob (required) and
-    /// optionally the USDZ export, both uploaded into this context's blob
-    /// space first. Replaces the current scan and returns the new version.
+    /// optionally the USDZ export, both uploaded to the app instance's blobs
+    /// (`/apps/{app}/blobs`) first. Replaces the current scan and returns the new version.
     /// Editor-gated, like the world map: a viewer must not redefine the room
     /// everyone is editing.
     #[allow(clippy::too_many_arguments)]
@@ -776,7 +812,6 @@ impl MeroAR {
         height: f64,
         object_count: u32,
         sample: bool,
-        scanned_at: u64,
     ) -> app::Result<u64> {
         self.require_editor()?;
         if json_blob.trim().is_empty() {
@@ -785,13 +820,9 @@ impl MeroAR {
         if let Err(reason) = pure::validate_scan_dimensions(width, length, height) {
             app::bail!("{}", reason);
         }
-        for blob in core::iter::once(&json_blob).chain(usdz_blob.iter()) {
-            if let Ok(b) = blob.parse::<BlobId>() {
-                sdk_env::blob_announce_to_context(b.as_ref(), &sdk_env::context_id());
-            }
-        }
-        let current = self.room_scans.get(CURRENT_SCAN).ok().flatten().map(|s| s.version);
-        let version = pure::next_scan_version(current);
+        let current = self.room_scans.get(CURRENT_SCAN).ok().flatten().map(|s| (s.version, s.scanned_at));
+        let version = pure::next_scan_version(current.map(|(v, _)| v));
+        let scanned_at = Self::stamp_after(current.map_or(0, |(_, at)| at));
         let scan = RoomScan {
             json_blob,
             json_size,
@@ -807,7 +838,7 @@ impl MeroAR {
             version,
         };
         let _ = self.room_scans.insert(CURRENT_SCAN.to_owned(), scan);
-        app::emit!(Event::RoomScanUpdated(version.to_string()));
+        app::emit!(Event::RoomScanUpdated { id: version.to_string() });
         Ok(version)
     }
 
@@ -821,7 +852,7 @@ impl MeroAR {
     pub fn clear_room_scan(&mut self) -> app::Result<()> {
         self.require_admin()?;
         let _ = self.room_scans.remove(CURRENT_SCAN);
-        app::emit!(Event::RoomScanUpdated("0".to_owned()));
+        app::emit!(Event::RoomScanUpdated { id: "0".to_owned() });
         Ok(())
     }
 
@@ -830,12 +861,12 @@ impl MeroAR {
     /// Enter the room under `username`. The member id is the caller's account, so
     /// a client can only ever create/refresh its own entry — and a second device
     /// of an existing member re-enters as that member rather than as a stranger.
-    pub fn join(&mut self, username: String, avatar: Option<String>, timestamp: u64) {
+    pub fn join(&mut self, username: String, avatar: Option<String>) {
         let member_id = Self::caller_id();
         if self.members.contains(&member_id).unwrap_or(false) { return; }
-        let m = Member { id: member_id.clone(), username, avatar, joined_at: timestamp };
+        let m = Member { id: member_id.clone(), username, avatar, joined_at: Self::stamp_after(0) };
         let _ = self.members.insert(member_id.clone(), m);
-        app::emit!(Event::MemberJoined(member_id));
+        app::emit!(Event::MemberJoined { id: member_id });
     }
 
     pub fn get_members(&self) -> Vec<Member> {
@@ -848,7 +879,7 @@ impl MeroAR {
         if let Ok(Some(mut m)) = self.members.get_mut(&member_id) {
             m.username = username;
             drop(m);
-            app::emit!(Event::MemberJoined(member_id));
+            app::emit!(Event::MemberJoined { id: member_id });
         }
     }
 
@@ -862,8 +893,9 @@ impl MeroAR {
 
     // ── Objects ─────────────────────────────────────────────────────────────────
 
-    /// Place an object. `created_by` is overwritten with the real signer, so the
-    /// attribution a client sends is advisory at most.
+    /// Place an object. `created_by`, `created_at` and `updated_at` are
+    /// overwritten with the real caller and the leader's clock, so what a client
+    /// sends for them is advisory at most.
     pub fn add_object(&mut self, object: SceneObject) -> app::Result<String> {
         self.require_editor()?;
         let id = object.id.clone();
@@ -872,24 +904,25 @@ impl MeroAR {
                 app::bail!("{}", reason);
             }
         }
-        if let ObjectData::Image { blob_id, .. } = &object.data {
-            if let Ok(b) = blob_id.parse::<BlobId>() {
-                sdk_env::blob_announce_to_context(b.as_ref(), &sdk_env::context_id());
-            }
-        }
         let mut object = object;
         object.created_by = Self::caller_id();
+        // The leader stamps the record; what a client sends is ignored.
+        let now = Self::stamp_after(0);
+        object.created_at = now;
+        object.updated_at = now;
         // A client cannot pre-lock an object for someone else on the way in.
         object.locked_by = None;
         object.version = self.bump_version();
         let _ = self.objects.insert(id.clone(), object);
-        app::emit!(Event::ObjectAdded(id.clone()));
+        app::emit!(Event::ObjectAdded { id: id.clone() });
         Ok(id)
     }
 
     /// Move/rotate/scale an object. Rejected if locked by anyone other than the
-    /// caller. Applies version-then-timestamp LWW so stale edits are dropped.
-    pub fn update_transform(&mut self, id: String, transform: Transform, updated_at: u64) -> app::Result<()> {
+    /// caller. Applies version-then-timestamp LWW so stale edits are dropped;
+    /// on core 1.0 the leader orders every write, so the bumped version always
+    /// wins and the check guards the merge path only.
+    pub fn update_transform(&mut self, id: String, transform: Transform) -> app::Result<()> {
         self.require_editor()?;
         // The lock holder is an ACCOUNT, and so is the caller — never a
         // client-supplied "editor" string. Keyed by account, the phone can
@@ -899,12 +932,13 @@ impl MeroAR {
         let next = self.bump_version();
         if let Ok(Some(mut obj)) = self.objects.get_mut(&id) {
             if !pure::can_edit(obj.locked_by.as_deref(), &editor) { return Ok(()); }
+            let updated_at = Self::stamp_after(obj.updated_at);
             if !pure::should_replace(obj.version, obj.updated_at, next, updated_at) { return Ok(()); }
             obj.transform = transform;
             obj.updated_at = updated_at;
             obj.version = next;
             drop(obj);
-            app::emit!(Event::ObjectUpdated(id));
+            app::emit!(Event::ObjectUpdated { id });
         }
         Ok(())
     }
@@ -912,17 +946,17 @@ impl MeroAR {
     /// Recolor an object. Honours the advisory lock exactly like
     /// [`Self::update_transform`] — a lock has to hold for every field, or it
     /// only protects position.
-    pub fn update_color(&mut self, id: String, color: String, updated_at: u64) -> app::Result<()> {
+    pub fn update_color(&mut self, id: String, color: String) -> app::Result<()> {
         self.require_editor()?;
         let editor = Self::caller_id();
         let next = self.bump_version();
         if let Ok(Some(mut obj)) = self.objects.get_mut(&id) {
             if !pure::can_edit(obj.locked_by.as_deref(), &editor) { return Ok(()); }
             obj.color = color;
-            obj.updated_at = updated_at;
+            obj.updated_at = Self::stamp_after(obj.updated_at);
             obj.version = next;
             drop(obj);
-            app::emit!(Event::ObjectUpdated(id));
+            app::emit!(Event::ObjectUpdated { id });
         }
         Ok(())
     }
@@ -947,7 +981,7 @@ impl MeroAR {
                 obj.locked_by = Some(by);
                 obj.version = next;
                 drop(obj);
-                app::emit!(Event::ObjectLocked(id));
+                app::emit!(Event::ObjectLocked { id });
             }
         }
         Ok(())
@@ -962,14 +996,14 @@ impl MeroAR {
     pub fn unlock_object(&mut self, id: String) -> app::Result<()> {
         self.require_editor()?;
         let by = Self::caller_id();
-        let is_admin = self.roles.is_admin(&Self::caller_account());
+        let is_admin = self.caller_is_admin();
         let next = self.bump_version();
         if let Ok(Some(mut obj)) = self.objects.get_mut(&id) {
             if pure::may_unlock(obj.locked_by.as_deref(), &by, is_admin) {
                 obj.locked_by = None;
                 obj.version = next;
                 drop(obj);
-                app::emit!(Event::ObjectUnlocked(id));
+                app::emit!(Event::ObjectUnlocked { id });
             }
         }
         Ok(())
@@ -984,7 +1018,7 @@ impl MeroAR {
             if !pure::can_edit(obj.locked_by.as_deref(), &editor) { return Ok(()); }
         }
         let _ = self.objects.remove(&id);
-        app::emit!(Event::ObjectDeleted(id));
+        app::emit!(Event::ObjectDeleted { id });
         Ok(())
     }
 
@@ -996,7 +1030,7 @@ impl MeroAR {
             .unwrap_or_default();
         for id in ids {
             let _ = self.objects.remove(&id);
-            app::emit!(Event::ObjectDeleted(id));
+            app::emit!(Event::ObjectDeleted { id });
         }
         Ok(())
     }
@@ -1013,12 +1047,13 @@ impl MeroAR {
 
     /// Pin a note in space. The author is the real signer, so a member cannot
     /// attribute a comment to someone else.
-    pub fn add_comment(&mut self, id: String, text: String, position: Vec3, created_at: u64) -> app::Result<()> {
+    pub fn add_comment(&mut self, id: String, text: String, position: Vec3) -> app::Result<()> {
         self.require_editor()?;
         let author = Self::caller_id();
+        let created_at = Self::stamp_after(0);
         let c = SpatialComment { id: id.clone(), text, position, author, created_at };
         let _ = self.comments.insert(id.clone(), c);
-        app::emit!(Event::CommentAdded(id));
+        app::emit!(Event::CommentAdded { id });
         Ok(())
     }
 
@@ -1026,14 +1061,14 @@ impl MeroAR {
     pub fn delete_comment(&mut self, id: String) -> app::Result<()> {
         self.require_editor()?;
         let me = Self::caller_id();
-        let is_admin = self.roles.is_admin(&Self::caller_account());
+        let is_admin = self.caller_is_admin();
         if let Ok(Some(c)) = self.comments.get(&id) {
             if !pure::may_delete_comment(&c.author, &me, is_admin) {
                 app::bail!("only the comment's author or an admin can delete it");
             }
         }
         let _ = self.comments.remove(&id);
-        app::emit!(Event::CommentDeleted(id));
+        app::emit!(Event::CommentDeleted { id });
         Ok(())
     }
 
@@ -1043,26 +1078,24 @@ impl MeroAR {
 
     // ── Presence ──────────────────────────────────────────────────────────────
 
-    /// Publish this device's camera pose. Open to viewers — being in the room is
-    /// not an edit — and keyed by the host-reported device, so nobody can puppet
+    /// Publish the caller's camera pose. Open to viewers — being in the room is
+    /// not an edit — and keyed by the caller's account, so nobody can puppet
     /// another viewpoint.
     ///
-    /// The **only** device-keyed state in this contract. A pose belongs to the
-    /// phone that took it: a member holding the room open on two devices is two
-    /// cameras in the scene, and keying this by account would make each pose
-    /// stomp the other twice a second. `member` carries the account so the
-    /// roster can still tell whose viewpoint it is.
-    pub fn update_presence(&mut self, camera_position: Vec3, camera_rotation: Quat, updated_at: u64) {
-        let device = Self::caller_device();
+    /// Core 1.0 has no devices, so this is one camera per member: a member with
+    /// the room open on a phone and an iPad shows the pose they moved last.
+    pub fn update_presence(&mut self, camera_position: Vec3, camera_rotation: Quat) {
+        let member = Self::caller_id();
+        let previous = self.presence.get(&member).ok().flatten().map_or(0, |p| p.updated_at);
         let p = Presence {
-            identity: device.clone(),
-            member:   Self::caller_id(),
+            identity: member.clone(),
+            member:   member.clone(),
             camera_position,
             camera_rotation,
-            updated_at,
+            updated_at: Self::stamp_after(previous),
         };
-        let _ = self.presence.insert(device.clone(), p);
-        app::emit!(Event::PresenceUpdated(device));
+        let _ = self.presence.insert(member.clone(), p);
+        app::emit!(Event::PresenceUpdated { id: member });
     }
 
     pub fn get_presence(&self) -> Vec<Presence> {
@@ -1547,5 +1580,137 @@ mod merge_tests {
         let (early, late) = (comment("first", 5), comment("second", 9));
         assert_eq!(merged(&early, &late).text, "second");
         assert_eq!(merged(&late, &early).text, "second");
+    }
+}
+
+// ── Core 1.0 semantics ──────────────────────────────────────────────────────────
+//
+// Run against the SDK's in-process `TestHost`: the caller is an account set on
+// the host, org standing comes from `env::caller_org()`, and clocks come from
+// the leader.
+#[cfg(test)]
+mod core_1_0 {
+    use calimero_sdk::env::{CallerOrg, OrgRole};
+    use calimero_sdk::testing::TestHost;
+    use calimero_sdk::AccountId;
+
+    use super::{MeroAR, ObjectData, Quat, SceneObject, Transform, Vec3};
+
+    /// The harness's default account, which `init` runs as: the room's creator.
+    const OWNER: [u8; 32] = [238; 32];
+    const BOB: [u8; 32] = [2; 32];
+
+    fn hex(account: [u8; 32]) -> String {
+        AccountId::from(account).to_string()
+    }
+
+    fn room() -> TestHost<MeroAR> {
+        TestHost::new(|| MeroAR::init("Studio".to_owned()))
+    }
+
+    fn cube(id: &str) -> SceneObject {
+        SceneObject {
+            id:         id.to_owned(),
+            data:       ObjectData::Cube,
+            transform:  Transform::default(),
+            color:      "3A86FF".to_owned(),
+            locked_by:  Some("someone".to_owned()),
+            created_by: "forged".to_owned(),
+            created_at: 1,
+            updated_at: 1,
+            version:    0,
+        }
+    }
+
+    fn org(role: OrgRole) -> Option<CallerOrg> {
+        Some(CallerOrg { org: "org-1".to_owned(), role, teams: vec![] })
+    }
+
+    #[test]
+    fn the_creator_is_admin_and_attribution_comes_from_the_caller() {
+        let mut app = room();
+        assert_eq!(app.view(|s| s.whoami()), hex(OWNER));
+        assert_eq!(app.view(|s| s.my_role()), "admin");
+
+        app.call(|s| s.add_object(cube("o1"))).expect("admin places");
+        let placed = app.view(|s| s.get_object("o1".to_owned())).expect("placed");
+        assert_eq!(placed.created_by, hex(OWNER), "a client cannot attribute an object");
+        assert!(placed.locked_by.is_none(), "a client cannot pre-lock an object");
+        assert!(placed.created_at > 1, "the leader stamps the record");
+    }
+
+    #[test]
+    fn a_viewer_cannot_edit_but_an_org_admin_can() {
+        let mut app = room();
+        app.set_account(BOB);
+        app.set_caller_org(org(OrgRole::Member));
+        assert_eq!(app.view(|s| s.my_role()), "viewer");
+        assert!(app.call(|s| s.add_object(cube("o1"))).is_err());
+
+        app.set_caller_org(org(OrgRole::Admin));
+        assert_eq!(app.view(|s| s.my_role()), "admin");
+        assert!(app.view(|s| s.can_edit()));
+        app.call(|s| s.add_object(cube("o1"))).expect("org admin edits");
+        app.call(|s| s.clear_objects()).expect("org admin passes the admin gate");
+        assert!(app.view(|s| s.get_objects()).is_empty());
+    }
+
+    #[test]
+    fn an_org_admin_breaks_a_lock_a_member_cannot() {
+        let mut app = room();
+        app.call(|s| s.add_object(cube("o1"))).unwrap();
+        app.call(|s| s.lock_object("o1".to_owned())).unwrap();
+
+        app.call(|s| s.grant_editor(hex(BOB))).expect("room admin grants");
+        app.set_account(BOB);
+        app.call(|s| s.unlock_object("o1".to_owned())).unwrap();
+        assert!(app.view(|s| s.get_object("o1".to_owned())).unwrap().locked_by.is_some());
+
+        app.set_caller_org(org(OrgRole::Owner));
+        app.call(|s| s.unlock_object("o1".to_owned())).unwrap();
+        assert!(app.view(|s| s.get_object("o1".to_owned())).unwrap().locked_by.is_none());
+    }
+
+    #[test]
+    fn presence_is_one_camera_per_member() {
+        let mut app = room();
+        let at = |x: f64| Vec3 { x, y: 0.0, z: 0.0 };
+        app.call(|s| s.update_presence(at(1.0), Quat::default()));
+        app.call(|s| s.update_presence(at(2.0), Quat::default()));
+        let poses = app.view(|s| s.get_presence());
+        assert_eq!(poses.len(), 1);
+        assert_eq!(poses[0].member, hex(OWNER));
+        assert_eq!(poses[0].identity, hex(OWNER));
+        assert_eq!(poses[0].camera_position.x, 2.0);
+    }
+
+    #[test]
+    fn edits_advance_the_leader_clock() {
+        let mut app = room();
+        app.call(|s| s.add_object(cube("o1"))).unwrap();
+        let before = app.view(|s| s.get_object("o1".to_owned())).unwrap();
+        app.call(|s| s.update_color("o1".to_owned(), "FF006E".to_owned())).unwrap();
+        let after = app.view(|s| s.get_object("o1".to_owned())).unwrap();
+        assert_eq!(after.color, "FF006E");
+        assert!(after.updated_at > before.updated_at);
+        assert!(after.version > before.version);
+    }
+
+    #[test]
+    fn events_carry_a_named_id() {
+        let mut app = room();
+        let _ = app.take_events();
+        app.call(|s| s.add_object(cube("o1"))).unwrap();
+        let events = app.take_events();
+        let added = events.iter().find(|e| e.kind == "ObjectAdded").expect("emitted");
+        let payload: calimero_sdk::serde_json::Value =
+            calimero_sdk::serde_json::from_slice(&added.data).expect("json payload");
+        assert_eq!(payload["id"], "o1");
+    }
+
+    #[test]
+    fn monotonic_clock_never_goes_back() {
+        assert_eq!(super::pure::monotonic_ms(100, 0), 100);
+        assert_eq!(super::pure::monotonic_ms(100, 200), 201);
     }
 }

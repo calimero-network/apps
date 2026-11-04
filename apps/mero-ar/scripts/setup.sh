@@ -16,7 +16,6 @@ check() { command -v "$1" >/dev/null 2>&1 && ok "$1 found" || { err "$1 not foun
 check rustc   "install via https://rustup.rs"
 check cargo   "install via https://rustup.rs"
 check jq      "brew install jq"
-check merod   "install Calimero node (merod)"
 check swift   "install Xcode or Command Line Tools"
 
 [[ ${#MISSING[@]} -gt 0 ]] && { err "Missing: ${MISSING[*]}"; exit 1; }
@@ -36,10 +35,11 @@ command -v xcodebuild >/dev/null 2>&1 && xcodebuild -version >/dev/null 2>&1 \
   && ok "full Xcode found" \
   || warn "full Xcode not active — needed to build/run the iOS app and XCTest suite (Command Line Tools alone can't)"
 command -v wasm-opt >/dev/null 2>&1 && ok "wasm-opt found" || warn "wasm-opt not found — WASM won't be size-optimised (optional)"
+command -v meroctl >/dev/null 2>&1 && ok "meroctl found" || warn "meroctl not found — needed to install the dev bundle on a 'merod local' cluster (optional)"
 
 printf "\n${GREEN}${BOLD}✓  Setup complete!${RESET}\n\n"
 printf "  Next:\n"
-printf "    ${CYAN}make node${RESET}      → start the dev node + create a room\n"
-printf "    ${CYAN}make workflows${RESET} → run the merobox suites (needs Docker, no Xcode)\n"
+printf "    ${CYAN}merod local${RESET}    → a 3-node development cluster (Linux; in Docker on a Mac), then\n"
+printf "                     meroctl app install --path logic/res/mero-ar.mpk\n"
 printf "    ${CYAN}make app-gen${RESET}   → generate MeroAR.xcodeproj (needs xcodegen + Xcode)\n\n"
 printf "  See ${BOLD}requirements.md${RESET} for the full Mac / iPhone walkthrough.\n\n"
