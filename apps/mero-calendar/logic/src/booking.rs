@@ -154,7 +154,7 @@ pub struct CreateBookingLink {
     /// How soon a guest may book.
     #[serde(default)]
     pub min_notice_minutes: u32,
-    #[serde(default, with = "calimero_app_sdk::json::opt_u64_str")]
+    #[serde(default, with = "calimero_sdk::json::opt_u64_str")]
     pub expires_at_ms: Option<u64>,
 }
 
@@ -170,14 +170,14 @@ pub struct GuestDetails {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BookingView {
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub start_ms: u64,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub end_ms: u64,
     pub guest_name: String,
     pub guest_email: String,
     pub guest_note: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub booked_at_ms: u64,
     pub rescheduled_count: u32,
 }
@@ -192,7 +192,7 @@ pub struct BookingPage {
     pub duration_minutes: u32,
     /// `open`, `booked` or `cancelled`.
     pub status: String,
-    #[serde(with = "calimero_app_sdk::json::opt_u64_str")]
+    #[serde(with = "calimero_sdk::json::opt_u64_str")]
     pub expires_at_ms: Option<u64>,
     pub booking: Option<BookingView>,
 }
@@ -210,9 +210,9 @@ pub struct BookingLinkView {
     pub utc_offset_minutes: i32,
     pub horizon_days: u32,
     pub min_notice_minutes: u32,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub created_at_ms: u64,
-    #[serde(with = "calimero_app_sdk::json::opt_u64_str")]
+    #[serde(with = "calimero_sdk::json::opt_u64_str")]
     pub expires_at_ms: Option<u64>,
     pub status: String,
     pub booking: Option<BookingView>,

@@ -13,7 +13,7 @@ mod common;
 
 use std::sync::OnceLock;
 
-use calimero_app_sdk::testing::{Failure, Org, TestApp};
+use calimero_sdk::testing::{Failure, Org, TestApp};
 use serde_json::{json, Value};
 
 const OWNER: &str = "owner";

@@ -19,8 +19,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use calimero_app_sdk::prelude::*;
-use calimero_app_sdk::StorageError;
+use calimero_sdk::prelude::*;
+use calimero_sdk::StorageError;
 use serde::{Deserialize, Serialize};
 
 use crate::{invalid, not_found};

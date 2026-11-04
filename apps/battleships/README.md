@@ -3,7 +3,7 @@
 Two-player Battleships where your fleet never leaves your device.
 
 A lobby is a Calimero **app instance** on the 1.0 runtime: a contract on core's
-**component SDK** (`calimero-app-sdk`, a `calimero:app` WebAssembly component
+**component SDK** (`calimero-sdk`, a `calimero:app` WebAssembly component
 on the node's wasmtime runtime), developed on **`merod local`**, with a
 frontend on mero-js's **`CalimeroClient`** that talks to a **Calimero Cloud**
 cluster in production and to the local nodes in development. The lobby pairs

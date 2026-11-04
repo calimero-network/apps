@@ -159,8 +159,8 @@ export function appDir(app: string): string {
   const dir = join(ROOT, "apps", app);
   const manifest = join(dir, "logic", "Cargo.toml");
   if (!existsSync(manifest)) throw new Error(`apps/${app}/logic/Cargo.toml does not exist`);
-  if (!/^calimero-app-sdk\s*=/m.test(readFileSync(manifest, "utf8"))) {
-    throw new Error(`apps/${app} is not a component app (its logic does not depend on calimero-app-sdk)`);
+  if (!/^calimero-sdk\s*=.*[{,]\s*git\s*=/m.test(readFileSync(manifest, "utf8"))) {
+    throw new Error(`apps/${app} is not a component app (its logic does not depend on calimero-sdk from core's git)`);
   }
   return dir;
 }

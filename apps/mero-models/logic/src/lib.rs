@@ -70,8 +70,8 @@ mod blob;
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use calimero_app_sdk::prelude::*;
-use calimero_app_sdk::OrgRole;
+use calimero_sdk::prelude::*;
+use calimero_sdk::OrgRole;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 

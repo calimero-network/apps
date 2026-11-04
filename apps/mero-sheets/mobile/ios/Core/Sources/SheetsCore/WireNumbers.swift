@@ -1,7 +1,7 @@
 import Foundation
 
 // The component contract sends and takes every u64 as a decimal string
-// (`calimero_app_sdk::json::u64_str`): JSON numbers lose precision above 2^53.
+// (`calimero_sdk::json::u64_str`): JSON numbers lose precision above 2^53.
 // These overloads make the generated client's synthesized `Codable` code in
 // this module read and write `UInt64` that way. Reading also accepts a bare number.
 

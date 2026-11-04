@@ -1,5 +1,5 @@
 //! Mero Forms: forms a team designs, the responses they collect, and a hand-off
-//! of any response to Mero CRM, on core's component SDK (`calimero-app-sdk`).
+//! of any response to Mero CRM, on core's component SDK (`calimero-sdk`).
 //!
 //! An app instance is one workspace of forms; the organization it lives in
 //! decides who reaches it. Inside, the contract keeps its own **team**: the
@@ -64,7 +64,7 @@
 //! with that field's label at the time, so it still reads correctly after the
 //! form is edited.
 
-use calimero_app_sdk::prelude::*;
+use calimero_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// Rows one storage read returns: a page of a collection.
@@ -205,7 +205,7 @@ pub struct Answer {
 pub struct CaptchaPass {
     pub nonce: String,
     /// Milliseconds since the Unix epoch, as a decimal string.
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub expires_ms: u64,
     /// 64 bytes, hex.
     pub signature: String,
@@ -314,10 +314,10 @@ pub struct FormView {
     pub public: bool,
     pub link_cap: u32,
     pub captcha_key: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub created_at: u64,
     pub created_by: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub updated_at: u64,
 }
 
@@ -359,13 +359,13 @@ pub struct LinkView {
     pub form_id: String,
     pub label: String,
     pub grant_id: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub created_at: u64,
     pub created_by: String,
     pub responses: u32,
     /// Responses in the current clock hour, what the cap counts.
     pub last_hour: u32,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub last_response_at: u64,
 }
 
@@ -380,9 +380,9 @@ pub struct FormSummary {
     pub fields: u32,
     pub responses: u32,
     pub new_responses: u32,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub last_response_at: u64,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub created_at: u64,
 }
 
@@ -394,14 +394,14 @@ pub struct ResponseView {
     pub form_id: String,
     pub answers: Vec<Answer>,
     pub source: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub created_at: u64,
     pub submitted_by: String,
     pub link: String,
     pub archived: bool,
     pub crm_context: String,
     pub crm_deal: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub crm_sent_at: u64,
     pub crm_sent_by: String,
 }
@@ -414,11 +414,11 @@ pub struct FormKeyView {
     pub account: String,
     pub label: String,
     pub form_id: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub created_at: u64,
     pub created_by: String,
     pub responses: u32,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub last_response_at: u64,
 }
 

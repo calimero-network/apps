@@ -16,7 +16,7 @@
 //! force, so learning a new version never leaves an app without rules while
 //! the new set waits for you.
 
-use calimero_app_sdk::prelude::*;
+use calimero_sdk::prelude::*;
 
 use crate::store::{emit, invalid};
 use serde::{Deserialize, Serialize};

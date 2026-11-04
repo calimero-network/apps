@@ -5,7 +5,7 @@ are **end-to-end encrypted in the browser**: the Calimero nodes that hold a
 vault, their disks, their logs and their operators only ever see ciphertext.
 
 Mero Pass runs on Calimero 1.0: the contract is a `calimero:app` component on
-core's component SDK (`calimero-app-sdk`, the node's wasmtime runtime), the
+core's component SDK (`calimero-sdk`, the node's wasmtime runtime), the
 frontend talks to **Calimero Cloud** in production and to **`merod local`** in
 development through mero-js's `CalimeroClient`
 ([docs/COMPONENT-APPS.md](../../docs/COMPONENT-APPS.md)).
@@ -229,7 +229,7 @@ vault. On a phone the three panes collapse to one at a time.
 ## Layout
 
 ```
-logic/              the contract: a standalone crate on calimero-app-sdk (wasm32-wasip2)
+logic/              the contract: a standalone crate on calimero-sdk (wasm32-wasip2)
   src/lib.rs        state, roles, device keys and wraps, secrets, audit
   tests/harness.rs  TestApp: every method on core's real wasmtime engine
   scenarios/*.json  neutral steps run by cargo test AND on merod local (CI e2e)

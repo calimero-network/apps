@@ -1,5 +1,5 @@
 //! Mero Kombat: a one-on-one fighting game whose arena is a Calimero app
-//! instance, on core's component SDK (`calimero-app-sdk`).
+//! instance, on core's component SDK (`calimero-sdk`).
 //!
 //! Two people take the two corners, pick a fighter and fight best of three.
 //! There is no game server: every punch, kick and special either of them
@@ -47,7 +47,7 @@
 //! reaches it may take a free corner; every write after that is checked against
 //! the corner the caller holds.
 
-use calimero_app_sdk::prelude::*;
+use calimero_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// Every fighter starts each round with this much health.
@@ -251,7 +251,7 @@ pub struct HitView {
     pub kind: String,
     pub damage: u32,
     pub blocked: bool,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub at: u64,
 }
 
@@ -260,7 +260,7 @@ pub struct HitView {
 #[serde(rename_all = "camelCase")]
 pub struct ArenaView {
     pub title: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub created_at: u64,
     /// Index of the match being fought now.
     pub match_index: u32,
@@ -284,7 +284,7 @@ pub struct ArenaView {
     /// Actions written in the current match, both corners.
     pub match_actions: u32,
     /// Every action ever written at this arena: the transaction count.
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub total_actions: u64,
     pub max_hp: u32,
     pub rounds_to_win: u32,
@@ -295,7 +295,7 @@ pub struct ArenaView {
 #[serde(rename_all = "camelCase")]
 pub struct MatchSummary {
     pub index: u32,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub started_at: u64,
     pub winner: String,
     pub flawless: bool,

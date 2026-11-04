@@ -1,5 +1,5 @@
 //! Mero Updates: investor updates and investor relations, on core's component
-//! SDK (`calimero-app-sdk`).
+//! SDK (`calimero-sdk`).
 //!
 //! The shape of Visible / Cabal / Paperstreet, on an app instance instead of a
 //! SaaS database. One instance is one AUDIENCE ("All investors", "Board") in a
@@ -46,10 +46,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use calimero_app_sdk::env::{Caller, OrgRole};
-use calimero_app_sdk::json::u64_str;
-use calimero_app_sdk::prelude::*;
-use calimero_app_sdk::StorageError;
+use calimero_sdk::env::{Caller, OrgRole};
+use calimero_sdk::json::u64_str;
+use calimero_sdk::prelude::*;
+use calimero_sdk::StorageError;
 use serde::{Deserialize, Serialize};
 
 // ── Limits ───────────────────────────────────────────────────────────────────

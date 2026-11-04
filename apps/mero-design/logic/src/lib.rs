@@ -1,6 +1,6 @@
 //! MeroDesign: a collaborative, Figma-style design board (elements, layers,
 //! comments, live pointers, board roles) on core's component SDK
-//! (`calimero-app-sdk`).
+//! (`calimero-sdk`).
 //!
 //! One app instance is one board. The app runs on its cluster's leader, which
 //! applies every write in one replicated log, so the state is plain maps and
@@ -38,8 +38,8 @@
 //! Everything a client sees differently from v1 is in `apps/mero-design/README.md`,
 //! "What changed in the port".
 
-use calimero_app_sdk::env::{Caller, OrgRole};
-use calimero_app_sdk::prelude::*;
+use calimero_sdk::env::{Caller, OrgRole};
+use calimero_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// Largest batch any `*Elements` method accepts.

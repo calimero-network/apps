@@ -1,7 +1,7 @@
 //! v1's inline `#[cfg(test)] mod tests` of `checkpoint.rs`, `memo.rs`,
 //! `prs.rs` and `watches.rs`, through the methods that use them.
 
-use calimero_app_sdk::testing::{Failure, TestApp};
+use calimero_sdk::testing::{Failure, TestApp};
 use serde_json::{json, Value};
 
 use crate::support::*;

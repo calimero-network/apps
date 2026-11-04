@@ -2,7 +2,7 @@
 
 Shared team calendars, private events and booking links on
 [Calimero](https://calimero.network) 1.0. The contract is on core's
-**component SDK** (`calimero-app-sdk`, a `calimero:app` WebAssembly component on
+**component SDK** (`calimero-sdk`, a `calimero:app` WebAssembly component on
 the node's wasmtime runtime), developed on **`merod local`**, with a frontend on
 mero-js's **`CalimeroClient`** that talks to a **Calimero Cloud** cluster in
 production and to the local nodes in development.

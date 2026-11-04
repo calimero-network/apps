@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Component apps: the app directories whose `logic/Cargo.toml` depends on
-# `calimero-app-sdk` (the 1.0 runtime, `wasm32-wasip2`). The v1 pipeline finds
+# `calimero-sdk` from core's git (the 1.0 runtime, `wasm32-wasip2`; core
+# renamed it from `calimero-app-sdk` in 1.0.0-rc.9). A v1 app inherits its
+# `calimero-sdk` from the root workspace, with no `git`. The v1 pipeline finds
 # its apps through `cargo metadata` of the root workspace (scripts/app-packages.sh),
 # which a component app is excluded from, so the two lists never overlap.
 #
@@ -18,7 +20,7 @@ cd "$(dirname "$0")/.."
 all() {
   for manifest in apps/*/logic/Cargo.toml; do
     [ -f "$manifest" ] || continue
-    if grep -Eq '^calimero-app-sdk[[:space:]]*=' "$manifest"; then
+    if grep -Eq '^calimero-sdk[[:space:]]*=.*[{,][[:space:]]*git[[:space:]]*=' "$manifest"; then
       basename "$(dirname "$(dirname "$manifest")")"
     fi
   done

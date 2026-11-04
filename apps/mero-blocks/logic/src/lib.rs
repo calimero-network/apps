@@ -1,5 +1,5 @@
 //! Mero Blocks: shared voxel-world state, on core's component SDK
-//! (`calimero-app-sdk`).
+//! (`calimero-sdk`).
 //!
 //! The world itself is NEVER stored here. Every client generates identical
 //! terrain from `seed`; this app carries only:
@@ -35,10 +35,10 @@
 //! strings, event payloads as objects, devices) is listed in
 //! `apps/mero-blocks/README.md`.
 
-use calimero_app_sdk::env::Caller;
-use calimero_app_sdk::json::{u64_auto, u64_str};
-use calimero_app_sdk::prelude::*;
-use calimero_app_sdk::AppError;
+use calimero_sdk::env::Caller;
+use calimero_sdk::json::{u64_auto, u64_str};
+use calimero_sdk::prelude::*;
+use calimero_sdk::AppError;
 use serde::{Deserialize, Serialize};
 
 /// World bounds - must match `app/src/engine/world.ts`.

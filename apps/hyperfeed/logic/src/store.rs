@@ -7,8 +7,8 @@
 //! the SDK's `UnorderedMap<String, T>` with v1's call shapes (`get(&str)`,
 //! `insert(String, T)`, `entries()`), so the rules read as they did.
 
-use calimero_app_sdk::app::StateField;
-use calimero_app_sdk::prelude::*;
+use calimero_sdk::app::StateField;
+use calimero_sdk::prelude::*;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 

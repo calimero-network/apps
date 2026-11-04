@@ -1,4 +1,4 @@
-//! `mero-component`: build a component app (`calimero-app-sdk`, `wasm32-wasip2`)
+//! `mero-component`: build a component app (`calimero-sdk`, `wasm32-wasip2`)
 //! and pack it into a signed `.mpk`.
 //!
 //! ```text
@@ -117,7 +117,7 @@ fn main() -> Result<()> {
                 .ok_or_else(|| {
                     eyre::eyre!(
                         "no min-runtime-version: set it in [package.metadata.calimero] (the core \
-                         release the app builds against, e.g. \"1.0.0-rc.8\")"
+                         release the app builds against, e.g. \"1.0.0-rc.9\")"
                     )
                 })?;
             let frontend_dir = if no_frontend {

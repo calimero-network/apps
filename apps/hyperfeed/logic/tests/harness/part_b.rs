@@ -3,7 +3,7 @@
 //! lenses, archive and presence, session grants, what leads a chain, stale
 //! questions, standing rules and chain leases.
 
-use calimero_app_sdk::testing::{Failure, TestApp};
+use calimero_sdk::testing::{Failure, TestApp};
 use serde_json::{json, Value};
 
 use crate::support::*;

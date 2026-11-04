@@ -1,5 +1,5 @@
 //! MeroPixArt: a collaborative layered image editor, on core's component SDK
-//! (`calimero-app-sdk`).
+//! (`calimero-sdk`).
 //!
 //! An app instance is one document (v1: one context); the organization it lives
 //! in (a team) decides who reaches it. Pixels are not in this state: a raster
@@ -28,8 +28,8 @@
 // did; a params struct would change every call's arguments.
 #![allow(clippy::too_many_arguments)]
 
-use calimero_app_sdk::env::OrgRole;
-use calimero_app_sdk::prelude::*;
+use calimero_sdk::env::OrgRole;
+use calimero_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// Rows one storage read returns: a page of a collection.

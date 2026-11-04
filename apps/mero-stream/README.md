@@ -11,7 +11,7 @@
 > touches the contract — that is **Mero Meet**, and it remains the right answer.
 
 Mero Stream runs on Calimero 1.0: a contract on core's **component SDK**
-(`calimero-app-sdk`, a `calimero:app` WebAssembly component on the node's
+(`calimero-sdk`, a `calimero:app` WebAssembly component on the node's
 wasmtime runtime), developed against **`merod local`**, and a frontend that
 talks to **Calimero Cloud** in production and to the local nodes in development
 through mero-js's **`CalimeroClient`** (`@calimero-apps/connect`). See

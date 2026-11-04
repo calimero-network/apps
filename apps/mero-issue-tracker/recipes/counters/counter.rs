@@ -1,6 +1,7 @@
 //! RECIPE: a tally (`Counter`) and one-vote-per-person votes on the component
 //! SDK. A complete app module: merge its state fields, methods and error into
-//! an app's `lib.rs`. Compile-checked against core 1.0.0-rc.8, not built here.
+//! an app's `lib.rs`. Compile-checked against core 1.0.0-rc.8, its paths
+//! renamed for 1.0.0-rc.9 (`calimero_sdk`); not built here.
 //!
 //! Two different things, on purpose:
 //!
@@ -15,8 +16,8 @@
 //!   v1 needed `Authored<IndexedMap>` owner stamps for this; here the key is the
 //!   check.
 
-use calimero_app_sdk::env::Caller;
-use calimero_app_sdk::prelude::*;
+use calimero_sdk::env::Caller;
+use calimero_sdk::prelude::*;
 
 /// One account's vote on one item: +1 or -1.
 #[derive(Record)]

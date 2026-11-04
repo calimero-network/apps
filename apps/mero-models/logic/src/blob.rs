@@ -1,5 +1,5 @@
 //! A typed reference to one of the app's blobs, stored exactly as core's
-//! `calimero_app_sdk::BlobRef` stores one.
+//! `calimero_sdk::BlobRef` stores one.
 //!
 //! Core's component runtime (#4815, after `1.0.0-rc.7`) keeps a component's blob
 //! for as long as a stored value refers to it, plus one hour after its upload or
@@ -11,7 +11,7 @@
 //!   reference and keeps its blob (and refuses a reference to a blob the app
 //!   does not hold, `HostDenied`);
 //! * a node without it stores the tagged bytes like any other value;
-//! * when `component-core-tag` moves past #4815, `use calimero_app_sdk::BlobRef`
+//! * when `component-core-tag` moves past #4815, `use calimero_sdk::BlobRef`
 //!   replaces this module with no change to stored state or to the wire.
 //!
 //! In JSON (arguments, results, events) a reference is the blob id: 64
@@ -96,10 +96,10 @@ mod tests {
     #[test]
     fn a_ref_is_cores_tagged_byte_string_in_cbor_and_hex_in_json() {
         let r = BlobRef([0xAB; 32]);
-        let cbor = calimero_app_sdk::encoding::value::to_vec(&r).unwrap();
+        let cbor = calimero_sdk::encoding::value::to_vec(&r).unwrap();
         assert_eq!(&cbor[..5], &[0xD9, 0xCA, 0x1B, 0x58, 0x20]);
         assert_eq!(
-            calimero_app_sdk::encoding::value::from_slice::<BlobRef>(&cbor).unwrap(),
+            calimero_sdk::encoding::value::from_slice::<BlobRef>(&cbor).unwrap(),
             r
         );
         let id = "ab".repeat(32);

@@ -1,5 +1,5 @@
 //! Merraria: shared 2D tile-world state, on core's component SDK
-//! (`calimero-app-sdk`).
+//! (`calimero-sdk`).
 //!
 //! The world is generated deterministically from `seed` on every client; this
 //! app carries only the founding parameters, the tile-override diff (dig = an
@@ -28,7 +28,7 @@
 //! Every change a client sees compared with v1 is listed in
 //! `apps/merraria/README.md`.
 
-use calimero_app_sdk::prelude::*;
+use calimero_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// World bounds: must match `app/src/engine/world.ts`.

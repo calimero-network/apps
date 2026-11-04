@@ -3,7 +3,7 @@
 Team chat: workspaces with public and private channels, threads, reactions,
 mentions, direct messages, drafts, read positions, moderation roles, files and
 images. A component app on Calimero 1.0: the contract is on core's component SDK
-(`calimero-app-sdk`, `wasm32-wasip2`), local development runs on `merod local`,
+(`calimero-sdk`, `wasm32-wasip2`), local development runs on `merod local`,
 and the frontend talks to the local nodes in development and to Calimero Cloud
 in production through mero-js's `CalimeroClient` (`@calimero-apps/connect`). See
 [`docs/COMPONENT-APPS.md`](../../docs/COMPONENT-APPS.md).

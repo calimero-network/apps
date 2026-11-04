@@ -7,8 +7,12 @@ each one names core in its own Cargo.toml. This is what keeps "a core release is
 ONE edit" true for them: bump `component-core-tag` in the root Cargo.toml and
 this check lists every crate still on the old tag.
 
-Checked, for `apps/*/logic/Cargo.toml` that depend on `calimero-app-sdk` and for
-`tools/component-bundle/Cargo.toml`:
+Checked, for `apps/*/logic/Cargo.toml` that depend on `calimero-sdk` from core's
+git (a v1 app inherits its `calimero-sdk` from the root workspace instead) and
+for `tools/component-bundle/Cargo.toml`:
+
+* no dependency still names `calimero-app-sdk`, the name core renamed to
+  `calimero-sdk` in 1.0.0-rc.9 (kept there only as an alias);
 
 * every dependency from github.com/calimero-network/core (in any dependency
   table) names `tag = "<component-core-tag>"`: no branch, no rev, no path;
@@ -27,6 +31,18 @@ import tomllib
 from pathlib import Path
 
 CORE = "github.com/calimero-network/core"
+# Core 1.0.0-rc.9 (core#4842) renamed the component SDK; the old names are aliases.
+OLD_NAMES = {"calimero-app-sdk": "calimero-sdk", "calimero-app-sdk-macros": "calimero-sdk-macros"}
+
+
+def is_component_app(manifest: dict) -> bool:
+    """Depends on `calimero-sdk` (or the old `calimero-app-sdk`) from core's git."""
+    deps = manifest.get("dependencies", {})
+    for name in ("calimero-sdk", "calimero-app-sdk"):
+        spec = deps.get(name)
+        if isinstance(spec, dict) and CORE in spec.get("git", ""):
+            return True
+    return False
 
 
 def dependency_tables(manifest: dict) -> list[tuple[str, dict]]:
@@ -48,6 +64,8 @@ def check_crate(path: Path, tag: str, runtime: str | None, root: Path, excluded:
     rel = path.relative_to(root)
     for label, table in dependency_tables(manifest):
         for name, spec in table.items():
+            if name in OLD_NAMES:
+                errors.append(f"{rel}: [{label}] {name} is the old name; depend on {OLD_NAMES[name]} instead")
             if not isinstance(spec, dict):
                 continue
             git = spec.get("git", "")
@@ -85,7 +103,7 @@ def main() -> int:
     errors: list[str] = []
     apps = sorted(
         p for p in root.glob("apps/*/logic/Cargo.toml")
-        if any(line.split("=")[0].strip() == "calimero-app-sdk" for line in p.read_text().splitlines())
+        if is_component_app(tomllib.loads(p.read_text()))
     )
     for manifest in apps:
         errors += check_crate(manifest, tag, runtime, root, excluded)

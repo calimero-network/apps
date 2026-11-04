@@ -1,5 +1,5 @@
 //! Mero Forum: a discussion forum (threads, flat comments, one vote per account,
-//! display names, moderators) on core's component SDK (`calimero-app-sdk`).
+//! display names, moderators) on core's component SDK (`calimero-sdk`).
 //!
 //! One app instance is one forum. The app runs on its cluster's leader, which
 //! applies every write in one replicated log, so the state is plain tables and
@@ -38,8 +38,8 @@
 //! integers as decimal strings, the error shape, opaque cursors, a delete that
 //! removes) is in `apps/mero-forum/README.md`, "What changed in the port".
 
-use calimero_app_sdk::env::Caller;
-use calimero_app_sdk::prelude::*;
+use calimero_sdk::env::Caller;
+use calimero_sdk::prelude::*;
 use serde::Serialize;
 
 /// Longest a title may be, in bytes.
@@ -112,16 +112,16 @@ pub struct PostView {
     pub title: String,
     pub body: String,
     /// A decimal string on the wire.
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub created_at: u64,
     /// A decimal string on the wire.
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub edited_at: u64,
     /// A decimal string on the wire.
-    #[serde(with = "calimero_app_sdk::json::i64_str")]
+    #[serde(with = "calimero_sdk::json::i64_str")]
     pub score: i64,
     /// A decimal string on the wire.
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub comment_count: u64,
     /// The CALLER's vote (-1, 0 or 1), so the arrows render without a second call.
     pub my_vote: i8,
@@ -137,13 +137,13 @@ pub struct CommentView {
     pub author_name: String,
     pub body: String,
     /// A decimal string on the wire.
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub created_at: u64,
     /// A decimal string on the wire.
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub edited_at: u64,
     /// A decimal string on the wire.
-    #[serde(with = "calimero_app_sdk::json::i64_str")]
+    #[serde(with = "calimero_sdk::json::i64_str")]
     pub score: i64,
     /// The CALLER's vote (-1, 0 or 1).
     pub my_vote: i8,

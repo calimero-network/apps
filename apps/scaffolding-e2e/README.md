@@ -8,7 +8,7 @@ frontend where you can call every method by hand and run an automated suite
 against a node.
 
 A component app on Calimero 1.0: the contract is on core's component SDK
-(`calimero-app-sdk` at `1.0.0-rc.7`, `wasm32-wasip2`), local development runs on
+(`calimero-sdk` at `1.0.0-rc.7`, `wasm32-wasip2`), local development runs on
 `merod local`, and the frontend talks to the local nodes in development and to
 Calimero Cloud in production through mero-js's `CalimeroClient`
 (`@calimero-apps/connect`). See [`docs/COMPONENT-APPS.md`](../../docs/COMPONENT-APPS.md).

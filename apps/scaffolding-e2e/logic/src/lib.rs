@@ -1,6 +1,6 @@
 //! # Scaffolding E2E: the SDK test bench
 //!
-//! One app that exercises the component SDK's surface (`calimero-app-sdk`), so
+//! One app that exercises the component SDK's surface (`calimero-sdk`), so
 //! a frontend and a suite of scenarios can call every piece of it against a
 //! node. It is the v1 scaffold's method set, method for method, on core's
 //! component runtime.
@@ -49,8 +49,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use calimero_app_sdk::env::Caller;
-use calimero_app_sdk::prelude::*;
+use calimero_sdk::env::Caller;
+use calimero_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -99,13 +99,13 @@ pub struct FileRecord {
     /// The blob's id, 64 hex characters.
     pub blob_id: String,
     /// A decimal string on the wire.
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub size: u64,
     pub mime_type: String,
     /// The uploader's account.
     pub uploaded_by: String,
     /// Unix milliseconds (the log entry's time); a decimal string on the wire.
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub uploaded_at: u64,
 }
 
@@ -120,7 +120,7 @@ pub struct ChannelRecord {
     /// The account that registered it. Only they or a workspace admin remove it.
     pub created_by: String,
     /// Unix milliseconds; a decimal string on the wire.
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub registered_at: u64,
 }
 
@@ -133,7 +133,7 @@ pub struct WsGroupRecord {
     pub name: String,
     pub description: String,
     pub created_by: String,
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub registered_at: u64,
 }
 
@@ -151,11 +151,11 @@ pub struct MemberRecord {
 pub struct WorkspaceInfo {
     pub name: String,
     pub admin: String,
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub channel_count: u64,
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub group_count: u64,
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub member_count: u64,
 }
 

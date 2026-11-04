@@ -1,5 +1,5 @@
 //! KV Store: a string key-value store every member of the app's organization
-//! shares. The reference app, on core's component SDK (`calimero-app-sdk`).
+//! shares. The reference app, on core's component SDK (`calimero-sdk`).
 //!
 //! State is one ordered map. The app runs on its cluster's leader, which applies
 //! every write in one replicated log, so a later write to a key replaces an
@@ -16,7 +16,7 @@
 
 use std::collections::BTreeMap;
 
-use calimero_app_sdk::prelude::*;
+use calimero_sdk::prelude::*;
 
 /// The most entries one `entries` call returns: one page of the map.
 const PAGE: u32 = 1000;

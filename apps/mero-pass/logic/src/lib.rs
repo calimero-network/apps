@@ -1,4 +1,4 @@
-//! Mero Pass: one vault's state, on core's component SDK (`calimero-app-sdk`).
+//! Mero Pass: one vault's state, on core's component SDK (`calimero-sdk`).
 //!
 //! An app instance IS a vault. It holds what every member of the vault reads:
 //! the vault's name, its secrets, who may change them, the device keys the vault
@@ -61,9 +61,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use calimero_app_sdk::env::Caller;
-use calimero_app_sdk::prelude::*;
-use calimero_app_sdk::StorageError;
+use calimero_sdk::env::Caller;
+use calimero_sdk::prelude::*;
+use calimero_sdk::StorageError;
 use serde::Serialize;
 
 /// The most rows one storage read returns.
@@ -224,16 +224,16 @@ pub struct SecretView {
     pub tags: String,
     /// Field name → encrypted value; cleared fields are absent.
     pub fields: BTreeMap<String, String>,
-    #[serde(rename = "createdAt", with = "calimero_app_sdk::json::u64_str")]
+    #[serde(rename = "createdAt", with = "calimero_sdk::json::u64_str")]
     pub created_at: u64,
     #[serde(rename = "createdBy")]
     pub created_by: String,
-    #[serde(rename = "updatedAt", with = "calimero_app_sdk::json::u64_str")]
+    #[serde(rename = "updatedAt", with = "calimero_sdk::json::u64_str")]
     pub updated_at: u64,
     #[serde(rename = "updatedBy")]
     pub updated_by: String,
     pub trashed: bool,
-    #[serde(rename = "trashedAt", with = "calimero_app_sdk::json::u64_str")]
+    #[serde(rename = "trashedAt", with = "calimero_sdk::json::u64_str")]
     pub trashed_at: u64,
 }
 
@@ -242,7 +242,7 @@ pub struct SecretView {
 pub struct RevisionView {
     pub field: String,
     pub previous: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub replaced_at: u64,
     pub replaced_by: String,
 }
@@ -256,7 +256,7 @@ pub struct DeviceView {
     pub kind: String,
     /// The account that registered it.
     pub account: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub added_at: u64,
     pub revoked: bool,
 }
@@ -311,7 +311,7 @@ pub struct AuditView {
     /// Always empty: a component app has no node device to report (v1's
     /// author node). Kept so the shape is v1's.
     pub device: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub timestamp: u64,
     /// Always false: no method blanks a line. Kept so the shape is v1's.
     pub redacted: bool,

@@ -33,7 +33,7 @@
 //! (see the crate docs): these checks bind honest nodes. A cloud agent is
 //! attested code, which is why it is trusted with the agent's side at all.
 
-use calimero_app_sdk::prelude::*;
+use calimero_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::store::{emit, forbidden, invalid};

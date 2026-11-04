@@ -11,7 +11,7 @@
 //! A subscription is bound to the key it was made with: a new key drops every
 //! device, and each phone subscribes again.
 
-use calimero_app_sdk::prelude::*;
+use calimero_sdk::prelude::*;
 
 use crate::store::{emit, invalid};
 use serde::{Deserialize, Serialize};

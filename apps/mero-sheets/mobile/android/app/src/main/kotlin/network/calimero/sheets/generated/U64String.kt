@@ -11,7 +11,7 @@ import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * A u64 on the component wire: the contract sends and takes it as a decimal string
- * (`calimero_app_sdk::json::u64_str`), since JSON numbers lose precision above 2^53. Reads a bare
+ * (`calimero_sdk::json::u64_str`), since JSON numbers lose precision above 2^53. Reads a bare
  * number too.
  */
 object U64String : KSerializer<ULong> {
