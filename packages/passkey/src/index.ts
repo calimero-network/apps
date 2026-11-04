@@ -3,6 +3,7 @@ export {
   isPasskeyCancel,
   passkeyDeps,
   usePasskeySession,
+  type PasskeySessionOptions,
   type Session,
   type SessionApi,
   type SessionDeps,

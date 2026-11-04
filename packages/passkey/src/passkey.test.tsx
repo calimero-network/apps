@@ -88,9 +88,46 @@ describe("usePasskeySession", () => {
   });
 
   it("is unconfigured when the target cannot be resolved", async () => {
-    const d: SessionDeps = { ...deps(fakeClient()), env: { DEV: false, PROD: true } };
+    const d: SessionDeps = {
+      ...deps(fakeClient()),
+      env: { DEV: false, PROD: true, VITE_CALIMERO_CLUSTER: "eu-shared-1" },
+    };
     const { result } = renderHook(() => usePasskeySession("test-app", d));
     await waitFor(() => expect(result.current.session.status).toBe("unconfigured"));
+    expect(result.current.session).toMatchObject({ message: expect.stringMatching(/VITE_CALIMERO_MIN_RELEASE/) });
+  });
+
+  it("says a listing page no cluster serves is opened from Calimero Cloud", async () => {
+    const d: SessionDeps = { ...deps(fakeClient()), env: { DEV: false, PROD: true }, servedNodes: async () => null };
+    const { result } = renderHook(() => usePasskeySession("test-app", d));
+    await waitFor(() => expect(result.current.session.status).toBe("unconfigured"));
+    expect(result.current.session).toMatchObject({ message: expect.stringMatching(/test-app's listing page/) });
+  });
+
+  it("reports a listing page as its own status when the app asks", async () => {
+    const d: SessionDeps = { ...deps(fakeClient()), env: { DEV: false, PROD: true }, servedNodes: async () => null };
+    const { result } = renderHook(() => usePasskeySession("test-app", d, { listing: true }));
+    await waitFor(() => expect(result.current.session.status).toBe("listing"));
+    expect(result.current.session).toMatchObject({
+      status: "listing",
+      console: "https://cloud.calimero.network",
+      message: expect.stringMatching(/test-app's listing page/),
+    });
+  });
+
+  it("connects a page the cluster serves without a cluster name in the build", async () => {
+    const make = vi.fn(async () => fakeClient() as unknown as CalimeroClient);
+    const d: SessionDeps = {
+      ...deps(fakeClient()),
+      makeClient: make,
+      env: { DEV: false, PROD: true, VITE_CALIMERO_MIN_RELEASE: "2.3.136" },
+      servedNodes: async () => ["https://n1.example"],
+    };
+    const { result } = renderHook(() => usePasskeySession("test-app", d, { package: "com.example.test" }));
+    await waitFor(() => expect(result.current.session.status).toBe("signed-out"));
+    expect(make).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "cloud", nodes: ["https://n1.example"], minReleaseVersion: "2.3.136" }),
+    );
   });
 });
 

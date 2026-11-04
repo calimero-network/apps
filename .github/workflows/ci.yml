@@ -455,6 +455,12 @@ jobs:
       - name: Assert the publish script uploads straight to storage
         run: bash scripts/publish-bundle.test.sh
 
+      # The frontend packed into a bundle is built with the lowest release the
+      # cluster runs: too high and it refuses every node of a half-rolled-out
+      # cluster, so the derivation is tested against fixture responses.
+      - name: Assert the derived attestation floor is the cluster's lowest release
+        run: python3 scripts/tests/cluster-min-release-test.py
+
       # The vitest copy-lint suite only scans string literals and JSX text in a
       # handful of files, so an em dash in a comment, a test name, a Rust doc
       # comment or a merobox YAML step slips past review every time. This scans

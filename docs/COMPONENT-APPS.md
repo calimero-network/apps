@@ -158,10 +158,10 @@ elsewhere.
 ## The frontend: local in dev, Cloud in production
 
 ```ts
-import { appSource, createClient, resolveTarget, SessionStore, withServedNodes } from "@calimero-apps/connect";
+import { appSource, connectTarget, createClient, SessionStore } from "@calimero-apps/connect";
 
 // local in `vite`, cloud in `vite build`; on a page the cluster serves, its own node list
-const target = await withServedNodes(resolveTarget(import.meta.env));
+const target = await connectTarget(import.meta.env, { app: "my-app" });
 const client = await createClient(target);              // CalimeroClient
 const sessions = new SessionStore("my-app", target);    // per app and per target
 sessions.restore(client);
@@ -177,7 +177,7 @@ await client.call(app, "set", { key: "a", value: "1" });
 | `VITE_CALIMERO_TARGET` | `local` (default under `vite`) | `cloud` (default under `vite build`), or `node` for an attested node reached by URL |
 | `VITE_CALIMERO_NODES` | written by `dev:local`; default `127.0.0.1:2501-2503` | `node` only, **required**: the node's `https` URLs |
 | `VITE_CALIMERO_BUNDLE` | written by `dev:local` | — (instances come from the package) |
-| `VITE_CALIMERO_CLUSTER` | — | **required**: the cluster's name in the cloud's node directory |
+| `VITE_CALIMERO_CLUSTER` | — | the cluster's name in the cloud's node directory: optional override: without it a served page connects to the cluster serving it, and any other page to the primary cluster running the app's package (`GET {directory}/package/{package}`); when none does, the page says it is the listing page and links to Calimero Cloud |
 | `VITE_CALIMERO_MIN_RELEASE` | — | **required**: the lowest mero-tee release a node may run |
 | `VITE_CALIMERO_ZONE`, `VITE_CALIMERO_DIRECTORY` | — | optional: zone first; another directory (staging) |
 | `VITE_CALIMERO_PACKAGE`, `VITE_CALIMERO_VERSION` | — | optional: default the app's package, newest version |
@@ -209,7 +209,7 @@ await client.call(app, "set", { key: "a", value: "1" });
   `{ package }`.
 - **On a served page** the node publishes the cluster's API URLs at
   `/.well-known/calimero.json`, and the page's CSP (`connect-src`) allows
-  those origins only. `withServedNodes` reads that list and the client uses it
+  those origins only. `connectTarget` reads that list and the client uses it
   directly; the node directory is used everywhere else.
 - **Sessions** are stored per app and per target (`calimero-session:<app>:<target>`),
   so a dev session never reaches a cloud cluster. The client swaps the
@@ -453,8 +453,10 @@ per app, branched off `main` once this groundwork has merged.
     test that its method list and parameter names are exactly the committed
     `res/abi.json`'s. Test the screens with a mocked client (`App.test.tsx`).
 11. `.env.example` lists the `VITE_CALIMERO_*` variables; the production build
-    needs `VITE_CALIMERO_CLUSTER` and `VITE_CALIMERO_MIN_RELEASE` where the
-    bundle's frontend is built.
+    needs `VITE_CALIMERO_MIN_RELEASE` where the bundle's frontend is built
+    (publish-bundle passes the repository variable `CALIMERO_MIN_RELEASE`, or
+    else the lowest mero-tee release the cluster's nodes run at publish time,
+    and `CALIMERO_CLUSTER` when set, into it).
 
 **Remove and verify**
 

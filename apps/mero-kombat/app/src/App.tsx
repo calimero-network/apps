@@ -184,7 +184,7 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
     );
   }
 
-  if (session.status === "unconfigured") {
+  if (session.status === "unconfigured" || session.status === "listing") {
     return (
       <section className="connect">
         <div className="connect-card">

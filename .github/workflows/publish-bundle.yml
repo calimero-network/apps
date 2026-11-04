@@ -23,6 +23,18 @@
 #                             as a new install rather than an upgrade.
 #   CALIMERO_REGISTRY_API_KEY registry API token, read by cargo-mero as
 #                             CALIMERO_API_KEY.
+#
+# Repository variables:
+#   CALIMERO_MIN_RELEASE      VITE_CALIMERO_MIN_RELEASE for the frontend packed
+#                             into the bundle: the lowest mero-tee release a
+#                             node may run. Optional: unset, it is the lowest
+#                             release CALIMERO_CLUSTER's (default eu-shared-1)
+#                             nodes run at publish time
+#                             (scripts/cluster-min-release.py), and the publish
+#                             fails when neither yields one.
+#   CALIMERO_CLUSTER          VITE_CALIMERO_CLUSTER for that frontend, and the
+#                             cluster the floor is derived from. Optional: a
+#                             served frontend connects to its cluster's nodes.
 
 name: Publish bundle
 
@@ -295,9 +307,19 @@ jobs:
           echo "rev=$rev" >> "$GITHUB_OUTPUT"
           echo "::notice::signing a bundle built against core $rev"
 
+      # The packed frontend is the app's production frontend: the cluster serves
+      # it at https://{label}.{apps_domain}/ and connects it to its own nodes,
+      # so it needs no cluster name, but it does need the attestation floor:
+      # CALIMERO_MIN_RELEASE when set, else the lowest mero-tee release the
+      # cluster (CALIMERO_CLUSTER, default eu-shared-1) runs now. CALIMERO_CLUSTER
+      # also pins the frontend to that cluster by name when set.
       - uses: ./.github/actions/build-frontend
         with:
           app: ${{ inputs.app }}
+          min-release: ${{ vars.CALIMERO_MIN_RELEASE }}
+          cluster: ${{ vars.CALIMERO_CLUSTER }}
+          require-min-release: "true"
+          floor-cluster: ${{ vars.CALIMERO_CLUSTER || 'eu-shared-1' }}
 
       # `--app-version`, not `--bump`: the check job already resolved the number
       # against the registry, and cargo-mero's own --bump floors an empty

@@ -118,7 +118,7 @@ export function StudioPage({
 
   const home = () => navigate("/", { state: { fromApp: true } });
 
-  if (session.status === "unconfigured") {
+  if (session.status === "unconfigured" || session.status === "listing") {
     return (
       <div className="page">
         <TopBar onHome={home} />

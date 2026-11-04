@@ -73,8 +73,30 @@ const LOCAL: Target = resolveTarget(DEV_ENV);
 
 describe("App", () => {
   it("says why a production build cannot connect", async () => {
-    render(<App deps={deps(fakeClient(), { DEV: false })} storage={new Memory()} />);
-    await screen.findByText(/VITE_CALIMERO_CLUSTER is not set/);
+    render(<App deps={deps(fakeClient(), { DEV: false, VITE_CALIMERO_CLUSTER: "eu-shared-1" })} storage={new Memory()} />);
+    await screen.findByText(/VITE_CALIMERO_MIN_RELEASE is not set/);
+  });
+
+  it("sends a listing page no cluster serves to Calimero Cloud instead of failing", async () => {
+    // A static listing build: no cluster and no floor, so it asks no directory either.
+    const d = { ...deps(fakeClient(), { DEV: false }), servedNodes: async () => null };
+    render(<App deps={d} storage={new Memory()} />);
+    await screen.findByText(/kv-store's listing page/);
+    expect(screen.getByRole("link", { name: /Calimero Cloud/ }).getAttribute("href")).toBe("https://cloud.calimero.network");
+    expect(screen.queryByText("Cannot connect")).toBeNull();
+  });
+
+  it("connects a page the cluster serves without a cluster name in the build", async () => {
+    const client = fakeClient();
+    const d = {
+      ...deps(client, { DEV: false, VITE_CALIMERO_MIN_RELEASE: "2.3.136" }),
+      servedNodes: async () => ["https://n1.example", "https://n2.example"],
+    };
+    render(<App deps={d} storage={new Memory()} />);
+    await screen.findByText(/Connected to Calimero Cloud/);
+    expect(d.makeClient).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "cloud", nodes: ["https://n1.example", "https://n2.example"], minReleaseVersion: "2.3.136" }),
+    );
   });
 
   it("signs up with a passkey, keeps the session, and creates a shared store from the dev bundle", async () => {

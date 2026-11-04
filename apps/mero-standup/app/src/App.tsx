@@ -121,7 +121,7 @@ export function App({
     );
   }
 
-  if (session.status === "unconfigured") {
+  if (session.status === "unconfigured" || session.status === "listing") {
     return (
       <Shell>
         <div className="card">

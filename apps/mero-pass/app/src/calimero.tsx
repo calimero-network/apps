@@ -25,8 +25,7 @@ import {
   appSource,
   createClient,
   describeError,
-  resolveTarget,
-  withServedNodes,
+  connectTarget,
   type AppSource,
   type ConnectEnv,
   type KeyValueStorage,
@@ -123,10 +122,7 @@ export function CalimeroProvider({
     let live = true;
     void (async () => {
       try {
-        const target = await withServedNodes(
-          resolveTarget(deps.env),
-          deps.servedNodes,
-        );
+        const target = await connectTarget(deps.env, { servedNodes: deps.servedNodes, app: APP, package: PACKAGE });
         const client = await deps.makeClient(target);
         const sessions = new SessionStore(APP, target, deps.storage);
         if (!live) return;

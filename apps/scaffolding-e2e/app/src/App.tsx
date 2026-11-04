@@ -3,7 +3,7 @@ import { CalimeroError, type AppInfo } from "@calimero-network/mero-js";
 import { appSource, describeError, type KeyValueStorage } from "@calimero-apps/connect";
 
 import { setConnection } from "./lib/calimero";
-import { defaultDeps, describeTarget, useSession, type SessionDeps } from "./session";
+import { PACKAGE, defaultDeps, describeTarget, useSession, type SessionDeps } from "./session";
 import { dropInvite, pendingInvite, selectionKey } from "./instances";
 import { SignIn } from "./SignIn";
 import { InstancePicker } from "./InstancePicker";
@@ -35,7 +35,7 @@ import { FileShareDemo } from "./sections/FileShareDemo";
 import { TutorialButton } from "./components/Tutorial";
 
 /** The package production instances are created from (logic/Cargo.toml). */
-export const PACKAGE = "com.calimero.scaffolding-e2e";
+export { PACKAGE };
 
 type SectionId =
   | "concepts"

@@ -10,13 +10,13 @@ import { browserPasskey, type CalimeroClient, type PasskeyProvider } from "@cali
 import {
   SessionStore,
   createClient,
-  resolveTarget,
+  connectTarget,
   targetKey,
-  withServedNodes,
   type ConnectEnv,
   type KeyValueStorage,
   type Target,
 } from "@calimero-apps/connect";
+import { PACKAGE } from "./merraria";
 
 /** The app's name in stored keys. */
 export const APP = "merraria";
@@ -100,7 +100,7 @@ export class Connection {
  * no cluster or release floor (see .env.example).
  */
 export async function connect(deps: ConnectDeps = defaultDeps): Promise<Connection> {
-  const target = await withServedNodes(resolveTarget(deps.env), deps.servedNodes);
+  const target = await connectTarget(deps.env, { servedNodes: deps.servedNodes, app: APP, package: PACKAGE });
   const client = await deps.makeClient(target);
   const sessions = new SessionStore(APP, target, deps.storage);
   sessions.restore(client);

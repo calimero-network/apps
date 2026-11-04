@@ -229,7 +229,7 @@ export function App({
             <span className="spinner" aria-hidden="true" />
             <p className="empty">Connecting…</p>
           </div>
-        ) : session.status === "unconfigured" ? (
+        ) : (session.status === "unconfigured" || session.status === "listing") ? (
           <div className="card">
             <h2>Not configured</h2>
             <pre className="err">{session.message}</pre>

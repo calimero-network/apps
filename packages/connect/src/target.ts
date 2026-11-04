@@ -7,7 +7,7 @@
  * trust a mock quote.
  */
 
-import type { CloudPolicy } from "@calimero-network/mero-js";
+import { DEFAULT_DIRECTORY, type CloudPolicy } from "@calimero-network/mero-js";
 
 /** The nodes `merod local` starts: node i listens on 2500 + i. */
 export const LOCAL_NODES: readonly string[] = [
@@ -103,13 +103,56 @@ function urls(list: string): string[] {
   return nodes;
 }
 
-/** Local nodes in development (`DEV`), the cloud cluster otherwise. */
-export function resolveTarget(env: ConnectEnv): Target {
+/** Where Calimero Cloud's console is: where a person deploys and opens an app. */
+export const CLOUD_CONSOLE = "https://cloud.calimero.network";
+
+/**
+ * A production build with no cluster, on a page no cluster serves: a static
+ * copy of the app (its listing page), not the app. A Cloud node trusts passkey
+ * ceremonies only from the frontends it serves, so the app is opened from the
+ * console, at the cluster's own copy.
+ */
+export class NotServedError extends ConfigError {
+  readonly console = CLOUD_CONSOLE;
+
+  constructor(
+    readonly app?: string,
+    reason = "VITE_CALIMERO_CLUSTER is not set and no Calimero Cloud cluster serves this page",
+  ) {
+    super(
+      `This is ${app ? `${app}'s` : "the app's"} listing page; open the app from Calimero Cloud: ${CLOUD_CONSOLE}` +
+        ` (${reason})`,
+    );
+    this.name = "NotServedError";
+  }
+}
+
+function targetKind(env: ConnectEnv): "local" | "cloud" | "node" {
   const asked = text(env.VITE_CALIMERO_TARGET);
   if (asked !== undefined && asked !== "local" && asked !== "cloud" && asked !== "node") {
     throw new ConfigError(`VITE_CALIMERO_TARGET is ${JSON.stringify(asked)}; use "local", "cloud" or "node"`);
   }
-  const kind = asked ?? (env.DEV ? "local" : "cloud");
+  return asked ?? (env.DEV ? "local" : "cloud");
+}
+
+function minRelease(env: ConnectEnv): string {
+  const minReleaseVersion = text(env.VITE_CALIMERO_MIN_RELEASE);
+  if (!minReleaseVersion) {
+    throw new ConfigError(
+      "VITE_CALIMERO_MIN_RELEASE is not set: the lowest mero-tee release a cloud node may run",
+    );
+  }
+  return minReleaseVersion;
+}
+
+/**
+ * Local nodes in development (`DEV`), the cloud cluster otherwise. Synchronous
+ * and from the build's environment alone, so a production build must name its
+ * cluster here; the app's session code uses {@link connectTarget}, which also
+ * connects a page the cluster serves without one.
+ */
+export function resolveTarget(env: ConnectEnv): Target {
+  const kind = targetKind(env);
   if (kind === "local") {
     const given = text(env.VITE_CALIMERO_NODES);
     const nodes = given ? urls(given) : [...LOCAL_NODES];
@@ -142,12 +185,7 @@ export function resolveTarget(env: ConnectEnv): Target {
       "VITE_CALIMERO_CLUSTER is not set: a production build connects to a Calimero Cloud cluster by name",
     );
   }
-  const minReleaseVersion = text(env.VITE_CALIMERO_MIN_RELEASE);
-  if (!minReleaseVersion) {
-    throw new ConfigError(
-      "VITE_CALIMERO_MIN_RELEASE is not set: the lowest mero-tee release a cloud node may run",
-    );
-  }
+  const minReleaseVersion = minRelease(env);
   const zone = text(env.VITE_CALIMERO_ZONE);
   const directory = text(env.VITE_CALIMERO_DIRECTORY);
   return {
@@ -230,4 +268,113 @@ export async function withServedNodes(
   if (target.kind !== "cloud" || target.nodes) return target;
   const nodes = await find();
   return nodes ? { ...target, nodes } : target;
+}
+
+export interface ConnectOptions {
+  /** The cluster's node list when this page is served by it ({@link servedNodes}; fakes in tests). */
+  servedNodes?: () => Promise<string[] | null>;
+  /** The app's name, for the message a listing page shows. */
+  app?: string;
+  /**
+   * The app's package id, to ask the directory where it runs when the build
+   * names no cluster and no cluster serves the page (`VITE_CALIMERO_PACKAGE`
+   * overrides it, as it does for {@link appSource}).
+   */
+  package?: string;
+  /** This page's host: the served target's name (default `location.host`). */
+  host?: string;
+  /** Fetch for the directory's package lookup (tests). */
+  fetch?: typeof fetch;
+}
+
+/** A node of a cluster in the directory's package answer. */
+interface PackageNode {
+  url: string;
+  zone?: string;
+  weight?: number;
+}
+
+/**
+ * The primary cluster that runs `pkg`, from the directory's
+ * `GET {directory}/package/{package}`, or `null` when no cluster does (404).
+ * Its nodes come in the build's zone first, then heaviest first.
+ */
+async function packageCluster(
+  directory: string,
+  pkg: string,
+  zone: string | undefined,
+  fetcher: typeof fetch,
+): Promise<{ cluster: string; nodes: string[] } | null> {
+  const url = `${directory.replace(/\/+$/, "")}/package/${encodeURIComponent(pkg)}`;
+  let response: Response;
+  try {
+    response = await fetcher(url, { headers: { accept: "application/json" } });
+  } catch (e) {
+    throw new Error(`could not ask ${url} where ${pkg} runs: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`${url} answered ${response.status} asked where ${pkg} runs`);
+  const body = (await response.json().catch(() => null)) as { clusters?: unknown } | null;
+  const clusters = Array.isArray(body?.clusters) ? (body.clusters as Record<string, unknown>[]) : [];
+  for (const entry of clusters) {
+    if (entry?.primary !== true || typeof entry.cluster !== "string" || !Array.isArray(entry.nodes)) continue;
+    const nodes = (entry.nodes as unknown[]).filter(
+      (n): n is PackageNode =>
+        typeof n === "object" && n !== null && typeof (n as PackageNode).url === "string" && /^https:\/\//.test((n as PackageNode).url),
+    );
+    if (nodes.length === 0) continue;
+    const local = (n: PackageNode) => (zone !== undefined && n.zone === zone ? 0 : 1);
+    const ordered = [...nodes].sort((a, b) => local(a) - local(b) || (b.weight ?? 0) - (a.weight ?? 0));
+    return { cluster: entry.cluster, nodes: ordered.map((n) => n.url.replace(/\/+$/, "")) };
+  }
+  throw new Error(`${url} names no primary cluster with nodes for ${pkg}`);
+}
+
+/**
+ * The target the app's session connects to: {@link resolveTarget} with the
+ * served node list ({@link withServedNodes}) when the build names its cluster
+ * (`VITE_CALIMERO_CLUSTER`, an override) or is not a cloud build. A cloud build
+ * that names none connects to:
+ *
+ * 1. the cluster that serves this page: a frontend packed into a bundle is
+ *    served by every cluster it is deployed to, at `{label}.{apps_domain}`,
+ *    and keyed by the page's host, one per package and cluster;
+ * 2. else the primary cluster that runs the app's package, from the directory
+ *    (`GET {VITE_CALIMERO_DIRECTORY}/package/{package}`): a frontend the
+ *    developer hosts;
+ * 3. else nowhere: {@link NotServedError}, "open the app from Calimero Cloud".
+ *
+ * The attestation floor (`VITE_CALIMERO_MIN_RELEASE`) is required throughout.
+ */
+export async function connectTarget(env: ConnectEnv, options: ConnectOptions = {}): Promise<Target> {
+  const find = options.servedNodes ?? (() => servedNodes());
+  if (targetKind(env) !== "cloud" || text(env.VITE_CALIMERO_CLUSTER)) {
+    return withServedNodes(resolveTarget(env), find);
+  }
+  const served = await find();
+  if (served) {
+    const minReleaseVersion = minRelease(env);
+    const host = text(options.host ?? globalThis.location?.host) ?? new URL(served[0] as string).host;
+    return { kind: "cloud", cluster: host, nodes: served, minReleaseVersion };
+  }
+  const minReleaseVersion = text(env.VITE_CALIMERO_MIN_RELEASE);
+  const pkg = text(env.VITE_CALIMERO_PACKAGE) ?? text(options.package);
+  if (!minReleaseVersion || !pkg) throw new NotServedError(options.app);
+  const zone = text(env.VITE_CALIMERO_ZONE);
+  const directory = text(env.VITE_CALIMERO_DIRECTORY);
+  const found = await packageCluster(
+    directory ?? DEFAULT_DIRECTORY,
+    pkg,
+    zone,
+    options.fetch ?? ((input, init) => fetch(input, init)),
+  );
+  if (!found) throw new NotServedError(options.app, `no Calimero Cloud cluster runs ${pkg}`);
+  return {
+    kind: "cloud",
+    cluster: found.cluster,
+    nodes: found.nodes,
+    minReleaseVersion,
+    ...(zone ? { zone } : {}),
+    ...(directory ? { directory } : {}),
+  };
 }
