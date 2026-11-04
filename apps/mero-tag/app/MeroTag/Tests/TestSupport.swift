@@ -127,7 +127,7 @@ enum Fixtures {
     static func transport() -> FakeTransport {
         let t = FakeTransport()
         t.responses = [
-            "get_trackers": trackers, "get_space": space, "get_members": members, "get_presence": presence,
+            "getTrackers": trackers, "getSpace": space, "getMembers": members, "getPresence": presence,
             "whoami": me,
         ]
         return t

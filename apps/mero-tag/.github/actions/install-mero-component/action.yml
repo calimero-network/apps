@@ -1,0 +1,53 @@
+name: Install mero-component
+description: >-
+  Put `mero-component` on PATH: the component-app bundler of
+  calimero-network/apps (tools/component-bundle). It builds the contract into a
+  `calimero:app` component with core's own `calimero-app-build`, and packs and
+  signs the `.mpk` with core's `calimero-bundle` and `mero-sign`. It replaces
+  `cargo mero`, which core removed with SDK 0.12 (core#4835).
+
+inputs:
+  ref:
+    description: >-
+      The calimero-network/apps commit, branch or tag to install from. Its
+      bundler must accept a `calimero-sdk` dependency (the crate's name since
+      core 1.0.0-rc.9).
+    required: false
+    default: main
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve the apps revision
+      id: rev
+      shell: bash
+      env:
+        REF: ${{ inputs.ref }}
+      run: |
+        set -euo pipefail
+        rev=$(git ls-remote https://github.com/calimero-network/apps "$REF" | awk 'NR==1{print $1}')
+        # A full commit id is not listed by ls-remote; use it as given.
+        [ -n "$rev" ] || rev="$REF"
+        echo "rev=$rev" >> "$GITHUB_OUTPUT"
+        echo "mero-component from calimero-network/apps@$rev"
+
+    - name: Cache mero-component
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.local/bin/mero-component
+        key: mero-component-${{ steps.rev.outputs.rev }}-${{ runner.os }}-${{ runner.arch }}
+
+    - name: Build mero-component
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        REV: ${{ steps.rev.outputs.rev }}
+      run: |
+        set -euo pipefail
+        cargo install --locked --git https://github.com/calimero-network/apps --rev "$REV" \
+          mero-component --root "$HOME/.local"
+
+    - name: Put mero-component on PATH
+      shell: bash
+      run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"

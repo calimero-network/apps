@@ -21,27 +21,33 @@ concurrency:
 
 jobs:
   logic:
-    name: WASM contract (Rust)
+    name: Component contract (Rust)
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: logic
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.89.0
+      # logic/rust-toolchain.toml (core 1.0.0-rc.9's) picks the toolchain and
+      # adds wasm32-wasip2.
+      - name: Install the pinned toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: actions/cache@v4
         with:
-          targets: wasm32-unknown-unknown
-          components: clippy
-      - name: Install cargo-mero
-        uses: ./.github/actions/install-cargo-mero
-      - run: cargo test
-      - run: cargo clippy --target wasm32-unknown-unknown --profile app-release -- -D warnings
-      # `cargo mero build`, not `bash build.sh`: the hand-rolled script produced a
-      # wasm with no `calimero_abi_v1` section, so what CI proved was not what
-      # shipped. This emits and embeds the ABI, which also means a public type
-      # missing an `AbiType` impl fails here rather than at bundle time.
-      - name: Build WASM (+ ABI embed)
-        run: cargo mero build
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            logic/target
+          key: logic-${{ runner.os }}-${{ hashFiles('logic/Cargo.lock', 'logic/rust-toolchain.toml') }}
+          restore-keys: logic-${{ runner.os }}-
+      - run: cargo fmt --check
+      # The unit tests of the pure helpers, then tests/harness.rs and
+      # tests/scenarios.rs on core's wasmtime engine. The harness builds the
+      # crate into a `calimero:app` component first (calimero-app-build), so a
+      # contract that does not build as a component fails here.
+      - run: cargo test --locked
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo clippy --locked --target wasm32-wasip2 -- -D warnings
 
   landing:
     name: Landing page build
@@ -109,5 +115,6 @@ jobs:
 
   # No merobox lane: merobox is archived and cannot boot a core 1.0 node (no
   # admin API, sealed channel, passkeys). The contract's 1.0 behaviour is
-  # covered by the TestHost tests `cargo test` runs above; an end-to-end lane
-  # against `merod local` is follow-up work.
+  # covered by the TestApp harness `cargo test` runs above (core's real
+  # engine); logic/scenarios/*.json are written to run on `merod local` too,
+  # and an end-to-end lane for them is follow-up work.

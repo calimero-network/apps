@@ -14,7 +14,7 @@ final class TrackerStoreTests: XCTestCase {
         let t = Fixtures.transport()
         let s = store(t)
         await s.bootstrap(displayName: "Fran")
-        XCTAssertEqual(t.writes.map(\.method), ["join", "update_presence"])
+        XCTAssertEqual(t.writes.map(\.method), ["join", "updatePresence"])
         XCTAssertEqual(s.trackers.map(\.name), ["Alpha", "Bike"], "sorted by name")
         XCTAssertEqual(s.space?.name, "Family")
         XCTAssertTrue(s.isOnline("someone"))
@@ -24,10 +24,10 @@ final class TrackerStoreTests: XCTestCase {
 
     func testAlreadyAMemberDoesNotJoinAgain() async {
         let t = Fixtures.transport()
-        t.responses["get_members"] = [["id": .string(Fixtures.account), "username": "Fran", "joinedAt": 1]]
+        t.responses["getMembers"] = [["id": .string(Fixtures.account), "username": "Fran", "joinedAt": 1]]
         let s = store(t)
         await s.bootstrap(displayName: "Fran")
-        XCTAssertEqual(t.writes.map(\.method), ["update_presence"])
+        XCTAssertEqual(t.writes.map(\.method), ["updatePresence"])
         XCTAssertEqual(s.displayName(for: Fixtures.account), "Fran (you)")
         s.stop()
     }
@@ -40,7 +40,7 @@ final class TrackerStoreTests: XCTestCase {
         await s.bootstrap(displayName: "Fran")
         XCTAssertEqual(s.connection, .live)
 
-        t.responses["get_trackers"] = []
+        t.responses["getTrackers"] = []
         continuation.yield(CloudEvent(id: "1", kind: "TrackerDeleted", data: ["id": "t1"]))
         for _ in 0..<50 where !s.trackers.isEmpty { try await Task.sleep(nanoseconds: 20_000_000) }
         XCTAssertTrue(s.trackers.isEmpty)
@@ -53,7 +53,7 @@ final class TrackerStoreTests: XCTestCase {
 
     func testRevokedSessionIsReportedNotShown() async {
         let t = Fixtures.transport()
-        t.failures["create_tracker"] = LoginRequired("the refresh token was revoked")
+        t.failures["createTracker"] = LoginRequired("the refresh token was revoked")
         let s = store(t)
         var ended: String?
         s.onSessionEnded = { ended = $0 }
@@ -65,7 +65,18 @@ final class TrackerStoreTests: XCTestCase {
 
     func testRefusedWriteShowsTheContractsReason() async {
         let t = Fixtures.transport()
-        t.failures["rename_tracker"] = AppError("only the tracker's owner can rename it")
+        t.failures["renameTracker"] = AppError("only the tracker's owner can rename it")
+        let s = store(t)
+        let ok = await s.renameTracker(id: "t1", name: "X")
+        XCTAssertFalse(ok)
+        XCTAssertEqual(s.lastError, "only the tracker's owner can rename it")
+    }
+
+    func testRefusedWriteReadsTheSentenceFromTheErrorsFields() async {
+        let t = Fixtures.transport()
+        t.failures["renameTracker"] = AppError(
+            "app error",
+            details: ["code": "Forbidden", "fields": ["message": "only the tracker's owner can rename it"]])
         let s = store(t)
         let ok = await s.renameTracker(id: "t1", name: "X")
         XCTAssertFalse(ok)
@@ -74,7 +85,7 @@ final class TrackerStoreTests: XCTestCase {
 
     func testAnUnreachableClusterSaysTheChangeWasNotSaved() async throws {
         let t = Fixtures.transport()
-        t.failures["rename_tracker"] = UnavailableError(code: "NETWORK", message: "offline")
+        t.failures["renameTracker"] = UnavailableError(code: "NETWORK", message: "offline")
         let s = store(t)
         _ = await s.renameTracker(id: "t1", name: "X")
         let error = try XCTUnwrap(s.lastError)

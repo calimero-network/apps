@@ -1,9 +1,10 @@
 import Foundation
 import MeroKit
 
-/// Typed wrapper around the contract's methods. Arg structs use snake_case
-/// keys to match the Rust parameter names (the node maps `args` onto method
-/// params by name).
+/// Typed wrapper around the contract's methods. Method names and argument keys
+/// are camelCase, as the component ABI names them (the node maps `args` onto
+/// method params by name). A `u64` argument (`timestamp`, `since`) is a decimal
+/// string; inside a record it stays a JSON number.
 ///
 /// On core 1.0 the contract takes every owner, author and member id from the
 /// caller's account and stamps records with the leader's clock, so nothing
@@ -47,16 +48,16 @@ public final class MeroService: Sendable {
     // MARK: Reads
 
     public func whoami() async throws -> Me { try await read("whoami", Me.self) }
-    public func getSpace() async throws -> SpaceInfo { try await read("get_space", SpaceInfo.self) }
-    public func getTrackers() async throws -> [Tracker] { try await read("get_trackers", [Tracker].self) }
-    public func getMembers() async throws -> [Member] { try await read("get_members", [Member].self) }
-    public func getGroups() async throws -> [TagGroup] { try await read("get_groups", [TagGroup].self) }
-    public func getGeofences() async throws -> [Geofence] { try await read("get_geofences", [Geofence].self) }
-    public func getPresence() async throws -> [Presence] { try await read("get_presence", [Presence].self) }
+    public func getSpace() async throws -> SpaceInfo { try await read("getSpace", SpaceInfo.self) }
+    public func getTrackers() async throws -> [Tracker] { try await read("getTrackers", [Tracker].self) }
+    public func getMembers() async throws -> [Member] { try await read("getMembers", [Member].self) }
+    public func getGroups() async throws -> [TagGroup] { try await read("getGroups", [TagGroup].self) }
+    public func getGeofences() async throws -> [Geofence] { try await read("getGeofences", [Geofence].self) }
+    public func getPresence() async throws -> [Presence] { try await read("getPresence", [Presence].self) }
 
     public func getHistory(trackerId: String, since: UInt64 = 0) async throws -> [LocationSample] {
-        struct Args: Encodable { let tracker_id: String; let since: UInt64 }
-        return try await read("get_history", Args(tracker_id: trackerId, since: since), [LocationSample].self)
+        struct Args: Encodable { let trackerId: String; let since: String }
+        return try await read("getHistory", Args(trackerId: trackerId, since: String(since)), [LocationSample].self)
     }
 
     // MARK: Members
@@ -71,42 +72,42 @@ public final class MeroService: Sendable {
     @discardableResult
     public func createTracker(id: String, name: String) async throws -> String {
         struct Args: Encodable { let id: String; let name: String }
-        let returned = try await write("create_tracker", Args(id: id, name: name))
+        let returned = try await write("createTracker", Args(id: id, name: name))
         return returned?.stringValue ?? id
     }
 
     public func renameTracker(id: String, name: String) async throws {
         struct Args: Encodable { let id: String; let name: String }
-        try await write("rename_tracker", Args(id: id, name: name))
+        try await write("renameTracker", Args(id: id, name: name))
     }
 
     public func deleteTracker(id: String) async throws {
         struct Args: Encodable { let id: String }
-        try await write("delete_tracker", Args(id: id))
+        try await write("deleteTracker", Args(id: id))
     }
 
     public func shareTracker(trackerId: String, userId: String) async throws {
-        struct Args: Encodable { let tracker_id: String; let user_id: String }
-        try await write("share_tracker", Args(tracker_id: trackerId, user_id: userId))
+        struct Args: Encodable { let trackerId: String; let userId: String }
+        try await write("shareTracker", Args(trackerId: trackerId, userId: userId))
     }
 
     public func unshareTracker(trackerId: String, userId: String) async throws {
-        struct Args: Encodable { let tracker_id: String; let user_id: String }
-        try await write("unshare_tracker", Args(tracker_id: trackerId, user_id: userId))
+        struct Args: Encodable { let trackerId: String; let userId: String }
+        try await write("unshareTracker", Args(trackerId: trackerId, userId: userId))
     }
 
     public func updateLocation(trackerId: String, _ loc: Location) async throws {
         struct Args: Encodable {
-            let tracker_id: String
+            let trackerId: String
             let latitude: Double; let longitude: Double; let altitude: Double
-            let speed: Double; let heading: Double; let battery: Int; let timestamp: UInt64
+            let speed: Double; let heading: Double; let battery: Int; let timestamp: String
         }
         try await write(
-            "update_location",
+            "updateLocation",
             Args(
-                tracker_id: trackerId, latitude: loc.latitude, longitude: loc.longitude,
+                trackerId: trackerId, latitude: loc.latitude, longitude: loc.longitude,
                 altitude: loc.altitude, speed: loc.speed, heading: loc.heading,
-                battery: loc.battery, timestamp: loc.timestamp))
+                battery: loc.battery, timestamp: String(loc.timestamp)))
     }
 
     // MARK: Geofences
@@ -116,23 +117,23 @@ public final class MeroService: Sendable {
         -> String
     {
         struct Args: Encodable {
-            let id: String; let name: String; let center_lat: Double; let center_lng: Double; let radius: Double
+            let id: String; let name: String; let centerLat: Double; let centerLng: Double; let radius: Double
         }
         let returned = try await write(
-            "create_geofence", Args(id: id, name: name, center_lat: lat, center_lng: lng, radius: radius))
+            "createGeofence", Args(id: id, name: name, centerLat: lat, centerLng: lng, radius: radius))
         return returned?.stringValue ?? id
     }
 
     public func reportGeofenceEvent(geofenceId: String, kind: String) async throws {
-        struct Args: Encodable { let geofence_id: String; let kind: String }
-        try await write("report_geofence_event", Args(geofence_id: geofenceId, kind: kind))
+        struct Args: Encodable { let geofenceId: String; let kind: String }
+        try await write("reportGeofenceEvent", Args(geofenceId: geofenceId, kind: kind))
     }
 
     // MARK: Presence
 
     public func updatePresence(online: Bool) async throws {
         struct Args: Encodable { let online: Bool }
-        try await write("update_presence", Args(online: online))
+        try await write("updatePresence", Args(online: online))
     }
 
     // MARK: Live events

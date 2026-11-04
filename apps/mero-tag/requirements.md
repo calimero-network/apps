@@ -5,11 +5,10 @@ running it in the Simulator and on an iPhone.
 
 ```
 mero-tag/
-  logic/      Rust WASM contract (runs inside the Calimero node behind your relay)
+  logic/      Rust contract, a calimero:app component (runs on your cluster's nodes)
   app/
     MeroTag/  the SwiftUI iOS app (depends on calimero-network/swift-sdk)
-  scripts/    dev-node / dev-node2 / dev-invite / setup / workflows
-  workflows/  merobox scenarios
+  scripts/    setup, publish-bundle
   Makefile    every command below has a `make` shortcut
 ```
 
@@ -26,8 +25,8 @@ mero-tag/
 
 | Tool | Needed for | Install |
 |------|-----------|---------|
-| **Rust** + `wasm32-unknown-unknown` | building the contract | <https://rustup.rs>, then `rustup target add wasm32-unknown-unknown` |
-| **cargo-mero** (core 1.0.0-rc.8) | ABI embed + signed bundle | from the core tag pinned in `logic/Cargo.toml` |
+| **Rust** + `wasm32-wasip2` | building the component contract | <https://rustup.rs>; `logic/rust-toolchain.toml` pins core's toolchain and target |
+| **mero-component** | component build + signed bundle | `make tools` (calimero-network/apps' component bundler) |
 | **Full Xcode 16+** | building / running the app, XCTest, deploying to a device | Mac App Store, then `sudo xcode-select -s /Applications/Xcode.app` |
 | **XcodeGen** | generating the `.xcodeproj` | `brew install xcodegen` |
 | **A Calimero account** | signing in | created with a passkey in the Calimero wallet on first sign-in |
@@ -81,27 +80,29 @@ other's member (tracker ▸ **Share**). Move one device and watch the other's ma
 
 | Command | What it runs | Needs Xcode? |
 |---------|-------------|--------------|
-| `make logic-test` | Rust unit tests for the contract's pure helpers | no |
-| `make logic-build` | WASM build with the ABI embedded | no |
+| `make logic-test` | Rust unit tests for the pure helpers, then the contract on core's wasmtime engine (`tests/harness.rs`, `scenarios/*.json`) | no |
+| `make logic-build` | the `calimero:app` component and its ABI (`logic/res/`) | no |
 | `make app-test` | App unit tests (events, service args, store, session) + sign-in UI smoke test | yes |
 | `make test` | `logic-test` (the no-Xcode subset) | no |
 
-CI (`.github/workflows/ci.yml`) runs the contract build and tests plus the merobox workflows on Linux, and the app's
-unit tests on a macOS runner.
+CI (`.github/workflows/ci.yml`) runs the contract's tests and clippy (host and `wasm32-wasip2`) on Linux, and the
+app's unit tests on a macOS runner.
 
 ---
 
-## 6. Local dev nodes (contract work)
+## 6. A development cluster (contract work)
 
 ```bash
-make node      # node1 on :2440: installs the signed bundle, creates a tracking space
-make node2     # node2 on :2441, peers with node1
-make invite    # node2 joins node1's space
-make stop      # tear down nodes, free ports 2440/2441/2540/2541
+# in calimero-network/core (merod is Linux-only; on macOS run it in Docker)
+cargo run -p merod -- local                     # 3 nodes on :2501-2503, mock attestation
+meroctl node add local http://127.0.0.1:2501/ --allow-mock
+meroctl login --dev-passkey ./dev-passkey.json --name ada
+make logic-bundle                               # here: logic/dist/mero-tag-dev.mpk
+meroctl app install --path logic/dist/mero-tag-dev.mpk
 ```
 
-These are for exercising the contract directly with `scripts/integration-test.sh` and merobox. The app signs in only
-with Calimero Cloud, and does not connect to local nodes.
+In the app, **Development cluster** takes the node's URL. `logic/scenarios/*.json` are written to run on such a
+cluster too (accounts named `@alice`, `@bob`); the same files run in `cargo test`.
 
 ---
 

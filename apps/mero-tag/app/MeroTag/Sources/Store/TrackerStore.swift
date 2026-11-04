@@ -241,7 +241,9 @@ public final class TrackerStore: ObservableObject {
     nonisolated static func message(for error: Error) -> String {
         switch error {
         case let error as AppError:
-            // The contract's own sentence (`app::bail!`).
+            // The contract's own sentence: its `Forbidden` / `Invalid` carry it
+            // in a `message` field (`{ code, fields: { message } }` on the wire).
+            if let sentence = error.fields["message"]?.stringValue, !sentence.isEmpty { return sentence }
             return error.message.isEmpty ? error.appCode : error.message
         case let error as UnavailableError where error.reason != "network":
             return "Your cluster is unavailable right now (\(error.reason)). Try again in a moment."
