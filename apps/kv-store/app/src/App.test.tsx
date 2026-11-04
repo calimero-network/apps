@@ -78,7 +78,8 @@ describe("App", () => {
   });
 
   it("sends a listing page no cluster serves to Calimero Cloud instead of failing", async () => {
-    const d = { ...deps(fakeClient(), { DEV: false, VITE_CALIMERO_MIN_RELEASE: "2.3.136" }), servedNodes: async () => null };
+    // A static listing build: no cluster and no floor, so it asks no directory either.
+    const d = { ...deps(fakeClient(), { DEV: false }), servedNodes: async () => null };
     render(<App deps={d} storage={new Memory()} />);
     await screen.findByText(/kv-store's listing page/);
     expect(screen.getByRole("link", { name: /Calimero Cloud/ }).getAttribute("href")).toBe("https://cloud.calimero.network");
