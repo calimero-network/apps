@@ -106,7 +106,7 @@ describe("FormKeys", () => {
     expect(await screen.findAllByRole("button", { name: "Revoke" })).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "Revoke" }));
     await waitFor(() => expect(calls).toEqual(["revoke-key", "forget"]));
-    expect(revokeApiKey).toHaveBeenCalledWith("key-9");
+    expect(revokeApiKey).toHaveBeenCalledWith("key-9", passkey);
     expect(forgotten).toEqual([{ account: "key-9" }]);
   });
 });
