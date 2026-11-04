@@ -3,10 +3,10 @@ import type { CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js"
 import { appSource, targetKey, type AppSource, type Target } from "@calimero-apps/connect";
 
 import { bindScope } from "./lib/workspaceStore";
-import { defaultDeps, useSession, type SessionApi, type SessionDeps } from "./session";
+import { APP_PACKAGE, defaultDeps, useSession, type SessionApi, type SessionDeps } from "./session";
 
 /** The package production instances are created from (`[package.metadata.calimero]`). */
-export const APP_PACKAGE = "com.calimero.mero-forms";
+export { APP_PACKAGE };
 
 interface SessionValue {
   api: SessionApi;

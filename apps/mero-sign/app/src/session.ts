@@ -9,6 +9,7 @@ import {
   type KeyValueStorage,
   type Target,
 } from "@calimero-apps/connect";
+import { PACKAGE_NAME } from "./constants/config";
 
 /** The app's name in stored keys. */
 export const APP = "mero-sign";
@@ -61,7 +62,7 @@ export function useSession(deps: SessionDeps = defaultDeps): SessionApi {
     (async () => {
       let target: Target;
       try {
-        target = await connectTarget(deps.env, { servedNodes: deps.servedNodes, app: APP });
+        target = await connectTarget(deps.env, { servedNodes: deps.servedNodes, app: APP, package: PACKAGE_NAME });
       } catch (e) {
         if (live) setSession({ status: "unconfigured", message: describeError(e) });
         return;

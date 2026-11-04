@@ -13,6 +13,9 @@ import {
 /** The app's name in stored keys. */
 export const APP = "scaffolding-e2e";
 
+/** The app's package in the registry. */
+export const PACKAGE = "com.calimero.scaffolding-e2e";
+
 export type Session =
   | { status: "connecting" }
   | { status: "unconfigured"; message: string }
@@ -61,7 +64,7 @@ export function useSession(deps: SessionDeps = defaultDeps): SessionApi {
     (async () => {
       let target: Target;
       try {
-        target = await connectTarget(deps.env, { servedNodes: deps.servedNodes, app: APP });
+        target = await connectTarget(deps.env, { servedNodes: deps.servedNodes, app: APP, package: PACKAGE });
       } catch (e) {
         if (live) setSession({ status: "unconfigured", message: describeError(e) });
         return;

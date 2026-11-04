@@ -20,7 +20,7 @@ const app = await client.createApp("my-app", appSource(import.meta.env, "com.cal
 | | local | cloud | node |
 |---|---|---|---|
 | chosen when | `vite` (`DEV`), or `VITE_CALIMERO_TARGET=local` | `vite build`, or `VITE_CALIMERO_TARGET=cloud` | `VITE_CALIMERO_TARGET=node` |
-| nodes | `VITE_CALIMERO_NODES`, default `127.0.0.1:2501-2503` | `VITE_CALIMERO_CLUSTER` via the node directory (required off a served page; on one, the cluster serving it); `VITE_CALIMERO_ZONE`, `VITE_CALIMERO_DIRECTORY` | `VITE_CALIMERO_NODES` (required, `https`), no directory |
+| nodes | `VITE_CALIMERO_NODES`, default `127.0.0.1:2501-2503` | the cluster serving the page; else `VITE_CALIMERO_CLUSTER` (optional override) via the node directory; else the primary cluster running the app's package (`GET {directory}/package/{package}`); `VITE_CALIMERO_ZONE`, `VITE_CALIMERO_DIRECTORY` | `VITE_CALIMERO_NODES` (required, `https`), no directory |
 | trust | mock quotes (`allowMock`) | signed mero-tee release `>= VITE_CALIMERO_MIN_RELEASE` (required) | the same as cloud |
 | instances from | `VITE_CALIMERO_BUNDLE` (written by `pnpm dev:local`) | the package (`VITE_CALIMERO_PACKAGE`, `VITE_CALIMERO_VERSION`) | the same as cloud |
 
@@ -39,9 +39,14 @@ does not allow. That frontend is built once and served by every cluster it is
 deployed to, so it needs no `VITE_CALIMERO_CLUSTER`: on a served page a build
 without one connects to the nodes that serve it, keyed by the page's host
 (`{label}.{apps_domain}`, one per package and cluster). `VITE_CALIMERO_MIN_RELEASE`
-is required everywhere: it is the attestation floor. A production build without
-a cluster on a page no cluster serves (a static copy: the app's listing page)
-throws `NotServedError` (a `ConfigError`), which an app shows as "open the app
+is required everywhere: it is the attestation floor. Off a served page, a build
+without a cluster asks the directory where the app's package runs
+(`GET {VITE_CALIMERO_DIRECTORY or mero-js's DEFAULT_DIRECTORY}/package/{package}`,
+the package from `VITE_CALIMERO_PACKAGE` or `connectTarget`'s `package` option)
+and connects to its primary cluster's nodes, the build's zone first, then
+heaviest first: a frontend the developer hosts needs no cluster name.
+When nothing runs the package (404), or the build has no floor or package,
+it throws `NotServedError` (a `ConfigError`), which an app shows as "open the app
 from Calimero Cloud" with a link to `CLOUD_CONSOLE`. Any other misconfigured
 production build throws `ConfigError` instead of connecting anywhere.
 `resolveTarget` and `withServedNodes`, which `connectTarget` is built on, are

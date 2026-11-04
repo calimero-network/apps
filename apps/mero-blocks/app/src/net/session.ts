@@ -16,6 +16,7 @@ import {
   type KeyValueStorage,
   type Target,
 } from "@calimero-apps/connect";
+import { PACKAGE } from "./blocks";
 
 /** The app's name in stored keys. */
 export const APP = "mero-blocks";
@@ -52,7 +53,7 @@ export const defaultDeps: SessionDeps = {
 export async function connect(deps: SessionDeps = defaultDeps): Promise<Phase> {
   let target: Target;
   try {
-    target = await connectTarget(deps.env, { servedNodes: deps.servedNodes, app: APP });
+    target = await connectTarget(deps.env, { servedNodes: deps.servedNodes, app: APP, package: PACKAGE });
   } catch (e) {
     return { status: "unconfigured", message: describeError(e) };
   }

@@ -82,7 +82,7 @@ function useSessionState(deps: SessionDeps): SessionApi {
     void (async () => {
       let target: Target;
       try {
-        target = await connectTarget(deps.env, { servedNodes: deps.servedNodes, app: APP });
+        target = await connectTarget(deps.env, { servedNodes: deps.servedNodes, app: APP, package: PACKAGE_NAME });
       } catch (e) {
         if (live) setSession({ status: 'unconfigured', message: describeError(e) });
         return;

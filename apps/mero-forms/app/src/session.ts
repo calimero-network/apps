@@ -13,6 +13,9 @@ import {
 /** The app's name in stored keys. */
 export const APP = "mero-forms";
 
+/** The app's package in the registry. */
+export const APP_PACKAGE = "com.calimero.mero-forms";
+
 export type Session =
   | { status: "connecting" }
   | { status: "unconfigured"; message: string }
@@ -61,7 +64,7 @@ export function useSession(deps: SessionDeps = defaultDeps): SessionApi {
     (async () => {
       let target: Target;
       try {
-        target = await connectTarget(deps.env, { servedNodes: deps.servedNodes, app: APP });
+        target = await connectTarget(deps.env, { servedNodes: deps.servedNodes, app: APP, package: APP_PACKAGE });
       } catch (e) {
         if (live) setSession({ status: "unconfigured", message: describeError(e) });
         return;

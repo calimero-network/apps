@@ -4,6 +4,7 @@ import { describeError, connectTarget, type Target } from "@calimero-apps/connec
 import { clientAt, softPasskey } from "./conformance/env";
 import type { Row } from "./conformance/types";
 import { defaultDeps, type AppDeps } from "./deps";
+import { PACKAGE } from "./conformance/contract";
 
 /** A picked file's bytes (FileReader: what every browser, and jsdom, has). */
 function readBytes(file: Blob): Promise<Uint8Array> {
@@ -38,7 +39,7 @@ export function App({ deps = defaultDeps }: { deps?: AppDeps }) {
   useEffect(() => {
     let live = true;
     Promise.resolve()
-      .then(() => connectTarget(deps.env, { servedNodes: deps.servedNodes }))
+      .then(() => connectTarget(deps.env, { servedNodes: deps.servedNodes, package: PACKAGE }))
       .then((target) => live && setState({ status: "ready", target }))
       .catch((e: unknown) => live && setState({ status: "unconfigured", message: describeError(e) }));
     return () => {

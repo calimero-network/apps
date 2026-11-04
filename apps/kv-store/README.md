@@ -104,9 +104,10 @@ VITE_CALIMERO_CLUSTER=<optional: a cluster name in the cloud's node directory>
 The publish workflow passes them from the repository variables
 `CALIMERO_MIN_RELEASE` (required: the publish fails without it) and
 `CALIMERO_CLUSTER`. On a page the cluster serves, a build without a cluster
-connects to the nodes serving it; anywhere else (the Vercel listing copy) it
-says it is the listing page and links to Calimero Cloud, where the app is
-deployed and opened.
+connects to the nodes serving it; on any other page it asks the directory
+where `com.calimero.kv-store` runs and connects to its primary cluster, and
+when no cluster runs it, says it is the listing page and links to Calimero
+Cloud, where the app is deployed and opened.
 
 The production frontend is the one **packed into the `.mpk`** (`frontend-dir`),
 which the cluster serves from the package's own origin: a Cloud node trusts

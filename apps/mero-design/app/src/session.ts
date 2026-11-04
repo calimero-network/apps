@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { browserPasskey, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
-import { APP_NAME } from "./config";
+import { APP_NAME, APP_PACKAGE } from "./config";
 import {
   SessionStore,
   createClient,
@@ -62,7 +62,7 @@ export function useSession(deps: SessionDeps = defaultDeps): SessionApi {
     (async () => {
       let target: Target;
       try {
-        target = await connectTarget(deps.env, { servedNodes: deps.servedNodes, app: APP });
+        target = await connectTarget(deps.env, { servedNodes: deps.servedNodes, app: APP, package: APP_PACKAGE });
       } catch (e) {
         if (live) setSession({ status: "unconfigured", message: describeError(e) });
         return;

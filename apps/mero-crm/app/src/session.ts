@@ -10,7 +10,7 @@ import {
   type Target,
 } from "@calimero-apps/connect";
 
-import { APP_NAME } from "./config";
+import { APP_NAME, APP_PACKAGE } from "./config";
 
 /** The app's name in stored keys. */
 export const APP = APP_NAME;
@@ -63,7 +63,7 @@ export function useSession(deps: SessionDeps = defaultDeps): SessionApi {
     (async () => {
       let target: Target;
       try {
-        target = await connectTarget(deps.env, { servedNodes: deps.servedNodes, app: APP });
+        target = await connectTarget(deps.env, { servedNodes: deps.servedNodes, app: APP, package: APP_PACKAGE });
       } catch (e) {
         if (live) setSession({ status: "unconfigured", message: describeError(e) });
         return;

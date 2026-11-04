@@ -277,7 +277,7 @@ describe("connectTarget", () => {
     );
   });
 
-  it("tells a page no cluster serves, built without a cluster, to open the app from Calimero Cloud", async () => {
+  it("tells a page no cluster serves, built without a cluster or a package, to open the app from Calimero Cloud", async () => {
     const failure = connectTarget(FLOOR, { servedNodes: async () => null, app: "kv-store" });
     await expect(failure).rejects.toBeInstanceOf(NotServedError);
     await expect(failure).rejects.toBeInstanceOf(ConfigError);
@@ -302,5 +302,104 @@ describe("connectTarget", () => {
     const find = vi.fn(async () => SERVED);
     await connectTarget({ DEV: true }, { servedNodes: find });
     expect(find).not.toHaveBeenCalled();
+  });
+});
+
+describe("connectTarget, by package", () => {
+  const FLOOR = { VITE_CALIMERO_MIN_RELEASE: "2.3.136" };
+  const PKG = "com.calimero.kv-store";
+  const notServed = async () => null;
+  const WHERE = {
+    package: PKG,
+    label: "2g7omgwwdshuse6hygzvhssf4w3ute5zc3vjlpor7zknkoyrwxdq",
+    url: "https://2g7omgwwdshuse6hygzvhssf4w3ute5zc3vjlpor7zknkoyrwxdq.apps.calimero.network/",
+    clusters: [
+      { cluster: "us-shared-1", primary: false, nodes: [{ id: "u1", url: "https://u1.example", zone: "us", weight: 1 }] },
+      {
+        cluster: "eu-shared-1",
+        primary: true,
+        nodes: [
+          { id: "e1", url: "https://e1.example", zone: "eu-west", weight: 1 },
+          { id: "e2", url: "https://e2.example", zone: "eu-central", weight: 5 },
+          { id: "e3", url: "https://e3.example", zone: "eu-west", weight: 3 },
+        ],
+      },
+    ],
+    refreshAfterSeconds: 300,
+  };
+  const answer = (body: unknown, status = 200) =>
+    vi.fn(async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch & ReturnType<typeof vi.fn>;
+
+  it("asks the directory where the package runs and connects to its primary cluster", async () => {
+    const fetch = answer(WHERE);
+    const target = await connectTarget(FLOOR, { servedNodes: notServed, package: PKG, fetch });
+    expect(fetch).toHaveBeenCalledWith(
+      "https://manager.cloud.calimero.network/api/v2/directory/package/com.calimero.kv-store",
+      expect.anything(),
+    );
+    // Heaviest first.
+    expect(target).toEqual({
+      kind: "cloud",
+      cluster: "eu-shared-1",
+      nodes: ["https://e2.example", "https://e3.example", "https://e1.example"],
+      minReleaseVersion: "2.3.136",
+    });
+  });
+
+  it("puts the build's zone first, honours VITE_CALIMERO_DIRECTORY and VITE_CALIMERO_PACKAGE", async () => {
+    const fetch = answer(WHERE);
+    const target = await connectTarget(
+      {
+        ...FLOOR,
+        VITE_CALIMERO_ZONE: "eu-west",
+        VITE_CALIMERO_DIRECTORY: "https://staging.example/api/v2/directory/",
+        VITE_CALIMERO_PACKAGE: "com.example.fork",
+      },
+      { servedNodes: notServed, package: PKG, fetch },
+    );
+    expect(fetch).toHaveBeenCalledWith("https://staging.example/api/v2/directory/package/com.example.fork", expect.anything());
+    expect(target).toEqual({
+      kind: "cloud",
+      cluster: "eu-shared-1",
+      zone: "eu-west",
+      directory: "https://staging.example/api/v2/directory/",
+      nodes: ["https://e3.example", "https://e1.example", "https://e2.example"],
+      minReleaseVersion: "2.3.136",
+    });
+  });
+
+  it("says the package runs nowhere when the directory does not know it", async () => {
+    const failure = connectTarget(FLOOR, { servedNodes: notServed, package: PKG, app: "kv-store", fetch: answer({}, 404) });
+    await expect(failure).rejects.toBeInstanceOf(NotServedError);
+    await expect(failure).rejects.toThrow(/no Calimero Cloud cluster runs com\.calimero\.kv-store/);
+    await expect(failure).rejects.toThrow(CLOUD_CONSOLE);
+  });
+
+  it("does not look the package up without the attestation floor, and lets VITE_CALIMERO_CLUSTER override it", async () => {
+    const fetch = answer(WHERE);
+    await expect(connectTarget({}, { servedNodes: notServed, package: PKG, fetch })).rejects.toBeInstanceOf(NotServedError);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(await connectTarget({ ...CLOUD }, { servedNodes: notServed, package: PKG, fetch })).toEqual(resolveTarget({ ...CLOUD }));
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("prefers the cluster serving the page to the directory", async () => {
+    const fetch = answer(WHERE);
+    const target = await connectTarget(FLOOR, { servedNodes: async () => ["https://n1.example"], host: "abc.apps.example", package: PKG, fetch });
+    expect(target).toMatchObject({ cluster: "abc.apps.example", nodes: ["https://n1.example"] });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("fails as unavailable, not misconfigured, when the directory cannot be reached or answers nonsense", async () => {
+    const down = vi.fn(async () => {
+      throw new TypeError("offline");
+    }) as unknown as typeof fetch;
+    const offline = connectTarget(FLOOR, { servedNodes: notServed, package: PKG, fetch: down });
+    await expect(offline).rejects.toThrow(/could not ask .* where com\.calimero\.kv-store runs/);
+    await expect(offline).rejects.not.toBeInstanceOf(ConfigError);
+    await expect(connectTarget(FLOOR, { servedNodes: notServed, package: PKG, fetch: answer({}, 503) })).rejects.toThrow(/503/);
+    await expect(
+      connectTarget(FLOOR, { servedNodes: notServed, package: PKG, fetch: answer({ clusters: [{ cluster: "x", primary: true, nodes: [] }] }) }),
+    ).rejects.toThrow(/no primary cluster with nodes/);
   });
 });

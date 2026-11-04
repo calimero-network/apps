@@ -92,7 +92,7 @@ export function startCalimero(): Promise<void> {
   if (started) return started;
   started = (async () => {
     try {
-      target = await connectTarget(import.meta.env, { app: APP });
+      target = await connectTarget(import.meta.env, { app: APP, package: APP_PACKAGE });
       client = await createClient(target);
       sessions = new SessionStore(APP, target);
       if (sessions.restore(client) && client.session) {
