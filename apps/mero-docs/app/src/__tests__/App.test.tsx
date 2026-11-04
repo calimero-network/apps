@@ -142,6 +142,13 @@ function deps(client: ReturnType<typeof fakeClient>): SessionDeps {
   };
 }
 
+/**
+ * Waits that sit behind the whole boot chain (session → me → org → apps →
+ * views). Fast locally, but CI runs every app's tests at once and the chain
+ * has taken ~2s there, past testing-library's 1s default.
+ */
+const BOOT = { timeout: 10_000 };
+
 /** A session an earlier visit left behind. */
 function remember() {
   new SessionStore(APP, resolveTarget(DEV_ENV)).sync({ session: SESSION } as unknown as CalimeroClient);
@@ -153,8 +160,8 @@ describe('App on Calimero 1.0', () => {
     render(<App deps={deps(client)} />);
     fireEvent.click(await screen.findByText('Open sign-in'));
     fireEvent.click(await screen.findByTestId('signin-passkey'));
-    await waitFor(() => expect(client.signIn).toHaveBeenCalled());
-    expect((await screen.findAllByText('Engineering')).length).toBeGreaterThan(0);
+    await waitFor(() => expect(client.signIn).toHaveBeenCalled(), BOOT);
+    expect((await screen.findAllByText('Engineering', {}, BOOT)).length).toBeGreaterThan(0);
     // The workspace is the org; its registry is the instance its metadata names.
     expect(client.getOrg).toHaveBeenCalledWith('org-1');
     expect(client.view).toHaveBeenCalledWith('reg-1', 'getOwner', {});
@@ -165,7 +172,7 @@ describe('App on Calimero 1.0', () => {
     window.history.replaceState(null, '', '/app/org-1/f/eng');
     const client = fakeClient();
     render(<App deps={deps(client)} />);
-    expect((await screen.findAllByText('Launch plan')).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText('Launch plan', {}, BOOT)).length).toBeGreaterThan(0);
     expect(client.view).toHaveBeenCalledWith('docs-eng', 'listDocs', { includeArchived: true });
   });
 
@@ -177,7 +184,7 @@ describe('App on Calimero 1.0', () => {
     );
     const client = fakeClient();
     render(<App deps={deps(client)} />);
-    expect(await screen.findByTestId('invite-prompt')).toBeTruthy();
+    expect(await screen.findByTestId('invite-prompt', {}, BOOT)).toBeTruthy();
     expect(client.redeemInvite).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId('invite-accept'));
     await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith('inv_abc'));
