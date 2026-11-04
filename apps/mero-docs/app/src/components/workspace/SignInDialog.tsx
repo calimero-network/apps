@@ -3,8 +3,9 @@
 // 1.0 the frontend already knows its cluster (merod local in development, the
 // Calimero Cloud cluster in production) and the account is a passkey.
 
-import React, { useEffect, useState } from 'react';
-import { Button } from '@/components/ui/button';
+import { useEffect } from 'react';
+import { PasskeySignIn } from '@calimero-apps/passkey';
+import '@calimero-apps/passkey/passkey.css';
 import {
   Dialog,
   DialogContent,
@@ -12,13 +13,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
 import { describeTarget, useSession } from '@/calimero/session';
 import { pendingInvite } from '@/hooks/useNamespaceInvitation';
 
 export function SignInDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const api = useSession();
-  const [name, setName] = useState('');
   const invited = open && pendingInvite() !== null;
 
   useEffect(() => {
@@ -50,40 +49,7 @@ export function SignInDialog({ open, onClose }: { open: boolean; onClose: () => 
             {api.session.message}
           </p>
         )}
-        {api.session.status === 'signed-out' && (
-          <div className="flex flex-col gap-3">
-            <Button data-testid="signin-passkey" disabled={api.busy} onClick={() => void api.signIn()}>
-              {api.busy ? 'Waiting for your passkey…' : 'Sign in with a passkey'}
-            </Button>
-            <div className="mt-2 border-t border-border pt-3">
-              <label className="text-xs text-muted-foreground" htmlFor="signup-name">
-                New here? Your name
-              </label>
-              <div className="mt-1 flex gap-2">
-                <Input
-                  id="signup-name"
-                  value={name}
-                  maxLength={64}
-                  placeholder="Ada Lovelace"
-                  onChange={(e) => setName(e.target.value)}
-                />
-                <Button
-                  variant="outline"
-                  data-testid="signup-passkey"
-                  disabled={api.busy || !name.trim()}
-                  onClick={() => void api.signUp(name.trim())}
-                >
-                  Create account
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-        {api.error && (
-          <p className="text-sm text-destructive" role="alert" data-testid="signin-error">
-            {api.error}
-          </p>
-        )}
+        {api.session.status === 'signed-out' && <PasskeySignIn api={api} />}
       </DialogContent>
     </Dialog>
   );

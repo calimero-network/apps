@@ -7,7 +7,9 @@
  * Opened by `useCalimero().login()` from the landing CTA, the signed-out app
  * routes and the header.
  */
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
+import { PasskeySignIn } from '@calimero-apps/passkey';
+import '@calimero-apps/passkey/passkey.css';
 
 import { describeTarget } from '../session';
 import { useSessionApi } from '../sessionContext';
@@ -16,7 +18,6 @@ import styles from '../pages/app/AgreementsPage.module.css';
 
 export function SignInModal() {
   const { api, signInOpen, closeSignIn } = useSessionApi();
-  const [name, setName] = useState('');
   const invited = pendingInvite() !== null;
 
   useEffect(() => {
@@ -63,52 +64,8 @@ export function SignInModal() {
           </p>
         )}
 
-        {api.session.status === 'signed-out' && (
-          <>
-            <div className={styles.modalRow}>
-              <button
-                type="button"
-                className={styles.btn}
-                data-testid="signin-passkey"
-                disabled={api.busy}
-                onClick={() => void api.signIn()}
-              >
-                {api.busy ? 'Waiting for your passkey…' : 'Sign in with a passkey'}
-              </button>
-            </div>
-            <p className={styles.hint}>New here? Create an account.</p>
-            <div className={styles.createRow}>
-              <input
-                className={styles.input}
-                placeholder="Your name…"
-                aria-label="Your name"
-                data-testid="signup-name"
-                value={name}
-                maxLength={64}
-                disabled={api.busy}
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && name.trim()) void api.signUp(name.trim());
-                }}
-              />
-              <button
-                type="button"
-                className={styles.btnGhost}
-                data-testid="signup-passkey"
-                disabled={api.busy || !name.trim()}
-                onClick={() => void api.signUp(name.trim())}
-              >
-                Create an account
-              </button>
-            </div>
-          </>
-        )}
+        {api.session.status === 'signed-out' && <PasskeySignIn api={api} />}
 
-        {api.error && (
-          <p className={styles.error} role="alert" data-testid="signin-error">
-            {api.error}
-          </p>
-        )}
         <div className={styles.modalRow}>
           <button
             type="button"

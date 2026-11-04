@@ -29,6 +29,7 @@ import {
   type AppSource,
   type Target,
 } from "@calimero-apps/connect";
+import { isPasskeyCancel } from "@calimero-apps/passkey";
 
 /** The app's name in stored keys. */
 export const APP = "mero-chat";
@@ -131,7 +132,8 @@ async function ceremony(run: (c: CalimeroClient) => Promise<{ accountId: string 
     sessions?.sync(c);
     set({ status: "signed-in", accountId });
   } catch (e) {
-    set({ message: describeError(e) });
+    // A dismissed passkey prompt is a quiet cancel, not an error to show.
+    if (!isPasskeyCancel(e)) set({ message: describeError(e) });
     throw e;
   }
 }
@@ -140,7 +142,8 @@ export function signIn(): Promise<void> {
   return ceremony((c) => c.signIn(passkey()));
 }
 
-export function signUp(name: string): Promise<void> {
+/** Create an account with a new passkey; the name is optional. */
+export function signUp(name = ""): Promise<void> {
   return ceremony((c) => c.signUp(passkey(), name));
 }
 

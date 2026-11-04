@@ -18,6 +18,7 @@
     "@calimero-apps/glass": "workspace:*",
     "@calimero-apps/members": "workspace:*",
     "@calimero-apps/node-served": "workspace:*",
+    "@calimero-apps/passkey": "workspace:*",
     "@calimero-network/mero-icons": "catalog:",
     "@calimero-network/mero-js": "catalog:component",
     "@calimero-network/mero-ui": "catalog:",

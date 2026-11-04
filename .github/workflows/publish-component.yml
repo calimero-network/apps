@@ -1,0 +1,283 @@
+# Build, sign and publish ONE component app (calimero-app-sdk, the 1.0 runtime)
+# to the Calimero App Registry.
+#
+# The 1.0 counterpart of publish-bundle.yml, which builds with cargo-mero and
+# finds its apps through `cargo metadata` of the root workspace, a component app
+# is excluded from (docs/COMPONENT-APPS.md). Called by release.yml.
+#
+# THE REGISTRY OWNS THE VERSION and PINS THE SIGNER: scripts/registry-release.sh
+# holds both rules (the same as publish-bundle.yml and mero-tag's
+# deploy-bundle.yml). There is no idempotency: a re-run mints another version.
+#
+# THE FRONTEND IS THE ONE THE CLUSTER SERVES. A Cloud node trusts passkey
+# ceremonies from the frontend it serves out of a package's bundle, on the
+# package's own origin ({label}.{apps-domain}), so the production frontend is
+# built here and packed into the .mpk (`frontend-dir`), not deployed to a static
+# host. It is a `vite build` for the cloud target: `VITE_CALIMERO_TARGET=cloud`,
+# the cluster's name and the mero-tee release floor (packages/connect). On the
+# served page `withServedNodes` takes the node list from the node's
+# `/.well-known/calimero.json`; the cluster name still keys the stored session,
+# and the floor is what every node must attest to. A build without either throws
+# `ConfigError` in the browser, so both are checked here before anything is
+# built.
+#
+# Required secrets (organization level), passed explicitly by the caller:
+#   MERO_SIGN_KEY             full JSON of the production signing key
+#                             ({private_key, public_key, signer_id}).
+#   CALIMERO_REGISTRY_API_KEY registry API token.
+
+name: Publish component
+
+on:
+  workflow_call:
+    secrets:
+      MERO_SIGN_KEY:
+        required: true
+      CALIMERO_REGISTRY_API_KEY:
+        required: true
+    inputs:
+      app:
+        description: The component app's directory under apps/
+        required: true
+        type: string
+      version:
+        description: Explicit X.Y.Z to publish. Empty lets the registry decide.
+        required: false
+        type: string
+        default: ""
+      cluster:
+        description: VITE_CALIMERO_CLUSTER of the served frontend (the cluster's name in the node directory)
+        required: true
+        type: string
+      min-release:
+        description: VITE_CALIMERO_MIN_RELEASE of the served frontend (the lowest mero-tee release a node may run)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# Per app, never cancelled: a half-finished signed publish is worse than a
+# queued one. The same group publish-bundle.yml uses, so an app is never in
+# both pipelines at once.
+concurrency:
+  group: publish-${{ inputs.app }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  REGISTRY: https://apps.calimero.network
+
+jobs:
+  check:
+    name: Resolve the next version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      package: ${{ steps.pkg.outputs.package }}
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read the package id
+        id: pkg
+        env:
+          APP: ${{ inputs.app }}
+        run: |
+          set -euo pipefail
+          # Only a component app: anything else belongs to publish-bundle.yml.
+          if ! scripts/component-apps.sh all | jq -e --arg a "$APP" 'index($a)' >/dev/null; then
+            echo "::error::'$APP' is not a component app: $(scripts/component-apps.sh all)"
+            exit 1
+          fi
+          package=$(python3 -c '
+          import sys, tomllib
+          with open(f"apps/{sys.argv[1]}/logic/Cargo.toml", "rb") as f:
+              print(tomllib.load(f)["package"]["metadata"]["calimero"]["package"])
+          ' "$APP")
+          case "$package" in
+            "" | *[!a-z0-9.-]*) echo "::error::unexpected package id '$package' for $APP"; exit 1 ;;
+          esac
+          echo "package=$package" >> "$GITHUB_OUTPUT"
+          echo "Package: $package"
+
+      - name: Resolve the next version from the registry
+        id: ver
+        env:
+          # Through the environment, never inlined: a template expression is
+          # substituted before the shell sees it.
+          INPUT_VERSION: ${{ inputs.version }}
+          PACKAGE: ${{ steps.pkg.outputs.package }}
+        run: |
+          set -euo pipefail
+          version=$(CALIMERO_REGISTRY_URL="$REGISTRY" scripts/registry-release.sh next-version "$PACKAGE" "$INPUT_VERSION")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    name: Build, sign & publish
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      APP: ${{ inputs.app }}
+      LOGIC: apps/${{ inputs.app }}/logic
+      PACKAGE: ${{ needs.check.outputs.package }}
+      VERSION: ${{ needs.check.outputs.version }}
+      MPK: dist/${{ needs.check.outputs.package }}.mpk
+      # The builder and the app's component share one target dir, as in
+      # components.yml, so the core crates compile once.
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target-components
+    steps:
+      - name: Check required secrets and frontend settings
+        env:
+          MERO_SIGN_KEY: ${{ secrets.MERO_SIGN_KEY }}
+          CALIMERO_REGISTRY_API_KEY: ${{ secrets.CALIMERO_REGISTRY_API_KEY }}
+          CLUSTER: ${{ inputs.cluster }}
+          MIN_RELEASE: ${{ inputs.min-release }}
+        run: |
+          missing=0
+          [ -n "$MERO_SIGN_KEY" ] || { echo "::error::MERO_SIGN_KEY is not set"; missing=1; }
+          [ -n "$CALIMERO_REGISTRY_API_KEY" ] || { echo "::error::CALIMERO_REGISTRY_API_KEY is not set"; missing=1; }
+          # A served build without these throws ConfigError in the browser:
+          # the bundle would publish fine and sign nobody in.
+          [[ "$CLUSTER" =~ ^[a-z0-9][a-z0-9.-]*$ ]] || { echo "::error::cluster '$CLUSTER' is not a cluster name (repository variable CALIMERO_CLUSTER)"; missing=1; }
+          [[ "$MIN_RELEASE" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::min-release '$MIN_RELEASE' is not X.Y.Z (repository variable CALIMERO_MIN_RELEASE)"; missing=1; }
+          exit $missing
+
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip2
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target-components
+          # The same key as components.yml's rust job, so a release reuses CI's build.
+          key: component-${{ inputs.app }}-${{ runner.os }}-${{ hashFiles(format('apps/{0}/logic/Cargo.lock', inputs.app), 'tools/component-bundle/Cargo.lock') }}
+          restore-keys: component-${{ inputs.app }}-${{ runner.os }}-
+
+      # Recorded so a signed release is never traceable only to a moving tag
+      # name. The app's SDK and the bundler are pinned to the same tag
+      # (check-component-pins.py), so they resolve to one commit.
+      - name: Record the core revision
+        id: core
+        run: |
+          set -euo pipefail
+          rev_of() {
+            awk -F'#' '/^source = "git\+https:\/\/github.com\/calimero-network\/core/{print $2; exit}' "$1" | tr -d '"'
+          }
+          app_rev=$(rev_of "$LOGIC/Cargo.lock")
+          tool_rev=$(rev_of tools/component-bundle/Cargo.lock)
+          if [ -z "$app_rev" ] || [ -z "$tool_rev" ]; then
+            echo "::error::could not determine which core revision $LOGIC/Cargo.lock and tools/component-bundle/Cargo.lock resolved to"
+            exit 1
+          fi
+          if [ "$app_rev" != "$tool_rev" ]; then
+            echo "::error::$APP builds against core $app_rev but the bundler against $tool_rev — run cargo update in both"
+            exit 1
+          fi
+          echo "rev=$app_rev" >> "$GITHUB_OUTPUT"
+          echo "::notice::signing a bundle built against core $app_rev"
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Build the served frontend
+        id: frontend
+        env:
+          VITE_CALIMERO_TARGET: cloud
+          VITE_CALIMERO_CLUSTER: ${{ inputs.cluster }}
+          VITE_CALIMERO_MIN_RELEASE: ${{ inputs.min-release }}
+        run: |
+          set -euo pipefail
+          dir=$(python3 scripts/frontend-dir.py "$APP")
+          if [ -z "$dir" ]; then
+            echo "::notice::$APP sets no frontend-dir — publishing the contract only"
+            echo "dir=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          pnpm install --frozen-lockfile
+          rm -rf "$dir"
+          pnpm --filter "./apps/$APP/app" build
+          [ -f "$dir/index.html" ] || { echo "::error::the build wrote no $dir/index.html"; exit 1; }
+          # The cluster name is a literal in the bundle when the env reached
+          # Vite; without it the page would throw ConfigError at start.
+          grep -rqF -- "$VITE_CALIMERO_CLUSTER" "$dir" ||
+            { echo "::error::$dir does not mention cluster $VITE_CALIMERO_CLUSTER — the VITE_CALIMERO_* env did not reach the build"; exit 1; }
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+
+      - name: Write signing key
+        env:
+          MERO_SIGN_KEY: ${{ secrets.MERO_SIGN_KEY }}
+        run: |
+          umask 077
+          printf '%s' "$MERO_SIGN_KEY" > "$RUNNER_TEMP/mero-sign-key.json"
+
+      # `--app-version`: the check job already resolved it against the registry.
+      # `--output` pins the file name, so the publish can never pick up another
+      # .mpk. The frontend is `frontend-dir` from the metadata, built above.
+      - name: Build & sign bundle
+        run: |
+          cargo run --locked --release --manifest-path tools/component-bundle/Cargo.toml -- \
+            bundle "$LOGIC" \
+            --key "$RUNNER_TEMP/mero-sign-key.json" \
+            --app-version "$VERSION" \
+            --output "$MPK"
+
+      - name: Remove signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/mero-sign-key.json"
+
+      # From the signed manifest itself, after its signature verifies: what is
+      # checked is exactly what is uploaded.
+      - name: Verify the bundle and its signer
+        id: verify
+        run: |
+          set -euo pipefail
+          cargo run --locked --release --manifest-path tools/component-bundle/Cargo.toml -- \
+            inspect "$MPK" > "$RUNNER_TEMP/manifest.json"
+          jq -e --arg p "$PACKAGE" --arg v "$VERSION" '.package == $p and .appVersion == $v' \
+            "$RUNNER_TEMP/manifest.json" >/dev/null ||
+            { echo "::error::$MPK is not $PACKAGE $VERSION"; exit 1; }
+          signer=$(jq -er '.signerId' "$RUNNER_TEMP/manifest.json")
+          CALIMERO_REGISTRY_URL="$REGISTRY" scripts/registry-release.sh check-signer "$PACKAGE" "$signer"
+          echo "signer=$signer" >> "$GITHUB_OUTPUT"
+          echo "min-runtime=$(jq -r '.minRuntimeVersion' "$RUNNER_TEMP/manifest.json")" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to the App Registry
+        env:
+          CALIMERO_API_KEY: ${{ secrets.CALIMERO_REGISTRY_API_KEY }}
+        run: CALIMERO_REGISTRY_URL="$REGISTRY" bash scripts/publish-bundle.sh "$MPK"
+
+      - name: Summary
+        env:
+          CORE_REV: ${{ steps.core.outputs.rev }}
+          SIGNER: ${{ steps.verify.outputs.signer }}
+          MIN_RUNTIME: ${{ steps.verify.outputs.min-runtime }}
+          FRONTEND: ${{ steps.frontend.outputs.dir }}
+          CLUSTER: ${{ inputs.cluster }}
+          MIN_RELEASE: ${{ inputs.min-release }}
+        run: |
+          {
+            echo "### $APP published :rocket:"
+            echo ""
+            echo "- **Package:** \`$PACKAGE\`"
+            echo "- **Version:** \`$VERSION\` (component, min runtime \`$MIN_RUNTIME\`)"
+            echo "- **Signer:** \`$SIGNER\`"
+            echo "- **Core revision:** \`$CORE_REV\`"
+            if [ -n "$FRONTEND" ]; then
+              echo "- **Frontend:** served by the cluster, built for cloud cluster \`$CLUSTER\`, mero-tee release >= \`$MIN_RELEASE\`"
+            else
+              echo "- **Frontend:** none"
+            fi
+            echo "- **App:** $REGISTRY/apps/$PACKAGE"
+            echo "- **Bundle:** $REGISTRY/api/v2/bundles/$PACKAGE/$VERSION"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=Published::$PACKAGE $VERSION — $REGISTRY/apps/$PACKAGE"

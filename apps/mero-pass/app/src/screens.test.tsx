@@ -208,15 +208,16 @@ describe('SignInDialog', () => {
     };
   });
 
-  it('signs in with a passkey, or signs up with a name', () => {
+  it('signs in with a passkey, or signs up with an optional name', () => {
     const value = calimero(null);
     renderAt('/', value, <SignInDialog open onClose={() => {}} />);
-    fireEvent.click(screen.getByTestId('sign-in-passkey'));
+    fireEvent.click(screen.getByTestId('signin-passkey'));
     expect(value.signIn).toHaveBeenCalled();
-    fireEvent.change(screen.getByTestId('sign-up-name'), {
+    fireEvent.click(screen.getByTestId('signup-passkey'));
+    fireEvent.change(screen.getByTestId('signup-name'), {
       target: { value: 'Ada' },
     });
-    fireEvent.click(screen.getByTestId('sign-up'));
+    fireEvent.click(screen.getByTestId('signup-passkey'));
     expect(value.signUp).toHaveBeenCalledWith('Ada');
   });
 

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { CalimeroError, type AppInfo } from "@calimero-network/mero-js";
 import { appSource, describeError, type KeyValueStorage } from "@calimero-apps/connect";
+import { PasskeySignIn } from "@calimero-apps/passkey";
+import "@calimero-apps/passkey/passkey.css";
 import { DecisionLog, type DecisionDraft } from "./DecisionLog";
 import { InviteCard } from "./InviteCard";
 import { PersonName } from "./names";
@@ -119,7 +121,7 @@ export function App({
     );
   }
 
-  if (session.status === "unconfigured") {
+  if (session.status === "unconfigured" || session.status === "listing") {
     return (
       <Shell>
         <div className="card">
@@ -183,9 +185,8 @@ export function App({
   );
 }
 
-/** Passkey sign-in, or a new account with a new passkey. */
+/** Continue with a passkey, or create one. */
 function SignIn({ api, where }: { api: SessionApi; where: string }) {
-  const [name, setName] = useState("");
   return (
     <section className="hero card">
       <h1>Mero Standup</h1>
@@ -201,25 +202,9 @@ function SignIn({ api, where }: { api: SessionApi; where: string }) {
       <p className="empty" style={{ marginBottom: 14 }}>
         Connected to {where}. Accounts are passkeys: nothing to remember, nothing to leak.
       </p>
-      <div className="row">
-        <button disabled={api.busy} onClick={() => void api.signIn()}>
-          Sign in with a passkey
-        </button>
+      <div style={{ maxWidth: 360 }}>
+        <PasskeySignIn api={api} />
       </div>
-      <form
-        className="row"
-        style={{ marginTop: 14 }}
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (name.trim()) void api.signUp(name.trim());
-        }}
-      >
-        <input placeholder="your name" aria-label="name" value={name} onChange={(e) => setName(e.target.value)} />
-        <button className="ghost" type="submit" disabled={api.busy || !name.trim()}>
-          Create an account
-        </button>
-      </form>
-      {api.error && <pre className="err">{api.error}</pre>}
     </section>
   );
 }

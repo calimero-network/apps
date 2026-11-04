@@ -1,4 +1,6 @@
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
+import { PasskeySignIn } from '@calimero-apps/passkey';
+import '@calimero-apps/passkey/passkey.css';
 
 import { useCalimero } from '../calimero';
 import { useDialogOpen } from '../hooks/useDialogOpen';
@@ -20,7 +22,6 @@ export default function SignInDialog({
 }) {
   const api = useCalimero();
   const dialogRef = useRef<HTMLDialogElement | null>(null);
-  const [name, setName] = useState('');
   useDialogOpen(dialogRef, open);
 
   return (
@@ -53,48 +54,7 @@ export default function SignInDialog({
               {api.where ? `Connected to ${api.where}. ` : 'Connecting… '}
               Your account is a passkey: nothing to remember, nothing to leak.
             </p>
-            <div className={shell.createRow}>
-              <button
-                type="button"
-                className={shell.btn}
-                disabled={api.busy || api.status !== 'signed-out'}
-                onClick={() => void api.signIn()}
-                data-testid="sign-in-passkey"
-              >
-                Sign in with a passkey
-              </button>
-            </div>
-            <form
-              className={shell.createRow}
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (name.trim()) void api.signUp(name.trim());
-              }}
-            >
-              <input
-                className={shell.input}
-                placeholder="Your name"
-                aria-label="Your name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                data-testid="sign-up-name"
-              />
-              <button
-                type="submit"
-                className={shell.btnGhost}
-                disabled={
-                  api.busy || api.status !== 'signed-out' || !name.trim()
-                }
-                data-testid="sign-up"
-              >
-                Create an account
-              </button>
-            </form>
-            {api.error && (
-              <p className={shell.error} data-testid="sign-in-error">
-                {api.error}
-              </p>
-            )}
+            {api.status === 'signed-out' && <PasskeySignIn api={api} askName />}
           </>
         )}
       </div>

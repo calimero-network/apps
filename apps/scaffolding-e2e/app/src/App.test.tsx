@@ -79,10 +79,9 @@ describe("App", () => {
     storage.setItem("calimero-active-tab", "kv");
     render(<App deps={deps(client)} storage={storage} />);
 
-    fireEvent.change(await screen.findByLabelText("name"), { target: { value: "Alice" } });
-    fireEvent.click(screen.getByText("Create an account"));
+    fireEvent.click(await screen.findByText("Create a passkey"));
     await screen.findByText("Pick an app instance");
-    expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "Alice");
+    expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "");
 
     fireEvent.change(screen.getByLabelText("instance name"), { target: { value: "bench" } });
     fireEvent.click(screen.getByText("Create"));
@@ -99,7 +98,7 @@ describe("App", () => {
     storage.setItem("calimero-active-tab", "kv");
     render(<App deps={deps(client)} storage={storage} />);
 
-    fireEvent.click(await screen.findByText("Sign in with a passkey"));
+    fireEvent.click(await screen.findByText("Continue with passkey"));
     fireEvent.click(await screen.findByText("Open"));
     await screen.findByRole("heading", { name: "KV Operations" });
 

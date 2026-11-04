@@ -10,6 +10,7 @@
     "@calimero-apps/connect": "workspace:*",
     "@calimero-apps/glass": "workspace:*",
     "@calimero-apps/node-served": "workspace:*",
+    "@calimero-apps/passkey": "workspace:*",
     "@calimero-network/mero-icons": "catalog:",
     "@calimero-network/mero-js": "catalog:component",
     "@calimero-network/mero-ui": "^0.3.6",

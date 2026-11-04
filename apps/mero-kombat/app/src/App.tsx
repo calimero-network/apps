@@ -11,6 +11,8 @@ import {
 import { CalimeroError } from "@calimero-network/mero-js";
 import { appSource, type KeyValueStorage } from "@calimero-apps/connect";
 import { nodeBasename } from "@calimero-apps/node-served";
+import { PasskeySignIn } from "@calimero-apps/passkey";
+import "@calimero-apps/passkey/passkey.css";
 
 import { dropInvite, pendingInvite, selectionKey } from "./arenas";
 import { ArenaPage, type OpenArena } from "./ArenaPage";
@@ -76,7 +78,6 @@ function readSelection(storage: KeyValueStorage, key: string): OpenArena | null 
 
 /** Passkey sign-in, or a new account with a new passkey, and the way to practice without either. */
 function ConnectCard({ api, where }: { api: SessionApi; where: string }) {
-  const [name, setName] = useState("");
   return (
     <section className="connect">
       <div className="connect-card">
@@ -86,28 +87,9 @@ function ConnectCard({ api, where }: { api: SessionApi; where: string }) {
           Mero Kombat fights through a Calimero cluster ({where}): every punch you throw is a
           transaction its log orders. Accounts are passkeys: nothing to remember, nothing to leak.
         </p>
-        <div className="row center">
-          <button disabled={api.busy} onClick={() => void api.signIn()}>
-            Sign in with a passkey
-          </button>
-          <Link className="button-link ghost" to="/practice">
-            Practice vs CPU
-          </Link>
+        <div className="connect-passkey">
+          <PasskeySignIn api={api} />
         </div>
-        <form
-          className="row center"
-          style={{ marginTop: 14 }}
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (name.trim()) void api.signUp(name.trim());
-          }}
-        >
-          <input placeholder="your name" aria-label="name" value={name} onChange={(e) => setName(e.target.value)} />
-          <button className="ghost" type="submit" disabled={api.busy || !name.trim()}>
-            Create an account
-          </button>
-        </form>
-        {api.error && <pre className="err">{api.error}</pre>}
         <ul className="connect-points">
           <li>No game server</li>
           <li>Every blow is a transaction</li>
@@ -202,7 +184,7 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
     );
   }
 
-  if (session.status === "unconfigured") {
+  if (session.status === "unconfigured" || session.status === "listing") {
     return (
       <section className="connect">
         <div className="connect-card">

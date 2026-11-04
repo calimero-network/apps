@@ -236,6 +236,36 @@ A change to anything every component app depends on (the root `Cargo.toml`,
 the lockfiles, `tools/component-bundle`, `packages/connect`,
 `packages/merod-local`, the workflow) runs every component app.
 
+### Release to the App Registry
+
+`.github/workflows/release.yml` routes a component app to
+[`publish-component.yml`](../.github/workflows/publish-component.yml) (a v1 app
+to `publish-bundle.yml`):
+
+```bash
+gh workflow run release.yml -f app=kv-store          # one app
+gh workflow run release.yml                          # every component app
+gh workflow run release.yml -f app=kv-store -f version=1.0.0
+```
+
+1. The registry owns the version: the highest published `X.Y.Z` plus a patch
+   (`scripts/registry-release.sh next-version`).
+2. The frontend is built for the page the cluster serves from the bundle:
+   `VITE_CALIMERO_TARGET=cloud`, `VITE_CALIMERO_CLUSTER` from the repository
+   variable `CALIMERO_CLUSTER` (default `eu-shared-1`) and
+   `VITE_CALIMERO_MIN_RELEASE` from `CALIMERO_MIN_RELEASE` (required). No
+   Vercel deploy is involved.
+3. `mero-component bundle --key` signs it with `MERO_SIGN_KEY`; the key file is
+   removed right after.
+4. The signed manifest's `signerId` must be the package's published one
+   (`scripts/registry-release.sh check-signer`): the registry pins the signer
+   and the node derives the application id from (package, signer).
+5. `scripts/publish-bundle.sh` uploads it.
+
+A push to `main` that changes a component app releases it only when the
+repository variable `RELEASE_COMPONENTS_ON_PUSH` is `true`; otherwise the run
+lists what it would have released.
+
 ## Moving to a new core release
 
 1. `component-core-tag` and `component-min-runtime-version` in the root `Cargo.toml`.
@@ -406,11 +436,14 @@ per app, branched off `main` once this groundwork has merged.
 8. `package.json`: drop mero-react, mero-platform(-react), abi-codegen,
    node-served, e2e-node, Playwright, the invitation codecs; add
    `"@calimero-network/mero-js": "catalog:component"` and
-   `"@calimero-apps/connect": "workspace:*"`; scripts `dev`, `build`,
+   `"@calimero-apps/connect": "workspace:*"` and
+   `"@calimero-apps/passkey": "workspace:*"`; scripts `dev`, `build`,
    `typecheck`, `test`, `lint` (an `eslint.config.js` like kv-store's), no
    `codegen`. Keep `vercel.json` (the v1 guards still check it).
 9. Replace the provider, node login and context picker with kv-store's
-    `session.ts` (target → client → passkey sign-in/up, `SessionStore`) and its
+    `session.ts` (a few lines over `@calimero-apps/passkey`'s
+    `usePasskeySession`: target → client → passkey sign-in/up, `SessionStore`),
+    its `<PasskeySignIn>` sign-in screen, and its
     store picker (`listApps` by bundle in dev, by package in production;
     `createApp(name, appSource(…), { org })`). v1 contexts are app instances, v1
     namespaces are orgs, v1 invitations are org invites (`client.invite(org,

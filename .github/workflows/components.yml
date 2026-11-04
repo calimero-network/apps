@@ -7,7 +7,7 @@
 # v1 `frontend` job still typechecks, tests and builds every pnpm member, a
 # component app's frontend included; this file adds what is specific to them.
 #
-#   checks    always: pins, tools/component-bundle, packages/connect + merod-local
+#   checks    always: pins, tools/component-bundle, packages/connect + passkey + merod-local
 #   rust      per app: fmt, clippy -D warnings (host and wasm32-wasip2), cargo test
 #             (core's TestApp harness + scenarios/*.json), release build, ABI current,
 #             a dev-signed .mpk
@@ -66,7 +66,7 @@ jobs:
           # rather than by name: every port edits both (its crate joins
           # `[workspace].exclude`, its frontend becomes a pnpm importer), and
           # neither edit reaches another component app.
-          shared='^(pnpm-workspace\.yaml|package\.json|tools/component-bundle/|packages/(connect|merod-local)/|scripts/(component-apps\.sh|check-component-pins\.py|lockfile-fanout\.py)|\.github/workflows/components\.yml)'
+          shared='^(pnpm-workspace\.yaml|package\.json|tools/component-bundle/|packages/(connect|passkey|merod-local)/|scripts/(component-apps\.sh|check-component-pins\.py|lockfile-fanout\.py)|\.github/workflows/components\.yml)'
           if [ "$EVENT" = "workflow_dispatch" ] || [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
              || ! changed=$(git diff --name-only "$BASE" HEAD); then
             apps="$all"
@@ -134,10 +134,10 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: packages/connect and packages/merod-local (typecheck, test)
+      - name: packages/connect, passkey and merod-local (typecheck, test)
         run: |
-          pnpm --filter @calimero-apps/connect --filter @calimero-apps/merod-local typecheck
-          pnpm --filter @calimero-apps/connect --filter @calimero-apps/merod-local test
+          pnpm --filter @calimero-apps/connect --filter @calimero-apps/passkey --filter @calimero-apps/merod-local typecheck
+          pnpm --filter @calimero-apps/connect --filter @calimero-apps/passkey --filter @calimero-apps/merod-local test
           node packages/merod-local/src/cli.ts
 
   rust:

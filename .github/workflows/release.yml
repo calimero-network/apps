@@ -1,4 +1,21 @@
-# Decide which apps to publish, then call the reusable pipeline once per app.
+# Decide which apps to publish, then call the reusable pipeline once per app:
+# publish-bundle.yml for a v1 app (cargo-mero, found through `cargo metadata` of
+# the root workspace), publish-component.yml for a component app (the 1.0
+# runtime, excluded from that workspace; scripts/component-apps.sh). Since every
+# app moved to the component SDK the v1 list is empty, and this says so instead
+# of "publishing every app: []" and succeeding with nothing published.
+#
+# Component apps on push: the bundle carries the frontend the cluster serves, so
+# a change to the app's frontend, its logic, or what every component app builds
+# with (tools/component-bundle, packages/connect, the lockfiles) releases it.
+# That is opt-in through the repository variable RELEASE_COMPONENTS_ON_PUSH=true;
+# without it a push only reports what it would have released, and a release is
+# a dispatch.
+#
+# The served frontend is built for the cloud cluster named by the repository
+# variable CALIMERO_CLUSTER (default eu-shared-1, the cluster in the cloud's node
+# directory) and the mero-tee release floor CALIMERO_MIN_RELEASE (no default:
+# it is a trust decision, and publish-component.yml refuses to build without it).
 #
 # The `shared` filter is the capability the per-repo setup could not express at
 # all: bumping the SDK changes EVERY contract's bytes, so a change to the
@@ -15,10 +32,16 @@ on:
       - "apps/*/logic/**"
       - "Cargo.toml"
       - "Cargo.lock"
+      # Component apps: the bundle packs the frontend, built with these.
+      - "apps/*/app/**"
+      - "tools/component-bundle/**"
+      - "packages/connect/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
   workflow_dispatch:
     inputs:
       app:
-        description: Publish this app only (empty = every app)
+        description: Publish this app only, by its directory under apps/ (empty = every app)
         required: false
         type: string
       version:
@@ -36,10 +59,12 @@ jobs:
     timeout-minutes: 5
     outputs:
       apps: ${{ steps.pick.outputs.apps }}
+      components: ${{ steps.components.outputs.apps }}
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          # The component selection diffs against the push's `before`.
+          fetch-depth: 0
 
       - uses: dorny/paths-filter@v3
         id: filter
@@ -65,12 +90,17 @@ jobs:
           set -euo pipefail
 
           all=$(bash scripts/app-packages.sh all)
+          components=$(bash scripts/component-apps.sh all)
 
-          if [ -n "$DISPATCH_APP" ]; then
+          if [ -n "$DISPATCH_APP" ] && jq -e --arg a "$DISPATCH_APP" 'index($a)' >/dev/null <<<"$components"; then
+            # A component app: the next step publishes it, this pipeline does not.
+            apps="[]"
+
+          elif [ -n "$DISPATCH_APP" ]; then
             # An explicit dispatch must name a real app, or the run would
             # silently publish nothing.
             if ! jq -e --arg a "$DISPATCH_APP" 'index($a)' >/dev/null <<<"$all"; then
-              echo "::error::'$DISPATCH_APP' is not an app in this workspace: $all"
+              echo "::error::'$DISPATCH_APP' is not an app in this repo. v1 apps: $all; component apps: $components"
               exit 1
             fi
             apps=$(jq -c --arg a "$DISPATCH_APP" '[$a]' <<<"$all")
@@ -102,8 +132,83 @@ jobs:
 
           # An empty matrix would make the publish job vanish, which reads as
           # success. Say so instead.
-          if [ "$apps" = "[]" ]; then
-            echo "::notice::no app logic changed — nothing to publish"
+          if [ "$all" = "[]" ]; then
+            echo "::notice::no v1 (cargo-mero) apps remain — every app is a component app, published by publish-component.yml"
+          elif [ "$apps" = "[]" ]; then
+            echo "::notice::no v1 app logic changed — nothing to publish through publish-bundle.yml"
+          fi
+          echo "apps=$apps" >> "$GITHUB_OUTPUT"
+
+      - name: Pick the component apps to publish
+        id: components
+        env:
+          DISPATCH_APP: ${{ inputs.app }}
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.before }}
+          ON_PUSH: ${{ vars.RELEASE_COMPONENTS_ON_PUSH }}
+          V1_APPS: ${{ steps.pick.outputs.apps }}
+        run: |
+          set -euo pipefail
+
+          all=$(bash scripts/component-apps.sh all)
+
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            if [ -z "$DISPATCH_APP" ]; then
+              apps="$all"
+              echo "::notice::dispatch — publishing every component app: $apps"
+            elif jq -e --arg a "$DISPATCH_APP" 'index($a)' >/dev/null <<<"$all"; then
+              apps=$(jq -c --arg a "$DISPATCH_APP" '[$a]' <<<"$all")
+              echo "::notice::explicit dispatch — publishing component app $DISPATCH_APP only"
+            else
+              apps="[]"
+            fi
+            # A dispatch that publishes nothing at all is a mistake, not a
+            # green run.
+            if [ "$apps" = "[]" ] && [ "$V1_APPS" = "[]" ]; then
+              echo "::error::this dispatch selects no app to publish"
+              exit 1
+            fi
+
+          else
+            # What every component app builds with, as in components.yml (minus
+            # what only tests use): a change here reaches every bundle.
+            shared='^(pnpm-workspace\.yaml|package\.json|tools/component-bundle/|packages/connect/)'
+            if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
+               || ! changed=$(git diff --name-only "$BASE" HEAD); then
+              apps="$all"
+            elif grep -Eq "$shared" <<<"$changed"; then
+              apps="$all"
+            else
+              extra=""
+              # Every port edits the root Cargo.toml and pnpm-lock.yaml; judge
+              # them by what moved, as components.yml does.
+              if grep -qx 'Cargo.toml' <<<"$changed"; then
+                verdict=$(python3 scripts/lockfile-fanout.py manifest --for components --base "$BASE" --head HEAD) || verdict=all
+                [ "$verdict" = "all" ] && extra=all
+              fi
+              if [ -z "$extra" ] && grep -qx 'pnpm-lock.yaml' <<<"$changed"; then
+                verdict=$(python3 scripts/lockfile-fanout.py pnpm --base "$BASE" --head HEAD) || verdict=all
+                if [ "$verdict" = "all" ]; then
+                  extra=all
+                else
+                  changed=$(printf '%s\n%s\n' "$changed" "$(sed '/^$/d; s|$|/package.json|' <<<"$verdict")")
+                fi
+              fi
+              if [ "$extra" = "all" ]; then
+                apps="$all"
+              else
+                apps=$(bash scripts/component-apps.sh from-paths <<<"$changed")
+              fi
+            fi
+
+            if [ "$apps" = "[]" ]; then
+              echo "::notice::no component app changed — nothing to publish"
+            elif [ "$ON_PUSH" != "true" ]; then
+              echo "::notice::this push changed component apps $apps; publishing them on push is off (repository variable RELEASE_COMPONENTS_ON_PUSH) — dispatch this workflow to release"
+              apps="[]"
+            else
+              echo "::notice::changed component apps: $apps"
+            fi
           fi
           echo "apps=$apps" >> "$GITHUB_OUTPUT"
 
@@ -128,6 +233,27 @@ jobs:
     # one by merging. An `environment:` with required reviewers on the deploy job
     # is the gate for that, and it has to be configured in repo settings — it
     # cannot be added from here alone.
+    secrets:
+      MERO_SIGN_KEY: ${{ secrets.MERO_SIGN_KEY }}
+      CALIMERO_REGISTRY_API_KEY: ${{ secrets.CALIMERO_REGISTRY_API_KEY }}
+
+  publish-components:
+    name: Publish component
+    needs: select
+    if: needs.select.outputs.components != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.select.outputs.components) }}
+    uses: ./.github/workflows/publish-component.yml
+    with:
+      app: ${{ matrix.app }}
+      version: ${{ inputs.version || '' }}
+      # The served frontend's target (publish-component.yml): the cloud
+      # cluster and the mero-tee release floor every node must attest to.
+      cluster: ${{ vars.CALIMERO_CLUSTER || 'eu-shared-1' }}
+      min-release: ${{ vars.CALIMERO_MIN_RELEASE || '' }}
+    # The two the publish needs, never `inherit` (see the job above).
     secrets:
       MERO_SIGN_KEY: ${{ secrets.MERO_SIGN_KEY }}
       CALIMERO_REGISTRY_API_KEY: ${{ secrets.CALIMERO_REGISTRY_API_KEY }}
