@@ -31,7 +31,7 @@ mero-tag/
 | **Full Xcode 16+** | building / running the app, XCTest, deploying to a device | Mac App Store, then `sudo xcode-select -s /Applications/Xcode.app` |
 | **XcodeGen** | generating the `.xcodeproj` | `brew install xcodegen` |
 | **A Calimero account** | signing in | created with a passkey in the Calimero wallet on first sign-in |
-| `merod`, `jq`, Docker | *optional:* local dev nodes and merobox workflows (contract work only) | Calimero install; `brew install jq` |
+| `merod` (Linux, or Docker on macOS) | *optional:* a `merod local` development cluster | build from calimero-network/core |
 
 Check everything at once with `make setup`.
 
@@ -83,7 +83,6 @@ other's member (tracker ▸ **Share**). Move one device and watch the other's ma
 |---------|-------------|--------------|
 | `make logic-test` | Rust unit tests for the contract's pure helpers | no |
 | `make logic-build` | WASM build with the ABI embedded | no |
-| `make workflows` | merobox scenarios against `merod:0.12.0-rc.3` (Docker) | no |
 | `make app-test` | App unit tests (events, service args, store, session) + sign-in UI smoke test | yes |
 | `make test` | `logic-test` (the no-Xcode subset) | no |
 

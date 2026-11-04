@@ -19,28 +19,53 @@ final class SessionTests: XCTestCase {
         XCTAssertNil(app.account)
     }
 
-    func testCancelledWalletSheetIsNotAnError() async {
+    func testSignInNeedsAnHttpsClusterAddress() async {
         let app = makeApp()
         await app.restore()
-        await app.signIn()
+        await app.signIn(clusterURL: "http://example.com")
         XCTAssertEqual(app.phase, .signedOut)
-        XCTAssertNil(app.client.errorMessage, "dismissing the sheet is a choice, not a failure")
+        XCTAssertNotNil(app.client.errorMessage)
+        XCTAssertNil(app.client.cloud, "nothing is contacted for an address that isn't https")
     }
 
-    func testCallbackForAnotherSchemeIsIgnored() async {
+    func testCreatingAnAccountNeedsAName() async {
+        let app = makeApp()
+        await app.restore()
+        await app.createAccount(clusterURL: "https://cluster.example.com", name: "  ")
+        XCTAssertEqual(app.client.errorMessage, "Enter your name for the new account.")
+        XCTAssertNil(app.client.cloud)
+    }
+
+    func testClusterAddressesAreNormalised() {
+        XCTAssertEqual(AppState.validURL("cluster.example.com/", allowHTTP: false), "https://cluster.example.com")
+        XCTAssertEqual(AppState.validURL(" https://n1.example.com ", allowHTTP: false), "https://n1.example.com")
+        XCTAssertNil(AppState.validURL("http://n1.example.com", allowHTTP: false))
+        XCTAssertEqual(AppState.validURL("localhost:2501", allowHTTP: true), "http://localhost:2501")
+        XCTAssertNil(AppState.validURL("", allowHTTP: true))
+        XCTAssertNil(AppState.validURL("ftp://x", allowHTTP: true))
+    }
+
+    func testTheConsentPageReturnsToAnOriginTheNodeAccepts() {
+        // The node refuses an app scheme; https (http only on localhost).
+        XCTAssertTrue(AppState.consentReturnTo(devCluster: false).hasPrefix("https://"))
+        XCTAssertTrue(AppState.consentReturnTo(devCluster: true).hasPrefix("http://localhost"))
+    }
+
+    func testANonInviteURLIsIgnored() async {
         let app = makeApp()
         await app.restore()
         await app.handleOpenURL(URL(string: "https://example.com/#credential=x")!)
         XCTAssertEqual(app.phase, .signedOut)
+        XCTAssertNil(app.pendingInvite)
     }
 
     func testSessionEndedReturnsToSignInWithAReason() throws {
         let app = makeApp()
         app.setPhaseForTesting(.ready)
-        app.sessionEnded("Your Calimero session was revoked.")
+        app.sessionEnded("Your Calimero session ended.")
         XCTAssertEqual(app.phase, .signedOut)
         let notice = try XCTUnwrap(app.sessionNotice)
-        XCTAssertTrue(notice.contains("revoked"), "got: \(notice)")
+        XCTAssertTrue(notice.contains("ended"), "got: \(notice)")
         XCTAssertTrue(notice.hasSuffix("Please sign in again."))
     }
 
@@ -65,60 +90,35 @@ final class SessionTests: XCTestCase {
     func testOpeningASpaceWhileSignedOutGoesBackToSignIn() async {
         let app = makeApp()
         app.setPhaseForTesting(.choosingSpace)
-        await app.openSpace(contextId: "ctx", displayName: "Fran")
+        await app.openSpace(appId: "app", displayName: "Fran")
         XCTAssertEqual(app.phase, .signedOut)
     }
 
     func testOpenSpaceValidatesInput() async {
         let app = makeApp()
         app.setPhaseForTesting(.choosingSpace)
-        await app.openSpace(contextId: "  ", displayName: "Fran")
+        await app.openSpace(appId: "  ", displayName: "Fran")
         XCTAssertEqual(app.spaceError, "Enter the space ID you were given.")
-        await app.openSpace(contextId: "ctx", displayName: " ")
+        await app.openSpace(appId: "app", displayName: " ")
         XCTAssertEqual(app.spaceError, "Choose a name others will see.")
     }
 
     func testTerminalErrorsAreRecognised() {
-        let revoked = MeroError.authRevoked(
-            reason: "token_revoked", http: HTTPError(status: 403, statusText: "", url: "", headers: [:]))
-        XCTAssertNotNil(TrackerStore.sessionEndReason(revoked))
+        XCTAssertNotNil(TrackerStore.sessionEndReason(LoginRequired("refresh refused")))
         XCTAssertNotNil(TrackerStore.sessionEndReason(AccountError.notSignedIn("gone")))
-        XCTAssertNil(TrackerStore.sessionEndReason(MeroError.network("offline")))
-    }
-
-    func testNodeLoginTellsALockoutFromAWrongPassword() {
-        let url = "http://localhost:4001"
-        func http(_ status: Int, _ headers: [String: String] = [:]) -> MeroError {
-            .http(HTTPError(status: status, statusText: "", url: "\(url)/auth/token", headers: headers))
-        }
-        XCTAssertEqual(
-            AppState.nodeLoginMessage(MeroError.authenticationFailed("bad"), url: url),
-            "The node refused that username or password.")
-        XCTAssertEqual(
-            AppState.nodeLoginMessage(http(429, ["retry-after": "30"]), url: url),
-            "Too many failed attempts. Try again in 30 seconds.")
-        XCTAssertEqual(AppState.nodeLoginMessage(http(429), url: url), "Too many failed attempts. Try again later.")
-        XCTAssertEqual(
-            AppState.nodeLoginMessage(http(404), url: url), "No node sign-in at \(url). Check the URL and port.")
-        XCTAssertEqual(
-            AppState.nodeLoginMessage(MeroError.network("offline"), url: url),
-            "Can't reach a node at \(url). Is merod running?")
-        XCTAssertEqual(
-            AppState.nodeLoginMessage(NodeSessionError.badURL, url: url),
-            "Enter a full node URL, like http://localhost:4001.")
+        XCTAssertNil(TrackerStore.sessionEndReason(UnavailableError(code: "NETWORK", message: "offline")))
+        XCTAssertNil(TrackerStore.sessionEndReason(AppError("nope")))
     }
 
     func testAContractRefusalShowsTheContractsReason() {
-        let refused = MeroError.rpc(
-            RpcError(code: -32000, message: "FunctionCallError", type: "FunctionCallError", data: "not a viewer"))
-        XCTAssertEqual(TrackerStore.message(for: refused), "not a viewer")
+        XCTAssertEqual(TrackerStore.message(for: AppError("not a viewer")), "not a viewer")
     }
 
     func testSpacePreferencesRoundTrip() {
         let prefs = SpacePreferences(defaults: isolatedDefaults())
         XCTAssertNil(prefs.space)
-        prefs.space = SpaceSelection(contextId: "ctx", displayName: "Fran")
-        XCTAssertEqual(prefs.space, SpaceSelection(contextId: "ctx", displayName: "Fran"))
+        prefs.space = SpaceSelection(appId: "app", displayName: "Fran")
+        XCTAssertEqual(prefs.space, SpaceSelection(appId: "app", displayName: "Fran"))
         prefs.space = nil
         XCTAssertNil(prefs.space)
     }

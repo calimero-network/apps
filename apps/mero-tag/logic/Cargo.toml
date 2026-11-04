@@ -22,17 +22,23 @@ crate-type = ["cdylib", "rlib"]
 [package.metadata.calimero]
 package = "com.calimero.mero-tag"
 name = "Mero Tag"
-description = "Mero Tag — distributed, real-time location sharing on the Calimero p2p network."
+description = "Mero Tag — private, real-time location sharing for your organization on Calimero."
 author = "Calimero"
-# The desktop resolves a deep link (calimero://<slug>/…) by Application.package,
-# so the slug IS the package id.
+# The slug IS the package id: the registry and the node's `/packages/install
+# {package, version}` both name the app by it.
 slug = "com.calimero.mero-tag"
 tags = ["location", "tracking", "geofencing"]
 github = "https://github.com/calimero-network/mero-tag"
 # The oldest node that can run this bundle, and the SDK tag it was built and
 # tested against. Absent before, which meant cargo-mero fell back to its "0.1.0"
 # placeholder floor — a claim that any node at all can run this wasm.
-min-runtime-version = "0.12.0-rc.3"
+#
+# Core 1.0: identity is the account (no devices), writes run on the leader and
+# `env::caller_org()` gates moderation — none of which a 0.x node provides, so
+# a 0.x node must refuse this bundle rather than run it with other meanings.
+min-runtime-version = "1.0.0-rc.3"
+# No `outbound`: the contract makes no outbound HTTP calls. Core 1.0 refuses any
+# that are not declared here (as URL prefixes) and approved.
 
 [dependencies]
 borsh = "0.10.3"
@@ -42,9 +48,9 @@ borsh-derive = "0.10.3"
 # signed bundle is not reproducible — the same commit could publish twice with
 # different bytes. All SDK crates must share the exact same tag (the workspace
 # version at a tag is 0.0.0, so version strings cannot express this).
-calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "0.12.0-rc.3" }
-calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.12.0-rc.3" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "0.12.0-rc.3" }
+calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.3" }
+calimero-storage = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.3" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.3" }
 thiserror = "1.0.56"
 serde_json = "1.0.113"
 

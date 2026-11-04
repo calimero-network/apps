@@ -1,61 +1,44 @@
 import Foundation
 import MeroKit
 
-/// How the app reaches its context. In production that is the account's
-/// hosted relay (``RelayTransport``); tests substitute a fake.
+/// How the app reaches its space's contract. In production that is the
+/// cluster, through ``CloudTransport``; tests substitute a fake.
 ///
-/// The split mirrors mero-react in Cloud mode: a **write** is a warrant intent
-/// the device signs and the relay executes; a **read** is a query over the
-/// relay's Bearer session (the SDK falls back to a warrant when the session is
-/// unavailable or the node says the method writes).
+/// A space is one app instance on a Calimero 1.0 cluster. Reads are views
+/// (`POST /apps/{app}/views`), writes are calls (`POST /apps/{app}/intents`),
+/// both over the sealed channel as the signed-in account, and events stream
+/// over the app's server-sent events (`GET /apps/{app}/events`).
 public protocol ContextTransport: Sendable {
-    func query(contextId: String, method: String, args: JSONValue) async throws -> JSONValue?
-    func execute(contextId: String, method: String, args: JSONValue) async throws -> JSONValue?
-    /// Raw SSE frames for `contextId`, or `nil` when live events are
-    /// unavailable (no relay session) and the caller should poll instead.
-    func events(contextId: String) -> AsyncThrowingStream<JSONValue, Error>?
+    /// Run a read-only method. `nil` for a method that returns nothing.
+    func query(appId: String, method: String, args: JSONValue) async throws -> JSONValue?
+    /// Run a method that writes, once, on the app instance's leader.
+    func execute(appId: String, method: String, args: JSONValue) async throws -> JSONValue?
+    /// The app instance's events, or `nil` when the caller should poll instead.
+    func events(appId: String) -> AsyncThrowingStream<CloudEvent, Error>?
 }
 
-/// Writes and reads through the account's relay, as the signed-in account.
-public struct RelayTransport: ContextTransport {
-    public let relay: RelayClient
-    /// The relay's Bearer session: SSE. `nil` when it could not be established.
-    public let session: Mero?
+/// Calls, views and events on a Calimero 1.0 cluster as the signed-in account.
+public struct CloudTransport: ContextTransport {
+    public let client: CalimeroClient
 
-    public init(relay: RelayClient, session: Mero?) {
-        self.relay = relay
-        self.session = session
+    public init(client: CalimeroClient) { self.client = client }
+
+    public func query(appId: String, method: String, args: JSONValue) async throws -> JSONValue? {
+        Self.unwrap(try await client.view(appId, method, args).result)
     }
 
-    public init?(_ connection: CloudConnection) {
-        guard let relay = connection.relay else { return nil }
-        self.init(relay: relay, session: connection.mero)
+    public func execute(appId: String, method: String, args: JSONValue) async throws -> JSONValue? {
+        Self.unwrap(try await client.call(appId, method, args).result)
     }
 
-    public func query(contextId: String, method: String, args: JSONValue) async throws -> JSONValue? {
-        try await relay.query(contextId: contextId, method: method, argsJson: args)
+    public func events(appId: String) -> AsyncThrowingStream<CloudEvent, Error>? {
+        client.events(appId)
     }
 
-    public func execute(contextId: String, method: String, args: JSONValue) async throws -> JSONValue? {
-        try await relay.execute(contextId: contextId, method: method, argsJson: args).returns
-    }
-
-    public func events(contextId: String) -> AsyncThrowingStream<JSONValue, Error>? {
-        guard let session else { return nil }
-        let upstream = session.events(contextIds: [contextId])
-        return AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    for try await event in upstream where event.contextId == contextId {
-                        continuation.yield(event.payload)
-                    }
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-            continuation.onTermination = { _ in task.cancel() }
-        }
+    /// A method returning `()` answers `null`.
+    static func unwrap(_ value: JSONValue?) -> JSONValue? {
+        guard let value, value != .null else { return nil }
+        return value
     }
 }
 
@@ -65,7 +48,7 @@ enum ContractCoding {
         try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(value))
     }
 
-    /// Decode a method's `returns` into the app model.
+    /// Decode a method's result into the app model.
     static func decode<T: Decodable>(_ type: T.Type, from value: JSONValue?, method: String) throws -> T {
         do {
             let data = try JSONEncoder().encode(value ?? .null)

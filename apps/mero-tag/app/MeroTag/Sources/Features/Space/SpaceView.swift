@@ -4,6 +4,7 @@ import SwiftUI
 struct SpaceView: View {
     @EnvironmentObject private var app: AppState
     @EnvironmentObject private var sharing: LocationSharing
+    @Environment(\.openURL) private var openURL
     @ObservedObject var store: TrackerStore
     @State private var confirmSignOut = false
     @State private var confirmLeave = false
@@ -23,8 +24,8 @@ struct SpaceView: View {
                     if let pending = app.pendingInvite {
                         pendingInviteCallout(pending)
                     }
-                    if let notice = app.spaceNotice {
-                        Callout(tone: .warning, title: "Not hosted yet", message: notice)
+                    if app.availableUpdate != nil || app.updateMessage != nil {
+                        updateCard
                     }
 
                     inviteCard
@@ -70,7 +71,7 @@ struct SpaceView: View {
                                 .buttonStyle(.tag(.danger))
                                 .accessibilityIdentifier("signOutButton")
                             }
-                            TechnicalDetails(items: AccountDetails.items(app, contextId: app.space?.contextId))
+                            TechnicalDetails(items: AccountDetails.items(app, appId: app.space?.appId))
                         }
                     }
                 }
@@ -86,7 +87,7 @@ struct SpaceView: View {
                     Task { await app.signOut() }
                 }
             } message: {
-                Text("Location sharing stops. This device stays approved for your account.")
+                Text("Location sharing stops. Your passkey stays on this phone for next time.")
             }
             .confirmationDialog("Switch to another space?", isPresented: $confirmLeave, titleVisibility: .visible) {
                 Button("Switch space") {
@@ -99,6 +100,49 @@ struct SpaceView: View {
         }
     }
 
+    // MARK: Update
+
+    /// A newer Mero Tag release for this space. Approving it happens on the
+    /// cluster's consent page in the system browser, which only the space's
+    /// owner or an organization admin can approve.
+    private var updateCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: 14) {
+                CardHeader(
+                    systemImage: "arrow.down.circle", title: "Update available",
+                    meta: app.availableUpdate.map { "Version \($0)" } ?? "Mero Tag", accent: app.availableUpdate != nil)
+                if let message = app.updateMessage {
+                    Callout(tone: .info, message: message)
+                }
+                if app.availableUpdate != nil {
+                    if app.isAwaitingApproval {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                            Text("Waiting for your approval in the browser")
+                                .font(.system(size: 14))
+                                .foregroundStyle(Tag.textDim)
+                            Spacer()
+                            Button("Cancel") { app.cancelApproval() }
+                                .buttonStyle(.tag(.plain))
+                        }
+                    } else {
+                        Button {
+                            app.approveUpdate { url in openURL(url) }
+                        } label: {
+                            Label("Review and approve", systemImage: "checkmark.shield")
+                        }
+                        .buttonStyle(.tag(.secondary, size: .regular, fullWidth: true))
+                        .accessibilityIdentifier("approveUpdateButton")
+                        Text("Opens your cluster's approval page. Only the space's owner or an organization admin can approve.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Tag.textFaint)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: Invite
 
     private var inviteCard: some View {
@@ -106,7 +150,7 @@ struct SpaceView: View {
             VStack(alignment: .leading, spacing: 14) {
                 CardHeader(
                     systemImage: "person.badge.plus", title: "Invite people",
-                    meta: "They join with their own account", accent: true)
+                    meta: "They join your space's organization", accent: true)
 
                 if let inviteLink {
                     IdField(value: inviteLink)
@@ -130,7 +174,7 @@ struct SpaceView: View {
                     Callout(tone: .danger, title: "Couldn't create an invite", message: inviteError)
                 }
 
-                Text("The link works for 24 hours. New members can see trackers once someone shares one with them.")
+                Text("Anyone with the link can join until it expires. New members see a tracker once its owner shares it with them.")
                     .font(.system(size: 12))
                     .foregroundStyle(Tag.textFaint)
                     .fixedSize(horizontal: false, vertical: true)

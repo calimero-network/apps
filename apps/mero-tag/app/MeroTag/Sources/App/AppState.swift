@@ -3,16 +3,17 @@ import Foundation
 import MeroKit
 import MeroKitUI
 
-/// The space this device last opened, remembered across launches.
+/// The space this phone last opened, remembered across launches.
 public struct SpaceSelection: Codable, Equatable {
-    public var contextId: String
+    /// The space's app instance.
+    public var appId: String
     public var displayName: String
 }
 
 /// Persists the last ``SpaceSelection`` and the tracker this device shares as.
 public struct SpacePreferences {
     private let defaults: UserDefaults
-    private let key = "merotag.space"
+    private let key = "merotag.space.v2"
     private let sharingKey = "merotag.sharingTracker"
 
     public init(defaults: UserDefaults = .standard) { self.defaults = defaults }
@@ -34,14 +35,14 @@ public struct SpacePreferences {
     }
 }
 
-/// Session-level state. Two ways in:
-/// - **Calimero Cloud**: the wallet approves this device with the person's
-///   passkey, and every call then goes through the hosted relay that serves
-///   their account — writes as warrant intents, reads as queries, events over
-///   the relay's Bearer session.
-/// - **A node** (``NodeSession``): "Manually enter node URL" signs in to a node
-///   the person runs, a local `merod`, with its admin username and password;
-///   calls are the node's JSON-RPC and events its SSE.
+/// Session-level state.
+///
+/// Sign-in is a passkey on a Calimero 1.0 cluster: the person enters the
+/// address of their cluster (from the Calimero Cloud console) and signs in,
+/// or creates an account, with the phone's passkey. For development, a
+/// `merod local` cluster is reached by its node URL with mock attestation
+/// allowed; the SDK keeps a software passkey for it. Every call then goes to
+/// the cluster over its sealed channel as that account.
 @MainActor
 public final class AppState: ObservableObject {
     public enum Phase: Equatable {
@@ -53,9 +54,10 @@ public final class AppState: ObservableObject {
         case ready
     }
 
-    /// The URL scheme the wallet returns to (`merotag://enrol`). Registered
-    /// under `CFBundleURLTypes` in project.yml / Info.plist.
-    public static let callbackScheme = "merotag"
+    /// The URL scheme invite deep links use (`merotag://join?invitation=…`).
+    public static let urlScheme = "merotag"
+    /// A `merod local` cluster's first node.
+    public static let defaultDevNodeURL = "http://localhost:2501"
 
     @Published public private(set) var phase: Phase = .launching
     /// Why the last session ended, when the user did not end it.
@@ -67,43 +69,54 @@ public final class AppState: ObservableObject {
     /// An invite that arrived as a deep link, waiting to be accepted on the
     /// space screen. Kept through sign-in.
     @Published public var pendingInvite: String?
-    /// Something worth knowing about the space just created (not hosted yet).
-    @Published public private(set) var spaceNotice: String?
-    /// A space this account is in that could not be reached (relay down,
-    /// offline, a slow relay at launch). Offered back as "Try again" on the
-    /// space screen, so a transient failure doesn't read as "you have no
-    /// space" and invite founding a duplicate.
+    /// A space this account is in that could not be reached (offline, the
+    /// cluster briefly away). Offered back as "Try again" on the space
+    /// screen, so a transient failure doesn't read as "you have no space".
     @Published public private(set) var unreachableSpace: SpaceSelection?
     @Published public private(set) var store: TrackerStore?
     @Published public private(set) var space: SpaceSelection?
-    /// The node, when signed in to one directly rather than through Cloud.
-    @Published public private(set) var node: NodeSession?
-    @Published public private(set) var isConnectingNode = false
-    @Published public private(set) var nodeError: String?
-    /// The node URL and username last used, prefilled on the sign-in screen.
-    /// The password is never stored.
-    @Published public var lastNodeURL: String = UserDefaults.standard.string(forKey: "merotag.nodeURL")
-        ?? ProcessInfo.processInfo.environment["MEROTAG_PREFILL_URL"] ?? "http://localhost:4001"
-    @Published public var lastNodeUser: String = UserDefaults.standard.string(forKey: "merotag.nodeUser") ?? "dev"
+    /// Who the caller is in the open space (org standing included).
+    @Published public private(set) var me: Me?
+    /// A newer release of Mero Tag the open space could run, if any.
+    @Published public private(set) var availableUpdate: String?
+    /// An update approval is waiting on the consent page.
+    @Published public private(set) var isAwaitingApproval = false
+    @Published public private(set) var updateMessage: String?
+    /// The cluster address last used, prefilled on the sign-in screen.
+    @Published public var lastClusterURL: String = UserDefaults.standard.string(forKey: "merotag.clusterURL") ?? ""
+    /// The development node URL last used.
+    @Published public var lastDevNodeURL: String =
+        UserDefaults.standard.string(forKey: "merotag.devNodeURL")
+        ?? ProcessInfo.processInfo.environment["MEROTAG_PREFILL_URL"] ?? AppState.defaultDevNodeURL
 
     public let client: MeroClient
     public let preferences: SpacePreferences
-    private let makeTransport: (CloudConnection) -> (any ContextTransport)?
-    private let makeDirectory: @MainActor (MeroClient) -> any SpaceDirectory
-    /// How long to wait for a joined space to reach the relay.
+    private let makeTransport: @MainActor (MeroClient) -> (any ContextTransport)?
+    private let makeDirectory: @MainActor (MeroClient) -> (any SpaceDirectory)?
+    /// How often to retry reaching a space just created or joined: a new app
+    /// instance or org membership can take a moment to apply on every node.
     var syncAttempts = 8
     var syncDelay: UInt64 = 1_500_000_000
     private var forward: AnyCancellable?
+    private var approvalTask: Task<Void, Never>?
+    /// Unit tests only: an account to act as without a cluster.
+    private var accountForTesting: String?
 
     public init(
         client: MeroClient? = nil,
         preferences: SpacePreferences = SpacePreferences(),
-        makeTransport: @escaping (CloudConnection) -> (any ContextTransport)? = { RelayTransport($0) },
-        makeDirectory: @escaping @MainActor (MeroClient) -> any SpaceDirectory = {
-            CloudSpaces(cloud: $0.cloudSignIn, connection: $0.connection)
+        makeTransport: @escaping @MainActor (MeroClient) -> (any ContextTransport)? = { client in
+            client.cloud.map { CloudTransport(client: $0) }
+        },
+        makeDirectory: @escaping @MainActor (MeroClient) -> (any SpaceDirectory)? = { client in
+            client.cloud.map { CloudSpaces(client: $0, passkey: client.passkeyForNode()) }
         }
     ) {
-        self.client = client ?? MeroClient()
+        self.client =
+            client
+            ?? MeroClient(
+                config: MeroProviderConfig(packageName: SpaceInvite.appSlug),
+                store: KeychainCloudSessionStore(service: "network.calimero.merotag"))
         self.preferences = preferences
         self.makeTransport = makeTransport
         self.makeDirectory = makeDirectory
@@ -114,107 +127,99 @@ public final class AppState: ObservableObject {
 
     // MARK: Account
 
-    /// The signed-in account (64 hex), or `nil`: the Cloud account, or the
-    /// node's own.
-    public var account: String? { client.account ?? node?.accountId }
+    /// The signed-in account (64 hex), or `nil`.
+    public var account: String? { accountForTesting ?? client.account }
 
-    /// Whether this session can found spaces: a node always can, a Cloud
-    /// account once a relay serves it.
-    public var canCreateSpaces: Bool { node != nil || client.connection?.relay != nil }
+    /// The cluster this session talks to.
+    public var nodeURL: String? { client.nodeURL }
+
+    /// Signed in to a development cluster (mock attestation).
+    public var isDevelopmentCluster: Bool { client.allowMock }
 
     /// Reconnect a session from a previous launch.
     public func restore() async {
         guard phase == .launching else { return }
         let env = ProcessInfo.processInfo.environment
-        if let url = env["MEROTAG_NODE"], let user = env["MEROTAG_NODE_USER"], let pass = env["MEROTAG_NODE_PASS"] {
-            // Demo / UI-test hook: the same path as "Manually enter node URL",
+        if let url = env["MEROTAG_DEV_NODE"], !url.isEmpty {
+            // Demo / UI-test hook: the same path as "Development cluster",
             // optionally straight into a space (MEROTAG_SPACE, MEROTAG_NAME).
             phase = .signedOut
             if let space = env["MEROTAG_SPACE"], !space.isEmpty {
-                preferences.space = SpaceSelection(contextId: space, displayName: env["MEROTAG_NAME"] ?? user)
+                preferences.space = SpaceSelection(appId: space, displayName: env["MEROTAG_NAME"] ?? "dev")
             }
-            await signInToNode(url: url, username: user, password: pass)
+            await signInToDevCluster(url: url, name: env["MEROTAG_NAME"] ?? "dev")
             return
         }
-        if await client.restoreCloudSession(), client.isAuthenticated {
+        if await client.restore(), client.isAuthenticated {
             await didSignIn()
         } else {
             phase = .signedOut
         }
     }
 
-    /// "Continue with Calimero": the wallet in the system auth sheet.
-    public func signIn() async {
-        sessionNotice = nil
-        await client.signInWithCloud(callbackScheme: Self.callbackScheme)
-        if client.isAuthenticated { await didSignIn() }
+    /// Sign in to the person's cluster with this phone's passkey.
+    public func signIn(clusterURL: String) async {
+        guard useCluster(clusterURL) != nil else { return }
+        if await client.signIn() { await didSignIn() }
     }
 
-    /// "Manually enter node URL": sign in to a node with its admin credentials.
-    public func signInToNode(url: String, username: String, password: String) async {
-        sessionNotice = nil
-        nodeError = nil
-        guard !username.isEmpty, !password.isEmpty else {
-            nodeError = "Enter the node's admin username and password."
+    /// Create an account on the cluster with a new passkey on this phone.
+    public func createAccount(clusterURL: String, name rawName: String) async {
+        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else {
+            client.errorMessage = "Enter your name for the new account."
             return
         }
-        isConnectingNode = true
-        defer { isConnectingNode = false }
-        do {
-            let session = try await NodeSession.connect(url: url, username: username, password: password)
-            lastNodeURL = session.url
-            lastNodeUser = username
-            UserDefaults.standard.set(session.url, forKey: "merotag.nodeURL")
-            UserDefaults.standard.set(username, forKey: "merotag.nodeUser")
-            node = session
-            await didSignIn()
-        } catch {
-            nodeError = Self.nodeLoginMessage(error, url: url.trimmingCharacters(in: .whitespaces))
+        guard useCluster(clusterURL) != nil else { return }
+        if await client.signUp(name: name) { await didSignIn() }
+    }
+
+    /// "Development cluster": a `merod local` node, trusted with mock
+    /// attestation, signed in with the software passkey the SDK keeps for it
+    /// (an account is made on first use).
+    public func signInToDevCluster(url rawURL: String, name: String) async {
+        sessionNotice = nil
+        client.errorMessage = nil
+        guard let url = Self.validURL(rawURL, allowHTTP: true) else {
+            client.errorMessage = "Enter a full node URL, like \(Self.defaultDevNodeURL)."
+            return
         }
+        lastDevNodeURL = url
+        UserDefaults.standard.set(url, forKey: "merotag.devNodeURL")
+        client.connect(nodeURL: url, allowMock: true)
+        if await client.signInOrSignUp(name: name.isEmpty ? "dev" : name) { await didSignIn() }
     }
 
-    /// What a failed node sign-in says. The SDK types the failure, so a
-    /// lockout after too many attempts doesn't read as a wrong password.
-    static func nodeLoginMessage(_ error: Error, url: String) -> String {
-        switch LoginFailureReason(error) {
-        case .invalidCredentials:
-            return "The node refused that username or password."
-        case .rateLimited(let retryAfter?) where retryAfter > 0:
-            let seconds = Int(retryAfter.rounded(.up))
-            return "Too many failed attempts. Try again in \(seconds) second\(seconds == 1 ? "" : "s")."
-        case .rateLimited:
-            return "Too many failed attempts. Try again later."
-        case .unreachable:
-            return "Can't reach a node at \(url). Is merod running?"
-        case .notFound:
-            return "No node sign-in at \(url). Check the URL and port."
-        case .serverError, .other:
-            return (error as? LocalizedError)?.errorDescription ?? "Couldn't sign in to the node."
+    /// Point the client at a production cluster; `nil` (with a message) when the address is unusable.
+    private func useCluster(_ raw: String) -> String? {
+        sessionNotice = nil
+        client.errorMessage = nil
+        guard let url = Self.validURL(raw, allowHTTP: false) else {
+            client.errorMessage = "Enter your cluster's address from the Calimero Cloud console, like https://…"
+            return nil
         }
+        lastClusterURL = url
+        UserDefaults.standard.set(url, forKey: "merotag.clusterURL")
+        client.connect(nodeURL: url, allowMock: false)
+        return url
     }
 
-    /// The transport and member for the current session, or nil when signed out.
-    private func currentTransport() -> (any ContextTransport)? {
-        if let node { return NodeTransport(mero: node.mero) }
-        return client.connection.flatMap(makeTransport)
-    }
-
-    private func currentDirectory() -> any SpaceDirectory {
-        if let node { return NodeSpaces(mero: node.mero) }
-        return makeDirectory(client)
+    /// `raw` as a node URL: https (or http when `allowHTTP`), with a host.
+    static func validURL(_ raw: String, allowHTTP: Bool) -> String? {
+        var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !text.isEmpty, !text.contains("://") { text = (allowHTTP ? "http://" : "https://") + text }
+        guard let url = URL(string: text), let scheme = url.scheme?.lowercased(), url.host?.isEmpty == false,
+            scheme == "https" || (allowHTTP && scheme == "http")
+        else { return nil }
+        return text.hasSuffix("/") ? String(text.dropLast()) : text
     }
 
     /// A URL delivered to the app (`onOpenURL`): an invite link
-    /// (`merotag://join?invitation=…`, or the shareable https link when the OS
-    /// routes it here), or a wallet callback that bypassed the auth sheet.
+    /// (`merotag://join?invitation=…`, or the shareable https link when the
+    /// OS routes it here).
     public func handleOpenURL(_ url: URL) async {
         if SpaceInvite.decode(deepLink: url) != nil {
             receiveInvite(url.absoluteString)
-            return
-        }
-        guard url.scheme == Self.callbackScheme else { return }
-        if await client.handleEnrolmentCallback(url), client.isAuthenticated {
-            await didSignIn()
         }
     }
 
@@ -227,12 +232,13 @@ public final class AppState: ObservableObject {
         unreachableSpace = nil
     }
 
-    private func didSignIn() async {
+    func didSignIn() async {
+        sessionNotice = nil
         if pendingInvite != nil {
             // An invite is waiting: show it rather than reopening the last space.
             phase = .choosingSpace
         } else if let saved = preferences.space {
-            await openSpace(contextId: saved.contextId, displayName: saved.displayName)
+            await openSpace(appId: saved.appId, displayName: saved.displayName)
             if phase != .ready { phase = .choosingSpace }
         } else {
             phase = .choosingSpace
@@ -241,40 +247,41 @@ public final class AppState: ObservableObject {
 
     // MARK: Space
 
-    /// Open `contextId` as the signed-in account and join it under `displayName`.
-    public func openSpace(contextId rawId: String, displayName rawName: String) async {
-        await openSpace(contextId: rawId, displayName: rawName, attempts: 1)
+    /// Open the space `appId` as the signed-in account and join it under `displayName`.
+    public func openSpace(appId rawId: String, displayName rawName: String) async {
+        await openSpace(appId: rawId, displayName: rawName, attempts: 1)
     }
 
-    /// As ``openSpace(contextId:displayName:)``, retrying the first read: a
-    /// space just joined or created reaches the relay asynchronously.
-    func openSpace(contextId rawId: String, displayName rawName: String, attempts: Int) async {
-        let contextId = rawId.trimmingCharacters(in: .whitespacesAndNewlines)
+    /// As ``openSpace(appId:displayName:)``, retrying the first read: a space
+    /// just created or joined can take a moment to apply on every node.
+    func openSpace(appId rawId: String, displayName rawName: String, attempts: Int) async {
+        let appId = rawId.trimmingCharacters(in: .whitespacesAndNewlines)
         let displayName = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         // The retry belongs to the error it came with: a new attempt drops both.
         spaceError = nil
         unreachableSpace = nil
-        guard !contextId.isEmpty else { spaceError = "Enter the space ID you were given."; return }
+        guard !appId.isEmpty else { spaceError = "Enter the space ID you were given."; return }
         guard !displayName.isEmpty else { spaceError = "Choose a name others will see."; return }
-        guard let account else {
+        guard account != nil else {
             phase = .signedOut
             return
         }
-        guard let transport = currentTransport() else {
-            spaceError = "No relay serves your account yet. Accept an invitation to a space from its owner to get one."
+        guard let transport = makeTransport(client) else {
+            spaceError = SpaceDirectoryError.notConnected.errorDescription
             return
         }
 
         isOpeningSpace = true
         defer { isOpeningSpace = false }
 
-        let service = MeroService(transport: transport, contextId: contextId, memberId: account)
         // Reaching the space before switching screens: a mistyped ID should be
-        // an inline error, not an empty map.
+        // an inline error, not an empty map. `whoami` is that check, and tells
+        // us our member id and org standing.
+        var opened: MeroService?
         var lastError: Error?
         for attempt in 1...max(attempts, 1) {
             do {
-                _ = try await service.getSpace()
+                opened = try await MeroService.open(transport: transport, appId: appId)
                 lastError = nil
                 break
             } catch {
@@ -283,15 +290,16 @@ public final class AppState: ObservableObject {
                 if attempt < attempts { try? await Task.sleep(nanoseconds: syncDelay) }
             }
         }
-        if let lastError {
+        guard let service = opened else {
+            let lastError = lastError ?? ContractError.unexpectedResponse(method: "whoami")
             if Self.isUnreachable(lastError) {
-                unreachableSpace = SpaceSelection(contextId: contextId, displayName: displayName)
+                unreachableSpace = SpaceSelection(appId: appId, displayName: displayName)
                 spaceError = "Couldn't reach your space right now. It's still yours: try again in a moment. ("
                     + TrackerStore.message(for: lastError) + ")"
                 return
             }
             spaceError = attempts > 1
-                ? "You joined, but the space hasn't reached your relay yet. Try again in a moment. ("
+                ? "The space isn't ready on your cluster yet. Try again in a moment. ("
                     + TrackerStore.message(for: lastError) + ")"
                 : "Couldn't open that space. Check that your account is a member. ("
                     + TrackerStore.message(for: lastError) + ")"
@@ -301,61 +309,62 @@ public final class AppState: ObservableObject {
         unreachableSpace = nil
         let store = TrackerStore(service: service)
         store.onSessionEnded = { [weak self] reason in self?.sessionEnded(reason) }
-        let selection = SpaceSelection(contextId: contextId, displayName: displayName)
+        let selection = SpaceSelection(appId: appId, displayName: displayName)
         preferences.space = selection
         self.space = selection
+        self.me = try? await service.whoami()
         self.store = store
         phase = .ready
         await store.bootstrap(displayName: displayName)
+        await checkForUpdate()
     }
 
     /// Retry the space that could not be reached.
     public func retryUnreachableSpace() async {
         guard let space = unreachableSpace else { return }
-        await openSpace(contextId: space.contextId, displayName: space.displayName)
+        await openSpace(appId: space.appId, displayName: space.displayName)
     }
 
-    /// The request never got an answer, or the relay couldn't serve it:
+    /// The request never got an answer, or the cluster couldn't serve it:
     /// nothing says the account isn't a member, so try again later.
     static func isUnreachable(_ error: Error) -> Bool {
-        switch classifyError(error).kind {
-        case .unreachable, .unavailable, .server: return true
+        switch error {
+        case is URLError, is UnavailableError, is WrongNode: return true
         default: return false
         }
     }
 
-    /// Found a new space for Mero Tag as this account and open it.
+    /// Create a new space as this account and open it.
     public func createSpace(name rawName: String, displayName rawDisplay: String) async {
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         let displayName = rawDisplay.trimmingCharacters(in: .whitespacesAndNewlines)
         spaceError = nil
         unreachableSpace = nil
-        spaceNotice = nil
         guard !name.isEmpty else { spaceError = "Give the space a name."; return }
         guard !displayName.isEmpty else { spaceError = "Choose a name others will see."; return }
         guard account != nil else { phase = .signedOut; return }
+        guard let directory = makeDirectory(client) else {
+            spaceError = SpaceDirectoryError.notConnected.errorDescription
+            return
+        }
 
         isCreatingSpace = true
         defer { isCreatingSpace = false }
         let created: CreatedSpace
         do {
-            created = try await currentDirectory().createSpace(named: name)
+            created = try await directory.createSpace(named: name)
         } catch {
             if let reason = TrackerStore.sessionEndReason(error) { return sessionEnded(reason) }
             spaceError = "Couldn't create the space. (" + TrackerStore.message(for: error) + ")"
             return
         }
-        if !created.hosted {
-            spaceNotice = "Your space isn't hosted in Calimero Cloud yet, so people without their own node may not "
-                + "be able to join." + (created.hostingNote.map { " (\($0))" } ?? "")
-        }
-        await openSpace(contextId: created.contextId, displayName: displayName, attempts: syncAttempts)
+        await openSpace(appId: created.appId, displayName: displayName, attempts: syncAttempts)
     }
 
     /// Accept an invite (a link, a deep link or a bare token) and open the
-    /// space it is for. A refused join is kept rather than thrown: "already a
-    /// member" is fine to continue from, and only whether the space then
-    /// opens tells the two apart.
+    /// space it is for. A refused redeem is kept rather than thrown: an
+    /// account that is already a member can still open the space, and only
+    /// whether it then opens tells the two apart.
     public func joinSpace(invite raw: String, displayName rawDisplay: String) async {
         let displayName = rawDisplay.trimmingCharacters(in: .whitespacesAndNewlines)
         spaceError = nil
@@ -366,25 +375,21 @@ public final class AppState: ObservableObject {
         }
         guard !displayName.isEmpty else { spaceError = "Choose a name others will see."; return }
         guard account != nil else { phase = .signedOut; return }
+        guard let directory = makeDirectory(client) else {
+            spaceError = SpaceDirectoryError.notConnected.errorDescription
+            return
+        }
 
         isJoiningSpace = true
         defer { isJoiningSpace = false }
-        let hadRelay = node != nil || client.connection?.relay != nil
         var refusal: Error?
         do {
-            try await currentDirectory().join(invite)
+            try await directory.join(invite)
         } catch {
             if let reason = TrackerStore.sessionEndReason(error) { return sessionEnded(reason) }
             refusal = error
         }
-        // A relayless account just earned a relay: connect to it.
-        if !hadRelay { await client.restoreCloudSession() }
-        if let refusal, node == nil, client.connection?.relay == nil {
-            spaceError = "This invite wasn't accepted. (" + TrackerStore.message(for: refusal) + ")"
-            return
-        }
-        await openSpace(
-            contextId: invite.contextId, displayName: displayName, attempts: refusal == nil ? syncAttempts : 1)
+        await openSpace(appId: invite.appId, displayName: displayName, attempts: refusal == nil ? syncAttempts : 1)
         if phase == .ready {
             pendingInvite = nil
         } else if let refusal {
@@ -392,11 +397,79 @@ public final class AppState: ObservableObject {
         }
     }
 
-    /// A shareable invite link to the open space, signed by this account.
+    /// A shareable invite link to the open space.
     public func inviteLink() async throws -> String {
-        guard let space else { throw SpaceDirectoryError.notInASpace }
+        guard let space else { throw SpaceDirectoryError.notInAnOrganization }
+        guard let directory = makeDirectory(client) else { throw SpaceDirectoryError.notConnected }
         let name = store?.space?.name ?? ""
-        return try await currentDirectory().invite(contextId: space.contextId, spaceName: name).shareableLink()
+        return try await directory.invite(appId: space.appId, spaceName: name).shareableLink()
+    }
+
+    // MARK: Updates
+
+    /// Whether the registry has a newer Mero Tag than the open space runs.
+    func checkForUpdate() async {
+        availableUpdate = nil
+        guard let cloud = client.cloud, let space else { return }
+        guard
+            let current = try? await cloud.listApps(package: SpaceInvite.appSlug)
+                .first(where: { $0.appId == space.appId })?.version,
+            let latest = try? await cloud.package(SpaceInvite.appSlug).latest,
+            latest != current
+        else { return }
+        availableUpdate = latest
+    }
+
+    /// Ask the cluster for the update's consent page, open it in the system
+    /// browser, and wait for the decision. Only the space's owner (or an
+    /// organization admin) can approve; the page says what changes.
+    public func approveUpdate(open: @escaping (URL) -> Void) {
+        guard let cloud = client.cloud, let space, let version = availableUpdate else { return }
+        updateMessage = nil
+        isAwaitingApproval = true
+        let returnTo = Self.consentReturnTo(devCluster: client.allowMock)
+        approvalTask?.cancel()
+        approvalTask = Task { [weak self] in
+            do {
+                let started = try await cloud.requestConsent(
+                    upgradeConsent(app: space.appId, toVersion: version, returnTo: returnTo))
+                guard let url = URL(string: started.url) else {
+                    throw AccountError.protocolViolation("the cluster answered no consent page")
+                }
+                open(url)
+                let result = try await cloud.waitForConsent(started.requestId, expiresAt: started.expiresAt)
+                guard let self else { return }
+                switch result.status {
+                case .approved:
+                    self.updateMessage = "Approved. Your space moves to version \(version) shortly."
+                    self.availableUpdate = nil
+                case .declined:
+                    self.updateMessage = "The update was declined."
+                case .pending:
+                    self.updateMessage = "The approval page expired. Try again when you're ready."
+                }
+            } catch is CancellationError {
+            } catch {
+                self?.updateMessage = TrackerStore.message(for: error)
+            }
+            self?.isAwaitingApproval = false
+        }
+    }
+
+    /// Stop waiting for an approval (the page stays valid until it expires).
+    public func cancelApproval() {
+        approvalTask?.cancel()
+        approvalTask = nil
+        isAwaitingApproval = false
+    }
+
+    /// Where the consent page sends the person afterwards. The node accepts
+    /// only an https origin the cluster is configured with (http on
+    /// localhost), never an app scheme, so it is the Calimero Cloud console
+    /// (or `merod local`'s development origin); the app learns the decision
+    /// by asking the cluster, not from the redirect.
+    static func consentReturnTo(devCluster: Bool) -> String {
+        devCluster ? "http://localhost:3000/" : "https://cloud.calimero.network/"
     }
 
     /// Leave the open space (stay signed in) to pick another.
@@ -405,7 +478,10 @@ public final class AppState: ObservableObject {
             store.stop()
             await store.goOffline()
         }
+        cancelApproval()
         store = nil
+        me = nil
+        availableUpdate = nil
         unreachableSpace = nil
         preferences.space = nil
         preferences.sharingTrackerId = nil
@@ -422,30 +498,30 @@ public final class AppState: ObservableObject {
         await tearDown()
     }
 
-    /// The account session ended under the app (revoked, device removed).
+    /// The account session ended under the app (revoked, expired).
     /// Unlike ``signOut()`` this leaves a reason on the sign-in screen.
     public func sessionEnded(_ reason: String) {
         guard phase != .signedOut else { return }
         sessionNotice = reason + " Please sign in again."
         store?.stop()
         store = nil
+        me = nil
         unreachableSpace = nil
+        cancelApproval()
+        accountForTesting = nil
         phase = .signedOut
-        let node = self.node
-        self.node = nil
-        Task {
-            await client.logout()
-            await node?.mero.logout()
-        }
+        Task { await client.logout() }
     }
 
     private func tearDown() async {
+        cancelApproval()
         store = nil
+        me = nil
+        availableUpdate = nil
         unreachableSpace = nil
+        accountForTesting = nil
         preferences.sharingTrackerId = nil
         await client.logout()
-        await node?.mero.logout()
-        node = nil
         phase = .signedOut
     }
 
@@ -453,4 +529,7 @@ public final class AppState: ObservableObject {
 
     /// Put the state machine in `phase` directly (unit tests only).
     func setPhaseForTesting(_ phase: Phase) { self.phase = phase }
+
+    /// Act as `account` without a cluster (unit tests only).
+    func signInForTesting(account: String) { accountForTesting = account }
 }

@@ -2,58 +2,48 @@ import MeroKit
 import XCTest
 @testable import MeroTag
 
-/// Contract events reach the app inside a `StateMutation` SSE frame as
-/// `data.events[] = { kind, data: [bytes] }`. Verify the variants the store
-/// acts on decode, whatever shape the payload bytes take.
+/// Contract events arrive as the app instance's server-sent events: the
+/// variant as the event kind, `{"id": "…"}` as the payload.
 final class EventTests: XCTestCase {
-    private func bytes(_ s: String) -> JSONValue { .array(Array(s.utf8).map { .number(Double($0)) }) }
-
-    private func frame(_ events: [(String, JSONValue)], type: String = "StateMutation") -> JSONValue {
-        [
-            "contextId": "ctx", "type": .string(type),
-            "data": ["newRoot": "r", "events": .array(events.map { ["kind": .string($0.0), "data": $0.1] })],
-        ]
+    private func event(_ kind: String, _ data: JSONValue) -> CloudEvent {
+        CloudEvent(id: "7", kind: kind, data: data)
     }
 
-    func testTrackerUpdatedFromJsonStringBytes() {
-        XCTAssertEqual(TagEvent.events(inFrame: frame([("TrackerUpdated", bytes(#""t1""#))])), [.trackerUpdated("t1")])
+    func testNamedIdPayloadDecodes() {
+        XCTAssertEqual(TagEvent(event("TrackerUpdated", ["id": "t1"])), .trackerUpdated("t1"))
+        XCTAssertEqual(TagEvent(event("GeofenceExited", ["id": "home"])), .geofenceExited("home"))
     }
 
-    func testPayloadAsOneKeyObjectOrRawBytes() {
-        XCTAssertEqual(
-            TagEvent.events(inFrame: frame([("TrackerCreated", bytes(#"{"TrackerCreated":"a"}"#))])),
-            [.trackerCreated("a")])
-        XCTAssertEqual(TagEvent.events(inFrame: frame([("TrackerDeleted", bytes("b"))])), [.trackerDeleted("b")])
+    func testGroupVariantsAreOneChange() {
+        for kind in ["GroupCreated", "GroupUpdated", "GroupDeleted"] {
+            XCTAssertEqual(TagEvent(event(kind, ["id": "g"])), .groupChanged("g"))
+        }
     }
 
-    func testPayloadAsBase64OrPlainString() {
-        let b64 = Data(#""c""#.utf8).base64EncodedString()
-        XCTAssertEqual(TagEvent.events(inFrame: frame([("TrackerShared", .string(b64))])), [.trackerShared("c")])
-        XCTAssertEqual(TagEvent.events(inFrame: frame([("PresenceUpdated", "u1")])), [.presenceUpdated("u1")])
-    }
-
-    func testSeveralEventsInOneFrame() {
-        let events = TagEvent.events(inFrame: frame([
-            ("GroupUpdated", bytes(#""g""#)), ("GeofenceEntered", bytes(#""home""#)), ("MemberJoined", bytes(#""m""#)),
-        ]))
-        XCTAssertEqual(events, [.groupChanged("g"), .geofenceEntered("home"), .memberJoined("m")])
-    }
-
-    func testStateMutationWithoutEventsMeansRefresh() {
-        XCTAssertEqual(TagEvent.events(inFrame: frame([])), [.stateChanged])
-    }
-
-    func testSyncStatusFramesAreIgnored() {
-        XCTAssertEqual(TagEvent.events(inFrame: frame([], type: "SyncStatus")), [])
+    func testABareStringPayloadStillDecodes() {
+        XCTAssertEqual(TagEvent(event("MemberJoined", "m")), .memberJoined("m"))
     }
 
     func testUnknownVariantBecomesOther() {
-        XCTAssertEqual(TagEvent.events(inFrame: frame([("SomethingNew", bytes(#""x""#))])), [.other("SomethingNew", "x")])
+        XCTAssertEqual(TagEvent(event("SomethingNew", ["id": "x"])), .other("SomethingNew", "x"))
     }
 
-    func testSerdeShapedEventStillDecodes() {
-        XCTAssertEqual(TagEvent(data: Data(#"{"GeofenceExited":"home"}"#.utf8)), .geofenceExited("home"))
-        XCTAssertNil(TagEvent(data: Data("not json".utf8)))
-        XCTAssertNil(TagEvent(data: Data("{}".utf8)))
+    func testAFrameWithNoKindIsNothing() {
+        XCTAssertNil(TagEvent(event("", ["id": "x"])))
+    }
+
+    func testServiceStreamsEventsAsBatches() async throws {
+        let t = FakeTransport()
+        let (stream, continuation) = AsyncThrowingStream<CloudEvent, Error>.makeStream()
+        t.frames = stream
+        let service = MeroService(transport: t, appId: Fixtures.app, memberId: Fixtures.account)
+        let events = try XCTUnwrap(service.events())
+        continuation.yield(event("TrackerDeleted", ["id": "t1"]))
+        continuation.yield(event("", .null))
+        continuation.yield(event("PresenceUpdated", ["id": "u"]))
+        continuation.finish()
+        var seen: [TagEvent] = []
+        for try await batch in events { seen += batch }
+        XCTAssertEqual(seen, [.trackerDeleted("t1"), .presenceUpdated("u")])
     }
 }

@@ -1,9 +1,10 @@
 import Foundation
 import MeroKit
+import MeroKitUI
 
 /// Observable state for one space: trackers, members and presence. Hydrates
-/// from the contract, then reconciles from live events — or, when the relay
-/// session that carries events is unavailable, by polling.
+/// from the contract, then reconciles from the app instance's live events —
+/// or, when the event stream can't be kept open, by polling.
 @MainActor
 public final class TrackerStore: ObservableObject {
     public enum Connection: Equatable {
@@ -226,28 +227,31 @@ public final class TrackerStore: ObservableObject {
     /// A terminal account-session failure, phrased for the sign-in screen.
     static func sessionEndReason(_ error: Error) -> String? {
         switch error {
-        case MeroError.authRevoked:
-            return "Your Calimero session was revoked."
-        case AccountError.credentialRejected, AccountError.notSignedIn:
-            return "This device is no longer signed in to your Calimero account."
+        case is LoginRequired:
+            return "Your Calimero session ended."
+        case AccountError.notSignedIn:
+            return "This phone is no longer signed in to your Calimero account."
         default:
             return nil
         }
     }
 
-    static func message(for error: Error) -> String {
+    /// What went wrong, for a person. Core 1.0 writes nothing offline, so a
+    /// change that could not reach the cluster was not saved.
+    nonisolated static func message(for error: Error) -> String {
         switch error {
-        case AccountError.intentRefused(let reason, _, let status) where status == 403:
-            return "The relay refused that change: \(reason)"
-        case AccountError.intentRefused(let reason, _, _):
-            return reason
-        case MeroError.network:
-            return "Can't reach your relay. Check your connection; changes will retry when you're back online."
-        case let error as MeroError where error.callFailureReason != nil:
-            // A node's JSON-RPC refusal: the contract's reason, not "FunctionCallError".
-            return error.callFailureReason!
+        case let error as AppError:
+            // The contract's own sentence (`app::bail!`).
+            return error.message.isEmpty ? error.appCode : error.message
+        case let error as UnavailableError where error.reason != "network":
+            return "Your cluster is unavailable right now (\(error.reason)). Try again in a moment."
+        case is UnavailableError, is URLError:
+            return "Can't reach your Calimero cluster. Check your connection and try again; "
+                + "changes made while offline aren't saved."
+        case let error as NotFound:
+            return error.message.isEmpty ? "Not found." : error.message
         default:
-            return (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            return MeroClient.describe(error)
         }
     }
 

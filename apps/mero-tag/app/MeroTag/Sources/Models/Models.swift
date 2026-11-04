@@ -68,9 +68,22 @@ public struct SpaceInfo: Codable, Equatable {
     public var groupCount: Int
 }
 
-/// A contract event. The node delivers them inside a `StateMutation` SSE
-/// frame as `data.events[] = { kind: "<Variant>", data: [bytes] }`, where the
-/// bytes are the JSON-encoded payload (here always the affected id).
+/// Who the caller is in the space, as the contract's `whoami` answers.
+public struct Me: Codable, Equatable {
+    /// The caller's account (64 hex): every member, owner and author id.
+    public var memberId: String
+    /// The organization the space belongs to.
+    public var org: String?
+    /// `guest`, `member`, `admin` or `owner` in that organization.
+    public var orgRole: String?
+
+    /// An admin of the space's organization may moderate the space.
+    public var isOrgAdmin: Bool { orgRole == "admin" || orgRole == "owner" }
+}
+
+/// A contract event. The cluster streams each one as a server-sent event
+/// whose `event:` is the variant (`TrackerUpdated`) and whose `data:` is the
+/// payload, `{"id":"<the affected record>"}`.
 public enum TagEvent: Equatable {
     case trackerCreated(String)
     case trackerUpdated(String)
@@ -82,8 +95,7 @@ public enum TagEvent: Equatable {
     case geofenceExited(String)
     case presenceUpdated(String)
     case memberJoined(String)
-    /// The context's state moved, but the frame named no contract event
-    /// (e.g. a sync from a peer). Worth a full refresh.
+    /// The space changed in a way no single event names. Worth a full refresh.
     case stateChanged
     case other(String, String)
 
@@ -103,50 +115,17 @@ public enum TagEvent: Equatable {
         }
     }
 
-    /// A serde-shaped event, `{ "VariantName": "id" }`.
-    public init?(data: Data) {
-        guard let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              obj.count == 1, let (key, value) = obj.first else { return nil }
-        self.init(kind: key, id: (value as? String) ?? "")
+    /// One server-sent event from the app instance. A frame with no kind
+    /// (a keep-alive) is nothing; one the app doesn't know is ``other(_:_:)``.
+    public init?(_ event: CloudEvent) {
+        guard !event.kind.isEmpty else { return nil }
+        self.init(kind: event.kind, id: Self.payloadId(event.data))
     }
 
-    /// Every contract event in one SSE frame (the frame's `result`).
-    /// A `StateMutation` without events yields `.stateChanged`; other frame
-    /// kinds (`SyncStatus`, …) yield nothing.
-    public static func events(inFrame frame: JSONValue) -> [TagEvent] {
-        let type = frame["type"]?.stringValue
-        let raw = frame["data"]?["events"]?.arrayValue ?? []
-        let events: [TagEvent] = raw.compactMap { item in
-            guard let kind = item["kind"]?.stringValue else { return nil }
-            return TagEvent(kind: kind, id: payloadId(item["data"]))
-        }
-        if events.isEmpty, type == "StateMutation" { return [.stateChanged] }
-        return events
-    }
-
-    /// The id inside an event's `data`: a byte array (or base64 / plain
-    /// string) holding a JSON string, a one-key object, or the raw id.
-    static func payloadId(_ value: JSONValue?) -> String {
-        let bytes: Data?
-        switch value {
-        case .array(let items)?:
-            bytes = Data(items.compactMap { $0.intValue.flatMap { UInt8(exactly: $0) } })
-        case .string(let s)?:
-            // base64 of JSON when it decodes as such; otherwise the id itself.
-            if let decoded = Data(base64Encoded: s),
-               (try? JSONSerialization.jsonObject(with: decoded, options: .fragmentsAllowed)) != nil {
-                bytes = decoded
-            } else {
-                return s
-            }
-        default:
-            bytes = nil
-        }
-        guard let bytes, !bytes.isEmpty else { return "" }
-        if let decoded = try? JSONSerialization.jsonObject(with: bytes, options: .fragmentsAllowed) {
-            if let s = decoded as? String { return s }
-            if let obj = decoded as? [String: Any], let first = obj.values.first as? String { return first }
-        }
-        return String(decoding: bytes, as: UTF8.self)
+    /// The `id` in an event's payload: `{"id": "…"}`, or a bare string.
+    static func payloadId(_ value: JSONValue) -> String {
+        if let id = value["id"]?.stringValue { return id }
+        if let s = value.stringValue { return s }
+        return ""
     }
 }

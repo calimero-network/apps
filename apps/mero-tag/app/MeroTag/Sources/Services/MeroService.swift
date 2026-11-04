@@ -2,44 +2,51 @@ import Foundation
 import MeroKit
 
 /// Typed wrapper around the contract's methods. Arg structs use snake_case
-/// keys to match the Rust parameter names (the node maps `argsJson` onto
-/// method params by name). `memberId` is the signed-in Calimero account.
+/// keys to match the Rust parameter names (the node maps `args` onto method
+/// params by name).
+///
+/// On core 1.0 the contract takes every owner, author and member id from the
+/// caller's account and stamps records with the leader's clock, so nothing
+/// here sends one. `memberId` is what the contract's `whoami` answered.
 public final class MeroService: Sendable {
     public let transport: any ContextTransport
-    public let contextId: String
+    public let appId: String
     public let memberId: String
-    private let now: @Sendable () -> UInt64
 
-    public init(
-        transport: any ContextTransport, contextId: String, memberId: String,
-        now: @escaping @Sendable () -> UInt64 = { UInt64(Date().timeIntervalSince1970 * 1000) }
-    ) {
+    public init(transport: any ContextTransport, appId: String, memberId: String) {
         self.transport = transport
-        self.contextId = contextId
+        self.appId = appId
         self.memberId = memberId
-        self.now = now
+    }
+
+    /// Ask the space who the signed-in account is, which is also the check
+    /// that the account can reach it, and make a service for it.
+    public static func open(transport: any ContextTransport, appId: String) async throws -> MeroService {
+        let value = try await transport.query(appId: appId, method: "whoami", args: [:])
+        let me = try ContractCoding.decode(Me.self, from: value, method: "whoami")
+        return MeroService(transport: transport, appId: appId, memberId: me.memberId)
     }
 
     // MARK: Plumbing
 
     private func read<T: Decodable>(_ method: String, _ type: T.Type) async throws -> T {
-        let value = try await transport.query(contextId: contextId, method: method, args: [:])
+        let value = try await transport.query(appId: appId, method: method, args: [:])
         return try ContractCoding.decode(type, from: value, method: method)
     }
 
     private func read<T: Decodable, A: Encodable>(_ method: String, _ args: A, _ type: T.Type) async throws -> T {
-        let value = try await transport.query(
-            contextId: contextId, method: method, args: try ContractCoding.args(args))
+        let value = try await transport.query(appId: appId, method: method, args: try ContractCoding.args(args))
         return try ContractCoding.decode(type, from: value, method: method)
     }
 
     @discardableResult
     private func write<A: Encodable>(_ method: String, _ args: A) async throws -> JSONValue? {
-        try await transport.execute(contextId: contextId, method: method, args: try ContractCoding.args(args))
+        try await transport.execute(appId: appId, method: method, args: try ContractCoding.args(args))
     }
 
     // MARK: Reads
 
+    public func whoami() async throws -> Me { try await read("whoami", Me.self) }
     public func getSpace() async throws -> SpaceInfo { try await read("get_space", SpaceInfo.self) }
     public func getTrackers() async throws -> [Tracker] { try await read("get_trackers", [Tracker].self) }
     public func getMembers() async throws -> [Member] { try await read("get_members", [Member].self) }
@@ -55,22 +62,22 @@ public final class MeroService: Sendable {
     // MARK: Members
 
     public func join(username: String) async throws {
-        struct Args: Encodable { let member_id: String; let username: String; let timestamp: UInt64 }
-        try await write("join", Args(member_id: memberId, username: username, timestamp: now()))
+        struct Args: Encodable { let username: String }
+        try await write("join", Args(username: username))
     }
 
     // MARK: Trackers
 
     @discardableResult
     public func createTracker(id: String, name: String) async throws -> String {
-        struct Args: Encodable { let id: String; let name: String; let owner_id: String; let created_at: UInt64 }
-        let returned = try await write("create_tracker", Args(id: id, name: name, owner_id: memberId, created_at: now()))
+        struct Args: Encodable { let id: String; let name: String }
+        let returned = try await write("create_tracker", Args(id: id, name: name))
         return returned?.stringValue ?? id
     }
 
     public func renameTracker(id: String, name: String) async throws {
-        struct Args: Encodable { let id: String; let name: String; let updated_at: UInt64 }
-        try await write("rename_tracker", Args(id: id, name: name, updated_at: now()))
+        struct Args: Encodable { let id: String; let name: String }
+        try await write("rename_tracker", Args(id: id, name: name))
     }
 
     public func deleteTracker(id: String) async throws {
@@ -79,13 +86,13 @@ public final class MeroService: Sendable {
     }
 
     public func shareTracker(trackerId: String, userId: String) async throws {
-        struct Args: Encodable { let tracker_id: String; let user_id: String; let updated_at: UInt64 }
-        try await write("share_tracker", Args(tracker_id: trackerId, user_id: userId, updated_at: now()))
+        struct Args: Encodable { let tracker_id: String; let user_id: String }
+        try await write("share_tracker", Args(tracker_id: trackerId, user_id: userId))
     }
 
     public func unshareTracker(trackerId: String, userId: String) async throws {
-        struct Args: Encodable { let tracker_id: String; let user_id: String; let updated_at: UInt64 }
-        try await write("unshare_tracker", Args(tracker_id: trackerId, user_id: userId, updated_at: now()))
+        struct Args: Encodable { let tracker_id: String; let user_id: String }
+        try await write("unshare_tracker", Args(tracker_id: trackerId, user_id: userId))
     }
 
     public func updateLocation(trackerId: String, _ loc: Location) async throws {
@@ -109,14 +116,10 @@ public final class MeroService: Sendable {
         -> String
     {
         struct Args: Encodable {
-            let id: String; let name: String; let center_lat: Double; let center_lng: Double
-            let radius: Double; let created_by: String; let created_at: UInt64
+            let id: String; let name: String; let center_lat: Double; let center_lng: Double; let radius: Double
         }
         let returned = try await write(
-            "create_geofence",
-            Args(
-                id: id, name: name, center_lat: lat, center_lng: lng,
-                radius: radius, created_by: memberId, created_at: now()))
+            "create_geofence", Args(id: id, name: name, center_lat: lat, center_lng: lng, radius: radius))
         return returned?.stringValue ?? id
     }
 
@@ -128,22 +131,21 @@ public final class MeroService: Sendable {
     // MARK: Presence
 
     public func updatePresence(online: Bool) async throws {
-        struct Args: Encodable { let user_id: String; let online: Bool; let last_seen: UInt64 }
-        try await write("update_presence", Args(user_id: memberId, online: online, last_seen: now()))
+        struct Args: Encodable { let online: Bool }
+        try await write("update_presence", Args(online: online))
     }
 
     // MARK: Live events
 
-    /// Contract events for this context, or `nil` when the relay session that
-    /// carries them is unavailable (the store polls instead).
+    /// Contract events for this space, or `nil` when there is no event stream
+    /// (the store polls instead).
     public func events() -> AsyncThrowingStream<[TagEvent], Error>? {
-        guard let frames = transport.events(contextId: contextId) else { return nil }
+        guard let frames = transport.events(appId: appId) else { return nil }
         return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
                     for try await frame in frames {
-                        let events = TagEvent.events(inFrame: frame)
-                        if !events.isEmpty { continuation.yield(events) }
+                        if let event = TagEvent(frame) { continuation.yield([event]) }
                     }
                     continuation.finish()
                 } catch {
