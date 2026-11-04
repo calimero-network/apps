@@ -37,7 +37,7 @@ a 3D preview with the same tools.
 | Tool | Needed for | Install |
 |------|-----------|---------|
 | **Rust** + `wasm32-unknown-unknown` | building the WASM contract | <https://rustup.rs> then `rustup target add wasm32-unknown-unknown` |
-| **`cargo mero`** (core 1.0.0-rc.3) | building and bundling the contract | the core release of the tag in `logic/Cargo.toml` |
+| **`cargo mero`** (core 1.0.0-rc.8) | building and bundling the contract | the core release of the tag in `logic/Cargo.toml` |
 | **Full Xcode** (16+) | building the app, device deploy | Mac App Store |
 | **XcodeGen** | generating the `.xcodeproj` | `brew install xcodegen` |
 | **A Calimero cluster** | running rooms | Calimero Cloud, or `merod local` for development |

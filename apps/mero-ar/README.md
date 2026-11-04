@@ -18,7 +18,7 @@ scripts/    setup.sh
 Makefile    every command has a `make` shortcut
 ```
 
-Built for **Calimero core 1.0** (`1.0.0-rc.3`): the contract pins
+Built for **Calimero core 1.0** (`1.0.0-rc.8`): the contract pins
 `calimero-sdk`, `calimero-storage` and `calimero-storage-macros` to that tag
 (`logic/Cargo.toml`, `min-runtime-version` too), and the app uses the Swift
 SDK's 1.0 client (`CalimeroClient`: sealed channel, passkeys).
@@ -209,7 +209,7 @@ so there is nothing to announce; anyone who can reach the room can download it.
 
 ## Status
 
-- ✅ WASM scene-graph contract (objects + transforms, presence, comments, locking, versioned LWW, world-map blob) — core 1.0.0-rc.3, builds + unit-tested, TestHost tests of the 1.0 semantics
+- ✅ WASM scene-graph contract (objects + transforms, presence, comments, locking, versioned LWW, world-map blob) — core 1.0.0-rc.8, builds + unit-tested, TestHost tests of the 1.0 semantics
 - ✅ Account identity model: account-attributed writes, account-keyed roles and presence, owner-gated room name, admin lock-breaking, org admins moderate
 - ✅ App on the swift-sdk 1.0 client: passkey sign-in on an attested cluster, sealed intents/views/events, Keychain session resume, orgs as homes, invites, consent-page upgrades
 - ✅ Its own dark spatial design (glass panels, aurora accent, SF Symbols, ids behind "Technical details")
