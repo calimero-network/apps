@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { CalimeroError, type AppInfo } from "@calimero-network/mero-js";
 import { appSource, describeError, type KeyValueStorage } from "@calimero-apps/connect";
-import { PasskeySignIn } from "@calimero-apps/passkey";
+import { AppListing, PasskeySignIn } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 import { DecisionLog, type DecisionDraft } from "./DecisionLog";
 import { InviteCard } from "./InviteCard";
 import { PersonName } from "./names";
-import { defaultDeps, describeTarget, useSession, type SessionApi, type SessionDeps } from "./session";
+import { LISTING, defaultDeps, describeTarget, useSession, type SessionApi, type SessionDeps } from "./session";
 import { StandupBoard } from "./StandupBoard";
 import { PACKAGE } from "./standup";
 import { TeamPicker } from "./TeamPicker";
@@ -125,8 +125,14 @@ export function App({
     return (
       <Shell>
         <div className="card">
-          <h2>Cannot connect</h2>
-          <pre className="err">{session.message}</pre>
+          {session.status === "listing" ? (
+            <AppListing {...LISTING} />
+          ) : (
+            <>
+              <h2>Cannot connect</h2>
+              <pre className="err">{session.message}</pre>
+            </>
+          )}
         </div>
       </Shell>
     );

@@ -114,10 +114,16 @@ function at(path: string) {
 }
 
 describe("App", () => {
-  it("says why a production build cannot connect, and still offers practice", async () => {
+  it("shows the listing on a production copy no cluster serves, and still offers practice", async () => {
     at("/play");
     render(<App deps={deps(fakeClient(), { DEV: false })} storage={new Memory()} />);
-    await screen.findByText(/VITE_CALIMERO_CLUSTER is not set/);
+    const open = await screen.findByRole("link", { name: "Open Mero Kombat" });
+    // The node-served copy: mdma's `app_host.app_url("com.calimero.mero-kombat")`.
+    expect(open.getAttribute("href")).toBe("https://orqxfngg5qothc2ka2egy5yxatlmyty5y26jpy37ypltr4c26ksa.apps.calimero.network/");
+    expect(screen.getByRole("link", { name: "Deploy your own on Calimero Cloud" }).getAttribute("href")).toBe(
+      "https://cloud.calimero.network/v2",
+    );
+    expect(screen.queryByText(/VITE_CALIMERO_CLUSTER/)).toBeNull();
     expect(screen.getByText("Practice vs CPU")).toBeInTheDocument();
   });
 

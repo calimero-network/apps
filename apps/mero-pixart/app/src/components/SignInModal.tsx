@@ -1,8 +1,8 @@
 import { useEffect } from "react";
-import { PasskeySignIn } from "@calimero-apps/passkey";
+import { AppListing, PasskeySignIn } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
-import { describeTarget } from "../api/session";
+import { LISTING, describeTarget } from "../api/session";
 import { useSessionApi } from "../api/sessionContext";
 import { pendingInvite } from "../api/teams";
 
@@ -36,6 +36,7 @@ export default function SignInModal({ onClose }: { onClose: () => void }) {
         </p>
 
         {api.session.status === "connecting" && <p className="sub">Connecting…</p>}
+        {api.session.status === "listing" && <AppListing {...LISTING} />}
         {api.session.status === "unconfigured" && (
           <p className="sub" role="alert">
             {api.session.message}

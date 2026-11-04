@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CalimeroError } from "@calimero-network/mero-js";
 import { describeError } from "@calimero-apps/connect";
-import { PasskeySignIn } from "@calimero-apps/passkey";
+import { AppListing, PasskeySignIn } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
 import { dropInvite, joinedOrg, pendingInvite, type PendingInvite } from "./lib/orgs";
 import { setActive } from "./lib/workspaceStore";
-import { describeTarget } from "./session";
+import { LISTING, describeTarget } from "./session";
 import { useMaybeSignedIn, useSessionApi } from "./sessionContext";
 
 /** Opens and closes a `<dialog>` as `open` says. */
@@ -56,6 +56,7 @@ export function SignInModal({ open, onClose }: { open: boolean; onClose: () => v
           {where ? ` Connected to ${where}.` : ""}
         </p>
         {api.session.status === "connecting" && <p className="empty">Connecting…</p>}
+        {api.session.status === "listing" && <AppListing {...LISTING} />}
         {api.session.status === "unconfigured" && (
           <p className="err" role="alert">
             {api.session.message}

@@ -8,10 +8,10 @@
  * routes and the header.
  */
 import { useEffect } from 'react';
-import { PasskeySignIn } from '@calimero-apps/passkey';
+import { AppListing, PasskeySignIn } from '@calimero-apps/passkey';
 import '@calimero-apps/passkey/passkey.css';
 
-import { describeTarget } from '../session';
+import { LISTING, describeTarget } from '../session';
 import { useSessionApi } from '../sessionContext';
 import { pendingInvite } from './invites';
 import styles from '../pages/app/AgreementsPage.module.css';
@@ -58,6 +58,7 @@ export function SignInModal() {
         {api.session.status === 'connecting' && (
           <p className={styles.hint}>Connecting…</p>
         )}
+        {api.session.status === 'listing' && <AppListing {...LISTING} />}
         {api.session.status === 'unconfigured' && (
           <p className={styles.error} role="alert">
             {api.session.message}

@@ -1,6 +1,6 @@
-import { PasskeySignIn } from "@calimero-apps/passkey";
+import { AppListing, PasskeySignIn } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
-import { describeTarget, type SessionApi } from "../session";
+import { LISTING, describeTarget, type SessionApi } from "../session";
 import type { PendingInvite } from "../lib/streams";
 import { StatusNote } from "./ui";
 import { BrandMark } from "./icons";
@@ -52,6 +52,7 @@ export default function SignIn({
           </div>
         </div>
 
+        {session.status === "listing" && <AppListing {...LISTING} />}
         {session.status === "unconfigured" && (
           <StatusNote tone="error" testId="signin-unconfigured">
             {session.message}

@@ -25,20 +25,31 @@ import {
   appSource,
   createClient,
   describeError,
+  NotServedError,
   connectTarget,
   type AppSource,
   type ConnectEnv,
   type KeyValueStorage,
   type Target,
 } from '@calimero-apps/connect';
-import { isPasskeyCancel } from '@calimero-apps/passkey';
+import { isPasskeyCancel, type ListingProps } from '@calimero-apps/passkey';
 
 import { PACKAGE } from './lib/meroPass';
 
 /** The app's name in stored keys. */
 export const APP = 'mero-pass';
 
-export type Status = 'connecting' | 'unconfigured' | 'signed-out' | 'signed-in';
+/** What the listing page (`<AppListing>`) shows on a copy no Calimero Cloud cluster serves. */
+export const LISTING: ListingProps = {
+  name: 'Mero Pass',
+  description: 'A secret manager for teams: vaults end-to-end encrypted in the browser.',
+  package: PACKAGE,
+  dir: 'mero-pass',
+  dev: import.meta.env.DEV,
+};
+
+/** `listing`: a copy of the app no cluster serves (its listing page). */
+export type Status = 'connecting' | 'unconfigured' | 'listing' | 'signed-out' | 'signed-in';
 
 export interface Calimero {
   status: Status;
@@ -49,7 +60,7 @@ export interface Calimero {
   accountId: string | null;
   /** Where vaults are created from: the dev bundle, or the package. */
   source: AppSource;
-  /** Why the app cannot connect (`unconfigured`). */
+  /** Why the app cannot connect (`unconfigured`, `listing`). */
   message: string | null;
   /** The last sign-in failure. */
   error: string | null;
@@ -94,7 +105,7 @@ export function describeTarget(target: Target | null): string {
 
 type State =
   | { status: 'connecting' }
-  | { status: 'unconfigured'; message: string }
+  | { status: 'unconfigured' | 'listing'; message: string }
   | { status: 'signed-out'; client: CalimeroClient; target: Target }
   | {
       status: 'signed-in';
@@ -139,7 +150,10 @@ export function CalimeroProvider({
         }
       } catch (e) {
         if (live)
-          setState({ status: 'unconfigured', message: describeError(e) });
+          setState({
+            status: e instanceof NotServedError ? 'listing' : 'unconfigured',
+            message: describeError(e),
+          });
       }
     })();
     return () => {
@@ -214,7 +228,7 @@ export function CalimeroProvider({
       target,
       accountId: state.status === 'signed-in' ? state.accountId : null,
       source,
-      message: state.status === 'unconfigured' ? state.message : null,
+      message: state.status === 'unconfigured' || state.status === 'listing' ? state.message : null,
       error,
       busy,
       isAuthenticated: state.status === 'signed-in',

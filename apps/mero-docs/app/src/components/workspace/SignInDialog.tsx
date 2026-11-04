@@ -4,7 +4,7 @@
 // Calimero Cloud cluster in production) and the account is a passkey.
 
 import { useEffect } from 'react';
-import { PasskeySignIn } from '@calimero-apps/passkey';
+import { AppListing, PasskeySignIn } from '@calimero-apps/passkey';
 import '@calimero-apps/passkey/passkey.css';
 import {
   Dialog,
@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { describeTarget, useSession } from '@/calimero/session';
+import { LISTING, describeTarget, useSession } from '@/calimero/session';
 import { pendingInvite } from '@/hooks/useNamespaceInvitation';
 
 export function SignInDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -44,6 +44,7 @@ export function SignInDialog({ open, onClose }: { open: boolean; onClose: () => 
         {api.session.status === 'connecting' && (
           <p className="text-sm text-muted-foreground">Connecting…</p>
         )}
+        {api.session.status === 'listing' && <AppListing {...LISTING} />}
         {api.session.status === 'unconfigured' && (
           <p className="text-sm text-destructive" role="alert">
             {api.session.message}

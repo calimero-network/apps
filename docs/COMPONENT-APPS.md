@@ -177,7 +177,7 @@ await client.call(app, "set", { key: "a", value: "1" });
 | `VITE_CALIMERO_TARGET` | `local` (default under `vite`) | `cloud` (default under `vite build`), or `node` for an attested node reached by URL |
 | `VITE_CALIMERO_NODES` | written by `dev:local`; default `127.0.0.1:2501-2503` | `node` only, **required**: the node's `https` URLs |
 | `VITE_CALIMERO_BUNDLE` | written by `dev:local` | — (instances come from the package) |
-| `VITE_CALIMERO_CLUSTER` | — | the cluster's name in the cloud's node directory: optional override: without it a served page connects to the cluster serving it, and any other page to the primary cluster running the app's package (`GET {directory}/package/{package}`); when none does, the page says it is the listing page and links to Calimero Cloud |
+| `VITE_CALIMERO_CLUSTER` | — | the cluster's name in the cloud's node directory: optional override: without it a served page connects to the cluster serving it, and any other page to the primary cluster running the app's package (`GET {directory}/package/{package}`); when none does, the page shows the shared listing (`<AppListing>`, `@calimero-apps/passkey`): "Open {App}" at the copy Calimero Cloud serves, `https://{label}.apps.calimero.network/`, and a link to deploy it on Calimero Cloud |
 | `VITE_CALIMERO_MIN_RELEASE` | — | **required**: the lowest mero-tee release a node may run |
 | `VITE_CALIMERO_ZONE`, `VITE_CALIMERO_DIRECTORY` | — | optional: zone first; another directory (staging) |
 | `VITE_CALIMERO_PACKAGE`, `VITE_CALIMERO_VERSION` | — | optional: default the app's package, newest version |

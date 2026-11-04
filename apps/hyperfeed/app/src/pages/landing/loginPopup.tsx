@@ -7,9 +7,9 @@
  * mero-react's `LoginModal` (a node URL, or a wallet enrolment); a 1.0 cluster
  * signs people in with passkeys, so there is nothing to type.
  */
-import { PasskeySignIn } from "@calimero-apps/passkey";
+import { AppListing, PasskeySignIn } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
-import { useSessionApi, describeTarget } from "../../session";
+import { LISTING, useSessionApi, describeTarget } from "../../session";
 
 export interface LoginPopupProps {
   isOpen: boolean;
@@ -31,6 +31,7 @@ export default function LoginPopup({ isOpen, onClose }: LoginPopupProps) {
       >
         <h2 id="hl-signin-title">Open your feed</h2>
         {session.status === "connecting" && <p className="muted">Connecting…</p>}
+        {session.status === "listing" && <AppListing {...LISTING} />}
         {session.status === "unconfigured" && <pre className="err">{session.message}</pre>}
         {session.status === "signed-out" && (
           <>

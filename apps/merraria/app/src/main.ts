@@ -8,7 +8,9 @@ import { generateWorld, spawnPoint } from "./engine/terrain";
 import { AIR, HOTBAR, STARTING_INVENTORY, tileDef } from "./engine/tiles";
 import { TileStore } from "./engine/world";
 import { AppError } from "@calimero-network/mero-js";
-import { appSource, describeError } from "@calimero-apps/connect";
+import { NotServedError, appSource, describeError } from "@calimero-apps/connect";
+import { renderListing } from "@calimero-apps/passkey/listing";
+import "@calimero-apps/passkey/passkey.css";
 import { GameClient, type WorldMeta } from "./net/client";
 import { PACKAGE } from "./net/merraria";
 import { connect, type Connection } from "./net/session";
@@ -99,7 +101,13 @@ async function boot(): Promise<void> {
     try {
       conn = await connect();
     } catch (err) {
-      showFatal(app, `Cannot connect to Calimero: ${describeError(err)}`);
+      if (err instanceof NotServedError) {
+        // A copy no cluster serves (the listing page): the pitch, then where to open the game.
+        await showLandingOnce();
+        showListing(app);
+      } else {
+        showFatal(app, `Cannot connect to Calimero: ${describeError(err)}`);
+      }
       return;
     }
   }
@@ -542,6 +550,31 @@ async function boot(): Promise<void> {
 }
 
 /** Online-only dead end: the world is unreachable — say why, offer the title screen. */
+/**
+ * The listing page (`renderListing` from `@calimero-apps/passkey`): "Open
+ * Merraria" at the copy Calimero Cloud serves, and deploying it there.
+ */
+function showListing(app: HTMLElement): void {
+  const el = document.createElement("div");
+  el.dataset.testid = "listing";
+  el.style.cssText =
+    "position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;" +
+    "background:#0b0e14;font-family:system-ui,-apple-system,sans-serif;padding:24px;" +
+    "--passkey-ink:#ffffff;--passkey-muted:#cfd9e4;--passkey-primary-bg:#4f8cff;" +
+    "--passkey-primary-ink:#ffffff;--passkey-secondary-ink:#cfd9e4;--passkey-radius:9px;";
+  const card = document.createElement("div");
+  card.style.cssText = "width:100%;max-width:420px;";
+  renderListing(card, {
+    name: "Merraria",
+    description: "Terraria-style multiplayer mining sandbox, with no game server.",
+    package: PACKAGE,
+    dir: "merraria",
+    dev: import.meta.env.DEV,
+  });
+  el.append(card);
+  app.appendChild(el);
+}
+
 function showFatal(app: HTMLElement, message: string): void {
   const el = document.createElement("div");
   el.dataset.testid = "fatal-error";

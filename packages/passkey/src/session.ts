@@ -15,12 +15,12 @@ export type Session =
   | { status: "connecting" }
   | { status: "unconfigured"; message: string }
   /**
-   * A copy of the app no cluster serves (its listing page), when the app asks
-   * for it ({@link PasskeySessionOptions.listing}): opened from the console.
-   * `message` is the "open the app from Calimero Cloud" text `unconfigured`
-   * would show.
+   * A copy of the app no cluster serves (its listing page, e.g. a static host
+   * built without `VITE_CALIMERO_CLUSTER`): the app shows `<AppListing>`,
+   * which opens the copy Calimero Cloud serves. `package` is the one the app
+   * passed; `message` says why there is nothing to connect to.
    */
-  | { status: "listing"; console: string; message: string }
+  | { status: "listing"; console: string; message: string; package?: string }
   | { status: "signed-out"; client: CalimeroClient; target: Target }
   | { status: "signed-in"; client: CalimeroClient; target: Target; accountId: string };
 
@@ -81,12 +81,6 @@ export interface PasskeySessionOptions {
    * (`connectTarget`).
    */
   package?: string;
-  /**
-   * Report a listing page (a copy of the app no cluster serves) as
-   * `{ status: "listing" }`, for the app to show its own card. Off, it is
-   * `unconfigured` with the "open the app from Calimero Cloud" message.
-   */
-  listing?: boolean;
 }
 
 /**
@@ -96,7 +90,7 @@ export interface PasskeySessionOptions {
  * with a passkey.
  */
 export function usePasskeySession(app: string, deps: SessionDeps, options: PasskeySessionOptions = {}): SessionApi {
-  const { package: pkg, listing } = options;
+  const { package: pkg } = options;
   const [session, setSession] = useState<Session>({ status: "connecting" });
   const [store, setStore] = useState<SessionStore | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -111,8 +105,8 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
       } catch (e) {
         if (!live) return;
         setSession(
-          listing && e instanceof NotServedError
-            ? { status: "listing", console: e.console, message: describeError(e) }
+          e instanceof NotServedError
+            ? { status: "listing", console: e.console, message: describeError(e), ...(pkg ? { package: pkg } : {}) }
             : { status: "unconfigured", message: describeError(e) },
         );
         return;
@@ -134,7 +128,7 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
     return () => {
       live = false;
     };
-  }, [app, deps, pkg, listing]);
+  }, [app, deps, pkg]);
 
   const ceremony = useCallback(
     async (run: (client: CalimeroClient) => Promise<{ accountId: string }>) => {

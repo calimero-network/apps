@@ -1,8 +1,10 @@
 // Landing page — Minecraft-title-screen style: a real generated world spins
 // blurred in the background (ui/panorama.ts); in front there is only the
 // logo, the title, and the play card. The card follows the session:
-//  1. unconfigured → a production build without its cluster settings says so
-//                    (it never connects anywhere).
+//  1. listing      → a copy no cluster serves (a static host): the shared
+//                    listing card, "Open Mero Blocks" where Calimero Cloud
+//                    serves it. unconfigured → a build that cannot connect
+//                    otherwise says why.
 //  2. signed out   → sign in with a passkey, or create an account. Local
 //                    `merod local` nodes under `vite`, a Calimero Cloud cluster
 //                    in a production build (net/session.ts).
@@ -13,6 +15,8 @@
 
 import type { AppInfo } from "@calimero-network/mero-js";
 import { describeError } from "@calimero-apps/connect";
+import { renderListing } from "@calimero-apps/passkey/listing";
+import "@calimero-apps/passkey/passkey.css";
 
 import {
   defaultDeps,
@@ -37,6 +41,7 @@ import {
   rememberWorld,
   worldSource,
 } from "../net/worlds";
+import { PACKAGE } from "../net/blocks";
 import { showLandingAgain } from "../pages/landing/mount";
 import { deleteWorld } from "../state/persistence";
 import { Panorama } from "./panorama";
@@ -108,6 +113,9 @@ const css = `
 .mbl-btn.green { background: #3f9950; }
 .mbl-btn.primary { background: #4f8cff; }
 .mbl-btn.ghost { background: #6e6e6e; }
+/* The shared listing card (@calimero-apps/passkey), in this launcher's colours. */
+.mbl-listing { --passkey-ink: #fff; --passkey-muted: #cfe3d6; --passkey-primary-bg: #3f9950;
+  --passkey-primary-ink: #fff; --passkey-secondary-ink: #cfe3d6; --passkey-radius: 5px; }
 .mbl-link { display: block; margin: 10px auto 0; background: none; border: none; color: #9fb0c3;
   font-size: 11px; cursor: pointer; text-decoration: underline; }
 .mbl-divider { display: flex; align-items: center; gap: 10px; color: #8fa3ba; font-size: 10px;
@@ -275,7 +283,8 @@ export class Landing {
 
   private renderPlayCard(defaults: { name: string; seed: number }, done: (c: LaunchChoice) => void): void {
     const phase = this.phase;
-    if (phase.status === "unconfigured") this.renderUnconfigured(phase.message);
+    if (phase.status === "listing") this.renderListing();
+    else if (phase.status === "unconfigured") this.renderUnconfigured(phase.message);
     else if (phase.status === "signed-out") this.renderSignIn(phase, defaults, done);
     else this.renderWorldPicker(phase, defaults, done);
     // Remembered as it is typed: the name a player chose should survive a reload.
@@ -300,14 +309,23 @@ export class Landing {
     return Math.abs(Math.floor(Number(raw))) % 4294967296 || fallback;
   }
 
-  // state 1: a production build with no cluster to connect to
+  // state 1: a copy no cluster serves (its listing page): open it where Calimero Cloud serves it
+  private renderListing(): void {
+    renderListing(this.playCardEl(), {
+      name: "Mero Blocks",
+      description: "Minecraft-style multiplayer voxel sandbox, with no game server.",
+      package: PACKAGE,
+      dir: "mero-blocks",
+      dev: import.meta.env.DEV,
+    }, "mbl-listing");
+  }
+
+  // state 1b: a build that cannot connect for another reason
   private renderUnconfigured(message: string): void {
     this.playCardEl().innerHTML = `
       <h3>Not connected</h3>
       <div class="mbl-error" data-testid="unconfigured">${escapeHtml(message)}</div>
-      <div class="mbl-note">This build has no Calimero cluster configured
-        (<code>VITE_CALIMERO_CLUSTER</code>, <code>VITE_CALIMERO_MIN_RELEASE</code>).
-        For local play run <code>pnpm dev:local mero-blocks</code>.</div>
+      ${import.meta.env.DEV ? `<div class="mbl-note">For local play run <code>pnpm dev:local mero-blocks</code>.</div>` : ""}
     `;
   }
 

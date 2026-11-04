@@ -122,9 +122,15 @@ function deps(client: ReturnType<typeof fakeClient>["client"], env: SessionDeps[
 }
 
 describe("App", () => {
-  it("says why a production build cannot connect", async () => {
+  it("shows the listing on a production copy no cluster serves", async () => {
     render(<App deps={deps(fakeClient().client, { DEV: false })} storage={new Memory()} />);
-    await screen.findByText(/VITE_CALIMERO_CLUSTER is not set/);
+    const open = await screen.findByRole("link", { name: "Open Mero Standup" });
+    // The node-served copy: mdma's `app_host.app_url("com.calimero.mero-standup")`.
+    expect(open.getAttribute("href")).toBe("https://qhccatngyvytjdczbj4ffuikquvmcffnf7kwju6uyr3cmp652uxa.apps.calimero.network/");
+    expect(screen.getByRole("link", { name: "Deploy your own on Calimero Cloud" }).getAttribute("href")).toBe(
+      "https://cloud.calimero.network/v2",
+    );
+    expect(screen.queryByText(/VITE_CALIMERO_CLUSTER/)).toBeNull();
   });
 
   it("signs up with a passkey, starts a team from the dev bundle, names it, and posts an update", async () => {

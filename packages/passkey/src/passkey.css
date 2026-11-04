@@ -144,3 +144,82 @@
   .cp-passkey__secondary { transition: none; }
   .cp-passkey__spinner { animation-duration: 1.6s; }
 }
+
+/*
+ * The listing page (`<AppListing>`, `renderListing`): a copy of the app no
+ * Calimero Cloud cluster serves. Same tokens as the sign-in control.
+ */
+.cp-listing {
+  --_ink: var(--passkey-ink, var(--glass-ink, #0e1222));
+  --_muted: var(--passkey-muted, var(--glass-muted, #6f7589));
+  --_line: var(--passkey-line, var(--glass-line-strong, rgba(14, 18, 34, 0.14)));
+  --_primary-bg: var(--passkey-primary-bg, var(--glass-ink, #0e1222));
+  --_primary-ink: var(--passkey-primary-ink, var(--glass-on-ink, #ffffff));
+  --_secondary-ink: var(--passkey-secondary-ink, var(--glass-ink, #0e1222));
+  --_focus: var(--passkey-focus, var(--glass-accent-solid, #3e63f5));
+  --_radius: var(--passkey-radius, 999px);
+
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  color: var(--_ink);
+  font-family: var(--passkey-font, inherit);
+  text-align: left;
+}
+.cp-listing__title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--_ink);
+}
+.cp-listing__description {
+  margin: 0 0 4px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--_muted);
+}
+.cp-listing__open {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 46px;
+  padding: 0 18px;
+  border-radius: var(--_radius);
+  background: var(--_primary-bg);
+  color: var(--_primary-ink);
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: 0 10px 24px -14px rgba(14, 18, 34, 0.55);
+  transition: transform 0.12s ease, box-shadow 0.15s ease;
+}
+.cp-listing__open:hover { transform: translateY(-1px); box-shadow: 0 14px 28px -14px rgba(14, 18, 34, 0.6); }
+.cp-listing__note,
+.cp-listing__dev {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--_muted);
+  text-align: center;
+}
+.cp-listing__deploy {
+  align-self: center;
+  margin-top: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--_secondary-ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.cp-listing__open:focus-visible,
+.cp-listing__deploy:focus-visible {
+  outline: 2px solid var(--_focus);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cp-listing__open { transition: none; }
+}

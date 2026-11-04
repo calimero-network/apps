@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { CalimeroError } from '@calimero-network/mero-js';
 import { appSource, targetKey } from '@calimero-apps/connect';
+import { AppListing } from '@calimero-apps/passkey';
 import {
   PACKAGE,
   isMatchFinishedError,
@@ -25,7 +26,7 @@ import type { AllGameEvents } from '../../types/events';
 import { useGameSubscriptions } from '../../hooks/useGameSubscriptions';
 import { useBattleshipsLobby } from '../../hooks/useBattleshipsLobby';
 import { dropInvite, pendingInvite } from '../../lobbies';
-import { describeTarget, useSessionApi } from '../../session';
+import { LISTING, describeTarget, useSessionApi } from '../../session';
 import { SHIP_TARGETS, validateFleetPayload } from './config';
 
 import NavBar from '../../components/NavBar';
@@ -779,6 +780,7 @@ export default function MatchPage() {
         <div className="page-shell">
           <div className="page-content">
             {session.status === 'connecting' && <span className="mono-sm">Connecting…</span>}
+            {session.status === 'listing' && <AppListing {...LISTING} />}
             {session.status === 'unconfigured' && (
               <div className="lobby-banner-error" role="alert">
                 <span className="lobby-banner-error-glyph" aria-hidden>!</span>

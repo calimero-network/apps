@@ -1,8 +1,8 @@
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
-import { PasskeySignIn } from "@calimero-apps/passkey";
+import { AppListing, PasskeySignIn } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
-import { describeTarget } from "../session";
+import { LISTING, describeTarget } from "../session";
 import { useSessionApi } from "../sessionContext";
 import { pendingInvite } from "../utils/inviteLink";
 import styles from "./InviteModal.module.css";
@@ -61,6 +61,7 @@ export default function SignInModal({ open, onClose }: { open: boolean; onClose:
         </p>
 
         {api.session.status === "connecting" && <p className={styles.muted}>Connecting…</p>}
+        {api.session.status === "listing" && <AppListing {...LISTING} />}
         {api.session.status === "unconfigured" && (
           <p className={styles.error} role="alert">
             {api.session.message}

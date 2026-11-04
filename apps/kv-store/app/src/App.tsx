@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CalimeroError, type AppInfo, type CalimeroClient } from "@calimero-network/mero-js";
 import { appSource, describeError, type KeyValueStorage } from "@calimero-apps/connect";
+import { AppListing } from "@calimero-apps/passkey";
 
 import { InviteCard } from "./InviteCard";
 import { KvPanel } from "./KvPanel";
 import { PACKAGE, kvStore } from "./kvStore";
 import { SignIn } from "./SignIn";
 import { StorePicker } from "./StorePicker";
-import { defaultDeps, describeTarget, useSession, type SessionDeps } from "./session";
+import { LISTING, defaultDeps, describeTarget, useSession, type SessionDeps } from "./session";
 import { dropInvite, pendingInvite, selectionKey } from "./stores";
 
 type Opened = Pick<AppInfo, "appId" | "name" | "org">;
@@ -142,12 +143,7 @@ export function App({
 
       {session.status === "listing" && (
         <div className="card">
-          <h2>Open KV Store from Calimero Cloud</h2>
-          <p>
-            This is kv-store&apos;s listing page, not the app: a Calimero Cloud node signs you in only on
-            the copy of the app its cluster serves. Deploy kv-store and open it from{" "}
-            <a href={session.console}>Calimero Cloud</a>.
-          </p>
+          <AppListing {...LISTING} />
         </div>
       )}
 

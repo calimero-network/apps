@@ -89,9 +89,15 @@ function deps(client: ReturnType<typeof fakeClient>, env: SessionDeps["env"] = D
 const LOCAL: Target = resolveTarget(DEV_ENV);
 
 describe("App", () => {
-  it("says why a production build cannot connect", async () => {
+  it("shows the listing on a production copy no cluster serves", async () => {
     render(<App deps={deps(fakeClient(), { DEV: false })} storage={new Memory()} />);
-    await screen.findByText(/VITE_CALIMERO_CLUSTER is not set/);
+    const open = await screen.findByRole("link", { name: "Open Mero Vote" });
+    // The node-served copy: mdma's `app_host.app_url("com.calimero.mero-vote")`.
+    expect(open.getAttribute("href")).toBe("https://qpe2mqkuj625tmvqshuqe4n5mz5plntrdqnltdbahtprjk42hsta.apps.calimero.network/");
+    expect(screen.getByRole("link", { name: "Deploy your own on Calimero Cloud" }).getAttribute("href")).toBe(
+      "https://cloud.calimero.network/v2",
+    );
+    expect(screen.queryByText(/VITE_CALIMERO_CLUSTER/)).toBeNull();
   });
 
   it("signs up with a passkey, creates a voting group from the dev bundle, shows its polls and invites", async () => {

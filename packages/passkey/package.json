@@ -6,6 +6,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./listing": "./src/listing.ts",
     "./passkey.css": "./src/passkey.css"
   },
   "types": "./src/index.ts",

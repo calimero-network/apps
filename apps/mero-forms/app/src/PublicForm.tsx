@@ -25,7 +25,8 @@ export function PublicForm() {
   // The cluster this frontend talks to.
   const where =
     api.session.status === "signed-out" || api.session.status === "signed-in" ? api.session.target : null;
-  const unconfigured = api.session.status === "unconfigured" ? api.session.message : null;
+  const unconfigured =
+    api.session.status === "unconfigured" || api.session.status === "listing" ? api.session.message : null;
   const [forms, setForms] = useState<FormsClient | null>(null);
   const [linkId, setLinkId] = useState<string | null>(null);
   const [form, setForm] = useState<LinkFormView | null>(null);

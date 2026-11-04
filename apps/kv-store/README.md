@@ -107,8 +107,9 @@ cluster's nodes run at publish time, from `scripts/cluster-min-release.py`) and
 `CALIMERO_CLUSTER` (default `eu-shared-1` for that derivation). On a page the cluster serves, a build without a cluster
 connects to the nodes serving it; on any other page it asks the directory
 where `com.calimero.kv-store` runs and connects to its primary cluster, and
-when no cluster runs it, says it is the listing page and links to Calimero
-Cloud, where the app is deployed and opened.
+when no cluster runs it, shows the listing page (`<AppListing>` from
+`@calimero-apps/passkey`): "Open KV Store" at the copy Calimero Cloud serves,
+`https://{label}.apps.calimero.network/`, and a link to deploy it there.
 
 The production frontend is the one **packed into the `.mpk`** (`frontend-dir`),
 which the cluster serves from the package's own origin: a Cloud node trusts

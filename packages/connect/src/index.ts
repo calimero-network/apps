@@ -15,6 +15,7 @@ export {
   type ConnectOptions,
   type Target,
 } from "./target";
+export { APPS_DOMAIN, CLOUD_DEPLOY, appLabel, appUrl } from "./appHost";
 export {
   SessionStore,
   createClient,

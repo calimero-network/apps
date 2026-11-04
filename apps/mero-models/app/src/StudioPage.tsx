@@ -7,9 +7,9 @@ import { ScenePicker } from "./ScenePicker";
 import { PACKAGE } from "./meroModels";
 import { SceneContext, type OpenedScene, type SceneSession } from "./scene";
 import { dropInvite, pendingInvite, readSelection, selectionKey, writeSelection } from "./scenes";
-import { PasskeySignIn } from "@calimero-apps/passkey";
+import { AppListing, PasskeySignIn } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
-import { describeTarget, type SessionApi, type SessionDeps } from "./session";
+import { LISTING, describeTarget, type SessionApi, type SessionDeps } from "./session";
 
 /** Where this frontend's routes and assets live: `/`, or under the node's `/{version}/`. */
 export const base = () => nodeBasename(new URL(window.location.href), "/");
@@ -124,8 +124,14 @@ export function StudioPage({
         <TopBar onHome={home} />
         <section className="connect">
           <div className="connect-card">
-            <h1>Not configured</h1>
-            <pre className="err">{session.message}</pre>
+            {session.status === "listing" ? (
+              <AppListing {...LISTING} />
+            ) : (
+              <>
+                <h1>Not configured</h1>
+                <pre className="err">{session.message}</pre>
+              </>
+            )}
           </div>
         </section>
       </div>

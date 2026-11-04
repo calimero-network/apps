@@ -1,4 +1,10 @@
-import { passkeyDeps, usePasskeySession, type SessionApi, type SessionDeps } from "@calimero-apps/passkey";
+import {
+  passkeyDeps,
+  usePasskeySession,
+  type ListingProps,
+  type SessionApi,
+  type SessionDeps,
+} from "@calimero-apps/passkey";
 
 export { describeTarget, type Session, type SessionApi, type SessionDeps } from "@calimero-apps/passkey";
 
@@ -9,6 +15,15 @@ export const APP = "scaffolding-e2e";
 export const PACKAGE = "com.calimero.scaffolding-e2e";
 
 export const defaultDeps: SessionDeps = passkeyDeps(import.meta.env);
+
+/** What this app's listing page (`<AppListing>`) shows on a copy no Calimero Cloud cluster serves. */
+export const LISTING: ListingProps = {
+  name: "Scaffolding E2E",
+  description: "The Calimero full-stack scaffold, with an interactive test suite.",
+  package: PACKAGE,
+  dir: "scaffolding-e2e",
+  dev: import.meta.env.DEV,
+};
 
 /** The shared passkey session (`@calimero-apps/passkey`) for this app. */
 export function useSession(deps: SessionDeps = defaultDeps): SessionApi {

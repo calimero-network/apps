@@ -1,8 +1,8 @@
 import { useRef } from 'react';
-import { PasskeySignIn } from '@calimero-apps/passkey';
+import { AppListing, PasskeySignIn } from '@calimero-apps/passkey';
 import '@calimero-apps/passkey/passkey.css';
 
-import { useCalimero } from '../calimero';
+import { LISTING, useCalimero } from '../calimero';
 import { useDialogOpen } from '../hooks/useDialogOpen';
 import styles from './InviteModal.module.css';
 import shell from '../styles/shell.module.css';
@@ -44,7 +44,9 @@ export default function SignInDialog({
             <CloseIcon size={16} />
           </button>
         </div>
-        {api.status === 'unconfigured' ? (
+        {api.status === 'listing' ? (
+          <AppListing {...LISTING} />
+        ) : api.status === 'unconfigured' ? (
           <p className={shell.error} data-testid="sign-in-unconfigured">
             {api.message}
           </p>

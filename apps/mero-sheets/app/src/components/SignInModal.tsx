@@ -5,12 +5,12 @@
  * Cloud cluster in production) and the account is a passkey.
  */
 import { useEffect } from 'react';
-import { PasskeySignIn } from '@calimero-apps/passkey';
+import { AppListing, PasskeySignIn } from '@calimero-apps/passkey';
 import '@calimero-apps/passkey/passkey.css';
 import styled from 'styled-components';
 import { C } from '../theme';
 import { closeButton, dialogSurface, overlay, primaryPill, secondaryPill } from './glass';
-import { describeTarget } from '../session';
+import { LISTING, describeTarget } from '../session';
 import { useSessionApi } from '../sessionContext';
 import { pendingInvite } from '../lib/workspaces';
 
@@ -58,6 +58,7 @@ export default function SignInModal({ open, onClose }: { open: boolean; onClose:
         </Hint>
 
         {api.session.status === 'connecting' && <Hint>Connecting…</Hint>}
+        {api.session.status === 'listing' && <AppListing {...LISTING} />}
         {api.session.status === 'unconfigured' && <Err role="alert">{api.session.message}</Err>}
 
         {api.session.status === 'signed-out' && <PasskeySignIn api={api} />}

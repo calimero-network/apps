@@ -119,7 +119,9 @@ export default function BookPage() {
     api.session.status === "signed-out" || api.session.status === "signed-in"
       ? api.session.target
       : null;
-  const unconfigured = api.session.status === "unconfigured" ? api.session.message : null;
+  // A listing copy (no cluster serves it) cannot book either: its message says to open the app from Calimero Cloud.
+  const unconfigured =
+    api.session.status === "unconfigured" || api.session.status === "listing" ? api.session.message : null;
   const [cal, setCal] = useState<Calendar | null>(null);
   const [page, setPage] = useState<BookingPage | null>(null);
   const [error, setError] = useState<string | null>(unconfigured);

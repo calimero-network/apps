@@ -456,6 +456,9 @@ importers:
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
+      '@calimero-apps/passkey':
+        specifier: workspace:*
+        version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -2399,6 +2402,9 @@ importers:
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
+      '@calimero-apps/passkey':
+        specifier: workspace:*
+        version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
