@@ -7,9 +7,9 @@ through mero-js's `CalimeroClient`.
 
 ```ts
 import { browserPasskey } from "@calimero-network/mero-js";
-import { appSource, createClient, resolveTarget, SessionStore, withServedNodes } from "@calimero-apps/connect";
+import { appSource, connectTarget, createClient, SessionStore } from "@calimero-apps/connect";
 
-const target = await withServedNodes(resolveTarget(import.meta.env));
+const target = await connectTarget(import.meta.env, { app: "my-app" });
 const client = await createClient(target);
 const sessions = new SessionStore("my-app", target);
 if (!sessions.restore(client)) await client.signIn(browserPasskey());
@@ -20,7 +20,7 @@ const app = await client.createApp("my-app", appSource(import.meta.env, "com.cal
 | | local | cloud | node |
 |---|---|---|---|
 | chosen when | `vite` (`DEV`), or `VITE_CALIMERO_TARGET=local` | `vite build`, or `VITE_CALIMERO_TARGET=cloud` | `VITE_CALIMERO_TARGET=node` |
-| nodes | `VITE_CALIMERO_NODES`, default `127.0.0.1:2501-2503` | `VITE_CALIMERO_CLUSTER` (required) via the node directory; `VITE_CALIMERO_ZONE`, `VITE_CALIMERO_DIRECTORY` | `VITE_CALIMERO_NODES` (required, `https`), no directory |
+| nodes | `VITE_CALIMERO_NODES`, default `127.0.0.1:2501-2503` | `VITE_CALIMERO_CLUSTER` via the node directory (required off a served page; on one, the cluster serving it); `VITE_CALIMERO_ZONE`, `VITE_CALIMERO_DIRECTORY` | `VITE_CALIMERO_NODES` (required, `https`), no directory |
 | trust | mock quotes (`allowMock`) | signed mero-tee release `>= VITE_CALIMERO_MIN_RELEASE` (required) | the same as cloud |
 | instances from | `VITE_CALIMERO_BUNDLE` (written by `pnpm dev:local`) | the package (`VITE_CALIMERO_PACKAGE`, `VITE_CALIMERO_VERSION`) | the same as cloud |
 
@@ -33,8 +33,17 @@ it unchanged.
 
 On a page the cluster serves from the app's bundle (the production frontend:
 the only origin a Cloud node trusts for an app's passkey ceremonies besides its
-own), `withServedNodes` takes the cluster's API URLs from
+own), `connectTarget` takes the cluster's API URLs from
 `/.well-known/calimero.json` instead of the directory, which that page's CSP
-does not allow. A misconfigured production build throws `ConfigError` instead of connecting
-anywhere. Sessions are stored per app and per target. See
+does not allow. That frontend is built once and served by every cluster it is
+deployed to, so it needs no `VITE_CALIMERO_CLUSTER`: on a served page a build
+without one connects to the nodes that serve it, keyed by the page's host
+(`{label}.{apps_domain}`, one per package and cluster). `VITE_CALIMERO_MIN_RELEASE`
+is required everywhere: it is the attestation floor. A production build without
+a cluster on a page no cluster serves (a static copy: the app's listing page)
+throws `NotServedError` (a `ConfigError`), which an app shows as "open the app
+from Calimero Cloud" with a link to `CLOUD_CONSOLE`. Any other misconfigured
+production build throws `ConfigError` instead of connecting anywhere.
+`resolveTarget` and `withServedNodes`, which `connectTarget` is built on, are
+still exported for code that only reads the build's environment. Sessions are stored per app and per target. See
 [docs/COMPONENT-APPS.md](../../docs/COMPONENT-APPS.md).

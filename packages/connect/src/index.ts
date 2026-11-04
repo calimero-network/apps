@@ -1,7 +1,10 @@
 export {
+  CLOUD_CONSOLE,
   ConfigError,
   LOCAL_NODES,
+  NotServedError,
   appSource,
+  connectTarget,
   policyFor,
   resolveTarget,
   servedNodes,
@@ -9,6 +12,7 @@ export {
   withServedNodes,
   type AppSource,
   type ConnectEnv,
+  type ConnectOptions,
   type Target,
 } from "./target";
 export {

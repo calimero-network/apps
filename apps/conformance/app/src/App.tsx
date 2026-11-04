@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { describeError, resolveTarget, withServedNodes, type Target } from "@calimero-apps/connect";
+import { describeError, connectTarget, type Target } from "@calimero-apps/connect";
 
 import { clientAt, softPasskey } from "./conformance/env";
 import type { Row } from "./conformance/types";
@@ -38,7 +38,7 @@ export function App({ deps = defaultDeps }: { deps?: AppDeps }) {
   useEffect(() => {
     let live = true;
     Promise.resolve()
-      .then(() => withServedNodes(resolveTarget(deps.env), deps.servedNodes))
+      .then(() => connectTarget(deps.env, { servedNodes: deps.servedNodes }))
       .then((target) => live && setState({ status: "ready", target }))
       .catch((e: unknown) => live && setState({ status: "unconfigured", message: describeError(e) }));
     return () => {

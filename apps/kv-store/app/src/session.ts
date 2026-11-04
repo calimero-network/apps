@@ -4,8 +4,8 @@ import {
   SessionStore,
   createClient,
   describeError,
-  resolveTarget,
-  withServedNodes,
+  NotServedError,
+  connectTarget,
   type ConnectEnv,
   type KeyValueStorage,
   type Target,
@@ -17,6 +17,8 @@ export const APP = "kv-store";
 export type Session =
   | { status: "connecting" }
   | { status: "unconfigured"; message: string }
+  /** A copy of the app no cluster serves (its listing page): opened from the console. */
+  | { status: "listing"; console: string }
   | { status: "signed-out"; client: CalimeroClient; target: Target }
   | { status: "signed-in"; client: CalimeroClient; target: Target; accountId: string };
 
@@ -62,9 +64,14 @@ export function useSession(deps: SessionDeps = defaultDeps): SessionApi {
     (async () => {
       let target: Target;
       try {
-        target = await withServedNodes(resolveTarget(deps.env), deps.servedNodes);
+        target = await connectTarget(deps.env, { servedNodes: deps.servedNodes, app: APP });
       } catch (e) {
-        if (live) setSession({ status: "unconfigured", message: describeError(e) });
+        if (!live) return;
+        setSession(
+          e instanceof NotServedError
+            ? { status: "listing", console: e.console }
+            : { status: "unconfigured", message: describeError(e) },
+        );
         return;
       }
       try {

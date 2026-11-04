@@ -2,10 +2,13 @@ import { AppError, CalimeroClient, LoginRequired, type CalimeroSession } from "@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  CLOUD_CONSOLE,
   ConfigError,
   LOCAL_NODES,
+  NotServedError,
   SessionStore,
   appSource,
+  connectTarget,
   createClient,
   describeError,
   policyFor,
@@ -247,5 +250,57 @@ describe("served frontends", () => {
     expect(connect).not.toHaveBeenCalled();
     expect(client.nodes).toEqual(["https://n1.example", "https://n2.example"]);
     connect.mockRestore();
+  });
+});
+
+describe("connectTarget", () => {
+  const SERVED = ["https://n1.example", "https://n2.example"];
+  const HOST = "abc.apps.example";
+  const FLOOR = { VITE_CALIMERO_MIN_RELEASE: "2.3.136" };
+
+  it("connects a served page to the nodes that serve it with no VITE_CALIMERO_CLUSTER", async () => {
+    const target = await connectTarget(FLOOR, { servedNodes: async () => SERVED, host: HOST });
+    expect(target).toEqual({ kind: "cloud", cluster: HOST, nodes: SERVED, minReleaseVersion: "2.3.136" });
+    expect(targetKey(target)).toBe(`cloud:${HOST}`);
+    expect(policyFor(target)).toEqual({ release: { minReleaseVersion: "2.3.136" } });
+
+    const connect = vi.spyOn(CalimeroClient, "connect");
+    const client = await createClient(target);
+    expect(connect).not.toHaveBeenCalled();
+    expect(client.nodes).toEqual(SERVED);
+    connect.mockRestore();
+  });
+
+  it("still needs the attestation floor on a served page", async () => {
+    await expect(connectTarget({}, { servedNodes: async () => SERVED, host: HOST })).rejects.toThrow(
+      /VITE_CALIMERO_MIN_RELEASE is not set/,
+    );
+  });
+
+  it("tells a page no cluster serves, built without a cluster, to open the app from Calimero Cloud", async () => {
+    const failure = connectTarget(FLOOR, { servedNodes: async () => null, app: "kv-store" });
+    await expect(failure).rejects.toBeInstanceOf(NotServedError);
+    await expect(failure).rejects.toBeInstanceOf(ConfigError);
+    await expect(failure).rejects.toThrow(/kv-store's listing page; open the app from Calimero Cloud/);
+    await expect(failure).rejects.toThrow(CLOUD_CONSOLE);
+    await expect(failure).rejects.toThrow(/VITE_CALIMERO_CLUSTER is not set/);
+    expect(CLOUD_CONSOLE).toBe("https://cloud.calimero.network");
+  });
+
+  it("keeps every other path as resolveTarget and withServedNodes had it", async () => {
+    const none = async () => null;
+    expect(await connectTarget({ DEV: true }, { servedNodes: none })).toEqual(LOCAL);
+    expect(await connectTarget({ ...CLOUD }, { servedNodes: none })).toEqual(resolveTarget({ ...CLOUD }));
+    expect(await connectTarget({ ...CLOUD }, { servedNodes: async () => SERVED, host: HOST })).toEqual({
+      ...resolveTarget({ ...CLOUD }),
+      nodes: SERVED,
+    });
+    await expect(connectTarget({ VITE_CALIMERO_TARGET: "moon" }, { servedNodes: none })).rejects.toThrow(
+      /VITE_CALIMERO_TARGET/,
+    );
+    // The served list is not even asked for when the build names its cluster or runs locally.
+    const find = vi.fn(async () => SERVED);
+    await connectTarget({ DEV: true }, { servedNodes: find });
+    expect(find).not.toHaveBeenCalled();
   });
 });

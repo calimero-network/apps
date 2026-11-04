@@ -11,8 +11,7 @@ import {
   SessionStore,
   createClient,
   describeError,
-  resolveTarget,
-  withServedNodes,
+  connectTarget,
   type ConnectEnv,
   type KeyValueStorage,
   type Target,
@@ -53,7 +52,7 @@ export const defaultDeps: SessionDeps = {
 export async function connect(deps: SessionDeps = defaultDeps): Promise<Phase> {
   let target: Target;
   try {
-    target = await withServedNodes(resolveTarget(deps.env), deps.servedNodes);
+    target = await connectTarget(deps.env, { servedNodes: deps.servedNodes, app: APP });
   } catch (e) {
     return { status: "unconfigured", message: describeError(e) };
   }

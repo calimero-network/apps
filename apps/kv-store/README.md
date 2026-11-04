@@ -93,13 +93,20 @@ checks against `logic/res/abi.json`.
 
 ## Production
 
-`vite build` connects to a Calimero Cloud cluster by name, and refuses to start
-without two variables set where the bundle's frontend is built:
+`vite build` connects to Calimero Cloud, and refuses to start without the
+attestation floor set where the bundle's frontend is built:
 
 ```
-VITE_CALIMERO_CLUSTER=<cluster name in the cloud's node directory>
 VITE_CALIMERO_MIN_RELEASE=<lowest mero-tee release a node may run>
+VITE_CALIMERO_CLUSTER=<optional: a cluster name in the cloud's node directory>
 ```
+
+The publish workflow passes them from the repository variables
+`CALIMERO_MIN_RELEASE` (required: the publish fails without it) and
+`CALIMERO_CLUSTER`. On a page the cluster serves, a build without a cluster
+connects to the nodes serving it; anywhere else (the Vercel listing copy) it
+says it is the listing page and links to Calimero Cloud, where the app is
+deployed and opened.
 
 The production frontend is the one **packed into the `.mpk`** (`frontend-dir`),
 which the cluster serves from the package's own origin: a Cloud node trusts

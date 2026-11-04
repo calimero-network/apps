@@ -140,6 +140,17 @@ export function App({
         </div>
       )}
 
+      {session.status === "listing" && (
+        <div className="card">
+          <h2>Open KV Store from Calimero Cloud</h2>
+          <p>
+            This is kv-store&apos;s listing page, not the app: a Calimero Cloud node signs you in only on
+            the copy of the app its cluster serves. Deploy kv-store and open it from{" "}
+            <a href={session.console}>Calimero Cloud</a>.
+          </p>
+        </div>
+      )}
+
       {session.status === "unconfigured" && (
         <div className="card">
           <h2>Cannot connect</h2>

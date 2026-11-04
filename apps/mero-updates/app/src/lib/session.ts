@@ -4,8 +4,7 @@ import {
   SessionStore,
   createClient,
   describeError,
-  resolveTarget,
-  withServedNodes,
+  connectTarget,
   type ConnectEnv,
   type KeyValueStorage,
   type Target,
@@ -62,7 +61,7 @@ export function useSession(deps: SessionDeps = defaultDeps): SessionApi {
     (async () => {
       let target: Target;
       try {
-        target = await withServedNodes(resolveTarget(deps.env), deps.servedNodes);
+        target = await connectTarget(deps.env, { servedNodes: deps.servedNodes, app: APP_NAME });
       } catch (e) {
         if (live) setSession({ status: "unconfigured", message: describeError(e) });
         return;

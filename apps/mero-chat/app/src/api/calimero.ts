@@ -25,8 +25,7 @@ import {
   appSource,
   createClient,
   describeError,
-  resolveTarget,
-  withServedNodes,
+  connectTarget,
   type AppSource,
   type Target,
 } from "@calimero-apps/connect";
@@ -93,7 +92,7 @@ export function startCalimero(): Promise<void> {
   if (started) return started;
   started = (async () => {
     try {
-      target = await withServedNodes(resolveTarget(import.meta.env));
+      target = await connectTarget(import.meta.env, { app: APP });
       client = await createClient(target);
       sessions = new SessionStore(APP, target);
       if (sessions.restore(client) && client.session) {

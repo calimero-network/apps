@@ -103,13 +103,53 @@ function urls(list: string): string[] {
   return nodes;
 }
 
-/** Local nodes in development (`DEV`), the cloud cluster otherwise. */
-export function resolveTarget(env: ConnectEnv): Target {
+/** Where Calimero Cloud's console is: where a person deploys and opens an app. */
+export const CLOUD_CONSOLE = "https://cloud.calimero.network";
+
+/**
+ * A production build with no cluster, on a page no cluster serves: a static
+ * copy of the app (its listing page), not the app. A Cloud node trusts passkey
+ * ceremonies only from the frontends it serves, so the app is opened from the
+ * console, at the cluster's own copy.
+ */
+export class NotServedError extends ConfigError {
+  readonly console = CLOUD_CONSOLE;
+
+  constructor(readonly app?: string) {
+    super(
+      `This is ${app ? `${app}'s` : "the app's"} listing page; open the app from Calimero Cloud: ${CLOUD_CONSOLE}` +
+        " (VITE_CALIMERO_CLUSTER is not set and no Calimero Cloud cluster serves this page)",
+    );
+    this.name = "NotServedError";
+  }
+}
+
+function targetKind(env: ConnectEnv): "local" | "cloud" | "node" {
   const asked = text(env.VITE_CALIMERO_TARGET);
   if (asked !== undefined && asked !== "local" && asked !== "cloud" && asked !== "node") {
     throw new ConfigError(`VITE_CALIMERO_TARGET is ${JSON.stringify(asked)}; use "local", "cloud" or "node"`);
   }
-  const kind = asked ?? (env.DEV ? "local" : "cloud");
+  return asked ?? (env.DEV ? "local" : "cloud");
+}
+
+function minRelease(env: ConnectEnv): string {
+  const minReleaseVersion = text(env.VITE_CALIMERO_MIN_RELEASE);
+  if (!minReleaseVersion) {
+    throw new ConfigError(
+      "VITE_CALIMERO_MIN_RELEASE is not set: the lowest mero-tee release a cloud node may run",
+    );
+  }
+  return minReleaseVersion;
+}
+
+/**
+ * Local nodes in development (`DEV`), the cloud cluster otherwise. Synchronous
+ * and from the build's environment alone, so a production build must name its
+ * cluster here; the app's session code uses {@link connectTarget}, which also
+ * connects a page the cluster serves without one.
+ */
+export function resolveTarget(env: ConnectEnv): Target {
+  const kind = targetKind(env);
   if (kind === "local") {
     const given = text(env.VITE_CALIMERO_NODES);
     const nodes = given ? urls(given) : [...LOCAL_NODES];
@@ -142,12 +182,7 @@ export function resolveTarget(env: ConnectEnv): Target {
       "VITE_CALIMERO_CLUSTER is not set: a production build connects to a Calimero Cloud cluster by name",
     );
   }
-  const minReleaseVersion = text(env.VITE_CALIMERO_MIN_RELEASE);
-  if (!minReleaseVersion) {
-    throw new ConfigError(
-      "VITE_CALIMERO_MIN_RELEASE is not set: the lowest mero-tee release a cloud node may run",
-    );
-  }
+  const minReleaseVersion = minRelease(env);
   const zone = text(env.VITE_CALIMERO_ZONE);
   const directory = text(env.VITE_CALIMERO_DIRECTORY);
   return {
@@ -230,4 +265,35 @@ export async function withServedNodes(
   if (target.kind !== "cloud" || target.nodes) return target;
   const nodes = await find();
   return nodes ? { ...target, nodes } : target;
+}
+
+export interface ConnectOptions {
+  /** The cluster's node list when this page is served by it ({@link servedNodes}; fakes in tests). */
+  servedNodes?: () => Promise<string[] | null>;
+  /** The app's name, for the message a listing page shows. */
+  app?: string;
+  /** This page's host: the served target's name (default `location.host`). */
+  host?: string;
+}
+
+/**
+ * The target the app's session connects to: {@link resolveTarget} with the
+ * served node list ({@link withServedNodes}), and, for a production build that
+ * names no cluster, the cluster that serves this page. A frontend packed into a
+ * bundle is served by every cluster it is deployed to, at
+ * `{label}.{apps_domain}`, so it cannot know a cluster's name when it is built;
+ * it is keyed by the page's host, which is one per package and cluster. The
+ * attestation floor (`VITE_CALIMERO_MIN_RELEASE`) is still required. Off a
+ * served page such a build throws {@link NotServedError}.
+ */
+export async function connectTarget(env: ConnectEnv, options: ConnectOptions = {}): Promise<Target> {
+  const find = options.servedNodes ?? (() => servedNodes());
+  if (targetKind(env) !== "cloud" || text(env.VITE_CALIMERO_CLUSTER)) {
+    return withServedNodes(resolveTarget(env), find);
+  }
+  const nodes = await find();
+  if (!nodes) throw new NotServedError(options.app);
+  const minReleaseVersion = minRelease(env);
+  const host = text(options.host ?? globalThis.location?.host) ?? new URL(nodes[0] as string).host;
+  return { kind: "cloud", cluster: host, nodes, minReleaseVersion };
 }
