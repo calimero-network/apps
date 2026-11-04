@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CalimeroError } from "@calimero-network/mero-js";
 import { describeError } from "@calimero-apps/connect";
+import { PasskeySignIn } from "@calimero-apps/passkey";
+import "@calimero-apps/passkey/passkey.css";
 
 import { dropInvite, joinedOrg, pendingInvite, type PendingInvite } from "./lib/orgs";
 import { setActive } from "./lib/workspaceStore";
@@ -32,7 +34,6 @@ function useDialog(ref: React.RefObject<HTMLDialogElement | null>, open: boolean
 export function SignInModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { api } = useSessionApi();
   const ref = useRef<HTMLDialogElement | null>(null);
-  const [name, setName] = useState("");
   const invited = pendingInvite() !== null;
   useDialog(ref, open);
 
@@ -60,46 +61,7 @@ export function SignInModal({ open, onClose }: { open: boolean; onClose: () => v
             {api.session.message}
           </p>
         )}
-        {api.session.status === "signed-out" && (
-          <>
-            <button
-              type="button"
-              data-testid="signin-passkey"
-              disabled={api.busy}
-              onClick={() => void api.signIn()}
-            >
-              {api.busy ? "Waiting for your passkey…" : "Sign in with a passkey"}
-            </button>
-            <label className="empty" htmlFor="signup-name">
-              New here? Your name
-            </label>
-            <input
-              id="signup-name"
-              data-testid="signup-name"
-              value={name}
-              maxLength={64}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && name.trim()) void api.signUp(name.trim());
-              }}
-              disabled={api.busy}
-            />
-            <button
-              type="button"
-              className="ghost"
-              data-testid="signup-passkey"
-              disabled={api.busy || !name.trim()}
-              onClick={() => void api.signUp(name.trim())}
-            >
-              Create an account
-            </button>
-          </>
-        )}
-        {api.error && (
-          <pre className="err" role="alert" data-testid="signin-error">
-            {api.error}
-          </pre>
-        )}
+        {api.session.status === "signed-out" && <PasskeySignIn api={api} />}
         <button type="button" className="ghost" onClick={onClose} disabled={api.busy}>
           Close
         </button>

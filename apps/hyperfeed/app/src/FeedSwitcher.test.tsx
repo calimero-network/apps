@@ -41,6 +41,8 @@ const api: SessionApi = {
   store: null,
   error: null,
   busy: false,
+  env: { DEV: true },
+  passkey: () => ({}) as never,
   signIn: async () => undefined,
   signUp: async () => undefined,
   signOut: async () => undefined,

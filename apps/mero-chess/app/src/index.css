@@ -774,3 +774,6 @@ body {
   .promotion-choice { width: 64px; }
   .promotion-choice .piece { width: 46px; height: 46px; }
 }
+
+/* The shared passkey control (@calimero-apps/passkey), centred in the card. */
+.connect-passkey { max-width: 340px; margin: 6px auto 0; }

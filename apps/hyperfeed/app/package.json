@@ -16,6 +16,7 @@
   "dependencies": {
     "@calimero-apps/connect": "workspace:*",
     "@calimero-apps/glass": "workspace:*",
+    "@calimero-apps/passkey": "workspace:*",
     "@calimero-network/mero-icons": "catalog:",
     "@calimero-network/mero-js": "catalog:component",
     "@fontsource/ibm-plex-mono": "^5",

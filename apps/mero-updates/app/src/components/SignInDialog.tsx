@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
+import { PasskeySignIn } from "@calimero-apps/passkey";
+import "@calimero-apps/passkey/passkey.css";
 
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import { pendingInvite } from "../lib/companies";
@@ -17,7 +19,6 @@ import { UserPlusIcon, XIcon } from "./icons";
 export default function SignInDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { api } = useSessionApi();
   const dialogRef = useRef<HTMLDialogElement | null>(null);
-  const [name, setName] = useState("");
   const invited = pendingInvite() !== null;
   useDialogOpen(dialogRef, open);
 
@@ -68,46 +69,7 @@ export default function SignInDialog({ open, onClose }: { open: boolean; onClose
           </p>
         )}
 
-        {api.session.status === "signed-out" && (
-          <>
-            <button
-              type="button"
-              className={styles.primary}
-              data-testid="signin-passkey"
-              disabled={api.busy}
-              onClick={() => void api.signIn()}
-            >
-              {api.busy ? "Waiting for your passkey…" : "Sign in with a passkey"}
-            </button>
-            <span className={styles.fieldLabel}>New here? Your name</span>
-            <input
-              aria-label="Your name"
-              data-testid="signup-name"
-              value={name}
-              maxLength={64}
-              disabled={api.busy}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && name.trim()) void api.signUp(name.trim());
-              }}
-            />
-            <button
-              type="button"
-              className="secondary"
-              data-testid="signup-passkey"
-              disabled={api.busy || !name.trim()}
-              onClick={() => void api.signUp(name.trim())}
-            >
-              Create an account
-            </button>
-          </>
-        )}
-
-        {api.error && (
-          <p className="error" role="alert">
-            {api.error}
-          </p>
-        )}
+        {api.session.status === "signed-out" && <PasskeySignIn api={api} />}
       </div>
     </dialog>
   );

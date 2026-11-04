@@ -7,6 +7,8 @@ import { ScenePicker } from "./ScenePicker";
 import { PACKAGE } from "./meroModels";
 import { SceneContext, type OpenedScene, type SceneSession } from "./scene";
 import { dropInvite, pendingInvite, readSelection, selectionKey, writeSelection } from "./scenes";
+import { PasskeySignIn } from "@calimero-apps/passkey";
+import "@calimero-apps/passkey/passkey.css";
 import { describeTarget, type SessionApi, type SessionDeps } from "./session";
 
 /** Where this frontend's routes and assets live: `/`, or under the node's `/{version}/`. */
@@ -164,7 +166,6 @@ export function StudioPage({
 
 /** The front door: a passkey sign-in, or a new account with a new passkey. */
 function SignIn({ api, where, invited }: { api: SessionApi; where: string; invited: boolean }) {
-  const [name, setName] = useState("");
   return (
     <section className="connect">
       <div className="connect-card">
@@ -172,34 +173,11 @@ function SignIn({ api, where, invited }: { api: SessionApi; where: string; invit
         <h1>{invited ? "You're invited" : "Sign in"}</h1>
         <p className="lede">
           {invited
-            ? "Sign in or create an account to open the studio you were invited to. "
+            ? "Continue with a passkey, or create one, to open the studio you were invited to. "
             : "Sign in to open your scenes. "}
           Your account is a passkey: nothing to remember, nothing to leak. Connected to {where}.
         </p>
-        <div className="row">
-          <button className="large" onClick={() => void api.signIn()} disabled={api.busy}>
-            {api.busy ? "Waiting for your passkey…" : "Sign in with a passkey"}
-          </button>
-        </div>
-        <form
-          className="new-scene"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (name.trim()) void api.signUp(name.trim());
-          }}
-        >
-          <input
-            aria-label="Your name"
-            placeholder="Your name, for a new account"
-            maxLength={80}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-          <button type="submit" className="ghost" disabled={api.busy || !name.trim()}>
-            Create an account
-          </button>
-        </form>
-        {api.error && <pre className="err">{api.error}</pre>}
+        <PasskeySignIn api={api} />
         <ul className="connect-points">
           <li>Your scenes, shared only with your studio</li>
           <li>Real-time co-editing</li>

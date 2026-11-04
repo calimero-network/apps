@@ -29,6 +29,7 @@ import {
   type KeyValueStorage,
   type Target,
 } from '@calimero-apps/connect';
+import { isPasskeyCancel } from '@calimero-apps/passkey';
 import { PACKAGE_NAME } from '@/constants/config';
 
 /** The app's name in stored keys. */
@@ -66,7 +67,8 @@ export interface SessionApi {
   /** Keeps the stored session current after a request (refresh tokens are single-use). */
   sync: () => void;
   signIn(): Promise<void>;
-  signUp(name: string): Promise<void>;
+  /** Create an account with a new passkey; the name is optional. */
+  signUp(name?: string): Promise<void>;
   signOut(): Promise<void>;
 }
 
@@ -117,7 +119,8 @@ function useSessionState(deps: SessionDeps): SessionApi {
         store?.sync(session.client);
         setSession({ status: 'signed-in', client: session.client, target: session.target, accountId });
       } catch (e) {
-        setError(describeError(e));
+        // A dismissed passkey prompt is a quiet cancel, not an error to show.
+        if (!isPasskeyCancel(e)) setError(describeError(e));
       } finally {
         setBusy(false);
       }
@@ -127,7 +130,7 @@ function useSessionState(deps: SessionDeps): SessionApi {
 
   const signIn = useCallback(() => ceremony((c) => c.signIn(deps.passkey())), [ceremony, deps]);
   const signUp = useCallback(
-    (name: string) => ceremony((c) => c.signUp(deps.passkey(), name)),
+    (name?: string) => ceremony((c) => c.signUp(deps.passkey(), name?.trim() ?? '')),
     [ceremony, deps],
   );
 

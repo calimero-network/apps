@@ -406,11 +406,14 @@ per app, branched off `main` once this groundwork has merged.
 8. `package.json`: drop mero-react, mero-platform(-react), abi-codegen,
    node-served, e2e-node, Playwright, the invitation codecs; add
    `"@calimero-network/mero-js": "catalog:component"` and
-   `"@calimero-apps/connect": "workspace:*"`; scripts `dev`, `build`,
+   `"@calimero-apps/connect": "workspace:*"` and
+   `"@calimero-apps/passkey": "workspace:*"`; scripts `dev`, `build`,
    `typecheck`, `test`, `lint` (an `eslint.config.js` like kv-store's), no
    `codegen`. Keep `vercel.json` (the v1 guards still check it).
 9. Replace the provider, node login and context picker with kv-store's
-    `session.ts` (target → client → passkey sign-in/up, `SessionStore`) and its
+    `session.ts` (a few lines over `@calimero-apps/passkey`'s
+    `usePasskeySession`: target → client → passkey sign-in/up, `SessionStore`),
+    its `<PasskeySignIn>` sign-in screen, and its
     store picker (`listApps` by bundle in dev, by package in production;
     `createApp(name, appSource(…), { org })`). v1 contexts are app instances, v1
     namespaces are orgs, v1 invitations are org invites (`client.invite(org,

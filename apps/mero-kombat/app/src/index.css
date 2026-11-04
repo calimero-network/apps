@@ -732,3 +732,6 @@ body > .mero-invite-overlay {
   --mero-radius: var(--radius-sm);
   font-family: inherit;
 }
+
+/* The shared passkey control (@calimero-apps/passkey), centred in the card. */
+.connect-passkey { max-width: 340px; margin: 6px auto 0; }

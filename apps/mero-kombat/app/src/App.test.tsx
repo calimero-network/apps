@@ -128,10 +128,9 @@ describe("App", () => {
     render(<App deps={deps(client)} storage={storage} />);
 
     await screen.findByText(/merod local \(3 nodes\)/);
-    fireEvent.change(screen.getByLabelText("name"), { target: { value: "alice" } });
-    fireEvent.click(screen.getByText("Create an account"));
+    fireEvent.click(screen.getByText("Create a passkey"));
     await screen.findByText("Enter the arena");
-    expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "alice");
+    expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "");
     expect(new SessionStore(APP, LOCAL, storage).load()).toEqual(SESSION);
     expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" });
 
@@ -216,7 +215,7 @@ describe("App", () => {
     const storage = new Memory();
     storage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: "tok-9", arena: "app-9" }));
     render(<App deps={deps(client)} storage={storage} />);
-    fireEvent.click(await screen.findByText("Sign in with a passkey"));
+    fireEvent.click(await screen.findByText("Continue with passkey"));
     await screen.findByText("Their ring");
     expect(client.redeemInvite).toHaveBeenCalledWith("tok-9");
     expect(storage.getItem(`${APP}:pending-invite`)).toBeNull();
@@ -245,7 +244,7 @@ describe("App", () => {
     expect(window.location.pathname).toBe("/play");
 
     fireEvent.click(screen.getByText("Log out"));
-    await screen.findByText("Sign in with a passkey");
+    await screen.findByText("Continue with passkey");
     expect(client.signOut).toHaveBeenCalled();
     expect(new SessionStore(APP, LOCAL, storage).load()).toBeNull();
   });

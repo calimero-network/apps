@@ -4,17 +4,18 @@
  * Calimero 1.0 the frontend already knows its cluster (merod local in dev, the
  * Cloud cluster in production) and the account is a passkey.
  */
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
+import { PasskeySignIn } from '@calimero-apps/passkey';
+import '@calimero-apps/passkey/passkey.css';
 import styled from 'styled-components';
 import { C } from '../theme';
-import { closeButton, dialogSurface, field, overlay, primaryPill, secondaryPill } from './glass';
+import { closeButton, dialogSurface, overlay, primaryPill, secondaryPill } from './glass';
 import { describeTarget } from '../session';
 import { useSessionApi } from '../sessionContext';
 import { pendingInvite } from '../lib/workspaces';
 
 export default function SignInModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { api } = useSessionApi();
-  const [name, setName] = useState('');
   const invited = pendingInvite() !== null;
 
   useEffect(() => {
@@ -59,44 +60,7 @@ export default function SignInModal({ open, onClose }: { open: boolean; onClose:
         {api.session.status === 'connecting' && <Hint>Connecting…</Hint>}
         {api.session.status === 'unconfigured' && <Err role="alert">{api.session.message}</Err>}
 
-        {api.session.status === 'signed-out' && (
-          <>
-            <Primary
-              type="button"
-              data-testid="signin-passkey"
-              disabled={api.busy}
-              onClick={() => void api.signIn()}
-            >
-              {api.busy ? 'Waiting for your passkey…' : 'Sign in with a passkey'}
-            </Primary>
-            <Label htmlFor="signup-name">New here? Your name</Label>
-            <Input
-              id="signup-name"
-              data-testid="signup-name"
-              value={name}
-              maxLength={64}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && name.trim()) void api.signUp(name.trim());
-              }}
-              disabled={api.busy}
-            />
-            <Secondary
-              type="button"
-              data-testid="signup-passkey"
-              disabled={api.busy || !name.trim()}
-              onClick={() => void api.signUp(name.trim())}
-            >
-              Create an account
-            </Secondary>
-          </>
-        )}
-
-        {api.error && (
-          <Err role="alert" data-testid="signin-error">
-            {api.error}
-          </Err>
-        )}
+        {api.session.status === 'signed-out' && <PasskeySignIn api={api} />}
       </Dialog>
     </Overlay>
   );
@@ -126,5 +90,3 @@ export const Hint = styled.p`margin: 0; font-size: 13.5px; line-height: 1.5; col
 export const Err = styled.p`margin: 0; font-size: 12.5px; line-height: 1.45; color: ${C.danger};`;
 export const Primary = styled.button`${primaryPill} width: 100%;`;
 export const Secondary = styled.button`${secondaryPill} width: 100%;`;
-const Label = styled.label`margin-top: 8px; font-size: 12px; color: ${C.mutedSoft};`;
-const Input = styled.input`${field}`;

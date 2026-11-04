@@ -5,10 +5,10 @@
  *
  * Hand-owned here since Hyperfeed left the shared landing template. v1 opened
  * mero-react's `LoginModal` (a node URL, or a wallet enrolment); a 1.0 cluster
- * signs people in with passkeys, so there is nothing to type but a name for a
- * new account.
+ * signs people in with passkeys, so there is nothing to type.
  */
-import { useState } from "react";
+import { PasskeySignIn } from "@calimero-apps/passkey";
+import "@calimero-apps/passkey/passkey.css";
 import { useSessionApi, describeTarget } from "../../session";
 
 export interface LoginPopupProps {
@@ -18,7 +18,6 @@ export interface LoginPopupProps {
 
 export default function LoginPopup({ isOpen, onClose }: LoginPopupProps) {
   const api = useSessionApi();
-  const [name, setName] = useState("");
   if (!isOpen) return null;
   const { session } = api;
   return (
@@ -38,26 +37,9 @@ export default function LoginPopup({ isOpen, onClose }: LoginPopupProps) {
             <p className="muted">
               Connected to {describeTarget(session.target)}. Accounts are passkeys: nothing to remember, nothing to leak.
             </p>
-            <div className="row">
-              <button type="button" className="primary" disabled={api.busy} onClick={() => void api.signIn()}>
-                Sign in with a passkey
-              </button>
-            </div>
-            <form
-              className="row"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (name.trim()) void api.signUp(name.trim());
-              }}
-            >
-              <input placeholder="Your name" aria-label="Your name" value={name} onChange={(e) => setName(e.target.value)} />
-              <button type="submit" className="ghost" disabled={api.busy || !name.trim()}>
-                Create an account
-              </button>
-            </form>
+            <PasskeySignIn api={api} />
           </>
         )}
-        {api.error && <pre className="err">{api.error}</pre>}
         <div className="row">
           <button type="button" className="ghost small" onClick={onClose}>
             Close

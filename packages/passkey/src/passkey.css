@@ -1,0 +1,146 @@
+/*
+ * The shared passkey sign-in control. Every name is `cp-passkey`-prefixed so
+ * nothing collides with an app's own classes. An app themes it with the
+ * `--passkey-*` tokens below (on the control or any ancestor); each falls back
+ * to the glass token, then to a literal, so an app that has not adopted glass
+ * still gets the light Calimero look.
+ */
+.cp-passkey {
+  --_ink: var(--passkey-ink, var(--glass-ink, #0e1222));
+  --_muted: var(--passkey-muted, var(--glass-muted, #6f7589));
+  --_line: var(--passkey-line, var(--glass-line-strong, rgba(14, 18, 34, 0.14)));
+  --_primary-bg: var(--passkey-primary-bg, var(--glass-ink, #0e1222));
+  --_primary-ink: var(--passkey-primary-ink, var(--glass-on-ink, #ffffff));
+  --_secondary-bg: var(--passkey-secondary-bg, var(--glass-surface-solid, #ffffff));
+  --_secondary-ink: var(--passkey-secondary-ink, var(--glass-ink, #0e1222));
+  --_focus: var(--passkey-focus, var(--glass-accent-solid, #3e63f5));
+  --_radius: var(--passkey-radius, 999px);
+  --_field-radius: var(--passkey-field-radius, var(--glass-radius-sm, 10px));
+  --_bad-bg: var(--passkey-error-bg, var(--glass-bad-bg, #ffe4ea));
+  --_bad-ink: var(--passkey-error-ink, var(--glass-bad-ink, #a2194b));
+
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  color: var(--_ink);
+  font-family: var(--passkey-font, inherit);
+  text-align: left;
+}
+
+.cp-passkey__primary,
+.cp-passkey__secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 46px;
+  padding: 0 18px;
+  border-radius: var(--_radius);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.15s ease, background 0.15s ease, opacity 0.15s ease;
+}
+.cp-passkey__primary {
+  border: 1px solid transparent;
+  background: var(--_primary-bg);
+  color: var(--_primary-ink);
+  box-shadow: 0 10px 24px -14px rgba(14, 18, 34, 0.55);
+}
+.cp-passkey__secondary {
+  min-height: 42px;
+  font-size: 14px;
+  border: 1px solid var(--_line);
+  background: var(--_secondary-bg);
+  color: var(--_secondary-ink);
+}
+.cp-passkey__primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 14px 28px -14px rgba(14, 18, 34, 0.6); }
+.cp-passkey__secondary:hover:not(:disabled) { border-color: var(--_ink); }
+.cp-passkey__primary:active:not(:disabled),
+.cp-passkey__secondary:active:not(:disabled) { transform: translateY(0); }
+.cp-passkey__primary:focus-visible,
+.cp-passkey__secondary:focus-visible,
+.cp-passkey__name input:focus-visible {
+  outline: 2px solid var(--_focus);
+  outline-offset: 2px;
+}
+.cp-passkey__primary:disabled,
+.cp-passkey__secondary:disabled { cursor: default; opacity: 0.6; }
+.cp-passkey__primary svg,
+.cp-passkey__secondary svg { flex: none; }
+
+.cp-passkey__hint {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--_muted);
+  text-align: center;
+}
+
+.cp-passkey__divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--_muted);
+}
+.cp-passkey__divider::before,
+.cp-passkey__divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--passkey-divider, var(--glass-line, rgba(14, 18, 34, 0.08)));
+}
+
+.cp-passkey__name { display: flex; flex-direction: column; gap: 6px; }
+.cp-passkey__name label { font-size: 12.5px; font-weight: 600; color: var(--_ink); }
+.cp-passkey__optional { font-weight: 400; color: var(--_muted); }
+.cp-passkey__name input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--_line);
+  border-radius: var(--_field-radius);
+  background: var(--passkey-field-bg, var(--glass-surface-solid, #ffffff));
+  color: var(--_ink);
+  font: inherit;
+  font-size: 14px;
+}
+
+.cp-passkey__error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 2px 0 0;
+  padding: 9px 12px;
+  border-radius: var(--_field-radius);
+  background: var(--_bad-bg);
+  color: var(--_bad-ink);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.cp-passkey__error svg { flex: none; margin-top: 1px; }
+
+.cp-passkey__spinner {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: cp-passkey-spin 0.7s linear infinite;
+}
+@keyframes cp-passkey-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .cp-passkey__primary,
+  .cp-passkey__secondary { transition: none; }
+  .cp-passkey__spinner { animation-duration: 1.6s; }
+}

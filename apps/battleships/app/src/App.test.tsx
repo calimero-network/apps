@@ -128,10 +128,9 @@ describe('App', () => {
     at('/lobby');
     const client = fakeClient();
     render(<App deps={deps(client)} />);
-    fireEvent.change(await screen.findByPlaceholderText('Your name'), { target: { value: 'Alice' } });
-    fireEvent.click(screen.getByText('Create an account'));
+    fireEvent.click(await screen.findByText('Create a passkey'));
     await waitFor(() => expect(client.signUp).toHaveBeenCalled());
-    expect(client.signUp.mock.calls[0]?.[1]).toBe('Alice');
+    expect(client.signUp.mock.calls[0]?.[1]).toBe('');
 
     fireEvent.change(await screen.findByPlaceholderText('Lobby name'), { target: { value: 'Friday game' } });
     fireEvent.click(screen.getByText('Create'));
