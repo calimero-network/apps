@@ -43,7 +43,7 @@ public struct CloudTransport: ContextTransport {
 }
 
 enum ContractCoding {
-    /// Encode contract args (snake_case keys, as the Rust params are named).
+    /// Encode contract args (camelCase keys, as the component ABI names them).
     static func args<T: Encodable>(_ value: T) throws -> JSONValue {
         try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(value))
     }

@@ -24,8 +24,14 @@
 #                                ApplicationId from (package, signer), so a
 #                                different key publishes a DIFFERENT app.
 #   CALIMERO_REGISTRY_API_KEY  - API token from the registry Organizations page
-#                                (CLI Access). Read by cargo-mero as
-#                                CALIMERO_API_KEY.
+#                                (CLI Access). Read by scripts/publish-bundle.sh
+#                                as CALIMERO_API_KEY.
+#
+# The contract is a `calimero:app` component (calimero-sdk, core 1.0.0-rc.9).
+# `cargo mero` went with SDK 0.12 (core#4835), so the bundle is built, packed
+# and signed by `mero-component`, calimero-network/apps' component bundler
+# (core's own calimero-app-build, calimero-bundle and mero-sign underneath),
+# and published the way that repo publishes its component apps.
 
 name: Deploy Bundle
 
@@ -184,10 +190,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # logic/rust-toolchain.toml picks the toolchain and adds wasm32-wasip2.
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
+        working-directory: logic
+        run: rustup show active-toolchain || rustup toolchain install
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -196,15 +202,11 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             logic/target
-          key: logic-${{ runner.os }}-${{ hashFiles('logic/Cargo.toml') }}
+          key: logic-${{ runner.os }}-${{ hashFiles('logic/Cargo.lock') }}
           restore-keys: logic-${{ runner.os }}-
 
-      # Named to match mero-drive's step; the action DIRECTORY keeps this repo's
-      # existing name (install-cargo-mero) rather than being renamed for cosmetic
-      # parity — it already pins rc.20, caches, and falls back to building from
-      # the tag.
-      - name: Setup cargo-mero
-        uses: ./.github/actions/install-cargo-mero
+      - name: Setup mero-component
+        uses: ./.github/actions/install-mero-component
 
       - name: Write signing key
         env:
@@ -213,6 +215,44 @@ jobs:
           umask 077
           printf '%s' "$MERO_SIGN_KEY" > "$RUNNER_TEMP/mero-sign-key.json"
 
+      # The SDK deps are pinned to an explicit core release tag, so the revision
+      # is already determined — this records WHICH commit that tag resolved to, so
+      # a signed release is never traceable only to a moving name, and lets a
+      # release optionally require a specific one.
+      - name: Resolve and record the core revision
+        id: core
+        working-directory: logic
+        env:
+          EXPECTED_CORE_REV: ${{ github.event.inputs.core_rev }}
+        run: |
+          rev=$(awk -F'#' '/^source = "git\+https:\/\/github.com\/calimero-network\/core/{print $2; exit}' Cargo.lock | tr -d '"')
+          if [ -z "$rev" ]; then
+            echo "::error::could not determine which core revision the SDK deps resolved to"
+            exit 1
+          fi
+          if [ -n "$EXPECTED_CORE_REV" ] && [ "$rev" != "$EXPECTED_CORE_REV" ]; then
+            echo "::error::core resolved to $rev but this release requested $EXPECTED_CORE_REV"
+            exit 1
+          fi
+          echo "rev=$rev" >> "$GITHUB_OUTPUT"
+          echo "::notice::signing a bundle built against core $rev"
+
+      # --output pins the filename so the publish step never reconstructs a
+      # versioned one (the default is dist/<package>-<version>.mpk) and can never
+      # pick up a stale .mpk from an earlier build.
+      - name: Build & sign bundle
+        working-directory: logic
+        env:
+          PACKAGE: ${{ needs.check.outputs.package }}
+          VERSION: ${{ needs.check.outputs.version }}
+        # --app-version: the check job already resolved the number against the
+        # registry. No frontend: the app is the native iOS client.
+        run: mero-component bundle . --key "$RUNNER_TEMP/mero-sign-key.json" --app-version "$VERSION" --no-frontend --output "dist/$PACKAGE.mpk"
+
+      - name: Remove signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/mero-sign-key.json"
+
       - name: Verify signer matches the published package
         env:
           # The well-known public dev key's signerId. A dev-signed lineage cannot
@@ -220,8 +260,15 @@ jobs:
           # pinned to it is treated as a first real publish.
           DEV_SIGNER: did:key:z6MknF3p5L5FDHJQ7FREUapuX4Wmp4MtF6WrHYaXS2B3eZQd
           PACKAGE: ${{ needs.check.outputs.package }}
+          VERSION: ${{ needs.check.outputs.version }}
+        # Read from the signed manifest itself, after its signature verifies:
+        # what is checked is exactly what is uploaded.
         run: |
-          local_signer=$(cargo mero key derive-signer-id --key "$RUNNER_TEMP/mero-sign-key.json")
+          mero-component inspect "logic/dist/$PACKAGE.mpk" > "$RUNNER_TEMP/manifest.json"
+          jq -e --arg p "$PACKAGE" --arg v "$VERSION" '.package == $p and .appVersion == $v' \
+            "$RUNNER_TEMP/manifest.json" >/dev/null ||
+            { echo "::error::the bundle is not $PACKAGE $VERSION"; exit 1; }
+          local_signer=$(jq -er '.signerId' "$RUNNER_TEMP/manifest.json")
 
           # An unreachable registry must not look like an unpublished package:
           # that would silently skip the very check this step exists for. Fail the
@@ -248,54 +295,13 @@ jobs:
             echo "signer matches published package ($local_signer)"
           fi
 
-      # The SDK deps are pinned to an explicit core release tag, so the revision
-      # is already determined — this records WHICH commit that tag resolved to, so
-      # a signed release is never traceable only to a moving name, and lets a
-      # release optionally require a specific one.
-      - name: Resolve and record the core revision
-        id: core
-        working-directory: logic
-        env:
-          EXPECTED_CORE_REV: ${{ github.event.inputs.core_rev }}
-        run: |
-          cargo generate-lockfile --quiet
-          rev=$(awk -F'#' '/^source = "git\+https:\/\/github.com\/calimero-network\/core/{print $2; exit}' Cargo.lock | tr -d '"')
-          if [ -z "$rev" ]; then
-            echo "::error::could not determine which core revision the SDK deps resolved to"
-            exit 1
-          fi
-          if [ -n "$EXPECTED_CORE_REV" ] && [ "$rev" != "$EXPECTED_CORE_REV" ]; then
-            echo "::error::core resolved to $rev but this release requested $EXPECTED_CORE_REV"
-            exit 1
-          fi
-          echo "rev=$rev" >> "$GITHUB_OUTPUT"
-          echo "::notice::signing a bundle built against core $rev"
-
-      # --output pins the filename so the publish step never reconstructs a
-      # versioned one (the default is dist/<package>-<version>.mpk) and can never
-      # pick up a stale .mpk from an earlier build.
-      - name: Build & sign bundle
-        working-directory: logic
-        env:
-          PACKAGE: ${{ needs.check.outputs.package }}
-          VERSION: ${{ needs.check.outputs.version }}
-        # --app-version, not --bump: the check job already resolved the number
-        # against the registry, and cargo-mero's own --bump floors an empty
-        # registry at 0.1.0 rather than the 0.0.1 this fleet restarts from. (The
-        # two flags are mutually exclusive anyway.)
-        run: cargo mero bundle --key "$RUNNER_TEMP/mero-sign-key.json" --app-version "$VERSION" --no-icon --output "dist/$PACKAGE.mpk"
-
-      - name: Remove signing key
-        if: always()
-        run: rm -f "$RUNNER_TEMP/mero-sign-key.json"
-
       - name: Publish to App Registry
         working-directory: logic
         env:
           CALIMERO_API_KEY: ${{ secrets.CALIMERO_REGISTRY_API_KEY }}
           CALIMERO_REGISTRY_URL: https://apps.calimero.network
           PACKAGE: ${{ needs.check.outputs.package }}
-        run: cargo mero publish "dist/$PACKAGE.mpk"
+        run: bash ../scripts/publish-bundle.sh "dist/$PACKAGE.mpk"
 
       - name: Summary
         env:

@@ -1,4 +1,4 @@
-.PHONY: help setup logic-build logic-bundle logic-test \
+.PHONY: help setup tools logic-build logic-bundle logic-test \
         app-gen app-build app-run app-test test clean
 
 APP_DIR    := app/MeroTag
@@ -12,12 +12,13 @@ help:
 	@echo "  Mero Tag — make targets"
 	@echo ""
 	@echo "  Setup"
-	@echo "    setup        Check prereqs + build the WASM contract"
+	@echo "    setup        Check prereqs, install mero-component, bundle the contract"
+	@echo "    tools        Install mero-component (calimero-network/apps' component bundler)"
 	@echo ""
-	@echo "  Contract (Rust)"
-	@echo "    logic-build  Compile logic/src → logic/res/mero_tag.wasm (+ embed the ABI)"
-	@echo "    logic-bundle Package the signed .mpk a node will actually accept"
-	@echo "    logic-test   cargo test (pure helpers + TestHost 1.0 semantics)"
+	@echo "  Contract (Rust, a calimero:app component)"
+	@echo "    logic-build  Build logic/ → logic/res/mero_tag.wasm + logic/res/abi.json"
+	@echo "    logic-bundle Package the dev-signed .mpk a merod local cluster accepts"
+	@echo "    logic-test   cargo test (pure helpers + the TestApp harness on core's engine)"
 	@echo ""
 	@echo "  iOS app (needs full Xcode + 'brew install xcodegen')"
 	@echo "    app-gen      Generate MeroTag.xcodeproj from project.yml"
@@ -34,16 +35,24 @@ help:
 setup:
 	@bash scripts/setup.sh
 
+# `mero-component` builds the contract into a `calimero:app` component and packs
+# the signed .mpk, with core's own builder, bundle format and signer. It is the
+# apps repo's tool (tools/component-bundle); `cargo mero` went with SDK 0.12.
+APPS_REF ?= main
+
+tools:
+	cargo install --locked --git https://github.com/calimero-network/apps --branch $(APPS_REF) mero-component
+
 # ── Contract ───────────────────────────────────────────────────────────────────
 logic-build:
-	cd logic && cargo mero build
+	mero-component build logic
 
 # What a `merod local` cluster installs (`meroctl app install --path`). `--dev`
 # signs with the well-known development key, which the registry refuses by
 # design; `--app-version` is a placeholder, because the registry owns the
 # published number.
 logic-bundle:
-	cd logic && cargo mero bundle --dev --no-icon --app-version 0.0.1 --output dist/mero-tag-dev.mpk
+	mero-component bundle logic --dev --no-frontend --app-version 0.0.1 --output logic/dist/mero-tag-dev.mpk
 
 logic-test:
 	cd logic && cargo test

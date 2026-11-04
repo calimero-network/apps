@@ -18,8 +18,8 @@ scripts/    setup
 
 Built for **Calimero core 1.0**:
 
-- the contract builds against `calimero-sdk` / `calimero-storage` tag `1.0.0-rc.8`
-  (`min-runtime-version = "1.0.0-rc.8"`)
+- the contract is a `calimero:app` WebAssembly component on core's component SDK (`calimero-sdk` tag
+  `1.0.0-rc.9`, `min-runtime-version = "1.0.0-rc.9"`), run by the node's wasmtime runtime
 - the app uses [`calimero-network/swift-sdk`](https://github.com/calimero-network/swift-sdk) pinned to
   its `v0.5.0` release (`exactVersion` in `app/MeroTag/project.yml`)
 
@@ -33,8 +33,8 @@ sealed channel (`calimero/sealed-http/v2`), all through the SDK's `CalimeroClien
    relaunch needs no prompt.
 2. **A space is an app instance.** Creating one founds an **organization** named after it and creates the Mero Tag
    app instance in it from the registry package (`com.calimero.mero-tag`), open to the organization's members.
-3. **Calls, views and events.** Reads (`get_trackers`, `whoami`, …) are views (`POST /apps/{app}/views`); writes
-   (`join`, `update_location`, …) are calls (`POST /apps/{app}/intents`), run once on the app instance's leader. Live
+3. **Calls, views and events.** Reads (`getTrackers`, `whoami`, …) are views (`POST /apps/{app}/views`); writes
+   (`join`, `updateLocation`, …) are calls (`POST /apps/{app}/intents`), run once on the app instance's leader. Live
    updates are the app instance's server-sent events; if the stream drops, the app refreshes on a timer. Nothing is
    written offline.
 4. **Invite people.** An organization invite (role member) travels as the SDK's `InviteLink`
@@ -44,8 +44,13 @@ sealed channel (`calimero/sealed-http/v2`), all through the SDK's `CalimeroClien
 5. **Approvals.** When the registry has a newer Mero Tag than the space runs, the Space tab offers it. Approving opens
    the cluster's consent page in the system browser; the app waits for the decision.
 
-The contract takes every member, owner and author id from the caller's account (`env::account_id()`), stamps records
-with the leader's clock, and lets admins of the space's organization (`env::caller_org()`) moderate.
+The contract takes every member, owner and author id from the caller's account (`env::caller()`), stamps records
+with the leader's clock, and lets admins of the space's organization (`env::org_role`) moderate.
+
+Method and argument names are camelCase, as the component ABI names them (`getTrackers`, `updateLocation` with
+`trackerId`, …). A top-level `u64` argument (`updateLocation`'s `timestamp`, `getHistory`'s `since`) is a decimal
+string; records keep their numbers. A refused call is `422 APP_ERROR` with code `Forbidden` or `Invalid` and the
+sentence in `fields.message`.
 
 ## Run it against a development cluster
 
@@ -53,6 +58,7 @@ with the leader's clock, and lets admins of the space's organization (`env::call
 # in calimero-network/core (merod is Linux-only; on macOS run it in Docker)
 cargo run -p merod -- local                     # 3 nodes on :2501-2503, mock attestation
 meroctl node add local http://127.0.0.1:2501/ --allow-mock
+make tools                                      # once: mero-component, the component bundler
 make logic-bundle                               # here: logic/dist/mero-tag-dev.mpk
 meroctl app install --path logic/dist/mero-tag-dev.mpk
 ```
@@ -78,9 +84,9 @@ To build against a local swift-sdk checkout, temporarily replace the package's `
 ## Contract
 
 ```bash
-make setup        # check prereqs, build the WASM + signed dev bundle
-make logic-test   # cargo test (pure helpers, merge laws, TestHost 1.0 semantics)
-make logic-build  # cargo mero build → logic/res/mero_tag.wasm (ABI embedded)
+make setup        # check prereqs, build the component + signed dev bundle
+make logic-test   # cargo test (pure helpers, then the TestApp harness and scenarios on core's engine)
+make logic-build  # mero-component build → logic/res/mero_tag.wasm + logic/res/abi.json
 make logic-bundle # signed dev .mpk for a merod local cluster
 ```
 
@@ -88,8 +94,9 @@ Run `make help` for all targets. [requirements.md](requirements.md) has the full
 
 ## Status
 
-- Done: the WASM contract on core 1.0 (trackers, locations, sharing, groups, geofences, presence, history).
+- Done: the component contract on core 1.0.0-rc.9 (trackers, locations, sharing, groups, geofences, presence, history).
 - Done: passkey sign-in, spaces as app instances in organizations, invites, live events, update approvals on the
   consent page.
 - Not yet: authoring geofences, playing back history, and a UI for groups.
-- Not yet: an end-to-end lane against `merod local` (merobox, which the old lane used, is archived).
+- Not yet: an end-to-end lane against `merod local` (merobox, which the old lane used, is archived);
+  `logic/scenarios/*.json` are ready for one.

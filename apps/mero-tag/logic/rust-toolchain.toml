@@ -1,4 +1,6 @@
+# Core 1.0.0-rc.9's toolchain (its rust-toolchain.toml): the SDK, the builder and
+# the test engine are built with it.
 [toolchain]
-channel = "1.89.0"
-components = ["cargo", "clippy"]
-targets = ["wasm32-unknown-unknown"]
+channel = "1.98.0"
+components = ["cargo", "clippy", "rustfmt"]
+targets = ["wasm32-wasip2"]
