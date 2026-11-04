@@ -102,8 +102,9 @@ VITE_CALIMERO_CLUSTER=<optional: a cluster name in the cloud's node directory>
 ```
 
 The publish workflow passes them from the repository variables
-`CALIMERO_MIN_RELEASE` (required: the publish fails without it) and
-`CALIMERO_CLUSTER`. On a page the cluster serves, a build without a cluster
+`CALIMERO_MIN_RELEASE` (optional: unset, it is the lowest mero-tee release the
+cluster's nodes run at publish time, from `scripts/cluster-min-release.py`) and
+`CALIMERO_CLUSTER` (default `eu-shared-1` for that derivation). On a page the cluster serves, a build without a cluster
 connects to the nodes serving it; on any other page it asks the directory
 where `com.calimero.kv-store` runs and connects to its primary cluster, and
 when no cluster runs it, says it is the listing page and links to Calimero

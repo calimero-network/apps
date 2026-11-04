@@ -11,7 +11,7 @@ inputs:
     description: >
       VITE_CALIMERO_MIN_RELEASE for the build: the lowest mero-tee release a
       cloud node may run. A production build connects to no node without it,
-      not even to the cluster that serves it.
+      not even to the cluster that serves it. Overrides the derived floor.
     required: false
     default: ""
   cluster:
@@ -22,10 +22,16 @@ inputs:
     default: ""
   require-min-release:
     description: >
-      "true" fails the build when the app ships a frontend and `min-release` is
-      empty (a publish: the bundle's frontend would never connect).
+      "true" (a publish): when the app ships a frontend and `min-release` is
+      empty, derive the floor from what `floor-cluster`'s nodes run now
+      (scripts/cluster-min-release.py), and fail when that yields nothing: the
+      bundle's frontend would never connect.
     required: false
     default: "false"
+  floor-cluster:
+    description: The cluster whose nodes' lowest mero-tee release is the derived floor.
+    required: false
+    default: eu-shared-1
 
 outputs:
   dir:
@@ -42,14 +48,35 @@ runs:
         APP: ${{ inputs.app }}
       run: echo "dir=$(python3 scripts/frontend-dir.py "$APP")" >> "$GITHUB_OUTPUT"
 
-    - name: Check the frontend's attestation floor
-      if: steps.dir.outputs.dir != '' && inputs.require-min-release == 'true' && inputs.min-release == ''
+    # The floor the frontend is built with. A set `min-release` wins; on a
+    # publish without one, the lowest release the cluster's answering nodes run
+    # right now (so a half-rolled-out cluster passes). Never mero-tee's newest
+    # GitHub release: it is published before nodes roll to it.
+    - name: Resolve the frontend's attestation floor
+      id: floor
+      if: steps.dir.outputs.dir != ''
       shell: bash
       env:
         APP: ${{ inputs.app }}
+        GIVEN: ${{ inputs.min-release }}
+        REQUIRE: ${{ inputs.require-min-release }}
+        CLUSTER: ${{ inputs.floor-cluster }}
       run: |
-        echo "::error title=CALIMERO_MIN_RELEASE is not set::$APP ships a frontend in its bundle, and a production build connects to no node without VITE_CALIMERO_MIN_RELEASE (the lowest mero-tee release a cloud node may run). Set the repository variable CALIMERO_MIN_RELEASE (Settings > Secrets and variables > Actions > Variables), e.g. to the shared cluster's current mero-tee release, and publish again."
-        exit 1
+        floor="$GIVEN"
+        source="the repository variable CALIMERO_MIN_RELEASE"
+        if [ -z "$floor" ] && [ "$REQUIRE" = "true" ]; then
+          source="the lowest mero-tee release ${CLUSTER}'s nodes run now"
+          floor=$(python3 scripts/cluster-min-release.py --cluster "$CLUSTER") || floor=""
+          if [ -z "$floor" ]; then
+            echo "::error title=No attestation floor::$APP ships a frontend in its bundle, and a production build connects to no node without VITE_CALIMERO_MIN_RELEASE. It could not be derived from ${CLUSTER}'s nodes (see the log above). Set the repository variable CALIMERO_MIN_RELEASE (Settings > Secrets and variables > Actions > Variables), or CALIMERO_CLUSTER to a cluster that answers, and publish again."
+            exit 1
+          fi
+        fi
+        echo "min-release=$floor" >> "$GITHUB_OUTPUT"
+        if [ -n "$floor" ]; then
+          echo "::notice::$APP's frontend is built with VITE_CALIMERO_MIN_RELEASE=$floor, from $source"
+          echo "**$APP frontend**: \`VITE_CALIMERO_MIN_RELEASE=$floor\` (from $source)" >> "$GITHUB_STEP_SUMMARY"
+        fi
 
     - name: Enable corepack (pnpm)
       if: steps.dir.outputs.dir != ''
@@ -67,7 +94,7 @@ runs:
       shell: bash
       env:
         APP: ${{ inputs.app }}
-        VITE_CALIMERO_MIN_RELEASE: ${{ inputs.min-release }}
+        VITE_CALIMERO_MIN_RELEASE: ${{ steps.floor.outputs.min-release }}
         VITE_CALIMERO_CLUSTER: ${{ inputs.cluster }}
       run: |
         pnpm install --frozen-lockfile

@@ -421,8 +421,9 @@ per app, branched off `main` once this groundwork has merged.
     `res/abi.json`'s. Test the screens with a mocked client (`App.test.tsx`).
 11. `.env.example` lists the `VITE_CALIMERO_*` variables; the production build
     needs `VITE_CALIMERO_MIN_RELEASE` where the bundle's frontend is built
-    (publish-bundle passes the repository variable `CALIMERO_MIN_RELEASE`, and
-    `CALIMERO_CLUSTER` when set, into it).
+    (publish-bundle passes the repository variable `CALIMERO_MIN_RELEASE`, or
+    else the lowest mero-tee release the cluster's nodes run at publish time,
+    and `CALIMERO_CLUSTER` when set, into it).
 
 **Remove and verify**
 
