@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { styled } from "styled-components";
-import { PasskeySignIn, type PasskeySignInApi } from "@calimero-apps/passkey";
+import { AppListing, PasskeySignIn, type PasskeySignInApi } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
 import BaseModal from "../../components/common/popups/BaseModal";
-import { signIn, signUp, useCalimero } from "../../api/calimero";
+import { LISTING, signIn, signUp, useCalimero } from "../../api/calimero";
 import { pendingInvite } from "../../utils/invitation";
 import { setMessengerDisplayName } from "../../utils/messengerName";
 
@@ -66,7 +66,7 @@ export default function SignInPopup({ isOpen, onClose }: Props) {
     };
     return {
       busy,
-      error: status === "unconfigured" ? null : message,
+      error: status === "unconfigured" || status === "listing" ? null : message,
       signIn: () => run(signIn),
       signUp: (name = "") =>
         run(async () => {
@@ -94,6 +94,7 @@ export default function SignInPopup({ isOpen, onClose }: Props) {
           </Hint>
 
           {status === "connecting" && <Hint>Connecting…</Hint>}
+          {status === "listing" && <AppListing {...LISTING} />}
           {status === "unconfigured" && <ErrorText role="alert">{message}</ErrorText>}
 
           {status === "signed-out" && <PasskeySignIn api={api} askName />}

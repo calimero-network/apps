@@ -107,10 +107,16 @@ function opened(storage: Memory, org: string | null = "org-1") {
 }
 
 describe("App", () => {
-  it("says why a production build cannot connect", async () => {
+  it("shows the listing on a production copy no cluster serves", async () => {
     at("/play");
     render(<App deps={deps(fakeClient(), { DEV: false })} storage={new Memory()} />);
-    await screen.findByText(/VITE_CALIMERO_CLUSTER is not set/);
+    const open = await screen.findByRole("link", { name: "Open Mero Chess" });
+    // The node-served copy: mdma's `app_host.app_url("com.calimero.mero-chess")`.
+    expect(open.getAttribute("href")).toBe("https://3ivxhznpoikah6ubhlzsco4mvjdbfckcjcotgzps3fokcpjpynjq.apps.calimero.network/");
+    expect(screen.getByRole("link", { name: "Deploy your own on Calimero Cloud" }).getAttribute("href")).toBe(
+      "https://cloud.calimero.network/v2",
+    );
+    expect(screen.queryByText(/VITE_CALIMERO_CLUSTER/)).toBeNull();
   });
 
   it("signs up with a passkey, creates a table in a new organization, and invites an opponent", async () => {

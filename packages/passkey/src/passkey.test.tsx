@@ -97,20 +97,14 @@ describe("usePasskeySession", () => {
     expect(result.current.session).toMatchObject({ message: expect.stringMatching(/VITE_CALIMERO_MIN_RELEASE/) });
   });
 
-  it("says a listing page no cluster serves is opened from Calimero Cloud", async () => {
+  it("reports a listing page no cluster serves as its own status", async () => {
     const d: SessionDeps = { ...deps(fakeClient()), env: { DEV: false, PROD: true }, servedNodes: async () => null };
-    const { result } = renderHook(() => usePasskeySession("test-app", d));
-    await waitFor(() => expect(result.current.session.status).toBe("unconfigured"));
-    expect(result.current.session).toMatchObject({ message: expect.stringMatching(/test-app's listing page/) });
-  });
-
-  it("reports a listing page as its own status when the app asks", async () => {
-    const d: SessionDeps = { ...deps(fakeClient()), env: { DEV: false, PROD: true }, servedNodes: async () => null };
-    const { result } = renderHook(() => usePasskeySession("test-app", d, { listing: true }));
+    const { result } = renderHook(() => usePasskeySession("test-app", d, { package: "com.example.test" }));
     await waitFor(() => expect(result.current.session.status).toBe("listing"));
     expect(result.current.session).toMatchObject({
       status: "listing",
       console: "https://cloud.calimero.network",
+      package: "com.example.test",
       message: expect.stringMatching(/test-app's listing page/),
     });
   });

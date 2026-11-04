@@ -10,7 +10,7 @@ import {
 import { CalimeroError } from "@calimero-network/mero-js";
 import { appSource, type KeyValueStorage } from "@calimero-apps/connect";
 import { nodeBasename } from "@calimero-apps/node-served";
-import { PasskeySignIn } from "@calimero-apps/passkey";
+import { AppListing, PasskeySignIn } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
 import { PACKAGE, messageOf } from "./chess";
@@ -18,6 +18,7 @@ import { Lobby } from "./Lobby";
 import LandingPage from "./pages/landing/LandingPage";
 import { SessionProvider } from "./SessionProvider";
 import {
+  LISTING,
   defaultDeps,
   describeTarget,
   useSessionApi,
@@ -183,7 +184,17 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
     );
   }
 
-  if (session.status === "unconfigured" || session.status === "listing") {
+  if (session.status === "listing") {
+    return (
+      <section className="connect">
+        <div className="connect-card">
+          <AppListing {...LISTING} />
+        </div>
+      </section>
+    );
+  }
+
+  if (session.status === "unconfigured") {
     return (
       <section className="connect">
         <div className="connect-card">

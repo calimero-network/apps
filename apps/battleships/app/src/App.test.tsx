@@ -118,10 +118,16 @@ beforeEach(() => localStorage.clear());
 afterEach(() => vi.restoreAllMocks());
 
 describe('App', () => {
-  it('says why a production build cannot connect', async () => {
+  it('shows the listing on a production copy no cluster serves', async () => {
     at('/lobby');
     render(<App deps={deps(fakeClient(), { DEV: false })} />);
-    await screen.findByText(/VITE_CALIMERO_CLUSTER is not set/);
+    const open = await screen.findByRole('link', { name: 'Open Battleships' });
+    // The node-served copy: mdma's `app_host.app_url('com.calimero.battleships')`.
+    expect(open.getAttribute('href')).toBe('https://3dcycf7rhh63uk7zb4bsaic6omvmcxbjuvihojnbfnsfqdaocjfa.apps.calimero.network/');
+    expect(screen.getByRole('link', { name: 'Deploy your own on Calimero Cloud' }).getAttribute('href')).toBe(
+      'https://cloud.calimero.network/v2',
+    );
+    expect(screen.queryByText(/VITE_CALIMERO_CLUSTER/)).toBeNull();
   });
 
   it('signs up with a passkey, then creates a lobby in a new organization', async () => {

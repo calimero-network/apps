@@ -134,11 +134,23 @@ describe("launcher", () => {
     expect(localStorage.getItem("mero-blocks:pending-invite")).toBeNull();
   });
 
-  it("shows why a production build without a cluster cannot connect", async () => {
+  it("shows the shared listing on a copy no cluster serves, not a developer error", async () => {
     const app = document.createElement("div");
     document.body.appendChild(app);
-    void new Landing(app).show({ status: "unconfigured", message: "VITE_CALIMERO_CLUSTER is required" }, { name: "x", seed: 1 });
-    expect(q("[data-testid=unconfigured]")?.textContent).toContain("VITE_CALIMERO_CLUSTER");
+    void new Landing(app).show({ status: "listing", message: "VITE_CALIMERO_CLUSTER is not set" }, { name: "x", seed: 1 });
+    const open = q("[data-testid=listing-open]") as HTMLAnchorElement | null;
+    expect(open?.textContent).toBe("Open Mero Blocks");
+    // The node-served copy: mdma's `app_host.app_url("com.calimero.mero-blocks")`.
+    expect(open?.getAttribute("href")).toBe("https://k3fyuodnomq2d2i3woo47t6blm42ur6mfy4icg4rsaxtkujph2vq.apps.calimero.network/");
+    expect(q("[data-testid=listing-deploy]")?.getAttribute("href")).toBe("https://cloud.calimero.network/v2");
+    expect(q("#mbl-play")?.textContent).not.toContain("VITE_CALIMERO_CLUSTER");
+  });
+
+  it("shows why a build that cannot connect otherwise fails", async () => {
+    const app = document.createElement("div");
+    document.body.appendChild(app);
+    void new Landing(app).show({ status: "unconfigured", message: "VITE_CALIMERO_MIN_RELEASE is not set" }, { name: "x", seed: 1 });
+    expect(q("[data-testid=unconfigured]")?.textContent).toContain("VITE_CALIMERO_MIN_RELEASE");
   });
 
   it("says why a sign-in failed and lets the player try again", async () => {

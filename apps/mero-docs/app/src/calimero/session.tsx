@@ -23,20 +23,32 @@ import {
   createClient,
   describeError,
   connectTarget,
+  NotServedError,
   type AppSource,
   type ConnectEnv,
   type KeyValueStorage,
   type Target,
 } from '@calimero-apps/connect';
-import { isPasskeyCancel } from '@calimero-apps/passkey';
+import { isPasskeyCancel, type ListingProps } from '@calimero-apps/passkey';
 import { PACKAGE_NAME } from '@/constants/config';
 
 /** The app's name in stored keys. */
 export const APP = 'mero-docs';
 
+/** What the listing page (`<AppListing>`) shows on a copy no Calimero Cloud cluster serves. */
+export const LISTING: ListingProps = {
+  name: 'Mero Docs',
+  description: 'A document workspace organized by folders: rich-text documents your organization edits together.',
+  package: PACKAGE_NAME,
+  dir: 'mero-docs',
+  dev: import.meta.env.DEV,
+};
+
 export type Session =
   | { status: 'connecting' }
   | { status: 'unconfigured'; message: string }
+  /** A copy of the app no cluster serves (its listing page): shows `<AppListing>`. */
+  | { status: 'listing'; message: string }
   | { status: 'signed-out'; client: CalimeroClient; target: Target }
   | { status: 'signed-in'; client: CalimeroClient; target: Target; accountId: string };
 
@@ -86,7 +98,9 @@ function useSessionState(deps: SessionDeps): SessionApi {
       try {
         target = await connectTarget(deps.env, { servedNodes: deps.servedNodes, app: APP, package: PACKAGE_NAME });
       } catch (e) {
-        if (live) setSession({ status: 'unconfigured', message: describeError(e) });
+        if (live) {
+          setSession({ status: e instanceof NotServedError ? 'listing' : 'unconfigured', message: describeError(e) });
+        }
         return;
       }
       try {

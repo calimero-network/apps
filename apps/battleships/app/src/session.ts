@@ -1,5 +1,11 @@
 import { createContext, useContext } from "react";
-import { passkeyDeps, usePasskeySession, type SessionApi, type SessionDeps } from "@calimero-apps/passkey";
+import {
+  passkeyDeps,
+  usePasskeySession,
+  type ListingProps,
+  type SessionApi,
+  type SessionDeps,
+} from "@calimero-apps/passkey";
 import { PACKAGE } from "./battleships";
 
 export { describeTarget, type Session, type SessionApi, type SessionDeps } from "@calimero-apps/passkey";
@@ -8,6 +14,15 @@ export { describeTarget, type Session, type SessionApi, type SessionDeps } from 
 export const APP = "battleships";
 
 export const defaultDeps: SessionDeps = passkeyDeps(import.meta.env);
+
+/** What this app's listing page (`<AppListing>`) shows on a copy no Calimero Cloud cluster serves. */
+export const LISTING: ListingProps = {
+  name: "Battleships",
+  description: "Two-player Battleships, with boards that stay on each player's device.",
+  package: PACKAGE,
+  dir: "battleships",
+  dev: import.meta.env.DEV,
+};
 
 /** The shared passkey session (`@calimero-apps/passkey`) for this app. */
 export function useSession(deps: SessionDeps = defaultDeps): SessionApi {

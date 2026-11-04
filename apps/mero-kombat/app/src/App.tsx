@@ -11,7 +11,7 @@ import {
 import { CalimeroError } from "@calimero-network/mero-js";
 import { appSource, type KeyValueStorage } from "@calimero-apps/connect";
 import { nodeBasename } from "@calimero-apps/node-served";
-import { PasskeySignIn } from "@calimero-apps/passkey";
+import { AppListing, PasskeySignIn } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
 import { dropInvite, pendingInvite, selectionKey } from "./arenas";
@@ -22,6 +22,7 @@ import { PracticePage } from "./PracticePage";
 import LandingPage from "./pages/landing/LandingPage";
 import { SessionProvider } from "./SessionProvider";
 import {
+  LISTING,
   defaultDeps,
   describeTarget,
   useSessionApi,
@@ -188,8 +189,14 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
     return (
       <section className="connect">
         <div className="connect-card">
-          <h1>Cannot connect</h1>
-          <pre className="err">{session.message}</pre>
+          {session.status === "listing" ? (
+            <AppListing {...LISTING} />
+          ) : (
+            <>
+              <h1>Cannot connect</h1>
+              <pre className="err">{session.message}</pre>
+            </>
+          )}
           <div className="row center">
             <Link className="button-link ghost" to="/practice">
               Practice vs CPU

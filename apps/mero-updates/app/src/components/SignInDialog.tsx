@@ -1,10 +1,10 @@
 import { useEffect, useRef } from "react";
-import { PasskeySignIn } from "@calimero-apps/passkey";
+import { AppListing, PasskeySignIn } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import { pendingInvite } from "../lib/companies";
-import { describeTarget } from "../lib/session";
+import { LISTING, describeTarget } from "../lib/session";
 import { useSessionApi } from "../lib/sessionContext";
 import styles from "./InviteModal.module.css";
 import { UserPlusIcon, XIcon } from "./icons";
@@ -63,6 +63,7 @@ export default function SignInDialog({ open, onClose }: { open: boolean; onClose
         </header>
 
         {api.session.status === "connecting" && <p className={styles.scope}>Connecting…</p>}
+        {api.session.status === "listing" && <AppListing {...LISTING} />}
         {api.session.status === "unconfigured" && (
           <p className="error" role="alert">
             {api.session.message}

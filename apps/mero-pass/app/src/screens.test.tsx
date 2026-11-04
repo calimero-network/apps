@@ -234,4 +234,21 @@ describe('SignInDialog', () => {
       'VITE_CALIMERO_CLUSTER',
     );
   });
+
+  it('shows the listing on a copy no cluster serves', () => {
+    renderAt(
+      '/',
+      calimero(null, {
+        status: 'listing',
+        message: "This is mero-pass's listing page",
+      }),
+      <SignInDialog open onClose={() => {}} />,
+    );
+    // The node-served copy: mdma's `app_host.app_url('com.calimero.mero-pass')`.
+    expect(screen.getByRole('link', { name: 'Open Mero Pass' })).toHaveAttribute(
+      'href',
+      'https://cnnfhhpjf6fjrjmxlf76yeqjhfz43my7vfvzo2bpvod7hzokzlqa.apps.calimero.network/',
+    );
+    expect(screen.queryByTestId('sign-in-unconfigured')).toBeNull();
+  });
 });

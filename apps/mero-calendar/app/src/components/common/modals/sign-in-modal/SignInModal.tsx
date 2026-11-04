@@ -1,8 +1,8 @@
 import { useEffect } from "react";
-import { PasskeySignIn } from "@calimero-apps/passkey";
+import { AppListing, PasskeySignIn } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
-import { describeTarget } from "../../../../api/session";
+import { LISTING, describeTarget } from "../../../../api/session";
 import { useSessionApi } from "../../../../api/sessionContext";
 import { pendingInvite } from "../../../../api/teams";
 import styles from "../username-modal/username-modal.module.scss";
@@ -37,6 +37,7 @@ export default function SignInModal({ onClose }: { onClose: () => void }) {
         </p>
 
         {api.session.status === "connecting" && <p className={styles.sub}>Connecting…</p>}
+        {api.session.status === "listing" && <AppListing {...LISTING} />}
         {api.session.status === "unconfigured" && (
           <p className={styles.sub} role="alert">
             {api.session.message}

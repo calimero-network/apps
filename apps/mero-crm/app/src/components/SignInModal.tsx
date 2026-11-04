@@ -1,8 +1,8 @@
 import React, { useEffect } from 'react';
-import { PasskeySignIn } from '@calimero-apps/passkey';
+import { AppListing, PasskeySignIn } from '@calimero-apps/passkey';
 import '@calimero-apps/passkey/passkey.css';
 
-import { describeTarget } from '../session';
+import { LISTING, describeTarget } from '../session';
 import { useSessionApi } from '../sessionContext';
 import { pendingInvite } from '../workspaces';
 import { Overlay, Dialog, Close, ErrorLine } from './modalKit';
@@ -46,6 +46,7 @@ export default function SignInModal({ onClose }: { onClose: () => void }): React
         </p>
 
         {api.session.status === 'connecting' && <p className="sub">Connecting…</p>}
+        {api.session.status === 'listing' && <AppListing {...LISTING} />}
         {api.session.status === 'unconfigured' && <ErrorLine>{api.session.message}</ErrorLine>}
 
         {api.session.status === 'signed-out' && <PasskeySignIn api={api} />}

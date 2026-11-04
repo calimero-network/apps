@@ -12,6 +12,7 @@ import {
   createClient,
   describeError,
   connectTarget,
+  NotServedError,
   type ConnectEnv,
   type KeyValueStorage,
   type Target,
@@ -23,6 +24,8 @@ export const APP = "mero-blocks";
 
 export type Phase =
   | { status: "unconfigured"; message: string }
+  /** A copy of the game no cluster serves (its listing page): where to open it instead. */
+  | { status: "listing"; message: string }
   | { status: "signed-out"; client: CalimeroClient; target: Target; sessions: SessionStore }
   | { status: "signed-in"; client: CalimeroClient; target: Target; sessions: SessionStore; accountId: string };
 
@@ -47,15 +50,16 @@ export const defaultDeps: SessionDeps = {
 
 /**
  * Resolve the target, build the client and restore a stored session. A
- * production build without `VITE_CALIMERO_CLUSTER` / `VITE_CALIMERO_MIN_RELEASE`
- * is `unconfigured` (it never connects anywhere).
+ * production build no cluster serves and that names none (a static copy:
+ * its listing page) is `listing`; one that cannot connect otherwise is
+ * `unconfigured`.
  */
 export async function connect(deps: SessionDeps = defaultDeps): Promise<Phase> {
   let target: Target;
   try {
     target = await connectTarget(deps.env, { servedNodes: deps.servedNodes, app: APP, package: PACKAGE });
   } catch (e) {
-    return { status: "unconfigured", message: describeError(e) };
+    return { status: e instanceof NotServedError ? "listing" : "unconfigured", message: describeError(e) };
   }
   try {
     const client = await deps.makeClient(target);

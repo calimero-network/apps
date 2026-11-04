@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { CalimeroError, type AppInfo } from "@calimero-network/mero-js";
 import { appSource, describeError, type KeyValueStorage } from "@calimero-apps/connect";
+import { AppListing } from "@calimero-apps/passkey";
 
 import { setConnection } from "./lib/calimero";
-import { PACKAGE, defaultDeps, describeTarget, useSession, type SessionDeps } from "./session";
+import { LISTING, PACKAGE, defaultDeps, describeTarget, useSession, type SessionDeps } from "./session";
 import { dropInvite, pendingInvite, selectionKey } from "./instances";
 import { SignIn } from "./SignIn";
 import { InstancePicker } from "./InstancePicker";
@@ -326,6 +327,11 @@ export default function App({
             <span style={{ fontWeight: 700, fontSize: 16 }}>Calimero — E2E Test Suite</span>
           </div>
           {session.status === "connecting" && <div className="method-card">Connecting…</div>}
+          {session.status === "listing" && (
+            <div className="method-card">
+              <AppListing {...LISTING} />
+            </div>
+          )}
           {session.status === "unconfigured" && (
             <div className="method-card">
               <div className="method-name">Cannot connect</div>

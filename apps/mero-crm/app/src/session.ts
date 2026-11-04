@@ -1,4 +1,10 @@
-import { passkeyDeps, usePasskeySession, type SessionApi, type SessionDeps } from "@calimero-apps/passkey";
+import {
+  passkeyDeps,
+  usePasskeySession,
+  type ListingProps,
+  type SessionApi,
+  type SessionDeps,
+} from "@calimero-apps/passkey";
 import { APP_NAME, APP_PACKAGE } from "./config";
 
 export { describeTarget, type Session, type SessionApi, type SessionDeps } from "@calimero-apps/passkey";
@@ -7,6 +13,15 @@ export { describeTarget, type Session, type SessionApi, type SessionDeps } from 
 export const APP = APP_NAME;
 
 export const defaultDeps: SessionDeps = passkeyDeps(import.meta.env);
+
+/** What this app's listing page (`<AppListing>`) shows on a copy no Calimero Cloud cluster serves. */
+export const LISTING: ListingProps = {
+  name: "Mero CRM",
+  description: "A simple, private sales CRM: track your pipeline, work your deals, and never lose a follow-up.",
+  package: APP_PACKAGE,
+  dir: "mero-crm",
+  dev: import.meta.env.DEV,
+};
 
 /** The shared passkey session (`@calimero-apps/passkey`) for this app. */
 export function useSession(deps: SessionDeps = defaultDeps): SessionApi {

@@ -77,12 +77,17 @@ describe("App", () => {
     await screen.findByText(/VITE_CALIMERO_MIN_RELEASE is not set/);
   });
 
-  it("sends a listing page no cluster serves to Calimero Cloud instead of failing", async () => {
+  it("sends a listing page no cluster serves to the copy Calimero Cloud serves instead of failing", async () => {
     // A static listing build: no cluster and no floor, so it asks no directory either.
     const d = { ...deps(fakeClient(), { DEV: false }), servedNodes: async () => null };
     render(<App deps={d} storage={new Memory()} />);
-    await screen.findByText(/kv-store's listing page/);
-    expect(screen.getByRole("link", { name: /Calimero Cloud/ }).getAttribute("href")).toBe("https://cloud.calimero.network");
+    const open = await screen.findByRole("link", { name: "Open KV Store" });
+    // The node-served copy: mdma's `app_host.app_url("com.calimero.kv-store")`.
+    expect(open.getAttribute("href")).toBe("https://2g7omgwwdshuse6hygzvhssf4w3ute5zc3vjlpor7zknkoyrwxdq.apps.calimero.network/");
+    expect(screen.getByRole("link", { name: "Deploy your own on Calimero Cloud" }).getAttribute("href")).toBe(
+      "https://cloud.calimero.network/v2",
+    );
+    expect(screen.queryByText(/VITE_CALIMERO_CLUSTER/)).toBeNull();
     expect(screen.queryByText("Cannot connect")).toBeNull();
   });
 

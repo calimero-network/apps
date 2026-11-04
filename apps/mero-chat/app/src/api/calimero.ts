@@ -26,21 +26,32 @@ import {
   createClient,
   describeError,
   connectTarget,
+  NotServedError,
   type AppSource,
   type Target,
 } from "@calimero-apps/connect";
-import { isPasskeyCancel } from "@calimero-apps/passkey";
+import { isPasskeyCancel, type ListingProps } from "@calimero-apps/passkey";
 
 /** The app's name in stored keys. */
 export const APP = "mero-chat";
 /** The registry package production instances are created from. */
 export const APP_PACKAGE = "com.calimero.chat";
 
-export type Status = "connecting" | "unconfigured" | "signed-out" | "signed-in";
+/** What the listing page (`<AppListing>`) shows on a copy no Calimero Cloud cluster serves. */
+export const LISTING: ListingProps = {
+  name: "Mero Chat",
+  description: "Private team chat for your organization: channels, threads and direct messages.",
+  package: APP_PACKAGE,
+  dir: "mero-chat",
+  dev: import.meta.env.DEV,
+};
+
+/** `listing`: a copy of the app no cluster serves (its listing page), which shows `<AppListing>`. */
+export type Status = "connecting" | "unconfigured" | "listing" | "signed-out" | "signed-in";
 
 interface State {
   status: Status;
-  /** Why the build cannot connect (`unconfigured`), or the last sign-in error. */
+  /** Why the build cannot connect (`unconfigured`, `listing`), or the last sign-in error. */
   message: string | null;
   accountId: string | null;
   /** False while an event stream is down (the reconnect resync keys on it). */
@@ -102,7 +113,7 @@ export function startCalimero(): Promise<void> {
         set({ status: "signed-out", message: null });
       }
     } catch (e) {
-      set({ status: "unconfigured", message: describeError(e) });
+      set({ status: e instanceof NotServedError ? "listing" : "unconfigured", message: describeError(e) });
     }
   })();
   return started;

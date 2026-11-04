@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CalimeroError, type CalimeroClient } from "@calimero-network/mero-js";
 import { appSource, type KeyValueStorage } from "@calimero-apps/connect";
-import { PasskeySignIn } from "@calimero-apps/passkey";
+import { AppListing, PasskeySignIn } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 import { GroupPicker, type OpenedGroup } from "./GroupPicker";
 import { InviteCard } from "./InviteCard";
 import { PACKAGE, meroVote } from "./meroVote";
-import { defaultDeps, describeTarget, useSession, type SessionApi, type SessionDeps } from "./session";
+import { LISTING, defaultDeps, describeTarget, useSession, type SessionApi, type SessionDeps } from "./session";
 import { dropInvite, pendingInvite, selectionKey } from "./groups";
 import { VotePanel } from "./VotePanel";
 import { ThemeToggle } from "./ThemeToggle";
@@ -229,7 +229,11 @@ export function App({
             <span className="spinner" aria-hidden="true" />
             <p className="empty">Connecting…</p>
           </div>
-        ) : (session.status === "unconfigured" || session.status === "listing") ? (
+        ) : session.status === "listing" ? (
+          <div className="card">
+            <AppListing {...LISTING} />
+          </div>
+        ) : session.status === "unconfigured" ? (
           <div className="card">
             <h2>Not configured</h2>
             <pre className="err">{session.message}</pre>

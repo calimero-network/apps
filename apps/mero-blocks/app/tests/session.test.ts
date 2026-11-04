@@ -52,8 +52,13 @@ function deps(env: SessionDeps["env"], storage = memory(), client = fakeClient()
 const LOCAL = { DEV: true, VITE_CALIMERO_TARGET: "local" };
 
 describe("connect", () => {
-  it("is unconfigured for a production build without its cluster", async () => {
+  it("is a listing for a production build no cluster serves", async () => {
     const phase = await connect(deps({ DEV: false }));
+    expect(phase.status).toBe("listing");
+  });
+
+  it("is unconfigured for a production build naming a cluster but no release floor", async () => {
+    const phase = await connect(deps({ DEV: false, VITE_CALIMERO_CLUSTER: "eu-shared-1" }));
     expect(phase.status).toBe("unconfigured");
   });
 
