@@ -5,7 +5,7 @@ collect signatures from the members of your organization, and keep every signed
 version.
 
 A component app on Calimero 1.0: the contract is on core's component SDK
-(`calimero-app-sdk`, `wasm32-wasip2`), the PDFs and signature images are the
+(`calimero-sdk`, `wasm32-wasip2`), the PDFs and signature images are the
 app's blobs, local development runs on `merod local`, and the frontend talks to
 the local nodes in development and to Calimero Cloud in production through
 mero-js's `CalimeroClient` (`@calimero-apps/connect`). See

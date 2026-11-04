@@ -1,5 +1,5 @@
 //! Mero Sheets: a collaborative spreadsheet on core's component SDK
-//! (`calimero-app-sdk`). One app instance is one workbook.
+//! (`calimero-sdk`). One app instance is one workbook.
 //!
 //! Sheets, cells with formulas (the `mero-sheets-recalc` engine, shared with
 //! the browser), inserted and deleted rows and columns, named ranges, styles,
@@ -36,8 +36,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use calimero_app_sdk::prelude::*;
-use calimero_app_sdk::StorageError;
+use calimero_sdk::prelude::*;
+use calimero_sdk::StorageError;
 use serde::{Deserialize, Serialize};
 
 use mero_sheets_recalc::{formula, layout, recalc, rules};
@@ -326,7 +326,7 @@ pub struct Project {
     pub id: String,
     /// Empty until `initProject` runs.
     pub name: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub created_at: u64,
 }
 
@@ -335,9 +335,9 @@ pub struct Member {
     /// The member's account (`whoami`).
     pub id: String,
     pub nickname: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub joined_at: u64,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub updated_at: u64,
     /// The same value as `id`.
     pub account: String,
@@ -403,11 +403,11 @@ pub struct Attachment {
     pub col_id: String,
     pub blob_id: String,
     pub name: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub size: u64,
     pub mime: String,
     pub created_by: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub created_at: u64,
 }
 
@@ -445,7 +445,7 @@ pub struct Link {
     pub name: String,
     pub rows: u32,
     pub cols: u32,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub updated_at: u64,
 }
 
@@ -490,7 +490,7 @@ pub struct Sheet {
     pub id: String,
     pub name: String,
     pub position: u32,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub created_at: u64,
     /// For a linked sheet, the name of the workbook it comes from.
     pub linked_from: String,
@@ -506,10 +506,10 @@ pub struct Cell {
     pub raw_value: String,
     pub computed_value: String,
     pub format: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub updated_at: u64,
     pub last_editor: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub last_edited_at: u64,
 }
 
@@ -532,9 +532,9 @@ pub struct Comment {
     pub mentions: Vec<String>,
     pub parent: String,
     pub resolved: bool,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub created_at: u64,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub updated_at: u64,
 }
 
@@ -542,7 +542,7 @@ pub struct Comment {
 pub struct ActivityEntry {
     pub id: String,
     pub author: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub at: u64,
     pub sheet_id: String,
     pub kind: String,
@@ -619,9 +619,9 @@ pub struct FunctionDef {
 #[app::state(version = 1)]
 pub struct Spreadsheet {
     /// The workbook's id and creation time, fixed in `init`.
-    founding: calimero_app_sdk::Cell<Founding>,
+    founding: calimero_sdk::Cell<Founding>,
     /// The workbook's name, set once by `initProject`. Owners only.
-    project_name: calimero_app_sdk::Cell<String>,
+    project_name: calimero_sdk::Cell<String>,
     /// The workbook's owners: the app's owner at `init`, then whoever an
     /// owner makes one.
     owners: Set<String>,

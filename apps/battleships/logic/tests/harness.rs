@@ -12,7 +12,7 @@ mod common;
 
 use battleships_rules::board::Cell;
 use battleships_rules::players::PlayerBoard;
-use calimero_app_sdk::testing::{Failure, Org, TestApp};
+use calimero_sdk::testing::{Failure, Org, TestApp};
 use serde_json::{json, Value};
 
 const ALICE: &str = "owner";

@@ -1,6 +1,6 @@
 # mero-component
 
-Builds a component app (`calimero-app-sdk`, `wasm32-wasip2`) and packs it into
+Builds a component app (`calimero-sdk`, `wasm32-wasip2`) and packs it into
 a signed `.mpk`, with core's own `calimero-app-build`, `calimero-bundle` and
 `mero-sign` at `component-core-tag` (root `Cargo.toml`). `cargo mero bundle` at
 that tag builds v1 (`wasm32-unknown-unknown`) apps only.

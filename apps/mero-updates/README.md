@@ -4,7 +4,7 @@
 the same basic job: a founder writes a structured update, sends it to investors, and asks them for
 help. Mero Updates keeps that and changes where the data lives. There is no SaaS database: the
 company and its investors share an app on [Calimero](https://calimero.network) 1.0, a contract on
-core's **component SDK** (`calimero-app-sdk`, a `calimero:app` WebAssembly component on the node's
+core's **component SDK** (`calimero-sdk`, a `calimero:app` WebAssembly component on the node's
 wasmtime runtime), developed on **`merod local`**, with a frontend on mero-js's **`CalimeroClient`**
 that talks to a **Calimero Cloud** cluster in production and to the local nodes in development.
 

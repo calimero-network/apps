@@ -98,7 +98,7 @@ export function FormKeys({
       } catch (e) {
         // No registration, no key: take it back rather than leave one that
         // could answer any form.
-        await revokeKey(client, key.keyId).catch(() => undefined);
+        await revokeKey(client, key.keyId, passkey()).catch(() => undefined);
         throw e;
       }
       setIssued({ label: name, env: envBlock(key, appId, form.id) });
@@ -117,7 +117,7 @@ export function FormKeys({
     setError(null);
     try {
       // The API key is what lets it call; the register is what names it.
-      await revokeKey(client, key.account);
+      await revokeKey(client, key.account, passkey());
       await workspace.act((c) => c.forgetFormKey({ account: key.account }));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

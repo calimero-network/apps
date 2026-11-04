@@ -1,6 +1,6 @@
 /**
- * The neutral scenario format of core's `calimero_app_sdk::testing::scenario`
- * (`crates/app-sdk/src/testing/scenario.rs` at the pinned tag), the parts a
+ * The neutral scenario format of core's `calimero_sdk::testing::scenario`
+ * (`crates/sdk/src/testing/scenario.rs` at the pinned tag), the parts a
  * cluster can run. The same `scenarios/*.json` an app's `cargo test` runs in the
  * harness are run here on `merod local`, through mero-js, as real accounts.
  *

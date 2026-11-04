@@ -15,7 +15,7 @@
 //!
 //! A row is a cache, never a record: losing one costs a read, nothing else.
 
-use calimero_app_sdk::prelude::*;
+use calimero_sdk::prelude::*;
 
 use crate::store::{emit, invalid};
 use serde::{Deserialize, Serialize};

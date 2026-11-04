@@ -45,8 +45,12 @@ export async function createFormKey(
 }
 
 /** Revoke a key; one already gone is fine. */
-export async function revokeKey(client: Pick<CalimeroClient, "revokeApiKey">, keyId: string): Promise<void> {
-  await client.revokeApiKey(keyId).catch((err: { status?: number }) => {
+export async function revokeKey(
+  client: Pick<CalimeroClient, "revokeApiKey">,
+  keyId: string,
+  passkey: PasskeyProvider,
+): Promise<void> {
+  await client.revokeApiKey(keyId, passkey).catch((err: { status?: number }) => {
     if (err?.status !== 404) throw err;
   });
 }

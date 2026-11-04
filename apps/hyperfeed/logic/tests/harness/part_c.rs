@@ -2,7 +2,7 @@
 //! on: one thread per task, a task's links, push, agents with accounts of
 //! their own, drafts you send, actions, situations and defaults.
 
-use calimero_app_sdk::testing::{Failure, TestApp};
+use calimero_sdk::testing::{Failure, TestApp};
 use serde_json::{json, Value};
 
 use crate::support::*;

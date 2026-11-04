@@ -7,7 +7,7 @@ meshes, materials and lights that everyone in the studio can open. Everyone in
 the scene sees every change as it lands, sees what the others have selected and
 where they are looking from, and the scene's admin decides who may edit —
 enforced by the contract. It runs on core's component runtime (Calimero 1.0):
-`calimero-app-sdk`, `merod local` in development, mero-js `CalimeroClient`.
+`calimero-sdk`, `merod local` in development, mero-js `CalimeroClient`.
 
 ```
 apps/mero-models/
@@ -174,7 +174,7 @@ most 64 MiB, with 1 MiB kept for the rest: `(64 MiB − 1 MiB) / 4 × 3` (core's
 
 The contract stores each blob id as a `BlobRef` (`logic/src/blob.rs`): CBOR tag
 51,739 around the blob's SHA-256, exactly the bytes core's
-`calimero_app_sdk::BlobRef` writes. A node with core #4815 counts those
+`calimero_sdk::BlobRef` writes. A node with core #4815 counts those
 references and keeps the blobs they name; the pinned SDK (`1.0.0-rc.7`) has no
 `BlobRef` yet, so the app writes the tag itself, and moving to the SDK's type
 when the pin moves changes neither stored state nor the wire. Not used yet:

@@ -2,7 +2,7 @@
 
 A document workspace: folders hold rich-text documents that the members of a
 workspace edit together, live. A component app on Calimero 1.0: the contract is
-on core's component SDK (`calimero-app-sdk`, `wasm32-wasip2`), local development
+on core's component SDK (`calimero-sdk`, `wasm32-wasip2`), local development
 runs on `merod local`, and the frontend talks to the local nodes in development
 and to Calimero Cloud in production through mero-js's `CalimeroClient`
 (`@calimero-apps/connect`). See [`docs/COMPONENT-APPS.md`](../../docs/COMPONENT-APPS.md).

@@ -7,7 +7,7 @@
 
 mod common;
 
-use calimero_app_sdk::testing::{Failure, Org, TestApp};
+use calimero_sdk::testing::{Failure, Org, TestApp};
 use serde_json::{json, Value};
 
 /// 64 hex digits: a blob id as an upload answers it.

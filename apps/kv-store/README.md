@@ -2,7 +2,7 @@
 
 The reference Calimero app, and the template every other app's port to the
 1.0 runtime follows. A string key-value store: a contract on core's **component
-SDK** (`calimero-app-sdk`, a `calimero:app` WebAssembly component on the node's
+SDK** (`calimero-sdk`, a `calimero:app` WebAssembly component on the node's
 wasmtime runtime), developed on **`merod local`**, with a frontend on mero-js's
 **`CalimeroClient`** that talks to a **Calimero Cloud** cluster in production
 and to the local nodes in development.

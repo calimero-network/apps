@@ -55,7 +55,7 @@ case "${1:-}" in
     #     for it and skipping it is correct. It is still covered: the `frontend`
     #     job takes its dirs from scripts/ci-scope.py (`frontend_dirs`), not
     #     from this mapping.
-    #   * A COMPONENT app (logic/ depends on calimero-app-sdk): excluded from the
+    #   * A COMPONENT app (logic/ depends on calimero-sdk from core's git): excluded from the
     #     root workspace on purpose and covered by components.yml.
     #   * A logic/ that maps to nothing else — an app whose Cargo.toml is missing,
     #     unpublished or lacks [package.metadata.calimero]. That one really is
@@ -66,8 +66,8 @@ case "${1:-}" in
       | map(select(. as $d | ($apps | map(.dir) | index($d)) == null))
       | .[]
     ' <<<"$paths" | while read -r orphan; do
-      if [ -f "apps/$orphan/logic/Cargo.toml" ] && grep -Eq '^calimero-app-sdk[[:space:]]*=' "apps/$orphan/logic/Cargo.toml"; then
-        # A component app (calimero-app-sdk), excluded from the root workspace on
+      if [ -f "apps/$orphan/logic/Cargo.toml" ] && grep -Eq '^calimero-sdk[[:space:]]*=.*[{,][[:space:]]*git[[:space:]]*=' "apps/$orphan/logic/Cargo.toml"; then
+        # A component app (calimero-sdk), excluded from the root workspace on
         # purpose: .github/workflows/components.yml builds, tests and e2e-tests it.
         echo "::notice::apps/$orphan is a component app — covered by the Components workflow, not this matrix" >&2
       elif [ -d "apps/$orphan/logic" ]; then

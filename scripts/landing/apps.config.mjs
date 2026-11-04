@@ -60,7 +60,7 @@ import { DOCS } from './docs.config.mjs';
 export const APPS = {
 
   'mero-chess': {
-    // A component app (calimero-app-sdk, merod local, CalimeroClient): no
+    // A component app (calimero-sdk, merod local, CalimeroClient): no
     // Playwright, so no generated landing spec. docs/COMPONENT-APPS.md.
     e2eDir: null,
     availability: 'web',
@@ -115,7 +115,7 @@ export const APPS = {
     ],
   },
   'mero-models': {
-    // A component app (calimero-app-sdk, merod local, CalimeroClient): no
+    // A component app (calimero-sdk, merod local, CalimeroClient): no
     // Playwright, so no generated landing spec. docs/COMPONENT-APPS.md.
     e2eDir: null,
     availability: 'web',
@@ -172,7 +172,7 @@ export const APPS = {
     ],
   },
   'mero-kombat': {
-    // A component app (calimero-app-sdk, merod local, CalimeroClient): no
+    // A component app (calimero-sdk, merod local, CalimeroClient): no
     // Playwright, so no generated landing spec. docs/COMPONENT-APPS.md.
     e2eDir: null,
     availability: 'web',
@@ -228,7 +228,7 @@ export const APPS = {
     ],
   },
   battleships: {
-    // A component app (calimero-app-sdk, merod local, CalimeroClient): no
+    // A component app (calimero-sdk, merod local, CalimeroClient): no
     // Playwright, so no generated landing spec. docs/COMPONENT-APPS.md.
     e2eDir: null,
     availability: 'web',
@@ -251,7 +251,7 @@ export const APPS = {
     // Keeps its own sign-in — a sidebar, or the game launcher — so the
     // landing gets an onConnect callback and never mounts the shared popup.
     ownConnect: true,
-    // A component app (calimero-app-sdk, merod local, CalimeroClient): no
+    // A component app (calimero-sdk, merod local, CalimeroClient): no
     // Playwright, so no generated landing spec. docs/COMPONENT-APPS.md.
     e2eDir: null,
     availability: 'web+desktop',
@@ -318,7 +318,7 @@ export const APPS = {
 
   'mero-chat': {
     e2eDir: 'e2e',
-    // A component app (calimero-app-sdk, merod local, CalimeroClient); it
+    // A component app (calimero-sdk, merod local, CalimeroClient); it
     // passes its own passkey sign-in to the landing page as `onConnect`.
     ownConnect: true,
     // Its icons live under /icons/; there is no /favicon.svg or /icon-512.png.
@@ -416,7 +416,7 @@ export const APPS = {
 
   'mero-design': {
     displayName: 'Mero Design',
-    // A component app (calimero-app-sdk, merod local, CalimeroClient): no
+    // A component app (calimero-sdk, merod local, CalimeroClient): no
     // Playwright, so no generated landing spec. docs/COMPONENT-APPS.md.
     e2eDir: null,
     availability: 'web',
@@ -531,7 +531,7 @@ export const APPS = {
 
   'mero-docs': {
     markSrc: '/icons/icon.svg',
-    // A component app (calimero-app-sdk, merod local, CalimeroClient): no
+    // A component app (calimero-sdk, merod local, CalimeroClient): no
     // Playwright, so no generated landing spec. docs/COMPONENT-APPS.md.
     e2eDir: null,
     availability: 'web',
@@ -574,7 +574,7 @@ export const APPS = {
     ],
   },
   'mero-forum': {
-    // A component app (calimero-app-sdk, merod local, CalimeroClient): no
+    // A component app (calimero-sdk, merod local, CalimeroClient): no
     // Playwright, so no generated landing spec. docs/COMPONENT-APPS.md.
     e2eDir: null,
     availability: 'web',
@@ -826,7 +826,7 @@ export const APPS = {
 
   'mero-sheets': {
     displayName: 'Mero Sheets',
-    // A component app (calimero-app-sdk, merod local, CalimeroClient): no
+    // A component app (calimero-sdk, merod local, CalimeroClient): no
     // Playwright, so no generated landing spec. docs/COMPONENT-APPS.md.
     e2eDir: null,
     // Passes its own passkey sign-in to the landing page as `onConnect`.
@@ -940,7 +940,7 @@ export const APPS = {
   },
 
   'mero-sign': {
-    // A component app (calimero-app-sdk, merod local, CalimeroClient): no
+    // A component app (calimero-sdk, merod local, CalimeroClient): no
     // Playwright, so no generated landing spec. docs/COMPONENT-APPS.md.
     // Passes its own passkey sign-in to the landing page as `onConnect`.
     ownConnect: true,
@@ -965,7 +965,7 @@ export const APPS = {
   },
 
   'mero-stream': {
-    // A component app (calimero-app-sdk, merod local, CalimeroClient): no
+    // A component app (calimero-sdk, merod local, CalimeroClient): no
     // Playwright, so no generated landing spec. docs/COMPONENT-APPS.md.
     e2eDir: null,
     availability: 'web',

@@ -61,7 +61,7 @@ Start here. These exist to be read, not shipped.
 
 | App | Live | What it is | Package |
 | --- | --- | --- | --- |
-| [kv-store](apps/kv-store) | [↗](https://mero-kv-store.vercel.app) | The first component app (Calimero 1.0): a string key-value store on `calimero-app-sdk`, developed on `merod local`, its frontend on mero-js `CalimeroClient` (Cloud in production). | `com.calimero.kv-store` |
+| [kv-store](apps/kv-store) | [↗](https://mero-kv-store.vercel.app) | The first component app (Calimero 1.0): a string key-value store on `calimero-sdk`, developed on `merod local`, its frontend on mero-js `CalimeroClient` (Cloud in production). | `com.calimero.kv-store` |
 | [conformance](apps/conformance) | — | Not a product: the conformance matrix. Every call a component app's client (mero-js `CalimeroClient`) makes, run as two accounts on `merod local` with one report row per check, and the contract it calls; the 0.x rig it replaces is kept beside it in `v0/`. | `com.calimero.conformance` |
 | [scaffolding-e2e](apps/scaffolding-e2e) | [↗](https://scaffolding-e2e-application.vercel.app/) | The SDK test bench, on the component SDK: KV, collections, per-user, frozen and shared storage, roles and a workspace directory, every method reachable from the UI behind an interactive test suite, and scenarios run on `merod local`. | `com.calimero.scaffolding-e2e` |
 
@@ -69,18 +69,18 @@ Start here. These exist to be read, not shipped.
 
 | App | Live | What it is | Package |
 | --- | --- | --- | --- |
-| [mero-design](apps/mero-design) | [↗](https://design.hyperfeed.me/) | A component app (Calimero 1.0): a Figma-style infinite canvas — shapes, text, images, board roles, live multi-member editing — in an app instance its team's members share, on `calimero-app-sdk`, its frontend on mero-js `CalimeroClient`. | `com.calimero.mero-design` |
+| [mero-design](apps/mero-design) | [↗](https://design.hyperfeed.me/) | A component app (Calimero 1.0): a Figma-style infinite canvas — shapes, text, images, board roles, live multi-member editing — in an app instance its team's members share, on `calimero-sdk`, its frontend on mero-js `CalimeroClient`. | `com.calimero.mero-design` |
 | [mero-pixart](apps/mero-pixart) | [↗](https://mero-pixart.vercel.app/) | A component app (Calimero 1.0): a Photoshop-style image editor with layers, folders, masks, adjustments and free transform, edited together; pixels are blobs of the document. | `com.calimero.mero-pixart` |
-| [mero-models](apps/mero-models) | — | Blender-style 3D modeller — primitives, meshes, edit mode with extrude, materials and lights, a transform gizmo, undo, OBJ/STL/glTF in and out; co-edited live with presence, editors enforced by the contract. A component app (Calimero 1.0) on `calimero-app-sdk`: meshes and textures are the scene's own blobs (core #4815, at most 47.25 MiB each); frontend on mero-js `CalimeroClient`. | `com.calimero.mero-models` |
-| [mero-sheets](apps/mero-sheets) | [↗](https://mero-sheets.vercel.app) | A component app (Calimero 1.0): a collaborative spreadsheet — derive-on-read recalc, formula autocomplete, live cursors, roles and protected ranges — in an app instance its organization's members share, on `calimero-app-sdk`, its frontend on mero-js `CalimeroClient`. | `com.calimero.mero-sheets` |
+| [mero-models](apps/mero-models) | — | Blender-style 3D modeller — primitives, meshes, edit mode with extrude, materials and lights, a transform gizmo, undo, OBJ/STL/glTF in and out; co-edited live with presence, editors enforced by the contract. A component app (Calimero 1.0) on `calimero-sdk`: meshes and textures are the scene's own blobs (core #4815, at most 47.25 MiB each); frontend on mero-js `CalimeroClient`. | `com.calimero.mero-models` |
+| [mero-sheets](apps/mero-sheets) | [↗](https://mero-sheets.vercel.app) | A component app (Calimero 1.0): a collaborative spreadsheet — derive-on-read recalc, formula autocomplete, live cursors, roles and protected ranges — in an app instance its organization's members share, on `calimero-sdk`, its frontend on mero-js `CalimeroClient`. | `com.calimero.mero-sheets` |
 | [mero-calendar](apps/mero-calendar) | [↗](https://mero-calendar.vercel.app) | A component app (Calimero 1.0): shared team calendars whose events only their owner and invitees read, private events only their owner reads, and booking links for people with no account. | `com.calimero.mero-calendar` |
-| [mero-docs](apps/mero-docs) | [↗](https://mero-docs.vercel.app) | A component app (Calimero 1.0): a document workspace of folders (teams of an organization) and collaboratively edited rich-text documents (Fugue text), on `calimero-app-sdk`, its frontend on mero-js `CalimeroClient`. | `com.calimero.mero-drive-docs` |
-| [mero-crm](apps/mero-crm) | — | Sales CRM — drag-and-drop pipeline, deals, people, activities, stage automations, insights, and a local deal assistant (health score, next best step, email draft). A component app (Calimero 1.0): `calimero-app-sdk` tables, `merod local` in dev, mero-js `CalimeroClient` on Calimero Cloud. | `com.calimero.mero-crm` |
-| [mero-issue-tracker](apps/mero-issue-tracker) | [↗](https://mero-issue-tracker-app.vercel.app) | Issue board for a small engineering team, with an MCP server for coding agents. A component app (Calimero 1.0): `calimero-app-sdk` tables, `merod local` in dev, mero-js `CalimeroClient` on Calimero Cloud. | `com.calimero.mero-issue-tracker` |
-| [mero-forum](apps/mero-forum) | [↗](https://mero-forum.vercel.app) | A component app (Calimero 1.0): threads, comments, votes and moderators in an app instance its organization's members share, on `calimero-app-sdk`, its frontend on mero-js `CalimeroClient`. | `com.calimero.mero-forum` |
-| [mero-updates](apps/mero-updates) | — | Investor updates, two-way: categories, KPI deltas, asks answered in one click, investor Q&A and read receipts. A component app (Calimero 1.0): `calimero-app-sdk` tables, `merod local` in dev, mero-js `CalimeroClient` on Calimero Cloud. | `com.calimero.mero-updates` |
-| [mero-chat](apps/mero-chat) | [↗](https://chat.hyperfeed.me) | A component app (Calimero 1.0): team chat with workspaces, public and private channels, threads, reactions and DMs, each channel an app instance its members reach, on `calimero-app-sdk`, its frontend on mero-js `CalimeroClient`. | `com.calimero.chat` |
-| [mero-standup](apps/mero-standup) | — | Async standups and a decision log for a small team: each member's own update per day (started from yesterday's), help on blockers, a weekly digest, and tagged write-once decisions superseded rather than edited. A component app (Calimero 1.0) on `calimero-app-sdk`: v1's storage-tier write rules as method checks, tables with indexes and counts; frontend on mero-js `CalimeroClient`. | `com.calimero.mero-standup` |
+| [mero-docs](apps/mero-docs) | [↗](https://mero-docs.vercel.app) | A component app (Calimero 1.0): a document workspace of folders (teams of an organization) and collaboratively edited rich-text documents (Fugue text), on `calimero-sdk`, its frontend on mero-js `CalimeroClient`. | `com.calimero.mero-drive-docs` |
+| [mero-crm](apps/mero-crm) | — | Sales CRM — drag-and-drop pipeline, deals, people, activities, stage automations, insights, and a local deal assistant (health score, next best step, email draft). A component app (Calimero 1.0): `calimero-sdk` tables, `merod local` in dev, mero-js `CalimeroClient` on Calimero Cloud. | `com.calimero.mero-crm` |
+| [mero-issue-tracker](apps/mero-issue-tracker) | [↗](https://mero-issue-tracker-app.vercel.app) | Issue board for a small engineering team, with an MCP server for coding agents. A component app (Calimero 1.0): `calimero-sdk` tables, `merod local` in dev, mero-js `CalimeroClient` on Calimero Cloud. | `com.calimero.mero-issue-tracker` |
+| [mero-forum](apps/mero-forum) | [↗](https://mero-forum.vercel.app) | A component app (Calimero 1.0): threads, comments, votes and moderators in an app instance its organization's members share, on `calimero-sdk`, its frontend on mero-js `CalimeroClient`. | `com.calimero.mero-forum` |
+| [mero-updates](apps/mero-updates) | — | Investor updates, two-way: categories, KPI deltas, asks answered in one click, investor Q&A and read receipts. A component app (Calimero 1.0): `calimero-sdk` tables, `merod local` in dev, mero-js `CalimeroClient` on Calimero Cloud. | `com.calimero.mero-updates` |
+| [mero-chat](apps/mero-chat) | [↗](https://chat.hyperfeed.me) | A component app (Calimero 1.0): team chat with workspaces, public and private channels, threads, reactions and DMs, each channel an app instance its members reach, on `calimero-sdk`, its frontend on mero-js `CalimeroClient`. | `com.calimero.chat` |
+| [mero-standup](apps/mero-standup) | — | Async standups and a decision log for a small team: each member's own update per day (started from yesterday's), help on blockers, a weekly digest, and tagged write-once decisions superseded rather than edited. A component app (Calimero 1.0) on `calimero-sdk`: v1's storage-tier write rules as method checks, tables with indexes and counts; frontend on mero-js `CalimeroClient`. | `com.calimero.mero-standup` |
 | [mero-forms](apps/mero-forms) | — | A component app (Calimero 1.0): forms with typed questions the contract checks, responses with a summary and CSV, filled in by hand, through a public link or by a website's API key that can answer one form; any response goes on to [Mero CRM](apps/mero-crm) as a contact and a deal. | `com.calimero.mero-forms` |
 
 ### Secrets, documents & governance
@@ -88,16 +88,16 @@ Start here. These exist to be read, not shipped.
 | App | Live | What it is | Package |
 | --- | --- | --- | --- |
 | [mero-pass](apps/mero-pass) | [↗](https://mero-pass.vercel.app) | Secret manager on Calimero 1.0 (component SDK) — a vault is an app instance in your team's org. Secrets are sealed in the browser, versioned and attributed, with no master password to phish. | `com.calimero.mero-pass` |
-| [mero-sign](apps/mero-sign) | [↗](https://mero-sign.vercel.app) | A component app (Calimero 1.0): upload a PDF, collect signatures from the members of your organization and keep every signed version, on `calimero-app-sdk` with the PDFs as app blobs, its frontend on mero-js `CalimeroClient`. | `com.calimero.mero-sign` |
-| [mero-vote](apps/mero-vote) | — | Private polls with verifiable tallies — ballots encrypted in the browser (ElGamal on ristretto255) with zero-knowledge well-formedness proofs, t-of-n threshold-decrypted totals (distributed key generation, no trusted dealer), and a tally every member re-verifies in their own browser. A component app (Calimero 1.0) on `calimero-app-sdk`: v1's storage-tier write rules as method checks; frontend on mero-js `CalimeroClient`. | `com.calimero.mero-vote` |
+| [mero-sign](apps/mero-sign) | [↗](https://mero-sign.vercel.app) | A component app (Calimero 1.0): upload a PDF, collect signatures from the members of your organization and keep every signed version, on `calimero-sdk` with the PDFs as app blobs, its frontend on mero-js `CalimeroClient`. | `com.calimero.mero-sign` |
+| [mero-vote](apps/mero-vote) | — | Private polls with verifiable tallies — ballots encrypted in the browser (ElGamal on ristretto255) with zero-knowledge well-formedness proofs, t-of-n threshold-decrypted totals (distributed key generation, no trusted dealer), and a tally every member re-verifies in their own browser. A component app (Calimero 1.0) on `calimero-sdk`: v1's storage-tier write rules as method checks; frontend on mero-js `CalimeroClient`. | `com.calimero.mero-vote` |
 
 ### Games
 
 | App | Live | What it is | Package |
 | --- | --- | --- | --- |
 | [mero-blocks](apps/mero-blocks) | [↗](https://mero-blocks.vercel.app/) | Minecraft-style multiplayer voxel sandbox, a component app (Calimero 1.0). No game server — a world is an app instance: seed + block-edit diff + player presence. Its native iOS/Android apps move to 1.0 in #700. | `com.calimero.mero-blocks` |
-| [merraria](apps/merraria) | [↗](https://merraria.vercel.app/) | Terraria-style 2D mining sandbox — seed-generated terrain, tile-edit diff, player presence. A component app (`calimero-app-sdk`, `merod local`, `CalimeroClient`); its native iOS and Android apps run on 1.0 too (#702). | `com.calimero.merraria` |
-| [battleships](apps/battleships) | [↗](https://battleships-fawn.vercel.app) | Two-player Battleships with commit-reveal ship placement: boards stay on the device, every answer is audited at the reveal. A component app (Calimero 1.0) on `calimero-app-sdk`: the lobby and every match in one app instance, the result recorded by the call that decides it; frontend on mero-js `CalimeroClient`. | `com.calimero.battleships` |
+| [merraria](apps/merraria) | [↗](https://merraria.vercel.app/) | Terraria-style 2D mining sandbox — seed-generated terrain, tile-edit diff, player presence. A component app (`calimero-sdk`, `merod local`, `CalimeroClient`); its native iOS and Android apps run on 1.0 too (#702). | `com.calimero.merraria` |
+| [battleships](apps/battleships) | [↗](https://battleships-fawn.vercel.app) | Two-player Battleships with commit-reveal ship placement: boards stay on the device, every answer is audited at the reveal. A component app (Calimero 1.0) on `calimero-sdk`: the lobby and every match in one app instance, the result recorded by the call that decides it; frontend on mero-js `CalimeroClient`. | `com.calimero.battleships` |
 | [mero-chess](apps/mero-chess) | [↗](https://mero-chess.vercel.app) | Two-player chess, a component app (Calimero 1.0). A table is an app instance: every move is a transaction ordered by its log, and the rules — legal moves, check, mate, the draws — run inside the contract. | `com.calimero.mero-chess` |
 | [mero-kombat](apps/mero-kombat) | [↗](https://mero-kombat.vercel.app) | One-on-one arcade fighter, a component app (Calimero 1.0). An arena is an app instance: movement streams over ephemeral presence, every punch and kick is a contract transaction, and the contract keeps health, rounds and the winner. | `com.calimero.mero-kombat` |
 
@@ -106,7 +106,7 @@ Start here. These exist to be read, not shipped.
 | App | Live | What it is | Package |
 | --- | --- | --- | --- |
 | [mero-stream](apps/mero-stream) | [↗](https://mero-stream-neon.vercel.app) | Media capacity probe, on the component runtime. `/stream` runs a toy integer codec inside the contract; `/live` carries browser-encoded H.264 over the node's presence channel. Deliberately the wrong way round, to find the platform's ceiling with numbers. **Not shippable media, and web only.** | `com.calimero.mero-stream` |
-| [hyperfeed](apps/hyperfeed) | — | Prototype. One feed for your agent and your apps: every action an agent took on your behalf (with its warrant's intent hash and executor) beside every notification your other apps emitted, with approvals, undo, per-app agent modes and "always ask" guards enforced by the contract. `/demo` runs with no node. A component app (Calimero 1.0): `calimero-app-sdk`, `merod local` in dev, mero-js `CalimeroClient` on Calimero Cloud. | `com.calimero.hyperfeed` |
+| [hyperfeed](apps/hyperfeed) | — | Prototype. One feed for your agent and your apps: every action an agent took on your behalf (with its warrant's intent hash and executor) beside every notification your other apps emitted, with approvals, undo, per-app agent modes and "always ask" guards enforced by the contract. `/demo` runs with no node. A component app (Calimero 1.0): `calimero-sdk`, `merod local` in dev, mero-js `CalimeroClient` on Calimero Cloud. | `com.calimero.hyperfeed` |
 
 ### Out of scope
 
@@ -121,7 +121,7 @@ Three projects stayed in their own repositories, and one was abandoned.
 
 ## Component apps (Calimero 1.0)
 
-Apps are moving, one PR each, to core's **component SDK** (`calimero-app-sdk`,
+Apps are moving, one PR each, to core's **component SDK** (`calimero-sdk`,
 a `calimero:app` component on the node's wasmtime runtime, pinned at
 `component-core-tag` in the root `Cargo.toml`), to **`merod local`** for local
 development instead of merobox, and to mero-js's **`CalimeroClient`** in the
@@ -191,7 +191,7 @@ scripts/
   check-registry-sync.py    published wasm vs what this tree builds (manual)
   lockfile-fanout.py        which apps a lockfile change can actually affect
   vercel-ignore-build.py    Vercel skips an app's deploy when a push does not reach it
-  component-apps.sh         the component-app matrix (logic/ depends on calimero-app-sdk)
+  component-apps.sh         the component-app matrix (logic/ depends on calimero-sdk)
   check-component-pins.py   every component crate pins component-core-tag
   tests/                    unit tests for the gates above
 

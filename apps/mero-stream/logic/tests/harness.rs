@@ -13,7 +13,7 @@ mod common;
 
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use base64::Engine as _;
-use calimero_app_sdk::testing::{Failure, Org, TestApp};
+use calimero_sdk::testing::{Failure, Org, TestApp};
 use serde_json::{json, Value};
 
 const FRAME_WINDOW: u64 = 30;

@@ -4,7 +4,7 @@ A one-on-one arcade fighting game where every punch is a transaction.
 
 Two fighters, two corners, best of three rounds: uppercuts, sweeps, flying
 kicks and a special each. An arena is a Calimero **app instance** on the 1.0
-runtime: a contract on core's **component SDK** (`calimero-app-sdk`, a
+runtime: a contract on core's **component SDK** (`calimero-sdk`, a
 `calimero:app` WebAssembly component on the node's wasmtime runtime), developed
 on **`merod local`**, with a frontend on mero-js's **`CalimeroClient`** that
 talks to a **Calimero Cloud** cluster in production and to the local nodes in

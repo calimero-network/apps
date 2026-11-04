@@ -8,7 +8,7 @@
 //! [`crate::Hyperfeed::checkpoint`] before it acts there, and the app shows it
 //! behind "where it stands" on the task.
 
-use calimero_app_sdk::prelude::*;
+use calimero_sdk::prelude::*;
 
 use crate::store::invalid;
 use serde::{Deserialize, Serialize};

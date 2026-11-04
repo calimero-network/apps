@@ -20,7 +20,7 @@
 //! members, guests). Beyond that, only the authored and shared methods check
 //! the caller, as each says.
 
-use calimero_app_sdk::prelude::*;
+use calimero_sdk::prelude::*;
 
 /// The most rows a paged read returns: one page.
 const PAGE: u32 = 1000;

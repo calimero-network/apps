@@ -2,7 +2,7 @@
 //! `the_agent_can_give_up_on_a_question`: the rules, actions, notifications,
 //! chains, answers and talking to your agent.
 
-use calimero_app_sdk::testing::{Failure, TestApp};
+use calimero_sdk::testing::{Failure, TestApp};
 use serde_json::{json, Value};
 
 use crate::support::*;

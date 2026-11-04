@@ -1,7 +1,7 @@
 //! The access and wire checks: who reaches the feed at all, and what the node
 //! refuses before a method runs.
 
-use calimero_app_sdk::testing::Failure;
+use calimero_sdk::testing::Failure;
 use serde_json::json;
 
 use crate::support::*;

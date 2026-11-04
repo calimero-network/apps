@@ -1,5 +1,5 @@
 //! MeroSign: document signing (a PDF, its signers, their consents and every
-//! signed version) on core's component SDK (`calimero-app-sdk`).
+//! signed version) on core's component SDK (`calimero-sdk`).
 //!
 //! One app instance is either an account's **private** library (its saved
 //! signatures and the agreements it joined, v1's "default private context") or
@@ -53,8 +53,8 @@
 //! Everything a client sees differently from v1 is in
 //! `apps/mero-sign/README.md`, "What changed in the port".
 
-use calimero_app_sdk::env::{Caller, OrgRole};
-use calimero_app_sdk::prelude::*;
+use calimero_sdk::env::{Caller, OrgRole};
+use calimero_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// Most rows one read returns: participants, signatures, chunks.
@@ -74,7 +74,7 @@ pub struct Info {
     /// The account that set it up: the app's owner.
     pub owner: String,
     /// Unix milliseconds.
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub created_at: u64,
 }
 
@@ -83,15 +83,15 @@ pub struct Info {
 #[serde(rename_all = "camelCase")]
 pub struct SignatureRecord {
     /// Below 2^53, a decimal string on the wire.
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub id: u64,
     pub name: String,
     /// The image's blob id, 64 lowercase hex digits.
     pub blob_id: String,
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub size: u64,
     /// Unix milliseconds.
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub created_at: u64,
 }
 
@@ -113,7 +113,7 @@ pub struct ContextMetadata {
     pub context_name: String,
     pub role: ParticipantRole,
     /// Unix milliseconds.
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub joined_at: u64,
     pub private_identity: String,
     pub shared_identity: String,
@@ -128,7 +128,7 @@ pub struct IdentityMapping {
     pub shared_identity: String,
     pub context_id: String,
     /// Unix milliseconds.
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub created_at: u64,
 }
 
@@ -176,7 +176,7 @@ pub struct Version {
     pub hash: String,
     /// 64 lowercase hex digits.
     pub pdf_blob_id: String,
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub size: u64,
 }
 
@@ -187,7 +187,7 @@ pub struct Version {
 pub struct StoredDocument {
     pub name: String,
     pub uploaded_by: String,
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub uploaded_at: u64,
     /// The version as uploaded.
     pub original: Version,
@@ -195,7 +195,7 @@ pub struct StoredDocument {
     pub current: Version,
     pub required_signers: Vec<String>,
     /// How many signatures `documentSignatures` holds for it.
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub signature_count: u64,
 }
 
@@ -205,7 +205,7 @@ pub struct StoredDocument {
 pub struct DocumentContent {
     pub embeddings: Option<Vec<f32>>,
     pub extracted_text: Option<String>,
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub chunk_count: u64,
 }
 
@@ -218,10 +218,10 @@ pub struct SignedVersion {
     pub base_hash: String,
     pub new_hash: String,
     pub pdf_blob_id: String,
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub size: u64,
     /// Unix milliseconds.
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub signed_at: u64,
 }
 
@@ -235,11 +235,11 @@ pub struct DocumentInfo {
     pub name: String,
     pub hash: String,
     pub uploaded_by: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub uploaded_at: u64,
     pub status: DocumentStatus,
     pub pdf_blob_id: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub size: u64,
     pub required_signers: Vec<String>,
     pub embeddings: Option<Vec<f32>>,
@@ -252,7 +252,7 @@ pub struct DocumentInfo {
 #[serde(rename_all = "camelCase")]
 pub struct DocumentSignature {
     pub signer: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub signed_at: u64,
 }
 
@@ -272,14 +272,14 @@ pub struct ContextDetails {
     pub context_name: String,
     pub owner: String,
     pub is_private: bool,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub participant_count: u64,
     /// At most 1,000, in account order.
     pub participants: Vec<ParticipantInfo>,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub document_count: u64,
     /// When the agreement was set up, Unix milliseconds.
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub created_at: u64,
 }
 

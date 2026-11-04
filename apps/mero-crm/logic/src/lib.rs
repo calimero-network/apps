@@ -1,5 +1,5 @@
 //! Mero CRM: one sales pipeline, shared by the team that works it, on core's
-//! component SDK (`calimero-app-sdk`).
+//! component SDK (`calimero-sdk`).
 //!
 //! One app instance is one pipeline. It holds the stages, the deals moving
 //! through them, the people behind those deals, the activities scheduled
@@ -43,8 +43,8 @@
 
 use std::collections::BTreeMap;
 
-use calimero_app_sdk::env::Caller;
-use calimero_app_sdk::prelude::*;
+use calimero_sdk::env::Caller;
+use calimero_sdk::prelude::*;
 use serde::Serialize;
 
 // ── domain constants ─────────────────────────────────────────────────────────
@@ -219,7 +219,7 @@ pub struct NextActivity {
     pub id: String,
     pub kind: String,
     pub subject: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub due_at: u64,
 }
 
@@ -227,7 +227,7 @@ pub struct NextActivity {
 pub struct DealView {
     pub id: String,
     pub title: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub value: u64,
     pub organization: String,
     pub contact_id: Option<String>,
@@ -237,22 +237,22 @@ pub struct DealView {
     pub stage_id: String,
     pub status: String,
     pub lost_reason: String,
-    #[serde(with = "calimero_app_sdk::json::opt_u64_str")]
+    #[serde(with = "calimero_sdk::json::opt_u64_str")]
     pub expected_close: Option<u64>,
     pub source: String,
     /// Win probability: the stage's while open, 100 when won, 0 when lost.
     pub probability: u32,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub stage_entered_at: u64,
-    #[serde(with = "calimero_app_sdk::json::opt_u64_str")]
+    #[serde(with = "calimero_sdk::json::opt_u64_str")]
     pub closed_at: Option<u64>,
     pub next_activity: Option<NextActivity>,
     pub open_activities: u32,
     /// The most recent completed activity or note, if any.
-    #[serde(with = "calimero_app_sdk::json::opt_u64_str")]
+    #[serde(with = "calimero_sdk::json::opt_u64_str")]
     pub last_touch_at: Option<u64>,
     pub created_by: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub created_at: u64,
 }
 
@@ -265,10 +265,10 @@ pub struct ContactView {
     pub organization: String,
     pub job_title: String,
     pub open_deals: u32,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub won_value: u64,
     pub created_by: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub created_at: u64,
 }
 
@@ -281,16 +281,16 @@ pub struct ActivityView {
     pub contact_id: Option<String>,
     pub kind: String,
     pub subject: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub due_at: u64,
     pub done: bool,
-    #[serde(with = "calimero_app_sdk::json::opt_u64_str")]
+    #[serde(with = "calimero_sdk::json::opt_u64_str")]
     pub done_at: Option<u64>,
     pub owner: Option<String>,
     pub note: String,
     pub automation_id: Option<String>,
     pub created_by: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub created_at: u64,
 }
 
@@ -300,7 +300,7 @@ pub struct NoteView {
     pub deal_id: String,
     pub author: String,
     pub body: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub created_at: u64,
 }
 
@@ -313,7 +313,7 @@ pub struct AutomationView {
     pub due_in_days: u32,
     pub enabled: bool,
     pub created_by: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub created_at: u64,
 }
 
@@ -1557,7 +1557,7 @@ fn automation_view(a: &Automation) -> AutomationView {
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 /// Every row of a table, page by page.
-fn scan_all<T: calimero_app_sdk::Record>(table: &Table<T>) -> app::Result<Vec<T>> {
+fn scan_all<T: calimero_sdk::Record>(table: &Table<T>) -> app::Result<Vec<T>> {
     let mut out = Vec::new();
     let mut opts = FindOpts::default().limit(PAGE);
     loop {

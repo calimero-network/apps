@@ -1,6 +1,6 @@
 //! Mero Chat: one conversation (a channel or a DM) with threads, reactions,
 //! mentions, attachments, profiles, drafts, read receipts and moderation, on
-//! core's component SDK (`calimero-app-sdk`).
+//! core's component SDK (`calimero-sdk`).
 //!
 //! One app instance is one conversation. The app runs on its cluster's leader,
 //! which applies every write in one replicated log, so the state is plain
@@ -46,8 +46,8 @@
 
 use std::collections::BTreeMap;
 
-use calimero_app_sdk::env::Caller;
-use calimero_app_sdk::prelude::*;
+use calimero_sdk::env::Caller;
+use calimero_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
 
 mod search;
@@ -208,11 +208,11 @@ pub struct AttachmentView {
     pub name: String,
     pub mime_type: String,
     /// A decimal string on the wire.
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub size: u64,
     pub blob_id: String,
     /// Milliseconds; a decimal string on the wire.
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub uploaded_at: u64,
 }
 
@@ -223,10 +223,10 @@ pub struct MessageView {
     /// A top-level message's position in the channel (a stable cursor: appends
     /// land after it and a delete keeps its slot), or a reply's position in its
     /// thread. A decimal string on the wire.
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub index: u64,
     /// Seconds; a decimal string on the wire.
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub timestamp: u64,
     pub sender: String,
     pub mentions: Vec<String>,
@@ -236,14 +236,14 @@ pub struct MessageView {
     pub id: String,
     pub text: String,
     /// A decimal string on the wire.
-    #[serde(with = "calimero_app_sdk::json::opt_u64_str")]
+    #[serde(with = "calimero_sdk::json::opt_u64_str")]
     pub edited_on: Option<u64>,
     /// Emoji → the accounts that reacted with it; `null` when none (or deleted).
     pub reactions: Option<BTreeMap<String, Vec<String>>>,
     pub deleted: Option<bool>,
     pub thread_count: u32,
     /// A decimal string on the wire.
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub thread_last_timestamp: u64,
     pub parent_message_id: Option<String>,
 }
@@ -265,12 +265,12 @@ pub struct SearchHit {
     /// Set for a thread reply: the top-level message it replies to.
     pub parent_message_id: Option<String>,
     /// Position of the top-level message: the hit itself, or a reply's parent.
-    #[serde(with = "calimero_app_sdk::json::opt_u64_str")]
+    #[serde(with = "calimero_sdk::json::opt_u64_str")]
     pub index: Option<u64>,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub timestamp: u64,
     /// What the hit is ranked by: its own timestamp, or its parent's for a reply.
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub anchor_timestamp: u64,
     pub sender: String,
     /// Plain text around the first match.
@@ -289,7 +289,7 @@ pub struct SearchPage {
     /// oldest message.
     pub next_cursor: Option<String>,
     /// The oldest timestamp among the top-level messages this call read.
-    #[serde(with = "calimero_app_sdk::json::opt_u64_str")]
+    #[serde(with = "calimero_sdk::json::opt_u64_str")]
     pub frontier_timestamp: Option<u64>,
 }
 
@@ -301,7 +301,7 @@ pub struct ContextInfo {
     pub context_type: ContextType,
     pub description: String,
     /// Seconds; a decimal string on the wire.
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub created_at: u64,
     pub creator: String,
 }

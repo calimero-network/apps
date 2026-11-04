@@ -47,8 +47,8 @@
 
 use battleships_rules::audit::{self, AuditFailure, FLEET_CELLS};
 use battleships_rules::board::{Cell, BOARD_SIZE};
-use calimero_app_sdk::prelude::*;
-use calimero_app_sdk::OrgRole;
+use calimero_sdk::prelude::*;
+use calimero_sdk::OrgRole;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
@@ -73,7 +73,7 @@ const SALT_LEN: usize = 16;
 pub struct MatchEntry {
     pub player1: String,
     pub player2: String,
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub created_ms: u64,
     /// Each player's board commitment (64 hex), once they file it; at most
     /// two, one per seat.
@@ -101,9 +101,9 @@ pub struct Reveal {
 /// A player's wins and losses, kept as results are recorded.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Stats {
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub wins: u64,
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub losses: u64,
 }
 
@@ -130,17 +130,17 @@ pub struct MatchSummary {
     pub player2_account: String,
     pub status: MatchStatus,
     pub winner: Option<String>,
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub created_ms: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PlayerStatsView {
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub wins: u64,
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub losses: u64,
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub games_played: u64,
 }
 
@@ -150,7 +150,7 @@ pub struct MatchRecord {
     pub match_id: String,
     pub winner: String,
     pub loser: String,
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub finished_ms: u64,
 }
 

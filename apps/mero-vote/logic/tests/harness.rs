@@ -17,7 +17,7 @@
 
 mod common;
 
-use calimero_app_sdk::testing::{Failure, Org, TestApp};
+use calimero_sdk::testing::{Failure, Org, TestApp};
 use mero_vote_crypto as crypto;
 use serde_json::{json, Value};
 

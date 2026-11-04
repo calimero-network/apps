@@ -54,7 +54,7 @@ The rules live in `app/src/utils/crm.ts` as pure functions with unit tests.
 
 | Path | What |
 | --- | --- |
-| `logic/` | The contract, a standalone component crate (`calimero-app-sdk` at `component-core-tag`, `wasm32-wasip2`): stages, deals, contacts, activities, notes, automations, settings. One app instance = one pipeline. |
+| `logic/` | The contract, a standalone component crate (`calimero-sdk` at `component-core-tag`, `wasm32-wasip2`): stages, deals, contacts, activities, notes, automations, settings. One app instance = one pipeline. |
 | `logic/tests/` | `harness.rs`: the built component on core's real wasmtime engine (`TestApp`); `scenarios.rs`: every `scenarios/*.json`. |
 | `logic/scenarios/` | `smoke.json` (the v1 smoke workflow, as accounts) and `access.json` (who may do what, and the wire checks). Run by `cargo test` and on `merod local`. |
 | `app/` | React (Vite) frontend on mero-js `CalimeroClient` through `@calimero-apps/connect`. The workspace shell (sign-in, invitations, members, roles) is shared with mero-issue-tracker. |
@@ -86,7 +86,7 @@ caller and answers `Forbidden`.
 
 ## Data model
 
-State is plain tables (`calimero-app-sdk`); the app runs on its cluster's
+State is plain tables (`calimero-sdk`); the app runs on its cluster's
 leader, which applies every write in one ordered log.
 
 - `stages: Table<Stage>` — name, probability and position. A new pipeline

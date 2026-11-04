@@ -1,5 +1,5 @@
 //! Mero Standup: async standups and a decision log for a small team, on core's
-//! component SDK (`calimero-app-sdk`).
+//! component SDK (`calimero-sdk`).
 //!
 //! An app instance is one team; the organization it lives in decides who
 //! reaches it. Members post a short daily update (what they did, what is next,
@@ -29,7 +29,7 @@
 //! time zone, so the client says what "today" is. Every day is checked on write,
 //! so no key that is not a real date is ever stored.
 
-use calimero_app_sdk::prelude::*;
+use calimero_sdk::prelude::*;
 use serde::Serialize;
 
 /// Longest one standup field may be.
@@ -165,7 +165,7 @@ pub struct HelpView {
     pub account: String,
     pub name: String,
     pub note: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub at: u64,
 }
 
@@ -187,9 +187,9 @@ pub struct UpdateView {
     pub done: String,
     pub next: String,
     pub blockers: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub created_at: u64,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub edited_at: u64,
     /// Teammates who offered to help with the blocker, oldest offer first.
     /// Empty when there is no blocker.
@@ -247,7 +247,7 @@ pub struct DecisionView {
     pub supersedes: String,
     /// The decision that replaced this one, or "" while it stands.
     pub superseded_by: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub created_at: u64,
     pub tags: Vec<String>,
     pub with: Vec<PersonView>,
@@ -346,7 +346,7 @@ fn count32(n: u64) -> u32 {
 
 /// Every row `fetch` pages through, in its order, until `keep` says stop.
 fn each_row<T>(
-    fetch: impl Fn(FindOpts) -> Result<Page<T>, calimero_app_sdk::StorageError>,
+    fetch: impl Fn(FindOpts) -> Result<Page<T>, calimero_sdk::StorageError>,
     mut keep: impl FnMut(T) -> app::Result<bool>,
 ) -> app::Result<()> {
     let mut opts = FindOpts::default().limit(ROWS);

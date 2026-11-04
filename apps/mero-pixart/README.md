@@ -2,7 +2,7 @@
 
 A collaborative image editor on Calimero 1.0. Think Photoshop / Photopea, but your project lives on attested Calimero nodes that only the people in your team reach.
 
-A **component app**: the contract is on core's component SDK (`calimero-app-sdk`, a `calimero:app` component on the node's wasmtime runtime), developed on `merod local`, and the frontend talks to a Calimero Cloud cluster in production (the local nodes in development) through mero-js's `CalimeroClient`. See [`docs/COMPONENT-APPS.md`](../../docs/COMPONENT-APPS.md).
+A **component app**: the contract is on core's component SDK (`calimero-sdk`, a `calimero:app` component on the node's wasmtime runtime), developed on `merod local`, and the frontend talks to a Calimero Cloud cluster in production (the local nodes in development) through mero-js's `CalimeroClient`. See [`docs/COMPONENT-APPS.md`](../../docs/COMPONENT-APPS.md).
 
 ## Features
 
@@ -116,7 +116,7 @@ Pixels never enter the state: the frontend uploads each PNG to the document
 
 ## What changed in the port
 
-| | v1 (calimero-sdk 0.12, merobox, MeroJs) | component (calimero-app-sdk 1.0.0-rc.7) |
+| | v1 (calimero-sdk 0.12, merobox, MeroJs) | component (calimero-sdk 1.0.0-rc.7) |
 |---|---|---|
 | methods | snake_case (`update_layer`) | camelCase on the wire (`updateLayer`), same arguments in camelCase; `app/src/api/pixart.ts` keeps v1 names for the screens |
 | 64-bit arguments | JSON numbers | `u64`/`i64` arguments (`updatedAt`, `timestamp`, `x`, `y`) are decimal strings. Integers inside records (a `Layer`, a `Member`, a cursor) stay numbers |

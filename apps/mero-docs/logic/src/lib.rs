@@ -1,4 +1,4 @@
-//! Mero Docs on core's component SDK (`calimero-app-sdk`): a workspace of
+//! Mero Docs on core's component SDK (`calimero-sdk`): a workspace of
 //! folders, each holding rich-text documents its members edit together.
 //!
 //! # Instances
@@ -35,8 +35,8 @@
 
 use std::collections::BTreeMap;
 
-use calimero_app_sdk::env::Caller;
-use calimero_app_sdk::prelude::*;
+use calimero_sdk::env::Caller;
+use calimero_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
 
 pub mod rich;
@@ -137,10 +137,10 @@ pub struct DocView {
     pub tags: Vec<String>,
     pub archived: bool,
     /// Unix milliseconds, a decimal string on the wire.
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub created_at: u64,
     /// Unix milliseconds, a decimal string on the wire.
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub updated_at: u64,
     pub created_by: String,
     pub updated_by: String,
@@ -215,7 +215,7 @@ pub struct DocSearchHit {
 pub struct DocSearchPage {
     pub hits: Vec<DocSearchHit>,
     /// Documents matched in all, a decimal string on the wire.
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub total: u64,
     /// Pass back as `cursor` for the next page; `null` on the last.
     pub next_cursor: Option<u32>,
@@ -230,7 +230,7 @@ pub struct CommentView {
     pub doc_id: String,
     pub body: String,
     /// Unix milliseconds, a decimal string on the wire.
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub created_at: u64,
 }
 

@@ -7,7 +7,7 @@ copy what you need into `app/src/...` / `logic/src/lib.rs` and keep the base's
 design system (`app/src/theme.ts`, the modals, the sidebar).
 
 All of them target **Calimero 1.0**: contracts on the component SDK
-(`calimero-app-sdk`, see `docs/COMPONENT-APPS.md`) and frontends on mero-js's
+(`calimero-sdk`, see `docs/COMPONENT-APPS.md`) and frontends on mero-js's
 `CalimeroClient` (through `@calimero-apps/connect`; in this app,
 `useSignedIn()` from `app/src/sessionContext.tsx` hands you the client).
 

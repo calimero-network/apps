@@ -81,7 +81,7 @@
 //! added, which are attested code. Merge-time enforcement (a writer set) is the
 //! next step if a feed is ever shared with anyone else.
 
-use calimero_app_sdk::prelude::*;
+use calimero_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
 
 mod store;

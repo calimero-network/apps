@@ -15,7 +15,7 @@
 //! runtime applies the safe-merge rules against GitHub as it is when the watch
 //! fires, not against this row.
 
-use calimero_app_sdk::prelude::*;
+use calimero_sdk::prelude::*;
 
 use crate::store::{emit, invalid};
 use serde::{Deserialize, Serialize};

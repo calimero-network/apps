@@ -6,7 +6,7 @@ From the same feed you approve what the agent proposes, undo what it did, set wh
 each app, and talk to it about any of it.
 
 > **Status: prototype, on Calimero 1.0.** The contract runs on core's component SDK
-> (`calimero-app-sdk`, a `calimero:app` WebAssembly component on the node's wasmtime runtime), is
+> (`calimero-sdk`, a `calimero:app` WebAssembly component on the node's wasmtime runtime), is
 > developed against `merod local`, and the frontend reaches it through mero-js's `CalimeroClient`:
 > the local nodes in development, Calimero Cloud in production. No agent ships with it: the agent
 > kit (an MCP server) is built separately against the [API](#api-for-agents) below. `/demo` shows

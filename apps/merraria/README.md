@@ -9,7 +9,7 @@ architecture one dimension lower, and radically lighter — the entire game
 rendering dependencies.
 
 The contract is a WebAssembly component on core's **component SDK**
-(`calimero-app-sdk`, the node's wasmtime runtime), developed on **`merod
+(`calimero-sdk`, the node's wasmtime runtime), developed on **`merod
 local`**; the frontend talks to a **Calimero Cloud** cluster in production and
 to the local nodes in development through mero-js's **`CalimeroClient`**. See
 [docs/COMPONENT-APPS.md](../../docs/COMPONENT-APPS.md) for how component apps
@@ -62,7 +62,7 @@ apps/merraria/
                 getPlayers / heartbeat (0.5s/3s, silent)
 ```
 
-- **Contract** (`logic/`, `calimero-app-sdk` at core `1.0.0-rc.8`):
+- **Contract** (`logic/`, `calimero-sdk` at core `1.0.0-rc.9`):
   `meta: Cell<{name, seed, createdAt}>` (written once by `createWorld`, by the
   world's owner), `overrides: UnorderedMap<"x,y", tile>` (public on purpose:
   anyone in the world may dig or build anywhere) and `players:

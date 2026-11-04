@@ -134,7 +134,7 @@ export async function createBookingLink(
     });
     return { link: created, url: bookingUrl(base, { app: owner.app, token: key.key }) };
   } catch (err) {
-    await owner.client.revokeApiKey(key.keyId).catch(() => undefined);
+    await owner.client.revokeApiKey(key.keyId, owner.passkey()).catch(() => undefined);
     throw err;
   }
 }
@@ -149,7 +149,7 @@ export async function deleteBookingLink(
   link: Pick<BookingLinkView, "linkId" | "grantId">,
 ): Promise<void> {
   if (link.grantId) {
-    await owner.client.revokeApiKey(link.grantId).catch((err: { status?: number }) => {
+    await owner.client.revokeApiKey(link.grantId, owner.passkey()).catch((err: { status?: number }) => {
       if (err?.status !== 404) throw err;
     });
   }

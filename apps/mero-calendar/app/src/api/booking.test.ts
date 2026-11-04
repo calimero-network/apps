@@ -94,7 +94,7 @@ describe("making a link", () => {
   it("revokes the key again when the contract refuses the link", async () => {
     const o = owner(vi.fn(async () => Promise.reject(new Error("refused"))));
     await expect(createBookingLink(o, link, "https://x")).rejects.toThrow("refused");
-    expect(o.client.revokeApiKey).toHaveBeenCalledWith("key-1");
+    expect(o.client.revokeApiKey).toHaveBeenCalledWith("key-1", expect.anything());
   });
 });
 
@@ -103,7 +103,7 @@ describe("deleting a link", () => {
     const call = vi.fn(async () => ({ index: 3, result: "h" }));
     const o = owner(call);
     await deleteBookingLink(o, { linkId: "h", grantId: "key-1" });
-    expect(o.client.revokeApiKey).toHaveBeenCalledWith("key-1");
+    expect(o.client.revokeApiKey).toHaveBeenCalledWith("key-1", expect.anything());
     expect(call).toHaveBeenCalledWith(APP, "deleteBookingLink", { linkId: "h" });
   });
 

@@ -15,7 +15,7 @@ pnpm merod-local e2e <app>        # the app's scenarios/*.json on the cluster
 skips the build. State and the cluster log live in `.merod-local/`.
 
 `e2e` runs the same neutral scenario files `cargo test` runs in core's harness
-(`crates/app-sdk/src/testing/scenario.rs`), on the cluster: per file a fresh
+(`crates/sdk/src/testing/scenario.rs`), on the cluster: per file a fresh
 org (`owner`, and the admins, members and guests its `.org.json` lists, each
 invited and redeemed; `outsiders` sign up without joining), a fresh app from
 the uploaded bundle in that org, every account on a different node, an event

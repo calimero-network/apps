@@ -3,7 +3,7 @@
 **A browser-playable, Minecraft-style multiplayer voxel sandbox with no game
 server — the world lives on [Calimero](https://calimero.network).**
 
-A contract on core's **component SDK** (`calimero-app-sdk`, a `calimero:app`
+A contract on core's **component SDK** (`calimero-sdk`, a `calimero:app`
 WebAssembly component on the node's wasmtime runtime), developed on
 **`merod local`**, with a frontend on mero-js's **`CalimeroClient`** that talks
 to a **Calimero Cloud** cluster in production and to the local nodes in
@@ -237,7 +237,7 @@ API that this port keeps.
 ## CI
 
 `.github/workflows/components.yml` (the app is a component app because its
-`logic/Cargo.toml` depends on `calimero-app-sdk`): fmt, clippy `-D warnings` on
+`logic/Cargo.toml` depends on `calimero-sdk`): fmt, clippy `-D warnings` on
 the host and on `wasm32-wasip2`, `cargo test`, the release build, the committed
 ABI current, a dev-signed `.mpk`; the frontend's lint, typecheck, test, build;
 and the scenarios on `merod local`. The native apps keep their own workflows

@@ -1,7 +1,7 @@
 # Component apps
 
 How an app in this repo runs on Calimero 1.0: a contract on core's **component
-SDK** (`calimero-app-sdk`, a `calimero:app` WebAssembly component on the node's
+SDK** (`calimero-sdk`, a `calimero:app` WebAssembly component on the node's
 wasmtime runtime), developed against **`merod local`**, and a frontend that
 talks to **Calimero Cloud** in production and to the local nodes in development
 through mero-js's **`CalimeroClient`**.
@@ -46,7 +46,7 @@ its ABI in its own `calimero:abi` section, which is what the node reads.
 ```
 apps/<app>/
 ├── logic/                      a STANDALONE crate: its own [workspace] and Cargo.lock
-│   ├── Cargo.toml              calimero-app-sdk @ component-core-tag; [package.metadata.calimero]
+│   ├── Cargo.toml              calimero-sdk @ component-core-tag; [package.metadata.calimero]
 │   ├── src/lib.rs              #[app::state], #[app::logic], #[app::event], #[app::error]
 │   ├── tests/common/mod.rs     builds the crate once per test run (core's calimero-app-build)
 │   ├── tests/harness.rs        TestApp: the component on core's real wasmtime engine
@@ -79,17 +79,17 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
-calimero-app-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8" }
+calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.9" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
-calimero-app-sdk   = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8", features = ["testing"] }
-calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8" }
+calimero-sdk       = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.9", features = ["testing"] }
+calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.9" }
 serde_json = "1"
 
 [package.metadata.calimero]
 package = "com.calimero.my-app"
 name = "My App"
-min-runtime-version = "1.0.0-rc.8"
+min-runtime-version = "1.0.0-rc.9"
 # … the same keys as a v1 app (icon, frontend, frontend-dir, tags, …)
 
 [workspace]
@@ -124,8 +124,8 @@ replaces merobox and Docker for component apps.
 
 ```bash
 # merod at component-core-tag, once (either):
-curl -fsSL https://github.com/calimero-network/core/releases/download/1.0.0-rc.8/merod_x86_64-unknown-linux-gnu.tar.gz | tar xz
-cargo install --locked --git https://github.com/calimero-network/core --tag 1.0.0-rc.8 merod
+curl -fsSL https://github.com/calimero-network/core/releases/download/1.0.0-rc.9/merod_x86_64-unknown-linux-gnu.tar.gz | tar xz
+cargo install --locked --git https://github.com/calimero-network/core --tag 1.0.0-rc.9 merod
 
 pnpm dev:local <app>             # everything below in one command; Ctrl-C stops it all
 ```
@@ -285,7 +285,7 @@ nothing to merge, and a later write simply replaces an earlier one.
 
 ### Collections
 
-| v1 (`calimero-storage`) | component SDK (`calimero_app_sdk::prelude::*`) | notes |
+| v1 (`calimero-storage`) | component SDK (`calimero_sdk::prelude::*`) | notes |
 |---|---|---|
 | `UnorderedMap<K, V>` | `UnorderedMap<K, V>` | `get`, `contains`, `insert`/`remove` (return the old value), `len`, `clear`; with `K: FromKey`: `page`, `range`, `prefix`, `starts_with`, `first`, `last` |
 | `UnorderedMap<K, LwwRegister<V>>` | `UnorderedMap<K, V>` | the register is gone: the log already orders writes |
@@ -368,7 +368,7 @@ that appends to it.
 
 | v1 | component SDK |
 |---|---|
-| `calimero_sdk::testing::TestHost` (native mock host) | `calimero_app_sdk::testing::TestApp`: the built component on core's real wasmtime engine, in an org (`Org::new().members([..]).guests([..])`), as named accounts, with the node's own access checks |
+| `calimero_sdk::testing::TestHost` (native mock host) | `calimero_sdk::testing::TestApp`: the built component on core's real wasmtime engine, in an org (`Org::new().members([..]).guests([..])`), as named accounts, with the node's own access checks |
 | `converge_app` / 3-replica convergence tests | gone: one leader orders every write, there is nothing to converge |
 | merobox `workflows/*.yml` (Docker, two or three merod containers) | `scenarios/*.json`: neutral steps run by `cargo test` in the harness **and** by `pnpm merod-local e2e` on `merod local` |
 | "forged write" checks (a node writing under another's key) | method checks: the same call as an account the method refuses (`expect: { error: "Forbidden" }`), or as an outsider (`refused: "NOT_FOUND"`) / anonymous (`refused: "UNAUTHENTICATED"`) |
@@ -397,7 +397,7 @@ per app, branched off `main` once this groundwork has merged.
    and [what the SDK does not have yet](#what-the-component-sdk-does-not-have-yet).
    If something is missing, stop and raise it: do not fake it.
 2. Replace `logic/Cargo.toml` with the component shape above: `cdylib` only (the
-   tests run the built component, so no `rlib`), `calimero-app-sdk` (+ the
+   tests run the built component, so no `rlib`), `calimero-sdk` (+ the
    `testing` feature and `calimero-app-build` as host-only dev-dependencies) at
    `component-core-tag`, an empty `[workspace]`, and the same
    `[package.metadata.calimero]` with `min-runtime-version =
@@ -487,7 +487,7 @@ core#4816, core#4820), **actions** (`#[app::action]`, leader-run, with
 `ctx.view`/`ctx.call`/`ctx.fetch`; core#4818) and **outbound HTTP** from
 actions and from calls (`env::fetch`, recorded in the log, through the
 manifest's `outbound` prefixes and the owner's approval; core#4818, core#4822).
-See core's `crates/app-sdk/AGENTS.md` at the tag for each API.
+See core's `crates/sdk/AGENTS.md` at the tag for each API.
 
 Still missing at `1.0.0-rc.8`; an app that needs one stays on the v1 SDK, or
 ports without it and says so in its PR:

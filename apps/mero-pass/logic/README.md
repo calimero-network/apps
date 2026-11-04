@@ -1,7 +1,7 @@
 # Mero Pass contract
 
 One vault, as a `calimero:app` component on core's component SDK
-(`calimero-app-sdk` at `component-core-tag`, `wasm32-wasip2`). The design notes
+(`calimero-sdk` at `component-core-tag`, `wasm32-wasip2`). The design notes
 (what is stored, who may do what, how v1's collections and write rules map) are
 the module docs at the top of [`src/lib.rs`](src/lib.rs); what a client sees
 differently from v1 is in [../README.md](../README.md#what-changed-in-the-port-and-why).

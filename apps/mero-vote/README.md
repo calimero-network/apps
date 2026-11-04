@@ -12,7 +12,7 @@ but every vote is public). Mero Vote aims for both properties at once: secret li
 auditable like Snapshot, with no trusted server.
 
 Runs on Calimero 1.0: the contract is a `calimero:app` component on core's component SDK
-(`calimero-app-sdk`, wasmtime), developed against `merod local`, and the frontend talks to
+(`calimero-sdk`, wasmtime), developed against `merod local`, and the frontend talks to
 Calimero Cloud in production through mero-js's `CalimeroClient` (see
 [docs/COMPONENT-APPS.md](../../docs/COMPONENT-APPS.md)). The native iOS and Android apps in
 `mobile/` move to the same contract in their own PR (#697), which follows this port; see

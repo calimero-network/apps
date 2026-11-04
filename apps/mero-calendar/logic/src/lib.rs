@@ -1,5 +1,5 @@
 //! Mero Calendar: shared team calendars, private events and booking links, on
-//! core's component SDK (`calimero-app-sdk`).
+//! core's component SDK (`calimero-sdk`).
 //!
 //! An app instance is one calendar; the organization it lives in (a team) decides
 //! who reaches it. Every account that reaches it keeps its own calendar here:
@@ -37,7 +37,7 @@
 //! shared event is now readable only by its owner and its peers: in v1 every
 //! member's node held every shared event, and `get_events` was only a filter.
 
-use calimero_app_sdk::prelude::*;
+use calimero_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
 
 pub mod booking;
@@ -154,9 +154,9 @@ pub struct UpdateCalendarEvent {
 pub struct Member {
     pub id: String,
     pub username: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub joined_at: u64,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub username_updated_at: u64,
 }
 

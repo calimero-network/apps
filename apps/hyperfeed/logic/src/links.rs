@@ -12,7 +12,7 @@
 //! No shared task space: a link is stored with the task, and your teammates
 //! keep working in their apps.
 
-use calimero_app_sdk::prelude::*;
+use calimero_sdk::prelude::*;
 
 use crate::store::{emit, invalid};
 use serde::{Deserialize, Serialize};

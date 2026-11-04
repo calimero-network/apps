@@ -1,4 +1,4 @@
-# Build, sign and publish ONE component app (calimero-app-sdk, the 1.0 runtime)
+# Build, sign and publish ONE component app (calimero-sdk, the 1.0 runtime)
 # to the Calimero App Registry.
 #
 # The 1.0 counterpart of publish-bundle.yml, which builds with cargo-mero and

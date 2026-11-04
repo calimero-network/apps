@@ -19,12 +19,12 @@ pub struct App {
     pub crate_name: String,
     /// The cargo version, the app version when none is given.
     pub crate_version: String,
-    /// The `calimero-app-sdk` dependency's git source and tag, when it names one.
+    /// The `calimero-sdk` dependency's git source and tag, when it names one.
     pub sdk: Option<SdkSource>,
     pub meta: Meta,
 }
 
-/// Where `calimero-app-sdk` comes from: written into the manifest's `buildInfo`.
+/// Where `calimero-sdk` comes from: written into the manifest's `buildInfo`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SdkSource {
     pub git: String,
@@ -98,10 +98,21 @@ impl App {
     /// Parses a `Cargo.toml` whose crate lives in `dir`.
     pub fn parse(dir: &Path, text: &str) -> Result<Self> {
         let manifest: Manifest = toml::from_str(text)?;
+        if manifest.dependencies.contains_key("calimero-app-sdk") {
+            bail!(
+                "`calimero-app-sdk` is the old name of `calimero-sdk` (core 1.0.0-rc.9); \
+                 depend on `calimero-sdk` instead"
+            );
+        }
+        // A v1 app names `calimero-sdk` too, inherited from its workspace
+        // (`workspace = true`); a component app takes it from core's git.
         let sdk = manifest
             .dependencies
-            .get("calimero-app-sdk")
-            .ok_or_else(|| eyre!("not a component app: no `calimero-app-sdk` dependency"))?;
+            .get("calimero-sdk")
+            .filter(|d| d.get("workspace").is_none())
+            .ok_or_else(|| {
+                eyre!("not a component app: no `calimero-sdk` dependency from core's git")
+            })?;
         let sdk = sdk.as_table().and_then(|t| {
             Some(SdkSource {
                 git: t.get("git")?.as_str()?.to_owned(),
@@ -218,7 +229,7 @@ name = "kv-store"
 version = "0.1.0"
 
 [dependencies]
-calimero-app-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.7" }
+calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.9" }
 
 [package.metadata.calimero]
 package = "com.calimero.kv-store"
@@ -240,7 +251,7 @@ frontend-dir = "../app/dist"
             app.sdk,
             Some(SdkSource {
                 git: "https://github.com/calimero-network/core".into(),
-                tag: Some("1.0.0-rc.7".into()),
+                tag: Some("1.0.0-rc.9".into()),
             })
         );
         assert_eq!(
@@ -251,12 +262,28 @@ frontend-dir = "../app/dist"
 
     #[test]
     fn refuses_a_v1_crate() {
-        let v1 = APP.replace("calimero-app-sdk", "calimero-sdk");
-        let err = App::parse(Path::new("."), &v1).unwrap_err();
-        assert!(
-            format!("{err:#}").contains("not a component app"),
-            "{err:#}"
-        );
+        for dep in [
+            "calimero-sdk = { workspace = true }",
+            "calimero-sdk.workspace = true",
+            "calimero-storage = { workspace = true }",
+        ] {
+            let v1 = APP.replace(
+                r#"calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.9" }"#,
+                dep,
+            );
+            let err = App::parse(Path::new("."), &v1).unwrap_err();
+            assert!(
+                format!("{err:#}").contains("not a component app"),
+                "{dep}: {err:#}"
+            );
+        }
+    }
+
+    #[test]
+    fn refuses_the_old_sdk_name() {
+        let old = APP.replace("calimero-sdk =", "calimero-app-sdk =");
+        let err = App::parse(Path::new("."), &old).unwrap_err();
+        assert!(format!("{err:#}").contains("old name"), "{err:#}");
     }
 
     #[test]

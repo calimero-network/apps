@@ -20,7 +20,7 @@
 //! The safe-merge rules (every check passed, the base is the default branch)
 //! are applied by the runtime when it fires, against GitHub as it is then.
 
-use calimero_app_sdk::prelude::*;
+use calimero_sdk::prelude::*;
 
 use crate::store::{emit, invalid};
 use serde::{Deserialize, Serialize};

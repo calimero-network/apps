@@ -6,7 +6,7 @@ why. A team is one app instance in an organization of its own, and only that
 organization's members reach it.
 
 It is deliberately small. Read it after [kv-store](../kv-store): a component
-app (Calimero 1.0) on core's component SDK (`calimero-app-sdk`, `wasm32-wasip2`),
+app (Calimero 1.0) on core's component SDK (`calimero-sdk`, `wasm32-wasip2`),
 developed on `merod local`, with a frontend on mero-js `CalimeroClient` that
 talks to the local nodes in development and to Calimero Cloud in production
 ([docs/COMPONENT-APPS.md](../../docs/COMPONENT-APPS.md)).
@@ -65,7 +65,7 @@ write in one log, so each rule is now a check in the method against
 `env::caller()`, and every record names its author in a field the method fills
 from the caller, never from an argument.
 
-| v1 (`calimero-sdk` / `calimero-storage`) | now (`calimero-app-sdk`) | the rule |
+| v1 (`calimero-sdk` / `calimero-storage`) | now (`calimero-sdk`) | the rule |
 | --- | --- | --- |
 | `updates: Authored<SortedMap<day, Update>>` | `updates: Table<Update>`, key `(day, author)`, indexes `byDay`, `byAuthor (author, day)`, counts `perDay`, `blocked (day, isBlocked)` | `postUpdate` / `clearUpdate` only touch `(day, caller)` |
 | (scan of every update) | `days: Set<String>` | days with an update, for `listDays` |

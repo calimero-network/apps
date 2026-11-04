@@ -14,7 +14,7 @@
 //! the proposal waits for you as before. Your stop always wins: a stopped
 //! default never fires, whichever device saw what first.
 
-use calimero_app_sdk::prelude::*;
+use calimero_sdk::prelude::*;
 
 use crate::store::invalid;
 use serde::{Deserialize, Serialize};

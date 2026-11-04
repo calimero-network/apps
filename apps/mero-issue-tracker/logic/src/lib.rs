@@ -1,5 +1,5 @@
 //! Mero Issue Tracker: a private, real-time issue board for a small engineering
-//! team, on core's component SDK (`calimero-app-sdk`).
+//! team, on core's component SDK (`calimero-sdk`).
 //!
 //! One app instance is one repository's board: its issues, their labels and
 //! comment threads, and the repository URL. The app runs on its cluster's leader,
@@ -34,8 +34,8 @@
 //! integers as decimal strings, the error shape, list sizes) is in
 //! `apps/mero-issue-tracker/README.md`, "What changed in the port".
 
-use calimero_app_sdk::env::Caller;
-use calimero_app_sdk::prelude::*;
+use calimero_sdk::env::Caller;
+use calimero_sdk::prelude::*;
 use serde::Serialize;
 
 /// Allowed issue statuses, in board column order.
@@ -131,7 +131,7 @@ pub struct IssueView {
     pub labels: Vec<String>,
     pub created_by: String,
     /// A decimal string on the wire.
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub created_at: u64,
 }
 
@@ -147,7 +147,7 @@ pub struct IssueDetail {
 pub struct StatusCount {
     pub status: String,
     /// A decimal string on the wire.
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub count: u64,
 }
 

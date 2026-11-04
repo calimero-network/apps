@@ -1,5 +1,5 @@
 //! Mero Chess: a chess table that is a Calimero app instance, on core's
-//! component SDK (`calimero-app-sdk`).
+//! component SDK (`calimero-sdk`).
 //!
 //! Two people sit down and play. There is no game server: every move is a
 //! CALL, one entry in the app's replicated log, and the rules live here, in
@@ -38,7 +38,7 @@
 //! owner and guests, as every member of a v1 context could). Anyone who reaches
 //! it may take a free chair; everyone else watches.
 
-use calimero_app_sdk::prelude::*;
+use calimero_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
 
 pub mod board;
@@ -194,7 +194,7 @@ pub struct MoveView {
     pub uci: String,
     pub san: String,
     pub by: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub at: u64,
 }
 
@@ -214,7 +214,7 @@ pub struct PlayerView {
 #[serde(rename_all = "camelCase")]
 pub struct GameSummary {
     pub index: u32,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub started_at: u64,
     /// `1-0`, `0-1`, `1/2-1/2`, or `*` while it is still being played.
     pub result: String,
@@ -234,7 +234,7 @@ pub struct GameSummary {
 #[serde(rename_all = "camelCase")]
 pub struct TableView {
     pub title: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub created_at: u64,
     /// Index of the game being played now.
     pub game: u32,

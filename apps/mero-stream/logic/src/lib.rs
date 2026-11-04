@@ -1,5 +1,5 @@
 //! Mero Stream: streaming media *over Calimero*, on core's component SDK
-//! (`calimero-app-sdk`).
+//! (`calimero-sdk`).
 //!
 //! ## What this contract is (and is NOT)
 //!
@@ -53,8 +53,8 @@
 
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
-use calimero_app_sdk::prelude::*;
-use calimero_app_sdk::StorageError;
+use calimero_sdk::prelude::*;
+use calimero_sdk::StorageError;
 use serde::{Deserialize, Serialize};
 
 // ── Limits ──────────────────────────────────────────────────────────────────
@@ -112,7 +112,7 @@ struct Fragment {
     /// Compressed bytes of this chunk of the frame: at most
     /// [`MAX_CHUNK_BYTES`], enforced by `encodeFrame`, which splits the
     /// encoded stream at that size (a frame is never more than 8 of these).
-    #[serde(with = "calimero_app_sdk::json::bytes_auto")]
+    #[serde(with = "calimero_sdk::json::bytes_auto")]
     data: Vec<u8>,
     /// The sender's capture clock, unix milliseconds.
     created_at: u64,
@@ -130,7 +130,7 @@ struct MediaChunk {
     /// The opaque access unit: at most [`MAX_MEDIA_CHUNK_BYTES`], enforced by
     /// `postChunk` (`ChunkTooLarge`). The only list in a stored value; the ring
     /// itself is the `chunks` map, one entry per chunk.
-    #[serde(with = "calimero_app_sdk::json::bytes_auto")]
+    #[serde(with = "calimero_sdk::json::bytes_auto")]
     data: Vec<u8>,
     created_at: u64,
 }
@@ -171,9 +171,9 @@ struct MemberRow {
 pub struct Member {
     pub member_id: String,
     pub username: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub joined_at: u64,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub updated_at: u64,
 }
 
@@ -182,15 +182,15 @@ pub struct Member {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct DecodedFrame {
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub seq: u64,
     pub from: String,
     pub track: u8,
     pub width: u16,
     pub height: u16,
-    #[serde(with = "calimero_app_sdk::json::bytes_b64url")]
+    #[serde(with = "calimero_sdk::json::bytes_b64url")]
     pub pixels: Vec<u8>,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub created_at: u64,
     /// Summed compressed bytes of this frame's fragments.
     pub encoded_bytes: u32,
@@ -205,13 +205,13 @@ pub struct StreamStats {
     /// Fragments (chunks) currently live.
     pub live_fragments: u32,
     /// Highest frame seq ever allocated.
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub next_seq: u64,
     /// Lowest frame seq still live (0 when none is).
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub oldest_live_seq: u64,
     /// Frames pruned so far, every sender.
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub pruned_frames: u64,
 }
 
@@ -220,7 +220,7 @@ pub struct StreamStats {
 #[serde(rename_all = "camelCase")]
 pub struct SenderCursor {
     pub from: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub after_seq: u64,
 }
 
@@ -228,7 +228,7 @@ pub struct SenderCursor {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ChunkView {
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub seq: u64,
     pub from: String,
     pub track: u8,
@@ -236,10 +236,10 @@ pub struct ChunkView {
     pub codec: String,
     pub width: u16,
     pub height: u16,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub timestamp_us: u64,
     pub data_b64: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub created_at: u64,
 }
 
@@ -248,18 +248,18 @@ pub struct ChunkView {
 #[serde(rename_all = "camelCase")]
 pub struct SenderStats {
     pub from: String,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub next_seq: u64,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub oldest_live: u64,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub last_keyframe: u64,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub newest_at: u64,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub pruned: u64,
     pub live_chunks: u32,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub live_bytes: u64,
 }
 
@@ -268,9 +268,9 @@ pub struct SenderStats {
 #[serde(rename_all = "camelCase")]
 pub struct LiveStats {
     pub live_chunks: u32,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub live_bytes: u64,
-    #[serde(with = "calimero_app_sdk::json::u64_str")]
+    #[serde(with = "calimero_sdk::json::u64_str")]
     pub pruned_chunks: u64,
     pub senders: Vec<SenderStats>,
 }

@@ -67,8 +67,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use calimero_app_sdk::prelude::*;
-use calimero_app_sdk::OrgRole;
+use calimero_sdk::prelude::*;
+use calimero_sdk::OrgRole;
 use mero_vote_crypto as crypto;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -193,11 +193,11 @@ pub struct PollDefinition {
     pub voters: Vec<String>,
     pub creator: String,
     /// Milliseconds. Also makes two otherwise identical polls distinct.
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub created_at: u64,
     /// Informational deadline in milliseconds. Closing is an explicit act of
     /// the creator.
-    #[serde(with = "calimero_app_sdk::json::opt_u64_auto")]
+    #[serde(with = "calimero_sdk::json::opt_u64_auto")]
     pub closes_at: Option<u64>,
 }
 
@@ -229,7 +229,7 @@ pub struct Election {
     /// Dealers left out because a complaint proved they cheated: at most
     /// [`MAX_TRUSTEES`].
     pub disqualified: Vec<String>,
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub opened_at: u64,
 }
 
@@ -253,7 +253,7 @@ pub struct Closure {
     /// trustees decrypt. Kept as ballots were cast (each verified then), and
     /// recomputed from the ballots by the browser's re-verification.
     pub aggregate: Vec<WireCiphertext>,
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub closed_at: u64,
 }
 
@@ -265,7 +265,7 @@ pub struct StoredClosure {
     pub counted: u32,
     /// One per option: at most 16 (`crypto::MAX_OPTIONS`, checked by `createPoll`).
     pub aggregate: Vec<WireCiphertext>,
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub closed_at: u64,
 }
 
@@ -275,7 +275,7 @@ pub struct Anchor {
     pub digest: String,
     pub network: String,
     pub reference: String,
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub anchored_at: u64,
 }
 
@@ -285,7 +285,7 @@ pub struct Anchor {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PollControl {
     /// When the close was announced (phase Closing onward).
-    #[serde(with = "calimero_app_sdk::json::opt_u64_auto")]
+    #[serde(with = "calimero_sdk::json::opt_u64_auto")]
     pub closing_at: Option<u64>,
     pub anchor: Option<Anchor>,
 }
@@ -297,7 +297,7 @@ pub struct PollState {
     pub phase: Phase,
     pub election: Option<Election>,
     /// When the close was announced (phase Closing onward).
-    #[serde(with = "calimero_app_sdk::json::opt_u64_auto")]
+    #[serde(with = "calimero_sdk::json::opt_u64_auto")]
     pub closing_at: Option<u64>,
     pub closure: Option<Closure>,
     pub anchor: Option<Anchor>,
@@ -317,7 +317,7 @@ pub struct StoredBallot {
 pub struct BallotPointer {
     pub digest: String,
     pub frozen: String,
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub cast_at: u64,
 }
 
@@ -341,7 +341,7 @@ pub struct PollSummary {
     pub title: String,
     pub creator: String,
     pub phase: Phase,
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub created_at: u64,
     pub ballots: u32,
 }
@@ -365,7 +365,7 @@ pub struct TrusteeStatus {
 pub struct Turnout {
     pub voter: String,
     pub digest: String,
-    #[serde(with = "calimero_app_sdk::json::u64_auto")]
+    #[serde(with = "calimero_sdk::json::u64_auto")]
     pub cast_at: u64,
 }
 

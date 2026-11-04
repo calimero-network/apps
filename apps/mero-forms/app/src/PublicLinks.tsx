@@ -92,7 +92,7 @@ export function PublicLinks({
       } catch (e) {
         // No record, no link: take the key back rather than leave one that
         // reaches nothing the team can see.
-        await revokeKey(client, key.keyId).catch(() => undefined);
+        await revokeKey(client, key.keyId, passkey()).catch(() => undefined);
         throw e;
       }
       setMade({
@@ -110,7 +110,7 @@ export function PublicLinks({
       // The record first: without it the contract refuses the link at once.
       const gone = await workspace.act((c) => c.deleteLink({ link: link.id }));
       if (gone.created_by === me.data) {
-        await revokeKey(client, gone.grant_id).catch(() => undefined);
+        await revokeKey(client, gone.grant_id, passkey()).catch(() => undefined);
         after();
       } else {
         setNotes(

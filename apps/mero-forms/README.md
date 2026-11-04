@@ -2,7 +2,7 @@
 
 Forms with the questions you choose, the responses they collect, and a one-click
 hand-off of any response to [Mero CRM](../mero-crm). A **component app** on
-Calimero 1.0: the contract runs on core's component SDK (`calimero-app-sdk`,
+Calimero 1.0: the contract runs on core's component SDK (`calimero-sdk`,
 `wasm32-wasip2`), the frontend talks to the cluster through mero-js
 `CalimeroClient` (`@calimero-apps/connect`), and local development runs on
 `merod local`. See [docs/COMPONENT-APPS.md](../../docs/COMPONENT-APPS.md).

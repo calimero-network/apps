@@ -251,7 +251,7 @@ mod tests {
 name = "demo"
 version = "0.1.0"
 [dependencies]
-calimero-app-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.7" }
+calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.7" }
 [package.metadata.calimero]
 package = "com.example.demo"
 name = "Demo"

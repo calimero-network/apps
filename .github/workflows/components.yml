@@ -1,4 +1,4 @@
-# CI for component apps: `calimero-app-sdk` on core's wasmtime component
+# CI for component apps: `calimero-sdk` on core's wasmtime component
 # runtime (`wasm32-wasip2`), developed and e2e-tested on `merod local`.
 #
 # The v1 pipeline (ci.yml) finds its apps through `cargo metadata` of the root
