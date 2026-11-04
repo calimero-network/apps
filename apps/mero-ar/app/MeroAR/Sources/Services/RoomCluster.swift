@@ -228,6 +228,9 @@ public enum MeroARError: LocalizedError, Equatable {
 func userMessage(_ error: Error) -> String {
     switch error {
     case let error as AppError:
+        // The contract's `Forbidden` / `Invalid` carry their sentence in a
+        // `message` field (`{ code, fields: { message } }` on the wire).
+        if let sentence = error.fields["message"]?.stringValue, !sentence.isEmpty { return sentence }
         return error.message.isEmpty ? error.appCode : error.message
     case is LoginRequired:
         return "Your session ended. Sign in again."

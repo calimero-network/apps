@@ -34,7 +34,7 @@ final class FurnitureFlowTests: XCTestCase {
             XCTAssertTrue(ok, "\(piece)")
         }
 
-        let adds = cluster.writes("add_object")
+        let adds = cluster.writes("addObject")
         XCTAssertEqual(adds.count, FurnitureItem.allCases.count)
         for (request, piece) in zip(adds, FurnitureItem.allCases) {
             let object = try XCTUnwrap(request.args["object"])
@@ -108,7 +108,7 @@ final class FurnitureFlowTests: XCTestCase {
 
         XCTAssertNil(store.lastError)
         XCTAssertEqual(cluster.uploads, [prepared.jpeg], "the photo goes to the room's blobs")
-        let add = try XCTUnwrap(cluster.writes("add_object").first)
+        let add = try XCTUnwrap(cluster.writes("addObject").first)
         let data = try XCTUnwrap(add.args["object"]?["data"])
         XCTAssertEqual(data["kind"]?.stringValue, "image")
         XCTAssertEqual(data["blobId"]?.stringValue, blob)
@@ -135,7 +135,7 @@ final class FurnitureFlowTests: XCTestCase {
     private func stubScan(model: RoomModel) throws {
         cluster.uploadId = blob
         cluster.blobs[blob] = try model.encoded()
-        cluster.views["get_room_scan"] = [
+        cluster.views["getRoomScan"] = [
             "jsonBlob": .string(blob), "jsonSize": 10, "usdzBlob": .null, "usdzSize": .null,
             "width": 5.2, "length": 4.2, "height": 2.6, "objectCount": .number(Double(model.objects.count)),
             "sample": true, "scannedBy": .string(String(repeating: "ab", count: 32)), "scannedAt": 1, "version": 1,
@@ -161,7 +161,7 @@ final class FurnitureFlowTests: XCTestCase {
         XCTAssertEqual(count, movable.count)
         XCTAssertEqual(count, 7, "sofa, table, two chairs, two storage units, television")
         let sent = cluster.calls.dropFirst(before)
-        let adds = sent.filter { $0.method == "add_object" }
+        let adds = sent.filter { $0.method == "addObject" }
         XCTAssertEqual(adds.count, movable.count)
         for (request, scanned) in zip(adds, movable) {
             let object = try XCTUnwrap(request.args["object"])
@@ -176,9 +176,10 @@ final class FurnitureFlowTests: XCTestCase {
             }
         }
         // Then the room again, without the converted pieces.
-        let republish = try XCTUnwrap(sent.last { $0.method == "set_room_scan" })
-        XCTAssertEqual(republish.args["object_count"]?.doubleValue, 1, "only the sink is left")
-        XCTAssertNil(republish.args["scanned_at"], "the leader stamps the scan, not the phone")
+        let republish = try XCTUnwrap(sent.last { $0.method == "setRoomScan" })
+        XCTAssertEqual(republish.args["objectCount"]?.doubleValue, 1, "only the sink is left")
+        XCTAssertNil(republish.args["scannedAt"], "the leader stamps the scan, not the phone")
+        XCTAssertNotNil(UInt64(republish.args["jsonSize"]?.stringValue ?? ""), "a u64 argument is a decimal string")
         XCTAssertEqual(store.roomModel?.objects.map(\.category), ["sink"], "the fixture stays part of the room")
         XCTAssertEqual(store.objects.count, movable.count)
     }
@@ -195,7 +196,7 @@ final class FurnitureFlowTests: XCTestCase {
 
         XCTAssertEqual(count, 0)
         XCTAssertNil(
-            cluster.calls.dropFirst(before).first { $0.method == "set_room_scan" },
+            cluster.calls.dropFirst(before).first { $0.method == "setRoomScan" },
             "the scan was republished without furniture nobody could move")
         XCTAssertEqual(store.roomModel?.objects.count, room.objects.count)
         XCTAssertTrue(store.objects.isEmpty)

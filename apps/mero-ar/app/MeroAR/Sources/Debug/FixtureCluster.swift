@@ -263,6 +263,11 @@ final class FixtureCluster: RoomCluster, @unchecked Sendable {
             guard role(caller) == "admin" else { throw Failure(status: 403, message: "admin access is required for this operation") }
         }
         func string(_ key: String) -> String { args[key]?.stringValue ?? "" }
+        /// A `u64` argument arrives as a decimal string; a record keeps it a number.
+        func number(_ value: JSONValue?) -> JSONValue? {
+            guard let text = value?.stringValue, let n = UInt64(text) else { return nil }
+            return .number(Double(n))
+        }
         func bump() -> UInt64 {
             room.counter += 1
             return room.counter
@@ -274,26 +279,26 @@ final class FixtureCluster: RoomCluster, @unchecked Sendable {
 
         switch method {
         case "whoami": return .string(caller)
-        case "my_role": return .string(role(caller))
-        case "can_edit": return .bool(role(caller) != "viewer")
-        case "get_role": return .string(role(string("member")))
-        case "list_roles":
+        case "myRole": return .string(role(caller))
+        case "canEdit": return .bool(role(caller) != "viewer")
+        case "getRole": return .string(role(string("member")))
+        case "listRoles":
             return .array(room.members.keys.sorted().map { ["member": .string($0), "role": .string(role($0))] })
-        case "grant_editor":
+        case "grantEditor":
             try requireAdmin()
             if !room.editors.contains(string("member")) { room.editors.append(string("member")) }
             return .null
-        case "revoke_editor":
+        case "revokeEditor":
             try requireAdmin()
             room.editors.removeAll { $0 == string("member") }
             return .null
-        case "get_room":
+        case "getRoom":
             return [
                 "name": .string(room.name), "objectCount": .number(Double(room.objects.count)),
                 "memberCount": .number(Double(room.members.count)), "worldMapBlob": .string(room.worldMap),
                 "version": .number(Double(room.counter)), "owner": .string(room.admins.first ?? ""),
             ]
-        case "rename_room":
+        case "renameRoom":
             try requireAdmin()
             room.name = string("name")
             return .null
@@ -305,14 +310,14 @@ final class FixtureCluster: RoomCluster, @unchecked Sendable {
                 ]
             }
             return .null
-        case "get_members": return .array(room.members.keys.sorted().compactMap { room.members[$0] })
-        case "update_member_username":
+        case "getMembers": return .array(room.members.keys.sorted().compactMap { room.members[$0] })
+        case "updateMemberUsername":
             if case .object(var member)? = room.members[caller] {
                 member["username"] = .string(string("username"))
                 room.members[caller] = .object(member)
             }
             return .null
-        case "add_object":
+        case "addObject":
             try requireEditor()
             guard case .object(var object)? = args["object"], let id = object["id"]?.stringValue else {
                 throw Failure(status: 400, message: "an object needs an id")
@@ -325,30 +330,30 @@ final class FixtureCluster: RoomCluster, @unchecked Sendable {
             room.objects[id] = .object(object)
             if !room.order.contains(id) { room.order.append(id) }
             return .string(id)
-        case "update_transform", "update_color":
+        case "updateTransform", "updateColor":
             try requireEditor()
             let id = string("id")
             guard case .object(var object)? = room.objects[id], !lockedByOther(id) else { return .null }
-            if method == "update_transform" { object["transform"] = args["transform"] ?? .null }
+            if method == "updateTransform" { object["transform"] = args["transform"] ?? .null }
             else { object["color"] = args["color"] ?? .null }
             object["updatedAt"] = .number(Double(now()))
             object["version"] = .number(Double(bump()))
             room.objects[id] = .object(object)
             return .null
-        case "lock_object", "unlock_object":
+        case "lockObject", "unlockObject":
             try requireEditor()
             let id = string("id")
             guard case .object(var object)? = room.objects[id] else { return .null }
             let holder = object["lockedBy"]?.stringValue
-            if method == "lock_object", holder == nil {
+            if method == "lockObject", holder == nil {
                 object["lockedBy"] = .string(caller)
-            } else if method == "unlock_object", holder == caller || role(caller) == "admin" {
+            } else if method == "unlockObject", holder == caller || role(caller) == "admin" {
                 object["lockedBy"] = .null
             }
             object["version"] = .number(Double(bump()))
             room.objects[id] = .object(object)
             return .null
-        case "delete_object":
+        case "deleteObject":
             try requireEditor()
             let id = string("id")
             if !lockedByOther(id) {
@@ -356,21 +361,21 @@ final class FixtureCluster: RoomCluster, @unchecked Sendable {
                 room.order.removeAll { $0 == id }
             }
             return .null
-        case "clear_objects":
+        case "clearObjects":
             try requireAdmin()
             room.objects = [:]
             room.order = []
             return .null
-        case "get_objects": return .array(room.order.compactMap { room.objects[$0] })
-        case "get_object": return room.objects[string("id")] ?? .null
-        case "add_comment":
+        case "getObjects": return .array(room.order.compactMap { room.objects[$0] })
+        case "getObject": return room.objects[string("id")] ?? .null
+        case "addComment":
             try requireEditor()
             room.comments[string("id")] = [
                 "id": .string(string("id")), "text": .string(string("text")), "position": args["position"] ?? .null,
                 "author": .string(caller), "createdAt": .number(Double(now())),
             ]
             return .null
-        case "delete_comment":
+        case "deleteComment":
             try requireEditor()
             let author = room.comments[string("id")]?["author"]?.stringValue
             guard author == nil || author == caller || role(caller) == "admin" else {
@@ -378,33 +383,34 @@ final class FixtureCluster: RoomCluster, @unchecked Sendable {
             }
             room.comments[string("id")] = nil
             return .null
-        case "get_comments": return .array(room.comments.keys.sorted().compactMap { room.comments[$0] })
-        case "update_presence":
+        case "getComments": return .array(room.comments.keys.sorted().compactMap { room.comments[$0] })
+        case "updatePresence":
             room.presence[caller] = [
-                "identity": .string(caller), "member": .string(caller), "cameraPosition": args["camera_position"] ?? .null,
-                "cameraRotation": args["camera_rotation"] ?? .null, "updatedAt": .number(Double(now())),
+                "identity": .string(caller), "member": .string(caller), "cameraPosition": args["cameraPosition"] ?? .null,
+                "cameraRotation": args["cameraRotation"] ?? .null, "updatedAt": .number(Double(now())),
             ]
             return .null
-        case "get_presence": return .array(room.presence.keys.sorted().compactMap { room.presence[$0] })
-        case "set_world_map":
+        case "getPresence": return .array(room.presence.keys.sorted().compactMap { room.presence[$0] })
+        case "setWorldMap":
             try requireEditor()
-            room.worldMap = string("blob_id")
+            room.worldMap = string("blobId")
             return .null
-        case "set_room_scan":
+        case "setRoomScan":
             try requireEditor()
-            guard !string("json_blob").isEmpty else { throw Failure(status: 400, message: "a room scan needs its JSON blob") }
+            guard !string("jsonBlob").isEmpty else { throw Failure(status: 400, message: "a room scan needs its JSON blob") }
             let version = UInt64(room.scan?["version"]?.doubleValue ?? 0) + 1
             room.scan = [
-                "jsonBlob": args["json_blob"] ?? .null, "jsonSize": args["json_size"] ?? 0,
-                "usdzBlob": args["usdz_blob"] ?? .null, "usdzSize": args["usdz_size"] ?? .null,
+                "jsonBlob": args["jsonBlob"] ?? .null, "jsonSize": number(args["jsonSize"]) ?? 0,
+                "usdzBlob": args["usdzBlob"] ?? .null, "usdzSize": number(args["usdzSize"]) ?? .null,
                 "width": args["width"] ?? 0, "length": args["length"] ?? 0, "height": args["height"] ?? 0,
-                "objectCount": args["object_count"] ?? 0, "sample": args["sample"] ?? false,
+                "objectCount": args["objectCount"] ?? 0, "sample": args["sample"] ?? false,
                 "scannedBy": .string(caller), "scannedAt": .number(Double(now())),
                 "version": .number(Double(version)),
             ]
-            return .number(Double(version))
-        case "get_room_scan": return room.scan ?? .null
-        case "clear_room_scan":
+            // A `u64` result is a decimal string on the wire.
+            return .string(String(version))
+        case "getRoomScan": return room.scan ?? .null
+        case "clearRoomScan":
             try requireAdmin()
             room.scan = nil
             return .null
