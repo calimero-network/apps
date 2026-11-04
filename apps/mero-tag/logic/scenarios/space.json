@@ -1,0 +1,151 @@
+[
+ {
+  "as": "alice",
+  "op": "call",
+  "method": "join",
+  "args": {
+   "username": "Alice"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "alice",
+  "op": "call",
+  "method": "createTracker",
+  "args": {
+   "id": "t1",
+   "name": "Phone"
+  },
+  "expect": {
+   "ok": "t1"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "updateLocation",
+  "args": {
+   "trackerId": "t1",
+   "latitude": 45.8,
+   "longitude": 15.97,
+   "altitude": 120.0,
+   "speed": 0.0,
+   "heading": 0.0,
+   "battery": 80,
+   "timestamp": "1700000000000"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "alice",
+  "op": "call",
+  "method": "updateLocation",
+  "args": {
+   "trackerId": "t1",
+   "latitude": 45.8,
+   "longitude": 15.97,
+   "altitude": 120.0,
+   "speed": 0.0,
+   "heading": 0.0,
+   "battery": 80,
+   "timestamp": "1700000000000"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "alice",
+  "op": "call",
+  "method": "shareTracker",
+  "args": {
+   "trackerId": "t1",
+   "userId": "@bob"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "view",
+  "method": "getHistory",
+  "args": {
+   "trackerId": "t1",
+   "since": "0"
+  },
+  "expect": {
+   "ok": [
+    {
+     "latitude": 45.8,
+     "longitude": 15.97,
+     "timestamp": 1700000000000
+    }
+   ]
+  }
+ },
+ {
+  "as": "alice",
+  "op": "call",
+  "method": "createGeofence",
+  "args": {
+   "id": "home",
+   "name": "Home",
+   "centerLat": 45.8,
+   "centerLng": 15.97,
+   "radius": 150.0
+  },
+  "expect": {
+   "ok": "home"
+  }
+ },
+ {
+  "as": "alice",
+  "op": "call",
+  "method": "reportGeofenceEvent",
+  "args": {
+   "geofenceId": "home",
+   "kind": "enter"
+  },
+  "expect": {
+   "ok": null
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "renameSpace",
+  "args": {
+   "name": "Mine"
+  },
+  "expect": {
+   "error": "Forbidden"
+  }
+ },
+ {
+  "as": "bob",
+  "op": "call",
+  "method": "updatePresence",
+  "args": {
+   "online": true
+  },
+  "expect": {
+   "ok": null
+  },
+  "events": {
+   "alice": [
+    "MemberJoined",
+    "TrackerCreated",
+    "TrackerUpdated",
+    "TrackerShared",
+    "GeofenceCreated",
+    "GeofenceEntered",
+    "PresenceUpdated"
+   ]
+  }
+ }
+]
