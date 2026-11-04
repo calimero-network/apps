@@ -9,7 +9,7 @@ works, with real recordings from the app and a promo film. `cd landing && npm
 install && npm run dev`; deploys to Vercel as-is (`landing/vercel.json`).
 
 ```
-logic/      Rust WASM contract (scene graph: objects, transforms, presence, comments, locks, roles)
+logic/      Rust contract, a calimero:app component (scene graph: objects, transforms, presence, comments, locks, roles)
 app/
   MeroAR/   SwiftUI + ARKit + RealityKit app (SceneKit 3D preview where ARKit isn't available)
 landing/    the landing page (Vite + React + Framer Motion), media in landing/public/media
@@ -18,10 +18,11 @@ scripts/    setup.sh
 Makefile    every command has a `make` shortcut
 ```
 
-Built for **Calimero core 1.0** (`1.0.0-rc.8`): the contract pins
-`calimero-sdk`, `calimero-storage` and `calimero-storage-macros` to that tag
-(`logic/Cargo.toml`, `min-runtime-version` too), and the app uses the Swift
-SDK's 1.0 client (`CalimeroClient`: sealed channel, passkeys).
+Built for **Calimero core 1.0** (`1.0.0-rc.9`): the contract is a
+`calimero:app` WebAssembly component on core's **component SDK**
+(`calimero-sdk`, pinned to that tag in `logic/Cargo.toml`, `min-runtime-version`
+too) that runs on the node's wasmtime runtime, and the app uses the Swift SDK's
+1.0 client (`CalimeroClient`: sealed channel, passkeys).
 
 ## The iOS app
 
@@ -71,8 +72,8 @@ room, and decorate it together.
   `meroar.room/1`: walls, doors, windows, openings and detected objects with
   category, dimensions and transform, mirroring RoomPlan's `CapturedRoom`) plus
   the parametric USDZ RoomPlan exports. Both are uploaded as blobs of the
-  room's app instance, and the contract's `set_room_scan` records them (blob
-  ids, sizes, dimensions, `scanned_by`, `scanned_at`, `version`; one current
+  room's app instance, and the contract's `setRoomScan` records them (blob
+  ids, sizes, dimensions, `scannedBy`, `scannedAt`, `version`; one current
   scan per room, a new one bumps the version). Peers download the model from
   the room's blobs, like the `ARWorldMap`.
 - **View and edit:** the 3D room (SceneKit, non-AR, so it renders in the
@@ -94,7 +95,7 @@ room, and decorate it together.
   room*. It's what the Simulator, the tests and the recordings use, since
   RoomPlan can't run there. It is not a real scan.
 
-Contract: `set_room_scan`, `get_room_scan`, `clear_room_scan` (admin), event
+Contract: `setRoomScan`, `getRoomScan`, `clearRoomScan` (admin), event
 `RoomScanUpdated`.
 
 **Limits:** scanning needs LiDAR; the Simulator only has the sample room;
@@ -107,6 +108,7 @@ room from the model, not the USDZ.
 ```bash
 cargo run -p merod -- local       # in a core checkout: 3 nodes on 127.0.0.1:2501-2503, --dev, mock attestation
                                   # merod is Linux only; on a Mac run it in Docker
+make tools                        # once: mero-component, the component bundler
 make logic-bundle                 # logic/res/mero-ar.mpk, signed with the dev key
 meroctl node add local http://127.0.0.1:2501/ --allow-mock
 meroctl login --dev-passkey ./dev-passkey.json --name ada
@@ -134,8 +136,8 @@ reconnects without a prompt.
 
 | What | How |
 | --- | --- |
-| Writes (`join`, `add_object`, `update_presence`, roles…) | `POST /apps/{room}/intents`, run once on the room's leader as the signed-in account |
-| Reads (`get_room`, `get_objects`, `my_role`…) | `POST /apps/{room}/views` |
+| Writes (`join`, `addObject`, `updatePresence`, roles…) | `POST /apps/{room}/intents`, run once on the room's leader as the signed-in account |
+| Reads (`getRoom`, `getObjects`, `myRole`…) | `POST /apps/{room}/views` |
 | World map, room scan, photos | the room's blobs, `/apps/{room}/blobs` |
 | Live updates | the room's sealed SSE, `/apps/{room}/events`; while it is down the room re-reads every few seconds |
 | Homes | organizations: `POST /orgs` (+ metadata `{name, package}`), rooms `POST /apps` with access `org` |
@@ -161,6 +163,29 @@ The app's real code runs against it with no network.
 `FurnitureFlowTests` use a `RecordingCluster` that records what the store sends.
 `make app-test` runs the unit tests.
 
+### Contract tests
+
+`make logic-test` (`cargo test` in `logic/`) builds the contract into a
+component and runs it on core's real wasmtime engine with an in-memory host
+(`calimero_sdk::testing::TestApp`): `tests/harness.rs` covers roles, locks,
+objects, notes, presence, the room scan, access and the wire, and
+`tests/scenarios.rs` runs every `scenarios/*.json` (in the org its `.org.json`
+names), the same files a `merod local` cluster can run.
+
+### Contract API (component ABI)
+
+Methods and argument names are camelCase: `whoami`, `getRoom`, `renameRoom`,
+`setWorldMap`, `setRoomScan`, `getRoomScan`, `clearRoomScan`, `join`,
+`getMembers`, `updateMemberUsername`, `addObject`, `updateTransform`,
+`updateColor`, `lockObject`, `unlockObject`, `deleteObject`, `clearObjects`,
+`getObjects`, `getObject`, `addComment`, `deleteComment`, `getComments`,
+`updatePresence`, `getPresence`, `grantEditor`, `revokeEditor`, `getRole`,
+`myRole`, `canEdit`, `listRoles`, `transferOwnership`. Reads are views. A
+top-level `u64` argument or result (`setRoomScan`'s `jsonSize`, `usdzSize` and
+returned version) is a decimal string; records (`SceneObject`, `RoomScan`, …)
+keep their numbers. A refused call is `422 APP_ERROR` with code `Forbidden` or
+`Invalid` and the sentence in `fields.message`.
+
 ### Building against an unmerged SDK
 
 To try an SDK change that isn't released yet, build against a local checkout:
@@ -171,19 +196,19 @@ that change**.
 ## Identity & roles
 
 Nothing in the contract trusts a client-supplied id. A member **is** an account:
-every write is attributed to `env::account_id()`, and so is every ownership
-record — the roster, an object's author, a lock holder, a comment's author, the
-`AccessControl` admin tier and the `Ownable` room name. Someone in the room on a
+every write is attributed to the caller's account (`env::caller()`), and so is
+every ownership record — the roster, an object's author, a lock holder, a
+comment's author, the room's admins and its owner. Someone in the room on a
 phone and an iPad is one member holding one role, not two.
 
-Core 1.0 has no devices at all (`account_id == executor_id`), so presence is
-keyed by account too: one camera per member. A member id is a 64-hex
-`AccountId` everywhere, including in what an admin types to grant a role.
+Core 1.0 has no devices at all, so presence is keyed by account too: one camera
+per member. A role can be granted to any account of the room's organization
+(`Invalid` otherwise), before they have ever opened the room.
 
-Admins of the room's organization (`env::caller_org()` role admin or owner) pass
-the room's admin and editor gates as well: they can moderate any room in their
-home. Granting roles and transferring ownership stay with the room's own admin
-tier.
+Admins of the room's organization (`env::org_role` admin or owner) pass the
+room's admin and editor gates as well: they can moderate any room in their
+home. Granting roles and transferring ownership stay with the room's own
+admins.
 
 | Who | Can |
 | --- | --- |
@@ -196,7 +221,7 @@ sheet from the room and toggle it to **editor**. The app hides the tools for a
 viewer, and the contract rejects the write regardless.
 
 **No call names its own author or its time.** A write runs as the passkey
-session's account, so the contract sees `env::account_id()` = that person; and
+session's account, so the contract sees `env::caller()` = that person; and
 it runs once, on the room's Raft leader, which stamps every record with its own
 clock. Who wrote something, and when, is never an argument.
 
@@ -209,8 +234,8 @@ so there is nothing to announce; anyone who can reach the room can download it.
 
 ## Status
 
-- ✅ WASM scene-graph contract (objects + transforms, presence, comments, locking, versioned LWW, world-map blob) — core 1.0.0-rc.8, builds + unit-tested, TestHost tests of the 1.0 semantics
-- ✅ Account identity model: account-attributed writes, account-keyed roles and presence, owner-gated room name, admin lock-breaking, org admins moderate
+- ✅ Scene-graph contract (objects + transforms, presence, comments, locking, version counter, world-map blob, room scan) — a component on core 1.0.0-rc.9's SDK, tested on core's wasmtime engine (TestApp harness + scenarios)
+- ✅ Account identity model: account-attributed writes, account-keyed roles and presence, owner-only room rename, admin lock-breaking, org admins moderate
 - ✅ App on the swift-sdk 1.0 client: passkey sign-in on an attested cluster, sealed intents/views/events, Keychain session resume, orgs as homes, invites, consent-page upgrades
 - ✅ Its own dark spatial design (glass panels, aurora accent, SF Symbols, ids behind "Technical details")
 - ✅ Development clusters (`merod local`, mock attestation), room list and room creation, recent rooms

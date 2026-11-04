@@ -1,6 +1,6 @@
 [package]
 name = "mero-ar"
-description = "Mero AR — collaborative spatial editing on Calimero"
+description = "Mero AR — collaborative spatial editing on Calimero, on the component SDK"
 # NOT the release version. cargo requires a version field, but
 # .github/workflows/deploy-bundle.yml ignores it: the registry owns the number —
 # the check job takes the highest published appVersion and increments the patch
@@ -9,14 +9,28 @@ description = "Mero AR — collaborative spatial editing on Calimero"
 # the registry or the workflow's run summary.
 version = "0.0.2"
 edition = "2021"
+publish = false
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+# A `calimero:app` component. No `rlib`: the tests run the BUILT component on
+# core's engine (tests/common/mod.rs), not the crate linked natively.
+crate-type = ["cdylib"]
 
-# Read by `cargo mero bundle` (core #3374): every field the node and the
-# registry render now has a producer here, so nothing hand-writes a
-# manifest.json. `appVersion` is deliberately absent — the deploy workflow
-# resolves it from the registry with `--bump patch`.
+# Pin a real release tag, never `branch = "master"`: master rides unreleased
+# protocol work against nodes that run the release. Every core crate shares the
+# exact same tag.
+[dependencies]
+calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.9" }
+serde = { version = "1", features = ["derive"] }
+
+# The harness (`TestApp`, `run_scenario`) and the builder the tests build this
+# crate with, for `cargo test` on the host only.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+calimero-sdk       = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.9", features = ["testing"] }
+calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.9" }
+serde_json = "1"
+
+# Read by `mero-component bundle` (calimero-network/apps tools/component-bundle).
 #
 # No `frontend`: this ships as a native iOS app (MeroKit), not a web app the
 # node would open in a browser.
@@ -30,31 +44,12 @@ author = "Calimero"
 slug = "com.calimero.mero-ar"
 tags = ["ar", "spatial", "collaboration"]
 github = "https://github.com/calimero-network/mero-ar"
-# The oldest node that can run this bundle. Core 1.0: identity is the account
-# (no devices; presence is keyed by it), writes run once on the leader with its
-# clock, and `env::caller_org()` lets org admins moderate. A 0.x node gives
-# those calls other meanings, so it must refuse the install.
-min-runtime-version = "1.0.0-rc.8"
+# The oldest node that can run this bundle: a `calimero:app` component on the
+# core 1.0 wasmtime runtime, built against the rc.9 SDK. Older nodes, and every
+# 0.x node, must refuse the install.
+min-runtime-version = "1.0.0-rc.9"
 # No `outbound`: the contract makes no outbound HTTP calls. Core 1.0 refuses any
 # that are not declared here (as URL prefixes) and approved.
 
-[dependencies]
-borsh = "0.10.3"
-borsh-derive = "0.10.3"
-# Pin a real release tag, never `branch = "master"`: master rides unreleased
-# protocol work against nodes that run the release. All SDK crates must share
-# the exact same tag (the workspace version at a tag is 0.0.0).
-calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8" }
-calimero-storage = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.8" }
-thiserror = "1.0.56"
-serde_json = "1.0.113"
-
-[profile.app-release]
-inherits = "release"
-codegen-units = 1
-opt-level = "z"
-lto = true
-debug = false
-panic = "abort"
-overflow-checks = true
+# Standalone: its own Cargo.lock.
+[workspace]

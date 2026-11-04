@@ -7,14 +7,17 @@ import MeroKit
 ///
 /// - **Writes** are `POST /apps/{app}/intents`. They run once, on the room's
 ///   Raft leader, as the signed-in account: the contract sees
-///   `env::account_id()` = this person, whichever device they use.
+///   `env::caller()` = this person, whichever device they use.
 /// - **Reads** are `POST /apps/{app}/views`.
 /// - **Blobs** (world maps, room scans, photos) live with the app instance.
 /// - **Live events** are the app's sealed SSE stream.
 ///
-/// Top-level argument keys are snake_case (Rust parameter names); nested
-/// structs (`transform`, `position`, `SceneObject`) use the camelCase encoding
-/// the contract's serde derives expect.
+/// Methods and top-level argument keys are camelCase, as the component ABI
+/// names them; nested structs (`transform`, `position`, `SceneObject`) use the
+/// camelCase encoding the contract's serde derives expect. A `u64` argument
+/// (`jsonSize`, `usdzSize`) or result (`setRoomScan`'s version) is a decimal
+/// string; inside a record (`SceneObject.version`, `RoomScan.jsonSize`) it stays
+/// a JSON number.
 public final class MeroARService: @unchecked Sendable {
     public let cluster: RoomCluster
     /// The room's app id.
@@ -63,15 +66,15 @@ public final class MeroARService: @unchecked Sendable {
     // MARK: - Reads
 
     public func whoami() async throws -> String { try await read("whoami") }
-    public func getRoom() async throws -> RoomInfo { try await read("get_room") }
-    public func getObjects() async throws -> [SceneObject] { try await read("get_objects") }
-    public func getMembers() async throws -> [Member] { try await read("get_members") }
-    public func getPresence() async throws -> [Presence] { try await read("get_presence") }
-    public func getComments() async throws -> [SpatialComment] { try await read("get_comments") }
+    public func getRoom() async throws -> RoomInfo { try await read("getRoom") }
+    public func getObjects() async throws -> [SceneObject] { try await read("getObjects") }
+    public func getMembers() async throws -> [Member] { try await read("getMembers") }
+    public func getPresence() async throws -> [Presence] { try await read("getPresence") }
+    public func getComments() async throws -> [SpatialComment] { try await read("getComments") }
 
     /// `Option<SceneObject>`: absent and `null` both come back as nil.
     public func getObject(id: String) async throws -> SceneObject? {
-        let value = try await cluster.view(app: contextId, method: "get_object", args: ["id": .string(id)])
+        let value = try await cluster.view(app: contextId, method: "getObject", args: ["id": .string(id)])
         guard let value, value != .null else { return nil }
         return try MeroJSON.decode(SceneObject.self, from: try MeroJSON.encode(value))
     }
@@ -79,21 +82,21 @@ public final class MeroARService: @unchecked Sendable {
     // MARK: - Roles
 
     /// The caller's effective role: "admin", "editor", or "viewer".
-    public func myRole() async throws -> String { try await read("my_role") }
-    public func canEdit() async throws -> Bool { try await read("can_edit") }
-    public func listRoles() async throws -> [MemberRole] { try await read("list_roles") }
+    public func myRole() async throws -> String { try await read("myRole") }
+    public func canEdit() async throws -> Bool { try await read("canEdit") }
+    public func listRoles() async throws -> [MemberRole] { try await read("listRoles") }
 
     public func grantEditor(member: String) async throws {
-        try await write("grant_editor", ["member": .string(member)])
+        try await write("grantEditor", ["member": .string(member)])
     }
     public func revokeEditor(member: String) async throws {
-        try await write("revoke_editor", ["member": .string(member)])
+        try await write("revokeEditor", ["member": .string(member)])
     }
     public func transferOwnership(to member: String) async throws {
-        try await write("transfer_ownership", ["new_owner": .string(member)])
+        try await write("transferOwnership", ["newOwner": .string(member)])
     }
     public func renameRoom(_ name: String) async throws {
-        try await write("rename_room", ["name": .string(name)])
+        try await write("renameRoom", ["name": .string(name)])
     }
 
     // MARK: - Membership
@@ -105,38 +108,38 @@ public final class MeroARService: @unchecked Sendable {
     }
 
     public func updateUsername(_ username: String) async throws {
-        try await write("update_member_username", ["username": .string(username)])
+        try await write("updateMemberUsername", ["username": .string(username)])
     }
 
     // MARK: - Objects
 
     public func addObject(_ object: SceneObject) async throws {
-        try await write("add_object", ["object": try JSONValue(encoding: object)])
+        try await write("addObject", ["object": try JSONValue(encoding: object)])
     }
 
     public func updateTransform(id: String, transform: Transform) async throws {
-        try await write("update_transform", [
+        try await write("updateTransform", [
             "id": .string(id),
             "transform": try JSONValue(encoding: transform),
         ])
     }
 
     public func updateColor(id: String, color: String) async throws {
-        try await write("update_color", [
+        try await write("updateColor", [
             "id": .string(id),
             "color": .string(color),
         ])
     }
 
-    public func lock(id: String) async throws { try await write("lock_object", ["id": .string(id)]) }
-    public func unlock(id: String) async throws { try await write("unlock_object", ["id": .string(id)]) }
-    public func deleteObject(id: String) async throws { try await write("delete_object", ["id": .string(id)]) }
-    public func clearObjects() async throws { try await write("clear_objects") }
+    public func lock(id: String) async throws { try await write("lockObject", ["id": .string(id)]) }
+    public func unlock(id: String) async throws { try await write("unlockObject", ["id": .string(id)]) }
+    public func deleteObject(id: String) async throws { try await write("deleteObject", ["id": .string(id)]) }
+    public func clearObjects() async throws { try await write("clearObjects") }
 
     // MARK: - Comments
 
     public func addComment(text: String, position: Vec3) async throws {
-        try await write("add_comment", [
+        try await write("addComment", [
             "id": .string(UUID().uuidString),
             "text": .string(text),
             "position": try JSONValue(encoding: position),
@@ -144,15 +147,15 @@ public final class MeroARService: @unchecked Sendable {
     }
 
     public func deleteComment(id: String) async throws {
-        try await write("delete_comment", ["id": .string(id)])
+        try await write("deleteComment", ["id": .string(id)])
     }
 
     // MARK: - Presence
 
     public func updatePresence(position: Vec3, rotation: Quat) async throws {
-        try await write("update_presence", [
-            "camera_position": try JSONValue(encoding: position),
-            "camera_rotation": try JSONValue(encoding: rotation),
+        try await write("updatePresence", [
+            "cameraPosition": try JSONValue(encoding: position),
+            "cameraRotation": try JSONValue(encoding: rotation),
         ])
     }
 
@@ -162,7 +165,7 @@ public final class MeroARService: @unchecked Sendable {
     @discardableResult
     public func publishWorldMap(_ data: Data) async throws -> String {
         let blobId = try await uploadBlob(data)
-        try await write("set_world_map", ["blob_id": .string(blobId)])
+        try await write("setWorldMap", ["blobId": .string(blobId)])
         return blobId
     }
 
@@ -183,7 +186,7 @@ public final class MeroARService: @unchecked Sendable {
 
     /// The room's current scan, if one has been published.
     public func getRoomScan() async throws -> RoomScanRecord? {
-        let value = try await cluster.view(app: contextId, method: "get_room_scan", args: [:])
+        let value = try await cluster.view(app: contextId, method: "getRoomScan", args: [:])
         guard let value, value != .null else { return nil }
         return try MeroJSON.decode(RoomScanRecord.self, from: try MeroJSON.encode(value))
     }
@@ -198,22 +201,22 @@ public final class MeroARService: @unchecked Sendable {
         var usdzSize: JSONValue = .null
         if let usdz {
             usdzBlob = .string(try await uploadBlob(usdz))
-            usdzSize = .number(Double(usdz.count))
+            usdzSize = .string(String(usdz.count))
         }
         try await cluster.call(
-            app: contextId, method: "set_room_scan",
+            app: contextId, method: "setRoomScan",
             args: [
-                "json_blob": .string(jsonBlob), "json_size": .number(Double(json.count)),
-                "usdz_blob": usdzBlob, "usdz_size": usdzSize,
+                "jsonBlob": .string(jsonBlob), "jsonSize": .string(String(json.count)),
+                "usdzBlob": usdzBlob, "usdzSize": usdzSize,
                 "width": .number(Double(model.width)), "length": .number(Double(model.length)),
-                "height": .number(Double(model.height)), "object_count": .number(Double(model.objects.count)),
+                "height": .number(Double(model.height)), "objectCount": .number(Double(model.objects.count)),
                 "sample": .bool(model.sample),
             ])
         return try await getRoomScan()?.version ?? 0
     }
 
     /// Remove the room's scan (admin).
-    public func clearRoomScan() async throws { try await write("clear_room_scan") }
+    public func clearRoomScan() async throws { try await write("clearRoomScan") }
 
     /// Download the room model a scan record names.
     public func loadRoomModel(_ record: RoomScanRecord) async throws -> RoomModel {
