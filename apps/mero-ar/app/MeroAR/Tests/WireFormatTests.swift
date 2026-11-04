@@ -2,9 +2,8 @@ import XCTest
 import MeroKit
 @testable import MeroAR
 
-/// The contract mixes casings on purpose: top-level `argsJson` keys are Rust
-/// parameter names (snake_case) while nested structs carry serde's camelCase
-/// rename. `MeroJSON` applies no key strategy, so anything that silently
+/// Top-level argument keys are the component ABI's camelCase parameter names,
+/// and nested structs carry serde's camelCase rename. `MeroJSON` applies no key strategy, so anything that silently
 /// re-cased a key here would only fail against a live node. These pin the
 /// model→`JSONValue` bridge the service builds its arguments with.
 final class WireFormatTests: XCTestCase {

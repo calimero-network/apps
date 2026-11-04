@@ -36,8 +36,8 @@ a 3D preview with the same tools.
 
 | Tool | Needed for | Install |
 |------|-----------|---------|
-| **Rust** + `wasm32-unknown-unknown` | building the WASM contract | <https://rustup.rs> then `rustup target add wasm32-unknown-unknown` |
-| **`cargo mero`** (core 1.0.0-rc.8) | building and bundling the contract | the core release of the tag in `logic/Cargo.toml` |
+| **Rust** + `wasm32-wasip2` | building the component contract | <https://rustup.rs>; `logic/rust-toolchain.toml` pins core's toolchain and target |
+| **`mero-component`** | building and bundling the contract | `make tools` (calimero-network/apps' component bundler) |
 | **Full Xcode** (16+) | building the app, device deploy | Mac App Store |
 | **XcodeGen** | generating the `.xcodeproj` | `brew install xcodegen` |
 | **A Calimero cluster** | running rooms | Calimero Cloud, or `merod local` for development |
@@ -79,7 +79,7 @@ Verify everything with `make setup`.
 
 1. The second person signs in with their own account and pastes the invite link.
 2. On the first device (the room's admin), scan, then **Share scan** to publish
-   the `ARWorldMap` (`set_world_map`).
+   the `ARWorldMap` (`setWorldMap`).
 3. The second device downloads that map on entry and relocalizes into the same
    coordinate frame. Edits arrive live over the room's event stream.
 
@@ -97,7 +97,7 @@ Safari; core accepts approvals only there.
 
 | Command | What it runs | Needs Xcode? |
 |---------|-------------|--------------|
-| `make logic-test` | Rust unit tests + TestHost tests of the 1.0 semantics | no |
+| `make logic-test` | Rust unit tests + the contract on core's wasmtime engine (TestApp harness, scenarios) | no |
 | `make app-build` | the app for a generic iOS device, unsigned | yes |
 | `make app-test` | app unit tests against the in-memory `FixtureCluster` | yes |
 

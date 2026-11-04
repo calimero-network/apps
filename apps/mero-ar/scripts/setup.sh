@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/setup.sh — check prerequisites and build the WASM contract.
+# scripts/setup.sh — check prerequisites and build the component contract.
 set -euo pipefail
 
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; CYAN='\033[0;36m'; BOLD='\033[1m'; RESET='\033[0m'
@@ -21,12 +21,17 @@ check swift   "install Xcode or Command Line Tools"
 [[ ${#MISSING[@]} -gt 0 ]] && { err "Missing: ${MISSING[*]}"; exit 1; }
 
 step "Checking Rust wasm target…"
-rustup target list --installed | grep -q wasm32-unknown-unknown \
-  && ok "wasm32-unknown-unknown installed" \
-  || { rustup target add wasm32-unknown-unknown && ok "wasm32-unknown-unknown added"; }
+# logic/rust-toolchain.toml pins core's toolchain; add its component target.
+(cd "$REPO_ROOT/logic" && rustup target list --installed | grep -q wasm32-wasip2) \
+  && ok "wasm32-wasip2 installed" \
+  || { (cd "$REPO_ROOT/logic" && rustup target add wasm32-wasip2) && ok "wasm32-wasip2 added"; }
 
-step "Building WASM contract…"
-(cd "$REPO_ROOT/logic" && cargo mero bundle --dev --no-icon --app-version 0.0.0 --output res/mero-ar.mpk)
+step "Checking mero-component…"
+command -v mero-component >/dev/null 2>&1 && ok "mero-component found" \
+  || { (cd "$REPO_ROOT" && make tools) && ok "mero-component installed"; }
+
+step "Building the component contract…"
+(cd "$REPO_ROOT" && mero-component bundle logic --dev --no-frontend --app-version 0.0.0 --output logic/res/mero-ar.mpk)
 ok "logic/res/mero-ar.mpk built"
 
 step "Optional tooling…"
@@ -34,7 +39,6 @@ command -v xcodegen >/dev/null 2>&1 && ok "xcodegen found" || warn "xcodegen not
 command -v xcodebuild >/dev/null 2>&1 && xcodebuild -version >/dev/null 2>&1 \
   && ok "full Xcode found" \
   || warn "full Xcode not active — needed to build/run the iOS app and XCTest suite (Command Line Tools alone can't)"
-command -v wasm-opt >/dev/null 2>&1 && ok "wasm-opt found" || warn "wasm-opt not found — WASM won't be size-optimised (optional)"
 command -v meroctl >/dev/null 2>&1 && ok "meroctl found" || warn "meroctl not found — needed to install the dev bundle on a 'merod local' cluster (optional)"
 
 printf "\n${GREEN}${BOLD}✓  Setup complete!${RESET}\n\n"
