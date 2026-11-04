@@ -490,7 +490,7 @@ export async function runMatrix(env: MatrixEnv): Promise<Row[]> {
   }, (r) => r.result);
   await row("apiKey", KEYS, "call (a read-only key)", "FORBIDDEN", () => agent.call(appId(), "set", { key: "agent", value: "x" }));
   await row(A, KEYS, "revokeApiKey", OK, async () => {
-    await A.client.revokeApiKey(need(apiKey?.keyId, "an API key"));
+    await A.client.revokeApiKey(need(apiKey?.keyId, "an API key"), A.passkey);
     const list = await A.client.listApiKeys();
     assert(!list.some((k) => k.keyId === apiKey?.keyId), "the key is still listed");
   });
