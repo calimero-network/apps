@@ -1,7 +1,7 @@
 import MeroKitUI
 import SwiftUI
 
-/// After sign-in: your homes (Calimero namespaces) and the rooms in them,
+/// After sign-in: your homes (Calimero organizations) and the rooms in them,
 /// founding a new home, and joining one by invitation.
 struct LobbyView: View {
     @EnvironmentObject private var app: AppState
@@ -76,7 +76,7 @@ struct LobbyView: View {
                 Haptics.tap()
                 showSettings = true
             } label: {
-                Avatar(id: client.account ?? app.nodeURL ?? "", name: app.effectiveDisplayName, size: 46, me: true)
+                Avatar(id: client.account ?? "", name: app.effectiveDisplayName, size: 46, me: true)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Settings")
@@ -96,16 +96,10 @@ struct LobbyView: View {
                 .onTapGesture { app.homeNotice = nil }
                 .accessibilityIdentifier("homeNotice")
         }
-        if app.isNodeSession {
+        if app.isDevelopmentCluster {
             Callout(
-                tone: .accent, title: "Signed in to your node",
-                message: "\(app.nodeURL ?? "") · homes you create live on this node.")
-        } else if client.isSignedInWithoutRelay {
-            Callout(
-                tone: .info, title: "No relay yet",
-                message: "Your account gets a relay when you redeem your first invitation. Then you can create homes too.")
-        } else if let note = client.cloudNote {
-            Callout(tone: .warning, title: "Limited connection", message: note)
+                tone: .warning, title: "Development cluster",
+                message: "\(client.nodeURL ?? "") · its attestation is a mock. Use it only for development.")
         }
     }
 
@@ -153,7 +147,7 @@ struct LobbyView: View {
     @ViewBuilder private var homesSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Eyebrow(text: app.isNodeSession ? "On this node" : "Homes")
+                Eyebrow(text: "Homes")
                 Spacer()
                 if app.isLoadingHomes { ProgressView().controlSize(.small).tint(Theme.textDim) }
             }
@@ -502,7 +496,7 @@ struct SettingsSheet: View {
                     VStack(alignment: .leading, spacing: 16) {
                         HStack(spacing: 14) {
                             Avatar(
-                                id: client.account ?? app.nodeURL ?? "", name: app.effectiveDisplayName, size: 52,
+                                id: client.account ?? "", name: app.effectiveDisplayName, size: 52,
                                 me: true)
                             VStack(alignment: .leading, spacing: 6) {
                                 Text(app.effectiveDisplayName).font(Theme.title(19)).foregroundStyle(Theme.text)
@@ -523,9 +517,9 @@ struct SettingsSheet: View {
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(Theme.text)
                         Text(
-                            "Rooms are Calimero contexts: the scene is a CRDT replicated peer to peer between the "
-                                + "nodes of the people in it, and the room scan is shared as a blob inside the room. "
-                                + "Live AR needs an ARKit iPhone or iPad."
+                            "A home is a Calimero organization and each room one of its apps, kept by every node "
+                                + "of your cluster, with the room scan stored beside it. Only attested nodes are "
+                                + "trusted. Live AR needs an ARKit iPhone or iPad."
                         )
                         .font(.system(size: 13.5))
                         .foregroundStyle(Theme.textDim)
@@ -551,21 +545,17 @@ struct SettingsSheet: View {
     }
 
     private var connectionText: String {
-        if app.isNodeSession { return "Your node" }
-        return client.relayURL == nil ? "No relay yet" : "Calimero Cloud"
+        app.isDevelopmentCluster ? "Development cluster" : "Calimero Cloud"
     }
 
     private var connectionTone: Tone {
-        app.isNodeSession || client.relayURL != nil ? .success : .warning
+        app.isDevelopmentCluster ? .warning : .success
     }
 
     private var detailRows: [(label: String, value: String)] {
         var rows: [(label: String, value: String)] = []
-        if let node = app.nodeURL { rows.append(("Node", node)) }
+        if let node = client.nodeURL { rows.append(("Cluster node", node)) }
         if let account = client.account { rows.append(("Account", account)) }
-        if let device = client.connection?.session.device { rows.append(("Device", device)) }
-        if let relay = client.relayURL { rows.append(("Relay", relay)) }
-        if let key = client.connection?.nodeKey { rows.append(("Relay node key", key)) }
         return rows
     }
 }

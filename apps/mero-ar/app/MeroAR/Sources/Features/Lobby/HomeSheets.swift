@@ -122,7 +122,7 @@ struct NicknameSheet: View {
                 SheetHeader(title: "Your nickname", subtitle: "Shown to everyone in your rooms.")
             }
             HStack(spacing: 14) {
-                Avatar(id: app.client.account ?? app.nodeURL ?? "", name: trimmed.isEmpty ? "?" : trimmed, size: 52, me: true)
+                Avatar(id: app.client.account ?? "", name: trimmed.isEmpty ? "?" : trimmed, size: 52, me: true)
                 TextInput(placeholder: "Alex", text: $draft, icon: "person.fill", identifier: "nicknameInput")
                     .submitLabel(.done)
                     .onSubmit(save)
@@ -157,7 +157,7 @@ struct NicknameSheet: View {
 
 // MARK: - New home
 
-/// Found a home (a namespace) and its first room, then enter the room.
+/// Found a home (an organization) and its first room, then enter the room.
 struct CreateHomeSheet: View {
     @EnvironmentObject private var app: AppState
     @Environment(\.dismiss) private var dismiss
@@ -195,7 +195,7 @@ struct CreateHomeSheet: View {
                 .disabled(!ready || app.isCreating || app.isEntering)
                 .accessibilityIdentifier("confirmCreateHomeButton")
                 Label(
-                    app.isNodeSession ? "Created on your node. You'll be its admin." : "Created with your Calimero account. You'll be its admin.",
+                    "A new organization on your cluster. You'll be its owner and the room's admin.",
                     systemImage: "checkmark.shield.fill"
                 )
                 .font(.system(size: 12.5))

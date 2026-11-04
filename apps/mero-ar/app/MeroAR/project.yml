@@ -8,23 +8,20 @@ options:
   createIntermediateGroups: true
 
 # MeroKit + MeroKitUI are the shared Calimero Swift SDK
-# (calimero-network/swift-sdk): Cloud sign-in (`CloudSignIn`, `RelayClient`,
-# `MeroClient.signInWithCloud`), the relay session every contract call goes
-# through, and the node admin API for node sign-in.
+# (calimero-network/swift-sdk), on its Calimero 1.0 client: `CalimeroClient`
+# over the sealed channel (the node's TDX quote verified first), passkey
+# sign-in (`MeroClient`, `PlatformPasskey`, a `SoftPasskey` for `merod local`),
+# organizations, app instances, invites and the consent page.
 #
-# Pinned to a release, `from: 0.4.0` (the security-review fixes: https-only
-# remote hosts, enrolment callbacks need a pending state, bounded invites and
-# responses, Keychain account state cleared on sign-out; plus joins on core
-# rc.90 relays and blobs through the relay), so a clean build cannot pick up
-# whatever landed on the SDK's `master` that morning.
+# Pinned to swift-sdk v0.5.0, its Calimero 1.0 release. Bump `exactVersion`
+# for a new release.
 #
-# Local development against an unmerged SDK checkout: swap the two lines below
-# for `path: ../../../swift-sdk` (or your worktree), regenerate, and do NOT
-# commit that.
+# Local development against an SDK checkout: swap `exactVersion` for
+# `path: ../../../swift-sdk` (or your worktree), regenerate, and do NOT commit that.
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    from: 0.4.0
+    exactVersion: 0.5.0
 
 targets:
   MeroAR:
@@ -44,11 +41,6 @@ targets:
         NSCameraUsageDescription: "Mero AR uses the camera to scan your room and place shared 3D objects in it."
         UIRequiredDeviceCapabilities:
           - arkit
-        # The wallet returns to meroar://enrol after the passkey approval.
-        CFBundleURLTypes:
-          - CFBundleURLName: network.calimero.meroar.enrol
-            CFBundleURLSchemes:
-              - meroar
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: network.calimero.meroar
@@ -59,6 +51,9 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_VERSION: "5"
+        # Passkeys on a real cluster need `webcredentials:<the cluster's rp id>`
+        # in an entitlements file and a signing team; a `merod local` cluster
+        # uses a soft passkey and needs neither.
         # Set your team here (or pass DEVELOPMENT_TEAM=XXXX to xcodebuild) for device builds.
         # DEVELOPMENT_TEAM: ""
     dependencies:

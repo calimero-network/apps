@@ -25,7 +25,7 @@ final class PictureCache: ObservableObject {
 
     /// Start downloading `blobId` unless it is cached or already on its way.
     func request(_ blobId: String, service: MeroARService) {
-        guard !blobId.isEmpty, images[blobId] == nil, !loading.contains(blobId), service.hasBearerSession else {
+        guard !blobId.isEmpty, images[blobId] == nil, !loading.contains(blobId) else {
             return
         }
         loading.insert(blobId)

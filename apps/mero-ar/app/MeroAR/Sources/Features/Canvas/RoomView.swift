@@ -187,7 +187,7 @@ struct RoomEditor<Canvas: View>: View {
             .animation(.easeOut(duration: 0.2), value: store.lastError)
         }
         .sheet(isPresented: $showLibrary) {
-            ObjectLibrary(canAddPhotos: service.hasBearerSession) { choice in place(choice) }
+            ObjectLibrary(canAddPhotos: true) { choice in place(choice) }
                 .presentationDetents([.large, .medium])
                 .presentationBackground(.ultraThinMaterial)
                 .presentationCornerRadius(32)
@@ -708,7 +708,7 @@ private struct Inspector: View {
 
 /// Pick furniture, a photo, a shape or a label to place.
 private struct ObjectLibrary: View {
-    /// Photos travel as blobs, which need the relay's Bearer session.
+    /// Photos travel as blobs of the room.
     let canAddPhotos: Bool
     let place: (LibraryChoice) -> Void
     @State private var color = Theme.objectColorHex
@@ -809,7 +809,7 @@ private struct ObjectLibrary: View {
         } else {
             Callout(
                 tone: .info, title: "Photos need a live connection",
-                message: "Your relay's session isn't up yet, so photos can't be shared. Furniture and shapes still work.")
+                message: "Photos can't be shared right now. Furniture and shapes still work.")
         }
     }
 
@@ -980,7 +980,7 @@ struct ARRoomCanvas: View {
             Task { @MainActor in store.sendPresence(position: pos, rotation: rot) }
         }
         // If the room already has a shared scan, relocalize into it.
-        if let blob = store.room?.worldMapBlob, !blob.isEmpty, service.hasBearerSession {
+        if let blob = store.room?.worldMapBlob, !blob.isEmpty {
             status = "Lining up with the shared room scan…"
             Task {
                 if let data = try? await service.downloadWorldMap(blobId: blob),
@@ -996,10 +996,6 @@ struct ARRoomCanvas: View {
     /// next device to join relocalizes into the same coordinate space.
     private func shareScan() {
         guard !isPublishing else { return }
-        guard service.hasBearerSession else {
-            status = "Sharing the scan needs the relay session. Try again shortly."
-            return
-        }
         isPublishing = true
         Task {
             defer { isPublishing = false }

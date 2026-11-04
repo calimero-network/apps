@@ -8,6 +8,8 @@ import SwiftUI
 /// rule regardless; this just avoids offering taps that would be refused.
 struct MembersSheet: View {
     @ObservedObject var store: SceneStore
+    @EnvironmentObject private var app: AppState
+    @Environment(\.openURL) private var openURL
     @State private var editNickname = false
 
     var body: some View {
@@ -20,6 +22,9 @@ struct MembersSheet: View {
                     subtitle: "They join this room's home, then build with you."
                 ) {
                     try await store.service.createRoomInvite().shareableLink()
+                }
+                if app.roomUpdate != nil || app.isAwaitingApproval || app.approvalNotice != nil {
+                    updateCard
                 }
                 membersCard
                 detailsCard
@@ -112,21 +117,68 @@ struct MembersSheet: View {
                 HStack(spacing: 10) {
                     Image(systemName: "dot.radiowaves.left.and.right").foregroundStyle(Theme.accent)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(store.isLive ? "Live sync" : "Syncing by refresh")
+                        Text(store.isLive ? "Live" : "Syncing by refresh")
                             .font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.text)
                         Text(
                             store.isLive
                                 ? "Changes arrive as they happen."
-                                : "The live session isn't up yet, so the room refreshes every few seconds."
+                                : "The live stream isn't up right now, so the room refreshes every few seconds."
                         )
                         .font(.system(size: 12.5)).foregroundStyle(Theme.textFaint)
                     }
                 }
                 TechnicalDetails(rows: [
-                    ("Room (context) ID", store.service.contextId),
+                    ("Room ID", store.service.contextId),
                     ("Your member ID", store.memberId),
-                    (store.service.relay == nil ? "Node" : "Relay", store.service.transport.endpoint),
+                    ("Cluster node", store.service.endpoint),
                 ])
+            }
+        }
+    }
+
+    // MARK: - Update
+
+    /// A newer Mero AR release. Core approves an upgrade only on the node's
+    /// consent page, so the button opens it in the browser and waits.
+    private var updateCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 10) {
+                    Image(systemName: "arrow.up.circle.fill").foregroundStyle(Theme.accent)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(app.isAwaitingApproval ? "Waiting for your approval" : "Update available")
+                            .font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.text)
+                        if let update = app.roomUpdate {
+                            Text("This room runs \(update.current). Version \(update.latest) is out.")
+                                .font(.system(size: 12.5)).foregroundStyle(Theme.textFaint)
+                        }
+                    }
+                }
+                if let notice = app.approvalNotice {
+                    Text(notice).font(.system(size: 12.5)).foregroundStyle(Theme.textDim)
+                }
+                if app.isAwaitingApproval {
+                    HStack {
+                        ProgressView().tint(Theme.textDim)
+                        Text("Approve the upgrade in Safari, then come back.")
+                            .font(.system(size: 12.5)).foregroundStyle(Theme.textDim)
+                        Spacer()
+                        Button("Stop waiting") { app.cancelApprovalWait() }
+                            .buttonStyle(LinkButtonStyle())
+                    }
+                } else if app.roomUpdate != nil, store.isAdmin {
+                    Button {
+                        Haptics.tap()
+                        app.requestRoomUpgrade { url in openURL(url) }
+                    } label: {
+                        ButtonLabel(title: "Review and approve", icon: "checkmark.shield.fill")
+                    }
+                    .buttonStyle(PrimaryButtonStyle(height: 48))
+                    .accessibilityIdentifier("approveUpgradeButton")
+                } else if app.roomUpdate != nil {
+                    Text("An admin of this room's home can approve it.")
+                        .font(.system(size: 12.5)).foregroundStyle(Theme.textFaint)
+                }
             }
         }
     }
