@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { browserPasskey, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
 import {
+  RecoveryStore,
+  describeRecoveryError,
+  recoveryWhere,
+  type AccountRecovery,
+  type RecoveryStep,
+  type RecoveryWhere,
+} from "./recovery";
+import {
   SessionStore,
   createClient,
   NotServedError,
@@ -42,6 +50,33 @@ export function passkeyDeps(env: ConnectEnv): SessionDeps {
   return { env, makeClient: (target) => createClient(target), passkey: browserPasskey };
 }
 
+/**
+ * Account recovery with a recovery code (see `./recovery`). Its steps share
+ * the session's `busy` and `error`.
+ */
+export interface RecoveryApi {
+  /** Where recovery runs for this target (`null` until connected). */
+  where: RecoveryWhere | null;
+  /**
+   * Signed out: the recovery this browser started on this target, kept until
+   * it finishes or is forgotten. Finish it once `readyAt` passed.
+   */
+  started: AccountRecovery | null;
+  /** Signed out: start a recovery with `code` and a new passkey (the browser's create prompt). */
+  start(code: string): Promise<void>;
+  /** Signed out, after `readyAt`: finish with the new passkey, which signs in. */
+  finish(): Promise<void>;
+  /** Drop this browser's copy of the started recovery (it stays under way on the cluster). */
+  forget(): void;
+  /**
+   * Signed in: a recovery of this account under way, started anywhere by
+   * whoever holds its recovery code. Show it on every device.
+   */
+  underWay: AccountRecovery | null;
+  /** Signed in: cancel it with one of the account's passkeys (`where` is `here` only). */
+  cancel(): Promise<void>;
+}
+
 export interface SessionApi {
   session: Session;
   /** The sessions kept for this app on this target. */
@@ -57,6 +92,8 @@ export interface SessionApi {
   /** Create an account with a new passkey. The name is optional. */
   signUp(name?: string): Promise<void>;
   signOut(): Promise<void>;
+  /** Lost every passkey: recover the account with its recovery code. */
+  recovery: RecoveryApi;
 }
 
 /**
@@ -95,6 +132,9 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
   const [store, setStore] = useState<SessionStore | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [recoveryStore, setRecoveryStore] = useState<RecoveryStore | null>(null);
+  const [started, setStarted] = useState<AccountRecovery | null>(null);
+  const [underWay, setUnderWay] = useState<AccountRecovery | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -114,8 +154,11 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
       try {
         const client = await deps.makeClient(target);
         const sessions = new SessionStore(app, target, deps.storage);
+        const recoveries = new RecoveryStore(target, deps.storage);
         if (!live) return;
         setStore(sessions);
+        setRecoveryStore(recoveries);
+        setStarted(recoveries.load());
         if (sessions.restore(client) && client.session) {
           setSession({ status: "signed-in", client, target, accountId: client.session.accountId });
         } else {
@@ -154,6 +197,97 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
     [ceremony, deps],
   );
 
+  // Signed in: is someone recovering this account? Every device warns.
+  const signedInClient = session.status === "signed-in" ? session.client : null;
+  useEffect(() => {
+    setUnderWay(null);
+    if (!signedInClient) return;
+    let live = true;
+    (async () => {
+      try {
+        const me = await signedInClient.me();
+        if (live) setUnderWay(me.recoveryPending ?? null);
+      } catch {
+        // A node from before core#4844 says nothing about recovery; nor does an unreachable one.
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, [signedInClient]);
+
+  const recoveryStep = useCallback(
+    async (step: RecoveryStep, run: () => Promise<void>) => {
+      setBusy(true);
+      setError(null);
+      try {
+        await run();
+      } catch (e) {
+        if (!isPasskeyCancel(e)) setError(describeRecoveryError(e, step));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [],
+  );
+
+  const target = session.status === "signed-out" || session.status === "signed-in" ? session.target : null;
+  const where = useMemo(() => (target ? recoveryWhere(target) : null), [target]);
+  const here = where?.kind === "here";
+
+  const startRecovery = useCallback(
+    async (code: string) => {
+      if (session.status !== "signed-out" || !here || !code.trim()) return;
+      const client = session.client;
+      await recoveryStep("start", async () => {
+        const recovery = await client.startAccountRecovery(code.trim(), deps.passkey());
+        recoveryStore?.save(recovery);
+        setStarted(recovery);
+      });
+    },
+    [session, here, recoveryStep, recoveryStore, deps],
+  );
+
+  const finishRecovery = useCallback(async () => {
+    if (session.status !== "signed-out" || !here) return;
+    const { client, target } = session;
+    await recoveryStep("finish", async () => {
+      const { accountId } = await client.finishAccountRecovery(deps.passkey(), started?.accountId);
+      store?.sync(client);
+      recoveryStore?.clear();
+      setStarted(null);
+      setSession({ status: "signed-in", client, target, accountId });
+    });
+  }, [session, here, recoveryStep, recoveryStore, store, started, deps]);
+
+  const forgetRecovery = useCallback(() => {
+    recoveryStore?.clear();
+    setStarted(null);
+  }, [recoveryStore]);
+
+  const cancelRecovery = useCallback(async () => {
+    if (session.status !== "signed-in" || !here) return;
+    const client = session.client;
+    await recoveryStep("cancel", async () => {
+      await client.cancelAccountRecovery(deps.passkey());
+      store?.sync(client);
+      setUnderWay(null);
+    });
+  }, [session, here, recoveryStep, store, deps]);
+
+  const recovery = useMemo<RecoveryApi>(
+    () => ({
+      where,
+      started,
+      start: startRecovery,
+      finish: finishRecovery,
+      forget: forgetRecovery,
+      underWay,
+      cancel: cancelRecovery,
+    }),
+    [where, started, startRecovery, finishRecovery, forgetRecovery, underWay, cancelRecovery],
+  );
+
   const signOut = useCallback(async () => {
     if (session.status !== "signed-in") return;
     try {
@@ -166,8 +300,8 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
   }, [session, store]);
 
   return useMemo(
-    () => ({ session, store, error, busy, env: deps.env, passkey: deps.passkey, signIn, signUp, signOut }),
-    [session, store, error, busy, deps, signIn, signUp, signOut],
+    () => ({ session, store, error, busy, env: deps.env, passkey: deps.passkey, signIn, signUp, signOut, recovery }),
+    [session, store, error, busy, deps, signIn, signUp, signOut, recovery],
   );
 }
 

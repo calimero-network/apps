@@ -229,9 +229,15 @@ catalog:
 # 28.0.0 (mero-js#320) answers passkey step-ups (412 CONFIRM_REQUIRED) on
 # credentials, memberships and invites, which core 1.0.0-rc.7 requires. It
 # moves with `component-core-tag` in the root Cargo.toml.
+#
+# 29.5.0 (mero-js#330) adds account recovery with a recovery code (core#4844):
+# `startAccountRecovery`, `finishAccountRecovery`, `cancelAccountRecovery`,
+# `WrongRecoveryCode`, `RecoveryNotReady`, `me().recoveryPending`. The
+# passkey package's "Lost your passkey?" path uses them. Additive: a node
+# from before #4844 answers those routes 404 and nothing else changes.
 catalogs:
   component:
-    "@calimero-network/mero-js": 29.2.0
+    "@calimero-network/mero-js": 29.5.0
 
 # esbuild's postinstall needs approving explicitly under pnpm 10+; pnpm 11
 # renamed the key to `allowBuilds`, so this may need updating with the toolchain.

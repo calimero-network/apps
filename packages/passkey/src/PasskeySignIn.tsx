@@ -1,8 +1,14 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
 import type { SessionApi } from "./session";
+import { AlertIcon, LifebuoyIcon, PasskeyIcon, PlusIcon, Spinner } from "./icons";
+import { RecoverAccount } from "./RecoverAccount";
 
-/** The part of the session the control drives. */
-export type PasskeySignInApi = Pick<SessionApi, "busy" | "error" | "signIn" | "signUp">;
+/**
+ * The part of the session the control drives. With `recovery` (the whole
+ * `usePasskeySession` result has it), it also offers "Lost your passkey?".
+ */
+export type PasskeySignInApi = Pick<SessionApi, "busy" | "error" | "signIn" | "signUp"> &
+  Partial<Pick<SessionApi, "recovery">>;
 
 export interface PasskeySignInProps {
   api: PasskeySignInApi;
@@ -16,52 +22,6 @@ export interface PasskeySignInProps {
   className?: string;
 }
 
-const svg = {
-  width: 18,
-  height: 18,
-  viewBox: "0 0 24 24",
-  fill: "none",
-  stroke: "currentColor",
-  strokeWidth: 1.8,
-  strokeLinecap: "round" as const,
-  strokeLinejoin: "round" as const,
-  "aria-hidden": true,
-  focusable: false,
-};
-
-/** A key with a person: the passkey mark. */
-function PasskeyIcon() {
-  return (
-    <svg {...svg}>
-      <circle cx="9" cy="7.5" r="3.5" />
-      <path d="M2.5 20v-1.2A5.3 5.3 0 0 1 7.8 13.5h2.4c.9 0 1.7.2 2.5.6" />
-      <circle cx="18" cy="12" r="2.5" />
-      <path d="M18 14.5V21l1.5-1.4L18 18.2l1.5-1.4" />
-    </svg>
-  );
-}
-
-function PlusIcon() {
-  return (
-    <svg {...svg} width={16} height={16}>
-      <path d="M12 5v14M5 12h14" />
-    </svg>
-  );
-}
-
-function AlertIcon() {
-  return (
-    <svg {...svg} width={16} height={16}>
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 7.5v5.5M12 16.5v.01" />
-    </svg>
-  );
-}
-
-function Spinner() {
-  return <span className="cp-passkey__spinner" aria-hidden="true" />;
-}
-
 /**
  * The one way into every component app: continue with a passkey the person
  * already has (from this app or any other Calimero app), or create one.
@@ -73,6 +33,8 @@ export function PasskeySignIn({ api, askName = false, hint, className }: Passkey
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState("");
   const nameId = useId();
+  // A recovery this browser started opens on its status: the person came back to finish it.
+  const [recovering, setRecovering] = useState(() => Boolean(api.recovery?.started));
 
   useEffect(() => {
     if (!api.busy) setRunning(null);
@@ -91,8 +53,19 @@ export function PasskeySignIn({ api, askName = false, hint, className }: Passkey
     else signUp();
   };
 
+  const root = className ? `cp-passkey ${className}` : "cp-passkey";
+  const recovery = api.recovery;
+
+  if (recovery?.where && recovering) {
+    return (
+      <div className={root} aria-busy={api.busy}>
+        <RecoverAccount api={{ busy: api.busy, error: api.error, recovery }} onBack={() => setRecovering(false)} />
+      </div>
+    );
+  }
+
   return (
-    <div className={className ? `cp-passkey ${className}` : "cp-passkey"} aria-busy={api.busy}>
+    <div className={root} aria-busy={api.busy}>
       <button
         type="button"
         className="cp-passkey__primary"
@@ -151,6 +124,19 @@ export function PasskeySignIn({ api, askName = false, hint, className }: Passkey
           <AlertIcon />
           <span>{api.error}</span>
         </p>
+      )}
+
+      {recovery?.where && (
+        <button
+          type="button"
+          className="cp-passkey__link cp-passkey__lost"
+          data-testid="recovery-open"
+          disabled={api.busy}
+          onClick={() => setRecovering(true)}
+        >
+          <LifebuoyIcon />
+          <span>{recovery.started ? "Finish recovering your account" : "Lost your passkey? Use a recovery code"}</span>
+        </button>
       )}
     </div>
   );
