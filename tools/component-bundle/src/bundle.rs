@@ -160,6 +160,9 @@ pub fn manifest(inputs: &Inputs<'_>) -> Result<BundleManifest> {
         interfaces: None,
         wasm: Some(artifact(WASM, inputs.component)),
         abi: None,
+        // No compute component: this tool packs one service's WASM only
+        // (core 1.0.0-rc.10 added the field; absent, it is not serialized).
+        compute: None,
         services: None,
         frontend: inputs.frontend.map(|f| f.frontend.clone()),
         links: Some(BundleLinks {
