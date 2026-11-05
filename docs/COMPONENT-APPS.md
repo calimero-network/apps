@@ -79,17 +79,17 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
-calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.9" }
+calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.10" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
-calimero-sdk       = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.9", features = ["testing"] }
-calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.9" }
+calimero-sdk       = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.10", features = ["testing"] }
+calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.10" }
 serde_json = "1"
 
 [package.metadata.calimero]
 package = "com.calimero.my-app"
 name = "My App"
-min-runtime-version = "1.0.0-rc.9"
+min-runtime-version = "1.0.0-rc.10"
 # … the same keys as a v1 app (icon, frontend, frontend-dir, tags, …)
 
 [workspace]
@@ -124,8 +124,8 @@ replaces merobox and Docker for component apps.
 
 ```bash
 # merod at component-core-tag, once (either):
-curl -fsSL https://github.com/calimero-network/core/releases/download/1.0.0-rc.9/merod_x86_64-unknown-linux-gnu.tar.gz | tar xz
-cargo install --locked --git https://github.com/calimero-network/core --tag 1.0.0-rc.9 merod
+curl -fsSL https://github.com/calimero-network/core/releases/download/1.0.0-rc.10/merod_x86_64-unknown-linux-gnu.tar.gz | tar xz
+cargo install --locked --git https://github.com/calimero-network/core --tag 1.0.0-rc.10 merod
 
 pnpm dev:local <app>             # everything below in one command; Ctrl-C stops it all
 ```
