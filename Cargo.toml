@@ -167,11 +167,13 @@ merod-image = "ghcr.io/calimero-network/merod:1.0.0-rc.10"
 # (the outbox and synchronous xcall.call/xcall.view), actions and outbound HTTP
 # from actions and calls for components (core#4815-#4822); 1.0.0-rc.9 renames
 # the component SDK crate `calimero-app-sdk` to `calimero-sdk` (core#4842) and
-# its WIT world to `calimero:app@0.5.1`, which every app's res/abi.json records.
-component-core-tag = "1.0.0-rc.9"
+# its WIT world to `calimero:app@0.5.1`, which every app's res/abi.json records;
+# 1.0.0-rc.10 lets frontends a node serves reach the attestation mirror
+# (core#4861), so they can verify a TDX node and sign people in.
+component-core-tag = "1.0.0-rc.10"
 # What a component bundle declares as `minRuntimeVersion`: a 1.0 node compares
 # it with its own version, so it is the core tag above.
-component-min-runtime-version = "1.0.0-rc.9"
+component-min-runtime-version = "1.0.0-rc.10"
 
 # ── profiles MUST live here ──────────────────────────────────────────────────
 #
