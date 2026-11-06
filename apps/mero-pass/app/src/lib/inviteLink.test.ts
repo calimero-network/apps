@@ -5,8 +5,11 @@ import {
   dropInvite,
   invitationFromRaw,
   invitationUrl,
+  isSpentInvite,
   pendingInvite,
+  pendingInviteOrg,
 } from './inviteLink';
+import { CalimeroError } from '@calimero-network/mero-js';
 
 function memory() {
   const m = new Map<string, string>();
@@ -50,5 +53,35 @@ describe('invitation links', () => {
     expect(window.location.search).toBe('?x=1');
     dropInvite(storage);
     expect(pendingInvite(storage)).toBeNull();
+  });
+
+  it('names the team in ?org= and keeps it with the token until dropped', () => {
+    expect(
+      invitationUrl(
+        'tok',
+        { origin: 'https://pass.example', pathname: '/teams/org1' },
+        'org1',
+      ),
+    ).toBe('https://pass.example/?invite=tok&org=org1');
+    window.history.replaceState(null, '', '/?invite=tok&org=org1');
+    const storage = memory();
+    captureInvite(storage, window.location);
+    expect(pendingInviteOrg(storage)).toBe('org1');
+    expect(window.location.search).toBe('');
+    dropInvite(storage);
+    expect(pendingInviteOrg(storage)).toBeNull();
+  });
+
+  it('counts a 4xx redemption as a spent invite, and a 5xx or 401 as retryable', () => {
+    expect(
+      isSpentInvite(new CalimeroError(404, 'NOT_FOUND', 'unknown invite')),
+    ).toBe(true);
+    expect(isSpentInvite(new CalimeroError(401, 'UNAUTHENTICATED', 'x'))).toBe(
+      false,
+    );
+    expect(isSpentInvite(new CalimeroError(503, 'UNAVAILABLE', 'x'))).toBe(
+      false,
+    );
+    expect(isSpentInvite(new Error('offline'))).toBe(false);
   });
 });

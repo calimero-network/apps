@@ -96,3 +96,13 @@
   text-decoration: underline;
   text-underline-offset: 0.2em;
 }
+
+/* The passkey sign-in inside a card (the invitation page): left-aligned like
+   the dialog it shares its body with. */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+  text-align: left;
+}
