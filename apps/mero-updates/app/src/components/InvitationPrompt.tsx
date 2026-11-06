@@ -45,7 +45,7 @@ export default function InvitationPrompt() {
   const client = signedIn?.client ?? null;
 
   useEffect(() => {
-    setInvite(client ? pendingInvite() : null);
+    setInvite((prev) => (client ? reread(prev) : null));
   }, [client]);
 
   useEffect(() => {
@@ -60,7 +60,8 @@ export default function InvitationPrompt() {
     return () => {
       live = false;
     };
-  }, [client, invite]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- once per token, not per re-read
+  }, [client, invite?.token]);
   useDialogOpen(dialogRef, !!invite && member !== null);
 
   const dismiss = useCallback(() => {
@@ -166,4 +167,15 @@ export default function InvitationPrompt() {
       </div>
     </dialog>
   );
+}
+
+/**
+ * The invitation to ask about once there is a session: the one already held,
+ * or the stored one. Never a fresh copy of the one held: that would re-run the
+ * membership check and close and reopen the dialog (closing it is "Not now"),
+ * and after the check has dropped an already-member's token it would lose the
+ * "You're already in" answer before anyone read it.
+ */
+function reread(prev: PendingInvite | null): PendingInvite | null {
+  return prev ?? pendingInvite();
 }

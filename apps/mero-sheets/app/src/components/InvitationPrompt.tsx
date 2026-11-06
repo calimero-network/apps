@@ -44,7 +44,7 @@ export default function InvitationPrompt({ onJoined }: { onJoined: (landed: Acce
 
   // Signing in on the invitation page leaves the token where it was: re-read it.
   useEffect(() => {
-    if (client) setInvite(pendingInvite());
+    if (client) setInvite((prev) => reread(prev));
   }, [client]);
 
   useEffect(() => {
@@ -59,7 +59,8 @@ export default function InvitationPrompt({ onJoined }: { onJoined: (landed: Acce
     return () => {
       live = false;
     };
-  }, [client, invite]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- once per token, not per re-read
+  }, [client, invite?.token]);
 
   const dismiss = useCallback(() => {
     dropInvite();
@@ -142,4 +143,15 @@ export default function InvitationPrompt({ onJoined }: { onJoined: (landed: Acce
       </Dialog>
     </Overlay>
   );
+}
+
+/**
+ * The invitation to ask about once there is a session: the one already held,
+ * or the stored one. Never a fresh copy of the one held: that would re-run the
+ * membership check and close and reopen the dialog (closing it is "Not now"),
+ * and after the check has dropped an already-member's token it would lose the
+ * "You're already in" answer before anyone read it.
+ */
+function reread(prev: PendingInvite | null): PendingInvite | null {
+  return prev ?? pendingInvite();
 }
