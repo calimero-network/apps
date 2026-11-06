@@ -10,7 +10,7 @@ import { StudioPage, base } from "./StudioPage";
 const LANDING_PATHS = ["/", "/docs", "/preview"];
 
 /**
- * The landing page, with this app's own passkey sign-in behind "Connect"
+ * The landing page, with this app's own passkey sign-in behind "Sign in"
  * (`ownConnect` in scripts/landing/apps.config.mjs): it opens the studio,
  * whose front door is the sign-in.
  */
