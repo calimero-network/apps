@@ -1,5 +1,5 @@
-import type { AppInfo, CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
-import { targetKey, type AppSource, type KeyValueStorage, type Target } from "@calimero-apps/connect";
+import { CalimeroError, type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
+import { describeError, targetKey, type AppSource, type KeyValueStorage, type Target } from "@calimero-apps/connect";
 
 import { APP } from "./session";
 
@@ -81,6 +81,7 @@ export function captureInvite(storage: KeyValueStorage = localStorage, loc: Loca
   } catch {
     return;
   }
+  dropDeferral();
   url.searchParams.delete("invite");
   url.searchParams.delete("table");
   window.history.replaceState(null, "", url.toString());
@@ -105,6 +106,49 @@ export function dropInvite(storage: KeyValueStorage = localStorage): void {
   } catch {
     /* nothing stored */
   }
+  dropDeferral();
+}
+
+const DEFERRED = `${APP}:invite-deferred`;
+
+/**
+ * "Not now" on the invitation: the ordinary landing page for the rest of this
+ * tab, with the token KEPT, so signing in later still joins.
+ */
+export function deferInvite(storage: Pick<Storage, "setItem"> = sessionStorage): void {
+  try {
+    storage.setItem(DEFERRED, "1");
+  } catch {
+    /* the page still moves on for this render */
+  }
+}
+
+export function inviteDeferred(storage: Pick<Storage, "getItem"> = sessionStorage): boolean {
+  try {
+    return storage.getItem(DEFERRED) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function dropDeferral(storage: Pick<Storage, "removeItem"> = sessionStorage): void {
+  try {
+    storage.removeItem(DEFERRED);
+  } catch {
+    /* nothing stored */
+  }
+}
+
+/** What to say when a token is refused for good. */
+export const SPENT_INVITE = "This invite was already used or has expired. Ask the person who invited you for a new link.";
+
+/**
+ * Whether the node refused the token for good (unknown, used, expired,
+ * revoked) rather than failing to answer: a 4xx other than 401/429.
+ */
+export function inviteRefused(e: unknown): boolean {
+  if (e instanceof CalimeroError) return e.status >= 400 && e.status < 500 && e.status !== 401 && e.status !== 429;
+  return /unknown invite|already used|expired|revoked/i.test(describeError(e));
 }
 
 /** The table last opened on this target by this account, remembered across loads. */
