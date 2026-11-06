@@ -19,6 +19,7 @@
     "src/StudioPage.tsx",
     "src/ScenePicker.tsx",
     "src/InviteCard.tsx",
+    "src/Invitation.tsx",
     "src/editor",
     "src/studio",
     "src/ui"

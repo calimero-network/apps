@@ -8,15 +8,15 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
-import { CalimeroError } from "@calimero-network/mero-js";
 import { appSource, type KeyValueStorage } from "@calimero-apps/connect";
 import { nodeBasename } from "@calimero-apps/node-served";
 import { AppListing, PasskeySignIn } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
-import { dropInvite, pendingInvite, selectionKey } from "./arenas";
+import { pendingInvite, selectionKey, type PendingInvite } from "./arenas";
+import { InvitationSignIn, JoinInvitation } from "./Invitation";
 import { ArenaPage, type OpenArena } from "./ArenaPage";
-import { PACKAGE, messageOf } from "./kombat";
+import { PACKAGE } from "./kombat";
 import { Lobby } from "./Lobby";
 import { PracticePage } from "./PracticePage";
 import LandingPage from "./pages/landing/LandingPage";
@@ -140,41 +140,28 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
     [key, storage],
   );
 
-  // An invitation link opened before signing in is redeemed once a session
-  // exists, and the arena it names is opened.
+  // An invitation link opened before signing in: a page of its own while it
+  // is pending (see `Invitation.tsx`), redeemed only on "Join", after which the
+  // arena it names is opened.
+  const [invite, setInvite] = useState<PendingInvite | null>(() => pendingInvite(storage));
   useEffect(() => {
-    if (!client) return;
-    const invite = pendingInvite(storage);
-    if (!invite) return;
-    let live = true;
-    client
-      .redeemInvite(invite.token)
-      .then(async () => {
-        dropInvite(storage);
-        if (!live) return;
-        setLobbyKey((k) => k + 1);
-        const arena = invite.arena
-          ? (await client.listApps({}).catch(() => [])).find((a) => a.appId === invite.arena)
-          : undefined;
-        if (!live) return;
-        if (arena) {
-          open({ appId: arena.appId, name: arena.name, org: arena.org });
-          setNotice(null);
-        } else {
-          setNotice("Invitation accepted: the arena is in your list.");
-        }
-      })
-      .catch((e: unknown) => {
-        // A refusal (used, expired, revoked) can never succeed: drop it.
-        // Anything else (the cluster unreachable) is kept for the next load.
-        if (e instanceof CalimeroError && e.status < 500) dropInvite(storage);
-        if (live) setNotice(`The invitation could not be accepted: ${messageOf(e)}`);
-      })
-      .finally(after);
-    return () => {
-      live = false;
-    };
-  }, [client, storage, after, open]);
+    if (client) setInvite(pendingInvite(storage));
+  }, [client, storage]);
+
+  const openInvited = useCallback(
+    async (named: string | null) => {
+      setLobbyKey((k) => k + 1);
+      const arena =
+        client && named ? (await client.listApps({}).catch(() => [])).find((a) => a.appId === named) : undefined;
+      if (arena) {
+        open({ appId: arena.appId, name: arena.name, org: arena.org });
+        setNotice(null);
+      } else {
+        setNotice("Invitation accepted: the arena is in your list.");
+      }
+    },
+    [client, open],
+  );
 
   if (session.status === "connecting") {
     return (
@@ -211,6 +198,22 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
     return <ConnectCard api={api} where={describeTarget(session.target)} />;
   }
 
+  if (invite) {
+    return (
+      <JoinInvitation
+        client={session.client}
+        token={invite.token}
+        storage={storage}
+        after={after}
+        onJoined={() => {
+          setInvite(null);
+          void openInvited(invite.arena);
+        }}
+        onClose={() => setInvite(null)}
+      />
+    );
+  }
+
   return (
     <>
       {notice && (
@@ -235,6 +238,34 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
         <Lobby key={lobbyKey} client={session.client} source={source} onOpen={open} after={after} />
       )}
     </>
+  );
+}
+
+/**
+ * A signed-out visitor holding an invite (`?invite=`, taken into storage by
+ * `main.tsx`) sees the invitation page instead of whatever the route would
+ * render (the landing page, or the play page's sign-in). The route is left
+ * alone: signing in there keeps it, and the play page asks to join (from `/`,
+ * `RedirectIfAuthed` goes there first). "Not now" goes to the landing page and
+ * keeps the token.
+ */
+function InvitationGate({ storage, children }: { storage: KeyValueStorage; children: ReactNode }) {
+  const api = useSessionApi();
+  const navigate = useNavigate();
+  const [later, setLater] = useState(false);
+  const { session } = api;
+  if (later || session.status !== "signed-out" || pendingInvite(storage) === null) return <>{children}</>;
+  return (
+    <AppShell>
+      <InvitationSignIn
+        api={api}
+        where={describeTarget(session.target)}
+        onLater={() => {
+          setLater(true);
+          navigate("/");
+        }}
+      />
+    </AppShell>
   );
 }
 
@@ -290,44 +321,46 @@ export function App({
   return (
     <SessionProvider deps={sessionDeps}>
       <BrowserRouter basename={basename()}>
-        <Routes>
-          {/* The landing page is three pages: `/`, `/docs` and `/preview`. They
-              are real URLs so they can be shared and opened cold. */}
-          {LANDING_PATHS.map((path) => (
-            <Route
-              key={path}
-              path={path}
-              // Only `/` bounces a signed-in visitor into the app.
-              element={
-                path === "/" ? (
-                  <RedirectIfAuthed>
+        <InvitationGate storage={storage}>
+          <Routes>
+            {/* The landing page is three pages: `/`, `/docs` and `/preview`. They
+                are real URLs so they can be shared and opened cold. */}
+            {LANDING_PATHS.map((path) => (
+              <Route
+                key={path}
+                path={path}
+                // Only `/` bounces a signed-in visitor into the app.
+                element={
+                  path === "/" ? (
+                    <RedirectIfAuthed>
+                      <AppLandingPage />
+                    </RedirectIfAuthed>
+                  ) : (
                     <AppLandingPage />
-                  </RedirectIfAuthed>
-                ) : (
-                  <AppLandingPage />
-                )
+                  )
+                }
+              />
+            ))}
+            <Route
+              path="/play"
+              element={
+                <AppShell>
+                  <PlayPage storage={storage} deps={sessionDeps} />
+                </AppShell>
               }
             />
-          ))}
-          <Route
-            path="/play"
-            element={
-              <AppShell>
-                <PlayPage storage={storage} deps={sessionDeps} />
-              </AppShell>
-            }
-          />
-          {/* Practice needs no cluster: the CPU lives in this tab. */}
-          <Route
-            path="/practice"
-            element={
-              <AppShell>
-                <PracticePage />
-              </AppShell>
-            }
-          />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+            {/* Practice needs no cluster: the CPU lives in this tab. */}
+            <Route
+              path="/practice"
+              element={
+                <AppShell>
+                  <PracticePage />
+                </AppShell>
+              }
+            />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </InvitationGate>
       </BrowserRouter>
     </SessionProvider>
   );

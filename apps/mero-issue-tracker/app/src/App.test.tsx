@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import type { CalimeroClient, CalimeroSession } from '@calimero-network/mero-js';
+import { CalimeroError, type CalimeroClient, type CalimeroSession } from '@calimero-network/mero-js';
 import { SessionStore, resolveTarget } from '@calimero-apps/connect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -149,5 +149,84 @@ describe('App', () => {
     await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith('tok-xyz'), SLOW);
     expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
     expect(await screen.findByText('Login broken', {}, SLOW)).toBeTruthy();
+  });
+
+  it('labels the landing page action "Sign in" and offers no desktop app on a web-only app', async () => {
+    render(<App deps={deps(fakeClient())} />);
+    expect((await screen.findAllByRole('button', { name: 'Sign in' }, SLOW)).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: /connect to node/i })).toBeNull();
+    expect(screen.queryByText(/get the desktop app/i)).toBeNull();
+    expect(document.querySelector('a[href="https://calimero.network/download"]')).toBeNull();
+  });
+
+  it('shows an invitation page, not the landing page, to a signed-out visitor with an invite', async () => {
+    localStorage.setItem(`${APP}:pending-invite`, 'tok-xyz');
+    render(<App deps={deps(fakeClient())} />);
+
+    expect(await screen.findByTestId('invitation-page', {}, SLOW)).toBeTruthy();
+    expect(screen.getByText(/You've been invited to join a workspace in Mero Issue Tracker/)).toBeTruthy();
+    expect(screen.getByTestId('signin-passkey')).toBeTruthy();
+    // A page, not a popup over the landing hero.
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.querySelector('.cal-lp-root')).toBeNull();
+  });
+
+  it('"Not now" shows the landing page and keeps the invitation', async () => {
+    localStorage.setItem(`${APP}:pending-invite`, 'tok-xyz');
+    render(<App deps={deps(fakeClient())} />);
+
+    fireEvent.click(await screen.findByTestId('invitation-later', {}, SLOW));
+    await waitFor(() => expect(document.querySelector('.cal-lp-root')).not.toBeNull(), SLOW);
+    expect(localStorage.getItem(`${APP}:pending-invite`)).toBe('tok-xyz');
+  });
+
+  it('asks to join right after signing in from the invitation page, then opens the linked route', async () => {
+    const client = fakeClient();
+    localStorage.setItem(`${APP}:pending-invite`, 'tok-xyz');
+    localStorage.setItem(`${APP}:pending-invite-route`, '/issue-tracker/board');
+    window.history.replaceState(null, '', '/issue-tracker/board');
+    render(<App deps={deps(client)} />);
+
+    fireEvent.click(await screen.findByTestId('signin-passkey', {}, SLOW));
+    await waitFor(() => expect(client.signIn).toHaveBeenCalledTimes(1), SLOW);
+    // No second click to reach the prompt.
+    fireEvent.click(await screen.findByTestId('invitation-join', {}, SLOW));
+    await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith('tok-xyz'), SLOW);
+    await waitFor(() => expect(window.location.pathname).toBe('/issue-tracker/board'), SLOW);
+    expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
+  });
+
+  it('tells a member of the invited workspace they are already in it, without spending the invite', async () => {
+    const client = fakeClient({ signedIn: true });
+    storeSession();
+    localStorage.setItem(`${APP}:pending-invite`, 'tok-xyz');
+    localStorage.setItem(`${APP}:pending-invite-org`, 'org-1');
+    window.history.replaceState(null, '', '/issue-tracker');
+    render(<App deps={deps(client)} />);
+
+    expect(await screen.findByText("You're already in this workspace", {}, SLOW)).toBeTruthy();
+    expect(client.redeemInvite).not.toHaveBeenCalled();
+    expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
+    fireEvent.click(screen.getByTestId('invitation-continue'));
+    expect(await screen.findByText('Login broken', {}, SLOW)).toBeTruthy();
+  });
+
+  it('says plainly when the invite was already used or has expired', async () => {
+    const client = fakeClient({ signedIn: true });
+    client.redeemInvite.mockRejectedValueOnce(new CalimeroError(404, 'NOT_FOUND', 'unknown invite'));
+    storeSession();
+    localStorage.setItem(`${APP}:pending-invite`, 'tok-used');
+    window.history.replaceState(null, '', '/issue-tracker');
+    render(<App deps={deps(client)} />);
+
+    fireEvent.click(await screen.findByTestId('invitation-join', {}, SLOW));
+    expect(
+      await screen.findByText(
+        'This invite was already used or has expired. Ask the person who invited you for a new link.',
+        {},
+        SLOW,
+      ),
+    ).toBeTruthy();
+    expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
   });
 });

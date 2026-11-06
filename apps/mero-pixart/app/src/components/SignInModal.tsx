@@ -1,10 +1,7 @@
 import { useEffect } from "react";
-import { AppListing, PasskeySignIn } from "@calimero-apps/passkey";
-import "@calimero-apps/passkey/passkey.css";
 
-import { LISTING, describeTarget } from "../api/session";
 import { useSessionApi } from "../api/sessionContext";
-import { pendingInvite } from "../api/teams";
+import SignInPanel from "./SignInPanel";
 
 /**
  * Sign in with a passkey, or create an account with a new one. Replaces v1's
@@ -14,36 +11,21 @@ import { pendingInvite } from "../api/teams";
  */
 export default function SignInModal({ onClose }: { onClose: () => void }) {
   const { api } = useSessionApi();
-  const invited = pendingInvite() !== null;
 
   useEffect(() => {
     if (api.session.status === "signed-in") onClose();
   }, [api.session.status, onClose]);
 
-  const where =
-    api.session.status === "signed-out" || api.session.status === "signed-in"
-      ? describeTarget(api.session.target)
-      : null;
-
   return (
     <div className="mp-overlay" data-testid="signin-modal" onClick={() => !api.busy && onClose()}>
-      <div className="mp-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <h2>{invited ? "You're invited" : "Sign in"}</h2>
-        <p className="sub">
-          {invited ? "Sign in, or create an account, to join the team you were invited to. " : ""}
-          Accounts are passkeys: nothing to remember, nothing to leak.
-          {where ? ` Connected to ${where}.` : ""}
-        </p>
-
-        {api.session.status === "connecting" && <p className="sub">Connecting…</p>}
-        {api.session.status === "listing" && <AppListing {...LISTING} />}
-        {api.session.status === "unconfigured" && (
-          <p className="sub" role="alert">
-            {api.session.message}
-          </p>
-        )}
-
-        {api.session.status === "signed-out" && <PasskeySignIn api={api} />}
+      <div
+        className="mp-modal"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="signin-title"
+      >
+        <SignInPanel titleId="signin-title" />
 
         <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
           <button className="mp-btn mp-btn--ghost" onClick={onClose} disabled={api.busy}>

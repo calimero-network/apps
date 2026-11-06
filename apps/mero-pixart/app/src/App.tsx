@@ -1,12 +1,11 @@
 import { useState, type ReactNode } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { useSessionApi } from "./api/sessionContext";
-import { pendingInvite } from "./api/teams";
 import LandingPage from "./pages/landing/LandingPage";
 import TeamsPage from "./pages/TeamsPage";
 import ProjectsPage from "./pages/ProjectsPage";
 import EditorPage from "./pages/EditorPage";
-import InvitationPrompt from "./components/InvitationPrompt";
+import InvitationHost from "./components/InvitationHost";
 import SignInModal from "./components/SignInModal";
 import { ToastProvider } from "./contexts/ToastContext";
 
@@ -24,13 +23,13 @@ function RequireAuth({ children }: { children: ReactNode }) {
 /**
  * The front door. A signed-in visitor goes on to their teams (resuming the
  * team and project open last, utils/lastVisit). Signed out, the landing page's
- * call to action opens the passkey sign-in; an invitation link opens it at
- * once, since joining is what the visitor came for.
+ * call to action opens the passkey sign-in. (An invitation link lands on the
+ * invitation page first: `InvitationHost`.)
  */
 function FrontDoor({ bounce }: { bounce: boolean }) {
   const { api } = useSessionApi();
   const navigate = useNavigate();
-  const [signingIn, setSigningIn] = useState(() => pendingInvite() !== null);
+  const [signingIn, setSigningIn] = useState(false);
   const signedIn = api.session.status === "signed-in";
   if (api.session.status === "connecting") return null;
   if (bounce && signedIn) return <Navigate to="/teams" replace state={{ resume: true }} />;
@@ -49,20 +48,22 @@ function FrontDoor({ bounce }: { bounce: boolean }) {
 export default function App() {
   return (
     <ToastProvider>
-      {/* Above the routes: an invitation link can open this app on any page. */}
-      <InvitationPrompt />
-      <Routes>
-        {LANDING_PATHS.map((landingPath) => (
-          // Only `/` bounces a signed-in visitor into the app: `/docs` and
-          // `/preview` are reference pages.
-          <Route key={landingPath} path={landingPath} element={<FrontDoor bounce={landingPath === "/"} />} />
-        ))}
-        <Route path="/login" element={<Navigate to="/" replace />} />
-        <Route path="/teams" element={<RequireAuth><TeamsPage /></RequireAuth>} />
-        <Route path="/teams/:teamId/projects" element={<RequireAuth><ProjectsPage /></RequireAuth>} />
-        <Route path="/teams/:teamId/projects/:projectId" element={<RequireAuth><EditorPage /></RequireAuth>} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      {/* Around the routes: an invitation link can open this app on any page,
+          and while one is pending its screens stand in for the route. */}
+      <InvitationHost>
+        <Routes>
+          {LANDING_PATHS.map((landingPath) => (
+            // Only `/` bounces a signed-in visitor into the app: `/docs` and
+            // `/preview` are reference pages.
+            <Route key={landingPath} path={landingPath} element={<FrontDoor bounce={landingPath === "/"} />} />
+          ))}
+          <Route path="/login" element={<Navigate to="/" replace />} />
+          <Route path="/teams" element={<RequireAuth><TeamsPage /></RequireAuth>} />
+          <Route path="/teams/:teamId/projects" element={<RequireAuth><ProjectsPage /></RequireAuth>} />
+          <Route path="/teams/:teamId/projects/:projectId" element={<RequireAuth><EditorPage /></RequireAuth>} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </InvitationHost>
     </ToastProvider>
   );
 }

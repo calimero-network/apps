@@ -164,7 +164,7 @@ export default function ForumsPage() {
         const token = await inviteToken(client, namespaceId, passkey());
         setInvite({
           key: `forum:${forum.forumId}`,
-          code: inviteLink(token, forum.forumId),
+          code: inviteLink(token, forum.forumId, window.location, namespaceId),
           scope: `Opens ${forum.name}`,
           hint: (
             <>
@@ -188,7 +188,7 @@ export default function ForumsPage() {
       const token = await inviteToken(client, namespaceId, passkey());
       setInvite({
         key: "namespace",
-        code: inviteLink(token),
+        code: inviteLink(token, undefined, window.location, namespaceId),
         scope: `Whole space · ${nsName}`,
         hint: (
           <>

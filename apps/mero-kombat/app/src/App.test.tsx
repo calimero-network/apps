@@ -159,7 +159,7 @@ describe("App", () => {
 
     fireEvent.click(screen.getByText("Create invite link"));
     const link = await screen.findByLabelText("invitation link");
-    expect(link.textContent).toMatch(/invite=tok-123&arena=app-new/);
+    expect(link.textContent).toMatch(/invite=tok-123&arena=app-new&org=org-1/);
     expect(client.invite).toHaveBeenCalledWith("org-1", "member", expect.anything());
   });
 
@@ -213,7 +213,41 @@ describe("App", () => {
     expect(storage.getItem(selectionKey(LOCAL, "acct-alice"))).toBeNull();
   });
 
-  it("redeems an invitation opened before signing in and opens the arena it names", async () => {
+  it("shows a signed-out visitor with an invitation an invitation page, and \"Not now\" keeps it", async () => {
+    at("/");
+    const storage = new Memory();
+    const pending = JSON.stringify({ token: "tok-9", arena: null });
+    storage.setItem(`${APP}:pending-invite`, pending);
+    render(<App deps={deps(fakeClient())} storage={storage} />);
+    const page = await screen.findByTestId("invitation-page");
+    expect(page.textContent).toContain(
+      "You've been invited to join an arena in Mero Kombat. Sign in or create an account to accept.",
+    );
+    expect(screen.getByText("Continue with passkey")).toBeTruthy();
+    expect(document.querySelector(".cal-lp-root")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("invitation-later"));
+    await waitFor(() => expect(document.querySelector(".cal-lp-root")).not.toBeNull());
+    expect(storage.getItem(`${APP}:pending-invite`)).toBe(pending);
+  });
+
+  it("tells a member of the invited org they are already in it, without spending the invite", async () => {
+    at("/play");
+    const client = Object.assign(fakeClient(), {
+      me: vi.fn(async () => ({ accountId: "acct-alice", orgs: [{ orgId: "org-9" }] })),
+    });
+    const storage = new Memory();
+    storage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: "tok-9", arena: null, org: "org-9" }));
+    new SessionStore(APP, LOCAL, storage).save(SESSION);
+    render(<App deps={deps(client)} storage={storage} />);
+    expect((await screen.findByTestId("invitation-outcome")).textContent).toContain(
+      "You're already in this arena's organization",
+    );
+    expect(client.redeemInvite).not.toHaveBeenCalled();
+    expect(storage.getItem(`${APP}:pending-invite`)).toBeNull();
+  });
+
+  it("asks to join an invitation opened before signing in, then opens the arena it names", async () => {
     at("/play");
     const client = fakeClient([
       { appId: "app-9", name: "Their ring", owner: "acct-bob", org: "org-9", bundle: "bundle-hash", package: null, version: null },
@@ -222,6 +256,8 @@ describe("App", () => {
     storage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: "tok-9", arena: "app-9" }));
     render(<App deps={deps(client)} storage={storage} />);
     fireEvent.click(await screen.findByText("Continue with passkey"));
+    // Asked, not done: nothing is redeemed before "Join".
+    fireEvent.click(await screen.findByTestId("invitation-join"));
     await screen.findByText("Their ring");
     expect(client.redeemInvite).toHaveBeenCalledWith("tok-9");
     expect(storage.getItem(`${APP}:pending-invite`)).toBeNull();
@@ -236,7 +272,10 @@ describe("App", () => {
     storage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: "tok-used", arena: null }));
     new SessionStore(APP, LOCAL, storage).save(SESSION);
     render(<App deps={deps(client)} storage={storage} />);
-    await screen.findByText(/could not be accepted/);
+    fireEvent.click(await screen.findByTestId("invitation-join"));
+    await screen.findByText(
+      "This invite was already used or has expired. Ask the person who invited you for a new link.",
+    );
     await waitFor(() => expect(storage.getItem(`${APP}:pending-invite`)).toBeNull());
   });
 
