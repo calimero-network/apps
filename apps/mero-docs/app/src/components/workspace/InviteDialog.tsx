@@ -127,6 +127,9 @@ export function InviteDialog({
                 )}
               </Button>
             </div>
+            <p className="text-xs text-muted-foreground" data-testid="invite-single-use">
+              Single use: the link lets one person join. Make a new link for each person.
+            </p>
             {footnote && (
               <p className="text-xs text-muted-foreground">{footnote}</p>
             )}
