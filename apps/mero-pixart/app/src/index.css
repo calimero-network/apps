@@ -251,6 +251,8 @@ input[type="range"].mp-range::-moz-range-thumb {
   padding: 20px;
   box-sizing: border-box;
 }
+.mp-invite-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.mp-invite-actions--center { justify-content: center; }
 
 /* checkerboard for transparency */
 .mp-checkerboard {

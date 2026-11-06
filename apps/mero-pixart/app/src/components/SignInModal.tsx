@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 
 import { useSessionApi } from "../api/sessionContext";
-import { pendingInvite } from "../api/teams";
 import SignInPanel from "./SignInPanel";
 
 /**
@@ -12,7 +11,6 @@ import SignInPanel from "./SignInPanel";
  */
 export default function SignInModal({ onClose }: { onClose: () => void }) {
   const { api } = useSessionApi();
-  const invited = pendingInvite() !== null;
 
   useEffect(() => {
     if (api.session.status === "signed-in") onClose();
@@ -27,7 +25,7 @@ export default function SignInModal({ onClose }: { onClose: () => void }) {
         aria-modal="true"
         aria-labelledby="signin-title"
       >
-        <SignInPanel invited={invited} titleId="signin-title" />
+        <SignInPanel titleId="signin-title" />
 
         <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
           <button className="mp-btn mp-btn--ghost" onClick={onClose} disabled={api.busy}>
