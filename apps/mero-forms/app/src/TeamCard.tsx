@@ -156,6 +156,7 @@ export function InviteCard({ org, appId }: { org: string; appId: string }) {
       <p className="empty" style={{ marginBottom: 14 }}>
         One link, approved with your passkey. Whoever opens it signs in with a passkey and joins
         this workspace&apos;s organization; add them to the team above to give them the forms.
+        Each link is single use: make a new one for each person you invite.
       </p>
       <div className="row">
         <button onClick={() => void mint()} disabled={busy}>
