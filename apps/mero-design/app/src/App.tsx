@@ -44,7 +44,9 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
   const from = (useLocation().state as FromState)?.from;
   if (isLoading) return null; // the auth probe is still in flight
   // `/teams` goes on by itself to the team and board open last (TeamIndex).
-  if (isAuthenticated) return <Navigate to={from ?? "/teams"} replace />;
+  // With an invitation waiting, the page asked for comes AFTER joining
+  // (InvitationPrompt goes there): opened before, it is not yours to read yet.
+  if (isAuthenticated) return <Navigate to={(pendingInvite() ? null : from) ?? "/teams"} replace />;
   return <>{children}</>;
 }
 

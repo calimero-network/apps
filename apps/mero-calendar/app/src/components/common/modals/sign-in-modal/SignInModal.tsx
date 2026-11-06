@@ -1,10 +1,8 @@
 import { useEffect } from "react";
-import { AppListing, PasskeySignIn } from "@calimero-apps/passkey";
-import "@calimero-apps/passkey/passkey.css";
 
-import { LISTING, describeTarget } from "../../../../api/session";
 import { useSessionApi } from "../../../../api/sessionContext";
 import { pendingInvite } from "../../../../api/teams";
+import SignInPanel from "./SignInPanel";
 import styles from "../username-modal/username-modal.module.scss";
 
 /**
@@ -21,30 +19,16 @@ export default function SignInModal({ onClose }: { onClose: () => void }) {
     if (api.session.status === "signed-in") onClose();
   }, [api.session.status, onClose]);
 
-  const where =
-    api.session.status === "signed-out" || api.session.status === "signed-in"
-      ? describeTarget(api.session.target)
-      : null;
-
   return (
     <div className="mc-overlay" data-testid="signin-modal" onClick={() => !api.busy && onClose()}>
-      <div className={styles.modal} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <h2 className={styles.title}>{invited ? "You're invited" : "Sign in"}</h2>
-        <p className={styles.sub}>
-          {invited ? "Sign in, or create an account, to join the team you were invited to. " : ""}
-          Accounts are passkeys: nothing to remember, nothing to leak.
-          {where ? ` Connected to ${where}.` : ""}
-        </p>
-
-        {api.session.status === "connecting" && <p className={styles.sub}>Connecting…</p>}
-        {api.session.status === "listing" && <AppListing {...LISTING} />}
-        {api.session.status === "unconfigured" && (
-          <p className={styles.sub} role="alert">
-            {api.session.message}
-          </p>
-        )}
-
-        {api.session.status === "signed-out" && <PasskeySignIn api={api} />}
+      <div
+        className={styles.modal}
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="signin-title"
+      >
+        <SignInPanel invited={invited} titleId="signin-title" />
 
         <div className={styles.actions}>
           <button className="mc-btn mc-btn--ghost" onClick={onClose} disabled={api.busy}>

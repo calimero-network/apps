@@ -171,7 +171,8 @@ export default function TeamsPage() {
       // An org invite, approved with this account's passkey. The link is all
       // there is to share: opening it (and signing in) joins the team.
       const token = await inviteToken(client, teamId, passkey());
-      setInviteFor({ id: teamId, link: inviteLink(token, { origin: window.location.origin, pathname: appRoot() }) });
+      // The link names the team, so someone already in it is not joined again.
+      setInviteFor({ id: teamId, link: inviteLink(token, { origin: window.location.origin, pathname: appRoot() }, teamId) });
     } catch (err) {
       showToast(`Failed to generate invitation: ${messageOf(err)}`);
     } finally {
@@ -306,6 +307,13 @@ export default function TeamsPage() {
                     <code className={styles.inviteCode} title={inviteFor.link}>
                       {inviteFor.link.slice(0, 40)}…{inviteFor.link.slice(-8)}
                     </code>
+                    <span
+                      className={styles.inviteNote}
+                      data-testid="invite-single-use"
+                      title="The link lets one person join. Make a new link for each person."
+                    >
+                      Single use
+                    </span>
                     <button
                       className="mc-btn"
                       onClick={copyInvite}
@@ -321,6 +329,7 @@ export default function TeamsPage() {
                     </button>
                   </div>
                 )}
+
               </div>
             ))}
           </div>
