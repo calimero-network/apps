@@ -116,7 +116,7 @@ export default function InviteModal({ teamId, teamName, onClose }: Props) {
 
         {invitation && (
           <p className={styles.note} data-testid="invite-single-use">
-            Single use: the link lets one person join. Make a new link for each person.
+            Single use: one person can join with this link. Generate another for each person you invite.
           </p>
         )}
 

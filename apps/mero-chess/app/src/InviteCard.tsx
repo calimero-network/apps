@@ -73,7 +73,7 @@ export function InviteCard({
         <>
           <p className="hint">
             One link. Whoever opens it joins this table&apos;s organization, and can take the free
-            seat or watch. Single use: it lets one person in, so make a new link for each person.
+            seat or watch. Single use: one person can join with this link, so generate another for each person you invite.
           </p>
 
           {link && (

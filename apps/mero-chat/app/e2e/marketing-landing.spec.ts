@@ -212,8 +212,9 @@ test.describe('Mero Chat landing page', () => {
   });
 
   test('a web-only app offers no desktop download', async ({ page }) => {
-    // `availability: 'web'`: the desktop is not a target, so no button, band
-    // or footer link points at the download.
+    // The badge says "Web only"; a desktop button beside it contradicts it.
+    // Wait for the page first: `toHaveCount(0)` passes on a blank document.
+    await expect(page.getByRole('heading', { level: 1, name: "Mero Chat" })).toBeVisible();
     await expect(page.locator('a[href="https://calimero.network/download"]')).toHaveCount(0);
   });
 

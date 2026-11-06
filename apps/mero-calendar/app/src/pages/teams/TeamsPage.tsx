@@ -310,7 +310,7 @@ export default function TeamsPage() {
                     <span
                       className={styles.inviteNote}
                       data-testid="invite-single-use"
-                      title="The link lets one person join. Make a new link for each person."
+                      title="One person can join with this link. Generate another for each person you invite."
                     >
                       Single use
                     </span>
