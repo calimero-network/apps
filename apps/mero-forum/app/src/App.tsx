@@ -7,10 +7,8 @@ import PostPage from "./pages/PostPage";
 import LandingPage from "./pages/landing/LandingPage";
 import SpacesPage from "./pages/SpacesPage";
 import ForumsPage from "./pages/ForumsPage";
-import InvitationPrompt from "./components/InvitationPrompt";
+import InvitationHost from "./components/InvitationHost";
 import SignInModal from "./components/SignInModal";
-import InvitationPage from "./components/InvitationPage";
-import { pendingInvite } from "./lib/spaces";
 import { ToastProvider } from "./contexts/ToastContext";
 import { useStoredForum } from "./lib/storedForum";
 import type { SessionDeps } from "./session";
@@ -66,19 +64,13 @@ function RequireAuth({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-/**
- * An authenticated visitor has no business on the marketing page: into the
- * app, or back to the route a guard bounced them from (a shared post link
- * opened signed out, then a sign-in on this page).
- */
+/** An authenticated visitor has no business on the marketing page: into the app. */
 function RedirectIfAuthed({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
-  const from = (useLocation().state as { from?: unknown } | null)?.from;
   // Into the remembered forum only once the cluster has confirmed it.
   const forum = useStoredForum();
   if (isLoading) return null;
   if (isAuthenticated) {
-    if (typeof from === "string" && /^\/(p\/|f$|spaces)/.test(from)) return <Navigate to={from} replace />;
     if (forum === "checking") return null;
     return <Navigate to={forum === "open" ? "/f" : "/spaces"} replace />;
   }
@@ -102,30 +94,14 @@ function Landing() {
   );
 }
 
-/**
- * A signed-out visitor holding an invite (`?invite=`, taken into storage by
- * `main.tsx`) sees the invitation as a page instead of whatever the route
- * would render. The URL is left alone, so a deep link opens where it pointed
- * once they are signed in, with the join prompt (`InvitationPrompt`) on top.
- */
-function InvitationGate({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth();
-  const [later, setLater] = useState(false);
-  if (isAuthenticated || later || pendingInvite() === null) return <>{children}</>;
-  // Still restoring a session: it may turn out signed in, so show neither yet.
-  if (isLoading) return null;
-  return <InvitationPage onNotNow={() => setLater(true)} />;
-}
-
 function AppRoutes() {
-  // ToastProvider and InvitationPrompt sit ABOVE the router: a toast raised by
-  // an action that navigates would unmount with its page, and an invitation
-  // link can land on any route, so a prompt mounted on one page shows nothing
-  // for the others.
+  // ToastProvider sits ABOVE the router: a toast raised by an action that
+  // navigates would unmount with its page. InvitationHost WRAPS the routes: an
+  // invitation link can land on any route, and while one is pending its
+  // screens stand in for the route (no redirect to drop it).
   return (
     <ToastProvider>
-      <InvitationPrompt />
-      <InvitationGate>
+      <InvitationHost>
         <Routes>
           {/* The explainer is the front door now, not the feed. */}
           {/* The landing page is three pages: `/`, `/docs` and `/preview`. They are
@@ -197,7 +173,7 @@ function AppRoutes() {
           {/* A stale shared link lands on the explainer rather than a blank page. */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </InvitationGate>
+      </InvitationHost>
     </ToastProvider>
   );
 }

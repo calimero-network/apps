@@ -52,10 +52,11 @@ export default function InvitationHost({ children }: { children: ReactNode }) {
    * stays until the router is there: dropping it first would show the route
    * the visitor is still on, and the front door's own redirect would win.
    */
-  const [leavingFor, setLeavingFor] = useState<string | null>(null);
+  const [leavingFor, setLeavingFor] = useState<{ to: string; from: string } | null>(null);
 
   useEffect(() => {
-    if (leavingFor && pathname === leavingFor) {
+    // Arrived, or the destination redirected on (a guard): either way the router moved.
+    if (leavingFor && (pathname === leavingFor.to || pathname !== leavingFor.from)) {
       setLeavingFor(null);
       setOutcome(null);
       setToken(null);
@@ -91,7 +92,7 @@ export default function InvitationHost({ children }: { children: ReactNode }) {
   if (outcome) {
     const done = () => {
       if (outcome.kind === "member") {
-        setLeavingFor(outcome.route);
+        setLeavingFor({ to: outcome.route, from: pathname });
         navigate(outcome.route);
       } else {
         setOutcome(null);
@@ -156,7 +157,7 @@ export default function InvitationHost({ children }: { children: ReactNode }) {
       const org = joinedOrg(await client.redeemInvite(token));
       const route = pendingInviteRoute(org);
       dropInvite();
-      setLeavingFor(route);
+      setLeavingFor({ to: route, from: pathname });
       navigate(route);
     } catch (e) {
       if (isSpentInvite(e)) {

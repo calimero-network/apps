@@ -4,25 +4,19 @@ import "@calimero-apps/passkey/passkey.css";
 
 import { LISTING, describeTarget } from "../session";
 import { useSessionApi } from "../sessionContext";
+import { pendingInvite } from "../lib/spaces";
 import styles from "./InviteModal.module.css";
 
 /**
- * The sign-in content: one passkey screen that both signs in and creates an
- * account. Shared by the popup (`SignInModal`) and the invitation page a
- * signed-out invite link lands on (`InvitationPage`), so the copy and the
- * passkey flow cannot drift apart. `close` is the popup's close button, put in
+ * Sign in with a passkey, or create an account with a new one: the body both
+ * the sign-in popup (`SignInModal`) and the invitation page (`InvitationHost`)
+ * render, so the copy and the passkey flow are the same wherever a visitor
+ * starts. `close` is the popup's close button, put in
  * the header beside the title.
  */
-export default function SignInPanel({
-  invited,
-  titleId,
-  close,
-}: {
-  invited: boolean;
-  titleId: string;
-  close?: ReactNode;
-}) {
+export default function SignInPanel({ titleId, close }: { titleId: string; close?: ReactNode }) {
   const { api } = useSessionApi();
+  const invited = pendingInvite() !== null;
   const where =
     api.session.status === "signed-out" || api.session.status === "signed-in"
       ? describeTarget(api.session.target)
@@ -37,7 +31,7 @@ export default function SignInPanel({
         </h2>
       </header>
       <p className={styles.hint}>
-        {invited ? "You've been invited to join a space in Mero Forum. Sign in, or create an account, to accept. " : ""}
+        {invited ? "You've been invited to join a space in Mero Forum. Sign in or create an account to accept. " : ""}
         Accounts are passkeys: nothing to remember, nothing to leak.
         {where ? ` Connected to ${where}.` : ""}
       </p>

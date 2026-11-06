@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useSessionApi } from "../sessionContext";
 import { useDialogOpen } from "../hooks/useDialogOpen";
-import { pendingInvite } from "../lib/spaces";
 import styles from "./InviteModal.module.css";
 import { XIcon } from "./icons";
 import SignInPanel from "./SignInPanel";
@@ -15,7 +14,6 @@ import SignInPanel from "./SignInPanel";
 export default function SignInModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { api } = useSessionApi();
   const dialogRef = useRef<HTMLDialogElement | null>(null);
-  const invited = pendingInvite() !== null;
   useDialogOpen(dialogRef, open);
 
   useEffect(() => {
@@ -35,7 +33,6 @@ export default function SignInModal({ open, onClose }: { open: boolean; onClose:
     >
       <div className={styles.body}>
         <SignInPanel
-          invited={invited}
           titleId="signin-title"
           close={
             <button
