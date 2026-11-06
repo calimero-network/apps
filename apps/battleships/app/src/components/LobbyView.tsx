@@ -237,7 +237,7 @@ export default function LobbyView({
                   </button>
                 </div>
                 <span style={{ display: 'block', marginTop: '0.4rem', fontSize: '0.65rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                  Send this link. Opening it joins the lobby.
+                  Single use: one person can join the lobby with this link. Make a new one for each player you invite.
                 </span>
               </div>
             )}

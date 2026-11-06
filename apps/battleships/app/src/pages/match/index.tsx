@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { CalimeroError } from '@calimero-network/mero-js';
 import { appSource, targetKey } from '@calimero-apps/connect';
 import { AppListing } from '@calimero-apps/passkey';
 import {
@@ -25,7 +24,7 @@ import { loadBoard, saltBytes, saltHex, saveBoard } from '../../lib/boardStore';
 import type { AllGameEvents } from '../../types/events';
 import { useGameSubscriptions } from '../../hooks/useGameSubscriptions';
 import { useBattleshipsLobby } from '../../hooks/useBattleshipsLobby';
-import { dropInvite, pendingInvite } from '../../lobbies';
+import { INVITE_REFUSED, alreadyMember, dropInvite, inviteRefused, pendingInvite } from '../../lobbies';
 import { LISTING, describeTarget, useSessionApi } from '../../session';
 import { SHIP_TARGETS, validateFleetPayload } from './config';
 
@@ -180,19 +179,28 @@ export default function MatchPage() {
 
   // An invitation link opened before signing in is redeemed once a session
   // exists (it joins the lobby's organization), and the lobby it names opened.
+  // A player already in that organization (the inviter opening their own
+  // link) is not made to redeem it: that would spend its single use, and the
+  // player it was meant for could no longer join.
   useEffect(() => {
     if (!client) return;
     const invite = pendingInvite();
     if (!invite) return;
     let live = true;
-    client
-      .redeemInvite(invite.token)
-      .then(async () => {
+    alreadyMember(client, invite)
+      .then(async (member) => {
+        if (!member) {
+          await client.redeemInvite(invite.token);
+          return 'Invitation accepted';
+        }
+        return "You're already in this lobby";
+      })
+      .then(async (title) => {
         dropInvite();
         if (!live) return;
         await lobby.refetchLobbies();
         if (!live) return;
-        show({ title: 'Invitation accepted', variant: 'success' });
+        show({ title, variant: 'success' });
         if (invite.lobby) {
           manualLobbySelect.current = false;
           setView('lobby-select');
@@ -200,10 +208,16 @@ export default function MatchPage() {
         }
       })
       .catch((e: unknown) => {
-        // A refusal (used, expired, revoked) can never succeed: drop it.
-        // Anything else (the cluster unreachable) is kept for the next load.
-        if (e instanceof CalimeroError && e.status < 500) dropInvite();
-        if (live) show({ title: `The invitation could not be accepted: ${messageOf(e)}`, variant: 'error' });
+        // A refusal (unknown, used, expired, revoked) can never succeed: drop
+        // it. Anything else (the cluster unreachable) is kept for the next load.
+        const refused = inviteRefused(e);
+        if (refused) dropInvite();
+        if (live) {
+          show({
+            title: refused ? INVITE_REFUSED : `The invitation could not be accepted: ${messageOf(e)}`,
+            variant: 'error',
+          });
+        }
       })
       .finally(after);
     return () => {
