@@ -1,4 +1,4 @@
-.PHONY: help setup tools logic-build logic-bundle logic-test \
+.PHONY: help setup tools logic-build logic-bundle logic-test dev dev-down \
         app-gen app-build app-run app-test test clean
 
 APP_DIR    := app/MeroTag
@@ -25,6 +25,10 @@ help:
 	@echo "    app-build    Build the app for the simulator"
 	@echo "    app-run      Build + boot simulator + install + launch"
 	@echo "    app-test     Run the unit + UI test suites"
+	@echo ""
+	@echo "  Development cluster (merod local in Docker; see scripts/dev-cluster.sh)"
+	@echo "    dev          Start the cluster, bundle the contract and install it"
+	@echo "    dev-down     Stop the cluster (state is kept)"
 	@echo ""
 	@echo "  Aggregate"
 	@echo "    test         logic-test (the no-Xcode subset)"
@@ -79,6 +83,17 @@ app-test: app-gen
 	xcodebuild -project $(XCODEPROJ) -scheme $(SCHEME) \
 	  -destination 'platform=iOS Simulator,name=$(SIMULATOR)' \
 	  -derivedDataPath $(APP_DIR)/.build test
+
+# ── Development cluster ─────────────────────────────────────────────────────────
+# A `merod local` cluster on localhost:2501-2503 (Docker on a Mac, where merod
+# 1.0 does not run), with this contract installed. `scripts/dev-cluster.sh urls`
+# prints the URL for the Simulator, a phone or the Android emulator.
+dev: logic-bundle
+	scripts/dev-cluster.sh up
+	scripts/dev-cluster.sh install logic/dist/mero-tag-dev.mpk
+
+dev-down:
+	scripts/dev-cluster.sh down
 
 # ── Aggregate ──────────────────────────────────────────────────────────────────
 test: logic-test
