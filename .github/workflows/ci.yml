@@ -801,6 +801,10 @@ jobs:
           if [ "$(jq -r '.[0]' <<<"$DIRS")" = "*" ]; then
             filter=""
             apps=""
+            # Every app's vitest at once (pnpm runs 4, each using every core)
+            # starves the runner, and the suites' waits time out at random:
+            # one suite at a time when the whole workspace is in scope.
+            echo "PNPM_TEST_CONCURRENCY=--workspace-concurrency=1" >> "$GITHUB_ENV"
           else
             filter=$(jq -r '.[] | "--filter ./" + .' <<<"$DIRS" | tr '\n' ' ')
             apps=$(jq -r '.[] | select(startswith("apps/"))' <<<"$DIRS" | tr '\n' ' ')
@@ -832,7 +836,7 @@ jobs:
           fi
           echo "generated clients match the committed ABIs"
 
-      - run: pnpm -r $PNPM_FILTER test
+      - run: pnpm -r $PNPM_TEST_CONCURRENCY $PNPM_FILTER test
       - run: pnpm -r $PNPM_FILTER build
       - run: pnpm -r $PNPM_FILTER --if-present run check:bundle
       - run: pnpm -r $PNPM_FILTER --if-present run format:check
