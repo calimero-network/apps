@@ -7,6 +7,7 @@ import App from './App';
 import type { SessionDeps } from './session';
 import { APP } from './session';
 import { writeActiveNs } from './hooks/workspacePersistence';
+import { rememberMinted } from './workspaces';
 
 const SESSION: CalimeroSession = { accountId: 'acct-alice', sessionToken: 's', refreshToken: 'r', expiresAt: 9e12 };
 const DEV_ENV = { DEV: true, VITE_CALIMERO_BUNDLE: 'bundle-hash' };
@@ -149,5 +150,73 @@ describe('App', () => {
     await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith('tok-xyz'), SLOW);
     expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
     expect(await screen.findByText('Login broken', {}, SLOW)).toBeTruthy();
+  });
+
+  it('shows a signed-out invite link as the invitation page, not the landing hero', async () => {
+    const client = fakeClient();
+    localStorage.setItem(`${APP}:pending-invite`, 'tok-xyz');
+    render(<App deps={deps(client)} />);
+
+    expect(await screen.findByTestId('invitation-page', {}, SLOW)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: "You're invited" })).toBeTruthy();
+    expect(screen.getByText(/invited to join a workspace in Mero Issue Tracker/)).toBeTruthy();
+    expect(screen.queryByRole('heading', { level: 1, name: 'Mero Issue Tracker' })).toBeNull();
+    expect(screen.getByTestId('signin-passkey')).toBeTruthy();
+  });
+
+  it('signing in from the invitation page goes straight to the join prompt, on the deep-linked route', async () => {
+    const client = fakeClient();
+    localStorage.setItem(`${APP}:pending-invite`, 'tok-xyz');
+    window.history.replaceState(null, '', '/issue-tracker/board');
+    render(<App deps={deps(client)} />);
+
+    fireEvent.click(await screen.findByTestId('signin-passkey', {}, SLOW));
+    await waitFor(() => expect(client.signIn).toHaveBeenCalledTimes(1), SLOW);
+    fireEvent.click(await screen.findByTestId('invitation-join', {}, SLOW));
+    await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith('tok-xyz'), SLOW);
+    await waitFor(() => expect(screen.queryByTestId('invitation-dialog')).toBeNull(), SLOW);
+    expect(window.location.pathname).toBe('/issue-tracker/board');
+  });
+
+  it('"Not now" shows the landing page and keeps the invite', async () => {
+    const client = fakeClient();
+    localStorage.setItem(`${APP}:pending-invite`, 'tok-xyz');
+    render(<App deps={deps(client)} />);
+
+    fireEvent.click(await screen.findByTestId('invitation-not-now', {}, SLOW));
+    expect(await screen.findByRole('heading', { level: 1, name: 'Mero Issue Tracker' }, SLOW)).toBeTruthy();
+    expect(screen.queryByTestId('invitation-page')).toBeNull();
+    expect(localStorage.getItem(`${APP}:pending-invite`)).toBe('tok-xyz');
+    expect(screen.getAllByRole('button', { name: 'Sign in' }).length).toBeGreaterThan(0);
+  });
+
+  it('says plainly when the invite was already used or has expired', async () => {
+    const client = fakeClient({ signedIn: true });
+    client.redeemInvite.mockRejectedValueOnce(Object.assign(new Error('unknown invite'), { status: 404 }));
+    storeSession();
+    localStorage.setItem(`${APP}:pending-invite`, 'tok-spent');
+    window.history.replaceState(null, '', '/issue-tracker');
+    render(<App deps={deps(client)} />);
+
+    fireEvent.click(await screen.findByTestId('invitation-join', {}, SLOW));
+    expect((await screen.findByTestId('invitation-error', {}, SLOW)).textContent).toBe(
+      'This invite was already used or has expired. Ask the person who invited you for a new link.',
+    );
+    expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
+  });
+
+  it('does not spend an invite on someone already in its workspace', async () => {
+    const client = fakeClient({ signedIn: true });
+    storeSession();
+    rememberMinted('tok-own', 'org-1');
+    localStorage.setItem(`${APP}:pending-invite`, 'tok-own');
+    window.history.replaceState(null, '', '/issue-tracker');
+    render(<App deps={deps(client)} />);
+
+    expect(await screen.findByTestId('invitation-already-member', {}, SLOW)).toBeTruthy();
+    expect(screen.getByText("You're already in this workspace")).toBeTruthy();
+    expect(screen.queryByTestId('invitation-join')).toBeNull();
+    expect(client.redeemInvite).not.toHaveBeenCalled();
+    expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
   });
 });
