@@ -62,7 +62,8 @@ export function InviteCard({
       ) : (
         <p className="hint">
           One link. Whoever opens it signs in with a passkey and joins this scene&apos;s studio, so this scene and
-          every other scene in it open for them. Creating it asks for your passkey.
+          every other scene in it open for them. Creating it asks for your passkey. Each link is single use: make a
+          new one for each person you invite.
         </p>
       )}
 

@@ -171,6 +171,7 @@ select:focus {
   align-items: center;
   flex-wrap: wrap;
 }
+.row.center { justify-content: center; }
 
 /* ── pages outside the studio ─────────────────────────────────────────────── */
 
