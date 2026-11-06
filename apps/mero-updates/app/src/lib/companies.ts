@@ -1,4 +1,4 @@
-import { ORG_CAPABILITIES, type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
+import { CalimeroError, ORG_CAPABILITIES, type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
 import type { AppSource, KeyValueStorage } from "@calimero-apps/connect";
 
 import { APP_NAME } from "./config";
@@ -162,21 +162,30 @@ export function mintInvite(
   return client.invite(org, "member", passkey);
 }
 
-/** The link that opens this frontend with `token` to redeem, and optionally an audience to land in. */
+/**
+ * The link that opens this frontend with `token` to redeem, and optionally an
+ * audience to land in. `org` names the company the token admits to, so someone
+ * already in it (the inviter opening their own link, say) is told so instead
+ * of spending the token's single use.
+ */
 export function inviteLink(
   token: string,
   audience: string | null = null,
+  org: string | null = null,
   location: Pick<Location, "origin" | "pathname"> = window.location,
 ): string {
   const url = new URL(location.pathname, location.origin);
   url.searchParams.set("invite", token);
   if (audience) url.searchParams.set("audience", audience);
+  if (org) url.searchParams.set("org", org);
   return url.toString();
 }
 
 export interface PendingInvite {
   token: string;
   audience: string | null;
+  /** The company (org) the token admits to, when the link names it. */
+  org: string | null;
 }
 
 const PENDING = `${APP_NAME}:pending-invite`;
@@ -191,12 +200,16 @@ export function captureInvite(storage: KeyValueStorage = localStorage, loc: Loca
   const token = url.searchParams.get("invite");
   if (!token) return;
   try {
-    storage.setItem(PENDING, JSON.stringify({ token, audience: url.searchParams.get("audience") }));
+    storage.setItem(
+      PENDING,
+      JSON.stringify({ token, audience: url.searchParams.get("audience"), org: url.searchParams.get("org") }),
+    );
   } catch {
     return;
   }
   url.searchParams.delete("invite");
   url.searchParams.delete("audience");
+  url.searchParams.delete("org");
   window.history.replaceState(null, "", url.toString());
 }
 
@@ -206,7 +219,11 @@ export function pendingInvite(storage: KeyValueStorage = localStorage): PendingI
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<PendingInvite>;
     return typeof parsed.token === "string" && parsed.token
-      ? { token: parsed.token, audience: typeof parsed.audience === "string" ? parsed.audience : null }
+      ? {
+          token: parsed.token,
+          audience: typeof parsed.audience === "string" ? parsed.audience : null,
+          org: typeof parsed.org === "string" ? parsed.org : null,
+        }
       : null;
   } catch {
     return null;
@@ -228,4 +245,36 @@ export function joinedOrg(redeemed: Record<string, unknown>): string | null {
     if (typeof v === "string" && v) return v;
   }
   return null;
+}
+
+/**
+ * What to say when the node refused an invitation: it is unknown, already
+ * used, expired or revoked. A 4xx can never succeed on retry, so the caller
+ * drops the token; anything else (the cluster unreachable) is kept.
+ */
+export const INVITE_REFUSED =
+  "This invite was already used or has expired. Ask the person who invited you for a new link.";
+
+/** True when `e` is the node refusing the invitation itself (see `INVITE_REFUSED`). */
+export function inviteRefused(e: unknown): boolean {
+  return e instanceof CalimeroError && e.status >= 400 && e.status < 500;
+}
+
+/**
+ * Whether this account is already in the company an invitation admits to:
+ * `true` or `false` when the link names its org, `null` when it cannot be told
+ * (an older link). Redeeming as an existing member spends the token's single
+ * use, which then leaves the person it was meant for unable to join.
+ */
+export async function alreadyMember(
+  client: Pick<CalimeroClient, "me">,
+  invite: PendingInvite,
+): Promise<boolean | null> {
+  if (!invite.org) return null;
+  try {
+    const me = (await client.me()) as MeOrgs;
+    return (me.orgs ?? []).some((o) => o.orgId === invite.org);
+  } catch {
+    return null;
+  }
 }

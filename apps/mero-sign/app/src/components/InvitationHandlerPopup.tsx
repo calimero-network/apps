@@ -1,12 +1,14 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalimeroError } from '@calimero-network/mero-js';
 
-import { useMaybeSignedIn, useSessionApi } from '../sessionContext';
+import { useMaybeSignedIn } from '../sessionContext';
 import { setActiveWorkspace } from '../lib/activeWorkspace';
 import { enterAgreement } from '../lib/agreements';
 import {
+  INVITE_REFUSED,
+  alreadyMember,
   dropInvite,
+  inviteRefused,
   joinedOrg,
   pendingInvite,
   type PendingInvite,
@@ -21,8 +23,13 @@ import styles from '../pages/app/AgreementsPage.module.css';
  *
  * Mounted at the APP level because a link can land on any route. It asks
  * rather than joins: joining puts you in someone's workspace, and a forwarded
- * link should not do that silently. Signed out, it offers the passkey sign-in
- * first; the token survives the sign-up.
+ * link should not do that silently. Signed out, `InvitationPage` stands in for
+ * the app and offers the passkey sign-in; the token survives the sign-up, and
+ * this asks the moment a session exists. Someone already in the workspace (the
+ * inviter opening their own link) is told so and the token dropped: redeeming
+ * it would spend its single use, and the person it was meant for could no
+ * longer join. A refused invite (unknown, used, expired, revoked) is said
+ * plainly.
  *
  * Joining redeems the org invite, then, for a link that names an agreement,
  * puts you on its roster as a signer (`registerSelfAsParticipant`) and records
@@ -31,7 +38,6 @@ import styles from '../pages/app/AgreementsPage.module.css';
  * member can read.
  */
 export default function InvitationHandlerPopup() {
-  const { api, openSignIn, signInOpen } = useSessionApi();
   const signedIn = useMaybeSignedIn();
   const navigate = useNavigate();
   const [invite, setInvite] = useState<PendingInvite | null>(() =>
@@ -40,6 +46,41 @@ export default function InvitationHandlerPopup() {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [refused, setRefused] = useState(false);
+  // `null` until the membership check answers; `false` too when it cannot.
+  const [member, setMember] = useState<boolean | null>(null);
+  const client = signedIn?.client ?? null;
+
+  useEffect(() => {
+    if (!client || !invite) return undefined;
+    let live = true;
+    setMember(null);
+    void alreadyMember(client, invite).then((known) => {
+      if (!live) return;
+      if (known) dropInvite();
+      setMember(known ?? false);
+    });
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per token
+  }, [client, invite?.token]);
+
+  /** Already a member: nothing to redeem, just open what the link names. */
+  const openIt = useCallback(() => {
+    if (!invite) return;
+    dropInvite();
+    setInvite(null);
+    if (invite.org) setActiveWorkspace(invite.org);
+    navigate(
+      invite.agreement
+        ? `/agreements/${invite.agreement}`
+        : invite.org
+          ? `/workspaces/${invite.org}`
+          : '/workspaces',
+      { replace: true },
+    );
+  }, [invite, navigate]);
 
   const dismiss = useCallback(() => {
     dropInvite();
@@ -79,10 +120,15 @@ export default function InvitationHandlerPopup() {
         navigate(org ? `/workspaces/${org}` : '/workspaces', { replace: true });
       }
     } catch (e) {
-      // A refusal (used, expired, revoked) can never succeed: drop it.
-      // Anything else (the cluster unreachable) is kept for another try.
-      if (e instanceof CalimeroError && e.status < 500) dropInvite();
-      setError(`The invitation could not be accepted: ${errorMessage(e)}`);
+      // A refusal (unknown, used, expired, revoked) can never succeed: drop
+      // it. Anything else (the cluster unreachable) is kept for another try.
+      if (inviteRefused(e)) {
+        dropInvite();
+        setRefused(true);
+        setError(INVITE_REFUSED);
+      } else {
+        setError(`The invitation could not be accepted: ${errorMessage(e)}`);
+      }
     } finally {
       setBusy(false);
       setStatus(null);
@@ -90,9 +136,40 @@ export default function InvitationHandlerPopup() {
     }
   }, [signedIn, invite, navigate]);
 
-  const ready =
-    api.session.status === 'signed-out' || api.session.status === 'signed-in';
-  if (!invite || !ready || signInOpen) return null;
+  if (!signedIn || !invite || member === null) return null;
+
+  if (member) {
+    return (
+      <div className={styles.modalBackdrop}>
+        <div
+          className={styles.modal}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="invitation-title"
+          data-testid="invitation-dialog"
+        >
+          <h2 className={styles.modalTitle} id="invitation-title">
+            You&apos;re already in this workspace
+          </h2>
+          <p className={styles.modalDesc} data-testid="invitation-member">
+            This invitation is for a workspace you are already a member of, so
+            there is nothing to join. The link was left unused for whoever it
+            was meant for.
+          </p>
+          <div className={styles.modalRow}>
+            <button
+              type="button"
+              className={styles.btn}
+              onClick={openIt}
+              data-testid="invitation-open"
+            >
+              Open it
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.modalBackdrop}>
@@ -104,7 +181,7 @@ export default function InvitationHandlerPopup() {
         data-testid="invitation-dialog"
       >
         <h2 className={styles.modalTitle} id="invitation-title">
-          You&apos;re invited to Mero Sign
+          Join the workspace?
         </h2>
         <p className={styles.modalDesc}>
           {invite.agreement
@@ -125,9 +202,9 @@ export default function InvitationHandlerPopup() {
             disabled={busy}
             data-testid="invitation-dismiss"
           >
-            Not now
+            {refused ? 'Close' : 'Not now'}
           </button>
-          {signedIn ? (
+          {!refused && (
             <button
               type="button"
               className={styles.btn}
@@ -137,15 +214,6 @@ export default function InvitationHandlerPopup() {
             >
               {busy ? <span className={styles.spinner} /> : null}
               {busy ? 'Joining…' : 'Join'}
-            </button>
-          ) : (
-            <button
-              type="button"
-              className={styles.btn}
-              onClick={openSignIn}
-              data-testid="invitation-signin"
-            >
-              Sign in to join
             </button>
           )}
         </div>

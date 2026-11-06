@@ -5,7 +5,7 @@
 // invitation is an org invite (v1: a namespace invitation), made with the
 // inviter's passkey and redeemed by whoever opens the link, after signing in.
 
-import type { AppInfo, CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
+import { CalimeroError, type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
 import type { AppSource, KeyValueStorage } from "@calimero-apps/connect";
 
 import { bindExec, merraria } from "./merraria";
@@ -52,14 +52,25 @@ export function inviteToken(
   return client.invite(org, "member", passkey);
 }
 
-/** The link that opens this frontend with `token` to redeem. */
-export function inviteLink(token: string, location: Pick<Location, "origin" | "pathname"> = window.location): string {
+/**
+ * The link that opens this frontend with `token` to redeem. `org` names the
+ * world's organization, so a player already in it (the inviter opening their
+ * own link, say) is not made to spend the token's single use.
+ */
+export function inviteLink(
+  token: string,
+  location: Pick<Location, "origin" | "pathname"> = window.location,
+  org?: string | null,
+): string {
   const url = new URL(location.pathname, location.origin);
   url.searchParams.set("invite", token);
+  if (org) url.searchParams.set("org", org);
   return url.toString();
 }
 
 const PENDING = `${APP}:pending-invite`;
+/** The organization the pending token admits to, when the link named it. */
+const PENDING_ORG = `${APP}:pending-invite-org`;
 
 /**
  * Takes `?invite=` off the address bar into storage, before anything renders: a
@@ -70,12 +81,16 @@ export function captureInvite(storage: KeyValueStorage = localStorage, loc: Loca
   const url = new URL(loc.href);
   const token = url.searchParams.get("invite");
   if (!token) return;
+  const org = url.searchParams.get("org");
   try {
     storage.setItem(PENDING, token);
+    if (org) storage.setItem(PENDING_ORG, org);
+    else storage.removeItem(PENDING_ORG);
   } catch {
     return;
   }
   url.searchParams.delete("invite");
+  url.searchParams.delete("org");
   try {
     window.history.replaceState(null, "", url.toString());
   } catch {
@@ -94,8 +109,47 @@ export function pendingInvite(storage: KeyValueStorage = localStorage): string |
 export function dropInvite(storage: KeyValueStorage = localStorage): void {
   try {
     storage.removeItem(PENDING);
+    storage.removeItem(PENDING_ORG);
   } catch {
     /* nothing stored */
+  }
+}
+
+/** The organization the pending invitation admits to, when its link named it. */
+export function pendingInviteOrg(storage: KeyValueStorage = localStorage): string | null {
+  try {
+    return storage.getItem(PENDING_ORG);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * What to say when the node refused an invitation: it is unknown, already
+ * used, expired or revoked. A 4xx can never succeed on retry, so the caller
+ * drops the token; anything else (the cluster unreachable) is kept.
+ */
+export const INVITE_REFUSED =
+  "This invite was already used or has expired. Ask the person who invited you for a new link.";
+
+/** True when `e` is the node refusing the invitation itself (see `INVITE_REFUSED`). */
+export function inviteRefused(e: unknown): boolean {
+  return e instanceof CalimeroError && e.status >= 400 && e.status < 500;
+}
+
+/**
+ * Whether this account is already in `org` (the world an invitation admits
+ * to): `null` when there is no org to check or the node cannot say. Redeeming
+ * as an existing member spends the token's single use, which then leaves the
+ * player it was meant for unable to join.
+ */
+export async function alreadyMember(client: Pick<CalimeroClient, "me">, org: string | null): Promise<boolean | null> {
+  if (!org) return null;
+  try {
+    const me = (await client.me()) as { orgs?: Array<{ orgId?: unknown }> };
+    return (me.orgs ?? []).some((o) => o.orgId === org);
+  } catch {
+    return null;
   }
 }
 

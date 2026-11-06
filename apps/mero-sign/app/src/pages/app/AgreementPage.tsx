@@ -416,7 +416,7 @@ export default function AgreementPage() {
     setMintingInvite(true);
     try {
       const token = await inviteToken(app.client, workspaceId, app.passkey());
-      setInviteLink(linkFor(token, contextId));
+      setInviteLink(linkFor(token, contextId, window.location, workspaceId));
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -803,9 +803,9 @@ export default function AgreementPage() {
                 <div>
                   <h2 className={styles.panelTitle}>Shareable link</h2>
                   <p className={styles.panelText}>
-                    Anybody holding this link can join this agreement's
-                    workspace and open the agreement. Creating it asks for your
-                    passkey.
+                    Single use: one person can join this agreement's workspace
+                    and open the agreement with this link. Make a new one for
+                    each person you invite. Creating it asks for your passkey.
                   </p>
                 </div>
               </div>

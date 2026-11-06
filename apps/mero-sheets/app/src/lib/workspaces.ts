@@ -10,7 +10,7 @@
  * | joining a context, waiting for it to reach your node | nothing: every member of the org reaches its instances, and nothing has to replicate first |
  * | the name a person set for the whole workspace: namespace member metadata | org **member metadata** `{ name }` |
  */
-import { ORG_CAPABILITIES, type AppInfo, type CalimeroClient, type PasskeyProvider } from '@calimero-network/mero-js';
+import { CalimeroError, ORG_CAPABILITIES, type AppInfo, type CalimeroClient, type PasskeyProvider } from '@calimero-network/mero-js';
 import type { AppSource, KeyValueStorage } from '@calimero-apps/connect';
 
 import { APP_NAME } from '../config';
@@ -160,16 +160,21 @@ export async function publishWorkspaceName(
 
 /**
  * The link that opens this frontend with `token` to redeem; with `sheet`, the
- * joiner lands in that spreadsheet instead of on the workspace's list.
+ * joiner lands in that spreadsheet instead of on the workspace's list. `org`
+ * names the workspace the token admits to, so someone already in it (the
+ * inviter opening their own link, say) is told so instead of spending the
+ * token's single use.
  */
 export function inviteLink(
   token: string,
   sheet?: string | null,
   location: Pick<Location, 'origin' | 'pathname'> = window.location,
+  org?: string | null,
 ): string {
   const url = new URL(location.pathname, location.origin);
   url.searchParams.set('invite', token);
   if (sheet) url.searchParams.set('sheet', sheet);
+  if (org) url.searchParams.set('org', org);
   return url.toString();
 }
 
@@ -181,13 +186,15 @@ export async function mintInvite(
 ): Promise<string> {
   onStatus('Approve the invitation with your passkey…');
   const token = await client.invite(opts.org, 'member', opts.passkey());
-  return inviteLink(token, opts.sheet);
+  return inviteLink(token, opts.sheet, window.location, opts.org);
 }
 
 export interface PendingInvite {
   token: string;
   /** The spreadsheet the link lands in, when it names one. */
   sheet: string | null;
+  /** The workspace (org) the token admits to, when the link names it. */
+  org: string | null;
 }
 
 const PENDING = `${APP_NAME}:pending-invite`;
@@ -202,7 +209,7 @@ export function captureInvite(storage: KeyValueStorage = localStorage, loc: Loca
   const url = new URL(loc.href);
   const token = url.searchParams.get('invite');
   if (!token) return;
-  const pending: PendingInvite = { token, sheet: url.searchParams.get('sheet') };
+  const pending: PendingInvite = { token, sheet: url.searchParams.get('sheet'), org: url.searchParams.get('org') };
   try {
     storage.setItem(PENDING, JSON.stringify(pending));
   } catch {
@@ -210,6 +217,7 @@ export function captureInvite(storage: KeyValueStorage = localStorage, loc: Loca
   }
   url.searchParams.delete('invite');
   url.searchParams.delete('sheet');
+  url.searchParams.delete('org');
   window.history.replaceState(null, '', url.toString());
 }
 
@@ -219,7 +227,11 @@ export function pendingInvite(storage: KeyValueStorage = localStorage): PendingI
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<PendingInvite>;
     return typeof parsed.token === 'string' && parsed.token
-      ? { token: parsed.token, sheet: typeof parsed.sheet === 'string' ? parsed.sheet : null }
+      ? {
+          token: parsed.token,
+          sheet: typeof parsed.sheet === 'string' ? parsed.sheet : null,
+          org: typeof parsed.org === 'string' ? parsed.org : null,
+        }
       : null;
   } catch {
     return null;
@@ -247,4 +259,31 @@ export function joinedOrg(redeemed: Record<string, unknown>): string | null {
 export interface AcceptedInvite {
   namespaceId: string | null;
   contextId: string | null;
+}
+
+/**
+ * What to say when the node refused an invitation: it is unknown, already
+ * used, expired or revoked. A 4xx can never succeed on retry, so the caller
+ * drops the token; anything else (the cluster unreachable) is kept.
+ */
+export const INVITE_REFUSED = 'This invite was already used or has expired. Ask the person who invited you for a new link.';
+
+/** True when `e` is the node refusing the invitation itself (see `INVITE_REFUSED`). */
+export function inviteRefused(e: unknown): boolean {
+  return e instanceof CalimeroError && e.status >= 400 && e.status < 500;
+}
+
+/**
+ * Whether this account is already in the workspace an invitation admits to:
+ * `true` or `false` when the link names its org, `null` when it cannot be
+ * told (an older link). Redeeming as an existing member spends the token's
+ * single use, which then leaves the person it was meant for unable to join.
+ */
+export async function alreadyMember(client: Pick<CalimeroClient, 'me'>, invite: PendingInvite): Promise<boolean | null> {
+  if (!invite.org) return null;
+  try {
+    return (await listOrgs(client)).some((o) => o.orgId === invite.org);
+  } catch {
+    return null;
+  }
 }

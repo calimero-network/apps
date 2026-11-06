@@ -1,10 +1,17 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { describeError } from "@calimero-apps/connect";
 import { useConn } from "../hooks/useConn";
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import { setActiveRoom } from "../lib/session";
-import { dropInvite, pendingInvite, type PendingInvite } from "../lib/streams";
+import {
+  INVITE_REFUSED,
+  alreadyMember,
+  dropInvite,
+  inviteRefused,
+  pendingInvite,
+  type PendingInvite,
+} from "../lib/streams";
 import { UserPlusIcon, XIcon } from "./icons";
 import styles from "./InviteModal.module.css";
 
@@ -17,6 +24,11 @@ import styles from "./InviteModal.module.css";
  * link, into a live call. v1 redeemed a namespace invitation and then joined
  * the room's context; here it is one org invitation (`redeemInvite`), after
  * which every room of the stream is reachable.
+ *
+ * Someone already in the stream (the inviter opening their own link) is told
+ * so and the token dropped: redeeming it would spend its single use, and the
+ * person it was meant for could no longer join. A refused invite (unknown,
+ * used, expired, revoked) is said plainly.
  */
 export default function InvitationPrompt() {
   const conn = useConn();
@@ -24,13 +36,56 @@ export default function InvitationPrompt() {
   const [invite, setInvite] = useState<PendingInvite | null>(() => pendingInvite());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [refused, setRefused] = useState(false);
+  // `null` until the membership check answers; `false` too when it cannot.
+  const [member, setMember] = useState<boolean | null>(null);
   const ref = useRef<HTMLDialogElement | null>(null);
-  const open = !!conn && !!invite;
+  const client = conn?.client ?? null;
+  const open = !!client && !!invite && member !== null;
   useDialogOpen(ref, open);
+
+  // Signing in on the invitation page leaves the token where it was: re-read it.
+  useEffect(() => {
+    if (client) setInvite((prev) => reread(prev));
+  }, [client]);
+
+  useEffect(() => {
+    if (!client || !invite) return undefined;
+    let live = true;
+    setMember(null);
+    void alreadyMember(client, invite).then((known) => {
+      if (!live) return;
+      if (known) dropInvite();
+      setMember(known ?? false);
+    });
+    return () => {
+      live = false;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- once per token, not per re-read
+  }, [client, invite?.token]);
 
   const dismiss = () => {
     dropInvite();
     setInvite(null);
+  };
+
+  const go = (target: PendingInvite) => {
+    if (target.room) {
+      setActiveRoom(target.room, target.stream);
+      navigate("/live");
+    } else if (target.stream) {
+      navigate(`/streams/${target.stream}`);
+    } else {
+      navigate("/streams");
+    }
+  };
+
+  /** Already a member: nothing to redeem, just open what the link names. */
+  const openIt = () => {
+    if (!invite) return;
+    dropInvite();
+    setInvite(null);
+    go(invite);
   };
 
   const join = async () => {
@@ -42,16 +97,17 @@ export default function InvitationPrompt() {
       conn.after();
       dropInvite();
       setInvite(null);
-      if (invite.room) {
-        setActiveRoom(invite.room, invite.stream);
-        navigate("/live");
-      } else if (invite.stream) {
-        navigate(`/streams/${invite.stream}`);
-      } else {
-        navigate("/streams");
-      }
+      go(invite);
     } catch (e) {
-      setError(describeError(e));
+      // A refusal can never succeed: drop it. Anything else (the cluster
+      // unreachable) is kept for another try.
+      if (inviteRefused(e)) {
+        dropInvite();
+        setRefused(true);
+        setError(INVITE_REFUSED);
+      } else {
+        setError(describeError(e));
+      }
     } finally {
       setBusy(false);
     }
@@ -71,7 +127,9 @@ export default function InvitationPrompt() {
             <UserPlusIcon size={18} />
           </span>
           <h2 className={styles.title}>
-            Join {invite?.name ? `“${invite.name}”` : "this stream"}?
+            {member
+              ? "You're already in this stream"
+              : `Join ${invite?.name ? `“${invite.name}”` : "this stream"}?`}
           </h2>
           <button
             type="button"
@@ -82,20 +140,38 @@ export default function InvitationPrompt() {
             <XIcon size={18} />
           </button>
         </header>
-        <p className={styles.scope}>
-          {invite?.room
-            ? "Joining takes you straight into that call."
-            : "Joining gives you access to the stream and every room in it."}
-        </p>
-        <button
-          type="button"
-          className={styles.primary}
-          onClick={() => void join()}
-          disabled={busy}
-          data-testid="invitation-join"
+        <p
+          className={styles.scope}
+          data-testid={member ? "invitation-member" : undefined}
         >
-          {busy ? "Joining…" : "Join"}
-        </button>
+          {member
+            ? "This invitation is for a stream you are already a member of, so there is nothing to join. The link was left unused for whoever it was meant for."
+            : invite?.room
+              ? "Joining takes you straight into that call."
+              : "Joining gives you access to the stream and every room in it."}
+        </p>
+        {member ? (
+          <button
+            type="button"
+            className={styles.primary}
+            onClick={openIt}
+            data-testid="invitation-open"
+          >
+            Open it
+          </button>
+        ) : (
+          !refused && (
+            <button
+              type="button"
+              className={styles.primary}
+              onClick={() => void join()}
+              disabled={busy}
+              data-testid="invitation-join"
+            >
+              {busy ? "Joining…" : "Join"}
+            </button>
+          )
+        )}
         {error && (
           <p className={styles.hint} role="alert" data-testid="invitation-error">
             {error}
@@ -104,4 +180,15 @@ export default function InvitationPrompt() {
       </div>
     </dialog>
   );
+}
+
+/**
+ * The invitation to ask about once there is a session: the one already held,
+ * or the stored one. Never a fresh copy of the one held: that would re-run the
+ * membership check and close and reopen the dialog (closing it is "Not now"),
+ * and after the check has dropped an already-member's token it would lose the
+ * "You're already in" answer before anyone read it.
+ */
+function reread(prev: PendingInvite | null): PendingInvite | null {
+  return prev ?? pendingInvite();
 }

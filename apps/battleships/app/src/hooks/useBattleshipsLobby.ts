@@ -309,7 +309,7 @@ export function useBattleshipsLobby({
     if (!client || !org || !namespaceId) return null;
     setInviteLoading(true);
     try {
-      return inviteLink(await inviteToken(client, org, passkey()), namespaceId);
+      return inviteLink(await inviteToken(client, org, passkey()), namespaceId, window.location, org);
     } finally {
       setInviteLoading(false);
       after();

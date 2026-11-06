@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { AppInfo, CalimeroClient, CalimeroSession } from "@calimero-network/mero-js";
+import { CalimeroError, type AppInfo, type CalimeroClient, type CalimeroSession } from "@calimero-network/mero-js";
 import { SessionStore, resolveTarget, type KeyValueStorage } from "@calimero-apps/connect";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -147,7 +147,7 @@ describe("App", () => {
     renderApp(client, "/streams");
 
     // Signed out: the landing page; its connect opens the passkey sign-in.
-    fireEvent.click((await screen.findAllByText(/Connect to node|Sign in|Get started|Open/))[0]);
+    fireEvent.click((await screen.findAllByText(/^Sign in$/))[0]);
     fireEvent.click(await screen.findByTestId("signup-passkey"));
     await screen.findByText("Your streams");
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "");
@@ -190,10 +190,66 @@ describe("App", () => {
     expect(link.textContent).toContain("stream=org-1");
   });
 
+  it("signed out with a pending invite, shows the invitation page instead of the landing page", async () => {
+    localStorage.setItem(
+      "mero-stream:pending-invite",
+      JSON.stringify({ token: "tok-9", stream: "org-1", room: null, name: "Team" }),
+    );
+    renderApp(fakeClient(), "/streams/org-1");
+    await screen.findByText("You're invited");
+    expect(screen.getByText(/Sign in or create an account to accept/)).toBeTruthy();
+    expect(screen.getByTestId("signin-passkey")).toBeTruthy();
+    expect(document.querySelector(".cal-lp-root")).toBeNull();
+  });
+
+  it("\"Not now\" on the invitation page shows the landing page and keeps the token", async () => {
+    localStorage.setItem(
+      "mero-stream:pending-invite",
+      JSON.stringify({ token: "tok-9", stream: "org-1", room: null, name: "Team" }),
+    );
+    renderApp(fakeClient(), "/");
+    fireEvent.click(await screen.findByTestId("invitation-not-now"));
+    await waitFor(() => expect(document.querySelector(".cal-lp-root")).not.toBeNull());
+    expect(localStorage.getItem("mero-stream:pending-invite")).not.toBeNull();
+  });
+
+  it("does not redeem an invite into a stream the account is already in", async () => {
+    const client = fakeClient();
+    client.orgs.push({ orgId: "org-1", name: "Team", role: "Owner" });
+    localStorage.setItem(
+      "mero-stream:pending-invite",
+      JSON.stringify({ token: "tok-9", stream: "org-1", room: null, name: "Team" }),
+    );
+    renderApp(client, "/streams", true);
+    await screen.findByTestId("invitation-member");
+    expect(screen.getByText("You're already in this stream")).toBeTruthy();
+    expect(client.redeemInvite).not.toHaveBeenCalled();
+    expect(localStorage.getItem("mero-stream:pending-invite")).toBeNull();
+  });
+
+  it("says plainly when the invite was already used or has expired", async () => {
+    const client = fakeClient();
+    client.redeemInvite.mockRejectedValueOnce(new CalimeroError(404, "NOT_FOUND", "unknown invite"));
+    localStorage.setItem(
+      "mero-stream:pending-invite",
+      JSON.stringify({ token: "tok-9", stream: "org-1", room: null, name: "Team" }),
+    );
+    renderApp(client, "/streams", true);
+    fireEvent.click(await screen.findByTestId("invitation-join"));
+    expect((await screen.findByTestId("invitation-error")).textContent).toBe(
+      "This invite was already used or has expired. Ask the person who invited you for a new link.",
+    );
+    expect(localStorage.getItem("mero-stream:pending-invite")).toBeNull();
+  });
+
   it("redeems an opened room invitation after sign-in and opens that room", async () => {
     const client = fakeClient();
-    client.orgs.push({ orgId: "org-1", name: "Team", role: "Member" });
     client.apps.push(client.room("app-1"));
+    // Not a member until the invitation is redeemed.
+    client.redeemInvite.mockImplementation(async () => {
+      client.orgs.push({ orgId: "org-1", name: "Team", role: "Member" });
+      return {};
+    });
     localStorage.setItem(
       "mero-stream:pending-invite",
       JSON.stringify({ token: "tok-9", stream: "org-1", room: "app-1", name: "Standup" }),
