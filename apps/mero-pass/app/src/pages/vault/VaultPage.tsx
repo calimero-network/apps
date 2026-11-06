@@ -155,6 +155,7 @@ function VaultBody() {
     code: string;
     scope: string;
     hint: string;
+    org?: string;
   } | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
 
@@ -307,6 +308,8 @@ function VaultBody() {
       setInvite({
         code,
         scope: `Opens ${found.vaultName}`,
+        // See TeamPage: only an open vault's link names its org.
+        org: found.team ? undefined : found.namespaceId,
         hint: restricted
           ? `This vault is invite-only: the link admits them to “${found.vaultName}” and makes them a member of ${found.teamName}, but no other invite-only vault there. It expires in 24 hours.`
           : `This link lands them in “${found.vaultName}”, but the access it grants is the whole of ${found.teamName} — every open vault in the team, including ones added later. It expires in 24 hours.`,
@@ -692,6 +695,7 @@ function VaultBody() {
       <InviteModal
         open={!!invite}
         code={invite?.code ?? ''}
+        org={invite?.org}
         scope={invite?.scope ?? ''}
         hint={invite?.hint}
         onClose={() => setInvite(null)}

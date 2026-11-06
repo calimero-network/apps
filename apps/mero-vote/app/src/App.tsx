@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CalimeroError, type CalimeroClient } from "@calimero-network/mero-js";
+import type { CalimeroClient } from "@calimero-network/mero-js";
 import { appSource, type KeyValueStorage } from "@calimero-apps/connect";
 import { AppListing, PasskeySignIn } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 import { GroupPicker, type OpenedGroup } from "./GroupPicker";
+import { InvitationSignIn, JoinInvitation } from "./Invitation";
 import { InviteCard } from "./InviteCard";
 import { PACKAGE, meroVote } from "./meroVote";
 import { LISTING, defaultDeps, describeTarget, useSession, type SessionApi, type SessionDeps } from "./session";
-import { dropInvite, pendingInvite, selectionKey } from "./groups";
+import { pendingInvite, selectionKey } from "./groups";
 import { VotePanel } from "./VotePanel";
 import { ThemeToggle } from "./ThemeToggle";
 import { signOut } from "./signOut";
-import { VoteGroupContext, errText, type VoteGroup } from "./useMeroVote";
+import { VoteGroupContext, type VoteGroup } from "./useMeroVote";
 import {
   BarChartIcon,
   BoxIcon,
@@ -102,32 +103,13 @@ export function App({
     [key, storage],
   );
 
-  // An invitation link opened before signing in is redeemed once a session exists.
+  // An invitation link opened before signing in: a page of its own while it
+  // is pending (see `Invitation.tsx`), redeemed only on "Join".
+  const [invite, setInvite] = useState<string | null>(() => pendingInvite(storage));
+  const [inviteLater, setInviteLater] = useState(false);
   useEffect(() => {
-    if (!client) return;
-    const token = pendingInvite(storage);
-    if (!token) return;
-    let live = true;
-    client
-      .redeemInvite(token)
-      .then(() => {
-        dropInvite(storage);
-        if (live) {
-          setNotice("Invitation accepted: the voting group is in your list.");
-          setPickerKey((k) => k + 1);
-        }
-      })
-      .catch((e: unknown) => {
-        // A refusal (used, expired, revoked) can never succeed: drop it. Anything
-        // else (the cluster unreachable) is kept and tried on the next load.
-        if (e instanceof CalimeroError && e.status < 500) dropInvite(storage);
-        if (live) setNotice(`The invitation could not be accepted: ${errText(e)}`);
-      })
-      .finally(after);
-    return () => {
-      live = false;
-    };
-  }, [client, storage, after]);
+    if (client) setInvite(pendingInvite(storage));
+  }, [client, storage]);
 
   const group: VoteGroup | null = useMemo(
     () =>
@@ -239,7 +221,25 @@ export function App({
             <pre className="err">{session.message}</pre>
           </div>
         ) : session.status === "signed-out" ? (
-          <Welcome api={api} where={describeTarget(session.target)} invited={pendingInvite(storage) !== null} />
+          invite && !inviteLater ? (
+            <InvitationSignIn api={api} where={describeTarget(session.target)} onLater={() => setInviteLater(true)} />
+          ) : (
+            <Welcome api={api} where={describeTarget(session.target)} />
+          )
+        ) : invite ? (
+          <JoinInvitation
+            client={session.client}
+            token={invite}
+            storage={storage}
+            after={after}
+            onJoined={() => {
+              setInvite(null);
+              setNotice("Invitation accepted: the voting group is in your list.");
+              setPickerKey((k) => k + 1);
+              open(null);
+            }}
+            onClose={() => setInvite(null)}
+          />
         ) : !opened || !group ? (
           <>
             <GroupPicker key={pickerKey} client={session.client} source={source} onOpen={open} after={after} />
@@ -280,7 +280,7 @@ export function App({
 }
 
 /** The front door: what the app is, and a passkey sign-in or sign-up. */
-function Welcome({ api, where, invited }: { api: SessionApi; where: string; invited: boolean }) {
+function Welcome({ api, where }: { api: SessionApi; where: string }) {
   return (
     <section className="welcome">
       <div className="welcome-copy">
@@ -327,12 +327,9 @@ function Welcome({ api, where, invited }: { api: SessionApi; where: string; invi
         <span className="connect-mark">
           <ServerIcon size={22} />
         </span>
-        <h2>{invited ? "You're invited" : "Sign in"}</h2>
+        <h2>Sign in</h2>
         <p>
-          {invited
-            ? "Sign in or create an account to join the voting group you were invited to. "
-            : "Sign in to see your voting groups. "}
-          Connected to {where}. Accounts are passkeys: nothing to remember, nothing to leak.
+          Sign in, or create an account, to see your voting groups. Connected to {where}. Accounts are passkeys: nothing to remember, nothing to leak.
         </p>
         <PasskeySignIn api={api} />
       </div>

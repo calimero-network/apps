@@ -21,12 +21,15 @@ import styles from './InviteModal.module.css';
 export default function InviteModal({
   open,
   code,
+  org,
   scope,
   hint,
   onClose,
 }: {
   open: boolean;
   code: string;
+  /** The team the invitation is for, named in the link; see `ORG_PARAM`. */
+  org?: string;
   /** What the invitation grants — "Whole team · Home" or "Opens Bank logins". */
   scope: string;
   hint?: ReactNode;
@@ -43,8 +46,8 @@ export default function InviteModal({
   // `open` drives it, not a conditional render — so it renders many times with
   // no invitation minted yet. `shareableInvitation` THROWS on an empty code.
   const share = useMemo(
-    () => (code.trim() ? shareableInvitation(code) : null),
-    [code],
+    () => (code.trim() ? shareableInvitation(code, org) : null),
+    [code, org],
   );
 
   useDialogOpen(dialogRef, open && !!share);
@@ -127,6 +130,10 @@ export default function InviteModal({
         )}
 
         {hint && <p className={styles.hint}>{hint}</p>}
+        <p className={styles.hint} data-testid="invite-single-use">
+          Single use: one person can join with this link. Create another for
+          each person you invite.
+        </p>
       </div>
     </dialog>
   );
