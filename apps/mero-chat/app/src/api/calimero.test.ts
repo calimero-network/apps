@@ -1,13 +1,20 @@
-import { renderHook, act } from "@testing-library/react";
+import { renderHook, act, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import {
   LoginRequired,
   type CalimeroClient,
   type PasskeyProvider,
+  type SignUpPolicy,
 } from "@calimero-network/mero-js";
-import { PASSKEY_UNKNOWN_HERE_MESSAGE } from "@calimero-apps/connect";
+import {
+  PASSKEY_UNKNOWN_HERE_MESSAGE,
+  PASSKEY_UNKNOWN_SIGN_UP_MESSAGE,
+  SIGN_UP_CLOSED,
+  SIGN_UP_INVITE_ONLY,
+} from "@calimero-apps/connect";
 
-import { __setForTests, signIn, useCalimero } from "./calimero";
+import { __setForTests, signIn, signUp, useCalimero } from "./calimero";
+import { INVITATION_STORAGE_KEY } from "../utils/invitation";
 
 describe("signIn", () => {
   // The node's answer to a passkey it has no account for (one made before
@@ -28,5 +35,92 @@ describe("signIn", () => {
     });
     expect(result.current.status).toBe("signed-out");
     expect(result.current.message).toBe(PASSKEY_UNKNOWN_HERE_MESSAGE);
+  });
+});
+
+describe("an unknown passkey, by the cluster's sign-up policy", () => {
+  const POLICY: Record<SignUpPolicy["policy"], SignUpPolicy> = {
+    open: {
+      policy: "open",
+      orgInvites: true,
+      signUpInvites: true,
+      inviteRequired: false,
+    },
+    invite: {
+      policy: "invite",
+      orgInvites: true,
+      signUpInvites: true,
+      inviteRequired: true,
+    },
+    closed: {
+      policy: "closed",
+      orgInvites: false,
+      signUpInvites: true,
+      inviteRequired: true,
+    },
+  };
+
+  async function unknownPasskeyOn(policy: SignUpPolicy) {
+    const client = {
+      session: undefined as undefined | { accountId: string },
+      signIn: vi.fn(async () =>
+        Promise.reject(new LoginRequired("unknown passkey")),
+      ),
+      signUp: vi.fn(async () => ({ accountId: "acct-new" })),
+      signUpPolicy: vi.fn(async () => policy),
+    };
+    __setForTests(
+      client as unknown as CalimeroClient,
+      null,
+      () => ({}) as PasskeyProvider,
+    );
+    const hook = renderHook(() => useCalimero());
+    await waitFor(() =>
+      expect(hook.result.current.signUpAccess).not.toBe("unknown"),
+    );
+    await act(async () => {
+      await expect(signIn()).rejects.toBeInstanceOf(LoginRequired);
+    });
+    return { client, result: hook.result };
+  }
+
+  it("open: offers an account here, and signs up without an invite", async () => {
+    localStorage.removeItem(INVITATION_STORAGE_KEY);
+    const { client, result } = await unknownPasskeyOn(POLICY.open);
+    expect(result.current.message).toBe(PASSKEY_UNKNOWN_SIGN_UP_MESSAGE);
+    expect(result.current.signUpAccess).toBe("allowed");
+    expect(result.current.passkeyUnknown).toBe(true);
+    await act(() => signUp("Ada"));
+    expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "Ada");
+  });
+
+  it("invite with the link's token: signs up with it", async () => {
+    localStorage.setItem(INVITATION_STORAGE_KEY, "org-invite-token");
+    try {
+      const { client, result } = await unknownPasskeyOn(POLICY.invite);
+      expect(result.current.message).toBe(PASSKEY_UNKNOWN_SIGN_UP_MESSAGE);
+      await act(() => signUp(""));
+      expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", {
+        invite: "org-invite-token",
+      });
+    } finally {
+      localStorage.removeItem(INVITATION_STORAGE_KEY);
+    }
+  });
+
+  it("invite without a token: invited people only", async () => {
+    const { result } = await unknownPasskeyOn(POLICY.invite);
+    expect(result.current.signUpAccess).toBe("needs-invite");
+    expect(result.current.message).toBe(
+      `This passkey isn't known on this cluster. ${SIGN_UP_INVITE_ONLY}`,
+    );
+  });
+
+  it("closed: not open to new accounts", async () => {
+    const { result } = await unknownPasskeyOn(POLICY.closed);
+    expect(result.current.signUpAccess).toBe("closed");
+    expect(result.current.message).toBe(
+      `This passkey isn't known on this cluster. ${SIGN_UP_CLOSED}`,
+    );
   });
 });

@@ -16,6 +16,7 @@ import {
   browserPasskey,
   type CalimeroClient,
   type PasskeyProvider,
+  type SignUpPolicy,
 } from '@calimero-network/mero-js';
 import {
   SessionStore,
@@ -24,10 +25,15 @@ import {
   describeError,
   describeSignInError,
   connectTarget,
+  isPasskeyUnknownHere,
   NotServedError,
+  readSignUpPolicy,
+  signUpAccess,
+  signUpInvite,
   type AppSource,
   type ConnectEnv,
   type KeyValueStorage,
+  type SignUpAccess,
   type Target,
 } from '@calimero-apps/connect';
 import { isPasskeyCancel, type ListingProps } from '@calimero-apps/passkey';
@@ -79,17 +85,28 @@ export interface SessionApi {
   /** Keeps the stored session current after a request (refresh tokens are single-use). */
   sync: () => void;
   signIn(): Promise<void>;
-  /** Create an account with a new passkey; the name is optional. */
+  /**
+   * Create an account with a new passkey; the name is optional. On a cluster
+   * that requires an invite, the pending invite's token goes with it.
+   */
   signUp(name?: string): Promise<void>;
   signOut(): Promise<void>;
+  /** What the cluster's sign-up policy lets this page do (`unknown` until read). */
+  signUpAccess: SignUpAccess;
+  /** The last sign-in failed because the cluster has no account for that passkey. */
+  passkeyUnknown: boolean;
 }
 
 const SessionContext = createContext<SessionApi | null>(null);
 
-function useSessionState(deps: SessionDeps): SessionApi {
+function useSessionState(deps: SessionDeps, invite?: () => string | null): SessionApi {
   const [session, setSession] = useState<Session>({ status: 'connecting' });
   const [store, setStore] = useState<SessionStore | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // The failed ceremony, described when shown, so the words follow the
+  // sign-up policy even when it is read after the failure.
+  const [failure, setFailure] = useState<{ error: unknown } | null>(null);
+  /** The cluster's sign-up policy: `undefined` until read, `null` when it cannot be. */
+  const [policy, setPolicy] = useState<SignUpPolicy | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -123,18 +140,34 @@ function useSessionState(deps: SessionDeps): SessionApi {
     };
   }, [deps]);
 
+  const signedOutClient = session.status === 'signed-out' ? session.client : null;
+  useEffect(() => {
+    if (!signedOutClient) return;
+    let live = true;
+    void readSignUpPolicy(signedOutClient).then((p) => {
+      if (live) setPolicy(p);
+    });
+    return () => {
+      live = false;
+    };
+  }, [signedOutClient]);
+
+  const inviteToken = invite?.() ?? null;
+  const access = signUpAccess(policy, inviteToken !== null);
+  const invited = signUpInvite(policy, inviteToken);
+
   const ceremony = useCallback(
     async (run: (client: CalimeroClient) => Promise<{ accountId: string }>) => {
       if (session.status !== 'signed-out') return;
       setBusy(true);
-      setError(null);
+      setFailure(null);
       try {
         const { accountId } = await run(session.client);
         store?.sync(session.client);
         setSession({ status: 'signed-in', client: session.client, target: session.target, accountId });
       } catch (e) {
         // A dismissed passkey prompt is a quiet cancel, not an error to show.
-        if (!isPasskeyCancel(e)) setError(describeSignInError(e));
+        if (!isPasskeyCancel(e)) setFailure({ error: e });
       } finally {
         setBusy(false);
       }
@@ -144,8 +177,13 @@ function useSessionState(deps: SessionDeps): SessionApi {
 
   const signIn = useCallback(() => ceremony((c) => c.signIn(deps.passkey())), [ceremony, deps]);
   const signUp = useCallback(
-    (name?: string) => ceremony((c) => c.signUp(deps.passkey(), name?.trim() ?? '')),
-    [ceremony, deps],
+    (name?: string) =>
+      ceremony((c) =>
+        invited
+          ? c.signUp(deps.passkey(), name?.trim() ?? '', { invite: invited })
+          : c.signUp(deps.passkey(), name?.trim() ?? ''),
+      ),
+    [ceremony, deps, invited],
   );
 
   const signOut = useCallback(async () => {
@@ -166,21 +204,39 @@ function useSessionState(deps: SessionDeps): SessionApi {
 
   const source = useMemo(() => appSource(deps.env, PACKAGE_NAME), [deps.env]);
 
+  const error = failure ? describeSignInError(failure.error, access) : null;
+  const passkeyUnknown = failure !== null && isPasskeyUnknownHere(failure.error);
+
   return useMemo(
-    () => ({ session, error, busy, source, passkey: deps.passkey, sync, signIn, signUp, signOut }),
-    [session, error, busy, source, deps.passkey, sync, signIn, signUp, signOut],
+    () => ({
+      session,
+      error,
+      busy,
+      source,
+      passkey: deps.passkey,
+      sync,
+      signIn,
+      signUp,
+      signOut,
+      signUpAccess: access,
+      passkeyUnknown,
+    }),
+    [session, error, busy, source, deps.passkey, sync, signIn, signUp, signOut, access, passkeyUnknown],
   );
 }
 
 /** Connects once and shares the session with every screen. */
 export function SessionProvider({
   deps = defaultDeps,
+  invite,
   children,
 }: {
   deps?: SessionDeps;
+  /** The pending invite's token: on an invite-only cluster it lets a new person sign up. */
+  invite?: () => string | null;
   children: ReactNode;
 }) {
-  const api = useSessionState(deps);
+  const api = useSessionState(deps, invite);
   return <SessionContext.Provider value={api}>{children}</SessionContext.Provider>;
 }
 

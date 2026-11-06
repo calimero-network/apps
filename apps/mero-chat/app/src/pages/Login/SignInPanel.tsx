@@ -57,7 +57,7 @@ export default function SignInPanel({
   onBusy,
   testId = "signin-popup",
 }: Props) {
-  const { status, message } = useCalimero();
+  const { status, message, signUpAccess, passkeyUnknown } = useCalimero();
   const [busy, setBusy] = useState(false);
 
   const api = useMemo<PasskeySignInApi>(() => {
@@ -77,6 +77,8 @@ export default function SignInPanel({
     return {
       busy,
       error: status === "unconfigured" || status === "listing" ? null : message,
+      signUpAccess,
+      passkeyUnknown,
       signIn: () => run(signIn),
       signUp: (name = "") =>
         run(async () => {
@@ -86,7 +88,15 @@ export default function SignInPanel({
           setMessengerDisplayName(chosen);
         }),
     };
-  }, [busy, status, message, beforeCeremony, onBusy]);
+  }, [
+    busy,
+    status,
+    message,
+    signUpAccess,
+    passkeyUnknown,
+    beforeCeremony,
+    onBusy,
+  ]);
 
   return (
     <Container data-testid={testId}>

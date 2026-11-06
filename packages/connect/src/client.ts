@@ -5,11 +5,13 @@ import {
   ConfirmCancelled,
   DirectoryError,
   LoginRequired,
+  SignUpRefused,
   TrapError,
   UnavailableError,
   type CalimeroSession,
 } from "@calimero-network/mero-js";
 
+import { SIGN_UP_CLOSED, SIGN_UP_INVITE_ONLY, signUpNotice, type SignUpAccess } from "./signUp";
 import { policyFor, targetKey, type Target } from "./target";
 
 export interface ClientOptions {
@@ -147,9 +149,16 @@ export function describeError(error: unknown): string {
   return String(error);
 }
 
-/** What a person is told when the cluster has no account for the passkey they used. */
+/**
+ * What a person is told when the cluster has no account for the passkey they
+ * used and its sign-up policy is not known.
+ */
 export const PASSKEY_UNKNOWN_HERE_MESSAGE =
   "This passkey isn't known on this cluster: create a new passkey here, or use one you made on this cluster.";
+
+/** The same, on a cluster that lets this page create an account. */
+export const PASSKEY_UNKNOWN_SIGN_UP_MESSAGE =
+  "This passkey isn't known on this cluster. Create an account here: it makes a new passkey for this cluster.";
 
 /** The node's own words in a refusal, without mero-js's `"{status} {code}: "` prefix. */
 function nodeMessage(error: CalimeroError): string {
@@ -158,26 +167,56 @@ function nodeMessage(error: CalimeroError): string {
 }
 
 /**
+ * A sign-in with a passkey the cluster has no account for (made on another
+ * cluster, or before this one was recreated; every cluster shares one rp id,
+ * so the browser offers it anyway): `401 UNAUTHENTICATED "unknown passkey"`,
+ * or, from core's `PASSKEY_UNKNOWN_HERE` on, that code (mero-js's
+ * `PasskeyUnknownHere`).
+ */
+export function isPasskeyUnknownHere(error: unknown): boolean {
+  if (!(error instanceof CalimeroError)) return false;
+  if (error.code === "PASSKEY_UNKNOWN_HERE" || error.name === "PasskeyUnknownHere") return true;
+  return error instanceof LoginRequired && nodeMessage(error) === "unknown passkey";
+}
+
+/** `403 SIGN_UP_REFUSED`, by its reason, in the same words as the policy. */
+function describeSignUpRefused(error: SignUpRefused): string {
+  switch (error.reason) {
+    case "invite-only":
+      return SIGN_UP_INVITE_ONLY;
+    case "closed":
+      return SIGN_UP_CLOSED;
+    case "unknown-invite":
+      return "This cluster doesn't know that invite: check the link you were sent, or ask for a new one.";
+    case "expired-invite":
+      return "That invite has expired or has no uses left: ask whoever sent it for a new one.";
+    case "org-gone":
+      return "The organization that invite was for no longer exists: ask for an invite to another one.";
+    default:
+      return `This cluster refused the sign-up: ${nodeMessage(error) || "no reason given"}`;
+  }
+}
+
+/**
  * {@link describeError} for a failed sign-in or sign-up (`signIn`/`signUp`).
  * The person is not signed in yet, so "Sign in first." says nothing: the node's
  * `401` there is about the passkey, and its reason is what helps.
  *
- * A passkey the cluster has no account for (made on another cluster, or before
- * this one was recreated; every cluster shares one rp id, so the browser offers
- * it anyway) answers `401 UNAUTHENTICATED "unknown passkey"`, or, from core's
- * `PASSKEY_UNKNOWN_HERE` on, that code (mero-js's `PasskeyUnknownHere`).
+ * `access` is what the cluster's sign-up policy lets this page do
+ * (`signUpAccess`): a passkey unknown here is then answered with the way in
+ * (create an account here, or why that is not possible). Without it, or
+ * `unknown`, the general wording. A refused sign-up (`SignUpRefused`) says
+ * why in the same words.
  */
-export function describeSignInError(error: unknown): string {
-  if (error instanceof CalimeroError) {
-    if (error.code === "PASSKEY_UNKNOWN_HERE" || error.name === "PasskeyUnknownHere") {
-      return PASSKEY_UNKNOWN_HERE_MESSAGE;
-    }
-    if (error instanceof LoginRequired) {
-      const reason = nodeMessage(error);
-      return reason === "unknown passkey"
-        ? PASSKEY_UNKNOWN_HERE_MESSAGE
-        : `The cluster refused this passkey: ${reason || "no reason given"}`;
-    }
+export function describeSignInError(error: unknown, access: SignUpAccess = "unknown"): string {
+  if (isPasskeyUnknownHere(error)) {
+    if (access === "allowed") return PASSKEY_UNKNOWN_SIGN_UP_MESSAGE;
+    const notice = signUpNotice(access);
+    return notice ? `This passkey isn't known on this cluster. ${notice}` : PASSKEY_UNKNOWN_HERE_MESSAGE;
+  }
+  if (error instanceof SignUpRefused) return describeSignUpRefused(error);
+  if (error instanceof LoginRequired) {
+    return `The cluster refused this passkey: ${nodeMessage(error) || "no reason given"}`;
   }
   return describeError(error);
 }

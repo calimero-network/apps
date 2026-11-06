@@ -19,6 +19,7 @@ import {
   browserPasskey,
   type CalimeroClient,
   type PasskeyProvider,
+  type SignUpPolicy,
 } from "@calimero-network/mero-js";
 import {
   SessionStore,
@@ -27,11 +28,17 @@ import {
   describeError,
   describeSignInError,
   connectTarget,
+  isPasskeyUnknownHere,
   NotServedError,
+  readSignUpPolicy,
+  signUpAccess,
+  signUpInvite,
   type AppSource,
+  type SignUpAccess,
   type Target,
 } from "@calimero-apps/connect";
 import { isPasskeyCancel, type ListingProps } from "@calimero-apps/passkey";
+import { pendingInvite } from "../utils/invitation";
 
 /** The app's name in stored keys. */
 export const APP = "mero-chat";
@@ -57,9 +64,20 @@ interface State {
   accountId: string | null;
   /** False while an event stream is down (the reconnect resync keys on it). */
   isOnline: boolean;
+  /** The last failed sign-in or sign-up, described with the policy as it is when shown. */
+  failure: { error: unknown } | null;
+  /** The cluster's sign-up policy: `undefined` until read, `null` when it cannot be. */
+  policy: SignUpPolicy | null | undefined;
 }
 
-let state: State = { status: "connecting", message: null, accountId: null, isOnline: true };
+let state: State = {
+  status: "connecting",
+  message: null,
+  accountId: null,
+  isOnline: true,
+  failure: null,
+  policy: undefined,
+};
 let client: CalimeroClient | null = null;
 let sessions: SessionStore | null = null;
 let target: Target | null = null;
@@ -95,7 +113,26 @@ export function __setForTests(
   client = c;
   sessions = null;
   if (pk) passkeyProvider = pk;
-  set({ status: c && accountId ? "signed-in" : c ? "signed-out" : "connecting", accountId, message: null });
+  set({
+    status: c && accountId ? "signed-in" : c ? "signed-out" : "connecting",
+    accountId,
+    message: null,
+    failure: null,
+    policy: undefined,
+  });
+  if (c) loadSignUpPolicy(c);
+}
+
+/** Reads who may create an account here, once per client, without blocking anything. */
+function loadSignUpPolicy(c: CalimeroClient): void {
+  void readSignUpPolicy(c).then((policy) => {
+    if (client === c) set({ policy });
+  });
+}
+
+/** What the sign-up policy lets this page do, with the invite link's token if one is pending. */
+function access(s: State = state): SignUpAccess {
+  return signUpAccess(s.policy, pendingInvite() !== null);
 }
 
 let started: Promise<void> | null = null;
@@ -108,6 +145,7 @@ export function startCalimero(): Promise<void> {
       target = await connectTarget(import.meta.env, { app: APP, package: APP_PACKAGE });
       client = await createClient(target);
       sessions = new SessionStore(APP, target);
+      loadSignUpPolicy(client);
       if (sessions.restore(client) && client.session) {
         set({ status: "signed-in", accountId: client.session.accountId, message: null });
       } else {
@@ -138,14 +176,14 @@ export function getAccountId(): string {
 
 async function ceremony(run: (c: CalimeroClient) => Promise<{ accountId: string }>): Promise<void> {
   const c = getClient();
-  set({ message: null });
+  set({ message: null, failure: null });
   try {
     const { accountId } = await run(c);
     sessions?.sync(c);
     set({ status: "signed-in", accountId });
   } catch (e) {
     // A dismissed passkey prompt is a quiet cancel, not an error to show.
-    if (!isPasskeyCancel(e)) set({ message: describeSignInError(e) });
+    if (!isPasskeyCancel(e)) set({ failure: { error: e } });
     throw e;
   }
 }
@@ -154,9 +192,15 @@ export function signIn(): Promise<void> {
   return ceremony((c) => c.signIn(passkey()));
 }
 
-/** Create an account with a new passkey; the name is optional. */
+/**
+ * Create an account with a new passkey; the name is optional. On a cluster
+ * that requires an invite, the invite link's token goes with it.
+ */
 export function signUp(name = ""): Promise<void> {
-  return ceremony((c) => c.signUp(passkey(), name));
+  const invite = signUpInvite(state.policy, pendingInvite());
+  return ceremony((c) =>
+    invite ? c.signUp(passkey(), name, { invite }) : c.signUp(passkey(), name),
+  );
 }
 
 export async function signOut(): Promise<void> {
@@ -167,7 +211,7 @@ export async function signOut(): Promise<void> {
   }
   sessions?.clear();
   setContextId("");
-  set({ status: client ? "signed-out" : "connecting", accountId: null });
+  set({ status: client ? "signed-out" : "connecting", accountId: null, failure: null });
 }
 
 /** Set by the event streams: false while one is down. */
@@ -237,7 +281,12 @@ export function setContextIdentity(_identity: string): void {
 
 export interface CalimeroState {
   status: Status;
+  /** Why the build cannot connect, or why the last sign-in or sign-up failed. */
   message: string | null;
+  /** What the cluster's sign-up policy lets this page do (`unknown` until read). */
+  signUpAccess: SignUpAccess;
+  /** The last sign-in failed because the cluster has no account for that passkey. */
+  passkeyUnknown: boolean;
   isAuthenticated: boolean;
   isLoading: boolean;
   isOnline: boolean;
@@ -258,7 +307,11 @@ export function useCalimero(): CalimeroState {
   const s = useSyncExternalStore(subscribe, snapshot, snapshot);
   return {
     status: s.status,
-    message: s.message,
+    message: s.failure
+      ? describeSignInError(s.failure.error, access(s))
+      : s.message,
+    signUpAccess: access(s),
+    passkeyUnknown: s.failure !== null && isPasskeyUnknownHere(s.failure.error),
     isAuthenticated: s.status === "signed-in",
     isLoading: s.status === "connecting",
     isOnline: s.isOnline,
