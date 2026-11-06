@@ -5,16 +5,22 @@ import '@calimero-apps/passkey/passkey.css';
 import { PRODUCT_NAME } from '../config';
 import { LISTING, describeTarget } from '../session';
 import { useSessionApi } from '../sessionContext';
+import { pendingInvite } from '../workspaces';
 import { ErrorLine } from './modalKit';
 
 /**
- * The sign-in content: one passkey screen that both signs in and creates an
- * account. Shared by the popup (`SignInModal`) and the invitation page a
- * signed-out invite link lands on (`InvitationPage`), so the copy and the
- * passkey flow cannot drift apart.
+ * Sign in with a passkey, or create an account with a new one: the body both
+ * the sign-in popup and the invitation page render, so the copy and the
+ * passkey flow are the same wherever a visitor starts.
+ *
+ * Replaces v1's node connect dialog (local node discovery, a node URL, the
+ * Cloud wallet): on Calimero 1.0 the frontend already knows its cluster (local
+ * nodes in dev, the Cloud cluster in production) and the account is a passkey.
  */
-export default function SignInPanel({ invited, titleId }: { invited: boolean; titleId: string }): React.ReactElement {
+export default function SignInPanel({ titleId }: { titleId: string }): React.ReactElement {
   const { api } = useSessionApi();
+  const invited = pendingInvite() !== null;
+
   const where =
     api.session.status === 'signed-out' || api.session.status === 'signed-in'
       ? describeTarget(api.session.target)
@@ -25,7 +31,7 @@ export default function SignInPanel({ invited, titleId }: { invited: boolean; ti
       <h3 id={titleId}>{invited ? "You're invited" : 'Sign in or create an account'}</h3>
       <p className="sub">
         {invited
-          ? `You've been invited to join a workspace in ${PRODUCT_NAME}. Sign in, or create an account, to accept. `
+          ? `You've been invited to join a workspace in ${PRODUCT_NAME}. Sign in or create an account to accept. `
           : ''}
         Accounts are passkeys: nothing to remember, nothing to leak.
         {where ? ` Connected to ${where}.` : ''}

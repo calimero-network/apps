@@ -116,8 +116,7 @@ export default function InviteModal({ onInvite, onClose }: InviteModalProps) {
               {copied ? "Copied ✓" : "Copy invite link"}
             </PrimaryBtn>
             <p className="hint">
-              Single use: the first person to accept it joins this workspace.
-              Make a new link for each person you invite.
+              Single use: one person can join with this link. Generate another for each person you invite.
             </p>
           </>
         )}
