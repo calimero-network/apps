@@ -99,6 +99,7 @@ export default function TeamPage() {
     code: string;
     scope: string;
     hint: string;
+    org?: string;
   } | null>(null);
 
   const mayCreateVault = canCreateVault(capabilities);
@@ -224,7 +225,8 @@ export default function TeamPage() {
       setInvite({
         code,
         scope: `Whole team · ${heading}`,
-        hint: `Anyone who opens this link within ${validLabel} can join the team and open every vault that is not invite-only. Their devices get each vault's key once a member who holds it opens the vault.`,
+        org: teamId,
+        hint: `Whoever opens this link within ${validLabel} can join the team and open every vault that is not invite-only. Their devices get each vault's key once a member who holds it opens the vault.`,
       });
     } catch (e) {
       setError(describeError(e));
@@ -246,6 +248,9 @@ export default function TeamPage() {
         setInvite({
           code,
           scope: `Opens ${vault.name}`,
+          // An invite-only vault's link also admits to that vault's own team,
+          // which a team member still needs: name the org only for open ones.
+          org: vault.team ? undefined : teamId,
           // Said plainly: an OPEN vault's access is inherited from the team,
           // so a link to it grants every open vault there. Only an invite-only
           // vault can be granted on its own.
@@ -512,6 +517,7 @@ export default function TeamPage() {
       <InviteModal
         open={!!invite}
         code={invite?.code ?? ''}
+        org={invite?.org}
         scope={invite?.scope ?? ''}
         hint={invite?.hint}
         onClose={() => setInvite(null)}

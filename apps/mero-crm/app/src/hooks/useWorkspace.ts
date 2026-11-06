@@ -262,7 +262,7 @@ export function useWorkspace(): UseWorkspaceReturn {
   const invite = useCallback(async () => {
     if (!activeNs) throw new Error('No workspace is open.');
     try {
-      return inviteLink(await inviteToken(client, activeNs, passkey()));
+      return inviteLink(await inviteToken(client, activeNs, passkey()), activeNs);
     } finally {
       after();
     }

@@ -181,7 +181,7 @@ ${media.length ? `
   });
 ` : ''}${o.closing ? `
   test('the closing call to action replaces the low desktop band', async ({ page }) => {
-    await expect(page.locator('#start').locator('button').filter({ hasText: /^Connect to node$/ })).toBeVisible();
+    await expect(page.locator('#start').locator('button').filter({ hasText: /^Sign in$/ })).toBeVisible();
     await expect(page.locator('.cal-lp-band')).toHaveCount(0);
   });
 ` : ''}
@@ -384,15 +384,15 @@ ${hadLoginPage ? `
   });
 ` : ''}
 ${desktopOnly ? `
-  test('a desktop-only app does not offer a node it cannot reach', async ({ page }) => {
+  test('a desktop-only app does not offer a web sign-in', async ({ page }) => {
     // Wait for the page to actually exist first — \`toHaveCount(0)\` passes
     // instantly against a blank document, which would make this vacuous.
     await expect(page.getByRole('heading', { level: 1, name: "${meta.name}" })).toBeVisible();
-    await expect(page.locator('button').filter({ hasText: /^Connect to node$/ })).toHaveCount(0);
+    await expect(page.locator('button').filter({ hasText: /^Sign in$/ })).toHaveCount(0);
   });
 ` : `
-  test('connecting does not navigate to another page', async ({ page }) => {
-    const cta = page.locator('button').filter({ hasText: /^Connect to node$/ }).first();
+  test('signing in does not navigate to another page', async ({ page }) => {
+    const cta = page.locator('button').filter({ hasText: /^Sign in$/ }).first();
     await expect(cta).toBeVisible();
     // ⚠️ Compared against the URL we are ACTUALLY on, not against the root.
     // mero-stream and mero-meet redirect / to a picker route and render the
@@ -408,17 +408,23 @@ ${desktopOnly ? `
   });
 ${usesPopup ? `
   test('and the landing page stays put underneath it', async ({ page }) => {
-    await page.locator('button').filter({ hasText: /^Connect to node\$/ }).first().click();
+    await page.locator('button').filter({ hasText: /^Sign in\$/ }).first().click();
     await expect(page.locator('.cal-lp-root')).toHaveAttribute('data-cal-lp-view', 'overview');
   });
 ` : ''}
 `}
-${entry.overview ? renderOverviewSpec(entry.overview) : ''}  test('offers the desktop download', async ({ page }) => {
+${entry.overview ? renderOverviewSpec(entry.overview) : ''}${entry.availability === 'web' ? `  test('a web-only app offers no desktop download', async ({ page }) => {
+    // The badge says "Web only"; a desktop button beside it contradicts it.
+    // Wait for the page first: \`toHaveCount(0)\` passes on a blank document.
+    await expect(page.getByRole('heading', { level: 1, name: "${meta.name}" })).toBeVisible();
+    await expect(page.locator('a[href="https://calimero.network/download"]')).toHaveCount(0);
+  });
+` : `  test('offers the desktop download', async ({ page }) => {
     await expect(
       page.locator('a[href="https://calimero.network/download"]').first(),
     ).toBeVisible();
   });
-
+`}
   // ── Mobile ──────────────────────────────────────────────────────────────
   // 320px is the narrowest phone still in use and 390 is the common one. Both,
   // because the header and the hero art break at different widths. Every view,
