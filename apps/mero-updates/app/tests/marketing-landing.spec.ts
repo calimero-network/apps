@@ -175,9 +175,9 @@ test.describe('Mero Updates landing page', () => {
   });
 
 
-  test('does not offer the desktop download: the app is web only', async ({ page }) => {
-    // Wait for the page to actually exist first - `toHaveCount(0)` passes
-    // instantly against a blank document, which would make this vacuous.
+  test('a web-only app offers no desktop download', async ({ page }) => {
+    // The badge says "Web only"; a desktop button beside it contradicts it.
+    // Wait for the page first: `toHaveCount(0)` passes on a blank document.
     await expect(page.getByRole('heading', { level: 1, name: "Mero Updates" })).toBeVisible();
     await expect(page.locator('a[href="https://calimero.network/download"]')).toHaveCount(0);
   });
