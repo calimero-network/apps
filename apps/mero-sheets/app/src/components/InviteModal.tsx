@@ -121,8 +121,9 @@ export default function InviteModal({
             </PrimaryBtn>
 
             <Hint>
-              Anyone with this link can join the workspace once and open every spreadsheet in it.
-              They pick a name for themselves when they join.
+              Single use: one person can join the workspace with this link, and then open every
+              spreadsheet in it. Make a new link for each person you invite. They pick a name for
+              themselves when they join.
             </Hint>
           </>
         )}

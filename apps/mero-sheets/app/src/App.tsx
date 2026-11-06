@@ -5,10 +5,11 @@ import { nodeBasename } from '@calimero-apps/node-served';
 
 import LandingPage from './pages/landing/LandingPage';
 import AppPage from './pages/app/AppPage';
+import InvitationPage from './components/InvitationPage';
 import InvitationPrompt from './components/InvitationPrompt';
 import SignInModal from './components/SignInModal';
 import { APP_ROUTE } from './config';
-import type { AcceptedInvite } from './lib/workspaces';
+import { pendingInvite, type AcceptedInvite } from './lib/workspaces';
 import type { SessionDeps } from './session';
 import { SessionProvider, useSessionApi } from './sessionContext';
 
@@ -74,34 +75,53 @@ function AppInvitations() {
   return <InvitationPrompt onJoined={onJoined} />;
 }
 
+/**
+ * A signed-out visitor who opened an invitation link sees the invitation as a
+ * page, in place of whatever route the link named: no landing hero behind it
+ * and no extra click to find the sign-in. Nothing navigates, so the address
+ * (under the `/<version>/` basename) is still the deep link once they are
+ * signed in, and the route guards never get the chance to bounce it to `/`.
+ * "Not now" falls through to the routes and keeps the token.
+ */
+function InvitationGate({ children }: { children: ReactNode }) {
+  const { api } = useSessionApi();
+  const [notNow, setNotNow] = useState(false);
+  if (api.session.status === 'signed-out' && !notNow && pendingInvite()) {
+    return <InvitationPage onNotNow={() => setNotNow(true)} />;
+  }
+  return <>{children}</>;
+}
+
 export default function App({ deps }: { deps?: SessionDeps } = {}) {
   return (
     <SessionProvider deps={deps}>
       <ToastProvider>
         <BrowserRouter basename={nodeBasename(new URL(window.location.href), '/')}>
           <AppInvitations />
-          <Routes>
-            {LANDING_PATHS.map((landingPath) => (
-              <Route
-                key={landingPath}
-                path={landingPath}
-                // Only `/` bounces a signed-in visitor into the app; `/docs` and
-                // `/preview` are reference pages.
-                element={
-                  landingPath === '/' ? (
-                    <RedirectIfAuthed>
+          <InvitationGate>
+            <Routes>
+              {LANDING_PATHS.map((landingPath) => (
+                <Route
+                  key={landingPath}
+                  path={landingPath}
+                  // Only `/` bounces a signed-in visitor into the app; `/docs` and
+                  // `/preview` are reference pages.
+                  element={
+                    landingPath === '/' ? (
+                      <RedirectIfAuthed>
+                        <Landing />
+                      </RedirectIfAuthed>
+                    ) : (
                       <Landing />
-                    </RedirectIfAuthed>
-                  ) : (
-                    <Landing />
-                  )
-                }
-              />
-            ))}
-            <Route path="/login" element={<Navigate to="/" replace />} />
-            <Route path={APP_ROUTE} element={<RequireAuth><AppPage /></RequireAuth>} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+                    )
+                  }
+                />
+              ))}
+              <Route path="/login" element={<Navigate to="/" replace />} />
+              <Route path={APP_ROUTE} element={<RequireAuth><AppPage /></RequireAuth>} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </InvitationGate>
         </BrowserRouter>
       </ToastProvider>
     </SessionProvider>
