@@ -73,11 +73,12 @@ export interface SessionApi {
   /**
    * Whether this page may create an account on the cluster, from its sign-up
    * policy (read once the client connects) and the page's invite token:
-   * `unknown` until read, or when the node cannot say.
+   * `unknown` until read, or when the node cannot say. Optional, so a session
+   * an app or a test builds itself still fits; missing reads as `unknown`.
    */
-  signUpAccess: SignUpAccess;
+  signUpAccess?: SignUpAccess;
   /** The last sign-in failed because the cluster has no account for that passkey. */
-  passkeyUnknown: boolean;
+  passkeyUnknown?: boolean;
   signOut(): Promise<void>;
 }
 
