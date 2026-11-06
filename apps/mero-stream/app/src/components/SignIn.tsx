@@ -16,10 +16,13 @@ import styles from "../pages/Manage.module.css";
 export default function SignIn({
   api,
   invite,
+  onNotNow,
 }: {
   api: SessionApi;
   /** An invitation link that was opened: said here, redeemed after sign-in. */
   invite?: PendingInvite | null;
+  /** Back to the landing page, keeping the invitation for later. */
+  onNotNow?: () => void;
 }) {
   const { session } = api;
   const where =
@@ -42,8 +45,9 @@ export default function SignIn({
             <p className={styles.subtitle}>
               {invite ? (
                 <>
-                  Sign in (or create an account) to join{" "}
-                  <strong>{invite.name ?? "a stream"}</strong>.{" "}
+                  You&apos;ve been invited to join{" "}
+                  {invite.name ? <strong>{invite.name}</strong> : "a stream"} in
+                  Mero Stream. Sign in or create an account to accept.{" "}
                 </>
               ) : null}
               Accounts are passkeys: nothing to remember, nothing to leak.
@@ -62,6 +66,19 @@ export default function SignIn({
         {session.status === "signed-out" && (
           <div style={{ maxWidth: 360 }}>
             <PasskeySignIn api={api} />
+          </div>
+        )}
+
+        {onNotNow && (
+          <div style={{ maxWidth: 360 }}>
+            <button
+              type="button"
+              className={styles.crumbLink}
+              onClick={onNotNow}
+              data-testid="invitation-not-now"
+            >
+              Not now
+            </button>
           </div>
         )}
       </main>

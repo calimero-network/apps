@@ -14,14 +14,18 @@ import StreamPage from "./pages/StreamPage";
 import CallPage from "./pages/CallPage";
 
 /**
- * Signed in, or the way in: the landing page, whose "connect" opens the
+ * Signed in, or the way in: the landing page, whose "Sign in" opens the
  * passkey sign-in (v1: mero-react's login popup). An opened invitation link
- * goes straight to the sign-in, which says what the person was invited to.
+ * goes straight to the sign-in as the invitation page, which says what the
+ * person was invited to, in place of the route the link named (nothing
+ * navigates, so the deep link is still the address once they are signed in).
+ * "Not now" shows the landing page and keeps the token.
  */
 function RequireAuth({ children }: { children: ReactNode }) {
   const api = useSessionApi();
   const { session } = api;
   const [signingIn, setSigningIn] = useState(false);
+  const [notNow, setNotNow] = useState(false);
 
   // Bind the stored active room to this cluster and account before any page
   // reads it.
@@ -34,7 +38,12 @@ function RequireAuth({ children }: { children: ReactNode }) {
   if (session.status === "connecting") return null; // avoids a flash
   if (session.status === "signed-in" && bound) return <>{children}</>;
   const invite = pendingInvite();
-  if (signingIn || invite || session.status === "unconfigured") {
+  if (invite && !notNow && !signingIn) {
+    return (
+      <SignIn api={api} invite={invite} onNotNow={() => setNotNow(true)} />
+    );
+  }
+  if (signingIn || session.status === "unconfigured") {
     return <SignIn api={api} invite={invite} />;
   }
   return <LandingPage onConnect={() => setSigningIn(true)} />;

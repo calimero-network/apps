@@ -1,4 +1,4 @@
-import type { AppInfo, CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
+import { CalimeroError, type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
 import type { AppSource, KeyValueStorage } from "@calimero-apps/connect";
 
 /**
@@ -227,5 +227,36 @@ export function dropInvite(storage: KeyValueStorage = localStorage): void {
     storage.removeItem(PENDING);
   } catch {
     /* nothing stored */
+  }
+}
+
+/**
+ * What to say when the node refused an invitation: it is unknown, already
+ * used, expired or revoked. A 4xx can never succeed on retry, so the caller
+ * drops the token; anything else (the cluster unreachable) is kept.
+ */
+export const INVITE_REFUSED =
+  "This invite was already used or has expired. Ask the person who invited you for a new link.";
+
+/** True when `e` is the node refusing the invitation itself (see `INVITE_REFUSED`). */
+export function inviteRefused(e: unknown): boolean {
+  return e instanceof CalimeroError && e.status >= 400 && e.status < 500;
+}
+
+/**
+ * Whether this account is already in the stream an invitation admits to:
+ * `true` or `false` when the link names its stream (org), `null` when it
+ * cannot be told. Redeeming as an existing member spends the token's single
+ * use, which then leaves the person it was meant for unable to join.
+ */
+export async function alreadyMember(
+  client: Pick<CalimeroClient, "me">,
+  invite: PendingInvite,
+): Promise<boolean | null> {
+  if (!invite.stream) return null;
+  try {
+    return orgsOf(await client.me()).some((o) => o.orgId === invite.stream);
+  } catch {
+    return null;
   }
 }
