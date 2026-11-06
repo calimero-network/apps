@@ -1,15 +1,14 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { describeError } from "@calimero-apps/connect";
 import { AppListing, PasskeySignIn } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
 import {
-  INVITE_SPENT,
+  SPENT_INVITE,
   dropInvite,
-  inviteRefused,
+  isSpentInvite,
   joinedOrg,
   listOrgs,
-  mintedOrg,
   pendingInvite,
   type PendingInvite,
 } from "./lib/orgs";
@@ -34,13 +33,13 @@ function useDialog(ref: React.RefObject<HTMLDialogElement | null>, open: boolean
 }
 
 /**
- * The sign-in content: one passkey screen that both signs in and creates an
- * account. Shared by the popup (`SignInModal`) and the invitation page a
- * signed-out invite link lands on (`InvitationPage`), so the copy and the
- * passkey flow cannot drift apart.
+ * Sign in with a passkey, or create an account with a new one: the body both
+ * the sign-in popup and the invitation page render, so the copy and the
+ * passkey flow are the same wherever a visitor starts.
  */
-function SignInPanel({ invited, titleId }: { invited: boolean; titleId: string }) {
+function SignInPanel({ titleId }: { titleId: string }) {
   const { api } = useSessionApi();
+  const invited = pendingInvite() !== null;
   const where =
     api.session.status === "signed-out" || api.session.status === "signed-in"
       ? describeTarget(api.session.target)
@@ -49,7 +48,7 @@ function SignInPanel({ invited, titleId }: { invited: boolean; titleId: string }
     <>
       <h2 id={titleId}>{invited ? "You're invited" : "Sign in or create an account"}</h2>
       <p className="empty">
-        {invited ? "You've been invited to join a workspace in Mero Forms. Sign in, or create an account, to accept. " : ""}
+        {invited ? "You've been invited to join a workspace in Mero Forms. Sign in or create an account to accept. " : ""}
         Accounts are passkeys: nothing to remember, nothing to leak.
         {where ? ` Connected to ${where}.` : ""}
       </p>
@@ -66,40 +65,6 @@ function SignInPanel({ invited, titleId }: { invited: boolean; titleId: string }
 }
 
 /**
- * What an invite link opened while signed out lands on: the invitation itself,
- * as a page, instead of the landing hero with the invite hidden behind a
- * button. Signing in or creating an account here is the popup's passkey flow
- * (`SignInPanel`); once a session exists `InvitationPrompt` asks to join.
- * "Not now" goes to the landing page and keeps the token.
- */
-export function InvitationPage({ onNotNow }: { onNotNow: () => void }) {
-  const { api } = useSessionApi();
-  return (
-    <main className="invitation-page" data-testid="invitation-page">
-      <section className="dialog dialog-body" aria-labelledby="invitation-page-title">
-        <SignInPanel invited titleId="invitation-page-title" />
-        <button type="button" className="ghost" onClick={onNotNow} disabled={api.busy} data-testid="invitation-not-now">
-          Not now
-        </button>
-      </section>
-    </main>
-  );
-}
-
-/**
- * A signed-out visitor holding an invite (`?invite=`, taken into storage by
- * `main.tsx`) sees `InvitationPage` instead of `children` (the landing page).
- * The address, and the app's hash route, is left alone, so a deep link opens
- * where it pointed once they are signed in, under the join prompt.
- */
-export function InvitationGate({ children }: { children: ReactNode }) {
-  const signedIn = useMaybeSignedIn();
-  const [later, setLater] = useState(false);
-  if (signedIn || later || pendingInvite() === null) return <>{children}</>;
-  return <InvitationPage onNotNow={() => setLater(true)} />;
-}
-
-/**
  * Sign in with a passkey, or create an account with a new one. Replaces v1's
  * login popup (node discovery, a node URL, the Cloud wallet): on Calimero 1.0
  * the frontend already knows its cluster (merod local in dev, the Cloud
@@ -108,7 +73,6 @@ export function InvitationGate({ children }: { children: ReactNode }) {
 export function SignInModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { api } = useSessionApi();
   const ref = useRef<HTMLDialogElement | null>(null);
-  const invited = pendingInvite() !== null;
   useDialog(ref, open);
 
   useEffect(() => {
@@ -118,7 +82,7 @@ export function SignInModal({ open, onClose }: { open: boolean; onClose: () => v
   return (
     <dialog ref={ref} className="dialog" onClose={onClose} data-testid="signin-modal" aria-labelledby="signin-title">
       <div className="dialog-body">
-        <SignInPanel invited={invited} titleId="signin-title" />
+        <SignInPanel titleId="signin-title" />
         <button type="button" className="ghost" onClick={onClose} disabled={api.busy}>
           Close
         </button>
@@ -127,65 +91,119 @@ export function SignInModal({ open, onClose }: { open: boolean; onClose: () => v
   );
 }
 
+/** What the screen says once the invitation can no longer be accepted. */
+type Outcome = { kind: "member"; invite: PendingInvite } | { kind: "spent" };
+
 /**
- * "Join this workspace?" for an invitation that arrived as a link
- * (`?invite=`, taken into storage before the first render by `captureInvite`).
- * It asks rather than joins: joining puts you in someone's organization.
- * Signed out, the visitor is on `InvitationPage` and this shows nothing; the
- * token survives the sign-up, and this asks the moment a session exists.
+ * The invitation screens, wrapped around the app because a link can land on
+ * any page. `main.tsx` took `?invite=` into storage before React mounted, so
+ * the token survives a sign-up. While it is pending the visitor sees a page
+ * about the invitation instead of the app (the address, and the app's hash
+ * route, is left alone, so a deep link opens where it pointed afterwards):
  *
- * Someone already in the invite's organization is told so instead: redeeming
- * would spend the invite's single use on a person who needs none of it. The
- * organization is known only for an invite this browser minted (`mintedOrg`);
- * for any other the prompt stays.
+ *  - signed out: "You're invited", with the same passkey sign-in and sign-up
+ *    as the landing page's popup. "Not now" shows the landing page and keeps
+ *    the token, so signing in later still asks.
+ *  - signed in: "Join this workspace?" straight away. It asks rather than
+ *    joins: joining puts you in someone's organization.
+ *
+ * Redeeming spends one of the invite's uses even for someone already in the
+ * org, so a link that names its org is checked against the account's orgs
+ * first, and a member is told so instead of being asked. A spent invite (used,
+ * expired, revoked) is said plainly, never dropped silently.
  */
-export function InvitationPrompt({ onJoined }: { onJoined: () => void }) {
+export function InvitationHost({ onJoined, children }: { onJoined: () => void; children: ReactNode }) {
+  const { api } = useSessionApi();
   const signedIn = useMaybeSignedIn();
   const [invite, setInvite] = useState<PendingInvite | null>(() => pendingInvite());
+  const [deferred, setDeferred] = useState(false);
+  const [checking, setChecking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /** An invite for an organization this account is already in. */
-  const [member, setMember] = useState<PendingInvite | null>(null);
-  const [checking, setChecking] = useState(false);
-  const ref = useRef<HTMLDialogElement | null>(null);
-  useDialog(ref, !!signedIn && !!invite && !checking);
-
-  // The invitation page may have been the way in: re-read once signed in.
-  useEffect(() => {
-    if (signedIn) setInvite(pendingInvite());
-  }, [signedIn]);
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
 
   const client = signedIn?.client ?? null;
   useEffect(() => {
-    if (!client || !invite) return;
-    const org = mintedOrg(invite.token);
-    if (!org) return;
+    if (!client) return;
+    const current = pendingInvite();
+    setInvite(current);
+    const org = current?.org;
+    if (!current || !org) return;
     let live = true;
     setChecking(true);
     listOrgs(client)
       .then((orgs) => {
         if (!live || !orgs.some((o) => o.orgId === org)) return;
         dropInvite();
-        setMember(invite);
+        setInvite(null);
+        setOutcome({ kind: "member", invite: current });
       })
-      .catch(() => {
-        /* unknown: keep the prompt */
-      })
-      .finally(() => live && setChecking(false));
+      // Unknown membership: ask, as for a link that names no org.
+      .catch(() => {})
+      .finally(() => {
+        if (live) setChecking(false);
+      });
     return () => {
       live = false;
     };
-  }, [client, invite]);
+  }, [client]);
 
-  const dismiss = useCallback(() => {
+  if (outcome) {
+    const member = outcome.kind === "member";
+    const done = () => {
+      if (outcome.kind === "member" && outcome.invite.workspace) {
+        setActive({ appId: outcome.invite.workspace, org: outcome.invite.org });
+        onJoined();
+      }
+      setOutcome(null);
+    };
+    return (
+      <main className="invitation-page">
+        <section className="dialog dialog-body" aria-labelledby="invite-outcome-title" data-testid="invitation-outcome">
+          <h2 id="invite-outcome-title">{member ? "You're already in this workspace" : "This invite cannot be used"}</h2>
+          <p className="empty">
+            {member
+              ? "The invitation was for a workspace you are already a member of, so there is nothing to accept. It is still unused for the person it was meant for."
+              : SPENT_INVITE}
+          </p>
+          <button type="button" onClick={done} data-testid="invitation-continue">
+            {member ? "Open the workspace" : "Continue"}
+          </button>
+        </section>
+      </main>
+    );
+  }
+
+  if (!invite) return <>{children}</>;
+  if (api.session.status === "connecting") return <>{children}</>;
+
+  if (!signedIn) {
+    if (deferred) return <>{children}</>;
+    return (
+      <main className="invitation-page">
+        <section className="dialog dialog-body" aria-labelledby="invite-signin-title" data-testid="invitation-page">
+          <SignInPanel titleId="invite-signin-title" />
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => setDeferred(true)}
+            disabled={api.busy}
+            data-testid="invitation-later"
+          >
+            Not now
+          </button>
+        </section>
+      </main>
+    );
+  }
+
+  const dismiss = () => {
     dropInvite();
     setInvite(null);
     setError(null);
-    setMember(null);
-  }, []);
+  };
 
-  const join = useCallback(async () => {
-    if (!signedIn || !invite) return;
+  const join = async () => {
     setBusy(true);
     setError(null);
     try {
@@ -195,68 +213,40 @@ export function InvitationPrompt({ onJoined }: { onJoined: () => void }) {
       if (invite.workspace) setActive({ appId: invite.workspace, org });
       onJoined();
     } catch (e) {
-      // A refusal (used, expired, revoked) can never succeed: drop it. Anything
-      // else (the cluster unreachable) is kept for another try.
-      if (inviteRefused(e)) {
+      if (isSpentInvite(e)) {
         dropInvite();
-        setError(INVITE_SPENT);
+        setInvite(null);
+        setOutcome({ kind: "spent" });
       } else {
+        // The cluster unreachable: the token is kept for another try.
         setError(`The invitation could not be accepted: ${describeError(e)}`);
       }
     } finally {
       setBusy(false);
       signedIn.after();
     }
-  }, [signedIn, invite, onJoined]);
-
-  if (!signedIn || !invite) return null;
-
-  if (member) {
-    return (
-      <dialog ref={ref} className="dialog" data-testid="invitation-already-member" aria-labelledby="invite-member-title">
-        <div className="dialog-body">
-          <h2 id="invite-member-title">You&apos;re already in this workspace</h2>
-          <p className="empty">
-            This invite is for a workspace you are a member of, so it was not used. It is still there for the
-            person you meant to send it to.
-          </p>
-          <button
-            type="button"
-            onClick={() => {
-              if (member.workspace) setActive({ appId: member.workspace, org: mintedOrg(member.token) });
-              dismiss();
-              onJoined();
-            }}
-          >
-            Open it
-          </button>
-        </div>
-      </dialog>
-    );
-  }
+  };
 
   return (
-    <dialog ref={ref} className="dialog" data-testid="invitation-dialog" aria-labelledby="invite-join-title">
-      <div className="dialog-body">
-        <h2 id="invite-join-title">You&apos;re invited to Mero Forms</h2>
+    <main className="invitation-page">
+      <section className="dialog dialog-body" aria-labelledby="invite-join-title" data-testid="invitation-dialog">
+        <h2 id="invite-join-title">Join this workspace?</h2>
         <p className="empty">
-          Joining makes you a member of the organization this workspace lives in. An admin then
-          adds you to the team to give you its forms and responses.
+          You were invited to a workspace on Mero Forms. Joining makes you a member of the organization it lives
+          in. An admin then adds you to the team to give you its forms and responses.
         </p>
         {error && (
           <pre className="err" role="alert" data-testid="invitation-error">
             {error}
           </pre>
         )}
-        {!error && (
-          <button type="button" onClick={() => void join()} disabled={busy} data-testid="invitation-join">
-            {busy ? "Joining…" : "Join"}
-          </button>
-        )}
-        <button type="button" className="ghost" onClick={dismiss} disabled={busy}>
-          {error ? "Close" : "Not now"}
+        <button type="button" onClick={() => void join()} disabled={busy || checking} data-testid="invitation-join">
+          {busy || checking ? "Joining…" : error ? "Try again" : "Join"}
         </button>
-      </div>
-    </dialog>
+        <button type="button" className="ghost" onClick={dismiss} disabled={busy}>
+          Not now
+        </button>
+      </section>
+    </main>
   );
 }

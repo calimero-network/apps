@@ -6,7 +6,7 @@ import { PublicForm } from "./PublicForm";
 import { PUBLIC_PATH } from "./lib/publicLink";
 import { CaptchaCard } from "./CaptchaCard";
 import { TeamCard } from "./TeamCard";
-import { InvitationGate, InvitationPrompt, SignInModal } from "./SignIn";
+import { InvitationHost, SignInModal } from "./SignIn";
 import { WorkspacePicker } from "./WorkspacePicker";
 import { Avatar, Icon, useTheme, type Theme } from "./ui";
 import { PersonName, TeamNamespace, useSpaceNames } from "./names";
@@ -31,10 +31,11 @@ function Root() {
   const [joined, setJoined] = useState(0);
   const onJoined = useCallback(() => setJoined((n) => n + 1), []);
   return (
-    <>
-      <InvitationPrompt onJoined={onJoined} />
+    // Around the app: an invitation link can land on any page, and while one
+    // is pending its screens stand in for it.
+    <InvitationHost onJoined={onJoined}>
       <Screen key={joined} theme={theme} setTheme={setTheme} />
-    </>
+    </InvitationHost>
   );
 }
 
@@ -79,10 +80,8 @@ function Screen({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) => voi
   // and `/preview` pages for anyone. It manages those three paths itself; the
   // app's own routes live in the hash, so the two never meet.
   if (!signedIn || isLandingPath(path)) {
-    // An invite link opened signed out lands on the invitation as a page
-    // (`InvitationGate`), not the landing hero; "Not now" shows the landing.
     return (
-      <InvitationGate>
+      <>
         <LandingPage
           isAuthenticated={!!signedIn}
           onConnect={() => setSigningIn(true)}
@@ -92,7 +91,7 @@ function Screen({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) => voi
           }}
         />
         <SignInModal open={signingIn} onClose={() => setSigningIn(false)} />
-      </InvitationGate>
+      </>
     );
   }
 

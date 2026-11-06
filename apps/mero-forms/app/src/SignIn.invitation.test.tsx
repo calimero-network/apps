@@ -1,27 +1,27 @@
 /**
- * An invite link opened while signed out: the invitation as a page, then the
- * join prompt once a passkey session exists. Runs App's invitation pieces
- * (`InvitationGate` around the landing page, `InvitationPrompt` above it) on
- * the real passkey session and a mocked CalimeroClient; the landing page is
- * generated and tested on its own, so here it is only the door.
+ * An invite link: the invitation page for a signed-out visitor, "Join this
+ * workspace?" right after signing in, and the two ends that spend nothing
+ * (already a member) or cannot (a spent invite). Runs `InvitationHost` around
+ * a stand-in for the app on the real passkey session and a mocked
+ * CalimeroClient; the landing page is generated and tested on its own.
  */
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { CalimeroClient, CalimeroSession } from "@calimero-network/mero-js";
+import { CalimeroError, type CalimeroClient, type CalimeroSession } from "@calimero-network/mero-js";
 import { SessionStore, resolveTarget } from "@calimero-apps/connect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { InvitationGate, InvitationPrompt } from "./SignIn";
+import { InvitationHost } from "./SignIn";
 import { APP, type SessionDeps } from "./session";
 import { SessionProvider } from "./sessionContext";
-import { rememberMinted } from "./lib/orgs";
+import { captureInvite, inviteLink, pendingInvite } from "./lib/orgs";
 
 const SESSION: CalimeroSession = { accountId: "acct-me", sessionToken: "s", refreshToken: "r", expiresAt: 9e12 };
 const DEV_ENV = { DEV: true, VITE_CALIMERO_BUNDLE: "bundle-hash" };
 const PENDING = "mero-forms:pending-invite";
-const pending = (token: string) => JSON.stringify({ token, workspace: "app-1" });
+const pending = (token: string, org: string | null = null) => JSON.stringify({ token, workspace: "app-1", org });
 
-function fakeClient() {
-  let session: CalimeroSession | undefined;
+function fakeClient(opts: { signedIn?: boolean } = {}) {
+  let session: CalimeroSession | undefined = opts.signedIn ? SESSION : undefined;
   return {
     get session() {
       return session;
@@ -35,32 +35,27 @@ function fakeClient() {
       session = undefined;
     }),
     me: vi.fn(async () => ({ accountId: "acct-me", orgs: [{ orgId: "org-1", name: "Acme", role: "owner" }] })),
-    getOrg: vi.fn(async () => ({ members: { "acct-me": "owner" }, memberMetadata: {} })),
-    listApps: vi.fn(async () => []),
-    view: vi.fn(async () => ({ index: 1, result: null })),
-    call: vi.fn(async () => ({ index: 1, result: null, events: [] })),
-    events: vi.fn(async function* () {}),
-    redeemInvite: vi.fn(async () => ({ org: "org-1" })),
+    redeemInvite: vi.fn(async () => ({ org: "org-2" })),
   };
 }
 
-function renderApp(client: ReturnType<typeof fakeClient>) {
+function renderHost(client: ReturnType<typeof fakeClient>, onJoined = vi.fn()) {
   const deps: SessionDeps = {
     env: DEV_ENV,
     makeClient: async () => client as unknown as CalimeroClient,
     passkey: () => ({}) as never,
   };
-  return render(
+  render(
     <SessionProvider deps={deps}>
-      <InvitationPrompt onJoined={() => {}} />
-      <InvitationGate>
-        <button type="button">Sign in</button>
-      </InvitationGate>
+      <InvitationHost onJoined={onJoined}>
+        <p>the landing page</p>
+      </InvitationHost>
     </SessionProvider>,
   );
+  return onJoined;
 }
 
-function rememberSession() {
+function storeSession() {
   new SessionStore(APP, resolveTarget(DEV_ENV), localStorage).save(SESSION);
 }
 
@@ -71,64 +66,70 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("an invite link", () => {
-  it("signed out, lands on the invitation page, not the landing page", async () => {
+  it("names the org beside the token and workspace, and is captured with it", () => {
+    const link = inviteLink("inv_1", "app-1", { origin: "https://x.example", pathname: "/1.0.0/" }, "org-1");
+    window.history.replaceState(null, "", new URL(link).pathname + new URL(link).search);
+    captureInvite();
+    expect(pendingInvite()).toEqual({ token: "inv_1", workspace: "app-1", org: "org-1" });
+    expect(window.location.search).toBe("");
+  });
+
+  it("shows an invitation page, not the landing page, to a signed-out visitor", async () => {
     localStorage.setItem(PENDING, pending("tok-1"));
-    renderApp(fakeClient());
+    renderHost(fakeClient());
 
     expect(await screen.findByTestId("invitation-page")).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "You're invited" })).toBeTruthy();
-    expect(screen.getByText(/invited to join a workspace in Mero Forms/)).toBeTruthy();
+    expect(screen.getByText(/You've been invited to join a workspace in Mero Forms/)).toBeTruthy();
     expect(screen.getByTestId("signin-passkey")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Sign in" })).toBeNull();
+    expect(screen.queryByText("the landing page")).toBeNull();
   });
 
-  it("signing in on the invitation page goes straight to the join prompt", async () => {
-    const client = fakeClient();
+  it('"Not now" shows the landing page and keeps the invitation', async () => {
     localStorage.setItem(PENDING, pending("tok-1"));
-    renderApp(client);
+    renderHost(fakeClient());
 
-    fireEvent.click(await screen.findByTestId("signin-passkey"));
-    await waitFor(() => expect(client.signIn).toHaveBeenCalled());
-    fireEvent.click(await screen.findByTestId("invitation-join"));
-    await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith("tok-1"));
-    await waitFor(() => expect(screen.queryByTestId("invitation-dialog")).toBeNull());
-    expect(localStorage.getItem(PENDING)).toBeNull();
-  });
-
-  it('"Not now" shows the landing page and keeps the invite', async () => {
-    localStorage.setItem(PENDING, pending("tok-1"));
-    renderApp(fakeClient());
-
-    fireEvent.click(await screen.findByTestId("invitation-not-now"));
-    expect(await screen.findByRole("button", { name: "Sign in" })).toBeTruthy();
+    fireEvent.click(await screen.findByTestId("invitation-later"));
+    expect(await screen.findByText("the landing page")).toBeTruthy();
     expect(localStorage.getItem(PENDING)).toBe(pending("tok-1"));
   });
 
-  it("says plainly when the invite was already used or has expired", async () => {
-    rememberSession();
-    localStorage.setItem(PENDING, pending("tok-spent"));
+  it("asks to join right after signing in from the invitation page", async () => {
     const client = fakeClient();
-    client.redeemInvite.mockRejectedValueOnce(Object.assign(new Error("unknown invite"), { status: 404 }));
-    renderApp(client);
+    localStorage.setItem(PENDING, pending("tok-1"));
+    const onJoined = renderHost(client);
 
+    fireEvent.click(await screen.findByTestId("signin-passkey"));
+    await waitFor(() => expect(client.signIn).toHaveBeenCalled());
+    expect(client.redeemInvite).not.toHaveBeenCalled();
     fireEvent.click(await screen.findByTestId("invitation-join"));
-    expect((await screen.findByTestId("invitation-error")).textContent).toBe(
-      "This invite was already used or has expired. Ask the person who invited you for a new link.",
-    );
+    await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith("tok-1"));
+    await waitFor(() => expect(onJoined).toHaveBeenCalled());
+    expect(await screen.findByText("the landing page")).toBeTruthy();
     expect(localStorage.getItem(PENDING)).toBeNull();
   });
 
-  it("is not spent on someone already in its organization", async () => {
-    rememberSession();
-    rememberMinted("tok-own", "org-1", localStorage);
-    localStorage.setItem(PENDING, pending("tok-own"));
-    const client = fakeClient();
-    renderApp(client);
+  it("tells a member of the invited org they are already in it, without spending the invite", async () => {
+    storeSession();
+    localStorage.setItem(PENDING, pending("tok-own", "org-1"));
+    const client = fakeClient({ signedIn: true });
+    renderHost(client);
 
-    expect(await screen.findByTestId("invitation-already-member")).toBeTruthy();
-    expect(screen.getByText("You're already in this workspace")).toBeTruthy();
-    expect(screen.queryByTestId("invitation-join")).toBeNull();
+    expect(await screen.findByText("You're already in this workspace")).toBeTruthy();
     expect(client.redeemInvite).not.toHaveBeenCalled();
+    expect(localStorage.getItem(PENDING)).toBeNull();
+  });
+
+  it("says plainly when the invite was already used or has expired", async () => {
+    storeSession();
+    localStorage.setItem(PENDING, pending("tok-spent"));
+    const client = fakeClient({ signedIn: true });
+    client.redeemInvite.mockRejectedValueOnce(new CalimeroError(404, "NOT_FOUND", "unknown invite"));
+    renderHost(client);
+
+    fireEvent.click(await screen.findByTestId("invitation-join"));
+    expect(
+      await screen.findByText("This invite was already used or has expired. Ask the person who invited you for a new link."),
+    ).toBeTruthy();
     expect(localStorage.getItem(PENDING)).toBeNull();
   });
 });

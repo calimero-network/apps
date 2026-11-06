@@ -1,4 +1,4 @@
-import type { AppInfo, CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
+import { CalimeroError, type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
 import type { AppSource, KeyValueStorage } from "@calimero-apps/connect";
 
 /**
@@ -105,26 +105,31 @@ export async function publishName(
 // ── invitations ──────────────────────────────────────────────────────────────
 
 /** An invitation into `org` as a member, approved with the inviter's passkey (412 step-up). */
-export async function inviteToken(
+export function inviteToken(
   client: Pick<CalimeroClient, "invite">,
   org: string,
   passkey: PasskeyProvider,
 ): Promise<string> {
-  const token = await client.invite(org, "member", passkey);
-  const store = storage();
-  if (store) rememberMinted(token, org, store);
-  return token;
+  return client.invite(org, "member", passkey);
 }
 
-/** The link that opens this frontend with `token` to redeem, landing in `workspace`. */
+/**
+ * The link that opens this frontend with `token` to redeem, landing in
+ * `workspace`. It also names `org`: the token does not say which org it is for
+ * until it is redeemed, and redeeming spends it, so the link carries the org
+ * for the app to tell an existing member "you are already in" without
+ * spending a use.
+ */
 export function inviteLink(
   token: string,
   workspace: string,
   location: Pick<Location, "origin" | "pathname"> = window.location,
+  org?: string,
 ): string {
   const url = new URL(location.pathname, location.origin);
   url.searchParams.set("invite", token);
   url.searchParams.set("workspace", workspace);
+  if (org) url.searchParams.set("org", org);
   return url.toString();
 }
 
@@ -132,6 +137,8 @@ export interface PendingInvite {
   token: string;
   /** The workspace the link lands in, when it names one. */
   workspace: string | null;
+  /** The org the link names, for the membership check before redeeming. */
+  org: string | null;
 }
 
 const PENDING = "mero-forms:pending-invite";
@@ -153,7 +160,11 @@ export function captureInvite(store: KeyValueStorage | null = storage(), loc: Lo
   const url = new URL(loc.href);
   const token = url.searchParams.get("invite");
   if (!token || !store) return;
-  const pending: PendingInvite = { token, workspace: url.searchParams.get("workspace") };
+  const pending: PendingInvite = {
+    token,
+    workspace: url.searchParams.get("workspace"),
+    org: url.searchParams.get("org"),
+  };
   try {
     store.setItem(PENDING, JSON.stringify(pending));
   } catch {
@@ -161,6 +172,7 @@ export function captureInvite(store: KeyValueStorage | null = storage(), loc: Lo
   }
   url.searchParams.delete("invite");
   url.searchParams.delete("workspace");
+  url.searchParams.delete("org");
   window.history.replaceState(null, "", url.toString());
 }
 
@@ -170,7 +182,11 @@ export function pendingInvite(store: KeyValueStorage | null = storage()): Pendin
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<PendingInvite>;
     return typeof parsed.token === "string" && parsed.token
-      ? { token: parsed.token, workspace: typeof parsed.workspace === "string" ? parsed.workspace : null }
+      ? {
+          token: parsed.token,
+          workspace: typeof parsed.workspace === "string" ? parsed.workspace : null,
+          org: typeof parsed.org === "string" && parsed.org ? parsed.org : null,
+        }
       : null;
   } catch {
     return null;
@@ -185,53 +201,18 @@ export function dropInvite(store: KeyValueStorage | null = storage()): void {
   }
 }
 
-const MINTED = "mero-forms:minted-invites";
-const MINTED_KEEP = 20;
-
 /**
- * Which org each invite this browser minted points at. A token is opaque, so
- * this is the only way to know an invite's org before spending it: an owner
- * who opens their own link to check it would otherwise redeem its single use
- * and leave the person it was meant for with "unknown invite".
+ * Whether a redemption failed because the invitation itself is spent: used,
+ * expired, revoked or unknown to the node. Those answer a 4xx; a 5xx or a
+ * network failure is worth retrying with the same token.
  */
-export function rememberMinted(token: string, org: string, store: KeyValueStorage): void {
-  try {
-    const all = readMinted(store).filter(([t]) => t !== token);
-    all.push([token, org]);
-    store.setItem(MINTED, JSON.stringify(all.slice(-MINTED_KEEP)));
-  } catch {
-    /* storage unavailable: the prompt simply stays */
-  }
+export function isSpentInvite(e: unknown): boolean {
+  return e instanceof CalimeroError && e.status >= 400 && e.status < 500 && e.status !== 401;
 }
 
-/** The org `token` points at, when this browser minted it; otherwise unknown. */
-export function mintedOrg(token: string, store: KeyValueStorage | null = storage()): string | null {
-  if (!store) return null;
-  return readMinted(store).find(([t]) => t === token)?.[1] ?? null;
-}
-
-function readMinted(store: KeyValueStorage): Array<[string, string]> {
-  try {
-    const parsed: unknown = JSON.parse(store.getItem(MINTED) ?? "[]");
-    return Array.isArray(parsed)
-      ? parsed.filter((e): e is [string, string] => Array.isArray(e) && typeof e[0] === "string" && typeof e[1] === "string")
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-/** What a refused redemption (an unknown, used, expired or revoked invite) tells the person. */
-export const INVITE_SPENT = "This invite was already used or has expired. Ask the person who invited you for a new link.";
-
-/**
- * Whether the node refused the invite itself (a 4xx), as opposed to being
- * unreachable. Only a refusal drops the token: a network failure keeps it.
- */
-export function inviteRefused(e: unknown): boolean {
-  const status = (e as { status?: unknown } | null)?.status;
-  return typeof status === "number" && status >= 400 && status < 500;
-}
+/** What the invitation screen says about a spent invitation. */
+export const SPENT_INVITE =
+  "This invite was already used or has expired. Ask the person who invited you for a new link.";
 
 /** The org an invitation redeemed into, from whichever field the node named it. */
 export function joinedOrg(redeemed: Record<string, unknown>): string | null {
