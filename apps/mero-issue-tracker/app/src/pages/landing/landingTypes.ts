@@ -22,9 +22,9 @@ export type IconComponent = ComponentType<{ size?: number | string; strokeWidth?
  *  - `desktop`     — the app needs the Calimero desktop for its node/SSO. The web
  *                    page IS the front door, so the desktop CTA is promoted and
  *                    "Sign in" is suppressed. `mero-meet`.
- *  - `web`         — the desktop is not a supported target. Keep "Sign in"
- *                    primary and offer no desktop download; the badge explains
- *                    rather than warns. `mero-stream`.
+ *  - `web`         — the desktop is not a supported target. "Sign in" is the
+ *                    only CTA: no desktop download anywhere on the page, since
+ *                    the badge says "Web only". `mero-stream`.
  */
 export type Availability = 'web+desktop' | 'desktop' | 'web';
 
