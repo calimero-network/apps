@@ -7,6 +7,7 @@ import App from './App';
 import type { SessionDeps } from './session';
 import { APP } from './session';
 import { writeActiveNs } from './hooks/workspacePersistence';
+import { captureInvite } from './workspaces';
 
 const SESSION: CalimeroSession = { accountId: 'acct-alice', sessionToken: 's', refreshToken: 'r', expiresAt: 9e12 };
 const DEV_ENV = { DEV: true, VITE_CALIMERO_BUNDLE: 'bundle-hash' };
@@ -239,5 +240,41 @@ describe('App', () => {
       ),
     ).toBeTruthy();
     expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
+  });
+
+  it('lands on the deep-linked route after joining, even from the landing page the sign-in redirect left', async () => {
+    // The front door's own redirect (signed in at `/` -> /crm) must not win
+    // against the move to the invite's route.
+    const client = fakeClient();
+    window.history.replaceState(null, '', '/crm/members?invite=tok-xyz&org=org-2');
+    captureInvite(localStorage, window.location);
+    render(<App deps={deps(client)} />);
+
+    // "Not now": the guard on /crm/members sends a signed-out visitor to `/`.
+    fireEvent.click(await screen.findByTestId('invitation-later', {}, SLOW));
+    await waitFor(() => expect(window.location.pathname).toBe('/'), SLOW);
+    // Sign in from the landing page: the join prompt follows with no extra click.
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Sign in' }, SLOW))[0]);
+    fireEvent.click(await screen.findByTestId('signin-passkey', {}, SLOW));
+    fireEvent.click(await screen.findByTestId('invitation-join', {}, SLOW));
+    await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith('tok-xyz'), SLOW);
+    await waitFor(() => expect(window.location.pathname).toBe('/crm/members'), SLOW);
+    // And it stays there: no late redirect to the CRM's start.
+    await new Promise((r) => setTimeout(r, 300));
+    expect(window.location.pathname).toBe('/crm/members');
+  });
+
+  it('lands on the deep-linked route after signing in on the invitation page and joining', async () => {
+    const client = fakeClient();
+    window.history.replaceState(null, '', '/crm/members?invite=tok-xyz&org=org-2');
+    captureInvite(localStorage, window.location);
+    render(<App deps={deps(client)} />);
+
+    fireEvent.click(await screen.findByTestId('signin-passkey', {}, SLOW));
+    fireEvent.click(await screen.findByTestId('invitation-join', {}, SLOW));
+    await waitFor(() => expect(window.location.pathname).toBe('/crm/members'), SLOW);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(window.location.pathname).toBe('/crm/members');
+    expect(window.location.search).toBe('');
   });
 });
