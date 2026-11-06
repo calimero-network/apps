@@ -14,7 +14,7 @@
 // world it joins.
 
 import type { AppInfo } from "@calimero-network/mero-js";
-import { describeError } from "@calimero-apps/connect";
+import { describeError, describeSignInError } from "@calimero-apps/connect";
 import { renderListing } from "@calimero-apps/passkey/listing";
 import "@calimero-apps/passkey/passkey.css";
 
@@ -352,7 +352,7 @@ export class Landing {
         this.phase = await run();
         this.renderPlayCard({ ...defaults, name: this.readName() }, done);
       } catch (e) {
-        errEl.textContent = describeError(e);
+        errEl.textContent = describeSignInError(e);
         buttons.forEach((b) => (b.disabled = false));
       }
     };

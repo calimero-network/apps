@@ -1,4 +1,4 @@
-import { AppError, CalimeroClient, LoginRequired, type CalimeroSession } from "@calimero-network/mero-js";
+import { AppError, CalimeroClient, CalimeroError, LoginRequired, type CalimeroSession } from "@calimero-network/mero-js";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -6,11 +6,13 @@ import {
   ConfigError,
   LOCAL_NODES,
   NotServedError,
+  PASSKEY_UNKNOWN_HERE_MESSAGE,
   SessionStore,
   appSource,
   connectTarget,
   createClient,
   describeError,
+  describeSignInError,
   policyFor,
   resolveTarget,
   servedNodes,
@@ -215,6 +217,39 @@ describe("describeError", () => {
     expect(describeError(new LoginRequired("no session"))).toBe("Sign in first.");
     expect(describeError(new Error("boom"))).toBe("boom");
     expect(describeError("plain")).toBe("plain");
+  });
+});
+
+describe("describeSignInError", () => {
+  // What the node answers a sign-in with a passkey it has no account for: a
+  // passkey from another cluster, or from before this one was recreated.
+  // Seen on eu-shared-1 as "Sign in first." in every app's sign-in popup.
+  const unknown = () => new LoginRequired("unknown passkey");
+
+  it("says a passkey this cluster does not know is unknown here, not 'Sign in first.'", () => {
+    expect(describeSignInError(unknown())).toBe(PASSKEY_UNKNOWN_HERE_MESSAGE);
+    expect(describeSignInError(unknown())).not.toBe("Sign in first.");
+  });
+
+  it("knows core's dedicated code, before and after mero-js maps it to its own class", () => {
+    // mero-js 29 has no class for it yet: a plain CalimeroError with the code.
+    expect(describeSignInError(new CalimeroError(401, "PASSKEY_UNKNOWN_HERE", "this passkey belongs to another Calimero cluster"))).toBe(
+      PASSKEY_UNKNOWN_HERE_MESSAGE,
+    );
+    const mapped = Object.assign(new CalimeroError(401, "PASSKEY_UNKNOWN_HERE", "x"), { name: "PasskeyUnknownHere" });
+    expect(describeSignInError(mapped)).toBe(PASSKEY_UNKNOWN_HERE_MESSAGE);
+  });
+
+  it("shows the node's reason for any other refused ceremony", () => {
+    expect(describeSignInError(new LoginRequired("signature counter did not advance"))).toBe(
+      "The cluster refused this passkey: signature counter did not advance",
+    );
+  });
+
+  it("leaves every other error to describeError", () => {
+    expect(describeSignInError(new Error("boom"))).toBe("boom");
+    const e = new AppError("x", { code: "NotFound", fields: {} });
+    expect(describeSignInError(e)).toBe(describeError(e));
   });
 });
 

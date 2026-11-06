@@ -1,7 +1,7 @@
 import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
-import type { KeyValueStorage } from "@calimero-apps/connect";
+import { LoginRequired, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
+import { PASSKEY_UNKNOWN_HERE_MESSAGE, type KeyValueStorage } from "@calimero-apps/connect";
 
 import { PasskeySignIn, type PasskeySignInApi } from "./PasskeySignIn";
 import { isPasskeyCancel, usePasskeySession, type SessionDeps } from "./session";
@@ -85,6 +85,16 @@ describe("usePasskeySession", () => {
 
     await act(() => result.current.signIn());
     expect(result.current.error).toContain("node down");
+  });
+
+  it("says a passkey the cluster does not know is unknown here, not 'Sign in first.'", async () => {
+    const client = fakeClient({ signIn: vi.fn(async () => Promise.reject(new LoginRequired("unknown passkey"))) });
+    const d = deps(client);
+    const { result } = renderHook(() => usePasskeySession("test-app", d));
+    await waitFor(() => expect(result.current.session.status).toBe("signed-out"));
+
+    await act(() => result.current.signIn());
+    expect(result.current.error).toBe(PASSKEY_UNKNOWN_HERE_MESSAGE);
   });
 
   it("is unconfigured when the target cannot be resolved", async () => {

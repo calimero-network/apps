@@ -6,6 +6,7 @@ import {
   NotServedError,
   connectTarget,
   describeError,
+  describeSignInError,
   type ConnectEnv,
   type KeyValueStorage,
   type Target,
@@ -140,7 +141,7 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
         store?.sync(session.client);
         setSession({ status: "signed-in", client: session.client, target: session.target, accountId });
       } catch (e) {
-        if (!isPasskeyCancel(e)) setError(describeError(e));
+        if (!isPasskeyCancel(e)) setError(describeSignInError(e));
       } finally {
         setBusy(false);
       }

@@ -10,7 +10,7 @@
 // here once the person has signed in (net/worlds.ts).
 
 import { CalimeroError } from "@calimero-network/mero-js";
-import { describeError, type AppSource } from "@calimero-apps/connect";
+import { describeError, describeSignInError, type AppSource } from "@calimero-apps/connect";
 
 import {
   CURRENT_WORLD,
@@ -386,7 +386,7 @@ export class Landing {
         await run();
         this.renderPlayCard(defaults, done);
       } catch (e) {
-        errEl.textContent = describeError(e);
+        errEl.textContent = describeSignInError(e);
         buttons.forEach((b) => (b.disabled = false));
       }
     };

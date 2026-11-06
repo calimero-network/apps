@@ -25,6 +25,7 @@ import {
   appSource,
   createClient,
   describeError,
+  describeSignInError,
   NotServedError,
   connectTarget,
   type AppSource,
@@ -177,7 +178,7 @@ export function CalimeroProvider({
         });
       } catch (e) {
         // A dismissed passkey prompt is a quiet cancel, not an error to show.
-        if (!isPasskeyCancel(e)) setError(describeError(e));
+        if (!isPasskeyCancel(e)) setError(describeSignInError(e));
       } finally {
         setBusy(false);
       }

@@ -22,6 +22,7 @@ import {
   appSource,
   createClient,
   describeError,
+  describeSignInError,
   connectTarget,
   NotServedError,
   type AppSource,
@@ -133,7 +134,7 @@ function useSessionState(deps: SessionDeps): SessionApi {
         setSession({ status: 'signed-in', client: session.client, target: session.target, accountId });
       } catch (e) {
         // A dismissed passkey prompt is a quiet cancel, not an error to show.
-        if (!isPasskeyCancel(e)) setError(describeError(e));
+        if (!isPasskeyCancel(e)) setError(describeSignInError(e));
       } finally {
         setBusy(false);
       }

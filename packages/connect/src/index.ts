@@ -20,6 +20,8 @@ export {
   SessionStore,
   createClient,
   describeError,
+  describeSignInError,
+  PASSKEY_UNKNOWN_HERE_MESSAGE,
   type ClientOptions,
   type KeyValueStorage,
 } from "./client";

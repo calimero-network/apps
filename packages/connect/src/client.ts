@@ -146,3 +146,38 @@ export function describeError(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
 }
+
+/** What a person is told when the cluster has no account for the passkey they used. */
+export const PASSKEY_UNKNOWN_HERE_MESSAGE =
+  "This passkey isn't known on this cluster: create a new passkey here, or use one you made on this cluster.";
+
+/** The node's own words in a refusal, without mero-js's `"{status} {code}: "` prefix. */
+function nodeMessage(error: CalimeroError): string {
+  const prefix = `${error.status} ${error.code}: `;
+  return error.message.startsWith(prefix) ? error.message.slice(prefix.length) : error.message;
+}
+
+/**
+ * {@link describeError} for a failed sign-in or sign-up (`signIn`/`signUp`).
+ * The person is not signed in yet, so "Sign in first." says nothing: the node's
+ * `401` there is about the passkey, and its reason is what helps.
+ *
+ * A passkey the cluster has no account for (made on another cluster, or before
+ * this one was recreated; every cluster shares one rp id, so the browser offers
+ * it anyway) answers `401 UNAUTHENTICATED "unknown passkey"`, or, from core's
+ * `PASSKEY_UNKNOWN_HERE` on, that code (mero-js's `PasskeyUnknownHere`).
+ */
+export function describeSignInError(error: unknown): string {
+  if (error instanceof CalimeroError) {
+    if (error.code === "PASSKEY_UNKNOWN_HERE" || error.name === "PasskeyUnknownHere") {
+      return PASSKEY_UNKNOWN_HERE_MESSAGE;
+    }
+    if (error instanceof LoginRequired) {
+      const reason = nodeMessage(error);
+      return reason === "unknown passkey"
+        ? PASSKEY_UNKNOWN_HERE_MESSAGE
+        : `The cluster refused this passkey: ${reason || "no reason given"}`;
+    }
+  }
+  return describeError(error);
+}

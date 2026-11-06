@@ -25,6 +25,7 @@ import {
   appSource,
   createClient,
   describeError,
+  describeSignInError,
   connectTarget,
   NotServedError,
   type AppSource,
@@ -144,7 +145,7 @@ async function ceremony(run: (c: CalimeroClient) => Promise<{ accountId: string 
     set({ status: "signed-in", accountId });
   } catch (e) {
     // A dismissed passkey prompt is a quiet cancel, not an error to show.
-    if (!isPasskeyCancel(e)) set({ message: describeError(e) });
+    if (!isPasskeyCancel(e)) set({ message: describeSignInError(e) });
     throw e;
   }
 }

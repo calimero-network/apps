@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Signing in with a passkey the cluster has no account for (made on another
+  cluster, or before the cluster was recreated) now says so: "This passkey
+  isn't known on this cluster: create a new passkey here, or use one you made
+  on this cluster." The node's `401 unknown passkey` used to show as "Sign in
+  first.", which read as if signing in itself was broken.
 - Settings offers a workspace admin **Delete workspace** and everyone else
   **Leave workspace**, never both. Leave was gated on `!isAdmin`, and `isAdmin`
   is false until the role is read and when the read fails, so an admin was
