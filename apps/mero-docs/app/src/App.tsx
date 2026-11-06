@@ -196,10 +196,13 @@ function AppRoutes() {
   );
 }
 
+/** The invite link's token, while it waits to be redeemed. */
+const pendingInviteToken = () => pendingInvite()?.token ?? null;
+
 export default function App({ deps }: { deps?: SessionDeps } = {}) {
   return (
     <ThemeProvider>
-      <SessionProvider deps={deps}>
+      <SessionProvider deps={deps} invite={pendingInviteToken}>
         <CalimeroProvider>
           <AppToaster />
           <TooltipProvider>

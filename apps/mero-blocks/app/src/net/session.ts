@@ -80,9 +80,19 @@ export async function signIn(phase: SignedOut, deps: SessionDeps = defaultDeps):
   return { ...phase, status: "signed-in", accountId };
 }
 
-/** Create an account (a new passkey) named `name`. */
-export async function signUp(phase: SignedOut, name: string, deps: SessionDeps = defaultDeps): Promise<SignedIn> {
-  const { accountId } = await phase.client.signUp(deps.passkey(), name);
+/**
+ * Create an account (a new passkey) named `name`. `invite` goes with it on a
+ * cluster that requires one (`signUpInvite`).
+ */
+export async function signUp(
+  phase: SignedOut,
+  name: string,
+  deps: SessionDeps = defaultDeps,
+  invite: string | null = null,
+): Promise<SignedIn> {
+  const { accountId } = invite
+    ? await phase.client.signUp(deps.passkey(), name, { invite })
+    : await phase.client.signUp(deps.passkey(), name);
   phase.sessions.sync(phase.client);
   return { ...phase, status: "signed-in", accountId };
 }

@@ -132,7 +132,8 @@ describe("App", () => {
     await screen.findByText("Sit down at a table");
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "");
     expect(new SessionStore(APP, LOCAL, storage).load()).toEqual(SESSION);
-    expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" });
+    // The table list is asked for after the signed-in page renders, not before it.
+    await waitFor(() => expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" }));
 
     fireEvent.click(screen.getByText("New table"));
     await screen.findByText("Invite an opponent");

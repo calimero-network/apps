@@ -20,6 +20,19 @@ export {
   SessionStore,
   createClient,
   describeError,
+  describeSignInError,
+  isPasskeyUnknownHere,
+  PASSKEY_UNKNOWN_HERE_MESSAGE,
+  PASSKEY_UNKNOWN_SIGN_UP_MESSAGE,
   type ClientOptions,
   type KeyValueStorage,
 } from "./client";
+export {
+  SIGN_UP_CLOSED,
+  SIGN_UP_INVITE_ONLY,
+  readSignUpPolicy,
+  signUpAccess,
+  signUpInvite,
+  signUpNotice,
+  type SignUpAccess,
+} from "./signUp";

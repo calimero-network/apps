@@ -231,7 +231,7 @@ catalog:
 # moves with `component-core-tag` in the root Cargo.toml.
 catalogs:
   component:
-    "@calimero-network/mero-js": 29.2.0
+    "@calimero-network/mero-js": 29.6.0
 
 # esbuild's postinstall needs approving explicitly under pnpm 10+; pnpm 11
 # renamed the key to `allowBuilds`, so this may need updating with the toolchain.

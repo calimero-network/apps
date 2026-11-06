@@ -9,7 +9,16 @@
 // An invitation link opened while signed out waits in storage and is redeemed
 // here once the person has signed in (net/worlds.ts).
 
-import { describeError, type AppSource } from "@calimero-apps/connect";
+import type { SignUpPolicy } from "@calimero-network/mero-js";
+import {
+  describeError,
+  describeSignInError,
+  readSignUpPolicy,
+  signUpAccess,
+  signUpInvite,
+  signUpNotice,
+  type AppSource,
+} from "@calimero-apps/connect";
 
 import {
   CURRENT_WORLD,
@@ -376,6 +385,7 @@ export class Landing {
       ${this.commonInputs(defaults)}
       <button class="mtl-btn green" data-testid="sign-in-btn">Sign in with a passkey</button>
       <button class="mtl-btn ghost" data-testid="sign-up-btn">Create an account</button>
+      <div class="mtl-note" data-testid="sign-up-unavailable" hidden></div>
       <div class="mtl-error" data-testid="sign-in-error"></div>
       <div class="mtl-note">Accounts are passkeys: nothing to remember, nothing to leak.
         Connected to ${escapeHtml(this.conn.describe())}. A new account takes the player name above.</div>
@@ -389,6 +399,22 @@ export class Landing {
     });
     const errEl = el.querySelector<HTMLElement>("[data-testid=sign-in-error]")!;
     const buttons = [...el.querySelectorAll<HTMLButtonElement>("button.mtl-btn")];
+    const signUpBtn = el.querySelector<HTMLButtonElement>("[data-testid=sign-up-btn]")!;
+    const unavailableEl = el.querySelector<HTMLElement>("[data-testid=sign-up-unavailable]")!;
+    // Who may create an account here (read once, never blocking): a closed or
+    // invite-only cluster gets no "Create an account", and says why.
+    let policy: SignUpPolicy | null | undefined;
+    const access = () => signUpAccess(policy, pendingInvite() !== null);
+    const applyPolicy = () => {
+      const notice = signUpNotice(access());
+      if (notice) signUpBtn.disabled = true;
+      unavailableEl.hidden = notice === null;
+      unavailableEl.textContent = notice ?? "";
+    };
+    void readSignUpPolicy(this.conn.client).then((p) => {
+      policy = p;
+      applyPolicy();
+    });
     const ceremony = async (run: () => Promise<string>) => {
       errEl.textContent = "";
       buttons.forEach((b) => (b.disabled = true));
@@ -396,15 +422,16 @@ export class Landing {
         await run();
         this.renderPlayCard(defaults, done);
       } catch (e) {
-        errEl.textContent = describeError(e);
+        errEl.textContent = describeSignInError(e, access());
         buttons.forEach((b) => (b.disabled = false));
+        applyPolicy();
       }
     };
     el.querySelector("[data-testid=sign-in-btn]")!.addEventListener("click", () =>
       void ceremony(() => this.conn.signIn()),
     );
     el.querySelector("[data-testid=sign-up-btn]")!.addEventListener("click", () =>
-      void ceremony(() => this.conn.signUp(this.readName())),
+      void ceremony(() => this.conn.signUp(this.readName(), signUpInvite(policy, pendingInvite()))),
     );
   }
 

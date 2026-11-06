@@ -62,8 +62,11 @@ export class Connection {
     return accountId;
   }
 
-  async signUp(name: string): Promise<string> {
-    const { accountId } = await this.client.signUp(this.passkey(), name);
+  /** A new account (a new passkey); `invite` goes with it on a cluster that requires one. */
+  async signUp(name: string, invite: string | null = null): Promise<string> {
+    const { accountId } = invite
+      ? await this.client.signUp(this.passkey(), name, { invite })
+      : await this.client.signUp(this.passkey(), name);
     this.sync();
     return accountId;
   }
