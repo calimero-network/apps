@@ -29,13 +29,17 @@ describe('invitations', () => {
       'http://localhost:5173/agreements/a1?invite=tok&agreement=a1',
     );
     expect(inviteLink('tok', null, loc)).toBe('http://localhost:5173/agreements/a1?invite=tok');
+    // Naming the workspace lets a member who opens it be told so, not spend it.
+    expect(inviteLink('tok', null, loc, 'org-1')).toBe(
+      'http://localhost:5173/agreements/a1?invite=tok&org=org-1',
+    );
   });
 
   it('are taken off the address bar before anything renders, and survive until dropped', () => {
     window.history.replaceState(null, '', '/?invite=tok&agreement=a1&x=1');
     captureInvite();
     expect(window.location.search).toBe('?x=1');
-    expect(pendingInvite()).toEqual({ token: 'tok', agreement: 'a1' });
+    expect(pendingInvite()).toEqual({ token: 'tok', agreement: 'a1', org: null });
     dropInvite();
     expect(pendingInvite()).toBeNull();
   });

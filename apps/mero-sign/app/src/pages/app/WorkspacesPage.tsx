@@ -211,7 +211,7 @@ export default function WorkspacesPage({
         // An org invite: a passkey step-up for the inviter. The link carries
         // the token; the recipient redeems it after signing in.
         const token = await inviteToken(app.client, row.namespaceId, app.passkey());
-        setInviteLink(linkFor(token));
+        setInviteLink(linkFor(token, null, window.location, row.namespaceId));
       } catch (error) {
         setInviteFor(null);
         setBanner({ kind: 'error', text: errorMessage(error) });
@@ -436,7 +436,8 @@ export default function WorkspacesPage({
               Invite to {inviteFor.name}
             </h2>
             <p className={styles.modalDesc}>
-              Anyone with this link can join the workspace and its agreements.
+              Single use: one person can join the workspace and its agreements
+              with this link. Make a new one for each person you invite.
               Creating it asks for your passkey.
             </p>
             {minting ? (

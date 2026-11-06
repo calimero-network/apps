@@ -8,13 +8,15 @@
  * Replaces v1's signed namespace invitations, which travelled as a
  * deflate+base58 payload (`inviteCodec`) on a registry deep link.
  */
-import type { CalimeroClient, PasskeyProvider } from '@calimero-network/mero-js';
+import { CalimeroError, type CalimeroClient, type PasskeyProvider } from '@calimero-network/mero-js';
 import type { KeyValueStorage } from '@calimero-apps/connect';
 
 export interface PendingInvite {
   token: string;
   /** The agreement (app instance) the link lands in, when it names one. */
   agreement: string | null;
+  /** The workspace (org) the token admits to, when the link names it. */
+  org: string | null;
 }
 
 const PENDING = 'mero-sign:pending-invite';
@@ -28,15 +30,22 @@ export function inviteToken(
   return client.invite(org, 'member', passkey);
 }
 
-/** The link that opens this frontend with `token` to redeem. */
+/**
+ * The link that opens this frontend with `token` to redeem. `org` names the
+ * workspace the token admits to, so someone already in it (the inviter
+ * opening their own link, say) is told so instead of spending the token's
+ * single use.
+ */
 export function inviteLink(
   token: string,
   agreement?: string | null,
   location: Pick<Location, 'origin' | 'pathname'> = window.location,
+  org?: string | null,
 ): string {
   const url = new URL(location.pathname, location.origin);
   url.searchParams.set('invite', token);
   if (agreement) url.searchParams.set('agreement', agreement);
+  if (org) url.searchParams.set('org', org);
   return url.toString();
 }
 
@@ -55,6 +64,7 @@ export function captureInvite(
   const pending: PendingInvite = {
     token,
     agreement: url.searchParams.get('agreement'),
+    org: url.searchParams.get('org'),
   };
   try {
     storage.setItem(PENDING, JSON.stringify(pending));
@@ -63,6 +73,7 @@ export function captureInvite(
   }
   url.searchParams.delete('invite');
   url.searchParams.delete('agreement');
+  url.searchParams.delete('org');
   window.history.replaceState(null, '', url.toString());
 }
 
@@ -78,6 +89,7 @@ export function pendingInvite(
           token: parsed.token,
           agreement:
             typeof parsed.agreement === 'string' ? parsed.agreement : null,
+          org: typeof parsed.org === 'string' ? parsed.org : null,
         }
       : null;
   } catch {
@@ -100,4 +112,38 @@ export function joinedOrg(redeemed: Record<string, unknown>): string | null {
     if (typeof v === 'string' && v) return v;
   }
   return null;
+}
+
+/**
+ * What to say when the node refused an invitation: it is unknown, already
+ * used, expired or revoked. A 4xx can never succeed on retry, so the caller
+ * drops the token; anything else (the cluster unreachable) is kept.
+ */
+export const INVITE_REFUSED =
+  'This invite was already used or has expired. Ask the person who invited you for a new link.';
+
+/** True when `e` is the node refusing the invitation itself (see `INVITE_REFUSED`). */
+export function inviteRefused(e: unknown): boolean {
+  return e instanceof CalimeroError && e.status >= 400 && e.status < 500;
+}
+
+/**
+ * Whether this account is already in the workspace an invitation admits to:
+ * `true` or `false` when the link names its org, `null` when it cannot be
+ * told (an older link). Redeeming as an existing member spends the token's
+ * single use, which then leaves the person it was meant for unable to join.
+ */
+export async function alreadyMember(
+  client: Pick<CalimeroClient, 'me'>,
+  invite: PendingInvite,
+): Promise<boolean | null> {
+  if (!invite.org) return null;
+  try {
+    const me = (await client.me()) as {
+      orgs?: Array<{ orgId?: unknown }>;
+    };
+    return (me.orgs ?? []).some((o) => o.orgId === invite.org);
+  } catch {
+    return null;
+  }
 }
