@@ -18,14 +18,14 @@
     "test": "vitest run"
   },
   "peerDependencies": {
-    "@calimero-network/mero-js": ">=29.3.0",
+    "@calimero-network/mero-js": ">=29.7.0",
     "react": ">=18"
   },
   "dependencies": {
     "@calimero-apps/connect": "workspace:*"
   },
   "devDependencies": {
-    "@calimero-network/mero-js": "catalog:component",
+    "@calimero-network/mero-js": ">=29.7.0",
     "@testing-library/react": "catalog:",
     "@types/react": "^19.2.18",
     "jsdom": "catalog:",

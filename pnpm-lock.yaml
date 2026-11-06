@@ -2522,8 +2522,8 @@ importers:
   packages/connect:
     devDependencies:
       '@calimero-network/mero-js':
-        specifier: catalog:component
-        version: 29.6.0
+        specifier: '>=29.7.0'
+        version: 29.7.0
       jsdom:
         specifier: 'catalog:'
         version: 25.0.1
@@ -2661,8 +2661,8 @@ importers:
         version: link:../connect
     devDependencies:
       '@calimero-network/mero-js':
-        specifier: catalog:component
-        version: 29.6.0
+        specifier: '>=29.7.0'
+        version: 29.7.0
       '@testing-library/react':
         specifier: 'catalog:'
         version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -3435,6 +3435,10 @@ packages:
 
   '@calimero-network/mero-js@29.6.0':
     resolution: {integrity: sha512-qNE4hx3UorSoZqLZ2Fr6P5043kdtE/UI1tBwqhJGKn0Y7dgxaKpgQit2o1KyA95dLue/arSEACikSRYG7oO2Vw==}
+    engines: {node: '>=18.0.0'}
+
+  '@calimero-network/mero-js@29.7.0':
+    resolution: {integrity: sha512-M67wFre8MZsbHXXguvffKwRSisVY9xFePJ1b1KVrvtcJ9s/WKa+u8TEBNbJrx+Mce1lxRJr2O9RTWIiwxdWvzA==}
     engines: {node: '>=18.0.0'}
 
   '@calimero-network/mero-react@10.3.0':
@@ -10598,6 +10602,12 @@ snapshots:
       - encoding
 
   '@calimero-network/mero-js@29.6.0':
+    dependencies:
+      '@phala/dcap-qvl': 0.5.3
+    transitivePeerDependencies:
+      - encoding
+
+  '@calimero-network/mero-js@29.7.0':
     dependencies:
       '@phala/dcap-qvl': 0.5.3
     transitivePeerDependencies:
