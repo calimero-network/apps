@@ -300,7 +300,7 @@ export const DOCS = {
         heading: 'Getting started',
         steps: [
           { title: 'Play offline first, if you like', body: 'The game runs with no node at all, persisting to your browser. Nothing is shared, and nothing needs setting up.' },
-          { title: 'Connect a node', body: 'Press Connect to node to move from a local world to a shared one.' },
+          { title: 'Sign in', body: 'Press Sign in to move from a local world to a shared one. The same button creates your passkey account the first time.' },
           { title: 'Create a world', body: 'Pick a name. You get a seed, and the world is yours — you are its owner.' },
           { title: 'Invite people', body: 'Share the link. Their client generates the same terrain from the seed and then applies your overrides.' },
         ],
@@ -422,7 +422,7 @@ export const DOCS = {
         id: 'start',
         heading: 'Getting started',
         steps: [
-          { title: 'Sign in', body: 'Press Connect and sign in with a passkey, or create an account with a new one.' },
+          { title: 'Sign in', body: 'Press Sign in and continue with your passkey, or create an account with a new one.' },
           { title: 'Create a workspace', body: 'Name it and pick the name people will see you by. You are its admin.' },
           { title: 'Create channels', body: 'Press + next to Channels. Choose Public for anyone in the workspace, or Private for only the people you add.' },
           { title: 'Invite your team', body: 'Share an invite link. Whoever opens it signs in and joins the workspace.' },
@@ -488,7 +488,7 @@ export const DOCS = {
         id: 'start',
         heading: 'Getting started',
         steps: [
-          { title: 'Sign in', body: 'Press Connect and sign in (or create an account) with a passkey.' },
+          { title: 'Sign in', body: 'Press Sign in and continue with your passkey, or create an account with a new one.' },
           { title: 'Create a board', body: 'You are its owner. Name it, and set a description if it needs one.' },
           { title: 'Draw something', body: 'Add frames, shapes and text. Each element is a separate record, so collaborators editing different elements never queue behind each other.' },
           { title: 'Invite editors', body: 'Grant the editor role to the people who should be able to change things; everyone else can look.' },
@@ -1182,7 +1182,7 @@ export const DOCS = {
         heading: 'Getting started',
         steps: [
           { title: 'Play offline', body: 'Start digging immediately with no node and no account. Progress is saved locally.' },
-          { title: 'Connect a node', body: 'Press Connect to node when you want to share a world.' },
+          { title: 'Sign in', body: 'Press Sign in, or create a passkey account, when you want to share a world.' },
           { title: 'Create a world', body: 'Name it; you get a seed and you own the world.' },
           { title: 'Invite people', body: 'Share the link. Their client generates the same terrain and applies your edits on top.' },
         ],
