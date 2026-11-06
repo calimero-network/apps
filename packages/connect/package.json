@@ -13,10 +13,10 @@
     "test": "vitest run"
   },
   "peerDependencies": {
-    "@calimero-network/mero-js": ">=29.3.0"
+    "@calimero-network/mero-js": ">=29.7.0"
   },
   "devDependencies": {
-    "@calimero-network/mero-js": "catalog:component",
+    "@calimero-network/mero-js": ">=29.7.0",
     "jsdom": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
