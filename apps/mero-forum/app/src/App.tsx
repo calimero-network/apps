@@ -9,6 +9,8 @@ import SpacesPage from "./pages/SpacesPage";
 import ForumsPage from "./pages/ForumsPage";
 import InvitationPrompt from "./components/InvitationPrompt";
 import SignInModal from "./components/SignInModal";
+import InvitationPage from "./components/InvitationPage";
+import { pendingInvite } from "./lib/spaces";
 import { ToastProvider } from "./contexts/ToastContext";
 import { useStoredForum } from "./lib/storedForum";
 import type { SessionDeps } from "./session";
@@ -64,13 +66,19 @@ function RequireAuth({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-/** An authenticated visitor has no business on the marketing page: into the app. */
+/**
+ * An authenticated visitor has no business on the marketing page: into the
+ * app, or back to the route a guard bounced them from (a shared post link
+ * opened signed out, then a sign-in on this page).
+ */
 function RedirectIfAuthed({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
+  const from = (useLocation().state as { from?: unknown } | null)?.from;
   // Into the remembered forum only once the cluster has confirmed it.
   const forum = useStoredForum();
   if (isLoading) return null;
   if (isAuthenticated) {
+    if (typeof from === "string" && /^\/(p\/|f$|spaces)/.test(from)) return <Navigate to={from} replace />;
     if (forum === "checking") return null;
     return <Navigate to={forum === "open" ? "/f" : "/spaces"} replace />;
   }
@@ -94,6 +102,21 @@ function Landing() {
   );
 }
 
+/**
+ * A signed-out visitor holding an invite (`?invite=`, taken into storage by
+ * `main.tsx`) sees the invitation as a page instead of whatever the route
+ * would render. The URL is left alone, so a deep link opens where it pointed
+ * once they are signed in, with the join prompt (`InvitationPrompt`) on top.
+ */
+function InvitationGate({ children }: { children: ReactNode }) {
+  const { isAuthenticated, isLoading } = useAuth();
+  const [later, setLater] = useState(false);
+  if (isAuthenticated || later || pendingInvite() === null) return <>{children}</>;
+  // Still restoring a session: it may turn out signed in, so show neither yet.
+  if (isLoading) return null;
+  return <InvitationPage onNotNow={() => setLater(true)} />;
+}
+
 function AppRoutes() {
   // ToastProvider and InvitationPrompt sit ABOVE the router: a toast raised by
   // an action that navigates would unmount with its page, and an invitation
@@ -102,77 +125,79 @@ function AppRoutes() {
   return (
     <ToastProvider>
       <InvitationPrompt />
-      <Routes>
-        {/* The explainer is the front door now, not the feed. */}
-        {/* The landing page is three pages: `/`, `/docs` and `/preview`. They are
-          real URLs so they can be shared and opened cold, which needs a route
-          here — otherwise this app's catch-all swallows the deep link before
-          the page ever renders. */}
-        {LANDING_PATHS.map((landingPath) => (
-          <Route
-            key={landingPath}
-            path={landingPath}
-            // ⚠️ Only `/` bounces a signed-in visitor into the app. `/docs` and
-            // `/preview` are reference pages, and somebody already signed in is
-            // exactly the person most likely to want to read them.
-            element={
-              landingPath === "/" ? (
-                <RedirectIfAuthed>
+      <InvitationGate>
+        <Routes>
+          {/* The explainer is the front door now, not the feed. */}
+          {/* The landing page is three pages: `/`, `/docs` and `/preview`. They are
+            real URLs so they can be shared and opened cold, which needs a route
+            here — otherwise this app's catch-all swallows the deep link before
+            the page ever renders. */}
+          {LANDING_PATHS.map((landingPath) => (
+            <Route
+              key={landingPath}
+              path={landingPath}
+              // ⚠️ Only `/` bounces a signed-in visitor into the app. `/docs` and
+              // `/preview` are reference pages, and somebody already signed in is
+              // exactly the person most likely to want to read them.
+              element={
+                landingPath === "/" ? (
+                  <RedirectIfAuthed>
+                    <Landing />
+                  </RedirectIfAuthed>
+                ) : (
                   <Landing />
-                </RedirectIfAuthed>
-              ) : (
-                <Landing />
-              )
+                )
+              }
+            />
+          ))}
+          {/* The /login PAGE is gone — every app had one, every one looked
+            different, and its whole content was a button the visitor had
+            already pressed to get there. The path stays as a redirect so a
+            bookmark lands on the front door instead of a blank route. */}
+          <Route path="/login" element={<Navigate to="/" replace />} />
+          {/* Spaces (organizations) hold forums (app instances). An invitation
+            is an org invitation: invite someone to the space once and they can
+            read every forum in it. */}
+          <Route
+            path="/spaces"
+            element={
+              <RequireAuth>
+                <SpacesPage />
+              </RequireAuth>
             }
           />
-        ))}
-        {/* The /login PAGE is gone — every app had one, every one looked
-          different, and its whole content was a button the visitor had
-          already pressed to get there. The path stays as a redirect so a
-          bookmark lands on the front door instead of a blank route. */}
-        <Route path="/login" element={<Navigate to="/" replace />} />
-        {/* Spaces (organizations) hold forums (app instances). An invitation
-          is an org invitation: invite someone to the space once and they can
-          read every forum in it. */}
-        <Route
-          path="/spaces"
-          element={
-            <RequireAuth>
-              <SpacesPage />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/spaces/:namespaceId"
-          element={
-            <RequireAuth>
-              <ForumsPage />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/f"
-          element={
-            <RequireForum>
-              <div className="shell">
-                <FeedPage />
-              </div>
-            </RequireForum>
-          }
-        />
-        <Route
-          path="/p/:postId"
-          element={
-            <RequireForum>
-              <div className="shell">
-                <PostPage />
-              </div>
-            </RequireForum>
-          }
-        />
-        {/* A stale shared link lands on the explainer rather than a blank page. */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+          <Route
+            path="/spaces/:namespaceId"
+            element={
+              <RequireAuth>
+                <ForumsPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/f"
+            element={
+              <RequireForum>
+                <div className="shell">
+                  <FeedPage />
+                </div>
+              </RequireForum>
+            }
+          />
+          <Route
+            path="/p/:postId"
+            element={
+              <RequireForum>
+                <div className="shell">
+                  <PostPage />
+                </div>
+              </RequireForum>
+            }
+          />
+          {/* A stale shared link lands on the explainer rather than a blank page. */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </InvitationGate>
     </ToastProvider>
   );
 }

@@ -1,13 +1,10 @@
 import { useEffect, useRef } from "react";
-import { AppListing, PasskeySignIn } from "@calimero-apps/passkey";
-import "@calimero-apps/passkey/passkey.css";
-
-import { LISTING, describeTarget } from "../session";
 import { useSessionApi } from "../sessionContext";
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import { pendingInvite } from "../lib/spaces";
 import styles from "./InviteModal.module.css";
 import { XIcon } from "./icons";
+import SignInPanel from "./SignInPanel";
 
 /**
  * Sign in with a passkey, or create an account with a new one. Replaces v1's
@@ -25,11 +22,6 @@ export default function SignInModal({ open, onClose }: { open: boolean; onClose:
     if (open && api.session.status === "signed-in") onClose();
   }, [open, api.session.status, onClose]);
 
-  const where =
-    api.session.status === "signed-out" || api.session.status === "signed-in"
-      ? describeTarget(api.session.target)
-      : null;
-
   return (
     <dialog
       ref={dialogRef}
@@ -39,35 +31,24 @@ export default function SignInModal({ open, onClose }: { open: boolean; onClose:
         if (e.target === dialogRef.current && !api.busy) onClose();
       }}
       data-testid="signin-modal"
+      aria-labelledby="signin-title"
     >
       <div className={styles.body}>
-        <header className={styles.head}>
-          <button
-            type="button"
-            className={styles.close}
-            onClick={() => !api.busy && onClose()}
-            aria-label="Close"
-            title="Close"
-          >
-            <XIcon size={20} />
-          </button>
-          <h2 className={styles.title}>{invited ? "You're invited" : "Sign in"}</h2>
-        </header>
-        <p className={styles.hint}>
-          {invited ? "Sign in, or create an account, to join the space you were invited to. " : ""}
-          Accounts are passkeys: nothing to remember, nothing to leak.
-          {where ? ` Connected to ${where}.` : ""}
-        </p>
-
-        {api.session.status === "connecting" && <p className={styles.hint}>Connecting…</p>}
-        {api.session.status === "listing" && <AppListing {...LISTING} />}
-        {api.session.status === "unconfigured" && (
-          <p className={styles.hint} role="alert">
-            {api.session.message}
-          </p>
-        )}
-
-        {api.session.status === "signed-out" && <PasskeySignIn api={api} />}
+        <SignInPanel
+          invited={invited}
+          titleId="signin-title"
+          close={
+            <button
+              type="button"
+              className={styles.close}
+              onClick={() => !api.busy && onClose()}
+              aria-label="Close"
+              title="Close"
+            >
+              <XIcon size={20} />
+            </button>
+          }
+        />
       </div>
     </dialog>
   );

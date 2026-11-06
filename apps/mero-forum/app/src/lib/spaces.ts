@@ -200,12 +200,14 @@ export async function publishSpaceName(
 // ── invitations ──────────────────────────────────────────────────────────────
 
 /** An invitation into `org` as a member, approved with the inviter's passkey (412 step-up). */
-export function inviteToken(
+export async function inviteToken(
   client: Pick<CalimeroClient, "invite">,
   org: string,
   passkey: PasskeyProvider,
 ): Promise<string> {
-  return client.invite(org, "member", passkey);
+  const token = await client.invite(org, "member", passkey);
+  rememberMinted(token, org);
+  return token;
 }
 
 /**
@@ -271,6 +273,53 @@ export function dropInvite(storage: KeyValueStorage = localStorage): void {
   } catch {
     /* nothing stored */
   }
+}
+
+const MINTED = `${APP_NAME}:minted-invites`;
+const MINTED_KEEP = 20;
+
+/**
+ * Which org each invite this browser minted points at. A token is opaque, so
+ * this is the only way to know an invite's org before spending it: an owner
+ * who opens their own link to check it would otherwise redeem its single use
+ * and leave the person it was meant for with "unknown invite".
+ */
+export function rememberMinted(token: string, org: string, storage: KeyValueStorage = localStorage): void {
+  try {
+    const all = readMinted(storage).filter(([t]) => t !== token);
+    all.push([token, org]);
+    storage.setItem(MINTED, JSON.stringify(all.slice(-MINTED_KEEP)));
+  } catch {
+    /* storage unavailable: the prompt simply stays */
+  }
+}
+
+/** The org `token` points at, when this browser minted it; otherwise unknown. */
+export function mintedOrg(token: string, storage: KeyValueStorage = localStorage): string | null {
+  return readMinted(storage).find(([t]) => t === token)?.[1] ?? null;
+}
+
+function readMinted(storage: KeyValueStorage): Array<[string, string]> {
+  try {
+    const parsed: unknown = JSON.parse(storage.getItem(MINTED) ?? "[]");
+    return Array.isArray(parsed)
+      ? parsed.filter((e): e is [string, string] => Array.isArray(e) && typeof e[0] === "string" && typeof e[1] === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+/** What a refused redemption (an unknown, used, expired or revoked invite) tells the person. */
+export const INVITE_SPENT = "This invite was already used or has expired. Ask the person who invited you for a new link.";
+
+/**
+ * Whether the node refused the invite itself (a 4xx), as opposed to being
+ * unreachable. Only a refusal drops the token: a network failure keeps it.
+ */
+export function inviteRefused(e: unknown): boolean {
+  const status = (e as { status?: unknown } | null)?.status;
+  return typeof status === "number" && status >= 400 && status < 500;
 }
 
 /** The org an invitation redeemed into, from whichever field the node named it. */
