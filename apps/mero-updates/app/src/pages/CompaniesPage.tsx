@@ -120,7 +120,7 @@ export default function CompaniesPage() {
       void run(`invite:${ns.namespaceId}`, async (onStatus) => {
         onStatus("Approve the invitation with your passkey…");
         const token = await mintInvite(client, ns.namespaceId, passkey());
-        setInvite({ id: ns.namespaceId, code: inviteLink(token) });
+        setInvite({ id: ns.namespaceId, code: inviteLink(token, null, ns.namespaceId) });
         showToast(`Invite ready for “${ns.name}”.`);
       });
     },

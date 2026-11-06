@@ -129,6 +129,9 @@ export default function InviteModal({
           Copy link
         </button>
 
+        <p className={styles.hint} data-testid="invite-single-use">
+          Single use: one person can join with this link. Make a new one for each person you invite.
+        </p>
         {hint && <p className={styles.hint}>{hint}</p>}
       </div>
     </dialog>

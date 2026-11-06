@@ -13,6 +13,7 @@ import AsksPage from "./pages/AsksPage";
 import MetricsPage from "./pages/MetricsPage";
 import PeoplePage from "./pages/PeoplePage";
 import SettingsPage from "./pages/SettingsPage";
+import InvitationPage from "./components/InvitationPage";
 import InvitationPrompt from "./components/InvitationPrompt";
 import SignInDialog from "./components/SignInDialog";
 import { pendingInvite } from "./lib/companies";
@@ -103,12 +104,13 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
 }
 
 /**
- * The landing page with its connect action: the passkey sign-in dialog. It
- * opens by itself when an invitation link was opened by someone signed out.
+ * The landing page with its sign-in action: the passkey sign-in dialog. An
+ * invitation link opened by someone signed out shows `InvitationPage` instead
+ * (see `InvitationGate`), not this page.
  */
 function Landing() {
   const { isAuthenticated } = useAuth();
-  const [open, setOpen] = useState(() => pendingInvite() !== null);
+  const [open, setOpen] = useState(false);
   useEffect(() => {
     if (isAuthenticated) setOpen(false);
   }, [isAuthenticated]);
@@ -120,6 +122,23 @@ function Landing() {
   );
 }
 
+/**
+ * A signed-out visitor who opened an invitation link sees the invitation as a
+ * page, in place of whatever route the link named: no landing hero behind it
+ * and no extra click to find the sign-in. Nothing navigates, so the address
+ * (under the `/<version>/` basename) is still the deep link once they are
+ * signed in, and the route guards never get the chance to bounce it to `/`.
+ * "Not now" falls through to the routes and keeps the token.
+ */
+function InvitationGate({ children }: { children: ReactNode }) {
+  const { session } = useSessionApi().api;
+  const [notNow, setNotNow] = useState(false);
+  if (session.status === "signed-out" && !notNow && pendingInvite()) {
+    return <InvitationPage onNotNow={() => setNotNow(true)} />;
+  }
+  return <>{children}</>;
+}
+
 export default function App() {
   // ToastProvider and InvitationPrompt sit ABOVE the router: a toast raised by
   // an action that navigates would unmount with its page, and an invitation
@@ -128,79 +147,81 @@ export default function App() {
   return (
     <ToastProvider>
       <InvitationPrompt />
-      <Routes>
-        {/* The explainer is the front door now, not the feed. */}
-        {/* The landing page is three pages: `/`, `/docs` and `/preview`. They are
-          real URLs so they can be shared and opened cold, which needs a route
-          here — otherwise this app's catch-all swallows the deep link before
-          the page ever renders. */}
-        {LANDING_PATHS.map((landingPath) => (
-          <Route
-            key={landingPath}
-            path={landingPath}
-            // ⚠️ Only `/` bounces a signed-in visitor into the app. `/docs` and
-            // `/preview` are reference pages, and somebody already signed in is
-            // exactly the person most likely to want to read them.
-            element={
-              landingPath === "/" ? (
-                <RedirectIfAuthed>
+      <InvitationGate>
+        <Routes>
+          {/* The explainer is the front door now, not the feed. */}
+          {/* The landing page is three pages: `/`, `/docs` and `/preview`. They are
+            real URLs so they can be shared and opened cold, which needs a route
+            here — otherwise this app's catch-all swallows the deep link before
+            the page ever renders. */}
+          {LANDING_PATHS.map((landingPath) => (
+            <Route
+              key={landingPath}
+              path={landingPath}
+              // ⚠️ Only `/` bounces a signed-in visitor into the app. `/docs` and
+              // `/preview` are reference pages, and somebody already signed in is
+              // exactly the person most likely to want to read them.
+              element={
+                landingPath === "/" ? (
+                  <RedirectIfAuthed>
+                    <Landing />
+                  </RedirectIfAuthed>
+                ) : (
                   <Landing />
-                </RedirectIfAuthed>
-              ) : (
-                <Landing />
-              )
+                )
+              }
+            />
+          ))}
+          {/* The /login PAGE is gone — every app had one, every one looked
+            different, and its whole content was a button the visitor had
+            already pressed to get there. The path stays as a redirect so a
+            bookmark lands on the front door instead of a blank route. */}
+          <Route path="/login" element={<Navigate to="/" replace />} />
+          {/* Companies (organizations) hold audiences (app instances). An
+            invitation is to the company, so someone invited once can read every
+            audience in it. */}
+          <Route
+            path="/companies"
+            element={
+              <RequireAuth>
+                <CompaniesPage />
+              </RequireAuth>
             }
           />
-        ))}
-        {/* The /login PAGE is gone — every app had one, every one looked
-          different, and its whole content was a button the visitor had
-          already pressed to get there. The path stays as a redirect so a
-          bookmark lands on the front door instead of a blank route. */}
-        <Route path="/login" element={<Navigate to="/" replace />} />
-        {/* Companies (organizations) hold audiences (app instances). An
-          invitation is to the company, so someone invited once can read every
-          audience in it. */}
-        <Route
-          path="/companies"
-          element={
-            <RequireAuth>
-              <CompaniesPage />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/companies/:namespaceId"
-          element={
-            <RequireAuth>
-              <AudiencesPage />
-            </RequireAuth>
-          }
-        />
-        {/* Inside one audience. The shell owns the header, the nav and the
-          live-refresh subscription; each section is a child route so a link
-          to one update (/a/p/:id) is shareable within the audience. */}
-        <Route
-          path="/a"
-          element={
-            <RequireAudience>
-              <AudienceShell />
-            </RequireAudience>
-          }
-        >
-          <Route index element={<UpdatesPage />} />
-          <Route path="p/:postId" element={<PostPage />} />
-          <Route path="compose" element={<ComposePage />} />
-          <Route path="questions" element={<QuestionsPage />} />
-          <Route path="asks" element={<AsksPage />} />
-          <Route path="metrics" element={<MetricsPage />} />
-          <Route path="people" element={<PeoplePage />} />
-          <Route path="settings" element={<SettingsPage />} />
-        </Route>
-        {/* The pre-rename paths, so an old bookmark lands somewhere real. */}
-        <Route path="/spaces" element={<Navigate to="/companies" replace />} />
-        {/* A stale shared link lands on the explainer rather than a blank page. */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+          <Route
+            path="/companies/:namespaceId"
+            element={
+              <RequireAuth>
+                <AudiencesPage />
+              </RequireAuth>
+            }
+          />
+          {/* Inside one audience. The shell owns the header, the nav and the
+            live-refresh subscription; each section is a child route so a link
+            to one update (/a/p/:id) is shareable within the audience. */}
+          <Route
+            path="/a"
+            element={
+              <RequireAudience>
+                <AudienceShell />
+              </RequireAudience>
+            }
+          >
+            <Route index element={<UpdatesPage />} />
+            <Route path="p/:postId" element={<PostPage />} />
+            <Route path="compose" element={<ComposePage />} />
+            <Route path="questions" element={<QuestionsPage />} />
+            <Route path="asks" element={<AsksPage />} />
+            <Route path="metrics" element={<MetricsPage />} />
+            <Route path="people" element={<PeoplePage />} />
+            <Route path="settings" element={<SettingsPage />} />
+          </Route>
+          {/* The pre-rename paths, so an old bookmark lands somewhere real. */}
+          <Route path="/spaces" element={<Navigate to="/companies" replace />} />
+          {/* A stale shared link lands on the explainer rather than a blank page. */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </InvitationGate>
     </ToastProvider>
   );
 }

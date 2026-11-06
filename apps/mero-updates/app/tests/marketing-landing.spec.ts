@@ -158,8 +158,8 @@ test.describe('Mero Updates landing page', () => {
 
 
 
-  test('connecting does not navigate to another page', async ({ page }) => {
-    const cta = page.locator('button').filter({ hasText: /^Connect to node$/ }).first();
+  test('signing in does not navigate to another page', async ({ page }) => {
+    const cta = page.locator('button').filter({ hasText: /^Sign in$/ }).first();
     await expect(cta).toBeVisible();
     // ⚠️ Compared against the URL we are ACTUALLY on, not against the root.
     // mero-stream and mero-meet redirect / to a picker route and render the
@@ -175,10 +175,11 @@ test.describe('Mero Updates landing page', () => {
   });
 
 
-  test('offers the desktop download', async ({ page }) => {
-    await expect(
-      page.locator('a[href="https://calimero.network/download"]').first(),
-    ).toBeVisible();
+  test('does not offer the desktop download: the app is web only', async ({ page }) => {
+    // Wait for the page to actually exist first - `toHaveCount(0)` passes
+    // instantly against a blank document, which would make this vacuous.
+    await expect(page.getByRole('heading', { level: 1, name: "Mero Updates" })).toBeVisible();
+    await expect(page.locator('a[href="https://calimero.network/download"]')).toHaveCount(0);
   });
 
   // ── Mobile ──────────────────────────────────────────────────────────────

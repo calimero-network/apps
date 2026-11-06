@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 // Where a visitor lands: the landing page signed out; signed in, the audience
@@ -53,6 +53,8 @@ vi.mock("./pages/landing/LandingPage", () => ({ default: () => <p>landing</p> })
 vi.mock("./components/InvitationPrompt", () => ({ default: () => null }));
 vi.mock("./components/SignInDialog", () => ({
   default: ({ open }: { open: boolean }) => (open ? <p>sign in</p> : null),
+  // The invitation page's body; its copy is covered in App.invite.test.tsx.
+  SignInBody: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
 }));
 
 async function boot(path = "/") {
@@ -101,11 +103,22 @@ describe("landing", () => {
     expect(await screen.findByText("landing")).toBeInTheDocument();
   });
 
-  it("opens the sign-in dialog by itself for an invitation link", async () => {
+  it("shows an invitation link to a signed-out visitor as the invitation page, not the landing page", async () => {
+    h.state.status = "signed-out";
+    localStorage.setItem("mero-updates:pending-invite", JSON.stringify({ token: "t", audience: null }));
+    await boot("/a");
+    expect(await screen.findByTestId("invitation-page")).toBeInTheDocument();
+    expect(screen.queryByText("landing")).toBeNull();
+    expect(screen.queryByText("sign in")).toBeNull();
+  });
+
+  it("\"Not now\" on the invitation page shows the landing page and keeps the token", async () => {
     h.state.status = "signed-out";
     localStorage.setItem("mero-updates:pending-invite", JSON.stringify({ token: "t", audience: null }));
     await boot();
-    expect(await screen.findByText("sign in")).toBeInTheDocument();
+    fireEvent.click(await screen.findByTestId("invitation-not-now"));
+    expect(await screen.findByText("landing")).toBeInTheDocument();
+    expect(localStorage.getItem("mero-updates:pending-invite")).not.toBeNull();
   });
 });
 
