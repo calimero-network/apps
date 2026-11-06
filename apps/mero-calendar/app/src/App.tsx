@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
-import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useSessionApi } from "./api/sessionContext";
-import { pendingInvite } from "./api/teams";
+import { deferInvite, inviteDeferred, pendingInvite } from "./api/teams";
 import LandingPage from "./pages/landing/LandingPage";
 import TeamsPage from "./pages/teams/TeamsPage";
 import TeamCalendarsPage from "./pages/teams/TeamCalendarsPage";
@@ -10,6 +10,10 @@ import BookPage from "./pages/book/BookPage";
 import { ToastProvider } from "./contexts/ToastContext";
 import InvitationPrompt from "./components/common/invitation-prompt/InvitationPrompt";
 import SignInModal from "./components/common/modals/sign-in-modal/SignInModal";
+import InvitationPage from "./components/common/invitation-page/InvitationPage";
+
+/** Where a signed-out visitor was going when the guard sent them to the front door. */
+type FromState = { from?: string; resume?: boolean } | null;
 
 /** Every path the shared landing page serves. See src/pages/landing. */
 const LANDING_PATHS = ["/", "/docs", "/preview"];
@@ -22,24 +26,53 @@ function useConnecting(): boolean {
 /** Signed-in routes. Signed out, the front door (which offers the passkey sign-in). */
 function RequireAuth({ children }: { children: ReactNode }) {
   const { api } = useSessionApi();
+  const location = useLocation();
   if (api.session.status === "connecting") return null;
-  if (api.session.status !== "signed-in") return <Navigate to="/" replace />;
+  // The route travels with the redirect, so signing in on the front door goes
+  // on to the page that was asked for rather than to the team list.
+  if (api.session.status !== "signed-in") {
+    return <Navigate to="/" replace state={{ from: `${location.pathname}${location.search}` } satisfies FromState} />;
+  }
   return <>{children}</>;
 }
 
 /**
  * The front door. A signed-in visitor goes on to their teams (resuming the
- * team and calendar open last, utils/lastVisit). Signed out, the landing
- * page's call to action opens the passkey sign-in; an invitation link opens it
- * at once, since joining is what the visitor came for.
+ * team and calendar open last, utils/lastVisit), or to the page the route
+ * guard sent them here from. Signed out, the landing page's call to action
+ * opens the passkey sign-in.
+ *
+ * Signed out with an invitation waiting, the invitation IS the page: no hero
+ * behind it, no popup, no extra click. "Not now" comes back to the ordinary
+ * page, keeping the token for a later sign-in.
  */
 function FrontDoor({ bounce }: { bounce: boolean }) {
   const { api } = useSessionApi();
   const navigate = useNavigate();
-  const [signingIn, setSigningIn] = useState(() => pendingInvite() !== null);
+  const from = (useLocation().state as FromState)?.from;
+  const [signingIn, setSigningIn] = useState(false);
+  const [deferred, setDeferred] = useState(() => inviteDeferred());
   const signedIn = api.session.status === "signed-in";
   if (useConnecting()) return null;
-  if (bounce && signedIn) return <Navigate to="/teams" replace state={{ resume: true }} />;
+  if (bounce && signedIn) {
+    // With an invitation waiting, the page asked for comes AFTER joining
+    // (InvitationPrompt goes there): opened before, it is not yours to read yet.
+    return from && pendingInvite() === null ? (
+      <Navigate to={from} replace />
+    ) : (
+      <Navigate to="/teams" replace state={{ resume: true }} />
+    );
+  }
+  if (!signedIn && !deferred && pendingInvite() !== null) {
+    return (
+      <InvitationPage
+        onNotNow={() => {
+          deferInvite();
+          setDeferred(true);
+        }}
+      />
+    );
+  }
   return (
     <>
       <LandingPage

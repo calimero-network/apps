@@ -1,0 +1,11 @@
+/* The invitation page: the sign-in card, alone on the page. */
+.page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  box-sizing: border-box;
+  background: var(--glass-ground);
+}

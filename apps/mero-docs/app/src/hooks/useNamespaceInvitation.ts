@@ -10,6 +10,8 @@
 // sign-in, once the person says yes (InvitationPrompt).
 
 import { useCallback } from 'react';
+import { CalimeroError } from '@calimero-network/mero-js';
+import { describeError } from '@calimero-apps/connect';
 import { useMero } from '@/calimero/react';
 import { nodeUrl } from '@/lib/servedByNode';
 
@@ -37,6 +39,8 @@ export interface PendingInvite {
 }
 
 const PENDING_KEY = 'mero-docs:pending-invite';
+/** "Not now" on the invitation page, for the rest of this tab. */
+const DEFERRED_KEY = 'mero-docs:invite-deferred';
 
 /** The link that opens this frontend with `token` to redeem. */
 export function buildInviteUrl(
@@ -84,6 +88,7 @@ export function captureInvite(storage: Storage = localStorage, loc: Location = w
   } catch {
     return;
   }
+  dropDeferral();
   for (const key of ['invite', 'kind', 'ws', 'folder', 'name']) url.searchParams.delete(key);
   window.history.replaceState(window.history.state, '', url.toString());
 }
@@ -112,6 +117,55 @@ export function dropInvite(storage: Storage = localStorage): void {
   } catch {
     /* nothing stored */
   }
+  dropDeferral();
+}
+
+/**
+ * "Not now" on the invitation page: the ordinary landing page for the rest of
+ * this tab, with the token KEPT, so signing in later still offers it.
+ */
+export function deferInvite(storage: Pick<Storage, 'setItem'> = sessionStorage): void {
+  try {
+    storage.setItem(DEFERRED_KEY, '1');
+  } catch {
+    /* the page still moves on for this render */
+  }
+}
+
+export function inviteDeferred(storage: Pick<Storage, 'getItem'> = sessionStorage): boolean {
+  try {
+    return storage.getItem(DEFERRED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function dropDeferral(storage: Pick<Storage, 'removeItem'> = sessionStorage): void {
+  try {
+    storage.removeItem(DEFERRED_KEY);
+  } catch {
+    /* nothing stored */
+  }
+}
+
+/** What an invitation is into, in words: a workspace or one folder. */
+export const inviteScope = (invite: Pick<PendingInvite, 'kind'>): 'workspace' | 'folder' =>
+  invite.kind === 'namespace' ? 'workspace' : 'folder';
+
+/** What to say when a token is refused for good. */
+export const SPENT_INVITE =
+  'This invite was already used or has expired. Ask the person who invited you for a new link.';
+
+/**
+ * Whether the node refused the token for good (unknown, used, expired,
+ * revoked) rather than failing to answer: a 4xx other than 401/429, or a
+ * message that says so.
+ */
+export function inviteRefused(cause: unknown): boolean {
+  if (cause instanceof CalimeroError) {
+    return cause.status >= 400 && cause.status < 500 && cause.status !== 401 && cause.status !== 429;
+  }
+  return /unknown invite|used|spent|redeemed|expired|revoked/i.test(describeError(cause));
 }
 
 /** A workspace invitation link (an org invite, as a member). */

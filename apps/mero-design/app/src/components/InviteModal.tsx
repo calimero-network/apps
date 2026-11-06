@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { createTeamInvitation } from "../api/rpc";
 import { useToast } from "../contexts/ToastContext";
 import { extractErrorMessage } from "../utils/errorMessage";
-import { inviteLink as invitationLink } from "../utils/inviteLink";
+import { inviteLink } from "../utils/inviteLink";
 import { truncateMiddle } from "../utils/format";
 import { InviteArt } from "./Artwork";
 import styles from "./InviteModal.module.css";
@@ -27,6 +27,8 @@ interface Props {
  * and `backdrop-filter` makes it the containing block for a fixed scrim.
  */
 export default function InviteModal({ teamId, teamName, onClose }: Props) {
+  // The link names the team, so someone already in it is not offered Join.
+  const invitationLink = (token: string) => inviteLink(token, window.location, undefined, teamId);
   const { showToast } = useToast();
   const [invitation, setInvitation] = useState("");
   const [loading, setLoading] = useState(false);
@@ -110,6 +112,12 @@ export default function InviteModal({ teamId, teamName, onClose }: Props) {
             <span className={styles.spinner} aria-hidden="true" />
             <span className={styles.muted}>{loading ? "Approve with your passkey…" : "No link yet"}</span>
           </div>
+        )}
+
+        {invitation && (
+          <p className={styles.note} data-testid="invite-single-use">
+            Single use: one person can join with this link. Generate another for each person you invite.
+          </p>
         )}
 
         {error && <p className={styles.error} role="alert">{error}</p>}

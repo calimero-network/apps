@@ -2,8 +2,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AppInfo } from "@calimero-network/mero-js";
 import type { KeyValueStorage, Target } from "@calimero-apps/connect";
 
+import { CalimeroError } from "@calimero-network/mero-js";
 import {
+  SPENT_INVITE,
+  alreadyInInvitedWorld,
   captureInvite,
+  inviteFailure,
+  pendingInviteOrg,
   createWorld,
   forgetWorld,
   inviteLink,
@@ -95,6 +100,35 @@ describe("invitations are org invites", () => {
     expect(client.redeemInvite).toHaveBeenCalledWith("tok1");
     expect(world?.appId).toBe("2");
     expect(pendingInvite(storage)).toBeNull();
+  });
+
+  it("name the world's org, captured with the token and dropped with it", () => {
+    expect(inviteLink("tok1", { origin: "http://localhost:5173", pathname: "/" }, "org-2")).toBe(
+      "http://localhost:5173/?invite=tok1&org=org-2",
+    );
+    window.history.replaceState(null, "", "/?invite=tok1&org=org-2");
+    const storage = memory();
+    captureInvite(storage);
+    expect(pendingInviteOrg(storage)).toBe("org-2");
+    expect(window.location.search).toBe("");
+  });
+
+  it("are not spent by a player already in the world they name", async () => {
+    const storage = memory();
+    storage.setItem("mero-blocks:pending-invite", "tok1");
+    storage.setItem("mero-blocks:pending-invite-org", "org-1");
+    const listApps = vi.fn(async () => [app("1", "a", "org-1")]);
+    expect((await alreadyInInvitedWorld({ listApps }, "abc", storage))?.appId).toBe("1");
+    expect(pendingInvite(storage)).toBeNull();
+    storage.setItem("mero-blocks:pending-invite", "tok2");
+    storage.setItem("mero-blocks:pending-invite-org", "org-9");
+    expect(await alreadyInInvitedWorld({ listApps }, "abc", storage)).toBeNull();
+    expect(pendingInvite(storage)).toBe("tok2");
+  });
+
+  it("say plainly when the node refused the token for good", () => {
+    expect(inviteFailure(new CalimeroError(404, "NOT_FOUND", "unknown invite"))).toBe(SPENT_INVITE);
+    expect(inviteFailure(new CalimeroError(503, "UNAVAILABLE", "later"))).toMatch(/Could not accept/);
   });
 
   it("drop a token the node refused, and do nothing without one", async () => {

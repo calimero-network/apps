@@ -6,6 +6,7 @@ import {
   generateInvitationUrl,
   parseInvitationInput,
   pendingInvite,
+  pendingInviteOrg,
 } from "./invitation";
 
 beforeEach(() => localStorage.clear());
@@ -32,5 +33,17 @@ describe("invitation links", () => {
     expect(pendingInvite()).toBe("tok-3");
     dropInvite();
     expect(pendingInvite()).toBeNull();
+  });
+
+  it("name their workspace, which is captured with the token and dropped with it", () => {
+    expect(generateInvitationUrl("tok-1", { origin: "https://chat.example", pathname: "/" }, "org-1")).toBe(
+      "https://chat.example/?invite=tok-1&org=org-1",
+    );
+    window.history.replaceState(null, "", "/?invite=tok-4&org=org-1");
+    captureInvite();
+    expect(pendingInviteOrg()).toBe("org-1");
+    expect(window.location.search).toBe("");
+    dropInvite();
+    expect(pendingInviteOrg()).toBeNull();
   });
 });
