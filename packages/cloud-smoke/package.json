@@ -1,0 +1,22 @@
+{
+  "name": "@calimero-apps/cloud-smoke",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Signs in to apps a real Calimero Cloud (TDX) cluster serves: the served page's CSP, attestation from the page, and a passkey sign-up, sign-in and sign-out through the app's own UI.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "smoke": "playwright test"
+  },
+  "dependencies": {
+    "@calimero-apps/connect": "workspace:*"
+  },
+  "devDependencies": {
+    "@calimero-network/mero-js": "catalog:component",
+    "@playwright/test": "catalog:",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
