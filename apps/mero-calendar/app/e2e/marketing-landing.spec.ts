@@ -168,8 +168,8 @@ test.describe('Mero Calendar landing page', () => {
   });
 
 
-  test('connecting does not navigate to another page', async ({ page }) => {
-    const cta = page.locator('button').filter({ hasText: /^Connect to node$/ }).first();
+  test('signing in does not navigate to another page', async ({ page }) => {
+    const cta = page.locator('button').filter({ hasText: /^Sign in$/ }).first();
     await expect(cta).toBeVisible();
     // ⚠️ Compared against the URL we are ACTUALLY on, not against the root.
     // mero-stream and mero-meet redirect / to a picker route and render the
@@ -185,10 +185,10 @@ test.describe('Mero Calendar landing page', () => {
   });
 
 
-  test('offers the desktop download', async ({ page }) => {
-    await expect(
-      page.locator('a[href="https://calimero.network/download"]').first(),
-    ).toBeVisible();
+  test('a web-only app offers no desktop download', async ({ page }) => {
+    // `availability: 'web'`: the desktop is not a target, so no button, band
+    // or footer link points at the download.
+    await expect(page.locator('a[href="https://calimero.network/download"]')).toHaveCount(0);
   });
 
   // ── Mobile ──────────────────────────────────────────────────────────────

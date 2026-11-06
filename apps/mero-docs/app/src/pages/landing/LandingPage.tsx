@@ -84,13 +84,19 @@ const LINKS = {
 };
 
 const REPO = `https://github.com/calimero-network/apps/tree/main/apps/${CONFIG.dir}`;
+
+/**
+ * A web-only app has no desktop target, so nothing on the page offers the
+ * desktop download: not the hero, not the bands, not the footer, not the plans.
+ */
+const OFFERS_DESKTOP = CONFIG.availability !== 'web';
 const FORK = 'https://github.com/calimero-network/apps/fork';
 
 /** How it works — identical for every app, because the network is. */
 const STEPS = [
   {
-    title: 'Run a node',
-    body: 'Your own, or the one bundled in the Calimero desktop app. The node is where your data actually lives.',
+    title: 'Sign in',
+    body: 'With a passkey, on the Calimero cluster that serves this app. There is nothing to install and no password to remember.',
   },
   {
     title: 'Create a namespace',
@@ -98,7 +104,7 @@ const STEPS = [
   },
   {
     title: 'Invite people',
-    body: 'Share a link. Their node syncs directly with yours — there is no server in the middle to trust or pay.',
+    body: 'Share a link. They sign in or create an account with a passkey, and join with one click.',
   },
   {
     title: 'Work together',
@@ -107,7 +113,7 @@ const STEPS = [
 ];
 
 const WHY = [
-  ['No central server holds your data.', 'The nodes that hold it are yours, or belong to people you invited.'],
+  ['Nobody can read your data, the operator included.', 'It lives on attested, sealed hardware that only runs the published code.'],
   ['Offline edits merge when you reconnect.', 'CRDTs, not last-write-wins, so nobody silently loses work.'],
   ['Membership is a namespace you control.', 'Revoking someone is a thing you do, not a support ticket you file.'],
   ['Open source, and the contract is auditable.', 'You can read exactly what the app stores and who it shares with.'],
@@ -116,11 +122,11 @@ const WHY = [
 const SHARED_FAQ = [
   {
     q: 'Do I need to run a server?',
-    a: 'No. The Calimero desktop app bundles a node, so installing it is the whole setup. If you already run a node you can point this app at it instead.',
+    a: 'No. Sign in with a passkey and the app opens on the Calimero cluster that serves it. There is nothing to install or host.',
   },
   {
     q: 'Where is my data stored?',
-    a: 'On the nodes in your namespace — yours and those of the people you invited. There is no central database holding a copy.',
+    a: 'On the Calimero cluster that serves this app, in sealed hardware that even Calimero cannot look inside. Only members of your workspace can read it.',
   },
   {
     q: 'Who can see it?',
@@ -413,9 +419,9 @@ export default function LandingPage({
    * after a considered landing page was a second, unrelated-looking page asking
    * them to click again.
    *
-   * The popup does node discovery and manual URL entry, then `connectToNode`
-   * takes over: the node signs the visitor in and the app's own route guard
-   * puts them where they were going. One click, no intermediate page, and the
+   * The popup signs the visitor in with a passkey on the cluster that serves
+   * the app (and creates an account with a new one), and the app's own route
+   * guard puts them where they were going. One click, no intermediate page, and the
    * app's own design starts where the app does.
    *
    * `onConnect` still wins where an app's sign-in genuinely is not a popup:
@@ -427,8 +433,8 @@ export default function LandingPage({
    * Someone already signed in does not need to sign in again.
    *
    * Arriving here from inside the app — the footer link on every in-app screen
-   * points at this page — the primary button used to say "Connect to node" and
-   * start the whole sign-in over. It now offers the way back in.
+   * points at this page — the primary button used to offer the sign-in and
+   * start it all over. It now offers the way back in.
    *
    * Both conditions matter: `isAuthenticated` without `onOpenApp` is an app
    * that has not wired a destination, and sending it nowhere would be worse
@@ -447,16 +453,16 @@ export default function LandingPage({
     }
     return (
       <button type="button" className={cls} onClick={connect} disabled={!connect}>
-        Connect to node
+        Sign in
       </button>
     );
   }
 
   const availabilityBadge = desktopOnly
-    ? { label: 'Desktop only', icon: Monitor, title: `${CONFIG.name} needs the Calimero desktop app for its node and sign-in.` }
+    ? { label: 'Desktop only', icon: Monitor, title: `${CONFIG.name} needs the Calimero desktop app to sign in.` }
     : webOnly
       ? { label: 'Web only', icon: Wifi, title: 'The Calimero desktop is not a supported target for this app. It is not blocked there and does not crash — the desktop integration around it is what is unsupported.' }
-      : { label: 'Web + Desktop', icon: CheckSquare, title: 'Runs in a browser against your node, and in the Calimero desktop app.' };
+      : { label: 'Web + Desktop', icon: CheckSquare, title: 'Runs in a browser, and in the Calimero desktop app.' };
 
   const AvailIcon = availabilityBadge.icon;
 
@@ -490,8 +496,8 @@ export default function LandingPage({
         </h3>
         <p className="cal-lp-bandbody">
           {desktopOnly
-            ? 'It bundles the node this app needs, signs you in, and opens the app in its own window. The web page you are reading is the front door.'
-            : 'It bundles a node, so there is nothing to configure and nothing to host. The shortest path from reading about this to using it.'}
+            ? 'It signs you in and opens the app in its own window. The web page you are reading is the front door.'
+            : 'It signs you in and opens the app in its own window, with nothing to configure and nothing to host.'}
         </p>
       </div>
       <a className="cal-lp-btn cal-lp-btn--primary" href={LINKS.download} target="_blank" rel="noreferrer">
@@ -593,8 +599,12 @@ export default function LandingPage({
             </div>
             <div>
               <h4 className="cal-lp-footerhead">Get started</h4>
-              <a className="cal-lp-footerlink" href={LINKS.download} target="_blank" rel="noreferrer">Download desktop <ExternalLink size={13} /></a>
-              <br />
+              {OFFERS_DESKTOP && (
+                <>
+                  <a className="cal-lp-footerlink" href={LINKS.download} target="_blank" rel="noreferrer">Download desktop <ExternalLink size={13} /></a>
+                  <br />
+                </>
+              )}
               <a className="cal-lp-footerlink" href={LINKS.core} target="_blank" rel="noreferrer">Calimero core <ExternalLink size={13} /></a>
             </div>
             <div>
@@ -713,9 +723,11 @@ function OverviewView({
               ) : (
                 <>
                   <ConnectCta />
-                  <a className="cal-lp-btn cal-lp-btn--ghost" href={LINKS.download} target="_blank" rel="noreferrer">
-                    <Download size={17} /> Get the desktop app
-                  </a>
+                  {OFFERS_DESKTOP && (
+                    <a className="cal-lp-btn cal-lp-btn--ghost" href={LINKS.download} target="_blank" rel="noreferrer">
+                      <Download size={17} /> Get the desktop app
+                    </a>
+                  )}
                 </>
               )}
             </div>
@@ -810,7 +822,7 @@ function OverviewView({
 
       {extras && <OverviewExtrasSections ConnectCta={ConnectCta} desktopOnly={desktopOnly} />}
 
-      {!desktopOnly && !extras?.closing && (
+      {OFFERS_DESKTOP && !desktopOnly && !extras?.closing && (
         <section className="cal-lp-section">
           <div className="cal-lp-shell">{desktopBand}</div>
         </section>
@@ -1138,14 +1150,16 @@ function OverviewExtrasSections({ ConnectCta, desktopOnly }: ViewShared) {
                           </li>
                         ))}
                       </ul>
-                      <a
-                        className={`cal-lp-btn ${p.id === 'cloud' ? 'cal-lp-btn--primary' : 'cal-lp-btn--ghost'}`}
-                        href={p.cta.href}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {p.cta.label} <ExternalLink size={14} />
-                      </a>
+                      {(OFFERS_DESKTOP || p.cta.href !== LINKS.download) && (
+                        <a
+                          className={`cal-lp-btn ${p.id === 'cloud' ? 'cal-lp-btn--primary' : 'cal-lp-btn--ghost'}`}
+                          href={p.cta.href}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {p.cta.label} <ExternalLink size={14} />
+                        </a>
+                      )}
                     </div>
                   );
                 })}
@@ -1163,14 +1177,16 @@ function OverviewExtrasSections({ ConnectCta, desktopOnly }: ViewShared) {
               <p className="cal-lp-sectionsub">{closing.body}</p>
               <div className="cal-lp-cta">
                 {!desktopOnly && <ConnectCta />}
-                <a
-                  className={`cal-lp-btn ${desktopOnly ? 'cal-lp-btn--primary' : 'cal-lp-btn--ghost'}`}
-                  href={LINKS.download}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <Download size={17} /> Get the desktop app
-                </a>
+                {OFFERS_DESKTOP && (
+                  <a
+                    className={`cal-lp-btn ${desktopOnly ? 'cal-lp-btn--primary' : 'cal-lp-btn--ghost'}`}
+                    href={LINKS.download}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <Download size={17} /> Get the desktop app
+                  </a>
+                )}
               </div>
             </div>
           </div>
@@ -1407,7 +1423,7 @@ function DocsView({ faq, ConnectCta, desktopOnly }: ViewShared & { faq: { q: str
               <div className="cal-lp-bandtext">
                 <h3 className="cal-lp-bandtitle">Ready to try it?</h3>
                 <p className="cal-lp-bandbody">
-                  Connect a node and {CONFIG.name} opens straight away — there is no account to create.
+                  Sign in with a passkey and {CONFIG.name} opens straight away. New here? The same button creates your account.
                 </p>
               </div>
               <ConnectCta />
@@ -1466,11 +1482,11 @@ function PreviewView({
 
       <div className="cal-lp-band" style={{ marginBottom: 70 }}>
         <div className="cal-lp-bandtext">
-          <h3 className="cal-lp-bandtitle">Try it on your own node</h3>
+          <h3 className="cal-lp-bandtitle">Try it yourself</h3>
           <p className="cal-lp-bandbody">
             {desktopOnly
-              ? 'The Calimero desktop app bundles the node this needs and opens the app in its own window.'
-              : 'Connect a node and the real thing opens — same layout, your data.'}
+              ? 'The Calimero desktop app signs you in and opens the app in its own window.'
+              : 'Sign in and the real thing opens — same layout, your data.'}
           </p>
         </div>
         {desktopOnly ? (
