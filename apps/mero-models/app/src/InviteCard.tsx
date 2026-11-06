@@ -31,7 +31,7 @@ export function InviteCard({
     setFailed(null);
     setCopied(false);
     try {
-      setLink(inviteLink(await inviteToken(client, org, passkey())));
+      setLink(inviteLink(await inviteToken(client, org, passkey()), window.location, org));
     } catch (e) {
       setFailed(describeError(e));
     } finally {
@@ -61,9 +61,9 @@ export function InviteCard({
         <p className="hint">This scene has no organization, so nobody can be invited to it.</p>
       ) : (
         <p className="hint">
-          One link. Whoever opens it signs in with a passkey and joins this scene&apos;s studio, so this scene and
-          every other scene in it open for them. Creating it asks for your passkey. Each link is single use: make a
-          new one for each person you invite.
+          One link, for one person: it is single use, so create another for each member. Whoever opens it signs
+          in with a passkey and joins this scene&apos;s studio, so this scene and every other scene in it open for
+          them. Creating it asks for your passkey.
         </p>
       )}
 

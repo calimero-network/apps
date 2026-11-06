@@ -1,12 +1,12 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import type { AppInfo, CalimeroClient, CalimeroSession } from "@calimero-network/mero-js";
+import { CalimeroError, type AppInfo, type CalimeroClient, type CalimeroSession } from "@calimero-network/mero-js";
 import { resolveTarget, type KeyValueStorage } from "@calimero-apps/connect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { StudioPage } from "./StudioPage";
 import { useScene } from "./scene";
-import { rememberMinted, selectionKey } from "./scenes";
+import { selectionKey } from "./scenes";
 import { APP, useSession, type SessionDeps } from "./session";
 
 // The modeller itself is three.js and WebGL; these tests are about getting to it.
@@ -143,44 +143,44 @@ describe("the studio's front door", () => {
     expect(client.createOrg).not.toHaveBeenCalled();
   });
 
-  it("redeems an invitation opened before signing in", async () => {
-    const client = fakeClient();
-    const storage = new Memory();
-    storage.setItem(`${APP}:pending-invite`, "tok-9");
-    renderPage(client, storage);
-    expect(await screen.findByText("You're invited")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Continue with passkey" }));
-    expect(await screen.findByText(/Invitation accepted/)).toBeTruthy();
-    expect(client.redeemInvite).toHaveBeenCalledWith("tok-9");
-    expect(storage.getItem(`${APP}:pending-invite`)).toBeNull();
-  });
-
-  it("signed out with an invite, is the invitation page", async () => {
+  it("shows a signed-out visitor with an invitation an invitation page, and \"Not now\" keeps it", async () => {
     const storage = new Memory();
     storage.setItem(`${APP}:pending-invite`, "tok-9");
     renderPage(fakeClient(), storage);
-    expect(await screen.findByTestId("invitation-page")).toBeTruthy();
-    expect(screen.getByText(/invited to join a studio in Mero Models/)).toBeTruthy();
+    const page = await screen.findByTestId("invitation-page");
+    expect(page.textContent).toContain(
+      "You've been invited to join a studio in Mero Models. Sign in or create an account to accept.",
+    );
     expect(screen.getByRole("button", { name: "Continue with passkey" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Create a passkey" })).toBeTruthy();
-  });
 
-  it('"Not now" on the invitation page goes to the landing page and keeps the invite', async () => {
-    const storage = new Memory();
-    storage.setItem(`${APP}:pending-invite`, "tok-9");
-    renderPage(fakeClient(), storage);
-    fireEvent.click(await screen.findByTestId("invitation-not-now"));
+    fireEvent.click(screen.getByTestId("invitation-later"));
     expect(await screen.findByText("landing page")).toBeTruthy();
     expect(storage.getItem(`${APP}:pending-invite`)).toBe("tok-9");
   });
 
-  it("says plainly when the invite was already used or has expired", async () => {
-    const client = fakeClient();
-    client.redeemInvite.mockRejectedValueOnce(Object.assign(new Error("unknown invite"), { status: 404 }));
+  it("tells a member of the invited studio they are already in it, without spending the invite", async () => {
+    const client = Object.assign(fakeClient(), {
+      me: vi.fn(async () => ({ accountId: ME, orgs: [{ orgId: "org-1" }] })),
+    });
     const storage = new Memory();
-    storage.setItem(`${APP}:pending-invite`, "tok-spent");
+    storage.setItem(`${APP}:pending-invite`, "tok-9");
+    storage.setItem(`${APP}:pending-invite-org`, "org-1");
     renderPage(client, storage);
     fireEvent.click(await screen.findByRole("button", { name: "Continue with passkey" }));
+    expect((await screen.findByTestId("invitation-outcome")).textContent).toContain("You're already in this studio");
+    expect(client.redeemInvite).not.toHaveBeenCalled();
+    expect(storage.getItem(`${APP}:pending-invite`)).toBeNull();
+  });
+
+  it("says plainly when the invite was already used or has expired", async () => {
+    const client = fakeClient();
+    client.redeemInvite.mockRejectedValueOnce(new CalimeroError(404, "NOT_FOUND", "unknown invite"));
+    const storage = new Memory();
+    storage.setItem(`${APP}:pending-invite`, "tok-used");
+    renderPage(client, storage);
+    fireEvent.click(await screen.findByRole("button", { name: "Continue with passkey" }));
+    fireEvent.click(await screen.findByTestId("invitation-join"));
     expect(
       await screen.findByText(
         "This invite was already used or has expired. Ask the person who invited you for a new link.",
@@ -189,17 +189,16 @@ describe("the studio's front door", () => {
     expect(storage.getItem(`${APP}:pending-invite`)).toBeNull();
   });
 
-  it("does not spend an invite on someone already in its studio", async () => {
-    const client = Object.assign(fakeClient([scene("app-1", "Castle")]), {
-      me: vi.fn(async () => ({ orgs: [{ orgId: "org-1", name: "Studio", role: "owner" }] })),
-    });
+  it("asks to join right after signing in from the invitation page, and redeems only on Join", async () => {
+    const client = fakeClient();
     const storage = new Memory();
-    rememberMinted("tok-own", "org-1", storage);
-    storage.setItem(`${APP}:pending-invite`, "tok-own");
+    storage.setItem(`${APP}:pending-invite`, "tok-9");
     renderPage(client, storage);
-    fireEvent.click(await screen.findByRole("button", { name: "Continue with passkey" }));
-    expect(await screen.findByText(/already in this studio/)).toBeTruthy();
-    expect(client.redeemInvite).not.toHaveBeenCalled();
+    expect(await screen.findByText("You're invited")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Continue with passkey" }));
+    fireEvent.click(await screen.findByTestId("invitation-join"));
+    expect(await screen.findByText(/Invitation accepted/)).toBeTruthy();
+    expect(client.redeemInvite).toHaveBeenCalledWith("tok-9");
     expect(storage.getItem(`${APP}:pending-invite`)).toBeNull();
   });
 

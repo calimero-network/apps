@@ -1,21 +1,12 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { appSource, describeError, type KeyValueStorage } from "@calimero-apps/connect";
+import { appSource, type KeyValueStorage } from "@calimero-apps/connect";
 import { nodeBasename } from "@calimero-apps/node-served";
 import { ScenePicker } from "./ScenePicker";
 import { PACKAGE } from "./meroModels";
 import { SceneContext, type OpenedScene, type SceneSession } from "./scene";
-import {
-  INVITE_SPENT,
-  dropInvite,
-  inviteRefused,
-  memberOf,
-  mintedOrg,
-  pendingInvite,
-  readSelection,
-  selectionKey,
-  writeSelection,
-} from "./scenes";
+import { InvitationSignIn, JoinInvitation } from "./Invitation";
+import { pendingInvite, readSelection, selectionKey, writeSelection } from "./scenes";
 import { AppListing, PasskeySignIn } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 import { LISTING, describeTarget, type SessionApi, type SessionDeps } from "./session";
@@ -74,48 +65,12 @@ export function StudioPage({
     [key, storage],
   );
 
-  // An invitation link opened before signing in is redeemed once a session
-  // exists. Not for someone already in the invite's studio (known only for an
-  // invite this browser minted): redeeming would spend its single use on a
-  // person who needs none of it.
+  // An invitation link opened before signing in: a page of its own while it
+  // is pending (see `Invitation.tsx`), redeemed only on "Join".
+  const [invite, setInvite] = useState<string | null>(() => pendingInvite(storage));
   useEffect(() => {
-    if (!client) return;
-    const token = pendingInvite(storage);
-    if (!token) return;
-    let live = true;
-    (async () => {
-      const org = mintedOrg(token, storage);
-      if (org && (await memberOf(client, org))) {
-        dropInvite(storage);
-        if (live) {
-          setNotice(
-            "You're already in this studio, so the invite was not used. It is still there for the person you meant to send it to.",
-          );
-        }
-        return;
-      }
-      await client.redeemInvite(token);
-      dropInvite(storage);
-      if (live) {
-        setNotice("Invitation accepted: the studio's scenes are in your list.");
-        setPickerKey((k) => k + 1);
-      }
-    })()
-      .catch((e: unknown) => {
-        // A refusal (used, expired, revoked) can never succeed: drop it. Anything
-        // else (the cluster unreachable) is kept and tried on the next load.
-        if (inviteRefused(e)) {
-          dropInvite(storage);
-          if (live) setNotice(INVITE_SPENT);
-        } else if (live) {
-          setNotice(`The invitation could not be accepted: ${describeError(e)}`);
-        }
-      })
-      .finally(after);
-    return () => {
-      live = false;
-    };
-  }, [client, storage, after]);
+    if (client) setInvite(pendingInvite(storage));
+  }, [client, storage]);
 
   const logout = useCallback(() => {
     if (key) writeSelection(storage, key, null);
@@ -167,13 +122,37 @@ export function StudioPage({
     return (
       <div className="page">
         <TopBar onHome={home} />
-        <SignIn
-          api={api}
-          where={describeTarget(session.target)}
-          invited={pendingInvite(storage) !== null}
-          // "Not now" keeps the invite: the landing page, and the same page again from its "Sign in".
-          onNotNow={home}
-        />
+        {invite ? (
+          <main className="wrap">
+            {/* "Not now": the landing page, with the invitation kept for the next sign-in. */}
+            <InvitationSignIn api={api} where={describeTarget(session.target)} onLater={home} />
+          </main>
+        ) : (
+          <SignIn api={api} where={describeTarget(session.target)} />
+        )}
+      </div>
+    );
+  }
+
+  if (invite) {
+    return (
+      <div className="page">
+        <TopBar onHome={home} where={describeTarget(session.target)} onLogout={logout} />
+        <main className="wrap">
+          <JoinInvitation
+            client={session.client}
+            token={invite}
+            storage={storage}
+            after={after}
+            onJoined={() => {
+              setInvite(null);
+              setNotice("Invitation accepted: the studio's scenes are in your list.");
+              setPickerKey((k) => k + 1);
+              open(null);
+            }}
+            onClose={() => setInvite(null)}
+          />
+        </main>
       </div>
     );
   }
@@ -201,41 +180,18 @@ export function StudioPage({
   );
 }
 
-/**
- * The front door: a passkey sign-in, or a new account with a new passkey. With
- * a pending invite it is the invitation page an invite link opened signed out
- * lands on (`App` sends `/` here), saying what the visitor was invited to.
- */
-function SignIn({
-  api,
-  where,
-  invited,
-  onNotNow,
-}: {
-  api: SessionApi;
-  where: string;
-  invited: boolean;
-  onNotNow: () => void;
-}) {
+/** The front door: a passkey sign-in, or a new account with a new passkey. */
+function SignIn({ api, where }: { api: SessionApi; where: string }) {
   return (
-    <section className="connect" data-testid={invited ? "invitation-page" : undefined}>
+    <section className="connect">
       <div className="connect-card">
         <img className="connect-mark" src={`${base()}favicon.svg`} alt="" />
-        <h1>{invited ? "You're invited" : "Sign in or create an account"}</h1>
+        <h1>Sign in</h1>
         <p className="lede">
-          {invited
-            ? "You've been invited to join a studio in Mero Models. Sign in, or create an account, to accept. "
-            : "Sign in to open your scenes. "}
-          Your account is a passkey: nothing to remember, nothing to leak. Connected to {where}.
+          Sign in, or create an account, to open your scenes. Your account is a passkey: nothing to remember,
+          nothing to leak. Connected to {where}.
         </p>
         <PasskeySignIn api={api} />
-        {invited && (
-          <div className="row center">
-            <button type="button" className="ghost small" onClick={onNotNow} disabled={api.busy} data-testid="invitation-not-now">
-              Not now
-            </button>
-          </div>
-        )}
         <ul className="connect-points">
           <li>Your scenes, shared only with your studio</li>
           <li>Real-time co-editing</li>
