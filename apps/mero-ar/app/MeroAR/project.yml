@@ -39,6 +39,10 @@ targets:
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         NSCameraUsageDescription: "Mero AR uses the camera to scan your room and place shared 3D objects in it."
+        # `merod local` development clusters are plain http on the LAN.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSLocalNetworkUsageDescription: "Mero AR connects to a development Calimero cluster on your network."
         UIRequiredDeviceCapabilities:
           - arkit
     settings:

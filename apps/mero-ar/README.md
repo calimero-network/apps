@@ -106,20 +106,22 @@ room from the model, not the USDZ.
 ### Run it against a development cluster
 
 ```bash
-cargo run -p merod -- local       # in a core checkout: 3 nodes on 127.0.0.1:2501-2503, --dev, mock attestation
-                                  # merod is Linux only; on a Mac run it in Docker
-make tools                        # once: mero-component, the component bundler
-make logic-bundle                 # logic/res/mero-ar.mpk, signed with the dev key
-meroctl node add local http://127.0.0.1:2501/ --allow-mock
-meroctl login --dev-passkey ./dev-passkey.json --name ada
-meroctl app install --path logic/res/mero-ar.mpk
-make app-gen                      # then run from Xcode
+make tools        # once: mero-component, the component bundler
+make dev          # merod local on :2501-2503 (Docker on a Mac), then bundle + install the contract
+make app-gen      # then run from Xcode
 ```
 
-In the app, **Development cluster (merod local)** → `http://localhost:2501` (on
-a phone, the Mac's LAN address). The app trusts that node's mock attestation and
-signs in with a soft passkey it keeps for the node, creating the account the
-first time.
+`make dev` runs [`scripts/dev-cluster.sh`](scripts/dev-cluster.sh): core's
+`merod local` (three nodes, mock attestation) from
+`ghcr.io/calimero-network/merod` in Docker, because merod 1.0 is Linux-only.
+Set `MEROD_BIN` to a merod 1.0 binary to run that instead. State is kept across
+runs; `scripts/dev-cluster.sh up --fresh` starts over, `make dev-down` stops it.
+
+In the app, **Development cluster (merod local)** → `http://localhost:2501` in
+the Simulator, or `http://<your Mac's LAN address>:2501` on an iPhone on the
+same Wi-Fi (allow Local Network when asked; `scripts/dev-cluster.sh urls`
+prints it). The app trusts that node's mock attestation and signs in with a
+soft passkey it keeps for the node, creating the account the first time.
 
 ### How the app talks to the cluster
 
