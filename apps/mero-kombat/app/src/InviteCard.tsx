@@ -72,8 +72,8 @@ export function InviteCard({
       ) : (
         <>
           <p className="hint">
-            One link. Whoever opens it joins this arena&apos;s organization, and can take the open
-            corner or watch.
+            One link, single use: the first person to accept it joins this arena&apos;s
+            organization, and can take the open corner or watch. Make a new link for each person.
           </p>
 
           {link && (

@@ -8,13 +8,12 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
-import { CalimeroError } from "@calimero-network/mero-js";
 import { appSource, type KeyValueStorage } from "@calimero-apps/connect";
 import { nodeBasename } from "@calimero-apps/node-served";
 import { AppListing, PasskeySignIn } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
-import { dropInvite, pendingInvite, selectionKey } from "./arenas";
+import { INVITE_SPENT, dropInvite, inviteRefused, memberOf, mintedOrg, pendingInvite, selectionKey } from "./arenas";
 import { ArenaPage, type OpenArena } from "./ArenaPage";
 import { PACKAGE, messageOf } from "./kombat";
 import { Lobby } from "./Lobby";
@@ -77,20 +76,35 @@ function readSelection(storage: KeyValueStorage, key: string): OpenArena | null 
   return null;
 }
 
-/** Passkey sign-in, or a new account with a new passkey, and the way to practice without either. */
-function ConnectCard({ api, where }: { api: SessionApi; where: string }) {
+/**
+ * Passkey sign-in, or a new account with a new passkey, and the way to practice
+ * without either. With `onNotNow` it is the invitation page a signed-out invite
+ * link lands on (`InvitationGate`): the same passkey flow, saying what the
+ * visitor was invited to.
+ */
+function ConnectCard({ api, where, onNotNow }: { api: SessionApi; where: string; onNotNow?: () => void }) {
+  const invited = !!onNotNow;
   return (
-    <section className="connect">
+    <section className="connect" data-testid={invited ? "invitation-page" : undefined}>
       <div className="connect-card">
         <img className="connect-mark" src={`${basename()}favicon.svg`} alt="" />
-        <h1>Sign in to fight</h1>
+        <h1>{invited ? "You're invited" : "Sign in to fight"}</h1>
         <p className="lede">
-          Mero Kombat fights through a Calimero cluster ({where}): every punch you throw is a
-          transaction its log orders. Accounts are passkeys: nothing to remember, nothing to leak.
+          {invited
+            ? `You've been invited to join an arena in Mero Kombat. Sign in, or create an account, to accept. It fights through a Calimero cluster (${where}). `
+            : `Mero Kombat fights through a Calimero cluster (${where}): every punch you throw is a transaction its log orders. `}
+          Accounts are passkeys: nothing to remember, nothing to leak.
         </p>
         <div className="connect-passkey">
           <PasskeySignIn api={api} />
         </div>
+        {onNotNow && (
+          <div className="row center">
+            <button type="button" className="ghost small" onClick={onNotNow} disabled={api.busy} data-testid="invitation-not-now">
+              Not now
+            </button>
+          </div>
+        )}
         <ul className="connect-points">
           <li>No game server</li>
           <li>Every blow is a transaction</li>
@@ -141,34 +155,50 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
   );
 
   // An invitation link opened before signing in is redeemed once a session
-  // exists, and the arena it names is opened.
+  // exists, and the arena it names is opened. Not for someone already in the
+  // invite's organization (known only for an invite this browser minted):
+  // redeeming would spend its single use on a person who needs none of it.
   useEffect(() => {
     if (!client) return;
     const invite = pendingInvite(storage);
     if (!invite) return;
     let live = true;
-    client
-      .redeemInvite(invite.token)
-      .then(async () => {
+    const openNamed = async () => {
+      setLobbyKey((k) => k + 1);
+      const arena = invite.arena
+        ? (await client.listApps({}).catch(() => [])).find((a) => a.appId === invite.arena)
+        : undefined;
+      if (live && arena) open({ appId: arena.appId, name: arena.name, org: arena.org });
+      return !!arena;
+    };
+    (async () => {
+      const org = mintedOrg(invite.token, storage);
+      if (org && (await memberOf(client, org))) {
         dropInvite(storage);
         if (!live) return;
-        setLobbyKey((k) => k + 1);
-        const arena = invite.arena
-          ? (await client.listApps({}).catch(() => [])).find((a) => a.appId === invite.arena)
-          : undefined;
-        if (!live) return;
-        if (arena) {
-          open({ appId: arena.appId, name: arena.name, org: arena.org });
-          setNotice(null);
-        } else {
-          setNotice("Invitation accepted: the arena is in your list.");
+        await openNamed();
+        if (live) {
+          setNotice(
+            "You're already in this arena's organization, so the invite was not used. It is still there for the person you meant to send it to.",
+          );
         }
-      })
+        return;
+      }
+      await client.redeemInvite(invite.token);
+      dropInvite(storage);
+      if (!live) return;
+      const opened = await openNamed();
+      if (live) setNotice(opened ? null : "Invitation accepted: the arena is in your list.");
+    })()
       .catch((e: unknown) => {
         // A refusal (used, expired, revoked) can never succeed: drop it.
         // Anything else (the cluster unreachable) is kept for the next load.
-        if (e instanceof CalimeroError && e.status < 500) dropInvite(storage);
-        if (live) setNotice(`The invitation could not be accepted: ${messageOf(e)}`);
+        if (inviteRefused(e)) {
+          dropInvite(storage);
+          if (live) setNotice(INVITE_SPENT);
+        } else if (live) {
+          setNotice(`The invitation could not be accepted: ${messageOf(e)}`);
+        }
       })
       .finally(after);
     return () => {
@@ -238,6 +268,33 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
   );
 }
 
+/**
+ * A signed-out visitor holding an invite (`?invite=`, taken into storage by
+ * `main.tsx`) sees the invitation as a page (`ConnectCard` with `onNotNow`)
+ * on whatever route the link opened. Signing in there keeps the route, and
+ * `PlayPage` redeems the invite (from `/`, `RedirectIfAuthed` goes there
+ * first). "Not now" goes to the landing page and keeps the token.
+ */
+function InvitationGate({ storage, children }: { storage: KeyValueStorage; children: ReactNode }) {
+  const api = useSessionApi();
+  const navigate = useNavigate();
+  const [later, setLater] = useState(false);
+  const { session } = api;
+  if (later || session.status !== "signed-out" || pendingInvite(storage) === null) return <>{children}</>;
+  return (
+    <AppShell>
+      <ConnectCard
+        api={api}
+        where={describeTarget(session.target)}
+        onNotNow={() => {
+          setLater(true);
+          navigate("/");
+        }}
+      />
+    </AppShell>
+  );
+}
+
 function AppShell({ children }: { children: ReactNode }) {
   const { session, signOut } = useSessionApi();
   const navigate = useNavigate();
@@ -290,44 +347,46 @@ export function App({
   return (
     <SessionProvider deps={sessionDeps}>
       <BrowserRouter basename={basename()}>
-        <Routes>
-          {/* The landing page is three pages: `/`, `/docs` and `/preview`. They
-              are real URLs so they can be shared and opened cold. */}
-          {LANDING_PATHS.map((path) => (
-            <Route
-              key={path}
-              path={path}
-              // Only `/` bounces a signed-in visitor into the app.
-              element={
-                path === "/" ? (
-                  <RedirectIfAuthed>
+        <InvitationGate storage={storage}>
+          <Routes>
+            {/* The landing page is three pages: `/`, `/docs` and `/preview`. They
+                are real URLs so they can be shared and opened cold. */}
+            {LANDING_PATHS.map((path) => (
+              <Route
+                key={path}
+                path={path}
+                // Only `/` bounces a signed-in visitor into the app.
+                element={
+                  path === "/" ? (
+                    <RedirectIfAuthed>
+                      <AppLandingPage />
+                    </RedirectIfAuthed>
+                  ) : (
                     <AppLandingPage />
-                  </RedirectIfAuthed>
-                ) : (
-                  <AppLandingPage />
-                )
+                  )
+                }
+              />
+            ))}
+            <Route
+              path="/play"
+              element={
+                <AppShell>
+                  <PlayPage storage={storage} deps={sessionDeps} />
+                </AppShell>
               }
             />
-          ))}
-          <Route
-            path="/play"
-            element={
-              <AppShell>
-                <PlayPage storage={storage} deps={sessionDeps} />
-              </AppShell>
-            }
-          />
-          {/* Practice needs no cluster: the CPU lives in this tab. */}
-          <Route
-            path="/practice"
-            element={
-              <AppShell>
-                <PracticePage />
-              </AppShell>
-            }
-          />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+            {/* Practice needs no cluster: the CPU lives in this tab. */}
+            <Route
+              path="/practice"
+              element={
+                <AppShell>
+                  <PracticePage />
+                </AppShell>
+              }
+            />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </InvitationGate>
       </BrowserRouter>
     </SessionProvider>
   );
