@@ -5,7 +5,15 @@ import BaseModal from "../common/popups/BaseModal";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
 import { setStoredGroupAlias } from "../../constants/config";
 import { getMessengerDisplayName } from "../../utils/messengerName";
-import { dropInvite, pendingInvite } from "../../utils/invitation";
+import { myOrgs } from "../../api/platform";
+import { getAccountId } from "../../api/calimero";
+import {
+  SPENT_INVITE,
+  dropInvite,
+  inviteRefused,
+  pendingInvite,
+  pendingInviteOrg,
+} from "../../utils/invitation";
 import { enterJoinedWorkspaceForName, enterWorkspace } from "../../utils/enterWorkspace";
 import { log } from "../../utils/logger";
 
@@ -13,7 +21,14 @@ import { log } from "../../utils/logger";
  * Offers an opened invitation link once the person is signed in: "Join" redeems
  * the org invite token and enters the workspace (asking for a name first if
  * they have none). The token was taken off the address bar before React
- * mounted (`captureInvite` in `main.tsx`), so it survives the passkey sign-up.
+ * mounted (`captureInvite` in `main.tsx`), so it survives the passkey sign-up
+ * on the invitation page (`pages/Login/InvitationPage`).
+ *
+ * ⚠️ Someone already in the workspace is not offered Join. Redeeming spends
+ * the link's single use, so the owner trying their own link used to leave the
+ * person it was meant for with "unknown invite". When the link names its
+ * workspace (`&org=`) and this account's orgs include it, the token is dropped
+ * unspent and the prompt says so; when it cannot tell, it asks as before.
  *
  * v1 used mero-react's `InvitationDialog` over a signed namespace invitation;
  * the steps are the same, the dialog is this app's own.
@@ -76,18 +91,83 @@ export default function InvitationPrompt({ enabled }: Props) {
   const [token, setToken] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [spent, setSpent] = useState(false);
+  /** null while it is being checked; the workspace when this account is already in it. */
+  const [member, setMember] = useState<string | null | false>(null);
 
   useEffect(() => {
     setToken(enabled ? pendingInvite() : null);
   }, [enabled]);
 
-  if (!token) return null;
+  useEffect(() => {
+    if (!token) return;
+    const org = pendingInviteOrg();
+    if (!org) {
+      setMember(false);
+      return;
+    }
+    let live = true;
+    setMember(null);
+    myOrgs()
+      .then((orgs) => {
+        if (!live) return;
+        if (orgs.some((o) => o.orgId === org)) {
+          dropInvite();
+          setMember(org);
+        } else setMember(false);
+      })
+      // Cannot tell: ask, as before.
+      .catch(() => live && setMember(false));
+    return () => {
+      live = false;
+    };
+  }, [token]);
+
+  if (!token || member === null) return null;
+
+  const close = () => {
+    setToken(null);
+    setError("");
+    setSpent(false);
+  };
 
   const dismiss = () => {
     dropInvite();
-    setToken(null);
-    setError("");
+    close();
   };
+
+  const enter = (groupId: string, memberIdentity: string) => {
+    const name = getMessengerDisplayName();
+    if (name) enterWorkspace(api.current, groupId, name, memberIdentity);
+    else enterJoinedWorkspaceForName(groupId);
+  };
+
+  if (member) {
+    return (
+      <BaseModal
+        toggle={<span />}
+        open
+        onOpenChange={(open) => {
+          if (!open) close();
+        }}
+        content={
+          <Container>
+            <Title>You're already in this workspace</Title>
+            <Message>
+              This account is already a member, so there is nothing to accept. The link is left unused for the
+              person it was meant for.
+            </Message>
+            <Actions>
+              <Button onClick={close}>Close</Button>
+              <Button $primary onClick={() => enter(member, getAccountId())}>
+                Open workspace
+              </Button>
+            </Actions>
+          </Container>
+        }
+      />
+    );
+  }
 
   const join = async () => {
     setBusy(true);
@@ -95,7 +175,15 @@ export default function InvitationPrompt({ enabled }: Props) {
     const res = await api.current.joinGroup({ invitation: token });
     if (res.error || !res.data) {
       setBusy(false);
-      setError(res.error?.message || "This invitation could not be redeemed.");
+      // A refusal (unknown, used, expired, revoked) can never succeed: drop
+      // it and say so plainly. Anything else is kept for another try.
+      if (inviteRefused(res.error)) {
+        dropInvite();
+        setSpent(true);
+        setError(SPENT_INVITE);
+      } else {
+        setError(res.error?.message || "This invitation could not be redeemed.");
+      }
       return;
     }
     const { groupId, memberIdentity } = res.data;
@@ -104,9 +192,7 @@ export default function InvitationPrompt({ enabled }: Props) {
     const alias = meta?.data?.name?.trim();
     if (alias) setStoredGroupAlias(groupId, alias);
     log.info("InvitationPrompt", `joined workspace ${groupId}`);
-    const name = getMessengerDisplayName();
-    if (name) enterWorkspace(api.current, groupId, name, memberIdentity);
-    else enterJoinedWorkspaceForName(groupId);
+    enter(groupId, memberIdentity);
   };
 
   return (
@@ -114,7 +200,7 @@ export default function InvitationPrompt({ enabled }: Props) {
       toggle={<span />}
       open
       onOpenChange={(open) => {
-        if (!open && !busy) dismiss();
+        if (!open && !busy) (spent ? close : dismiss)();
       }}
       content={
         <Container>
@@ -122,12 +208,14 @@ export default function InvitationPrompt({ enabled }: Props) {
           <Message>Join it to see its channels and message its members in Mero Chat.</Message>
           {error && <ErrorText role="alert">{error}</ErrorText>}
           <Actions>
-            <Button onClick={dismiss} disabled={busy}>
-              Not now
+            <Button onClick={spent ? close : dismiss} disabled={busy}>
+              {spent ? "Close" : "Not now"}
             </Button>
-            <Button $primary onClick={() => void join()} disabled={busy}>
-              {busy ? "Joining…" : "Join workspace"}
-            </Button>
+            {!spent && (
+              <Button $primary onClick={() => void join()} disabled={busy}>
+                {busy ? "Joining…" : "Join workspace"}
+              </Button>
+            )}
           </Actions>
         </Container>
       }

@@ -1,12 +1,19 @@
 import React, { useState } from "react";
 import { useCalimero } from "../../api/calimero";
 import { clearStoredSession, clearNamespaceReady } from "../../utils/session";
-import { INVITATION_STORAGE_KEY } from "../../utils/invitation";
+import {
+  INVITATION_ORG_STORAGE_KEY,
+  INVITATION_STORAGE_KEY,
+  deferInvite,
+  inviteDeferred,
+  pendingInvite,
+} from "../../utils/invitation";
 import { useNavigate } from "react-router-dom";
 // The shared landing template (generated — scripts/landing), the same page
 // every other app in the fleet renders.
 import LandingPage from "../landing/LandingPage";
 import SignInPopup from "./SignInPopup";
+import InvitationPage from "./InvitationPage";
 import NamespaceEntryPopup from "../../components/popups/NamespaceEntryPopup";
 
 interface LoginProps {
@@ -22,6 +29,7 @@ export const CONNECT_PRESERVE_EXACT = new Set([
   "chat-username",
   "calimero_group_aliases",
   INVITATION_STORAGE_KEY,
+  INVITATION_ORG_STORAGE_KEY,
 ]);
 const CONNECT_PRESERVE_PREFIX: string[] = ["calimero-session:"];
 
@@ -75,8 +83,27 @@ export default function Login({ isAuthenticated, isConfigSet }: LoginProps) {
   );
 }
 
+/**
+ * Signed out. With an invitation waiting, the invitation IS the page: no hero
+ * behind it, no popup, no extra click. "Not now" comes back here to the
+ * ordinary landing page, keeping the token for a later sign-in.
+ */
 export function UnauthenticatedLanding() {
   const [loginOpen, setLoginOpen] = useState(false);
+  const [deferred, setDeferred] = useState(() => inviteDeferred());
+  // `/docs` and `/preview` render this signed in too: the prompt is theirs then.
+  const { isAuthenticated } = useCalimero();
+  if (!isAuthenticated && !deferred && pendingInvite() !== null) {
+    return (
+      <InvitationPage
+        beforeCeremony={clearStorageForConnect}
+        onNotNow={() => {
+          deferInvite();
+          setDeferred(true);
+        }}
+      />
+    );
+  }
   return (
     <>
       <LandingPage
