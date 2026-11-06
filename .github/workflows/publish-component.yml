@@ -251,12 +251,39 @@ jobs:
           echo "signer=$signer" >> "$GITHUB_OUTPUT"
           echo "min-runtime=$(jq -r '.minRuntimeVersion' "$RUNNER_TEMP/manifest.json")" >> "$GITHUB_OUTPUT"
 
+      # Every Release dispatch rebuilds every app, and a shared change (the
+      # lockfile, packages/connect) reaches all of them. Publishing a bundle whose
+      # contents equal the registry's latest only adds a version: about 14 KB of
+      # metadata in the registry's Redis each (the icon is inlined), which filled
+      # its 30 MB at ~1,600 versions. Compare what nodes actually run and serve
+      # (the wasm, the abi, the frontend files, the runtime floor and the
+      # metadata) and skip the publish when nothing changed.
+      - name: Skip when the registry's latest is identical
+        id: unchanged
+        run: |
+          set -euo pipefail
+          latest=$(curl -sf "$REGISTRY/api/v2/bundles?package=$PACKAGE" | jq -c '.[0] // empty') || latest=""
+          if [ -z "$latest" ]; then echo "same=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          shape='{wasm: .wasm.hash, abi: (.abi.hash // null), runtime: .minRuntimeVersion,
+                  frontend: ([.frontend.files[]? | {path, hash}] | sort_by(.path)),
+                  metadata: ((.metadata // {}) | with_entries(select(.key | startswith("_") | not)))}'
+          a=$(jq -cS "$shape" "$RUNNER_TEMP/manifest.json")
+          b=$(jq -cS "$shape" <<<"$latest")
+          if [ "$a" = "$b" ]; then
+            echo "::notice::$PACKAGE: identical to the registry's $(jq -r .appVersion <<<"$latest"); not publishing $VERSION"
+            echo "same=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "same=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publish to the App Registry
+        if: steps.unchanged.outputs.same != 'true'
         env:
           CALIMERO_API_KEY: ${{ secrets.CALIMERO_REGISTRY_API_KEY }}
         run: CALIMERO_REGISTRY_URL="$REGISTRY" bash scripts/publish-bundle.sh "$MPK"
 
       - name: Summary
+        if: steps.unchanged.outputs.same != 'true'
         env:
           CORE_REV: ${{ steps.core.outputs.rev }}
           SIGNER: ${{ steps.verify.outputs.signer }}
