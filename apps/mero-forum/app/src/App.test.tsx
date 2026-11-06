@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { AppInfo, CalimeroClient, CalimeroSession } from "@calimero-network/mero-js";
+import { CalimeroError, type AppInfo, type CalimeroClient, type CalimeroSession } from "@calimero-network/mero-js";
 import { SessionStore, resolveTarget, targetKey } from "@calimero-apps/connect";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -163,6 +163,63 @@ describe("App", () => {
     fireEvent.click(await screen.findByTestId("invitation-join"));
     await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith("tok-1"));
     await screen.findByText("Namespaces vs contexts");
+    expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
+  });
+
+  it("shows an invitation page, not the landing page, to a signed-out visitor with an invite", async () => {
+    localStorage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: "tok-1", forum: null }));
+    render(<App deps={deps(fakeClient())} />);
+    expect(await screen.findByTestId("invitation-page")).toBeTruthy();
+    expect(screen.getByText(/You've been invited to join a space in Mero Forum/)).toBeTruthy();
+    expect(screen.getByTestId("signin-passkey")).toBeTruthy();
+    // A page, not a dialog over the landing page.
+    expect(screen.queryByText("Connect")).toBeNull();
+  });
+
+  it("asks to join right after signing in from the invitation page, then lands in the forum", async () => {
+    localStorage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: "tok-1", forum: "forum-1" }));
+    const client = fakeClient();
+    render(<App deps={deps(client)} />);
+    fireEvent.click(await screen.findByTestId("signin-passkey"));
+    await waitFor(() => expect(client.signIn).toHaveBeenCalled());
+    // No second click to reach the prompt, and nothing redeemed before it.
+    expect(client.redeemInvite).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByTestId("invitation-join"));
+    await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith("tok-1"));
+    await screen.findByText("Namespaces vs contexts");
+  });
+
+  it('"Not now" on the invitation page shows the landing page and keeps the invitation', async () => {
+    const pending = JSON.stringify({ token: "tok-1", forum: null });
+    localStorage.setItem(`${APP}:pending-invite`, pending);
+    render(<App deps={deps(fakeClient())} />);
+    fireEvent.click(await screen.findByTestId("invitation-later"));
+    expect(await screen.findByText("Connect")).toBeTruthy();
+    expect(localStorage.getItem(`${APP}:pending-invite`)).toBe(pending);
+  });
+
+  it("tells a member of the invited space they are already in it, without spending the invite", async () => {
+    remember();
+    localStorage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: "tok-own", forum: null, org: "org-1" }));
+    const client = fakeClient();
+    render(<App deps={deps(client)} />);
+    expect(await screen.findByText("You're already in this space")).toBeTruthy();
+    expect(client.redeemInvite).not.toHaveBeenCalled();
+    expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
+    fireEvent.click(screen.getByTestId("invitation-continue"));
+    await waitFor(() => expect(window.location.pathname).toBe("/spaces/org-1"));
+  });
+
+  it("says plainly when the invite was already used or has expired", async () => {
+    remember();
+    localStorage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: "tok-spent", forum: null }));
+    const client = fakeClient();
+    client.redeemInvite.mockRejectedValueOnce(new CalimeroError(404, "NOT_FOUND", "unknown invite"));
+    render(<App deps={deps(client)} />);
+    fireEvent.click(await screen.findByTestId("invitation-join"));
+    expect(
+      await screen.findByText("This invite was already used or has expired. Ask the person who invited you for a new link."),
+    ).toBeTruthy();
     expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
   });
 

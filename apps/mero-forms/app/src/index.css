@@ -760,3 +760,12 @@ select {
 .dialog-body h2 { margin: 0; }
 .dialog-body input { width: 100%; }
 .dialog-body button { width: 100%; justify-content: center; }
+/* An invite link opened while signed out: the invitation as a page (InvitationPage). */
+.invitation-page {
+  min-height: 100dvh;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}

@@ -9,7 +9,7 @@
  * ⚠️ This replaces a `/login` PAGE in ten of the fourteen apps, and the reason
  * is worth keeping. Each of those pages rendered the app's name, its
  * description and a connect button, in that app's own styling — so pressing
- * "Connect to node" on a carefully built landing page took you to a second,
+ * "Sign in" (then "Connect to node") on a carefully built landing page took you to a second,
  * unrelated-looking page to press a second button. The page was never a step;
  * it was a detour.
  *

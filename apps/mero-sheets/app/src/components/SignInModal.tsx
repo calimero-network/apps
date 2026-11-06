@@ -13,10 +13,10 @@ import { closeButton, dialogSurface, overlay, primaryPill, secondaryPill } from 
 import { LISTING, describeTarget } from '../session';
 import { useSessionApi } from '../sessionContext';
 import { pendingInvite } from '../lib/workspaces';
+import { APP_DISPLAY_NAME } from '../config';
 
 export default function SignInModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { api } = useSessionApi();
-  const invited = pendingInvite() !== null;
 
   useEffect(() => {
     if (open && api.session.status === 'signed-in') onClose();
@@ -33,11 +33,6 @@ export default function SignInModal({ open, onClose }: { open: boolean; onClose:
 
   if (!open) return null;
 
-  const where =
-    api.session.status === 'signed-out' || api.session.status === 'signed-in'
-      ? describeTarget(api.session.target)
-      : null;
-
   return (
     <Overlay onClick={() => !api.busy && onClose()}>
       <Dialog
@@ -50,20 +45,43 @@ export default function SignInModal({ open, onClose }: { open: boolean; onClose:
         <Close type="button" onClick={() => !api.busy && onClose()} aria-label="Close">
           ×
         </Close>
-        <h3 id="signin-title">{invited ? "You're invited" : 'Sign in'}</h3>
-        <Hint>
-          {invited ? 'Sign in, or create an account, to join the workspace you were invited to. ' : ''}
-          Accounts are passkeys: nothing to remember, nothing to leak.
-          {where ? ` Connected to ${where}.` : ''}
-        </Hint>
-
-        {api.session.status === 'connecting' && <Hint>Connecting…</Hint>}
-        {api.session.status === 'listing' && <AppListing {...LISTING} />}
-        {api.session.status === 'unconfigured' && <Err role="alert">{api.session.message}</Err>}
-
-        {api.session.status === 'signed-out' && <PasskeySignIn api={api} />}
+        <SignInPanel titleId="signin-title" />
       </Dialog>
     </Overlay>
+  );
+}
+
+/**
+ * The sign-in itself: title, explanation, the cluster it talks to, and
+ * "Continue with passkey" / "Create a passkey". Shared by the popup above and
+ * the invitation page a signed-out visitor sees when they open an invite link,
+ * so the copy and the passkey flow cannot drift apart.
+ */
+export function SignInPanel({ titleId }: { titleId: string }) {
+  const { api } = useSessionApi();
+  const invited = pendingInvite() !== null;
+  const where =
+    api.session.status === 'signed-out' || api.session.status === 'signed-in'
+      ? describeTarget(api.session.target)
+      : null;
+
+  return (
+    <>
+      <h3 id={titleId}>{invited ? "You're invited" : 'Sign in'}</h3>
+      <Hint>
+        {invited
+          ? `You've been invited to join a workspace in ${APP_DISPLAY_NAME}. Sign in or create an account to accept. `
+          : ''}
+        Accounts are passkeys: nothing to remember, nothing to leak.
+        {where ? ` Connected to ${where}.` : ''}
+      </Hint>
+
+      {api.session.status === 'connecting' && <Hint>Connecting…</Hint>}
+      {api.session.status === 'listing' && <AppListing {...LISTING} />}
+      {api.session.status === 'unconfigured' && <Err role="alert">{api.session.message}</Err>}
+
+      {api.session.status === 'signed-out' && <PasskeySignIn api={api} />}
+    </>
   );
 }
 

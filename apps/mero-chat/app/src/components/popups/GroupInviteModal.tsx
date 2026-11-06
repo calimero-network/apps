@@ -73,6 +73,14 @@ const ModalSub = styled.p`
   line-height: 1.4;
 `;
 
+const SingleUse = styled.p`
+  color: color-mix(in srgb, var(--glass-ink) 45%, transparent);
+  font-size: 0.72rem;
+  margin: 0;
+  line-height: 1.4;
+  text-align: center;
+`;
+
 const CloseBtn = styled.button`
   background: transparent;
   border: none;
@@ -243,8 +251,9 @@ export default function GroupInviteModal({
   // web/PWA app directly, and on a device with the desktop installed + associated
   // hands off to the launcher. The old calimero:// "desktop link" is redundant.
   const webUrl = useMemo(
-    () => (invitationPayload ? generateInvitationUrl(invitationPayload) : ""),
-    [invitationPayload],
+    // The link names the workspace, so someone already in it is not offered Join.
+    () => (invitationPayload ? generateInvitationUrl(invitationPayload, window.location, groupId) : ""),
+    [invitationPayload, groupId],
   );
 
   const handleCopy = async () => {
@@ -301,9 +310,14 @@ export default function GroupInviteModal({
           )}
 
           {!loading && invitationPayload && (
-            <CopyBtn $copied={copiedTarget === "web"} onClick={() => void handleCopy()}>
-              {copiedTarget === "web" ? "✓ Copied!" : "Copy invite link"}
-            </CopyBtn>
+            <>
+              <CopyBtn $copied={copiedTarget === "web"} onClick={() => void handleCopy()}>
+                {copiedTarget === "web" ? "✓ Copied!" : "Copy invite link"}
+              </CopyBtn>
+              <SingleUse data-testid="invite-single-use">
+                Single use: one person can join with this link. Generate another for each person you invite.
+              </SingleUse>
+            </>
           )}
 
           <DoneBtn onClick={onClose}>{doneLabel}</DoneBtn>

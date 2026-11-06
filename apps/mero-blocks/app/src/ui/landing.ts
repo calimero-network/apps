@@ -36,6 +36,8 @@ import {
   inviteToken,
   lastWorld,
   listWorlds,
+  alreadyInInvitedWorld,
+  inviteFailure,
   pendingInvite,
   redeemPendingInvite,
   rememberWorld,
@@ -335,7 +337,7 @@ export class Landing {
     const invited = pendingInvite() !== null;
     el.innerHTML = `
       ${this.commonInputs(defaults)}
-      ${invited ? `<div class="mbl-account-note" data-testid="invite-note">You've been invited to a world: sign in (or create an account) to join it.</div>` : ""}
+      ${invited ? `<div class="mbl-account-note" data-testid="invite-note">You've been invited to join a world in Mero Blocks. Sign in or create an account to accept.</div>` : ""}
       <button class="mbl-btn green" data-testid="sign-in-btn">Sign in with a passkey</button>
       <label>new account name</label>
       <input id="mbl-account" data-testid="account-name-input" maxlength="32" placeholder="${escapeHtml(defaults.name)}" />
@@ -406,13 +408,16 @@ export class Landing {
       // world it joined (or list it, if the answer did not say which).
       if (pendingInvite()) {
         noteEl.textContent = "Joining the world you were invited to…";
+        // Already in it: open it, and leave the link unspent for whoever it was for.
+        const mine = await alreadyInInvitedWorld(phase.client, source);
+        if (mine) return enter(mine);
         try {
           const invited = await redeemPendingInvite(phase.client, source);
           phase.sessions.sync(phase.client);
           if (invited) return enter(invited);
           noteEl.textContent = "Invitation accepted — pick the world below.";
         } catch (e) {
-          noteEl.textContent = `Could not accept the invitation: ${describeError(e)}`;
+          noteEl.textContent = inviteFailure(e);
         }
       }
       let worlds: AppInfo[];
@@ -445,8 +450,9 @@ export class Landing {
           try {
             const token = await inviteToken(phase.client, org, this.deps.passkey());
             phase.sessions.sync(phase.client);
-            await navigator.clipboard.writeText(inviteLink(token));
-            inviteBtn.textContent = "Invite copied!";
+            await navigator.clipboard.writeText(inviteLink(token, window.location, org));
+            // Each link lets one person in: say so where it is copied.
+            inviteBtn.textContent = "Invite copied: single use";
           } catch (e) {
             errEl.textContent = `Could not create invite: ${describeError(e)}`;
             inviteBtn.textContent = "Invite friends";

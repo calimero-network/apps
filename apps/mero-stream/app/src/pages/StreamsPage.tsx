@@ -207,7 +207,7 @@ export default function StreamsPage() {
           onClose={() => setInvite(null)}
           hint={
             <>
-              Anyone with this link can join that stream and every room in it,
+              Whoever opens this link can join that stream and every room in it,
               after signing in with a passkey (or creating an account). To
               invite someone into one specific call, open the stream and use{" "}
               <strong>Invite</strong> on that room.

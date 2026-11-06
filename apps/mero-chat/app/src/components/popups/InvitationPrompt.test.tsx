@@ -7,7 +7,11 @@ const h = vi.hoisted(() => ({
   enterWorkspace: vi.fn(),
   enterJoinedWorkspaceForName: vi.fn(),
   name: "Alice",
+  myOrgs: vi.fn(),
 }));
+
+vi.mock("../../api/platform", () => ({ myOrgs: h.myOrgs }));
+vi.mock("../../api/calimero", () => ({ getAccountId: () => "acct-me" }));
 
 vi.mock("../../api/dataSource/groupApiDataSource", () => ({
   GroupApiDataSource: class {
@@ -24,7 +28,7 @@ vi.mock("../../utils/messengerName", () => ({
 }));
 
 import InvitationPrompt from "./InvitationPrompt";
-import { INVITATION_STORAGE_KEY } from "../../utils/invitation";
+import { INVITATION_ORG_STORAGE_KEY, INVITATION_STORAGE_KEY } from "../../utils/invitation";
 
 beforeEach(() => {
   localStorage.clear();
@@ -32,6 +36,7 @@ beforeEach(() => {
   h.name = "Alice";
   h.joinGroup.mockResolvedValue({ data: { groupId: "org-1", memberIdentity: "acct-me" }, error: null });
   h.getGroupMetadata.mockResolvedValue({ data: { name: "Team" }, error: null });
+  h.myOrgs.mockResolvedValue([]);
 });
 
 describe("InvitationPrompt", () => {
@@ -61,13 +66,38 @@ describe("InvitationPrompt", () => {
     await waitFor(() => expect(h.enterJoinedWorkspaceForName).toHaveBeenCalledWith("org-1"));
   });
 
-  it("says why a token could not be redeemed, and keeps it", async () => {
-    h.joinGroup.mockResolvedValue({ data: null, error: { code: 404, message: "invite expired" } });
+  it("says plainly when the invite was already used or has expired, and drops it", async () => {
+    h.joinGroup.mockResolvedValue({ data: null, error: { code: 404, message: "unknown invite" } });
     localStorage.setItem(INVITATION_STORAGE_KEY, "tok");
     render(<InvitationPrompt enabled />);
     fireEvent.click(await screen.findByRole("button", { name: /join workspace/i }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("invite expired");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "This invite was already used or has expired. Ask the person who invited you for a new link.",
+    );
+    expect(localStorage.getItem(INVITATION_STORAGE_KEY)).toBeNull();
+    expect(screen.queryByRole("button", { name: /join workspace/i })).not.toBeInTheDocument();
+  });
+
+  it("says why a token could not be redeemed for now, and keeps it", async () => {
+    h.joinGroup.mockResolvedValue({ data: null, error: { code: 503, message: "cluster unavailable" } });
+    localStorage.setItem(INVITATION_STORAGE_KEY, "tok");
+    render(<InvitationPrompt enabled />);
+    fireEvent.click(await screen.findByRole("button", { name: /join workspace/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("cluster unavailable");
     expect(localStorage.getItem(INVITATION_STORAGE_KEY)).toBe("tok");
+  });
+
+  it("does not offer Join to someone already in the workspace, and keeps the link unspent", async () => {
+    h.myOrgs.mockResolvedValue([{ orgId: "org-1", name: "Team", role: "owner" }]);
+    localStorage.setItem(INVITATION_STORAGE_KEY, "tok");
+    localStorage.setItem(INVITATION_ORG_STORAGE_KEY, "org-1");
+    render(<InvitationPrompt enabled />);
+    expect(await screen.findByText("You're already in this workspace")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /join workspace/i })).not.toBeInTheDocument();
+    expect(h.joinGroup).not.toHaveBeenCalled();
+    expect(localStorage.getItem(INVITATION_STORAGE_KEY)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /open workspace/i }));
+    expect(h.enterWorkspace).toHaveBeenCalledWith(expect.anything(), "org-1", "Alice", "acct-me");
   });
 
   it("Not now drops the invitation", async () => {

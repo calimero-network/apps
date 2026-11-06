@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Routes, Route, BrowserRouter } from 'react-router-dom';
 import { nodeBasename as servedBasename } from '@calimero-apps/node-served';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -9,6 +10,8 @@ import ConnectGate from './components/ConnectGate';
 import NotFound from './components/NotFound';
 import LandingPage from './pages/landing/LandingPage';
 import InvitationHandlerPopup from './components/InvitationHandlerPopup';
+import InvitationPage from './components/InvitationPage';
+import { pendingInvite } from './lib/invites';
 import { useCalimero } from './lib/useCalimero';
 import { SignInModal } from './lib/loginGate';
 import { ROUTES, type Screen } from './routes';
@@ -96,10 +99,21 @@ function Screenful({
 function AppContent() {
   const { isAuthenticated, login } = useCalimero();
   const { api } = useSessionApi();
+  const [notNow, setNotNow] = useState(false);
 
   // Restoring a stored session: render nothing rather than flash the
   // connect screen at someone already signed in.
   if (api.session.status === 'connecting') return null;
+
+  // A signed-out visitor who opened an invitation link sees the invitation as
+  // a page, in place of whatever the link's route shows: no landing hero
+  // behind it and no extra click to find the sign-in. Nothing navigates, so
+  // the address (under the `/<version>/` basename) is still the deep link once
+  // they are signed in. "Not now" falls through to the routes and keeps the
+  // token.
+  if (api.session.status === 'signed-out' && !notNow && pendingInvite()) {
+    return <InvitationPage onNotNow={() => setNotNow(true)} />;
+  }
 
   return (
     <>

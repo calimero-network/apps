@@ -9,17 +9,20 @@
 // An invitation link opened while signed out waits in storage and is redeemed
 // here once the person has signed in (net/worlds.ts).
 
-import { CalimeroError } from "@calimero-network/mero-js";
 import { describeError, describeSignInError, type AppSource } from "@calimero-apps/connect";
 
 import {
   CURRENT_WORLD,
+  INVITE_REFUSED,
+  alreadyMember,
   createWorld,
   dropInvite,
   inviteLink,
+  inviteRefused,
   inviteToken,
   listWorlds,
   pendingInvite,
+  pendingInviteOrg,
   readCurrentWorld,
   writeCurrentWorld,
   type World,
@@ -364,10 +367,10 @@ export class Landing {
     const el = this.playCardEl();
     const invited = pendingInvite() !== null;
     el.innerHTML = `
-      <h3>Play now</h3>
+      <h3>${invited ? "You're invited" : "Play now"}</h3>
       ${
         invited
-          ? `<div class="mtl-account" data-testid="invite-waiting">You were invited to a world: sign in to join it.</div>`
+          ? `<div class="mtl-account" data-testid="invite-waiting">You've been invited to join a world in Merraria. Sign in or create an account to accept.</div>`
           : ""
       }
       ${this.commonInputs(defaults)}
@@ -376,9 +379,16 @@ export class Landing {
       <div class="mtl-error" data-testid="sign-in-error"></div>
       <div class="mtl-note">Accounts are passkeys: nothing to remember, nothing to leak.
         Connected to ${escapeHtml(this.conn.describe())}. A new account takes the player name above.</div>
+      ${invited ? `<button class="mtl-link" data-testid="invite-not-now">Not now</button>` : ""}
     `;
+    // "Not now": the landing page, over this launcher; the invitation stays
+    // stored, so signing in from there (its "Sign in" uncovers this card)
+    // still joins the world.
+    el.querySelector("[data-testid=invite-not-now]")?.addEventListener("click", () => {
+      void showLandingAgain();
+    });
     const errEl = el.querySelector<HTMLElement>("[data-testid=sign-in-error]")!;
-    const buttons = [...el.querySelectorAll<HTMLButtonElement>("button")];
+    const buttons = [...el.querySelectorAll<HTMLButtonElement>("button.mtl-btn")];
     const ceremony = async (run: () => Promise<string>) => {
       errEl.textContent = "";
       buttons.forEach((b) => (b.disabled = true));
@@ -435,9 +445,9 @@ export class Landing {
         inviteBtn.disabled = true;
         inviteBtn.textContent = "Creating invite…";
         try {
-          const link = inviteLink(await inviteToken(this.conn.client, org, this.conn.approver()));
+          const link = inviteLink(await inviteToken(this.conn.client, org, this.conn.approver()), window.location, org);
           await navigator.clipboard.writeText(link);
-          inviteBtn.textContent = "Invite link copied!";
+          inviteBtn.textContent = "Single-use invite link copied!";
         } catch (e) {
           errEl.textContent = `Could not create invite: ${describeError(e)}`;
           inviteBtn.textContent = "Invite friends";
@@ -461,18 +471,31 @@ export class Landing {
 
     void (async () => {
       // An invitation opened before signing in is redeemed now: the invited
-      // world then shows up in the list below.
+      // world then shows up in the list below. A player already in the world's
+      // organization (the inviter opening their own link) is not made to
+      // redeem it: that would spend its single use, and the player it was
+      // meant for could no longer join.
       const token = pendingInvite();
       if (token) {
         try {
-          await this.conn.client.redeemInvite(token);
-          dropInvite();
-          noticeEl.textContent = "Invitation accepted: the world is in your list.";
+          if (await alreadyMember(this.conn.client, pendingInviteOrg())) {
+            dropInvite();
+            noticeEl.textContent = "You're already in this world: it is in your list.";
+          } else {
+            await this.conn.client.redeemInvite(token);
+            dropInvite();
+            noticeEl.textContent = "Invitation accepted: the world is in your list.";
+          }
         } catch (e) {
-          // A refusal (used, expired, revoked) can never succeed: drop it.
-          // Anything else (the cluster unreachable) is tried on the next load.
-          if (e instanceof CalimeroError && e.status < 500) dropInvite();
-          noticeEl.textContent = `The invitation could not be accepted: ${describeError(e)}`;
+          // A refusal (unknown, used, expired, revoked) can never succeed:
+          // drop it. Anything else (the cluster unreachable) is tried on the
+          // next load.
+          if (inviteRefused(e)) {
+            dropInvite();
+            noticeEl.textContent = INVITE_REFUSED;
+          } else {
+            noticeEl.textContent = `The invitation could not be accepted: ${describeError(e)}`;
+          }
         } finally {
           noticeEl.hidden = false;
           this.conn.sync();

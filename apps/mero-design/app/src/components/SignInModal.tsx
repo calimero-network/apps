@@ -1,10 +1,8 @@
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
-import { AppListing, PasskeySignIn } from "@calimero-apps/passkey";
-import "@calimero-apps/passkey/passkey.css";
-import { LISTING, describeTarget } from "../session";
 import { useSessionApi } from "../sessionContext";
 import { pendingInvite } from "../utils/inviteLink";
+import SignInPanel from "./SignInPanel";
 import styles from "./InviteModal.module.css";
 
 /**
@@ -35,11 +33,6 @@ export default function SignInModal({ open, onClose }: { open: boolean; onClose:
 
   if (!open) return null;
 
-  const where =
-    api.session.status === "signed-out" || api.session.status === "signed-in"
-      ? describeTarget(api.session.target)
-      : null;
-
   return createPortal(
     <div
       className={styles.overlay}
@@ -48,27 +41,15 @@ export default function SignInModal({ open, onClose }: { open: boolean; onClose:
       }}
     >
       <div className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="signin-title" data-testid="signin-modal">
-        <div className={styles.header}>
-          <h2 id="signin-title" className={styles.title}>{invited ? "You're invited" : "Sign in"}</h2>
-          <button className={styles.close} onClick={() => !api.busy && onClose()} aria-label="Close">
-            ✕
-          </button>
-        </div>
-        <p className={styles.desc}>
-          {invited ? "Sign in, or create an account, to join the team you were invited to. " : ""}
-          Accounts are passkeys: nothing to remember, nothing to leak.
-          {where ? ` Connected to ${where}.` : ""}
-        </p>
-
-        {api.session.status === "connecting" && <p className={styles.muted}>Connecting…</p>}
-        {api.session.status === "listing" && <AppListing {...LISTING} />}
-        {api.session.status === "unconfigured" && (
-          <p className={styles.error} role="alert">
-            {api.session.message}
-          </p>
-        )}
-
-        {api.session.status === "signed-out" && <PasskeySignIn api={api} />}
+        <SignInPanel
+          invited={invited}
+          titleId="signin-title"
+          aside={
+            <button className={styles.close} onClick={() => !api.busy && onClose()} aria-label="Close">
+              ✕
+            </button>
+          }
+        />
       </div>
     </div>,
     document.body,

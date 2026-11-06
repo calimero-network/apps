@@ -574,6 +574,12 @@ export class OrgAdmin {
     return { token, namespaceId: org };
   }
 
+  /** Whether this account is already a member of `orgId` (its `/me` org list). */
+  async isOrgMember(orgId: string): Promise<boolean> {
+    const me = record(await this.client.me());
+    return ((me.orgs ?? []) as Array<{ orgId: string }>).some((o) => o.orgId === orgId);
+  }
+
   /** Redeems an invite token; answers the org it joined, when the node names it. */
   async redeemInvite(token: string): Promise<string | null> {
     const redeemed = record(await this.client.redeemInvite(token));

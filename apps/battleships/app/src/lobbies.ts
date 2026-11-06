@@ -1,4 +1,4 @@
-import type { AppInfo, CalimeroClient, PasskeyProvider } from '@calimero-network/mero-js';
+import { CalimeroError, type AppInfo, type CalimeroClient, type PasskeyProvider } from '@calimero-network/mero-js';
 import { type AppSource, type KeyValueStorage } from '@calimero-apps/connect';
 
 import { APP } from './session';
@@ -80,15 +80,22 @@ export function inviteToken(
   return client.invite(org, 'member', passkey);
 }
 
-/** The link that opens this frontend with `token` to redeem and `lobby` to open after. */
+/**
+ * The link that opens this frontend with `token` to redeem and `lobby` to open
+ * after. `org` names the organization the token admits to, so a player already
+ * in it (the inviter opening their own link, say) is not made to spend the
+ * token's single use.
+ */
 export function inviteLink(
   token: string,
   lobby: string,
   location: Pick<Location, 'origin' | 'pathname'> = window.location,
+  org?: string | null,
 ): string {
   const url = new URL(location.pathname, location.origin);
   url.searchParams.set('invite', token);
   url.searchParams.set('lobby', lobby);
+  if (org) url.searchParams.set('org', org);
   return url.toString();
 }
 
@@ -96,6 +103,8 @@ export interface PendingInvite {
   token: string;
   /** The lobby the link was made in: opened once the invitation is redeemed. */
   lobby: string | null;
+  /** The organization the token admits to, when the link names it. */
+  org: string | null;
 }
 
 const PENDING = `${APP}:pending-invite`;
@@ -111,12 +120,16 @@ export function captureInvite(storage: KeyValueStorage = localStorage, loc: Loca
   const token = url.searchParams.get('invite');
   if (!token) return;
   try {
-    storage.setItem(PENDING, JSON.stringify({ token, lobby: url.searchParams.get('lobby') }));
+    storage.setItem(
+      PENDING,
+      JSON.stringify({ token, lobby: url.searchParams.get('lobby'), org: url.searchParams.get('org') }),
+    );
   } catch {
     return;
   }
   url.searchParams.delete('invite');
   url.searchParams.delete('lobby');
+  url.searchParams.delete('org');
   window.history.replaceState(null, '', url.toString());
 }
 
@@ -126,7 +139,11 @@ export function pendingInvite(storage: KeyValueStorage = localStorage): PendingI
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<PendingInvite>;
     return typeof parsed.token === 'string'
-      ? { token: parsed.token, lobby: typeof parsed.lobby === 'string' ? parsed.lobby : null }
+      ? {
+          token: parsed.token,
+          lobby: typeof parsed.lobby === 'string' ? parsed.lobby : null,
+          org: typeof parsed.org === 'string' ? parsed.org : null,
+        }
       : null;
   } catch {
     return null;
@@ -138,5 +155,36 @@ export function dropInvite(storage: KeyValueStorage = localStorage): void {
     storage.removeItem(PENDING);
   } catch {
     /* nothing stored */
+  }
+}
+
+/**
+ * What to say when the node refused an invitation: it is unknown, already
+ * used, expired or revoked. A 4xx can never succeed on retry, so the caller
+ * drops the token; anything else (the cluster unreachable) is kept.
+ */
+export const INVITE_REFUSED = 'This invite was already used or has expired. Ask the person who invited you for a new link.';
+
+/** True when `e` is the node refusing the invitation itself (see `INVITE_REFUSED`). */
+export function inviteRefused(e: unknown): boolean {
+  return e instanceof CalimeroError && e.status >= 400 && e.status < 500;
+}
+
+/**
+ * Whether this account is already in the organization an invitation admits
+ * to: `true` or `false` when the link names it, `null` when it cannot be told
+ * (an older link). Redeeming as an existing member spends the token's single
+ * use, which then leaves the player it was meant for unable to join.
+ */
+export async function alreadyMember(
+  client: Pick<CalimeroClient, 'me'>,
+  invite: PendingInvite,
+): Promise<boolean | null> {
+  if (!invite.org) return null;
+  try {
+    const me = (await client.me()) as { orgs?: Array<{ orgId?: unknown }> };
+    return (me.orgs ?? []).some((o) => o.orgId === invite.org);
+  } catch {
+    return null;
   }
 }

@@ -4,7 +4,15 @@ import { describeError } from "@calimero-apps/connect";
 
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import { setActiveAudience } from "../lib/active";
-import { dropInvite, joinedOrg, pendingInvite, type PendingInvite } from "../lib/companies";
+import {
+  INVITE_REFUSED,
+  alreadyMember,
+  dropInvite,
+  inviteRefused,
+  joinedOrg,
+  pendingInvite,
+  type PendingInvite,
+} from "../lib/companies";
 import { useMaybeSignedIn } from "../lib/sessionContext";
 import styles from "./InviteModal.module.css";
 import { UserPlusIcon, XIcon } from "./icons";
@@ -18,6 +26,11 @@ import { UserPlusIcon, XIcon } from "./icons";
  * link or a background tab that refreshes must not join silently. Joining
  * redeems the org invite; an audience link (`&audience=<id>`) then opens that
  * audience, a company link the company's audience list.
+ *
+ * Someone already in the company (the inviter opening their own link) is told
+ * so and the token dropped: redeeming it would spend its single use, and the
+ * person it was meant for could no longer join. A refused invite (unknown,
+ * used, expired, revoked) is said plainly.
  */
 export default function InvitationPrompt() {
   const signedIn = useMaybeSignedIn();
@@ -26,11 +39,30 @@ export default function InvitationPrompt() {
   const [invite, setInvite] = useState<PendingInvite | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [refused, setRefused] = useState(false);
+  // `null` until the membership check answers; `false` too when it cannot.
+  const [member, setMember] = useState<boolean | null>(null);
+  const client = signedIn?.client ?? null;
 
   useEffect(() => {
-    setInvite(signedIn ? pendingInvite() : null);
-  }, [signedIn]);
-  useDialogOpen(dialogRef, !!invite);
+    setInvite((prev) => (client ? reread(prev) : null));
+  }, [client]);
+
+  useEffect(() => {
+    if (!client || !invite) return undefined;
+    let live = true;
+    setMember(null);
+    void alreadyMember(client, invite).then((known) => {
+      if (!live) return;
+      if (known) dropInvite();
+      setMember(known ?? false);
+    });
+    return () => {
+      live = false;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- once per token, not per re-read
+  }, [client, invite?.token]);
+  useDialogOpen(dialogRef, !!invite && member !== null);
 
   const dismiss = useCallback(() => {
     dropInvite();
@@ -55,11 +87,25 @@ export default function InvitationPrompt() {
         navigate(org ? `/companies/${org}` : "/companies");
       }
     } catch (e) {
-      setError(describeError(e));
+      // A refusal can never succeed: drop it. Anything else (the cluster
+      // unreachable) is kept for another try.
+      if (inviteRefused(e)) {
+        dropInvite();
+        setRefused(true);
+        setError(INVITE_REFUSED);
+      } else {
+        setError(describeError(e));
+      }
     } finally {
       setBusy(false);
     }
   }, [signedIn, invite, navigate]);
+
+  const openCompany = () => {
+    const org = invite?.org;
+    dismiss();
+    navigate(org ? `/companies/${org}` : "/companies");
+  };
 
   if (!invite) return null;
   return (
@@ -77,36 +123,59 @@ export default function InvitationPrompt() {
           </span>
           <div className={styles.headText}>
             <h2 className={styles.title} id="invitation-title">
-              Join this company?
+              {member ? "You're already in this company" : "Join this company?"}
             </h2>
-            <p className={styles.scope}>
-              {invite.audience
-                ? "Joining takes you straight into the audience you were invited to."
-                : "Joining gives you access to the company and every audience in it."}
+            <p className={styles.scope} data-testid={member ? "invitation-member" : undefined}>
+              {member
+                ? "This invitation is for a company you are already a member of, so there is nothing to join. The link was left unused for whoever it was meant for."
+                : invite.audience
+                  ? "Joining takes you straight into the audience you were invited to."
+                  : "Joining gives you access to the company and every audience in it."}
             </p>
           </div>
           <button type="button" className={styles.close} onClick={dismiss} aria-label="Close" disabled={busy}>
             <XIcon size={16} />
           </button>
         </header>
-        <button
-          type="button"
-          className={styles.primary}
-          onClick={() => void join()}
-          disabled={busy}
-          data-testid="invitation-join"
-        >
-          {busy ? "Joining…" : "Join"}
-        </button>
-        <button type="button" className="secondary" onClick={dismiss} disabled={busy}>
-          Not now
-        </button>
+        {member ? (
+          <button type="button" className={styles.primary} onClick={openCompany} data-testid="invitation-open">
+            Open it
+          </button>
+        ) : (
+          !refused && (
+            <button
+              type="button"
+              className={styles.primary}
+              onClick={() => void join()}
+              disabled={busy}
+              data-testid="invitation-join"
+            >
+              {busy ? "Joining…" : "Join"}
+            </button>
+          )
+        )}
+        {!member && (
+          <button type="button" className="secondary" onClick={dismiss} disabled={busy}>
+            {refused ? "Close" : "Not now"}
+          </button>
+        )}
         {error && (
-          <p className="error" role="alert">
+          <p className="error" role="alert" data-testid="invitation-error">
             {error}
           </p>
         )}
       </div>
     </dialog>
   );
+}
+
+/**
+ * The invitation to ask about once there is a session: the one already held,
+ * or the stored one. Never a fresh copy of the one held: that would re-run the
+ * membership check and close and reopen the dialog (closing it is "Not now"),
+ * and after the check has dropped an already-member's token it would lose the
+ * "You're already in" answer before anyone read it.
+ */
+function reread(prev: PendingInvite | null): PendingInvite | null {
+  return prev ?? pendingInvite();
 }

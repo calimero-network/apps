@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
-import { CalimeroError } from "@calimero-network/mero-js";
-import { describeError } from "@calimero-apps/connect";
-import { redeemInvitation } from "../api/rpc";
-import { useSessionApi } from "../sessionContext";
-import { dropInvite, pendingInvite, type PendingInvite } from "../utils/inviteLink";
-import SignInModal from "./SignInModal";
+import { readTeam, redeemInvitation } from "../api/rpc";
+import { useAuth } from "../sessionContext";
+import {
+  dropInvite,
+  inviteFailure,
+  inviteRefused,
+  pendingInvite,
+  type PendingInvite,
+} from "../utils/inviteLink";
 import styles from "./InviteModal.module.css";
 
 /**
@@ -16,109 +19,154 @@ import styles from "./InviteModal.module.css";
  * Mounted once, above the routes, because a link can land on any page. It
  * asks rather than joins: joining puts you in someone's organization, and a
  * forwarded link or a refreshing background tab should not do that silently.
- * Signed out, it offers the sign-in first; the token survives the sign-up.
- * Signed in, Join redeems the org invite and opens the team. There is no
- * "Syncing…" stage any more: nothing has to replicate before a new member can
- * read the team's boards.
+ *
+ * Signed out it renders nothing: the invitation is then the whole page
+ * (`InvitationPage`, on the front door), whose sign-in brings the visitor
+ * straight back here. Signed in, Join redeems the org invite and opens the
+ * team, or the route the link was opened on.
+ *
+ * ⚠️ Someone already in the team is not offered Join. Redeeming spends the
+ * link's single use, so the owner testing their own link used to leave the
+ * person it was meant for with "unknown invite". When the link names its team
+ * (`&org=`) and the team lists this account, the token is dropped and the
+ * prompt says so instead; when it cannot tell, it asks as before.
  */
 export default function InvitationPrompt() {
-  const { api } = useSessionApi();
+  const { isAuthenticated: signedIn, accountId } = useAuth();
   const navigate = useNavigate();
   const [invite, setInvite] = useState<PendingInvite | null>(() => pendingInvite());
+  const [member, setMember] = useState<"checking" | "yes" | "no">("checking");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [signingIn, setSigningIn] = useState(false);
-  const signedIn = api.session.status === "signed-in";
-  const ready = signedIn || api.session.status === "signed-out";
+  const [spent, setSpent] = useState(false);
+
+  // Signing in (or out) is when a pending invitation becomes this account's.
+  useEffect(() => {
+    if (signedIn) setInvite(pendingInvite());
+  }, [signedIn]);
 
   useEffect(() => {
-    if (signedIn) setSigningIn(false);
-  }, [signedIn]);
+    if (!signedIn || !invite) return;
+    if (!invite.org || !accountId) {
+      setMember("no");
+      return;
+    }
+    let live = true;
+    setMember("checking");
+    readTeam(invite.org)
+      .then((team) => {
+        if (!live) return;
+        if (team.roles.has(accountId)) {
+          dropInvite();
+          setMember("yes");
+        } else setMember("no");
+      })
+      // Not a member reads as a refusal here; either way, ask.
+      .catch(() => live && setMember("no"));
+    return () => {
+      live = false;
+    };
+  }, [signedIn, invite, accountId]);
+
+  const close = useCallback(() => {
+    setInvite(null);
+    setError(null);
+    setSpent(false);
+  }, []);
 
   const dismiss = useCallback(() => {
     dropInvite();
-    setInvite(null);
-    setError(null);
-  }, []);
+    close();
+  }, [close]);
+
+  const open = useCallback(() => {
+    const target = invite?.returnTo ?? (invite?.org ? `/teams/${invite.org}/projects` : "/teams");
+    close();
+    navigate(target);
+  }, [invite, close, navigate]);
 
   const join = useCallback(async () => {
     if (!signedIn || !invite) return;
     setBusy(true);
     setError(null);
     try {
-      const org = await redeemInvitation(invite.token);
+      const org = (await redeemInvitation(invite.token)) ?? invite.org ?? null;
       dropInvite();
       setInvite(null);
-      navigate(org ? `/teams/${org}/projects` : "/teams");
+      navigate(invite.returnTo ?? (org ? `/teams/${org}/projects` : "/teams"));
     } catch (e) {
-      // A refusal (used, expired, revoked) can never succeed: drop it. Anything
-      // else (the cluster unreachable) is kept for another try.
-      if (e instanceof CalimeroError && e.status < 500) dropInvite();
-      setError(`The invitation could not be accepted: ${describeError(e)}`);
+      // A refusal (unknown, used, expired, revoked) can never succeed: drop
+      // it. Anything else (the cluster unreachable) is kept for another try.
+      if (inviteRefused(e)) {
+        dropInvite();
+        setSpent(true);
+      }
+      setError(inviteFailure(e));
     } finally {
       setBusy(false);
     }
   }, [signedIn, invite, navigate]);
 
-  if (!invite || !ready) return null;
+  if (!invite || !signedIn || member === "checking") return null;
 
-  return (
-    <>
-      {!signingIn &&
-        createPortal(
-          <div className={styles.overlay}>
-            <div
-              className={styles.modal}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="invitation-title"
-              data-testid="invitation-dialog"
-            >
-              <div className={styles.header}>
-                <h2 id="invitation-title" className={styles.title}>You&apos;re invited to Mero Design</h2>
-              </div>
-              <p className={styles.desc}>Joining gives you access to the team and every board in it.</p>
-              {error && (
-                <p className={styles.error} role="alert" data-testid="invitation-error">
-                  {error}
-                </p>
-              )}
-              <div className={styles.actions}>
+  const already = member === "yes";
+
+  return createPortal(
+    <div className={styles.overlay}>
+      <div
+        className={styles.modal}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="invitation-title"
+        data-testid="invitation-dialog"
+      >
+        <div className={styles.header}>
+          <h2 id="invitation-title" className={styles.title}>
+            {already ? "You're already in this team" : "You're invited to Mero Design"}
+          </h2>
+        </div>
+        <p className={styles.desc}>
+          {already
+            ? "This account is already a member, so there is nothing to accept. The link is left unused for the person it was meant for."
+            : "Joining gives you access to the team and every board in it."}
+        </p>
+        {error && (
+          <p className={styles.error} role="alert" data-testid="invitation-error">
+            {error}
+          </p>
+        )}
+        <div className={styles.actions}>
+          {already ? (
+            <button type="button" className={styles.primaryBtn} onClick={open} data-testid="invitation-open">
+              Open the team
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                className={styles.secondaryBtn}
+                onClick={spent ? close : dismiss}
+                disabled={busy}
+                data-testid="invitation-dismiss"
+              >
+                {spent ? "Close" : "Not now"}
+              </button>
+              {!spent && (
                 <button
                   type="button"
-                  className={styles.secondaryBtn}
-                  onClick={dismiss}
+                  className={styles.primaryBtn}
+                  onClick={() => void join()}
                   disabled={busy}
-                  data-testid="invitation-dismiss"
+                  data-testid="invitation-join"
                 >
-                  Not now
+                  {busy ? "Joining…" : "Join"}
                 </button>
-                {signedIn ? (
-                  <button
-                    type="button"
-                    className={styles.primaryBtn}
-                    onClick={() => void join()}
-                    disabled={busy}
-                    data-testid="invitation-join"
-                  >
-                    {busy ? "Joining…" : "Join"}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className={styles.primaryBtn}
-                    onClick={() => setSigningIn(true)}
-                    data-testid="invitation-signin"
-                  >
-                    Sign in to join
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>,
-          document.body,
-        )}
-      <SignInModal open={signingIn} onClose={() => setSigningIn(false)} />
-    </>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }

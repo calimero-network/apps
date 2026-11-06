@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { CalimeroError, type AppInfo } from "@calimero-network/mero-js";
-import { appSource, describeError, type KeyValueStorage } from "@calimero-apps/connect";
+import type { AppInfo } from "@calimero-network/mero-js";
+import { appSource, type KeyValueStorage } from "@calimero-apps/connect";
 import { AppListing } from "@calimero-apps/passkey";
 
 import { setConnection } from "./lib/calimero";
 import { LISTING, PACKAGE, defaultDeps, describeTarget, useSession, type SessionDeps } from "./session";
-import { dropInvite, pendingInvite, selectionKey } from "./instances";
+import { pendingInvite, selectionKey } from "./instances";
+import { InvitationSignIn, JoinInvitation } from "./Invitation";
 import { SignIn } from "./SignIn";
 import { InstancePicker } from "./InstancePicker";
 import { Concepts } from "./sections/Concepts";
@@ -281,32 +282,13 @@ export default function App({
     [key, storage],
   );
 
-  // An invitation link opened before signing in is redeemed once a session exists.
+  // An invitation link opened before signing in: a page of its own while it
+  // is pending (see `Invitation.tsx`), redeemed only on "Join".
+  const [invite, setInvite] = useState<string | null>(() => pendingInvite(storage));
+  const [inviteLater, setInviteLater] = useState(false);
   useEffect(() => {
-    if (!client) return;
-    const token = pendingInvite(storage);
-    if (!token) return;
-    let live = true;
-    client
-      .redeemInvite(token)
-      .then(() => {
-        dropInvite(storage);
-        if (live) {
-          setNotice("Invitation accepted: the shared instance is in your list.");
-          setPickerKey((k) => k + 1);
-        }
-      })
-      .catch((e: unknown) => {
-        // A refusal (used, expired, revoked) can never succeed: drop it. Anything
-        // else (the cluster unreachable) is kept and tried on the next load.
-        if (e instanceof CalimeroError && e.status < 500) dropInvite(storage);
-        if (live) setNotice(`The invitation could not be accepted: ${describeError(e)}`);
-      })
-      .finally(after);
-    return () => {
-      live = false;
-    };
-  }, [client, storage, after]);
+    if (client) setInvite(pendingInvite(storage));
+  }, [client, storage]);
 
   function handleSetActive(id: SectionId) {
     setActive(id);
@@ -318,7 +300,7 @@ export default function App({
     }
   }
 
-  if (session.status !== "signed-in") {
+  if (session.status !== "signed-in" || invite) {
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
         <div style={{ width: "100%", maxWidth: 440 }}>
@@ -338,7 +320,27 @@ export default function App({
               <pre className="result-box error">{session.message}</pre>
             </div>
           )}
-          {session.status === "signed-out" && <SignIn api={api} where={describeTarget(session.target)} />}
+          {session.status === "signed-out" &&
+            (invite && !inviteLater ? (
+              <InvitationSignIn api={api} where={describeTarget(session.target)} onLater={() => setInviteLater(true)} />
+            ) : (
+              <SignIn api={api} where={describeTarget(session.target)} />
+            ))}
+          {session.status === "signed-in" && invite && (
+            <JoinInvitation
+              client={session.client}
+              token={invite}
+              storage={storage}
+              after={after}
+              onJoined={() => {
+                setInvite(null);
+                setNotice("Invitation accepted: the shared instance is in your list.");
+                setPickerKey((k) => k + 1);
+                open(null);
+              }}
+              onClose={() => setInvite(null)}
+            />
+          )}
         </div>
       </div>
     );
