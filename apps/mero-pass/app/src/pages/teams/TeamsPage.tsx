@@ -64,9 +64,11 @@ export default function TeamsPage() {
   const [newName, setNewName] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
-  const [invite, setInvite] = useState<{ code: string; scope: string } | null>(
-    null,
-  );
+  const [invite, setInvite] = useState<{
+    code: string;
+    scope: string;
+    org?: string;
+  } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
@@ -197,7 +199,11 @@ export default function TeamsPage() {
           { namespaceId: team.namespaceId },
           setBusy,
         );
-        setInvite({ code, scope: `Whole team · ${team.name}` });
+        setInvite({
+          code,
+          scope: `Whole team · ${team.name}`,
+          org: team.namespaceId,
+        });
       } catch (e) {
         setError(describeError(e));
       } finally {
@@ -452,8 +458,9 @@ export default function TeamsPage() {
       <InviteModal
         open={!!invite}
         code={invite?.code ?? ''}
+        org={invite?.org}
         scope={invite?.scope ?? ''}
-        hint="Anyone who opens this link can join the team and read every vault in it."
+        hint="Whoever opens this link can join the team and read every vault in it."
         onClose={() => setInvite(null)}
       />
     </AppShell>

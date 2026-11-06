@@ -37,7 +37,7 @@ export function InviteCard({
     setBusy(true);
     setError(null);
     try {
-      setLink(inviteLink(await inviteToken(client, org, passkey())));
+      setLink(inviteLink(await inviteToken(client, org, passkey()), window.location, org));
     } catch (e) {
       setError(describeError(e));
     } finally {
@@ -50,7 +50,8 @@ export function InviteCard({
     <div className="method-card">
       <div className="method-name">2 · Invite a second account</div>
       <p className="method-hint" style={{ marginBottom: 10 }}>
-        A link that makes whoever opens it a member of this instance&apos;s organization.
+        A link that makes whoever opens it a member of this instance&apos;s organization. It is single
+        use: create another for each account you invite.
       </p>
       <button className="btn-calimero-outline" disabled={busy} onClick={() => void invite(org)}>
         Create an invitation link

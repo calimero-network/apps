@@ -32,7 +32,7 @@ export function InviteCard({
     setFailed(null);
     setCopied(false);
     try {
-      setLink(inviteLink(await inviteToken(client, org, passkey())));
+      setLink(inviteLink(await inviteToken(client, org, passkey()), window.location, org));
     } catch (e) {
       setFailed(errText(e));
     } finally {
@@ -68,8 +68,9 @@ export function InviteCard({
       ) : (
         <>
           <p className="hint">
-            One link. Whoever opens it signs in with a passkey, joins this group&apos;s organization and sees
-            its polls. Creating it asks for your passkey.
+            One link, for one person: it is single use, so create another for each member. Whoever opens it
+            signs in with a passkey, joins this group&apos;s organization and sees its polls. Creating it asks
+            for your passkey.
           </p>
           <button className={link ? "ghost" : ""} onClick={() => void mint(org)} disabled={busy} style={{ width: "100%" }}>
             <LinkIcon size={16} />

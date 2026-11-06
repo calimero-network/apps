@@ -124,7 +124,7 @@ describe("App", () => {
     await waitFor(() => expect(client.view).toHaveBeenCalledWith("app-new", "entries", {}));
 
     fireEvent.click(screen.getByText("Create an invitation link"));
-    await screen.findByText(/invite=tok-123/);
+    await screen.findByText(/invite=tok-123&org=org-1/);
     expect(client.invite).toHaveBeenCalledWith("org-1", "member", expect.anything());
   });
 
@@ -146,26 +146,64 @@ describe("App", () => {
     await screen.findByText("Your stores");
   });
 
-  it("redeems an invitation opened before signing in, once, and drops a refused one", async () => {
+  it("shows a signed-out visitor with an invitation an invitation page, and \"Not now\" keeps it", async () => {
     const client = fakeClient();
     const storage = new Memory();
     storage.setItem(`${APP}:pending-invite`, "tok-9");
     render(<App deps={deps(client)} storage={storage} />);
-    await screen.findByText(/Connected to/);
+    const page = await screen.findByTestId("invitation-page");
+    expect(page.textContent).toContain(
+      "You've been invited to join a shared store in KV Store. Sign in or create an account to accept.",
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("invitation-later"));
+    expect(screen.queryByTestId("invitation-page")).toBeNull();
+    await screen.findByText("Continue with passkey");
+    expect(storage.getItem(`${APP}:pending-invite`)).toBe("tok-9");
+  });
+
+  it("asks to join right after signing in, and redeems only on Join", async () => {
+    const client = fakeClient();
+    const storage = new Memory();
+    storage.setItem(`${APP}:pending-invite`, "tok-9");
+    render(<App deps={deps(client)} storage={storage} />);
+    await screen.findByTestId("invitation-page");
     fireEvent.click(screen.getByText("Continue with passkey"));
+    fireEvent.click(await screen.findByTestId("invitation-join"));
     await screen.findByText(/Invitation accepted/);
+    expect(client.redeemInvite).toHaveBeenCalledTimes(1);
     expect(client.redeemInvite).toHaveBeenCalledWith("tok-9");
     expect(storage.getItem(`${APP}:pending-invite`)).toBeNull();
+  });
 
-    cleanup();
+  it("tells a member of the invited org they are already in it, without spending the invite", async () => {
+    const client = fakeClient();
+    Object.assign(client, { me: vi.fn(async () => ({ accountId: "acct-alice", orgs: [{ orgId: "org-1" }] })) });
+    const storage = new Memory();
+    storage.setItem(`${APP}:pending-invite`, "tok-9");
+    storage.setItem(`${APP}:pending-invite-org`, "org-1");
+    new SessionStore(APP, LOCAL, storage).save(SESSION);
+    render(<App deps={deps(client)} storage={storage} />);
+    expect((await screen.findByTestId("invitation-outcome")).textContent).toContain(
+      "You're already in this shared store",
+    );
+    expect(client.redeemInvite).not.toHaveBeenCalled();
+    expect(storage.getItem(`${APP}:pending-invite`)).toBeNull();
+  });
+
+  it("says plainly when the invite was already used or has expired", async () => {
     const refusing = fakeClient();
     refusing.redeemInvite.mockRejectedValue(new NotFound("no such invite"));
-    const storage2 = new Memory();
-    storage2.setItem(`${APP}:pending-invite`, "tok-used");
-    new SessionStore(APP, LOCAL, storage2).save(SESSION);
-    render(<App deps={deps(refusing)} storage={storage2} />);
-    await screen.findByText(/could not be accepted/);
-    await waitFor(() => expect(storage2.getItem(`${APP}:pending-invite`)).toBeNull());
+    const storage = new Memory();
+    storage.setItem(`${APP}:pending-invite`, "tok-used");
+    new SessionStore(APP, LOCAL, storage).save(SESSION);
+    render(<App deps={deps(refusing)} storage={storage} />);
+    fireEvent.click(await screen.findByTestId("invitation-join"));
+    await screen.findByText(
+      "This invite was already used or has expired. Ask the person who invited you for a new link.",
+    );
+    expect(storage.getItem(`${APP}:pending-invite`)).toBeNull();
   });
 
   it("signs out and forgets the session", async () => {
