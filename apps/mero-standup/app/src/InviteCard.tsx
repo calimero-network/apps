@@ -29,7 +29,7 @@ export function InviteCard({
     setFailed(null);
     setCopied(false);
     try {
-      setLink(inviteLink(await inviteToken(client, org, passkey())));
+      setLink(inviteLink(await inviteToken(client, org, passkey()), window.location, org));
     } catch (e) {
       setFailed(describeError(e));
     } finally {
@@ -57,8 +57,9 @@ export function InviteCard({
       ) : (
         <>
           <p className="empty" style={{ marginBottom: 14 }}>
-            One link. Whoever opens it signs in with a passkey, joins this team&apos;s organization and sees
-            its standups and decisions; nobody without one can. Creating it asks for your passkey.
+            One link, for one person: it is single use, so create another for each teammate. Whoever opens
+            it signs in with a passkey, joins this team&apos;s organization and sees its standups and
+            decisions; nobody without one can. Creating it asks for your passkey.
           </p>
           <div className="row">
             <button onClick={() => void mint(org)} disabled={busy}>
