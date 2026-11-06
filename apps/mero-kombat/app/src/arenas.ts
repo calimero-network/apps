@@ -1,4 +1,4 @@
-import type { AppInfo, CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
+import { CalimeroError, type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
 import { targetKey, type AppSource, type KeyValueStorage, type Target } from "@calimero-apps/connect";
 
 import { APP } from "./session";
@@ -38,26 +38,31 @@ export async function createArena(
 }
 
 /** An invitation into `org` as a member, approved with the inviter's passkey (412 step-up). */
-export async function inviteToken(
+export function inviteToken(
   client: Pick<CalimeroClient, "invite">,
   org: string,
   passkey: PasskeyProvider,
-  storage: KeyValueStorage = localStorage,
 ): Promise<string> {
-  const token = await client.invite(org, "member", passkey);
-  rememberMinted(token, org, storage);
-  return token;
+  return client.invite(org, "member", passkey);
 }
 
-/** The link that opens this frontend with `token` to redeem and `arena` to open after. */
+/**
+ * The link that opens this frontend with `token` to redeem and `arena` to open
+ * after. It also names `org`: the token does not say which org it is for until
+ * it is redeemed, and redeeming spends one of its uses even for someone already
+ * in the org, so the link carries it for the app to tell a member "you are
+ * already in" first.
+ */
 export function inviteLink(
   token: string,
   arena: string,
   location: Pick<Location, "origin" | "pathname"> = window.location,
+  org?: string,
 ): string {
   const url = new URL(location.pathname, location.origin);
   url.searchParams.set("invite", token);
   url.searchParams.set("arena", arena);
+  if (org) url.searchParams.set("org", org);
   return url.toString();
 }
 
@@ -65,6 +70,8 @@ export interface PendingInvite {
   token: string;
   /** The arena the link was made in: opened once the invitation is redeemed. */
   arena: string | null;
+  /** The org the link names, for the membership check before redeeming. */
+  org: string | null;
 }
 
 const PENDING = `${APP}:pending-invite`;
@@ -80,12 +87,16 @@ export function captureInvite(storage: KeyValueStorage = localStorage, loc: Loca
   const token = url.searchParams.get("invite");
   if (!token) return;
   try {
-    storage.setItem(PENDING, JSON.stringify({ token, arena: url.searchParams.get("arena") }));
+    storage.setItem(
+      PENDING,
+      JSON.stringify({ token, arena: url.searchParams.get("arena"), org: url.searchParams.get("org") }),
+    );
   } catch {
     return;
   }
   url.searchParams.delete("invite");
   url.searchParams.delete("arena");
+  url.searchParams.delete("org");
   window.history.replaceState(null, "", url.toString());
 }
 
@@ -95,7 +106,11 @@ export function pendingInvite(storage: KeyValueStorage = localStorage): PendingI
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<PendingInvite>;
     return typeof parsed.token === "string"
-      ? { token: parsed.token, arena: typeof parsed.arena === "string" ? parsed.arena : null }
+      ? {
+          token: parsed.token,
+          arena: typeof parsed.arena === "string" ? parsed.arena : null,
+          org: typeof parsed.org === "string" && parsed.org ? parsed.org : null,
+        }
       : null;
   } catch {
     return null;
@@ -110,62 +125,18 @@ export function dropInvite(storage: KeyValueStorage = localStorage): void {
   }
 }
 
-const MINTED = `${APP}:minted-invites`;
-const MINTED_KEEP = 20;
-
 /**
- * Which org each invite this browser minted points at. A token is opaque, so
- * this is the only way to know an invite's org before spending it: an owner
- * who opens their own link to check it would otherwise redeem its single use
- * and leave the person it was meant for with "unknown invite".
+ * Whether a redemption failed because the invitation itself is spent: used,
+ * expired, revoked or unknown to the node. Those answer a 4xx; a 5xx or a
+ * network failure is worth retrying with the same token.
  */
-export function rememberMinted(token: string, org: string, storage: KeyValueStorage = localStorage): void {
-  try {
-    const all = readMinted(storage).filter(([t]) => t !== token);
-    all.push([token, org]);
-    storage.setItem(MINTED, JSON.stringify(all.slice(-MINTED_KEEP)));
-  } catch {
-    /* storage unavailable: the prompt simply stays */
-  }
+export function isSpentInvite(e: unknown): boolean {
+  return e instanceof CalimeroError && e.status >= 400 && e.status < 500 && e.status !== 401;
 }
 
-/** The org `token` points at, when this browser minted it; otherwise unknown. */
-export function mintedOrg(token: string, storage: KeyValueStorage = localStorage): string | null {
-  return readMinted(storage).find(([t]) => t === token)?.[1] ?? null;
-}
-
-function readMinted(storage: KeyValueStorage): Array<[string, string]> {
-  try {
-    const parsed: unknown = JSON.parse(storage.getItem(MINTED) ?? "[]");
-    return Array.isArray(parsed)
-      ? parsed.filter((e): e is [string, string] => Array.isArray(e) && typeof e[0] === "string" && typeof e[1] === "string")
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-/** Whether `client` is already in `org`; null when that cannot be told. */
-export async function memberOf(client: Pick<CalimeroClient, "me">, org: string): Promise<boolean | null> {
-  try {
-    const me = (await client.me()) as { orgs?: Array<{ orgId?: string }> };
-    return Array.isArray(me.orgs) ? me.orgs.some((o) => o.orgId === org) : null;
-  } catch {
-    return null;
-  }
-}
-
-/** What a refused redemption (an unknown, used, expired or revoked invite) tells the person. */
-export const INVITE_SPENT = "This invite was already used or has expired. Ask the person who invited you for a new link.";
-
-/**
- * Whether the node refused the invite itself (a 4xx), as opposed to being
- * unreachable. Only a refusal drops the token: a network failure keeps it.
- */
-export function inviteRefused(e: unknown): boolean {
-  const status = (e as { status?: unknown } | null)?.status;
-  return typeof status === "number" && status >= 400 && status < 500;
-}
+/** What the invitation screen says about a spent invitation. */
+export const SPENT_INVITE =
+  "This invite was already used or has expired. Ask the person who invited you for a new link.";
 
 /** The arena last opened on this target by this account, remembered across loads. */
 export function selectionKey(target: Target, accountId: string): string {

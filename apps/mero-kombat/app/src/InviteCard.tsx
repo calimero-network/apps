@@ -36,7 +36,7 @@ export function InviteCard({
     setFailed(null);
     setCopied(false);
     try {
-      setLink(inviteLink(await inviteToken(client, org, passkey()), arena.appId));
+      setLink(inviteLink(await inviteToken(client, org, passkey()), arena.appId, window.location, org));
     } catch (e) {
       setFailed(messageOf(e));
     } finally {
@@ -72,8 +72,8 @@ export function InviteCard({
       ) : (
         <>
           <p className="hint">
-            One link, single use: the first person to accept it joins this arena&apos;s
-            organization, and can take the open corner or watch. Make a new link for each person.
+            One link, for one person: it is single use, so create another for each opponent. Whoever
+            opens it joins this arena&apos;s organization, and can take the open corner or watch.
           </p>
 
           {link && (
