@@ -55,16 +55,23 @@ sentence in `fields.message`.
 ## Run it against a development cluster
 
 ```bash
-# in calimero-network/core (merod is Linux-only; on macOS run it in Docker)
-cargo run -p merod -- local                     # 3 nodes on :2501-2503, mock attestation
-meroctl node add local http://127.0.0.1:2501/ --allow-mock
-make tools                                      # once: mero-component, the component bundler
-make logic-bundle                               # here: logic/dist/mero-tag-dev.mpk
-meroctl app install --path logic/dist/mero-tag-dev.mpk
+make tools        # once: mero-component, the component bundler
+make dev          # merod local on :2501-2503 (Docker on a Mac), then bundle + install the contract
 ```
 
-In the app tap **Development cluster**, use `http://<your Mac's address>:2501` and a name. The SDK keeps a software
-passkey for that node and makes an account on first use. Then create a space.
+`make dev` runs [`scripts/dev-cluster.sh`](scripts/dev-cluster.sh): core's `merod local` (three nodes, mock
+attestation) from `ghcr.io/calimero-network/merod` in Docker, because merod 1.0 is Linux-only. Set `MEROD_BIN` to a
+merod 1.0 binary to run that instead. State is kept across runs; `scripts/dev-cluster.sh up --fresh` starts over,
+`make dev-down` stops it.
+
+In the app tap **Development cluster** and use the URL it prints:
+
+| Where the app runs | Node URL |
+|---|---|
+| iOS Simulator | `http://localhost:2501` |
+| iPhone on the same Wi-Fi | `http://<your Mac's LAN address>:2501` (allow Local Network when asked) |
+
+The SDK keeps a software passkey for that node and makes an account on first use. Then create a space.
 
 ## Build the app
 
