@@ -1,11 +1,11 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { AppInfo, CalimeroClient, CalimeroSession } from "@calimero-network/mero-js";
+import { NotFound, type AppInfo, type CalimeroClient, type CalimeroSession } from "@calimero-network/mero-js";
 import { resolveTarget, type KeyValueStorage } from "@calimero-apps/connect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App";
 import { selectionKey } from "./instances";
-import type { SessionDeps } from "./session";
+import { APP, type SessionDeps } from "./session";
 
 afterEach(cleanup);
 
@@ -114,5 +114,38 @@ describe("App", () => {
     await waitFor(() => expect(client.call).toHaveBeenCalledWith("app-1", "set", { key: "k", value: "v" }));
     // The live entries panel polls the `entries` view.
     await waitFor(() => expect(client.view).toHaveBeenCalledWith("app-1", "entries", {}));
+  });
+
+  it("shows a signed-out visitor with an invitation an invitation page, then asks to join right after sign-in", async () => {
+    const client = fakeClient();
+    const storage = new Memory();
+    storage.setItem(`${APP}:pending-invite`, "tok-9");
+    render(<App deps={deps(client)} storage={storage} />);
+    const page = await screen.findByTestId("invitation-page");
+    expect(page.textContent).toContain(
+      "You've been invited to join a shared instance in the E2E test suite. Sign in or create an account to accept.",
+    );
+    fireEvent.click(screen.getByText("Continue with passkey"));
+    fireEvent.click(await screen.findByTestId("invitation-join"));
+    await screen.findByText(/Invitation accepted/);
+    expect(client.redeemInvite).toHaveBeenCalledTimes(1);
+    expect(client.redeemInvite).toHaveBeenCalledWith("tok-9");
+    expect(storage.getItem(`${APP}:pending-invite`)).toBeNull();
+  });
+
+  it("\"Not now\" keeps the invitation, and a used or expired one is said plainly", async () => {
+    const client = fakeClient();
+    client.redeemInvite.mockRejectedValue(new NotFound("no such invite"));
+    const storage = new Memory();
+    storage.setItem(`${APP}:pending-invite`, "tok-used");
+    render(<App deps={deps(client)} storage={storage} />);
+    fireEvent.click(await screen.findByTestId("invitation-later"));
+    expect(storage.getItem(`${APP}:pending-invite`)).toBe("tok-used");
+    fireEvent.click(await screen.findByText("Continue with passkey"));
+    fireEvent.click(await screen.findByTestId("invitation-join"));
+    await screen.findByText(
+      "This invite was already used or has expired. Ask the person who invited you for a new link.",
+    );
+    expect(storage.getItem(`${APP}:pending-invite`)).toBeNull();
   });
 });

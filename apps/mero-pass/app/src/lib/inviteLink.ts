@@ -12,16 +12,27 @@
 // serves.
 
 import type { KeyValueStorage } from '@calimero-apps/connect';
+import { CalimeroError } from '@calimero-network/mero-js';
 
 /** Query parameter carrying the token. */
 export const INVITE_PARAM = 'invite';
+/**
+ * Query parameter naming the team (org) a team invitation is for. The token
+ * does not say until it is redeemed, and redeeming spends a use even for
+ * someone already in the team, so the link names it for the app to tell a
+ * member "you are already in" first. Left off a vault invitation that also
+ * admits to an invite-only vault: a team member still needs that one.
+ */
+export const ORG_PARAM = 'org';
 
 const PENDING = 'mero-pass:pending-invite';
+const PENDING_ORG = 'mero-pass:pending-invite-org';
 
 /** The link that opens this frontend with `token` to redeem. */
 export function invitationUrl(
   token: string,
   location: Pick<Location, 'origin' | 'pathname'> = window.location,
+  org?: string,
 ): string {
   const trimmed = token.trim();
   if (!trimmed)
@@ -34,15 +45,22 @@ export function invitationUrl(
   );
   const url = new URL(base || '/', location.origin);
   url.searchParams.set(INVITE_PARAM, trimmed);
+  if (org) url.searchParams.set(ORG_PARAM, org);
   return url.toString();
 }
 
 /** What the invite modal shows: the link, and the bare token. */
-export function shareableInvitation(token: string): {
+export function shareableInvitation(
+  token: string,
+  org?: string,
+): {
   link: string;
   code: string;
 } {
-  return { link: invitationUrl(token), code: token.trim() };
+  return {
+    link: invitationUrl(token, window.location, org),
+    code: token.trim(),
+  };
 }
 
 /** A pasted link or bare token, as the token; null for anything else. */
@@ -57,7 +75,7 @@ export function invitationFromRaw(raw: string): string | null {
   }
 }
 
-/** Takes `?invite=` off the address bar into storage. */
+/** Takes `?invite=` (and `?org=`) off the address bar into storage. */
 export function captureInvite(
   storage: KeyValueStorage = localStorage,
   loc: Location = window.location,
@@ -65,12 +83,16 @@ export function captureInvite(
   const url = new URL(loc.href);
   const token = url.searchParams.get(INVITE_PARAM);
   if (!token) return;
+  const org = url.searchParams.get(ORG_PARAM);
   try {
     storage.setItem(PENDING, token);
+    if (org) storage.setItem(PENDING_ORG, org);
+    else storage.removeItem(PENDING_ORG);
   } catch {
     return;
   }
   url.searchParams.delete(INVITE_PARAM);
+  url.searchParams.delete(ORG_PARAM);
   window.history.replaceState(null, '', url.toString());
 }
 
@@ -84,10 +106,46 @@ export function pendingInvite(
   }
 }
 
-export function dropInvite(storage: KeyValueStorage = localStorage): void {
+/** The heading over the sign-in: the invitation, when there is one. */
+export function signInTitle(): string {
+  return pendingInvite() ? "You're invited" : 'Sign in or create an account';
+}
+
+/** The team the pending invitation's link named, when it named one. */
+export function pendingInviteOrg(
+  storage: KeyValueStorage = localStorage,
+): string | null {
   try {
-    storage.removeItem(PENDING);
+    return storage.getItem(PENDING_ORG);
   } catch {
-    /* nothing stored */
+    return null;
   }
 }
+
+export function dropInvite(storage: KeyValueStorage = localStorage): void {
+  for (const key of [PENDING, PENDING_ORG]) {
+    try {
+      storage.removeItem(key);
+    } catch {
+      /* nothing stored */
+    }
+  }
+}
+
+/**
+ * Whether a redemption failed because the invitation itself is spent: used,
+ * expired, revoked or unknown to the node. Those answer a 4xx; a 5xx or a
+ * network failure is worth retrying with the same token.
+ */
+export function isSpentInvite(e: unknown): boolean {
+  return (
+    e instanceof CalimeroError &&
+    e.status >= 400 &&
+    e.status < 500 &&
+    e.status !== 401
+  );
+}
+
+/** What the invitation screen says about a spent invitation. */
+export const SPENT_INVITE =
+  'This invite was already used or has expired. Ask the person who invited you for a new link.';
