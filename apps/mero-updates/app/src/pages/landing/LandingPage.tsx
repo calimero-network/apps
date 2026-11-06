@@ -89,8 +89,8 @@ const FORK = 'https://github.com/calimero-network/apps/fork';
 /** How it works — identical for every app, because the network is. */
 const STEPS = [
   {
-    title: 'Run a node',
-    body: 'Your own, or the one bundled in the Calimero desktop app. The node is where your data actually lives.',
+    title: 'Sign in',
+    body: 'With a passkey, on the Calimero cluster that serves this app. The same button creates your account: no password, nothing to install.',
   },
   {
     title: 'Create a namespace',
@@ -98,7 +98,7 @@ const STEPS = [
   },
   {
     title: 'Invite people',
-    body: 'Share a link. Their node syncs directly with yours — there is no server in the middle to trust or pay.',
+    body: 'Share a link. They sign in with their own passkey and join: nothing to install, nothing to configure.',
   },
   {
     title: 'Work together',
@@ -116,7 +116,7 @@ const WHY = [
 const SHARED_FAQ = [
   {
     q: 'Do I need to run a server?',
-    a: 'No. The Calimero desktop app bundles a node, so installing it is the whole setup. If you already run a node you can point this app at it instead.',
+    a: 'No. Sign in with a passkey and the app runs on the Calimero cluster that serves it. If you would rather host it yourself, you can run it on a node of your own.',
   },
   {
     q: 'Where is my data stored?',
@@ -447,7 +447,7 @@ export default function LandingPage({
     }
     return (
       <button type="button" className={cls} onClick={connect} disabled={!connect}>
-        Connect to node
+        Sign in
       </button>
     );
   }
@@ -456,7 +456,7 @@ export default function LandingPage({
     ? { label: 'Desktop only', icon: Monitor, title: `${CONFIG.name} needs the Calimero desktop app for its node and sign-in.` }
     : webOnly
       ? { label: 'Web only', icon: Wifi, title: 'The Calimero desktop is not a supported target for this app. It is not blocked there and does not crash — the desktop integration around it is what is unsupported.' }
-      : { label: 'Web + Desktop', icon: CheckSquare, title: 'Runs in a browser against your node, and in the Calimero desktop app.' };
+      : { label: 'Web + Desktop', icon: CheckSquare, title: 'Runs in your browser, and in the Calimero desktop app.' };
 
   const AvailIcon = availabilityBadge.icon;
 
@@ -593,8 +593,12 @@ export default function LandingPage({
             </div>
             <div>
               <h4 className="cal-lp-footerhead">Get started</h4>
-              <a className="cal-lp-footerlink" href={LINKS.download} target="_blank" rel="noreferrer">Download desktop <ExternalLink size={13} /></a>
-              <br />
+              {CONFIG.availability !== 'web' && (
+                <>
+                  <a className="cal-lp-footerlink" href={LINKS.download} target="_blank" rel="noreferrer">Download desktop <ExternalLink size={13} /></a>
+                  <br />
+                </>
+              )}
               <a className="cal-lp-footerlink" href={LINKS.core} target="_blank" rel="noreferrer">Calimero core <ExternalLink size={13} /></a>
             </div>
             <div>
@@ -713,9 +717,12 @@ function OverviewView({
               ) : (
                 <>
                   <ConnectCta />
-                  <a className="cal-lp-btn cal-lp-btn--ghost" href={LINKS.download} target="_blank" rel="noreferrer">
-                    <Download size={17} /> Get the desktop app
-                  </a>
+                  {/* A web-only app has no desktop build to offer. */}
+                  {CONFIG.availability !== 'web' && (
+                    <a className="cal-lp-btn cal-lp-btn--ghost" href={LINKS.download} target="_blank" rel="noreferrer">
+                      <Download size={17} /> Get the desktop app
+                    </a>
+                  )}
                 </>
               )}
             </div>
@@ -810,7 +817,7 @@ function OverviewView({
 
       {extras && <OverviewExtrasSections ConnectCta={ConnectCta} desktopOnly={desktopOnly} />}
 
-      {!desktopOnly && !extras?.closing && (
+      {!desktopOnly && CONFIG.availability !== 'web' && !extras?.closing && (
         <section className="cal-lp-section">
           <div className="cal-lp-shell">{desktopBand}</div>
         </section>
@@ -1163,14 +1170,16 @@ function OverviewExtrasSections({ ConnectCta, desktopOnly }: ViewShared) {
               <p className="cal-lp-sectionsub">{closing.body}</p>
               <div className="cal-lp-cta">
                 {!desktopOnly && <ConnectCta />}
-                <a
-                  className={`cal-lp-btn ${desktopOnly ? 'cal-lp-btn--primary' : 'cal-lp-btn--ghost'}`}
-                  href={LINKS.download}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <Download size={17} /> Get the desktop app
-                </a>
+                {CONFIG.availability !== 'web' && (
+                  <a
+                    className={`cal-lp-btn ${desktopOnly ? 'cal-lp-btn--primary' : 'cal-lp-btn--ghost'}`}
+                    href={LINKS.download}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <Download size={17} /> Get the desktop app
+                  </a>
+                )}
               </div>
             </div>
           </div>
@@ -1407,7 +1416,7 @@ function DocsView({ faq, ConnectCta, desktopOnly }: ViewShared & { faq: { q: str
               <div className="cal-lp-bandtext">
                 <h3 className="cal-lp-bandtitle">Ready to try it?</h3>
                 <p className="cal-lp-bandbody">
-                  Connect a node and {CONFIG.name} opens straight away — there is no account to create.
+                  Sign in with a passkey and {CONFIG.name} opens straight away. New here? The same button creates your account.
                 </p>
               </div>
               <ConnectCta />
@@ -1466,11 +1475,11 @@ function PreviewView({
 
       <div className="cal-lp-band" style={{ marginBottom: 70 }}>
         <div className="cal-lp-bandtext">
-          <h3 className="cal-lp-bandtitle">Try it on your own node</h3>
+          <h3 className="cal-lp-bandtitle">{desktopOnly ? 'Try it in the desktop app' : 'Try the real thing'}</h3>
           <p className="cal-lp-bandbody">
             {desktopOnly
               ? 'The Calimero desktop app bundles the node this needs and opens the app in its own window.'
-              : 'Connect a node and the real thing opens — same layout, your data.'}
+              : 'Sign in with a passkey and the real thing opens: same layout, your data.'}
           </p>
         </div>
         {desktopOnly ? (
