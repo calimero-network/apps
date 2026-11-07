@@ -159,12 +159,13 @@ export async function runMatrix(env: MatrixEnv): Promise<Row[]> {
     assert(s.accountId === need(A.account, "A's account"), `signed in as ${s.accountId}, not ${A.account}`);
     return s;
   }, (s) => s.accountId);
-  // The refresh token is single-use, so a refresh must hand back a new one
-  // (the session token itself may be re-issued unchanged within a second).
-  await row(A, ACC, "refresh (a new single-use refresh token)", OK, async () => {
+  // A refresh token younger than an hour is kept (core#4873, 1.0.0-rc.11): the
+  // refresh mints a session token and hands the same refresh token back, with no
+  // system-log write. An older one is exchanged, as before.
+  await row(A, ACC, "refresh (a young refresh token is kept)", OK, async () => {
     const before = need(A.client.session, "A's session").refreshToken;
     const s = await A.client.refresh();
-    assert(s.refreshToken !== before, "the refresh token did not change");
+    assert(s.refreshToken === before, "a young refresh token was exchanged");
     assert(s.accountId === A.account, `refreshed as ${short(s.accountId)}`);
     return s;
   }, (s) => ({ expiresAt: s.expiresAt }));
@@ -173,9 +174,10 @@ export async function runMatrix(env: MatrixEnv): Promise<Row[]> {
   await row(A, ACC, "labelPasskey", OK, () =>
     A.client.labelPasskey(need(me?.passkeyId as string | undefined, "A's passkey id"), "conformance"));
   const device = env.passkey();
-  // Approving with the passkey being added answers a challenge the node never
-  // issued to it: refused before anything is written.
-  await row(A, ACC, "addPasskey (approved by the new passkey itself)", "UNKNOWN_CHALLENGE", () => A.client.addPasskey(device, device));
+  // Approving with the passkey being added is refused before anything is
+  // written: no account has that credential yet, which the node answers
+  // PASSKEY_UNKNOWN_HERE (core#4872, 1.0.0-rc.11; it was UNKNOWN_CHALLENGE).
+  await row(A, ACC, "addPasskey (approved by the new passkey itself)", "PASSKEY_UNKNOWN_HERE", () => A.client.addPasskey(device, device));
   const cred = await row(A, ACC, "addPasskey (approved by the account's passkey)", OK, () => A.client.addPasskey(device, A.passkey), (c) => c);
   await row(A, ACC, "signIn (the added passkey)", OK, async () => {
     const s = await (await env.client(1)).signIn(device);

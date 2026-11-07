@@ -90,7 +90,7 @@ an **outsider** (node 3, in no org), an **anonymous** client and an **API key**.
 
 | phase | rows |
 | --- | --- |
-| accounts | `signUp` ×3, `me`, `signIn` (same passkey, another node), `refresh` (a new single-use refresh token), `attestation`, `usage`, `labelPasskey`, `addPasskey` (self-approval refused, `UNKNOWN_CHALLENGE`; approved), `signIn` (added passkey), `removePasskey` (412 without the step-up; done) |
+| accounts | `signUp` ×3, `me`, `signIn` (same passkey, another node), `refresh` (a young refresh token is kept), `attestation`, `usage`, `labelPasskey`, `addPasskey` (self-approval refused, `PASSKEY_UNKNOWN_HERE`; approved), `signIn` (added passkey), `removePasskey` (412 without the step-up; done) |
 | packages | `uploadBundle`, `uploadPackage` (garbage refused, 0.0.0, 0.0.1, another key refused), `packages`, `package`, `installPackage` (`NO_REGISTRY` on a dev cluster) |
 | orgs, teams | `createOrg`, `getOrg`, `setOrgMetadata`, `createTeam` ×3, `getTeam`, `updateTeam` (name + metadata, parent, join), `setCapabilities` (default), `invite` (412; member; guest with teams, uses and TTL), `redeemInvite` (and again: one use, `REJECTED`), `getOrg` (B; an outsider refused), `setMemberMetadata` ×2 |
 | apps | `createApp` (bundle; package ×2; team access ×2; no org), `listApps` (all; by bundle; by package; B's), `getApp`, `setAppMetadata`, `appAbi`, `setAlias`/`alias`/`aliases`/`deleteAlias` (another account's alias refused) |
