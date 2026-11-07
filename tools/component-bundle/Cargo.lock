@@ -112,7 +112,7 @@ dependencies = [
 [[package]]
 name = "calimero-app-build"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.10#ff51d00eddbfb19d58e8398fb315df74f678c298"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.11#5ee9263faeb401f999b9147345944a5c80dfa7c2"
 dependencies = [
  "eyre",
  "serde_json",
@@ -123,7 +123,7 @@ dependencies = [
 [[package]]
 name = "calimero-bundle"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.10#ff51d00eddbfb19d58e8398fb315df74f678c298"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.11#5ee9263faeb401f999b9147345944a5c80dfa7c2"
 dependencies = [
  "base64 0.23.1",
  "bs58",
@@ -144,7 +144,7 @@ dependencies = [
 [[package]]
 name = "calimero-utils-fs"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.10#ff51d00eddbfb19d58e8398fb315df74f678c298"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.11#5ee9263faeb401f999b9147345944a5c80dfa7c2"
 dependencies = [
  "windows-sys",
 ]
@@ -238,9 +238,9 @@ dependencies = [
 
 [[package]]
 name = "crc32fast"
-version = "1.5.3"
+version = "1.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ba106e844045ddc02c20768ac4b0b7cb45f2cc2ecbd833ac9f5dacb183c2055"
+checksum = "5f97d3416d5337d15c4b0d78c8c91df922ca143f57ec20e2d1c188333047ef04"
 dependencies = [
  "cfg-if",
 ]
@@ -389,9 +389,9 @@ dependencies = [
 
 [[package]]
 name = "flate2"
-version = "1.1.10"
+version = "1.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e634e2e0ebac1ee034020da1ca582e17ffe4e0f5e985823721e168928136dcb"
+checksum = "626d4928326b646e70f65ed36fc7cf9f206bdb68a0019ee7c6b4709da4e084c4"
 dependencies = [
  "crc32fast",
  "miniz_oxide",
@@ -530,7 +530,7 @@ dependencies = [
 [[package]]
 name = "mero-sign"
 version = "0.1.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.10#ff51d00eddbfb19d58e8398fb315df74f678c298"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.11#5ee9263faeb401f999b9147345944a5c80dfa7c2"
 dependencies = [
  "base64 0.23.1",
  "calimero-bundle",
