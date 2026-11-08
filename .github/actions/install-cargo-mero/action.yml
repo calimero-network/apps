@@ -8,7 +8,7 @@ inputs:
   version:
     description: The core tag to install cargo-mero from. Keep matched to the SDK tag in the root Cargo.toml.
     required: false
-    default: "1.0.0-rc.10"
+    default: "1.0.0-rc.11"
 
 runs:
   using: composite
