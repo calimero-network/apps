@@ -9,6 +9,12 @@ import InvitationPrompt from './components/InvitationPrompt';
 import SignInDialog from './components/SignInDialog';
 import TeamsPage from './pages/teams/TeamsPage';
 import { MEMBER_DEFAULTS, PERSONAL } from './lib/vaults';
+import { invites } from './lib/inviteLink';
+
+/** Hold `token` as the pending invite, as a captured link would. */
+function hold(token: string, org: string | null = null) {
+  invites.put({ token, org, team: null, doc: null, route: null, extra: {} });
+}
 
 // The screens against a mocked `CalimeroClient`: what they list, and what they
 // send when someone presses a button.
@@ -162,7 +168,7 @@ function promptAt(path: string, value: Calimero) {
 
 describe('InvitationPrompt', () => {
   it('shows a signed-out visitor an invitation page instead of the app, with the passkey sign-in', async () => {
-    localStorage.setItem('mero-pass:pending-invite', 'tok');
+    hold('tok');
     promptAt('/', calimero(null));
     const page = await screen.findByTestId('invitation-page');
     expect(page).toHaveTextContent("You're invited");
@@ -175,15 +181,15 @@ describe('InvitationPrompt', () => {
   });
 
   it('"Not now" shows the app and keeps the invitation', async () => {
-    localStorage.setItem('mero-pass:pending-invite', 'tok');
+    hold('tok');
     promptAt('/', calimero(null));
     fireEvent.click(await screen.findByTestId('invitation-later'));
     expect(screen.getByTestId('app-body')).toBeInTheDocument();
-    expect(localStorage.getItem('mero-pass:pending-invite')).toBe('tok');
+    expect(invites.token()).toBe('tok');
   });
 
   it('asks to join as soon as the session exists, then joins the team the invite names', async () => {
-    localStorage.setItem('mero-pass:pending-invite', 'tok');
+    hold('tok');
     const { rerender } = promptAt('/', calimero(null));
     expect(screen.queryByTestId('invitation-prompt')).not.toBeInTheDocument();
 
@@ -210,34 +216,33 @@ describe('InvitationPrompt', () => {
       expect(screen.getByTestId('where')).toHaveTextContent('/teams/org1'),
     );
     expect(client.redeemInvite).toHaveBeenCalledWith('tok');
-    expect(localStorage.getItem('mero-pass:pending-invite')).toBeNull();
+    expect(invites.token()).toBeNull();
   });
 
   it('lets an invitation go without joining', async () => {
-    localStorage.setItem('mero-pass:pending-invite', 'tok');
+    hold('tok');
     const client = fakeClient();
     promptAt('/', calimero(client));
     fireEvent.click(await screen.findByTestId('invitation-dismiss'));
     expect(client.redeemInvite).not.toHaveBeenCalled();
-    expect(localStorage.getItem('mero-pass:pending-invite')).toBeNull();
+    expect(invites.token()).toBeNull();
   });
 
   it('tells a member of the invited team they are already in it, without spending the invite', async () => {
-    localStorage.setItem('mero-pass:pending-invite', 'tok');
-    localStorage.setItem('mero-pass:pending-invite-org', 'org1');
+    hold('tok', 'org1');
     const client = fakeClient();
     promptAt('/', calimero(client));
     expect(await screen.findByTestId('invitation-outcome')).toHaveTextContent(
       "You're already in this team",
     );
     expect(client.redeemInvite).not.toHaveBeenCalled();
-    expect(localStorage.getItem('mero-pass:pending-invite')).toBeNull();
+    expect(invites.token()).toBeNull();
     fireEvent.click(screen.getByTestId('invitation-continue'));
     expect(screen.getByTestId('where')).toHaveTextContent('/teams/org1');
   });
 
   it('says plainly when the invite was already used or has expired', async () => {
-    localStorage.setItem('mero-pass:pending-invite', 'tok');
+    hold('tok');
     const client = fakeClient();
     client.redeemInvite.mockRejectedValueOnce(
       new CalimeroError(404, 'NOT_FOUND', 'unknown invite'),
@@ -247,8 +252,28 @@ describe('InvitationPrompt', () => {
     expect(await screen.findByTestId('invitation-outcome')).toHaveTextContent(
       'This invite was already used or has expired. Ask the person who invited you for a new link.',
     );
-    expect(localStorage.getItem('mero-pass:pending-invite')).toBeNull();
+    expect(invites.token()).toBeNull();
   });
+
+  it.each([
+    [429, 'RATE_LIMITED', /Too many tries/],
+    [401, 'UNAUTHENTICATED', /sign in again/],
+  ])(
+    'keeps the invite when redeeming answers %i, and says to try again (B6)',
+    async (status, code, says) => {
+      hold('tok');
+      const client = fakeClient();
+      client.redeemInvite.mockRejectedValueOnce(
+        new CalimeroError(status, code, 'not now'),
+      );
+      promptAt('/', calimero(client));
+      fireEvent.click(await screen.findByTestId('invitation-join'));
+      expect(await screen.findByTestId('invitation-error')).toHaveTextContent(
+        says,
+      );
+      expect(invites.token()).toBe('tok');
+    },
+  );
 });
 
 describe('SignInDialog', () => {
