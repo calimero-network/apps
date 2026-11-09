@@ -261,9 +261,8 @@ async function run(
     // press creates the passkey.
     if (await page.getByTestId("signup-name").isVisible()) await signUp.click();
     // Since core rc.10 a sign-up is two prompts: the new passkey, then one
-    // approval with it. The page asks the second right away; only when the
-    // browser refuses it at once does it wait for "Approve with your new
-    // passkey" (enabled only then: while the prompt is open the same test id
+    // approval with it. The page asks the second right away; only when that
+    // fails or is refused does it wait for "Approve with your new passkey" (enabled only then: while the prompt is open the same test id
     // is a disabled "waiting" button). Either way passes.
     const approve = page.locator('[data-testid="signup-approve"]:enabled');
     const failed = page.getByTestId("signin-error");

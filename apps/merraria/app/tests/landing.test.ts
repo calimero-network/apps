@@ -71,8 +71,8 @@ afterEach(() => {
 
 describe("a sign-up's second prompt", () => {
   // Since core #4849 a sign-up takes two prompts. The second is asked right
-  // after the first; it waits for Approve only when the browser refused it
-  // at once (Safari's user-gesture rule, a blocked prompt).
+  // after the first; it waits for Approve only when that failed or was refused
+  // (a blocked prompt, Safari's user-gesture rule, a closed prompt).
   function signingUp(get: PasskeyProvider["get"]) {
     const pk = { create: vi.fn(async () => ({}) as never), get: vi.fn(get) };
     const l = launcher(
@@ -115,6 +115,21 @@ describe("a sign-up's second prompt", () => {
     expect($("sign-up-btn")?.hidden).toBe(true);
     expect($("sign-in-error")?.textContent).toBe("");
     expect(pk.get).toHaveBeenCalledTimes(1);
+    $("signup-approve")!.click();
+    await until(() => $("account-badge") !== null);
+    expect(pk.get).toHaveBeenCalledTimes(2);
+  });
+
+  it("a second prompt the person saw and closed shows the error with Approve, which then lists the worlds", async () => {
+    const { pk, $ } = signingUp(async () => {
+      if (pk.get.mock.calls.length > 1) return {} as never;
+      await new Promise((r) => setTimeout(r, 1100)); // a prompt the person saw
+      throw notAllowed("The operation either timed out or was not allowed.");
+    });
+    $("sign-up-btn")!.click();
+    await until(() => $("sign-in-error")?.textContent === SIGN_UP_NOT_FINISHED);
+    expect($<HTMLButtonElement>("signup-approve")?.disabled).toBe(false);
+    expect($("signup-cancel")?.hidden).toBe(false);
     $("signup-approve")!.click();
     await until(() => $("account-badge") !== null);
     expect(pk.get).toHaveBeenCalledTimes(2);

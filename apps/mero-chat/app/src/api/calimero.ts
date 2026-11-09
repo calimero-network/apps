@@ -198,8 +198,8 @@ export function getAccountId(): string {
 
 /**
  * The sign-up in flight. Its second prompt is asked right after the first, and
- * waits for "Approve with your new passkey" only when the browser refused it
- * at once (`signUpFlow`).
+ * waits for "Approve with your new passkey" only when that ask failed or was
+ * refused (`signUpFlow`).
  */
 let flow: SignUpFlow | null = null;
 

@@ -13,7 +13,7 @@ import {
   SIGN_UP_INVITE_ONLY,
 } from "@calimero-apps/connect";
 
-import { SIGN_UP_ENDED_WITHOUT_ACCOUNT, SIGN_UP_NOT_FINISHED } from "@calimero-apps/passkey";
+import { SIGN_UP_NOT_FINISHED } from "@calimero-apps/passkey";
 
 import {
   __setForTests,
@@ -136,8 +136,8 @@ describe("an unknown passkey, by the cluster's sign-up policy", () => {
 
 describe("signUp's second prompt", () => {
   // Since core #4849 a sign-up takes two prompts. The second is asked right
-  // after the first; it waits for Approve only when the browser refused it
-  // at once (Safari's user-gesture rule, a blocked prompt).
+  // after the first; it waits for Approve only when that failed or was refused
+  // (a blocked prompt, Safari's user-gesture rule, a closed prompt).
   function cluster(get: PasskeyProvider["get"]) {
     const pk = { create: vi.fn(async () => ({}) as never), get: vi.fn(get) };
     const client = {
@@ -209,14 +209,25 @@ describe("signUp's second prompt", () => {
     expect(hook.result.current.message).toBeNull();
   });
 
-  it("a second prompt the person saw and closed ends the sign-up, shown, not quiet", async () => {
-    const { hook } = cluster(async () => {
+  it("a second prompt the person saw and closed waits at Approve with the error, then Approve signs in", async () => {
+    const { pk, hook } = cluster(async () => {
+      if (pk.get.mock.calls.length > 1) return {} as never;
       await new Promise((r) => setTimeout(r, 1100));
       throw notAllowed("The operation either timed out or was not allowed.");
     });
-    await act(() => signUp("").catch(() => {}));
-    expect(hook.result.current.signUpStage).toBeNull();
-    expect(hook.result.current.message).toBe(SIGN_UP_ENDED_WITHOUT_ACCOUNT);
+    let run!: Promise<void>;
+    act(() => {
+      run = signUp("");
+    });
+    await waitFor(() => expect(hook.result.current.message).toBe(SIGN_UP_NOT_FINISHED), { timeout: 3000 });
+    expect(hook.result.current.signUpStage).toBe("approve");
+    await act(async () => {
+      approveSignUp();
+      await run;
+    });
+    expect(pk.get).toHaveBeenCalledTimes(2);
+    expect(hook.result.current.status).toBe("signed-in");
+    expect(hook.result.current.message).toBeNull();
   });
 
   it("Cancel at Approve is quiet", async () => {

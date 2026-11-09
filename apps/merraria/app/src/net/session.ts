@@ -66,8 +66,8 @@ export class Connection {
   /**
    * One sign-up's passkey (pass its `passkey` to `signUp`): the second prompt
    * is asked right after the first, and waits for `flow.approve()`, a click of
-   * its own, only when the browser refused it at once (Safari's user-gesture
-   * rule, a blocked prompt).
+   * its own, only when that ask failed or was refused (Safari's user-gesture
+   * rule, a blocked prompt, a closed prompt).
    */
   newSignUp(onChange: () => void): SignUpFlow {
     return signUpFlow(this.passkey(), onChange);

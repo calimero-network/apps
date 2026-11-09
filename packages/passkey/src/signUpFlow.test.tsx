@@ -60,19 +60,39 @@ describe("signUpFlow", () => {
     expect(stages).not.toContain("approve");
   });
 
-  it("a slow failure of that prompt (one the person saw) ends the sign-up, no Approve", async () => {
+  it("a slow failure of that prompt (one the person saw) waits at Approve with the error; Approve then succeeds", async () => {
     let t = 0;
     const pk = key(async () => {
       t += 4000;
-      throw dismissed();
+      if (pk.get.mock.calls.length === 1) throw dismissed();
+      return {} as never;
     });
-    const stages: (string | null)[] = [];
-    const flow = signUpFlow(pk, () => stages.push(flow.stage), { now: () => t, sleep: async () => {} });
-    await expect(meroSignUp(flow.passkey)).rejects.toMatchObject({ name: "ConfirmCancelled" });
+    const flow = signUpFlow(pk, () => {}, { now: () => t, sleep: async () => {} });
+    const run = meroSignUp(flow.passkey);
+    await until(() => flow.stage === "approve");
     expect(pk.get).toHaveBeenCalledTimes(1);
-    expect(stages).not.toContain("approve");
+    expect(flow.confirmFailure).not.toBeNull();
+    expect(describeSignUpNotFinished(flow.confirmFailure!.error)).toBe(SIGN_UP_NOT_FINISHED);
     expect(flow.created).toBe(true);
     expect(flow.cancelled).toBe(false);
+
+    flow.approve();
+    await expect(run).resolves.toEqual({ accountId: "acct-new" });
+    expect(flow.confirmFailure).toBeNull();
+    expect(pk.get).toHaveBeenCalledTimes(2);
+  });
+
+  it("any other failure of that prompt (not a NotAllowedError) waits at Approve with the error too", async () => {
+    const pk = key(async () => {
+      if (pk.get.mock.calls.length === 1) throw named("UnknownError", "The authenticator failed.");
+      return {} as never;
+    });
+    const flow = signUpFlow(pk, () => {}, { now: () => 0, sleep: async () => {} });
+    const run = meroSignUp(flow.passkey);
+    await until(() => flow.stage === "approve");
+    expect(flow.confirmFailure).not.toBeNull();
+    flow.approve();
+    await expect(run).resolves.toEqual({ accountId: "acct-new" });
   });
 
   it.each([
@@ -110,7 +130,7 @@ describe("signUpFlow", () => {
     await expect(run).resolves.toEqual({ accountId: "acct-new" });
   });
 
-  /** A sign-up whose first, immediate ask was refused at once, now at Approve. */
+  /** A sign-up whose first, immediate ask was refused at once (no error shown), now at Approve. */
   async function atApprove(pk: ReturnType<typeof key>, timing: Parameters<typeof signUpFlow>[2] = {}, onChange = () => {}) {
     const flow = signUpFlow(pk, onChange, { now: () => 0, sleep: async () => {}, ...timing });
     const run = meroSignUp(flow.passkey);

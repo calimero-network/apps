@@ -273,6 +273,21 @@ describe("the two-prompt sign-up", () => {
     expect(pk.get).toHaveBeenCalledTimes(2);
   });
 
+  it("a second prompt the person saw and closed waits at Approve with the error, then Approve signs up", async () => {
+    const client = fakeClient();
+    const pk = passkey();
+    pk.get.mockImplementationOnce(async () => {
+      await new Promise((r) => setTimeout(r, 1100)); // a prompt the person saw
+      throw named("NotAllowedError");
+    });
+    render(<Screen d={deps(client, memoryStorage(), pk)} />);
+    fireEvent.click(await screen.findByTestId("signup-passkey"));
+    expect((await screen.findByTestId("signin-error", {}, { timeout: 3000 })).textContent).toBe(SIGN_UP_NOT_FINISHED);
+    await approve();
+    await screen.findByTestId("status");
+    expect(pk.get).toHaveBeenCalledTimes(2);
+  });
+
   it("shows Approve's copy while it waits", async () => {
     const client = fakeClient();
     const pk = passkey();

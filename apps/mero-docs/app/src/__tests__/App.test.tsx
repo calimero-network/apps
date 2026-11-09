@@ -231,8 +231,8 @@ describe('App on Calimero 1.0', () => {
 
   describe("a sign-up's second prompt", () => {
     // Since core #4849 a sign-up takes two prompts. The second is asked right
-    // after the first; it waits for Approve only when the browser refused it
-    // at once (Safari's user-gesture rule, a blocked prompt).
+    // after the first; it waits for Approve only when that failed or was refused
+    // (a blocked prompt, Safari's user-gesture rule, a closed prompt).
     function signUpWith(get: PasskeyProvider['get']) {
       const client = fakeClient();
       const pk = { create: vi.fn(async () => ({}) as never), get: vi.fn(get) };
@@ -278,6 +278,19 @@ describe('App on Calimero 1.0', () => {
       expect(pk.get).toHaveBeenCalledTimes(1);
       expect(screen.queryByTestId('signin-error')).toBeNull();
       fireEvent.click(approve);
+      expect((await screen.findAllByText('Engineering', {}, BOOT)).length).toBeGreaterThan(0);
+      expect(pk.get).toHaveBeenCalledTimes(2);
+    });
+
+    it('a second prompt the person saw and closed shows the error with Approve, which then opens the workspace', async () => {
+      const { pk, d } = signUpWith(async () => {
+        if (pk.get.mock.calls.length > 1) return {} as never;
+        await new Promise((r) => setTimeout(r, 1100)); // a prompt the person saw
+        throw notAllowed('The operation either timed out or was not allowed.');
+      });
+      await startSignUp(d);
+      expect((await screen.findByTestId('signin-error', {}, { timeout: 3000 })).textContent).toBe(SIGN_UP_NOT_FINISHED);
+      fireEvent.click(await approveButton());
       expect((await screen.findAllByText('Engineering', {}, BOOT)).length).toBeGreaterThan(0);
       expect(pk.get).toHaveBeenCalledTimes(2);
     });

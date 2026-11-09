@@ -101,9 +101,9 @@ export interface Calimero {
   /**
    * Where a sign-up is, `null` outside one. Its second prompt is asked right
    * after the first (`confirm`). At `approve` the new passkey exists and the
-   * account waits for `approve()`: the browser refused that prompt at once
-   * (Safari's user-gesture rule, a blocked prompt), so it starts from a click
-   * of its own.
+   * account waits for `approve()`: that prompt failed or was refused
+   * (Safari's user-gesture rule, a blocked prompt, a closed prompt), so it
+   * starts from a click of its own.
    */
   stage?: SignUpStage | null;
   /** The click that creates the account with the new passkey (at `stage: "approve"`). */
@@ -282,7 +282,7 @@ export function CalimeroProvider({
   const signUp = useCallback(
     (name?: string) => {
       // The second prompt (core's 412 CONFIRM_REQUIRED) right away; its own
-      // click only when the browser refuses it at once (signUpFlow).
+      // click only when that fails or is refused (signUpFlow).
       const flow: SignUpFlow = signUpFlow(deps.passkey(), () =>
         setFlowView({ stage: flow.stage, confirmFailure: flow.confirmFailure }),
       );

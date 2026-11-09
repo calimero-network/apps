@@ -10,8 +10,8 @@ import { CalimeroProvider, useCalimero, type CalimeroDeps } from './calimero';
 import SignInPanel from './components/SignInPanel';
 
 // Since core #4849 a sign-up takes two prompts. The second is asked right
-// after the first; it waits for Approve only when the browser refused it at
-// once (Safari's user-gesture rule, a blocked prompt).
+// after the first; it waits for Approve only when that failed or was refused
+// (a blocked prompt, Safari's user-gesture rule, a closed prompt).
 
 function setup(get: PasskeyProvider['get']) {
   const pk = { create: vi.fn(async () => ({}) as never), get: vi.fn(get) };
@@ -86,6 +86,23 @@ describe("a sign-up's second prompt", () => {
     expect(pk.get).toHaveBeenCalledTimes(1);
     expect(screen.queryByTestId('signin-error')).toBeNull();
     fireEvent.click(approve);
+    await waitFor(() =>
+      expect(screen.getByTestId('status')).toHaveTextContent('signed-in'),
+    );
+    expect(pk.get).toHaveBeenCalledTimes(2);
+  });
+
+  it('a second prompt the person saw and closed shows the error with Approve, which then signs in', async () => {
+    const { pk } = setup(async () => {
+      if (pk.get.mock.calls.length > 1) return {} as never;
+      await new Promise((r) => setTimeout(r, 1100)); // a prompt the person saw
+      throw notAllowed('The operation either timed out or was not allowed.');
+    });
+    await startSignUp();
+    expect(
+      await screen.findByTestId('signin-error', {}, { timeout: 3000 }),
+    ).toHaveTextContent(SIGN_UP_NOT_FINISHED);
+    fireEvent.click(await approveButton());
     await waitFor(() =>
       expect(screen.getByTestId('status')).toHaveTextContent('signed-in'),
     );

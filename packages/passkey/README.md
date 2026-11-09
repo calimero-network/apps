@@ -18,7 +18,7 @@ account, nothing to install, no permissions to grant.
   | Invite, no account here (none seen in this browser) | "Create your account and join {joining}": one click starts the sign-up with the invite | "Already have an account here? Join with your passkey" as a link |
   | Invite, an account here | "Join {joining} with your passkey" | no passkey/account for this cluster (`PasskeyUnknownHere`, or the prompt closed with none chosen): switches in place to create-account, one sentence, invite kept |
   | No invite | "Sign in with passkey" | "New here? Create an account", disabled with the reason on an `invite` or `closed` cluster |
-  | Signing up | "Create your passkey in the browser prompt…" | the approval prompt right after; "Approve with your new passkey" only when the browser refused it at once |
+  | Signing up | "Create your passkey in the browser prompt…" | the approval prompt right after; "Approve with your new passkey" only when that prompt failed or was refused |
 
   "An account here" is a hint the hook keeps per cluster (`accountHintKey`)
   once this browser signs in or up. Errors are plain words with the next step;
@@ -29,7 +29,7 @@ account, nothing to install, no permissions to grant.
   approve once with it (core's `412 CONFIRM_REQUIRED` on the account it
   creates). The hook wraps the passkey (`signUpFlow`): the second prompt is
   asked right after the first, and waits for the person's click
-  (`api.approve()`, `api.stage`) only when the browser refused it.
+  (`api.approve()`, `api.stage`) only when that ask failed or was refused.
 - With `onJoinedAtSignUp` the invite goes with every sign-up the policy lets
   it, so the new account joins in that one step; the app drops its pending
   invite there (redeeming it again would spend another use). Without it, the
@@ -46,18 +46,18 @@ account, nothing to install, no permissions to grant.
   cannot carry one over from another cluster.
 - A sign-up takes two prompts (core #4849): one makes the passkey, the second
   approves the account with it. The second is asked right away
-  (`api.stage === "confirm"`). When the browser refuses it without showing
-  it, the session waits at `api.stage === "approve"` and the control shows
-  "Approve with your new passkey" (`signup-approve`, `api.approve()`), with
-  Cancel (`api.cancelSignUp()`): Safari has wanted a user gesture before a
-  WebAuthn prompt (a `NotAllowedError` within 1 s), and a prompt can be
-  blocked by another one or a password manager's popup
-  (`ConfirmPromptBlocked`, "A request is already pending"). After a click, a
-  refusal within 1 s is asked again once. Any other failure of the second
-  prompt is shown, never a quiet cancel: at Approve, Approve stays; on the
-  first ask, the sign-up ends and says to create a passkey again. Cancel
-  cannot close a prompt that is already open (mero-js's
-  `PasskeyProvider.get` takes no `AbortSignal`). An app with its own session store wraps the
+  (`api.stage === "confirm"`). If that ask does not create the account, the
+  session waits at `api.stage === "approve"` and the control shows "Approve
+  with your new passkey" (`signup-approve`, `api.approve()`), with Cancel
+  (`api.cancelSignUp()`), so the sign-up is never left with a passkey and no
+  way to finish. A prompt the browser would not show (Safari has wanted a
+  user gesture before a WebAuthn prompt: a `NotAllowedError` within 1 s; a
+  prompt blocked by another one or a password manager's popup:
+  `ConfirmPromptBlocked`, "A request is already pending") waits there with
+  no error; any other failure (a prompt the person closed, a timeout) is
+  shown with it, never a quiet cancel. After a click, a refusal within 1 s
+  is asked again once. Cancel cannot close a prompt that is already open
+  (mero-js's `PasskeyProvider.get` takes no `AbortSignal`). An app with its own session store wraps the
   passkey it passes to `client.signUp` with `signUpFlow(passkey, onChange)`;
   an app that is not React imports it from `@calimero-apps/passkey/signUpFlow`.
 - `<AppListing name description package dir dev />` is the one listing page

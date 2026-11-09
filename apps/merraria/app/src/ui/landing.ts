@@ -436,9 +436,9 @@ export class Landing {
       applyPolicy();
     });
     // The sign-up in flight. Its second prompt (core's 412 CONFIRM_REQUIRED)
-    // is asked right after the first; only when the browser refuses it at
-    // once (Safari's user-gesture rule, a blocked prompt) does it wait for
-    // "Approve with your new passkey". A failure at Approve is shown and
+    // is asked right after the first; only when that fails or is refused
+    // (Safari's user-gesture rule, a blocked prompt, a closed prompt) does it
+    // wait for "Approve with your new passkey". A failure is shown and
     // Approve stays (signUpFlow).
     let flow: SignUpFlow | null = null;
     const showFlow = () => {

@@ -147,8 +147,8 @@ export interface PasskeySessionOptions {
   onJoinedAtSignUp?: (joined: JoinedAtSignUp) => void;
   /**
    * Whether a sign-up goes through {@link signUpFlow}: its second prompt is
-   * asked right away, and waits at `approve` for a click only when the
-   * browser refused it at once. On by default; a caller with no button to
+   * asked right away, and waits at `approve` for a click when that ask
+   * failed or was refused. On by default; a caller with no button to
    * show turns it off.
    */
   approveWithClick?: boolean;

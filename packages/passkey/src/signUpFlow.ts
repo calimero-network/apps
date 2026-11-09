@@ -3,8 +3,8 @@ import type { PasskeyProvider } from "@calimero-network/mero-js";
 /**
  * Where a sign-up is: `create` while the browser makes the new passkey,
  * `confirm` while the second prompt is open, `approve` while it waits for the
- * person to click "Approve with your new passkey" (only after the browser
- * refused to show that prompt on its own).
+ * person to click "Approve with your new passkey" (after that prompt, asked
+ * right away, failed or was refused).
  */
 export type SignUpStage = "create" | "approve" | "confirm";
 
@@ -52,8 +52,9 @@ export interface SignUpFlowTiming {
  *   open (mero-js's `ConfirmPromptBlocked`, "A request is already pending",
  *   "The document is not focused"; {@link isPromptStuck}).
  *
- * Any other failure of that first ask (a prompt the person saw and closed)
- * ends the sign-up, and since the passkey exists it is shown, never a quiet
+ * Any other failure of that first ask (a prompt the person saw and closed,
+ * a timeout) also waits at `approve`, with the failure in `confirmFailure`:
+ * the passkey exists, so the sign-up is never lost to it and never a quiet
  * cancel. After a click, a refusal that came back at once is asked again
  * once; any other failure is kept in `confirmFailure` and the flow waits at
  * `approve` again. The node's 5-minute challenge window covers the pause.
@@ -124,13 +125,16 @@ export function signUpFlow(passkey: PasskeyProvider, onChange: () => void = () =
       // Not after a create (nothing to approve): straight through.
       if (!created) return passkey.get(challenge, rpId, allowCredentials, options);
       if (cancelled) throw new SignUpCancelled();
-      // Right away first; a click only when the browser would not show it.
+      // Right away first; a click only when that did not work.
       update({ stage: "confirm", confirmFailure: null });
       const started = now();
       try {
         return await passkey.get(challenge, rpId, allowCredentials, options);
       } catch (e) {
-        if (!needsClick(e, now() - started < instantMs)) throw e;
+        // Never the end of the sign-up: the passkey exists, so it waits at
+        // Approve. A prompt the browser would not show is no error to show.
+        if (cancelled) throw new SignUpCancelled();
+        if (!needsClick(e, now() - started < instantMs)) update({ confirmFailure: { error: e } });
       }
       for (;;) {
         if (cancelled) throw new SignUpCancelled();
@@ -180,7 +184,8 @@ export function signUpFlow(passkey: PasskeyProvider, onChange: () => void = () =
 }
 
 /**
- * A second prompt the browser would not show without a click: blocked
+ * A second prompt the browser would not show without a click (Approve with no
+ * error shown): blocked
  * ({@link isPromptStuck}), or a `NotAllowedError` that came back at once
  * (`instant`), which is how Safari refuses a WebAuthn call with no user gesture.
  */
