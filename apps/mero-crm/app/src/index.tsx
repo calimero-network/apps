@@ -6,7 +6,8 @@ import '@calimero-network/mero-ui/styles.css';
 import './index.css';
 import App from './App';
 import { THEME } from './config';
-import { captureInvite } from './workspaces';
+import { nodeBasename } from '@calimero-apps/node-served';
+import { invites, migrateLegacyInvite } from './workspaces';
 import { applyTheme, readStoredTheme } from './theme';
 
 // index.html already put the saved theme on <html> before the first paint;
@@ -15,7 +16,10 @@ applyTheme(readStoredTheme());
 
 // Before React mounts: a person opening an invitation link is usually not
 // signed in yet, and the token has to survive the passkey sign-up.
-captureInvite();
+// An invite an earlier build stored under its own keys moves over first, so a
+// fresh link wins.
+migrateLegacyInvite();
+invites.capture(window.location, { basename: nodeBasename(new URL(window.location.href), '/') });
 
 // Inject theme tokens as CSS vars so components can read them via
 // `var(--color-primary)` / `var(--color-accent)` regardless of selector scope.
