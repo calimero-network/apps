@@ -260,6 +260,12 @@ async function run(
     // `<PasskeySignIn askName>` asks for an optional name first; the second
     // press creates the passkey.
     if (await page.getByTestId("signup-name").isVisible()) await signUp.click();
+    // Since core rc.10 a sign-up is two prompts: the new passkey, then one
+    // approval with it, which the page starts on its own click.
+    const approve = page.getByTestId("signup-approve");
+    const failed = page.getByTestId("signin-error");
+    await expect(approve.or(flow.signedIn(page)).or(failed).first()).toBeVisible({ timeout: 120_000 });
+    if (await approve.isVisible()) await approve.click();
     await ceremonyOutcome(page, flow, "sign up", seen);
     const { credentials } = await cdp.send("WebAuthn.getCredentials", { authenticatorId });
     expect(credentials.filter((c) => c.isResidentCredential).length, "no discoverable passkey was made").toBe(1);

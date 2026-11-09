@@ -31,5 +31,12 @@ export const LISTING: ListingProps = {
  * pending invite token: on an invite-only cluster it lets a new person sign up.
  */
 export function useSession(deps: SessionDeps = defaultDeps): SessionApi {
-  return usePasskeySession(APP, deps, { package: APP_PACKAGE, invite: () => pendingInvite()?.token ?? null });
+  return usePasskeySession(APP, deps, {
+    package: APP_PACKAGE,
+    invite: () => pendingInvite()?.token ?? null,
+    // A sign-up from a page holding the invite joins its org in that step;
+    // `InvitationHost` then sees `api.joinedInvite` and opens the workspace
+    // without redeeming it again (that would spend another use).
+    onJoinedAtSignUp: () => {},
+  });
 }

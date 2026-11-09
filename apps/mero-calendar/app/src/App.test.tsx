@@ -89,7 +89,7 @@ describe("an invitation link opened while signed out", () => {
     expect(await screen.findByTestId("invitation-page")).toBeTruthy();
     expect(screen.getByText("You're invited")).toBeTruthy();
     expect(screen.getByTestId("signin-desc").textContent).toContain(
-      "You've been invited to join a team in Mero Calendar. Sign in or create an account to accept.",
+      "You've been invited to join the team in Mero Calendar.",
     );
     expect(screen.getByTestId("signin-passkey")).toBeTruthy();
     expect(screen.getByTestId("signup-passkey")).toBeTruthy();

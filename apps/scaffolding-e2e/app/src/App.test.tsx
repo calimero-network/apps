@@ -85,7 +85,7 @@ describe("App", () => {
     storage.setItem("calimero-active-tab", "kv");
     render(<App deps={deps(client)} storage={storage} />);
 
-    fireEvent.click(await screen.findByText("Create a passkey"));
+    fireEvent.click(await screen.findByTestId("signup-passkey"));
     await screen.findByText("Pick an app instance");
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "");
 
@@ -104,7 +104,7 @@ describe("App", () => {
     storage.setItem("calimero-active-tab", "kv");
     render(<App deps={deps(client)} storage={storage} />);
 
-    fireEvent.click(await screen.findByText("Continue with passkey"));
+    fireEvent.click(await screen.findByTestId("signin-passkey"));
     fireEvent.click(await screen.findByText("Open"));
     await screen.findByRole("heading", { name: "KV Operations" });
 
@@ -123,9 +123,9 @@ describe("App", () => {
     render(<App deps={deps(client)} storage={storage} />);
     const page = await screen.findByTestId("invitation-page");
     expect(page.textContent).toContain(
-      "You've been invited to join a shared instance in the E2E test suite. Sign in or create an account to accept.",
+      "You've been invited to join the shared instance in the E2E test suite.",
     );
-    fireEvent.click(screen.getByText("Continue with passkey"));
+    fireEvent.click(screen.getByTestId("signin-passkey"));
     fireEvent.click(await screen.findByTestId("invitation-join"));
     await screen.findByText(/Invitation accepted/);
     expect(client.redeemInvite).toHaveBeenCalledTimes(1);
@@ -141,7 +141,7 @@ describe("App", () => {
     render(<App deps={deps(client)} storage={storage} />);
     fireEvent.click(await screen.findByTestId("invitation-later"));
     expect(storage.getItem(`${APP}:pending-invite`)).toBe("tok-used");
-    fireEvent.click(await screen.findByText("Continue with passkey"));
+    fireEvent.click(await screen.findByTestId("signin-passkey"));
     fireEvent.click(await screen.findByTestId("invitation-join"));
     await screen.findByText(
       "This invite was already used or has expired. Ask the person who invited you for a new link.",

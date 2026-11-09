@@ -1,5 +1,6 @@
 import { createContext, useContext } from "react";
 import {
+  type OnboardingClassNames,
   passkeyDeps,
   usePasskeySession,
   type ListingProps,
@@ -24,13 +25,46 @@ export const LISTING: ListingProps = {
   dev: import.meta.env.DEV,
 };
 
+/** The app's words and classes for the shared sign-in and invitation screens. */
+export const ONBOARDING: {
+  appName: string;
+  joining: string;
+  listing: ListingProps;
+  classNames: OnboardingClassNames;
+} = {
+  appName: "Mero Kombat",
+  joining: "the arena",
+  listing: LISTING,
+  classNames: { root: "card", text: "hint", error: "err", actions: "row", secondary: "ghost" },
+};
+
+/** The invitation page's classes: the connect card's look. */
+export const INVITATION_PAGE_CLASSES: OnboardingClassNames = {
+  root: "connect",
+  inner: "connect-card",
+  text: "lede",
+  control: "connect-passkey",
+  error: "err",
+  actions: "row center",
+  secondary: "ghost",
+};
+
 /**
  * The shared passkey session (`@calimero-apps/passkey`) for this app.
- * `invite` is the pending invite token: on an invite-only cluster it is what
- * lets a new person create an account.
+ * `invite` is the pending invite token. A sign-up from a page holding one
+ * joins its org in the same step (`joinAtSignUp`); the app then sees
+ * `api.joinedInvite` and opens what the invite was for.
  */
-export function useSession(deps: SessionDeps = defaultDeps, invite?: () => string | null): SessionApi {
-  return usePasskeySession(APP, deps, { package: PACKAGE, ...(invite ? { invite } : {}) });
+export function useSession(
+  deps: SessionDeps = defaultDeps,
+  invite?: () => string | null,
+  joinAtSignUp = false,
+): SessionApi {
+  return usePasskeySession(APP, deps, {
+    package: PACKAGE,
+    ...(invite ? { invite } : {}),
+    ...(joinAtSignUp ? { onJoinedAtSignUp: () => {} } : {}),
+  });
 }
 
 /** The session `SessionProvider` (SessionProvider.tsx) holds, for every screen. */

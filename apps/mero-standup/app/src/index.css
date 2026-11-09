@@ -569,3 +569,7 @@ button.link,
 @media (max-width: 560px) {
   .topbar { top: 8px; margin: 8px 0 12px; }
 }
+
+/* The shared passkey control inside a card (@calimero-apps/passkey). */
+.signin-control { max-width: 360px; margin: 14px 0; }
+.invitation-actions { display: flex; gap: 8px; flex-wrap: wrap; }

@@ -11,7 +11,8 @@ import { pendingInvite } from '../lobbies';
  * to pick.
  *
  * With an invitation link pending it is the invitation: what the visitor was
- * invited to, then the same passkey buttons. `onNotNow` (the invitation page)
+ * invited to, then creating an account and joining in one click (or joining
+ * with a passkey this browser has used here). `onNotNow` (the invitation page)
  * offers the way back to the landing page, keeping the token.
  */
 export default function ConnectCard({
@@ -33,7 +34,7 @@ export default function ConnectCard({
       <div className="naval-card-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         {invited && (
           <span className="mono-sm" data-testid="invitation-note">
-            You&apos;ve been invited to join a lobby in Battleships. Sign in or create an account to accept.
+            You&apos;ve been invited to join the lobby in Battleships.
           </span>
         )}
         <span className="mono-sm">
@@ -41,7 +42,7 @@ export default function ConnectCard({
           browser; the contract only ever sees its commitment.
         </span>
         <div style={{ maxWidth: '360px' }}>
-          <PasskeySignIn api={api} />
+          <PasskeySignIn api={api} joining="the lobby" invited={invited} />
         </div>
         {onNotNow && (
           <div>

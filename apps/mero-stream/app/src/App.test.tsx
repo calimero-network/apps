@@ -197,7 +197,7 @@ describe("App", () => {
     );
     renderApp(fakeClient(), "/streams/org-1");
     await screen.findByText("You're invited");
-    expect(screen.getByText(/Sign in or create an account to accept/)).toBeTruthy();
+    expect(screen.getByTestId("signup-passkey")).toBeTruthy();
     expect(screen.getByTestId("signin-passkey")).toBeTruthy();
     expect(document.querySelector(".cal-lp-root")).toBeNull();
   });

@@ -187,8 +187,11 @@ export default function MatchPage() {
     const invite = pendingInvite();
     if (!invite) return;
     let live = true;
-    alreadyMember(client, invite)
+    // A sign-up from the invitation page joined with the invite already.
+    const joined = sessionApi.joinedInvite === invite.token;
+    (joined ? Promise.resolve(false) : alreadyMember(client, invite))
       .then(async (member) => {
+        if (joined) return 'Invitation accepted';
         if (!member) {
           await client.redeemInvite(invite.token);
           return 'Invitation accepted';

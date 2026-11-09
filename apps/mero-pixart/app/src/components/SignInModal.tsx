@@ -1,7 +1,9 @@
 import { useEffect } from "react";
 
 import { useSessionApi } from "../api/sessionContext";
-import SignInPanel from "./SignInPanel";
+import { SignInPanel } from "@calimero-apps/passkey";
+import "@calimero-apps/passkey/passkey.css";
+import { ONBOARDING } from "../api/session";
 
 /**
  * Sign in with a passkey, or create an account with a new one. Replaces v1's
@@ -25,7 +27,7 @@ export default function SignInModal({ onClose }: { onClose: () => void }) {
         aria-modal="true"
         aria-labelledby="signin-title"
       >
-        <SignInPanel titleId="signin-title" />
+        <SignInPanel {...ONBOARDING} api={api} titleId="signin-title" />
 
         <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
           <button className="mp-btn mp-btn--ghost" onClick={onClose} disabled={api.busy}>

@@ -70,7 +70,7 @@ export function SignInPanel({ titleId }: { titleId: string }) {
       <h3 id={titleId}>{invited ? "You're invited" : 'Sign in'}</h3>
       <Hint>
         {invited
-          ? `You've been invited to join a workspace in ${APP_DISPLAY_NAME}. Sign in or create an account to accept. `
+          ? `You've been invited to join the workspace in ${APP_DISPLAY_NAME}. `
           : ''}
         Accounts are passkeys: nothing to remember, nothing to leak.
         {where ? ` Connected to ${where}.` : ''}
@@ -80,7 +80,7 @@ export function SignInPanel({ titleId }: { titleId: string }) {
       {api.session.status === 'listing' && <AppListing {...LISTING} />}
       {api.session.status === 'unconfigured' && <Err role="alert">{api.session.message}</Err>}
 
-      {api.session.status === 'signed-out' && <PasskeySignIn api={api} />}
+      {api.session.status === 'signed-out' && <PasskeySignIn api={api} joining="the workspace" />}
     </>
   );
 }

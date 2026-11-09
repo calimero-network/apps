@@ -135,7 +135,7 @@ describe('App', () => {
     at('/lobby');
     const client = fakeClient();
     render(<App deps={deps(client)} />);
-    fireEvent.click(await screen.findByText('Create a passkey'));
+    fireEvent.click(await screen.findByTestId("signup-passkey"));
     await waitFor(() => expect(client.signUp).toHaveBeenCalled());
     expect(client.signUp.mock.calls[0]?.[1]).toBe('');
 
@@ -191,7 +191,7 @@ describe('App', () => {
     render(<App deps={deps(fakeClient([LOBBY]))} />);
     expect(await screen.findByTestId('invitation-page')).toBeVisible();
     expect(screen.getByText("You're invited")).toBeVisible();
-    expect(screen.getByTestId('invitation-note').textContent).toContain('Sign in or create an account to accept');
+    expect(screen.getByTestId('invitation-note').textContent).toContain('join the lobby in Battleships');
     expect(document.querySelector('.cal-lp-root')).toBeNull();
   });
 
@@ -201,9 +201,24 @@ describe('App', () => {
     const client = fakeClient([LOBBY]);
     render(<App deps={deps(client)} />);
     await screen.findByTestId('invitation-page');
-    fireEvent.click(screen.getByText('Continue with passkey'));
+    fireEvent.click(screen.getByTestId("signin-passkey"));
     await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith('tok-9'));
     await waitFor(() => expect(client.call).toHaveBeenCalledWith('app-1', 'registerPlayer', {}));
+    expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
+  });
+
+  it('an invited newcomer creates the account and joins in one click, and the lobby opens', async () => {
+    at('/lobby');
+    localStorage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: 'tok-9', lobby: 'app-1' }));
+    const client = fakeClient([LOBBY]);
+    render(<App deps={deps(client)} />);
+    const create = await screen.findByTestId('signup-passkey');
+    expect(create.textContent).toBe('Create your account and join the lobby');
+    fireEvent.click(create);
+    await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), '', { invite: 'tok-9' }));
+    await waitFor(() => expect(client.call).toHaveBeenCalledWith('app-1', 'registerPlayer', {}));
+    expect(client.signIn).not.toHaveBeenCalled();
+    expect(client.redeemInvite).not.toHaveBeenCalled();
     expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
   });
 

@@ -28,12 +28,12 @@ export default function SignInPanel() {
     <>
       <p className={shell.sectionHint}>
         {invited
-          ? "You've been invited to join a team in Mero Pass. Sign in or create an account to accept. "
+          ? "You've been invited to join the team in Mero Pass. "
           : ''}
         {api.where ? `Connected to ${api.where}. ` : 'Connecting… '}
         Your account is a passkey: nothing to remember, nothing to leak.
       </p>
-      {api.status === 'signed-out' && <PasskeySignIn api={api} askName />}
+      {api.status === 'signed-out' && <PasskeySignIn api={api} askName invited={invited} joining="the team" />}
     </>
   );
 }

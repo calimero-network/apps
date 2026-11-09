@@ -110,7 +110,7 @@ describe("App", () => {
     render(<App deps={deps(client)} storage={storage} />);
 
     await screen.findByText(/Connected to merod local \(3 nodes\)/);
-    fireEvent.click(screen.getByText("Create a passkey"));
+    fireEvent.click(screen.getByText("Create an account"));
     await screen.findByText("Your stores");
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "");
     expect(new SessionStore(APP, LOCAL, storage).load()).toEqual(SESSION);
@@ -153,14 +153,31 @@ describe("App", () => {
     render(<App deps={deps(client)} storage={storage} />);
     const page = await screen.findByTestId("invitation-page");
     expect(page.textContent).toContain(
-      "You've been invited to join a shared store in KV Store. Sign in or create an account to accept.",
+      "You've been invited to join the shared store in KV Store.",
     );
     expect(screen.queryByRole("dialog")).toBeNull();
 
     fireEvent.click(screen.getByTestId("invitation-later"));
     expect(screen.queryByTestId("invitation-page")).toBeNull();
-    await screen.findByText("Continue with passkey");
+    await screen.findByText("Sign in with passkey");
     expect(storage.getItem(`${APP}:pending-invite`)).toBe("tok-9");
+  });
+
+  it("an invited newcomer creates the account and joins in one click, and lands in the store list", async () => {
+    const client = fakeClient();
+    const storage = new Memory();
+    storage.setItem(`${APP}:pending-invite`, "tok-9");
+    render(<App deps={deps(client)} storage={storage} />);
+
+    const create = await screen.findByTestId("signup-passkey");
+    expect(create.textContent).toBe("Create your account and join the shared store");
+    fireEvent.click(create);
+    await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-9" }));
+    expect(client.signIn).not.toHaveBeenCalled();
+    expect(await screen.findByText("Invitation accepted: the shared store is in your list.")).toBeTruthy();
+    expect(client.redeemInvite).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("invitation-prompt")).toBeNull();
+    expect(storage.getItem(`${APP}:pending-invite`)).toBeNull();
   });
 
   it("asks to join right after signing in, and redeems only on Join", async () => {
@@ -169,7 +186,7 @@ describe("App", () => {
     storage.setItem(`${APP}:pending-invite`, "tok-9");
     render(<App deps={deps(client)} storage={storage} />);
     await screen.findByTestId("invitation-page");
-    fireEvent.click(screen.getByText("Continue with passkey"));
+    fireEvent.click(screen.getByTestId("signin-passkey"));
     fireEvent.click(await screen.findByTestId("invitation-join"));
     await screen.findByText(/Invitation accepted/);
     expect(client.redeemInvite).toHaveBeenCalledTimes(1);
@@ -186,7 +203,7 @@ describe("App", () => {
     new SessionStore(APP, LOCAL, storage).save(SESSION);
     render(<App deps={deps(client)} storage={storage} />);
     expect((await screen.findByTestId("invitation-outcome")).textContent).toContain(
-      "You're already in this shared store",
+      "You're already in the shared store",
     );
     expect(client.redeemInvite).not.toHaveBeenCalled();
     expect(storage.getItem(`${APP}:pending-invite`)).toBeNull();
@@ -213,7 +230,7 @@ describe("App", () => {
     render(<App deps={deps(client)} storage={storage} />);
     await screen.findByText("Sign out");
     fireEvent.click(screen.getByText("Sign out"));
-    await screen.findByText("Continue with passkey");
+    await screen.findByText("Sign in with passkey");
     expect(client.signOut).toHaveBeenCalled();
     expect(new SessionStore(APP, LOCAL, storage).load()).toBeNull();
   });

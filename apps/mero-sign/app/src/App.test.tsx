@@ -218,7 +218,7 @@ describe('App', () => {
     render(<App deps={deps(fakeClient())} />);
     const page = await screen.findByTestId('invitation-page');
     expect(page.textContent).toContain("You're invited");
-    expect(page.textContent).toContain('Sign in or create an account to accept');
+    expect(page.textContent).toContain("You've been invited to join the workspace");
     expect(screen.getByTestId('signin-passkey')).toBeTruthy();
     expect(screen.queryByText('Connect')).toBeNull();
   });

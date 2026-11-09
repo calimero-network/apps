@@ -139,7 +139,7 @@ describe("App", () => {
     render(<App deps={deps(client)} storage={storage} />);
 
     await screen.findByText(/Connected to merod local \(3 nodes\)/);
-    fireEvent.click(screen.getByText("Create a passkey"));
+    fireEvent.click(screen.getByTestId("signup-passkey"));
     await screen.findByText("Your teams");
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "");
     expect(new SessionStore(APP, LOCAL, storage).load()).toEqual(SESSION);
@@ -202,7 +202,7 @@ describe("App", () => {
     render(<App deps={deps(client)} storage={storage} />);
     const page = await screen.findByTestId("invitation-page");
     expect(page.textContent).toContain(
-      "You've been invited to join a team in Mero Standup. Sign in or create an account to accept.",
+      "You've been invited to join the team in Mero Standup.",
     );
     expect(screen.queryByText(/Async standups and a decision log/)).toBeNull();
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -218,7 +218,7 @@ describe("App", () => {
     storage.setItem(`${APP}:pending-invite`, "tok-9");
     render(<App deps={deps(client)} storage={storage} />);
     await screen.findByTestId("invitation-page");
-    fireEvent.click(screen.getByText("Continue with passkey"));
+    fireEvent.click(screen.getByTestId("signin-passkey"));
     fireEvent.click(await screen.findByTestId("invitation-join"));
     await screen.findByText(/Invitation accepted/);
     expect(client.redeemInvite).toHaveBeenCalledTimes(1);
@@ -234,7 +234,7 @@ describe("App", () => {
     storage.setItem(`${APP}:pending-invite-org`, "org-9");
     new SessionStore(APP, LOCAL, storage).save(SESSION);
     render(<App deps={deps(client)} storage={storage} />);
-    expect((await screen.findByTestId("invitation-outcome")).textContent).toContain("You're already in this team");
+    expect((await screen.findByTestId("invitation-outcome")).textContent).toContain("You're already in the team");
     expect(client.redeemInvite).not.toHaveBeenCalled();
     expect(storage.getItem(`${APP}:pending-invite`)).toBeNull();
     fireEvent.click(screen.getByTestId("invitation-continue"));
@@ -263,7 +263,7 @@ describe("App", () => {
     await screen.findByText("Your teams");
     fireEvent.click(screen.getByLabelText("account menu"));
     fireEvent.click(screen.getByText("Log out"));
-    await screen.findByText("Continue with passkey");
+    await screen.findByTestId("signin-passkey");
     expect(client.signOut).toHaveBeenCalled();
     expect(new SessionStore(APP, LOCAL, storage).load()).toBeNull();
   });

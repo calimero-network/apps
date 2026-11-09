@@ -47,7 +47,7 @@ export default function SignIn({
                 <>
                   You&apos;ve been invited to join{" "}
                   {invite.name ? <strong>{invite.name}</strong> : "a stream"} in
-                  Mero Stream. Sign in or create an account to accept.{" "}
+                  Mero Stream.{" "}
                 </>
               ) : null}
               Accounts are passkeys: nothing to remember, nothing to leak.
@@ -65,7 +65,7 @@ export default function SignIn({
 
         {session.status === "signed-out" && (
           <div style={{ maxWidth: 360 }}>
-            <PasskeySignIn api={api} />
+            <PasskeySignIn api={api} joining="the stream" />
           </div>
         )}
 

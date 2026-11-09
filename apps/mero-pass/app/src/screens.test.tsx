@@ -167,7 +167,7 @@ describe('InvitationPrompt', () => {
     const page = await screen.findByTestId('invitation-page');
     expect(page).toHaveTextContent("You're invited");
     expect(page).toHaveTextContent(
-      "You've been invited to join a team in Mero Pass. Sign in or create an account to accept.",
+      "You've been invited to join the team in Mero Pass.",
     );
     expect(screen.getByTestId('signin-passkey')).toBeInTheDocument();
     expect(screen.queryByTestId('app-body')).not.toBeInTheDocument();

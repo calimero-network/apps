@@ -5,11 +5,10 @@ import { nodeBasename } from "@calimero-apps/node-served";
 import { ScenePicker } from "./ScenePicker";
 import { PACKAGE } from "./meroModels";
 import { SceneContext, type OpenedScene, type SceneSession } from "./scene";
-import { InvitationSignIn, JoinInvitation } from "./Invitation";
-import { pendingInvite, readSelection, selectionKey, writeSelection } from "./scenes";
-import { AppListing, PasskeySignIn } from "@calimero-apps/passkey";
+import { pendingInvite, readSelection, selectionKey, writeSelection, dropInvite, isSpentInvite, pendingInviteOrg } from "./scenes";
+import { AppListing, PasskeySignIn, InvitationSignIn, JoinInvitation } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
-import { LISTING, describeTarget, type SessionApi, type SessionDeps } from "./session";
+import { ONBOARDING, LISTING, describeTarget, type SessionApi, type SessionDeps } from "./session";
 
 /** Where this frontend's routes and assets live: `/`, or under the node's `/{version}/`. */
 export const base = () => nodeBasename(new URL(window.location.href), "/");
@@ -125,7 +124,7 @@ export function StudioPage({
         {invite ? (
           <main className="wrap">
             {/* "Not now": the landing page, with the invitation kept for the next sign-in. */}
-            <InvitationSignIn api={api} where={describeTarget(session.target)} onLater={home} />
+            <InvitationSignIn {...ONBOARDING} api={api} onLater={home} />
           </main>
         ) : (
           <SignIn api={api} where={describeTarget(session.target)} />
@@ -140,9 +139,12 @@ export function StudioPage({
         <TopBar onHome={home} where={describeTarget(session.target)} onLogout={logout} />
         <main className="wrap">
           <JoinInvitation
+            {...ONBOARDING}
             client={session.client}
             token={invite}
-            storage={storage}
+            org={pendingInviteOrg(storage)}
+            drop={() => dropInvite(storage)}
+            isSpent={isSpentInvite}
             after={after}
             onJoined={() => {
               setInvite(null);
@@ -191,7 +193,7 @@ function SignIn({ api, where }: { api: SessionApi; where: string }) {
           Sign in, or create an account, to open your scenes. Your account is a passkey: nothing to remember,
           nothing to leak. Connected to {where}.
         </p>
-        <PasskeySignIn api={api} />
+        <PasskeySignIn api={api} joining="the studio" />
         <ul className="connect-points">
           <li>Your scenes, shared only with your studio</li>
           <li>Real-time co-editing</li>
