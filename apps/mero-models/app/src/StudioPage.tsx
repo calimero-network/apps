@@ -193,7 +193,7 @@ function SignIn({ api, where }: { api: SessionApi; where: string }) {
           Sign in, or create an account, to open your scenes. Your account is a passkey: nothing to remember,
           nothing to leak. Connected to {where}.
         </p>
-        <PasskeySignIn api={api} />
+        <PasskeySignIn api={api} joining="the studio" />
         <ul className="connect-points">
           <li>Your scenes, shared only with your studio</li>
           <li>Real-time co-editing</li>

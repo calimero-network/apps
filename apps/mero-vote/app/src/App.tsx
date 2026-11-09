@@ -342,7 +342,7 @@ function Welcome({ api, where }: { api: SessionApi; where: string }) {
         <p>
           Sign in, or create an account, to see your voting groups. Connected to {where}. Accounts are passkeys: nothing to remember, nothing to leak.
         </p>
-        <PasskeySignIn api={api} />
+        <PasskeySignIn api={api} joining="the voting group" />
       </div>
     </section>
   );

@@ -6,7 +6,7 @@ import {
   type SessionDeps,
 } from "@calimero-apps/passkey";
 import { APP_NAME, APP_PACKAGE } from "./config";
-import { dropInvite, pendingInvite } from "./companies";
+import { pendingInvite } from "./companies";
 
 export { describeTarget, type Session, type SessionApi, type SessionDeps } from "@calimero-apps/passkey";
 
@@ -30,10 +30,8 @@ export function useSession(deps: SessionDeps = defaultDeps): SessionApi {
   return usePasskeySession(APP_NAME, deps, {
     package: APP_PACKAGE,
     invite: () => pendingInvite()?.token ?? null,
-    // A sign-up from a page holding the invite joined its org in that step:
-    // nothing is left to redeem (a second redeem would spend another use).
-    onJoinedAtSignUp: () => {
-      dropInvite();
-    },
+    // No `onJoinedAtSignUp` yet: the invitation prompt keeps the invite it
+    // read before the sign-up and redeems it after, so the token goes with a
+    // sign-up only where the cluster requires one.
   });
 }

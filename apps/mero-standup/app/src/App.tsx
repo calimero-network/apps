@@ -225,7 +225,7 @@ function SignIn({ api, where }: { api: SessionApi; where: string }) {
         Connected to {where}. Accounts are passkeys: nothing to remember, nothing to leak.
       </p>
       <div style={{ maxWidth: 360 }}>
-        <PasskeySignIn api={api} />
+        <PasskeySignIn api={api} joining="the team" />
       </div>
     </section>
   );

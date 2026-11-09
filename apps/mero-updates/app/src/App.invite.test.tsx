@@ -93,7 +93,7 @@ describe("an invitation link", () => {
     localStorage.setItem(PENDING, JSON.stringify({ token: "tok-1", audience: null }));
     boot(fakeClient());
     const page = await screen.findByTestId("invitation-page");
-    expect(page).toHaveTextContent("You've been invited to join a company in Mero Updates");
+    expect(page).toHaveTextContent("You've been invited to join the company in Mero Updates");
     expect(screen.getByTestId("signin-passkey")).toBeInTheDocument();
     expect(screen.queryByText("landing")).toBeNull();
   });

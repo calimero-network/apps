@@ -90,7 +90,7 @@ function ConnectCard({ api, where }: { api: SessionApi; where: string }) {
           transaction its log orders. Accounts are passkeys: nothing to remember, nothing to leak.
         </p>
         <div className="connect-passkey">
-          <PasskeySignIn api={api} />
+          <PasskeySignIn api={api} joining="the arena" />
         </div>
         <ul className="connect-points">
           <li>No game server</li>

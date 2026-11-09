@@ -76,7 +76,7 @@ export function SignInBody({ titleId }: { titleId: string }) {
       </h2>
       <p className={styles.modalDesc}>
         {invited
-          ? "You've been invited to join a workspace in Mero Sign. Sign in or create an account to accept. "
+          ? "You've been invited to join the workspace in Mero Sign. "
           : ''}
         Accounts are passkeys: nothing to remember, nothing to leak.
         {where ? ` Connected to ${where}.` : ''}
@@ -92,7 +92,7 @@ export function SignInBody({ titleId }: { titleId: string }) {
         </p>
       )}
 
-      {api.session.status === 'signed-out' && <PasskeySignIn api={api} />}
+      {api.session.status === 'signed-out' && <PasskeySignIn api={api} joining="the workspace" />}
     </>
   );
 }
