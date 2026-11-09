@@ -26,11 +26,20 @@ export const LISTING: ListingProps = {
 
 /**
  * The shared passkey session (`@calimero-apps/passkey`) for this app.
- * `invite` is the pending invite token: on an invite-only cluster it is what
- * lets a new person create an account.
+ * `invite` is the pending invite token. With `joinAtSignUp`, a sign-up from a
+ * page holding one joins its org in the same step; the app sees
+ * `api.joinedInvite` and does not redeem it again.
  */
-export function useSession(deps: SessionDeps = defaultDeps, invite?: () => string | null): SessionApi {
-  return usePasskeySession(APP, deps, { package: PACKAGE, ...(invite ? { invite } : {}) });
+export function useSession(
+  deps: SessionDeps = defaultDeps,
+  invite?: () => string | null,
+  joinAtSignUp = false,
+): SessionApi {
+  return usePasskeySession(APP, deps, {
+    package: PACKAGE,
+    ...(invite ? { invite } : {}),
+    ...(joinAtSignUp ? { onJoinedAtSignUp: () => {} } : {}),
+  });
 }
 
 /** The session `SessionProvider` (SessionProvider.tsx) holds, for every screen. */
