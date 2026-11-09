@@ -4,7 +4,7 @@ import { appSource, targetKey, type AppSource, type Target } from "@calimero-app
 
 import { PACKAGE } from "./pixart";
 import { defaultDeps, useSession, type SessionApi, type SessionDeps } from "./session";
-import { dropInvite, pendingInvite } from "./teams";
+import { invites, noteJoinedAtSignUp } from "./teams";
 
 interface SessionValue {
   api: SessionApi;
@@ -20,7 +20,9 @@ const SessionContext = createContext<SessionValue | null>(null);
  * shares the session with every screen. Replaces v1's `MeroProvider`.
  */
 export function SessionProvider({ deps = defaultDeps, children }: { deps?: SessionDeps; children: ReactNode }) {
-  const api = useSession(deps, () => pendingInvite(), () => dropInvite());
+  // A sign-up from a page holding the invite joined its org in that step:
+  // nothing is left to redeem; `InvitationHost` opens what the link named.
+  const api = useSession(deps, { invites, onJoinedAtSignUp: noteJoinedAtSignUp });
   const source = useMemo(() => appSource(deps.env, PACKAGE), [deps.env]);
   const value = useMemo(() => ({ api, deps, source }), [api, deps, source]);
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
