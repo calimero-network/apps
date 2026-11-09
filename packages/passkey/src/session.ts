@@ -23,7 +23,7 @@ import {
   type KeyValueStorage,
   type Target,
 } from "@calimero-apps/connect";
-import { describeSignUpNotFinished, isPromptStuck, signUpFlow, type SignUpFlow, type SignUpStage } from "./signUpFlow";
+import { describeSignUpNotFinished, isPasskeyCancel, isPromptStuck, signUpFlow, type SignUpFlow, type SignUpStage } from "./signUpFlow";
 
 export type Session =
   | { status: "connecting" }
@@ -116,25 +116,7 @@ export interface SessionApi {
   signOut(): Promise<void>;
 }
 
-/**
- * A dismissed or timed-out passkey prompt. The person chose not to go on, so
- * it is a quiet cancel, not an error to show.
- *
- * A prompt the browser or a password manager blocked (mero-js's
- * `ConfirmPromptBlocked`, or "already pending" / "not focused") is not: the
- * person did not choose it, and has to be told what is in the way. Its
- * `cause` is often a `NotAllowedError`, so it is decided before the walk.
- */
-export function isPasskeyCancel(error: unknown): boolean {
-  if (isPromptStuck(error)) return false;
-  let e: unknown = error;
-  for (let depth = 0; e && typeof e === "object" && depth < 4; depth++) {
-    const name = (e as { name?: unknown }).name;
-    if (name === "NotAllowedError" || name === "AbortError" || name === "ConfirmCancelled" || name === "SignUpCancelled") return true;
-    e = (e as { cause?: unknown }).cause;
-  }
-  return false;
-}
+export { isPasskeyCancel };
 
 /** What the app says about itself, beside its name. */
 export interface PasskeySessionOptions {

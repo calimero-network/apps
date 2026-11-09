@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Connection } from "../src/net/session";
 import { Landing, type LaunchChoice } from "../src/ui/landing";
 import { SessionStore } from "@calimero-apps/connect";
+import { SIGN_UP_NOT_FINISHED } from "@calimero-apps/passkey/signUpFlow";
+import type { PasskeyProvider } from "@calimero-network/mero-js";
 
 const target = { kind: "local", nodes: ["http://127.0.0.1:2501"] } as const;
 
@@ -32,14 +34,18 @@ function fakeClient(signedIn: boolean) {
   return client;
 }
 
-function launcher(signedIn: boolean, setup?: (client: ReturnType<typeof fakeClient>) => void) {
+function launcher(
+  signedIn: boolean,
+  setup?: (client: ReturnType<typeof fakeClient>) => void,
+  passkey: () => PasskeyProvider = () => ({}) as never,
+) {
   const client = fakeClient(signedIn);
   setup?.(client);
   const conn = new Connection(
     client as never,
     target as never,
     new SessionStore("merraria", target as never, localStorage),
-    () => ({}) as never,
+    passkey,
     localStorage,
   );
   const parent = document.createElement("div");
@@ -61,6 +67,75 @@ beforeEach(() => {
 afterEach(() => {
   document.body.innerHTML = "";
   vi.restoreAllMocks();
+});
+
+describe("a sign-up's second prompt", () => {
+  // Since core #4849 a sign-up takes two prompts; a password manager
+  // extension still saving the new passkey refused the second when it was
+  // asked for at once, which left a passkey and no account.
+  function signingUp(get: PasskeyProvider["get"]) {
+    const pk = { create: vi.fn(async () => ({}) as never), get: vi.fn(get) };
+    const l = launcher(
+      false,
+      (client) =>
+        client.signUp.mockImplementation(async (p: PasskeyProvider) => {
+          await p.create({} as never);
+          await p.get(new Uint8Array([1]), "example.com", ["new-cred"]);
+          return client.signIn();
+        }),
+      () => pk as unknown as PasskeyProvider,
+    );
+    return { pk, ...l };
+  }
+  const until = async (check: () => boolean) => {
+    for (let i = 0; i < 100 && !check(); i++) await new Promise((r) => setTimeout(r, 20));
+    expect(check()).toBe(true);
+  };
+
+  it("waits for Approve before asking, then lists the account's worlds", async () => {
+    const { pk, client, $ } = signingUp(async () => ({}) as never);
+    $("sign-up-btn")!.click();
+    await until(() => $("signup-approve-step")?.hidden === false);
+    expect($("signup-approve")?.textContent).toBe("Approve with your new passkey");
+    expect($("sign-up-btn")?.hidden).toBe(true);
+    expect(pk.get).not.toHaveBeenCalled();
+    $("signup-approve")!.click();
+    await until(() => $("account-badge") !== null);
+    expect(pk.get).toHaveBeenCalledTimes(1);
+    expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "Ada");
+  });
+
+  it("shows a refused second prompt and keeps Approve", async () => {
+    const refused = Object.assign(new Error("The operation either timed out or was not allowed."), {
+      name: "NotAllowedError",
+    });
+    const { pk, $ } = signingUp(async () => {
+      await new Promise((r) => setTimeout(r, 1100)); // a prompt the person saw
+      throw refused;
+    });
+    $("sign-up-btn")!.click();
+    await until(() => $("signup-approve-step")?.hidden === false);
+    $("signup-approve")!.click();
+    await until(() => $("sign-in-error")?.textContent === SIGN_UP_NOT_FINISHED);
+    expect(pk.get).toHaveBeenCalledTimes(1);
+    expect($<HTMLButtonElement>("signup-approve")?.disabled).toBe(false);
+
+    pk.get.mockImplementation(async () => ({}) as never);
+    $("signup-approve")!.click();
+    await until(() => $("account-badge") !== null);
+  });
+
+  it("Cancel at Approve resets quietly", async () => {
+    const { pk, $ } = signingUp(async () => ({}) as never);
+    $("sign-up-btn")!.click();
+    await until(() => $("signup-approve-step")?.hidden === false);
+    $("signup-cancel")!.click();
+    await until(() => $("signup-approve-step")?.hidden === true);
+    expect($("sign-up-btn")?.hidden).toBe(false);
+    expect($<HTMLButtonElement>("sign-up-btn")?.disabled).toBe(false);
+    expect($("sign-in-error")?.textContent).toBe("");
+    expect(pk.get).not.toHaveBeenCalled();
+  });
 });
 
 describe("the launcher", () => {

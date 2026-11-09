@@ -9,6 +9,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -36,7 +37,14 @@ import {
   type SignUpAccess,
   type Target,
 } from '@calimero-apps/connect';
-import { isPasskeyCancel, type ListingProps } from '@calimero-apps/passkey';
+import {
+  describeSignUpNotFinished,
+  isPasskeyCancel,
+  signUpFlow,
+  type ListingProps,
+  type SignUpFlow,
+  type SignUpStage,
+} from '@calimero-apps/passkey';
 import { PACKAGE_NAME } from '@/constants/config';
 
 /** The app's name in stored keys. */
@@ -95,6 +103,17 @@ export interface SessionApi {
   signUpAccess: SignUpAccess;
   /** The last sign-in failed because the cluster has no account for that passkey. */
   passkeyUnknown: boolean;
+  /**
+   * Where a sign-up is, `null` outside one. At `approve` the new passkey
+   * exists and the account waits for `approve()`: its second prompt starts
+   * from a click of its own, so a password manager extension still saving
+   * the passkey cannot refuse it.
+   */
+  stage: SignUpStage | null;
+  /** The click that creates the account with the new passkey (at `stage: "approve"`). */
+  approve(): void;
+  /** Give up the sign-up at its Approve step. Quiet: no error is shown. */
+  cancelSignUp(): void;
 }
 
 const SessionContext = createContext<SessionApi | null>(null);
@@ -103,8 +122,14 @@ function useSessionState(deps: SessionDeps, invite?: () => string | null): Sessi
   const [session, setSession] = useState<Session>({ status: 'connecting' });
   const [store, setStore] = useState<SessionStore | null>(null);
   // The failed ceremony, described when shown, so the words follow the
-  // sign-up policy even when it is read after the failure.
-  const [failure, setFailure] = useState<{ error: unknown } | null>(null);
+  // sign-up policy even when it is read after the failure. `afterCreate`: the
+  // sign-up's passkey was made, so even a cancel-like failure is shown.
+  const [failure, setFailure] = useState<{ error: unknown; afterCreate?: boolean } | null>(null);
+  /** The sign-up in flight, if any, and what the control shows of it. */
+  const flowRef = useRef<SignUpFlow | null>(null);
+  const [flowView, setFlowView] = useState<{ stage: SignUpStage | null; confirmFailure: { error: unknown } | null }>(
+    { stage: null, confirmFailure: null },
+  );
   /** The cluster's sign-up policy: `undefined` until read, `null` when it cannot be. */
   const [policy, setPolicy] = useState<SignUpPolicy | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
@@ -156,19 +181,28 @@ function useSessionState(deps: SessionDeps, invite?: () => string | null): Sessi
   const access = signUpAccess(policy, inviteToken !== null);
   const invited = signUpInvite(policy, inviteToken);
 
+  // Leaving the page mid sign-up ends it, so nothing waits on a click.
+  useEffect(() => () => flowRef.current?.cancel(), []);
+
   const ceremony = useCallback(
-    async (run: (client: CalimeroClient) => Promise<{ accountId: string }>) => {
+    async (run: (client: CalimeroClient) => Promise<{ accountId: string }>, flow?: SignUpFlow) => {
       if (session.status !== 'signed-out') return;
       setBusy(true);
       setFailure(null);
+      if (flow) flowRef.current = flow;
       try {
         const { accountId } = await run(session.client);
         store?.sync(session.client);
         setSession({ status: 'signed-in', client: session.client, target: session.target, accountId });
       } catch (e) {
-        // A dismissed passkey prompt is a quiet cancel, not an error to show.
+        // A dismissed first prompt (or a cancel at Approve) is quiet. Once the
+        // passkey exists, a refused second prompt is not: it left no account.
+        const afterCreate = flow?.created === true && !flow.cancelled;
         if (!isPasskeyCancel(e)) setFailure({ error: e });
+        else if (afterCreate) setFailure({ error: e, afterCreate: true });
       } finally {
+        if (flow && flowRef.current === flow) flowRef.current = null;
+        if (flow) setFlowView({ stage: null, confirmFailure: null });
         setBusy(false);
       }
     },
@@ -177,14 +211,23 @@ function useSessionState(deps: SessionDeps, invite?: () => string | null): Sessi
 
   const signIn = useCallback(() => ceremony((c) => c.signIn(deps.passkey())), [ceremony, deps]);
   const signUp = useCallback(
-    (name?: string) =>
-      ceremony((c) =>
-        invited
-          ? c.signUp(deps.passkey(), name?.trim() ?? '', { invite: invited })
-          : c.signUp(deps.passkey(), name?.trim() ?? ''),
-      ),
+    (name?: string) => {
+      // The second prompt (core's 412 CONFIRM_REQUIRED) waits for its own click.
+      const flow: SignUpFlow = signUpFlow(deps.passkey(), () =>
+        setFlowView({ stage: flow.stage, confirmFailure: flow.confirmFailure }),
+      );
+      return ceremony(
+        (c) =>
+          invited
+            ? c.signUp(flow.passkey, name?.trim() ?? '', { invite: invited })
+            : c.signUp(flow.passkey, name?.trim() ?? ''),
+        flow,
+      );
+    },
     [ceremony, deps, invited],
   );
+  const approve = useCallback(() => flowRef.current?.approve(), []);
+  const cancelSignUp = useCallback(() => flowRef.current?.cancel(), []);
 
   const signOut = useCallback(async () => {
     if (session.status !== 'signed-in') return;
@@ -204,7 +247,13 @@ function useSessionState(deps: SessionDeps, invite?: () => string | null): Sessi
 
   const source = useMemo(() => appSource(deps.env, PACKAGE_NAME), [deps.env]);
 
-  const error = failure ? describeSignInError(failure.error, access) : null;
+  const error = flowView.confirmFailure
+    ? describeSignUpNotFinished(flowView.confirmFailure.error)
+    : failure
+      ? failure.afterCreate
+        ? describeSignUpNotFinished(failure.error, true)
+        : describeSignInError(failure.error, access)
+      : null;
   const passkeyUnknown = failure !== null && isPasskeyUnknownHere(failure.error);
 
   return useMemo(
@@ -220,8 +269,26 @@ function useSessionState(deps: SessionDeps, invite?: () => string | null): Sessi
       signOut,
       signUpAccess: access,
       passkeyUnknown,
+      stage: flowView.stage,
+      approve,
+      cancelSignUp,
     }),
-    [session, error, busy, source, deps.passkey, sync, signIn, signUp, signOut, access, passkeyUnknown],
+    [
+      session,
+      error,
+      busy,
+      source,
+      deps.passkey,
+      sync,
+      signIn,
+      signUp,
+      signOut,
+      access,
+      passkeyUnknown,
+      flowView.stage,
+      approve,
+      cancelSignUp,
+    ],
   );
 }
 

@@ -19,6 +19,7 @@ import {
   signUpNotice,
   type AppSource,
 } from "@calimero-apps/connect";
+import { describeSignUpNotFinished, isPasskeyCancel, type SignUpFlow } from "@calimero-apps/passkey/signUpFlow";
 
 import {
   CURRENT_WORLD,
@@ -98,6 +99,9 @@ const css = `
 .mtl-btn.ghost { background: rgba(255,255,255,0.1); color: #fff; }
 .mtl-link { display: inline-block; margin-top: 12px; background: none; border: none; color: #8fa3ba;
   font-size: 12px; cursor: pointer; text-decoration: underline; }
+.mtl-link[hidden] { display: none; }
+/* A sign-up's second prompt, which waits for its own click. */
+.mtl-approve { text-align: center; }
 .mtl-divider { display: flex; align-items: center; gap: 10px; color: #6d7f92; font-size: 11px;
   margin-top: 18px; text-transform: uppercase; letter-spacing: 1px; }
 .mtl-divider::before, .mtl-divider::after { content: ""; flex: 1; height: 1px; background: rgba(255,255,255,0.12); }
@@ -385,6 +389,11 @@ export class Landing {
       ${this.commonInputs(defaults)}
       <button class="mtl-btn green" data-testid="sign-in-btn">Sign in with a passkey</button>
       <button class="mtl-btn ghost" data-testid="sign-up-btn">Create an account</button>
+      <div class="mtl-approve" data-testid="signup-approve-step" hidden>
+        <button class="mtl-btn green" data-testid="signup-approve">Approve with your new passkey</button>
+        <div class="mtl-note" aria-live="polite">Your passkey is saved. One more tap creates your account.</div>
+        <button class="mtl-link" data-testid="signup-cancel">Cancel</button>
+      </div>
       <div class="mtl-note" data-testid="sign-up-unavailable" hidden></div>
       <div class="mtl-error" data-testid="sign-in-error"></div>
       <div class="mtl-note">Accounts are passkeys: nothing to remember, nothing to leak.
@@ -398,8 +407,12 @@ export class Landing {
       void showLandingAgain();
     });
     const errEl = el.querySelector<HTMLElement>("[data-testid=sign-in-error]")!;
-    const buttons = [...el.querySelectorAll<HTMLButtonElement>("button.mtl-btn")];
+    const signInBtn = el.querySelector<HTMLButtonElement>("[data-testid=sign-in-btn]")!;
     const signUpBtn = el.querySelector<HTMLButtonElement>("[data-testid=sign-up-btn]")!;
+    const buttons = [signInBtn, signUpBtn];
+    const approveStep = el.querySelector<HTMLElement>("[data-testid=signup-approve-step]")!;
+    const approveBtn = el.querySelector<HTMLButtonElement>("[data-testid=signup-approve]")!;
+    const cancelBtn = el.querySelector<HTMLButtonElement>("[data-testid=signup-cancel]")!;
     const unavailableEl = el.querySelector<HTMLElement>("[data-testid=sign-up-unavailable]")!;
     // Who may create an account here (read once, never blocking): a closed or
     // invite-only cluster gets no "Create an account", and says why.
@@ -415,24 +428,53 @@ export class Landing {
       policy = p;
       applyPolicy();
     });
-    const ceremony = async (run: () => Promise<string>) => {
+    // The sign-up in flight. Its second prompt (core's 412 CONFIRM_REQUIRED)
+    // starts from its own click, "Approve with your new passkey"; a failure of
+    // it is shown and Approve stays.
+    let flow: SignUpFlow | null = null;
+    const showFlow = () => {
+      const approving = flow !== null && (flow.stage === "approve" || flow.stage === "confirm");
+      buttons.forEach((b) => (b.hidden = approving));
+      approveStep.hidden = !approving;
+      if (!flow || !approving) return;
+      approveBtn.disabled = flow.stage !== "approve";
+      approveBtn.textContent = flow.stage === "confirm" ? "Waiting for your passkey…" : "Approve with your new passkey";
+      cancelBtn.hidden = flow.stage !== "approve";
+      errEl.textContent = flow.confirmFailure ? describeSignUpNotFinished(flow.confirmFailure.error) : "";
+      if (flow.stage === "approve") approveBtn.focus();
+    };
+    approveBtn.addEventListener("click", () => flow?.approve());
+    cancelBtn.addEventListener("click", () => flow?.cancel());
+    const ceremony = async (run: () => Promise<string>, signUp: SignUpFlow | null = null) => {
       errEl.textContent = "";
       buttons.forEach((b) => (b.disabled = true));
+      flow = signUp;
       try {
         await run();
         this.renderPlayCard(defaults, done);
       } catch (e) {
-        errEl.textContent = describeSignInError(e, access());
+        // A cancel at Approve is quiet. Once the passkey exists, a refused
+        // second prompt is not: it left no account.
+        errEl.textContent = signUp?.cancelled
+          ? ""
+          : signUp?.created && isPasskeyCancel(e)
+            ? describeSignUpNotFinished(e, true)
+            : describeSignInError(e, access());
         buttons.forEach((b) => (b.disabled = false));
         applyPolicy();
+      } finally {
+        if (flow === signUp) flow = null;
+        showFlow();
       }
     };
-    el.querySelector("[data-testid=sign-in-btn]")!.addEventListener("click", () =>
-      void ceremony(() => this.conn.signIn()),
-    );
-    el.querySelector("[data-testid=sign-up-btn]")!.addEventListener("click", () =>
-      void ceremony(() => this.conn.signUp(this.readName(), signUpInvite(policy, pendingInvite()))),
-    );
+    signInBtn.addEventListener("click", () => void ceremony(() => this.conn.signIn()));
+    signUpBtn.addEventListener("click", () => {
+      const signUp: SignUpFlow = this.conn.newSignUp(showFlow);
+      void ceremony(
+        () => this.conn.signUp(this.readName(), signUpInvite(policy, pendingInvite()), signUp.passkey),
+        signUp,
+      );
+    });
   }
 
   // state 2: signed in — the Minecraft world list. The world last played (if

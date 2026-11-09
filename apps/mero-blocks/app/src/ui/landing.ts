@@ -23,6 +23,12 @@ import {
   signUpNotice,
 } from "@calimero-apps/connect";
 import { renderListing } from "@calimero-apps/passkey/listing";
+import {
+  describeSignUpNotFinished,
+  isPasskeyCancel,
+  signUpFlow,
+  type SignUpFlow,
+} from "@calimero-apps/passkey/signUpFlow";
 import "@calimero-apps/passkey/passkey.css";
 
 import {
@@ -127,6 +133,7 @@ const css = `
   --passkey-primary-ink: #fff; --passkey-secondary-ink: #cfe3d6; --passkey-radius: 5px; }
 .mbl-link { display: block; margin: 10px auto 0; background: none; border: none; color: #9fb0c3;
   font-size: 11px; cursor: pointer; text-decoration: underline; }
+.mbl-link[hidden] { display: none; }
 .mbl-divider { display: flex; align-items: center; gap: 10px; color: #8fa3ba; font-size: 10px;
   margin-top: 16px; text-transform: uppercase; letter-spacing: 1px; }
 .mbl-divider::before, .mbl-divider::after { content: ""; flex: 1; height: 1px; background: rgba(255,255,255,0.16); }
@@ -349,13 +356,22 @@ export class Landing {
       <label>new account name</label>
       <input id="mbl-account" data-testid="account-name-input" maxlength="32" placeholder="${escapeHtml(defaults.name)}" />
       <button class="mbl-btn ghost" data-testid="sign-up-btn">Create account</button>
+      <div data-testid="signup-approve-step" hidden>
+        <button class="mbl-btn green" data-testid="signup-approve">Approve with your new passkey</button>
+        <div class="mbl-note" aria-live="polite">Your passkey is saved. One more tap creates your account.</div>
+        <button class="mbl-link" data-testid="signup-cancel">Cancel</button>
+      </div>
       <div class="mbl-note" data-testid="sign-up-unavailable" hidden></div>
       <div class="mbl-error" data-testid="sign-in-error"></div>
       <div class="mbl-note" data-testid="target">${escapeHtml(describeTarget(phase.target))}</div>
     `;
     const errEl = el.querySelector<HTMLElement>("[data-testid=sign-in-error]")!;
-    const buttons = [...el.querySelectorAll<HTMLButtonElement>("button")];
+    const signInBtn = el.querySelector<HTMLButtonElement>("[data-testid=sign-in-btn]")!;
     const signUpBtn = el.querySelector<HTMLButtonElement>("[data-testid=sign-up-btn]")!;
+    const buttons = [signInBtn, signUpBtn];
+    const approveStep = el.querySelector<HTMLElement>("[data-testid=signup-approve-step]")!;
+    const approveBtn = el.querySelector<HTMLButtonElement>("[data-testid=signup-approve]")!;
+    const cancelBtn = el.querySelector<HTMLButtonElement>("[data-testid=signup-cancel]")!;
     const unavailableEl = el.querySelector<HTMLElement>("[data-testid=sign-up-unavailable]")!;
     // Who may create an account here (read once, never blocking): a closed or
     // invite-only cluster gets no "Create account", and says why.
@@ -371,24 +387,57 @@ export class Landing {
       policy = p;
       applyPolicy();
     });
-    const ceremony = async (run: () => Promise<SignedIn>) => {
+    // The sign-up in flight. Its second prompt (core's 412 CONFIRM_REQUIRED)
+    // starts from its own click, "Approve with your new passkey": asked for at
+    // once, a password manager extension still saving the new passkey refused
+    // it, which left a passkey and no account. A failure of it is shown and
+    // Approve stays.
+    let flow: SignUpFlow | null = null;
+    const showFlow = () => {
+      const approving = flow !== null && (flow.stage === "approve" || flow.stage === "confirm");
+      buttons.forEach((b) => (b.hidden = approving));
+      approveStep.hidden = !approving;
+      if (!flow || !approving) return;
+      approveBtn.disabled = flow.stage !== "approve";
+      approveBtn.textContent = flow.stage === "confirm" ? "Waiting for your passkey…" : "Approve with your new passkey";
+      cancelBtn.hidden = flow.stage !== "approve";
+      errEl.textContent = flow.confirmFailure ? describeSignUpNotFinished(flow.confirmFailure.error) : "";
+      if (flow.stage === "approve") approveBtn.focus();
+    };
+    approveBtn.addEventListener("click", () => flow?.approve());
+    cancelBtn.addEventListener("click", () => flow?.cancel());
+    const ceremony = async (run: () => Promise<SignedIn>, signingUp: SignUpFlow | null = null) => {
       errEl.textContent = "";
       buttons.forEach((b) => (b.disabled = true));
+      flow = signingUp;
       try {
         this.phase = await run();
         this.renderPlayCard({ ...defaults, name: this.readName() }, done);
       } catch (e) {
-        errEl.textContent = describeSignInError(e, access());
+        // A cancel at Approve is quiet. Once the passkey exists, a refused
+        // second prompt is not: it left no account.
+        errEl.textContent = signingUp?.cancelled
+          ? ""
+          : signingUp?.created && isPasskeyCancel(e)
+            ? describeSignUpNotFinished(e, true)
+            : describeSignInError(e, access());
         buttons.forEach((b) => (b.disabled = false));
         applyPolicy();
+      } finally {
+        if (flow === signingUp) flow = null;
+        showFlow();
       }
     };
-    el.querySelector("[data-testid=sign-in-btn]")!.addEventListener("click", () => {
+    signInBtn.addEventListener("click", () => {
       void ceremony(() => signIn(phase, this.deps));
     });
-    el.querySelector("[data-testid=sign-up-btn]")!.addEventListener("click", () => {
+    signUpBtn.addEventListener("click", () => {
       const account = el.querySelector<HTMLInputElement>("#mbl-account")?.value.trim() || this.readName();
-      void ceremony(() => signUp(phase, account, this.deps, signUpInvite(policy, pendingInvite())));
+      const signingUp: SignUpFlow = signUpFlow(this.deps.passkey(), showFlow);
+      void ceremony(
+        () => signUp(phase, account, this.deps, signUpInvite(policy, pendingInvite()), signingUp.passkey),
+        signingUp,
+      );
     });
   }
 
