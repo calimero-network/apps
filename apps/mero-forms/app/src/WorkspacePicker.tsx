@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { describeError } from "@calimero-apps/connect";
+import { askAnOwnerCopy, canCreateIn, describeError } from "@calimero-apps/connect";
 import { FormsClient } from "./formsApi";
 import { createWorkspace, listOrgs, listWorkspaces, type OrgRow, type WorkspaceRow } from "./lib/orgs";
 import type { ActiveWorkspace } from "./lib/workspaceStore";
@@ -19,6 +19,12 @@ function shortId(id: string) {
 export function WorkspacePicker({ onOpen }: { onOpen: (w: ActiveWorkspace) => void }) {
   const { client, source, after } = useSignedIn();
   const [orgs, setOrgs] = useState<OrgRow[] | null>(null);
+  /**
+   * The orgs this account may add a workspace in (core's `CREATE_APP`): an
+   * owner or admin, or a member allowed to. The others are not offered, since
+   * a create there fails; `null` until known.
+   */
+  const [creatable, setCreatable] = useState<OrgRow[] | null>(null);
   const [workspaces, setWorkspaces] = useState<WorkspaceRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -29,11 +35,14 @@ export function WorkspacePicker({ onOpen }: { onOpen: (w: ActiveWorkspace) => vo
   useEffect(() => {
     let live = true;
     Promise.all([listOrgs(client), listWorkspaces(client, source)])
-      .then(([o, w]) => {
+      .then(async ([o, w]) => {
         if (!live) return;
         setOrgs(o);
         setWorkspaces(w);
         setError(null);
+        // `null` (cannot tell) keeps the org on offer: the node decides then.
+        const may = await Promise.all(o.map((row) => canCreateIn(client, row.orgId)));
+        if (live) setCreatable(o.filter((_, i) => may[i] !== false));
       })
       .catch((e: unknown) => live && setError(describeError(e)))
       .finally(after);
@@ -106,10 +115,10 @@ export function WorkspacePicker({ onOpen }: { onOpen: (w: ActiveWorkspace) => vo
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
-          {orgs && orgs.length > 0 && (
+          {creatable && creatable.length > 0 && (
             <select aria-label="organization" value={org} onChange={(e) => setOrg(e.target.value)}>
               <option value="">In a new organization</option>
-              {orgs.map((o) => (
+              {creatable.map((o) => (
                 <option key={o.orgId} value={o.orgId}>
                   In {o.name || shortId(o.orgId)}
                 </option>
@@ -120,6 +129,11 @@ export function WorkspacePicker({ onOpen }: { onOpen: (w: ActiveWorkspace) => vo
             {busy ? "Creating…" : "Start a new workspace"}
           </button>
         </div>
+        {orgs && creatable && creatable.length < orgs.length && (
+          <p className="empty" data-testid="workspace-ask-owner">
+            Not every organization you are in is listed. {askAnOwnerCopy("a workspace")}
+          </p>
+        )}
         {error && <pre className="err">{error}</pre>}
       </form>
     </>
