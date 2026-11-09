@@ -37,7 +37,14 @@ import {
   type SignUpAccess,
   type Target,
 } from "@calimero-apps/connect";
-import { isPasskeyCancel, type ListingProps } from "@calimero-apps/passkey";
+import {
+  describeSignUpNotFinished,
+  isPasskeyCancel,
+  signUpFlow,
+  type ListingProps,
+  type SignUpFlow,
+  type SignUpStage,
+} from "@calimero-apps/passkey";
 import { pendingInvite } from "../utils/invitation";
 
 /** The app's name in stored keys. */
@@ -64,8 +71,16 @@ interface State {
   accountId: string | null;
   /** False while an event stream is down (the reconnect resync keys on it). */
   isOnline: boolean;
-  /** The last failed sign-in or sign-up, described with the policy as it is when shown. */
-  failure: { error: unknown } | null;
+  /**
+   * The last failed sign-in or sign-up, described with the policy as it is
+   * when shown. `afterCreate`: the sign-up's passkey was made, so even a
+   * cancel-like failure is shown.
+   */
+  failure: { error: unknown; afterCreate?: boolean } | null;
+  /** Where a sign-up is (`approve`: its new passkey waits for its own click); `null` outside one. */
+  signUpStage: SignUpStage | null;
+  /** Why the sign-up's last approval failed; it waits at `approve` again. */
+  confirmFailure: { error: unknown } | null;
   /** The cluster's sign-up policy: `undefined` until read, `null` when it cannot be. */
   policy: SignUpPolicy | null | undefined;
 }
@@ -77,6 +92,8 @@ let state: State = {
   isOnline: true,
   failure: null,
   policy: undefined,
+  signUpStage: null,
+  confirmFailure: null,
 };
 let client: CalimeroClient | null = null;
 let sessions: SessionStore | null = null;
@@ -119,6 +136,8 @@ export function __setForTests(
     message: null,
     failure: null,
     policy: undefined,
+    signUpStage: null,
+    confirmFailure: null,
   });
   if (c) loadSignUpPolicy(c);
 }
@@ -174,7 +193,13 @@ export function getAccountId(): string {
   return state.accountId ?? "";
 }
 
-async function ceremony(run: (c: CalimeroClient) => Promise<{ accountId: string }>): Promise<void> {
+/** The sign-up in flight, waiting for "Approve with your new passkey" between its two prompts. */
+let flow: SignUpFlow | null = null;
+
+async function ceremony(
+  run: (c: CalimeroClient) => Promise<{ accountId: string }>,
+  signUp?: SignUpFlow,
+): Promise<void> {
   const c = getClient();
   set({ message: null, failure: null });
   try {
@@ -183,8 +208,15 @@ async function ceremony(run: (c: CalimeroClient) => Promise<{ accountId: string 
     set({ status: "signed-in", accountId });
   } catch (e) {
     // A dismissed passkey prompt is a quiet cancel, not an error to show.
+    // Once a sign-up's passkey exists it is not: that left no account.
     if (!isPasskeyCancel(e)) set({ failure: { error: e } });
+    else if (signUp?.created && !signUp.cancelled) set({ failure: { error: e, afterCreate: true } });
     throw e;
+  } finally {
+    if (signUp) {
+      if (flow === signUp) flow = null;
+      set({ signUpStage: null, confirmFailure: null });
+    }
   }
 }
 
@@ -198,9 +230,28 @@ export function signIn(): Promise<void> {
  */
 export function signUp(name = ""): Promise<void> {
   const invite = signUpInvite(state.policy, pendingInvite());
-  return ceremony((c) =>
-    invite ? c.signUp(passkey(), name, { invite }) : c.signUp(passkey(), name),
+  flow?.cancel();
+  const current: SignUpFlow = signUpFlow(passkey(), () =>
+    set({ signUpStage: current.stage, confirmFailure: current.confirmFailure }),
   );
+  flow = current;
+  return ceremony(
+    (c) =>
+      invite
+        ? c.signUp(current.passkey, name, { invite })
+        : c.signUp(current.passkey, name),
+    current,
+  );
+}
+
+/** The click that starts a sign-up's second prompt, which creates the account. */
+export function approveSignUp(): void {
+  flow?.approve();
+}
+
+/** Give up a sign-up at its Approve step (or on leaving the sign-in): quiet. */
+export function cancelSignUp(): void {
+  flow?.cancel();
 }
 
 export async function signOut(): Promise<void> {
@@ -287,6 +338,8 @@ export interface CalimeroState {
   signUpAccess: SignUpAccess;
   /** The last sign-in failed because the cluster has no account for that passkey. */
   passkeyUnknown: boolean;
+  /** Where a sign-up is; at `approve` it waits for `approveSignUp()`. */
+  signUpStage: SignUpStage | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   isOnline: boolean;
@@ -307,11 +360,16 @@ export function useCalimero(): CalimeroState {
   const s = useSyncExternalStore(subscribe, snapshot, snapshot);
   return {
     status: s.status,
-    message: s.failure
-      ? describeSignInError(s.failure.error, access(s))
-      : s.message,
+    message: s.confirmFailure
+      ? describeSignUpNotFinished(s.confirmFailure.error)
+      : s.failure
+        ? s.failure.afterCreate
+          ? describeSignUpNotFinished(s.failure.error, true)
+          : describeSignInError(s.failure.error, access(s))
+        : s.message,
     signUpAccess: access(s),
     passkeyUnknown: s.failure !== null && isPasskeyUnknownHere(s.failure.error),
+    signUpStage: s.signUpStage,
     isAuthenticated: s.status === "signed-in",
     isLoading: s.status === "connecting",
     isOnline: s.isOnline,
