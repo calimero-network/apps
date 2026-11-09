@@ -455,6 +455,13 @@ jobs:
       - name: Assert the publish script uploads straight to storage
         run: bash scripts/publish-bundle.test.sh
 
+      # Release skips a component whose manifest equals the registry's latest.
+      # Wrong one way and a change nodes act on (outbound, frontendAliases,
+      # upgrades, the guide) silently never ships; wrong the other and every
+      # dispatch adds a duplicate version to the registry's Redis.
+      - name: Assert Release skips only a component nothing changed in
+        run: python3 scripts/tests/registry-unchanged-test.py
+
       # The frontend packed into a bundle is built with the lowest release the
       # cluster runs: too high and it refuses every node of a half-rolled-out
       # cluster, so the derivation is tested against fixture responses.
