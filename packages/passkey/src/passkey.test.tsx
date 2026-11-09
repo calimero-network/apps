@@ -1,6 +1,8 @@
 import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import {
+  ConfirmCancelled,
+  ConfirmPromptBlocked,
   LoginRequired,
   SignUpRefused,
   type CalimeroClient,
@@ -10,6 +12,7 @@ import {
 import {
   PASSKEY_UNKNOWN_HERE_MESSAGE,
   PASSKEY_UNKNOWN_SIGN_UP_MESSAGE,
+  PROMPT_BLOCKED_MESSAGE,
   SIGN_UP_CLOSED,
   SIGN_UP_INVITE_ONLY,
   type KeyValueStorage,
@@ -140,6 +143,17 @@ describe("usePasskeySession", () => {
     expect(result.current.error).toContain("node down");
   });
 
+  it("says a blocked prompt is blocked, not a quiet cancel", async () => {
+    const notFocused = Object.assign(new Error("The document is not focused."), { name: "NotAllowedError" });
+    const client = fakeClient({ signIn: vi.fn(async () => Promise.reject(new ConfirmPromptBlocked(notFocused))) });
+    const d = deps(client);
+    const { result } = renderHook(() => usePasskeySession("test-app", d));
+    await waitFor(() => expect(result.current.session.status).toBe("signed-out"));
+
+    await act(() => result.current.signIn());
+    expect(result.current.error).toBe(PROMPT_BLOCKED_MESSAGE);
+  });
+
   it("says a passkey the cluster does not know is unknown here, not 'Sign in first.'", async () => {
     const client = fakeClient({ signIn: vi.fn(async () => Promise.reject(new LoginRequired("unknown passkey"))) });
     const d = deps(client);
@@ -194,6 +208,15 @@ describe("isPasskeyCancel", () => {
     expect(isPasskeyCancel(new Error("wrapped", { cause: cancelled() }))).toBe(true);
     expect(isPasskeyCancel(new Error("other"))).toBe(false);
     expect(isPasskeyCancel(null)).toBe(false);
+  });
+
+  it("does not count a prompt the browser or a password manager blocked", () => {
+    expect(isPasskeyCancel(new ConfirmCancelled(cancelled()))).toBe(true);
+    // ConfirmPromptBlocked's cause is a NotAllowedError, which alone is a cancel.
+    const notFocused = Object.assign(new Error("The document is not focused."), { name: "NotAllowedError" });
+    expect(isPasskeyCancel(new ConfirmPromptBlocked(notFocused))).toBe(false);
+    expect(isPasskeyCancel(notFocused)).toBe(false);
+    expect(isPasskeyCancel(new Error("wrapped", { cause: new ConfirmPromptBlocked(notFocused) }))).toBe(false);
   });
 });
 
