@@ -2,7 +2,8 @@ import "@calimero-apps/glass/glass.css";
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
-import { captureInvite } from "./lib/orgs";
+import { invites, migrateLegacyInvite } from "./lib/orgs";
+import { BASE } from "./route";
 import { applyStoredTheme } from "./ui";
 import "./index.css";
 
@@ -11,7 +12,10 @@ if (!root) throw new Error("#root is missing from index.html");
 
 // Before React mounts: a person opening an invitation link (`?invite=`) is
 // usually not signed in yet, and the token has to survive the passkey sign-up.
-captureInvite();
+// An invite an earlier build stored under its own key moves over first, so a
+// fresh link wins.
+migrateLegacyInvite();
+invites.capture(window.location, { basename: BASE });
 
 // The stored theme on <html> before first paint, so a light-mode user never
 // sees a dark flash.
