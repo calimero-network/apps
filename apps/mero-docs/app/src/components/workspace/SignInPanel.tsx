@@ -22,7 +22,7 @@ export function SignInPanel({
   const api = useSession();
   // Closing the sign-in mid sign-up ends it, so nothing waits on a click.
   const { cancelSignUp } = api;
-  useEffect(() => () => cancelSignUp(), [cancelSignUp]);
+  useEffect(() => () => cancelSignUp?.(), [cancelSignUp]);
   const where =
     api.session.status === 'signed-out' || api.session.status === 'signed-in'
       ? describeTarget(api.session.target)

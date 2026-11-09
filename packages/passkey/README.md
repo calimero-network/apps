@@ -22,8 +22,8 @@ account, nothing to install, no permissions to grant.
 
   "An account here" is a hint the hook keeps per cluster (`accountHintKey`)
   once this browser signs in or up. Errors are plain words with the next step;
-  a dismissed prompt is a quiet cancel, except a sign-up's approval (the
-  account is not made, `SIGN_UP_UNFINISHED`). Pass `askName` to offer an
+  a dismissed prompt is a quiet cancel, except a sign-up's approval, which
+  waits at Approve with `SIGN_UP_NOT_FINISHED`. Pass `askName` to offer an
   optional name.
 - Sign-up is two browser prompts since core rc.10: create the passkey, then
   approve once with it (core's `412 CONFIRM_REQUIRED` on the account it
@@ -57,9 +57,18 @@ account, nothing to install, no permissions to grant.
   no error; any other failure (a prompt the person closed, a timeout) is
   shown with it, never a quiet cancel. After a click, a refusal within 1 s
   is asked again once. Cancel cannot close a prompt that is already open
-  (mero-js's `PasskeyProvider.get` takes no `AbortSignal`). An app with its own session store wraps the
-  passkey it passes to `client.signUp` with `signUpFlow(passkey, onChange)`;
-  an app that is not React imports it from `@calimero-apps/passkey/signUpFlow`.
+  (mero-js's `PasskeyProvider.get` takes no `AbortSignal` yet).
+- The ceremony itself has no framework (`@calimero-apps/passkey/ceremony`):
+  the hook uses it, and so does an app that keeps its own session store or is
+  not React (mero-chat's module store, the merraria and mero-blocks
+  launchers). `signInHere` offers only the passkeys seen working on this
+  cluster (`thisClusterPasskey`) and remembers the account here;
+  `signUpFlowHere` + `signUpHere` make an account, carrying the page's invite
+  with `join: true` and returning what it `joined`; `noAccountHereAfter`,
+  `passkeyUnknownAfter`, `invitedFirst` and `describeCeremonyFailure` say what
+  to show; `SIGN_IN_HINT` and `noAccountCopy` are the words. `signInHere` and
+  `signUpHere` take an optional `signal` (`AbortSignal`) and pass it to
+  mero-js, which closes an open prompt from the release that accepts it.
 - `<AppListing name description package dir dev />` is the one listing page
   every app shows for `listing`: the app's name and one line on it, a primary
   "Open {name}" link to the copy Calimero Cloud serves,

@@ -6,7 +6,7 @@
 // wallet-enrolled device key writing through a relay), the desktop SSO hash
 // and the node-auth redirect: an account is a passkey, on every target.
 
-import { browserPasskey, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
+import { browserPasskey, type CalimeroClient, type PasskeyProvider, type SignUpPolicy } from "@calimero-network/mero-js";
 import {
   SessionStore,
   createClient,
@@ -16,7 +16,14 @@ import {
   type KeyValueStorage,
   type Target,
 } from "@calimero-apps/connect";
-import { signUpFlow, type SignUpFlow } from "@calimero-apps/passkey/signUpFlow";
+import type { SignUpFlow } from "@calimero-apps/passkey/signUpFlow";
+import {
+  knownAccountHere,
+  signInHere,
+  signUpFlowHere,
+  signUpHere,
+  type JoinedAtSignUp,
+} from "@calimero-apps/passkey/ceremony";
 import { PACKAGE } from "./merraria";
 
 /** The app's name in stored keys. */
@@ -57,8 +64,14 @@ export class Connection {
     this.sessions.sync(this.client);
   };
 
+  /** This browser has signed in to an account on this cluster before. */
+  knownAccount(): boolean {
+    return knownAccountHere(this.target, this.storage);
+  }
+
+  /** Sign in, offering only the passkeys that have worked on this cluster (@calimero-apps/passkey). */
   async signIn(): Promise<string> {
-    const { accountId } = await this.client.signIn(this.passkey());
+    const { accountId } = await signInHere(this.client, this.target, this.passkey(), this.storage);
     this.sync();
     return accountId;
   }
@@ -70,16 +83,28 @@ export class Connection {
    * rule, a blocked prompt, a closed prompt).
    */
   newSignUp(onChange: () => void): SignUpFlow {
-    return signUpFlow(this.passkey(), onChange);
+    return signUpFlowHere(this.passkey(), this.target, this.storage, onChange);
   }
 
-  /** A new account (a new passkey); `invite` goes with it on a cluster that requires one. */
-  async signUp(name: string, invite: string | null = null, passkey: PasskeyProvider = this.passkey()): Promise<string> {
-    const { accountId } = invite
-      ? await this.client.signUp(passkey, name, { invite })
-      : await this.client.signUp(passkey, name);
+  /**
+   * A new account (a new passkey). The page's `invite` goes with it wherever
+   * the cluster's `policy` lets an organization invite admit, and `joined`
+   * says the account is in the invite's world already (nothing to redeem).
+   */
+  async signUp(
+    name: string,
+    { invite = null, policy }: { invite?: string | null; policy?: SignUpPolicy | null } = {},
+    passkey: PasskeyProvider = this.passkey(),
+  ): Promise<{ accountId: string; joined: JoinedAtSignUp | null }> {
+    const made = await signUpHere(this.client, this.target, passkey, {
+      name,
+      invite,
+      policy,
+      join: true,
+      storage: this.storage,
+    });
     this.sync();
-    return accountId;
+    return made;
   }
 
   async signOut(): Promise<void> {

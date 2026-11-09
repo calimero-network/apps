@@ -1,6 +1,7 @@
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import {
+  CalimeroError,
   LoginRequired,
   type CalimeroClient,
   type PasskeyProvider,
@@ -20,6 +21,7 @@ import {
   approveSignUp,
   cancelSignUp,
   signIn,
+  signOut,
   signUp,
   useCalimero,
 } from "./calimero";
@@ -244,5 +246,74 @@ describe("signUp's second prompt", () => {
     expect(pk.get).toHaveBeenCalledTimes(1);
     expect(hook.result.current.signUpStage).toBeNull();
     expect(hook.result.current.message).toBeNull();
+  });
+});
+
+describe("one sign-in everywhere (@calimero-apps/passkey)", () => {
+  const OPEN: SignUpPolicy = {
+    policy: "open",
+    orgInvites: true,
+    signUpInvites: true,
+    inviteRequired: false,
+  };
+  function cluster() {
+    const pk = {
+      create: vi.fn(async () => ({}) as never),
+      get: vi.fn(async (..._args: unknown[]) => ({ credentialId: "cred-here" }) as never),
+    };
+    const client = {
+      session: undefined as undefined | { accountId: string },
+      signIn: vi.fn(async (p: PasskeyProvider) => {
+        await p.get(new Uint8Array([1]), "calimero.network");
+        return { accountId: "acct-1" };
+      }),
+      signUp: vi.fn(async (..._args: unknown[]) => ({ accountId: "acct-new" })),
+      signOut: vi.fn(async () => {}),
+      signUpPolicy: vi.fn(async () => OPEN),
+      me: vi.fn(async () => ({ orgs: [{ orgId: "org-1" }] })),
+    };
+    __setForTests(client as unknown as CalimeroClient, null, () => pk as unknown as PasskeyProvider);
+    return { pk, client, hook: renderHook(() => useCalimero()) };
+  }
+
+  it("a sign-in offers only the passkeys that worked on this cluster", async () => {
+    localStorage.clear();
+    const { pk } = cluster();
+    await act(() => signIn());
+    expect(pk.get.mock.calls[0]?.[2]).toBeUndefined();
+    await act(() => signOut());
+    await act(() => signIn());
+    expect(pk.get.mock.calls[1]?.[2]).toEqual(["cred-here"]);
+  });
+
+  it("a sign-in the cluster has no account for is 'no account here', to create one in place", async () => {
+    localStorage.clear();
+    const { client, hook } = cluster();
+    client.signIn.mockRejectedValueOnce(new CalimeroError(401, "PASSKEY_UNKNOWN_HERE", "unknown passkey"));
+    await act(async () => {
+      await signIn().catch(() => {});
+    });
+    expect(hook.result.current.noAccountHere).toBe(true);
+    expect(hook.result.current.passkeyUnknown).toBe(true);
+  });
+
+  it("knows an account was made here, so an invited person sees Sign in first", async () => {
+    localStorage.clear();
+    const { hook } = cluster();
+    expect(hook.result.current.knownAccount).toBe(false);
+    await act(() => signIn());
+    expect(hook.result.current.knownAccount).toBe(true);
+  });
+
+  it("a sign-up carries the invite on an open cluster and joins in that step", async () => {
+    localStorage.clear();
+    localStorage.setItem(INVITATION_STORAGE_KEY, "org-invite-token");
+    const { client, hook } = cluster();
+    await waitFor(() => expect(hook.result.current.signUpAccess).toBe("allowed"));
+    expect(hook.result.current.hasInvite).toBe(true);
+    await act(() => signUp("Ada"));
+    expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "Ada", { invite: "org-invite-token" });
+    expect(hook.result.current.status).toBe("signed-in");
+    expect(localStorage.getItem(INVITATION_STORAGE_KEY)).toBeNull();
   });
 });

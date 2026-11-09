@@ -226,7 +226,7 @@ describe("signUpFlow", () => {
     expect(isPromptStuck(dismissed())).toBe(false);
     expect(describeSignUpNotFinished(dismissed())).toBe(SIGN_UP_NOT_FINISHED);
     expect(describeSignUpNotFinished(pending())).toBe(`${SIGN_UP_NOT_FINISHED} ${PROMPT_STUCK_ADVICE}`);
-    expect(describeSignUpNotFinished(new ConfirmPromptBlocked(pending()), true)).toContain(PROMPT_STUCK_ADVICE);
+    expect(describeSignUpNotFinished(new ConfirmPromptBlocked(pending()))).toContain(PROMPT_STUCK_ADVICE);
   });
 });
 

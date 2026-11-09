@@ -64,8 +64,16 @@ export default function SignInPanel({
   onBusy,
   testId = "signin-popup",
 }: Props) {
-  const { status, message, signUpAccess, passkeyUnknown, signUpStage } =
-    useCalimero();
+  const {
+    status,
+    message,
+    signUpAccess,
+    passkeyUnknown,
+    noAccountHere,
+    knownAccount,
+    hasInvite,
+    signUpStage,
+  } = useCalimero();
   const [busy, setBusy] = useState(false);
 
   // Closing the sign-in mid sign-up ends it, so nothing waits on a click.
@@ -90,6 +98,9 @@ export default function SignInPanel({
       error: status === "unconfigured" || status === "listing" ? null : message,
       signUpAccess,
       passkeyUnknown,
+      noAccountHere,
+      knownAccount,
+      hasInvite,
       // A sign-up's second prompt starts from its own click.
       stage: signUpStage,
       approve: approveSignUp,
@@ -109,6 +120,9 @@ export default function SignInPanel({
     message,
     signUpAccess,
     passkeyUnknown,
+    noAccountHere,
+    knownAccount,
+    hasInvite,
     signUpStage,
     beforeCeremony,
     onBusy,

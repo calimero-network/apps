@@ -6,34 +6,15 @@
 // with a new passkey), a session is stored per app and per target, and there is
 // no node URL to type, no auth frontend and no desktop hand-off.
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from 'react';
+import { createContext, useCallback, useContext, useMemo, type ReactNode } from 'react';
 import {
   browserPasskey,
   type CalimeroClient,
   type PasskeyProvider,
-  type SignUpPolicy,
 } from '@calimero-network/mero-js';
 import {
-  SessionStore,
   appSource,
   createClient,
-  describeError,
-  describeSignInError,
-  NotServedError,
-  connectTarget,
-  isPasskeyUnknownHere,
-  readSignUpPolicy,
-  signUpAccess,
-  signUpInvite,
   type AppSource,
   type ConnectEnv,
   type KeyValueStorage,
@@ -41,15 +22,12 @@ import {
   type Target,
 } from '@calimero-apps/connect';
 import {
-  describeSignUpNotFinished,
-  isPasskeyCancel,
-  signUpFlow,
+  usePasskeySession,
   type ListingProps,
-  type SignUpFlow,
   type SignUpStage,
 } from '@calimero-apps/passkey';
 
-import { pendingInvite } from './lib/inviteLink';
+import { dropInvite, pendingInvite } from './lib/inviteLink';
 import { PACKAGE } from './lib/meroPass';
 
 /** The app's name in stored keys. */
@@ -98,6 +76,12 @@ export interface Calimero {
   signUpAccess?: SignUpAccess;
   /** The last sign-in failed because the cluster has no account for that passkey. */
   passkeyUnknown?: boolean;
+  /** The last sign-in found no account here: creating one is the way on. */
+  noAccountHere?: boolean;
+  /** This browser has signed in to an account on this cluster before. */
+  knownAccount?: boolean;
+  /** Whether the page holds an invite token. */
+  hasInvite?: boolean;
   /**
    * Where a sign-up is, `null` outside one. Its second prompt is asked right
    * after the first (`confirm`). At `approve` the new passkey exists and the
@@ -140,19 +124,14 @@ export function describeTarget(target: Target | null): string {
       : `Calimero Cloud ${target.cluster}`;
 }
 
-type State =
-  | { status: 'connecting' }
-  | { status: 'unconfigured' | 'listing'; message: string }
-  | { status: 'signed-out'; client: CalimeroClient; target: Target }
-  | {
-      status: 'signed-in';
-      client: CalimeroClient;
-      target: Target;
-      accountId: string;
-    };
-
 const Ctx = createContext<Calimero | null>(null);
 
+/**
+ * The shared passkey session (`@calimero-apps/passkey`): only this cluster's
+ * passkeys, "no account here" as create-in-place, Sign in first for an invited
+ * person with an account, and the invite carried at sign-up, where it joins
+ * the team in that step. This adds what the screens read beside it.
+ */
 export function CalimeroProvider({
   children,
   deps = defaultDeps,
@@ -160,229 +139,58 @@ export function CalimeroProvider({
   children: ReactNode;
   deps?: CalimeroDeps;
 }) {
-  const [state, setState] = useState<State>({ status: 'connecting' });
-  const [store, setStore] = useState<SessionStore | null>(null);
-  // The failed ceremony, described when shown, so the words follow the
-  // sign-up policy even when it is read after the failure. `afterCreate`: the
-  // sign-up's passkey was made, so even a cancel-like failure is shown.
-  const [failure, setFailure] = useState<{
-    error: unknown;
-    afterCreate?: boolean;
-  } | null>(null);
-  /** The sign-up in flight, if any, and what the control shows of it. */
-  const flowRef = useRef<SignUpFlow | null>(null);
-  const [flowView, setFlowView] = useState<{
-    stage: SignUpStage | null;
-    confirmFailure: { error: unknown } | null;
-  }>({ stage: null, confirmFailure: null });
-  /** The cluster's sign-up policy: `undefined` until read, `null` when it cannot be. */
-  const [policy, setPolicy] = useState<SignUpPolicy | null | undefined>(
-    undefined,
-  );
-  /** The `/auth/logout` still in flight, which the next ceremony waits for. */
-  const loggingOut = useRef<Promise<void> | null>(null);
-  const [busy, setBusy] = useState(false);
+  const api = usePasskeySession(APP, deps, {
+    package: PACKAGE,
+    invite: () => pendingInvite(deps.storage),
+    // Joined at sign-up: nothing is left to redeem (a second redeem would
+    // spend another use of the link).
+    onJoinedAtSignUp: () => dropInvite(deps.storage),
+  });
+  const { session, store } = api;
   const source = useMemo(() => appSource(deps.env, PACKAGE), [deps.env]);
-
-  useEffect(() => {
-    let live = true;
-    void (async () => {
-      try {
-        const target = await connectTarget(deps.env, {
-          servedNodes: deps.servedNodes,
-          app: APP,
-          package: PACKAGE,
-        });
-        const client = await deps.makeClient(target);
-        const sessions = new SessionStore(APP, target, deps.storage);
-        if (!live) return;
-        setStore(sessions);
-        if (sessions.restore(client) && client.session) {
-          setState({
-            status: 'signed-in',
-            client,
-            target,
-            accountId: client.session.accountId,
-          });
-        } else {
-          setState({ status: 'signed-out', client, target });
-        }
-      } catch (e) {
-        if (live)
-          setState({
-            status: e instanceof NotServedError ? 'listing' : 'unconfigured',
-            message: describeError(e),
-          });
-      }
-    })();
-    return () => {
-      live = false;
-    };
-  }, [deps]);
-
-  const signedOutClient = state.status === 'signed-out' ? state.client : null;
-  useEffect(() => {
-    if (!signedOutClient) return;
-    let live = true;
-    void readSignUpPolicy(signedOutClient).then((p) => {
-      if (live) setPolicy(p);
-    });
-    return () => {
-      live = false;
-    };
-  }, [signedOutClient]);
-
-  const inviteToken = pendingInvite(deps.storage);
-  const access = signUpAccess(policy, inviteToken !== null);
-  const invited = signUpInvite(policy, inviteToken);
-
-  // Leaving the page mid sign-up ends it, so nothing waits on a click.
-  useEffect(() => () => flowRef.current?.cancel(), []);
-
-  const ceremony = useCallback(
-    async (
-      run: (c: CalimeroClient) => Promise<{ accountId: string }>,
-      flow?: SignUpFlow,
-    ) => {
-      if (state.status !== 'signed-out') return;
-      setBusy(true);
-      setFailure(null);
-      if (flow) flowRef.current = flow;
-      try {
-        // mero-js forgets the session when `/auth/logout` returns, so a sign-in
-        // that finished first would be wiped by the sign-out before it.
-        await loggingOut.current;
-        const { accountId } = await run(state.client);
-        store?.sync(state.client);
-        setState({
-          status: 'signed-in',
-          client: state.client,
-          target: state.target,
-          accountId,
-        });
-      } catch (e) {
-        // A dismissed first prompt (or a cancel at Approve) is quiet. Once the
-        // passkey exists, a refused second prompt is not: it left no account.
-        const afterCreate = flow?.created === true && !flow.cancelled;
-        if (!isPasskeyCancel(e)) setFailure({ error: e });
-        else if (afterCreate) setFailure({ error: e, afterCreate: true });
-      } finally {
-        if (flow && flowRef.current === flow) flowRef.current = null;
-        if (flow) setFlowView({ stage: null, confirmFailure: null });
-        setBusy(false);
-      }
-    },
-    [state, store],
-  );
-
-  const signIn = useCallback(
-    () => ceremony((c) => c.signIn(deps.passkey())),
-    [ceremony, deps],
-  );
-  const signUp = useCallback(
-    (name?: string) => {
-      // The second prompt (core's 412 CONFIRM_REQUIRED) right away; its own
-      // click only when that fails or is refused (signUpFlow).
-      const flow: SignUpFlow = signUpFlow(deps.passkey(), () =>
-        setFlowView({ stage: flow.stage, confirmFailure: flow.confirmFailure }),
-      );
-      return ceremony(
-        (c) =>
-          invited
-            ? c.signUp(flow.passkey, name?.trim() ?? '', { invite: invited })
-            : c.signUp(flow.passkey, name?.trim() ?? ''),
-        flow,
-      );
-    },
-    [ceremony, deps, invited],
-  );
-  const approve = useCallback(() => flowRef.current?.approve(), []);
-  const cancelSignUp = useCallback(() => flowRef.current?.cancel(), []);
-  // Signed out first, then `/auth/logout`: the other way round, screens kept
-  // seeing "signed-in" while the node had already revoked the session, and
-  // their `/auth/me` calls got 401s (as in @calimero-apps/passkey).
-  const signOut = useCallback(async () => {
-    if (state.status !== 'signed-in') return;
-    const { client, target } = state;
-    store?.clear();
-    setState({ status: 'signed-out', client, target });
-    const logout = client.signOut().catch(() => {
-      // Already expired or unreachable: forgetting it here is what matters.
-    });
-    loggingOut.current = logout;
-    try {
-      await logout;
-    } finally {
-      if (loggingOut.current === logout) loggingOut.current = null;
-    }
-  }, [state, store]);
-
   const client =
-    state.status === 'signed-in' || state.status === 'signed-out'
-      ? state.client
+    session.status === 'signed-in' || session.status === 'signed-out'
+      ? session.client
       : null;
   const after = useCallback(() => {
     if (client) store?.sync(client);
   }, [client, store]);
 
-  const error = flowView.confirmFailure
-    ? describeSignUpNotFinished(flowView.confirmFailure.error)
-    : failure
-      ? failure.afterCreate
-        ? describeSignUpNotFinished(failure.error, true)
-        : describeSignInError(failure.error, access)
-      : null;
-  const passkeyUnknown =
-    failure !== null && isPasskeyUnknownHere(failure.error);
-
   const value = useMemo<Calimero>(() => {
     const target =
-      state.status === 'signed-in' || state.status === 'signed-out'
-        ? state.target
+      session.status === 'signed-in' || session.status === 'signed-out'
+        ? session.target
         : null;
     return {
-      status: state.status,
+      status: session.status,
       client,
       target,
-      accountId: state.status === 'signed-in' ? state.accountId : null,
+      accountId: session.status === 'signed-in' ? session.accountId : null,
       source,
       message:
-        state.status === 'unconfigured' || state.status === 'listing'
-          ? state.message
+        session.status === 'unconfigured' || session.status === 'listing'
+          ? session.message
           : null,
-      error,
-      busy,
-      isAuthenticated: state.status === 'signed-in',
-      isLoading: state.status === 'connecting',
+      error: api.error,
+      busy: api.busy,
+      isAuthenticated: session.status === 'signed-in',
+      isLoading: session.status === 'connecting',
       where: describeTarget(target),
-      signIn,
-      signUp,
-      signOut,
-      signUpAccess: access,
-      passkeyUnknown,
-      stage: flowView.stage,
-      approve,
-      cancelSignUp,
+      signIn: api.signIn,
+      signUp: api.signUp,
+      signOut: api.signOut,
+      signUpAccess: api.signUpAccess,
+      passkeyUnknown: api.passkeyUnknown,
+      noAccountHere: api.noAccountHere,
+      knownAccount: api.knownAccount,
+      hasInvite: api.hasInvite,
+      stage: api.stage,
+      approve: api.approve,
+      cancelSignUp: api.cancelSignUp,
       passkey: deps.passkey,
       after,
     };
-  }, [
-    access,
-    passkeyUnknown,
-    flowView.stage,
-    approve,
-    cancelSignUp,
-    state,
-    client,
-    source,
-    error,
-    busy,
-    signIn,
-    signUp,
-    signOut,
-    deps,
-    after,
-  ]);
+  }, [api, session, client, source, deps.passkey, after]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

@@ -4,6 +4,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppInfo, CalimeroClient, CalimeroSession, PasskeyProvider } from "@calimero-network/mero-js";
 import { SIGN_UP_NOT_FINISHED, SIGN_UP_READY } from "@calimero-apps/passkey/signUpFlow";
+import { SIGN_IN_HINT, accountHintKey, noAccountCopy } from "@calimero-apps/passkey/ceremony";
+import { CalimeroError } from "@calimero-network/mero-js";
+import { resolveTarget } from "@calimero-apps/connect";
 
 vi.mock("../src/ui/panorama", () => ({ Panorama: class { destroy() {} } }));
 vi.mock("../src/pages/landing/mount", () => ({ showLandingAgain: vi.fn(async () => {}) }));
@@ -287,5 +290,97 @@ describe("launcher", () => {
     await flush();
     expect(q("[data-testid=sign-in-error]")?.textContent).toContain("cancelled");
     expect((q("[data-testid=sign-in-btn]") as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
+describe("one sign-in everywhere (@calimero-apps/passkey)", () => {
+  const OPEN = { policy: "open", orgInvites: true, signUpInvites: true, inviteRequired: false };
+  const until = async (check: () => boolean) => {
+    for (let i = 0; i < 100 && !check(); i++) await new Promise((r) => setTimeout(r, 20));
+    expect(check()).toBe(true);
+  };
+  const listed = () => document.querySelectorAll(".mbl-card-title").length > 0;
+  async function withPasskey(worlds: AppInfo[], setup?: (client: ReturnType<typeof fakeClient>) => void) {
+    const pk = {
+      create: vi.fn(async () => ({}) as never),
+      get: vi.fn(async (..._args: unknown[]) => ({ credentialId: "cred-here" }) as never),
+    };
+    const l = await launcher(worlds, localStorage, () => pk as unknown as PasskeyProvider, (client) => {
+      const signedIn = client.signIn.getMockImplementation()!;
+      client.signIn.mockImplementation((async (p: PasskeyProvider) => {
+        await p.get(new Uint8Array([1]), "calimero.network");
+        return signedIn();
+      }) as never);
+      Object.assign(client, {
+        signUpPolicy: vi.fn(async () => OPEN),
+        me: vi.fn(async () => ({ orgs: [{ orgId: "org-2" }] })),
+      });
+      setup?.(client);
+    });
+    return { pk, ...l };
+  }
+  /** The sign-in card's buttons, top to bottom, by test id. */
+  const order = () =>
+    [...document.querySelectorAll<HTMLElement>("[data-testid=sign-in-btn], [data-testid=sign-up-btn]")].map(
+      (b) => b.dataset.testid,
+    );
+  const forgetSessions = () => {
+    for (const key of Object.keys(localStorage)) if (key.startsWith("calimero-session:")) localStorage.removeItem(key);
+  };
+
+  it("a sign-in offers only the passkeys that worked on this cluster", async () => {
+    const first = await withPasskey([world("app-a", "alpha", "org-a")]);
+    click(q("[data-testid=sign-in-btn]"));
+    await until(listed);
+    expect(first.pk.get.mock.calls[0]?.[2]).toBeUndefined();
+    document.body.innerHTML = "";
+    forgetSessions();
+
+    const again = await withPasskey([world("app-a", "alpha", "org-a")]);
+    click(q("[data-testid=sign-in-btn]"));
+    await until(listed);
+    expect(again.pk.get.mock.calls[0]?.[2]).toEqual(["cred-here"]);
+  });
+
+  it("says which passkeys work here", async () => {
+    await withPasskey([]);
+    expect(q("[data-testid=sign-in-hint]")?.textContent).toBe(SIGN_IN_HINT);
+  });
+
+  it("a sign-in the cluster has no account for switches to creating one, in place", async () => {
+    localStorage.setItem("mero-blocks:pending-invite", "tok-1");
+    localStorage.setItem(accountHintKey(resolveTarget(ENV)), "1");
+    await withPasskey([], (c) =>
+      c.signIn.mockRejectedValue(new CalimeroError(401, "PASSKEY_UNKNOWN_HERE", "unknown passkey")),
+    );
+    expect(order()).toEqual(["sign-in-btn", "sign-up-btn"]);
+    click(q("[data-testid=sign-in-btn]"));
+    await until(() => (q("[data-testid=signin-switched]") as HTMLElement | null)?.hidden === false);
+    expect(q("[data-testid=signin-switched]")?.textContent).toBe(noAccountCopy("a world", true));
+    expect(order()).toEqual(["sign-up-btn", "sign-in-btn"]);
+    expect(q("[data-testid=sign-up-btn]")?.textContent).toBe("Create your account and join");
+    expect(q("[data-testid=sign-in-error]")?.textContent).toBe("");
+  });
+
+  it("an invited person with no account here sees Create first; one who has signed in here sees Sign in first", async () => {
+    localStorage.setItem("mero-blocks:pending-invite", "tok-1");
+    await withPasskey([]);
+    expect(order()).toEqual(["sign-up-btn", "sign-in-btn"]);
+    document.body.innerHTML = "";
+    localStorage.setItem(accountHintKey(resolveTarget(ENV)), "1");
+    await withPasskey([]);
+    expect(order()).toEqual(["sign-in-btn", "sign-up-btn"]);
+  });
+
+  it("a sign-up carries the invite on an open cluster, joins in that step and enters the world", async () => {
+    localStorage.setItem("mero-blocks:pending-invite", "tok-1");
+    const { client, choice } = await withPasskey([world("app-1", "mine", "org-1"), world("app-2", "theirs", "org-2")]);
+    await flush();
+    click(q("[data-testid=sign-up-btn]"));
+    const entered = await choice;
+    expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "Steve", { invite: "tok-1" });
+    expect(client.redeemInvite).not.toHaveBeenCalled();
+    expect(entered.world.appId).toBe("app-2");
+    expect(localStorage.getItem("mero-blocks:pending-invite")).toBeNull();
   });
 });

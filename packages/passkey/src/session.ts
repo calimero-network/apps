@@ -11,20 +11,28 @@ import {
   NotServedError,
   connectTarget,
   describeError,
-  describeSignInError,
-  isPasskeyUnknownHere,
-  PROMPT_BLOCKED_MESSAGE,
   readSignUpPolicy,
   signUpAccess,
-  signUpInvite,
-  targetKey,
   type ConnectEnv,
   type SignUpAccess,
   type KeyValueStorage,
   type Target,
 } from "@calimero-apps/connect";
-import { describeSignUpNotFinished, isPasskeyCancel, isPromptStuck, signUpFlow, type SignUpFlow, type SignUpStage } from "./signUpFlow";
-import { thisClusterPasskey } from "./knownPasskeys";
+import { isPasskeyCancel, type SignUpFlow, type SignUpStage } from "./signUpFlow";
+import {
+  describeCeremonyFailure,
+  knownAccountHere,
+  noAccountHereAfter,
+  passkeyHere,
+  passkeyUnknownAfter,
+  signInHere,
+  signUpFlowHere,
+  signUpHere,
+  type CeremonyFailure,
+  type JoinedAtSignUp,
+} from "./ceremony";
+
+export { accountHintKey, knownPasskeysKey, type JoinedAtSignUp } from "./ceremony";
 
 export type Session =
   | { status: "connecting" }
@@ -57,22 +65,6 @@ export function passkeyDeps(env: ConnectEnv): SessionDeps {
   return { env, makeClient: (target) => createClient(target), passkey: browserPasskey };
 }
 
-
-/** What a sign-up made with the page's invite joined: the token, and the organization when it can be told. */
-export interface JoinedAtSignUp {
-  invite: string;
-  org: string | null;
-}
-
-/** Where a browser keeps the passkeys it has seen work on `target` ({@link thisClusterPasskey}; ids, never a credential). */
-export function knownPasskeysKey(target: Target): string {
-  return `calimero-passkeys:${targetKey(target)}`;
-}
-
-/** Where a browser remembers that it has signed in to an account on `target` (a hint, never a credential). */
-export function accountHintKey(target: Target): string {
-  return `calimero-account:${targetKey(target)}`;
-}
 
 export interface SessionApi {
   session: Session;
@@ -161,66 +153,6 @@ export interface PasskeySessionOptions {
 }
 
 /**
- * The invite a sign-up carries when it is to join with it: the page's token
- * unless the cluster's policy says an organization invite cannot admit
- * (`closed`). An unread policy sends it: the node judges it before anything
- * is spent.
- */
-function joinInvite(policy: SignUpPolicy | null | undefined, invite: string | null): string | null {
-  if (invite === null) return null;
-  if (policy && (policy.policy === "closed" || !policy.orgInvites)) return signUpInvite(policy, invite);
-  return invite;
-}
-
-/** The organization a brand-new account is in: the one its invite joined. */
-async function soleOrg(client: CalimeroClient): Promise<string | null> {
-  try {
-    const me = (await client.me()) as { orgs?: Array<{ orgId?: unknown }> };
-    const orgs = (me.orgs ?? []).map((o) => o.orgId).filter((o): o is string => typeof o === "string");
-    return orgs.length === 1 ? (orgs[0] as string) : null;
-  } catch {
-    return null;
-  }
-}
-
-function readHint(storage: KeyValueStorage | undefined, key: string): boolean {
-  try {
-    return storage?.getItem(key) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function writeHint(storage: KeyValueStorage | undefined, key: string): void {
-  try {
-    storage?.setItem(key, "1");
-  } catch {
-    // Storage blocked: the next visit only starts on the sign-up side.
-  }
-}
-
-/** A cancelled prompt with no credential chosen: what a browser with no passkey for the cluster answers. */
-function isNotAllowed(error: unknown): boolean {
-  let e: unknown = error;
-  for (let depth = 0; e && typeof e === "object" && depth < 4; depth++) {
-    if ((e as { name?: unknown }).name === "NotAllowedError") return true;
-    e = (e as { cause?: unknown }).cause;
-  }
-  return false;
-}
-
-interface Failure {
-  error: unknown;
-  during: "sign-in" | "sign-up";
-  /** The prompt was dismissed, timed out or aborted. */
-  cancelled: boolean;
-  /** A sign-up's stage when it failed. */
-  stage: SignUpStage | null;
-  /** A sign-up whose passkey was made but which ended without an account. */
-  afterCreate?: boolean;
-}
-
-/**
  * Connects to the local nodes (dev) or the Cloud cluster (production: named by
  * the build, else the one serving the page, else the package's primary cluster
  * in the directory), restores a stored session for `app`, and signs in or up
@@ -232,7 +164,7 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
   const [store, setStore] = useState<SessionStore | null>(null);
   // The failed ceremony's error, described at render time so the words follow
   // the sign-up policy even when it is read after the failure.
-  const [failure, setFailure] = useState<Failure | null>(null);
+  const [failure, setFailure] = useState<CeremonyFailure | null>(null);
   const [busy, setBusy] = useState(false);
   /** The sign-up in flight, if any, and what the control shows of it ({@link signUpFlow}). */
   const flowRef = useRef<SignUpFlow | null>(null);
@@ -270,7 +202,7 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
         const sessions = new SessionStore(app, target, deps.storage);
         if (!live) return;
         setStore(sessions);
-        setKnownAccount(readHint(hintStorage, accountHintKey(target)));
+        setKnownAccount(knownAccountHere(target, hintStorage));
         if (sessions.restore(client) && client.session) {
           setSession({ status: "signed-in", client, target, accountId: client.session.accountId });
         } else {
@@ -303,7 +235,11 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
   const access = signUpAccess(policy, inviteToken !== null);
 
   const ceremony = useCallback(
-    async (during: Failure["during"], run: (client: CalimeroClient) => Promise<{ accountId: string }>, flow?: SignUpFlow) => {
+    async (
+      during: CeremonyFailure["during"],
+      run: (client: CalimeroClient, target: Target) => Promise<{ accountId: string }>,
+      flow?: SignUpFlow,
+    ) => {
       if (session.status !== "signed-out") return;
       setBusy(true);
       setFailure(null);
@@ -312,61 +248,65 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
         // mero-js forgets the session when `/auth/logout` returns, so a sign-in
         // that finished first would be wiped by the sign-out before it.
         await loggingOut.current;
-        const { accountId } = await run(session.client);
+        const { accountId } = await run(session.client, session.target);
         store?.sync(session.client);
-        writeHint(hintStorage, accountHintKey(session.target));
         setKnownAccount(true);
         setSession({ status: "signed-in", client: session.client, target: session.target, accountId });
       } catch (e) {
-        // Once a sign-up's passkey exists, its end without an account is no
-        // quiet cancel, unless the person cancelled it at Approve.
-        const afterCreate = flow?.created === true && !flow.cancelled;
-        setFailure({ error: e, during, cancelled: isPasskeyCancel(e), stage: flow?.stage ?? null, afterCreate });
+        // Once a sign-up's passkey exists it never ends here on its own: it
+        // waits at Approve (signUpFlow). What does end here is a cancel, or a
+        // failure before or after the prompts.
+        setFailure({ error: e, during });
       } finally {
         if (flow && flowRef.current === flow) flowRef.current = null;
         if (flow) setFlowView({ stage: null, confirmFailure: null });
         setBusy(false);
       }
     },
-    [session, store, hintStorage],
+    [session, store],
   );
 
-  // A passkey for this cluster: a sign-in offers only the ones seen working here.
-  const signedOutTarget = session.status === "signed-out" ? session.target : null;
-  const passkeyHere = useCallback(
-    () => (signedOutTarget ? thisClusterPasskey(deps.passkey(), knownPasskeysKey(signedOutTarget), hintStorage) : deps.passkey()),
-    [deps, signedOutTarget, hintStorage],
+  // Every ceremony offers this cluster's passkeys only ({@link signInHere}).
+  const signIn = useCallback(
+    () => ceremony("sign-in", (c, target) => signInHere(c, target, deps.passkey(), hintStorage)),
+    [ceremony, deps, hintStorage],
   );
-  const signIn = useCallback(() => ceremony("sign-in", (c) => c.signIn(passkeyHere())), [ceremony, passkeyHere]);
   // With `onJoinedAtSignUp` the app hands the invite's join to the sign-up;
   // without it, only a cluster that requires an invite gets one.
-  const invited = onJoinedAtSignUp ? joinInvite(policy, inviteToken) : signUpInvite(policy, inviteToken);
+  const join = onJoinedAtSignUp !== undefined;
+  const signedOutTarget = session.status === "signed-out" ? session.target : null;
   const signUp = useCallback(
     (name?: string) => {
       // The second prompt right away, falling back to its own click when the
       // browser refuses it ({@link signUpFlow}); a caller with no button to
       // show turns that off.
-      const flow: SignUpFlow | undefined = approveWithClick
-        ? signUpFlow(passkeyHere(), () => setFlowView({ stage: flow!.stage, confirmFailure: flow!.confirmFailure }))
-        : undefined;
+      const flow: SignUpFlow | undefined =
+        approveWithClick && signedOutTarget
+          ? signUpFlowHere(deps.passkey(), signedOutTarget, hintStorage, () =>
+              setFlowView({ stage: flow!.stage, confirmFailure: flow!.confirmFailure }),
+            )
+          : undefined;
       return ceremony(
         "sign-up",
-        async (c) => {
-          const passkey = flow ? flow.passkey : passkeyHere();
-          const made = invited
-            ? await c.signUp(passkey, name?.trim() ?? "", { invite: invited })
-            : await c.signUp(passkey, name?.trim() ?? "");
-          if (invited && joined.current) {
-            const org = await soleOrg(c);
-            setJoinedInvite(invited);
-            joined.current({ invite: invited, org });
+        async (c, target) => {
+          const passkey = flow ? flow.passkey : passkeyHere(deps.passkey(), target, hintStorage);
+          const made = await signUpHere(c, target, passkey, {
+            name,
+            invite: inviteToken,
+            policy,
+            join,
+            storage: hintStorage,
+          });
+          if (made.joined && joined.current) {
+            setJoinedInvite(made.joined.invite);
+            joined.current(made.joined);
           }
           return made;
         },
         flow,
       );
     },
-    [ceremony, passkeyHere, invited, approveWithClick],
+    [ceremony, deps, signedOutTarget, hintStorage, inviteToken, policy, join, approveWithClick],
   );
 
   const approve = useCallback(() => flowRef.current?.approve(), []);
@@ -398,20 +338,9 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
   // A dismissed prompt is a quiet cancel, except a sign-up's approval: the
   // passkey is made by then, the account is not, and the person has to know.
   // A refused approval keeps the sign-up waiting at Approve, with why.
-  const error = flowView.confirmFailure
-    ? describeSignUpNotFinished(flowView.confirmFailure.error)
-    : !failure
-      ? null
-      : failure.afterCreate && (failure.cancelled || isPromptStuck(failure.error))
-        ? describeSignUpNotFinished(failure.error, true)
-        : failure.cancelled
-          ? null
-          : isPromptStuck(failure.error)
-            ? PROMPT_BLOCKED_MESSAGE
-            : describeSignInError(failure.error, access);
-  const passkeyUnknown = failure !== null && isPasskeyUnknownHere(failure.error);
-  const noAccountHere =
-    failure?.during === "sign-in" && (passkeyUnknown || (failure.cancelled && isNotAllowed(failure.error)));
+  const error = describeCeremonyFailure(failure, access, flowView.confirmFailure);
+  const passkeyUnknown = passkeyUnknownAfter(failure);
+  const noAccountHere = noAccountHereAfter(failure);
 
   return useMemo(
     () => ({

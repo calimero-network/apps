@@ -6,7 +6,7 @@
 // Plain functions over a `Phase` value (the game is not a React app): the
 // launcher renders whichever phase it holds and moves to the next.
 
-import { browserPasskey, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
+import { browserPasskey, type CalimeroClient, type PasskeyProvider, type SignUpPolicy } from "@calimero-network/mero-js";
 import {
   SessionStore,
   createClient,
@@ -17,6 +17,14 @@ import {
   type KeyValueStorage,
   type Target,
 } from "@calimero-apps/connect";
+import {
+  knownAccountHere,
+  signInHere,
+  signUpFlowHere,
+  signUpHere,
+  type JoinedAtSignUp,
+} from "@calimero-apps/passkey/ceremony";
+import type { SignUpFlow } from "@calimero-apps/passkey/signUpFlow";
 import { PACKAGE } from "./blocks";
 
 /** The app's name in stored keys. */
@@ -73,31 +81,49 @@ export async function connect(deps: SessionDeps = defaultDeps): Promise<Phase> {
   }
 }
 
-/** Sign in with an existing passkey. */
+/** This browser has signed in to an account on this target before (@calimero-apps/passkey). */
+export function knownAccount(phase: SignedOut, deps: SessionDeps = defaultDeps): boolean {
+  return knownAccountHere(phase.target, deps.storage);
+}
+
+/** Sign in with an existing passkey, offering only the ones that have worked on this cluster. */
 export async function signIn(phase: SignedOut, deps: SessionDeps = defaultDeps): Promise<SignedIn> {
-  const { accountId } = await phase.client.signIn(deps.passkey());
+  const { accountId } = await signInHere(phase.client, phase.target, deps.passkey(), deps.storage);
   phase.sessions.sync(phase.client);
   return { ...phase, status: "signed-in", accountId };
 }
 
 /**
- * Create an account (a new passkey) named `name`. `invite` goes with it on a
- * cluster that requires one (`signUpInvite`). `passkey`: a `signUpFlow`'s, so
- * a second prompt that failed or was refused waits for a click of its own
- * (the launcher passes it).
+ * One sign-up's passkey (pass its `passkey` to `signUp`): its second prompt
+ * right away, waiting for `flow.approve()` only when that ask failed or was
+ * refused, and the new passkey remembered as this cluster's.
+ */
+export function newSignUp(phase: SignedOut, onChange: () => void, deps: SessionDeps = defaultDeps): SignUpFlow {
+  return signUpFlowHere(deps.passkey(), phase.target, deps.storage, onChange);
+}
+
+/**
+ * Create an account (a new passkey) named `name`. The page's `invite` goes
+ * with it wherever the cluster's `policy` lets an organization invite admit;
+ * `joined` then says the account is in the invite's world already, with
+ * nothing left to redeem. `passkey`: a `newSignUp`'s (the launcher passes it).
  */
 export async function signUp(
   phase: SignedOut,
   name: string,
   deps: SessionDeps = defaultDeps,
-  invite: string | null = null,
+  { invite = null, policy }: { invite?: string | null; policy?: SignUpPolicy | null } = {},
   passkey: PasskeyProvider = deps.passkey(),
-): Promise<SignedIn> {
-  const { accountId } = invite
-    ? await phase.client.signUp(passkey, name, { invite })
-    : await phase.client.signUp(passkey, name);
+): Promise<SignedIn & { joined: JoinedAtSignUp | null }> {
+  const { accountId, joined } = await signUpHere(phase.client, phase.target, passkey, {
+    name,
+    invite,
+    policy,
+    join: true,
+    storage: deps.storage,
+  });
   phase.sessions.sync(phase.client);
-  return { ...phase, status: "signed-in", accountId };
+  return { ...phase, status: "signed-in", accountId, joined };
 }
 
 /** End the session here (and on the node when it still answers). */

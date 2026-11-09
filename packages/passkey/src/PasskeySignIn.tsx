@@ -2,6 +2,9 @@ import { useEffect, useId, useState, type ReactNode } from "react";
 import { signUpNotice } from "@calimero-apps/connect";
 import type { SessionApi } from "./session";
 import { SIGN_UP_CONFIRMING, SIGN_UP_READY } from "./signUpFlow";
+import { SIGN_IN_HINT, noAccountCopy } from "./ceremony";
+
+export { noAccountCopy };
 
 /**
  * The part of the session the control drives. Everything past `busy`,
@@ -50,17 +53,6 @@ export const SIGN_UP_TWO_PROMPTS = "Your browser asks twice: once to create a pa
 
 /** Said while the second prompt waits for its click; framework-free in `./signUpFlow`. */
 export { SIGN_UP_READY };
-
-/**
- * Said, in place of an error, when an invited person's sign-in found no
- * account here: the way on is to create one, and the invite is kept.
- */
-export function noAccountCopy(joining: string | undefined, unknownPasskey: boolean): string {
-  const to = joining ? `join ${joining}` : "accept the invite";
-  return unknownPasskey
-    ? `That passkey has no account on this cluster yet. Create your account to ${to}: your invite is kept.`
-    : `No passkey for this cluster was chosen. If you are new here, create your account to ${to}: your invite is kept.`;
-}
 
 const svg = {
   width: 18,
@@ -334,7 +326,7 @@ export function PasskeySignIn({ api, joining, invited, askName = false, hint, cl
         {running === "in" ? <Spinner /> : <PasskeyIcon />}
         <span>{running === "in" ? "Waiting for your passkey…" : "Sign in with passkey"}</span>
       </button>
-      <p className="cp-passkey__hint">{hint ?? "Use a passkey made for this cluster, in the Calimero console or any app on it. Passkeys made for other clusters do not work here."}</p>
+      <p className="cp-passkey__hint">{hint ?? SIGN_IN_HINT}</p>
 
       <div className="cp-passkey__divider" role="presentation">
         <span>New here?</span>

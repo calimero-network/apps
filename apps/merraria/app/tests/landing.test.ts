@@ -7,6 +7,7 @@ import { Connection } from "../src/net/session";
 import { Landing, type LaunchChoice } from "../src/ui/landing";
 import { SessionStore } from "@calimero-apps/connect";
 import { SIGN_UP_NOT_FINISHED, SIGN_UP_READY } from "@calimero-apps/passkey/signUpFlow";
+import { SIGN_IN_HINT, accountHintKey, noAccountCopy } from "@calimero-apps/passkey/ceremony";
 import type { PasskeyProvider } from "@calimero-network/mero-js";
 
 const target = { kind: "local", nodes: ["http://127.0.0.1:2501"] } as const;
@@ -273,5 +274,102 @@ describe("the launcher", () => {
     await settle();
     expect(client.invite).toHaveBeenCalledWith("org-1", "member", expect.anything());
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining("?invite=tok-9"));
+  });
+});
+
+describe("one sign-in everywhere (@calimero-apps/passkey)", () => {
+  const OPEN = { policy: "open", orgInvites: true, signUpInvites: true, inviteRequired: false };
+  const until = async (check: () => boolean) => {
+    for (let i = 0; i < 100 && !check(); i++) await new Promise((r) => setTimeout(r, 20));
+    expect(check()).toBe(true);
+  };
+  function withPasskey(setup?: (client: ReturnType<typeof fakeClient>) => void) {
+    const pk = {
+      create: vi.fn(async () => ({}) as never),
+      get: vi.fn(async (..._args: unknown[]) => ({ credentialId: "cred-here" }) as never),
+    };
+    const l = launcher(
+      false,
+      (client) => {
+        const signedIn = client.signIn.getMockImplementation()!;
+        client.signIn.mockImplementation((async (p: PasskeyProvider) => {
+          await p.get(new Uint8Array([1]), "calimero.network");
+          return signedIn();
+        }) as never);
+        Object.assign(client, {
+          signUpPolicy: vi.fn(async () => OPEN),
+          me: vi.fn(async () => ({ orgs: [{ orgId: "org-1" }] })),
+        });
+        setup?.(client);
+      },
+      () => pk as unknown as PasskeyProvider,
+    );
+    return { pk, ...l };
+  }
+  /** The sign-in card's buttons, top to bottom, by test id. */
+  const order = (parent: HTMLElement) =>
+    [...parent.querySelectorAll<HTMLElement>("[data-testid=sign-in-btn], [data-testid=sign-up-btn]")].map(
+      (b) => b.dataset.testid,
+    );
+
+  it("a sign-in offers only the passkeys that worked on this cluster", async () => {
+    const first = withPasskey();
+    first.$("sign-in-btn")!.click();
+    await until(() => first.$("account-badge") !== null);
+    expect(first.pk.get.mock.calls[0]?.[2]).toBeUndefined();
+    document.body.innerHTML = "";
+
+    const again = withPasskey();
+    again.$("sign-in-btn")!.click();
+    await until(() => again.$("account-badge") !== null);
+    expect(again.pk.get.mock.calls[0]?.[2]).toEqual(["cred-here"]);
+  });
+
+  it("says which passkeys work here", () => {
+    const { $ } = withPasskey();
+    expect($("sign-in-hint")?.textContent).toBe(SIGN_IN_HINT);
+  });
+
+  it("a sign-in the cluster has no account for switches to creating one, in place", async () => {
+    localStorage.setItem("merraria:pending-invite", "tok-1");
+    localStorage.setItem(accountHintKey(target as never), "1");
+    const { CalimeroError } = await import("@calimero-network/mero-js");
+    const { parent, $ } = withPasskey((c) =>
+      c.signIn.mockRejectedValue(new CalimeroError(401, "PASSKEY_UNKNOWN_HERE", "unknown passkey")),
+    );
+    expect(order(parent)).toEqual(["sign-in-btn", "sign-up-btn"]);
+    $("sign-in-btn")!.click();
+    await until(() => $("signin-switched")?.hidden === false);
+    expect($("signin-switched")?.textContent).toBe(noAccountCopy("a world", true));
+    expect(order(parent)).toEqual(["sign-up-btn", "sign-in-btn"]);
+    expect($("sign-up-btn")?.textContent).toBe("Create your account and join");
+    expect($("sign-in-error")?.textContent).toBe("");
+  });
+
+  it("an invited person with no account here sees Create first; one who has signed in here sees Sign in first", () => {
+    localStorage.setItem("merraria:pending-invite", "tok-1");
+    const fresh = withPasskey();
+    expect(order(fresh.parent)).toEqual(["sign-up-btn", "sign-in-btn"]);
+    document.body.innerHTML = "";
+    localStorage.setItem(accountHintKey(target as never), "1");
+    const known = withPasskey();
+    expect(order(known.parent)).toEqual(["sign-in-btn", "sign-up-btn"]);
+  });
+
+  it("a sign-up carries the invite on an open cluster and joins in that step", async () => {
+    localStorage.setItem("merraria:pending-invite", "tok-1");
+    const { client, $ } = withPasskey((c) =>
+      c.signUp.mockImplementation(async () => {
+        c.session = { accountId: "acct-ada", sessionToken: "s", expiresAt: 1, refreshToken: "r" };
+        return c.session;
+      }),
+    );
+    await settle();
+    $("sign-up-btn")!.click();
+    await until(() => $("account-badge") !== null);
+    expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "Ada", { invite: "tok-1" });
+    expect(localStorage.getItem("merraria:pending-invite")).toBeNull();
+    expect(client.redeemInvite).not.toHaveBeenCalled();
+    await until(() => ($("notice")?.textContent ?? "").includes("Invitation accepted"));
   });
 });

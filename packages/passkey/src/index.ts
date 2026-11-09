@@ -1,5 +1,23 @@
 export { knownPasskeys, thisClusterPasskey } from "./knownPasskeys";
 export {
+  describeCeremonyFailure,
+  invitedFirst,
+  knownAccountHere,
+  noAccountHereAfter,
+  passkeyHere,
+  passkeyUnknownAfter,
+  rememberAccountHere,
+  signInHere,
+  SIGN_IN_HINT,
+  signUpFlowHere,
+  signUpHere,
+  signUpInviteHere,
+  soleOrg,
+  type CeremonyFailure,
+  type CeremonySignal,
+  type SignUpHereOptions,
+} from "./ceremony";
+export {
   accountHintKey,
   knownPasskeysKey,
   describeTarget,
@@ -36,7 +54,6 @@ export {
   isPromptStuck,
   PROMPT_STUCK_ADVICE,
   SIGN_UP_CONFIRMING,
-  SIGN_UP_ENDED_WITHOUT_ACCOUNT,
   SIGN_UP_NOT_FINISHED,
   SignUpCancelled,
   signUpFlow,

@@ -13,7 +13,7 @@ import {
   type PasskeyProvider,
 } from '@calimero-network/mero-js';
 import { SessionStore, resolveTarget } from '@calimero-apps/connect';
-import { SIGN_UP_NOT_FINISHED } from '@calimero-apps/passkey';
+import { SIGN_IN_HINT, SIGN_UP_NOT_FINISHED, accountHintKey, noAccountCopy } from '@calimero-apps/passkey';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../App';
 import { APP, type SessionDeps } from '@/calimero/session';
@@ -352,6 +352,75 @@ describe('App on Calimero 1.0', () => {
       fireEvent.click(await screen.findByText('Open sign-in'));
       expect((await screen.findByTestId('signin-desc')).textContent).toContain("You've been invited");
       expect(localStorage.getItem('mero-docs:pending-invite')).not.toBeNull();
+    });
+  });
+
+  describe('one sign-in everywhere (@calimero-apps/passkey)', () => {
+    const invite = JSON.stringify({ token: 'inv_abc', kind: 'namespace', targetId: 'org-2', workspaceId: 'org-2', targetName: 'Beta' });
+    const forgetSessions = () => {
+      for (const key of Object.keys(localStorage)) if (key.startsWith('calimero-session:')) localStorage.removeItem(key);
+    };
+
+    it('a sign-in offers only the passkeys that worked on this cluster', async () => {
+      const pk = { create: vi.fn(), get: vi.fn(async (..._args: unknown[]) => ({ credentialId: 'cred-here' }) as never) };
+      const signInWith = (client: ReturnType<typeof fakeClient>) => {
+        const signedIn = client.signIn.getMockImplementation()!;
+        client.signIn.mockImplementation((async (p: PasskeyProvider) => {
+          await p.get(new Uint8Array([1]), 'calimero.network');
+          return signedIn();
+        }) as never);
+        return { ...deps(client), passkey: () => pk as unknown as PasskeyProvider };
+      };
+      const first = fakeClient();
+      render(<App deps={signInWith(first)} />);
+      fireEvent.click(await screen.findByText('Open sign-in'));
+      fireEvent.click(await screen.findByTestId('signin-passkey'));
+      await waitFor(() => expect(first.signIn).toHaveBeenCalled(), BOOT);
+      expect(pk.get.mock.calls[0]?.[2]).toBeUndefined();
+      cleanup();
+      forgetSessions();
+
+      const second = fakeClient();
+      render(<App deps={signInWith(second)} />);
+      fireEvent.click(await screen.findByText('Open sign-in', {}, BOOT));
+      fireEvent.click(await screen.findByTestId('signin-passkey'));
+      await waitFor(() => expect(pk.get).toHaveBeenCalledTimes(2), BOOT);
+      expect(pk.get.mock.calls[1]?.[2]).toEqual(['cred-here']);
+    });
+
+    it('says which passkeys work here', async () => {
+      render(<App deps={deps(fakeClient())} />);
+      fireEvent.click(await screen.findByText('Open sign-in'));
+      expect(await screen.findByText(SIGN_IN_HINT)).toBeTruthy();
+    });
+
+    it('an invited sign-in the cluster has no account for switches to creating one, in place', async () => {
+      localStorage.setItem('mero-docs:pending-invite', invite);
+      const client = fakeClient();
+      client.signIn.mockRejectedValue(new CalimeroError(401, 'PASSKEY_UNKNOWN_HERE', 'unknown passkey'));
+      render(<App deps={deps(client)} />);
+      fireEvent.click(await screen.findByTestId('signin-passkey', {}, BOOT));
+      expect((await screen.findByTestId('signin-switched', {}, BOOT)).textContent).toBe(noAccountCopy('the workspace', true));
+      expect(screen.getByTestId('signup-passkey').textContent).toBe('Create your account and join the workspace');
+      expect(screen.queryByTestId('signin-error')).toBeNull();
+    });
+
+    it('an invited person who has signed in here before sees Sign in first', async () => {
+      localStorage.setItem('mero-docs:pending-invite', invite);
+      localStorage.setItem(accountHintKey(resolveTarget(DEV_ENV)), '1');
+      render(<App deps={deps(fakeClient())} />);
+      expect((await screen.findByTestId('signin-passkey', {}, BOOT)).textContent).toBe('Join the workspace with your passkey');
+    });
+
+    it('a sign-up carries the invite on an open cluster and joins in that step', async () => {
+      localStorage.setItem('mero-docs:pending-invite', invite);
+      const client = fakeClient();
+      render(<App deps={deps(client)} />);
+      fireEvent.click(await screen.findByTestId('signup-passkey', {}, BOOT));
+      await waitFor(() => expect(client.signUp).toHaveBeenCalled(), BOOT);
+      expect(client.signUp).toHaveBeenCalledWith(expect.anything(), '', { invite: 'inv_abc' });
+      await waitFor(() => expect(localStorage.getItem('mero-docs:pending-invite')).toBeNull());
+      expect(client.redeemInvite).not.toHaveBeenCalled();
     });
   });
 });

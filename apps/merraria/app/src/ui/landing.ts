@@ -12,20 +12,26 @@
 import type { SignUpPolicy } from "@calimero-network/mero-js";
 import {
   describeError,
-  describeSignInError,
   readSignUpPolicy,
   signUpAccess,
-  signUpInvite,
   signUpNotice,
   type AppSource,
 } from "@calimero-apps/connect";
 import {
   describeSignUpNotFinished,
-  isPasskeyCancel,
   SIGN_UP_CONFIRMING,
   SIGN_UP_READY,
   type SignUpFlow,
 } from "@calimero-apps/passkey/signUpFlow";
+import {
+  describeCeremonyFailure,
+  invitedFirst,
+  noAccountCopy,
+  noAccountHereAfter,
+  passkeyUnknownAfter,
+  SIGN_IN_HINT,
+  type CeremonyFailure,
+} from "@calimero-apps/passkey/ceremony";
 
 import {
   CURRENT_WORLD,
@@ -261,6 +267,8 @@ const SOCIALS: { label: string; href: string; icon: string }[] = [
 export class Landing {
   private root: HTMLElement;
   private anim: WorldAnim | null = null;
+  /** A sign-up from this card carried the invite and joined its world. */
+  private joinedAtSignUp = false;
 
   constructor(
     parent: HTMLElement,
@@ -382,6 +390,10 @@ export class Landing {
   }
 
   // state 1: signed out. The game is online-only: the way in is an account.
+  // The sign-in every app shares (@calimero-apps/passkey's ceremony): only
+  // this cluster's passkeys, "no account here" turns the card to creating
+  // one in place, an invited player with no account here sees Create first,
+  // and a sign-up carries the invite, joining the world in that step.
   private renderSignIn(defaults: Defaults, done: (c: LaunchChoice) => void): void {
     const el = this.playCardEl();
     const invited = pendingInvite() !== null;
@@ -393,8 +405,14 @@ export class Landing {
           : ""
       }
       ${this.commonInputs(defaults)}
-      <button class="mtl-btn green" data-testid="sign-in-btn">Sign in with a passkey</button>
-      <button class="mtl-btn ghost" data-testid="sign-up-btn">Create an account</button>
+      <div class="mtl-note" data-testid="signin-switched" role="status" hidden></div>
+      <div data-testid="sign-in-actions">
+        <div data-testid="sign-in-group">
+          <button class="mtl-btn green" data-testid="sign-in-btn">Sign in with a passkey</button>
+          <div class="mtl-note" data-testid="sign-in-hint">${escapeHtml(SIGN_IN_HINT)}</div>
+        </div>
+        <button class="mtl-btn ghost" data-testid="sign-up-btn">Create an account</button>
+      </div>
       <div class="mtl-approve" data-testid="signup-approve-step" hidden>
         <button class="mtl-btn green" data-testid="signup-approve">Approve with your new passkey</button>
         <div class="mtl-note" data-testid="signup-approve-note" aria-live="polite"></div>
@@ -413,8 +431,11 @@ export class Landing {
       void showLandingAgain();
     });
     const errEl = el.querySelector<HTMLElement>("[data-testid=sign-in-error]")!;
+    const actions = el.querySelector<HTMLElement>("[data-testid=sign-in-actions]")!;
+    const signInGroup = el.querySelector<HTMLElement>("[data-testid=sign-in-group]")!;
     const signInBtn = el.querySelector<HTMLButtonElement>("[data-testid=sign-in-btn]")!;
     const signUpBtn = el.querySelector<HTMLButtonElement>("[data-testid=sign-up-btn]")!;
+    const switchedEl = el.querySelector<HTMLElement>("[data-testid=signin-switched]")!;
     const buttons = [signInBtn, signUpBtn];
     const approveStep = el.querySelector<HTMLElement>("[data-testid=signup-approve-step]")!;
     const approveBtn = el.querySelector<HTMLButtonElement>("[data-testid=signup-approve]")!;
@@ -424,16 +445,36 @@ export class Landing {
     // Who may create an account here (read once, never blocking): a closed or
     // invite-only cluster gets no "Create an account", and says why.
     let policy: SignUpPolicy | null | undefined;
+    let failure: CeremonyFailure | null = null;
     const access = () => signUpAccess(policy, pendingInvite() !== null);
-    const applyPolicy = () => {
+    // Which action leads: an invited player this browser knows no account for
+    // (or whose sign-in just found none) creates one; a sign-in the cluster
+    // has no account for turns any player to creating one, in place.
+    const layout = () => {
       const notice = signUpNotice(access());
+      const canSignUp = notice === null;
+      const noAccount = noAccountHereAfter(failure);
+      const unknown = passkeyUnknownAfter(failure);
+      const createFirst =
+        canSignUp && (invited ? invitedFirst(this.conn.knownAccount(), noAccount) === "create" : unknown);
+      if (createFirst) actions.prepend(signUpBtn);
+      else actions.prepend(signInGroup);
+      signUpBtn.className = `mtl-btn ${createFirst ? "green" : "ghost"}`;
+      signInBtn.className = `mtl-btn ${createFirst ? "ghost" : "green"}`;
+      signUpBtn.textContent = invited ? "Create your account and join" : unknown ? "Create an account here" : "Create an account";
+      signInBtn.textContent =
+        invited && createFirst ? "Already have an account here? Join with your passkey" : "Sign in with a passkey";
+      const switched = invited && canSignUp && noAccount;
+      switchedEl.hidden = !switched;
+      switchedEl.textContent = switched ? noAccountCopy("a world", unknown) : "";
       if (notice) signUpBtn.disabled = true;
       unavailableEl.hidden = notice === null;
       unavailableEl.textContent = notice ?? "";
     };
+    layout();
     void readSignUpPolicy(this.conn.client).then((p) => {
       policy = p;
-      applyPolicy();
+      layout();
     });
     // The sign-up in flight. Its second prompt (core's 412 CONFIRM_REQUIRED)
     // is asked right after the first; only when that fails or is refused
@@ -443,6 +484,7 @@ export class Landing {
     let flow: SignUpFlow | null = null;
     const showFlow = () => {
       const approving = flow !== null && (flow.stage === "approve" || flow.stage === "confirm");
+      actions.hidden = approving;
       buttons.forEach((b) => (b.hidden = approving));
       approveStep.hidden = !approving;
       if (!flow || !approving) return;
@@ -455,33 +497,41 @@ export class Landing {
     };
     approveBtn.addEventListener("click", () => flow?.approve());
     cancelBtn.addEventListener("click", () => flow?.cancel());
-    const ceremony = async (run: () => Promise<string>, signUp: SignUpFlow | null = null) => {
+    const ceremony = async (during: CeremonyFailure["during"], run: () => Promise<unknown>, signUp: SignUpFlow | null = null) => {
       errEl.textContent = "";
+      failure = null;
       buttons.forEach((b) => (b.disabled = true));
       flow = signUp;
       try {
         await run();
         this.renderPlayCard(defaults, done);
       } catch (e) {
-        // A cancel at Approve is quiet. Once the passkey exists, a refused
-        // second prompt is not: it left no account.
-        errEl.textContent = signUp?.cancelled
-          ? ""
-          : signUp?.created && isPasskeyCancel(e)
-            ? describeSignUpNotFinished(e, true)
-            : describeSignInError(e, access());
+        // A dismissed prompt (or a cancel at Approve) is quiet. An invited
+        // player whose sign-in found no account is told so by the switch.
+        failure = { error: e, during };
+        const switched = invited && noAccountHereAfter(failure);
+        errEl.textContent = switched ? "" : (describeCeremonyFailure(failure, access()) ?? "");
         buttons.forEach((b) => (b.disabled = false));
-        applyPolicy();
+        layout();
+        if (noAccountHereAfter(failure) && !signUpBtn.disabled) signUpBtn.focus();
       } finally {
         if (flow === signUp) flow = null;
         showFlow();
       }
     };
-    signInBtn.addEventListener("click", () => void ceremony(() => this.conn.signIn()));
+    signInBtn.addEventListener("click", () => void ceremony("sign-in", () => this.conn.signIn()));
     signUpBtn.addEventListener("click", () => {
       const signUp: SignUpFlow = this.conn.newSignUp(showFlow);
       void ceremony(
-        () => this.conn.signUp(this.readName(), signUpInvite(policy, pendingInvite()), signUp.passkey),
+        "sign-up",
+        async () => {
+          const made = await this.conn.signUp(this.readName(), { invite: pendingInvite(), policy }, signUp.passkey);
+          // Joined at sign-up: nothing is left to redeem.
+          if (made.joined) {
+            dropInvite();
+            this.joinedAtSignUp = true;
+          }
+        },
         signUp,
       );
     });
@@ -555,7 +605,11 @@ export class Landing {
       // redeem it: that would spend its single use, and the player it was
       // meant for could no longer join.
       const token = pendingInvite();
-      if (token) {
+      if (this.joinedAtSignUp) {
+        this.joinedAtSignUp = false;
+        noticeEl.textContent = "Invitation accepted: the world is in your list.";
+        noticeEl.hidden = false;
+      } else if (token) {
         try {
           if (await alreadyMember(this.conn.client, pendingInviteOrg())) {
             dropInvite();
