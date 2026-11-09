@@ -33,6 +33,7 @@ export {
   describeSignUpNotFinished,
   isPromptStuck,
   PROMPT_STUCK_ADVICE,
+  SIGN_UP_CONFIRMING,
   SIGN_UP_ENDED_WITHOUT_ACCOUNT,
   SIGN_UP_NOT_FINISHED,
   SignUpCancelled,

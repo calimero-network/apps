@@ -3,7 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppInfo, CalimeroClient, CalimeroSession, PasskeyProvider } from "@calimero-network/mero-js";
-import { SIGN_UP_NOT_FINISHED } from "@calimero-apps/passkey/signUpFlow";
+import { SIGN_UP_NOT_FINISHED, SIGN_UP_READY } from "@calimero-apps/passkey/signUpFlow";
 
 vi.mock("../src/ui/panorama", () => ({ Panorama: class { destroy() {} } }));
 vi.mock("../src/pages/landing/mount", () => ({ showLandingAgain: vi.fn(async () => {}) }));
@@ -73,9 +73,9 @@ afterEach(() => {
 });
 
 describe("a sign-up's second prompt", () => {
-  // Since core #4849 a sign-up takes two prompts; a password manager
-  // extension still saving the new passkey refused the second when it was
-  // asked for at once, which left a passkey and no account.
+  // Since core #4849 a sign-up takes two prompts. The second is asked right
+  // after the first; it waits for Approve only when that failed or was refused
+  // (a blocked prompt, Safari's user-gesture rule, a closed prompt).
   async function signingUp(get: PasskeyProvider["get"]) {
     const pk = { create: vi.fn(async () => ({}) as never), get: vi.fn(get) };
     const l = await launcher(
@@ -97,32 +97,62 @@ describe("a sign-up's second prompt", () => {
   };
   const shown = (id: string) => (q(`[data-testid=${id}]`) as HTMLElement | null)?.hidden === false;
 
-  it("waits for Approve before asking, then lists the account's worlds", async () => {
+  const notAllowed = (message = "The request is not allowed by the user agent.") =>
+    Object.assign(new Error(message), { name: "NotAllowedError" });
+  const atApprove = () =>
+    shown("signup-approve-step") && (q("[data-testid=signup-approve]") as HTMLButtonElement).disabled === false;
+
+  it("asks both prompts back to back, with no click, then lists the account's worlds", async () => {
     const { pk, client } = await signingUp(async () => ({}) as never);
     click(q("[data-testid=sign-up-btn]"));
-    await until(() => shown("signup-approve-step"));
-    expect(q("[data-testid=signup-approve]")?.textContent).toBe("Approve with your new passkey");
-    expect(shown("sign-up-btn")).toBe(false);
-    expect(pk.get).not.toHaveBeenCalled();
-    click(q("[data-testid=signup-approve]"));
     await until(() => document.querySelectorAll(".mbl-card-title").length > 0);
+    expect(pk.create).toHaveBeenCalledTimes(1);
     expect(pk.get).toHaveBeenCalledTimes(1);
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "Steve");
   });
 
-  it("shows a refused second prompt and keeps Approve", async () => {
-    const refused = Object.assign(new Error("The operation either timed out or was not allowed."), {
-      name: "NotAllowedError",
-    });
+  it("a second prompt refused at once waits for Approve, which then lists the worlds", async () => {
     const { pk } = await signingUp(async () => {
-      await new Promise((r) => setTimeout(r, 1100)); // a prompt the person saw
-      throw refused;
+      if (pk.get.mock.calls.length === 1) throw notAllowed();
+      return {} as never;
     });
     click(q("[data-testid=sign-up-btn]"));
-    await until(() => shown("signup-approve-step"));
+    await until(atApprove);
+    expect(q("[data-testid=signup-approve]")?.textContent).toBe("Approve with your new passkey");
+    expect(q("[data-testid=signup-approve-note]")?.textContent).toBe(SIGN_UP_READY);
+    expect(shown("sign-up-btn")).toBe(false);
+    expect(q("[data-testid=sign-in-error]")?.textContent).toBe("");
+    expect(pk.get).toHaveBeenCalledTimes(1);
+    click(q("[data-testid=signup-approve]"));
+    await until(() => document.querySelectorAll(".mbl-card-title").length > 0);
+    expect(pk.get).toHaveBeenCalledTimes(2);
+  });
+
+  it("a second prompt the person saw and closed shows the error with Approve, which then lists the worlds", async () => {
+    const { pk } = await signingUp(async () => {
+      if (pk.get.mock.calls.length > 1) return {} as never;
+      await new Promise((r) => setTimeout(r, 1100)); // a prompt the person saw
+      throw notAllowed("The operation either timed out or was not allowed.");
+    });
+    click(q("[data-testid=sign-up-btn]"));
+    await until(() => q("[data-testid=sign-in-error]")?.textContent === SIGN_UP_NOT_FINISHED);
+    expect(atApprove()).toBe(true);
+    click(q("[data-testid=signup-approve]"));
+    await until(() => document.querySelectorAll(".mbl-card-title").length > 0);
+    expect(pk.get).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows a second prompt refused after Approve and keeps Approve", async () => {
+    const { pk } = await signingUp(async () => {
+      if (pk.get.mock.calls.length === 1) throw notAllowed();
+      await new Promise((r) => setTimeout(r, 1100)); // a prompt the person saw
+      throw notAllowed("The operation either timed out or was not allowed.");
+    });
+    click(q("[data-testid=sign-up-btn]"));
+    await until(atApprove);
     click(q("[data-testid=signup-approve]"));
     await until(() => q("[data-testid=sign-in-error]")?.textContent === SIGN_UP_NOT_FINISHED);
-    expect(pk.get).toHaveBeenCalledTimes(1);
+    expect(pk.get).toHaveBeenCalledTimes(2);
     expect((q("[data-testid=signup-approve]") as HTMLButtonElement).disabled).toBe(false);
 
     pk.get.mockImplementation(async () => ({}) as never);
@@ -131,15 +161,15 @@ describe("a sign-up's second prompt", () => {
   });
 
   it("Cancel at Approve resets quietly", async () => {
-    const { pk } = await signingUp(async () => ({}) as never);
+    const { pk } = await signingUp(async () => Promise.reject(notAllowed()));
     click(q("[data-testid=sign-up-btn]"));
-    await until(() => shown("signup-approve-step"));
+    await until(atApprove);
     click(q("[data-testid=signup-cancel]"));
     await until(() => !shown("signup-approve-step"));
     expect(shown("sign-up-btn")).toBe(true);
     expect((q("[data-testid=sign-up-btn]") as HTMLButtonElement).disabled).toBe(false);
     expect(q("[data-testid=sign-in-error]")?.textContent).toBe("");
-    expect(pk.get).not.toHaveBeenCalled();
+    expect(pk.get).toHaveBeenCalledTimes(1);
   });
 });
 

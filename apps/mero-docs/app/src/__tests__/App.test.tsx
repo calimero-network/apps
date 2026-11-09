@@ -230,9 +230,9 @@ describe('App on Calimero 1.0', () => {
   });
 
   describe("a sign-up's second prompt", () => {
-    // Since core #4849 a sign-up takes two prompts; a password manager
-    // extension still saving the new passkey refused the second when it was
-    // asked for at once, which left a passkey and no account.
+    // Since core #4849 a sign-up takes two prompts. The second is asked right
+    // after the first; it waits for Approve only when that failed or was refused
+    // (a blocked prompt, Safari's user-gesture rule, a closed prompt).
     function signUpWith(get: PasskeyProvider['get']) {
       const client = fakeClient();
       const pk = { create: vi.fn(async () => ({}) as never), get: vi.fn(get) };
@@ -244,36 +244,78 @@ describe('App on Calimero 1.0', () => {
       const d = { ...deps(client), passkey: () => pk as unknown as PasskeyProvider };
       return { client, pk, d };
     }
-
-    it('waits for Approve before asking, then opens the workspace', async () => {
-      const { client, pk, d } = signUpWith(async () => ({}) as never);
+    const notAllowed = (message = 'The request is not allowed by the user agent.') =>
+      Object.assign(new Error(message), { name: 'NotAllowedError' });
+    async function startSignUp(d: SessionDeps) {
       render(<App deps={d} />);
       fireEvent.click(await screen.findByText('Open sign-in'));
       fireEvent.click(await screen.findByTestId('signup-passkey'));
+    }
+    /** "Approve with your new passkey", once the sign-up has fallen back to it. */
+    async function approveButton() {
       const approve = await screen.findByTestId('signup-approve');
+      await waitFor(() => expect((approve as HTMLButtonElement).disabled).toBe(false));
       expect(approve.textContent).toBe('Approve with your new passkey');
-      expect(pk.get).not.toHaveBeenCalled();
-      fireEvent.click(approve);
+      return approve;
+    }
+
+    it('asks both prompts back to back, with no click, then opens the workspace', async () => {
+      const { client, pk, d } = signUpWith(async () => ({}) as never);
+      await startSignUp(d);
       expect((await screen.findAllByText('Engineering', {}, BOOT)).length).toBeGreaterThan(0);
+      expect(pk.create).toHaveBeenCalledTimes(1);
       expect(pk.get).toHaveBeenCalledTimes(1);
       expect(client.signUp).toHaveBeenCalledTimes(1);
     });
 
-    it('shows a refused second prompt and keeps Approve', async () => {
-      const refused = Object.assign(new Error('The operation either timed out or was not allowed.'), {
-        name: 'NotAllowedError',
-      });
+    it('a second prompt refused at once waits for Approve, which then opens the workspace', async () => {
       const { pk, d } = signUpWith(async () => {
-        await new Promise((r) => setTimeout(r, 1100)); // a prompt the person saw
-        throw refused;
+        if (pk.get.mock.calls.length === 1) throw notAllowed();
+        return {} as never;
       });
-      render(<App deps={d} />);
-      fireEvent.click(await screen.findByText('Open sign-in'));
-      fireEvent.click(await screen.findByTestId('signup-passkey'));
-      fireEvent.click(await screen.findByTestId('signup-approve'));
-      expect((await screen.findByTestId('signin-error', {}, { timeout: 3000 })).textContent).toBe(SIGN_UP_NOT_FINISHED);
+      await startSignUp(d);
+      const approve = await approveButton();
       expect(pk.get).toHaveBeenCalledTimes(1);
+      expect(screen.queryByTestId('signin-error')).toBeNull();
+      fireEvent.click(approve);
+      expect((await screen.findAllByText('Engineering', {}, BOOT)).length).toBeGreaterThan(0);
+      expect(pk.get).toHaveBeenCalledTimes(2);
+    });
+
+    it('a second prompt the person saw and closed shows the error with Approve, which then opens the workspace', async () => {
+      const { pk, d } = signUpWith(async () => {
+        if (pk.get.mock.calls.length > 1) return {} as never;
+        await new Promise((r) => setTimeout(r, 1100)); // a prompt the person saw
+        throw notAllowed('The operation either timed out or was not allowed.');
+      });
+      await startSignUp(d);
+      expect((await screen.findByTestId('signin-error', {}, { timeout: 3000 })).textContent).toBe(SIGN_UP_NOT_FINISHED);
+      fireEvent.click(await approveButton());
+      expect((await screen.findAllByText('Engineering', {}, BOOT)).length).toBeGreaterThan(0);
+      expect(pk.get).toHaveBeenCalledTimes(2);
+    });
+
+    it('shows a second prompt refused after Approve and keeps Approve', async () => {
+      const { pk, d } = signUpWith(async () => {
+        if (pk.get.mock.calls.length === 1) throw notAllowed();
+        await new Promise((r) => setTimeout(r, 1100)); // a prompt the person saw
+        throw notAllowed('The operation either timed out or was not allowed.');
+      });
+      await startSignUp(d);
+      fireEvent.click(await approveButton());
+      expect((await screen.findByTestId('signin-error', {}, { timeout: 3000 })).textContent).toBe(SIGN_UP_NOT_FINISHED);
+      expect(pk.get).toHaveBeenCalledTimes(2);
       expect((screen.getByTestId('signup-approve') as HTMLButtonElement).disabled).toBe(false);
+    });
+
+    it('Cancel at Approve is quiet', async () => {
+      const { pk, d } = signUpWith(async () => Promise.reject(notAllowed()));
+      await startSignUp(d);
+      await approveButton();
+      fireEvent.click(screen.getByTestId('signup-cancel'));
+      await waitFor(() => expect(screen.queryByTestId('signup-approve')).toBeNull());
+      expect(screen.queryByTestId('signin-error')).toBeNull();
+      expect(pk.get).toHaveBeenCalledTimes(1);
     });
   });
 

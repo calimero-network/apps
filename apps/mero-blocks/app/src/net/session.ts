@@ -83,7 +83,8 @@ export async function signIn(phase: SignedOut, deps: SessionDeps = defaultDeps):
 /**
  * Create an account (a new passkey) named `name`. `invite` goes with it on a
  * cluster that requires one (`signUpInvite`). `passkey`: a `signUpFlow`'s, so
- * the second prompt waits for a click of its own (the launcher passes it).
+ * a second prompt that failed or was refused waits for a click of its own
+ * (the launcher passes it).
  */
 export async function signUp(
   phase: SignedOut,
