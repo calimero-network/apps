@@ -230,9 +230,10 @@ catalog:
 # credentials, memberships and invites, which core 1.0.0-rc.7 requires. It
 # moves with `component-core-tag` in the root Cargo.toml.
 #
-# 29.7.3 (mero-js#337): `browserPasskey()` asks the browser's own WebAuthn API
-# when a password manager extension (LastPass) refuses a prompt with "A
-# request is already pending", which left a sign-up's second prompt failing.
+# 29.7.3 (mero-js#337): `browserPasskey()` falls back to the browser's own
+# WebAuthn API when a prompt is refused as "A request is already pending".
+# That did not fix LastPass; mero-js#339 (always the browser's own WebAuthn,
+# ES256-only passkeys) is the fix, and this line moves to its release.
 catalogs:
   component:
     "@calimero-network/mero-js": 29.7.3
