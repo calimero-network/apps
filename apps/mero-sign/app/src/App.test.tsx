@@ -162,7 +162,7 @@ describe('App', () => {
     fireEvent.click(await screen.findByTestId('signin-passkey'));
     await screen.findByText('Acme Legal');
     expect(client.signIn).toHaveBeenCalled();
-    expect(client.listApps).toHaveBeenCalledWith({ bundle: 'bundle-hash' });
+    await waitFor(() => expect(client.listApps).toHaveBeenCalledWith({ bundle: 'bundle-hash' }));
     // One agreement in it, two people in the org.
     expect(screen.getByText(/1 agreement/)).toBeTruthy();
   });

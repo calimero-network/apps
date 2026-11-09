@@ -133,7 +133,7 @@ describe('App', () => {
 
     expect(await screen.findByText('Login broken', {}, SLOW)).toBeTruthy();
     // Only this workspace's repos, and the board read from the open one.
-    expect(client.listApps).toHaveBeenCalledWith({ bundle: 'bundle-hash' });
+    await waitFor(() => expect(client.listApps).toHaveBeenCalledWith({ bundle: 'bundle-hash' }));
     expect(screen.queryByText('elsewhere')).toBeNull();
     expect(client.view).toHaveBeenCalledWith('app-1', 'listIssues', { status: null, assignee: null, label: null });
   });

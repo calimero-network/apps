@@ -116,7 +116,7 @@ describe("TeamCalendarsPage", () => {
     renderAt("/teams/org-a");
     expect(await screen.findByText("Roadmap")).toBeTruthy();
     expect(screen.queryByText("Elsewhere")).toBeNull();
-    expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" });
+    await waitFor(() => expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" }));
     expect(await screen.findByRole("heading", { name: "Alpha" })).toBeTruthy();
     // A member who did not create it cannot delete it.
     expect(screen.queryByTestId("calendar-menu-cal-1")).toBeNull();

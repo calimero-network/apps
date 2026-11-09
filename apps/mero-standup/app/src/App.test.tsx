@@ -143,7 +143,7 @@ describe("App", () => {
     await screen.findByText("Your teams");
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "");
     expect(new SessionStore(APP, LOCAL, storage).load()).toEqual(SESSION);
-    expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" });
+    await waitFor(() => expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" }));
 
     fireEvent.change(screen.getByLabelText("team name"), { target: { value: "Platform" } });
     fireEvent.click(screen.getByText("Start a new team"));

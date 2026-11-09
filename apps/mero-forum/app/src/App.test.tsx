@@ -135,7 +135,7 @@ describe("App", () => {
     await screen.findByText("Your Spaces");
     expect(client.signIn).toHaveBeenCalled();
     await screen.findByText("Team");
-    expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" });
+    await waitFor(() => expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" }));
   });
 
   it("reopens the remembered forum and shows its feed in the screens' shapes", async () => {

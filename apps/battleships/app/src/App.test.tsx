@@ -144,7 +144,7 @@ describe('App', () => {
     await waitFor(() => expect(client.createApp).toHaveBeenCalled());
     expect(client.createOrg).toHaveBeenCalledWith('Friday game');
     expect(client.createApp).toHaveBeenCalledWith('Friday game', 'bundle-hash', { org: 'org-new' });
-    expect(client.listApps).toHaveBeenCalledWith({ bundle: 'bundle-hash' });
+    await waitFor(() => expect(client.listApps).toHaveBeenCalledWith({ bundle: 'bundle-hash' }));
   });
 
   it('opens a lobby: registers, lists the org with names, challenges, and deploys a fleet', async () => {
