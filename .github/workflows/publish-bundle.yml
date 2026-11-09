@@ -232,8 +232,10 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: cargo-${{ runner.os }}-
+          key: cargo-${{ runner.os }}-${{ inputs.app }}-${{ hashFiles(format('apps/{0}/logic/Cargo.lock', inputs.app)) }}
+          restore-keys: |
+            cargo-${{ runner.os }}-${{ inputs.app }}-
+            cargo-${{ runner.os }}-
 
       - uses: ./.github/actions/install-cargo-mero
 
@@ -295,11 +297,19 @@ jobs:
       # The SDK deps are pinned to a release tag, so the revision is already
       # determined — this records WHICH commit that tag resolved to, so a signed
       # release is never traceable only to a moving name.
+      #
+      # The app's OWN lockfile: every app contract is a standalone workspace
+      # (excluded from the root one), so the root Cargo.lock no longer resolves
+      # anything an app builds with and still names a long-gone core tag.
       - name: Record the core revision
         id: core
+        env:
+          APP: ${{ inputs.app }}
         run: |
           set -euo pipefail
-          rev=$(awk -F'#' '/^source = "git\+https:\/\/github.com\/calimero-network\/core/{print $2; exit}' Cargo.lock | tr -d '"')
+          lock="apps/$APP/logic/Cargo.lock"
+          [ -f "$lock" ] || { echo "::error::$lock not found"; exit 1; }
+          rev=$(awk -F'#' '/^source = "git\+https:\/\/github.com\/calimero-network\/core/{print $2; exit}' "$lock" | tr -d '"')
           if [ -z "$rev" ]; then
             echo "::error::could not determine which core revision the SDK deps resolved to"
             exit 1
