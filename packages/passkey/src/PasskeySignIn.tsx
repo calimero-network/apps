@@ -221,7 +221,8 @@ export function PasskeySignIn({ api, joining, invited, askName = false, hint, cl
           {ready ? SIGN_UP_READY : stage === "create" ? SIGN_UP_TWO_PROMPTS : SIGN_UP_CONFIRMING}
         </p>
         {errorLine}
-        {ready && api.cancelSignUp && (
+        {/* Also while a prompt is open: Cancel closes it (mero-js 29.7.7+). */}
+        {api.cancelSignUp && (
           <button type="button" className="cp-passkey__link" data-testid="signup-cancel" onClick={() => api.cancelSignUp?.()}>
             Cancel
           </button>

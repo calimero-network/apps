@@ -56,7 +56,12 @@ describe("signUpFlow", () => {
     await expect(meroSignUp(flow.passkey)).resolves.toEqual({ accountId: "acct-new" });
     expect(pk.create).toHaveBeenCalledTimes(1);
     expect(pk.get).toHaveBeenCalledTimes(1);
-    expect(pk.get).toHaveBeenCalledWith(new Uint8Array([1]), "example.com", ["new-cred"], { userVerification: "required" });
+    expect(pk.get).toHaveBeenCalledWith(
+      new Uint8Array([1]),
+      "example.com",
+      ["new-cred"],
+      expect.objectContaining({ userVerification: "required", signal: expect.any(AbortSignal) }),
+    );
     expect(stages).not.toContain("approve");
   });
 
@@ -113,7 +118,7 @@ describe("signUpFlow", () => {
     flow.approve();
     await expect(run).resolves.toEqual({ accountId: "acct-new" });
     expect(pk.get).toHaveBeenCalledTimes(2);
-    expect(pk.get).toHaveBeenLastCalledWith(new Uint8Array([1]), "example.com", ["new-cred"], { userVerification: "required" });
+    expect(pk.get).toHaveBeenLastCalledWith(new Uint8Array([1]), "example.com", ["new-cred"], expect.objectContaining({ userVerification: "required" }));
   });
 
   it("a blocked prompt that took long still waits at Approve", async () => {
@@ -214,7 +219,64 @@ describe("signUpFlow", () => {
 
     await flow.passkey.create({});
     await flow.passkey.get(new Uint8Array([2]), "example.com", ["new-cred"], { userVerification: "required" });
-    expect(pk.get).toHaveBeenLastCalledWith(new Uint8Array([2]), "example.com", ["new-cred"], { userVerification: "required" });
+    expect(pk.get).toHaveBeenLastCalledWith(
+      new Uint8Array([2]),
+      "example.com",
+      ["new-cred"],
+      expect.objectContaining({ userVerification: "required" }),
+    );
+  });
+
+  it("cancel() while the create prompt is open closes it and ends quietly", async () => {
+    let seen: AbortSignal | undefined;
+    const pk = key(
+      async () => ({}) as never,
+      (_options, createOptions) =>
+        new Promise((_resolve, reject) => {
+          seen = createOptions?.signal;
+          seen?.addEventListener("abort", () => reject(dismissed()));
+        }),
+    );
+    const flow = signUpFlow(pk);
+    const run = meroSignUp(flow.passkey);
+    await until(() => flow.stage === "create");
+    flow.cancel();
+    await expect(run).rejects.toBeInstanceOf(SignUpCancelled);
+    expect(seen?.aborted).toBe(true);
+    expect(pk.get).not.toHaveBeenCalled();
+  });
+
+  it("cancel() while the second prompt is open closes it and ends quietly, not as an error", async () => {
+    let seen: AbortSignal | undefined;
+    const pk = key(
+      (_challenge, _rpId, _allow, options) =>
+        new Promise((_resolve, reject) => {
+          seen = options?.signal;
+          seen?.addEventListener("abort", () => reject(dismissed()));
+        }),
+    );
+    const stages: (string | null)[] = [];
+    const flow = signUpFlow(pk, () => stages.push(flow.stage));
+    const run = meroSignUp(flow.passkey);
+    await until(() => flow.stage === "confirm");
+    flow.cancel();
+    await expect(run).rejects.toBeInstanceOf(SignUpCancelled);
+    expect(seen?.aborted).toBe(true);
+    expect(flow.confirmFailure).toBeNull();
+    expect(stages).not.toContain("approve");
+  });
+
+  it("a signal mero-js passes still closes the prompt alongside cancel()", async () => {
+    const outer = new AbortController();
+    let seen: AbortSignal | undefined;
+    const pk = key(async () => ({}) as never, async (_options, createOptions) => {
+      seen = createOptions?.signal;
+      return {} as never;
+    });
+    const flow = signUpFlow(pk);
+    await flow.passkey.create({}, { signal: outer.signal });
+    outer.abort();
+    expect(seen?.aborted).toBe(true);
   });
 
   it("explains a prompt an extension or the browser is still holding", () => {
@@ -339,5 +401,24 @@ describe("a sign-up in the control", () => {
     expect((screen.getByTestId("signup-passkey") as HTMLButtonElement).disabled).toBe(false);
     expect(screen.queryByTestId("signin-error")).toBeNull();
     expect(pk.get).toHaveBeenCalledTimes(1);
+  });
+
+  it("Cancel while the second prompt is open closes it and resets quietly", async () => {
+    let seen: AbortSignal | undefined;
+    const pk = key(
+      (_challenge, _rpId, _allow, options) =>
+        new Promise((_resolve, reject) => {
+          seen = options?.signal;
+          seen?.addEventListener("abort", () => reject(dismissed()));
+        }),
+    );
+    setup(pk);
+    fireEvent.click(await screen.findByTestId("signup-passkey"));
+    await screen.findByText("Approve in the browser prompt…");
+    fireEvent.click(screen.getByTestId("signup-cancel"));
+    await waitFor(() => expect(screen.queryByTestId("signup-approve")).toBeNull());
+    expect(seen?.aborted).toBe(true);
+    expect((screen.getByTestId("signup-passkey") as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByTestId("signin-error")).toBeNull();
   });
 });
