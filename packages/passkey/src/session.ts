@@ -21,6 +21,7 @@ import {
   type KeyValueStorage,
   type Target,
 } from "@calimero-apps/connect";
+import { describeSignUpNotFinished, signUpFlow, type SignUpFlow, type SignUpStage } from "./signUpFlow";
 
 export type Session =
   | { status: "connecting" }
@@ -71,6 +72,18 @@ export interface SessionApi {
    */
   signUp(name?: string): Promise<void>;
   /**
+   * Where a sign-up is (`SignUpStage`), `null` outside one. At `approve` the
+   * new passkey exists and the account waits for `approve()`: its second
+   * prompt starts from a click of its own, so a password manager extension
+   * still saving the passkey cannot refuse it. Optional, like the fields
+   * below, so a session an app builds itself still fits.
+   */
+  stage?: SignUpStage | null;
+  /** The click that creates the account with the new passkey (at `stage: "approve"`). */
+  approve?(): void;
+  /** Give up the sign-up at its Approve step. Quiet: no error is shown. */
+  cancelSignUp?(): void;
+  /**
    * Whether this page may create an account on the cluster, from its sign-up
    * policy (read once the client connects) and the page's invite token:
    * `unknown` until read, or when the node cannot say. Optional, so a session
@@ -90,7 +103,9 @@ export function isPasskeyCancel(error: unknown): boolean {
   let e: unknown = error;
   for (let depth = 0; e && typeof e === "object" && depth < 4; depth++) {
     const name = (e as { name?: unknown }).name;
-    if (name === "NotAllowedError" || name === "AbortError" || name === "ConfirmCancelled") return true;
+    if (name === "NotAllowedError" || name === "AbortError" || name === "ConfirmCancelled" || name === "SignUpCancelled") {
+      return true;
+    }
     e = (e as { cause?: unknown }).cause;
   }
   return false;
@@ -124,7 +139,14 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
   const [store, setStore] = useState<SessionStore | null>(null);
   // The failed ceremony's error, described at render time so the words follow
   // the sign-up policy even when it is read after the failure.
-  const [failure, setFailure] = useState<{ error: unknown } | null>(null);
+  // `afterCreate`: the sign-up's passkey was made, so even a cancel-like
+  // failure is shown (the person has a passkey and no account).
+  const [failure, setFailure] = useState<{ error: unknown; afterCreate?: boolean } | null>(null);
+  /** The sign-up in flight, if any, and what the control shows of it. */
+  const flowRef = useRef<SignUpFlow | null>(null);
+  const [flowView, setFlowView] = useState<{ stage: SignUpStage | null; confirmFailure: { error: unknown } | null }>(
+    { stage: null, confirmFailure: null },
+  );
   const [busy, setBusy] = useState(false);
   /** The cluster's sign-up policy: `undefined` until read, `null` when it cannot be. */
   const [policy, setPolicy] = useState<SignUpPolicy | null | undefined>(undefined);
@@ -182,11 +204,15 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
   const inviteToken = invite?.() ?? null;
   const access = signUpAccess(policy, inviteToken !== null);
 
+  // Leaving the page mid sign-up ends it, so nothing waits on a click.
+  useEffect(() => () => flowRef.current?.cancel(), []);
+
   const ceremony = useCallback(
-    async (run: (client: CalimeroClient) => Promise<{ accountId: string }>) => {
+    async (run: (client: CalimeroClient) => Promise<{ accountId: string }>, flow?: SignUpFlow) => {
       if (session.status !== "signed-out") return;
       setBusy(true);
       setFailure(null);
+      if (flow) flowRef.current = flow;
       try {
         // mero-js forgets the session when `/auth/logout` returns, so a sign-in
         // that finished first would be wiped by the sign-out before it.
@@ -195,8 +221,14 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
         store?.sync(session.client);
         setSession({ status: "signed-in", client: session.client, target: session.target, accountId });
       } catch (e) {
+        // A dismissed first prompt (or a cancel at Approve) is quiet. Once the
+        // passkey exists, a refused second prompt is not: it left no account.
+        const afterCreate = flow?.created === true && !flow.cancelled;
         if (!isPasskeyCancel(e)) setFailure({ error: e });
+        else if (afterCreate) setFailure({ error: e, afterCreate: true });
       } finally {
+        if (flow && flowRef.current === flow) flowRef.current = null;
+        if (flow) setFlowView({ stage: null, confirmFailure: null });
         setBusy(false);
       }
     },
@@ -206,14 +238,22 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
   const signIn = useCallback(() => ceremony((c) => c.signIn(deps.passkey())), [ceremony, deps]);
   const invited = signUpInvite(policy, inviteToken);
   const signUp = useCallback(
-    (name?: string) =>
-      ceremony((c) =>
-        invited
-          ? c.signUp(deps.passkey(), name?.trim() ?? "", { invite: invited })
-          : c.signUp(deps.passkey(), name?.trim() ?? ""),
-      ),
+    (name?: string) => {
+      const flow: SignUpFlow = signUpFlow(deps.passkey(), () =>
+        setFlowView({ stage: flow.stage, confirmFailure: flow.confirmFailure }),
+      );
+      return ceremony(
+        (c) =>
+          invited
+            ? c.signUp(flow.passkey, name?.trim() ?? "", { invite: invited })
+            : c.signUp(flow.passkey, name?.trim() ?? ""),
+        flow,
+      );
+    },
     [ceremony, deps, invited],
   );
+  const approve = useCallback(() => flowRef.current?.approve(), []);
+  const cancelSignUp = useCallback(() => flowRef.current?.cancel(), []);
 
   // Signed out first, then `/auth/logout`. The other way round, the app kept
   // seeing "signed-in" while the node had already revoked the session, so the
@@ -236,7 +276,13 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
     }
   }, [session, store]);
 
-  const error = failure ? describeSignInError(failure.error, access) : null;
+  const error = flowView.confirmFailure
+    ? describeSignUpNotFinished(flowView.confirmFailure.error)
+    : failure
+      ? failure.afterCreate
+        ? describeSignUpNotFinished(failure.error, true)
+        : describeSignInError(failure.error, access)
+      : null;
   const passkeyUnknown = failure !== null && isPasskeyUnknownHere(failure.error);
 
   return useMemo(
@@ -252,8 +298,11 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
       signOut,
       signUpAccess: access,
       passkeyUnknown,
+      stage: flowView.stage,
+      approve,
+      cancelSignUp,
     }),
-    [session, store, error, busy, deps, signIn, signUp, signOut, access, passkeyUnknown],
+    [session, store, error, busy, deps, signIn, signUp, signOut, access, passkeyUnknown, flowView.stage, approve, cancelSignUp],
   );
 }
 

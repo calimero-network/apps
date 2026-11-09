@@ -3,12 +3,13 @@ import { signUpNotice } from "@calimero-apps/connect";
 import type { SessionApi } from "./session";
 
 /**
- * The part of the session the control drives. `signUpAccess` and
- * `passkeyUnknown` are optional for an app that builds its own: without them,
- * creating an account is always offered, as before.
+ * The part of the session the control drives. `signUpAccess`,
+ * `passkeyUnknown`, `stage`, `approve` and `cancelSignUp` are optional for an
+ * app that builds its own: without them, creating an account is always
+ * offered, and a sign-up runs its two prompts back to back, as before.
  */
 export type PasskeySignInApi = Pick<SessionApi, "busy" | "error" | "signIn" | "signUp"> &
-  Partial<Pick<SessionApi, "signUpAccess" | "passkeyUnknown">>;
+  Partial<Pick<SessionApi, "signUpAccess" | "passkeyUnknown" | "stage" | "approve" | "cancelSignUp">>;
 
 export interface PasskeySignInProps {
   api: PasskeySignInApi;
@@ -64,6 +65,14 @@ function AlertIcon() {
   );
 }
 
+function CheckIcon() {
+  return (
+    <svg {...svg}>
+      <path d="M5 12.5l4.5 4.5L19 7.5" />
+    </svg>
+  );
+}
+
 function Spinner() {
   return <span className="cp-passkey__spinner" aria-hidden="true" />;
 }
@@ -72,7 +81,10 @@ function Spinner() {
  * The one way into every component app: continue with a passkey the person
  * already has (from this app or any other Calimero app), or create one.
  * Nothing to install, no account to fill in. A dismissed browser prompt is a
- * quiet cancel. Themed by `--passkey-*` tokens, which fall back to glass.
+ * quiet cancel. Creating one takes two prompts: once the passkey is made, the
+ * control asks for a click on "Approve with your new passkey" before the
+ * second, which is what creates the account. Themed by `--passkey-*` tokens,
+ * which fall back to glass.
  */
 export function PasskeySignIn({ api, askName = false, hint, className }: PasskeySignInProps) {
   const [running, setRunning] = useState<"in" | "up" | null>(null);
@@ -83,6 +95,8 @@ export function PasskeySignIn({ api, askName = false, hint, className }: Passkey
   // Why this cluster takes no new account from this page (closed, or invite
   // only with no invite in hand): the create button stays, disabled, with it.
   const notice = signUpNotice(api.signUpAccess ?? "unknown");
+  // The new passkey is made and the account waits for its own click.
+  const approving = (api.stage === "approve" || api.stage === "confirm") && api.approve !== undefined;
 
   useEffect(() => {
     if (!api.busy) setRunning(null);
@@ -121,7 +135,7 @@ export function PasskeySignIn({ api, askName = false, hint, className }: Passkey
         <span>New here?</span>
       </div>
 
-      {askName && naming && (
+      {askName && naming && !approving && (
         <form
           className="cp-passkey__name"
           onSubmit={(e) => {
@@ -145,19 +159,48 @@ export function PasskeySignIn({ api, askName = false, hint, className }: Passkey
         </form>
       )}
 
-      <button
-        type="button"
-        className="cp-passkey__secondary"
-        data-testid="signup-passkey"
-        disabled={api.busy || notice !== null}
-        aria-describedby={notice ? noticeId : undefined}
-        onClick={create}
-      >
-        {running === "up" ? <Spinner /> : <PlusIcon />}
-        <span>{running === "up" ? "Creating your passkey…" : "Create a passkey"}</span>
-      </button>
+      {approving ? (
+        <>
+          <button
+            type="button"
+            className="cp-passkey__primary"
+            data-testid="signup-approve"
+            disabled={api.stage !== "approve"}
+            autoFocus
+            onClick={() => api.approve?.()}
+          >
+            {api.stage === "confirm" ? <Spinner /> : <CheckIcon />}
+            <span>{api.stage === "confirm" ? "Waiting for your passkey…" : "Approve with your new passkey"}</span>
+          </button>
+          <p className="cp-passkey__hint" aria-live="polite">
+            Your passkey is saved. One more tap creates your account.
+          </p>
+          {api.cancelSignUp && api.stage === "approve" && (
+            <button
+              type="button"
+              className="cp-passkey__link"
+              data-testid="signup-cancel"
+              onClick={() => api.cancelSignUp?.()}
+            >
+              Cancel
+            </button>
+          )}
+        </>
+      ) : (
+        <button
+          type="button"
+          className="cp-passkey__secondary"
+          data-testid="signup-passkey"
+          disabled={api.busy || notice !== null}
+          aria-describedby={notice ? noticeId : undefined}
+          onClick={create}
+        >
+          {running === "up" ? <Spinner /> : <PlusIcon />}
+          <span>{running === "up" ? "Creating your passkey…" : "Create a passkey"}</span>
+        </button>
+      )}
 
-      {notice && (
+      {notice && !approving && (
         <p className="cp-passkey__hint" id={noticeId} data-testid="signup-unavailable">
           {notice}
         </p>
@@ -169,7 +212,7 @@ export function PasskeySignIn({ api, askName = false, hint, className }: Passkey
           <span>{api.error}</span>
         </p>
       )}
-      {api.error && api.passkeyUnknown && notice === null && (
+      {api.error && api.passkeyUnknown && notice === null && !approving && (
         <button
           type="button"
           className="cp-passkey__secondary"
