@@ -12,6 +12,7 @@ import {
   type CalimeroSession,
 } from "@calimero-network/mero-js";
 
+import { describeInviteRefusal, inviteRefusal } from "./invite";
 import { SIGN_UP_CLOSED, SIGN_UP_INVITE_ONLY, signUpNotice, type SignUpAccess } from "./signUp";
 import { policyFor, targetKey, type Target } from "./target";
 
@@ -197,14 +198,12 @@ function describeSignUpRefused(error: SignUpRefused): string {
       return SIGN_UP_INVITE_ONLY;
     case "closed":
       return SIGN_UP_CLOSED;
-    case "unknown-invite":
-      return "This cluster doesn't know that invite: check the link you were sent, or ask for a new one.";
-    case "expired-invite":
-      return "That invite has expired or has no uses left: ask whoever sent it for a new one.";
-    case "org-gone":
-      return "The organization that invite was for no longer exists: ask for an invite to another one.";
-    default:
+    default: {
+      // The invite's own refusal, also in core's newer words ({@link inviteRefusal}).
+      const refusal = inviteRefusal(error);
+      if (refusal) return describeInviteRefusal(refusal);
       return `This cluster refused the sign-up: ${nodeMessage(error) || "no reason given"}`;
+    }
   }
 }
 

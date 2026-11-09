@@ -113,7 +113,7 @@ describe("describeSignInError for a refused sign-up (403 SIGN_UP_REFUSED)", () =
       [
         "unknown invite",
         "unknown-invite",
-        "This cluster doesn't know that invite: check the link you were sent, or ask for a new one.",
+        "That invite was used up, revoked or never existed: ask whoever sent it for a new one.",
       ],
       [
         "the invite has expired",
@@ -131,6 +131,12 @@ describe("describeSignInError for a refused sign-up (403 SIGN_UP_REFUSED)", () =
       expect(e.reason).toBe(reason);
       expect(describeSignInError(e)).toBe(text);
     }
+  });
+
+  it("reads core rc.12's used-up invite, which mero-js 29.7.7 calls 'other', as the invite's refusal", () => {
+    expect(describeSignInError(refused("sign-up refused: this invite was used up, revoked or never existed"))).toBe(
+      "That invite was used up, revoked or never existed: ask whoever sent it for a new one.",
+    );
   });
 
   it("gives the node's reason for anything else", () => {
