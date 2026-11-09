@@ -13,7 +13,7 @@ import { ScenePicker } from "./ScenePicker";
 import { PACKAGE } from "./meroModels";
 import { SceneContext, type OpenedScene, type SceneSession } from "./scene";
 import { instanceIn, listScenes, readSelection, selectionKey, writeSelection } from "./scenes";
-import { AppListing, PasskeySignIn, InvitationSignIn, JoinInvitation, usePendingInvite } from "@calimero-apps/passkey";
+import { AppListing, PasskeySignIn, InvitationSignIn, JoinInvitation, usePendingInvite, useInstanceRelease } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 import { ONBOARDING, LISTING, describeTarget, type SessionApi, type SessionDeps } from "./session";
 
@@ -61,6 +61,8 @@ export function StudioPage({
   const [pickerKey, setPickerKey] = useState(0);
 
   const client = session.status === "signed-in" ? session.client : null;
+  // A scene is an app instance, served the frontend of the release it runs.
+  useInstanceRelease(client, opened?.appId);
   const key = session.status === "signed-in" ? selectionKey(session.target, session.accountId) : null;
   const after = useCallback(() => {
     if (client) store?.sync(client);
