@@ -811,6 +811,11 @@ jobs:
           fi
           echo "PNPM_FILTER=$filter" >> "$GITHUB_ENV"
           echo "VERCEL_APPS=$apps" >> "$GITHUB_ENV"
+          # The app checks below run over every app when VERCEL_APPS is empty,
+          # so skip them when the change built no app (only a package).
+          if [ -z "$filter" ] || [ -n "$apps" ]; then
+            echo "CHECK_APPS=true" >> "$GITHUB_ENV"
+          fi
           echo "scope: ${filter:-every workspace member}"
 
       # `tsc -b`, never `tsc --noEmit`: the app tsconfig is a solution file, and
@@ -848,6 +853,7 @@ jobs:
       # app's declared output directory is the one its build produced, and that
       # each carries the SPA rewrite its client-side router needs.
       - name: Assert vercel.json matches the real build output
+        if: env.CHECK_APPS == 'true'
         # shellcheck disable=SC2086 — word-splitting the list is the point
         run: scripts/check-vercel-output.sh $VERCEL_APPS
 
@@ -857,6 +863,7 @@ jobs:
       # from the desktop landed on a screen the release had removed. This fails
       # a build whose worker could serve a page older than the deploy.
       - name: Assert no service worker serves a stale page
+        if: env.CHECK_APPS == 'true'
         # shellcheck disable=SC2086 — word-splitting the list is the point
         run: python3 scripts/check-service-workers.py $VERCEL_APPS
 
