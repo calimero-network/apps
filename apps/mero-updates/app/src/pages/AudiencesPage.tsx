@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { describeError } from "@calimero-apps/connect";
+import { askAnOwnerCopy, canCreateIn, describeError } from "@calimero-apps/connect";
 import { useToast } from "../contexts/ToastContext";
 import { setActiveAudience, setAudienceName } from "../lib/active";
 import {
@@ -58,6 +58,13 @@ export default function AudiencesPage() {
 
   const [audiences, setAudiences] = useState<AudienceRow[]>([]);
   const [spaceAdmin, setSpaceAdmin] = useState(false);
+  /**
+   * Whether this account may add an audience in the company (core's
+   * `CREATE_APP`): an owner or admin, or a member allowed to (the company's
+   * defaults, set by a best-effort step-up when it was made). `null` while
+   * unknown, when the create is offered and the node decides.
+   */
+  const [mayCreate, setMayCreate] = useState<boolean | null>(null);
   const [listing, setListing] = useState(true);
   const [nsName, setNsName] = useState("");
   const [memberCount, setMemberCount] = useState(0);
@@ -96,6 +103,7 @@ export default function AudiencesPage() {
     async (showSpinner = true) => {
       if (!namespaceId) return;
       if (showSpinner) setListing(true);
+      void canCreateIn(client, namespaceId).then(setMayCreate);
       try {
         const info = await readCompany(client, namespaceId).catch(() => null);
         setNsName((info?.name ?? "").trim() || `Company ${namespaceId.slice(0, 6)}`);
@@ -256,33 +264,39 @@ export default function AudiencesPage() {
           </button>
         </div>
 
-        <section className={styles.createCard}>
-          <label className={styles.label} htmlFor="new-audience">
-            New audience
-          </label>
-          <div className={styles.createRow}>
-            <input
-              id="new-audience"
-              className={styles.input}
-              placeholder="New audience — e.g. All investors, Angels, Advisors"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              data-testid="audience-name-input"
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && name.trim()) create();
-              }}
-            />
-            <button
-              className={styles.btn}
-              onClick={create}
-              disabled={pending === "create" || !name.trim()}
-              data-testid="create-audience"
-            >
-              {pending !== "create" && <PlusIcon size={16} />}
-              {pending === "create" ? "Creating…" : "Create"}
-            </button>
-          </div>
-        </section>
+        {mayCreate === false ? (
+          <p className={styles.status} data-testid="create-audience-ask">
+            {askAnOwnerCopy("an audience")}
+          </p>
+        ) : (
+          <section className={styles.createCard}>
+            <label className={styles.label} htmlFor="new-audience">
+              New audience
+            </label>
+            <div className={styles.createRow}>
+              <input
+                id="new-audience"
+                className={styles.input}
+                placeholder="New audience — e.g. All investors, Angels, Advisors"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                data-testid="audience-name-input"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && name.trim()) create();
+                }}
+              />
+              <button
+                className={styles.btn}
+                onClick={create}
+                disabled={pending === "create" || !name.trim()}
+                data-testid="create-audience"
+              >
+                {pending !== "create" && <PlusIcon size={16} />}
+                {pending === "create" ? "Creating…" : "Create"}
+              </button>
+            </div>
+          </section>
+        )}
 
         {status && (
           <p className={styles.status}>
@@ -315,7 +329,11 @@ export default function AudiencesPage() {
               <HashIcon size={20} />
             </span>
             <strong>No audiences yet</strong>
-            <span>Most companies start with one called “All investors”.</span>
+            <span>
+              {mayCreate === false
+                ? "An owner or admin of this company can add one."
+                : "Most companies start with one called “All investors”."}
+            </span>
           </div>
         ) : (
           <div className={styles.grid}>
