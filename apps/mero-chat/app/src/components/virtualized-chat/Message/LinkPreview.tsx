@@ -1,113 +1,28 @@
-import { memo, useEffect, useState } from "react";
+import { memo, useMemo } from "react";
 import styled from "styled-components";
-import { SERVED_BY_NODE } from "../../../utils/servedByNode";
 
-interface OgData {
-  title: string;
-  image: string;
-  description: string;
-  url: string;
-}
+import {
+  extractUrls,
+  toLocalPreview,
+  type LocalPreview,
+} from "./linkPreviewModel";
 
-// Module-level cache so the same URL is only fetched once per session
-const ogCache = new Map<string, OgData | null>();
+// A link card built from the URL alone. Nothing is fetched: a preview service
+// would see every link a user posts, and a node's or cluster's CSP blocks
+// other hosts anyway. No favicon or thumbnail either, since images from other
+// hosts are blocked too.
 
-function extractYouTubeId(url: string): string | null {
-  const m = url.match(
-    /(?:youtube\.com\/(?:watch\?.*?v=|shorts\/|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/,
-  );
-  return m?.[1] ?? null;
-}
-
-async function fetchOgData(url: string): Promise<OgData | null> {
-  if (ogCache.has(url)) return ogCache.get(url)!;
-
-  try {
-    const ytId = extractYouTubeId(url);
-    if (ytId) {
-      const resp = await fetch(
-        `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`,
-        { signal: AbortSignal.timeout(5000) },
-      );
-      if (!resp.ok) throw new Error("oembed failed");
-      const data = (await resp.json()) as { title: string; author_name?: string };
-      const result: OgData = {
-        title: data.title,
-        description: data.author_name ? `YouTube · ${data.author_name}` : "YouTube",
-        image: `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`,
-        url,
-      };
-      ogCache.set(url, result);
-      return result;
-    }
-
-    // General OG fetch via allorigins proxy
-    const proxyResp = await fetch(
-      `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-      { signal: AbortSignal.timeout(5000) },
-    );
-    if (!proxyResp.ok) throw new Error("proxy failed");
-    const html = await proxyResp.text();
-
-    const pick = (patterns: RegExp[]) => {
-      for (const re of patterns) {
-        const m = html.match(re);
-        if (m?.[1]) return m[1].replace(/&amp;/g, "&").replace(/&quot;/g, '"').trim();
-      }
-      return "";
-    };
-
-    const title = pick([
-      /<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i,
-      /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i,
-      /<title[^>]*>([^<]+)<\/title>/i,
-    ]);
-    const image = pick([
-      /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i,
-      /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i,
-    ]);
-    const description = pick([
-      /<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i,
-      /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:description["']/i,
-      /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i,
-    ]);
-
-    if (!title && !image) {
-      ogCache.set(url, null);
-      return null;
-    }
-
-    const result: OgData = { title, image, description, url };
-    ogCache.set(url, result);
-    return result;
-  } catch {
-    ogCache.set(url, null);
-    return null;
-  }
-}
-
-function extractUrls(html: string): string[] {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html, "text/html");
-  const urls: string[] = [];
-  doc.querySelectorAll("a[href]").forEach((el) => {
-    const href = (el as HTMLAnchorElement).href;
-    if (href.startsWith("http://") || href.startsWith("https://")) {
-      urls.push(href);
-    }
-  });
-  return [...new Set(urls)];
-}
+const MAX_PREVIEWS = 3;
 
 // ─── Styled components ──────────────────────────────────────────────────────
 
 const PreviewCard = styled.a`
   display: flex;
   flex-direction: row;
-  align-items: flex-start;
+  align-items: center;
   gap: 10px;
   margin-top: 6px;
-  padding: 10px 12px;
+  padding: 8px 12px;
   border-radius: 12px;
   border: 1px solid color-mix(in srgb, var(--glass-ink) 8%, transparent);
   background: color-mix(in srgb, var(--glass-ink) 3%, transparent);
@@ -122,19 +37,22 @@ const PreviewCard = styled.a`
   }
 `;
 
-const PreviewImage = styled.img`
-  width: 80px;
-  height: 56px;
-  object-fit: cover;
-  border-radius: 5px;
+const PreviewIcon = styled.span`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
   flex-shrink: 0;
-  background: var(--glass-surface-solid);
+  color: var(--glass-accent);
+  background: color-mix(in srgb, var(--glass-accent) 12%, transparent);
 `;
 
 const PreviewText = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   min-width: 0;
 `;
 
@@ -149,17 +67,44 @@ const PreviewTitle = styled.div`
 
 const PreviewDescription = styled.div`
   font-size: 11px;
-  color: color-mix(in srgb, var(--glass-ink) 50%, transparent);
+  color: color-mix(in srgb, var(--glass-ink) 55%, transparent);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 `;
 
-const PreviewDomain = styled.div`
-  font-size: 11px;
-  color: var(--glass-accent);
-  margin-top: 2px;
-`;
+function LinkIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+    </svg>
+  );
+}
+
+function PlayIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M8 5.14v13.72a1 1 0 0 0 1.52.85l10.6-6.86a1 1 0 0 0 0-1.7L9.52 4.29A1 1 0 0 0 8 5.14z" />
+    </svg>
+  );
+}
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
@@ -168,50 +113,41 @@ interface LinkPreviewProps {
 }
 
 function LinkPreview({ html }: LinkPreviewProps) {
-  const [previews, setPreviews] = useState<(OgData | null)[]>([]);
+  const previews = useMemo(
+    () =>
+      extractUrls(html)
+        .slice(0, MAX_PREVIEWS)
+        .map(toLocalPreview)
+        .filter((p): p is LocalPreview => p !== null),
+    [html],
+  );
 
-  useEffect(() => {
-    // A node's CSP blocks the remote metadata fetch, so a node-served app shows no previews.
-    if (SERVED_BY_NODE) return;
-    const urls = extractUrls(html);
-    if (urls.length === 0) return;
-
-    let cancelled = false;
-    void Promise.all(urls.slice(0, 3).map((u) => fetchOgData(u))).then(
-      (results) => {
-        if (!cancelled) setPreviews(results);
-      },
-    );
-    return () => { cancelled = true; };
-  }, [html]);
-
-  if (SERVED_BY_NODE) return null;
-
-  const validPreviews = previews.filter((p): p is OgData => p !== null && !!(p.title || p.image));
-  if (validPreviews.length === 0) return null;
+  if (previews.length === 0) return null;
 
   return (
     <>
-      {validPreviews.map((p) => {
-        let domain = "";
-        try { domain = new URL(p.url).hostname.replace(/^www\./, ""); } catch { /* */ }
-        return (
-          <PreviewCard key={p.url} href={p.url} target="_blank" rel="noopener noreferrer">
-            {p.image && (
-              <PreviewImage
-                src={p.image}
-                alt=""
-                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-              />
+      {previews.map((p) => (
+        <PreviewCard
+          key={p.url}
+          href={p.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={p.url}
+          data-testid="link-preview"
+        >
+          <PreviewIcon>{p.youtubeId ? <PlayIcon /> : <LinkIcon />}</PreviewIcon>
+          <PreviewText>
+            <PreviewTitle>
+              {p.youtubeId ? "YouTube video" : p.host}
+            </PreviewTitle>
+            {p.youtubeId ? (
+              <PreviewDescription>{`${p.host} · ${p.youtubeId}`}</PreviewDescription>
+            ) : (
+              p.path && <PreviewDescription>{p.path}</PreviewDescription>
             )}
-            <PreviewText>
-              {p.title && <PreviewTitle>{p.title}</PreviewTitle>}
-              {p.description && <PreviewDescription>{p.description}</PreviewDescription>}
-              {domain && <PreviewDomain>{domain}</PreviewDomain>}
-            </PreviewText>
-          </PreviewCard>
-        );
-      })}
+          </PreviewText>
+        </PreviewCard>
+      ))}
     </>
   );
 }

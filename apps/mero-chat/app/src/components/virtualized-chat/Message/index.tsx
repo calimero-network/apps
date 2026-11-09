@@ -372,7 +372,6 @@ interface MessageProps {
   fetchAccounts: (prefix: string) => void;
   autocompleteAccounts: AccountData[];
   authToken: string | undefined;
-  privateIpfsEndpoint: string;
   contextId?: string;
 }
 

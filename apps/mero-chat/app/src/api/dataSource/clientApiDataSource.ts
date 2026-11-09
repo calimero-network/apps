@@ -4,6 +4,7 @@ import type { ApiResponse } from "../types";
 import { rpcExec } from "../meroJsClient";
 import { nameRepository } from "../../repositories/names/useNames";
 import { GroupApiDataSource } from "./groupApiDataSource";
+import { rpcErrorMessage } from "./errorMessage";
 import {
   type AcceptInvitationProps,
   type ChannelInfo,
@@ -100,8 +101,7 @@ export class ClientApiDataSource implements ClientApi {
           data: null,
           error: {
             code: response?.error.code,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            message: (response?.error.error.cause.info as any).message,
+            message: rpcErrorMessage(response),
           },
         };
       }
@@ -161,8 +161,7 @@ export class ClientApiDataSource implements ClientApi {
           data: null,
           error: {
             code: response?.error.code,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            message: (response?.error.error.cause.info as any).message,
+            message: rpcErrorMessage(response),
           },
         };
       }
@@ -210,8 +209,7 @@ export class ClientApiDataSource implements ClientApi {
           data: null,
           error: {
             code: response?.error.code,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            message: (response?.error.error.cause.info as any).message,
+            message: rpcErrorMessage(response),
           },
         };
       }
@@ -259,8 +257,7 @@ export class ClientApiDataSource implements ClientApi {
           data: null,
           error: {
             code: response?.error.code,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            message: (response?.error.error.cause.info as any).message,
+            message: rpcErrorMessage(response),
           },
         };
       }
@@ -384,8 +381,7 @@ export class ClientApiDataSource implements ClientApi {
           data: null,
           error: {
             code: response?.error.code,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            message: (response?.error.error.cause.info as any).message,
+            message: rpcErrorMessage(response),
           },
         };
       }
@@ -442,8 +438,7 @@ export class ClientApiDataSource implements ClientApi {
           data: null,
           error: {
             code: response?.error.code,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            message: (response?.error.error.cause.info as any).message,
+            message: rpcErrorMessage(response),
           },
         };
       }
@@ -492,8 +487,7 @@ export class ClientApiDataSource implements ClientApi {
           data: null,
           error: {
             code: response?.error.code,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            message: (response?.error.error.cause.info as any).message,
+            message: rpcErrorMessage(response),
           },
         };
       }
@@ -574,8 +568,7 @@ export class ClientApiDataSource implements ClientApi {
           data: null,
           error: {
             code: response?.error.code,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            message: (response?.error.error.cause.info as any).message,
+            message: rpcErrorMessage(response),
           },
         };
       }
@@ -626,8 +619,7 @@ export class ClientApiDataSource implements ClientApi {
           data: null,
           error: {
             code: response?.error.code,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            message: (response?.error.error.cause.info as any).message,
+            message: rpcErrorMessage(response),
           },
         };
       }
@@ -780,8 +772,7 @@ export class ClientApiDataSource implements ClientApi {
           data: null,
           error: {
             code: response?.error.code,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            message: (response?.error.error.cause.info as any).message,
+            message: rpcErrorMessage(response),
           },
         };
       }
@@ -853,8 +844,7 @@ export class ClientApiDataSource implements ClientApi {
           data: null,
           error: {
             code: response?.error.code,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            message: (response?.error.error.cause.info as any).message,
+            message: rpcErrorMessage(response),
           },
         };
       }
@@ -903,8 +893,7 @@ export class ClientApiDataSource implements ClientApi {
           data: null,
           error: {
             code: response?.error.code,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            message: (response?.error.error.cause.info as any).message,
+            message: rpcErrorMessage(response),
           },
         };
       }
@@ -977,8 +966,7 @@ export class ClientApiDataSource implements ClientApi {
           data: null,
           error: {
             code: response?.error.code,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            message: (response?.error.error.cause.info as any).message,
+            message: rpcErrorMessage(response),
           },
         };
       }
@@ -1030,8 +1018,7 @@ export class ClientApiDataSource implements ClientApi {
           data: null,
           error: {
             code: response?.error.code,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            message: (response?.error.error.cause.info as any).message,
+            message: rpcErrorMessage(response),
           },
         };
       }
@@ -1082,8 +1069,7 @@ export class ClientApiDataSource implements ClientApi {
           data: null,
           error: {
             code: response?.error.code,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            message: (response?.error.error.cause.info as any).message,
+            message: rpcErrorMessage(response),
           },
         };
       }
@@ -1136,8 +1122,7 @@ export class ClientApiDataSource implements ClientApi {
           data: null,
           error: {
             code: response?.error.code,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            message: (response?.error.error.cause.info as any).message,
+            message: rpcErrorMessage(response),
           },
         };
       }
@@ -1187,8 +1172,7 @@ export class ClientApiDataSource implements ClientApi {
           data: null,
           error: {
             code: response?.error.code,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            message: (response?.error.error.cause.info as any).message,
+            message: rpcErrorMessage(response),
           },
         };
       }
@@ -1241,8 +1225,7 @@ export class ClientApiDataSource implements ClientApi {
           data: null,
           error: {
             code: response?.error.code,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            message: (response?.error.error.cause.info as any).message,
+            message: rpcErrorMessage(response),
           },
         };
       }
@@ -1292,8 +1275,7 @@ export class ClientApiDataSource implements ClientApi {
           data: null,
           error: {
             code: response?.error.code,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            message: (response?.error.error.cause.info as any).message,
+            message: rpcErrorMessage(response),
           },
         };
       }
@@ -1342,8 +1324,7 @@ export class ClientApiDataSource implements ClientApi {
           data: null,
           error: {
             code: response?.error.code,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            message: (response?.error.error.cause.info as any).message,
+            message: rpcErrorMessage(response),
           },
         };
       }
@@ -1393,8 +1374,7 @@ export class ClientApiDataSource implements ClientApi {
           data: null,
           error: {
             code: response?.error.code,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            message: (response?.error.error.cause.info as any).message,
+            message: rpcErrorMessage(response),
           },
         };
       }
@@ -1444,8 +1424,7 @@ export class ClientApiDataSource implements ClientApi {
           data: null,
           error: {
             code: response?.error.code,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            message: (response?.error.error.cause.info as any).message,
+            message: rpcErrorMessage(response),
           },
         };
       }
@@ -1494,8 +1473,7 @@ export class ClientApiDataSource implements ClientApi {
           data: null,
           error: {
             code: response?.error.code,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            message: (response?.error.error.cause.info as any).message,
+            message: rpcErrorMessage(response),
           },
         };
       }
@@ -1666,8 +1644,7 @@ export class ClientApiDataSource implements ClientApi {
           data: null,
           error: {
             code: response?.error.code,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            message: (response?.error.error.cause.info as any).message,
+            message: rpcErrorMessage(response),
           },
         };
       }
@@ -1700,8 +1677,7 @@ export class ClientApiDataSource implements ClientApi {
           data: null,
           error: {
             code: response?.error.code,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            message: (response?.error.error.cause.info as any).message,
+            message: rpcErrorMessage(response),
           },
         };
       }
@@ -1735,8 +1711,7 @@ export class ClientApiDataSource implements ClientApi {
           data: null,
           error: {
             code: response?.error.code,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            message: (response?.error.error.cause.info as any).message,
+            message: rpcErrorMessage(response),
           },
         };
       }
