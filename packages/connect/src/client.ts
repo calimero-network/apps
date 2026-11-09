@@ -3,6 +3,7 @@ import {
   CalimeroClient,
   CalimeroError,
   ConfirmCancelled,
+  ConfirmPromptBlocked,
   DirectoryError,
   LoginRequired,
   SignUpRefused,
@@ -133,6 +134,15 @@ export class SessionStore {
   }
 }
 
+/**
+ * A passkey prompt the browser or a password manager blocked: another prompt,
+ * or a password manager's popup, still open (mero-js's `ConfirmPromptBlocked`).
+ * Not a cancel: the person did not choose it, and can clear it.
+ */
+export const PROMPT_BLOCKED_MESSAGE =
+  "The passkey prompt was blocked: another passkey prompt or a password manager's popup is still open. " +
+  "Finish or close it, then try again.";
+
 /** A one-line, user-facing account of a failed request. */
 export function describeError(error: unknown): string {
   if (error instanceof AppError) {
@@ -142,6 +152,7 @@ export function describeError(error: unknown): string {
   if (error instanceof TrapError) return `the app aborted the call (${error.kind || "trap"})`;
   if (error instanceof LoginRequired) return "Sign in first.";
   if (error instanceof ConfirmCancelled) return "The passkey prompt was cancelled.";
+  if (error instanceof ConfirmPromptBlocked) return PROMPT_BLOCKED_MESSAGE;
   if (error instanceof UnavailableError) return "The cluster is unavailable; try again shortly.";
   if (error instanceof DirectoryError) return `No node of the cluster could be found: ${error.message}`;
   if (error instanceof CalimeroError) return error.message;

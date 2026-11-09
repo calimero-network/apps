@@ -98,9 +98,11 @@ export function signUpFlow(passkey: PasskeyProvider, onChange: () => void = () =
       created = true;
       return registration;
     },
-    get: async (challenge, rpId, allowCredentials) => {
+    // `options` carries mero-js's `userVerification: 'required'` on a confirm
+    // prompt (mero-js#338): the node refuses an approval without it.
+    get: async (challenge, rpId, allowCredentials, options) => {
       // Not after a create (nothing to approve): straight through.
-      if (!created) return passkey.get(challenge, rpId, allowCredentials);
+      if (!created) return passkey.get(challenge, rpId, allowCredentials, options);
       for (;;) {
         if (cancelled) throw new SignUpCancelled();
         update({ stage: "approve" });
@@ -109,7 +111,7 @@ export function signUpFlow(passkey: PasskeyProvider, onChange: () => void = () =
         });
         update({ stage: "confirm", confirmFailure: null });
         try {
-          return await askOnce(() => passkey.get(challenge, rpId, allowCredentials));
+          return await askOnce(() => passkey.get(challenge, rpId, allowCredentials, options));
         } catch (e) {
           // Shown, never a quiet cancel: the passkey exists and the account
           // does not. The Approve button stays for another try.
@@ -159,12 +161,16 @@ export const PROMPT_STUCK_ADVICE =
   "right after you approve, a password manager extension is handling passkeys on this page: turn off its " +
   "passkey option for this site, or use a private window without extensions.";
 
-/** "A request is already pending", "The document is not focused", or `InvalidStateError`, also when wrapped. */
+/**
+ * "A request is already pending", "The document is not focused", or
+ * `InvalidStateError`, also when wrapped; and mero-js's `ConfirmPromptBlocked`,
+ * which is how its confirm prompts report those.
+ */
 export function isPromptStuck(error: unknown): boolean {
   let e: unknown = error;
   for (let depth = 0; e && typeof e === "object" && depth < 4; depth++) {
     const { name, message } = e as { name?: unknown; message?: unknown };
-    if (name === "InvalidStateError") return true;
+    if (name === "InvalidStateError" || name === "ConfirmPromptBlocked") return true;
     if (typeof message === "string" && /request is already pending|not focused/i.test(message)) return true;
     e = (e as { cause?: unknown }).cause;
   }

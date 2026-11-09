@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
+import { ConfirmPromptBlocked, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
 import type { KeyValueStorage } from "@calimero-apps/connect";
 
 import { PasskeySignIn } from "./PasskeySignIn";
@@ -22,11 +22,11 @@ function named(name: string, message: string): Error {
 const pending = () => named("NotAllowedError", "A request is already pending.");
 const dismissed = () => named("NotAllowedError", "The operation either timed out or was not allowed.");
 
-/** What mero-js `signUp` does with the passkey: create, then (on `412 CONFIRM_REQUIRED`) get. */
+/** What mero-js `signUp` does with the passkey: create, then (on `412 CONFIRM_REQUIRED`) get, user verification required. */
 async function meroSignUp(pk: PasskeyProvider): Promise<{ accountId: string }> {
   await pk.create({});
   try {
-    await pk.get(new Uint8Array([1]), "example.com", ["new-cred"]);
+    await pk.get(new Uint8Array([1]), "example.com", ["new-cred"], { userVerification: "required" });
   } catch (e) {
     const name = (e as { name?: string }).name;
     if (name === "NotAllowedError" || name === "AbortError") {
@@ -60,7 +60,7 @@ describe("signUpFlow", () => {
     flow.approve();
     await expect(run).resolves.toEqual({ accountId: "acct-new" });
     expect(pk.get).toHaveBeenCalledTimes(1);
-    expect(pk.get).toHaveBeenCalledWith(new Uint8Array([1]), "example.com", ["new-cred"]);
+    expect(pk.get).toHaveBeenCalledWith(new Uint8Array([1]), "example.com", ["new-cred"], { userVerification: "required" });
   });
 
   it("a refusal that came back at once is asked again, once", async () => {
@@ -133,14 +133,30 @@ describe("signUpFlow", () => {
     expect(pk.get).toHaveBeenCalledTimes(1);
   });
 
+  it("passes mero-js's userVerification through, before and after a create", async () => {
+    const pk = key(async () => ({}) as never);
+    const flow = signUpFlow(pk);
+    await flow.passkey.get(new Uint8Array([1]), "example.com", ["c"], { userVerification: "required" });
+    expect(pk.get).toHaveBeenLastCalledWith(new Uint8Array([1]), "example.com", ["c"], { userVerification: "required" });
+
+    await flow.passkey.create({});
+    const approved = flow.passkey.get(new Uint8Array([2]), "example.com", ["new-cred"], { userVerification: "required" });
+    await until(() => flow.stage === "approve");
+    flow.approve();
+    await approved;
+    expect(pk.get).toHaveBeenLastCalledWith(new Uint8Array([2]), "example.com", ["new-cred"], { userVerification: "required" });
+  });
+
   it("explains a prompt an extension or the browser is still holding", () => {
     expect(isPromptStuck(pending())).toBe(true);
     expect(isPromptStuck(named("NotAllowedError", "The document is not focused."))).toBe(true);
     expect(isPromptStuck(named("InvalidStateError", "x"))).toBe(true);
     expect(isPromptStuck(new Error("wrapped", { cause: pending() }))).toBe(true);
+    expect(isPromptStuck(new ConfirmPromptBlocked(new Error("x")))).toBe(true);
     expect(isPromptStuck(dismissed())).toBe(false);
     expect(describeSignUpNotFinished(dismissed())).toBe(SIGN_UP_NOT_FINISHED);
     expect(describeSignUpNotFinished(pending())).toBe(`${SIGN_UP_NOT_FINISHED} ${PROMPT_STUCK_ADVICE}`);
+    expect(describeSignUpNotFinished(new ConfirmPromptBlocked(pending()), true)).toContain(PROMPT_STUCK_ADVICE);
   });
 });
 

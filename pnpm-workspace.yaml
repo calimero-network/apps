@@ -229,9 +229,12 @@ catalog:
 # 28.0.0 (mero-js#320) answers passkey step-ups (412 CONFIRM_REQUIRED) on
 # credentials, memberships and invites, which core 1.0.0-rc.7 requires. It
 # moves with `component-core-tag` in the root Cargo.toml.
+# 29.7.4 (mero-js#338) asks confirm prompts for `userVerification: 'required'`
+# and throws `ConfirmPromptBlocked` for a prompt the browser or a password
+# manager blocked; 29.7.5 (mero-js#339) always uses the browser's own WebAuthn.
 catalogs:
   component:
-    "@calimero-network/mero-js": 29.7.0
+    "@calimero-network/mero-js": 29.7.5
 
 # esbuild's postinstall needs approving explicitly under pnpm 10+; pnpm 11
 # renamed the key to `allowBuilds`, so this may need updating with the toolchain.
