@@ -49,7 +49,8 @@ import {
   writeCurrentWorld,
   type World,
 } from "../net/worlds";
-import { toSeed } from "../net/merraria";
+import { watchUpgrades } from "@calimero-apps/passkey/upgrade";
+import { PACKAGE, toSeed } from "../net/merraria";
 import { shortAccount, type Connection } from "../net/session";
 import { deleteWorld } from "../state/persistence";
 import { WorldAnim } from "./worldAnim";
@@ -269,6 +270,8 @@ export class Landing {
   private anim: WorldAnim | null = null;
   /** A sign-up from this card carried the invite and joined its world. */
   private joinedAtSignUp = false;
+  /** Takes the "new version" prompt away (sign-out, entering a world). */
+  private stopUpgrades: (() => void) | null = null;
 
   constructor(
     parent: HTMLElement,
@@ -294,6 +297,7 @@ export class Landing {
       if (opts.chromeless) this.root.classList.add("is-chromeless");
       this.render(defaults, (choice) => {
         this.anim?.stop();
+        this.offerUpgrades(false);
         this.root.remove();
         resolve(choice);
       });
@@ -540,7 +544,24 @@ export class Landing {
   // state 2: signed in — the Minecraft world list. The world last played (if
   // any) renders first, synchronously, with one-click Enter; the rest of the
   // account's worlds load as cards below it. Creating a world lives in a popup.
+  /**
+   * "A new version is available" (@calimero-apps/passkey/upgrade) while the
+   * world list shows: once per sign-in, to someone who may upgrade a world
+   * (its owner, or MANAGE_APPLICATION in its organization) only.
+   */
+  private offerUpgrades(on: boolean): void {
+    if (!on) {
+      this.stopUpgrades?.();
+      this.stopUpgrades = null;
+      return;
+    }
+    const accountId = this.conn.accountId;
+    if (this.stopUpgrades || !accountId) return;
+    this.stopUpgrades = watchUpgrades({ client: this.conn.client, package: PACKAGE, appName: "Merraria", accountId });
+  }
+
   private renderWorldPicker(defaults: Defaults, done: (c: LaunchChoice) => void): void {
+    this.offerUpgrades(true);
     const el = this.playCardEl();
     const current = this.current();
     el.innerHTML = `
@@ -560,6 +581,7 @@ export class Landing {
     const noticeEl = el.querySelector<HTMLElement>("[data-testid=notice]")!;
 
     el.querySelector("[data-testid=disconnect-btn]")!.addEventListener("click", () => {
+      this.offerUpgrades(false);
       void this.conn.signOut().then(() => this.renderPlayCard(defaults, done));
     });
     el.querySelector("[data-testid=create-world-open-btn]")!.addEventListener("click", () =>

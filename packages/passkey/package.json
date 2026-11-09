@@ -9,6 +9,7 @@
     "./ceremony": "./src/ceremony.ts",
     "./listing": "./src/listing.ts",
     "./signUpFlow": "./src/signUpFlow.ts",
+    "./upgrade": "./src/upgrade.ts",
     "./passkey.css": "./src/passkey.css"
   },
   "types": "./src/index.ts",

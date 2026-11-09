@@ -317,3 +317,59 @@ describe("one sign-in everywhere (@calimero-apps/passkey)", () => {
     expect(localStorage.getItem(INVITATION_STORAGE_KEY)).toBeNull();
   });
 });
+
+describe("a new version of the chat (@calimero-apps/passkey/upgrade)", () => {
+  function reportingClient(role: string, upgradesHeldBy = "owner") {
+    return {
+      session: { accountId: "acct-me" },
+      signOut: vi.fn(async () => {}),
+      me: vi.fn(async () => ({ accountId: "acct-me", orgs: [{ orgId: "org-1", role }] })),
+      getOrg: vi.fn(async () => ({ members: { "acct-me": role }, defaultCapabilities: 4, capabilities: {}, teams: {} })),
+      getApp: vi.fn(async () => ({ appId: "chat-1", owner: "someone-else", org: "org-1" })),
+      appsReportAll: vi.fn(async (scope: string | null) => ({
+        scope: scope ? { kind: "org", org: scope } : { kind: "account" },
+        governance: { releases: "owner", appUpgrades: "owner", outbound: "owner" },
+        approvedReleases: null,
+        clusterReleases: [],
+        next: null,
+        apps: scope
+          ? [
+              {
+                app: "chat-1",
+                name: "Team chat",
+                scope: { kind: "org", org: "org-1" },
+                package: { package: "com.calimero.chat", version: "2.0.0" },
+                upgradesHeldBy,
+                availableVersions: ["2.1.0"],
+              },
+            ]
+          : [],
+      })),
+    };
+  }
+  const upgradePrompt = () => document.querySelector("[data-testid=upgrade-prompt]");
+
+  it("offers the organization's owner the update once signed in, and takes it away at sign-out", async () => {
+    __setForTests(reportingClient("owner") as unknown as CalimeroClient, "acct-me");
+    await waitFor(() => expect(upgradePrompt()).not.toBeNull());
+    expect(upgradePrompt()!.textContent).toContain("Version 2.1.0 of Mero Chat is available (you run 2.0.0).");
+    await act(() => signOut());
+    expect(upgradePrompt()).toBeNull();
+  });
+
+  it("shows nothing to a member who may not upgrade, nor where the publisher or the operator upgrades", async () => {
+    for (const [role, holder] of [
+      ["member", "owner"],
+      ["owner", "publisher"],
+      ["owner", "operator"],
+    ] as const) {
+      const client = reportingClient(role, holder);
+      __setForTests(client as unknown as CalimeroClient, "acct-me");
+      await waitFor(() => expect(client.appsReportAll).toHaveBeenCalledTimes(2));
+      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => setTimeout(r, 0));
+      expect(upgradePrompt()).toBeNull();
+      __setForTests(null);
+    }
+  });
+});
