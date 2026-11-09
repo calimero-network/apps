@@ -5,8 +5,7 @@ import {
   type SessionApi,
   type SessionDeps,
 } from "@calimero-apps/passkey";
-import { dropInvite, pendingInvite } from "./lib/orgs";
-import { setActive } from "./lib/workspaceStore";
+import { pendingInvite } from "./lib/orgs";
 
 export { describeTarget, type Session, type SessionApi, type SessionDeps } from "@calimero-apps/passkey";
 
@@ -35,12 +34,9 @@ export function useSession(deps: SessionDeps = defaultDeps): SessionApi {
   return usePasskeySession(APP, deps, {
     package: APP_PACKAGE,
     invite: () => pendingInvite()?.token ?? null,
-    // A sign-up from a page holding the invite joined its org in that step:
-    // nothing is left to redeem (a second redeem would spend another use).
-    onJoinedAtSignUp: ({ org }) => {
-      const invite = pendingInvite();
-      dropInvite();
-      if (invite?.workspace) setActive({ appId: invite.workspace, org: org ?? invite.org });
-    },
+    // A sign-up from a page holding the invite joins its org in that step;
+    // `InvitationHost` then sees `api.joinedInvite` and opens the workspace
+    // without redeeming it again (that would spend another use).
+    onJoinedAtSignUp: () => {},
   });
 }

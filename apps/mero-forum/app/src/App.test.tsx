@@ -170,7 +170,7 @@ describe("App", () => {
     localStorage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: "tok-1", forum: null }));
     render(<App deps={deps(fakeClient())} />);
     expect(await screen.findByTestId("invitation-page")).toBeTruthy();
-    expect(screen.getByText(/You've been invited to join a space in Mero Forum/)).toBeTruthy();
+    expect(screen.getByText(/You've been invited to join the space in Mero Forum/)).toBeTruthy();
     expect(screen.getByTestId("signin-passkey")).toBeTruthy();
     // A page, not a dialog over the landing page.
     expect(screen.queryByText("Connect")).toBeNull();

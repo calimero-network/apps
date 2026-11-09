@@ -14,6 +14,7 @@ import { InvitationHost } from "./SignIn";
 import { APP, type SessionDeps } from "./session";
 import { SessionProvider } from "./sessionContext";
 import { captureInvite, inviteLink, pendingInvite } from "./lib/orgs";
+import { getActive } from "./lib/workspaceStore";
 
 const SESSION: CalimeroSession = { accountId: "acct-me", sessionToken: "s", refreshToken: "r", expiresAt: 9e12 };
 const DEV_ENV = { DEV: true, VITE_CALIMERO_BUNDLE: "bundle-hash" };
@@ -90,7 +91,7 @@ describe("an invite link", () => {
     renderHost(fakeClient());
 
     expect(await screen.findByTestId("invitation-page")).toBeTruthy();
-    expect(screen.getByText(/You've been invited to join a workspace in Mero Forms/)).toBeTruthy();
+    expect(screen.getByText(/You've been invited to join the workspace in Mero Forms/)).toBeTruthy();
     expect(screen.getByTestId("signin-passkey")).toBeTruthy();
     expect(screen.queryByText("the landing page")).toBeNull();
   });
@@ -106,6 +107,23 @@ describe("an invite link", () => {
     expect(screen.queryByTestId("signup-unavailable")).toBeNull();
     fireEvent.click(signUp);
     await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-1" }));
+  });
+
+  it("an invited newcomer creates the account and joins in one click, and lands in the workspace", async () => {
+    const client = fakeClient();
+    localStorage.setItem(PENDING, pending("tok-1", "org-2"));
+    const onJoined = renderHost(client);
+
+    const create = await screen.findByTestId("signup-passkey");
+    expect(create.textContent).toBe("Create your account and join the workspace");
+    fireEvent.click(create);
+    await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-1" }));
+    expect(await screen.findByText("the landing page")).toBeTruthy();
+    expect(client.signIn).not.toHaveBeenCalled();
+    expect(client.redeemInvite).not.toHaveBeenCalled();
+    expect(onJoined).toHaveBeenCalled();
+    expect(localStorage.getItem(PENDING)).toBeNull();
+    expect(getActive()).toEqual({ appId: "app-1", org: "org-2" });
   });
 
   it('"Not now" shows the landing page and keeps the invitation', async () => {

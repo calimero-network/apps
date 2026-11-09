@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { describeError } from "@calimero-apps/connect";
-import { AppListing, PasskeySignIn } from "@calimero-apps/passkey";
+import { SignInPanel as SharedSignInPanel } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
 import {
@@ -13,7 +13,7 @@ import {
   type PendingInvite,
 } from "./lib/orgs";
 import { setActive } from "./lib/workspaceStore";
-import { LISTING, describeTarget } from "./session";
+import { LISTING } from "./session";
 import { useMaybeSignedIn, useSessionApi } from "./sessionContext";
 
 /** Opens and closes a `<dialog>` as `open` says. */
@@ -33,34 +33,23 @@ function useDialog(ref: React.RefObject<HTMLDialogElement | null>, open: boolean
 }
 
 /**
- * Sign in with a passkey, or create an account with a new one: the body both
- * the sign-in popup and the invitation page render, so the copy and the
- * passkey flow are the same wherever a visitor starts.
+ * The shared sign-in body (`@calimero-apps/passkey`): the sign-in popup and
+ * the invitation page both render it, so the copy and the passkey flow
+ * (create your account and join, join with a passkey, the two-prompt
+ * sign-up) are the same wherever a visitor starts.
  */
 function SignInPanel({ titleId }: { titleId: string }) {
   const { api } = useSessionApi();
-  const invited = pendingInvite() !== null;
-  const where =
-    api.session.status === "signed-out" || api.session.status === "signed-in"
-      ? describeTarget(api.session.target)
-      : null;
   return (
-    <>
-      <h2 id={titleId}>{invited ? "You're invited" : "Sign in or create an account"}</h2>
-      <p className="empty">
-        {invited ? "You've been invited to join a workspace in Mero Forms. Sign in or create an account to accept. " : ""}
-        Accounts are passkeys: nothing to remember, nothing to leak.
-        {where ? ` Connected to ${where}.` : ""}
-      </p>
-      {api.session.status === "connecting" && <p className="empty">Connecting…</p>}
-      {api.session.status === "listing" && <AppListing {...LISTING} />}
-      {api.session.status === "unconfigured" && (
-        <p className="err" role="alert">
-          {api.session.message}
-        </p>
-      )}
-      {api.session.status === "signed-out" && <PasskeySignIn api={api} />}
-    </>
+    <SharedSignInPanel
+      api={api}
+      appName="Mero Forms"
+      joining="the workspace"
+      invited={pendingInvite() !== null}
+      listing={LISTING}
+      titleId={titleId}
+      classNames={{ text: "empty", error: "err" }}
+    />
   );
 }
 
@@ -126,6 +115,14 @@ export function InvitationHost({ onJoined, children }: { onJoined: () => void; c
   useEffect(() => {
     if (!client) return;
     const current = pendingInvite();
+    if (current && api.joinedInvite === current.token) {
+      // Signed up from the invitation page with this invite: already joined.
+      dropInvite();
+      setInvite(null);
+      if (current.workspace) setActive({ appId: current.workspace, org: current.org });
+      onJoined();
+      return;
+    }
     setInvite(current);
     const org = current?.org;
     if (!current || !org) return;
@@ -146,6 +143,8 @@ export function InvitationHost({ onJoined, children }: { onJoined: () => void; c
     return () => {
       live = false;
     };
+    // `api.joinedInvite` is set before the session signs in, so it is current here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client]);
 
   if (outcome) {
