@@ -36,7 +36,7 @@ mero-js's `CalimeroClient` (`@calimero-apps/connect`). See
 | an agreement | an instance of this app in the workspace's org, set up shared (`setup(false, name)`) | a shared context in the namespace |
 | your signature library | your own instance of this app, no org, set up private (`setup(true, "default")`) | your private "default" context |
 | a PDF or a signature image | a blob of the instance (`POST /apps/{app}/blobs`), its id in the contract | a blob announced to the context |
-| joining | an org invite link, redeemed after a passkey sign-in, then `registerSelfAsParticipant` | a namespace invitation, joining the context, waiting for it to sync |
+| joining | an org invite link, joined by the sign-up that carries it or redeemed after a passkey sign-in, then `registerSelfAsParticipant` | a namespace invitation, joining the context, waiting for it to sync |
 | who you are | an account, signed in with a passkey | a node identity (an account and a device key), signed in through the node |
 
 Every member of a workspace (owner, admins, members, guests) reaches every

@@ -113,7 +113,7 @@ and tested. **→** means designed but not built yet (see [Roadmap](#roadmap)).
 |---|---|
 | **company** | an organization (`createOrg`); its members are the people who can read its audiences |
 | **audience** | an instance of this app in the organization (`createApp(name, source, { org })`), such as "All investors", holding its updates, questions, asks, replies, reactions and reads |
-| **invitation** | an org invite (`invite(org, 'member', passkey)`, a passkey step-up), shared as a link to this frontend (`/?invite=<token>`, plus `&audience=<id>` to land in one audience); the invitee signs in and confirms |
+| **invitation** | an org invite (`invite(org, 'member', passkey)`, a passkey step-up), shared as a link to this frontend (`/?invite=<token>`, plus `&audience=<id>` to land in one audience); a newcomer's sign-up joins with it in one step; an existing account signs in and confirms |
 | **admins** | the audience's creator (the instance's owner) and the organization's owner and admins |
 | **team** | admins, plus the members an admin adds with `addTeammate` |
 | **readers** | everyone else the organization lets in: members and guests |

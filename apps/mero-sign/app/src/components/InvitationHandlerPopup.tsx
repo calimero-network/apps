@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { useMaybeSignedIn } from '../sessionContext';
+import { useMaybeSignedIn, useSessionApi } from '../sessionContext';
 import { setActiveWorkspace } from '../lib/activeWorkspace';
 import { enterAgreement } from '../lib/agreements';
 import {
@@ -24,8 +24,10 @@ import styles from '../pages/app/AgreementsPage.module.css';
  * Mounted at the APP level because a link can land on any route. It asks
  * rather than joins: joining puts you in someone's workspace, and a forwarded
  * link should not do that silently. Signed out, `InvitationPage` stands in for
- * the app and offers the passkey sign-in; the token survives the sign-up, and
- * this asks the moment a session exists. Someone already in the workspace (the
+ * the app and offers the passkey sign-in; the token survives a sign-in, and
+ * this asks the moment a session exists. A sign-up from that page already
+ * joined with it (`api.joinedInvite`): this goes straight on to what the link
+ * names, with nothing redeemed again. Someone already in the workspace (the
  * inviter opening their own link) is told so and the token dropped: redeeming
  * it would spend its single use, and the person it was meant for could no
  * longer join. A refused invite (unknown, used, expired, revoked) is said
@@ -39,6 +41,8 @@ import styles from '../pages/app/AgreementsPage.module.css';
  */
 export default function InvitationHandlerPopup() {
   const signedIn = useMaybeSignedIn();
+  const { api } = useSessionApi();
+  const joinedInvite = api.joinedInvite ?? null;
   const navigate = useNavigate();
   const [invite, setInvite] = useState<PendingInvite | null>(() =>
     pendingInvite(),
@@ -49,10 +53,14 @@ export default function InvitationHandlerPopup() {
   const [refused, setRefused] = useState(false);
   // `null` until the membership check answers; `false` too when it cannot.
   const [member, setMember] = useState<boolean | null>(null);
+  // Joined (by the sign-up, or a redeem whose next step failed), and into
+  // which org: only what the link names is left, never a second redeem.
+  const [joined, setJoined] = useState<{ org: string | null } | null>(null);
   const client = signedIn?.client ?? null;
+  const joinedHere = invite !== null && invite.token === joinedInvite;
 
   useEffect(() => {
-    if (!client || !invite) return undefined;
+    if (!client || !invite || joinedHere) return undefined;
     let live = true;
     setMember(null);
     void alreadyMember(client, invite).then((known) => {
@@ -88,14 +96,25 @@ export default function InvitationHandlerPopup() {
     setError(null);
   }, []);
 
+  /**
+   * Redeems the invite (unless the sign-up already joined with it), then
+   * opens what the link names.
+   */
   const join = useCallback(async () => {
     if (!signedIn || !invite) return;
     setBusy(true);
     setError(null);
     try {
-      setStatus('Joining the workspace…');
-      const org = joinedOrg(await signedIn.client.redeemInvite(invite.token));
-      dropInvite();
+      let org: string | null;
+      if (joined) {
+        org = joined.org;
+      } else {
+        setStatus('Joining the workspace…');
+        org = joinedOrg(await signedIn.client.redeemInvite(invite.token));
+        dropInvite();
+        // Joined: a failure from here on is retried without redeeming again.
+        setJoined({ org });
+      }
       if (org) setActiveWorkspace(org);
       if (invite.agreement) {
         setStatus('Recording you as a participant so you can sign.');
@@ -122,7 +141,8 @@ export default function InvitationHandlerPopup() {
     } catch (e) {
       // A refusal (unknown, used, expired, revoked) can never succeed: drop
       // it. Anything else (the cluster unreachable) is kept for another try.
-      if (inviteRefused(e)) {
+      // Once joined, there is no invite left to refuse.
+      if (!joined && inviteRefused(e)) {
         dropInvite();
         setRefused(true);
         setError(INVITE_REFUSED);
@@ -134,9 +154,26 @@ export default function InvitationHandlerPopup() {
       setStatus(null);
       signedIn.after();
     }
-  }, [signedIn, invite, navigate]);
+  }, [signedIn, invite, navigate, joined]);
+
+  // Signed up on the invitation page with this invite: joined already, so go
+  // on to what it names. Only a failure there shows the dialog.
+  useEffect(() => {
+    if (!client || !joinedHere || joined) return;
+    dropInvite();
+    setMember(false);
+    setJoined({ org: invite?.org ?? null });
+  }, [client, joinedHere, joined, invite?.org]);
+  const started = useRef(false);
+  useEffect(() => {
+    if (!joined || !joinedHere || started.current) return;
+    started.current = true;
+    void join();
+  }, [joined, joinedHere, join]);
 
   if (!signedIn || !invite || member === null) return null;
+  // Opening what a sign-up joined: nothing to ask unless it failed.
+  if (joinedHere && !error) return null;
 
   if (member) {
     return (
@@ -181,7 +218,7 @@ export default function InvitationHandlerPopup() {
         data-testid="invitation-dialog"
       >
         <h2 className={styles.modalTitle} id="invitation-title">
-          Join the workspace?
+          {joined ? 'You joined the workspace' : 'Join the workspace?'}
         </h2>
         <p className={styles.modalDesc}>
           {invite.agreement
@@ -213,7 +250,7 @@ export default function InvitationHandlerPopup() {
               data-testid="invitation-join"
             >
               {busy ? <span className={styles.spinner} /> : null}
-              {busy ? 'Joining…' : 'Join'}
+              {busy ? (joined ? 'Opening…' : 'Joining…') : joined ? 'Try again' : 'Join'}
             </button>
           )}
         </div>
