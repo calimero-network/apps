@@ -103,7 +103,7 @@ export default function SignInPanel({
       <Title>{invited ? "You're invited" : "Sign in to Mero Chat"}</Title>
       <Hint data-testid="signin-desc">
         {invited
-          ? "You've been invited to join a workspace in Mero Chat. Sign in or create an account to accept. "
+          ? "You've been invited to join the workspace in Mero Chat. "
           : ""}
         Your account is a passkey: nothing to remember, nothing to leak.
       </Hint>
@@ -114,7 +114,7 @@ export default function SignInPanel({
         <ErrorText role="alert">{message}</ErrorText>
       )}
 
-      {status === "signed-out" && <PasskeySignIn api={api} askName />}
+      {status === "signed-out" && <PasskeySignIn api={api} askName invited={invited} joining="the workspace" />}
     </Container>
   );
 }

@@ -128,7 +128,7 @@ describe("an invite link, no account here", () => {
     expect(document.querySelectorAll(".cp-passkey__primary")).toHaveLength(1);
     expect(screen.getByTestId("signin-passkey").className).toContain("cp-passkey__link");
     expect(screen.getByText("You're invited")).toBeTruthy();
-    expect(screen.getByTestId("signin-copy").textContent).toContain("You've been invited to join the team in Test App.");
+    expect(screen.getByTestId("signin-desc").textContent).toContain("You've been invited to join the team in Test App.");
     expect(screen.getByText(SIGN_UP_TWO_PROMPTS)).toBeTruthy();
   });
 

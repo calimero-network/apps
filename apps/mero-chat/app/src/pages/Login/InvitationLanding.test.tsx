@@ -100,7 +100,7 @@ describe("an invitation link opened while signed out", () => {
     expect(screen.getByTestId("invitation-page")).toBeInTheDocument();
     expect(screen.getByText("You're invited")).toBeInTheDocument();
     expect(screen.getByTestId("signin-desc")).toHaveTextContent(
-      "You've been invited to join a workspace in Mero Chat. Sign in or create an account to accept.",
+      "You've been invited to join the workspace in Mero Chat.",
     );
     expect(screen.getByTestId("signin-passkey")).toBeInTheDocument();
     expect(screen.getByTestId("signup-passkey")).toBeInTheDocument();

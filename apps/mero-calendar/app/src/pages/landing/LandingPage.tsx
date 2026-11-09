@@ -452,8 +452,8 @@ export default function LandingPage({
       );
     }
     return (
-      // "Sign in" alone: the passkey popup it opens offers both "Continue with
-      // passkey" and "Create a passkey", so a first-time visitor starts here too.
+      // "Sign in" alone: the passkey popup it opens offers both "Sign in with
+      // passkey" and "Create an account", so a first-time visitor starts here too.
       <button type="button" className={cls} onClick={connect} disabled={!connect}>
         Sign in
       </button>

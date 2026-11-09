@@ -199,6 +199,13 @@ async function run(
       throw new Error(`the app could not connect: ${await page.locator("pre.err").innerText()}\n${describe(seen)}`);
     }
     await signUp.click();
+    // Since core rc.10 a sign-up is two prompts: the new passkey, then one
+    // approval with it, which the page starts on its own click.
+    const approve = page.getByTestId("signup-approve");
+    const signedIn = page.getByRole("button", { name: "Sign out" });
+    const failed = page.getByTestId("signin-error");
+    await expect(approve.or(signedIn).or(failed).first()).toBeVisible({ timeout: 120_000 });
+    if (await approve.isVisible()) await approve.click();
     await ceremonyOutcome(page, "sign up", seen);
     const { credentials } = await cdp.send("WebAuthn.getCredentials", { authenticatorId });
     expect(credentials.filter((c) => c.isResidentCredential).length, "no discoverable passkey was made").toBe(1);

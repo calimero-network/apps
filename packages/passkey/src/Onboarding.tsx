@@ -18,6 +18,8 @@ import { describeTarget, type SessionApi } from "./session";
 export interface OnboardingClassNames {
   /** The screen's outer element (a card, a dialog body). */
   root?: string;
+  /** Around the title and `aside` (a dialog's header row). Without it, no wrapper. */
+  header?: string;
   /** An element inside the root that holds everything, for a card in a section. */
   inner?: string;
   title?: string;
@@ -81,6 +83,10 @@ export interface SignInPanelProps {
   titleAs?: Heading;
   /** Rendered before the title (a dialog's close button). */
   before?: ReactNode;
+  /** Rendered after the title, inside `classNames.header` (a dialog's close button). */
+  aside?: ReactNode;
+  /** The title when there is no invite. Default "Sign in or create an account". */
+  title?: string;
   classNames?: OnboardingClassNames;
   askName?: boolean;
   /** Shown under the control while signed out (an invitation's "Not now"). */
@@ -102,6 +108,8 @@ export function SignInPanel({
   titleId,
   titleAs = "h2",
   before,
+  aside,
+  title: signInTitle = "Sign in or create an account",
   classNames = {},
   askName,
   children,
@@ -109,14 +117,26 @@ export function SignInPanel({
   const isInvited = invited ?? api.hasInvite ?? false;
   const { session } = api;
   const where = session.status === "signed-out" || session.status === "signed-in" ? describeTarget(session.target) : null;
-  const title = isInvited ? "You're invited" : "Sign in or create an account";
+  const heading = (
+    <Title as={titleAs} id={titleId} className={classNames.title}>
+      {isInvited ? "You're invited" : signInTitle}
+    </Title>
+  );
   return (
     <>
       {before}
-      <Title as={titleAs} id={titleId} className={classNames.title}>
-        {title}
-      </Title>
-      <p className={classNames.text} data-testid="signin-copy">
+      {classNames.header ? (
+        <div className={classNames.header}>
+          {heading}
+          {aside}
+        </div>
+      ) : (
+        <>
+          {heading}
+          {aside}
+        </>
+      )}
+      <p className={classNames.text} data-testid="signin-desc">
         {isInvited ? `You've been invited to join ${joining} in ${appName}. ` : ""}
         {ACCOUNTS_ARE_PASSKEYS}
         {where ? ` Connected to ${where}.` : ""}

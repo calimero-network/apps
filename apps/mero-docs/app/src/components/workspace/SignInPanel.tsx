@@ -29,7 +29,7 @@ export function SignInPanel({
   const body = (
     <>
       {invite
-        ? `You've been invited to join a ${inviteScope(invite)}${named} in Mero Docs. Sign in or create an account to accept. `
+        ? `You've been invited to join a ${inviteScope(invite)}${named} in Mero Docs. `
         : ''}
       Accounts are passkeys: nothing to remember, nothing to leak.
       {where ? ` Connected to ${where}.` : ''}
@@ -61,7 +61,13 @@ export function SignInPanel({
           {api.session.message}
         </p>
       )}
-      {api.session.status === 'signed-out' && <PasskeySignIn api={api} />}
+      {api.session.status === 'signed-out' && (
+        <PasskeySignIn
+          api={api}
+          invited={invite !== null}
+          joining={invite ? `the ${inviteScope(invite)}` : undefined}
+        />
+      )}
     </>
   );
 }
