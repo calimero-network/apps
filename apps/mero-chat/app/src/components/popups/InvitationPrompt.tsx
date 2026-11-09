@@ -13,6 +13,7 @@ import {
   inviteRefused,
   pendingInvite,
   pendingInviteOrg,
+  setInvitePromptOpen,
 } from "../../utils/invitation";
 import { enterJoinedWorkspaceForName, enterWorkspace } from "../../utils/enterWorkspace";
 import { log } from "../../utils/logger";
@@ -98,6 +99,12 @@ export default function InvitationPrompt({ enabled }: Props) {
   useEffect(() => {
     setToken(enabled ? pendingInvite() : null);
   }, [enabled]);
+
+  // The workspace picker waits while this is on screen (`invitationInFlight`).
+  useEffect(() => {
+    setInvitePromptOpen(token !== null);
+    return () => setInvitePromptOpen(false);
+  }, [token]);
 
   useEffect(() => {
     if (!token) return;
