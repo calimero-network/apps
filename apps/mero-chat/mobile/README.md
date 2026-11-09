@@ -5,7 +5,7 @@ contract (`../logic`, package `com.calimero.chat`).
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | [`ios/`](ios/README.md) | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `v0.5.0`, by SPM version in `ios/project.yml` |
+| iOS | [`ios/`](ios/README.md) | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `v0.6.0`, by SPM version in `ios/project.yml` |
 | Android | [`android/`](android/README.md) | Jetpack Compose + Material3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `v0.2.0` (not on Maven Central), composite build at the SHA in `android/kotlin-sdk.ref` |
 
 Both pins are SDK releases (kotlin-sdk is not on Maven Central, so Android builds it from source).
@@ -50,9 +50,15 @@ README lists them with the reason.
 
 ## Open points
 
-- **Passkeys on a real cluster** need the cluster's relying party as an associated domain (iOS
-  `webcredentials:`) and Digital Asset Links (Android). Neither is set up yet; development nodes
-  use software passkeys and need neither.
+- **Passkeys on Calimero Cloud** (relying party `calimero.network`):
+  - **iOS** names `webcredentials:calimero.network` (`ios/Sources/MeroChat.entitlements`). Still
+    needed: the Apple Team ID in `DEVELOPMENT_TEAM` (`ios/Config/Signing.xcconfig`), the AASA file
+    on calimero.network listing `<TeamID>.network.calimero.chat`
+    ([landing#215](https://github.com/calimero-network/landing/pull/215)), and clusters accepting
+    the origin `https://calimero.network` (mdma).
+  - **Android** is not set up: the node must accept `android:apk-key-hash:` origins (a core
+    change), and calimero.network must serve Digital Asset Links for the app.
+  - Development nodes use software passkeys and need none of this.
 - **Blobs** (attachments, avatars) need a node past core `1.0.0-rc.7` (#730).
 - **Links across clients:** the web app shares `?invite=` links to its own origin and does not
   read the `links.calimero.network` form the phones share.

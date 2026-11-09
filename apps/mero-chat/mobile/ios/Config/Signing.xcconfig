@@ -1,0 +1,13 @@
+// Signing for the MeroChat app target. A device build needs an Apple Team ID
+// (the 10 characters before `.network.calimero.chat` in the AASA file at
+// https://calimero.network/.well-known/apple-app-site-association).
+//
+// Fill it in here, or keep it out of git: put it in Config/Signing.local.xcconfig
+// (gitignored), or pass it on the command line:
+//   xcodebuild ... DEVELOPMENT_TEAM=ABCDE12345
+// or export MEROCHAT_DEVELOPMENT_TEAM=ABCDE12345 before building (Xcode reads
+// environment variables as build settings; unset, it is empty).
+// Empty: simulator builds work; a device build asks for a team.
+DEVELOPMENT_TEAM = $(MEROCHAT_DEVELOPMENT_TEAM)
+
+#include? "Signing.local.xcconfig"
