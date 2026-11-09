@@ -6,6 +6,7 @@ import {
   type SessionDeps,
 } from "@calimero-apps/passkey";
 import { PACKAGE_NAME } from "./constants/config";
+import { pendingInvite } from "./lib/invites";
 
 export { describeTarget, type Session, type SessionApi, type SessionDeps } from "@calimero-apps/passkey";
 
@@ -23,7 +24,10 @@ export const LISTING: ListingProps = {
   dev: import.meta.env.DEV,
 };
 
-/** The shared passkey session (`@calimero-apps/passkey`) for this app. */
+/**
+ * The shared passkey session (`@calimero-apps/passkey`) for this app, with the
+ * pending invite token: on an invite-only cluster it lets a new person sign up.
+ */
 export function useSession(deps: SessionDeps = defaultDeps): SessionApi {
-  return usePasskeySession(APP, deps, { package: PACKAGE_NAME });
+  return usePasskeySession(APP, deps, { package: PACKAGE_NAME, invite: () => pendingInvite()?.token ?? null });
 }

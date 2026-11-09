@@ -71,7 +71,7 @@ export function App({
     () => (storage === deps.storage || !storage ? deps : { ...deps, storage }),
     [deps, storage],
   );
-  const api = useSession(sessionDeps);
+  const api = useSession(sessionDeps, () => pendingInvite(storage));
   const { session, store } = api;
   const source = useMemo(() => appSource(deps.env, PACKAGE), [deps.env]);
   const [opened, setOpened] = useState<OpenedGroup | null>(null);

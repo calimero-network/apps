@@ -7,6 +7,7 @@ import {
   type SessionDeps,
 } from "@calimero-apps/passkey";
 import { PACKAGE } from "./lib/meroStream";
+import { pendingInvite } from "./lib/streams";
 
 export { describeTarget, type Session, type SessionApi, type SessionDeps } from "@calimero-apps/passkey";
 
@@ -24,9 +25,12 @@ export const LISTING: ListingProps = {
   dev: import.meta.env.DEV,
 };
 
-/** The shared passkey session (`@calimero-apps/passkey`) for this app. */
+/**
+ * The shared passkey session (`@calimero-apps/passkey`) for this app, with the
+ * pending invite token: on an invite-only cluster it lets a new person sign up.
+ */
 export function useSession(deps: SessionDeps = defaultDeps): SessionApi {
-  return usePasskeySession(APP, deps, { package: PACKAGE });
+  return usePasskeySession(APP, deps, { package: PACKAGE, invite: () => pendingInvite()?.token ?? null });
 }
 
 /** The session `SessionProvider` (SessionProvider.tsx) holds, for every screen. */

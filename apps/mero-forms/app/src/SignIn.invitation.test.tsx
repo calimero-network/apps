@@ -20,7 +20,7 @@ const DEV_ENV = { DEV: true, VITE_CALIMERO_BUNDLE: "bundle-hash" };
 const PENDING = "mero-forms:pending-invite";
 const pending = (token: string, org: string | null = null) => JSON.stringify({ token, workspace: "app-1", org });
 
-function fakeClient(opts: { signedIn?: boolean } = {}) {
+function fakeClient(opts: { signedIn?: boolean; inviteOnly?: boolean } = {}) {
   let session: CalimeroSession | undefined = opts.signedIn ? SESSION : undefined;
   return {
     get session() {
@@ -36,6 +36,17 @@ function fakeClient(opts: { signedIn?: boolean } = {}) {
     }),
     me: vi.fn(async () => ({ accountId: "acct-me", orgs: [{ orgId: "org-1", name: "Acme", role: "owner" }] })),
     redeemInvite: vi.fn(async () => ({ org: "org-2" })),
+    // What core's `GET /sign-up` answers on an invite-only cluster.
+    ...(opts.inviteOnly
+      ? {
+          signUpPolicy: vi.fn(async () => ({
+            policy: "invite",
+            orgInvites: true,
+            signUpInvites: true,
+            inviteRequired: true,
+          })),
+        }
+      : {}),
   };
 }
 
@@ -82,6 +93,19 @@ describe("an invite link", () => {
     expect(screen.getByText(/You've been invited to join a workspace in Mero Forms/)).toBeTruthy();
     expect(screen.getByTestId("signin-passkey")).toBeTruthy();
     expect(screen.queryByText("the landing page")).toBeNull();
+  });
+
+  it("lets an invited visitor create an account on an invite-only cluster, with the link's token", async () => {
+    const client = fakeClient({ inviteOnly: true });
+    localStorage.setItem(PENDING, pending("tok-1"));
+    renderHost(client);
+
+    await waitFor(() => expect(client.signUpPolicy).toHaveBeenCalled());
+    const signUp = (await screen.findByTestId("signup-passkey")) as HTMLButtonElement;
+    expect(signUp.disabled).toBe(false);
+    expect(screen.queryByTestId("signup-unavailable")).toBeNull();
+    fireEvent.click(signUp);
+    await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-1" }));
   });
 
   it('"Not now" shows the landing page and keeps the invitation', async () => {
