@@ -8,6 +8,13 @@ import App from "./App";
 import { APP_NAME } from "./lib/config";
 import { SessionProvider } from "./lib/sessionContext";
 import type { SessionDeps } from "./lib/session";
+import { dropInvite, migrateLegacyInvite, pendingInvite } from "./lib/companies";
+
+/** Hold an invite stored the way an earlier build stored it: it moves into the shared store. */
+function hold(legacy: string) {
+  localStorage.setItem("mero-updates:pending-invite", legacy);
+  migrateLegacyInvite();
+}
 
 // An invitation link, end to end on the real passkey session over a fake
 // client: the page a signed-out visitor sees, the join prompt the sign-in
@@ -18,7 +25,6 @@ vi.mock("./pages/CompaniesPage", () => ({ default: () => <p>companies</p> }));
 vi.mock("./pages/AudiencesPage", () => ({ default: () => <p>audiences</p> }));
 vi.mock("./components/AudienceShell", () => ({ default: () => <p>updates</p> }));
 
-const PENDING = `${APP_NAME}:pending-invite`;
 const ME = "ana";
 const SESSION: CalimeroSession = { accountId: ME, sessionToken: "s", refreshToken: "r", expiresAt: 9e12 };
 const DEV_ENV = { DEV: true, VITE_CALIMERO_BUNDLE: "bundle-1" };
@@ -85,12 +91,15 @@ beforeAll(() => {
   });
 });
 
-beforeEach(() => localStorage.clear());
+beforeEach(() => {
+  localStorage.clear();
+  dropInvite();
+});
 afterEach(cleanup);
 
 describe("an invitation link", () => {
   it("signed out, shows the invitation page in place of the landing page", async () => {
-    localStorage.setItem(PENDING, JSON.stringify({ token: "tok-1", audience: null }));
+    hold(JSON.stringify({ token: "tok-1", audience: null }));
     boot(fakeClient());
     const page = await screen.findByTestId("invitation-page");
     expect(page).toHaveTextContent("You've been invited to join the company in Mero Updates");
@@ -99,18 +108,18 @@ describe("an invitation link", () => {
   });
 
   it("signing in on the invitation page goes straight to the join prompt, then into the company", async () => {
-    localStorage.setItem(PENDING, JSON.stringify({ token: "tok-1", audience: null }));
+    hold(JSON.stringify({ token: "tok-1", audience: null }));
     const client = fakeClient();
     boot(client);
     fireEvent.click(await screen.findByTestId("signin-passkey"));
     fireEvent.click(await screen.findByTestId("invitation-join"));
     await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith("tok-1"));
     expect(await screen.findByText("audiences")).toBeInTheDocument();
-    expect(localStorage.getItem(PENDING)).toBeNull();
+    expect(pendingInvite()).toBeNull();
   });
 
   it("an invited newcomer creates the account and joins in one click, and lands in the company", async () => {
-    localStorage.setItem(PENDING, JSON.stringify({ token: "tok-1", audience: null, org: "org-2" }));
+    hold(JSON.stringify({ token: "tok-1", audience: null, org: "org-2" }));
     const client = fakeClient();
     boot(client);
     const create = await screen.findByTestId("signup-passkey");
@@ -121,23 +130,23 @@ describe("an invitation link", () => {
     expect(client.signIn).not.toHaveBeenCalled();
     expect(client.redeemInvite).not.toHaveBeenCalled();
     expect(screen.queryByTestId("invitation-dialog")).toBeNull();
-    expect(localStorage.getItem(PENDING)).toBeNull();
+    expect(pendingInvite()).toBeNull();
   });
 
   it("does not redeem an invite into a company the account is already in", async () => {
     remember();
-    localStorage.setItem(PENDING, JSON.stringify({ token: "tok-1", audience: null, org: "org-1" }));
+    hold(JSON.stringify({ token: "tok-1", audience: null, org: "org-1" }));
     const client = fakeClient();
     boot(client);
     expect(await screen.findByTestId("invitation-member")).toBeInTheDocument();
     expect(screen.getByText("You're already in this company")).toBeInTheDocument();
     expect(client.redeemInvite).not.toHaveBeenCalled();
-    expect(localStorage.getItem(PENDING)).toBeNull();
+    expect(pendingInvite()).toBeNull();
   });
 
   it("says plainly when the invite was already used or has expired", async () => {
     remember();
-    localStorage.setItem(PENDING, JSON.stringify({ token: "tok-1", audience: null }));
+    hold(JSON.stringify({ token: "tok-1", audience: null }));
     const client = fakeClient();
     client.redeemInvite.mockRejectedValueOnce(new CalimeroError(404, "NOT_FOUND", "unknown invite"));
     boot(client);
@@ -145,6 +154,20 @@ describe("an invitation link", () => {
     expect(await screen.findByTestId("invitation-error")).toHaveTextContent(
       "This invite was already used or has expired. Ask the person who invited you for a new link.",
     );
-    expect(localStorage.getItem(PENDING)).toBeNull();
+    expect(pendingInvite()).toBeNull();
+  });
+
+  it.each([
+    [429, "RATE_LIMITED", /Too many tries/],
+    [401, "UNAUTHENTICATED", /sign in again/],
+  ])("keeps the invite when redeeming answers %i, and says to try again (B6)", async (status, code, says) => {
+    remember();
+    hold(JSON.stringify({ token: "tok-1", audience: null }));
+    const client = fakeClient();
+    client.redeemInvite.mockRejectedValueOnce(new CalimeroError(status, code, "not now"));
+    boot(client);
+    fireEvent.click(await screen.findByTestId("invitation-join"));
+    expect((await screen.findByTestId("invitation-error")).textContent).toMatch(says);
+    expect(pendingInvite()?.token).toBe("tok-1");
   });
 });
