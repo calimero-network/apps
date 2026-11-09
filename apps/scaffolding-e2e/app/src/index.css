@@ -513,3 +513,7 @@ body > .mero-invite-overlay {
   --mero-error: var(--color-error);
   font-family: inherit;
 }
+
+/* The shared passkey control inside a card (@calimero-apps/passkey). */
+.signin-control { max-width: 360px; margin: 14px 0; }
+.invitation-actions { display: flex; gap: 8px; flex-wrap: wrap; }

@@ -106,7 +106,7 @@ describe("App", () => {
     render(<App deps={deps(client)} storage={storage} />);
 
     await screen.findByText(/Connected to merod local \(3 nodes\)/);
-    fireEvent.click(screen.getByText("Create a passkey"));
+    fireEvent.click(screen.getByTestId("signup-passkey"));
     await screen.findByText("Choose a voting group");
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "");
     expect(new SessionStore(APP, LOCAL, storage).load()).toEqual(SESSION);
@@ -168,7 +168,7 @@ describe("App", () => {
     render(<App deps={deps(client)} storage={storage} />);
     const page = await screen.findByTestId("invitation-page");
     expect(page.textContent).toContain(
-      "You've been invited to join a voting group in Mero Vote. Sign in or create an account to accept.",
+      "You've been invited to join the voting group in Mero Vote.",
     );
     expect(screen.queryByText(/verifiable tallies/)).toBeNull();
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -184,7 +184,7 @@ describe("App", () => {
     storage.setItem(`${APP}:pending-invite`, "tok-9");
     render(<App deps={deps(client)} storage={storage} />);
     await screen.findByText("You're invited");
-    fireEvent.click(screen.getByText("Continue with passkey"));
+    fireEvent.click(screen.getByTestId("signin-passkey"));
     fireEvent.click(await screen.findByTestId("invitation-join"));
     await screen.findByText(/Invitation accepted/);
     expect(client.redeemInvite).toHaveBeenCalledTimes(1);
@@ -201,7 +201,7 @@ describe("App", () => {
     new SessionStore(APP, LOCAL, storage).save(SESSION);
     render(<App deps={deps(client)} storage={storage} />);
     expect((await screen.findByTestId("invitation-outcome")).textContent).toContain(
-      "You're already in this voting group",
+      "You're already in the voting group",
     );
     expect(client.redeemInvite).not.toHaveBeenCalled();
     expect(storage.getItem(`${APP}:pending-invite`)).toBeNull();
@@ -229,7 +229,7 @@ describe("App", () => {
     render(<App deps={deps(client)} storage={storage} />);
     await screen.findByText("Where is the offsite?");
     fireEvent.click(screen.getByTestId("logout-btn"));
-    await screen.findByText("Continue with passkey");
+    await screen.findByTestId("signin-passkey");
     expect(client.signOut).toHaveBeenCalled();
     expect(new SessionStore(APP, LOCAL, storage).load()).toBeNull();
     expect(storage.getItem(selectionKey(LOCAL, ME))).toBeNull();

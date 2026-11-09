@@ -1,17 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AppInfo } from "@calimero-network/mero-js";
 import { appSource, describeError, type KeyValueStorage } from "@calimero-apps/connect";
-import { AppListing, PasskeySignIn } from "@calimero-apps/passkey";
+import { AppListing, PasskeySignIn, InvitationSignIn, JoinInvitation } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 import { DecisionLog, type DecisionDraft } from "./DecisionLog";
-import { InvitationSignIn, JoinInvitation } from "./Invitation";
 import { InviteCard } from "./InviteCard";
 import { PersonName } from "./names";
-import { LISTING, defaultDeps, describeTarget, useSession, type SessionApi, type SessionDeps } from "./session";
+import { ONBOARDING, LISTING, defaultDeps, describeTarget, useSession, type SessionApi, type SessionDeps } from "./session";
 import { StandupBoard } from "./StandupBoard";
 import { PACKAGE } from "./standup";
 import { TeamPicker } from "./TeamPicker";
-import { pendingInvite, selectionKey } from "./teams";
+import { pendingInvite, selectionKey, dropInvite, isSpentInvite, pendingInviteOrg } from "./teams";
 import { Avatar, Icon, useTheme, type Theme } from "./ui";
 import { useRead, useTeam, type Team, type TeamTransport } from "./useTeam";
 import { WeekDigest } from "./WeekDigest";
@@ -51,7 +50,16 @@ export function App({
     () => (storage === deps.storage || !storage ? deps : { ...deps, storage }),
     [deps, storage],
   );
-  const api = useSession(sessionDeps, () => pendingInvite(storage));
+  const api = useSession(
+    sessionDeps,
+    () => pendingInvite(storage),
+    // Signed up with the invite: the account is in its org already.
+    () => {
+      dropInvite(storage);
+      setInvite(null);
+      setNotice("Invitation accepted: the team is in your list.");
+    },
+  );
   const { session, store } = api;
   const source = useMemo(() => appSource(deps.env, PACKAGE), [deps.env]);
   const [opened, setOpened] = useState<Opened | null>(null);
@@ -123,7 +131,7 @@ export function App({
     return (
       <Shell>
         {invite && !inviteLater ? (
-          <InvitationSignIn api={api} where={describeTarget(session.target)} onLater={() => setInviteLater(true)} />
+          <InvitationSignIn {...ONBOARDING} api={api} onLater={() => setInviteLater(true)} />
         ) : (
           <SignIn api={api} where={describeTarget(session.target)} />
         )}
@@ -140,9 +148,12 @@ export function App({
     return (
       <Shell right={<Menu theme={theme} setTheme={setTheme} onLogout={signOut} />}>
         <JoinInvitation
+          {...ONBOARDING}
           client={session.client}
           token={invite}
-          storage={storage}
+          org={pendingInviteOrg(storage)}
+          drop={() => dropInvite(storage)}
+          isSpent={isSpentInvite}
           after={after}
           onJoined={() => {
             setInvite(null);

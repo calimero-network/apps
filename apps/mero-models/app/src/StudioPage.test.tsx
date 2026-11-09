@@ -107,7 +107,7 @@ describe("the studio's front door", () => {
     const client = fakeClient([scene("app-2", "Robot"), scene("app-1", "Castle")]);
     const storage = renderPage(client);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Continue with passkey" }));
+    fireEvent.click(await screen.findByTestId("signin-passkey"));
     expect(await screen.findByText("Castle")).toBeTruthy();
     await waitFor(() => expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" }));
     // Sorted by name, and the studio they belong to listed once.
@@ -125,7 +125,7 @@ describe("the studio's front door", () => {
   it("makes a new scene in a studio of its own", async () => {
     const client = fakeClient();
     renderPage(client);
-    fireEvent.click(await screen.findByRole("button", { name: "Continue with passkey" }));
+    fireEvent.click(await screen.findByTestId("signin-passkey"));
     expect(await screen.findByText(/No scenes yet/)).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Scene name"), { target: { value: "Spaceship" } });
     fireEvent.click(screen.getByTestId("new-scene"));
@@ -137,7 +137,7 @@ describe("the studio's front door", () => {
   it("adds a scene to a studio it is already in", async () => {
     const client = fakeClient([scene("app-1", "Castle")]);
     renderPage(client);
-    fireEvent.click(await screen.findByRole("button", { name: "Continue with passkey" }));
+    fireEvent.click(await screen.findByTestId("signin-passkey"));
     fireEvent.click(await screen.findByRole("button", { name: "Add scene" }));
     await waitFor(() => expect(client.createApp).toHaveBeenCalledWith("Untitled scene", "bundle-hash", { org: "org-1" }));
     expect(client.createOrg).not.toHaveBeenCalled();
@@ -149,10 +149,10 @@ describe("the studio's front door", () => {
     renderPage(fakeClient(), storage);
     const page = await screen.findByTestId("invitation-page");
     expect(page.textContent).toContain(
-      "You've been invited to join a studio in Mero Models. Sign in or create an account to accept.",
+      "You've been invited to join the studio in Mero Models.",
     );
-    expect(screen.getByRole("button", { name: "Continue with passkey" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Create a passkey" })).toBeTruthy();
+    expect(screen.getByTestId("signin-passkey")).toBeTruthy();
+    expect(screen.getByTestId("signup-passkey")).toBeTruthy();
 
     fireEvent.click(screen.getByTestId("invitation-later"));
     expect(await screen.findByText("landing page")).toBeTruthy();
@@ -167,8 +167,8 @@ describe("the studio's front door", () => {
     storage.setItem(`${APP}:pending-invite`, "tok-9");
     storage.setItem(`${APP}:pending-invite-org`, "org-1");
     renderPage(client, storage);
-    fireEvent.click(await screen.findByRole("button", { name: "Continue with passkey" }));
-    expect((await screen.findByTestId("invitation-outcome")).textContent).toContain("You're already in this studio");
+    fireEvent.click(await screen.findByTestId("signin-passkey"));
+    expect((await screen.findByTestId("invitation-outcome")).textContent).toContain("You're already in the studio");
     expect(client.redeemInvite).not.toHaveBeenCalled();
     expect(storage.getItem(`${APP}:pending-invite`)).toBeNull();
   });
@@ -179,7 +179,7 @@ describe("the studio's front door", () => {
     const storage = new Memory();
     storage.setItem(`${APP}:pending-invite`, "tok-used");
     renderPage(client, storage);
-    fireEvent.click(await screen.findByRole("button", { name: "Continue with passkey" }));
+    fireEvent.click(await screen.findByTestId("signin-passkey"));
     fireEvent.click(await screen.findByTestId("invitation-join"));
     expect(
       await screen.findByText(
@@ -195,7 +195,7 @@ describe("the studio's front door", () => {
     storage.setItem(`${APP}:pending-invite`, "tok-9");
     renderPage(client, storage);
     expect(await screen.findByText("You're invited")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Continue with passkey" }));
+    fireEvent.click(screen.getByTestId("signin-passkey"));
     fireEvent.click(await screen.findByTestId("invitation-join"));
     expect(await screen.findByText(/Invitation accepted/)).toBeTruthy();
     expect(client.redeemInvite).toHaveBeenCalledWith("tok-9");
@@ -205,7 +205,7 @@ describe("the studio's front door", () => {
   it("creates an account with a new passkey, no name needed", async () => {
     const client = fakeClient();
     renderPage(client);
-    fireEvent.click(await screen.findByRole("button", { name: "Create a passkey" }));
+    fireEvent.click(await screen.findByTestId("signup-passkey"));
     await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), ""));
   });
 });

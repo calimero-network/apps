@@ -801,3 +801,7 @@ td.mono { font-family: var(--mono); }
   .polls-panel { padding: 18px; gap: 16px; }
   .polls-panel .page-head { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* The shared passkey control inside a card (@calimero-apps/passkey). */
+.signin-control { max-width: 360px; margin: 14px 0; }
+.invitation-actions { display: flex; gap: 8px; flex-wrap: wrap; }

@@ -2,7 +2,7 @@ import { useMemo, type ReactNode } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import type { KeyValueStorage } from "@calimero-apps/connect";
 import LandingPage from "./pages/landing/LandingPage";
-import { pendingInvite } from "./scenes";
+import { dropInvite, pendingInvite } from "./scenes";
 import { defaultDeps, useSession, type SessionDeps } from "./session";
 import { StudioPage, base } from "./StudioPage";
 
@@ -57,7 +57,12 @@ export function App({
     () => (storage === deps.storage || !storage ? deps : { ...deps, storage }),
     [deps, storage],
   );
-  const api = useSession(sessionDeps, () => pendingInvite(storage));
+  const api = useSession(
+    sessionDeps,
+    () => pendingInvite(storage),
+    // Signed up with the invite: the account is in its org already.
+    () => dropInvite(storage),
+  );
   const signedIn = api.session.status === "signed-in";
   return (
     <BrowserRouter basename={base()}>
