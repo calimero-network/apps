@@ -226,7 +226,8 @@ generated `MeroVoteClient` and the Playwright suites against merod 0.x are gone.
 target from the build (`@calimero-apps/connect`: `merod local` under `vite`, a Cloud cluster under
 `vite build`), signs in with a **passkey**, lists and creates **voting groups** (app instances in
 an organization of their own: v1's context in a namespace), invites with an **org invite link**
-(making it is approved with your passkey; opening it, then signing in, redeems it), and calls the
+(making it is approved with your passkey; opening it, then signing in, redeems it and opens that
+group; the pending invite is `@calimero-apps/connect`'s `createInviteStore`, dropped on sign-out), and calls the
 contract through `src/meroVote.ts`, which keeps v1's generated client's method surface and answer
 shapes so the screens did not change; a test checks its methods and parameter names against
 `logic/res/abi.json`.

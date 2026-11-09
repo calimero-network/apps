@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
-import { inviteLink, inviteToken } from "./groups";
+import { inviteLink } from "@calimero-apps/connect";
+import { inviteRoot, inviteToken } from "./groups";
 import { errText } from "./useMeroVote";
 import { CheckIcon, CopyIcon, LinkIcon, UserPlusIcon } from "./icons";
 import { IconTile } from "./ui";
@@ -32,7 +33,7 @@ export function InviteCard({
     setFailed(null);
     setCopied(false);
     try {
-      setLink(inviteLink(await inviteToken(client, org, passkey()), window.location, org));
+      setLink(inviteLink(await inviteToken(client, org, passkey()), { org, root: inviteRoot() }));
     } catch (e) {
       setFailed(errText(e));
     } finally {

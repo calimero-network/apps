@@ -8,12 +8,18 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
-import { appSource, type KeyValueStorage } from "@calimero-apps/connect";
-import { nodeBasename } from "@calimero-apps/node-served";
-import { AppListing, InvitationSignIn, JoinInvitation, PasskeySignIn } from "@calimero-apps/passkey";
+import {
+  appSource,
+  askAnOwnerCopy,
+  canCreateIn,
+  type InviteStore,
+  type KeyValueStorage,
+  type PendingInvite,
+} from "@calimero-apps/connect";
+import { AppListing, InvitationSignIn, JoinInvitation, PasskeySignIn, usePendingInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
-import { dropInvite, isSpentInvite, pendingInvite, selectionKey, type PendingInvite } from "./arenas";
+import { arenaIn, basename, invitedArena, invites as appInvites, listArenas, selectionKey } from "./arenas";
 import { ArenaPage, type OpenArena } from "./ArenaPage";
 import { PACKAGE } from "./kombat";
 import { Lobby } from "./Lobby";
@@ -26,13 +32,12 @@ import {
   ONBOARDING,
   defaultDeps,
   describeTarget,
+  useInviteState,
   useSessionApi,
   type SessionApi,
   type SessionDeps,
 } from "./session";
 import { shortAccount } from "./useCornerNames";
-
-const basename = () => nodeBasename(new URL(window.location.href), "/");
 
 /** Every path the shared landing page serves. See src/pages/landing. */
 const LANDING_PATHS = ["/", "/docs", "/preview"];
@@ -144,34 +149,43 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
   // An invitation link opened before signing in: a page of its own while it
   // is pending (the shared `InvitationSignIn`), redeemed only on "Join", after
   // which the arena it names is opened. A sign-up from that page joined with
-  // the invite already (`api.joinedInvite`): the arena opens straight away.
-  const [invite, setInvite] = useState<PendingInvite | null>(() => pendingInvite(storage));
+  // the invite already (`SessionProvider` sets `landing`): the arena opens
+  // straight away.
+  const { invites, landing, setLanding } = useInviteState();
+  const pending = usePendingInvite(invites);
+  // The invitation a signed-in account is asked about stays on screen until it
+  // closes: `JoinInvitation` drops the token before it says "already in" or
+  // "used up", and the store would take the page away with it.
+  const [asked, setAsked] = useState<PendingInvite | null>(null);
   useEffect(() => {
-    if (client) setInvite(pendingInvite(storage));
-  }, [client, storage]);
+    if (!client) setAsked(null);
+    else if (pending) setAsked(pending);
+  }, [client, pending]);
+  const invite = client ? (pending ?? asked) : null;
 
-  const openInvited = useCallback(
-    async (named: string | null) => {
+  // Where an invite landed: the arena its link named, else one in the org it
+  // joined (or the account was already in), once there is a client to list
+  // them with.
+  useEffect(() => {
+    if (!client || !landing) return;
+    setLanding(null);
+    const { org, arena: named } = landing;
+    void (async () => {
       setLobbyKey((k) => k + 1);
-      const arena =
-        client && named ? (await client.listApps({}).catch(() => [])).find((a) => a.appId === named) : undefined;
-      if (arena) {
-        open({ appId: arena.appId, name: arena.name, org: arena.org });
+      const remembered = key ? readSelection(storage, key)?.appId : null;
+      const found = arenaIn(await listArenas(client, source).catch(() => []), org, named, remembered);
+      after();
+      if (found) {
+        open({ appId: found.appId, name: found.name, org: found.org });
         setNotice(null);
-      } else {
-        setNotice("Invitation accepted: the arena is in your list.");
+        return;
       }
-    },
-    [client, open],
-  );
-
-  const joinedAtSignUp = invite !== null && api.joinedInvite === invite.token;
-  useEffect(() => {
-    if (!joinedAtSignUp || !invite) return;
-    dropInvite(storage);
-    setInvite(null);
-    void openInvited(invite.arena);
-  }, [joinedAtSignUp, invite, storage, openInvited]);
+      open(null);
+      // In the org, but with no arena there to open: say who may add one.
+      const may = org ? await canCreateIn(client, org) : null;
+      setNotice(may === false ? askAnOwnerCopy("an arena") : "Invitation accepted: the arena is in your list.");
+    })();
+  }, [client, landing, setLanding, source, key, storage, after, open]);
 
   if (session.status === "connecting") {
     return (
@@ -208,21 +222,24 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
     return <ConnectCard api={api} where={describeTarget(session.target)} />;
   }
 
-  if (invite && !joinedAtSignUp) {
+  if (invite) {
     return (
       <JoinInvitation
         {...ONBOARDING}
+        key={invite.token}
         client={session.client}
         token={invite.token}
         org={invite.org}
-        drop={() => dropInvite(storage)}
-        isSpent={isSpentInvite}
+        drop={invites.drop}
         after={after}
-        onJoined={() => {
-          setInvite(null);
-          void openInvited(invite.arena);
+        onJoined={({ org }) => {
+          setAsked(null);
+          setLanding({ org, arena: invitedArena(invite) });
         }}
-        onClose={() => setInvite(null)}
+        onClose={({ member }) => {
+          setAsked(null);
+          if (member) setLanding({ org: member, arena: invitedArena(invite) });
+        }}
       />
     );
   }
@@ -262,12 +279,13 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
  * `RedirectIfAuthed` goes there first). "Not now" goes to the landing page and
  * keeps the token.
  */
-function InvitationGate({ storage, children }: { storage: KeyValueStorage; children: ReactNode }) {
+function InvitationGate({ children }: { children: ReactNode }) {
   const api = useSessionApi();
+  const pending = usePendingInvite(useInviteState().invites);
   const navigate = useNavigate();
   const [later, setLater] = useState(false);
   const { session } = api;
-  if (later || session.status !== "signed-out" || pendingInvite(storage) === null) return <>{children}</>;
+  if (later || session.status !== "signed-out" || pending === null) return <>{children}</>;
   return (
     <AppShell>
       <InvitationSignIn
@@ -324,9 +342,12 @@ function AppShell({ children }: { children: ReactNode }) {
 export function App({
   deps = defaultDeps,
   storage = globalThis.localStorage,
+  invites = appInvites,
 }: {
   deps?: SessionDeps;
   storage?: KeyValueStorage;
+  /** The pending-invite store; the module's own unless a test passes one. */
+  invites?: InviteStore;
 }) {
   // Memoised: a new object every render would reconnect every render.
   const sessionDeps = useMemo(
@@ -334,9 +355,9 @@ export function App({
     [deps, storage],
   );
   return (
-    <SessionProvider deps={sessionDeps}>
+    <SessionProvider deps={sessionDeps} invites={invites}>
       <BrowserRouter basename={basename()}>
-        <InvitationGate storage={storage}>
+        <InvitationGate>
           <Routes>
             {/* The landing page is three pages: `/`, `/docs` and `/preview`. They
                 are real URLs so they can be shared and opened cold. */}

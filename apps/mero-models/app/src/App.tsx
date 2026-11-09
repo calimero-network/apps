@@ -1,8 +1,9 @@
-import { useMemo, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
-import type { KeyValueStorage } from "@calimero-apps/connect";
+import type { InviteStore, KeyValueStorage } from "@calimero-apps/connect";
+import { usePendingInvite } from "@calimero-apps/passkey";
 import LandingPage from "./pages/landing/LandingPage";
-import { dropInvite, pendingInvite } from "./scenes";
+import { invites as appInvites } from "./scenes";
 import { defaultDeps, useSession, type SessionDeps } from "./session";
 import { StudioPage, base } from "./StudioPage";
 
@@ -48,21 +49,25 @@ function RedirectIfSignedIn({
 export function App({
   deps = defaultDeps,
   storage = globalThis.localStorage,
+  invites = appInvites,
 }: {
   deps?: SessionDeps;
   storage?: KeyValueStorage;
+  /** The pending-invite store; the module's own unless a test passes one. */
+  invites?: InviteStore;
 }) {
   // Memoised: a new object every render would reconnect every render.
   const sessionDeps = useMemo(
     () => (storage === deps.storage || !storage ? deps : { ...deps, storage }),
     [deps, storage],
   );
-  const api = useSession(
-    sessionDeps,
-    () => pendingInvite(storage),
-    // Signed up with the invite: the account is in its org already.
-    () => dropInvite(storage),
+  // Signed up with the invite: the account is in its studio already, which
+  // the studio page opens once the session is signed in.
+  const [landing, setLanding] = useState<{ org: string | null } | null>(null);
+  const api = useSession(sessionDeps, invites, (joined, pending) =>
+    setLanding({ org: joined.org ?? pending?.org ?? null }),
   );
+  const invited = usePendingInvite(invites) !== null;
   const signedIn = api.session.status === "signed-in";
   return (
     <BrowserRouter basename={base()}>
@@ -75,7 +80,7 @@ export function App({
             // `/preview` are reference pages a signed-in person may want.
             element={
               path === "/" ? (
-                <RedirectIfSignedIn signedIn={signedIn} invited={pendingInvite(storage) !== null}>
+                <RedirectIfSignedIn signedIn={signedIn} invited={invited}>
                   <AppLandingPage signedIn={signedIn} />
                 </RedirectIfSignedIn>
               ) : (
@@ -84,7 +89,14 @@ export function App({
             }
           />
         ))}
-        <Route path="/studio" element={<StudioPage api={api} deps={sessionDeps} storage={storage} />} />
+        <Route path="/studio" element={<StudioPage
+              api={api}
+              deps={sessionDeps}
+              storage={storage}
+              invites={invites}
+              landing={landing}
+              setLanding={setLanding}
+            />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

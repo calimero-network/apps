@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import type { AppInfo, CalimeroClient } from "@calimero-network/mero-js";
-import { describeError, type AppSource } from "@calimero-apps/connect";
+import { askAnOwnerCopy, canCreateIn, describeError, type AppSource } from "@calimero-apps/connect";
 import type { OpenedScene } from "./scene";
 import { createScene, listScenes, studiosOf } from "./scenes";
 import { IconCube, IconPlus } from "./ui/icons";
@@ -20,7 +20,7 @@ export function ScenePicker({
   after,
   children,
 }: {
-  client: Pick<CalimeroClient, "listApps" | "createApp" | "createOrg">;
+  client: Pick<CalimeroClient, "listApps" | "createApp" | "createOrg" | "getOrg" | "session">;
   source: AppSource;
   onOpen: (scene: OpenedScene) => void;
   /** Runs after each request (keeps the stored session current). */
@@ -66,6 +66,23 @@ export function ScenePicker({
   }
 
   const studios = studiosOf(scenes ?? []);
+  const studioKey = studios.join(",");
+
+  // Who may add a scene to each studio (core's CREATE_APP rule): a member who
+  // may not is told to ask an owner instead of a button that fails. Unknown
+  // (`null`, the org unreadable) keeps the button and lets the node decide.
+  const [mayAdd, setMayAdd] = useState<Record<string, boolean | null>>({});
+  useEffect(() => {
+    let live = true;
+    for (const org of studioKey ? studioKey.split(",") : []) {
+      void canCreateIn(client, org).then((may) => {
+        if (live) setMayAdd((m) => ({ ...m, [org]: may }));
+      });
+    }
+    return () => {
+      live = false;
+    };
+  }, [client, studioKey]);
 
   return (
     <div className="lobby">
@@ -156,9 +173,15 @@ export function ScenePicker({
                     <span className="mono ns-id" title={org}>
                       {org}
                     </span>
-                    <button className="ghost small" disabled={busy !== null} onClick={() => void create(org, org)}>
-                      {busy === org ? "Creating…" : "Add scene"}
-                    </button>
+                    {mayAdd[org] === false ? (
+                      <p className="hint" data-testid="ask-an-owner">
+                        {askAnOwnerCopy("a scene")}
+                      </p>
+                    ) : (
+                      <button className="ghost small" disabled={busy !== null} onClick={() => void create(org, org)}>
+                        {busy === org ? "Creating…" : "Add scene"}
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>

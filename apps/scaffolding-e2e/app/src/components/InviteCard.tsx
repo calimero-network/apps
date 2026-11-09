@@ -1,8 +1,8 @@
 import { useState } from "react";
 import type { CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
-import { describeError } from "@calimero-apps/connect";
+import { describeError, inviteLink } from "@calimero-apps/connect";
 
-import { inviteLink, inviteToken } from "../instances";
+import { inviteRoot, inviteToken } from "../instances";
 
 /**
  * Invite a member into the instance's organization. Making an invite is approved
@@ -37,7 +37,7 @@ export function InviteCard({
     setBusy(true);
     setError(null);
     try {
-      setLink(inviteLink(await inviteToken(client, org, passkey()), window.location, org));
+      setLink(inviteLink(await inviteToken(client, org, passkey()), { org, root: inviteRoot() }));
     } catch (e) {
       setError(describeError(e));
     } finally {

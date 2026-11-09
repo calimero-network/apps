@@ -279,7 +279,10 @@ resolves its target from the build (`@calimero-apps/connect`: `merod local`
 under `vite`, a Cloud cluster under `vite build`), signs in with a **passkey**,
 lists and creates **scenes** (app instances) in **studios** (organizations:
 v1's contexts in a namespace), invites with an **org invite link** (making it
-is approved with your passkey; opening it, then signing in, redeems it), keeps
+is approved with your passkey; opening it, then signing in, redeems it and
+opens a scene of that studio; the pending invite is `@calimero-apps/connect`'s
+`createInviteStore`, dropped on sign-out; a member who may not add a scene is
+told to ask an owner), keeps
 blobs through `CalimeroClient.uploadBlob` / `downloadBlob`, follows the scene
 with `client.events`, streams presence with `publishPresence` /
 `presenceStream`, and calls the contract through `src/meroModels.ts`, which

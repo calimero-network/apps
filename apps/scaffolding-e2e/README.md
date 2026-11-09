@@ -151,7 +151,8 @@ owner holds every first seat v1 gave the context creator.
 - Contexts are app instances (`src/instances.ts`, `InstancePicker`: `listApps` by
   the dev bundle or the package, `createApp(name, source, { org })`); namespace
   invitations are org invites (`components/InviteCard.tsx`, a passkey step-up,
-  redeemed after sign-in).
+  redeemed after sign-in, which opens that org's instance). The pending invite
+  is `@calimero-apps/connect`'s `createInviteStore`, dropped on sign-out.
 - `src/api/rpc.ts` is the **one adapter**: the sections keep calling v1's method
   names with v1's arguments, and it picks `client.view` or `client.call` from the
   ABI (`src/api/abi.ts`), renames to camelCase and converts 64-bit integers both

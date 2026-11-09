@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
 
-import { inviteLink, inviteToken } from "./arenas";
+import { arenaInviteLink, inviteToken } from "./arenas";
 import type { OpenArena } from "./ArenaPage";
 import { messageOf } from "./kombat";
 
@@ -36,7 +36,7 @@ export function InviteCard({
     setFailed(null);
     setCopied(false);
     try {
-      setLink(inviteLink(await inviteToken(client, org, passkey()), arena.appId, window.location, org));
+      setLink(arenaInviteLink(await inviteToken(client, org, passkey()), arena.appId, org));
     } catch (e) {
       setFailed(messageOf(e));
     } finally {
