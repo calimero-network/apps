@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { describeError } from "@calimero-apps/connect";
+import { askAnOwnerCopy, canCreateIn, describeError } from "@calimero-apps/connect";
 import { useConn } from "../hooks/useConn";
 import { useToast } from "../contexts/ToastContext";
 import { setActiveRoom, setRoomName } from "../lib/session";
@@ -55,6 +55,12 @@ export default function RoomsPage() {
   const [listing, setListing] = useState(true);
   const [nsName, setNsName] = useState("");
   const [name, setName] = useState("");
+  /**
+   * Whether this account may add a room (core's `CREATE_APP`): an owner or
+   * admin may, a plain member only when allowed. `null` while unknown, when
+   * the create row is shown and the node decides.
+   */
+  const [mayCreate, setMayCreate] = useState<boolean | null>(null);
 
   const [pending, setPending] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -91,10 +97,12 @@ export default function RoomsPage() {
       if (!conn || !orgId) return;
       if (showSpinner) setListing(true);
       try {
-        const [info, list] = await Promise.all([
+        const [info, list, may] = await Promise.all([
           streamInfo(conn.client, orgId),
           listRooms(conn.client, conn.source, orgId),
+          canCreateIn(conn.client, orgId),
         ]);
+        setMayCreate(may);
         setNsName(info.name);
         setNames(info.names);
         setRooms(list);
@@ -295,32 +303,38 @@ export default function RoomsPage() {
           </ActionButton>
         </div>
 
-        <div className={styles.toolbar}>
-          <span className={styles.toolbarIcon} aria-hidden="true">
-            <HashIcon size={18} />
-          </span>
-          <input
-            className={styles.input}
-            placeholder="Name a new room"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && create()}
-            maxLength={60}
-            disabled={pending === "create"}
-            data-testid="room-name-input"
-            aria-label="New room name"
-          />
-          <ActionButton
-            onClick={create}
-            pending={pending === "create"}
-            pendingLabel="Creating…"
-            disabled={!name.trim() || !conn}
-            testId="create-room"
-          >
-            <PlusIcon size={16} />
-            Create room
-          </ActionButton>
-        </div>
+        {mayCreate === false ? (
+          <StatusNote tone="info" testId="create-room-ask">
+            {askAnOwnerCopy("a room")}
+          </StatusNote>
+        ) : (
+          <div className={styles.toolbar}>
+            <span className={styles.toolbarIcon} aria-hidden="true">
+              <HashIcon size={18} />
+            </span>
+            <input
+              className={styles.input}
+              placeholder="Name a new room"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && create()}
+              maxLength={60}
+              disabled={pending === "create"}
+              data-testid="room-name-input"
+              aria-label="New room name"
+            />
+            <ActionButton
+              onClick={create}
+              pending={pending === "create"}
+              pendingLabel="Creating…"
+              disabled={!name.trim() || !conn}
+              testId="create-room"
+            >
+              <PlusIcon size={16} />
+              Create room
+            </ActionButton>
+          </div>
+        )}
 
         {status && (
           <StatusNote tone="pending" testId="rooms-status">
@@ -359,8 +373,9 @@ export default function RoomsPage() {
             </span>
             <span className={styles.emptyTitle}>No rooms in this stream</span>
             <span className={styles.emptyHint}>
-              Create one above to start a call. Everyone already in the stream
-              can join it without a new invitation.
+              {mayCreate === false
+                ? "An owner or admin of this stream can add one. Everyone already in the stream can join it without a new invitation."
+                : "Create one above to start a call. Everyone already in the stream can join it without a new invitation."}
             </span>
           </div>
         )}

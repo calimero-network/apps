@@ -298,6 +298,29 @@ describe("App", () => {
     expect(pendingInvite()).toBeNull();
   });
 
+  it("tells a member who may not add a room to ask an owner, instead of offering Create room (B8)", async () => {
+    const client = fakeClient();
+    client.orgs.push({ orgId: "org-1", name: "Team", role: "Member" });
+    // A stream sets no member defaults: a plain member has no CREATE_APP.
+    client.getOrg.mockImplementation(async () => ({
+      name: "Team",
+      members: { "acct-alice": "member", "acct-bob": "owner" },
+      memberMetadata: {},
+    }));
+    renderApp(client, "/streams/org-1", true);
+    expect((await screen.findByTestId("create-room-ask")).textContent).toMatch(/Only an owner or admin/);
+    expect(screen.queryByTestId("create-room")).toBeNull();
+    expect(screen.queryByText(/Create one above/)).toBeNull();
+  });
+
+  it("still offers Create room to the stream's owner", async () => {
+    const client = fakeClient();
+    client.orgs.push({ orgId: "org-1", name: "Team", role: "Owner" });
+    renderApp(client, "/streams/org-1", true);
+    expect(await screen.findByTestId("create-room")).toBeTruthy();
+    expect(screen.queryByTestId("create-room-ask")).toBeNull();
+  });
+
   it("builds invitation links on this frontend's own origin", () => {
     expect(
       inviteLink("t", { stream: "o" }, { href: "https://x.apps.calimero.network/streams" }),
