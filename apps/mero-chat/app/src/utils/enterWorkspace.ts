@@ -91,14 +91,26 @@ export function enterWorkspace(
 
 const AWAITING_NAME_KEY = "chat:joined-awaiting-name";
 
-/** Hand a just-joined workspace to the picker's name step. */
-export function enterJoinedWorkspaceForName(namespaceId: string): void {
+/**
+ * Mark a just-joined workspace for the picker's name step, without moving:
+ * a sign-up that joined through the invite link lands on the picker as is.
+ */
+export function markJoinedAwaitingName(namespaceId: string): void {
   try {
     sessionStorage.setItem(AWAITING_NAME_KEY, namespaceId);
   } catch {
     /* no session storage — the picker falls back to its list, preselected */
   }
-  setGroupId(namespaceId);
+  try {
+    setGroupId(namespaceId);
+  } catch {
+    /* blocked storage: the picker's list still has it */
+  }
+}
+
+/** Hand a just-joined workspace to the picker's name step. */
+export function enterJoinedWorkspaceForName(namespaceId: string): void {
+  markJoinedAwaitingName(namespaceId);
   // Otherwise /login bounces a user already inside a workspace back to "/".
   clearNamespaceReady();
   window.location.href = nodeBasename() + "login";
