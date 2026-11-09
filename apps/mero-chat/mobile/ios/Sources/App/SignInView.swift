@@ -177,66 +177,97 @@ struct SignInView: View {
 
     private var footer: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if let error = client.errorMessage {
-                Banner(kind: .error, text: error)
-                    .accessibilityIdentifier("signInError")
+            if session.awaitingSignUpConfirm {
+                confirmStep
+            } else {
+                signInForm
             }
-            switch mode {
-            case .signIn, .create:
-                urlField("Cluster name or node URL", text: $clusterURL)
-                    .accessibilityIdentifier("signInClusterURL")
-                if mode == .create {
-                    TextField("Your name", text: $name)
-                        .textFieldStyle(ChatFieldStyle())
-                        .textInputAutocapitalization(.words)
-                }
-            case .development:
-                urlField("http://localhost:2501", text: $devNodeURL)
-                    .accessibilityIdentifier("signInDevNodeURL")
-                TextField("Your name", text: $name)
-                    .textFieldStyle(ChatFieldStyle())
-                    .textInputAutocapitalization(.words)
-            }
-            Button(action: submit) {
-                HStack(spacing: 8) {
-                    if client.isLoading { ProgressView().tint(Theme.onInk) }
-                    Text(primaryTitle)
-                }
-                .frame(minHeight: 50)
-            }
-            .buttonStyle(InkButtonStyle(fullWidth: true))
-            .disabled(client.isLoading || !canSubmit)
-            .accessibilityIdentifier("signInButton")
-            HStack {
-                switch mode {
-                case .signIn: Button("Create an account") { mode = .create }
-                case .create: Button("I have an account") { mode = .signIn }
-                case .development: Button("Use Calimero Cloud") { mode = .signIn }
-                }
-                Spacer()
-                if mode != .development {
-                    Button("Development node") { mode = .development }
-                        .accessibilityIdentifier("signInDevelopment")
-                }
-            }
-            .font(Theme.font(13, .semibold))
-            .foregroundStyle(Theme.accent)
-            .disabled(client.isLoading)
-            HStack(spacing: 6) {
-                Image(systemName: "person.badge.key.fill").font(.system(size: 11))
-                Text(
-                    mode == .development
-                        ? "Mock attestation is allowed for this node; a passkey is kept on this device for it."
-                        : "Sign in with this device's passkey. The node's attestation is verified first.")
-            }
-            .font(Theme.font(12))
-            .foregroundStyle(Theme.muted)
         }
         .padding(.horizontal, 20)
         .padding(.top, 12)
         .padding(.bottom, 8)
         .background(Theme.surfaceSolid.opacity(0.92).ignoresSafeArea(edges: .bottom))
         .overlay(alignment: .top) { Rectangle().fill(Theme.line).frame(height: 1) }
+    }
+
+    /// A sign-up's second step: the passkey is made, and the node asks it to
+    /// sign the new account. Its prompt starts from this tap, not right after
+    /// the first one (the system sheet can refuse a request back to back).
+    @ViewBuilder
+    private var confirmStep: some View {
+        Banner(kind: .notice, text: "Your passkey is ready. Confirm with it once more to create your account.")
+            .accessibilityIdentifier("signUpConfirmNotice")
+        Button { session.confirmSignUp() } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "person.badge.key.fill")
+                Text("Confirm with passkey")
+            }
+            .frame(minHeight: 50)
+        }
+        .buttonStyle(InkButtonStyle(fullWidth: true))
+        .accessibilityIdentifier("signUpConfirmButton")
+        Button("Cancel") { session.cancelSignUp() }
+            .font(Theme.font(13, .semibold))
+            .foregroundStyle(Theme.accent)
+            .accessibilityIdentifier("signUpConfirmCancel")
+    }
+
+    @ViewBuilder
+    private var signInForm: some View {
+        if let error = client.errorMessage {
+            Banner(kind: .error, text: error)
+                .accessibilityIdentifier("signInError")
+        }
+        switch mode {
+        case .signIn, .create:
+            urlField("Cluster name or node URL", text: $clusterURL)
+                .accessibilityIdentifier("signInClusterURL")
+            if mode == .create {
+                TextField("Your name", text: $name)
+                    .textFieldStyle(ChatFieldStyle())
+                    .textInputAutocapitalization(.words)
+            }
+        case .development:
+            urlField("http://localhost:2501", text: $devNodeURL)
+                .accessibilityIdentifier("signInDevNodeURL")
+            TextField("Your name", text: $name)
+                .textFieldStyle(ChatFieldStyle())
+                .textInputAutocapitalization(.words)
+        }
+        Button(action: submit) {
+            HStack(spacing: 8) {
+                if client.isLoading { ProgressView().tint(Theme.onInk) }
+                Text(primaryTitle)
+            }
+            .frame(minHeight: 50)
+        }
+        .buttonStyle(InkButtonStyle(fullWidth: true))
+        .disabled(client.isLoading || !canSubmit)
+        .accessibilityIdentifier("signInButton")
+        HStack {
+            switch mode {
+            case .signIn: Button("Create an account") { mode = .create }
+            case .create: Button("I have an account") { mode = .signIn }
+            case .development: Button("Use Calimero Cloud") { mode = .signIn }
+            }
+            Spacer()
+            if mode != .development {
+                Button("Development node") { mode = .development }
+                    .accessibilityIdentifier("signInDevelopment")
+            }
+        }
+        .font(Theme.font(13, .semibold))
+        .foregroundStyle(Theme.accent)
+        .disabled(client.isLoading)
+        HStack(spacing: 6) {
+            Image(systemName: "person.badge.key.fill").font(.system(size: 11))
+            Text(
+                mode == .development
+                    ? "Mock attestation is allowed for this node; a passkey is kept on this device for it."
+                    : "Sign in with this device's passkey. The node's attestation is verified first.")
+        }
+        .font(Theme.font(12))
+        .foregroundStyle(Theme.muted)
     }
 
     private func urlField(_ placeholder: String, text: Binding<String>) -> some View {

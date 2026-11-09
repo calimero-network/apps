@@ -22,7 +22,6 @@ interface MessageRendererProps {
   fetchAccounts: (prefix: string) => void;
   autocompleteAccounts: AccountData[];
   authToken: string | undefined;
-  privateIpfsEndpoint: string;
   contextId?: string;
   /** Id of the message a permalink pointed at, so it can be marked. */
   focusMessageId?: string | null;
@@ -52,7 +51,6 @@ const messageRender = ({
   fetchAccounts,
   autocompleteAccounts,
   authToken,
-  privateIpfsEndpoint,
   contextId,
   focusMessageId,
   copyMessageLink,
@@ -100,7 +98,6 @@ const messageRender = ({
         fetchAccounts={fetchAccounts}
         autocompleteAccounts={autocompleteAccounts}
         authToken={authToken}
-        privateIpfsEndpoint={privateIpfsEndpoint}
         contextId={contextId}
         isFocused={!!focusMessageId && message.id === focusMessageId}
         copyLink={

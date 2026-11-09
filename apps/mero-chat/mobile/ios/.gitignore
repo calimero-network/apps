@@ -9,3 +9,6 @@ xcuserdata/
 .swiftpm/
 *.xcresult
 xcodebuild*.log
+
+# Your Apple Team ID (Config/Signing.xcconfig)
+Config/Signing.local.xcconfig

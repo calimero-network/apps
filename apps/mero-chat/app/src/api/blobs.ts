@@ -8,11 +8,9 @@
 // did. There is no discovery and no announce: every node of the cluster holds
 // what the app marks.
 //
-// The component runtime gained blobs in core#4815, after the 1.0.0-rc.7 tag
-// this app pins: a node at rc.7 answers a component app's blob routes with
-// `409 NOT_SUPPORTED`. Until the pin moves past it, an upload is refused with
-// that answer (`BlobsNotAvailableError`) and the composer says so; messages,
-// threads and reactions are unaffected. Nothing here changes when it moves.
+// Blobs for component apps arrived in core#4815 (1.0.0-rc.11), the runtime
+// this app requires (`min-runtime-version` in logic/Cargo.toml), so every node
+// that runs it serves these routes.
 import { getClient, after, getContextId } from "./calimero";
 
 const HEX_32 = /^[0-9a-f]{64}$/;
@@ -36,22 +34,6 @@ export function toBlobIdHex(value: string | number[] | Uint8Array): string {
 /** True when `value` names a blob that could be fetched. */
 export function isUsableBlobId(value: string | number[] | Uint8Array): boolean {
   return toBlobIdHex(value).length === 64;
-}
-
-/** The node runs a core without component blobs (before core#4815). */
-export class BlobsNotAvailableError extends Error {
-  constructor() {
-    super(
-      "Attachments need a Calimero node with blob support for component apps (core after 1.0.0-rc.7). Messages still work.",
-    );
-    this.name = "BlobsNotAvailableError";
-  }
-}
-
-function isNotSupported(e: unknown): boolean {
-  const status = (e as { status?: unknown })?.status;
-  const code = (e as { code?: unknown })?.code;
-  return status === 409 || code === "NOT_SUPPORTED";
 }
 
 function requireApp(contextId: string | undefined, operation: string): string {
@@ -82,9 +64,6 @@ export async function uploadBlob(
     const blobId = toBlobIdHex(res?.id ?? "");
     if (!blobId) throw new Error(`The node returned a blob id this app cannot use: ${String(res?.id)}`);
     return { blobId, size: res?.size ?? bytes.length };
-  } catch (e) {
-    if (isNotSupported(e)) throw new BlobsNotAvailableError();
-    throw e;
   } finally {
     after();
   }
@@ -98,9 +77,6 @@ export async function downloadBlob(blobId: string, contextId: string): Promise<B
   try {
     const bytes = await getClient().downloadBlob(app, id);
     return new Blob([bytes as BlobPart]);
-  } catch (e) {
-    if (isNotSupported(e)) throw new BlobsNotAvailableError();
-    throw e;
   } finally {
     after();
   }

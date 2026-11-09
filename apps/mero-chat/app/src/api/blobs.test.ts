@@ -12,7 +12,7 @@ vi.mock("./calimero", () => ({
   getClient: () => h,
 }));
 
-import { BlobsNotAvailableError, deleteBlob, downloadBlob, isUsableBlobId, toBlobIdHex, uploadBlob } from "./blobs";
+import { deleteBlob, downloadBlob, isUsableBlobId, toBlobIdHex, uploadBlob } from "./blobs";
 
 const ID = "ab".repeat(32);
 
@@ -40,11 +40,6 @@ describe("uploadBlob", () => {
 
   it("needs the conversation", async () => {
     await expect(uploadBlob(new Uint8Array([1]), "")).rejects.toThrow(/app id/);
-  });
-
-  it("says plainly when the node has no blobs for component apps yet (rc.7)", async () => {
-    h.uploadBlob.mockRejectedValue(Object.assign(new Error("409 NOT_SUPPORTED"), { status: 409, code: "NOT_SUPPORTED" }));
-    await expect(uploadBlob(new Uint8Array([1]), "app-1")).rejects.toBeInstanceOf(BlobsNotAvailableError);
   });
 });
 

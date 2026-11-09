@@ -412,7 +412,6 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
       fetchAccounts: (_prefix: string) => {},
       autocompleteAccounts: [],
       authToken: undefined,
-      privateIpfsEndpoint: "https://ipfs.io",
       contextId: resolvedContextId,
       focusMessageId,
       copyMessageLink,

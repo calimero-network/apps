@@ -182,7 +182,6 @@ export interface MessageRendererProps {
   fetchAccounts: (prefix: string) => void;
   autocompleteAccounts: AccountData[];
   authToken: string | undefined;
-  privateIpfsEndpoint: string;
   /** Id of the message a permalink pointed at, so it can be marked. */
   focusMessageId?: string | null;
   /** Copy a shareable link to a message; omitted where linking is unavailable. */

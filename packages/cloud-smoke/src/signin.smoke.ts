@@ -12,7 +12,15 @@
  * authenticator), signs out, signs back in and signs out, through the app's
  * own UI.
  */
-import { expect, test, type APIRequestContext, type BrowserContext, type CDPSession, type Page } from "@playwright/test";
+import {
+  expect,
+  test,
+  type APIRequestContext,
+  type BrowserContext,
+  type CDPSession,
+  type Locator,
+  type Page,
+} from "@playwright/test";
 import { CLOUD_MIRROR, smokeTargets, type SmokeTarget } from "./config";
 import { missingConnectSources } from "./csp";
 
@@ -79,11 +87,46 @@ function describe(seen: Observed): string {
   return lines.length ? lines.join("\n") : "(no console errors, CSP violations or failed requests)";
 }
 
+/**
+ * How an app's own UI wraps the shared passkey control. Most apps show
+ * `<PasskeySignIn>` straight away and a "Sign out" button once signed in;
+ * an app with a landing page first, or another sign-out, says so here.
+ */
+interface AppFlow {
+  /** Brings up the passkey control when the page does not show it on load. */
+  openSignIn?: (page: Page) => Promise<void>;
+  /** Visible once signed in. */
+  signedIn: (page: Page) => Locator;
+  signOut: (page: Page) => Promise<void>;
+}
+
+const DEFAULT_FLOW: AppFlow = {
+  signedIn: (page) => page.getByRole("button", { name: "Sign out" }),
+  signOut: (page) => page.getByRole("button", { name: "Sign out" }).click(),
+};
+
+const FLOWS: Record<string, AppFlow> = {
+  // A landing page whose "Sign in" opens the passkey popup; signed in, the
+  // workspace picker, whose "Disconnect node" signs out (back to the landing).
+  "com.calimero.chat": {
+    openSignIn: async (page) => {
+      const control = page.getByTestId("signin-passkey");
+      if (await control.isVisible()) return;
+      await page.getByRole("button", { name: "Sign in", exact: true }).first().click();
+      await expect(control).toBeVisible({ timeout: 30_000 });
+    },
+    signedIn: (page) => page.getByRole("button", { name: "Disconnect node" }),
+    signOut: (page) => page.getByRole("button", { name: "Disconnect node" }).click(),
+  },
+};
+
+const flowOf = (pkg: string): AppFlow => FLOWS[pkg] ?? DEFAULT_FLOW;
+
 /** Waits for the session to settle after a ceremony: signed in, or the control's error. */
-async function ceremonyOutcome(page: Page, what: string, seen: Observed): Promise<void> {
-  const signOut = page.getByRole("button", { name: "Sign out" });
+async function ceremonyOutcome(page: Page, flow: AppFlow, what: string, seen: Observed): Promise<void> {
+  const signedIn = flow.signedIn(page);
   const error = page.getByTestId("signin-error");
-  await expect(signOut.or(error).first(), `${what}: neither signed in nor an error shown`).toBeVisible({
+  await expect(signedIn.or(error).first(), `${what}: neither signed in nor an error shown`).toBeVisible({
     timeout: 120_000,
   });
   if (await error.isVisible()) {
@@ -114,6 +157,19 @@ const SIGNED_IN_CHECKS: Record<string, (page: Page) => Promise<void>> = {
     await expect(page.getByText("Loading…")).toHaveCount(0, { timeout: 60_000 });
     await expect(page.locator("pre.err"), "listing this account's stores failed").toHaveCount(0);
   },
+  // The workspace picker lists the account's workspaces (its groups on the
+  // cluster), a read-only authenticated call that needs no workspace yet: a
+  // fresh account lands on "Welcome to MeroChat", one with workspaces on
+  // "Select workspace". The chat's own view methods (`abi.json`) need a
+  // workspace's app instance, which a fresh account does not have.
+  "com.calimero.chat": async (page) => {
+    const listed = page.getByText("Welcome to MeroChat").or(page.getByText("Select workspace"));
+    const failed = page.getByText("Something went wrong");
+    await expect(listed.or(failed).first(), "the workspace picker never listed workspaces").toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(failed, "listing this account's workspaces failed").toHaveCount(0);
+  },
 };
 
 for (const target of smokeTargets()) {
@@ -134,6 +190,7 @@ async function run(
   seen: Observed,
 ): Promise<void> {
   const { cdp, authenticatorId } = await virtualAuthenticator(page);
+  const flow = flowOf(target.package);
 
   // 1. The served page.
   const response = await test.step(`open ${target.url}`, async () => {
@@ -192,6 +249,7 @@ async function run(
 
   // 3. Sign up a fresh account, sign out, sign back in with the same passkey.
   await test.step("sign up with a new passkey", async () => {
+    await flow.openSignIn?.(page);
     const signUp = page.getByTestId("signup-passkey");
     const cannot = page.getByRole("heading", { name: "Cannot connect" });
     await expect(signUp.or(cannot).first(), "the app never showed its sign-in").toBeVisible({ timeout: 60_000 });
@@ -199,26 +257,29 @@ async function run(
       throw new Error(`the app could not connect: ${await page.locator("pre.err").innerText()}\n${describe(seen)}`);
     }
     await signUp.click();
+    // `<PasskeySignIn askName>` asks for an optional name first; the second
+    // press creates the passkey.
+    if (await page.getByTestId("signup-name").isVisible()) await signUp.click();
     // Since core rc.10 a sign-up is two prompts: the new passkey, then one
     // approval with it, which the page starts on its own click.
     const approve = page.getByTestId("signup-approve");
-    const signedIn = page.getByRole("button", { name: "Sign out" });
     const failed = page.getByTestId("signin-error");
-    await expect(approve.or(signedIn).or(failed).first()).toBeVisible({ timeout: 120_000 });
+    await expect(approve.or(flow.signedIn(page)).or(failed).first()).toBeVisible({ timeout: 120_000 });
     if (await approve.isVisible()) await approve.click();
-    await ceremonyOutcome(page, "sign up", seen);
+    await ceremonyOutcome(page, flow, "sign up", seen);
     const { credentials } = await cdp.send("WebAuthn.getCredentials", { authenticatorId });
     expect(credentials.filter((c) => c.isResidentCredential).length, "no discoverable passkey was made").toBe(1);
   });
 
   await test.step("sign out", async () => {
-    await page.getByRole("button", { name: "Sign out" }).click();
+    await flow.signOut(page);
+    await flow.openSignIn?.(page);
     await expect(page.getByTestId("signin-passkey")).toBeVisible();
   });
 
   await test.step("sign in with the same passkey", async () => {
     await page.getByTestId("signin-passkey").click();
-    await ceremonyOutcome(page, "sign in", seen);
+    await ceremonyOutcome(page, flow, "sign in", seen);
   });
 
   // 4. Signed in for real: one call to the cluster works. Then sign out.
@@ -227,7 +288,8 @@ async function run(
   });
 
   await test.step("sign out", async () => {
-    await page.getByRole("button", { name: "Sign out" }).click();
+    await flow.signOut(page);
+    await flow.openSignIn?.(page);
     await expect(page.getByTestId("signin-passkey")).toBeVisible();
   });
 

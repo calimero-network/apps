@@ -47,7 +47,6 @@ function renderMessage(msg: CurbMessage, editable: boolean) {
       fetchAccounts={noop}
       autocompleteAccounts={[]}
       authToken={undefined}
-      privateIpfsEndpoint=""
     />,
   );
 }
