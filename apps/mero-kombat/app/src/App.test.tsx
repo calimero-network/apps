@@ -1,10 +1,18 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { NotFound, type AppInfo, type CalimeroClient, type CalimeroSession } from "@calimero-network/mero-js";
-import { SessionStore, resolveTarget, type KeyValueStorage, type Target } from "@calimero-apps/connect";
+import { CalimeroError, type AppInfo, type CalimeroClient, type CalimeroSession } from "@calimero-network/mero-js";
+import {
+  SessionStore,
+  createInviteStore,
+  resolveTarget,
+  type InviteStore,
+  type KeyValueStorage,
+  type PendingInvite,
+  type Target,
+} from "@calimero-apps/connect";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
-import { selectionKey } from "./arenas";
+import { migrateStoredInvite, selectionKey } from "./arenas";
 import type { ArenaView, FighterView } from "./kombat";
 import { APP, type SessionDeps } from "./session";
 
@@ -29,6 +37,13 @@ beforeAll(() => {
 const SESSION: CalimeroSession = { accountId: "acct-alice", sessionToken: "s", refreshToken: "r", expiresAt: 9e12 };
 const DEV_ENV = { DEV: true, VITE_CALIMERO_BUNDLE: "bundle-hash" };
 const LOCAL: Target = resolveTarget(DEV_ENV);
+
+/** An invite store on `storage` holding `invite`, as `main.tsx` leaves it after capturing a link. */
+function pendingIn(storage: KeyValueStorage, invite: Partial<PendingInvite> & { token: string }): InviteStore {
+  const invites = createInviteStore(APP, { storage });
+  invites.put({ org: null, team: null, doc: null, route: null, extra: {}, ...invite });
+  return invites;
+}
 
 const corner = (seat: string, member = "", name = ""): FighterView => ({
   seat,
@@ -159,7 +174,7 @@ describe("App", () => {
 
     fireEvent.click(screen.getByText("Create invite link"));
     const link = await screen.findByLabelText("invitation link");
-    expect(link.textContent).toMatch(/invite=tok-123&arena=app-new&org=org-1/);
+    expect(link.textContent).toMatch(/invite=tok-123&org=org-1&arena=app-new/);
     expect(client.invite).toHaveBeenCalledWith("org-1", "member", expect.anything());
   });
 
@@ -216,9 +231,8 @@ describe("App", () => {
   it("shows a signed-out visitor with an invitation an invitation page, and \"Not now\" keeps it", async () => {
     at("/");
     const storage = new Memory();
-    const pending = JSON.stringify({ token: "tok-9", arena: null });
-    storage.setItem(`${APP}:pending-invite`, pending);
-    render(<App deps={deps(fakeClient())} storage={storage} />);
+    const invites = pendingIn(storage, { token: "tok-9" });
+    render(<App deps={deps(fakeClient())} storage={storage} invites={invites} />);
     const page = await screen.findByTestId("invitation-page");
     expect(page.textContent).toContain(
       "You've been invited to join the arena in Mero Kombat.",
@@ -228,7 +242,7 @@ describe("App", () => {
 
     fireEvent.click(screen.getByTestId("invitation-later"));
     await waitFor(() => expect(document.querySelector(".cal-lp-root")).not.toBeNull());
-    expect(storage.getItem(`${APP}:pending-invite`)).toBe(pending);
+    expect(invites.token()).toBe("tok-9");
   });
 
   it("tells a member of the invited org they are already in it, without spending the invite", async () => {
@@ -237,14 +251,14 @@ describe("App", () => {
       me: vi.fn(async () => ({ accountId: "acct-alice", orgs: [{ orgId: "org-9" }] })),
     });
     const storage = new Memory();
-    storage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: "tok-9", arena: null, org: "org-9" }));
+    const invites = pendingIn(storage, { token: "tok-9", org: "org-9" });
     new SessionStore(APP, LOCAL, storage).save(SESSION);
-    render(<App deps={deps(client)} storage={storage} />);
+    render(<App deps={deps(client)} storage={storage} invites={invites} />);
     expect((await screen.findByTestId("invitation-outcome")).textContent).toContain(
       "You're already in the arena",
     );
     expect(client.redeemInvite).not.toHaveBeenCalled();
-    expect(storage.getItem(`${APP}:pending-invite`)).toBeNull();
+    expect(invites.token()).toBeNull();
   });
 
   it("asks to join an invitation opened before signing in, then opens the arena it names", async () => {
@@ -253,14 +267,14 @@ describe("App", () => {
       { appId: "app-9", name: "Their ring", owner: "acct-bob", org: "org-9", bundle: "bundle-hash", package: null, version: null },
     ]);
     const storage = new Memory();
-    storage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: "tok-9", arena: "app-9" }));
-    render(<App deps={deps(client)} storage={storage} />);
+    const invites = pendingIn(storage, { token: "tok-9", extra: { arena: "app-9" } });
+    render(<App deps={deps(client)} storage={storage} invites={invites} />);
     fireEvent.click(await screen.findByTestId("signin-passkey"));
     // Asked, not done: nothing is redeemed before "Join".
     fireEvent.click(await screen.findByTestId("invitation-join"));
     await screen.findByText("Their ring");
     expect(client.redeemInvite).toHaveBeenCalledWith("tok-9");
-    expect(storage.getItem(`${APP}:pending-invite`)).toBeNull();
+    expect(invites.token()).toBeNull();
     await waitFor(() => expect(client.view).toHaveBeenCalledWith("app-9", "arena", expect.anything()));
   });
 
@@ -270,9 +284,9 @@ describe("App", () => {
       { appId: "app-9", name: "Their ring", owner: "acct-bob", org: "org-9", bundle: "bundle-hash", package: null, version: null },
     ]);
     // The session reads the invite from the page's storage, as in the browser.
-    localStorage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: "tok-9", arena: "app-9" }));
+    const invites = pendingIn(localStorage, { token: "tok-9", extra: { arena: "app-9" } });
     try {
-      render(<App deps={deps(client)} storage={localStorage} />);
+      render(<App deps={deps(client)} storage={localStorage} invites={invites} />);
       const create = await screen.findByTestId("signup-passkey");
       expect(create.textContent).toBe("Create your account and join the arena");
       fireEvent.click(create);
@@ -280,7 +294,7 @@ describe("App", () => {
       expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-9" });
       expect(client.signIn).not.toHaveBeenCalled();
       expect(client.redeemInvite).not.toHaveBeenCalled();
-      expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
+      expect(invites.token()).toBeNull();
     } finally {
       localStorage.clear();
     }
@@ -289,16 +303,19 @@ describe("App", () => {
   it("drops an invitation the cluster refuses", async () => {
     at("/play");
     const client = fakeClient();
-    client.redeemInvite.mockRejectedValue(new NotFound("no such invite"));
+    // Core's answer for a used, revoked or unknown invite.
+    client.redeemInvite.mockRejectedValue(
+      new CalimeroError(400, "REJECTED", "invite was used up, revoked or never existed"),
+    );
     const storage = new Memory();
-    storage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: "tok-used", arena: null }));
+    const invites = pendingIn(storage, { token: "tok-used" });
     new SessionStore(APP, LOCAL, storage).save(SESSION);
-    render(<App deps={deps(client)} storage={storage} />);
+    render(<App deps={deps(client)} storage={storage} invites={invites} />);
     fireEvent.click(await screen.findByTestId("invitation-join"));
     await screen.findByText(
       "This invite was already used or has expired. Ask the person who invited you for a new link.",
     );
-    await waitFor(() => expect(storage.getItem(`${APP}:pending-invite`)).toBeNull());
+    await waitFor(() => expect(invites.token()).toBeNull());
   });
 
   it("sends a signed-in visitor from the landing page into the app, and signs out", async () => {
@@ -314,5 +331,145 @@ describe("App", () => {
     await screen.findByTestId("signin-passkey");
     expect(client.signOut).toHaveBeenCalled();
     expect(new SessionStore(APP, LOCAL, storage).load()).toBeNull();
+  });
+
+  describe("invitations land in the invited org", () => {
+    /** Two shared arenas in two orgs: the one opened last, and the one an invite is for. */
+    const TWO_ORGS: AppInfo[] = [
+      { appId: "app-a", name: "alpha", owner: "acct-bob", org: "org-1", bundle: "bundle-hash", package: null, version: null },
+      { appId: "app-b", name: "beta", owner: "acct-bob", org: "org-2", bundle: "bundle-hash", package: null, version: null },
+    ];
+    const selected = (storage: KeyValueStorage) =>
+      (JSON.parse(storage.getItem(selectionKey(LOCAL, "acct-alice")) ?? "null") as { appId?: string } | null)?.appId;
+
+    function signedIn(storage: KeyValueStorage, lastOpened = true) {
+      new SessionStore(APP, LOCAL, storage).save(SESSION);
+      if (lastOpened) {
+        storage.setItem(selectionKey(LOCAL, "acct-alice"), JSON.stringify({ appId: "app-a", name: "alpha", org: "org-1" }));
+      }
+    }
+
+    it("joining opens the invited org's arena, not the picker or the one open before", async () => {
+      at("/play");
+      const client = fakeClient([...TWO_ORGS]);
+      client.redeemInvite.mockResolvedValue({ org: "org-2" });
+      const storage = new Memory();
+      signedIn(storage);
+      const invites = pendingIn(storage, { token: "tok-9" });
+      render(<App deps={deps(client)} storage={storage} invites={invites} />);
+      fireEvent.click(await screen.findByTestId("invitation-join"));
+      await waitFor(() => expect(selected(storage)).toBe("app-b"));
+      expect(client.redeemInvite).toHaveBeenCalledWith("tok-9");
+      expect(invites.token()).toBeNull();
+    });
+
+    it("a member of the invited org lands in its arena on Continue, without spending the invite", async () => {
+      at("/play");
+      const client = fakeClient([...TWO_ORGS]);
+      Object.assign(client, { me: vi.fn(async () => ({ accountId: "acct-alice", orgs: [{ orgId: "org-2" }] })) });
+      const storage = new Memory();
+      signedIn(storage);
+      const invites = pendingIn(storage, { token: "tok-9", org: "org-2" });
+      render(<App deps={deps(client)} storage={storage} invites={invites} />);
+      await screen.findByTestId("invitation-outcome");
+      fireEvent.click(screen.getByTestId("invitation-continue"));
+      await waitFor(() => expect(selected(storage)).toBe("app-b"));
+      expect(client.redeemInvite).not.toHaveBeenCalled();
+      expect(invites.token()).toBeNull();
+    });
+
+    it("a newcomer who joined at sign-up lands in the invited org's arena", async () => {
+      at("/play");
+      const client = fakeClient([...TWO_ORGS]);
+      // The node names the org a sign-up joined in its answer.
+      const signUp = client.signUp.getMockImplementation()!;
+      client.signUp.mockImplementation(async () => ({ ...(await signUp()), org: "org-2" }));
+      const storage = new Memory();
+      const invites = pendingIn(storage, { token: "tok-9", org: "org-2" });
+      render(<App deps={deps(client)} storage={storage} invites={invites} />);
+      fireEvent.click(await screen.findByTestId("signup-passkey"));
+      await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-9" }));
+      await waitFor(() => expect(selected(storage)).toBe("app-b"));
+      expect(client.redeemInvite).not.toHaveBeenCalled();
+      expect(invites.token()).toBeNull();
+    });
+
+    it("an org with no arena this member may add says to ask an owner", async () => {
+      at("/play");
+      const client = fakeClient([]);
+      client.redeemInvite.mockResolvedValue({ org: "org-2" });
+      Object.assign(client, { getOrg: vi.fn(async () => ({ members: { "acct-alice": "member" } })) });
+      const storage = new Memory();
+      signedIn(storage, false);
+      const invites = pendingIn(storage, { token: "tok-9" });
+      render(<App deps={deps(client)} storage={storage} invites={invites} />);
+      fireEvent.click(await screen.findByTestId("invitation-join"));
+      await screen.findByText(/Only an owner or admin of this organization can add an arena here/);
+    });
+
+    it.each([
+      [401, "UNAUTHORIZED", "session expired"],
+      [429, "RATE_LIMITED", "too many requests"],
+    ])("keeps the invite when the redemption fails with %i", async (status, code, message) => {
+      at("/play");
+      const client = fakeClient([...TWO_ORGS]);
+      client.redeemInvite.mockRejectedValue(new CalimeroError(status, code, message));
+      const storage = new Memory();
+      signedIn(storage);
+      const invites = pendingIn(storage, { token: "tok-9" });
+      render(<App deps={deps(client)} storage={storage} invites={invites} />);
+      fireEvent.click(await screen.findByTestId("invitation-join"));
+      await screen.findByText(/Your invite is kept/);
+      expect(invites.token()).toBe("tok-9");
+      expect(screen.getByTestId("invitation-join")).toBeTruthy();
+    });
+
+    it("signing out drops the pending invite, so the next person is not asked to join", async () => {
+      at("/play");
+      const client = fakeClient([...TWO_ORGS]);
+      const storage = new Memory();
+      signedIn(storage);
+      const invites = pendingIn(storage, { token: "tok-9" });
+      render(<App deps={deps(client)} storage={storage} invites={invites} />);
+      await screen.findByTestId("invitation-join");
+      fireEvent.click(screen.getByText("Log out"));
+      await screen.findByTestId("signin-passkey");
+      expect(invites.token()).toBeNull();
+      expect(screen.queryByTestId("invitation-page")).toBeNull();
+    });
+
+    it("a member who may not add an arena to an organization is told to ask an owner instead", async () => {
+      at("/play");
+      const client = fakeClient([...TWO_ORGS]);
+      Object.assign(client, {
+        getOrg: vi.fn(async (org: string) =>
+          org === "org-2" ? { members: { "acct-alice": "member" } } : { members: { "acct-alice": "owner" } },
+        ),
+      });
+      const storage = new Memory();
+      signedIn(storage, false);
+      render(<App deps={deps(client)} storage={storage} invites={createInviteStore(APP, { storage })} />);
+      expect((await screen.findByTestId("ask-an-owner")).textContent).toContain(
+        "Only an owner or admin of this organization can add an arena here",
+      );
+      // The organization this account owns keeps its button.
+      expect(screen.getAllByText("Add arena")).toHaveLength(1);
+    });
+
+    it("moves an invite an older build stored under its own key into the shared store", () => {
+      const storage = new Memory();
+      storage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: "tok-old", arena: "app-9", org: "org-2" }));
+      const invites = createInviteStore(APP, { storage, keep: ["arena"] });
+      migrateStoredInvite(invites, storage);
+      expect(invites.pending()).toMatchObject({ token: "tok-old", org: "org-2", extra: { arena: "app-9" } });
+      expect(storage.getItem(`${APP}:pending-invite`)).toBeNull();
+
+      // A link opened just now wins over the old one.
+      const fresh = pendingIn(new Memory(), { token: "tok-new" });
+      const old = new Memory();
+      old.setItem(`${APP}:pending-invite`, JSON.stringify({ token: "tok-old" }));
+      migrateStoredInvite(fresh, old);
+      expect(fresh.token()).toBe("tok-new");
+    });
   });
 });

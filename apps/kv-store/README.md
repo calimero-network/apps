@@ -87,7 +87,8 @@ generated `KvStoreClient` are gone. It now resolves its target from the build
 `vite build`), signs in with a **passkey**, lists and creates **stores** (app
 instances: v1's contexts), shares one through an **organization** (v1's
 namespace) with an **invite link** (making it is approved with your passkey;
-opening it after signing in redeems it), and calls the contract by method
+opening it after signing in redeems it and opens the shared store; the pending
+invite is `@calimero-apps/connect`'s `createInviteStore`, dropped on sign-out), and calls the contract by method
 name through a small typed wrapper (`src/kvStore.ts`) whose method list a test
 checks against `logic/res/abi.json`.
 

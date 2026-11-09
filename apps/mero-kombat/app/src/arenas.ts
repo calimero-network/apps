@@ -1,7 +1,20 @@
-import { CalimeroError, type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
-import { targetKey, type AppSource, type KeyValueStorage, type Target } from "@calimero-apps/connect";
+import type { AppInfo, CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
+import {
+  createInviteStore,
+  inviteLink,
+  targetKey,
+  type AppSource,
+  type InviteStore,
+  type KeyValueStorage,
+  type PendingInvite,
+  type Target,
+} from "@calimero-apps/connect";
+import { nodeBasename } from "@calimero-apps/node-served";
 
 import { APP } from "./session";
+
+/** The link parameter naming the arena an invite opens. */
+const ARENA_PARAM = "arena";
 
 /**
  * An arena is an app instance: v1's context. Arenas live in an organization
@@ -47,96 +60,103 @@ export function inviteToken(
 }
 
 /**
+ * Where this frontend's routes live: `/`, or under the node's `/{version}/`.
+ * A version-pinned invite link's route is read relative to it.
+ */
+export const basename = (): string => nodeBasename(new URL(window.location.href), "/");
+
+/**
+ * This app's pending invite (`createInviteStore` in `@calimero-apps/connect`),
+ * with the arena its link names (`&arena=`, kept as `extra.arena`): captured
+ * in `main.tsx` before React mounts, then bound to the cluster, held for the
+ * account that signs in with it and dropped on sign-out by the passkey
+ * session (`usePasskeySession({ invites })`).
+ */
+export const invites: InviteStore = createInviteStore(APP, { keep: [ARENA_PARAM] });
+
+/** The arena a pending invite's link names, opened once it is redeemed. */
+export function invitedArena(invite: PendingInvite | null): string | null {
+  return invite?.extra[ARENA_PARAM] ?? null;
+}
+
+/**
  * The link that opens this frontend with `token` to redeem and `arena` to open
  * after. It also names `org`: the token does not say which org it is for until
  * it is redeemed, and redeeming spends one of its uses even for someone already
  * in the org, so the link carries it for the app to tell a member "you are
  * already in" first.
+ *
+ * Pinned to the router's basename (the served `/{version}/`): `inviteLink`
+ * defaults to the origin's root, which a cluster redirects to the newest
+ * release only with core's served-redirect fix (it keeps the query); until
+ * every cluster runs it, the link stays pinned. `/` sends an invited visitor on
+ * to the play page.
  */
-export function inviteLink(
-  token: string,
-  arena: string,
-  location: Pick<Location, "origin" | "pathname"> = window.location,
-  org?: string,
-): string {
-  const url = new URL(location.pathname, location.origin);
-  url.searchParams.set("invite", token);
-  url.searchParams.set("arena", arena);
-  if (org) url.searchParams.set("org", org);
-  return url.toString();
+export function arenaInviteLink(token: string, arena: string, org: string): string {
+  return inviteLink(token, { org, root: basename(), extra: { [ARENA_PARAM]: arena } });
 }
 
-export interface PendingInvite {
-  token: string;
-  /** The arena the link was made in: opened once the invitation is redeemed. */
-  arena: string | null;
-  /** The org the link names, for the membership check before redeeming. */
-  org: string | null;
-}
-
-const PENDING = `${APP}:pending-invite`;
+/** The key this app kept its pending invite under before the shared store: `{ token, arena, org }`. */
+const LEGACY_INVITE = `${APP}:pending-invite`;
 
 /**
- * Takes `?invite=` (and `&arena=`) off the address bar into storage, before
- * anything renders: a person opening a link is usually not signed in yet, and
- * the token must survive the sign-up. Redeemed (and dropped) once a session
- * exists.
+ * Moves an invite stored by an older build of this app into `store`, unless
+ * the store holds one already (a link opened just now wins), and forgets the
+ * old key.
  */
-export function captureInvite(storage: KeyValueStorage = localStorage, loc: Location = window.location): void {
-  const url = new URL(loc.href);
-  const token = url.searchParams.get("invite");
-  if (!token) return;
+export function migrateStoredInvite(
+  store: InviteStore,
+  storage: KeyValueStorage | undefined = globalThis.localStorage,
+): void {
+  if (!storage) return;
+  let raw: string | null;
   try {
-    storage.setItem(
-      PENDING,
-      JSON.stringify({ token, arena: url.searchParams.get("arena"), org: url.searchParams.get("org") }),
-    );
+    raw = storage.getItem(LEGACY_INVITE);
   } catch {
     return;
   }
-  url.searchParams.delete("invite");
-  url.searchParams.delete("arena");
-  url.searchParams.delete("org");
-  window.history.replaceState(null, "", url.toString());
-}
-
-export function pendingInvite(storage: KeyValueStorage = localStorage): PendingInvite | null {
-  try {
-    const raw = storage.getItem(PENDING);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<PendingInvite>;
-    return typeof parsed.token === "string"
-      ? {
-          token: parsed.token,
-          arena: typeof parsed.arena === "string" ? parsed.arena : null,
-          org: typeof parsed.org === "string" && parsed.org ? parsed.org : null,
-        }
-      : null;
-  } catch {
-    return null;
+  if (raw && !store.pending()) {
+    try {
+      const old = JSON.parse(raw) as { token?: unknown; arena?: unknown; org?: unknown };
+      if (typeof old.token === "string" && old.token) {
+        store.put({
+          token: old.token,
+          org: typeof old.org === "string" && old.org ? old.org : null,
+          team: null,
+          doc: null,
+          route: null,
+          extra: typeof old.arena === "string" && old.arena ? { [ARENA_PARAM]: old.arena } : {},
+        });
+      }
+    } catch {
+      /* not an invite */
+    }
   }
-}
-
-export function dropInvite(storage: KeyValueStorage = localStorage): void {
   try {
-    storage.removeItem(PENDING);
+    storage.removeItem(LEGACY_INVITE);
   } catch {
     /* nothing stored */
   }
 }
 
 /**
- * Whether a redemption failed because the invitation itself is spent: used,
- * expired, revoked or unknown to the node. Those answer a 4xx; a 5xx or a
- * network failure is worth retrying with the same token.
+ * The arena to open in `org` (the one an invite joined, or the account was
+ * already in): the arena the link named when the account reaches it, else
+ * `prefer` (the one opened last) when it is in `org`, else the first by name.
+ * `null` when the account reaches none there yet.
  */
-export function isSpentInvite(e: unknown): boolean {
-  return e instanceof CalimeroError && e.status >= 400 && e.status < 500 && e.status !== 401;
+export function arenaIn(
+  arenas: AppInfo[],
+  org: string | null,
+  named?: string | null,
+  prefer?: string | null,
+): AppInfo | null {
+  const asked = named ? arenas.find((a) => a.appId === named) : undefined;
+  if (asked) return asked;
+  if (!org) return null;
+  const inOrg = arenas.filter((a) => a.org === org);
+  return inOrg.find((a) => a.appId === prefer) ?? inOrg[0] ?? null;
 }
-
-/** What the invitation screen says about a spent invitation. */
-export const SPENT_INVITE =
-  "This invite was already used or has expired. Ask the person who invited you for a new link.";
 
 /** The arena last opened on this target by this account, remembered across loads. */
 export function selectionKey(target: Target, accountId: string): string {
