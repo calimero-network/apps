@@ -1,5 +1,11 @@
-import { CalimeroError } from "@calimero-network/mero-js";
-import { describeError, type KeyValueStorage } from "@calimero-apps/connect";
+import {
+  createInviteStore,
+  describeRedeemFailure,
+  inviteLink as sharedInviteLink,
+  type InviteStore,
+  type KeyValueStorage,
+  type PendingInvite,
+} from "@calimero-apps/connect";
 import { APP_NAME } from "../config";
 import { nodeBasename } from "./servedByNode";
 
@@ -17,6 +23,9 @@ import { nodeBasename } from "./servedByNode";
  * `org` names the team the token joins. The token itself does not say, and
  * without it the app cannot tell an invitation into a team the visitor is
  * already in: accepting that spends the link's one use on nobody.
+ *
+ * The link stays under the served `/{version}/` root until every cluster's
+ * served-host redirect keeps the query string (core's served-redirect fix).
  */
 export function inviteLink(
   token: string,
@@ -24,90 +33,87 @@ export function inviteLink(
   base: string = nodeBasename(),
   org?: string | null,
 ): string {
-  const url = new URL(base, location.origin);
-  url.searchParams.set("invite", token);
-  if (org) url.searchParams.set("org", org);
-  return url.toString();
+  return sharedInviteLink(token, { org, root: base, origin: location.origin });
 }
 
-export interface PendingInvite {
-  token: string;
-  /** The team the link names (`&org=`), when it names one. */
-  org?: string | null;
-  /**
-   * The route the link opened, under the router basename, when it was not the
-   * front door: where joining goes, so a deep link survives the sign-in.
-   */
-  returnTo?: string | null;
+/** This app's pending invite (`@calimero-apps/connect`), captured in `main.tsx` before React mounts. */
+export const invites = createInviteStore(APP_NAME);
+
+/**
+ * Takes `?invite=` (and the team and route it names) off the address bar into
+ * the store, before anything renders: a person opening a link is usually not
+ * signed in yet, and the token must survive the passkey sign-up. A new link
+ * also undoes an earlier "Not now".
+ */
+export function captureInvite(loc: Pick<Location, "href"> = window.location): void {
+  migrateLegacyInvite();
+  if (invites.capture(loc, { basename: nodeBasename() })) dropDeferral();
 }
 
 /** The landing page's own paths: a link to one of them names no destination. */
 const FRONT_DOOR = new Set(["/", "/docs", "/preview", "/login"]);
 
-/** `pathname` relative to the router basename, or null for the front door. */
-export function routeOf(pathname: string, base: string = nodeBasename()): string | null {
-  const root = base.endsWith("/") ? base.slice(0, -1) : base;
-  const rest = root && pathname.startsWith(root) ? pathname.slice(root.length) || "/" : pathname;
-  const route = rest.startsWith("/") ? rest : `/${rest}`;
-  return FRONT_DOOR.has(route.replace(/\/+$/, "") || "/") ? null : route;
+/**
+ * Where joining goes: the route the link was opened on, unless that was the
+ * front door; else the team's boards (`org`, once known), else the teams.
+ */
+export function inviteDestination(invite: Pick<PendingInvite, "route"> | null, org: string | null): string {
+  const route = invite?.route ?? null;
+  if (route && !FRONT_DOOR.has(route.replace(/\/+$/, "") || "/")) return route;
+  return org ? `/teams/${org}/projects` : "/teams";
 }
 
-const PENDING = `${APP_NAME}:pending-invite`;
+const LEGACY_PENDING = `${APP_NAME}:pending-invite`;
 
 /**
- * Takes `?invite=` off the address bar into storage, before anything renders:
- * a person opening a link is usually not signed in yet, and the token must
- * survive the passkey sign-up. Redeemed (and dropped) once a session exists
- * and the person says yes.
+ * Moves an invite an earlier build stored under its own key into the shared
+ * store, so a link opened before the upgrade still joins after it.
  */
-export function captureInvite(storage: KeyValueStorage = localStorage, loc: Location = window.location): void {
-  const url = new URL(loc.href);
-  const token = url.searchParams.get("invite");
-  if (!token) return;
-  const org = url.searchParams.get("org");
-  url.searchParams.delete("invite");
-  url.searchParams.delete("org");
-  const query = url.searchParams.toString();
-  const returnTo = routeOf(url.pathname);
+export function migrateLegacyInvite(storage: KeyValueStorage = localStorage, into: InviteStore = invites): void {
   try {
-    storage.setItem(
-      PENDING,
-      JSON.stringify({
-        token,
-        org: org || null,
-        returnTo: returnTo ? `${returnTo}${query ? `?${query}` : ""}` : null,
-      } satisfies PendingInvite),
-    );
+    const raw = storage.getItem(LEGACY_PENDING);
+    if (!raw) return;
+    storage.removeItem(LEGACY_PENDING);
+    const old = JSON.parse(raw) as { token?: unknown; org?: unknown; returnTo?: unknown };
+    if (typeof old.token !== "string" || !old.token) return;
+    const returnTo = typeof old.returnTo === "string" && old.returnTo.startsWith("/") ? old.returnTo : null;
+    into.put({
+      token: old.token,
+      org: typeof old.org === "string" && old.org ? old.org : null,
+      team: null,
+      doc: null,
+      // The old record kept the route's own query; the store keeps the path.
+      route: returnTo ? returnTo.split("?")[0] : null,
+      extra: {},
+    });
   } catch {
-    return;
-  }
-  dropDeferral();
-  window.history.replaceState(null, "", url.toString());
-}
-
-export function pendingInvite(storage: KeyValueStorage = localStorage): PendingInvite | null {
-  try {
-    const raw = storage.getItem(PENDING);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<PendingInvite>;
-    if (typeof parsed.token !== "string" || !parsed.token) return null;
-    return {
-      token: parsed.token,
-      org: typeof parsed.org === "string" && parsed.org ? parsed.org : null,
-      returnTo: typeof parsed.returnTo === "string" && parsed.returnTo.startsWith("/") ? parsed.returnTo : null,
-    };
-  } catch {
-    return null;
+    /* unreadable: nothing to move */
   }
 }
 
-export function dropInvite(storage: KeyValueStorage = localStorage): void {
-  try {
-    storage.removeItem(PENDING);
-  } catch {
-    /* nothing stored */
-  }
-  dropDeferral();
+/**
+ * Set when a sign-up joined with the page's invite, before the session is
+ * signed in: the team it joined and where the link pointed. The invitation
+ * prompt (inside the router, which the session is not) takes it once signed
+ * in and opens that; until then the front door does not redirect on its own.
+ */
+let joinedAtSignUp: { org: string | null; invite: PendingInvite | null } | null = null;
+
+/** `onJoinedAtSignUp` for `usePasskeySession`: remember what to open. */
+export function noteJoinedAtSignUp({ org }: { org: string | null }, pending: PendingInvite | null): void {
+  joinedAtSignUp = { org: org ?? pending?.org ?? null, invite: pending };
+}
+
+/** Whether a sign-up just joined with the invite and its destination is still to open. */
+export function joinedAtSignUpPending(): boolean {
+  return joinedAtSignUp !== null;
+}
+
+/** Where a sign-up that just joined with the invite goes, once; `null` when none did. */
+export function takeJoinedAtSignUp(): string | null {
+  const joined = joinedAtSignUp;
+  joinedAtSignUp = null;
+  return joined ? inviteDestination(joined.invite, joined.org) : null;
 }
 
 const DEFERRED = `${APP_NAME}:invite-deferred`;
@@ -140,20 +146,11 @@ function dropDeferral(storage: Pick<Storage, "removeItem"> = sessionStorage): vo
   }
 }
 
-/** What to say when a token is refused for good. */
-export const SPENT_INVITE = "This invite was already used or has expired. Ask the person who invited you for a new link.";
-
 /**
- * Whether the node refused the token for good (unknown, used, expired,
- * revoked) rather than failing to answer: a 4xx, or a message that says so.
+ * The plain sentence for a failed redemption: a spent invite plainly, anything
+ * else (a lapsed session, a rate limit, the cluster unreachable) as worth
+ * another try, the token kept.
  */
-export function inviteRefused(e: unknown): boolean {
-  // 401 (the session lapsed) and 429 (slow down) say nothing about the token.
-  if (e instanceof CalimeroError) return e.status >= 400 && e.status < 500 && e.status !== 401 && e.status !== 429;
-  return /unknown invite|already used|expired|revoked|not found/i.test(describeError(e));
-}
-
-/** The plain sentence for a failed redemption. */
 export function inviteFailure(e: unknown): string {
-  return inviteRefused(e) ? SPENT_INVITE : `The invitation could not be accepted: ${describeError(e)}`;
+  return describeRedeemFailure(e);
 }
