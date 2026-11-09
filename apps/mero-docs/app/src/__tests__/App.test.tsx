@@ -17,6 +17,13 @@ import { SIGN_IN_HINT, SIGN_UP_NOT_FINISHED, accountHintKey, noAccountCopy } fro
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../App';
 import { APP, type SessionDeps } from '@/calimero/session';
+import { buildInviteUrl, invites, migrateLegacyInvite } from '@/hooks/useNamespaceInvitation';
+
+/** Hold an invite stored the way an earlier build stored it: it moves into the shared store. */
+function hold(legacy: string) {
+  localStorage.setItem('mero-docs:pending-invite', legacy);
+  migrateLegacyInvite();
+}
 
 // The landing page is generated and tested on its own; here it is the door.
 vi.mock('@/pages/landing/LandingPage', () => ({
@@ -52,6 +59,7 @@ beforeAll(() => {
 beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
+  invites.drop();
   window.history.replaceState(null, '', '/');
 });
 afterEach(cleanup);
@@ -186,9 +194,7 @@ describe('App on Calimero 1.0', () => {
 
   it('asks before redeeming an invitation, then redeems the org invite token', async () => {
     remember();
-    localStorage.setItem(
-      'mero-docs:pending-invite',
-      JSON.stringify({ token: 'inv_abc', kind: 'namespace', targetId: 'org-2', workspaceId: 'org-2', targetName: 'Beta' }),
+    hold(JSON.stringify({ token: 'inv_abc', kind: 'namespace', targetId: 'org-2', workspaceId: 'org-2', targetName: 'Beta' }),
     );
     const client = fakeClient();
     render(<App deps={deps(client)} />);
@@ -196,28 +202,24 @@ describe('App on Calimero 1.0', () => {
     expect(client.redeemInvite).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId('invite-accept'));
     await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith('inv_abc'));
-    expect(localStorage.getItem('mero-docs:pending-invite')).toBeNull();
+    expect(invites.token()).toBeNull();
   });
 
   it('does not offer Join to someone already in the workspace, and keeps the link unspent', async () => {
     remember();
-    localStorage.setItem(
-      'mero-docs:pending-invite',
-      JSON.stringify({ token: 'inv_abc', kind: 'namespace', targetId: 'org-1', workspaceId: 'org-1', targetName: 'Acme' }),
+    hold(JSON.stringify({ token: 'inv_abc', kind: 'namespace', targetId: 'org-1', workspaceId: 'org-1', targetName: 'Acme' }),
     );
     const client = fakeClient();
     render(<App deps={deps(client)} />);
     expect(await screen.findByTestId('invite-already-member', {}, BOOT)).toBeTruthy();
     expect(screen.queryByTestId('invite-accept')).toBeNull();
     expect(client.redeemInvite).not.toHaveBeenCalled();
-    expect(localStorage.getItem('mero-docs:pending-invite')).toBeNull();
+    expect(invites.token()).toBeNull();
   });
 
   it('says plainly when the invite was already used or has expired', async () => {
     remember();
-    localStorage.setItem(
-      'mero-docs:pending-invite',
-      JSON.stringify({ token: 'inv_abc', kind: 'namespace', targetId: 'org-2', workspaceId: 'org-2' }),
+    hold(JSON.stringify({ token: 'inv_abc', kind: 'namespace', targetId: 'org-2', workspaceId: 'org-2' }),
     );
     const client = fakeClient();
     client.redeemInvite.mockRejectedValueOnce(new CalimeroError(404, 'NOT_FOUND', 'unknown invite'));
@@ -226,7 +228,36 @@ describe('App on Calimero 1.0', () => {
     expect((await screen.findByTestId('invite-error')).textContent).toBe(
       'This invite was already used or has expired. Ask the person who invited you for a new link.',
     );
-    expect(localStorage.getItem('mero-docs:pending-invite')).toBeNull();
+    expect(invites.token()).toBeNull();
+  });
+
+  it('an invited newcomer who creates the account lands in the folder the link names (B10)', async () => {
+    const link = new URL(buildInviteUrl('group', 'inv_f', { workspace: 'org-1', folder: 'eng' }, 'Engineering'));
+    window.history.replaceState(null, '', `${link.pathname}${link.search}`);
+    invites.capture(window.location);
+    const client = fakeClient();
+    render(<App deps={deps(client)} />);
+    fireEvent.click(await screen.findByTestId('signup-passkey', {}, BOOT));
+    await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), '', { invite: 'inv_f' }), BOOT);
+    await waitFor(() => expect(window.location.pathname).toBe('/app/org-1/f/eng'), BOOT);
+    expect((await screen.findAllByText('Launch plan', {}, BOOT)).length).toBeGreaterThan(0);
+    expect(client.redeemInvite).not.toHaveBeenCalled();
+    expect(invites.token()).toBeNull();
+  }, 20_000);
+
+  it.each([
+    [429, 'RATE_LIMITED', /invite is kept/],
+    [401, 'UNAUTHENTICATED', /invite is kept/],
+  ])('keeps the invite when redeeming answers %i, and says to try again (B6)', async (status, code, says) => {
+    remember();
+    hold(JSON.stringify({ token: 'inv_abc', kind: 'namespace', targetId: 'org-2', workspaceId: 'org-2' }));
+    const client = fakeClient();
+    client.redeemInvite.mockRejectedValueOnce(new CalimeroError(status, code, 'not now'));
+    render(<App deps={deps(client)} />);
+    fireEvent.click(await screen.findByTestId('invite-accept', {}, BOOT));
+    expect((await screen.findByTestId('invite-error')).textContent).toMatch(says);
+    expect(invites.token()).toBe('inv_abc');
+    expect(screen.getByTestId('invite-accept')).toBeTruthy();
   });
 
   describe("a sign-up's second prompt", () => {
@@ -323,7 +354,7 @@ describe('App on Calimero 1.0', () => {
     const invite = JSON.stringify({ token: 'inv_abc', kind: 'namespace', targetId: 'org-2', workspaceId: 'org-2', targetName: 'Beta' });
 
     it('shows the invitation as the page, not the landing hero', async () => {
-      localStorage.setItem('mero-docs:pending-invite', invite);
+      hold(invite);
       render(<App deps={deps(fakeClient())} />);
       expect(await screen.findByTestId('invitation-page', {}, BOOT)).toBeTruthy();
       expect(screen.getByText("You're invited")).toBeTruthy();
@@ -336,7 +367,7 @@ describe('App on Calimero 1.0', () => {
     });
 
     it('signing in goes straight to the join prompt, then into the workspace', async () => {
-      localStorage.setItem('mero-docs:pending-invite', invite);
+      hold(invite);
       const client = fakeClient();
       render(<App deps={deps(client)} />);
       fireEvent.click(await screen.findByTestId('signin-passkey', {}, BOOT));
@@ -346,12 +377,12 @@ describe('App on Calimero 1.0', () => {
     });
 
     it('Not now shows the landing page and keeps the token', async () => {
-      localStorage.setItem('mero-docs:pending-invite', invite);
+      hold(invite);
       render(<App deps={deps(fakeClient())} />);
       fireEvent.click(await screen.findByTestId('invitation-not-now', {}, BOOT));
       fireEvent.click(await screen.findByText('Open sign-in'));
       expect((await screen.findByTestId('signin-desc')).textContent).toContain("You've been invited");
-      expect(localStorage.getItem('mero-docs:pending-invite')).not.toBeNull();
+      expect(invites.token()).not.toBeNull();
     });
   });
 
@@ -395,7 +426,7 @@ describe('App on Calimero 1.0', () => {
     });
 
     it('an invited sign-in the cluster has no account for switches to creating one, in place', async () => {
-      localStorage.setItem('mero-docs:pending-invite', invite);
+      hold(invite);
       const client = fakeClient();
       client.signIn.mockRejectedValue(new CalimeroError(401, 'PASSKEY_UNKNOWN_HERE', 'unknown passkey'));
       render(<App deps={deps(client)} />);
@@ -406,20 +437,20 @@ describe('App on Calimero 1.0', () => {
     });
 
     it('an invited person who has signed in here before sees Sign in first', async () => {
-      localStorage.setItem('mero-docs:pending-invite', invite);
+      hold(invite);
       localStorage.setItem(accountHintKey(resolveTarget(DEV_ENV)), '1');
       render(<App deps={deps(fakeClient())} />);
       expect((await screen.findByTestId('signin-passkey', {}, BOOT)).textContent).toBe('Join the workspace with your passkey');
     });
 
     it('a sign-up carries the invite on an open cluster and joins in that step', async () => {
-      localStorage.setItem('mero-docs:pending-invite', invite);
+      hold(invite);
       const client = fakeClient();
       render(<App deps={deps(client)} />);
       fireEvent.click(await screen.findByTestId('signup-passkey', {}, BOOT));
       await waitFor(() => expect(client.signUp).toHaveBeenCalled(), BOOT);
       expect(client.signUp).toHaveBeenCalledWith(expect.anything(), '', { invite: 'inv_abc' });
-      await waitFor(() => expect(localStorage.getItem('mero-docs:pending-invite')).toBeNull());
+      await waitFor(() => expect(invites.token()).toBeNull());
       expect(client.redeemInvite).not.toHaveBeenCalled();
     });
   });
