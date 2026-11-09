@@ -1,7 +1,7 @@
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useSessionApi } from "./api/sessionContext";
-import { deferInvite, inviteDeferred, pendingInvite } from "./api/teams";
+import { deferInvite, inviteDeferred, joinedAtSignUpPending, pendingInvite } from "./api/teams";
 import LandingPage from "./pages/landing/LandingPage";
 import TeamsPage from "./pages/teams/TeamsPage";
 import TeamCalendarsPage from "./pages/teams/TeamCalendarsPage";
@@ -14,6 +14,12 @@ import InvitationPage from "./components/common/invitation-page/InvitationPage";
 
 /** Where a signed-out visitor was going when the guard sent them to the front door. */
 type FromState = { from?: string; resume?: boolean } | null;
+
+/**
+ * The front door's redirect state, one object: a new one each render re-runs
+ * `<Navigate>`, which then wins over InvitationPrompt's move to the joined team.
+ */
+const RESUME = { resume: true };
 
 /** Every path the shared landing page serves. See src/pages/landing. */
 const LANDING_PATHS = ["/", "/docs", "/preview"];
@@ -53,14 +59,19 @@ function FrontDoor({ bounce }: { bounce: boolean }) {
   const [signingIn, setSigningIn] = useState(false);
   const [deferred, setDeferred] = useState(() => inviteDeferred());
   const signedIn = api.session.status === "signed-in";
+  // Joined at sign-up: InvitationPrompt is opening what the link named. Held
+  // until this page unmounts, so a later render cannot redirect first.
+  const joining = useRef(false);
+  if (joinedAtSignUpPending()) joining.current = true;
   if (useConnecting()) return null;
+  if (bounce && signedIn && joining.current) return null;
   if (bounce && signedIn) {
     // With an invitation waiting, the page asked for comes AFTER joining
     // (InvitationPrompt goes there): opened before, it is not yours to read yet.
     return from && pendingInvite() === null ? (
       <Navigate to={from} replace />
     ) : (
-      <Navigate to="/teams" replace state={{ resume: true }} />
+      <Navigate to="/teams" replace state={RESUME} />
     );
   }
   if (!signedIn && !deferred && pendingInvite() !== null) {
