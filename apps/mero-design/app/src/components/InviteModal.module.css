@@ -132,3 +132,23 @@
 @keyframes inviteModalSpin {
   to { transform: rotate(360deg); }
 }
+
+/* The invitation page: the same card as the popup, alone on the page. */
+.page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  box-sizing: border-box;
+  background: var(--glass-ground);
+  color: var(--glass-ink);
+  font-family: var(--glass-font);
+}
+
+.note {
+  font-size: 12px;
+  color: var(--glass-muted);
+  margin-top: 8px;
+}

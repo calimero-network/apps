@@ -261,7 +261,7 @@ export default function ProjectsPage() {
       // An org invite, approved with this account's passkey. The link is all
       // there is to share: opening it (and signing in) joins the team.
       const token = await inviteToken(client, teamId, passkey());
-      setInvitation(inviteLink(token));
+      setInvitation(inviteLink(token, teamId));
     } catch (err) {
       const msg = `Failed to generate invitation: ${messageOf(err)}`;
       setInviteError(msg);
@@ -394,7 +394,7 @@ export default function ProjectsPage() {
           <div className={styles.inviteSection}>
             <p className={styles.inviteDesc}>
               Generate an invitation link and share it with teammates. Opening it and
-              signing in with a passkey joins the team. Each link works once.
+              signing in with a passkey joins the team. Single use: one person can join with this link; generate another for each person you invite.
             </p>
             {invitation ? (
               inviteCopying ? (

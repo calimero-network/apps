@@ -7,6 +7,7 @@ import {
   inviteLink,
   listWorlds,
   pendingInvite,
+  pendingInviteOrg,
   readCurrentWorld,
   writeCurrentWorld,
 } from "../src/net/worlds";
@@ -65,16 +66,21 @@ describe("invitations", () => {
     expect(inviteLink("tok", { origin: "https://x.example", pathname: "/1.0.0/" })).toBe(
       "https://x.example/1.0.0/?invite=tok",
     );
+    expect(inviteLink("tok", { origin: "https://x.example", pathname: "/1.0.0/" }, "org-1")).toBe(
+      "https://x.example/1.0.0/?invite=tok&org=org-1",
+    );
   });
 
   it("captures ?invite= into storage and off the address bar", () => {
     const storage = memory();
-    window.history.replaceState(null, "", "/?invite=tok-1&x=1");
+    window.history.replaceState(null, "", "/?invite=tok-1&org=org-1&x=1");
     captureInvite(storage, window.location);
     expect(pendingInvite(storage)).toBe("tok-1");
+    expect(pendingInviteOrg(storage)).toBe("org-1");
     expect(window.location.search).toBe("?x=1");
     dropInvite(storage);
     expect(pendingInvite(storage)).toBeNull();
+    expect(pendingInviteOrg(storage)).toBeNull();
   });
 });
 

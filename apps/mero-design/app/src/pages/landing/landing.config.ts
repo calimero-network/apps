@@ -144,7 +144,7 @@ export const CONFIG: LandingConfig = {
       id: "start",
       heading: "Getting started",
       steps: [
-        { title: "Sign in", body: "Press Connect and sign in (or create an account) with a passkey." },
+        { title: "Sign in", body: "Press Sign in and continue with your passkey, or create an account with a new one." },
         { title: "Create a board", body: "You are its owner. Name it, and set a description if it needs one." },
         { title: "Draw something", body: "Add frames, shapes and text. Each element is a separate record, so collaborators editing different elements never queue behind each other." },
         { title: "Invite editors", body: "Grant the editor role to the people who should be able to change things; everyone else can look." },

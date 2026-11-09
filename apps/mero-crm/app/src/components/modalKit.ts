@@ -68,3 +68,21 @@ export const Spin = styled.span`
   width: 15px; height: 15px; border: 2px solid color-mix(in srgb, ${t.color.onAccent} 30%, transparent); border-top-color: ${t.color.onAccent};
   border-radius: 50%; animation: ${spin} 0.6s linear infinite; display: inline-block;
 `;
+
+/** A full page holding one card: the invitation screens, which replace the page rather than float over it. */
+export const Page = styled.main`
+  min-height: 100dvh; box-sizing: border-box;
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+  background: ${t.color.bg};
+`;
+/** The card on a `Page`: a `Dialog`'s look, without the dialog. */
+export const Card = styled(Dialog)`
+  max-height: none; overflow: visible;
+`;
+export const TextLink = styled.button`
+  display: block; margin: 16px auto 0; padding: 4px 8px;
+  font: inherit; font-size: 13px; color: ${t.color.text2};
+  background: none; border: none; cursor: pointer; text-decoration: underline;
+  &:hover:not(:disabled) { color: ${t.color.text}; }
+  &:disabled { opacity: 0.6; cursor: default; }
+`;

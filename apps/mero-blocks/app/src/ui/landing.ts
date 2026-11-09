@@ -13,8 +13,15 @@
 // An invite link (`?invite=`) is redeemed right after sign-in and opens the
 // world it joins.
 
-import type { AppInfo } from "@calimero-network/mero-js";
-import { describeError } from "@calimero-apps/connect";
+import type { AppInfo, SignUpPolicy } from "@calimero-network/mero-js";
+import {
+  describeError,
+  describeSignInError,
+  readSignUpPolicy,
+  signUpAccess,
+  signUpInvite,
+  signUpNotice,
+} from "@calimero-apps/connect";
 import { renderListing } from "@calimero-apps/passkey/listing";
 import "@calimero-apps/passkey/passkey.css";
 
@@ -36,6 +43,8 @@ import {
   inviteToken,
   lastWorld,
   listWorlds,
+  alreadyInInvitedWorld,
+  inviteFailure,
   pendingInvite,
   redeemPendingInvite,
   rememberWorld,
@@ -335,16 +344,33 @@ export class Landing {
     const invited = pendingInvite() !== null;
     el.innerHTML = `
       ${this.commonInputs(defaults)}
-      ${invited ? `<div class="mbl-account-note" data-testid="invite-note">You've been invited to a world: sign in (or create an account) to join it.</div>` : ""}
+      ${invited ? `<div class="mbl-account-note" data-testid="invite-note">You've been invited to join a world in Mero Blocks. Sign in or create an account to accept.</div>` : ""}
       <button class="mbl-btn green" data-testid="sign-in-btn">Sign in with a passkey</button>
       <label>new account name</label>
       <input id="mbl-account" data-testid="account-name-input" maxlength="32" placeholder="${escapeHtml(defaults.name)}" />
       <button class="mbl-btn ghost" data-testid="sign-up-btn">Create account</button>
+      <div class="mbl-note" data-testid="sign-up-unavailable" hidden></div>
       <div class="mbl-error" data-testid="sign-in-error"></div>
       <div class="mbl-note" data-testid="target">${escapeHtml(describeTarget(phase.target))}</div>
     `;
     const errEl = el.querySelector<HTMLElement>("[data-testid=sign-in-error]")!;
     const buttons = [...el.querySelectorAll<HTMLButtonElement>("button")];
+    const signUpBtn = el.querySelector<HTMLButtonElement>("[data-testid=sign-up-btn]")!;
+    const unavailableEl = el.querySelector<HTMLElement>("[data-testid=sign-up-unavailable]")!;
+    // Who may create an account here (read once, never blocking): a closed or
+    // invite-only cluster gets no "Create account", and says why.
+    let policy: SignUpPolicy | null | undefined;
+    const access = () => signUpAccess(policy, pendingInvite() !== null);
+    const applyPolicy = () => {
+      const notice = signUpNotice(access());
+      if (notice) signUpBtn.disabled = true;
+      unavailableEl.hidden = notice === null;
+      unavailableEl.textContent = notice ?? "";
+    };
+    void readSignUpPolicy(phase.client).then((p) => {
+      policy = p;
+      applyPolicy();
+    });
     const ceremony = async (run: () => Promise<SignedIn>) => {
       errEl.textContent = "";
       buttons.forEach((b) => (b.disabled = true));
@@ -352,8 +378,9 @@ export class Landing {
         this.phase = await run();
         this.renderPlayCard({ ...defaults, name: this.readName() }, done);
       } catch (e) {
-        errEl.textContent = describeError(e);
+        errEl.textContent = describeSignInError(e, access());
         buttons.forEach((b) => (b.disabled = false));
+        applyPolicy();
       }
     };
     el.querySelector("[data-testid=sign-in-btn]")!.addEventListener("click", () => {
@@ -361,7 +388,7 @@ export class Landing {
     });
     el.querySelector("[data-testid=sign-up-btn]")!.addEventListener("click", () => {
       const account = el.querySelector<HTMLInputElement>("#mbl-account")?.value.trim() || this.readName();
-      void ceremony(() => signUp(phase, account, this.deps));
+      void ceremony(() => signUp(phase, account, this.deps, signUpInvite(policy, pendingInvite())));
     });
   }
 
@@ -406,13 +433,16 @@ export class Landing {
       // world it joined (or list it, if the answer did not say which).
       if (pendingInvite()) {
         noteEl.textContent = "Joining the world you were invited to…";
+        // Already in it: open it, and leave the link unspent for whoever it was for.
+        const mine = await alreadyInInvitedWorld(phase.client, source);
+        if (mine) return enter(mine);
         try {
           const invited = await redeemPendingInvite(phase.client, source);
           phase.sessions.sync(phase.client);
           if (invited) return enter(invited);
           noteEl.textContent = "Invitation accepted — pick the world below.";
         } catch (e) {
-          noteEl.textContent = `Could not accept the invitation: ${describeError(e)}`;
+          noteEl.textContent = inviteFailure(e);
         }
       }
       let worlds: AppInfo[];
@@ -445,8 +475,9 @@ export class Landing {
           try {
             const token = await inviteToken(phase.client, org, this.deps.passkey());
             phase.sessions.sync(phase.client);
-            await navigator.clipboard.writeText(inviteLink(token));
-            inviteBtn.textContent = "Invite copied!";
+            await navigator.clipboard.writeText(inviteLink(token, window.location, org));
+            // Each link lets one person in: say so where it is copied.
+            inviteBtn.textContent = "Invite copied: single use";
           } catch (e) {
             errEl.textContent = `Could not create invite: ${describeError(e)}`;
             inviteBtn.textContent = "Invite friends";

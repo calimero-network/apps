@@ -210,6 +210,12 @@
   border-radius: 10px;
   white-space: nowrap;
 }
+.inviteNote {
+  flex: none;
+  font-size: 11.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
 
 @media (max-width: 640px) {
   .header { margin: 10px 10px 0; padding: 0 8px 0 10px; height: 58px; }

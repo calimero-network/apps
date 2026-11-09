@@ -168,8 +168,8 @@ test.describe('Mero PixArt landing page', () => {
   });
 
 
-  test('connecting does not navigate to another page', async ({ page }) => {
-    const cta = page.locator('button').filter({ hasText: /^Connect to node$/ }).first();
+  test('signing in does not navigate to another page', async ({ page }) => {
+    const cta = page.locator('button').filter({ hasText: /^Sign in$/ }).first();
     await expect(cta).toBeVisible();
     // ⚠️ Compared against the URL we are ACTUALLY on, not against the root.
     // mero-stream and mero-meet redirect / to a picker route and render the
@@ -217,14 +217,15 @@ test.describe('Mero PixArt landing page', () => {
   });
 
   test('the closing call to action replaces the low desktop band', async ({ page }) => {
-    await expect(page.locator('#start').locator('button').filter({ hasText: /^Connect to node$/ })).toBeVisible();
+    await expect(page.locator('#start').locator('button').filter({ hasText: /^Sign in$/ })).toBeVisible();
     await expect(page.locator('.cal-lp-band')).toHaveCount(0);
   });
 
-  test('offers the desktop download', async ({ page }) => {
-    await expect(
-      page.locator('a[href="https://calimero.network/download"]').first(),
-    ).toBeVisible();
+  test('a web-only app offers no desktop download', async ({ page }) => {
+    // The badge says "Web only"; a desktop button beside it contradicts it.
+    // Wait for the page first: `toHaveCount(0)` passes on a blank document.
+    await expect(page.getByRole('heading', { level: 1, name: "Mero PixArt" })).toBeVisible();
+    await expect(page.locator('a[href="https://calimero.network/download"]')).toHaveCount(0);
   });
 
   // ── Mobile ──────────────────────────────────────────────────────────────

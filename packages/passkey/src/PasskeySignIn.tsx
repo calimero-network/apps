@@ -1,8 +1,14 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
+import { signUpNotice } from "@calimero-apps/connect";
 import type { SessionApi } from "./session";
 
-/** The part of the session the control drives. */
-export type PasskeySignInApi = Pick<SessionApi, "busy" | "error" | "signIn" | "signUp">;
+/**
+ * The part of the session the control drives. `signUpAccess` and
+ * `passkeyUnknown` are optional for an app that builds its own: without them,
+ * creating an account is always offered, as before.
+ */
+export type PasskeySignInApi = Pick<SessionApi, "busy" | "error" | "signIn" | "signUp"> &
+  Partial<Pick<SessionApi, "signUpAccess" | "passkeyUnknown">>;
 
 export interface PasskeySignInProps {
   api: PasskeySignInApi;
@@ -73,6 +79,10 @@ export function PasskeySignIn({ api, askName = false, hint, className }: Passkey
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState("");
   const nameId = useId();
+  const noticeId = useId();
+  // Why this cluster takes no new account from this page (closed, or invite
+  // only with no invite in hand): the create button stays, disabled, with it.
+  const notice = signUpNotice(api.signUpAccess ?? "unknown");
 
   useEffect(() => {
     if (!api.busy) setRunning(null);
@@ -139,18 +149,37 @@ export function PasskeySignIn({ api, askName = false, hint, className }: Passkey
         type="button"
         className="cp-passkey__secondary"
         data-testid="signup-passkey"
-        disabled={api.busy}
+        disabled={api.busy || notice !== null}
+        aria-describedby={notice ? noticeId : undefined}
         onClick={create}
       >
         {running === "up" ? <Spinner /> : <PlusIcon />}
         <span>{running === "up" ? "Creating your passkey…" : "Create a passkey"}</span>
       </button>
 
+      {notice && (
+        <p className="cp-passkey__hint" id={noticeId} data-testid="signup-unavailable">
+          {notice}
+        </p>
+      )}
+
       {api.error && (
         <p className="cp-passkey__error" role="alert" data-testid="signin-error">
           <AlertIcon />
           <span>{api.error}</span>
         </p>
+      )}
+      {api.error && api.passkeyUnknown && notice === null && (
+        <button
+          type="button"
+          className="cp-passkey__secondary"
+          data-testid="signup-here"
+          disabled={api.busy}
+          onClick={create}
+        >
+          <PlusIcon />
+          <span>Create an account here</span>
+        </button>
       )}
     </div>
   );

@@ -62,43 +62,46 @@ export default function App({ deps }: { deps?: SessionDeps } = {}) {
       <ToastProvider>
         <AppThemeProvider>
           <BrowserRouter basename={nodeBasename(new URL(window.location.href), "/")}>
-            {/* An invitation link can land on ANY route, so the prompt that
-                offers it lives above the router's outlet. */}
-            <InvitationHost />
-            <Routes>
-              {LANDING_PATHS.map((landingPath) => (
-                <Route
-                  key={landingPath}
-                  path={landingPath}
-                  // Only `/` bounces a signed-in visitor into the app: `/docs`
-                  // and `/preview` are reference pages.
-                  element={
-                    landingPath === "/" ? (
-                      <RedirectIfAuthed>
+            {/* An invitation link can land on ANY route, so the invitation
+                screens wrap the router's outlet: while one is pending they
+                stand in for the route (no redirect to drop it), and joining
+                goes to the route the link opened. */}
+            <InvitationHost>
+              <Routes>
+                {LANDING_PATHS.map((landingPath) => (
+                  <Route
+                    key={landingPath}
+                    path={landingPath}
+                    // Only `/` bounces a signed-in visitor into the app: `/docs`
+                    // and `/preview` are reference pages.
+                    element={
+                      landingPath === "/" ? (
+                        <RedirectIfAuthed>
+                          <Landing />
+                        </RedirectIfAuthed>
+                      ) : (
                         <Landing />
-                      </RedirectIfAuthed>
-                    ) : (
-                      <Landing />
-                    )
+                      )
+                    }
+                  />
+                ))}
+                <Route path="/login" element={<Navigate to="/" replace />} />
+                <Route
+                  path={APP_ROUTE}
+                  element={
+                    <RequireAuth>
+                      <AppPage />
+                    </RequireAuth>
                   }
-                />
-              ))}
-              <Route path="/login" element={<Navigate to="/" replace />} />
-              <Route
-                path={APP_ROUTE}
-                element={
-                  <RequireAuth>
-                    <AppPage />
-                  </RequireAuth>
-                }
-              >
-                <Route index element={<IssuesView />} />
-                <Route path="issues/:id" element={<IssueDetailPage />} />
-                <Route path="board" element={<BoardPage />} />
-                <Route path="members" element={<MembersPage />} />
-              </Route>
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
+                >
+                  <Route index element={<IssuesView />} />
+                  <Route path="issues/:id" element={<IssueDetailPage />} />
+                  <Route path="board" element={<BoardPage />} />
+                  <Route path="members" element={<MembersPage />} />
+                </Route>
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </InvitationHost>
           </BrowserRouter>
         </AppThemeProvider>
       </ToastProvider>

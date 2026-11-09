@@ -134,6 +134,25 @@ describe("launcher", () => {
     expect(localStorage.getItem("mero-blocks:pending-invite")).toBeNull();
   });
 
+  it("words the sign-in as the invitation when a link is waiting", async () => {
+    localStorage.setItem("mero-blocks:pending-invite", "tok-1");
+    await launcher([]);
+    expect(q("[data-testid=invite-note]")?.textContent).toBe(
+      "You've been invited to join a world in Mero Blocks. Sign in or create an account to accept.",
+    );
+  });
+
+  it("enters a world the player is already in without spending the link", async () => {
+    localStorage.setItem("mero-blocks:pending-invite", "tok-1");
+    localStorage.setItem("mero-blocks:pending-invite-org", "org-1");
+    const { client, choice } = await launcher([world("app-1", "mine", "org-1")]);
+    click(q("[data-testid=sign-in-btn]"));
+    const entered = await choice;
+    expect(entered.world.appId).toBe("app-1");
+    expect(client.redeemInvite).not.toHaveBeenCalled();
+    expect(localStorage.getItem("mero-blocks:pending-invite")).toBeNull();
+  });
+
   it("shows the shared listing on a copy no cluster serves, not a developer error", async () => {
     const app = document.createElement("div");
     document.body.appendChild(app);

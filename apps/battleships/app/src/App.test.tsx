@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import type { AppInfo, CalimeroClient, CalimeroSession } from '@calimero-network/mero-js';
+import { CalimeroError, type AppInfo, type CalimeroClient, type CalimeroSession } from '@calimero-network/mero-js';
 import { SessionStore, resolveTarget, type Target } from '@calimero-apps/connect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -93,6 +93,7 @@ function fakeClient(apps: AppInfo[] = []) {
     })),
     view: vi.fn(async (_app: string, method: string) => ({ index: 1, result: views(method) })),
     events: vi.fn(async function* () {}),
+    me: vi.fn(async () => ({ orgs: [{ orgId: 'org-1', name: 'Harbour', role: 'owner' }] })),
     invite: vi.fn(async () => 'tok-123'),
     redeemInvite: vi.fn(async () => ({})),
   };
@@ -182,6 +183,61 @@ describe('App', () => {
     const url = new URL(link.textContent ?? '');
     expect(url.searchParams.get('invite')).toBe('tok-123');
     expect(url.searchParams.get('lobby')).toBe('app-1');
+  });
+
+  it('signed out with a pending invite, shows the invitation page instead of the landing page', async () => {
+    at('/');
+    localStorage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: 'tok-9', lobby: 'app-1' }));
+    render(<App deps={deps(fakeClient([LOBBY]))} />);
+    expect(await screen.findByTestId('invitation-page')).toBeVisible();
+    expect(screen.getByText("You're invited")).toBeVisible();
+    expect(screen.getByTestId('invitation-note').textContent).toContain('Sign in or create an account to accept');
+    expect(document.querySelector('.cal-lp-root')).toBeNull();
+  });
+
+  it('signing in on the invitation page redeems the invitation and opens its lobby', async () => {
+    at('/lobby');
+    localStorage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: 'tok-9', lobby: 'app-1' }));
+    const client = fakeClient([LOBBY]);
+    render(<App deps={deps(client)} />);
+    await screen.findByTestId('invitation-page');
+    fireEvent.click(screen.getByText('Continue with passkey'));
+    await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith('tok-9'));
+    await waitFor(() => expect(client.call).toHaveBeenCalledWith('app-1', 'registerPlayer', {}));
+    expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
+  });
+
+  it('"Not now" on the invitation page shows the landing page and keeps the token', async () => {
+    at('/');
+    localStorage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: 'tok-9', lobby: 'app-1' }));
+    render(<App deps={deps(fakeClient([LOBBY]))} />);
+    fireEvent.click(await screen.findByTestId('invitation-not-now'));
+    await waitFor(() => expect(document.querySelector('.cal-lp-root')).not.toBeNull());
+    expect(localStorage.getItem(`${APP}:pending-invite`)).not.toBeNull();
+  });
+
+  it('does not redeem an invitation into an organization the player is already in', async () => {
+    signedIn();
+    at('/lobby');
+    localStorage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: 'tok-9', lobby: 'app-1', org: 'org-1' }));
+    const client = fakeClient([LOBBY]);
+    render(<App deps={deps(client)} />);
+    expect(await screen.findByText("You're already in this lobby")).toBeVisible();
+    expect(client.redeemInvite).not.toHaveBeenCalled();
+    expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
+  });
+
+  it('says plainly when the invite was already used or has expired', async () => {
+    signedIn();
+    at('/lobby');
+    localStorage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: 'tok-9', lobby: 'app-1' }));
+    const client = fakeClient([LOBBY]);
+    client.redeemInvite.mockRejectedValueOnce(new CalimeroError(404, 'NOT_FOUND', 'unknown invite'));
+    render(<App deps={deps(client)} />);
+    expect(
+      await screen.findByText('This invite was already used or has expired. Ask the person who invited you for a new link.'),
+    ).toBeVisible();
+    expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
   });
 
   it('redeems an invitation opened before signing in, then opens its lobby', async () => {

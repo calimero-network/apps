@@ -2,7 +2,7 @@ import type { ReactElement } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CalimeroClient } from '@calimero-network/mero-js';
+import { CalimeroError, type CalimeroClient } from '@calimero-network/mero-js';
 
 import { type Calimero, CalimeroContext } from './calimero';
 import InvitationPrompt from './components/InvitationPrompt';
@@ -154,10 +154,37 @@ describe('TeamsPage', () => {
   });
 });
 
+const APP_BODY = <p data-testid="app-body">app</p>;
+
+function promptAt(path: string, value: Calimero) {
+  return renderAt(path, value, <InvitationPrompt>{APP_BODY}</InvitationPrompt>);
+}
+
 describe('InvitationPrompt', () => {
-  it('waits for a session, then joins the team the invite names', async () => {
+  it('shows a signed-out visitor an invitation page instead of the app, with the passkey sign-in', async () => {
     localStorage.setItem('mero-pass:pending-invite', 'tok');
-    const { rerender } = renderAt('/', calimero(null), <InvitationPrompt />);
+    promptAt('/', calimero(null));
+    const page = await screen.findByTestId('invitation-page');
+    expect(page).toHaveTextContent("You're invited");
+    expect(page).toHaveTextContent(
+      "You've been invited to join a team in Mero Pass. Sign in or create an account to accept.",
+    );
+    expect(screen.getByTestId('signin-passkey')).toBeInTheDocument();
+    expect(screen.queryByTestId('app-body')).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('"Not now" shows the app and keeps the invitation', async () => {
+    localStorage.setItem('mero-pass:pending-invite', 'tok');
+    promptAt('/', calimero(null));
+    fireEvent.click(await screen.findByTestId('invitation-later'));
+    expect(screen.getByTestId('app-body')).toBeInTheDocument();
+    expect(localStorage.getItem('mero-pass:pending-invite')).toBe('tok');
+  });
+
+  it('asks to join as soon as the session exists, then joins the team the invite names', async () => {
+    localStorage.setItem('mero-pass:pending-invite', 'tok');
+    const { rerender } = promptAt('/', calimero(null));
     expect(screen.queryByTestId('invitation-prompt')).not.toBeInTheDocument();
 
     const client = fakeClient();
@@ -169,7 +196,7 @@ describe('InvitationPrompt', () => {
               path="*"
               element={
                 <>
-                  <InvitationPrompt />
+                  <InvitationPrompt>{APP_BODY}</InvitationPrompt>
                   <Where />
                 </>
               }
@@ -189,9 +216,37 @@ describe('InvitationPrompt', () => {
   it('lets an invitation go without joining', async () => {
     localStorage.setItem('mero-pass:pending-invite', 'tok');
     const client = fakeClient();
-    renderAt('/', calimero(client), <InvitationPrompt />);
+    promptAt('/', calimero(client));
     fireEvent.click(await screen.findByTestId('invitation-dismiss'));
     expect(client.redeemInvite).not.toHaveBeenCalled();
+    expect(localStorage.getItem('mero-pass:pending-invite')).toBeNull();
+  });
+
+  it('tells a member of the invited team they are already in it, without spending the invite', async () => {
+    localStorage.setItem('mero-pass:pending-invite', 'tok');
+    localStorage.setItem('mero-pass:pending-invite-org', 'org1');
+    const client = fakeClient();
+    promptAt('/', calimero(client));
+    expect(await screen.findByTestId('invitation-outcome')).toHaveTextContent(
+      "You're already in this team",
+    );
+    expect(client.redeemInvite).not.toHaveBeenCalled();
+    expect(localStorage.getItem('mero-pass:pending-invite')).toBeNull();
+    fireEvent.click(screen.getByTestId('invitation-continue'));
+    expect(screen.getByTestId('where')).toHaveTextContent('/teams/org1');
+  });
+
+  it('says plainly when the invite was already used or has expired', async () => {
+    localStorage.setItem('mero-pass:pending-invite', 'tok');
+    const client = fakeClient();
+    client.redeemInvite.mockRejectedValueOnce(
+      new CalimeroError(404, 'NOT_FOUND', 'unknown invite'),
+    );
+    promptAt('/', calimero(client));
+    fireEvent.click(await screen.findByTestId('invitation-join'));
+    expect(await screen.findByTestId('invitation-outcome')).toHaveTextContent(
+      'This invite was already used or has expired. Ask the person who invited you for a new link.',
+    );
     expect(localStorage.getItem('mero-pass:pending-invite')).toBeNull();
   });
 });
@@ -245,7 +300,9 @@ describe('SignInDialog', () => {
       <SignInDialog open onClose={() => {}} />,
     );
     // The node-served copy: mdma's `app_host.app_url('com.calimero.mero-pass')`.
-    expect(screen.getByRole('link', { name: 'Open Mero Pass' })).toHaveAttribute(
+    expect(
+      screen.getByRole('link', { name: 'Open Mero Pass' }),
+    ).toHaveAttribute(
       'href',
       'https://cnnfhhpjf6fjrjmxlf76yeqjhfz43my7vfvzo2bpvod7hzokzlqa.apps.calimero.network/',
     );

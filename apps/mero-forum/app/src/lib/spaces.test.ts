@@ -1,9 +1,11 @@
+import { CalimeroError } from "@calimero-network/mero-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   captureInvite,
   dropInvite,
   inviteLink,
+  isSpentInvite,
   joinedOrg,
   listForums,
   listSpaces,
@@ -85,6 +87,8 @@ describe("invitations", () => {
     const loc = { origin: "https://forum.example", pathname: "/0.1.0/" };
     expect(inviteLink("tok", undefined, loc)).toBe("https://forum.example/0.1.0/?invite=tok");
     expect(inviteLink("tok", "f1", loc)).toBe("https://forum.example/0.1.0/?invite=tok&forum=f1");
+    // The space it is for, so a member is not asked to spend it.
+    expect(inviteLink("tok", "f1", loc, "org-1")).toBe("https://forum.example/0.1.0/?invite=tok&forum=f1&org=org-1");
   });
 
   it("takes the token off the address bar and keeps it across the sign-up", () => {
@@ -92,9 +96,24 @@ describe("invitations", () => {
     window.history.replaceState(null, "", "/spaces?invite=tok&forum=f1&x=1");
     captureInvite(storage, window.location);
     expect(window.location.search).toBe("?x=1");
-    expect(pendingInvite(storage)).toEqual({ token: "tok", forum: "f1" });
+    expect(pendingInvite(storage)).toEqual({ token: "tok", forum: "f1", org: null, route: "/spaces" });
     dropInvite(storage);
     expect(pendingInvite(storage)).toBeNull();
+  });
+
+  it("keeps the space and the route under the node basename", () => {
+    const storage = memoryStorage();
+    window.history.replaceState(null, "", "/0.1.0/p/post-1?invite=tok&org=org-1");
+    captureInvite(storage, window.location, "/0.1.0/");
+    expect(window.location.search).toBe("");
+    expect(pendingInvite(storage)).toEqual({ token: "tok", forum: null, org: "org-1", route: "/p/post-1" });
+  });
+
+  it("counts a 4xx redemption as a spent invite, and a 5xx or a 401 as retryable", () => {
+    expect(isSpentInvite(new CalimeroError(404, "NOT_FOUND", "unknown invite"))).toBe(true);
+    expect(isSpentInvite(new CalimeroError(401, "UNAUTHENTICATED", "sign in"))).toBe(false);
+    expect(isSpentInvite(new CalimeroError(503, "UNAVAILABLE", "later"))).toBe(false);
+    expect(isSpentInvite(new Error("offline"))).toBe(false);
   });
 
   it("ignores a page with no invitation", () => {

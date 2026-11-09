@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import type { CalimeroClient, CalimeroSession } from '@calimero-network/mero-js';
+import { CalimeroError, type CalimeroClient, type CalimeroSession } from '@calimero-network/mero-js';
 import { SessionStore, resolveTarget } from '@calimero-apps/connect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -7,6 +7,7 @@ import App from './App';
 import type { SessionDeps } from './session';
 import { APP } from './session';
 import { writeActiveNs } from './hooks/workspacePersistence';
+import { captureInvite } from './workspaces';
 
 const SESSION: CalimeroSession = { accountId: 'acct-alice', sessionToken: 's', refreshToken: 'r', expiresAt: 9e12 };
 const DEV_ENV = { DEV: true, VITE_CALIMERO_BUNDLE: 'bundle-hash' };
@@ -160,5 +161,120 @@ describe('App', () => {
     await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith('tok-xyz'), SLOW);
     expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
     expect(await screen.findByText('Acme 50 seats', {}, SLOW)).toBeTruthy();
+  });
+
+  it('labels the landing page action "Sign in" and offers no desktop app on a web-only app', async () => {
+    render(<App deps={deps(fakeClient())} />);
+    expect((await screen.findAllByRole('button', { name: 'Sign in' }, SLOW)).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: /connect to node/i })).toBeNull();
+    expect(screen.queryByText(/get the desktop app/i)).toBeNull();
+    expect(document.querySelector('a[href="https://calimero.network/download"]')).toBeNull();
+  });
+
+  it('shows an invitation page, not the landing page, to a signed-out visitor with an invite', async () => {
+    localStorage.setItem(`${APP}:pending-invite`, 'tok-xyz');
+    render(<App deps={deps(fakeClient())} />);
+
+    expect(await screen.findByTestId('invitation-page', {}, SLOW)).toBeTruthy();
+    expect(screen.getByText(/You've been invited to join a workspace in Mero CRM/)).toBeTruthy();
+    expect(screen.getByTestId('signin-passkey')).toBeTruthy();
+    // A page, not a popup over the landing hero.
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.querySelector('.cal-lp-root')).toBeNull();
+  });
+
+  it('"Not now" shows the landing page and keeps the invitation', async () => {
+    localStorage.setItem(`${APP}:pending-invite`, 'tok-xyz');
+    render(<App deps={deps(fakeClient())} />);
+
+    fireEvent.click(await screen.findByTestId('invitation-later', {}, SLOW));
+    await waitFor(() => expect(document.querySelector('.cal-lp-root')).not.toBeNull(), SLOW);
+    expect(localStorage.getItem(`${APP}:pending-invite`)).toBe('tok-xyz');
+  });
+
+  it('asks to join right after signing in from the invitation page, then opens the linked route', async () => {
+    const client = fakeClient();
+    localStorage.setItem(`${APP}:pending-invite`, 'tok-xyz');
+    localStorage.setItem(`${APP}:pending-invite-route`, '/crm/members');
+    window.history.replaceState(null, '', '/crm/members');
+    render(<App deps={deps(client)} />);
+
+    fireEvent.click(await screen.findByTestId('signin-passkey', {}, SLOW));
+    await waitFor(() => expect(client.signIn).toHaveBeenCalledTimes(1), SLOW);
+    // No second click to reach the prompt.
+    fireEvent.click(await screen.findByTestId('invitation-join', {}, SLOW));
+    await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith('tok-xyz'), SLOW);
+    await waitFor(() => expect(window.location.pathname).toBe('/crm/members'), SLOW);
+    expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
+  });
+
+  it('tells a member of the invited workspace they are already in it, without spending the invite', async () => {
+    const client = fakeClient({ signedIn: true });
+    storeSession();
+    localStorage.setItem(`${APP}:pending-invite`, 'tok-xyz');
+    localStorage.setItem(`${APP}:pending-invite-org`, 'org-1');
+    window.history.replaceState(null, '', '/crm');
+    render(<App deps={deps(client)} />);
+
+    expect(await screen.findByText("You're already in this workspace", {}, SLOW)).toBeTruthy();
+    expect(client.redeemInvite).not.toHaveBeenCalled();
+    expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
+    fireEvent.click(screen.getByTestId('invitation-continue'));
+    expect(await screen.findByText('Acme 50 seats', {}, SLOW)).toBeTruthy();
+  });
+
+  it('says plainly when the invite was already used or has expired', async () => {
+    const client = fakeClient({ signedIn: true });
+    client.redeemInvite.mockRejectedValueOnce(new CalimeroError(404, 'NOT_FOUND', 'unknown invite'));
+    storeSession();
+    localStorage.setItem(`${APP}:pending-invite`, 'tok-used');
+    window.history.replaceState(null, '', '/crm');
+    render(<App deps={deps(client)} />);
+
+    fireEvent.click(await screen.findByTestId('invitation-join', {}, SLOW));
+    expect(
+      await screen.findByText(
+        'This invite was already used or has expired. Ask the person who invited you for a new link.',
+        {},
+        SLOW,
+      ),
+    ).toBeTruthy();
+    expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
+  });
+
+  it('lands on the deep-linked route after joining, even from the landing page the sign-in redirect left', async () => {
+    // The front door's own redirect (signed in at `/` -> /crm) must not win
+    // against the move to the invite's route.
+    const client = fakeClient();
+    window.history.replaceState(null, '', '/crm/members?invite=tok-xyz&org=org-2');
+    captureInvite(localStorage, window.location);
+    render(<App deps={deps(client)} />);
+
+    // "Not now": the guard on /crm/members sends a signed-out visitor to `/`.
+    fireEvent.click(await screen.findByTestId('invitation-later', {}, SLOW));
+    await waitFor(() => expect(window.location.pathname).toBe('/'), SLOW);
+    // Sign in from the landing page: the join prompt follows with no extra click.
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Sign in' }, SLOW))[0]);
+    fireEvent.click(await screen.findByTestId('signin-passkey', {}, SLOW));
+    fireEvent.click(await screen.findByTestId('invitation-join', {}, SLOW));
+    await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith('tok-xyz'), SLOW);
+    await waitFor(() => expect(window.location.pathname).toBe('/crm/members'), SLOW);
+    // And it stays there: no late redirect to the CRM's start.
+    await new Promise((r) => setTimeout(r, 300));
+    expect(window.location.pathname).toBe('/crm/members');
+  });
+
+  it('lands on the deep-linked route after signing in on the invitation page and joining', async () => {
+    const client = fakeClient();
+    window.history.replaceState(null, '', '/crm/members?invite=tok-xyz&org=org-2');
+    captureInvite(localStorage, window.location);
+    render(<App deps={deps(client)} />);
+
+    fireEvent.click(await screen.findByTestId('signin-passkey', {}, SLOW));
+    fireEvent.click(await screen.findByTestId('invitation-join', {}, SLOW));
+    await waitFor(() => expect(window.location.pathname).toBe('/crm/members'), SLOW);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(window.location.pathname).toBe('/crm/members');
+    expect(window.location.search).toBe('');
   });
 });

@@ -134,82 +134,84 @@ export default function App() {
   return (
     <>
       {/* ⚠️ APP LEVEL, not inside a route. An invitation link can land on any
-          path, and a prompt mounted on one page misses on every other one. It
-          renders nothing until an invitation is actually captured. */}
-      <InvitationPrompt />
-      <Routes>
-        {/* The landing page is four URLs so they can be shared and opened cold.
-            Only `/` and `/landing` bounce a signed-in visitor into the app —
-            `/docs` and `/preview` are reference pages, and somebody signed in
-            is exactly who wants to read them. */}
-        {LANDING_PATHS.map((path) => (
-          <Route
-            key={path}
-            path={path}
-            element={
-              path === '/' || path === '/landing' ? (
-                <RedirectIfAuthed>
+          path, and a prompt mounted on one page misses on every other one.
+          While an invitation is pending it stands in for the routes as a page
+          (signed out: sign in or create an account; signed in: join). */}
+      <InvitationPrompt>
+        <Routes>
+          {/* The landing page is four URLs so they can be shared and opened cold.
+              Only `/` and `/landing` bounce a signed-in visitor into the app —
+              `/docs` and `/preview` are reference pages, and somebody signed in
+              is exactly who wants to read them. */}
+          {LANDING_PATHS.map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                path === '/' || path === '/landing' ? (
+                  <RedirectIfAuthed>
+                    <LandingPage />
+                  </RedirectIfAuthed>
+                ) : (
                   <LandingPage />
-                </RedirectIfAuthed>
-              ) : (
-                <LandingPage />
-              )
+                )
+              }
+            />
+          ))}
+
+          {/* The /login PAGE is gone — its whole content was a button the visitor
+              had already pressed to get there. The path stays as a redirect so a
+              bookmark lands on the front door instead of a blank route. */}
+          <Route path="/login" element={<Navigate to="/" replace />} />
+
+          {/* The app proper: signed in only, see `RequireAuth`. */}
+          {/* A TEAM is a namespace: the people, and the vaults they share. */}
+          <Route
+            path="/teams"
+            element={
+              <RequireAuth>
+                <TeamsPage />
+              </RequireAuth>
             }
           />
-        ))}
+          <Route
+            path="/teams/:teamId"
+            element={
+              <RequireAuth>
+                <TeamPage />
+              </RequireAuth>
+            }
+          />
+          {/* A VAULT is a context, so the param is a context id. */}
+          <Route
+            path="/vault/:vaultId"
+            element={
+              <RequireAuth>
+                <VaultPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/security"
+            element={
+              <RequireAuth>
+                <SecurityPage />
+              </RequireAuth>
+            }
+          />
+          {/* PUBLIC: a share link carries its secret in the fragment, so the
+              recipient needs no node and no login to open it. */}
+          <Route path="/share" element={<SharePage />} />
 
-        {/* The /login PAGE is gone — its whole content was a button the visitor
-            had already pressed to get there. The path stays as a redirect so a
-            bookmark lands on the front door instead of a blank route. */}
-        <Route path="/login" element={<Navigate to="/" replace />} />
+          {/* Paths this app used before the nouns settled. Kept as terminal
+              redirects so a bookmark or an open tab still lands somewhere real. */}
+          <Route path="/home" element={<Navigate to="/teams" replace />} />
+          <Route path="/space/:teamId" element={<LegacyTeamRedirect />} />
+          <Route path="/space" element={<Navigate to="/teams" replace />} />
 
-        {/* The app proper: signed in only, see `RequireAuth`. */}
-        {/* A TEAM is a namespace: the people, and the vaults they share. */}
-        <Route
-          path="/teams"
-          element={
-            <RequireAuth>
-              <TeamsPage />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/teams/:teamId"
-          element={
-            <RequireAuth>
-              <TeamPage />
-            </RequireAuth>
-          }
-        />
-        {/* A VAULT is a context, so the param is a context id. */}
-        <Route
-          path="/vault/:vaultId"
-          element={
-            <RequireAuth>
-              <VaultPage />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/security"
-          element={
-            <RequireAuth>
-              <SecurityPage />
-            </RequireAuth>
-          }
-        />
-        {/* PUBLIC: a share link carries its secret in the fragment, so the
-            recipient needs no node and no login to open it. */}
-        <Route path="/share" element={<SharePage />} />
-
-        {/* Paths this app used before the nouns settled. Kept as terminal
-            redirects so a bookmark or an open tab still lands somewhere real. */}
-        <Route path="/home" element={<Navigate to="/teams" replace />} />
-        <Route path="/space/:teamId" element={<LegacyTeamRedirect />} />
-        <Route path="/space" element={<Navigate to="/teams" replace />} />
-
-        <Route path="*" element={<CatchAll />} />
-      </Routes>
+          <Route path="*" element={<CatchAll />} />
+        </Routes>
+      </InvitationPrompt>
     </>
   );
 }

@@ -119,6 +119,9 @@ export default function InviteModal({
         >
           {share.link}
         </code>
+        <p className={styles.hint} data-testid="invite-single-use">
+          Single use: one person can join with this link. Generate another for each person you invite.
+        </p>
 
         <button
           type="button"

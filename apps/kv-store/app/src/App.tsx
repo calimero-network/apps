@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CalimeroError, type AppInfo, type CalimeroClient } from "@calimero-network/mero-js";
-import { appSource, describeError, type KeyValueStorage } from "@calimero-apps/connect";
+import type { AppInfo, CalimeroClient } from "@calimero-network/mero-js";
+import { appSource, type KeyValueStorage } from "@calimero-apps/connect";
 import { AppListing } from "@calimero-apps/passkey";
 
+import { InvitationSignIn, JoinInvitation } from "./Invitation";
 import { InviteCard } from "./InviteCard";
 import { KvPanel } from "./KvPanel";
 import { PACKAGE, kvStore } from "./kvStore";
 import { SignIn } from "./SignIn";
 import { StorePicker } from "./StorePicker";
 import { LISTING, defaultDeps, describeTarget, useSession, type SessionDeps } from "./session";
-import { dropInvite, pendingInvite, selectionKey } from "./stores";
+import { pendingInvite, selectionKey } from "./stores";
 
 type Opened = Pick<AppInfo, "appId" | "name" | "org">;
 
@@ -60,7 +61,7 @@ export function App({
     () => (storage === deps.storage || !storage ? deps : { ...deps, storage }),
     [deps, storage],
   );
-  const api = useSession(sessionDeps);
+  const api = useSession(sessionDeps, () => pendingInvite(storage));
   const { session, store } = api;
   const source = useMemo(() => appSource(deps.env, PACKAGE), [deps.env]);
   const [opened, setOpened] = useState<Opened | null>(null);
@@ -92,32 +93,13 @@ export function App({
     [key, storage],
   );
 
-  // An invitation link opened before signing in is redeemed once a session exists.
+  // An invitation link opened before signing in: a page of its own while it
+  // is pending (see `Invitation.tsx`), redeemed only on "Join".
+  const [invite, setInvite] = useState<string | null>(() => pendingInvite(storage));
+  const [inviteLater, setInviteLater] = useState(false);
   useEffect(() => {
-    if (!client) return;
-    const token = pendingInvite(storage);
-    if (!token) return;
-    let live = true;
-    client
-      .redeemInvite(token)
-      .then(() => {
-        dropInvite(storage);
-        if (live) {
-          setNotice("Invitation accepted: the shared store is in your list.");
-          setPickerKey((k) => k + 1);
-        }
-      })
-      .catch((e: unknown) => {
-        // A refusal (used, expired, revoked) can never succeed: drop it. Anything
-        // else (the cluster unreachable) is kept and tried on the next load.
-        if (e instanceof CalimeroError && e.status < 500) dropInvite(storage);
-        if (live) setNotice(`The invitation could not be accepted: ${describeError(e)}`);
-      })
-      .finally(after);
-    return () => {
-      live = false;
-    };
-  }, [client, storage, after]);
+    if (client) setInvite(pendingInvite(storage));
+  }, [client, storage]);
 
   const kv = useMemo(
     () => (client && opened ? kvStore(client, opened.appId, after) : null),
@@ -154,7 +136,28 @@ export function App({
         </div>
       )}
 
-      {session.status === "signed-out" && <SignIn api={api} where={describeTarget(session.target)} />}
+      {session.status === "signed-out" &&
+        (invite && !inviteLater ? (
+          <InvitationSignIn api={api} where={describeTarget(session.target)} onLater={() => setInviteLater(true)} />
+        ) : (
+          <SignIn api={api} where={describeTarget(session.target)} />
+        ))}
+
+      {session.status === "signed-in" && invite && (
+        <JoinInvitation
+          client={session.client}
+          token={invite}
+          storage={storage}
+          after={after}
+          onJoined={() => {
+            setInvite(null);
+            setNotice("Invitation accepted: the shared store is in your list.");
+            setPickerKey((k) => k + 1);
+            open(null);
+          }}
+          onClose={() => setInvite(null)}
+        />
+      )}
 
       {notice && (
         <div className="card">
@@ -162,11 +165,11 @@ export function App({
         </div>
       )}
 
-      {session.status === "signed-in" && !opened && (
+      {session.status === "signed-in" && !invite && !opened && (
         <StorePicker key={pickerKey} client={session.client} source={source} onOpen={open} after={after} />
       )}
 
-      {session.status === "signed-in" && opened && kv && (
+      {session.status === "signed-in" && !invite && opened && kv && (
         <>
           <div className="card context-bar">
             <div className="row" style={{ justifyContent: "space-between" }}>

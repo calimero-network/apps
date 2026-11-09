@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { CalimeroError, type AppInfo } from "@calimero-network/mero-js";
+import type { AppInfo } from "@calimero-network/mero-js";
 import { appSource, describeError, type KeyValueStorage } from "@calimero-apps/connect";
 import { AppListing, PasskeySignIn } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 import { DecisionLog, type DecisionDraft } from "./DecisionLog";
+import { InvitationSignIn, JoinInvitation } from "./Invitation";
 import { InviteCard } from "./InviteCard";
 import { PersonName } from "./names";
 import { LISTING, defaultDeps, describeTarget, useSession, type SessionApi, type SessionDeps } from "./session";
 import { StandupBoard } from "./StandupBoard";
 import { PACKAGE } from "./standup";
 import { TeamPicker } from "./TeamPicker";
-import { dropInvite, pendingInvite, selectionKey } from "./teams";
+import { pendingInvite, selectionKey } from "./teams";
 import { Avatar, Icon, useTheme, type Theme } from "./ui";
 import { useRead, useTeam, type Team, type TeamTransport } from "./useTeam";
 import { WeekDigest } from "./WeekDigest";
@@ -83,33 +84,13 @@ export function App({
     [key, storage],
   );
 
-  // An invitation link opened before signing in is redeemed once a session exists.
+  // An invitation link opened before signing in: a page of its own while it
+  // is pending (see `Invitation.tsx`), redeemed only on "Join".
+  const [invite, setInvite] = useState<string | null>(() => pendingInvite(storage));
+  const [inviteLater, setInviteLater] = useState(false);
   useEffect(() => {
-    if (!client) return;
-    const token = pendingInvite(storage);
-    if (!token) return;
-    let live = true;
-    client
-      .redeemInvite(token)
-      .then(() => {
-        dropInvite(storage);
-        if (live) {
-          setNotice("Invitation accepted: the team is in your list.");
-          setPickerKey((k) => k + 1);
-          open(null);
-        }
-      })
-      .catch((e: unknown) => {
-        // A refusal (used, expired, revoked) can never succeed: drop it. Anything
-        // else (the cluster unreachable) is kept and tried on the next load.
-        if (e instanceof CalimeroError && e.status < 500) dropInvite(storage);
-        if (live) setNotice(`The invitation could not be accepted: ${describeError(e)}`);
-      })
-      .finally(after);
-    return () => {
-      live = false;
-    };
-  }, [client, storage, after, open]);
+    if (client) setInvite(pendingInvite(storage));
+  }, [client, storage]);
 
   if (session.status === "connecting") {
     return (
@@ -141,7 +122,11 @@ export function App({
   if (session.status === "signed-out") {
     return (
       <Shell>
-        <SignIn api={api} where={describeTarget(session.target)} />
+        {invite && !inviteLater ? (
+          <InvitationSignIn api={api} where={describeTarget(session.target)} onLater={() => setInviteLater(true)} />
+        ) : (
+          <SignIn api={api} where={describeTarget(session.target)} />
+        )}
       </Shell>
     );
   }
@@ -150,6 +135,26 @@ export function App({
     setOpened(null);
     void api.signOut();
   };
+
+  if (invite) {
+    return (
+      <Shell right={<Menu theme={theme} setTheme={setTheme} onLogout={signOut} />}>
+        <JoinInvitation
+          client={session.client}
+          token={invite}
+          storage={storage}
+          after={after}
+          onJoined={() => {
+            setInvite(null);
+            setNotice("Invitation accepted: the team is in your list.");
+            setPickerKey((k) => k + 1);
+            open(null);
+          }}
+          onClose={() => setInvite(null)}
+        />
+      </Shell>
+    );
+  }
 
   if (!opened) {
     return (

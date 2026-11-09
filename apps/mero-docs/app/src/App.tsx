@@ -11,7 +11,7 @@
 // Above the routes: InvitationPrompt, which offers an invitation link that
 // was opened, once the person is signed in.
 
-import React, { useCallback, useState, type ReactNode } from 'react';
+import React, { useCallback, useRef, useState, type ReactNode } from 'react';
 import {
   BrowserRouter,
   Navigate,
@@ -30,8 +30,10 @@ import { ThemeProvider, useTheme } from '@/components/theme/ThemeProvider';
 import { appPath, readReturnTo } from '@/lib/routes';
 import { nodeBasename } from '@/lib/servedByNode';
 
+import { InvitationPage } from '@/components/workspace/InvitationPage';
 import { InvitationPrompt } from '@/components/workspace/InvitationPrompt';
 import { SignInDialog } from '@/components/workspace/SignInDialog';
+import { deferInvite, inviteDeferred, pendingInvite } from '@/hooks/useNamespaceInvitation';
 
 import LandingPage from './pages/landing/LandingPage';
 import WorkspacePage from './pages/workspace';
@@ -53,6 +55,29 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
   if (isAuthenticated)
     return <Navigate to={readReturnTo(nodeUrl ?? null) ?? '/app'} replace />;
   return <>{children}</>;
+}
+
+/**
+ * The landing page, or, signed out with an invitation waiting, the invitation
+ * as the whole page: no hero behind it, no popup, no extra click. "Not now"
+ * comes back to the ordinary page, keeping the token for a later sign-in.
+ */
+function FrontDoor({ onConnect }: { onConnect: () => void }) {
+  const { isAuthenticated, isLoading } = useMero();
+  const [deferred, setDeferred] = useState(() => inviteDeferred());
+  const invite = !isAuthenticated && !isLoading && !deferred ? pendingInvite() : null;
+  if (invite) {
+    return (
+      <InvitationPage
+        invite={invite}
+        onNotNow={() => {
+          deferInvite();
+          setDeferred(true);
+        }}
+      />
+    );
+  }
+  return <LandingPage onConnect={onConnect} />;
 }
 
 /** `*` → `/`, keeping the query (e.g. `?node=` on a dev window). */
@@ -95,10 +120,21 @@ function AppToaster() {
  */
 function AppRoutes() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const here = useRef(location);
+  here.current = location;
   const [joins, setJoins] = useState(0);
   const onJoined = useCallback(
     (workspace: string | null, folder: string | null) => {
       setJoins((n) => n + 1);
+      // A link that opened a page inside the joined workspace (a document, a
+      // folder) stays on it: the remount above reads it again as a member.
+      const { pathname, search, hash } = here.current;
+      const root = workspace ? appPath({ ws: workspace }) : null;
+      if (root && (pathname === root || pathname.startsWith(`${root}/`))) {
+        navigate(`${pathname}${search}${hash}`, { replace: true });
+        return;
+      }
       navigate(workspace ? appPath(folder ? { ws: workspace, folder } : { ws: workspace }) : '/app', {
         replace: true,
       });
@@ -127,10 +163,10 @@ function AppRoutes() {
             element={
               landingPath === '/' ? (
                 <RedirectIfAuthed>
-                  <LandingPage onConnect={openSignIn} />
+                  <FrontDoor onConnect={openSignIn} />
                 </RedirectIfAuthed>
               ) : (
-                <LandingPage onConnect={openSignIn} />
+                <FrontDoor onConnect={openSignIn} />
               )
             }
           />
@@ -160,10 +196,13 @@ function AppRoutes() {
   );
 }
 
+/** The invite link's token, while it waits to be redeemed. */
+const pendingInviteToken = () => pendingInvite()?.token ?? null;
+
 export default function App({ deps }: { deps?: SessionDeps } = {}) {
   return (
     <ThemeProvider>
-      <SessionProvider deps={deps}>
+      <SessionProvider deps={deps} invite={pendingInviteToken}>
         <CalimeroProvider>
           <AppToaster />
           <TooltipProvider>

@@ -14,6 +14,14 @@ account, nothing to install, no permissions to grant.
   "Continue with passkey" (any passkey the person made in any Calimero app,
   the rp-id is shared) and "Create a passkey" (no name to type; pass `askName`
   to offer an optional one).
+- The hook reads the cluster's sign-up policy once it connects
+  (`readSignUpPolicy`, `api.signUpAccess`). On a `closed` cluster, or an
+  `invite` one when the page holds no invite token (pass
+  `{ invite: () => pendingToken }`), "Create a passkey" is disabled and says
+  why (`signup-unavailable`). A passkey the cluster does not know is answered
+  by policy, with "Create an account here" (`signup-here`) where sign-up is
+  allowed. Sign-up always makes a new passkey: WebAuthn cannot carry one over
+  from another cluster. On an `invite` cluster the token goes with the sign-up.
 - `<AppListing name description package dir dev />` is the one listing page
   every app shows for `listing`: the app's name and one line on it, a primary
   "Open {name}" link to the copy Calimero Cloud serves,

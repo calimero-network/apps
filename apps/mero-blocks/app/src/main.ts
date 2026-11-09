@@ -205,7 +205,7 @@ async function boot(): Promise<void> {
           onInvite: async () => {
             const token = await inviteToken(session.client, choice.world.org as string, defaultDeps.passkey());
             session.sessions.sync(session.client);
-            return inviteLink(token);
+            return inviteLink(token, window.location, choice.world.org);
           },
         }
       : {}),

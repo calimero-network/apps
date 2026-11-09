@@ -7,8 +7,16 @@
 // passkey)`, a passkey step-up for the inviter), carried in a link to this
 // frontend and redeemed after the invitee signs in.
 
-import type { AppInfo, CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
-import { appSource, targetKey, type AppSource, type ConnectEnv, type KeyValueStorage, type Target } from "@calimero-apps/connect";
+import { CalimeroError, type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
+import {
+  appSource,
+  describeError,
+  targetKey,
+  type AppSource,
+  type ConnectEnv,
+  type KeyValueStorage,
+  type Target,
+} from "@calimero-apps/connect";
 
 import { PACKAGE, initArgs } from "./blocks";
 import { APP } from "./session";
@@ -49,14 +57,26 @@ export function inviteToken(client: Pick<CalimeroClient, "invite">, org: string,
   return client.invite(org, "member", passkey);
 }
 
-/** The link that opens this frontend with `token` to redeem. */
-export function inviteLink(token: string, location: Pick<Location, "origin" | "pathname"> = window.location): string {
+/**
+ * The link that opens this frontend with `token` to redeem.
+ *
+ * `org` names the world's org. The token itself does not say, and without it
+ * the launcher cannot tell an invitation into a world the player is already
+ * in: redeeming that spends the link's single use on nobody.
+ */
+export function inviteLink(
+  token: string,
+  location: Pick<Location, "origin" | "pathname"> = window.location,
+  org?: string | null,
+): string {
   const url = new URL(location.pathname, location.origin);
   url.searchParams.set("invite", token);
+  if (org) url.searchParams.set("org", org);
   return url.toString();
 }
 
 const PENDING = `${APP}:pending-invite`;
+const PENDING_ORG = `${APP}:pending-invite-org`;
 
 /**
  * Takes `?invite=` off the address bar into storage, before anything renders:
@@ -67,12 +87,16 @@ export function captureInvite(storage: KeyValueStorage = localStorage, loc: Loca
   const url = new URL(loc.href);
   const token = url.searchParams.get("invite");
   if (!token) return;
+  const org = url.searchParams.get("org");
   try {
     storage.setItem(PENDING, token);
+    if (org) storage.setItem(PENDING_ORG, org);
+    else storage.removeItem(PENDING_ORG);
   } catch {
     return;
   }
   url.searchParams.delete("invite");
+  url.searchParams.delete("org");
   window.history.replaceState(null, "", url.toString());
 }
 
@@ -84,12 +108,52 @@ export function pendingInvite(storage: KeyValueStorage = localStorage): string |
   }
 }
 
+/** The org a pending invitation's link named (`&org=`), when it named one. */
+export function pendingInviteOrg(storage: KeyValueStorage = localStorage): string | null {
+  try {
+    return storage.getItem(PENDING_ORG) || null;
+  } catch {
+    return null;
+  }
+}
+
 export function dropInvite(storage: KeyValueStorage = localStorage): void {
   try {
     storage.removeItem(PENDING);
+    storage.removeItem(PENDING_ORG);
   } catch {
     /* nothing stored */
   }
+}
+
+/** What to say when a token is refused for good. */
+export const SPENT_INVITE = "This invite was already used or has expired. Ask the person who invited you for a new link.";
+
+/** The plain sentence for a failed redemption: refused for good (a 4xx), or not reached. */
+export function inviteFailure(e: unknown): string {
+  const refused =
+    e instanceof CalimeroError
+      ? e.status >= 400 && e.status < 500 && e.status !== 401 && e.status !== 429
+      : /unknown invite|already used|expired|revoked/i.test(describeError(e));
+  return refused ? SPENT_INVITE : `Could not accept the invitation: ${describeError(e)}`;
+}
+
+/**
+ * The world a pending invitation names, when this account already plays in
+ * it: the token is then dropped UNSPENT. Redeeming it would spend the link's
+ * single use on nobody, and leave the player it was meant for with "unknown
+ * invite". `null` when the link names no org or the account is not in it.
+ */
+export async function alreadyInInvitedWorld(
+  client: Pick<CalimeroClient, "listApps">,
+  source: AppSource,
+  storage: KeyValueStorage = localStorage,
+): Promise<AppInfo | null> {
+  const org = pendingInvite(storage) ? pendingInviteOrg(storage) : null;
+  if (!org) return null;
+  const world = (await listWorlds(client, source).catch(() => [])).find((w) => w.org === org) ?? null;
+  if (world) dropInvite(storage);
+  return world;
 }
 
 /**

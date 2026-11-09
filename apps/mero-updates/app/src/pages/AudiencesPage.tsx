@@ -146,7 +146,7 @@ export default function AudiencesPage() {
         const token = await mintInvite(client, namespaceId, passkey());
         setInvite({
           key: `audience:${audience.contextId}`,
-          code: inviteLink(token, audience.contextId),
+          code: inviteLink(token, audience.contextId, namespaceId),
           scope: `Opens ${audience.name}`,
           hint: (
             <>
@@ -169,7 +169,7 @@ export default function AudiencesPage() {
       const token = await mintInvite(client, namespaceId, passkey());
       setInvite({
         key: "namespace",
-        code: inviteLink(token),
+        code: inviteLink(token, null, namespaceId),
         scope: `Whole company · ${nsName}`,
         hint: (
           <>

@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { BrowserRouter, Routes, Route, Navigate, useNavigate, useParams } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import LandingPage from "./pages/landing/LandingPage";
 import DesignShell from "./components/shell/DesignShell";
 import TeamIndex from "./pages/TeamIndex";
@@ -7,11 +7,16 @@ import TeamHome from "./pages/TeamHome";
 import BoardResolver from "./pages/BoardResolver";
 import CanvasPage from "./pages/CanvasPage";
 import { ToastProvider } from "./contexts/ToastContext";
+import InvitationPage from "./components/InvitationPage";
 import InvitationPrompt from "./components/InvitationPrompt";
 import SignInModal from "./components/SignInModal";
 import type { SessionDeps } from "./session";
 import { SessionProvider, useAuth } from "./sessionContext";
 import { nodeBasename } from "./utils/servedByNode";
+import { deferInvite, inviteDeferred, pendingInvite } from "./utils/inviteLink";
+
+/** Where a signed-out visitor was going when the guard sent them to the front door. */
+type FromState = { from?: string } | null;
 
 /** Every path the shared landing page serves. See src/pages/landing. */
 const LANDING_PATHS = ['/', '/docs', '/preview'];
@@ -19,8 +24,13 @@ const LANDING_PATHS = ['/', '/docs', '/preview'];
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
+  const location = useLocation();
   if (isLoading) return null; // wait for the auth probe; avoids a flash to /login
-  if (!isAuthenticated) return <Navigate to="/" replace />;
+  // The route travels with the redirect, so signing in on the front door goes
+  // on to the page the link named rather than to the team list.
+  if (!isAuthenticated) {
+    return <Navigate to="/" replace state={{ from: `${location.pathname}${location.search}` } satisfies FromState} />;
+  }
   return <>{children}</>;
 }
 
@@ -31,9 +41,12 @@ function RequireAuth({ children }: { children: ReactNode }) {
  */
 function RedirectIfAuthed({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
+  const from = (useLocation().state as FromState)?.from;
   if (isLoading) return null; // the auth probe is still in flight
   // `/teams` goes on by itself to the team and board open last (TeamIndex).
-  if (isAuthenticated) return <Navigate to="/teams" replace />;
+  // With an invitation waiting, the page asked for comes AFTER joining
+  // (InvitationPrompt goes there): opened before, it is not yours to read yet.
+  if (isAuthenticated) return <Navigate to={(pendingInvite() ? null : from) ?? "/teams"} replace />;
   return <>{children}</>;
 }
 
@@ -47,11 +60,28 @@ function BoardRoute() {
   return <CanvasPage key={projectId} />;
 }
 
-/** The landing page with the passkey sign-in as its connect action. */
+/**
+ * The landing page with the passkey sign-in as its connect action.
+ *
+ * Signed out with an invitation waiting, the invitation IS the page: no hero
+ * behind it, no popup, no extra click. "Not now" comes back here to the
+ * ordinary page, keeping the token for a later sign-in.
+ */
 function Landing() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
   const navigate = useNavigate();
   const [signingIn, setSigningIn] = useState(false);
+  const [deferred, setDeferred] = useState(() => inviteDeferred());
+  if (!isAuthenticated && !isLoading && !deferred && pendingInvite()) {
+    return (
+      <InvitationPage
+        onNotNow={() => {
+          deferInvite();
+          setDeferred(true);
+        }}
+      />
+    );
+  }
   return (
     <>
       <LandingPage

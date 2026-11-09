@@ -1,4 +1,4 @@
-import type { AppInfo, CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
+import { CalimeroError, type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
 import { targetKey, type AppSource, type KeyValueStorage, type Target } from "@calimero-apps/connect";
 
 import { APP } from "./session";
@@ -46,15 +46,23 @@ export function inviteToken(
   return client.invite(org, "member", passkey);
 }
 
-/** The link that opens this frontend with `token` to redeem and `arena` to open after. */
+/**
+ * The link that opens this frontend with `token` to redeem and `arena` to open
+ * after. It also names `org`: the token does not say which org it is for until
+ * it is redeemed, and redeeming spends one of its uses even for someone already
+ * in the org, so the link carries it for the app to tell a member "you are
+ * already in" first.
+ */
 export function inviteLink(
   token: string,
   arena: string,
   location: Pick<Location, "origin" | "pathname"> = window.location,
+  org?: string,
 ): string {
   const url = new URL(location.pathname, location.origin);
   url.searchParams.set("invite", token);
   url.searchParams.set("arena", arena);
+  if (org) url.searchParams.set("org", org);
   return url.toString();
 }
 
@@ -62,6 +70,8 @@ export interface PendingInvite {
   token: string;
   /** The arena the link was made in: opened once the invitation is redeemed. */
   arena: string | null;
+  /** The org the link names, for the membership check before redeeming. */
+  org: string | null;
 }
 
 const PENDING = `${APP}:pending-invite`;
@@ -77,12 +87,16 @@ export function captureInvite(storage: KeyValueStorage = localStorage, loc: Loca
   const token = url.searchParams.get("invite");
   if (!token) return;
   try {
-    storage.setItem(PENDING, JSON.stringify({ token, arena: url.searchParams.get("arena") }));
+    storage.setItem(
+      PENDING,
+      JSON.stringify({ token, arena: url.searchParams.get("arena"), org: url.searchParams.get("org") }),
+    );
   } catch {
     return;
   }
   url.searchParams.delete("invite");
   url.searchParams.delete("arena");
+  url.searchParams.delete("org");
   window.history.replaceState(null, "", url.toString());
 }
 
@@ -92,7 +106,11 @@ export function pendingInvite(storage: KeyValueStorage = localStorage): PendingI
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<PendingInvite>;
     return typeof parsed.token === "string"
-      ? { token: parsed.token, arena: typeof parsed.arena === "string" ? parsed.arena : null }
+      ? {
+          token: parsed.token,
+          arena: typeof parsed.arena === "string" ? parsed.arena : null,
+          org: typeof parsed.org === "string" && parsed.org ? parsed.org : null,
+        }
       : null;
   } catch {
     return null;
@@ -106,6 +124,19 @@ export function dropInvite(storage: KeyValueStorage = localStorage): void {
     /* nothing stored */
   }
 }
+
+/**
+ * Whether a redemption failed because the invitation itself is spent: used,
+ * expired, revoked or unknown to the node. Those answer a 4xx; a 5xx or a
+ * network failure is worth retrying with the same token.
+ */
+export function isSpentInvite(e: unknown): boolean {
+  return e instanceof CalimeroError && e.status >= 400 && e.status < 500 && e.status !== 401;
+}
+
+/** What the invitation screen says about a spent invitation. */
+export const SPENT_INVITE =
+  "This invite was already used or has expired. Ask the person who invited you for a new link.";
 
 /** The arena last opened on this target by this account, remembered across loads. */
 export function selectionKey(target: Target, accountId: string): string {

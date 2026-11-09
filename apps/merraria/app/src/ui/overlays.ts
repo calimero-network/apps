@@ -118,7 +118,7 @@ export class PauseMenu {
         try {
           const code = await this.callbacks.onInvite!();
           await navigator.clipboard.writeText(code);
-          inviteBtn.textContent = "Invite copied!";
+          inviteBtn.textContent = "Single-use invite copied!";
         } catch {
           inviteBtn.textContent = "Invite failed — try again";
         } finally {

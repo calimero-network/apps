@@ -19,21 +19,29 @@ import {
   browserPasskey,
   type CalimeroClient,
   type PasskeyProvider,
+  type SignUpPolicy,
 } from '@calimero-network/mero-js';
 import {
   SessionStore,
   appSource,
   createClient,
   describeError,
+  describeSignInError,
   NotServedError,
   connectTarget,
+  isPasskeyUnknownHere,
+  readSignUpPolicy,
+  signUpAccess,
+  signUpInvite,
   type AppSource,
   type ConnectEnv,
   type KeyValueStorage,
+  type SignUpAccess,
   type Target,
 } from '@calimero-apps/connect';
 import { isPasskeyCancel, type ListingProps } from '@calimero-apps/passkey';
 
+import { pendingInvite } from './lib/inviteLink';
 import { PACKAGE } from './lib/meroPass';
 
 /** The app's name in stored keys. */
@@ -70,9 +78,16 @@ export interface Calimero {
   /** "merod local (3 nodes)" / "Calimero Cloud <cluster>" / "node <host>". */
   where: string;
   signIn(): Promise<void>;
-  /** Create an account with a new passkey; the name is optional. */
+  /**
+   * Create an account with a new passkey; the name is optional. On a cluster
+   * that requires an invite, the invite link's token goes with it.
+   */
   signUp(name?: string): Promise<void>;
   signOut(): Promise<void>;
+  /** What the cluster's sign-up policy lets this page do (`unknown` until read). */
+  signUpAccess?: SignUpAccess;
+  /** The last sign-in failed because the cluster has no account for that passkey. */
+  passkeyUnknown?: boolean;
   /** A passkey for a step-up (`412 CONFIRM_REQUIRED`): invites, member changes. */
   passkey(): PasskeyProvider;
   /** Keeps the stored session current; run after requests. */
@@ -125,7 +140,11 @@ export function CalimeroProvider({
 }) {
   const [state, setState] = useState<State>({ status: 'connecting' });
   const [store, setStore] = useState<SessionStore | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // The failed ceremony, described when shown, so the words follow the
+  // sign-up policy even when it is read after the failure.
+  const [failure, setFailure] = useState<{ error: unknown } | null>(null);
+  /** The cluster's sign-up policy: `undefined` until read, `null` when it cannot be. */
+  const [policy, setPolicy] = useState<SignUpPolicy | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const source = useMemo(() => appSource(deps.env, PACKAGE), [deps.env]);
 
@@ -161,11 +180,27 @@ export function CalimeroProvider({
     };
   }, [deps]);
 
+  const signedOutClient = state.status === 'signed-out' ? state.client : null;
+  useEffect(() => {
+    if (!signedOutClient) return;
+    let live = true;
+    void readSignUpPolicy(signedOutClient).then((p) => {
+      if (live) setPolicy(p);
+    });
+    return () => {
+      live = false;
+    };
+  }, [signedOutClient]);
+
+  const inviteToken = pendingInvite(deps.storage);
+  const access = signUpAccess(policy, inviteToken !== null);
+  const invited = signUpInvite(policy, inviteToken);
+
   const ceremony = useCallback(
     async (run: (c: CalimeroClient) => Promise<{ accountId: string }>) => {
       if (state.status !== 'signed-out') return;
       setBusy(true);
-      setError(null);
+      setFailure(null);
       try {
         const { accountId } = await run(state.client);
         store?.sync(state.client);
@@ -177,7 +212,7 @@ export function CalimeroProvider({
         });
       } catch (e) {
         // A dismissed passkey prompt is a quiet cancel, not an error to show.
-        if (!isPasskeyCancel(e)) setError(describeError(e));
+        if (!isPasskeyCancel(e)) setFailure({ error: e });
       } finally {
         setBusy(false);
       }
@@ -191,8 +226,12 @@ export function CalimeroProvider({
   );
   const signUp = useCallback(
     (name?: string) =>
-      ceremony((c) => c.signUp(deps.passkey(), name?.trim() ?? '')),
-    [ceremony, deps],
+      ceremony((c) =>
+        invited
+          ? c.signUp(deps.passkey(), name?.trim() ?? '', { invite: invited })
+          : c.signUp(deps.passkey(), name?.trim() ?? ''),
+      ),
+    [ceremony, deps, invited],
   );
   const signOut = useCallback(async () => {
     if (state.status !== 'signed-in') return;
@@ -217,6 +256,10 @@ export function CalimeroProvider({
     if (client) store?.sync(client);
   }, [client, store]);
 
+  const error = failure ? describeSignInError(failure.error, access) : null;
+  const passkeyUnknown =
+    failure !== null && isPasskeyUnknownHere(failure.error);
+
   const value = useMemo<Calimero>(() => {
     const target =
       state.status === 'signed-in' || state.status === 'signed-out'
@@ -237,10 +280,14 @@ export function CalimeroProvider({
       signIn,
       signUp,
       signOut,
+      signUpAccess: access,
+      passkeyUnknown,
       passkey: deps.passkey,
       after,
     };
   }, [
+    access,
+    passkeyUnknown,
     state,
     client,
     source,

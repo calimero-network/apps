@@ -1,5 +1,6 @@
-import { ORG_CAPABILITIES, type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
+import { CalimeroError, ORG_CAPABILITIES, type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
 import type { AppSource, KeyValueStorage } from "@calimero-apps/connect";
+import { nodeBasename } from "@calimero-apps/node-served";
 
 import { APP_NAME } from "../config";
 
@@ -216,10 +217,15 @@ export function inviteLink(
   token: string,
   forum?: string,
   location: Pick<Location, "origin" | "pathname"> = window.location,
+  org?: string,
 ): string {
   const url = new URL(location.pathname, location.origin);
   url.searchParams.set("invite", token);
   if (forum) url.searchParams.set("forum", forum);
+  // The token does not say which space it is for until it is redeemed, and
+  // redeeming spends it: the link names the space so the app can tell an
+  // existing member "you are already in" without spending a use.
+  if (org) url.searchParams.set("org", org);
   return url.toString();
 }
 
@@ -227,21 +233,38 @@ export interface PendingInvite {
   token: string;
   /** The forum the link lands in, when it names one. */
   forum: string | null;
+  /** The space (org) the link names, for the membership check before redeeming. */
+  org: string | null;
+  /** The route the link opened, relative to the router's basename. */
+  route: string | null;
 }
 
 const PENDING = `${APP_NAME}:pending-invite`;
 
 /**
- * Takes `?invite=` (and `&forum=`) off the address bar into storage, before
- * anything renders: a person opening a link is usually not signed in yet, and
- * the token must survive the sign-up. Redeemed (and dropped) once a session
- * exists and the person says yes.
+ * Takes `?invite=` (and `&forum=`, `&org=`) off the address bar into storage,
+ * before anything renders: a person opening a link is usually not signed in
+ * yet, and the token must survive the sign-up. The route the link opened is
+ * kept too, relative to the router's basename (`/{version}/` where a node
+ * serves the app), so joining lands where the link pointed. Redeemed (and
+ * dropped) once a session exists and the person says yes.
  */
-export function captureInvite(storage: KeyValueStorage = localStorage, loc: Location = window.location): void {
+export function captureInvite(
+  storage: KeyValueStorage = localStorage,
+  loc: Location = window.location,
+  basename: string = nodeBasename(new URL(loc.href), "/"),
+): void {
   const url = new URL(loc.href);
   const token = url.searchParams.get("invite");
   if (!token) return;
-  const pending: PendingInvite = { token, forum: url.searchParams.get("forum") };
+  const base = basename.endsWith("/") ? basename : `${basename}/`;
+  const route = url.pathname.startsWith(base) ? `/${url.pathname.slice(base.length)}` : url.pathname;
+  const pending: PendingInvite = {
+    token,
+    forum: url.searchParams.get("forum"),
+    org: url.searchParams.get("org"),
+    route,
+  };
   try {
     storage.setItem(PENDING, JSON.stringify(pending));
   } catch {
@@ -249,6 +272,7 @@ export function captureInvite(storage: KeyValueStorage = localStorage, loc: Loca
   }
   url.searchParams.delete("invite");
   url.searchParams.delete("forum");
+  url.searchParams.delete("org");
   window.history.replaceState(null, "", url.toString());
 }
 
@@ -257,8 +281,9 @@ export function pendingInvite(storage: KeyValueStorage = localStorage): PendingI
     const raw = storage.getItem(PENDING);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<PendingInvite>;
+    const str = (v: unknown) => (typeof v === "string" && v ? v : null);
     return typeof parsed.token === "string" && parsed.token
-      ? { token: parsed.token, forum: typeof parsed.forum === "string" ? parsed.forum : null }
+      ? { token: parsed.token, forum: str(parsed.forum), org: str(parsed.org), route: str(parsed.route) }
       : null;
   } catch {
     return null;
@@ -272,6 +297,19 @@ export function dropInvite(storage: KeyValueStorage = localStorage): void {
     /* nothing stored */
   }
 }
+
+/**
+ * Whether a redemption failed because the invitation itself is spent: used,
+ * expired, revoked or unknown to the node. Those answer a 4xx; a 5xx or a
+ * network failure is worth retrying with the same token.
+ */
+export function isSpentInvite(e: unknown): boolean {
+  return e instanceof CalimeroError && e.status >= 400 && e.status < 500 && e.status !== 401;
+}
+
+/** What the invitation screen says about a spent invitation. */
+export const SPENT_INVITE =
+  "This invite was already used or has expired. Ask the person who invited you for a new link.";
 
 /** The org an invitation redeemed into, from whichever field the node named it. */
 export function joinedOrg(redeemed: Record<string, unknown>): string | null {

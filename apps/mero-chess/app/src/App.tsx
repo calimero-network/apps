@@ -7,7 +7,6 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
-import { CalimeroError } from "@calimero-network/mero-js";
 import { appSource, type KeyValueStorage } from "@calimero-apps/connect";
 import { nodeBasename } from "@calimero-apps/node-served";
 import { AppListing, PasskeySignIn } from "@calimero-apps/passkey";
@@ -26,7 +25,15 @@ import {
   type SessionDeps,
 } from "./session";
 import { TablePage, type OpenTable } from "./TablePage";
-import { dropInvite, pendingInvite, selectionKey } from "./tables";
+import {
+  SPENT_INVITE,
+  deferInvite,
+  dropInvite,
+  inviteDeferred,
+  inviteRefused,
+  pendingInvite,
+  selectionKey,
+} from "./tables";
 import { shortAccount } from "./useSeatNames";
 
 const basename = () => nodeBasename(new URL(window.location.href), "/");
@@ -34,10 +41,19 @@ const basename = () => nodeBasename(new URL(window.location.href), "/");
 /** Every path the shared landing page serves. See src/pages/landing. */
 const LANDING_PATHS = ["/", "/docs", "/preview"];
 
-/** The landing page, told who is looking at it. */
-function AppLandingPage() {
+/**
+ * The landing page, told who is looking at it.
+ *
+ * Signed out with an invitation waiting, the invitation is the page: the
+ * passkey sign-in on `/play`, worded as the invitation, with no landing hero
+ * in front of it. Its "Not now" comes back here, keeping the token.
+ */
+function AppLandingPage({ storage }: { storage: KeyValueStorage }) {
   const { session } = useSessionApi();
   const navigate = useNavigate();
+  if (session.status === "signed-out" && !inviteDeferred() && pendingInvite(storage)) {
+    return <Navigate to="/play" replace />;
+  }
   return (
     <LandingPage
       isAuthenticated={session.status === "signed-in"}
@@ -75,14 +91,31 @@ function readSelection(storage: KeyValueStorage, key: string): OpenTable | null 
   return null;
 }
 
-/** Passkey sign-in, or a new account with a new passkey. */
-function ConnectCard({ api, where }: { api: SessionApi; where: string }) {
+/**
+ * Passkey sign-in, or a new account with a new passkey. With an invitation
+ * waiting it is the invitation page: the same sign-in, worded as the
+ * invitation, and a "Not now" that keeps the token.
+ */
+function ConnectCard({
+  api,
+  where,
+  invited,
+  onNotNow,
+}: {
+  api: SessionApi;
+  where: string;
+  invited: boolean;
+  onNotNow: () => void;
+}) {
   return (
-    <section className="connect">
+    <section className="connect" data-testid={invited ? "invitation-page" : undefined}>
       <div className="connect-card">
         <img className="connect-mark" src={`${basename()}favicon.svg`} alt="" />
-        <h1>Sign in to play</h1>
-        <p className="lede">
+        <h1>{invited ? "You're invited" : "Sign in to play"}</h1>
+        <p className="lede" data-testid="signin-desc">
+          {invited
+            ? "You've been invited to join a table in Mero Chess. Sign in or create an account to accept. "
+            : ""}
           Mero Chess plays through a Calimero cluster ({where}): every move is a transaction its
           log orders, refereed by the contract. Accounts are passkeys: nothing to remember, nothing
           to leak.
@@ -90,6 +123,17 @@ function ConnectCard({ api, where }: { api: SessionApi; where: string }) {
         <div className="connect-passkey">
           <PasskeySignIn api={api} />
         </div>
+        {invited && (
+          <button
+            type="button"
+            className="ghost small"
+            onClick={onNotNow}
+            disabled={api.busy}
+            data-testid="invitation-not-now"
+          >
+            Not now
+          </button>
+        )}
         <ul className="connect-points">
           <li>No game server</li>
           <li>Rules run in the contract</li>
@@ -108,6 +152,7 @@ function ConnectCard({ api, where }: { api: SessionApi; where: string }) {
  */
 function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDeps }) {
   const api = useSessionApi();
+  const navigate = useNavigate();
   const { session, store } = api;
   const source = useMemo(() => appSource(deps.env, PACKAGE), [deps.env]);
   const [opened, setOpened] = useState<OpenTable | null>(null);
@@ -141,33 +186,58 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
 
   // An invitation link opened before signing in is redeemed once a session
   // exists, and the table it names is opened.
+  //
+  // ⚠️ Not by someone who already reaches that table: redeeming spends the
+  // link's single use, so the owner trying their own link used to leave the
+  // opponent it was meant for with "unknown invite". The table is opened and
+  // the token dropped unspent.
   useEffect(() => {
     if (!client) return;
     const invite = pendingInvite(storage);
     if (!invite) return;
     let live = true;
-    client
-      .redeemInvite(invite.token)
-      .then(async () => {
+    const redeem = () =>
+      client
+        .redeemInvite(invite.token)
+        .then(async () => {
+          dropInvite(storage);
+          if (!live) return;
+          setLobbyKey((k) => k + 1);
+          const table = invite.table
+            ? (await client.listApps({}).catch(() => [])).find((a) => a.appId === invite.table)
+            : undefined;
+          if (!live) return;
+          if (table) {
+            open({ appId: table.appId, name: table.name, org: table.org });
+            setNotice(null);
+          } else {
+            setNotice("Invitation accepted: the table is in your list.");
+          }
+        })
+        .catch((e: unknown) => {
+          // A refusal (unknown, used, expired, revoked) can never succeed:
+          // drop it and say so plainly. Anything else (the cluster
+          // unreachable) is kept for the next load.
+          if (inviteRefused(e)) {
+            dropInvite(storage);
+            if (live) setNotice(SPENT_INVITE);
+          } else if (live) setNotice(`The invitation could not be accepted: ${messageOf(e)}`);
+        });
+    const reached = invite.table
+      ? client.listApps({}).then(
+          (apps) => apps.find((a) => a.appId === invite.table) ?? null,
+          () => null,
+        )
+      : Promise.resolve(null);
+    void reached
+      .then((table) => {
+        if (!table) return redeem();
         dropInvite(storage);
         if (!live) return;
-        setLobbyKey((k) => k + 1);
-        const table = invite.table
-          ? (await client.listApps({}).catch(() => [])).find((a) => a.appId === invite.table)
-          : undefined;
-        if (!live) return;
-        if (table) {
-          open({ appId: table.appId, name: table.name, org: table.org });
-          setNotice(null);
-        } else {
-          setNotice("Invitation accepted: the table is in your list.");
-        }
-      })
-      .catch((e: unknown) => {
-        // A refusal (used, expired, revoked) can never succeed: drop it.
-        // Anything else (the cluster unreachable) is kept for the next load.
-        if (e instanceof CalimeroError && e.status < 500) dropInvite(storage);
-        if (live) setNotice(`The invitation could not be accepted: ${messageOf(e)}`);
+        open({ appId: table.appId, name: table.name, org: table.org });
+        setNotice(
+          "You already reach this table, so there was nothing to accept. The link is left unused for the person it was meant for.",
+        );
       })
       .finally(after);
     return () => {
@@ -206,7 +276,17 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
   }
 
   if (session.status === "signed-out") {
-    return <ConnectCard api={api} where={describeTarget(session.target)} />;
+    return (
+      <ConnectCard
+        api={api}
+        where={describeTarget(session.target)}
+        invited={pendingInvite(storage) !== null}
+        onNotNow={() => {
+          deferInvite();
+          navigate("/");
+        }}
+      />
+    );
   }
 
   return (
@@ -299,10 +379,10 @@ export function App({
               element={
                 path === "/" ? (
                   <RedirectIfAuthed>
-                    <AppLandingPage />
+                    <AppLandingPage storage={storage} />
                   </RedirectIfAuthed>
                 ) : (
-                  <AppLandingPage />
+                  <AppLandingPage storage={storage} />
                 )
               }
             />

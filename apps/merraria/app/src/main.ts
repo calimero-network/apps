@@ -263,7 +263,8 @@ async function boot(): Promise<void> {
     // An invitation into the world's org, approved with this player's passkey.
     onInvite:
       conn && worldOrg
-        ? ((c: Connection, org: string) => async () => inviteLink(await inviteToken(c.client, org, c.approver())))(
+        ? ((c: Connection, org: string) => async () =>
+            inviteLink(await inviteToken(c.client, org, c.approver()), window.location, org))(
             conn,
             worldOrg,
           )

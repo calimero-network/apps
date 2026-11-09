@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import type { AppInfo, CalimeroClient, CalimeroSession } from '@calimero-network/mero-js';
+import {
+  CalimeroError,
+  type AppInfo,
+  type CalimeroClient,
+  type CalimeroSession,
+} from '@calimero-network/mero-js';
 import { SessionStore, resolveTarget } from '@calimero-apps/connect';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -203,6 +208,76 @@ describe('App', () => {
     expect(client.view).toHaveBeenCalledWith('agr-1', 'getContextDetails', {
       contextIdStr: 'agr-1',
     });
+  });
+
+  it('signed out with a pending invite, shows the invitation page instead of the landing page', async () => {
+    localStorage.setItem(
+      'mero-sign:pending-invite',
+      JSON.stringify({ token: 'tok-1', agreement: null }),
+    );
+    render(<App deps={deps(fakeClient())} />);
+    const page = await screen.findByTestId('invitation-page');
+    expect(page.textContent).toContain("You're invited");
+    expect(page.textContent).toContain('Sign in or create an account to accept');
+    expect(screen.getByTestId('signin-passkey')).toBeTruthy();
+    expect(screen.queryByText('Connect')).toBeNull();
+  });
+
+  it('signing in on the invitation page goes straight to the join prompt, then into the workspace', async () => {
+    localStorage.setItem(
+      'mero-sign:pending-invite',
+      JSON.stringify({ token: 'tok-1', agreement: null }),
+    );
+    const client = fakeClient();
+    render(<App deps={deps(client)} />);
+    await screen.findByTestId('invitation-page');
+    fireEvent.click(screen.getByTestId('signin-passkey'));
+    fireEvent.click(await screen.findByTestId('invitation-join'));
+    await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith('tok-1'));
+    await waitFor(() => expect(window.location.pathname).toBe('/workspaces/org-1'));
+    expect(screen.queryByTestId('invitation-page')).toBeNull();
+  });
+
+  it('"Not now" on the invitation page shows the landing page and keeps the token', async () => {
+    localStorage.setItem(
+      'mero-sign:pending-invite',
+      JSON.stringify({ token: 'tok-1', agreement: null }),
+    );
+    render(<App deps={deps(fakeClient())} />);
+    fireEvent.click(await screen.findByTestId('invitation-not-now'));
+    await screen.findByText('Connect');
+    expect(localStorage.getItem('mero-sign:pending-invite')).not.toBeNull();
+  });
+
+  it('does not redeem an invite into a workspace the account is already in', async () => {
+    remember();
+    localStorage.setItem(
+      'mero-sign:pending-invite',
+      JSON.stringify({ token: 'tok-1', agreement: null, org: 'org-1' }),
+    );
+    const client = fakeClient();
+    render(<App deps={deps(client)} />);
+    await screen.findByTestId('invitation-member');
+    expect(client.redeemInvite).not.toHaveBeenCalled();
+    expect(localStorage.getItem('mero-sign:pending-invite')).toBeNull();
+  });
+
+  it('says plainly when the invite was already used or has expired', async () => {
+    remember();
+    localStorage.setItem(
+      'mero-sign:pending-invite',
+      JSON.stringify({ token: 'tok-1', agreement: null }),
+    );
+    const client = fakeClient();
+    client.redeemInvite.mockRejectedValueOnce(
+      new CalimeroError(404, 'NOT_FOUND', 'unknown invite'),
+    );
+    render(<App deps={deps(client)} />);
+    fireEvent.click(await screen.findByTestId('invitation-join'));
+    expect((await screen.findByTestId('invitation-error')).textContent).toBe(
+      'This invite was already used or has expired. Ask the person who invited you for a new link.',
+    );
+    expect(localStorage.getItem('mero-sign:pending-invite')).toBeNull();
   });
 
   it('asks before redeeming an invitation, then joins the agreement the link names', async () => {

@@ -52,3 +52,12 @@ production build throws `ConfigError` instead of connecting anywhere.
 `resolveTarget` and `withServedNodes`, which `connectTarget` is built on, are
 still exported for code that only reads the build's environment. Sessions are stored per app and per target. See
 [docs/COMPONENT-APPS.md](../../docs/COMPONENT-APPS.md).
+
+Signing up follows the cluster's sign-up policy (core's `GET /sign-up`):
+`readSignUpPolicy(client)` reads it (`null` on a node without the route, which
+blocks nothing), `signUpAccess(policy, hasInviteToken)` says whether this page
+may create an account (`allowed`, `needs-invite`, `closed`, `unknown`),
+`signUpNotice` says why not, and `signUpInvite(policy, token)` is the invite to
+send with `signUp` where the policy requires one. `describeSignInError(error,
+access)` answers a passkey the cluster does not know with the way in for that
+policy, and a refused sign-up (`SignUpRefused`) by its reason.

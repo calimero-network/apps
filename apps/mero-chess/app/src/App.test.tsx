@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { NotFound, type AppInfo, type CalimeroClient, type CalimeroSession } from "@calimero-network/mero-js";
 import { SessionStore, resolveTarget, type KeyValueStorage, type Target } from "@calimero-apps/connect";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
 import type { SeatView, WireTableView } from "./chess";
@@ -106,6 +106,8 @@ function opened(storage: Memory, org: string | null = "org-1") {
   storage.setItem(selectionKey(LOCAL, "acct-alice"), JSON.stringify({ appId: "app-1", name: "Table 1", org }));
 }
 
+beforeEach(() => sessionStorage.clear());
+
 describe("App", () => {
   it("shows the listing on a production copy no cluster serves", async () => {
     at("/play");
@@ -130,7 +132,8 @@ describe("App", () => {
     await screen.findByText("Sit down at a table");
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "");
     expect(new SessionStore(APP, LOCAL, storage).load()).toEqual(SESSION);
-    expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" });
+    // The table list is asked for after the signed-in page renders, not before it.
+    await waitFor(() => expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" }));
 
     fireEvent.click(screen.getByText("New table"));
     await screen.findByText("Invite an opponent");
@@ -225,9 +228,13 @@ describe("App", () => {
 
   it("redeems an invitation opened before signing in and opens the table it names", async () => {
     at("/play");
-    const client = fakeClient([
-      { appId: "app-9", name: "Their table", owner: "acct-bob", org: "org-9", bundle: "bundle-hash", package: null, version: null },
-    ]);
+    const theirs: AppInfo[] = [];
+    const client = fakeClient(theirs);
+    // A table in someone else's organization is out of reach until joined.
+    client.redeemInvite.mockImplementation(async () => {
+      theirs.push({ appId: "app-9", name: "Their table", owner: "acct-bob", org: "org-9", bundle: "bundle-hash", package: null, version: null });
+      return {};
+    });
     const storage = new Memory();
     storage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: "tok-9", table: "app-9" }));
     render(<App deps={deps(client)} storage={storage} />);
@@ -245,8 +252,53 @@ describe("App", () => {
     storage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: "tok-used", table: null }));
     new SessionStore(APP, LOCAL, storage).save(SESSION);
     render(<App deps={deps(client)} storage={storage} />);
-    await screen.findByText(/could not be accepted/);
+    await screen.findByText(
+      "This invite was already used or has expired. Ask the person who invited you for a new link.",
+    );
     await waitFor(() => expect(storage.getItem(`${APP}:pending-invite`)).toBeNull());
+  });
+
+  it("does not spend the link of a table this account already reaches", async () => {
+    at("/play");
+    const client = fakeClient([
+      { appId: "app-1", name: "Table 1", owner: "acct-alice", org: "org-1", bundle: "bundle-hash", package: null, version: null },
+    ]);
+    const storage = new Memory();
+    storage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: "tok-1", table: "app-1" }));
+    new SessionStore(APP, LOCAL, storage).save(SESSION);
+    render(<App deps={deps(client)} storage={storage} />);
+    await screen.findByText(/You already reach this table/);
+    expect(client.redeemInvite).not.toHaveBeenCalled();
+    expect(storage.getItem(`${APP}:pending-invite`)).toBeNull();
+  });
+
+  describe("an invitation link opened while signed out", () => {
+    it("shows the invitation as the page, not the landing hero", async () => {
+      at("/");
+      const storage = new Memory();
+      storage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: "tok-9", table: "app-9" }));
+      render(<App deps={deps(fakeClient())} storage={storage} />);
+      expect(await screen.findByTestId("invitation-page")).toBeTruthy();
+      expect(window.location.pathname).toBe("/play");
+      expect(screen.getByText("You're invited")).toBeTruthy();
+      expect(screen.getByTestId("signin-desc").textContent).toContain(
+        "You've been invited to join a table in Mero Chess. Sign in or create an account to accept.",
+      );
+      expect(screen.getByText("Continue with passkey")).toBeTruthy();
+      expect(screen.getByText("Create a passkey")).toBeTruthy();
+      expect(document.querySelector(".cal-lp-root")).toBeNull();
+    });
+
+    it("Not now shows the landing page and keeps the token", async () => {
+      at("/play");
+      const storage = new Memory();
+      storage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: "tok-9", table: "app-9" }));
+      render(<App deps={deps(fakeClient())} storage={storage} />);
+      fireEvent.click(await screen.findByTestId("invitation-not-now"));
+      await waitFor(() => expect(window.location.pathname).toBe("/"));
+      expect(document.querySelector(".cal-lp-root")).not.toBeNull();
+      expect(storage.getItem(`${APP}:pending-invite`)).not.toBeNull();
+    });
   });
 
   it("sends a signed-in visitor from the landing page into the app, and signs out", async () => {

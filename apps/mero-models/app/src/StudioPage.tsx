@@ -1,12 +1,12 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { CalimeroError } from "@calimero-network/mero-js";
-import { appSource, describeError, type KeyValueStorage } from "@calimero-apps/connect";
+import { appSource, type KeyValueStorage } from "@calimero-apps/connect";
 import { nodeBasename } from "@calimero-apps/node-served";
 import { ScenePicker } from "./ScenePicker";
 import { PACKAGE } from "./meroModels";
 import { SceneContext, type OpenedScene, type SceneSession } from "./scene";
-import { dropInvite, pendingInvite, readSelection, selectionKey, writeSelection } from "./scenes";
+import { InvitationSignIn, JoinInvitation } from "./Invitation";
+import { pendingInvite, readSelection, selectionKey, writeSelection } from "./scenes";
 import { AppListing, PasskeySignIn } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 import { LISTING, describeTarget, type SessionApi, type SessionDeps } from "./session";
@@ -65,32 +65,12 @@ export function StudioPage({
     [key, storage],
   );
 
-  // An invitation link opened before signing in is redeemed once a session exists.
+  // An invitation link opened before signing in: a page of its own while it
+  // is pending (see `Invitation.tsx`), redeemed only on "Join".
+  const [invite, setInvite] = useState<string | null>(() => pendingInvite(storage));
   useEffect(() => {
-    if (!client) return;
-    const token = pendingInvite(storage);
-    if (!token) return;
-    let live = true;
-    client
-      .redeemInvite(token)
-      .then(() => {
-        dropInvite(storage);
-        if (live) {
-          setNotice("Invitation accepted: the studio's scenes are in your list.");
-          setPickerKey((k) => k + 1);
-        }
-      })
-      .catch((e: unknown) => {
-        // A refusal (used, expired, revoked) can never succeed: drop it. Anything
-        // else (the cluster unreachable) is kept and tried on the next load.
-        if (e instanceof CalimeroError && e.status < 500) dropInvite(storage);
-        if (live) setNotice(`The invitation could not be accepted: ${describeError(e)}`);
-      })
-      .finally(after);
-    return () => {
-      live = false;
-    };
-  }, [client, storage, after]);
+    if (client) setInvite(pendingInvite(storage));
+  }, [client, storage]);
 
   const logout = useCallback(() => {
     if (key) writeSelection(storage, key, null);
@@ -142,7 +122,37 @@ export function StudioPage({
     return (
       <div className="page">
         <TopBar onHome={home} />
-        <SignIn api={api} where={describeTarget(session.target)} invited={pendingInvite(storage) !== null} />
+        {invite ? (
+          <main className="wrap">
+            {/* "Not now": the landing page, with the invitation kept for the next sign-in. */}
+            <InvitationSignIn api={api} where={describeTarget(session.target)} onLater={home} />
+          </main>
+        ) : (
+          <SignIn api={api} where={describeTarget(session.target)} />
+        )}
+      </div>
+    );
+  }
+
+  if (invite) {
+    return (
+      <div className="page">
+        <TopBar onHome={home} where={describeTarget(session.target)} onLogout={logout} />
+        <main className="wrap">
+          <JoinInvitation
+            client={session.client}
+            token={invite}
+            storage={storage}
+            after={after}
+            onJoined={() => {
+              setInvite(null);
+              setNotice("Invitation accepted: the studio's scenes are in your list.");
+              setPickerKey((k) => k + 1);
+              open(null);
+            }}
+            onClose={() => setInvite(null)}
+          />
+        </main>
       </div>
     );
   }
@@ -171,17 +181,15 @@ export function StudioPage({
 }
 
 /** The front door: a passkey sign-in, or a new account with a new passkey. */
-function SignIn({ api, where, invited }: { api: SessionApi; where: string; invited: boolean }) {
+function SignIn({ api, where }: { api: SessionApi; where: string }) {
   return (
     <section className="connect">
       <div className="connect-card">
         <img className="connect-mark" src={`${base()}favicon.svg`} alt="" />
-        <h1>{invited ? "You're invited" : "Sign in"}</h1>
+        <h1>Sign in</h1>
         <p className="lede">
-          {invited
-            ? "Continue with a passkey, or create one, to open the studio you were invited to. "
-            : "Sign in to open your scenes. "}
-          Your account is a passkey: nothing to remember, nothing to leak. Connected to {where}.
+          Sign in, or create an account, to open your scenes. Your account is a passkey: nothing to remember,
+          nothing to leak. Connected to {where}.
         </p>
         <PasskeySignIn api={api} />
         <ul className="connect-points">
