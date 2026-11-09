@@ -230,13 +230,15 @@ catalog:
 # credentials, memberships and invites, which core 1.0.0-rc.7 requires. It
 # moves with `component-core-tag` in the root Cargo.toml.
 #
-# 29.7.3 (mero-js#337): `browserPasskey()` falls back to the browser's own
-# WebAuthn API when a prompt is refused as "A request is already pending".
-# That did not fix LastPass; mero-js#339 (always the browser's own WebAuthn,
-# ES256-only passkeys) is the fix, and this line moves to its release.
+# 29.7.5 (mero-js#339): `browserPasskey()` always uses the browser's own
+# WebAuthn (CredentialsContainer.prototype), never a password manager
+# extension's replacement on navigator.credentials, and creates ES256-only
+# passkeys. LastPass broke the sign-up's second prompt; #337's fallback (29.7.3)
+# did not get past it. 29.7.4 (mero-js#338): confirmations require user
+# verification, and a blocked confirmation prompt is ConfirmPromptBlocked.
 catalogs:
   component:
-    "@calimero-network/mero-js": 29.7.3
+    "@calimero-network/mero-js": 29.7.5
 
 # esbuild's postinstall needs approving explicitly under pnpm 10+; pnpm 11
 # renamed the key to `allowBuilds`, so this may need updating with the toolchain.
