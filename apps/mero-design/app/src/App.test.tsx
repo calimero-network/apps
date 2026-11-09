@@ -247,4 +247,22 @@ describe("App", () => {
     expect(invites.token()).toBe("tok-1");
     expect(screen.getByTestId("invitation-join")).toBeTruthy();
   });
+
+  it("tells a member who may not add a board to ask an owner, instead of offering Create (B8)", async () => {
+    remember();
+    const client = fakeClient();
+    client.me.mockResolvedValue({ orgs: [{ orgId: "org-1", name: "Design team", role: "member" }] });
+    // A member with the node's default capabilities: no CREATE_APP.
+    client.getOrg.mockResolvedValue({
+      name: "Design team",
+      members: { [ME]: "member", "acct-bob": "owner" },
+      memberMetadata: { [ME]: { name: "Alice" } },
+    });
+    client.listApps.mockResolvedValue([]);
+    window.history.replaceState(null, "", "/teams/org-1/projects");
+    render(<App deps={deps(client)} />);
+    expect((await screen.findByTestId("create-board-ask")).textContent).toMatch(/Only an owner or admin/);
+    expect(screen.queryByTestId("create-project-btn")).toBeNull();
+    expect(screen.queryByTestId("new-board-btn")).toBeNull();
+  });
 });
