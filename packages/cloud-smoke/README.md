@@ -16,7 +16,7 @@ For each package it:
 4. with Chrome's CDP virtual authenticator (ctap2, internal, resident key, user
    verification), signs up a **fresh** passkey account, signs out, signs back
    in with the same passkey, runs one call to the cluster (kv-store: the
-   account's store list) and signs out.
+   account's store list; chat: the account's workspace list) and signs out.
 
 Console errors, CSP violation events and failed requests are collected and
 attached (`browser-log.txt`); any CSP violation, "Load failed" or "Failed to
@@ -42,7 +42,7 @@ pnpm install
 cd packages/cloud-smoke
 npx playwright install chromium   # once
 npx playwright test               # kv-store on apps.calimero.network
-SMOKE_PACKAGES="com.calimero.kv-store com.calimero.mero-chat" npx playwright test
+SMOKE_PACKAGES="com.calimero.kv-store com.calimero.chat" npx playwright test
 ```
 
 | Variable            | Default                  | What                                                              |
@@ -52,9 +52,31 @@ SMOKE_PACKAGES="com.calimero.kv-store com.calimero.mero-chat" npx playwright tes
 | `SMOKE_URL`         | (derived)                | One URL to open instead, with a single package in SMOKE_PACKAGES. |
 
 Every app signs in through `@calimero-apps/passkey`'s `<PasskeySignIn>`
-(`signup-passkey`, `signin-passkey`, `signin-error`) and a "Sign out" button,
-so any served app gets steps 1 to 4 except the app-specific call, which is in
-`SIGNED_IN_CHECKS` (`src/signin.smoke.ts`) and only kv-store has today.
+(`signup-passkey`, `signin-passkey`, `signin-error`), so any served app gets
+steps 1 to 4. By default the test expects the control on load and a "Sign out"
+button once signed in; an app that wraps it differently has an entry in
+`FLOWS` (`src/signin.smoke.ts`). The app-specific call is in
+`SIGNED_IN_CHECKS`, which kv-store and chat have today.
+
+## Chat (`com.calimero.chat`)
+
+Chat is not in the default list: a package no cluster serves is not skipped,
+it fails at step 1, and no cluster serves chat yet
+(`GET https://manager.cloud.calimero.network/api/v2/directory/package/com.calimero.chat`
+answers "No cluster serves com.calimero.chat"). Once a cluster serves it, run
+it by hand (**Run workflow** with `com.calimero.chat` in packages) or locally:
+
+```sh
+SMOKE_PACKAGES=com.calimero.chat npx playwright test
+```
+
+Its flow: the landing page's "Sign in" opens the passkey popup, "Create a
+passkey" asks for an optional name and is pressed again, and once signed in
+the workspace picker must list the account's workspaces ("Welcome to MeroChat"
+for a fresh account) with "Disconnect node" to sign out. The chat's own view
+methods need a workspace, which a fresh account does not have, so the check
+stops at the list. Any CSP violation on the way (link previews, avatars,
+attachments) fails the run like any other app's.
 
 ## Accounts and sign-up policy
 
