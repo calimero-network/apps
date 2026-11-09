@@ -1,4 +1,12 @@
-import { AppError, CalimeroClient, CalimeroError, LoginRequired, type CalimeroSession } from "@calimero-network/mero-js";
+import {
+  AppError,
+  CalimeroClient,
+  CalimeroError,
+  ConfirmCancelled,
+  ConfirmPromptBlocked,
+  LoginRequired,
+  type CalimeroSession,
+} from "@calimero-network/mero-js";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -7,6 +15,7 @@ import {
   LOCAL_NODES,
   NotServedError,
   PASSKEY_UNKNOWN_HERE_MESSAGE,
+  PROMPT_BLOCKED_MESSAGE,
   SessionStore,
   appSource,
   connectTarget,
@@ -217,6 +226,12 @@ describe("describeError", () => {
     expect(describeError(new LoginRequired("no session"))).toBe("Sign in first.");
     expect(describeError(new Error("boom"))).toBe("boom");
     expect(describeError("plain")).toBe("plain");
+  });
+
+  it("tells a blocked passkey prompt from a cancelled one", () => {
+    const browser = Object.assign(new Error("A request is already pending."), { name: "OperationError" });
+    expect(describeError(new ConfirmPromptBlocked(browser))).toBe(PROMPT_BLOCKED_MESSAGE);
+    expect(describeError(new ConfirmCancelled(browser))).toBe("The passkey prompt was cancelled.");
   });
 });
 
