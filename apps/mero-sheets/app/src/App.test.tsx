@@ -190,6 +190,22 @@ describe('App', () => {
     expect(screen.queryByTestId('invitation-page')).toBeNull();
   });
 
+  it('an invited newcomer creates the account and joins in one click, and lands in the spreadsheet', async () => {
+    localStorage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: 'tok-1', sheet: 'sheet-1', org: 'org-1' }));
+    const client = fakeClient();
+    render(<App deps={deps(client)} />);
+    const create = await screen.findByTestId('signup-passkey');
+    expect(create.textContent).toBe('Create your account and join the workspace');
+    fireEvent.click(create);
+    await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), '', { invite: 'tok-1' }));
+    await waitFor(() => expect(client.view).toHaveBeenCalledWith('sheet-1', 'listSheets', {}));
+    expect(client.signIn).not.toHaveBeenCalled();
+    expect(client.redeemInvite).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('invitation-dialog')).toBeNull();
+    expect(screen.queryByTestId('invitation-page')).toBeNull();
+    expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
+  });
+
   it('"Not now" on the invitation page shows the landing page and keeps the token', async () => {
     localStorage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: 'tok-1', sheet: null }));
     render(<App deps={deps(fakeClient())} />);

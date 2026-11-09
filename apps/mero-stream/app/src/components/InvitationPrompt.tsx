@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { describeError } from "@calimero-apps/connect";
 import { useConn } from "../hooks/useConn";
 import { useDialogOpen } from "../hooks/useDialogOpen";
+import { useSessionApi } from "../session";
 import { setActiveRoom } from "../lib/session";
 import {
   INVITE_REFUSED,
@@ -25,6 +26,10 @@ import styles from "./InviteModal.module.css";
  * the room's context; here it is one org invitation (`redeemInvite`), after
  * which every room of the stream is reachable.
  *
+ * A sign-up from the invitation page already joined with the invite
+ * (`api.joinedInvite`): the token is dropped and what it names opened, with
+ * nothing asked and nothing redeemed again.
+ *
  * Someone already in the stream (the inviter opening their own link) is told
  * so and the token dropped: redeeming it would spend its single use, and the
  * person it was meant for could no longer join. A refused invite (unknown,
@@ -32,6 +37,7 @@ import styles from "./InviteModal.module.css";
  */
 export default function InvitationPrompt() {
   const conn = useConn();
+  const joinedInvite = useSessionApi().joinedInvite ?? null;
   const navigate = useNavigate();
   const [invite, setInvite] = useState<PendingInvite | null>(() => pendingInvite());
   const [busy, setBusy] = useState(false);
@@ -39,18 +45,30 @@ export default function InvitationPrompt() {
   const [refused, setRefused] = useState(false);
   // `null` until the membership check answers; `false` too when it cannot.
   const [member, setMember] = useState<boolean | null>(null);
+  // An invite the sign-up joined with: opened, never asked about.
+  const [joinedAtSignUp, setJoinedAtSignUp] = useState<PendingInvite | null>(null);
   const ref = useRef<HTMLDialogElement | null>(null);
   const client = conn?.client ?? null;
   const open = !!client && !!invite && member !== null;
   useDialogOpen(ref, open);
 
   // Signing in on the invitation page leaves the token where it was: re-read it.
+  // Signing up there joined with it already: open what it named, ask nothing.
   useEffect(() => {
-    if (client) setInvite((prev) => reread(prev));
+    if (!client) return;
+    const next = reread(invite);
+    if (next && next.token === joinedInvite) {
+      dropInvite();
+      setInvite(null);
+      setJoinedAtSignUp(next);
+      return;
+    }
+    setInvite(next);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- once per session; `joinedInvite` is set before it signs in
   }, [client]);
 
   useEffect(() => {
-    if (!client || !invite) return undefined;
+    if (!client || !invite || invite.token === joinedInvite) return undefined;
     let live = true;
     setMember(null);
     void alreadyMember(client, invite).then((known) => {
@@ -79,6 +97,15 @@ export default function InvitationPrompt() {
       navigate("/streams");
     }
   };
+
+  // Opened one render later: the home route's own redirect into the app runs
+  // in the sign-in's render, and would land after this navigation.
+  useEffect(() => {
+    if (!joinedAtSignUp) return;
+    setJoinedAtSignUp(null);
+    go(joinedAtSignUp);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `go` is rebuilt each render; this runs once per joined invite
+  }, [joinedAtSignUp]);
 
   /** Already a member: nothing to redeem, just open what the link names. */
   const openIt = () => {

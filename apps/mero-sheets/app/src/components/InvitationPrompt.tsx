@@ -7,7 +7,9 @@
  * forwarded link or a refreshing background tab should not do that silently.
  *
  * Signed out, `InvitationPage` stands in for the app and offers the sign-in;
- * the token survives the sign-up, and this asks the moment a session exists.
+ * the token survives a sign-in, and this asks the moment a session exists. A
+ * sign-up from that page already joined with it (`api.joinedInvite`): this
+ * only opens what the link named, with nothing redeemed again.
  * Someone already in the workspace (the inviter opening their own link) is
  * told so and the token dropped: redeeming it would spend its single use, and
  * the person it was meant for could no longer join. Join redeems the org
@@ -19,7 +21,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { APP_DISPLAY_NAME } from '../config';
 import { describeError } from '../utils/errors';
-import { useMaybeSignedIn } from '../sessionContext';
+import { useMaybeSignedIn, useSessionApi } from '../sessionContext';
 import {
   INVITE_REFUSED,
   alreadyMember,
@@ -34,21 +36,40 @@ import { Dialog, Err, Hint, Overlay, Primary, Secondary } from './SignInModal';
 
 export default function InvitationPrompt({ onJoined }: { onJoined: (landed: AcceptedInvite) => void }) {
   const signedIn = useMaybeSignedIn();
+  const { api } = useSessionApi();
+  const joinedInvite = api.joinedInvite ?? null;
   const [invite, setInvite] = useState<PendingInvite | null>(() => pendingInvite());
   // `null` until the membership check answers; `false` too when it cannot.
   const [member, setMember] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refused, setRefused] = useState(false);
+  const [joinedAtSignUp, setJoinedAtSignUp] = useState<PendingInvite | null>(null);
   const client = signedIn?.client ?? null;
 
   // Signing in on the invitation page leaves the token where it was: re-read it.
+  // Signing up there joined with it already: open what it named, ask nothing.
   useEffect(() => {
-    if (client) setInvite((prev) => reread(prev));
+    if (!client) return;
+    if (invite && invite.token === joinedInvite) {
+      setInvite(null);
+      setJoinedAtSignUp(invite);
+      return;
+    }
+    setInvite((prev) => reread(prev));
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- once per session; `joinedInvite` is set before it signs in
   }, [client]);
 
+  // Opened one render later: the landing page's own redirect into the app
+  // runs in the sign-in's render, and would replace this navigation's state.
   useEffect(() => {
-    if (!client || !invite) return undefined;
+    if (!joinedAtSignUp) return;
+    setJoinedAtSignUp(null);
+    onJoined({ namespaceId: joinedAtSignUp.org, contextId: joinedAtSignUp.sheet });
+  }, [joinedAtSignUp, onJoined]);
+
+  useEffect(() => {
+    if (!client || !invite || invite.token === joinedInvite) return undefined;
     let live = true;
     setMember(null);
     void alreadyMember(client, invite).then((known) => {

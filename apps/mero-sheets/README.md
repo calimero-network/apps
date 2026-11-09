@@ -27,7 +27,7 @@ in production through mero-js's `CalimeroClient` (`@calimero-apps/connect`). See
 |---|---|---|
 | a workspace | an organization | a namespace |
 | a spreadsheet (workbook) | an instance of this app in the workspace's org | a context |
-| joining | an org invite link (`?invite=<token>`, `&sheet=<app id>` to land in one workbook), redeemed after a passkey sign-in | a namespace invitation link, then joining the context and waiting for it to sync |
+| joining | an org invite link (`?invite=<token>`, `&sheet=<app id>` to land in one workbook), joined by the sign-up that carries it, or redeemed after a passkey sign-in | a namespace invitation link, then joining the context and waiting for it to sync |
 | who you are | an account, signed in with a passkey | a node identity, signed in through the node |
 
 Every member of a workspace (owner, admins, members, guests) reaches every

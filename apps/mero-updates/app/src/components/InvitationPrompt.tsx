@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, type NavigateFunction } from "react-router-dom";
 import { describeError } from "@calimero-apps/connect";
 
 import { useDialogOpen } from "../hooks/useDialogOpen";
@@ -13,7 +13,7 @@ import {
   pendingInvite,
   type PendingInvite,
 } from "../lib/companies";
-import { useMaybeSignedIn } from "../lib/sessionContext";
+import { useMaybeSignedIn, useSessionApi } from "../lib/sessionContext";
 import styles from "./InviteModal.module.css";
 import { UserPlusIcon, XIcon } from "./icons";
 
@@ -27,6 +27,10 @@ import { UserPlusIcon, XIcon } from "./icons";
  * redeems the org invite; an audience link (`&audience=<id>`) then opens that
  * audience, a company link the company's audience list.
  *
+ * A sign-up from the invitation page already joined with the invite
+ * (`api.joinedInvite`): the token is dropped and what it names opened, with
+ * nothing asked and nothing redeemed again.
+ *
  * Someone already in the company (the inviter opening their own link) is told
  * so and the token dropped: redeeming it would spend its single use, and the
  * person it was meant for could no longer join. A refused invite (unknown,
@@ -34,6 +38,8 @@ import { UserPlusIcon, XIcon } from "./icons";
  */
 export default function InvitationPrompt() {
   const signedIn = useMaybeSignedIn();
+  const { api } = useSessionApi();
+  const joinedInvite = api.joinedInvite ?? null;
   const navigate = useNavigate();
   const dialogRef = useRef<HTMLDialogElement | null>(null);
   const [invite, setInvite] = useState<PendingInvite | null>(null);
@@ -42,11 +48,29 @@ export default function InvitationPrompt() {
   const [refused, setRefused] = useState(false);
   // `null` until the membership check answers; `false` too when it cannot.
   const [member, setMember] = useState<boolean | null>(null);
+  // An invite the sign-up joined with: opened, never asked about.
+  const [joinedAtSignUp, setJoinedAtSignUp] = useState<PendingInvite | null>(null);
   const client = signedIn?.client ?? null;
 
   useEffect(() => {
-    setInvite((prev) => (client ? reread(prev) : null));
+    const next = client ? reread(invite) : null;
+    if (next && next.token === joinedInvite) {
+      dropInvite();
+      setInvite(null);
+      setJoinedAtSignUp(next);
+      return;
+    }
+    setInvite(next);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- once per session; `joinedInvite` is set before it signs in
   }, [client]);
+
+  // Opened one render later: the landing page's own redirect into the app
+  // runs in the sign-in's render, and would land after this navigation.
+  useEffect(() => {
+    if (!joinedAtSignUp) return;
+    setJoinedAtSignUp(null);
+    open(navigate, joinedAtSignUp, joinedAtSignUp.org);
+  }, [joinedAtSignUp, navigate]);
 
   useEffect(() => {
     if (!client || !invite) return undefined;
@@ -80,12 +104,7 @@ export default function InvitationPrompt() {
       const org = joinedOrg(redeemed);
       dropInvite();
       setInvite(null);
-      if (org && invite.audience) {
-        setActiveAudience(invite.audience, org);
-        navigate("/a");
-      } else {
-        navigate(org ? `/companies/${org}` : "/companies");
-      }
+      open(navigate, invite, org);
     } catch (e) {
       // A refusal can never succeed: drop it. Anything else (the cluster
       // unreachable) is kept for another try.
@@ -167,6 +186,16 @@ export default function InvitationPrompt() {
       </div>
     </dialog>
   );
+}
+
+/** What a joined invitation opens: the audience its link names, else the company. */
+function open(navigate: NavigateFunction, invite: PendingInvite, org: string | null): void {
+  if (org && invite.audience) {
+    setActiveAudience(invite.audience, org);
+    navigate("/a");
+  } else {
+    navigate(org ? `/companies/${org}` : "/companies");
+  }
 }
 
 /**

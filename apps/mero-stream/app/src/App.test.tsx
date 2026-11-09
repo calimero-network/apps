@@ -266,6 +266,35 @@ describe("App", () => {
     expect(localStorage.getItem("mero-stream:pending-invite")).toBeNull();
   });
 
+  it("an invited newcomer creates the account and joins in one click, and lands in the room", async () => {
+    const client = fakeClient();
+    client.apps.push(client.room("app-1"));
+    // The sign-up that carries the invite joins its stream.
+    client.signUp.mockImplementation(async (...args: unknown[]) => {
+      if ((args[2] as { invite?: string } | undefined)?.invite) {
+        client.orgs.push({ orgId: "org-1", name: "Team", role: "Member" });
+      }
+      return SESSION;
+    });
+    localStorage.setItem(
+      "mero-stream:pending-invite",
+      JSON.stringify({ token: "tok-9", stream: "org-1", room: "app-1", name: "Standup" }),
+    );
+    renderApp(client, "/");
+
+    const create = await screen.findByTestId("signup-passkey");
+    expect(create.textContent).toBe("Create your account and join the stream");
+    fireEvent.click(create);
+    await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-9" }));
+    await waitFor(() =>
+      expect(client.call).toHaveBeenCalledWith("app-1", "join", expect.anything()),
+    );
+    expect(client.signIn).not.toHaveBeenCalled();
+    expect(client.redeemInvite).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("invitation-prompt")).toBeNull();
+    expect(localStorage.getItem("mero-stream:pending-invite")).toBeNull();
+  });
+
   it("builds invitation links on this frontend's own origin", () => {
     expect(
       inviteLink("t", { stream: "o" }, { origin: "https://x.apps.calimero.network", pathname: "/" }),

@@ -6,7 +6,7 @@ import {
   type SessionDeps,
 } from "@calimero-apps/passkey";
 import { APP_PACKAGE } from './config';
-import { pendingInvite } from "./lib/workspaces";
+import { dropInvite, pendingInvite } from "./lib/workspaces";
 
 export { describeTarget, type Session, type SessionApi, type SessionDeps } from "@calimero-apps/passkey";
 
@@ -26,14 +26,16 @@ export const LISTING: ListingProps = {
 
 /**
  * The shared passkey session (`@calimero-apps/passkey`) for this app, with the
- * pending invite token: on an invite-only cluster it lets a new person sign up.
+ * pending invite token: a sign-up from a page holding one joins its org in
+ * the same step.
  */
 export function useSession(deps: SessionDeps = defaultDeps): SessionApi {
   return usePasskeySession(APP, deps, {
     package: APP_PACKAGE,
     invite: () => pendingInvite()?.token ?? null,
-    // No `onJoinedAtSignUp` yet: the invitation prompt keeps the invite it
-    // read before the sign-up and redeems it after, so the token goes with a
-    // sign-up only where the cluster requires one.
+    // A sign-up from a page holding the invite joins its org in that step:
+    // nothing is left to redeem (a second redeem would spend another use).
+    // `InvitationPrompt` sees `api.joinedInvite` and opens what it named.
+    onJoinedAtSignUp: () => dropInvite(),
   });
 }

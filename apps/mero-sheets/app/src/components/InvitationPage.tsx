@@ -5,9 +5,11 @@
  * they had been invited at all.
  *
  * The body is the sign-in popup's (`SignInPanel`), so the copy and the passkey
- * flow are the same in both. Signing in or up here keeps the token; once the
- * session exists `InvitationPrompt` asks "Join?" straight away, and the route
- * the link pointed at is still the address, because nothing here navigated.
+ * flow are the same in both. Signing up here joins with the token in the same
+ * step, and `InvitationPrompt` opens what it names without asking again.
+ * Signing in keeps the token; once the session exists `InvitationPrompt` asks
+ * "Join?" straight away, and the route the link pointed at is still the
+ * address, because nothing here navigated.
  *
  * "Not now" shows the ordinary landing page and keeps the token, so signing
  * in later from there still offers the join.

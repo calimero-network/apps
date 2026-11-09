@@ -109,6 +109,21 @@ describe("an invitation link", () => {
     expect(localStorage.getItem(PENDING)).toBeNull();
   });
 
+  it("an invited newcomer creates the account and joins in one click, and lands in the company", async () => {
+    localStorage.setItem(PENDING, JSON.stringify({ token: "tok-1", audience: null, org: "org-2" }));
+    const client = fakeClient();
+    boot(client);
+    const create = await screen.findByTestId("signup-passkey");
+    expect(create).toHaveTextContent("Create your account and join the company");
+    fireEvent.click(create);
+    await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-1" }));
+    expect(await screen.findByText("audiences")).toBeInTheDocument();
+    expect(client.signIn).not.toHaveBeenCalled();
+    expect(client.redeemInvite).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("invitation-dialog")).toBeNull();
+    expect(localStorage.getItem(PENDING)).toBeNull();
+  });
+
   it("does not redeem an invite into a company the account is already in", async () => {
     remember();
     localStorage.setItem(PENDING, JSON.stringify({ token: "tok-1", audience: null, org: "org-1" }));

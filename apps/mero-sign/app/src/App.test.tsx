@@ -238,6 +238,45 @@ describe('App', () => {
     expect(screen.queryByTestId('invitation-page')).toBeNull();
   });
 
+  it('an invited newcomer creates the account and joins in one click, and lands in the agreement', async () => {
+    localStorage.setItem(
+      'mero-sign:pending-invite',
+      JSON.stringify({ token: 'tok-1', agreement: 'agr-1', org: 'org-1' }),
+    );
+    const client = fakeClient();
+    client.view.mockImplementation(async (_app: string, method: string) => ({
+      index: 1,
+      result:
+        method === 'listParticipants'
+          ? []
+          : method === 'getContextDetails'
+            ? DETAILS
+            : method === 'isDefaultPrivateContext'
+              ? true
+              : method === 'whoami'
+                ? ME
+                : method === 'listDocuments'
+                  ? []
+                  : null,
+    }));
+    render(<App deps={deps(client)} />);
+    const create = await screen.findByTestId('signup-passkey');
+    expect(create.textContent).toBe('Create your account and join the workspace');
+    fireEvent.click(create);
+    await waitFor(() =>
+      expect(client.signUp).toHaveBeenCalledWith(expect.anything(), '', { invite: 'tok-1' }),
+    );
+    await waitFor(() =>
+      expect(client.call).toHaveBeenCalledWith('agr-1', 'registerSelfAsParticipant', {}),
+    );
+    await screen.findByTestId('agreement-title');
+    expect(window.location.pathname).toBe('/agreements/agr-1');
+    expect(client.signIn).not.toHaveBeenCalled();
+    expect(client.redeemInvite).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('invitation-dialog')).toBeNull();
+    expect(localStorage.getItem('mero-sign:pending-invite')).toBeNull();
+  });
+
   it('"Not now" on the invitation page shows the landing page and keeps the token', async () => {
     localStorage.setItem(
       'mero-sign:pending-invite',
