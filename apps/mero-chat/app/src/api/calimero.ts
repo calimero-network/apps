@@ -77,7 +77,10 @@ interface State {
    * cancel-like failure is shown.
    */
   failure: { error: unknown; afterCreate?: boolean } | null;
-  /** Where a sign-up is (`approve`: its new passkey waits for its own click); `null` outside one. */
+  /**
+   * Where a sign-up is (`approve`: the browser refused the second prompt at
+   * once, so it waits for its own click); `null` outside one.
+   */
   signUpStage: SignUpStage | null;
   /** Why the sign-up's last approval failed; it waits at `approve` again. */
   confirmFailure: { error: unknown } | null;
@@ -193,7 +196,11 @@ export function getAccountId(): string {
   return state.accountId ?? "";
 }
 
-/** The sign-up in flight, waiting for "Approve with your new passkey" between its two prompts. */
+/**
+ * The sign-up in flight. Its second prompt is asked right after the first, and
+ * waits for "Approve with your new passkey" only when the browser refused it
+ * at once (`signUpFlow`).
+ */
 let flow: SignUpFlow | null = null;
 
 async function ceremony(

@@ -65,9 +65,9 @@ export class Connection {
 
   /**
    * One sign-up's passkey (pass its `passkey` to `signUp`): the second prompt
-   * waits for `flow.approve()`, a click of its own. Asked for at once, a
-   * password manager extension still saving the new passkey refused it, which
-   * left a passkey and no account.
+   * is asked right after the first, and waits for `flow.approve()`, a click of
+   * its own, only when the browser refused it at once (Safari's user-gesture
+   * rule, a blocked prompt).
    */
   newSignUp(onChange: () => void): SignUpFlow {
     return signUpFlow(this.passkey(), onChange);

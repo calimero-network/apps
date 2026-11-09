@@ -108,9 +108,10 @@ function Screen({
   return <SignInPanel api={api} appName="Test App" joining="the team" listing={LISTING} />;
 }
 
-/** Clicks through both prompts of a sign-up: create, then the approval click. */
+/** Clicks "Approve with your new passkey", once the sign-up has fallen back to it. */
 async function approve() {
   const button = await screen.findByTestId("signup-approve");
+  await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
   expect(button.textContent).toBe("Approve with your new passkey");
   fireEvent.click(button);
 }
@@ -138,7 +139,6 @@ describe("an invite link, no account here", () => {
     render(<Screen d={deps(client)} invite="tok-1" onJoined={onJoined} />);
 
     fireEvent.click(await screen.findByTestId("signup-passkey"));
-    await approve();
     expect(await screen.findByTestId("status")).toBeTruthy();
     expect(client.signIn).not.toHaveBeenCalled();
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-1" });
@@ -150,7 +150,6 @@ describe("an invite link, no account here", () => {
     render(<Screen d={deps(client)} invite="tok-1" />);
     await waitFor(() => expect(client.signUpPolicy).toHaveBeenCalled());
     fireEvent.click(await screen.findByTestId("signup-passkey"));
-    await approve();
     await screen.findByTestId("status");
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-1" });
   });
@@ -192,7 +191,6 @@ describe("an invite link, an account here", () => {
     const create = screen.getByTestId("signup-passkey");
     expect(create.className).toContain("cp-passkey__primary");
     fireEvent.click(create);
-    await approve();
     await screen.findByTestId("status");
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-1" });
   });
@@ -210,7 +208,6 @@ describe("an invite link, an account here", () => {
     const client = fakeClient();
     render(<Screen d={deps(client, storage)} invite="tok-1" onJoined={() => {}} />);
     fireEvent.click(await screen.findByTestId("signup-passkey"));
-    await approve();
     await screen.findByTestId("status");
     expect(storage.getItem(accountHintKey(resolveTarget(DEV_ENV)))).toBe("1");
   });
@@ -252,32 +249,53 @@ describe("no invite", () => {
 });
 
 describe("the two-prompt sign-up", () => {
-  it("waits for the click before the second prompt", async () => {
+  it("asks the second prompt right after the first, with no click", async () => {
     const client = fakeClient();
     const pk = passkey();
     render(<Screen d={deps(client, memoryStorage(), pk)} />);
     fireEvent.click(await screen.findByTestId("signup-passkey"));
-
-    const approveButton = await screen.findByTestId("signup-approve");
+    await screen.findByTestId("status");
     expect(pk.create).toHaveBeenCalledTimes(1);
-    expect(screen.getByText(SIGN_UP_READY)).toBeTruthy();
-    // Nothing starts the second prompt by itself.
+    expect(pk.get).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("signup-approve")).toBeNull();
+  });
+
+  it("a second prompt refused at once (Safari's gesture rule) waits for Approve, which then signs up", async () => {
+    const client = fakeClient();
+    const pk = passkey();
+    pk.get.mockRejectedValueOnce(named("NotAllowedError"));
+    render(<Screen d={deps(client, memoryStorage(), pk)} />);
+    fireEvent.click(await screen.findByTestId("signup-passkey"));
+
+    await approve();
+    expect(screen.queryByTestId("signin-error")).toBeNull();
+    await screen.findByTestId("status");
+    expect(pk.get).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows Approve's copy while it waits", async () => {
+    const client = fakeClient();
+    const pk = passkey();
+    pk.get.mockRejectedValueOnce(named("ConfirmPromptBlocked"));
+    render(<Screen d={deps(client, memoryStorage(), pk)} />);
+    fireEvent.click(await screen.findByTestId("signup-passkey"));
+    expect(await screen.findByText(SIGN_UP_READY)).toBeTruthy();
+    // Nothing starts the second prompt again by itself.
     await act(async () => {
       await new Promise((r) => setTimeout(r, 30));
     });
-    expect(pk.get).not.toHaveBeenCalled();
-    expect(screen.queryByTestId("status")).toBeNull();
-
-    fireEvent.click(approveButton);
-    await screen.findByTestId("status");
     expect(pk.get).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("status")).toBeNull();
   });
 
   it("a refused approval is shown, not swallowed, and Approve stays for another try", async () => {
     const client = fakeClient();
     const pk = passkey();
-    // Refused at once twice (the quick retry included), then accepted.
-    pk.get.mockRejectedValueOnce(named("NotAllowedError")).mockRejectedValueOnce(named("NotAllowedError"));
+    // Refused at once right away, then twice after the click (the quick retry included), then accepted.
+    pk.get
+      .mockRejectedValueOnce(named("NotAllowedError"))
+      .mockRejectedValueOnce(named("NotAllowedError"))
+      .mockRejectedValueOnce(named("NotAllowedError"));
     render(<Screen d={deps(client, memoryStorage(), pk)} />);
     fireEvent.click(await screen.findByTestId("signup-passkey"));
     await approve();
@@ -297,16 +315,18 @@ describe("the two-prompt sign-up", () => {
     expect(screen.queryByTestId("signin-error")).toBeNull();
   });
 
-  it("Cancel at the approval step gives up without a second prompt", async () => {
+  it("Cancel at the approval step gives up quietly, without asking again", async () => {
     const client = fakeClient();
     const pk = passkey();
+    pk.get.mockRejectedValueOnce(named("NotAllowedError"));
     render(<Screen d={deps(client, memoryStorage(), pk)} />);
     fireEvent.click(await screen.findByTestId("signup-passkey"));
     fireEvent.click(await screen.findByTestId("signup-cancel"));
     // Quiet: the panel is back, with no error.
     await screen.findByTestId("signup-passkey");
     expect(screen.queryByTestId("signin-error")).toBeNull();
-    expect(pk.get).not.toHaveBeenCalled();
+    expect(pk.get).toHaveBeenCalledTimes(1);
+    expect(client.signUp).toHaveBeenCalledTimes(1);
   });
 });
 

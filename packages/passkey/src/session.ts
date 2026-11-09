@@ -103,7 +103,7 @@ export interface SessionApi {
   noAccountHere?: boolean;
   /** Where a sign-up is ({@link SignUpStage}), `null` when none runs. */
   stage?: SignUpStage | null;
-  /** Starts a sign-up's second prompt, once it is at `approve`. */
+  /** Starts a sign-up's second prompt, once it is at `approve` (the browser refused to show it right away). */
   approve?(): void;
   /** Gives up a sign-up waiting at `approve`: no account is made. Quiet. */
   cancelSignUp?(): void;
@@ -146,8 +146,10 @@ export interface PasskeySessionOptions {
    */
   onJoinedAtSignUp?: (joined: JoinedAtSignUp) => void;
   /**
-   * Whether a sign-up's second prompt waits for a click ({@link signUpFlow},
-   * `approve`). On by default; a caller with no button to show turns it off.
+   * Whether a sign-up goes through {@link signUpFlow}: its second prompt is
+   * asked right away, and waits at `approve` for a click only when the
+   * browser refused it at once. On by default; a caller with no button to
+   * show turns it off.
    */
   approveWithClick?: boolean;
 }
@@ -329,8 +331,9 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
   const invited = onJoinedAtSignUp ? joinInvite(policy, inviteToken) : signUpInvite(policy, inviteToken);
   const signUp = useCallback(
     (name?: string) => {
-      // The second prompt starts from its own click ({@link signUpFlow}); a
-      // caller with no button to show turns that off.
+      // The second prompt right away, falling back to its own click when the
+      // browser refuses it ({@link signUpFlow}); a caller with no button to
+      // show turns that off.
       const flow: SignUpFlow | undefined = approveWithClick
         ? signUpFlow(deps.passkey(), () => setFlowView({ stage: flow!.stage, confirmFailure: flow!.confirmFailure }))
         : undefined;

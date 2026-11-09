@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Connection } from "../src/net/session";
 import { Landing, type LaunchChoice } from "../src/ui/landing";
 import { SessionStore } from "@calimero-apps/connect";
-import { SIGN_UP_NOT_FINISHED } from "@calimero-apps/passkey/signUpFlow";
+import { SIGN_UP_NOT_FINISHED, SIGN_UP_READY } from "@calimero-apps/passkey/signUpFlow";
 import type { PasskeyProvider } from "@calimero-network/mero-js";
 
 const target = { kind: "local", nodes: ["http://127.0.0.1:2501"] } as const;
@@ -70,9 +70,9 @@ afterEach(() => {
 });
 
 describe("a sign-up's second prompt", () => {
-  // Since core #4849 a sign-up takes two prompts; a password manager
-  // extension still saving the new passkey refused the second when it was
-  // asked for at once, which left a passkey and no account.
+  // Since core #4849 a sign-up takes two prompts. The second is asked right
+  // after the first; it waits for Approve only when the browser refused it
+  // at once (Safari's user-gesture rule, a blocked prompt).
   function signingUp(get: PasskeyProvider["get"]) {
     const pk = { create: vi.fn(async () => ({}) as never), get: vi.fn(get) };
     const l = launcher(
@@ -91,33 +91,46 @@ describe("a sign-up's second prompt", () => {
     for (let i = 0; i < 100 && !check(); i++) await new Promise((r) => setTimeout(r, 20));
     expect(check()).toBe(true);
   };
+  const notAllowed = (message = "The request is not allowed by the user agent.") =>
+    Object.assign(new Error(message), { name: "NotAllowedError" });
 
-  it("waits for Approve before asking, then lists the account's worlds", async () => {
+  it("asks both prompts back to back, with no click, then lists the account's worlds", async () => {
     const { pk, client, $ } = signingUp(async () => ({}) as never);
     $("sign-up-btn")!.click();
-    await until(() => $("signup-approve-step")?.hidden === false);
-    expect($("signup-approve")?.textContent).toBe("Approve with your new passkey");
-    expect($("sign-up-btn")?.hidden).toBe(true);
-    expect(pk.get).not.toHaveBeenCalled();
-    $("signup-approve")!.click();
     await until(() => $("account-badge") !== null);
+    expect(pk.create).toHaveBeenCalledTimes(1);
     expect(pk.get).toHaveBeenCalledTimes(1);
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "Ada");
   });
 
-  it("shows a refused second prompt and keeps Approve", async () => {
-    const refused = Object.assign(new Error("The operation either timed out or was not allowed."), {
-      name: "NotAllowedError",
-    });
+  it("a second prompt refused at once waits for Approve, which then lists the worlds", async () => {
     const { pk, $ } = signingUp(async () => {
-      await new Promise((r) => setTimeout(r, 1100)); // a prompt the person saw
-      throw refused;
+      if (pk.get.mock.calls.length === 1) throw notAllowed();
+      return {} as never;
     });
     $("sign-up-btn")!.click();
-    await until(() => $("signup-approve-step")?.hidden === false);
+    await until(() => $<HTMLButtonElement>("signup-approve")?.disabled === false && $("signup-approve-step")?.hidden === false);
+    expect($("signup-approve")?.textContent).toBe("Approve with your new passkey");
+    expect($("signup-approve-note")?.textContent).toBe(SIGN_UP_READY);
+    expect($("sign-up-btn")?.hidden).toBe(true);
+    expect($("sign-in-error")?.textContent).toBe("");
+    expect(pk.get).toHaveBeenCalledTimes(1);
+    $("signup-approve")!.click();
+    await until(() => $("account-badge") !== null);
+    expect(pk.get).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows a second prompt refused after Approve and keeps Approve", async () => {
+    const { pk, $ } = signingUp(async () => {
+      if (pk.get.mock.calls.length === 1) throw notAllowed();
+      await new Promise((r) => setTimeout(r, 1100)); // a prompt the person saw
+      throw notAllowed("The operation either timed out or was not allowed.");
+    });
+    $("sign-up-btn")!.click();
+    await until(() => $<HTMLButtonElement>("signup-approve")?.disabled === false && $("signup-approve-step")?.hidden === false);
     $("signup-approve")!.click();
     await until(() => $("sign-in-error")?.textContent === SIGN_UP_NOT_FINISHED);
-    expect(pk.get).toHaveBeenCalledTimes(1);
+    expect(pk.get).toHaveBeenCalledTimes(2);
     expect($<HTMLButtonElement>("signup-approve")?.disabled).toBe(false);
 
     pk.get.mockImplementation(async () => ({}) as never);
@@ -126,15 +139,15 @@ describe("a sign-up's second prompt", () => {
   });
 
   it("Cancel at Approve resets quietly", async () => {
-    const { pk, $ } = signingUp(async () => ({}) as never);
+    const { pk, $ } = signingUp(async () => Promise.reject(notAllowed()));
     $("sign-up-btn")!.click();
-    await until(() => $("signup-approve-step")?.hidden === false);
+    await until(() => $<HTMLButtonElement>("signup-approve")?.disabled === false && $("signup-approve-step")?.hidden === false);
     $("signup-cancel")!.click();
     await until(() => $("signup-approve-step")?.hidden === true);
     expect($("sign-up-btn")?.hidden).toBe(false);
     expect($<HTMLButtonElement>("sign-up-btn")?.disabled).toBe(false);
     expect($("sign-in-error")?.textContent).toBe("");
-    expect(pk.get).not.toHaveBeenCalled();
+    expect(pk.get).toHaveBeenCalledTimes(1);
   });
 });
 

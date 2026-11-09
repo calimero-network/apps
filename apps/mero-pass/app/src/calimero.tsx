@@ -99,10 +99,11 @@ export interface Calimero {
   /** The last sign-in failed because the cluster has no account for that passkey. */
   passkeyUnknown?: boolean;
   /**
-   * Where a sign-up is, `null` outside one. At `approve` the new passkey
-   * exists and the account waits for `approve()`: its second prompt starts
-   * from a click of its own, so a password manager extension still saving
-   * the passkey cannot refuse it.
+   * Where a sign-up is, `null` outside one. Its second prompt is asked right
+   * after the first (`confirm`). At `approve` the new passkey exists and the
+   * account waits for `approve()`: the browser refused that prompt at once
+   * (Safari's user-gesture rule, a blocked prompt), so it starts from a click
+   * of its own.
    */
   stage?: SignUpStage | null;
   /** The click that creates the account with the new passkey (at `stage: "approve"`). */
@@ -280,7 +281,8 @@ export function CalimeroProvider({
   );
   const signUp = useCallback(
     (name?: string) => {
-      // The second prompt (core's 412 CONFIRM_REQUIRED) waits for its own click.
+      // The second prompt (core's 412 CONFIRM_REQUIRED) right away; its own
+      // click only when the browser refuses it at once (signUpFlow).
       const flow: SignUpFlow = signUpFlow(deps.passkey(), () =>
         setFlowView({ stage: flow.stage, confirmFailure: flow.confirmFailure }),
       );

@@ -13,11 +13,12 @@ import {
   SIGN_UP_INVITE_ONLY,
 } from "@calimero-apps/connect";
 
-import { SIGN_UP_NOT_FINISHED } from "@calimero-apps/passkey";
+import { SIGN_UP_ENDED_WITHOUT_ACCOUNT, SIGN_UP_NOT_FINISHED } from "@calimero-apps/passkey";
 
 import {
   __setForTests,
   approveSignUp,
+  cancelSignUp,
   signIn,
   signUp,
   useCalimero,
@@ -134,9 +135,9 @@ describe("an unknown passkey, by the cluster's sign-up policy", () => {
 });
 
 describe("signUp's second prompt", () => {
-  // Since core #4849 a sign-up takes two prompts; a password manager
-  // extension still saving the new passkey refused the second when it was
-  // asked for at once, which left a passkey and no account.
+  // Since core #4849 a sign-up takes two prompts. The second is asked right
+  // after the first; it waits for Approve only when the browser refused it
+  // at once (Safari's user-gesture rule, a blocked prompt).
   function cluster(get: PasskeyProvider["get"]) {
     const pk = { create: vi.fn(async () => ({}) as never), get: vi.fn(get) };
     const client = {
@@ -150,31 +151,44 @@ describe("signUp's second prompt", () => {
     __setForTests(client, null, () => pk);
     return { pk, hook: renderHook(() => useCalimero()) };
   }
+  const notAllowed = (message = "The request is not allowed by the user agent.") =>
+    Object.assign(new Error(message), { name: "NotAllowedError" });
 
-  it("waits for Approve before asking, then signs in", async () => {
+  it("asks both prompts back to back, with no click, then signs in", async () => {
     const { pk, hook } = cluster(async () => ({}) as never);
-    let run!: Promise<void>;
-    act(() => {
-      run = signUp("Ada");
-    });
-    await waitFor(() => expect(hook.result.current.signUpStage).toBe("approve"));
-    expect(pk.get).not.toHaveBeenCalled();
-    await act(async () => {
-      approveSignUp();
-      await run;
-    });
+    await act(() => signUp("Ada"));
+    expect(pk.create).toHaveBeenCalledTimes(1);
     expect(pk.get).toHaveBeenCalledTimes(1);
     expect(hook.result.current.status).toBe("signed-in");
     expect(hook.result.current.signUpStage).toBeNull();
   });
 
-  it("shows a refused second prompt and keeps waiting at Approve", async () => {
-    const refused = Object.assign(new Error("The operation either timed out or was not allowed."), {
-      name: "NotAllowedError",
-    });
+  it("a second prompt refused at once waits for Approve, which then signs in", async () => {
     const { pk, hook } = cluster(async () => {
+      if (pk.get.mock.calls.length === 1) throw notAllowed();
+      return {} as never;
+    });
+    let run!: Promise<void>;
+    act(() => {
+      run = signUp("Ada");
+    });
+    await waitFor(() => expect(hook.result.current.signUpStage).toBe("approve"));
+    expect(pk.get).toHaveBeenCalledTimes(1);
+    expect(hook.result.current.message).toBeNull();
+    await act(async () => {
+      approveSignUp();
+      await run;
+    });
+    expect(pk.get).toHaveBeenCalledTimes(2);
+    expect(hook.result.current.status).toBe("signed-in");
+    expect(hook.result.current.signUpStage).toBeNull();
+  });
+
+  it("shows a second prompt refused after Approve and keeps waiting at Approve", async () => {
+    const { pk, hook } = cluster(async () => {
+      if (pk.get.mock.calls.length === 1) throw notAllowed();
       await new Promise((r) => setTimeout(r, 1100)); // a prompt the person saw
-      throw refused;
+      throw notAllowed("The operation either timed out or was not allowed.");
     });
     let run!: Promise<void>;
     act(() => {
@@ -184,7 +198,7 @@ describe("signUp's second prompt", () => {
     act(() => approveSignUp());
     await waitFor(() => expect(hook.result.current.message).toBe(SIGN_UP_NOT_FINISHED), { timeout: 3000 });
     expect(hook.result.current.signUpStage).toBe("approve");
-    expect(pk.get).toHaveBeenCalledTimes(1);
+    expect(pk.get).toHaveBeenCalledTimes(2);
 
     pk.get.mockImplementation(async () => ({}) as never);
     await act(async () => {
@@ -192,6 +206,32 @@ describe("signUp's second prompt", () => {
       await run;
     });
     expect(hook.result.current.status).toBe("signed-in");
+    expect(hook.result.current.message).toBeNull();
+  });
+
+  it("a second prompt the person saw and closed ends the sign-up, shown, not quiet", async () => {
+    const { hook } = cluster(async () => {
+      await new Promise((r) => setTimeout(r, 1100));
+      throw notAllowed("The operation either timed out or was not allowed.");
+    });
+    await act(() => signUp("").catch(() => {}));
+    expect(hook.result.current.signUpStage).toBeNull();
+    expect(hook.result.current.message).toBe(SIGN_UP_ENDED_WITHOUT_ACCOUNT);
+  });
+
+  it("Cancel at Approve is quiet", async () => {
+    const { pk, hook } = cluster(async () => Promise.reject(notAllowed()));
+    let run!: Promise<void>;
+    act(() => {
+      run = signUp("");
+    });
+    await waitFor(() => expect(hook.result.current.signUpStage).toBe("approve"));
+    await act(async () => {
+      cancelSignUp();
+      await run.catch(() => {});
+    });
+    expect(pk.get).toHaveBeenCalledTimes(1);
+    expect(hook.result.current.signUpStage).toBeNull();
     expect(hook.result.current.message).toBeNull();
   });
 });

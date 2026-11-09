@@ -1,6 +1,7 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { signUpNotice } from "@calimero-apps/connect";
 import type { SessionApi } from "./session";
+import { SIGN_UP_CONFIRMING, SIGN_UP_READY } from "./signUpFlow";
 
 /**
  * The part of the session the control drives. Everything past `busy`,
@@ -47,8 +48,8 @@ export interface PasskeySignInProps {
 /** Said before a sign-up starts: why the browser asks twice. */
 export const SIGN_UP_TWO_PROMPTS = "Your browser asks twice: once to create a passkey, then once to approve with it.";
 
-/** Said while the second prompt waits for its click. */
-export const SIGN_UP_READY = "Your passkey is saved. One more tap creates your account.";
+/** Said while the second prompt waits for its click; framework-free in `./signUpFlow`. */
+export { SIGN_UP_READY };
 
 /**
  * Said, in place of an error, when an invited person's sign-in found no
@@ -121,9 +122,10 @@ function Spinner() {
  * - **No invite**: "Sign in with passkey", and "New here? Create an account"
  *   under it, disabled with the reason where the cluster's sign-up policy
  *   takes no account from this page.
- * - **Signing up**: the two browser prompts. After the first, the button
- *   becomes "Approve with your new passkey" and the second prompt starts on
- *   that click.
+ * - **Signing up**: the two browser prompts, back to back. Only when the
+ *   browser refused the second at once (Safari's user-gesture rule, or a
+ *   blocked prompt) does the button become "Approve with your new passkey",
+ *   and the second prompt starts on that click.
  *
  * Errors are said in plain words with the next step; a dismissed prompt is a
  * quiet cancel. Themed by `--passkey-*` tokens, which fall back to glass.
@@ -224,7 +226,7 @@ export function PasskeySignIn({ api, joining, invited, askName = false, hint, cl
           </button>
         )}
         <p className="cp-passkey__hint" role="status">
-          {ready ? SIGN_UP_READY : stage === "create" ? SIGN_UP_TWO_PROMPTS : "Last step: this approval creates your account."}
+          {ready ? SIGN_UP_READY : stage === "create" ? SIGN_UP_TWO_PROMPTS : SIGN_UP_CONFIRMING}
         </p>
         {errorLine}
         {ready && api.cancelSignUp && (

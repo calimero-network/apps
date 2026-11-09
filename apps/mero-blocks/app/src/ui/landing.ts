@@ -26,6 +26,8 @@ import { renderListing } from "@calimero-apps/passkey/listing";
 import {
   describeSignUpNotFinished,
   isPasskeyCancel,
+  SIGN_UP_CONFIRMING,
+  SIGN_UP_READY,
   signUpFlow,
   type SignUpFlow,
 } from "@calimero-apps/passkey/signUpFlow";
@@ -358,7 +360,7 @@ export class Landing {
       <button class="mbl-btn ghost" data-testid="sign-up-btn">Create account</button>
       <div data-testid="signup-approve-step" hidden>
         <button class="mbl-btn green" data-testid="signup-approve">Approve with your new passkey</button>
-        <div class="mbl-note" aria-live="polite">Your passkey is saved. One more tap creates your account.</div>
+        <div class="mbl-note" data-testid="signup-approve-note" aria-live="polite"></div>
         <button class="mbl-link" data-testid="signup-cancel">Cancel</button>
       </div>
       <div class="mbl-note" data-testid="sign-up-unavailable" hidden></div>
@@ -372,6 +374,7 @@ export class Landing {
     const approveStep = el.querySelector<HTMLElement>("[data-testid=signup-approve-step]")!;
     const approveBtn = el.querySelector<HTMLButtonElement>("[data-testid=signup-approve]")!;
     const cancelBtn = el.querySelector<HTMLButtonElement>("[data-testid=signup-cancel]")!;
+    const approveNote = el.querySelector<HTMLElement>("[data-testid=signup-approve-note]")!;
     const unavailableEl = el.querySelector<HTMLElement>("[data-testid=sign-up-unavailable]")!;
     // Who may create an account here (read once, never blocking): a closed or
     // invite-only cluster gets no "Create account", and says why.
@@ -388,10 +391,10 @@ export class Landing {
       applyPolicy();
     });
     // The sign-up in flight. Its second prompt (core's 412 CONFIRM_REQUIRED)
-    // starts from its own click, "Approve with your new passkey": asked for at
-    // once, a password manager extension still saving the new passkey refused
-    // it, which left a passkey and no account. A failure of it is shown and
-    // Approve stays.
+    // is asked right after the first; only when the browser refuses it at
+    // once (Safari's user-gesture rule, a blocked prompt) does it wait for
+    // "Approve with your new passkey". A failure at Approve is shown and
+    // Approve stays (signUpFlow).
     let flow: SignUpFlow | null = null;
     const showFlow = () => {
       const approving = flow !== null && (flow.stage === "approve" || flow.stage === "confirm");
@@ -401,6 +404,7 @@ export class Landing {
       approveBtn.disabled = flow.stage !== "approve";
       approveBtn.textContent = flow.stage === "confirm" ? "Waiting for your passkey…" : "Approve with your new passkey";
       cancelBtn.hidden = flow.stage !== "approve";
+      approveNote.textContent = flow.stage === "approve" ? SIGN_UP_READY : SIGN_UP_CONFIRMING;
       errEl.textContent = flow.confirmFailure ? describeSignUpNotFinished(flow.confirmFailure.error) : "";
       if (flow.stage === "approve") approveBtn.focus();
     };
