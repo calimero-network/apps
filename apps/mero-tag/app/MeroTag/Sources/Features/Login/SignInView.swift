@@ -12,9 +12,10 @@ struct SignInView: View {
     @State private var clusterURL = ""
     @State private var devURL = ""
     @State private var name = ""
+    @State private var invite = ""
     @FocusState private var focus: Field?
 
-    fileprivate enum Field { case cluster, name, dev }
+    fileprivate enum Field { case cluster, name, invite, dev }
     fileprivate enum Mode { case signIn, create, development }
 
     private var compact: Bool { mode != .signIn }
@@ -74,6 +75,7 @@ struct SignInView: View {
         .onAppear {
             if clusterURL.isEmpty { clusterURL = app.lastClusterURL }
             if devURL.isEmpty { devURL = app.lastDevNodeURL }
+            if invite.isEmpty, let pending = app.pendingInvite { invite = pending }
         }
     }
 
@@ -104,10 +106,20 @@ struct SignInView: View {
                 .accessibilityIdentifier("sessionNotice")
         }
         if let error = app.client.errorMessage {
-            Callout(tone: .danger, title: mode == .development ? "Couldn't connect" : "Couldn't sign in", message: error)
+            Callout(tone: .danger, title: errorTitle, message: error)
                 .accessibilityIdentifier("signInError")
         }
     }
+
+    private var errorTitle: String {
+        switch mode {
+        case .signIn: return "Couldn't sign in"
+        case .create: return "Couldn't create your account"
+        case .development: return "Couldn't connect"
+        }
+    }
+
+    private var asksForInvite: Bool { mode == .create && app.signUpNeedsInvite }
 
     private var clusterForm: some View {
         Card(padding: 18) {
@@ -123,20 +135,40 @@ struct SignInView: View {
                 if mode == .create {
                     TagTextField(
                         label: "Your name", placeholder: "How people in your spaces see you", text: $name,
-                        submitLabel: .go, onSubmit: submit
-                    )
+                        submitLabel: asksForInvite ? .next : .go
+                    ) {
+                        if asksForInvite { focus = .invite } else { submit() }
+                    }
                     .focused($focus, equals: .name)
                     .accessibilityIdentifier("accountNameField")
                 }
+                if asksForInvite {
+                    TagTextField(
+                        label: "Invite", placeholder: "Invite link or code", text: $invite,
+                        help: "From the person who invited you, or the cluster's operator.",
+                        monospaced: true, keyboardKind: .url, submitLabel: .go, onSubmit: submit
+                    )
+                    .focused($focus, equals: .invite)
+                    .accessibilityIdentifier("signUpInviteField")
+                }
                 LoadingButton(
                     title: mode == .create ? "Create account with passkey" : "Sign in with passkey",
-                    systemImage: "person.badge.key.fill", isLoading: app.client.isLoading, action: submit
+                    systemImage: "person.badge.key.fill",
+                    isLoading: app.client.isLoading || app.isCreatingAccount, action: submit
                 )
                 .disabled(clusterURL.isEmpty || (mode == .create && name.isEmpty))
                 .accessibilityIdentifier(mode == .create ? "createAccountButton" : "passkeySignInButton")
-                Label("Find the address in the Calimero Cloud console", systemImage: "info.circle")
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(Tag.textFaint)
+                Group {
+                    if mode == .create {
+                        Label(
+                            "You'll confirm twice with Face ID or Touch ID: once to create the passkey, once to sign in",
+                            systemImage: "faceid")
+                    } else {
+                        Label("Find the address in the Calimero Cloud console", systemImage: "info.circle")
+                    }
+                }
+                .font(.system(size: 12.5))
+                .foregroundStyle(Tag.textFaint)
             }
         }
     }
@@ -211,7 +243,7 @@ struct SignInView: View {
             Task { await app.signIn(clusterURL: clusterURL) }
         case .create:
             guard !clusterURL.isEmpty, !name.isEmpty else { return }
-            Task { await app.createAccount(clusterURL: clusterURL, name: name) }
+            Task { await app.createAccount(clusterURL: clusterURL, name: name, invite: invite) }
         case .development:
             guard !devURL.isEmpty else { return }
             Task { await app.signInToDevCluster(url: devURL, name: name) }

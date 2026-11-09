@@ -69,6 +69,10 @@ public final class AppState: ObservableObject {
     /// An invite that arrived as a deep link, waiting to be accepted on the
     /// space screen. Kept through sign-in.
     @Published public var pendingInvite: String?
+    /// Creating an account: the sign-up policy check and the passkey's two prompts.
+    @Published public internal(set) var isCreatingAccount = false
+    /// The cluster takes new accounts with an invite only: the create form asks for one.
+    @Published public var signUpNeedsInvite = false
     /// A space this account is in that could not be reached (offline, the
     /// cluster briefly away). Offered back as "Try again" on the space
     /// screen, so a transient failure doesn't read as "you have no space".
@@ -164,14 +168,16 @@ public final class AppState: ObservableObject {
     }
 
     /// Create an account on the cluster with a new passkey on this phone.
-    public func createAccount(clusterURL: String, name rawName: String) async {
+    /// `invite` is an invite link or code, for a cluster that takes new
+    /// accounts by invitation only.
+    public func createAccount(clusterURL: String, name rawName: String, invite: String = "") async {
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else {
             client.errorMessage = "Enter your name for the new account."
             return
         }
         guard useCluster(clusterURL) != nil else { return }
-        if await client.signUp(name: name) { await didSignIn() }
+        if await signUp(name: name, invite: Self.signUpInvite(from: invite)) { await didSignIn() }
     }
 
     /// "Development cluster": a `merod local` node, trusted with mock
