@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const ME = "acct-me";
 const client = {
+  session: { accountId: ME },
   me: vi.fn(),
   createOrg: vi.fn(),
   setCapabilities: vi.fn(),
@@ -37,6 +38,9 @@ vi.mock("../../api/sessionContext", () => ({
 
 import TeamsPage from "./TeamsPage";
 import TeamCalendarsPage from "./TeamCalendarsPage";
+import { MEMBER_DEFAULTS } from "../../api/teams";
+import { CalimeroError } from "@calimero-network/mero-js";
+import { askAnOwnerCopy } from "@calimero-apps/connect";
 
 function renderAt(path: string) {
   return render(
@@ -51,7 +55,7 @@ function renderAt(path: string) {
 }
 
 beforeEach(() => {
-  for (const fn of Object.values(client)) fn.mockReset();
+  for (const fn of Object.values(client)) if (typeof fn === "function") fn.mockReset();
   localStorage.clear();
 });
 
@@ -104,7 +108,14 @@ describe("TeamsPage", () => {
 });
 
 describe("TeamCalendarsPage", () => {
-  const org = (role: string) => ({ name: "Alpha", members: { [ME]: role, "acct-x": "admin" }, memberMetadata: {} });
+  // A team made here lets its members add calendars (MEMBER_DEFAULTS); `caps` overrides that.
+  const org = (role: string, caps: number = MEMBER_DEFAULTS) => ({
+    name: "Alpha",
+    members: { [ME]: role, "acct-x": "admin" },
+    memberMetadata: {},
+    defaultCapabilities: caps,
+    capabilities: {},
+  });
 
   it("lists this app's instances in the org, and creates one", async () => {
     client.getOrg.mockResolvedValue(org("member"));
@@ -136,5 +147,24 @@ describe("TeamCalendarsPage", () => {
     fireEvent.click(screen.getByTestId("delete-calendar-cal-1"));
     fireEvent.click(screen.getByTestId("confirm-delete-btn"));
     await waitFor(() => expect(client.deleteApp).toHaveBeenCalledWith("cal-1"));
+  });
+
+  it("tells a member who may not add a calendar to ask an owner, instead of offering a create that fails (B8)", async () => {
+    // The node's own default for a member: no CREATE_APP.
+    client.getOrg.mockResolvedValue(org("member", 0));
+    client.listApps.mockResolvedValue([]);
+    renderAt("/teams/org-a");
+    expect(await screen.findByText(askAnOwnerCopy("a calendar"))).toBeTruthy();
+    expect(screen.queryByTestId("create-calendar-btn")).toBeNull();
+    expect((await screen.findByTestId("empty-calendars")).textContent).toBe("No calendars in this team yet.");
+  });
+
+  it("tells someone not in the team to ask for an invite, not to create the first calendar (B9)", async () => {
+    client.getOrg.mockRejectedValue(new CalimeroError(403, "FORBIDDEN", "not a member of this organization"));
+    client.listApps.mockResolvedValue([]);
+    renderAt("/teams/org-a");
+    expect((await screen.findByTestId("team-not-member")).textContent).toMatch(/Ask someone in it for an invite/);
+    expect(screen.queryByTestId("create-calendar-btn")).toBeNull();
+    expect(screen.queryByText(/Create the first one/)).toBeNull();
   });
 });
