@@ -63,6 +63,10 @@ public final class AppState: ObservableObject {
     /// The development node URL last used.
     @Published public var devNodeURL: String
     @Published public var signInError: String?
+    /// Creating an account: the sign-up policy check and the passkey's two prompts.
+    @Published public internal(set) var isCreatingAccount = false
+    /// The cluster takes new accounts with an invite only: the sign-in screen asks for one.
+    @Published public var signUpNeedsInvite = false
 
     // Updates and approvals for the open room.
     /// A newer Mero AR release the open room could run.
@@ -163,11 +167,13 @@ public final class AppState: ObservableObject {
     }
 
     /// "Create account": register a new passkey on the cluster at `address`.
-    public func createAccount(clusterAddress address: String) async {
+    /// `invite` is an invite link or code, for a cluster that takes new
+    /// accounts by invitation only.
+    public func createAccount(clusterAddress address: String, invite: String = "") async {
         guard let url = checkedURL(address, https: true) else { return }
         rememberCluster(url)
         client.connect(nodeURL: url, allowMock: false)
-        if await client.signUp(name: effectiveDisplayName) { await didSignIn() } else { signInError = client.errorMessage }
+        if await signUp(name: effectiveDisplayName, invite: Self.signUpInvite(from: invite)) { await didSignIn() }
     }
 
     /// A development cluster (`merod local`): trust its mock attestation and

@@ -18,7 +18,7 @@ scripts/    setup.sh
 Makefile    every command has a `make` shortcut
 ```
 
-Built for **Calimero core 1.0** (`1.0.0-rc.9`): the contract is a
+Built for **Calimero core 1.0** (`1.0.0-rc.10`): the contract is a
 `calimero:app` WebAssembly component on core's **component SDK**
 (`calimero-sdk`, pinned to that tag in `logic/Cargo.toml`, `min-runtime-version`
 too) that runs on the node's wasmtime runtime, and the app uses the Swift SDK's
@@ -128,7 +128,7 @@ soft passkey it keeps for the node, creating the account the first time.
 The Swift client is **not** vendored here: the app depends on
 [calimero-network/swift-sdk](https://github.com/calimero-network/swift-sdk)
 (`MeroKit` + `MeroKitUI`), declared in `app/MeroAR/project.yml` and pinned to
-the SDK's Calimero 1.0 release, v0.5.0 (`exactVersion`).
+the SDK's Calimero 1.0 release, v0.6.0 (`exactVersion`).
 
 The app first verifies the node's TDX quote (`GET /attestation`, against signed
 mero-tee releases) and opens the sealed channel; everything else goes through
@@ -236,7 +236,7 @@ so there is nothing to announce; anyone who can reach the room can download it.
 
 ## Status
 
-- ✅ Scene-graph contract (objects + transforms, presence, comments, locking, version counter, world-map blob, room scan) — a component on core 1.0.0-rc.9's SDK, tested on core's wasmtime engine (TestApp harness + scenarios)
+- ✅ Scene-graph contract (objects + transforms, presence, comments, locking, version counter, world-map blob, room scan) — a component on core 1.0.0-rc.10's SDK, tested on core's wasmtime engine (TestApp harness + scenarios)
 - ✅ Account identity model: account-attributed writes, account-keyed roles and presence, owner-only room rename, admin lock-breaking, org admins moderate
 - ✅ App on the swift-sdk 1.0 client: passkey sign-in on an attested cluster, sealed intents/views/events, Keychain session resume, orgs as homes, invites, consent-page upgrades
 - ✅ Its own dark spatial design (glass panels, aurora accent, SF Symbols, ids behind "Technical details")
