@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useInstanceRelease } from '@calimero-apps/passkey';
 import {
   CheckCircle2,
   Clock,
@@ -111,6 +112,8 @@ export default function AgreementPage() {
   useEffect(() => {
     if (contextId) setContextId(contextId);
   }, [contextId]);
+  // An agreement is an app instance, served the frontend of the release it runs.
+  useInstanceRelease(app?.client, contextId);
 
   const [tab, setTab] = useState<Tab>('documents');
   const [details, setDetails] = useState<ContextDetails | null>(null);

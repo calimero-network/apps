@@ -90,3 +90,4 @@ export {
   type UpgradeReturn,
   type WatchUpgradesOptions,
 } from "./upgrade";
+export { useInstanceRelease } from "./release";

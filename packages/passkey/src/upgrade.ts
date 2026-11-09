@@ -33,6 +33,12 @@
  * (`POST /consent/requests`, mero-js's `upgradeConsent`), sends the person to
  * the node's consent page, where they approve with their passkey, and reads
  * the decision when the page sends them back ({@link finishUpgrade}).
+ *
+ * A release's frontend works only with that release's backend, so an
+ * approval made from a page a node serves loads the instance's new release
+ * at once (`/app/{app}/`, with the route and query), and that page says the
+ * update is done. A frontend-only release (the same WASM) is an upgrade the
+ * holder approves like any other: the report lists it in `availableVersions`.
  */
 import {
   compareVersions,
@@ -44,7 +50,7 @@ import {
   type CalimeroClient,
   type ReportedApp,
 } from "@calimero-network/mero-js";
-import { describeError, type KeyValueStorage } from "@calimero-apps/connect";
+import { describeError, instanceReleaseUrl, servedRelease, type KeyValueStorage } from "@calimero-apps/connect";
 
 /** Who holds an instance's upgrades, as core's report says (`upgradesHeldBy`). */
 export type UpgradeHolder = "owner" | "publisher" | "operator";
@@ -292,6 +298,34 @@ function forgetPending(storage: KeyValueStorage | undefined): void {
     storage?.removeItem(UPGRADE_PENDING_KEY);
   } catch {
     /* nothing to forget */
+  }
+}
+
+/** An approved upgrade whose new frontend is loading, said on the page that loads. */
+const UPDATED_KEY = "cp-upgrade:updated";
+
+function rememberUpdated(storage: KeyValueStorage | undefined, app: string, version: string): void {
+  try {
+    storage?.setItem(UPDATED_KEY, JSON.stringify({ app, version, at: Date.now() }));
+  } catch {
+    /* the new page then says nothing */
+  }
+}
+
+/** The approved upgrade this page is the new frontend of, once: the release it was approved for, served here. */
+function takeUpdated(storage: KeyValueStorage | undefined, href: string): { app: string; version: string } | null {
+  try {
+    const raw = storage?.getItem(UPDATED_KEY);
+    if (!raw) return null;
+    storage?.removeItem(UPDATED_KEY);
+    const p = rec(JSON.parse(raw));
+    const app = str(p.app);
+    const version = str(p.version);
+    const at = typeof p.at === "number" ? p.at : 0;
+    if (!app || !version || Date.now() - at > PENDING_TTL_MS || servedRelease(href) !== version) return null;
+    return { app, version };
+  } catch {
+    return null;
   }
 }
 
@@ -591,17 +625,23 @@ export function watchUpgrades(options: WatchUpgradesOptions): () => void {
           // The node ran the upgrade when the person approved; the report says whether it took.
           const now = await upgradeOffer(client, back.app, options.accountId ? { accountId: options.accountId } : {});
           if (!live) return;
-          if (now && now.current !== back.version) {
+          if (now && compareVersions(now.current, back.version) < 0) {
             text = `The update was approved, but ${appName()} still runs version ${now.current}.`;
           } else {
-            text = `${appName()} is updated to version ${back.version}. Reload to use it.`;
-            // A page served from the release's own path (`/{version}/`) reloads at the instance's new one.
-            const url = new URL(back.href);
-            const pinned = back.from !== null && url.pathname.startsWith(`/${back.from}/`);
-            action = {
-              label: "Reload",
-              run: () => (pinned ? navigate(`${url.origin}/app/${encodeURIComponent(back.app)}/`) : navigate(back.href)),
-            };
+            // This page is the old release's frontend: load the one the instance
+            // runs now, in the same place, and say so there.
+            const served = servedRelease(back.href);
+            const there = instanceReleaseUrl(back.href, back.app);
+            if (there && served !== back.version) {
+              rememberUpdated(storage, back.app, back.version);
+              navigate(there);
+              return;
+            }
+            text = `${appName()} is updated to version ${back.version}.`;
+            if (served === null) {
+              text += " Reload to use it.";
+              action = { label: "Reload", run: () => navigate(back.href) };
+            }
           }
         } else if (back.status === "declined") {
           text = `The update to version ${back.version} was not approved.`;
@@ -610,6 +650,13 @@ export function watchUpgrades(options: WatchUpgradesOptions): () => void {
         }
         if (shownFor(pkg)) return;
         shown = renderNotice(container, text, action, take);
+        shown.dataset.upgradePackage = pkg;
+        return;
+      }
+      const updated = takeUpdated(storage, href());
+      if (updated) {
+        if (shownFor(pkg)) return;
+        shown = renderNotice(container, `${appName()} is updated to version ${updated.version}.`, null, take);
         shown.dataset.upgradePackage = pkg;
         return;
       }

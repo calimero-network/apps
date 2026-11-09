@@ -17,6 +17,7 @@ import { arrowLook, pointerLockAvailable } from "./input/look";
 import { WheelSteps } from "./input/wheel";
 import { playerId, type WorldMeta } from "./net/blocks";
 import { GameClient } from "./net/client";
+import { followInstanceRelease } from "@calimero-apps/connect";
 import { connect, defaultDeps, deviceLabel, type SignedIn } from "./net/session";
 import { RemotePlayer, SyncEngine, Transform } from "./net/sync";
 import { captureInvite, forgetWorld, inviteLink, inviteToken } from "./net/worlds";
@@ -74,6 +75,9 @@ async function boot(): Promise<void> {
   // offline mode, so an unreachable world is a hard stop, not a fallback.
   const session: SignedIn = choice.session;
   const worldId = choice.world.appId;
+  // A world is an app instance, served the frontend of the release it runs:
+  // another release's page moves there (`/app/{world}/`) before playing.
+  if (await followInstanceRelease({ client: session.client, app: worldId })) return;
   const device = deviceLabel();
   const client = new GameClient(session.client, worldId, device, {
     after: () => session.sessions.sync(session.client),

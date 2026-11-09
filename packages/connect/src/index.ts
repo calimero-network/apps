@@ -61,3 +61,14 @@ export {
   type OrgTeamView,
   type PendingInvite,
 } from "./invite";
+export {
+  RELEASE_FOLLOW_KEY,
+  followInstanceRelease,
+  followRelease,
+  instanceRelease,
+  instanceReleaseUrl,
+  servedRelease,
+  type FollowInstanceReleaseOptions,
+  type FollowReleaseOptions,
+  type ReleaseClient,
+} from "./release";

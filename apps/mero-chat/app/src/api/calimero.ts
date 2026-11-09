@@ -27,6 +27,7 @@ import {
   createClient,
   describeError,
   connectTarget,
+  followInstanceRelease,
   NotServedError,
   readSignUpPolicy,
   signUpAccess,
@@ -137,6 +138,17 @@ function offerUpgrades(): void {
       stop: watchUpgrades({ client: signedIn.client, package: APP_PACKAGE, appName: "Mero Chat", accountId: signedIn.accountId }),
     };
   }
+}
+
+/**
+ * A channel or DM is an app instance, and is served the frontend of the
+ * release it runs: opening one that runs another release than this page
+ * moves to `/app/{app}/` (the stored active chat reopens it there). Nothing
+ * in development or while signed out, and never a loop.
+ */
+export function followChannelRelease(contextId: string): void {
+  if (!client || state.status !== "signed-in" || !contextId) return;
+  void followInstanceRelease({ client, app: contextId });
 }
 
 function subscribe(listener: () => void): () => void {

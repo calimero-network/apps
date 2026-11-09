@@ -164,6 +164,16 @@ describe("upgradeOffer", () => {
     expect(await upgradeOffer(byGovernance, "app-1")).toMatchObject({ heldBy: "operator", canUpgrade: false });
   });
 
+  it("a frontend-only release (the same WASM) is an upgrade like any other", async () => {
+    const client = fakeClient({
+      getOrg: vi.fn(async () => org("owner")),
+      appsReportAll: vi.fn(async () =>
+        report([reported({ app: "app-1", bundle: "same-wasm", package: { package: PKG, version: "1.0.0" }, availableVersions: ["1.0.1"] })]),
+      ),
+    });
+    expect(await upgradeOffer(client, "app-1")).toMatchObject({ current: "1.0.0", latest: "1.0.1", canUpgrade: true });
+  });
+
   it("nothing when the instance is up to date", async () => {
     const client = fakeClient({
       getOrg: vi.fn(async () => org("owner")),
@@ -406,6 +416,69 @@ describe("watchUpgrades", () => {
     expect(document.querySelector("[data-testid=upgrade-prompt]")).toBeNull();
     stop();
     expect(document.querySelector("[data-testid=upgrade-notice]")).toBeNull();
+  });
+
+  const SERVED = `https://${"a".repeat(52)}.apps.calimero.network`;
+  const approvedClient = (runs: string) =>
+    fakeClient({
+      me: vi.fn(async () => ({ orgs: [{ orgId: "org-1", role: "owner" }] })),
+      getOrg: vi.fn(async () => org("owner")),
+      appsReportAll: vi.fn(async () =>
+        report([reported({ app: "app-1", package: { package: PKG, version: runs }, availableVersions: [] })]),
+      ),
+    });
+
+  it("back from an approved consent on a served page: loads the new release's frontend in the same place, which says so", async () => {
+    storage.setItem(UPGRADE_PENDING_KEY, JSON.stringify({ requestId: "req-1", app: "app-1", version: "1.2.0", from: "1.0.0", at: Date.now() }));
+    const navigate = vi.fn();
+    const stop = watchUpgrades({
+      client: approvedClient("1.2.0"),
+      package: PKG,
+      appName: "KV Store",
+      storage,
+      href: `${SERVED}/1.0.0/deals/7?tab=a&request_id=req-1&result=approved`,
+      navigate,
+      replaceUrl: () => {},
+    });
+    await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith(`${SERVED}/app/app-1/deals/7?tab=a`));
+    expect(document.querySelector("[data-testid=upgrade-notice]")).toBeNull();
+    stop();
+    // The page `/app/app-1/` lands on: the 1.2.0 frontend.
+    const after = watchUpgrades({
+      client: approvedClient("1.2.0"),
+      package: PKG,
+      appName: "KV Store",
+      storage,
+      href: `${SERVED}/1.2.0/deals/7?tab=a`,
+      navigate,
+    });
+    await vi.waitFor(() => expect(document.querySelector("[data-testid=upgrade-notice]")).not.toBeNull());
+    expect(document.querySelector("[data-testid=upgrade-notice]")!.textContent).toContain("KV Store is updated to version 1.2.0.");
+    expect(document.querySelector("[data-testid=upgrade-reload]")).toBeNull();
+    expect(navigate).toHaveBeenCalledTimes(1);
+    after();
+  });
+
+  it("back from an approved consent that did not take: says what still runs, and moves nowhere", async () => {
+    storage.setItem(UPGRADE_PENDING_KEY, JSON.stringify({ requestId: "req-1", app: "app-1", version: "1.2.0", from: "1.0.0", at: Date.now() }));
+    const navigate = vi.fn();
+    const client = approvedClient("1.0.0");
+    (client.appsReportAll as ReturnType<typeof vi.fn>).mockResolvedValue(
+      report([reported({ app: "app-1", package: { package: PKG, version: "1.0.0" }, availableVersions: ["1.2.0"] })]),
+    );
+    const stop = watchUpgrades({
+      client,
+      package: PKG,
+      appName: "KV Store",
+      storage,
+      href: `${SERVED}/1.0.0/?request_id=req-1&result=approved`,
+      navigate,
+      replaceUrl: () => {},
+    });
+    await vi.waitFor(() => expect(document.querySelector("[data-testid=upgrade-notice]")).not.toBeNull());
+    expect(document.querySelector("[data-testid=upgrade-notice]")!.textContent).toContain("still runs version 1.0.0");
+    expect(navigate).not.toHaveBeenCalled();
+    stop();
   });
 
   it("back from a declined consent: says so, and the prompt can come back later", async () => {

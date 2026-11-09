@@ -116,13 +116,24 @@ account, nothing to install, no permissions to grant.
   version reports (`appsReportAll`: `availableVersions`, `upgradesHeldBy`);
   Update asks for a consent request (`upgradeConsent`) and sends the person
   to the node's consent page, which sends them back with the decision, read
-  with `consentResult` and said in the same card. "Not now" is remembered
+  with `consentResult`. An approval on a page a node serves loads the
+  instance's new release at once, through `/app/{app}/` with the route and
+  query, where the card says it is updated; in development it says so and
+  offers Reload. "Still runs Y" is said only when the report shows the
+  instance on an older release than the one approved. A frontend-only release
+  (the same WASM) is offered like any other: the report lists it in
+  `availableVersions`. "Not now" is remembered
   per instance and version. `{ upgradePrompt: false }` turns it off;
   `appName` names the app (default: the page title's first part). An app not
   on the hook (the launchers, mero-chat's store) calls
   `watchUpgrades({ client, package, appName, accountId })` and the function
   it returns at sign-out; `upgradeOffer(client, appId)` and
   `startUpgrade(client, appId, version, returnTo)` are the parts.
+
+- `useInstanceRelease(client, appId)`: where the app enters an instance,
+  moves a page of another release to the frontend of the release that
+  instance runs (`followInstanceRelease` in `@calimero-apps/connect`, which
+  says when and how). Returns `true` while leaving.
 
 ```tsx
 import { AppListing, PasskeySignIn, passkeyDeps, usePasskeySession } from "@calimero-apps/passkey";

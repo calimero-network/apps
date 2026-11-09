@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useInstanceRelease } from "@calimero-apps/passkey";
 
 import { bindCalendar } from "../../api/binding";
 import type { Owner } from "../../api/booking";
@@ -40,6 +41,8 @@ export default function CalendarPage() {
   const navigate = useNavigate();
   const { teamId, contextId } = useParams<{ teamId: string; contextId: string }>();
   const { client, accountId, passkey, after, targetKey } = useSignedIn();
+  // A calendar is an app instance, served the frontend of the release it runs.
+  useInstanceRelease(client, contextId);
   const { getEvents, getMembers } = useActions();
   const { openErrorModal } = useModal();
   const [ready, setReady] = useState(false);
