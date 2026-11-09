@@ -1,0 +1,79 @@
+name: Cloud smoke (served apps on a real TDX cluster)
+
+# Signs in to apps a real Calimero Cloud cluster serves, the way a person does:
+# the served page and its CSP, the cloud mirror's attestation collateral, then
+# a passkey sign-up, sign-out, sign-in and sign-out through the app's own UI
+# (Chrome's CDP virtual authenticator). See packages/cloud-smoke/README.md.
+#
+# The app/studio e2e suites run on `merod local` with mock quotes that fetch
+# nothing, so they could not see core#4861: a served CSP without
+# https://cloud.calimero.network, which made every node-served frontend fail to
+# sign in with "Load failed". This is the job that sees it.
+#
+# Separate from ci.yml on purpose: it needs no merod, touches production, and
+# makes one account per run, so it runs nightly and by hand after a rollout,
+# never per PR.
+
+on:
+  workflow_dispatch:
+    inputs:
+      packages:
+        description: "Package ids to check, comma or space separated"
+        required: false
+        default: "com.calimero.kv-store"
+      apps_domain:
+        description: "Apps domain the packages are served under"
+        required: false
+        default: "apps.calimero.network"
+  schedule:
+    - cron: "17 4 * * *" # nightly, off the hour and clear of conformance.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloud-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    name: Sign in on the served apps
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable corepack (pnpm)
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile --filter @calimero-apps/cloud-smoke...
+
+      - uses: ./.github/actions/setup-playwright
+        timeout-minutes: 15
+        with:
+          working-directory: packages/cloud-smoke
+
+      - name: Run the smoke
+        working-directory: packages/cloud-smoke
+        env:
+          CI: "1"
+          # A schedule run has no inputs: the defaults in src/config.ts apply.
+          SMOKE_PACKAGES: ${{ inputs.packages }}
+          SMOKE_APPS_DOMAIN: ${{ inputs.apps_domain }}
+        run: npx playwright test
+
+      - name: Upload the trace, screenshots and report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloud-smoke-${{ github.run_id }}
+          path: |
+            packages/cloud-smoke/test-results
+            packages/cloud-smoke/playwright-report
+          retention-days: 14
+          if-no-files-found: ignore
