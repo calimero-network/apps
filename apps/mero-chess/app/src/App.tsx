@@ -114,14 +114,14 @@ function ConnectCard({
         <h1>{invited ? "You're invited" : "Sign in to play"}</h1>
         <p className="lede" data-testid="signin-desc">
           {invited
-            ? "You've been invited to join a table in Mero Chess. Sign in or create an account to accept. "
+            ? "You've been invited to join the table in Mero Chess. "
             : ""}
           Mero Chess plays through a Calimero cluster ({where}): every move is a transaction its
           log orders, refereed by the contract. Accounts are passkeys: nothing to remember, nothing
           to leak.
         </p>
         <div className="connect-passkey">
-          <PasskeySignIn api={api} />
+          <PasskeySignIn api={api} joining="the table" invited={invited} />
         </div>
         {invited && (
           <button
@@ -229,20 +229,32 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
           () => null,
         )
       : Promise.resolve(null);
+    // A sign-up from the invitation page joined with the invite already.
+    const joined = api.joinedInvite === invite.token;
     void reached
       .then((table) => {
-        if (!table) return redeem();
+        if (!table && !joined) return redeem();
         dropInvite(storage);
         if (!live) return;
+        setLobbyKey((k) => k + 1);
+        if (!table) {
+          setNotice("Invitation accepted: the table is in your list.");
+          return;
+        }
         open({ appId: table.appId, name: table.name, org: table.org });
         setNotice(
-          "You already reach this table, so there was nothing to accept. The link is left unused for the person it was meant for.",
+          joined
+            ? null
+            : "You already reach this table, so there was nothing to accept. The link is left unused for the person it was meant for.",
         );
       })
       .finally(after);
     return () => {
       live = false;
     };
+    // `api.joinedInvite` is set before the session is signed in, so it is
+    // current when `client` changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, storage, after, open]);
 
   if (session.status === "connecting") {

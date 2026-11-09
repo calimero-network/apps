@@ -128,7 +128,7 @@ describe("App", () => {
     render(<App deps={deps(client)} storage={storage} />);
 
     await screen.findByText(/merod local \(3 nodes\)/);
-    fireEvent.click(screen.getByText("Create a passkey"));
+    fireEvent.click(screen.getByTestId("signup-passkey"));
     await screen.findByText("Sit down at a table");
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "");
     expect(new SessionStore(APP, LOCAL, storage).load()).toEqual(SESSION);
@@ -238,7 +238,7 @@ describe("App", () => {
     const storage = new Memory();
     storage.setItem(`${APP}:pending-invite`, JSON.stringify({ token: "tok-9", table: "app-9" }));
     render(<App deps={deps(client)} storage={storage} />);
-    fireEvent.click(await screen.findByText("Continue with passkey"));
+    fireEvent.click(await screen.findByTestId("signin-passkey"));
     await waitFor(() => expect(client.view).toHaveBeenCalledWith("app-9", "table", expect.anything()));
     expect(client.redeemInvite).toHaveBeenCalledWith("tok-9");
     expect(storage.getItem(`${APP}:pending-invite`)).toBeNull();
@@ -282,10 +282,10 @@ describe("App", () => {
       expect(window.location.pathname).toBe("/play");
       expect(screen.getByText("You're invited")).toBeTruthy();
       expect(screen.getByTestId("signin-desc").textContent).toContain(
-        "You've been invited to join a table in Mero Chess. Sign in or create an account to accept.",
+        "You've been invited to join the table in Mero Chess.",
       );
-      expect(screen.getByText("Continue with passkey")).toBeTruthy();
-      expect(screen.getByText("Create a passkey")).toBeTruthy();
+      expect(screen.getByTestId("signin-passkey")).toBeTruthy();
+      expect(screen.getByTestId("signup-passkey")).toBeTruthy();
       expect(document.querySelector(".cal-lp-root")).toBeNull();
     });
 
@@ -311,7 +311,7 @@ describe("App", () => {
     expect(window.location.pathname).toBe("/play");
 
     fireEvent.click(screen.getByText("Log out"));
-    await screen.findByText("Continue with passkey");
+    await screen.findByTestId("signin-passkey");
     expect(client.signOut).toHaveBeenCalled();
     expect(new SessionStore(APP, LOCAL, storage).load()).toBeNull();
   });
