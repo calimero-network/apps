@@ -2527,7 +2527,7 @@ importers:
     devDependencies:
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 29.2.0
+        version: 29.7.0
       '@playwright/test':
         specifier: 'catalog:'
         version: 1.62.1
