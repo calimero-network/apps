@@ -2,7 +2,8 @@
 // list, creating a world, entering one, an invite link redeemed after sign-in.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AppInfo, CalimeroClient, CalimeroSession } from "@calimero-network/mero-js";
+import type { AppInfo, CalimeroClient, CalimeroSession, PasskeyProvider } from "@calimero-network/mero-js";
+import { SIGN_UP_NOT_FINISHED } from "@calimero-apps/passkey/signUpFlow";
 
 vi.mock("../src/ui/panorama", () => ({ Panorama: class { destroy() {} } }));
 vi.mock("../src/pages/landing/mount", () => ({ showLandingAgain: vi.fn(async () => {}) }));
@@ -41,13 +42,19 @@ function fakeClient(worlds: AppInfo[]) {
   };
 }
 
-async function launcher(worlds: AppInfo[], storage = localStorage) {
+async function launcher(
+  worlds: AppInfo[],
+  storage = localStorage,
+  passkey: () => PasskeyProvider = () => ({}) as never,
+  setup?: (client: ReturnType<typeof fakeClient>) => void,
+) {
   const client = fakeClient(worlds);
+  setup?.(client);
   const deps: SessionDeps = {
     env: ENV,
     storage,
     makeClient: async () => client as unknown as CalimeroClient,
-    passkey: () => ({}) as never,
+    passkey,
   };
   const phase: Phase = await connect(deps);
   const app = document.createElement("div");
@@ -63,6 +70,77 @@ const q = (sel: string) => document.querySelector(sel);
 beforeEach(() => localStorage.clear());
 afterEach(() => {
   document.body.innerHTML = "";
+});
+
+describe("a sign-up's second prompt", () => {
+  // Since core #4849 a sign-up takes two prompts; a password manager
+  // extension still saving the new passkey refused the second when it was
+  // asked for at once, which left a passkey and no account.
+  async function signingUp(get: PasskeyProvider["get"]) {
+    const pk = { create: vi.fn(async () => ({}) as never), get: vi.fn(get) };
+    const l = await launcher(
+      [world("app-a", "alpha", "org-a")],
+      localStorage,
+      () => pk as unknown as PasskeyProvider,
+      (client) =>
+        client.signUp.mockImplementation((async (p: PasskeyProvider) => {
+          await p.create({} as never);
+          await p.get(new Uint8Array([1]), "example.com", ["new-cred"]);
+          return client.signIn();
+        }) as never),
+    );
+    return { pk, ...l };
+  }
+  const until = async (check: () => boolean) => {
+    for (let i = 0; i < 100 && !check(); i++) await new Promise((r) => setTimeout(r, 20));
+    expect(check()).toBe(true);
+  };
+  const shown = (id: string) => (q(`[data-testid=${id}]`) as HTMLElement | null)?.hidden === false;
+
+  it("waits for Approve before asking, then lists the account's worlds", async () => {
+    const { pk, client } = await signingUp(async () => ({}) as never);
+    click(q("[data-testid=sign-up-btn]"));
+    await until(() => shown("signup-approve-step"));
+    expect(q("[data-testid=signup-approve]")?.textContent).toBe("Approve with your new passkey");
+    expect(shown("sign-up-btn")).toBe(false);
+    expect(pk.get).not.toHaveBeenCalled();
+    click(q("[data-testid=signup-approve]"));
+    await until(() => document.querySelectorAll(".mbl-card-title").length > 0);
+    expect(pk.get).toHaveBeenCalledTimes(1);
+    expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "Steve");
+  });
+
+  it("shows a refused second prompt and keeps Approve", async () => {
+    const refused = Object.assign(new Error("The operation either timed out or was not allowed."), {
+      name: "NotAllowedError",
+    });
+    const { pk } = await signingUp(async () => {
+      await new Promise((r) => setTimeout(r, 1100)); // a prompt the person saw
+      throw refused;
+    });
+    click(q("[data-testid=sign-up-btn]"));
+    await until(() => shown("signup-approve-step"));
+    click(q("[data-testid=signup-approve]"));
+    await until(() => q("[data-testid=sign-in-error]")?.textContent === SIGN_UP_NOT_FINISHED);
+    expect(pk.get).toHaveBeenCalledTimes(1);
+    expect((q("[data-testid=signup-approve]") as HTMLButtonElement).disabled).toBe(false);
+
+    pk.get.mockImplementation(async () => ({}) as never);
+    click(q("[data-testid=signup-approve]"));
+    await until(() => document.querySelectorAll(".mbl-card-title").length > 0);
+  });
+
+  it("Cancel at Approve resets quietly", async () => {
+    const { pk } = await signingUp(async () => ({}) as never);
+    click(q("[data-testid=sign-up-btn]"));
+    await until(() => shown("signup-approve-step"));
+    click(q("[data-testid=signup-cancel]"));
+    await until(() => !shown("signup-approve-step"));
+    expect(shown("sign-up-btn")).toBe(true);
+    expect((q("[data-testid=sign-up-btn]") as HTMLButtonElement).disabled).toBe(false);
+    expect(q("[data-testid=sign-in-error]")?.textContent).toBe("");
+    expect(pk.get).not.toHaveBeenCalled();
+  });
 });
 
 describe("launcher", () => {

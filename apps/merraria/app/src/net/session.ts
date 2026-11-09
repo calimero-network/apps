@@ -16,6 +16,7 @@ import {
   type KeyValueStorage,
   type Target,
 } from "@calimero-apps/connect";
+import { signUpFlow, type SignUpFlow } from "@calimero-apps/passkey/signUpFlow";
 import { PACKAGE } from "./merraria";
 
 /** The app's name in stored keys. */
@@ -62,11 +63,21 @@ export class Connection {
     return accountId;
   }
 
+  /**
+   * One sign-up's passkey (pass its `passkey` to `signUp`): the second prompt
+   * waits for `flow.approve()`, a click of its own. Asked for at once, a
+   * password manager extension still saving the new passkey refused it, which
+   * left a passkey and no account.
+   */
+  newSignUp(onChange: () => void): SignUpFlow {
+    return signUpFlow(this.passkey(), onChange);
+  }
+
   /** A new account (a new passkey); `invite` goes with it on a cluster that requires one. */
-  async signUp(name: string, invite: string | null = null): Promise<string> {
+  async signUp(name: string, invite: string | null = null, passkey: PasskeyProvider = this.passkey()): Promise<string> {
     const { accountId } = invite
-      ? await this.client.signUp(this.passkey(), name, { invite })
-      : await this.client.signUp(this.passkey(), name);
+      ? await this.client.signUp(passkey, name, { invite })
+      : await this.client.signUp(passkey, name);
     this.sync();
     return accountId;
   }

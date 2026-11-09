@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { useCalimero } from '../calimero';
 import { useDialogOpen } from '../hooks/useDialogOpen';
 import { signInTitle } from '../lib/inviteLink';
 import styles from './InviteModal.module.css';
@@ -18,12 +19,18 @@ export default function SignInDialog({
 }) {
   const dialogRef = useRef<HTMLDialogElement | null>(null);
   useDialogOpen(dialogRef, open);
+  const { cancelSignUp } = useCalimero();
+  // Closing the sign-in mid sign-up ends it, so nothing waits on a click.
+  const close = () => {
+    cancelSignUp?.();
+    onClose();
+  };
 
   return (
     <dialog
       ref={dialogRef}
       className={styles.dialog}
-      onClose={onClose}
+      onClose={close}
       aria-label="Sign in"
       data-testid="sign-in"
     >
@@ -33,7 +40,7 @@ export default function SignInDialog({
           <button
             type="button"
             className={styles.close}
-            onClick={onClose}
+            onClick={close}
             aria-label="Close"
           >
             <CloseIcon size={16} />

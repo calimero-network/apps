@@ -4,8 +4,16 @@
 
 import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { CalimeroError, type AppInfo, type CalimeroClient, type CalimeroSession, type CloudEvent } from '@calimero-network/mero-js';
+import {
+  CalimeroError,
+  type AppInfo,
+  type CalimeroClient,
+  type CalimeroSession,
+  type CloudEvent,
+  type PasskeyProvider,
+} from '@calimero-network/mero-js';
 import { SessionStore, resolveTarget } from '@calimero-apps/connect';
+import { SIGN_UP_NOT_FINISHED } from '@calimero-apps/passkey';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../App';
 import { APP, type SessionDeps } from '@/calimero/session';
@@ -219,6 +227,54 @@ describe('App on Calimero 1.0', () => {
       'This invite was already used or has expired. Ask the person who invited you for a new link.',
     );
     expect(localStorage.getItem('mero-docs:pending-invite')).toBeNull();
+  });
+
+  describe("a sign-up's second prompt", () => {
+    // Since core #4849 a sign-up takes two prompts; a password manager
+    // extension still saving the new passkey refused the second when it was
+    // asked for at once, which left a passkey and no account.
+    function signUpWith(get: PasskeyProvider['get']) {
+      const client = fakeClient();
+      const pk = { create: vi.fn(async () => ({}) as never), get: vi.fn(get) };
+      client.signUp.mockImplementation((async (p: PasskeyProvider) => {
+        await p.create({} as never);
+        await p.get(new Uint8Array([1]), 'example.com', ['new-cred']);
+        return client.signIn();
+      }) as never);
+      const d = { ...deps(client), passkey: () => pk as unknown as PasskeyProvider };
+      return { client, pk, d };
+    }
+
+    it('waits for Approve before asking, then opens the workspace', async () => {
+      const { client, pk, d } = signUpWith(async () => ({}) as never);
+      render(<App deps={d} />);
+      fireEvent.click(await screen.findByText('Open sign-in'));
+      fireEvent.click(await screen.findByTestId('signup-passkey'));
+      const approve = await screen.findByTestId('signup-approve');
+      expect(approve.textContent).toBe('Approve with your new passkey');
+      expect(pk.get).not.toHaveBeenCalled();
+      fireEvent.click(approve);
+      expect((await screen.findAllByText('Engineering', {}, BOOT)).length).toBeGreaterThan(0);
+      expect(pk.get).toHaveBeenCalledTimes(1);
+      expect(client.signUp).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows a refused second prompt and keeps Approve', async () => {
+      const refused = Object.assign(new Error('The operation either timed out or was not allowed.'), {
+        name: 'NotAllowedError',
+      });
+      const { pk, d } = signUpWith(async () => {
+        await new Promise((r) => setTimeout(r, 1100)); // a prompt the person saw
+        throw refused;
+      });
+      render(<App deps={d} />);
+      fireEvent.click(await screen.findByText('Open sign-in'));
+      fireEvent.click(await screen.findByTestId('signup-passkey'));
+      fireEvent.click(await screen.findByTestId('signup-approve'));
+      expect((await screen.findByTestId('signin-error', {}, { timeout: 3000 })).textContent).toBe(SIGN_UP_NOT_FINISHED);
+      expect(pk.get).toHaveBeenCalledTimes(1);
+      expect((screen.getByTestId('signup-approve') as HTMLButtonElement).disabled).toBe(false);
+    });
   });
 
   describe('an invitation link opened while signed out', () => {

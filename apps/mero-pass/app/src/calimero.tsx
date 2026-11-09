@@ -40,7 +40,14 @@ import {
   type SignUpAccess,
   type Target,
 } from '@calimero-apps/connect';
-import { isPasskeyCancel, type ListingProps } from '@calimero-apps/passkey';
+import {
+  describeSignUpNotFinished,
+  isPasskeyCancel,
+  signUpFlow,
+  type ListingProps,
+  type SignUpFlow,
+  type SignUpStage,
+} from '@calimero-apps/passkey';
 
 import { pendingInvite } from './lib/inviteLink';
 import { PACKAGE } from './lib/meroPass';
@@ -51,14 +58,16 @@ export const APP = 'mero-pass';
 /** What the listing page (`<AppListing>`) shows on a copy no Calimero Cloud cluster serves. */
 export const LISTING: ListingProps = {
   name: 'Mero Pass',
-  description: 'A secret manager for teams: vaults end-to-end encrypted in the browser.',
+  description:
+    'A secret manager for teams: vaults end-to-end encrypted in the browser.',
   package: PACKAGE,
   dir: 'mero-pass',
   dev: import.meta.env.DEV,
 };
 
 /** `listing`: a copy of the app no cluster serves (its listing page). */
-export type Status = 'connecting' | 'unconfigured' | 'listing' | 'signed-out' | 'signed-in';
+export type Status =
+  'connecting' | 'unconfigured' | 'listing' | 'signed-out' | 'signed-in';
 
 export interface Calimero {
   status: Status;
@@ -89,6 +98,17 @@ export interface Calimero {
   signUpAccess?: SignUpAccess;
   /** The last sign-in failed because the cluster has no account for that passkey. */
   passkeyUnknown?: boolean;
+  /**
+   * Where a sign-up is, `null` outside one. At `approve` the new passkey
+   * exists and the account waits for `approve()`: its second prompt starts
+   * from a click of its own, so a password manager extension still saving
+   * the passkey cannot refuse it.
+   */
+  stage?: SignUpStage | null;
+  /** The click that creates the account with the new passkey (at `stage: "approve"`). */
+  approve?(): void;
+  /** Give up the sign-up at its Approve step. Quiet: no error is shown. */
+  cancelSignUp?(): void;
   /** A passkey for a step-up (`412 CONFIRM_REQUIRED`): invites, member changes. */
   passkey(): PasskeyProvider;
   /** Keeps the stored session current; run after requests. */
@@ -142,10 +162,22 @@ export function CalimeroProvider({
   const [state, setState] = useState<State>({ status: 'connecting' });
   const [store, setStore] = useState<SessionStore | null>(null);
   // The failed ceremony, described when shown, so the words follow the
-  // sign-up policy even when it is read after the failure.
-  const [failure, setFailure] = useState<{ error: unknown } | null>(null);
+  // sign-up policy even when it is read after the failure. `afterCreate`: the
+  // sign-up's passkey was made, so even a cancel-like failure is shown.
+  const [failure, setFailure] = useState<{
+    error: unknown;
+    afterCreate?: boolean;
+  } | null>(null);
+  /** The sign-up in flight, if any, and what the control shows of it. */
+  const flowRef = useRef<SignUpFlow | null>(null);
+  const [flowView, setFlowView] = useState<{
+    stage: SignUpStage | null;
+    confirmFailure: { error: unknown } | null;
+  }>({ stage: null, confirmFailure: null });
   /** The cluster's sign-up policy: `undefined` until read, `null` when it cannot be. */
-  const [policy, setPolicy] = useState<SignUpPolicy | null | undefined>(undefined);
+  const [policy, setPolicy] = useState<SignUpPolicy | null | undefined>(
+    undefined,
+  );
   /** The `/auth/logout` still in flight, which the next ceremony waits for. */
   const loggingOut = useRef<Promise<void> | null>(null);
   const [busy, setBusy] = useState(false);
@@ -155,7 +187,11 @@ export function CalimeroProvider({
     let live = true;
     void (async () => {
       try {
-        const target = await connectTarget(deps.env, { servedNodes: deps.servedNodes, app: APP, package: PACKAGE });
+        const target = await connectTarget(deps.env, {
+          servedNodes: deps.servedNodes,
+          app: APP,
+          package: PACKAGE,
+        });
         const client = await deps.makeClient(target);
         const sessions = new SessionStore(APP, target, deps.storage);
         if (!live) return;
@@ -199,11 +235,18 @@ export function CalimeroProvider({
   const access = signUpAccess(policy, inviteToken !== null);
   const invited = signUpInvite(policy, inviteToken);
 
+  // Leaving the page mid sign-up ends it, so nothing waits on a click.
+  useEffect(() => () => flowRef.current?.cancel(), []);
+
   const ceremony = useCallback(
-    async (run: (c: CalimeroClient) => Promise<{ accountId: string }>) => {
+    async (
+      run: (c: CalimeroClient) => Promise<{ accountId: string }>,
+      flow?: SignUpFlow,
+    ) => {
       if (state.status !== 'signed-out') return;
       setBusy(true);
       setFailure(null);
+      if (flow) flowRef.current = flow;
       try {
         // mero-js forgets the session when `/auth/logout` returns, so a sign-in
         // that finished first would be wiped by the sign-out before it.
@@ -217,9 +260,14 @@ export function CalimeroProvider({
           accountId,
         });
       } catch (e) {
-        // A dismissed passkey prompt is a quiet cancel, not an error to show.
+        // A dismissed first prompt (or a cancel at Approve) is quiet. Once the
+        // passkey exists, a refused second prompt is not: it left no account.
+        const afterCreate = flow?.created === true && !flow.cancelled;
         if (!isPasskeyCancel(e)) setFailure({ error: e });
+        else if (afterCreate) setFailure({ error: e, afterCreate: true });
       } finally {
+        if (flow && flowRef.current === flow) flowRef.current = null;
+        if (flow) setFlowView({ stage: null, confirmFailure: null });
         setBusy(false);
       }
     },
@@ -231,14 +279,23 @@ export function CalimeroProvider({
     [ceremony, deps],
   );
   const signUp = useCallback(
-    (name?: string) =>
-      ceremony((c) =>
-        invited
-          ? c.signUp(deps.passkey(), name?.trim() ?? '', { invite: invited })
-          : c.signUp(deps.passkey(), name?.trim() ?? ''),
-      ),
+    (name?: string) => {
+      // The second prompt (core's 412 CONFIRM_REQUIRED) waits for its own click.
+      const flow: SignUpFlow = signUpFlow(deps.passkey(), () =>
+        setFlowView({ stage: flow.stage, confirmFailure: flow.confirmFailure }),
+      );
+      return ceremony(
+        (c) =>
+          invited
+            ? c.signUp(flow.passkey, name?.trim() ?? '', { invite: invited })
+            : c.signUp(flow.passkey, name?.trim() ?? ''),
+        flow,
+      );
+    },
     [ceremony, deps, invited],
   );
+  const approve = useCallback(() => flowRef.current?.approve(), []);
+  const cancelSignUp = useCallback(() => flowRef.current?.cancel(), []);
   // Signed out first, then `/auth/logout`: the other way round, screens kept
   // seeing "signed-in" while the node had already revoked the session, and
   // their `/auth/me` calls got 401s (as in @calimero-apps/passkey).
@@ -266,7 +323,13 @@ export function CalimeroProvider({
     if (client) store?.sync(client);
   }, [client, store]);
 
-  const error = failure ? describeSignInError(failure.error, access) : null;
+  const error = flowView.confirmFailure
+    ? describeSignUpNotFinished(flowView.confirmFailure.error)
+    : failure
+      ? failure.afterCreate
+        ? describeSignUpNotFinished(failure.error, true)
+        : describeSignInError(failure.error, access)
+      : null;
   const passkeyUnknown =
     failure !== null && isPasskeyUnknownHere(failure.error);
 
@@ -281,7 +344,10 @@ export function CalimeroProvider({
       target,
       accountId: state.status === 'signed-in' ? state.accountId : null,
       source,
-      message: state.status === 'unconfigured' || state.status === 'listing' ? state.message : null,
+      message:
+        state.status === 'unconfigured' || state.status === 'listing'
+          ? state.message
+          : null,
       error,
       busy,
       isAuthenticated: state.status === 'signed-in',
@@ -292,12 +358,18 @@ export function CalimeroProvider({
       signOut,
       signUpAccess: access,
       passkeyUnknown,
+      stage: flowView.stage,
+      approve,
+      cancelSignUp,
       passkey: deps.passkey,
       after,
     };
   }, [
     access,
     passkeyUnknown,
+    flowView.stage,
+    approve,
+    cancelSignUp,
     state,
     client,
     source,

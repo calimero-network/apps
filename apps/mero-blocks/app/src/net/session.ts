@@ -82,17 +82,19 @@ export async function signIn(phase: SignedOut, deps: SessionDeps = defaultDeps):
 
 /**
  * Create an account (a new passkey) named `name`. `invite` goes with it on a
- * cluster that requires one (`signUpInvite`).
+ * cluster that requires one (`signUpInvite`). `passkey`: a `signUpFlow`'s, so
+ * the second prompt waits for a click of its own (the launcher passes it).
  */
 export async function signUp(
   phase: SignedOut,
   name: string,
   deps: SessionDeps = defaultDeps,
   invite: string | null = null,
+  passkey: PasskeyProvider = deps.passkey(),
 ): Promise<SignedIn> {
   const { accountId } = invite
-    ? await phase.client.signUp(deps.passkey(), name, { invite })
-    : await phase.client.signUp(deps.passkey(), name);
+    ? await phase.client.signUp(passkey, name, { invite })
+    : await phase.client.signUp(passkey, name);
   phase.sessions.sync(phase.client);
   return { ...phase, status: "signed-in", accountId };
 }

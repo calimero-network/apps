@@ -4,6 +4,7 @@
 // things or run different ceremonies. `invite` switches the copy to the
 // invitation's: the visitor came to join, and signing in is how they accept.
 
+import { useEffect } from 'react';
 import { AppListing, PasskeySignIn } from '@calimero-apps/passkey';
 import '@calimero-apps/passkey/passkey.css';
 import { DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -19,6 +20,9 @@ export function SignInPanel({
   inDialog?: boolean;
 }) {
   const api = useSession();
+  // Closing the sign-in mid sign-up ends it, so nothing waits on a click.
+  const { cancelSignUp } = api;
+  useEffect(() => () => cancelSignUp(), [cancelSignUp]);
   const where =
     api.session.status === 'signed-out' || api.session.status === 'signed-in'
       ? describeTarget(api.session.target)
