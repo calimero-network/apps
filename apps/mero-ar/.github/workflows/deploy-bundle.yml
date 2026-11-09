@@ -27,7 +27,7 @@
 #                                (CLI Access). Read by scripts/publish-bundle.sh
 #                                as CALIMERO_API_KEY.
 #
-# The contract is a `calimero:app` component (calimero-sdk, core 1.0.0-rc.9).
+# The contract is a `calimero:app` component (calimero-sdk, core 1.0.0-rc.10).
 # `cargo mero` went with SDK 0.12 (core#4835), so the bundle is built, packed
 # and signed by `mero-component`, calimero-network/apps' component bundler
 # (core's own calimero-app-build, calimero-bundle and mero-sign underneath),

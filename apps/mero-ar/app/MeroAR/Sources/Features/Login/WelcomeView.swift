@@ -11,6 +11,7 @@ struct WelcomeView: View {
     @State private var manual = false
     @State private var clusterURL = ""
     @State private var nodeURL = ""
+    @State private var invite = ""
     @State private var appeared = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -105,29 +106,46 @@ struct WelcomeView: View {
             )
             .submitLabel(.go)
             .onSubmit(signIn)
+            if app.signUpNeedsInvite {
+                TextInput(
+                    placeholder: "Invite link or code", text: $invite, icon: "envelope.open",
+                    identifier: "signUpInviteField", keyboard: .url
+                )
+                .submitLabel(.go)
+                .onSubmit(createAccount)
+                .transition(.opacity)
+            }
             Button(action: signIn) {
-                ButtonLabel(title: "Continue with passkey", icon: "person.badge.key.fill", isLoading: client.isLoading)
+                ButtonLabel(title: "Continue with passkey", icon: "person.badge.key.fill", isLoading: isBusy)
             }
             .buttonStyle(PrimaryButtonStyle())
             .disabled(!canUseCluster)
             .accessibilityIdentifier("cloudSignInButton")
-            Button {
-                Haptics.tap()
-                Task { await app.createAccount(clusterAddress: clusterURL) }
-            } label: {
+            Button(action: createAccount) {
                 Label("Create an account with a new passkey", systemImage: "plus.circle")
             }
             .buttonStyle(LinkButtonStyle())
             .disabled(!canUseCluster)
             .accessibilityIdentifier("createAccountButton")
-            Label("Your cluster's address is in the Calimero Cloud console", systemImage: "info.circle")
-                .font(.system(size: 13))
-                .foregroundStyle(Theme.textFaint)
+            VStack(spacing: 6) {
+                Label("Your cluster's address is in the Calimero Cloud console", systemImage: "info.circle")
+                Label("A new account asks for Face ID or Touch ID twice", systemImage: "faceid")
+            }
+            .font(.system(size: 13))
+            .foregroundStyle(Theme.textFaint)
         }
     }
 
+    private var isBusy: Bool { client.isLoading || app.isCreatingAccount }
+
     private var canUseCluster: Bool {
-        !client.isLoading && !clusterURL.trimmingCharacters(in: .whitespaces).isEmpty
+        !isBusy && !clusterURL.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    private func createAccount() {
+        guard canUseCluster else { return }
+        Haptics.tap()
+        Task { await app.createAccount(clusterAddress: clusterURL, invite: invite) }
     }
 
     private func signIn() {
