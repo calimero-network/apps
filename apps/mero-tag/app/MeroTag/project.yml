@@ -11,12 +11,12 @@ packages:
   # The official Calimero Swift SDK (MeroKit + MeroKitUI), Calimero 1.0:
   # `CalimeroClient` over the sealed channel (attestation, passkeys, app
   # calls/views/events, orgs and invites, consent) and `MeroClient` for
-  # sign-in state. Pinned to the v0.5.0 release — never `master`. To build
+  # sign-in state. Pinned to the v0.6.0 release — never `master`. To build
   # against a local checkout instead, swap `url`/`exactVersion` for
   # `path: ../../../swift-sdk`, but never commit that.
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    exactVersion: 0.5.0
+    exactVersion: 0.6.0
 
 targets:
   MeroTag:
@@ -25,6 +25,15 @@ targets:
     deploymentTarget: "17.0"
     sources:
       - path: Sources
+    # Native passkeys on a production cluster: its relying party is
+    # `calimero.network`, which publishes this app in its
+    # apple-app-site-association (`webcredentials`). Device builds also need
+    # a signing team (DEVELOPMENT_TEAM below).
+    entitlements:
+      path: MeroTag.entitlements
+      properties:
+        com.apple.developer.associated-domains:
+          - webcredentials:calimero.network
     info:
       path: Info.plist
       properties:

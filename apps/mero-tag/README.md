@@ -19,9 +19,9 @@ scripts/    setup
 Built for **Calimero core 1.0**:
 
 - the contract is a `calimero:app` WebAssembly component on core's component SDK (`calimero-sdk` tag
-  `1.0.0-rc.9`, `min-runtime-version = "1.0.0-rc.9"`), run by the node's wasmtime runtime
+  `1.0.0-rc.10`, `min-runtime-version = "1.0.0-rc.10"`), run by the node's wasmtime runtime
 - the app uses [`calimero-network/swift-sdk`](https://github.com/calimero-network/swift-sdk) pinned to
-  its `v0.5.0` release (`exactVersion` in `app/MeroTag/project.yml`)
+  its `v0.6.0` release (`exactVersion` in `app/MeroTag/project.yml`)
 
 ## How the app talks to Calimero
 
@@ -101,7 +101,7 @@ Run `make help` for all targets. [requirements.md](requirements.md) has the full
 
 ## Status
 
-- Done: the component contract on core 1.0.0-rc.9 (trackers, locations, sharing, groups, geofences, presence, history).
+- Done: the component contract on core 1.0.0-rc.10 (trackers, locations, sharing, groups, geofences, presence, history).
 - Done: passkey sign-in, spaces as app instances in organizations, invites, live events, update approvals on the
   consent page.
 - Not yet: authoring geofences, playing back history, and a UI for groups.
