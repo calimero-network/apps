@@ -228,7 +228,8 @@ describe("PasskeySignIn", () => {
   it("continues with a passkey, or creates one without asking for a name", () => {
     const a = api();
     render(<PasskeySignIn api={a} />);
-    expect(screen.getByText(/any Calimero app/)).toBeTruthy();
+    expect(screen.getByText(/made for this cluster, in the Calimero console or any app on it/)).toBeTruthy();
+    expect(screen.getByText(/made for other clusters do not work here/)).toBeTruthy();
     fireEvent.click(screen.getByTestId("signin-passkey"));
     expect(a.signIn).toHaveBeenCalled();
     fireEvent.click(screen.getByTestId("signup-passkey"));

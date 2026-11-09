@@ -334,7 +334,7 @@ export function PasskeySignIn({ api, joining, invited, askName = false, hint, cl
         {running === "in" ? <Spinner /> : <PasskeyIcon />}
         <span>{running === "in" ? "Waiting for your passkey…" : "Sign in with passkey"}</span>
       </button>
-      <p className="cp-passkey__hint">{hint ?? "Use the passkey you made for this cluster, from any Calimero app."}</p>
+      <p className="cp-passkey__hint">{hint ?? "Use a passkey made for this cluster, in the Calimero console or any app on it. Passkeys made for other clusters do not work here."}</p>
 
       <div className="cp-passkey__divider" role="presentation">
         <span>New here?</span>

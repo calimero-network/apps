@@ -1,5 +1,7 @@
+export { knownPasskeys, thisClusterPasskey } from "./knownPasskeys";
 export {
   accountHintKey,
+  knownPasskeysKey,
   describeTarget,
   isPasskeyCancel,
   passkeyDeps,
