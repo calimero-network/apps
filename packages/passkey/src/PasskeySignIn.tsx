@@ -15,9 +15,9 @@ export type PasskeySignInApi = Pick<SessionApi, "busy" | "error" | "signIn" | "s
       | "signUpAccess"
       | "passkeyUnknown"
       | "noAccountHere"
-      | "signUpStage"
+      | "stage"
       | "approve"
-      | "cancelApproval"
+      | "cancelSignUp"
       | "hasInvite"
       | "knownAccount"
     >
@@ -48,7 +48,7 @@ export interface PasskeySignInProps {
 export const SIGN_UP_TWO_PROMPTS = "Your browser asks twice: once to create a passkey, then once to approve with it.";
 
 /** Said while the second prompt waits for its click. */
-export const SIGN_UP_READY = "Your passkey is made. Approve once with it to finish creating your account.";
+export const SIGN_UP_READY = "Your passkey is saved. One more tap creates your account.";
 
 /**
  * Said, in place of an error, when an invited person's sign-in found no
@@ -143,7 +143,7 @@ export function PasskeySignIn({ api, joining, invited, askName = false, hint, cl
   const notice = signUpNotice(api.signUpAccess ?? "unknown");
   const canSignUp = notice === null;
   const isInvited = invited ?? api.hasInvite ?? false;
-  const stage = api.signUpStage ?? null;
+  const stage = api.stage ?? null;
   const noAccount = api.noAccountHere ?? false;
 
   useEffect(() => {
@@ -202,7 +202,7 @@ export function PasskeySignIn({ api, joining, invited, askName = false, hint, cl
 
   // A sign-up between its two prompts, or in one of them.
   if (stage !== null) {
-    const ready = stage === "ready";
+    const ready = stage === "approve";
     return (
       <div className={rootClass} aria-busy={!ready}>
         {stage === "create" ? (
@@ -226,8 +226,9 @@ export function PasskeySignIn({ api, joining, invited, askName = false, hint, cl
         <p className="cp-passkey__hint" role="status">
           {ready ? SIGN_UP_READY : stage === "create" ? SIGN_UP_TWO_PROMPTS : "Last step: this approval creates your account."}
         </p>
-        {ready && api.cancelApproval && (
-          <button type="button" className="cp-passkey__link" data-testid="signup-cancel" onClick={api.cancelApproval}>
+        {errorLine}
+        {ready && api.cancelSignUp && (
+          <button type="button" className="cp-passkey__link" data-testid="signup-cancel" onClick={() => api.cancelSignUp?.()}>
             Cancel
           </button>
         )}

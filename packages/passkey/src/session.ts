@@ -22,6 +22,7 @@ import {
   type KeyValueStorage,
   type Target,
 } from "@calimero-apps/connect";
+import { describeSignUpNotFinished, signUpFlow, type SignUpFlow, type SignUpStage } from "./signUpFlow";
 
 export type Session =
   | { status: "connecting" }
@@ -54,60 +55,12 @@ export function passkeyDeps(env: ConnectEnv): SessionDeps {
   return { env, makeClient: (target) => createClient(target), passkey: browserPasskey };
 }
 
-/**
- * Where a sign-up is: `create` while the browser makes the new passkey,
- * `ready` once it is made and the page waits for the person's click to
- * approve with it, `confirm` while the browser asks for that approval. Core
- * asks the new passkey to sign the account it creates (`412
- * CONFIRM_REQUIRED`), so a sign-up is two browser prompts.
- */
-export type SignUpStage = "create" | "ready" | "confirm";
 
 /** What a sign-up made with the page's invite joined: the token, and the organization when it can be told. */
 export interface JoinedAtSignUp {
   invite: string;
   org: string | null;
 }
-
-/**
- * `passkey`, reporting each prompt to `onStage`: `create` before the new
- * passkey is made, `confirm` before it is asked to sign the account.
- *
- * With `beforeConfirm`, the second prompt waits for it: the page resolves it
- * when the person clicks "Approve with your new passkey", so the prompt is
- * started by a click of its own and not a moment after the first one closed.
- * A password manager extension that answers passkey prompts is still saving
- * the new passkey then and refuses the second ("A request is already
- * pending"), and Safari wants a click before each prompt. `onStage('ready')`
- * says the click is awaited. The Calimero Cloud console does the same.
- */
-export function stagedPasskey(
-  passkey: PasskeyProvider,
-  onStage: (stage: SignUpStage) => void,
-  beforeConfirm?: () => Promise<void>,
-): PasskeyProvider {
-  return {
-    create: (options) => {
-      onStage("create");
-      return passkey.create(options);
-    },
-    get: async (challenge, rpId, allowCredentials) => {
-      if (beforeConfirm) {
-        onStage("ready");
-        await beforeConfirm();
-      }
-      onStage("confirm");
-      return passkey.get(challenge, rpId, allowCredentials);
-    },
-  };
-}
-
-/**
- * Said when a sign-up's second prompt (the approval with the new passkey) was
- * cancelled: the account is only made once that approval is given.
- */
-export const SIGN_UP_UNFINISHED =
-  "The approval was cancelled, so no account was made. Create your account again to finish: your browser may list the unused passkey, which you can delete.";
 
 /** Where a browser remembers that it has signed in to an account on `target` (a hint, never a credential). */
 export function accountHintKey(target: Target): string {
@@ -148,11 +101,11 @@ export interface SessionApi {
    */
   noAccountHere?: boolean;
   /** Where a sign-up is ({@link SignUpStage}), `null` when none runs. */
-  signUpStage?: SignUpStage | null;
-  /** Starts a sign-up's second prompt, once it is `ready`. */
+  stage?: SignUpStage | null;
+  /** Starts a sign-up's second prompt, once it is at `approve`. */
   approve?(): void;
-  /** Gives up a sign-up waiting at `ready`: no account is made. */
-  cancelApproval?(): void;
+  /** Gives up a sign-up waiting at `approve`: no account is made. Quiet. */
+  cancelSignUp?(): void;
   /** Whether the page holds an invite token. */
   hasInvite?: boolean;
   /** This browser has signed in to an account on this cluster before (a hint kept in storage). */
@@ -170,7 +123,7 @@ export function isPasskeyCancel(error: unknown): boolean {
   let e: unknown = error;
   for (let depth = 0; e && typeof e === "object" && depth < 4; depth++) {
     const name = (e as { name?: unknown }).name;
-    if (name === "NotAllowedError" || name === "AbortError" || name === "ConfirmCancelled") return true;
+    if (name === "NotAllowedError" || name === "AbortError" || name === "ConfirmCancelled" || name === "SignUpCancelled") return true;
     e = (e as { cause?: unknown }).cause;
   }
   return false;
@@ -204,7 +157,7 @@ export interface PasskeySessionOptions {
    */
   onJoinedAtSignUp?: (joined: JoinedAtSignUp) => void;
   /**
-   * Whether a sign-up's second prompt waits for a click ({@link stagedPasskey},
+   * Whether a sign-up's second prompt waits for a click ({@link signUpFlow},
    * `approve`). On by default; a caller with no button to show turns it off.
    */
   approveWithClick?: boolean;
@@ -266,6 +219,8 @@ interface Failure {
   cancelled: boolean;
   /** A sign-up's stage when it failed. */
   stage: SignUpStage | null;
+  /** A sign-up whose passkey was made but which ended without an account. */
+  afterCreate?: boolean;
 }
 
 /**
@@ -282,11 +237,14 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
   // the sign-up policy even when it is read after the failure.
   const [failure, setFailure] = useState<Failure | null>(null);
   const [busy, setBusy] = useState(false);
-  const [stage, setStage] = useState<SignUpStage | null>(null);
+  /** The sign-up in flight, if any, and what the control shows of it ({@link signUpFlow}). */
+  const flowRef = useRef<SignUpFlow | null>(null);
+  const [flowView, setFlowView] = useState<{ stage: SignUpStage | null; confirmFailure: { error: unknown } | null }>({
+    stage: null,
+    confirmFailure: null,
+  });
   const [knownAccount, setKnownAccount] = useState(false);
   const [joinedInvite, setJoinedInvite] = useState<string | null>(null);
-  /** A sign-up waiting at `ready` for the click that starts its second prompt. */
-  const approval = useRef<{ resolve: () => void; reject: (e: unknown) => void } | null>(null);
   const joined = useRef(onJoinedAtSignUp);
   joined.current = onJoinedAtSignUp;
   const hintStorage = deps.storage ?? (globalThis as { localStorage?: KeyValueStorage }).localStorage;
@@ -348,14 +306,11 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
   const access = signUpAccess(policy, inviteToken !== null);
 
   const ceremony = useCallback(
-    async (
-      during: Failure["during"],
-      run: (client: CalimeroClient) => Promise<{ accountId: string }>,
-      stageNow: () => SignUpStage | null = () => null,
-    ) => {
+    async (during: Failure["during"], run: (client: CalimeroClient) => Promise<{ accountId: string }>, flow?: SignUpFlow) => {
       if (session.status !== "signed-out") return;
       setBusy(true);
       setFailure(null);
+      if (flow) flowRef.current = flow;
       try {
         // mero-js forgets the session when `/auth/logout` returns, so a sign-in
         // that finished first would be wiped by the sign-out before it.
@@ -366,10 +321,13 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
         setKnownAccount(true);
         setSession({ status: "signed-in", client: session.client, target: session.target, accountId });
       } catch (e) {
-        setFailure({ error: e, during, cancelled: isPasskeyCancel(e), stage: stageNow() });
+        // Once a sign-up's passkey exists, its end without an account is no
+        // quiet cancel, unless the person cancelled it at Approve.
+        const afterCreate = flow?.created === true && !flow.cancelled;
+        setFailure({ error: e, during, cancelled: isPasskeyCancel(e), stage: flow?.stage ?? null, afterCreate });
       } finally {
-        approval.current = null;
-        setStage(null);
+        if (flow && flowRef.current === flow) flowRef.current = null;
+        if (flow) setFlowView({ stage: null, confirmFailure: null });
         setBusy(false);
       }
     },
@@ -382,21 +340,15 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
   const invited = onJoinedAtSignUp ? joinInvite(policy, inviteToken) : signUpInvite(policy, inviteToken);
   const signUp = useCallback(
     (name?: string) => {
-      let current: SignUpStage | null = null;
-      const onStage = (s: SignUpStage) => {
-        current = s;
-        setStage(s);
-      };
-      const beforeConfirm = approveWithClick
-        ? () =>
-            new Promise<void>((resolve, reject) => {
-              approval.current = { resolve, reject };
-            })
+      // The second prompt starts from its own click ({@link signUpFlow}); a
+      // caller with no button to show turns that off.
+      const flow: SignUpFlow | undefined = approveWithClick
+        ? signUpFlow(deps.passkey(), () => setFlowView({ stage: flow!.stage, confirmFailure: flow!.confirmFailure }))
         : undefined;
       return ceremony(
         "sign-up",
         async (c) => {
-          const passkey = stagedPasskey(deps.passkey(), onStage, beforeConfirm);
+          const passkey = flow ? flow.passkey : deps.passkey();
           const made = invited
             ? await c.signUp(passkey, name?.trim() ?? "", { invite: invited })
             : await c.signUp(passkey, name?.trim() ?? "");
@@ -407,26 +359,16 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
           }
           return made;
         },
-        () => current,
+        flow,
       );
     },
     [ceremony, deps, invited, approveWithClick],
   );
 
-  const approve = useCallback(() => {
-    const waiting = approval.current;
-    approval.current = null;
-    waiting?.resolve();
-  }, []);
-  const cancelApproval = useCallback(() => {
-    const waiting = approval.current;
-    approval.current = null;
-    if (waiting) {
-      const e = new Error("The approval was cancelled.");
-      e.name = "AbortError";
-      waiting.reject(e);
-    }
-  }, []);
+  const approve = useCallback(() => flowRef.current?.approve(), []);
+  const cancelSignUp = useCallback(() => flowRef.current?.cancel(), []);
+  // Leaving the page mid sign-up ends it, so nothing waits on a click.
+  useEffect(() => () => flowRef.current?.cancel(), []);
 
   // Signed out first, then `/auth/logout`. The other way round, the app kept
   // seeing "signed-in" while the node had already revoked the session, so the
@@ -451,14 +393,16 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
 
   // A dismissed prompt is a quiet cancel, except a sign-up's approval: the
   // passkey is made by then, the account is not, and the person has to know.
-  const unfinished = failure?.during === "sign-up" && failure.cancelled && failure.stage !== null && failure.stage !== "create";
-  const error = !failure
-    ? null
-    : unfinished
-      ? SIGN_UP_UNFINISHED
-      : failure.cancelled
-        ? null
-        : describeSignInError(failure.error, access);
+  // A refused approval keeps the sign-up waiting at Approve, with why.
+  const error = flowView.confirmFailure
+    ? describeSignUpNotFinished(flowView.confirmFailure.error)
+    : !failure
+      ? null
+      : failure.afterCreate && failure.cancelled
+        ? describeSignUpNotFinished(failure.error, true)
+        : failure.cancelled
+          ? null
+          : describeSignInError(failure.error, access);
   const passkeyUnknown = failure !== null && isPasskeyUnknownHere(failure.error);
   const noAccountHere =
     failure?.during === "sign-in" && (passkeyUnknown || (failure.cancelled && isNotAllowed(failure.error)));
@@ -477,9 +421,9 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
       signUpAccess: access,
       passkeyUnknown,
       noAccountHere,
-      signUpStage: stage,
+      stage: flowView.stage,
       approve,
-      cancelApproval,
+      cancelSignUp,
       hasInvite: inviteToken !== null,
       knownAccount,
       joinedInvite,
@@ -496,9 +440,9 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
       access,
       passkeyUnknown,
       noAccountHere,
-      stage,
+      flowView.stage,
       approve,
-      cancelApproval,
+      cancelSignUp,
       inviteToken,
       knownAccount,
       joinedInvite,

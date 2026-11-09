@@ -46,6 +46,15 @@ account, nothing to install, no permissions to grant.
   `{ invite: () => pendingToken }`), "Create an account" is disabled and says
   why (`signup-unavailable`). Sign-up always makes a new passkey: WebAuthn
   cannot carry one over from another cluster.
+- A sign-up takes two prompts (core #4849): one makes the passkey, the second
+  approves the account with it. The second starts from its own click: the
+  session waits at `api.stage === "approve"` and the control shows "Approve
+  with your new passkey" (`signup-approve`, `api.approve()`), with Cancel
+  (`api.cancelSignUp()`). A refusal that came back within 1 s (nothing was
+  shown) is asked again once; any other failure of the second prompt is
+  shown, never a quiet cancel, and Approve stays. An app with its own session
+  store wraps the passkey it passes to `client.signUp` with
+  `signUpFlow(passkey, onChange)`.
 - `<AppListing name description package dir dev />` is the one listing page
   every app shows for `listing`: the app's name and one line on it, a primary
   "Open {name}" link to the copy Calimero Cloud serves,

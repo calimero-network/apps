@@ -1,17 +1,14 @@
 export {
-  SIGN_UP_UNFINISHED,
   accountHintKey,
   describeTarget,
   isPasskeyCancel,
   passkeyDeps,
-  stagedPasskey,
   usePasskeySession,
   type JoinedAtSignUp,
   type PasskeySessionOptions,
   type Session,
   type SessionApi,
   type SessionDeps,
-  type SignUpStage,
 } from "./session";
 export {
   PasskeySignIn,
@@ -32,5 +29,17 @@ export {
   type OnboardingClassNames,
   type SignInPanelProps,
 } from "./Onboarding";
+export {
+  describeSignUpNotFinished,
+  isPromptStuck,
+  PROMPT_STUCK_ADVICE,
+  SIGN_UP_ENDED_WITHOUT_ACCOUNT,
+  SIGN_UP_NOT_FINISHED,
+  SignUpCancelled,
+  signUpFlow,
+  type SignUpFlow,
+  type SignUpFlowTiming,
+  type SignUpStage,
+} from "./signUpFlow";
 export { AppListing, type AppListingProps } from "./AppListing";
 export { listingCopy, renderListing, type ListingCopy, type ListingProps } from "./listing";

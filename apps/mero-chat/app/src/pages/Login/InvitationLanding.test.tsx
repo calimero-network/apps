@@ -47,6 +47,8 @@ vi.mock("../../api/calimero", () => ({
   },
   signIn: vi.fn(async () => h.set({ status: "signed-in" })),
   signUp: vi.fn(async () => h.set({ status: "signed-in" })),
+  approveSignUp: vi.fn(),
+  cancelSignUp: vi.fn(),
   getAccountId: () => "acct-me",
 }));
 vi.mock("../../api/platform", () => ({ myOrgs: h.myOrgs }));

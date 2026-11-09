@@ -3,6 +3,7 @@
  * a mocked CalimeroClient: an invite and no account here, an invite and an
  * account, no invite, the two-prompt sign-up, and the failures in between.
  */
+import { SIGN_UP_NOT_FINISHED } from "./signUpFlow";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -18,7 +19,6 @@ import { SIGN_UP_INVITE_ONLY, resolveTarget, type KeyValueStorage } from "@calim
 import { InvitationSignIn, JoinInvitation, SignInPanel } from "./Onboarding";
 import { SIGN_UP_READY, SIGN_UP_TWO_PROMPTS, noAccountCopy } from "./PasskeySignIn";
 import {
-  SIGN_UP_UNFINISHED,
   accountHintKey,
   usePasskeySession,
   type JoinedAtSignUp,
@@ -273,15 +273,18 @@ describe("the two-prompt sign-up", () => {
     expect(pk.get).toHaveBeenCalledTimes(1);
   });
 
-  it("a cancelled approval says no account was made, and the panel is back", async () => {
+  it("a refused approval is shown, not swallowed, and Approve stays for another try", async () => {
     const client = fakeClient();
     const pk = passkey();
-    pk.get.mockRejectedValueOnce(named("NotAllowedError"));
+    // Refused at once twice (the quick retry included), then accepted.
+    pk.get.mockRejectedValueOnce(named("NotAllowedError")).mockRejectedValueOnce(named("NotAllowedError"));
     render(<Screen d={deps(client, memoryStorage(), pk)} />);
     fireEvent.click(await screen.findByTestId("signup-passkey"));
     await approve();
-    expect((await screen.findByTestId("signin-error")).textContent).toBe(SIGN_UP_UNFINISHED);
-    expect(screen.getByTestId("signup-passkey")).toBeTruthy();
+    expect((await screen.findByTestId("signin-error", {}, { timeout: 3000 })).textContent).toBe(SIGN_UP_NOT_FINISHED);
+    expect((screen.getByTestId("signup-approve") as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByTestId("signup-approve"));
+    await screen.findByTestId("status");
   });
 
   it("a cancelled first prompt is quiet", async () => {
@@ -300,7 +303,9 @@ describe("the two-prompt sign-up", () => {
     render(<Screen d={deps(client, memoryStorage(), pk)} />);
     fireEvent.click(await screen.findByTestId("signup-passkey"));
     fireEvent.click(await screen.findByTestId("signup-cancel"));
-    expect((await screen.findByTestId("signin-error")).textContent).toBe(SIGN_UP_UNFINISHED);
+    // Quiet: the panel is back, with no error.
+    await screen.findByTestId("signup-passkey");
+    expect(screen.queryByTestId("signin-error")).toBeNull();
     expect(pk.get).not.toHaveBeenCalled();
   });
 });

@@ -73,6 +73,21 @@
 .cp-passkey__primary svg,
 .cp-passkey__secondary svg { flex: none; }
 
+.cp-passkey__link {
+  align-self: center;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--_field-radius);
+  background: none;
+  color: var(--_muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.cp-passkey__link:hover { color: var(--_ink); }
+.cp-passkey__link:focus-visible { outline: 2px solid var(--_focus); outline-offset: 2px; }
+
 .cp-passkey__hint {
   margin: 0;
   font-size: 12.5px;

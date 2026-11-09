@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { styled } from "styled-components";
 import {
   AppListing,
@@ -7,7 +7,14 @@ import {
 } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
-import { LISTING, signIn, signUp, useCalimero } from "../../api/calimero";
+import {
+  LISTING,
+  approveSignUp,
+  cancelSignUp,
+  signIn,
+  signUp,
+  useCalimero,
+} from "../../api/calimero";
 import { setMessengerDisplayName } from "../../utils/messengerName";
 
 /**
@@ -57,8 +64,12 @@ export default function SignInPanel({
   onBusy,
   testId = "signin-popup",
 }: Props) {
-  const { status, message, signUpAccess, passkeyUnknown } = useCalimero();
+  const { status, message, signUpAccess, passkeyUnknown, signUpStage } =
+    useCalimero();
   const [busy, setBusy] = useState(false);
+
+  // Closing the sign-in mid sign-up ends it, so nothing waits on a click.
+  useEffect(() => () => cancelSignUp(), []);
 
   const api = useMemo<PasskeySignInApi>(() => {
     const run = async (ceremony: () => Promise<void>) => {
@@ -79,6 +90,10 @@ export default function SignInPanel({
       error: status === "unconfigured" || status === "listing" ? null : message,
       signUpAccess,
       passkeyUnknown,
+      // A sign-up's second prompt starts from its own click.
+      stage: signUpStage,
+      approve: approveSignUp,
+      cancelSignUp,
       signIn: () => run(signIn),
       signUp: (name = "") =>
         run(async () => {
@@ -94,6 +109,7 @@ export default function SignInPanel({
     message,
     signUpAccess,
     passkeyUnknown,
+    signUpStage,
     beforeCeremony,
     onBusy,
   ]);
