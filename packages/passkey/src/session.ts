@@ -24,6 +24,7 @@ import {
   type Target,
 } from "@calimero-apps/connect";
 import { describeSignUpNotFinished, isPasskeyCancel, isPromptStuck, signUpFlow, type SignUpFlow, type SignUpStage } from "./signUpFlow";
+import { thisClusterPasskey } from "./knownPasskeys";
 
 export type Session =
   | { status: "connecting" }
@@ -63,6 +64,11 @@ export interface JoinedAtSignUp {
   org: string | null;
 }
 
+/** Where a browser keeps the passkeys it has seen work on `target` ({@link thisClusterPasskey}; ids, never a credential). */
+export function knownPasskeysKey(target: Target): string {
+  return `calimero-passkeys:${targetKey(target)}`;
+}
+
 /** Where a browser remembers that it has signed in to an account on `target` (a hint, never a credential). */
 export function accountHintKey(target: Target): string {
   return `calimero-account:${targetKey(target)}`;
@@ -78,7 +84,7 @@ export interface SessionApi {
   env: ConnectEnv;
   /** The passkey every ceremony and step-up uses. */
   passkey: () => PasskeyProvider;
-  /** Sign in with a passkey the person already has (any Calimero app's). */
+  /** Sign in with a passkey the person already has on this cluster (made in the console or any app on it). */
   signIn(): Promise<void>;
   /**
    * Create an account with a new passkey. The name is optional. On a cluster
@@ -325,7 +331,13 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
     [session, store, hintStorage],
   );
 
-  const signIn = useCallback(() => ceremony("sign-in", (c) => c.signIn(deps.passkey())), [ceremony, deps]);
+  // A passkey for this cluster: a sign-in offers only the ones seen working here.
+  const signedOutTarget = session.status === "signed-out" ? session.target : null;
+  const passkeyHere = useCallback(
+    () => (signedOutTarget ? thisClusterPasskey(deps.passkey(), knownPasskeysKey(signedOutTarget), hintStorage) : deps.passkey()),
+    [deps, signedOutTarget, hintStorage],
+  );
+  const signIn = useCallback(() => ceremony("sign-in", (c) => c.signIn(passkeyHere())), [ceremony, passkeyHere]);
   // With `onJoinedAtSignUp` the app hands the invite's join to the sign-up;
   // without it, only a cluster that requires an invite gets one.
   const invited = onJoinedAtSignUp ? joinInvite(policy, inviteToken) : signUpInvite(policy, inviteToken);
@@ -335,12 +347,12 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
       // browser refuses it ({@link signUpFlow}); a caller with no button to
       // show turns that off.
       const flow: SignUpFlow | undefined = approveWithClick
-        ? signUpFlow(deps.passkey(), () => setFlowView({ stage: flow!.stage, confirmFailure: flow!.confirmFailure }))
+        ? signUpFlow(passkeyHere(), () => setFlowView({ stage: flow!.stage, confirmFailure: flow!.confirmFailure }))
         : undefined;
       return ceremony(
         "sign-up",
         async (c) => {
-          const passkey = flow ? flow.passkey : deps.passkey();
+          const passkey = flow ? flow.passkey : passkeyHere();
           const made = invited
             ? await c.signUp(passkey, name?.trim() ?? "", { invite: invited })
             : await c.signUp(passkey, name?.trim() ?? "");
@@ -354,7 +366,7 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
         flow,
       );
     },
-    [ceremony, deps, invited, approveWithClick],
+    [ceremony, passkeyHere, invited, approveWithClick],
   );
 
   const approve = useCallback(() => flowRef.current?.approve(), []);
