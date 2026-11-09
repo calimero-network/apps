@@ -57,7 +57,7 @@ export function App({
     () => (storage === deps.storage || !storage ? deps : { ...deps, storage }),
     [deps, storage],
   );
-  const api = useSession(sessionDeps);
+  const api = useSession(sessionDeps, () => pendingInvite(storage));
   const signedIn = api.session.status === "signed-in";
   return (
     <BrowserRouter basename={base()}>

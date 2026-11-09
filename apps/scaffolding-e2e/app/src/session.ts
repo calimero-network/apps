@@ -25,7 +25,11 @@ export const LISTING: ListingProps = {
   dev: import.meta.env.DEV,
 };
 
-/** The shared passkey session (`@calimero-apps/passkey`) for this app. */
-export function useSession(deps: SessionDeps = defaultDeps): SessionApi {
-  return usePasskeySession(APP, deps, { package: PACKAGE });
+/**
+ * The shared passkey session (`@calimero-apps/passkey`) for this app.
+ * `invite` is the pending invite token: on an invite-only cluster it is what
+ * lets a new person create an account.
+ */
+export function useSession(deps: SessionDeps = defaultDeps, invite?: () => string | null): SessionApi {
+  return usePasskeySession(APP, deps, { package: PACKAGE, ...(invite ? { invite } : {}) });
 }

@@ -129,7 +129,7 @@ describe('App', () => {
     fireEvent.click(await screen.findByTestId('signin-passkey'));
     await screen.findByText('Q3 Budget');
     expect(client.signIn).toHaveBeenCalled();
-    expect(client.listApps).toHaveBeenCalledWith({ bundle: 'bundle-hash' });
+    await waitFor(() => expect(client.listApps).toHaveBeenCalledWith({ bundle: 'bundle-hash' }));
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Team');
   });
 

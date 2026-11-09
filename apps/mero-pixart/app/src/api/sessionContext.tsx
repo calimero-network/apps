@@ -4,6 +4,7 @@ import { appSource, targetKey, type AppSource, type Target } from "@calimero-app
 
 import { PACKAGE } from "./pixart";
 import { defaultDeps, useSession, type SessionApi, type SessionDeps } from "./session";
+import { pendingInvite } from "./teams";
 
 interface SessionValue {
   api: SessionApi;
@@ -19,7 +20,7 @@ const SessionContext = createContext<SessionValue | null>(null);
  * shares the session with every screen. Replaces v1's `MeroProvider`.
  */
 export function SessionProvider({ deps = defaultDeps, children }: { deps?: SessionDeps; children: ReactNode }) {
-  const api = useSession(deps);
+  const api = useSession(deps, () => pendingInvite());
   const source = useMemo(() => appSource(deps.env, PACKAGE), [deps.env]);
   const value = useMemo(() => ({ api, deps, source }), [api, deps, source]);
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

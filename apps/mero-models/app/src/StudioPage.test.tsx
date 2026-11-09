@@ -109,7 +109,7 @@ describe("the studio's front door", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Continue with passkey" }));
     expect(await screen.findByText("Castle")).toBeTruthy();
-    expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" });
+    await waitFor(() => expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" }));
     // Sorted by name, and the studio they belong to listed once.
     const titles = screen.getAllByTestId("scene-item").map((b) => b.textContent);
     expect(titles[0]).toContain("Castle");

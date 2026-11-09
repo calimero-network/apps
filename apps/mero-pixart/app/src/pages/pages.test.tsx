@@ -115,7 +115,7 @@ describe("ProjectsPage", () => {
     expect(screen.getByText("800 × 600")).toBeTruthy();
     expect(screen.getByText("3 members")).toBeTruthy();
     expect(screen.queryByText("Elsewhere")).toBeNull();
-    expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" });
+    await waitFor(() => expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" }));
     expect(client.view).toHaveBeenCalledWith("p-1", "getDocument", {});
     expect(await screen.findByRole("heading", { name: "Alpha" })).toBeTruthy();
     // A member who did not create it is not offered Delete.

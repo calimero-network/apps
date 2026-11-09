@@ -6,6 +6,7 @@ import {
   type SessionDeps,
 } from "@calimero-apps/passkey";
 import { APP_NAME, APP_PACKAGE } from "./config";
+import { pendingInvite } from "./companies";
 
 export { describeTarget, type Session, type SessionApi, type SessionDeps } from "@calimero-apps/passkey";
 
@@ -22,8 +23,9 @@ export const LISTING: ListingProps = {
 
 /**
  * The shared passkey session (`@calimero-apps/passkey`) for this app. Replaces
- * mero-react's `MeroProvider` and node login.
+ * mero-react's `MeroProvider` and node login. It carries the pending invite
+ * token: on an invite-only cluster it lets a new person sign up.
  */
 export function useSession(deps: SessionDeps = defaultDeps): SessionApi {
-  return usePasskeySession(APP_NAME, deps, { package: APP_PACKAGE });
+  return usePasskeySession(APP_NAME, deps, { package: APP_PACKAGE, invite: () => pendingInvite()?.token ?? null });
 }

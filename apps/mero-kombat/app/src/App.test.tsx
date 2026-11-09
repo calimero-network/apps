@@ -138,7 +138,7 @@ describe("App", () => {
     await screen.findByText("Enter the arena");
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "");
     expect(new SessionStore(APP, LOCAL, storage).load()).toEqual(SESSION);
-    expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" });
+    await waitFor(() => expect(client.listApps).toHaveBeenCalledWith({ bundle: "bundle-hash" }));
 
     fireEvent.click(screen.getByText("New arena"));
     await screen.findByText("Invite an opponent");
