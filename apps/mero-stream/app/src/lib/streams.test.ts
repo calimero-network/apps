@@ -7,6 +7,7 @@ import {
   inviteLink,
   listRooms,
   listStreams,
+  migrateLegacyInvite,
   pendingInvite,
   streamInfo,
 } from "./streams";
@@ -91,30 +92,36 @@ describe("streams are organizations, rooms are app instances", () => {
 });
 
 describe("invitation links", () => {
-  it("survive the sign-up: captured off the URL into storage, then dropped", () => {
-    const link = inviteLink(
-      "tok",
-      { stream: "o1", room: "app-1", name: "Standup" },
-      { origin: "http://localhost:5173", pathname: "/" },
-    );
+  it("survive the sign-up: captured off the URL into the store, then dropped", () => {
+    const link = inviteLink("tok", { stream: "o1", room: "app-1", name: "Standup" }, { href: "http://localhost:5173/streams/o1" });
+    expect(new URL(link).pathname).toBe("/");
     window.history.replaceState(null, "", link.replace("http://localhost:5173", ""));
-    const storage = new Memory();
-    captureInvite(storage, window.location);
+    captureInvite(window.location);
     expect(window.location.search).toBe("");
-    expect(pendingInvite(storage)).toEqual({
-      token: "tok",
-      stream: "o1",
-      room: "app-1",
-      name: "Standup",
-    });
-    dropInvite(storage);
-    expect(pendingInvite(storage)).toBeNull();
+    expect(pendingInvite()).toEqual({ token: "tok", stream: "o1", room: "app-1", name: "Standup" });
+    dropInvite();
+    expect(pendingInvite()).toBeNull();
+  });
+
+  it("reads a link minted before the shared store, which named the stream as `stream`", () => {
+    window.history.replaceState(null, "", "/?invite=tok&stream=o1&room=app-1");
+    captureInvite(window.location);
+    expect(pendingInvite()).toEqual({ token: "tok", stream: "o1", room: "app-1", name: null });
+    dropInvite();
+  });
+
+  it("moves an invite an earlier build stored under its own key into the shared store", () => {
+    const storage = new Memory();
+    storage.setItem("mero-stream:pending-invite", JSON.stringify({ token: "old", stream: "o1", room: null, name: "Team" }));
+    migrateLegacyInvite(storage);
+    expect(pendingInvite()).toEqual({ token: "old", stream: "o1", room: null, name: "Team" });
+    expect(storage.getItem("mero-stream:pending-invite")).toBeNull();
+    dropInvite();
   });
 
   it("ignores a page opened without one", () => {
     window.history.replaceState(null, "", "/streams");
-    const storage = new Memory();
-    captureInvite(storage, window.location);
-    expect(pendingInvite(storage)).toBeNull();
+    captureInvite(window.location);
+    expect(pendingInvite()).toBeNull();
   });
 });
