@@ -61,3 +61,46 @@ may create an account (`allowed`, `needs-invite`, `closed`, `unknown`),
 send with `signUp` where the policy requires one. `describeSignInError(error,
 access)` answers a passkey the cluster does not know with the way in for that
 policy, and a refused sign-up (`SignUpRefused`) by its reason.
+
+## Invites
+
+One invite flow for every app (`invite.ts`), so no app keeps its own copy of
+capture, storage, the spent check or the membership pre-check:
+
+```ts
+import { createInviteStore, inviteLink, isSpentInvite, canCreateIn } from "@calimero-apps/connect";
+
+export const invites = createInviteStore("my-app", { keep: ["forum"] }); // module level
+invites.capture(window.location, { basename }); // main.tsx, before React mounts
+
+// Minting a link: at the origin's root, never the inviter's `/{version}/`.
+inviteLink(token, { org, team, doc, route: "/forums/42", extra: { forum } });
+```
+
+- **The link** is `/?invite=<token>&org=&team=&doc=&to=<route>&<the app's own>`.
+  A served host's root redirects to the newest release with the query kept
+  (core's `fix/served-redirect-query`). Until every cluster runs that fix, pass
+  `root: basename` to pin the link as before. `capture` reads both forms: the
+  route from `to`, else from a version-pinned path relative to `basename`. It
+  never takes a route that leaves the app (`//host`, a scheme).
+- **The store** keeps one pending invite per app: `pending()` (the same object
+  until it changes, for `useSyncExternalStore`), `token()`, `drop()`, `put()`,
+  `subscribe()` (also told of changes in another tab). `bind(target)` keeps it
+  under that cluster's key from then on. `signedIn(account)` holds it for that
+  account and drops it when another account signs in; `signedOut()` drops it.
+  `usePasskeySession({ invites })` makes all of those calls.
+- **Spent or not**: `inviteRefusal(error)` is the node's word that the invite
+  is done (`unknown-invite`, `expired-invite`, `org-gone`), at a sign-up
+  (`SignUpRefused`) or a redemption (`400 REJECTED`). It reads core's old and
+  rc.12 sentences. `isSpentInvite` is its boolean. Anything else keeps the
+  token: 401 (the session lapsed), 408, 429, a 5xx or a network failure.
+  `describeRedeemFailure(error)` says which, with the next step.
+- **Membership**: `memberOf(client, org)` before redeeming a link that names
+  its org (a member would spend a use for nothing), `joinedOrg(redeemed)` for
+  the org a redemption joined.
+- **Who may add an instance**: `canCreateIn(client, org, team?)` applies core's
+  `CREATE_APP` rule (`Org::may`) to `getOrg`. Admins and owners may, as do a
+  team's leads (also of a team above it) and members granted it on the team's
+  row or org-wide. A plain member may not by default. `null` when it cannot
+  tell. `mayCreateIn(org, account, team?)` is the same on an org already read,
+  and `askAnOwnerCopy("a calendar")` is what to show instead of the button.

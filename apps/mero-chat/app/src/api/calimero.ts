@@ -49,6 +49,8 @@ import {
 } from "@calimero-apps/passkey";
 import { watchUpgrades } from "@calimero-apps/passkey/upgrade";
 import { dropInvite, pendingInvite } from "../utils/invitation";
+import { markJoinedAwaitingName } from "../utils/enterWorkspace";
+import { setMessengerDisplayName } from "../utils/messengerName";
 
 /** The app's name in stored keys. */
 export const APP = "mero-chat";
@@ -275,7 +277,9 @@ export function signIn(): Promise<void> {
  * Create an account with a new passkey; the name is optional. The invite
  * link's token goes with it wherever the cluster lets an organization invite
  * admit, and the new account joins the workspace in that step: the token is
- * then dropped, with nothing left to redeem.
+ * then dropped, with nothing left to redeem, and the workspace picker opens on
+ * that workspace's name step ("Join <workspace>"), never on "Create
+ * workspace", even before the node lists the new membership.
  */
 export function signUp(name = ""): Promise<void> {
   flow?.cancel();
@@ -293,7 +297,15 @@ export function signUp(name = ""): Promise<void> {
         policy: state.policy,
         join: true,
       });
-      if (made.joined) dropInvite();
+      if (made.joined) {
+        // Before the session reads as signed in, so the picker's first load
+        // already sees it.
+        if (made.joined.org) {
+          if (name.trim()) setMessengerDisplayName(name.trim());
+          markJoinedAwaitingName(made.joined.org);
+        }
+        dropInvite();
+      }
       return made;
     },
     current,

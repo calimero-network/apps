@@ -196,9 +196,16 @@ export async function signUpHere(
   // Typed loosely: the installed mero-js may not take `signal` yet.
   const signUp = client.signUp.bind(client) as unknown as SignUpWithSignal;
   const extra = { ...(carried ? { invite: carried } : {}), ...(signal ? { signal } : {}) };
-  const { accountId } = Object.keys(extra).length ? await signUp(passkey, trimmed, extra) : await signUp(passkey, trimmed);
+  const made = Object.keys(extra).length ? await signUp(passkey, trimmed, extra) : await signUp(passkey, trimmed);
+  const { accountId } = made;
   rememberAccountHere(target, storage);
-  const joined = carried && join ? { invite: carried, org: await soleOrg(client) } : null;
+  // The org from the sign-up's answer when the node names it there (mero-js
+  // passes the node's answer through), else the new account's only one.
+  const said = (made as { org?: unknown }).org;
+  const joined =
+    carried && join
+      ? { invite: carried, org: typeof said === "string" && said ? said : await soleOrg(client) }
+      : null;
   return { accountId, joined };
 }
 

@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Opening an invitation link and signing in now offers the invitation's
+  **Join workspace**, and Join lands in the inviting workspace. The workspace
+  picker, a full-screen overlay, came up beside the invitation prompt and
+  covered it, so the person saw "Create workspace" (or their other workspaces)
+  instead. The picker now waits until the invitation is joined, refused (which
+  the prompt says), or turned down. A sign-up that joined through the link
+  opens straight on that workspace's name step.
+
 - Signing in with a passkey the cluster has no account for (made on another
   cluster, or before the cluster was recreated) now says so: "This passkey
   isn't known on this cluster: create a new passkey here, or use one you made

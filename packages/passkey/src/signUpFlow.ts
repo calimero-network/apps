@@ -59,8 +59,10 @@ export interface SignUpFlowTiming {
  * once; any other failure is kept in `confirmFailure` and the flow waits at
  * `approve` again. The node's 5-minute challenge window covers the pause.
  *
- * `cancel()` ends a sign-up at `approve`. While the second prompt is open it
- * cannot close it: mero-js's `PasskeyProvider.get` takes no `AbortSignal`.
+ * `cancel()` ends the sign-up at any stage. A passkey prompt that is open
+ * then (the create, or the second prompt) is closed through the `signal` the
+ * flow hands mero-js's provider (mero-js 29.7.7+); the sign-up rejects with
+ * {@link SignUpCancelled}.
  */
 export interface SignUpFlow {
   readonly passkey: PasskeyProvider;
@@ -73,7 +75,7 @@ export interface SignUpFlow {
   readonly confirmFailure: { error: unknown } | null;
   /** The click that starts the second prompt. Does nothing outside `approve`. */
   approve(): void;
-  /** Give up at the Approve step (or on leaving the page): the sign-up rejects with {@link SignUpCancelled}. */
+  /** Give up (the Cancel button, or leaving the page): closes an open prompt, and the sign-up rejects with {@link SignUpCancelled}. */
   cancel(): void;
 }
 
@@ -91,6 +93,15 @@ export function signUpFlow(passkey: PasskeyProvider, onChange: () => void = () =
   let cancelled = false;
   let confirmFailure: { error: unknown } | null = null;
   let waiting: { resolve: () => void; reject: (e: unknown) => void } | null = null;
+  // Closes whichever prompt is open when cancel() runs.
+  const aborter = new AbortController();
+  const withAbort = (given?: AbortSignal): AbortSignal => {
+    if (!given) return aborter.signal;
+    const any = (AbortSignal as unknown as { any?: (signals: AbortSignal[]) => AbortSignal }).any;
+    return any ? any([given, aborter.signal]) : aborter.signal;
+  };
+  /** A prompt's failure, or {@link SignUpCancelled} when cancel() closed it. */
+  const unlessCancelled = (e: unknown): unknown => (cancelled ? new SignUpCancelled() : e);
 
   const update = (next: Partial<{ stage: SignUpStage | null; confirmFailure: { error: unknown } | null }>) => {
     if ("stage" in next) stage = next.stage ?? null;
@@ -112,10 +123,16 @@ export function signUpFlow(passkey: PasskeyProvider, onChange: () => void = () =
 
   const wrapped: PasskeyProvider = {
     ...passkey,
-    create: async (options) => {
+    create: async (options, createOptions) => {
       if (cancelled) throw new SignUpCancelled();
       update({ stage: "create" });
-      const registration = await passkey.create(options);
+      let registration;
+      try {
+        registration = await passkey.create(options, { ...createOptions, signal: withAbort(createOptions?.signal) });
+      } catch (e) {
+        throw unlessCancelled(e);
+      }
+      if (cancelled) throw new SignUpCancelled();
       created = true;
       return registration;
     },
@@ -125,11 +142,12 @@ export function signUpFlow(passkey: PasskeyProvider, onChange: () => void = () =
       // Not after a create (nothing to approve): straight through.
       if (!created) return passkey.get(challenge, rpId, allowCredentials, options);
       if (cancelled) throw new SignUpCancelled();
+      const ask = () => passkey.get(challenge, rpId, allowCredentials, { ...options, signal: withAbort(options?.signal) });
       // Right away first; a click only when that did not work.
       update({ stage: "confirm", confirmFailure: null });
       const started = now();
       try {
-        return await passkey.get(challenge, rpId, allowCredentials, options);
+        return await ask();
       } catch (e) {
         // Never the end of the sign-up: the passkey exists, so it waits at
         // Approve. A prompt the browser would not show is no error to show.
@@ -144,8 +162,9 @@ export function signUpFlow(passkey: PasskeyProvider, onChange: () => void = () =
         });
         update({ stage: "confirm", confirmFailure: null });
         try {
-          return await askOnce(() => passkey.get(challenge, rpId, allowCredentials, options));
+          return await askOnce(ask);
         } catch (e) {
+          if (cancelled) throw new SignUpCancelled();
           // Shown, never a quiet cancel: the passkey exists and the account
           // does not. The Approve button stays for another try.
           update({ confirmFailure: { error: e } });
@@ -176,6 +195,7 @@ export function signUpFlow(passkey: PasskeyProvider, onChange: () => void = () =
     cancel() {
       if (cancelled) return;
       cancelled = true;
+      aborter.abort();
       const w = waiting;
       waiting = null;
       w?.reject(new SignUpCancelled());

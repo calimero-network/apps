@@ -26,6 +26,8 @@ import {
   useCalimero,
 } from "./calimero";
 import { INVITATION_STORAGE_KEY } from "../utils/invitation";
+import { joinedAwaitingName } from "../utils/enterWorkspace";
+import { getGroupId } from "../constants/config";
 
 describe("signIn", () => {
   // The node's answer to a passkey it has no account for (one made before
@@ -315,6 +317,17 @@ describe("one sign-in everywhere (@calimero-apps/passkey)", () => {
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "Ada", { invite: "org-invite-token" });
     expect(hook.result.current.status).toBe("signed-in");
     expect(localStorage.getItem(INVITATION_STORAGE_KEY)).toBeNull();
+  });
+
+  it("a sign-up that joined through the invite opens the picker on that workspace, not on Create", async () => {
+    localStorage.clear();
+    sessionStorage.clear();
+    localStorage.setItem(INVITATION_STORAGE_KEY, "org-invite-token");
+    const { hook } = cluster();
+    await waitFor(() => expect(hook.result.current.signUpAccess).toBe("allowed"));
+    await act(() => signUp("Ada"));
+    expect(joinedAwaitingName()).toBe("org-1");
+    expect(getGroupId()).toBe("org-1");
   });
 });
 
