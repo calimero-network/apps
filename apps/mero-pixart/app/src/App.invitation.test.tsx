@@ -91,7 +91,7 @@ describe("an invite link", () => {
     renderApp(fakeClient());
 
     expect(await screen.findByTestId("invitation-page", {}, SLOW)).toBeTruthy();
-    expect(screen.getByText(/You've been invited to join a team in Mero PixArt/)).toBeTruthy();
+    expect(screen.getByText(/You've been invited to join the team in Mero PixArt/)).toBeTruthy();
     expect(screen.getByTestId("signin-passkey")).toBeTruthy();
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(document.querySelector(".cal-lp-root")).toBeNull();

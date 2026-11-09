@@ -7,7 +7,7 @@ import {
   type SessionDeps,
 } from "@calimero-apps/passkey";
 import { PACKAGE } from "./lib/meroStream";
-import { pendingInvite } from "./lib/streams";
+import { dropInvite, pendingInvite } from "./lib/streams";
 
 export { describeTarget, type Session, type SessionApi, type SessionDeps } from "@calimero-apps/passkey";
 
@@ -30,7 +30,15 @@ export const LISTING: ListingProps = {
  * pending invite token: on an invite-only cluster it lets a new person sign up.
  */
 export function useSession(deps: SessionDeps = defaultDeps): SessionApi {
-  return usePasskeySession(APP, deps, { package: PACKAGE, invite: () => pendingInvite()?.token ?? null });
+  return usePasskeySession(APP, deps, {
+    package: PACKAGE,
+    invite: () => pendingInvite()?.token ?? null,
+    // A sign-up from a page holding the invite joined its org in that step:
+    // nothing is left to redeem (a second redeem would spend another use).
+    onJoinedAtSignUp: () => {
+      dropInvite();
+    },
+  });
 }
 
 /** The session `SessionProvider` (SessionProvider.tsx) holds, for every screen. */

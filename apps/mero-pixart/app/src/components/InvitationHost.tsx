@@ -13,7 +13,9 @@ import {
   pendingInviteOrg,
   pendingInviteRoute,
 } from "../api/teams";
-import SignInPanel from "./SignInPanel";
+import { SignInPanel } from "@calimero-apps/passkey";
+import "@calimero-apps/passkey/passkey.css";
+import { ONBOARDING } from "../api/session";
 
 /** What the screen says once the invitation can no longer be accepted. */
 type Outcome = { kind: "member"; org: string; route: string } | { kind: "spent" };
@@ -127,7 +129,7 @@ export default function InvitationHost({ children }: { children: ReactNode }) {
     return (
       <main className="mp-invite-page">
         <div className="mp-modal" role="region" aria-labelledby="invite-signin-title" data-testid="invitation-page">
-          <SignInPanel titleId="invite-signin-title" />
+          <SignInPanel {...ONBOARDING} api={api} titleId="invite-signin-title" />
           <div className="mp-invite-actions mp-invite-actions--center">
             <button
               className="mp-btn mp-btn--ghost"

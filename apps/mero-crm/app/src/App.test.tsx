@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import type { SessionDeps } from './session';
 import { APP } from './session';
-import { writeActiveNs } from './hooks/workspacePersistence';
+import { readActiveNs, writeActiveNs } from './hooks/workspacePersistence';
 import { captureInvite } from './workspaces';
 
 const SESSION: CalimeroSession = { accountId: 'acct-alice', sessionToken: 's', refreshToken: 'r', expiresAt: 9e12 };
@@ -176,11 +176,28 @@ describe('App', () => {
     render(<App deps={deps(fakeClient())} />);
 
     expect(await screen.findByTestId('invitation-page', {}, SLOW)).toBeTruthy();
-    expect(screen.getByText(/You've been invited to join a workspace in Mero CRM/)).toBeTruthy();
+    expect(screen.getByText(/You've been invited to join the workspace in Mero CRM/)).toBeTruthy();
     expect(screen.getByTestId('signin-passkey')).toBeTruthy();
     // A page, not a popup over the landing hero.
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(document.querySelector('.cal-lp-root')).toBeNull();
+  });
+
+  it('an invited newcomer creates the account and joins in one click, and lands in the workspace', async () => {
+    const client = fakeClient();
+    localStorage.setItem(`${APP}:pending-invite`, 'tok-xyz');
+    render(<App deps={deps(client)} />);
+
+    const create = await screen.findByTestId('signup-passkey', {}, SLOW);
+    expect(create.textContent).toBe('Create your account and join the workspace');
+    fireEvent.click(create);
+    await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), '', { invite: 'tok-xyz' }), SLOW);
+    await waitFor(() => expect(screen.queryByTestId('invitation-page')).toBeNull(), SLOW);
+    expect(client.signIn).not.toHaveBeenCalled();
+    expect(client.redeemInvite).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('invitation-dialog')).toBeNull();
+    expect(localStorage.getItem(`${APP}:pending-invite`)).toBeNull();
+    expect(readActiveNs()).toBe('org-1');
   });
 
   it('"Not now" shows the landing page and keeps the invitation', async () => {

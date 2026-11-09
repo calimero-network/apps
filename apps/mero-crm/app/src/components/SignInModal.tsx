@@ -1,7 +1,9 @@
 import React, { useEffect } from 'react';
 
 import { useSessionApi } from '../sessionContext';
-import SignInPanel from './SignInPanel';
+import { SignInPanel } from '@calimero-apps/passkey';
+import '@calimero-apps/passkey/passkey.css';
+import { ONBOARDING } from '../session';
 import { Overlay, Dialog, Close } from './modalKit';
 
 /** The landing page's sign-in popup. Its body is `SignInPanel`, shared with the invitation page. */
@@ -22,7 +24,7 @@ export default function SignInModal({ onClose }: { onClose: () => void }): React
     <Overlay onClick={() => !api.busy && onClose()}>
       <Dialog onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="signin-title">
         <Close onClick={() => !api.busy && onClose()} aria-label="Close">×</Close>
-        <SignInPanel titleId="signin-title" />
+        <SignInPanel {...ONBOARDING} api={api} titleId="signin-title" />
       </Dialog>
     </Overlay>
   );

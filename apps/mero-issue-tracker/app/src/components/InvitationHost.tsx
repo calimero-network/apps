@@ -15,7 +15,9 @@ import {
   pendingInviteOrg,
   pendingInviteRoute,
 } from '../workspaces';
-import SignInPanel from './SignInPanel';
+import { SignInPanel } from '@calimero-apps/passkey';
+import '@calimero-apps/passkey/passkey.css';
+import { ONBOARDING } from '../session';
 import { Page, Card, Actions, SecondaryBtn, PrimaryBtn, ErrorLine, Spin, TextLink } from './modalKit';
 
 /** What the screen says once the invitation can no longer be accepted. */
@@ -113,7 +115,7 @@ export default function InvitationHost({ children }: { children: ReactNode }): R
     return (
       <Page>
         <Card aria-labelledby="invite-signin-title" data-testid="invitation-page">
-          <SignInPanel titleId="invite-signin-title" />
+          <SignInPanel {...ONBOARDING} api={api} titleId="invite-signin-title" />
           <TextLink type="button" data-testid="invitation-later" onClick={() => setDeferred(true)} disabled={api.busy}>
             Not now
           </TextLink>

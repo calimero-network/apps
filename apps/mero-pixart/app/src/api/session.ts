@@ -1,4 +1,5 @@
 import {
+  type OnboardingClassNames,
   passkeyDeps,
   usePasskeySession,
   type ListingProps,
@@ -28,6 +29,31 @@ export const LISTING: ListingProps = {
  * `invite` is the pending invite token: on an invite-only cluster it is what
  * lets a new person create an account.
  */
-export function useSession(deps: SessionDeps = defaultDeps, invite?: () => string | null): SessionApi {
-  return usePasskeySession(APP, deps, { package: PACKAGE, ...(invite ? { invite } : {}) });
+export function useSession(
+  deps: SessionDeps = defaultDeps,
+  invite?: () => string | null,
+  onJoined?: () => void,
+): SessionApi {
+  return usePasskeySession(APP, deps, {
+    package: PACKAGE,
+    ...(invite ? { invite } : {}),
+    // A sign-up from a page holding the invite joined its org in that step:
+    // `onJoined` drops it, so nothing is redeemed twice.
+    ...(onJoined ? { onJoinedAtSignUp: onJoined } : {}),
+  });
 }
+
+/** The app's words and classes for the shared sign-in and invitation screens (`@calimero-apps/passkey`). */
+export const ONBOARDING: {
+  appName: string;
+  joining: string;
+  listing: ListingProps;
+  classNames: OnboardingClassNames;
+  titleAs: "h1" | "h2" | "h3" | "div";
+} = {
+  appName: "Mero PixArt",
+  joining: "the team",
+  listing: LISTING,
+  classNames: { text: "sub", error: "sub" },
+  titleAs: "h2",
+};

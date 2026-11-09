@@ -164,7 +164,7 @@ describe('App', () => {
     render(<App deps={deps(fakeClient())} />);
 
     expect(await screen.findByTestId('invitation-page', {}, SLOW)).toBeTruthy();
-    expect(screen.getByText(/You've been invited to join a workspace in Mero Issue Tracker/)).toBeTruthy();
+    expect(screen.getByText(/You've been invited to join the workspace in Mero Issue Tracker/)).toBeTruthy();
     expect(screen.getByTestId('signin-passkey')).toBeTruthy();
     // A page, not a popup over the landing hero.
     expect(screen.queryByRole('dialog')).toBeNull();

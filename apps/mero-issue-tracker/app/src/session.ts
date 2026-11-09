@@ -1,4 +1,5 @@
 import {
+  type OnboardingClassNames,
   passkeyDeps,
   usePasskeySession,
   type ListingProps,
@@ -6,7 +7,8 @@ import {
   type SessionDeps,
 } from "@calimero-apps/passkey";
 import { APP_NAME, APP_PACKAGE } from "./config";
-import { pendingInvite } from "./workspaces";
+import { dropInvite, pendingInvite } from "./workspaces";
+import { announceJoined } from "./hooks/workspacePersistence";
 
 export { describeTarget, type Session, type SessionApi, type SessionDeps } from "@calimero-apps/passkey";
 
@@ -29,5 +31,29 @@ export const LISTING: ListingProps = {
  * pending invite token: on an invite-only cluster it lets a new person sign up.
  */
 export function useSession(deps: SessionDeps = defaultDeps): SessionApi {
-  return usePasskeySession(APP, deps, { package: APP_PACKAGE, invite: () => pendingInvite() });
+  return usePasskeySession(APP, deps, {
+    package: APP_PACKAGE,
+    invite: () => pendingInvite(),
+    // A sign-up from a page holding the invite joined its org in that step:
+    // nothing is left to redeem (a second redeem would spend another use).
+    onJoinedAtSignUp: ({ org }) => {
+      dropInvite();
+      if (org) announceJoined(org);
+    },
+  });
 }
+
+/** The app's words and classes for the shared sign-in and invitation screens (`@calimero-apps/passkey`). */
+export const ONBOARDING: {
+  appName: string;
+  joining: string;
+  listing: ListingProps;
+  classNames: OnboardingClassNames;
+  titleAs: "h1" | "h2" | "h3" | "div";
+} = {
+  appName: "Mero Issue Tracker",
+  joining: "the workspace",
+  listing: LISTING,
+  classNames: { text: "sub", error: "sub" },
+  titleAs: "h3",
+};

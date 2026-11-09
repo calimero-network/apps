@@ -28,6 +28,16 @@ export const LISTING: ListingProps = {
  * `invite` is the pending invite token: on an invite-only cluster it is what
  * lets a new person create an account.
  */
-export function useSession(deps: SessionDeps = defaultDeps, invite?: () => string | null): SessionApi {
-  return usePasskeySession(APP, deps, { package: PACKAGE, ...(invite ? { invite } : {}) });
+export function useSession(
+  deps: SessionDeps = defaultDeps,
+  invite?: () => string | null,
+  onJoined?: () => void,
+): SessionApi {
+  return usePasskeySession(APP, deps, {
+    package: PACKAGE,
+    ...(invite ? { invite } : {}),
+    // A sign-up from a page holding the invite joined its org in that step:
+    // `onJoined` drops it, so nothing is redeemed twice.
+    ...(onJoined ? { onJoinedAtSignUp: onJoined } : {}),
+  });
 }
