@@ -1,5 +1,12 @@
-import { CalimeroError, type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
-import { targetKey, type AppSource, type KeyValueStorage, type Target } from "@calimero-apps/connect";
+import type { AppInfo, CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
+import {
+  createInviteStore,
+  targetKey,
+  type AppSource,
+  type InviteStore,
+  type KeyValueStorage,
+  type Target,
+} from "@calimero-apps/connect";
 
 import { APP } from "./session";
 
@@ -40,66 +47,46 @@ export function inviteToken(
 }
 
 /**
- * The link that opens this frontend with `token` to redeem. It also names
- * `org`: the token does not say which org it is for until it is redeemed, and
- * redeeming spends one of its uses even for someone already in the org, so the
- * link carries it for the app to tell a member "you are already in" first.
+ * This app's pending invite (`createInviteStore` in `@calimero-apps/connect`):
+ * captured in `main.tsx` before React mounts, then bound to the cluster, held
+ * for the account that signs in with it and dropped on sign-out by the
+ * passkey session (`usePasskeySession({ invites })`).
  */
-export function inviteLink(
-  token: string,
-  location: Pick<Location, "origin" | "pathname"> = window.location,
-  org?: string,
-): string {
-  const url = new URL(location.pathname, location.origin);
-  url.searchParams.set("invite", token);
-  if (org) url.searchParams.set("org", org);
-  return url.toString();
-}
-
-const PENDING = `${APP}:pending-invite`;
-const PENDING_ORG = `${APP}:pending-invite-org`;
+export const invites: InviteStore = createInviteStore(APP);
 
 /**
- * Takes `?invite=` off the address bar into storage, before anything renders: a
- * person opening a link is usually not signed in yet, and the token must
- * survive the sign-up. Redeemed (and dropped) once a session exists.
+ * Where a minted invite link opens: this page's own path, the served
+ * `/{version}/`. `inviteLink` defaults to the origin's root, which a cluster
+ * redirects to the newest release only with core's served-redirect fix (it
+ * keeps the query); until every cluster runs it, the link stays pinned here.
  */
-export function captureInvite(storage: KeyValueStorage = localStorage, loc: Location = window.location): void {
-  const url = new URL(loc.href);
-  const token = url.searchParams.get("invite");
-  if (!token) return;
-  const org = url.searchParams.get("org");
+export const inviteRoot = (): string => window.location.pathname;
+
+/** The keys this app kept its pending invite under before the shared store. */
+const LEGACY_INVITE = [`${APP}:pending-invite`, `${APP}:pending-invite-org`] as const;
+
+/**
+ * Moves an invite stored by an older build of this app (`<app>:pending-invite`
+ * and its `-org`) into `store`, unless the store holds one already (a link
+ * opened just now wins), and forgets the old keys.
+ */
+export function migrateStoredInvite(
+  store: InviteStore,
+  storage: KeyValueStorage | undefined = globalThis.localStorage,
+): void {
+  if (!storage) return;
+  let token: string | null;
+  let org: string | null;
   try {
-    storage.setItem(PENDING, token);
-    if (org) storage.setItem(PENDING_ORG, org);
-    else storage.removeItem(PENDING_ORG);
+    token = storage.getItem(LEGACY_INVITE[0]);
+    org = storage.getItem(LEGACY_INVITE[1]);
   } catch {
     return;
   }
-  url.searchParams.delete("invite");
-  url.searchParams.delete("org");
-  window.history.replaceState(null, "", url.toString());
-}
-
-export function pendingInvite(storage: KeyValueStorage = localStorage): string | null {
-  try {
-    return storage.getItem(PENDING);
-  } catch {
-    return null;
+  if (token && !store.pending()) {
+    store.put({ token, org: org || null, team: null, doc: null, route: null, extra: {} });
   }
-}
-
-/** The org the pending invitation's link named, when it named one. */
-export function pendingInviteOrg(storage: KeyValueStorage = localStorage): string | null {
-  try {
-    return storage.getItem(PENDING_ORG);
-  } catch {
-    return null;
-  }
-}
-
-export function dropInvite(storage: KeyValueStorage = localStorage): void {
-  for (const key of [PENDING, PENDING_ORG]) {
+  for (const key of LEGACY_INVITE) {
     try {
       storage.removeItem(key);
     } catch {
@@ -109,16 +96,14 @@ export function dropInvite(storage: KeyValueStorage = localStorage): void {
 }
 
 /**
- * Whether a redemption failed because the invitation itself is spent: used,
- * expired, revoked or unknown to the node. Those answer a 4xx; a 5xx or a
- * network failure is worth retrying with the same token.
+ * The store to open in `org` (the one an invite joined, or the account was
+ * already in): `prefer` (the one opened last) when it is in `org`, else the
+ * first by name. `null` when the account reaches none there yet.
  */
-export function isSpentInvite(e: unknown): boolean {
-  return e instanceof CalimeroError && e.status >= 400 && e.status < 500 && e.status !== 401;
+export function instanceIn(apps: AppInfo[], org: string, prefer?: string | null): AppInfo | null {
+  const inOrg = apps.filter((a) => a.org === org);
+  return inOrg.find((a) => a.appId === prefer) ?? inOrg[0] ?? null;
 }
-
-/** What the invitation screen says about a spent invitation. */
-export const SPENT_INVITE = "This invite was already used or has expired. Ask the person who invited you for a new link.";
 
 /** The store last opened on this target by this account, remembered across loads. */
 export function selectionKey(target: Target, accountId: string): string {

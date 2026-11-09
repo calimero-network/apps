@@ -1,5 +1,7 @@
 import { createContext, useContext } from "react";
+import type { InviteStore, PendingInvite } from "@calimero-apps/connect";
 import {
+  type JoinedAtSignUp,
   type OnboardingClassNames,
   passkeyDeps,
   usePasskeySession,
@@ -51,20 +53,44 @@ export const INVITATION_PAGE_CLASSES: OnboardingClassNames = {
 
 /**
  * The shared passkey session (`@calimero-apps/passkey`) for this app.
- * `invite` is the pending invite token. A sign-up from a page holding one
- * joins its org in the same step (`joinAtSignUp`); the app then sees
- * `api.joinedInvite` and opens what the invite was for.
+ * `invites` is the app's pending-invite store: a sign-up from a page holding
+ * one joins its org in the same step, `onJoined` is told which org (and the
+ * whole pending invite, with the arena its link names), and the hook then
+ * drops it. The hook also binds the store to the cluster and drops the invite
+ * on sign-out.
  */
 export function useSession(
   deps: SessionDeps = defaultDeps,
-  invite?: () => string | null,
-  joinAtSignUp = false,
+  invites?: InviteStore,
+  onJoined?: (joined: JoinedAtSignUp, pending: PendingInvite | null) => void,
 ): SessionApi {
   return usePasskeySession(APP, deps, {
     package: PACKAGE,
-    ...(invite ? { invite } : {}),
-    ...(joinAtSignUp ? { onJoinedAtSignUp: () => {} } : {}),
+    ...(invites ? { invites } : {}),
+    ...(onJoined ? { onJoinedAtSignUp: onJoined } : {}),
   });
+}
+
+/** Where an invitation lands once it is redeemed: its org, and the arena its link named. */
+export interface InviteLanding {
+  org: string | null;
+  arena: string | null;
+}
+
+/** The pending-invite store, and where a join lands, for every screen (`SessionProvider`). */
+export interface InviteState {
+  invites: InviteStore;
+  landing: InviteLanding | null;
+  setLanding: (landing: InviteLanding | null) => void;
+}
+
+export const InviteContext = createContext<InviteState | null>(null);
+
+/** The invite state the app was mounted with. */
+export function useInviteState(): InviteState {
+  const state = useContext(InviteContext);
+  if (!state) throw new Error("useInviteState() outside <SessionProvider>");
+  return state;
 }
 
 /** The session `SessionProvider` (SessionProvider.tsx) holds, for every screen. */

@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AppInfo } from "@calimero-network/mero-js";
-import { appSource, describeError, type KeyValueStorage } from "@calimero-apps/connect";
-import { AppListing, PasskeySignIn, InvitationSignIn, JoinInvitation } from "@calimero-apps/passkey";
+import {
+  appSource,
+  askAnOwnerCopy,
+  canCreateIn,
+  describeError,
+  type InviteStore,
+  type KeyValueStorage,
+  type PendingInvite,
+} from "@calimero-apps/connect";
+import { AppListing, PasskeySignIn, InvitationSignIn, JoinInvitation, usePendingInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 import { DecisionLog, type DecisionDraft } from "./DecisionLog";
 import { InviteCard } from "./InviteCard";
@@ -10,7 +18,7 @@ import { ONBOARDING, LISTING, defaultDeps, describeTarget, useSession, type Sess
 import { StandupBoard } from "./StandupBoard";
 import { PACKAGE } from "./standup";
 import { TeamPicker } from "./TeamPicker";
-import { pendingInvite, selectionKey, dropInvite, isSpentInvite, pendingInviteOrg } from "./teams";
+import { instanceIn, invites as appInvites, listTeams, selectionKey } from "./teams";
 import { Avatar, Icon, useTheme, type Theme } from "./ui";
 import { useRead, useTeam, type Team, type TeamTransport } from "./useTeam";
 import { WeekDigest } from "./WeekDigest";
@@ -41,24 +49,22 @@ function readSelection(storage: KeyValueStorage, key: string): Opened | null {
 export function App({
   deps = defaultDeps,
   storage = globalThis.localStorage,
+  invites = appInvites,
 }: {
   deps?: SessionDeps;
   storage?: KeyValueStorage;
+  /** The pending-invite store; the module's own unless a test passes one. */
+  invites?: InviteStore;
 }) {
   // Memoised: a new object every render would reconnect every render.
   const sessionDeps = useMemo(
     () => (storage === deps.storage || !storage ? deps : { ...deps, storage }),
     [deps, storage],
   );
-  const api = useSession(
-    sessionDeps,
-    () => pendingInvite(storage),
-    // Signed up with the invite: the account is in its org already.
-    () => {
-      dropInvite(storage);
-      setInvite(null);
-      setNotice("Invitation accepted: the team is in your list.");
-    },
+  // Signed up with the invite: the account is in its org already, which
+  // opens once the session is signed in.
+  const api = useSession(sessionDeps, invites, (joined, pending) =>
+    setLanding({ org: joined.org ?? pending?.org ?? null }),
   );
   const { session, store } = api;
   const source = useMemo(() => appSource(deps.env, PACKAGE), [deps.env]);
@@ -93,12 +99,44 @@ export function App({
   );
 
   // An invitation link opened before signing in: a page of its own while it
-  // is pending (see `Invitation.tsx`), redeemed only on "Join".
-  const [invite, setInvite] = useState<string | null>(() => pendingInvite(storage));
+  // is pending (`InvitationSignIn`), redeemed only on "Join" (`JoinInvitation`).
+  // The store drops it once joined, refused or declined, and on sign-out.
+  const pending = usePendingInvite(invites);
+  const invite = pending?.token ?? null;
   const [inviteLater, setInviteLater] = useState(false);
+  // The invitation a signed-in account is asked about stays on screen until it
+  // closes: `JoinInvitation` drops the token before it says "already in" or
+  // "used up", and the store would take the page away with it.
+  const [asked, setAsked] = useState<PendingInvite | null>(null);
   useEffect(() => {
-    if (client) setInvite(pendingInvite(storage));
-  }, [client, storage]);
+    if (!client) setAsked(null);
+    else if (pending) setAsked(pending);
+  }, [client, pending]);
+  const asking = client ? (pending ?? asked) : null;
+
+  // The org an invite joined (or the account was already in): its team opens
+  // once there is a client to list it with. `org: null` when nothing said which.
+  const [landing, setLanding] = useState<{ org: string | null } | null>(null);
+  useEffect(() => {
+    if (!client || !landing) return;
+    setLanding(null);
+    const { org } = landing;
+    void (async () => {
+      setPickerKey((k) => k + 1);
+      const remembered = key ? readSelection(storage, key)?.appId : null;
+      const found = org ? instanceIn(await listTeams(client, source).catch(() => []), org, remembered) : null;
+      after();
+      if (found) {
+        open(found);
+        setNotice(null);
+        return;
+      }
+      open(null);
+      // In the org, but with no team there to open: say who may add one.
+      const may = org ? await canCreateIn(client, org) : null;
+      setNotice(may === false ? askAnOwnerCopy("a team") : "Invitation accepted: the team is in your list.");
+    })();
+  }, [client, landing, source, key, storage, after, open]);
 
   if (session.status === "connecting") {
     return (
@@ -144,24 +182,25 @@ export function App({
     void api.signOut();
   };
 
-  if (invite) {
+  if (asking) {
     return (
       <Shell right={<Menu theme={theme} setTheme={setTheme} onLogout={signOut} />}>
         <JoinInvitation
           {...ONBOARDING}
           client={session.client}
-          token={invite}
-          org={pendingInviteOrg(storage)}
-          drop={() => dropInvite(storage)}
-          isSpent={isSpentInvite}
+          key={asking.token}
+          token={asking.token}
+          org={asking.org}
+          drop={invites.drop}
           after={after}
-          onJoined={() => {
-            setInvite(null);
-            setNotice("Invitation accepted: the team is in your list.");
-            setPickerKey((k) => k + 1);
-            open(null);
+          onJoined={({ org }) => {
+            setAsked(null);
+            setLanding({ org });
           }}
-          onClose={() => setInvite(null)}
+          onClose={({ member }) => {
+            setAsked(null);
+            if (member) setLanding({ org: member });
+          }}
         />
       </Shell>
     );

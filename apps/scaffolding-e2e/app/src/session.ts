@@ -1,4 +1,6 @@
+import type { InviteStore, PendingInvite } from "@calimero-apps/connect";
 import {
+  type JoinedAtSignUp,
   type OnboardingClassNames,
   passkeyDeps,
   usePasskeySession,
@@ -41,17 +43,19 @@ export const ONBOARDING: {
 
 /**
  * The shared passkey session (`@calimero-apps/passkey`) for this app.
- * `invite` is the pending invite token: a sign-up from a page holding one
- * joins its org in the same step, and `onJoined` then drops it.
+ * `invites` is the app's pending-invite store: a sign-up from a page holding
+ * one joins its org in the same step, `onJoined` is told which org (and the
+ * whole pending invite), and the hook then drops it. The hook also binds the
+ * store to the cluster and drops the invite on sign-out.
  */
 export function useSession(
   deps: SessionDeps = defaultDeps,
-  invite?: () => string | null,
-  onJoined?: () => void,
+  invites?: InviteStore,
+  onJoined?: (joined: JoinedAtSignUp, pending: PendingInvite | null) => void,
 ): SessionApi {
   return usePasskeySession(APP, deps, {
     package: PACKAGE,
-    ...(invite ? { invite } : {}),
+    ...(invites ? { invites } : {}),
     ...(onJoined ? { onJoinedAtSignUp: onJoined } : {}),
   });
 }

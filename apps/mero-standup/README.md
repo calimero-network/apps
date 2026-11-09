@@ -142,7 +142,9 @@ The frontend keeps every screen; what changed underneath:
   `listApps` by the dev bundle (dev) or the package (production).
 - Invites are org invites: `client.invite(org, "member", passkey)` (a passkey
   step-up), shared as `?invite=<token>`, kept across sign-up and redeemed once a
-  session exists.
+  session exists. The pending invite is `@calimero-apps/connect`'s shared store
+  (`createInviteStore`, captured in `main.tsx`): joining, or being in the org
+  already, opens that org's team, and signing out drops the invite.
 - The generated `StandupClient` (abi-codegen) is replaced by a typed wrapper
   (`standup.ts`) over `client.call` / `client.view` that keeps the screens'
   shapes (snake_case, numeric timestamps) and converts in one place.

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
-import { describeError } from "@calimero-apps/connect";
-import { inviteLink, inviteToken } from "./teams";
+import { describeError, inviteLink } from "@calimero-apps/connect";
+import { inviteRoot, inviteToken } from "./teams";
 
 /**
  * Mint a link that makes whoever opens it a member of this team's
@@ -29,7 +29,7 @@ export function InviteCard({
     setFailed(null);
     setCopied(false);
     try {
-      setLink(inviteLink(await inviteToken(client, org, passkey()), window.location, org));
+      setLink(inviteLink(await inviteToken(client, org, passkey()), { org, root: inviteRoot() }));
     } catch (e) {
       setFailed(describeError(e));
     } finally {
