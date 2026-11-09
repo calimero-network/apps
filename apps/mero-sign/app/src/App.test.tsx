@@ -175,6 +175,17 @@ describe('App', () => {
     expect(screen.getByText(/1 agreement/)).toBeTruthy();
   });
 
+  it('tells a member who may not add an agreement to ask an owner, instead of offering Create (B8)', async () => {
+    remember();
+    window.history.replaceState(null, '', '/workspaces/org-1');
+    const client = fakeClient();
+    // A member whose workspace defaults were never set (the step-up refused): no CREATE_APP.
+    client.getOrg.mockResolvedValue({ name: 'Acme Legal', members: { [ME]: 'member', 'acct-bob': 'owner' } });
+    render(<App deps={deps(client)} />);
+    expect((await screen.findByTestId('create-agreement-ask')).textContent).toMatch(/Only an owner or admin/);
+    expect(screen.queryByTestId('create-agreement')).toBeNull();
+  });
+
   it('lists a workspace’s agreements and creates one: the instance in the org, then its setup', async () => {
     remember();
     window.history.replaceState(null, '', '/workspaces/org-1');
