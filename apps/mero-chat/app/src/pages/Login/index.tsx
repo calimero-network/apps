@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useSyncExternalStore } from "react";
 import { useCalimero } from "../../api/calimero";
 import { clearStoredSession, clearNamespaceReady } from "../../utils/session";
 import {
@@ -6,7 +6,9 @@ import {
   INVITATION_STORAGE_KEY,
   deferInvite,
   inviteDeferred,
+  invitationInFlight,
   pendingInvite,
+  subscribeInvite,
 } from "../../utils/invitation";
 import { useNavigate } from "react-router-dom";
 // The shared landing template (generated — scripts/landing), the same page
@@ -54,6 +56,11 @@ export function clearStorageForConnect(): void {
 export default function Login({ isAuthenticated, isConfigSet }: LoginProps) {
   const { logout } = useCalimero();
   const navigate = useNavigate();
+  // An opened invitation is offered first (`InvitationPrompt`, above the
+  // routes): the picker, a full-screen overlay, would cover it with "Create
+  // workspace". It comes up once the invitation is joined, refused (and said),
+  // or turned down.
+  const inviting = useSyncExternalStore(subscribeInvite, invitationInFlight, invitationInFlight);
 
   const handleLogout = async () => {
     clearStoredSession();
@@ -70,15 +77,18 @@ export default function Login({ isAuthenticated, isConfigSet }: LoginProps) {
     return <UnauthenticatedLanding />;
   }
 
-  // Connected — the workspace picker (its own fixed overlay) over the landing.
+  // Connected — the workspace picker (its own fixed overlay) over the landing,
+  // unless an invitation is being offered.
   return (
     <>
       <LandingPage isAuthenticated />
-      <NamespaceEntryPopup
-        isAuthenticated={isAuthenticated}
-        isConfigSet={isConfigSet}
-        onLogout={() => void handleLogout()}
-      />
+      {!inviting && (
+        <NamespaceEntryPopup
+          isAuthenticated={isAuthenticated}
+          isConfigSet={isConfigSet}
+          onLogout={() => void handleLogout()}
+        />
+      )}
     </>
   );
 }

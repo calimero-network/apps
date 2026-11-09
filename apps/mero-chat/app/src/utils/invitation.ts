@@ -24,6 +24,45 @@ export const INVITATION_ORG_STORAGE_KEY = "mero-chat:pending-invite-org";
 /** "Not now" on the invitation page, for the rest of this tab. */
 const DEFERRED_KEY = "mero-chat:invite-deferred";
 
+// ── Whether an invitation is still being offered ────────────────────────────
+//
+// ⚠️ The workspace picker (`NamespaceEntryPopup`, a full-screen overlay above
+// every modal) must wait while an invitation is pending or its prompt is open.
+// It used to render beside `InvitationPrompt` after sign-in and cover it, so a
+// person who opened an invite link and signed in saw "Create workspace" (or
+// their other workspaces) instead of the invitation's Join.
+
+const inviteListeners = new Set<() => void>();
+let promptOpen = false;
+
+function inviteChanged(): void {
+  for (const l of inviteListeners) l();
+}
+
+/** For `useSyncExternalStore`: called when the pending invitation or its prompt changes. */
+export function subscribeInvite(listener: () => void): () => void {
+  inviteListeners.add(listener);
+  return () => {
+    inviteListeners.delete(listener);
+  };
+}
+
+/** `InvitationPrompt` says whether it is on screen (Join, a refusal, "already a member"). */
+export function setInvitePromptOpen(open: boolean): void {
+  if (promptOpen === open) return;
+  promptOpen = open;
+  inviteChanged();
+}
+
+/**
+ * Whether an invitation is still being offered: a token waits, or its prompt
+ * is showing (a refused token is dropped but its prompt stays until closed, to
+ * say so). The workspace picker waits until this is false.
+ */
+export function invitationInFlight(): boolean {
+  return promptOpen || pendingInvite() !== null;
+}
+
 /**
  * The link that opens this frontend with `token` to redeem.
  *
@@ -102,6 +141,7 @@ export function dropInvite(storage: Pick<Storage, "removeItem"> = localStorage):
     /* nothing stored */
   }
   dropDeferral();
+  inviteChanged();
 }
 
 /**
