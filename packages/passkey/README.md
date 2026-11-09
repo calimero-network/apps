@@ -31,13 +31,36 @@ account, nothing to install, no permissions to grant.
   asked right after the first, and waits for the person's click
   (`api.approve()`, `api.stage`) only when that ask failed or was refused.
 - With `onJoinedAtSignUp` the invite goes with every sign-up the policy lets
-  it, so the new account joins in that one step; the app drops its pending
-  invite there (redeeming it again would spend another use). Without it, the
-  token goes with a sign-up only on an `invite` cluster, as before.
+  it, so the new account joins in that one step. The callback gets what the
+  sign-up joined (`{ invite, org }`, `org` from the node's answer when it says
+  it, else the new account's only org) and the whole pending invite (org,
+  team, doc, route, the app's own parameters), so the app opens what the link
+  pointed at. Without it, the token goes with a sign-up only on an `invite`
+  cluster, as before.
+- Pass the app's invite store (`invites: createInviteStore(...)` from
+  `@calimero-apps/connect`) and the hook does the rest: the token is its
+  `invite`, the store is bound to the cluster, and the invite is dropped
+  after a sign-up joined with it, on sign-out, and when another account signs
+  in. `usePendingInvite(invites)` re-renders on its changes.
+- A sign-up refused because of its invite (unknown, used up, expired, its org
+  gone) drops the token, never sends it again (also when the app keeps
+  handing it over), sets `api.inviteRefused` (`{ reason, token, passkeyMade }`)
+  and calls `onInviteRefused`. The error says why, and on a cluster that takes
+  accounts without an invite, that the account can still be made without it;
+  the control then offers "Create your account without the invite"
+  (`signup-without-invite`). The node judges the invite at `register/begin`,
+  before the browser makes a passkey, so no passkey is left behind; only when
+  the invite went bad between the two halves (`passkeyMade: true`) does the
+  error say the new passkey has no account.
 - `<SignInPanel>`, `<InvitationSignIn>` and `<JoinInvitation>` are the screens
   around the control (title and copy, the cluster's state, "Not now", "Join
   {joining}?", already a member, a spent invite). They take the app's class
   names per slot (`OnboardingClassNames`), so each app keeps its look.
+  `<JoinInvitation>` reports where to go: `onJoined({ org })` (the org the
+  redemption joined, else the one the link named) and `onClose({ member })`
+  (the org the account was already in; `null` for "Not now" or a spent
+  invite). `isSpent` defaults to `isSpentInvite`, so a lapsed session, a rate
+  limit or a network failure keeps the token and says to try again.
 - The hook reads the cluster's sign-up policy once it connects
   (`readSignUpPolicy`, `api.signUpAccess`). On a `closed` cluster, or an
   `invite` one when the page holds no invite token (pass

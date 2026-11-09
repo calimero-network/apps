@@ -24,6 +24,7 @@ export type PasskeySignInApi = Pick<SessionApi, "busy" | "error" | "signIn" | "s
       | "cancelSignUp"
       | "hasInvite"
       | "knownAccount"
+      | "inviteRefused"
     >
   >;
 
@@ -122,7 +123,8 @@ function Spinner() {
  * Errors are said in plain words with the next step; a dismissed prompt is a
  * quiet cancel. Themed by `--passkey-*` tokens, which fall back to glass.
  * Test ids: `signin-passkey`, `signup-passkey`, `signup-approve`,
- * `signup-here`, `signup-unavailable`, `signin-error`, `signin-switched`.
+ * `signup-here`, `signup-unavailable`, `signin-error`, `signin-switched`,
+ * `signup-without-invite` (after a sign-up refused for its invite).
  */
 export function PasskeySignIn({ api, joining, invited, askName = false, hint, className }: PasskeySignInProps) {
   const [running, setRunning] = useState<"in" | "up" | null>(null);
@@ -136,7 +138,8 @@ export function PasskeySignIn({ api, joining, invited, askName = false, hint, cl
   // only with no invite in hand): the create button stays, disabled, with it.
   const notice = signUpNotice(api.signUpAccess ?? "unknown");
   const canSignUp = notice === null;
-  const isInvited = invited ?? api.hasInvite ?? false;
+  // A refused invite is no invite: the sign-up goes without it.
+  const isInvited = (invited ?? api.hasInvite ?? false) && !api.inviteRefused;
   const stage = api.stage ?? null;
   const noAccount = api.noAccountHere ?? false;
 
@@ -352,6 +355,18 @@ export function PasskeySignIn({ api, joining, invited, askName = false, hint, cl
       </p>
 
       {errorLine}
+      {api.inviteRefused && canSignUp && (
+        <button
+          type="button"
+          className="cp-passkey__secondary"
+          data-testid="signup-without-invite"
+          disabled={api.busy}
+          onClick={create}
+        >
+          <PlusIcon />
+          <span>Create your account without the invite</span>
+        </button>
+      )}
       {api.error && api.passkeyUnknown && canSignUp && (
         <button
           type="button"

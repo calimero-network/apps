@@ -142,7 +142,8 @@ describe("an invite link, no account here", () => {
     expect(await screen.findByTestId("status")).toBeTruthy();
     expect(client.signIn).not.toHaveBeenCalled();
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-1" });
-    expect(onJoined).toHaveBeenCalledWith({ invite: "tok-1", org: "org-joined" });
+    // No invite store: the pending invite is the app's to read (`null`).
+    expect(onJoined).toHaveBeenCalledWith({ invite: "tok-1", org: "org-joined" }, null);
   });
 
   it("on an invite-only cluster the invite goes with the sign-up even without a join handler", async () => {

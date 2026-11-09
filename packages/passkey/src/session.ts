@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   browserPasskey,
   type CalimeroClient,
@@ -11,9 +11,13 @@ import {
   NotServedError,
   connectTarget,
   describeError,
+  inviteRefusal,
   readSignUpPolicy,
   signUpAccess,
   type ConnectEnv,
+  type InviteRefusal,
+  type InviteStore,
+  type PendingInvite,
   type SignUpAccess,
   type KeyValueStorage,
   type Target,
@@ -32,7 +36,10 @@ import {
   type JoinedAtSignUp,
 } from "./ceremony";
 
+import { describeInviteRefused, type InviteRefused } from "./inviteRefused";
+
 export { accountHintKey, knownPasskeysKey, type JoinedAtSignUp } from "./ceremony";
+export { describeInviteRefused, type InviteRefused } from "./inviteRefused";
 
 export type Session =
   | { status: "connecting" }
@@ -111,6 +118,12 @@ export interface SessionApi {
   knownAccount?: boolean;
   /** The invite token a sign-up from this page spent to join, once it has. */
   joinedInvite?: string | null;
+  /**
+   * The page's invite was refused at a sign-up (unknown, used up, expired,
+   * its org gone): the token is no longer sent, and a sign-up now creates the
+   * account without it. `null` until that happens.
+   */
+  inviteRefused?: InviteRefused | null;
   signOut(): Promise<void>;
 }
 
@@ -135,14 +148,31 @@ export interface PasskeySessionOptions {
    */
   invite?: () => string | null;
   /**
+   * The app's pending-invite store (`createInviteStore` in
+   * `@calimero-apps/connect`). With it, `invite` defaults to its token, and
+   * the hook binds it to the cluster it connects to, drops it on sign-out and
+   * when another account signs in, drops it when a sign-up refuses it, and
+   * after a sign-up joined with it (handing `onJoinedAtSignUp` the whole
+   * pending invite first).
+   */
+  invites?: InviteStore;
+  /**
+   * Called when a sign-up was refused because of its invite (unknown, used
+   * up, expired, its org gone). The hook stops sending that token either
+   * way; an app without `invites` drops its own copy here.
+   */
+  onInviteRefused?: (refused: InviteRefused) => void;
+  /**
    * Called once a sign-up made with the page's invite has joined its
-   * organization, before the session is signed in: the app drops its pending
-   * invite (there is nothing left to redeem; redeeming again would spend
-   * another use) and may open what the invite was for. Without it, the token
+   * organization, before the session is signed in, with the whole pending
+   * invite (`invites`' record; `null` without a store): the app opens what
+   * the link pointed at. Nothing is left to redeem (redeeming again would
+   * spend another use): the hook drops the store's invite after this call,
+   * and an app without a store drops its own here. Without it, the token
    * goes with a sign-up only where the cluster requires one, and the app
    * redeems it after.
    */
-  onJoinedAtSignUp?: (joined: JoinedAtSignUp) => void;
+  onJoinedAtSignUp?: (joined: JoinedAtSignUp, pending: PendingInvite | null) => void;
   /**
    * Whether a sign-up goes through {@link signUpFlow}: its second prompt is
    * asked right away, and waits at `approve` for a click when that ask
@@ -159,7 +189,8 @@ export interface PasskeySessionOptions {
  * with a passkey.
  */
 export function usePasskeySession(app: string, deps: SessionDeps, options: PasskeySessionOptions = {}): SessionApi {
-  const { package: pkg, invite, onJoinedAtSignUp, approveWithClick = true } = options;
+  const { package: pkg, invites, onInviteRefused, onJoinedAtSignUp, approveWithClick = true } = options;
+  const invite = options.invite ?? invites?.token;
   const [session, setSession] = useState<Session>({ status: "connecting" });
   const [store, setStore] = useState<SessionStore | null>(null);
   // The failed ceremony's error, described at render time so the words follow
@@ -231,7 +262,24 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
     };
   }, [signedOutClient]);
 
-  const inviteToken = invite?.() ?? null;
+  // Re-render on every change of the store (a capture, a drop, another tab).
+  useSyncExternalStore(invites?.subscribe ?? noSubscribe, invites?.token ?? noToken);
+  const [inviteRefused, setInviteRefused] = useState<InviteRefused | null>(null);
+  const refusedRef = useRef(onInviteRefused);
+  refusedRef.current = onInviteRefused;
+  const pageToken = invite?.() ?? null;
+  // A token the node refused is never sent again, whether or not the app dropped it.
+  const inviteToken = pageToken !== null && pageToken === inviteRefused?.token ? null : pageToken;
+
+  // The store is kept per cluster, and for the account signed in with it pending.
+  const boundTarget = session.status === "signed-out" || session.status === "signed-in" ? session.target : null;
+  const signedInAccount = session.status === "signed-in" ? session.accountId : null;
+  useEffect(() => {
+    if (boundTarget) invites?.bind(boundTarget);
+  }, [invites, boundTarget]);
+  useEffect(() => {
+    if (signedInAccount) invites?.signedIn(signedInAccount);
+  }, [invites, signedInAccount]);
   const access = signUpAccess(policy, inviteToken !== null);
 
   const ceremony = useCallback(
@@ -290,23 +338,39 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
         "sign-up",
         async (c, target) => {
           const passkey = flow ? flow.passkey : passkeyHere(deps.passkey(), target, hintStorage);
-          const made = await signUpHere(c, target, passkey, {
-            name,
-            invite: inviteToken,
-            policy,
-            join,
-            storage: hintStorage,
-          });
+          const pending = invites?.pending() ?? null;
+          let made: Awaited<ReturnType<typeof signUpHere>>;
+          try {
+            made = await signUpHere(c, target, passkey, {
+              name,
+              invite: inviteToken,
+              policy,
+              join,
+              storage: hintStorage,
+            });
+          } catch (e) {
+            // Refused for its invite: drop it, say why, and let the next
+            // sign-up go without it, never again with the dead token.
+            const reason: InviteRefusal | null = inviteToken !== null ? inviteRefusal(e) : null;
+            if (reason && inviteToken !== null) {
+              const refused: InviteRefused = { reason, token: inviteToken, passkeyMade: flow ? flow.created : null };
+              setInviteRefused(refused);
+              if (invites?.token() === inviteToken) invites.drop();
+              refusedRef.current?.(refused);
+            }
+            throw e;
+          }
           if (made.joined && joined.current) {
             setJoinedInvite(made.joined.invite);
-            joined.current(made.joined);
+            joined.current(made.joined, pending);
+            if (invites?.token() === made.joined.invite) invites.drop();
           }
           return made;
         },
         flow,
       );
     },
-    [ceremony, deps, signedOutTarget, hintStorage, inviteToken, policy, join, approveWithClick],
+    [ceremony, deps, signedOutTarget, hintStorage, inviteToken, policy, join, approveWithClick, invites],
   );
 
   const approve = useCallback(() => flowRef.current?.approve(), []);
@@ -322,6 +386,8 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
     if (session.status !== "signed-in") return;
     const { client, target } = session;
     store?.clear();
+    // The next person on this browser is not asked to join.
+    invites?.signedOut();
     setFailure(null);
     setSession({ status: "signed-out", client, target });
     const logout = client.signOut().catch(() => {
@@ -333,12 +399,16 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
     } finally {
       if (loggingOut.current === logout) loggingOut.current = null;
     }
-  }, [session, store]);
+  }, [session, store, invites]);
 
   // A dismissed prompt is a quiet cancel, except a sign-up's approval: the
   // passkey is made by then, the account is not, and the person has to know.
   // A refused approval keeps the sign-up waiting at Approve, with why.
-  const error = describeCeremonyFailure(failure, access, flowView.confirmFailure);
+  const failed = describeCeremonyFailure(failure, access, flowView.confirmFailure);
+  const error =
+    failed !== null && inviteRefused && failure?.during === "sign-up" && inviteRefusal(failure.error)
+      ? describeInviteRefused(inviteRefused, access)
+      : failed;
   const passkeyUnknown = passkeyUnknownAfter(failure);
   const noAccountHere = noAccountHereAfter(failure);
 
@@ -362,6 +432,7 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
       hasInvite: inviteToken !== null,
       knownAccount,
       joinedInvite,
+      inviteRefused,
     }),
     [
       session,
@@ -381,8 +452,17 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
       inviteToken,
       knownAccount,
       joinedInvite,
+      inviteRefused,
     ],
   );
+}
+
+const noSubscribe = () => () => {};
+const noToken = () => null;
+
+/** The app's pending invite, re-rendering on every change (a capture, a drop, another tab). */
+export function usePendingInvite(invites: InviteStore): PendingInvite | null {
+  return useSyncExternalStore(invites.subscribe, invites.pending);
 }
 
 /** "merod local (3 nodes)" / "Calimero Cloud eu-shared-1". */

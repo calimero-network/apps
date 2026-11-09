@@ -87,6 +87,21 @@ describe("the shared ceremony", () => {
     expect(made).toEqual({ accountId: "acct-new", joined: { invite: "tok", org: "org-1" } });
   });
 
+  it("takes the joined org from the sign-up's answer when the node says it, and asks me() only when not (B4)", async () => {
+    const client = {
+      signUp: vi.fn(async () => ({ accountId: "acct-new", org: "org-said" })),
+      me: vi.fn(async () => ({ orgs: [{ orgId: "org-1" }, { orgId: "org-2" }] })),
+    };
+    const made = await signUpHere(client as unknown as CalimeroClient, TARGET, pk(), {
+      invite: "tok",
+      policy: policy("open"),
+      join: true,
+      storage: memory(),
+    });
+    expect(made.joined).toEqual({ invite: "tok", org: "org-said" });
+    expect(client.me).not.toHaveBeenCalled();
+  });
+
   it("an unknown passkey, or a prompt closed with none chosen, is no account here", () => {
     const unknown = new CalimeroError(401, "PASSKEY_UNKNOWN_HERE", "unknown passkey");
     const closed = Object.assign(new Error("closed"), { name: "NotAllowedError" });

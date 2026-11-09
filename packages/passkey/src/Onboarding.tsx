@@ -1,6 +1,12 @@
 import { useEffect, useState, type ReactNode } from "react";
 import type { CalimeroClient } from "@calimero-network/mero-js";
-import { describeError } from "@calimero-apps/connect";
+import {
+  SPENT_INVITE_COPY,
+  describeRedeemFailure,
+  isSpentInvite,
+  joinedOrg,
+  memberOf,
+} from "@calimero-apps/connect";
 
 import { AppListing } from "./AppListing";
 import type { ListingProps } from "./listing";
@@ -114,7 +120,8 @@ export function SignInPanel({
   askName,
   children,
 }: SignInPanelProps) {
-  const isInvited = invited ?? api.hasInvite ?? false;
+  // A refused invite is no invite any more (the session no longer sends it).
+  const isInvited = (invited ?? api.hasInvite ?? false) && !api.inviteRefused;
   const { session } = api;
   const where = session.status === "signed-out" || session.status === "signed-in" ? describeTarget(session.target) : null;
   const heading = (
@@ -205,9 +212,18 @@ export function InvitationSignIn({ api, appName, joining, listing, onLater, clas
   );
 }
 
-/** What the invitation screens say once an invite cannot be used. */
-export const SPENT_INVITE_COPY =
-  "This invite was already used or has expired. Ask the person who invited you for a new link.";
+/** What the invitation screens say once an invite cannot be used (now from `@calimero-apps/connect`). */
+export { SPENT_INVITE_COPY };
+
+/** What `JoinInvitation` reports once joined: the org the redemption joined, else the one the link named. */
+export interface JoinedInvitation {
+  org: string | null;
+}
+
+/** How `JoinInvitation` closed: `member` is the org the account was already in, `null` for "Not now" or a spent invite. */
+export interface InvitationClosed {
+  member: string | null;
+}
 
 export interface JoinInvitationProps {
   client: Pick<CalimeroClient, "me" | "redeemInvite">;
@@ -221,14 +237,18 @@ export interface JoinInvitationProps {
   gives?: string;
   /** Forget the pending invite. */
   drop: () => void;
-  /** Whether a failed redemption means the invite is spent (used, expired, revoked, unknown). */
-  isSpent: (error: unknown) => boolean;
+  /**
+   * Whether a failed redemption means the invite is spent (used, expired,
+   * revoked, unknown). Default `isSpentInvite`: only the node's word that it
+   * is; a lapsed session, a rate limit or a network failure keeps the token.
+   */
+  isSpent?: (error: unknown) => boolean;
   /** After any request: the app keeps its stored session in step. */
   after: () => void;
-  /** Redeemed: what the invite was for is the account's now. */
-  onJoined: () => void;
-  /** Nothing (more) to accept: back to the usual page. */
-  onClose: () => void;
+  /** Redeemed: what the invite was for is the account's now; open `org`. */
+  onJoined: (joined: JoinedInvitation) => void;
+  /** Nothing (more) to accept: back to the usual page, or into `member`, the org the account was already in. */
+  onClose: (closed: InvitationClosed) => void;
   classNames?: OnboardingClassNames;
   titleAs?: Heading;
 }
@@ -250,7 +270,7 @@ export function JoinInvitation({
   joining,
   gives,
   drop,
-  isSpent,
+  isSpent = isSpentInvite,
   after,
   onJoined,
   onClose,
@@ -265,19 +285,15 @@ export function JoinInvitation({
   useEffect(() => {
     if (!org) return;
     let live = true;
-    Promise.resolve()
-      .then(() => client.me())
-      .then((me) => {
-        const orgs = (me as { orgs?: Array<{ orgId: string }> }).orgs ?? [];
-        if (!live || !orgs.some((o) => o.orgId === org)) return;
+    // Unknown membership (`null`): ask, as for a link that names no org.
+    void memberOf(client, org).then((member) => {
+      if (!live) return;
+      if (member) {
         drop();
         setOutcome("member");
-      })
-      // Unknown membership: ask, as for a link that names no org.
-      .catch(() => {})
-      .finally(() => {
-        if (live) setChecking(false);
-      });
+      }
+      setChecking(false);
+    });
     return () => {
       live = false;
     };
@@ -289,16 +305,16 @@ export function JoinInvitation({
     setBusy(true);
     setError(null);
     try {
-      await client.redeemInvite(token);
+      const redeemed = await client.redeemInvite(token);
       drop();
-      onJoined();
+      onJoined({ org: joinedOrg(redeemed) ?? org });
     } catch (e) {
       if (isSpent(e)) {
         drop();
         setOutcome("spent");
       } else {
-        // The cluster unreachable, say: the token is kept to try again.
-        setError(`The invitation could not be accepted: ${describeError(e)}. Check your connection and try again.`);
+        // A lapsed session, a rate limit, the cluster unreachable: the token is kept to try again.
+        setError(describeRedeemFailure(e));
       }
     } finally {
       setBusy(false);
@@ -318,7 +334,12 @@ export function JoinInvitation({
             : SPENT_INVITE_COPY}
         </p>
         <div className={classNames.actions}>
-          <button type="button" className={classNames.primary} onClick={onClose} data-testid="invitation-continue">
+          <button
+            type="button"
+            className={classNames.primary}
+            onClick={() => onClose({ member: outcome === "member" ? org : null })}
+            data-testid="invitation-continue"
+          >
             Continue
           </button>
         </div>
@@ -355,7 +376,7 @@ export function JoinInvitation({
           className={classNames.secondary}
           onClick={() => {
             drop();
-            onClose();
+            onClose({ member: null });
           }}
           disabled={busy}
           data-testid="invitation-dismiss"
