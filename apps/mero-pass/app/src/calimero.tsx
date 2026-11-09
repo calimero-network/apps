@@ -12,6 +12,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -145,6 +146,8 @@ export function CalimeroProvider({
   const [failure, setFailure] = useState<{ error: unknown } | null>(null);
   /** The cluster's sign-up policy: `undefined` until read, `null` when it cannot be. */
   const [policy, setPolicy] = useState<SignUpPolicy | null | undefined>(undefined);
+  /** The `/auth/logout` still in flight, which the next ceremony waits for. */
+  const loggingOut = useRef<Promise<void> | null>(null);
   const [busy, setBusy] = useState(false);
   const source = useMemo(() => appSource(deps.env, PACKAGE), [deps.env]);
 
@@ -202,6 +205,9 @@ export function CalimeroProvider({
       setBusy(true);
       setFailure(null);
       try {
+        // mero-js forgets the session when `/auth/logout` returns, so a sign-in
+        // that finished first would be wiped by the sign-out before it.
+        await loggingOut.current;
         const { accountId } = await run(state.client);
         store?.sync(state.client);
         setState({
@@ -233,19 +239,23 @@ export function CalimeroProvider({
       ),
     [ceremony, deps, invited],
   );
+  // Signed out first, then `/auth/logout`: the other way round, screens kept
+  // seeing "signed-in" while the node had already revoked the session, and
+  // their `/auth/me` calls got 401s (as in @calimero-apps/passkey).
   const signOut = useCallback(async () => {
     if (state.status !== 'signed-in') return;
-    try {
-      await state.client.signOut();
-    } catch {
-      // Already expired or unreachable: forgetting it here is what matters.
-    }
+    const { client, target } = state;
     store?.clear();
-    setState({
-      status: 'signed-out',
-      client: state.client,
-      target: state.target,
+    setState({ status: 'signed-out', client, target });
+    const logout = client.signOut().catch(() => {
+      // Already expired or unreachable: forgetting it here is what matters.
     });
+    loggingOut.current = logout;
+    try {
+      await logout;
+    } finally {
+      if (loggingOut.current === logout) loggingOut.current = null;
+    }
   }, [state, store]);
 
   const client =

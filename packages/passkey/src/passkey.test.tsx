@@ -77,6 +77,47 @@ describe("usePasskeySession", () => {
     expect(result.current.session.status).toBe("signed-out");
   });
 
+  it("is signed out before /auth/logout returns, and a sign-in right after waits for it", async () => {
+    let finishLogout!: () => void;
+    const client = fakeClient();
+    client.signOut = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishLogout = () => {
+            client.session = null;
+            resolve();
+          };
+        }),
+    );
+    const d = deps(client);
+    const { result } = renderHook(() => usePasskeySession("test-app", d));
+    await waitFor(() => expect(result.current.session.status).toBe("signed-out"));
+    await act(() => result.current.signUp());
+
+    let out!: Promise<void>;
+    act(() => {
+      out = result.current.signOut();
+    });
+    // No screen sees "signed-in" with a session the node is revoking.
+    expect(result.current.session.status).toBe("signed-out");
+    expect(client.signOut).toHaveBeenCalledTimes(1);
+
+    let signIn!: Promise<void>;
+    act(() => {
+      signIn = result.current.signIn();
+    });
+    await Promise.resolve();
+    expect(client.signIn).not.toHaveBeenCalled();
+
+    await act(async () => {
+      finishLogout();
+      await out;
+      await signIn;
+    });
+    expect(client.signIn).toHaveBeenCalledTimes(1);
+    expect(result.current.session).toMatchObject({ status: "signed-in", accountId: "acct-in" });
+  });
+
   it("treats a dismissed passkey prompt as a quiet cancel", async () => {
     const client = fakeClient({ signIn: vi.fn(async () => Promise.reject(cancelled())) });
     const d = deps(client);

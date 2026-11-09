@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   browserPasskey,
   type CalimeroClient,
@@ -128,6 +128,8 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
   const [busy, setBusy] = useState(false);
   /** The cluster's sign-up policy: `undefined` until read, `null` when it cannot be. */
   const [policy, setPolicy] = useState<SignUpPolicy | null | undefined>(undefined);
+  /** The `/auth/logout` still in flight, which the next ceremony waits for. */
+  const loggingOut = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -186,6 +188,9 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
       setBusy(true);
       setFailure(null);
       try {
+        // mero-js forgets the session when `/auth/logout` returns, so a sign-in
+        // that finished first would be wiped by the sign-out before it.
+        await loggingOut.current;
         const { accountId } = await run(session.client);
         store?.sync(session.client);
         setSession({ status: "signed-in", client: session.client, target: session.target, accountId });
@@ -210,16 +215,25 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
     [ceremony, deps, invited],
   );
 
+  // Signed out first, then `/auth/logout`. The other way round, the app kept
+  // seeing "signed-in" while the node had already revoked the session, so the
+  // screens a sign-out navigates to called `/apps` and `/auth/me` with it and
+  // got 401s.
   const signOut = useCallback(async () => {
     if (session.status !== "signed-in") return;
-    try {
-      await session.client.signOut();
-    } catch {
-      // Already expired or unreachable: forgetting it here is what matters.
-    }
+    const { client, target } = session;
     store?.clear();
     setFailure(null);
-    setSession({ status: "signed-out", client: session.client, target: session.target });
+    setSession({ status: "signed-out", client, target });
+    const logout = client.signOut().catch(() => {
+      // Already expired or unreachable: forgetting it here is what matters.
+    });
+    loggingOut.current = logout;
+    try {
+      await logout;
+    } finally {
+      if (loggingOut.current === logout) loggingOut.current = null;
+    }
   }, [session, store]);
 
   const error = failure ? describeSignInError(failure.error, access) : null;
