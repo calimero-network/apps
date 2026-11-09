@@ -1,16 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AppInfo, CalimeroClient } from "@calimero-network/mero-js";
 import { appSource, type KeyValueStorage } from "@calimero-apps/connect";
-import { AppListing } from "@calimero-apps/passkey";
+import { AppListing, InvitationSignIn, JoinInvitation, SignInPanel } from "@calimero-apps/passkey";
+import "@calimero-apps/passkey/passkey.css";
 
-import { InvitationSignIn, JoinInvitation } from "./Invitation";
 import { InviteCard } from "./InviteCard";
 import { KvPanel } from "./KvPanel";
 import { PACKAGE, kvStore } from "./kvStore";
-import { SignIn } from "./SignIn";
 import { StorePicker } from "./StorePicker";
-import { LISTING, defaultDeps, describeTarget, useSession, type SessionDeps } from "./session";
-import { pendingInvite, selectionKey } from "./stores";
+import { LISTING, ONBOARDING, defaultDeps, describeTarget, useSession, type SessionDeps } from "./session";
+import { dropInvite, isSpentInvite, pendingInvite, pendingInviteOrg, selectionKey } from "./stores";
 
 type Opened = Pick<AppInfo, "appId" | "name" | "org">;
 
@@ -61,7 +60,16 @@ export function App({
     () => (storage === deps.storage || !storage ? deps : { ...deps, storage }),
     [deps, storage],
   );
-  const api = useSession(sessionDeps, () => pendingInvite(storage));
+  const api = useSession(
+    sessionDeps,
+    () => pendingInvite(storage),
+    // Signed up with the invite: the account is in the store's org already.
+    () => {
+      dropInvite(storage);
+      setInvite(null);
+      setNotice("Invitation accepted: the shared store is in your list.");
+    },
+  );
   const { session, store } = api;
   const source = useMemo(() => appSource(deps.env, PACKAGE), [deps.env]);
   const [opened, setOpened] = useState<Opened | null>(null);
@@ -138,16 +146,21 @@ export function App({
 
       {session.status === "signed-out" &&
         (invite && !inviteLater ? (
-          <InvitationSignIn api={api} where={describeTarget(session.target)} onLater={() => setInviteLater(true)} />
+          <InvitationSignIn {...ONBOARDING} api={api} onLater={() => setInviteLater(true)} />
         ) : (
-          <SignIn api={api} where={describeTarget(session.target)} />
+          <section className="card" data-testid="signin-page">
+            <SignInPanel {...ONBOARDING} api={api} invited={false} />
+          </section>
         ))}
 
       {session.status === "signed-in" && invite && (
         <JoinInvitation
+          {...ONBOARDING}
           client={session.client}
           token={invite}
-          storage={storage}
+          org={pendingInviteOrg(storage)}
+          drop={() => dropInvite(storage)}
+          isSpent={isSpentInvite}
           after={after}
           onJoined={() => {
             setInvite(null);

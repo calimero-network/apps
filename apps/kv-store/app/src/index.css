@@ -149,3 +149,6 @@ body > .mero-invite-overlay {
   --mero-error: var(--danger);
   font-family: inherit;
 }
+
+/* The shared passkey control inside a card. */
+.signin-control { max-width: 360px; margin: 14px 0; }

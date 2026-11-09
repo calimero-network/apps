@@ -275,16 +275,25 @@ describe("sign-up policy", () => {
     expect(client.policyReads).toHaveBeenCalledTimes(1);
   });
 
-  it("closed: no sign-up up front, the reason shown, and none offered after an unknown passkey", async () => {
+  it("closed: an org invite cannot create an account, so it joins with a passkey and says why", async () => {
     const client = cluster(POLICY.closed);
     render(<Panel d={deps(client)} invite={() => "org-invite-token"} />);
-    await waitFor(() => expect((screen.getByTestId("signup-passkey") as HTMLButtonElement).disabled).toBe(true));
-    expect(screen.getByTestId("signup-unavailable").textContent).toBe(SIGN_UP_CLOSED);
+    expect((await screen.findByTestId("signup-unavailable")).textContent).toBe(SIGN_UP_CLOSED);
+    expect(screen.queryByTestId("signup-passkey")).toBeNull();
+    expect(screen.getByTestId("signin-passkey").textContent).toBe("Join with your passkey");
 
     expect((await signInWithUnknownPasskey()).textContent).toBe(
       `This passkey isn't known on this cluster. ${SIGN_UP_CLOSED}`,
     );
     expect(screen.queryByTestId("signup-here")).toBeNull();
+    expect(client.signUp).not.toHaveBeenCalled();
+  });
+
+  it("closed, no invite: no sign-up up front, the reason shown", async () => {
+    const client = cluster(POLICY.closed);
+    render(<Panel d={deps(client)} />);
+    await waitFor(() => expect((screen.getByTestId("signup-passkey") as HTMLButtonElement).disabled).toBe(true));
+    expect(screen.getByTestId("signup-unavailable").textContent).toBe(SIGN_UP_CLOSED);
     fireEvent.click(screen.getByTestId("signup-passkey"));
     expect(client.signUp).not.toHaveBeenCalled();
   });
@@ -301,14 +310,15 @@ describe("sign-up policy", () => {
     expect(screen.queryByTestId("signup-here")).toBeNull();
   });
 
-  it("invite with a token: offers an account here and signs up with the invite", async () => {
+  it("invite with a token: creating the account is the first action, with the invite", async () => {
     const client = cluster(POLICY.invite);
     render(<Panel d={deps(client)} invite={() => "org-invite-token"} />);
-    expect((await signInWithUnknownPasskey()).textContent).toBe(PASSKEY_UNKNOWN_SIGN_UP_MESSAGE);
+    await waitFor(() => expect(client.policyReads).toHaveBeenCalled());
     expect(screen.queryByTestId("signup-unavailable")).toBeNull();
 
-    fireEvent.click(screen.getByTestId("signup-here"));
+    fireEvent.click(await screen.findByTestId("signup-passkey"));
     await waitFor(() => expect(screen.getByTestId("status").textContent).toBe("signed-in"));
+    expect(client.signIn).not.toHaveBeenCalled();
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "org-invite-token" });
   });
 
