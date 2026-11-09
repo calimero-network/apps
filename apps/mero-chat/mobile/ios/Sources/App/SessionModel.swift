@@ -86,10 +86,47 @@ final class SessionModel: ObservableObject {
         rebuild()
     }
 
-    /// Create an account named `name` with a new passkey.
+    /// Create an account named `name` with a new passkey. On a real cluster
+    /// the node then asks the new passkey to sign the account (`412
+    /// CONFIRM_REQUIRED`): that second prompt waits for ``confirmSignUp()``
+    /// (``awaitingSignUpConfirm``), a tap of its own. A development node's
+    /// software passkey answers both at once.
     func signUp(name: String) async {
-        _ = await client.signUp(name: name)
+        var passkey = client.passkeyForNode()
+        if let base = passkey, !client.allowMock {
+            passkey = SignUpPasskey(base: base) { [weak self] in
+                guard let self else { throw PasskeyCancelled() }
+                try await self.waitForConfirmTap()
+            }
+        }
+        _ = await client.signUp(name: name, passkey: passkey)
+        finishConfirm(throwing: PasskeyCancelled())
         rebuild()
+    }
+
+    /// The passkey was made; the account waits for the person to tap "Confirm".
+    @Published private(set) var awaitingSignUpConfirm = false
+    private var confirmTap: CheckedContinuation<Void, Error>?
+
+    /// The tap that starts the sign-up's second passkey prompt.
+    func confirmSignUp() { finishConfirm(throwing: nil) }
+
+    /// Back out of the sign-up at its second prompt.
+    func cancelSignUp() { finishConfirm(throwing: PasskeyCancelled()) }
+
+    private func waitForConfirmTap() async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            confirmTap?.resume(throwing: PasskeyCancelled())
+            confirmTap = continuation
+            awaitingSignUpConfirm = true
+        }
+    }
+
+    private func finishConfirm(throwing error: Error?) {
+        awaitingSignUpConfirm = false
+        guard let tap = confirmTap else { return }
+        confirmTap = nil
+        if let error { tap.resume(throwing: error) } else { tap.resume() }
     }
 
     /// A development node: sign in with the soft passkey kept for it, or

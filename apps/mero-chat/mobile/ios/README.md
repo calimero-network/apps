@@ -49,9 +49,16 @@ stable `index`, with `get_messages_from(start)` filling any gap after a burst.
 - **Calimero Cloud**: enter the cluster's name (its nodes come from the node
   directory) or one of its node URLs (bake one in with `CalimeroClusterURL`), then **Sign in
   with passkey** or **Create an account**. The node's TDX attestation is
-  verified (`CloudPolicy.production`). The device's passkey needs the
-  cluster's relying party as an associated domain (`webcredentials:<rp-id>`,
-  see `project.yml`).
+  verified (`CloudPolicy.production`). The passkey is the device's, for the
+  relying party the node names in its options (`calimero.network` on
+  Calimero Cloud; the app hard-codes none). See [Passkeys on Calimero
+  Cloud](#passkeys-on-calimero-cloud).
+- **Creating an account** prompts twice (core rc.9+): the passkey is made,
+  then the node answers `412 CONFIRM_REQUIRED` and the new passkey signs the
+  account. The second prompt starts from its own tap (**Confirm with
+  passkey**): the system sheet or a password manager can refuse a request
+  made right after the first one. `SignUpPasskey` (Sources/Core) holds the
+  prompt until `SessionModel.confirmSignUp()`.
 - **Development node**: a `merod local` node URL (default
   `http://localhost:2501`, `DefaultNodeURL`). The client allows mock
   attestation (`allowMock`) and makes and keeps a software passkey for that
@@ -140,19 +147,44 @@ xcodebuild build-for-testing -project MeroChat.xcodeproj -scheme MeroChat \
   -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO
 ```
 
-Bundle id `network.calimero.chat`, iOS 16+. For a device build, set your team
-in Xcode (Signing & Capabilities).
+Bundle id `network.calimero.chat`, iOS 16+. For a device build, set your
+Apple Team ID as `DEVELOPMENT_TEAM`: in `Config/Signing.xcconfig`, in a
+gitignored `Config/Signing.local.xcconfig`, with
+`export MEROCHAT_DEVELOPMENT_TEAM=ABCDE12345`, or as `DEVELOPMENT_TEAM=…` on
+the `xcodebuild` line. Empty by default; simulator builds need none.
+
+### Passkeys on Calimero Cloud
+
+Calimero Cloud clusters use the relying-party id `calimero.network`. A
+platform passkey for it works only when all three hold:
+
+1. **The app** names the domain: `Sources/MeroChat.entitlements` (wired in
+   `project.yml`) carries `com.apple.developer.associated-domains:
+   [webcredentials:calimero.network]`, and the build is signed by the team in
+   `DEVELOPMENT_TEAM`.
+2. **The domain** lists the app:
+   `https://calimero.network/.well-known/apple-app-site-association` has
+   `<TeamID>.network.calimero.chat` under `webcredentials.apps`
+   ([landing#215](https://github.com/calimero-network/landing/pull/215),
+   with `TEAMID` replaced by the real Team ID).
+3. **The node** accepts the origin `https://calimero.network` (its
+   `--origins`), which is what an iOS passkey's client data names. That is
+   a separate mdma change.
+
+A development node (`merod local`) uses a software passkey and needs none of
+this.
 
 ### The SDK pin
 
-`project.yml` pins the package to the swift-sdk's `v0.5.0` release (its
-Calimero 1.0 client).
+`project.yml` pins the package to the swift-sdk's `v0.6.0` release (its
+Calimero 1.0 client, at core `1.0.0-rc.10` parity: the two-prompt sign-up,
+sign-up policy and invites, package origins).
 
 ```yaml
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    exactVersion: 0.5.0
+    exactVersion: 0.6.0
 ```
 
 To bump it, change `exactVersion`, run `xcodegen generate`, and let Xcode
