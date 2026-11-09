@@ -10,11 +10,10 @@ import {
 } from "react-router-dom";
 import { appSource, type KeyValueStorage } from "@calimero-apps/connect";
 import { nodeBasename } from "@calimero-apps/node-served";
-import { AppListing, PasskeySignIn } from "@calimero-apps/passkey";
+import { AppListing, InvitationSignIn, JoinInvitation, PasskeySignIn } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
-import { pendingInvite, selectionKey, type PendingInvite } from "./arenas";
-import { InvitationSignIn, JoinInvitation } from "./Invitation";
+import { dropInvite, isSpentInvite, pendingInvite, selectionKey, type PendingInvite } from "./arenas";
 import { ArenaPage, type OpenArena } from "./ArenaPage";
 import { PACKAGE } from "./kombat";
 import { Lobby } from "./Lobby";
@@ -22,7 +21,9 @@ import { PracticePage } from "./PracticePage";
 import LandingPage from "./pages/landing/LandingPage";
 import { SessionProvider } from "./SessionProvider";
 import {
+  INVITATION_PAGE_CLASSES,
   LISTING,
+  ONBOARDING,
   defaultDeps,
   describeTarget,
   useSessionApi,
@@ -141,8 +142,9 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
   );
 
   // An invitation link opened before signing in: a page of its own while it
-  // is pending (see `Invitation.tsx`), redeemed only on "Join", after which the
-  // arena it names is opened.
+  // is pending (the shared `InvitationSignIn`), redeemed only on "Join", after
+  // which the arena it names is opened. A sign-up from that page joined with
+  // the invite already (`api.joinedInvite`): the arena opens straight away.
   const [invite, setInvite] = useState<PendingInvite | null>(() => pendingInvite(storage));
   useEffect(() => {
     if (client) setInvite(pendingInvite(storage));
@@ -162,6 +164,14 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
     },
     [client, open],
   );
+
+  const joinedAtSignUp = invite !== null && api.joinedInvite === invite.token;
+  useEffect(() => {
+    if (!joinedAtSignUp || !invite) return;
+    dropInvite(storage);
+    setInvite(null);
+    void openInvited(invite.arena);
+  }, [joinedAtSignUp, invite, storage, openInvited]);
 
   if (session.status === "connecting") {
     return (
@@ -198,12 +208,15 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
     return <ConnectCard api={api} where={describeTarget(session.target)} />;
   }
 
-  if (invite) {
+  if (invite && !joinedAtSignUp) {
     return (
       <JoinInvitation
+        {...ONBOARDING}
         client={session.client}
         token={invite.token}
-        storage={storage}
+        org={invite.org}
+        drop={() => dropInvite(storage)}
+        isSpent={isSpentInvite}
         after={after}
         onJoined={() => {
           setInvite(null);
@@ -258,8 +271,10 @@ function InvitationGate({ storage, children }: { storage: KeyValueStorage; child
   return (
     <AppShell>
       <InvitationSignIn
+        {...ONBOARDING}
+        classNames={INVITATION_PAGE_CLASSES}
+        titleAs="h1"
         api={api}
-        where={describeTarget(session.target)}
         onLater={() => {
           setLater(true);
           navigate("/");
