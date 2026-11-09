@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import LandingPage from "./pages/landing/LandingPage";
 import DesignShell from "./components/shell/DesignShell";
@@ -42,12 +42,15 @@ function RequireAuth({ children }: { children: ReactNode }) {
 function RedirectIfAuthed({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
   const from = (useLocation().state as FromState)?.from;
+  // Joined at sign-up: InvitationPrompt is opening the page the link named.
+  // Held until this page unmounts, so a later render cannot redirect first.
+  const joining = useRef(false);
+  if (joinedAtSignUpPending()) joining.current = true;
   if (isLoading) return null; // the auth probe is still in flight
   // `/teams` goes on by itself to the team and board open last (TeamIndex).
   // With an invitation waiting, the page asked for comes AFTER joining
   // (InvitationPrompt goes there): opened before, it is not yours to read yet.
-  // Joined at sign-up: InvitationPrompt is opening the page the link named.
-  if (isAuthenticated && joinedAtSignUpPending()) return null;
+  if (isAuthenticated && joining.current) return null;
   if (isAuthenticated) return <Navigate to={(invites.token() ? null : from) ?? "/teams"} replace />;
   return <>{children}</>;
 }

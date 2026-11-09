@@ -175,6 +175,9 @@ describe("App", () => {
       const client = fakeClient();
       render(<App deps={deps(client)} />);
       fireEvent.click(await screen.findByTestId("signin-passkey"));
+      // The team list's own redirect into the team lands first (it is async):
+      // joining is asked over it.
+      await waitFor(() => expect(window.location.pathname).toBe("/teams/org-1/projects"));
       fireEvent.click(await screen.findByTestId("invitation-join"));
       await waitFor(() => expect(window.location.pathname).toBe("/boards/board-1"));
     });
