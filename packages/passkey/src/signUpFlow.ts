@@ -249,15 +249,7 @@ export function isPromptStuck(error: unknown): boolean {
   return false;
 }
 
-/** A sign-up whose passkey was made but which ended without an account (nothing left to approve). */
-export const SIGN_UP_ENDED_WITHOUT_ACCOUNT =
-  "Your passkey was made, but your account wasn't created. Create a passkey again to sign up.";
-
-/**
- * A failed second prompt of a sign-up, in words. `ended`: the sign-up is
- * over, so there is no Approve button to press any more.
- */
-export function describeSignUpNotFinished(error: unknown, ended = false): string {
-  const head = ended ? SIGN_UP_ENDED_WITHOUT_ACCOUNT : SIGN_UP_NOT_FINISHED;
-  return isPromptStuck(error) ? `${head} ${PROMPT_STUCK_ADVICE}` : head;
+/** A failed second prompt of a sign-up, in words: it waits at Approve, with what is in the way when a prompt is stuck. */
+export function describeSignUpNotFinished(error: unknown): string {
+  return isPromptStuck(error) ? `${SIGN_UP_NOT_FINISHED} ${PROMPT_STUCK_ADVICE}` : SIGN_UP_NOT_FINISHED;
 }

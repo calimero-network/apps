@@ -14,28 +14,30 @@
 // world it joins.
 
 import type { AppInfo, SignUpPolicy } from "@calimero-network/mero-js";
-import {
-  describeError,
-  describeSignInError,
-  readSignUpPolicy,
-  signUpAccess,
-  signUpInvite,
-  signUpNotice,
-} from "@calimero-apps/connect";
+import { describeError, readSignUpPolicy, signUpAccess, signUpNotice } from "@calimero-apps/connect";
 import { renderListing } from "@calimero-apps/passkey/listing";
 import {
   describeSignUpNotFinished,
-  isPasskeyCancel,
   SIGN_UP_CONFIRMING,
   SIGN_UP_READY,
-  signUpFlow,
   type SignUpFlow,
 } from "@calimero-apps/passkey/signUpFlow";
+import {
+  describeCeremonyFailure,
+  invitedFirst,
+  noAccountCopy,
+  noAccountHereAfter,
+  passkeyUnknownAfter,
+  SIGN_IN_HINT,
+  type CeremonyFailure,
+} from "@calimero-apps/passkey/ceremony";
 import "@calimero-apps/passkey/passkey.css";
 
 import {
   defaultDeps,
   describeTarget,
+  knownAccount,
+  newSignUp,
   signIn,
   signOut,
   signUp,
@@ -46,6 +48,7 @@ import {
 } from "../net/session";
 import {
   createWorld,
+  dropInvite,
   forgetWorld,
   inviteLink,
   inviteToken,
@@ -227,6 +230,8 @@ export class Landing {
   private root: HTMLElement;
   private panorama: Panorama;
   private phase!: Phase;
+  /** A sign-up from this card carried the invite and joined: the organization it joined (`null` when it cannot be told). */
+  private joined: { org: string | null } | null = null;
 
   constructor(
     parent: HTMLElement,
@@ -348,16 +353,28 @@ export class Landing {
   }
 
   // state 2: signed out. A passkey signs in; a new account is a new passkey.
+  // The sign-in every app shares (@calimero-apps/passkey's ceremony): only
+  // this cluster's passkeys, "no account here" turns the card to creating
+  // one in place, an invited player with no account here sees Create first,
+  // and a sign-up carries the invite, joining the world in that step.
   private renderSignIn(phase: SignedOut, defaults: { name: string; seed: number }, done: (c: LaunchChoice) => void): void {
     const el = this.playCardEl();
     const invited = pendingInvite() !== null;
     el.innerHTML = `
       ${this.commonInputs(defaults)}
       ${invited ? `<div class="mbl-account-note" data-testid="invite-note">You've been invited to join a world in Mero Blocks. Sign in or create an account to accept.</div>` : ""}
-      <button class="mbl-btn green" data-testid="sign-in-btn">Sign in with a passkey</button>
-      <label>new account name</label>
-      <input id="mbl-account" data-testid="account-name-input" maxlength="32" placeholder="${escapeHtml(defaults.name)}" />
-      <button class="mbl-btn ghost" data-testid="sign-up-btn">Create account</button>
+      <div class="mbl-note" data-testid="signin-switched" role="status" hidden></div>
+      <div data-testid="sign-in-actions">
+        <div data-testid="sign-in-group">
+          <button class="mbl-btn green" data-testid="sign-in-btn">Sign in with a passkey</button>
+          <div class="mbl-note" data-testid="sign-in-hint">${escapeHtml(SIGN_IN_HINT)}</div>
+        </div>
+        <div data-testid="sign-up-group">
+          <label>new account name</label>
+          <input id="mbl-account" data-testid="account-name-input" maxlength="32" placeholder="${escapeHtml(defaults.name)}" />
+          <button class="mbl-btn ghost" data-testid="sign-up-btn">Create account</button>
+        </div>
+      </div>
       <div data-testid="signup-approve-step" hidden>
         <button class="mbl-btn green" data-testid="signup-approve">Approve with your new passkey</button>
         <div class="mbl-note" data-testid="signup-approve-note" aria-live="polite"></div>
@@ -368,8 +385,12 @@ export class Landing {
       <div class="mbl-note" data-testid="target">${escapeHtml(describeTarget(phase.target))}</div>
     `;
     const errEl = el.querySelector<HTMLElement>("[data-testid=sign-in-error]")!;
+    const actions = el.querySelector<HTMLElement>("[data-testid=sign-in-actions]")!;
+    const signInGroup = el.querySelector<HTMLElement>("[data-testid=sign-in-group]")!;
+    const signUpGroup = el.querySelector<HTMLElement>("[data-testid=sign-up-group]")!;
     const signInBtn = el.querySelector<HTMLButtonElement>("[data-testid=sign-in-btn]")!;
     const signUpBtn = el.querySelector<HTMLButtonElement>("[data-testid=sign-up-btn]")!;
+    const switchedEl = el.querySelector<HTMLElement>("[data-testid=signin-switched]")!;
     const buttons = [signInBtn, signUpBtn];
     const approveStep = el.querySelector<HTMLElement>("[data-testid=signup-approve-step]")!;
     const approveBtn = el.querySelector<HTMLButtonElement>("[data-testid=signup-approve]")!;
@@ -379,16 +400,36 @@ export class Landing {
     // Who may create an account here (read once, never blocking): a closed or
     // invite-only cluster gets no "Create account", and says why.
     let policy: SignUpPolicy | null | undefined;
+    let failure: CeremonyFailure | null = null;
     const access = () => signUpAccess(policy, pendingInvite() !== null);
-    const applyPolicy = () => {
+    // Which action leads: an invited player this browser knows no account for
+    // (or whose sign-in just found none) creates one; a sign-in the cluster
+    // has no account for turns any player to creating one, in place.
+    const layout = () => {
       const notice = signUpNotice(access());
+      const canSignUp = notice === null;
+      const noAccount = noAccountHereAfter(failure);
+      const unknown = passkeyUnknownAfter(failure);
+      const createFirst =
+        canSignUp && (invited ? invitedFirst(knownAccount(phase, this.deps), noAccount) === "create" : unknown);
+      if (createFirst) actions.prepend(signUpGroup);
+      else actions.prepend(signInGroup);
+      signUpBtn.className = `mbl-btn ${createFirst ? "green" : "ghost"}`;
+      signInBtn.className = `mbl-btn ${createFirst ? "ghost" : "green"}`;
+      signUpBtn.textContent = invited ? "Create your account and join" : unknown ? "Create an account here" : "Create account";
+      signInBtn.textContent =
+        invited && createFirst ? "Already have an account here? Join with your passkey" : "Sign in with a passkey";
+      const switched = invited && canSignUp && noAccount;
+      switchedEl.hidden = !switched;
+      switchedEl.textContent = switched ? noAccountCopy("a world", unknown) : "";
       if (notice) signUpBtn.disabled = true;
       unavailableEl.hidden = notice === null;
       unavailableEl.textContent = notice ?? "";
     };
+    layout();
     void readSignUpPolicy(phase.client).then((p) => {
       policy = p;
-      applyPolicy();
+      layout();
     });
     // The sign-up in flight. Its second prompt (core's 412 CONFIRM_REQUIRED)
     // is asked right after the first; only when that fails or is refused
@@ -410,36 +451,55 @@ export class Landing {
     };
     approveBtn.addEventListener("click", () => flow?.approve());
     cancelBtn.addEventListener("click", () => flow?.cancel());
-    const ceremony = async (run: () => Promise<SignedIn>, signingUp: SignUpFlow | null = null) => {
+    const ceremony = async (
+      during: CeremonyFailure["during"],
+      run: () => Promise<SignedIn>,
+      signingUp: SignUpFlow | null = null,
+    ) => {
       errEl.textContent = "";
+      failure = null;
       buttons.forEach((b) => (b.disabled = true));
       flow = signingUp;
       try {
         this.phase = await run();
         this.renderPlayCard({ ...defaults, name: this.readName() }, done);
       } catch (e) {
-        // A cancel at Approve is quiet. Once the passkey exists, a refused
-        // second prompt is not: it left no account.
-        errEl.textContent = signingUp?.cancelled
-          ? ""
-          : signingUp?.created && isPasskeyCancel(e)
-            ? describeSignUpNotFinished(e, true)
-            : describeSignInError(e, access());
+        // A dismissed prompt (or a cancel at Approve) is quiet. An invited
+        // player whose sign-in found no account is told so by the switch.
+        failure = { error: e, during };
+        const switched = invited && noAccountHereAfter(failure);
+        errEl.textContent = switched ? "" : (describeCeremonyFailure(failure, access()) ?? "");
         buttons.forEach((b) => (b.disabled = false));
-        applyPolicy();
+        layout();
+        if (noAccountHereAfter(failure) && !signUpBtn.disabled) signUpBtn.focus();
       } finally {
         if (flow === signingUp) flow = null;
         showFlow();
       }
     };
     signInBtn.addEventListener("click", () => {
-      void ceremony(() => signIn(phase, this.deps));
+      void ceremony("sign-in", () => signIn(phase, this.deps));
     });
     signUpBtn.addEventListener("click", () => {
       const account = el.querySelector<HTMLInputElement>("#mbl-account")?.value.trim() || this.readName();
-      const signingUp: SignUpFlow = signUpFlow(this.deps.passkey(), showFlow);
+      const signingUp: SignUpFlow = newSignUp(phase, showFlow, this.deps);
       void ceremony(
-        () => signUp(phase, account, this.deps, signUpInvite(policy, pendingInvite()), signingUp.passkey),
+        "sign-up",
+        async () => {
+          const { joined, ...signedIn } = await signUp(
+            phase,
+            account,
+            this.deps,
+            { invite: pendingInvite(), policy },
+            signingUp.passkey,
+          );
+          // Joined at sign-up: nothing is left to redeem.
+          if (joined) {
+            dropInvite();
+            this.joined = { org: joined.org };
+          }
+          return signedIn;
+        },
         signingUp,
       );
     });
@@ -482,6 +542,18 @@ export class Landing {
     );
 
     void (async () => {
+      // A sign-up that carried the invite joined in that step: enter the
+      // world of the organization it joined, or list it.
+      const joined = this.joined;
+      this.joined = null;
+      if (joined) {
+        const world = joined.org
+          ? (await listWorlds(phase.client, source).catch(() => [])).find((w) => w.org === joined.org)
+          : undefined;
+        phase.sessions.sync(phase.client);
+        if (world) return enter(world);
+        noteEl.textContent = "Invitation accepted — pick the world below.";
+      }
       // An invitation opened before signing in: redeem it, then enter the
       // world it joined (or list it, if the answer did not say which).
       if (pendingInvite()) {

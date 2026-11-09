@@ -77,9 +77,11 @@ describe("connect", () => {
     if (out.status !== "signed-out") throw new Error(out.status);
     const inn = await signIn(out, first);
     expect(inn.accountId).toBe("acc-1");
-    const keys = [...storage.data.keys()];
-    expect(keys).toHaveLength(1);
-    expect(keys[0]).toMatch(/^calimero-session:mero-blocks:local/);
+    // The session, and the hint that this browser has an account here (no credential).
+    const keys = [...storage.data.keys()].sort();
+    expect(keys).toHaveLength(2);
+    expect(keys[0]).toMatch(/^calimero-account:local/);
+    expect(keys[1]).toMatch(/^calimero-session:mero-blocks:local/);
 
     const again = await connect(deps(LOCAL, storage));
     expect(again.status).toBe("signed-in");
@@ -96,7 +98,8 @@ describe("connect", () => {
     expect(inn.accountId).toBe("acc-new");
     const back = await signOut(inn);
     expect(back.status).toBe("signed-out");
-    expect(storage.data.size).toBe(0);
+    // The session is gone; only the hint that an account exists here stays.
+    expect([...storage.data.keys()]).toEqual([expect.stringMatching(/^calimero-account:local/)]);
   });
 });
 

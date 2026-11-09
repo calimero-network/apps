@@ -26,26 +26,28 @@ import {
   appSource,
   createClient,
   describeError,
-  describeSignInError,
   connectTarget,
-  isPasskeyUnknownHere,
   NotServedError,
   readSignUpPolicy,
   signUpAccess,
-  signUpInvite,
   type AppSource,
   type SignUpAccess,
   type Target,
 } from "@calimero-apps/connect";
 import {
-  describeSignUpNotFinished,
-  isPasskeyCancel,
-  signUpFlow,
+  describeCeremonyFailure,
+  knownAccountHere,
+  noAccountHereAfter,
+  passkeyUnknownAfter,
+  signInHere,
+  signUpFlowHere,
+  signUpHere,
+  type CeremonyFailure,
   type ListingProps,
   type SignUpFlow,
   type SignUpStage,
 } from "@calimero-apps/passkey";
-import { pendingInvite } from "../utils/invitation";
+import { dropInvite, pendingInvite } from "../utils/invitation";
 
 /** The app's name in stored keys. */
 export const APP = "mero-chat";
@@ -73,10 +75,11 @@ interface State {
   isOnline: boolean;
   /**
    * The last failed sign-in or sign-up, described with the policy as it is
-   * when shown. `afterCreate`: the sign-up's passkey was made, so even a
-   * cancel-like failure is shown.
+   * when shown (`describeCeremonyFailure`: a dismissed prompt says nothing).
    */
-  failure: { error: unknown; afterCreate?: boolean } | null;
+  failure: CeremonyFailure | null;
+  /** This browser has signed in to an account on this cluster before. */
+  knownAccount: boolean;
   /**
    * Where a sign-up is (`approve`: the browser refused the second prompt at
    * once, so it waits for its own click); `null` outside one.
@@ -94,6 +97,7 @@ let state: State = {
   accountId: null,
   isOnline: true,
   failure: null,
+  knownAccount: false,
   policy: undefined,
   signUpStage: null,
   confirmFailure: null,
@@ -124,16 +128,22 @@ export function passkey(): PasskeyProvider {
   return passkeyProvider();
 }
 
-/** For tests: a client (or none), an account, and a passkey stand-in. */
+/** The target tests run against unless they name one. */
+const TEST_TARGET: Target = { kind: "local", nodes: ["http://127.0.0.1:2428"] };
+
+/** For tests: a client (or none), an account, a passkey stand-in, and the target. */
 export function __setForTests(
   c: CalimeroClient | null,
   accountId: string | null = null,
   pk?: () => PasskeyProvider,
+  t: Target = TEST_TARGET,
 ): void {
   client = c;
   sessions = null;
+  target = c ? t : null;
   if (pk) passkeyProvider = pk;
   set({
+    knownAccount: c ? knownAccountHere(t) : false,
     status: c && accountId ? "signed-in" : c ? "signed-out" : "connecting",
     accountId,
     message: null,
@@ -168,6 +178,7 @@ export function startCalimero(): Promise<void> {
       client = await createClient(target);
       sessions = new SessionStore(APP, target);
       loadSignUpPolicy(client);
+      set({ knownAccount: knownAccountHere(target) });
       if (sessions.restore(client) && client.session) {
         set({ status: "signed-in", accountId: client.session.accountId, message: null });
       } else {
@@ -180,9 +191,11 @@ export function startCalimero(): Promise<void> {
   return started;
 }
 
+const NOT_CONNECTED = "Not connected yet. Please retry in a moment.";
+
 /** The client; throws before `startCalimero` has connected. */
 export function getClient(): CalimeroClient {
-  if (!client) throw new Error("Not connected yet. Please retry in a moment.");
+  if (!client) throw new Error(NOT_CONNECTED);
   return client;
 }
 
@@ -204,20 +217,21 @@ export function getAccountId(): string {
 let flow: SignUpFlow | null = null;
 
 async function ceremony(
-  run: (c: CalimeroClient) => Promise<{ accountId: string }>,
+  during: CeremonyFailure["during"],
+  run: (c: CalimeroClient, t: Target) => Promise<{ accountId: string }>,
   signUp?: SignUpFlow,
 ): Promise<void> {
   const c = getClient();
+  if (!target) throw new Error(NOT_CONNECTED);
   set({ message: null, failure: null });
   try {
-    const { accountId } = await run(c);
+    const { accountId } = await run(c, target);
     sessions?.sync(c);
-    set({ status: "signed-in", accountId });
+    set({ status: "signed-in", accountId, knownAccount: true });
   } catch (e) {
-    // A dismissed passkey prompt is a quiet cancel, not an error to show.
-    // Once a sign-up's passkey exists it is not: that left no account.
-    if (!isPasskeyCancel(e)) set({ failure: { error: e } });
-    else if (signUp?.created && !signUp.cancelled) set({ failure: { error: e, afterCreate: true } });
+    // Kept as is: a dismissed prompt says nothing, but a sign-in that found
+    // no account here still turns the panel to creating one.
+    set({ failure: { error: e, during } });
     throw e;
   } finally {
     if (signUp) {
@@ -227,26 +241,36 @@ async function ceremony(
   }
 }
 
+/** Sign in, offering only the passkeys that have worked on this cluster. */
 export function signIn(): Promise<void> {
-  return ceremony((c) => c.signIn(passkey()));
+  return ceremony("sign-in", (c, t) => signInHere(c, t, passkey()));
 }
 
 /**
- * Create an account with a new passkey; the name is optional. On a cluster
- * that requires an invite, the invite link's token goes with it.
+ * Create an account with a new passkey; the name is optional. The invite
+ * link's token goes with it wherever the cluster lets an organization invite
+ * admit, and the new account joins the workspace in that step: the token is
+ * then dropped, with nothing left to redeem.
  */
 export function signUp(name = ""): Promise<void> {
-  const invite = signUpInvite(state.policy, pendingInvite());
   flow?.cancel();
-  const current: SignUpFlow = signUpFlow(passkey(), () =>
+  if (!target) return Promise.reject(new Error(NOT_CONNECTED));
+  const current: SignUpFlow = signUpFlowHere(passkey(), target, undefined, () =>
     set({ signUpStage: current.stage, confirmFailure: current.confirmFailure }),
   );
   flow = current;
   return ceremony(
-    (c) =>
-      invite
-        ? c.signUp(current.passkey, name, { invite })
-        : c.signUp(current.passkey, name),
+    "sign-up",
+    async (c, t) => {
+      const made = await signUpHere(c, t, current.passkey, {
+        name,
+        invite: pendingInvite(),
+        policy: state.policy,
+        join: true,
+      });
+      if (made.joined) dropInvite();
+      return made;
+    },
     current,
   );
 }
@@ -345,6 +369,12 @@ export interface CalimeroState {
   signUpAccess: SignUpAccess;
   /** The last sign-in failed because the cluster has no account for that passkey. */
   passkeyUnknown: boolean;
+  /** The last sign-in found no account here: creating one is the way on. */
+  noAccountHere: boolean;
+  /** This browser has signed in to an account on this cluster before. */
+  knownAccount: boolean;
+  /** An invite link's token is waiting. */
+  hasInvite: boolean;
   /** Where a sign-up is; at `approve` it waits for `approveSignUp()`. */
   signUpStage: SignUpStage | null;
   isAuthenticated: boolean;
@@ -367,15 +397,12 @@ export function useCalimero(): CalimeroState {
   const s = useSyncExternalStore(subscribe, snapshot, snapshot);
   return {
     status: s.status,
-    message: s.confirmFailure
-      ? describeSignUpNotFinished(s.confirmFailure.error)
-      : s.failure
-        ? s.failure.afterCreate
-          ? describeSignUpNotFinished(s.failure.error, true)
-          : describeSignInError(s.failure.error, access(s))
-        : s.message,
+    message: describeCeremonyFailure(s.failure, access(s), s.confirmFailure) ?? s.message,
     signUpAccess: access(s),
-    passkeyUnknown: s.failure !== null && isPasskeyUnknownHere(s.failure.error),
+    passkeyUnknown: passkeyUnknownAfter(s.failure),
+    noAccountHere: noAccountHereAfter(s.failure),
+    knownAccount: s.knownAccount,
+    hasInvite: pendingInvite() !== null,
     signUpStage: s.signUpStage,
     isAuthenticated: s.status === "signed-in",
     isLoading: s.status === "connecting",

@@ -6,6 +6,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./ceremony": "./src/ceremony.ts",
     "./listing": "./src/listing.ts",
     "./signUpFlow": "./src/signUpFlow.ts",
     "./passkey.css": "./src/passkey.css"
