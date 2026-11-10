@@ -93,6 +93,7 @@ export {
 export {
   NoAppTeamError,
   appAccess,
+  appTeamInstances,
   appTeamMembers,
   appTeamOf,
   appTeams,
@@ -104,6 +105,7 @@ export {
   setMembersMayInvite,
   type AppAccess,
   type AppInvite,
+  type AppTeamInstance,
   type AppTeamOf,
   type CreateAppTeamOptions,
   type InviteToAppOptions,

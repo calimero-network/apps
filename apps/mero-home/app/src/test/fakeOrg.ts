@@ -23,6 +23,8 @@ export interface FakeOrgOptions {
   invites?: OrgInvite[];
   /** Chat's "members may invite" switch. */
   chatInvite?: boolean;
+  /** The org's metadata (`getOrg`). */
+  metadata?: Record<string, unknown>;
 }
 
 const ACCOUNT: Record<As, string> = {
@@ -63,7 +65,7 @@ export function fakeOrg(opts: FakeOrgOptions = {}) {
   const visibleTeams =
     mode === "legacy" ? [] : as === "guest" ? [chat] : [chat, blocks];
 
-  const everyone = { "acct-ana": "owner", "acct-bob": "member", "acct-cat": "member", "acct-gus": "guest" };
+  const everyone = { "acct-ana": as === "admin" ? "admin" : "owner", "acct-bob": "member", "acct-cat": "member", "acct-gus": "guest" };
   // Core's directory filtering (decisions 2/3).
   const members: Record<string, string> = admin
     ? everyone
@@ -86,6 +88,7 @@ export function fakeOrg(opts: FakeOrgOptions = {}) {
       members,
       memberMetadata: { "acct-ana": { name: "Ana" }, "acct-bob": { name: "Bob" } },
       teams: {},
+      metadata: opts.metadata ?? null,
       releaseApprovers: [],
       publishes: [],
       newWorkStopped: null,
@@ -105,7 +108,25 @@ export function fakeOrg(opts: FakeOrgOptions = {}) {
               { account: "acct-gus", role: "member" as const, capabilities: 0 },
             ]
           : [{ account: "acct-ana", role: "lead" as const, capabilities: 0 }];
-      return { teamId: team, name: team, parent: null, join: "invite" as const, metadata: null, members: rows, children: [], apps: [] };
+      const instances =
+        team === "t-chat"
+          ? [{ appId: "chat-1", name: "general", contextId: "c1" }]
+          : team === "t-chat-private"
+            ? [{ appId: "chat-2", name: "leads only", contextId: "c2" }]
+            : [];
+      const children = team === "t-chat" ? ["t-chat-private"] : [];
+      return {
+        teamId: team,
+        name: team,
+        parent: null,
+        join: "invite" as const,
+        metadata: null,
+        members: rows,
+        children,
+        apps: instances,
+        myRole: null,
+        member: true,
+      };
     }),
     listInvites: vi.fn(async () => invites),
     revokeInvite: vi.fn(async (_org: string, key: string) => {
@@ -127,6 +148,10 @@ export function fakeOrg(opts: FakeOrgOptions = {}) {
     setTeamDefaultCapabilities: vi.fn(async () => undefined),
     setTeamMember: vi.fn(async () => undefined),
     removeTeamMember: vi.fn(async () => undefined),
+    deleteTeam: vi.fn(async (..._args: unknown[]): Promise<void> => undefined),
+    setOrgMetadata: vi.fn(async (..._args: unknown[]): Promise<void> => undefined),
+    setMember: vi.fn(async (..._args: unknown[]): Promise<void> => undefined),
+    deleteOrg: vi.fn(async (..._args: unknown[]): Promise<void> => undefined),
   };
   return { client, asClient: client as unknown as CalimeroClient, me };
 }

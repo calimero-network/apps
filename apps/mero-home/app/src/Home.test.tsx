@@ -38,7 +38,7 @@ describe("Home: org picker and screens per role", () => {
 
   it("an admin gets every screen; a member Apps and People; a guest Apps only", async () => {
     open({ as: "admin" });
-    expect(await tabs()).toEqual(["Your apps", "People", "Invitations", "Admin"]);
+    expect(await tabs()).toEqual(["Your apps", "People", "Invitations", "Admin", "Organization"]);
     cleanup();
     open({ as: "member" });
     expect(await tabs()).toEqual(["Your apps", "People"]);
@@ -181,6 +181,24 @@ describe("Invitations", () => {
     expect(screen.queryByTestId(`invite-app-${BLOCKS}`)).toBeNull();
     const roles = Array.from((screen.getByTestId("invite-role") as HTMLSelectElement).options).map((o) => o.value);
     expect(roles).toEqual(["member", "guest"]);
+  });
+});
+
+describe("Organization", () => {
+  it("shows the org's display name and logo in the header", async () => {
+    open({ as: "member", metadata: { displayName: "Acme Labs", logo: "data:image/png;base64,iVBORw0KGgo=" } });
+    expect((await screen.findByTestId("org-profile")).textContent).toBe("Acme Labs");
+  });
+
+  it("after the owner deletes the org, Home goes back to the picker, without it", async () => {
+    const fake = open({ as: "owner" });
+    fireEvent.click(await screen.findByTestId("tab-settings"));
+    fireEvent.click(await screen.findByTestId("delete-org"));
+    fireEvent.change(screen.getByTestId("delete-org-typed"), { target: { value: "Acme" } });
+    fake.client.me.mockResolvedValue({ accountId: fake.me, orgs: [] });
+    fireEvent.click(screen.getByTestId("delete-org-yes"));
+    expect(await screen.findByTestId("no-orgs")).toBeTruthy();
+    expect(screen.queryByTestId("tab-settings")).toBeNull();
   });
 });
 

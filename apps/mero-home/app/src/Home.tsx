@@ -4,15 +4,17 @@ import { describeError, myOrgs, type KeyValueStorage, type MyOrg } from "@calime
 
 import { AdminApps } from "./screens/AdminApps";
 import { Invitations } from "./screens/Invitations";
+import { OrgSettings } from "./screens/OrgSettings";
 import { People } from "./screens/People";
 import { YourApps } from "./screens/YourApps";
-import { loadOrg, modeLabel, roleLabel, screensFor, type OrgView, type Screen } from "./home";
+import { loadOrg, modeLabel, orgName, roleLabel, screensFor, type OrgView, type Screen } from "./home";
 
 const SCREEN_LABEL: Record<Screen, string> = {
   apps: "Your apps",
   people: "People",
   invitations: "Invitations",
   admin: "Admin",
+  settings: "Organization",
 };
 
 /** The org opened last by this account, remembered across loads. */
@@ -44,6 +46,8 @@ export function Home({ client, account, passkey, after, initialOrg = null, stora
   const [screen, setScreen] = useState<Screen>("apps");
   const [reloads, setReloads] = useState(0);
   const reload = useCallback(() => setReloads((n) => n + 1), []);
+  /** Bumped to read the account's organizations again (after one was deleted). */
+  const [orgReads, setOrgReads] = useState(0);
 
   useEffect(() => {
     let live = true;
@@ -67,7 +71,7 @@ export function Home({ client, account, passkey, after, initialOrg = null, stora
     return () => {
       live = false;
     };
-  }, [client, account, initialOrg, storage, after]);
+  }, [client, account, initialOrg, storage, after, orgReads]);
 
   useEffect(() => {
     if (!org) {
@@ -129,6 +133,14 @@ export function Home({ client, account, passkey, after, initialOrg = null, stora
                 ))}
               </select>
             </label>
+            {view.kind === "ready" && (view.view.profile.logo || view.view.profile.name) && (
+              <p className="home-row" data-testid="org-profile">
+                {view.view.profile.logo && (
+                  <img src={view.view.profile.logo} alt="" className="home-logo home-logo--small" />
+                )}
+                <strong>{orgName(view.view)}</strong>
+              </p>
+            )}
             {view.kind === "ready" && (
               <p className="home-muted" data-testid="org-mode">
                 {view.view.role ? `${roleLabel(view.view.role)} · ` : ""}
@@ -186,6 +198,27 @@ export function Home({ client, account, passkey, after, initialOrg = null, stora
           )}
           {shown === "invitations" && (
             <Invitations client={client} view={view.view} account={account} passkey={passkey} after={after} />
+          )}
+          {shown === "settings" && (
+            <OrgSettings
+              key={view.view.org}
+              client={client}
+              view={view.view}
+              account={account}
+              passkey={passkey}
+              after={after}
+              onChanged={reload}
+              onDeleted={() => {
+                try {
+                  storage?.removeItem(lastOrgKey(account));
+                } catch {
+                  /* nothing stored */
+                }
+                setOrg(null);
+                setScreen("apps");
+                setOrgReads((n) => n + 1);
+              }}
+            />
           )}
           {shown === "admin" && (
             <AdminApps client={client} view={view.view} passkey={passkey} after={after} onChanged={reload} />

@@ -4,6 +4,7 @@ import { NotFound, ORG_CAPABILITIES, type AppTeam, type CalimeroSession, type Pa
 import {
   NoAppTeamError,
   appAccess,
+  appTeamInstances,
   appTeamMembers,
   appTeamOf,
   appTeams,
@@ -282,5 +283,45 @@ describe("appTeamMembers: who is in an app team", () => {
 
   it("a team the caller does not see: nobody", () => {
     expect(appTeamMembers(org("invite"), "blocks", "shared")).toEqual([]);
+  });
+});
+
+describe("appTeamInstances: what deleting an app team deletes", () => {
+  const teamInfo = (id: string, named: Array<{ appId: string; name: string }>, children: string[] = []) => ({
+    teamId: id,
+    name: id,
+    parent: null,
+    join: "invite" as const,
+    metadata: null,
+    members: [],
+    children,
+    apps: named.map((a) => ({ ...a, contextId: `ctx-${a.appId}` })),
+    myRole: null,
+    member: false,
+  });
+
+  it("lists the team's instances and those of every team below it", async () => {
+    const teams: Record<string, ReturnType<typeof teamInfo>> = {
+      app: teamInfo("app", [{ appId: "a1", name: "general" }], ["ch1", "ch2"]),
+      ch1: teamInfo("ch1", [{ appId: "a2", name: "secret" }], ["ch3"]),
+      ch2: teamInfo("ch2", []),
+      ch3: teamInfo("ch3", [{ appId: "a3", name: "deeper" }]),
+    };
+    const getTeam = vi.fn(async (_org: string, id: string) => teams[id]!);
+    expect(await appTeamInstances({ getTeam }, "org", "app")).toEqual([
+      { appId: "a1", name: "general", team: "app" },
+      { appId: "a2", name: "secret", team: "ch1" },
+      { appId: "a3", name: "deeper", team: "ch3" },
+    ]);
+  });
+
+  it("skips a team below it the caller may not read, but not the app team itself", async () => {
+    const getTeam = vi.fn(async (_org: string, id: string) => {
+      if (id !== "app") throw new NotFound("no such team");
+      return teamInfo("app", [{ appId: "a1", name: "general" }], ["hidden"]);
+    });
+    expect(await appTeamInstances({ getTeam }, "org", "app")).toEqual([{ appId: "a1", name: "general", team: "app" }]);
+    getTeam.mockRejectedValue(new NotFound("no such team"));
+    await expect(appTeamInstances({ getTeam }, "org", "app")).rejects.toThrow("no such team");
   });
 });

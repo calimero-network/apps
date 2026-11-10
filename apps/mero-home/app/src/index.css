@@ -229,3 +229,26 @@ body {
 .home-footer code {
   word-break: break-all;
 }
+
+.home-logo {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  border-radius: var(--glass-radius-sm);
+}
+
+.home-logo--small {
+  width: 28px;
+  height: 28px;
+}
+
+.home-filebtn {
+  position: relative;
+}
+
+.home-file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
