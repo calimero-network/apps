@@ -238,8 +238,11 @@ test("5. People: Alice sets Bob to No for Chat; he loses Chat, keeps KV Store an
   await expect(row.locator(`[data-testid^="seat-${KV}-"]`)).toHaveValue("member");
   await expect(row.getByRole("button", { name: "Remove from organization…" })).toBeVisible();
 
-  // Chat, still open, notices on its membership poll and leaves the workspace.
-  await expect(bob.page.getByText("You have no Mero Chat workspace yet")).toBeVisible({ timeout: 120_000 });
+  // Chat, still open, notices on its access poll and says he no longer has
+  // Chat there, instead of an empty workspace; from there he picks another.
+  await expect(bob.page.getByText(`You no longer have access to Chat in ${WORKSPACE}`)).toBeVisible({ timeout: 120_000 });
+  await bob.page.getByRole("button", { name: "Choose another workspace" }).click();
+  await expect(bob.page.getByText("You have no Mero Chat workspace yet")).toBeVisible({ timeout: 60_000 });
 
   // Still in the org in Home, with KV Store and without Chat.
   const home = await bob.context.newPage();
