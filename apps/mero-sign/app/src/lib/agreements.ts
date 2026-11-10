@@ -18,7 +18,7 @@ import {
   type CalimeroClient,
   type PasskeyProvider,
 } from '@calimero-network/mero-js';
-import type { AppSource } from '@calimero-apps/connect';
+import { markOrgFor, orgsWithApp, type AppSource } from '@calimero-apps/connect';
 
 import { MeroSignApp, type Transport } from './meroSign';
 
@@ -63,21 +63,21 @@ export interface WorkspaceRow {
   memberCount: number;
 }
 
-interface MeOrgs {
-  orgs?: Array<{ orgId: string; name: string; role: string }>;
-}
-
-/** Every workspace (org) this account is in, with agreement and member counts. */
+/**
+ * The workspaces: the orgs this account is in that hold an agreement or were
+ * made for Mero Sign, with agreement and member counts. An org made for
+ * another app is offered under "Connect to an existing organization" instead.
+ */
 export async function listWorkspaces(
   client: Pick<CalimeroClient, 'me' | 'listApps' | 'getOrg'>,
   source: AppSource,
 ): Promise<WorkspaceRow[]> {
-  const [me, apps] = await Promise.all([
-    client.me() as Promise<MeOrgs>,
+  const [orgs, apps] = await Promise.all([
+    orgsWithApp(client, source, { marked: true }),
     listInstances(client, source),
   ]);
   const rows = await Promise.all(
-    (me.orgs ?? []).map(async (o) => {
+    orgs.map(async (o) => {
       const members = await readMembers(client, o.orgId).catch(() => null);
       return {
         namespaceId: o.orgId,
@@ -109,13 +109,16 @@ export const MEMBER_DEFAULTS =
  * its owner and admins can create agreements and invite.
  */
 export async function createWorkspace(
-  client: Pick<CalimeroClient, 'createOrg' | 'setCapabilities'>,
+  client: Pick<CalimeroClient, 'createOrg' | 'setCapabilities' | 'getOrg' | 'setOrgMetadata'>,
   name: string,
   passkey: () => PasskeyProvider,
   onStatus: StatusFn = noop,
+  source?: AppSource,
 ): Promise<{ namespaceId: string; warning: string | null }> {
   onStatus('Creating the workspace…');
   const namespaceId = await client.createOrg(name);
+  // Listed as a workspace before it holds an agreement.
+  if (source) await markOrgFor(client, namespaceId, source);
   onStatus('Letting members create agreements and invite…');
   try {
     await client.setCapabilities(namespaceId, MEMBER_DEFAULTS, passkey());
@@ -243,6 +246,9 @@ export async function listAgreements(
       a.name.localeCompare(b.name) || a.agreementId.localeCompare(b.agreementId),
   );
 }
+
+/** The agreement created in an org the account connects to Mero Sign ("Connect to an existing organization"). */
+export const CONNECTED_AGREEMENT_NAME = 'Untitled agreement';
 
 /**
  * A new agreement in workspace `org`: the instance, its `setup` (the creator

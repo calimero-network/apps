@@ -200,7 +200,7 @@ impl Merraria {
     /// Applies up to 512 tile edits (dig = `t: 0`, stored, never a removal);
     /// edits outside the 400×200 world are skipped. Answers how many were
     /// applied. Refreshes the caller's presence stamp and, when anything was
-    /// applied, emits `TilesChanged(account)`. `TooManyEdits` past 512,
+    /// applied, emits `TilesChanged { account }`. `TooManyEdits` past 512,
     /// `NoWorld` before `createWorld`.
     pub fn set_tiles(&mut self, edits: Vec<Edit>, now: u32) -> app::Result<u32> {
         let account = Self::account()?;
@@ -225,7 +225,7 @@ impl Merraria {
                 p.updated_at = stamp(room_now, p.updated_at);
                 let _previous = self.players.insert(&account, &p)?;
             }
-            env::emit(Event::TilesChanged(account), Audience::All)?;
+            env::emit(Event::TilesChanged { account }, Audience::All)?;
         }
         Ok(applied)
     }
@@ -258,7 +258,7 @@ impl Merraria {
 
     /// Joins (or rejoins) as `name`. A rejoin keeps the first `joinedAt` and the
     /// last position; facing, slot and action reset. Answers the caller's
-    /// roster row and emits `PlayerJoined(account)`. `WorldFull` for a new
+    /// roster row and emits `PlayerJoined { account }`. `WorldFull` for a new
     /// account once the world keeps 1,000 avatars.
     pub fn join(&mut self, name: String, now: u32) -> app::Result<PlayerView> {
         let account = Self::account()?;
@@ -284,12 +284,17 @@ impl Merraria {
             updated_at,
         };
         let _previous = self.players.insert(&account, &player)?;
-        env::emit(Event::PlayerJoined(account.clone()), Audience::All)?;
+        env::emit(
+            Event::PlayerJoined {
+                account: account.clone(),
+            },
+            Audience::All,
+        )?;
         Ok(player.view(account, true))
     }
 
     /// The caller's presence and transform. Silent (no event) unless the caller
-    /// had no row or had left, which emits `PlayerJoined(account)`.
+    /// had no row or had left, which emits `PlayerJoined { account }`.
     /// `WorldFull` for a new account once the world keeps 1,000 avatars.
     pub fn heartbeat(&mut self, t: Transform, now: u32) -> app::Result<()> {
         let account = Self::account()?;
@@ -320,12 +325,12 @@ impl Merraria {
         };
         let _previous = self.players.insert(&account, &player)?;
         if was_left {
-            env::emit(Event::PlayerJoined(account), Audience::All)?;
+            env::emit(Event::PlayerJoined { account }, Audience::All)?;
         }
         Ok(())
     }
 
-    /// Marks the caller as having left and emits `PlayerLeft(account)`; a
+    /// Marks the caller as having left and emits `PlayerLeft { account }`; a
     /// no-op (no event) for a caller who never joined.
     pub fn leave(&mut self, now: u32) -> app::Result<()> {
         let account = Self::account()?;
@@ -336,7 +341,7 @@ impl Merraria {
         p.left = true;
         p.updated_at = stamp(self.room_now(now)?, p.updated_at);
         let _previous = self.players.insert(&account, &p)?;
-        env::emit(Event::PlayerLeft(account), Audience::All)?;
+        env::emit(Event::PlayerLeft { account }, Audience::All)?;
         Ok(())
     }
 
@@ -439,9 +444,9 @@ pub enum Event {
     /// The world was founded (`createWorld`).
     Initialized,
     /// Tiles changed by this account (`setTiles`).
-    TilesChanged(String),
+    TilesChanged { account: String },
     /// This account joined, or came back with a heartbeat after leaving.
-    PlayerJoined(String),
+    PlayerJoined { account: String },
     /// This account left.
-    PlayerLeft(String),
+    PlayerLeft { account: String },
 }

@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 import { indexOf, toGameEvent } from "../src/net/events";
 
 describe("toGameEvent", () => {
-  it("reads the account a tuple variant names", () => {
-    expect(toGameEvent({ kind: "TilesChanged", data: { "0": "acct-1" } })).toEqual({
+  it("reads the account an event names", () => {
+    expect(toGameEvent({ kind: "TilesChanged", data: { account: "acct-1" } })).toEqual({
       kind: "TilesChanged",
       value: "acct-1",
     });
-    expect(toGameEvent({ kind: "PlayerLeft", data: { "0": "acct-2" } })).toEqual({
+    expect(toGameEvent({ kind: "PlayerLeft", data: { account: "acct-2" } })).toEqual({
       kind: "PlayerLeft",
       value: "acct-2",
     });
@@ -16,8 +16,10 @@ describe("toGameEvent", () => {
   it("gives null for an event that names nobody, or garbage", () => {
     expect(toGameEvent({ kind: "Initialized", data: null })).toEqual({ kind: "Initialized", value: null });
     expect(toGameEvent({ kind: "Initialized", data: {} })).toEqual({ kind: "Initialized", value: null });
-    expect(toGameEvent({ kind: "X", data: { "0": 7 } })).toEqual({ kind: "X", value: null });
+    expect(toGameEvent({ kind: "X", data: { account: 7 } })).toEqual({ kind: "X", value: null });
     expect(toGameEvent({ kind: "X", data: "str" })).toEqual({ kind: "X", value: null });
+    // The positional key of an SDK before core D63 is not read.
+    expect(toGameEvent({ kind: "TilesChanged", data: { "0": "acct-1" } })).toEqual({ kind: "TilesChanged", value: null });
   });
 });
 

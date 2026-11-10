@@ -73,6 +73,60 @@ export async function myOrgs(client: Pick<CalimeroClient, "me">): Promise<MyOrg[
     .sort((a, b) => a.name.localeCompare(b.name) || a.orgId.localeCompare(b.orgId));
 }
 
+/**
+ * The key an organization made for an app carries in its metadata
+ * ({@link markOrgFor}): `{ createdFor: "<package>" }` (the bundle hash in
+ * development).
+ */
+export const CREATED_FOR = "createdFor";
+
+/** What {@link CREATED_FOR} holds for `source`: its package, or the bundle hash. */
+export function appKey(source: AppSource): string {
+  return typeof source === "string" ? source : source.package;
+}
+
+/** Whether org `metadata` says it was made for `source` ({@link markOrgFor}). */
+export function isMarkedFor(metadata: unknown, source: AppSource): boolean {
+  return (
+    !!metadata &&
+    typeof metadata === "object" &&
+    (metadata as Record<string, unknown>)[CREATED_FOR] === appKey(source)
+  );
+}
+
+/**
+ * Records in a new organization's metadata that it was made for this app, so
+ * it stays in the app's list ({@link orgsWithApp} with `marked`) before it
+ * holds an instance: an app whose organizations start empty (a forum space, a
+ * password team) creates the org first and its instances after. Merges with
+ * what the metadata holds; best-effort (`false` when the node refused it).
+ */
+export async function markOrgFor(
+  client: Pick<CalimeroClient, "getOrg" | "setOrgMetadata">,
+  org: string,
+  source: AppSource,
+): Promise<boolean> {
+  try {
+    const current = (await client.getOrg(org).catch(() => null)) as { metadata?: unknown } | null;
+    const base =
+      current?.metadata && typeof current.metadata === "object" && !Array.isArray(current.metadata)
+        ? (current.metadata as Record<string, unknown>)
+        : {};
+    await client.setOrgMetadata(org, { ...base, [CREATED_FOR]: appKey(source) });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export interface OrgsWithAppOptions {
+  /**
+   * Also the organizations made for this app that hold no instance yet
+   * ({@link markOrgFor}); reads each other organization (`getOrg`).
+   */
+  marked?: boolean;
+}
+
 /** The org ids holding one of `apps`. */
 function orgIds(apps: AppInfo[]): Set<string> {
   return new Set(apps.map((a) => a.org).filter((o): o is string => typeof o === "string" && !!o));
@@ -84,12 +138,22 @@ function orgIds(apps: AppInfo[]): Set<string> {
  * default. An organization made for another app is not among them.
  */
 export async function orgsWithApp(
-  client: Pick<CalimeroClient, "me" | "listApps">,
+  client: Pick<CalimeroClient, "me" | "listApps"> & Partial<Pick<CalimeroClient, "getOrg">>,
   source: AppSource,
+  options: OrgsWithAppOptions = {},
 ): Promise<MyOrg[]> {
   const [orgs, apps] = await Promise.all([myOrgs(client), client.listApps(appFilter(source))]);
   const held = orgIds(apps);
-  return orgs.filter((o) => held.has(o.orgId));
+  if (!options.marked || !client.getOrg) return orgs.filter((o) => held.has(o.orgId));
+  const getOrg = client.getOrg.bind(client);
+  const keep = await Promise.all(
+    orgs.map(async (o) => {
+      if (held.has(o.orgId)) return true;
+      const view = (await getOrg(o.orgId).catch(() => null)) as { metadata?: unknown } | null;
+      return isMarkedFor(view?.metadata, source);
+    }),
+  );
+  return orgs.filter((_, i) => keep[i]);
 }
 
 const KNOWN_TITLES: Record<string, string> = {
@@ -171,18 +235,17 @@ export async function otherOrgs(
   const rows = await Promise.all(
     orgs
       .filter((o) => !held.has(o.orgId))
-      .map(async (o): Promise<OtherOrg> => {
+      .map(async (o): Promise<OtherOrg & { marked: boolean }> => {
         const holds = all
           .filter((a) => a.org === o.orgId)
           .map((a) => ({ appId: a.appId, name: a.name, package: a.package ?? null }))
           .sort((a, b) => a.name.localeCompare(b.name) || a.appId.localeCompare(b.appId));
         let canCreate: boolean | null = null;
-        if (account) {
-          try {
-            canCreate = mayCreateIn((await client.getOrg(o.orgId)) as OrgAccessView, account);
-          } catch {
-            canCreate = null;
-          }
+        let marked = false;
+        const view = (await client.getOrg(o.orgId).catch(() => null)) as (OrgAccessView & { metadata?: unknown }) | null;
+        if (view) {
+          marked = isMarkedFor(view.metadata, source);
+          if (account) canCreate = mayCreateIn(view, account);
         }
         const teams = await teamsOf(client, o.orgId);
         // In an org with app teams, only an owner or admin installs an app
@@ -199,10 +262,12 @@ export async function otherOrgs(
           canCreate = false;
         }
         const label = (teams && appTeamsLabel(teams.appTeams)) ?? holdingsLabel(holds);
-        return { ...o, holds, apps: teams?.appTeams ?? null, mode: teams?.mode ?? null, label, canCreate };
+        return { ...o, holds, apps: teams?.appTeams ?? null, mode: teams?.mode ?? null, label, canCreate, marked };
       }),
   );
-  return options.includeNotAllowed ? rows : rows.filter((o) => o.canCreate !== false);
+  // An org made for this app is in its own list already ({@link orgsWithApp} `marked`).
+  const others = rows.filter((o) => !o.marked).map(({ marked: _marked, ...o }) => o as OtherOrg);
+  return options.includeNotAllowed ? others : others.filter((o) => o.canCreate !== false);
 }
 
 /** {@link appTeams}, or `null` for a client without the method or any failure: the label falls back. */

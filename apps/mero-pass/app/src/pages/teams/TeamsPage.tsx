@@ -7,6 +7,8 @@ import {
   useState,
 } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { otherOrgs, type OtherOrg } from '@calimero-apps/connect';
+import { ConnectExistingOrg } from '@calimero-apps/passkey';
 import { Lock } from '@calimero-network/mero-icons';
 
 import AppShell from '../../components/AppShell';
@@ -14,6 +16,8 @@ import InviteModal from '../../components/InviteModal';
 import { ChevronIcon, PlusIcon } from '../../components/icons';
 import { useCalimero } from '../../calimero';
 import {
+  CONNECTED_VAULT_NAME,
+  createVault,
   createPersonalVault,
   createTeam,
   listTeams,
@@ -173,6 +177,28 @@ export default function TeamsPage() {
       setBusy(null);
     }
   }, [conn, newName, load, navigate]);
+
+  // "Connect to an existing organization": a vault goes into an org the
+  // account has for another app only on this explicit choice.
+  const loadOtherOrgs = useCallback(async () => {
+    if (!conn) return [];
+    try {
+      return await otherOrgs(conn.client, conn.source);
+    } finally {
+      conn.after?.();
+    }
+  }, [conn]);
+  const connectOrg = useCallback(
+    async (org: OtherOrg) => {
+      if (!conn) return;
+      await createVault(conn, { namespaceId: org.orgId, name: CONNECTED_VAULT_NAME, restricted: false }, setBusy).finally(() =>
+        setBusy(null),
+      );
+      await load();
+      navigate(`/teams/${org.orgId}`);
+    },
+    [conn, load, navigate],
+  );
 
   const createPersonal = useCallback(async () => {
     if (!conn) return;
@@ -451,6 +477,7 @@ export default function TeamsPage() {
                 Create
               </button>
             </div>
+            <ConnectExistingOrg appName="Mero Pass" load={loadOtherOrgs} onConnect={connectOrg} />
           </div>
         </div>
       </main>

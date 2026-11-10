@@ -217,7 +217,7 @@ fn membership_is_idempotent_and_updates_the_name() {
         .filter(|(name, _)| name == "MemberJoined")
         .collect();
     assert_eq!(joined.len(), 2);
-    assert_eq!(joined[0].1, json!({ "0": "bob" }));
+    assert_eq!(joined[0].1, json!({ "account": "bob" }));
 }
 
 #[test]
@@ -258,7 +258,7 @@ fn encode_then_get_frame_reconstructs_the_frame() {
         .into_iter()
         .filter(|(n, _)| n == "FramePosted")
         .collect();
-    assert_eq!(posted, [("FramePosted".to_owned(), json!({ "0": "1" }))]);
+    assert_eq!(posted, [("FramePosted".to_owned(), json!({ "seq": "1" }))]);
 }
 
 #[test]
@@ -527,7 +527,7 @@ fn a_chunk_round_trips_byte_for_byte_without_being_interpreted() {
     assert_eq!(got[0]["timestampUs"], "1751955010000");
     assert!(t
         .events_for("bob")
-        .contains(&("ChunkPosted".to_owned(), json!({ "0": "1" }))));
+        .contains(&("ChunkPosted".to_owned(), json!({ "seq": "1" }))));
 }
 
 #[test]
