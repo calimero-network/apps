@@ -1,6 +1,9 @@
+import { ManageInHomeLink } from "@calimero-apps/passkey";
+
 import { useSignOut } from "../auth/signOut";
+import { getActiveNamespaceId } from "../lib/active";
 import { describeTarget } from "../lib/session";
-import { useMaybeSignedIn } from "../lib/sessionContext";
+import { useMaybeSignedIn, useSessionApi } from "../lib/sessionContext";
 import type { MeView } from "../lib/updatesClient";
 import { usePersonLabel } from "../lib/updates";
 import { Avatar } from "./bits";
@@ -19,6 +22,7 @@ export default function SessionMenu({ me, roleLabel }: { me: MeView | null; role
   const personLabel = usePersonLabel();
   const signedIn = useMaybeSignedIn();
   const signOut = useSignOut();
+  const { api } = useSessionApi();
   const host = signedIn ? describeTarget(signedIn.target) : null;
 
   const name = me ? personLabel(me.name, me.account) : "Connecting…";
@@ -48,6 +52,7 @@ export default function SessionMenu({ me, roleLabel }: { me: MeView | null; role
           )}
         </span>
       </div>
+      <ManageInHomeLink session={api.session} org={getActiveNamespaceId()} className={styles.homeLink} />
       <button
         type="button"
         className={styles.logout}

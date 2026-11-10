@@ -1765,3 +1765,12 @@ button.ghost:focus-visible {
     backdrop-filter: none;
   }
 }
+
+/* "Manage people in Calimero Home →" (`ManageInHomeLink`), under the host. */
+.x-homeLink {
+  font-size: 12px;
+  color: var(--accent-ink);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.x-homeLink:hover { text-decoration: underline; }

@@ -225,3 +225,26 @@ await ensureAppTeam(client, org, PACKAGE, passkey); // admin: the app's team, ma
   team's default, hold `INVITE_MEMBERS`). `membersMayInvite(team)` reads the
   per-app switch and `setMembersMayInvite(client, org, team, on, passkey)`
   flips it (`setTeamDefaultCapabilities`, other bits kept).
+
+## Calimero Home
+
+`home.ts` decides where an org app's "Manage people in Calimero Home →" link
+goes, and whether it shows (the component is `ManageInHomeLink` in
+`@calimero-apps/passkey`):
+
+- **Where**: on a page the cluster serves (`{label}.{apps domain}`), Home is the
+  same apps domain with Home's label (`HOME_PACKAGE`, `com.calimero.mero-home`):
+  `appLabel`, or `appClusterLabel(cluster, package)` (core's
+  `app_host::cluster_label`) when the build names its cluster, so the link
+  stays on that cluster. `homeOrigin(href, cluster)`; `null` on a dev server, a
+  static host or a custom domain.
+- **Installed**: `findHome(client, target)` asks the cluster
+  (`client.package(HOME_PACKAGE)`, `GET /packages/{package}`), once per client.
+  No answer, or a failure: no link, so an app on a cluster without Home works on
+  alone.
+- **Link**: `homeUrl(origin, version, org)` is `{origin}/{version}/?org={org}`:
+  the cluster's `/` redirects to the newest release without the query.
+- **Who**: `showsHomeLink({ role, mode })`: owners and admins; members of a
+  `shared` org. Never a guest, nor a member of a `legacy` or `standalone` org.
+
+`homeLinkFor(client, target, org)` is all of it: the URL or `null`.

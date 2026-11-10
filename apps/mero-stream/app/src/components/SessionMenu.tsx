@@ -1,5 +1,7 @@
+import { ManageInHomeLink } from "@calimero-apps/passkey";
+
 import { describeTarget, useSessionApi } from "../session";
-import { clearActiveRoom } from "../lib/session";
+import { clearActiveRoom, getActiveNamespaceId } from "../lib/session";
 import { LogOutIcon, ServerIcon } from "./icons";
 import styles from "./SessionMenu.module.css";
 
@@ -43,6 +45,7 @@ export default function SessionMenu({
             </span>
           </span>
         )}
+        <ManageInHomeLink session={session} org={getActiveNamespaceId()} role="menuitem" className={styles.homeLink} />
         <button
           type="button"
           role="menuitem"
@@ -70,6 +73,7 @@ export default function SessionMenu({
           {host}
         </span>
       )}
+      <ManageInHomeLink session={session} org={getActiveNamespaceId()} className={styles.homeLink} />
       <button
         type="button"
         className={styles.logout}
