@@ -43,8 +43,8 @@ every app to use.
 
 | | Your apps | People | Invitations | Admin |
 |---|---|---|---|---|
-| owner, admin | all apps, open links for theirs | everyone, per-app matrix, remove from org | invite to any app, any role; every pending invite | add apps, legacy to app team, "members may invite" per app |
-| app lead | their apps | as a member | invite to the apps they lead | - |
+| owner, admin | all apps, open links for theirs | everyone, per-app matrix (set who is in each closed app: No, Member, Read only, Lead), remove from org | invite to any app, any role; every pending invite | add apps, legacy to app team, "members may invite" per app |
+| app lead | their apps | as a member, and sets who is in the apps they lead | invite to the apps they lead | - |
 | member | their apps | shared org: people sharing an app with them, and admins (core filters) | only to apps whose "members may invite" is on (always in standalone) | - |
 | guest | the apps they were invited to | none: app-only, no directory | - | - |
 

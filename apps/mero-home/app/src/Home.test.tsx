@@ -85,7 +85,8 @@ describe("People", () => {
     const fake = open();
     fireEvent.click(await screen.findByTestId("tab-people"));
     const bob = await screen.findByTestId("person-acct-bob");
-    await waitFor(() => expect(within(bob).getAllByText("Yes").length).toBe(1));
+    // An admin's matrix: Bob's place in each closed app, which the admin can change.
+    await waitFor(() => expect((within(bob).getByTestId(`seat-${CHAT}-acct-bob`) as HTMLSelectElement).value).toBe("member"));
     fireEvent.click(within(bob).getByTestId("remove-acct-bob"));
     const confirm = screen.getByTestId("remove-confirm");
     expect(confirm.textContent).toContain("from every app in it");
