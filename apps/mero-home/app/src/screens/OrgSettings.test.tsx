@@ -43,8 +43,9 @@ describe("Organization settings: name and logo", () => {
         logo: LOGO,
       }),
     );
+    // The notice renders once the save has resolved, a tick after the call.
+    expect((await screen.findByTestId("settings-notice")).textContent).toBe("Saved.");
     expect(onChanged).toHaveBeenCalled();
-    expect(screen.getByTestId("settings-notice").textContent).toBe("Saved.");
   });
 
   it("clears both, and says why a picture was refused", async () => {
