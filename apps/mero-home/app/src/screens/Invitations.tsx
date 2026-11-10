@@ -52,6 +52,11 @@ export function Invitations({ client, view, account, passkey, after, root = invi
     void refresh();
   }, [refresh]);
 
+  // Every app the caller may name now. Core has no standing invite to "every
+  // app, and those added later" (an invite names its teams when it is made),
+  // so apps added after it are not in it.
+  const allChosen = apps.length > 0 && apps.every((a) => chosen.has(a.package));
+
   const toggle = (pkg: string) =>
     setChosen((s) => {
       const next = new Set(s);
@@ -114,6 +119,20 @@ export function Invitations({ client, view, account, passkey, after, root = invi
         >
           <fieldset>
             <legend>Apps they get</legend>
+            {apps.length > 1 && (
+              <label className="home-check">
+                <input
+                  type="checkbox"
+                  checked={allChosen}
+                  ref={(el) => {
+                    if (el) el.indeterminate = chosen.size > 0 && !allChosen;
+                  }}
+                  onChange={() => setChosen(allChosen ? new Set() : new Set(apps.map((a) => a.package)))}
+                  data-testid="invite-all-apps"
+                />
+                <strong>All apps</strong>
+              </label>
+            )}
             {apps.map((a) => (
               <label key={a.package} className="home-check">
                 <input
@@ -125,6 +144,11 @@ export function Invitations({ client, view, account, passkey, after, root = invi
                 {a.name}
               </label>
             ))}
+            {allChosen && view.mode === "shared" && (
+              <p className="home-muted" data-testid="invite-all-later">
+                Apps added to the organization later are not part of this invitation.
+              </p>
+            )}
           </fieldset>
           <div className="home-row">
             <label className="home-field">

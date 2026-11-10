@@ -225,6 +225,17 @@ await ensureAppTeam(client, org, PACKAGE, passkey); // admin: the app's team, ma
   team's default, hold `INVITE_MEMBERS`). `membersMayInvite(team)` reads the
   per-app switch and `setMembersMayInvite(client, org, team, on, passkey)`
   flips it (`setTeamDefaultCapabilities`, other bits kept).
+- `appTeamInstances(client, org, teamId)` lists every instance on an app team
+  and the teams below it (`getTeam`, walking `children`): what `deleteTeam`
+  deletes. It reads without starting a delete, since a team with no instance
+  is deleted without a confirm.
+- `openAppTeam(client, org, team)` / `openAppTeams(client, org, teams)` open
+  app teams to everyone in the org (`updateTeam` with `join: "everyone"`, no
+  passkey; the team's managers). It only widens: rows stay, and whoever was
+  taken out of an app stays out. `keepAppsApart(client, org, passkey)` closes
+  every app team in one `ScopeApps` (owner or admin, one passkey), and core
+  writes everyone inside each open team in as a row of their own, so nobody
+  loses an app. There is no per-app close: core has none that keeps people.
 
 ### The org-app module (`orgApp.ts`)
 

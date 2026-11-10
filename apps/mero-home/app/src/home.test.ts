@@ -85,7 +85,7 @@ describe("the owner's decisions", () => {
 
   it("(4) only admins get the Admin screen, and invite to every app", async () => {
     const { v } = await view({ as: "admin" });
-    expect(screensFor(v)).toEqual(["apps", "people", "invitations", "admin"]);
+    expect(screensFor(v)).toEqual(["apps", "people", "invitations", "admin", "settings"]);
     expect(invitableApps(v).map((a) => a.package)).toEqual([BLOCKS, CHAT]);
   });
 

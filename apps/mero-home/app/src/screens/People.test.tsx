@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { loadOrg, mayChangeSeat, seatsFor, type OrgApp, type Person } from "../home";
+import { giveAllPlan, loadOrg, mayChangeSeat, removeAllPlan, runEach, seatsFor, type OrgApp, type Person } from "../home";
 import { BLOCKS, CHAT, ORG, fakeOrg, passkey, type FakeOrgOptions } from "../test/fakeOrg";
 import { People } from "./People";
 
@@ -13,6 +13,9 @@ async function open(opts: FakeOrgOptions = {}) {
   const onChanged = vi.fn();
   render(<People client={fake.asClient} view={view} account={fake.me} passkey={passkey} after={() => {}} onChanged={onChanged} />);
   await screen.findByTestId("person-acct-bob");
+  // The rows are read: the bulk buttons are enabled from then on.
+  const bulk = screen.queryAllByTestId(/^give-all-/)[0] as HTMLButtonElement | undefined;
+  if (bulk) await waitFor(() => expect(bulk.disabled).toBe(false));
   return { fake, view, onChanged };
 }
 
@@ -80,6 +83,184 @@ describe("People: who is in each app, set from the matrix", () => {
   it("an open app (everyone in the org) and a legacy app have no list to set", async () => {
     await open({ mode: "standalone" });
     expect(screen.queryByTestId(`seat-${CHAT}-acct-bob`)).toBeNull();
+  });
+});
+
+describe("People: give all apps / remove from all apps", () => {
+  const skipped = () => screen.queryAllByTestId(/^bulk-skipped-/).map((li) => li.textContent);
+
+  it("an admin gives someone every closed app, as a member, one passkey each, and says what it skipped", async () => {
+    const { fake, onChanged } = await open();
+    fireEvent.click(screen.getByTestId("give-all-acct-cat"));
+    expect(screen.getByTestId("bulk-plan").textContent).toContain("Blocks, Chat");
+    expect(screen.getByTestId("bulk-plan").textContent).toContain("asked 2 times, once per app");
+    expect(skipped()).toEqual(["Mero Crm: everyone in the organization has it"]);
+    fireEvent.click(screen.getByTestId("bulk-confirm-yes"));
+    expect((await screen.findByTestId("bulk-done")).textContent).toBe("Added to Blocks, Chat.");
+    expect(fake.client.setTeamMember.mock.calls.map((c) => [c[1], c[2], c[4]])).toEqual([
+      ["t-blocks", "acct-cat", { role: "member" }],
+      ["t-chat", "acct-cat", { role: "member" }],
+    ]);
+    expect(onChanged).toHaveBeenCalled();
+    expect(skipped()).toEqual(["Mero Crm: everyone in the organization has it"]);
+  });
+
+  it("leaves an app they are in as it is", async () => {
+    const { fake } = await open();
+    await waitFor(() => expect((screen.getByTestId(`seat-${CHAT}-acct-bob`) as HTMLSelectElement).value).toBe("member"));
+    fireEvent.click(screen.getByTestId("give-all-acct-bob"));
+    expect(skipped()).toContain("Chat: already in it (Member)");
+    fireEvent.click(screen.getByTestId("bulk-confirm-yes"));
+    await screen.findByTestId("bulk-done");
+    expect(fake.client.setTeamMember.mock.calls.map((c) => c[1])).toEqual(["t-blocks"]);
+  });
+
+  it("shows progress, one app at a time", async () => {
+    const { fake } = await open();
+    let release!: () => void;
+    fake.client.setTeamMember.mockImplementationOnce(() => new Promise<void>((r) => (release = r)));
+    fireEvent.click(screen.getByTestId("give-all-acct-cat"));
+    fireEvent.click(screen.getByTestId("bulk-confirm-yes"));
+    expect((await screen.findByTestId("bulk-progress")).textContent).toBe("0 of 2 added: confirm Blocks with your passkey…");
+    expect(fake.client.setTeamMember).toHaveBeenCalledTimes(1);
+    release();
+    await screen.findByTestId("bulk-done");
+    expect(fake.client.setTeamMember).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops at a refusal or a cancelled passkey, and says what was not tried", async () => {
+    const { fake } = await open();
+    fake.client.setTeamMember.mockRejectedValueOnce(new Error("The passkey prompt was cancelled."));
+    fireEvent.click(screen.getByTestId("give-all-acct-cat"));
+    fireEvent.click(screen.getByTestId("bulk-confirm-yes"));
+    const failed = await screen.findByTestId("bulk-failed");
+    expect(failed.textContent).toContain("Blocks was not added");
+    expect(failed.textContent).toContain("Not tried: Chat.");
+    expect(screen.queryByTestId("bulk-done")).toBeNull();
+    expect(fake.client.setTeamMember).toHaveBeenCalledTimes(1);
+  });
+
+  it("removes someone from every app they are in, after a confirm, never from the org", async () => {
+    const { fake } = await open();
+    await waitFor(() => expect((screen.getByTestId(`seat-${CHAT}-acct-bob`) as HTMLSelectElement).value).toBe("member"));
+    fireEvent.click(screen.getByTestId("remove-all-acct-bob"));
+    expect(fake.client.removeTeamMember).not.toHaveBeenCalled();
+    expect(screen.getByTestId("bulk-plan").textContent).toBe(
+      "Bob leaves: Chat. They stay in the organization. Your passkey is asked once.",
+    );
+    expect(skipped()).toEqual(["Mero Crm: open to everyone in the organization: they keep it while they are in it"]);
+    fireEvent.click(screen.getByTestId("bulk-confirm-yes"));
+    expect((await screen.findByTestId("bulk-done")).textContent).toBe("Taken out of Chat.");
+    expect(fake.client.removeTeamMember).toHaveBeenCalledWith(ORG, "t-chat", "acct-bob", expect.anything());
+    expect(fake.client.removeTeamMember).toHaveBeenCalledTimes(1);
+    expect(fake.client.removeMember).not.toHaveBeenCalled();
+  });
+
+  it("waits for the rows after a change: a plan from stale rows could demote a new lead", async () => {
+    const { fake } = await open();
+    const held: Array<() => void> = [];
+    const read = fake.client.getTeam.getMockImplementation()!;
+    fake.client.getTeam.mockImplementation(async (...a: Parameters<typeof read>) => {
+      await new Promise<void>((r) => held.push(r));
+      return read(...a);
+    });
+    fireEvent.change(screen.getByTestId(`seat-${CHAT}-acct-cat`), { target: { value: "lead" } });
+    // The change is saved and the rows are being read again: still disabled.
+    await screen.findByTestId("people-notice");
+    await waitFor(() => expect(held.length).toBeGreaterThan(0));
+    const give = screen.getByTestId("give-all-acct-cat") as HTMLButtonElement;
+    expect(give.disabled).toBe(true);
+    held.forEach((r) => r());
+    await waitFor(() => expect(give.disabled).toBe(false));
+  });
+
+  it("cancel changes nothing", async () => {
+    const { fake } = await open();
+    fireEvent.click(screen.getByTestId("give-all-acct-cat"));
+    fireEvent.click(screen.getByText("Cancel"));
+    expect(screen.queryByTestId("bulk-panel")).toBeNull();
+    expect(fake.client.setTeamMember).not.toHaveBeenCalled();
+  });
+
+  it("a lead gets the buttons, for the apps they lead only; a member and your own row get none", async () => {
+    await open({ as: "lead" });
+    expect(screen.queryByTestId("give-all-acct-bob")).toBeNull();
+    fireEvent.click(screen.getByTestId("give-all-acct-gus"));
+    expect(screen.getByTestId("bulk-nothing")).toBeTruthy();
+    expect(skipped()).toEqual([
+      "Blocks: you do not manage it",
+      "Chat: already in it (Member)",
+      "Mero Crm: everyone in the organization has it",
+    ]);
+    expect(screen.queryByTestId("bulk-confirm-yes")).toBeNull();
+    cleanup();
+    await open({ as: "member" });
+    expect(screen.queryAllByTestId(/^give-all-|^remove-all-/)).toEqual([]);
+    cleanup();
+    await open({ as: "admin", mode: "standalone" });
+    // Every app open: nothing to manage, so no bulk buttons, but an admin still removes from the org.
+    expect(screen.queryAllByTestId(/^give-all-/)).toEqual([]);
+    expect(screen.getByTestId("remove-acct-bob")).toBeTruthy();
+  });
+});
+
+describe("giveAllPlan / removeAllPlan / runEach", () => {
+  const team = (id: string, join: "everyone" | "invite", manages = false) => ({
+    package: id,
+    teamId: id,
+    name: id,
+    join,
+    memberCount: 1,
+    defaultCapabilities: null,
+    member: false,
+    manages,
+  });
+  const app = (id: string, join: "everyone" | "invite" | null, manages = false): OrgApp => ({
+    package: id,
+    name: id,
+    instances: [],
+    team: join ? team(id, join, manages) : null,
+  });
+  const gus: Person = { account: "gus", role: "guest", name: null };
+  const view = {
+    role: "member" as const,
+    mode: "shared" as const,
+    apps: [app("open", "everyone"), app("led", "invite", true), app("other", "invite"), app("unread", "invite", true)],
+  };
+  const rosters = new Map([
+    ["led", new Map()],
+    ["other", new Map([["gus", "member" as const]])],
+  ]);
+
+  it("plans per app, with why each skip", () => {
+    expect(giveAllPlan(view, rosters, gus)).toEqual({
+      apps: [view.apps[1]],
+      skipped: [
+        { app: view.apps[0], why: "open to everyone but guests: invite them to it" },
+        { app: view.apps[2], why: "you do not manage it" },
+        { app: view.apps[3], why: "its list could not be read" },
+      ],
+    });
+    // Gus is not in "led": nothing to remove there; "other" is not the caller's.
+    expect(removeAllPlan(view, rosters, gus)).toEqual({
+      apps: [],
+      skipped: [
+        { app: view.apps[2], why: "you do not manage it" },
+        { app: view.apps[3], why: "its list could not be read" },
+      ],
+    });
+  });
+
+  it("runs in turn and stops at the first failure", async () => {
+    const seen: string[] = [];
+    const result = await runEach(view.apps, async (a) => {
+      seen.push(a.package);
+      if (a.package === "led") throw new Error("no");
+    });
+    expect(seen).toEqual(["open", "led"]);
+    expect(result.done.map((a) => a.package)).toEqual(["open"]);
+    expect(result.failed?.app.package).toBe("led");
+    expect(result.notTried.map((a) => a.package)).toEqual(["other", "unread"]);
   });
 });
 
