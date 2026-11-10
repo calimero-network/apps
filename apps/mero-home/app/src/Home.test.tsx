@@ -162,6 +162,31 @@ describe("Invitations", () => {
     expect((await screen.findByTestId("invite-link")).textContent).toContain("invite=tok-new");
   });
 
+  it("All apps checks every app the caller may name, and clears them again", async () => {
+    const fake = open({ as: "admin" });
+    fireEvent.click(await screen.findByTestId("tab-invitations"));
+    const all = (await screen.findByTestId("invite-all-apps")) as HTMLInputElement;
+    const box = (pkg: string) => screen.getByTestId(`invite-app-${pkg}`) as HTMLInputElement;
+    fireEvent.click(box(CHAT));
+    expect(all.checked).toBe(false);
+    expect(all.indeterminate).toBe(true);
+    fireEvent.click(all);
+    expect([box(CHAT).checked, box(BLOCKS).checked, all.checked]).toEqual([true, true, true]);
+    // Core has no standing invite to apps added later: said, not offered.
+    expect(screen.getByTestId("invite-all-later").textContent).toContain("added to the organization later are not part");
+    fireEvent.click(screen.getByTestId("invite-create"));
+    await waitFor(() => expect(fake.client.invite).toHaveBeenCalledWith(ORG, "member", expect.anything(), ["t-blocks", "t-chat"], expect.anything()));
+    fireEvent.click(all);
+    expect([box(CHAT).checked, box(BLOCKS).checked]).toEqual([false, false]);
+  });
+
+  it("offers no All apps for one app", async () => {
+    open({ as: "lead" });
+    fireEvent.click(await screen.findByTestId("tab-invitations"));
+    await screen.findByTestId(`invite-app-${CHAT}`);
+    expect(screen.queryByTestId("invite-all-apps")).toBeNull();
+  });
+
   it("lists pending invites by app and revokes one", async () => {
     const fake = open({ as: "admin", invites: pending });
     fireEvent.click(await screen.findByTestId("tab-invitations"));
@@ -212,8 +237,8 @@ describe("Admin", () => {
     await waitFor(() => expect(fake.client.setTeamDefaultCapabilities).toHaveBeenCalledWith(ORG, "t-chat", 2, expect.anything()));
   });
 
-  it("gives a legacy app its own access list, keeping everyone (open team)", async () => {
-    const fake = open({ as: "admin" });
+  it("gives a legacy app its own access list, keeping everyone: open by default", async () => {
+    const fake = open({ as: "admin", mode: "standalone" });
     fireEvent.click(await screen.findByTestId("tab-admin"));
     fireEvent.click(await screen.findByTestId(`scope-${CRM}`));
     await waitFor(() =>
@@ -224,13 +249,39 @@ describe("Admin", () => {
     );
   });
 
-  it("adds an app as a shared, closed team with no instances, and links to open it", async () => {
+  it("in an org that keeps apps apart, a legacy app's own list matches it (closed)", async () => {
+    const fake = open({ as: "admin" });
+    fireEvent.click(await screen.findByTestId("tab-admin"));
+    fireEvent.click(await screen.findByTestId(`scope-${CRM}`));
+    await waitFor(() =>
+      expect(fake.client.scopeApps).toHaveBeenCalledWith(ORG, expect.anything(), {
+        apps: [{ package: CRM, name: "Mero Crm" }],
+        shared: true,
+      }),
+    );
+  });
+
+  it("adds an app for everyone by default, however many apps the org holds", async () => {
+    const fake = open({ as: "admin", mode: "standalone" });
+    fireEvent.click(await screen.findByTestId("tab-admin"));
+    fireEvent.change(await screen.findByTestId("add-app-package"), { target: { value: "com.calimero.mero-sheets" } });
+    expect(screen.getByTestId("add-app-who").textContent).toBe("Everyone in the organization gets it.");
+    expect(screen.queryByTestId("add-app-closes")).toBeNull();
+    fireEvent.click(screen.getByTestId("add-app"));
+    await waitFor(() =>
+      expect(fake.client.scopeApps).toHaveBeenCalledWith(ORG, expect.anything(), {
+        apps: [{ package: "com.calimero.mero-sheets", name: "Mero Sheets", instances: [] }],
+        shared: false,
+      }),
+    );
+  });
+
+  it("in an org that keeps apps apart, adds an app as a closed team with no instances, and links to open it", async () => {
     const fake = open({ as: "admin" });
     fireEvent.click(await screen.findByTestId("tab-admin"));
     const select = (await screen.findByTestId("add-app-package")) as HTMLSelectElement;
     expect(Array.from(select.options).map((o) => o.value)).toEqual(["", CRM, "com.calimero.mero-sheets"]);
     fireEvent.change(select, { target: { value: "com.calimero.mero-sheets" } });
-    expect((screen.getByTestId("add-app-shared") as HTMLInputElement).checked).toBe(true);
     fireEvent.click(screen.getByTestId("add-app"));
     await waitFor(() =>
       expect(fake.client.scopeApps).toHaveBeenCalledWith(ORG, expect.anything(), {
@@ -241,10 +292,10 @@ describe("Admin", () => {
     expect((await screen.findByTestId("app-added")).textContent).toContain("Open Mero Sheets");
   });
 
-  it("warns that adding a shared app closes the open ones", async () => {
-    open({ as: "admin", mode: "standalone" });
+  it("warns that adding an app to an org that keeps apps apart closes an app opened on its own", async () => {
+    open({ as: "admin", chatOpen: true });
     fireEvent.click(await screen.findByTestId("tab-admin"));
     fireEvent.change(await screen.findByTestId("add-app-package"), { target: { value: CRM } });
-    expect(screen.getByTestId("add-app-closes").textContent).toContain("Chat will become invite-only");
+    expect(screen.getByTestId("add-app-closes").textContent).toContain("Chat will list its own people again");
   });
 });

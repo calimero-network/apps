@@ -4,16 +4,31 @@ import {
   appTeamInstances,
   createAppTeam,
   describeError,
+  keepAppsApart,
   membersMayInvite,
+  openAppTeam,
   packageTitle,
   setMembersMayInvite,
   type AppTeamInstance,
 } from "@calimero-apps/connect";
 
-import { audience, installable, openLink, orgName, typedMatches, type OrgApp, type OrgView } from "../home";
+import {
+  audience,
+  installable,
+  openLink,
+  orgName,
+  runEach,
+  teamsByJoin,
+  typedMatches,
+  type OrgApp,
+  type OrgView,
+} from "../home";
 
 export interface AdminAppsProps {
-  client: Pick<CalimeroClient, "packages" | "scopeApps" | "setTeamDefaultCapabilities" | "getTeam" | "deleteTeam">;
+  client: Pick<
+    CalimeroClient,
+    "packages" | "scopeApps" | "setTeamDefaultCapabilities" | "updateTeam" | "getTeam" | "deleteTeam"
+  >;
   view: OrgView;
   passkey: () => PasskeyProvider;
   after: () => void;
@@ -28,12 +43,24 @@ type Removing =
   | { app: OrgApp; stage: "reading" }
   | { app: OrgApp; stage: "confirm"; instances: AppTeamInstance[]; typed: string };
 
+type Apart = { stage: "confirm"; on: boolean } | { stage: "running"; on: boolean; done: number; total: number } | null;
+
 /**
  * The Admin screen (owners and admins: decision 4, only admins install
- * apps): the org's apps with their access and the "members may invite"
- * switch, giving a legacy app its own access list, and adding an app (its
- * app team, shared or for everyone). Home never creates an app's instances:
- * the app does, with its own init, when it is opened from here.
+ * apps): the org-wide "Keep apps apart" switch, the org's apps with their
+ * access and the "members may invite" switch, giving a legacy app its own
+ * access list, and adding an app. Home never creates an app's instances: the
+ * app does, with its own init, when it is opened from here.
+ *
+ * Everyone in the organization gets every app until an admin turns "Keep
+ * apps apart" on, however many apps it holds: an install and "its own access
+ * list" pass `shared: false`, unless the org keeps apps apart already, where
+ * they match it (`shared: true`). Turning the switch on closes every app team
+ * in one `ScopeApps` (one passkey), and core writes everyone who has each app
+ * now into its list, so nobody is locked out. Turning it off opens every app
+ * team (`updateTeam`, no passkey), which only widens. One app can be opened
+ * on its own; one cannot be closed on its own, since core has no per-app
+ * close that keeps its people.
  *
  * "Remove app" deletes an app's team with every instance on it and below it,
  * and their data (`deleteTeam`): the confirm lists those instances, read
@@ -44,7 +71,10 @@ type Removing =
 export function AdminApps({ client, view, passkey, after, onChanged }: AdminAppsProps) {
   const [packages, setPackages] = useState<Packages>({ kind: "loading" });
   const [pkg, setPkg] = useState("");
-  const [shared, setShared] = useState(view.mode === "shared" || view.apps.some((a) => a.team));
+  const { closed, open, legacy } = teamsByJoin(view);
+  /** "Keep apps apart": on once any app lists its own people (the org's mode is `shared`). */
+  const apart = closed.length > 0;
+  const [confirmApart, setConfirmApart] = useState<Apart>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [added, setAdded] = useState<{ package: string; teamId: string } | null>(null);
@@ -83,11 +113,11 @@ export function AdminApps({ client, view, passkey, after, onChanged }: AdminApps
       await setMembersMayInvite(client, view.org, app.team, on, passkey());
     });
 
-  // A legacy app (organization access) gets its own team, open, with everyone
-  // who reaches it now: nobody loses access.
+  // A legacy app (organization access) gets its own team with everyone who
+  // reaches it now: nobody loses access. Open, unless the org keeps apps apart.
   const scopeLegacy = (app: OrgApp) =>
     run(`scope-${app.package}`, async () => {
-      await createAppTeam(client, view.org, app.package, passkey(), { name: app.name, shared: false });
+      await createAppTeam(client, view.org, app.package, passkey(), { name: app.name, shared: apart });
     });
 
   const add = () =>
@@ -95,7 +125,7 @@ export function AdminApps({ client, view, passkey, after, onChanged }: AdminApps
       const made = await createAppTeam(client, view.org, pkg, passkey(), {
         name: packageTitle(pkg),
         instances: [],
-        shared,
+        shared: apart,
       });
       setAdded({ package: made.package, teamId: made.teamId });
       setPkg("");
@@ -117,6 +147,42 @@ export function AdminApps({ client, view, passkey, after, onChanged }: AdminApps
     }
   }
 
+  const openOne = (app: OrgApp) =>
+    run(`open-${app.package}`, async () => {
+      if (app.team) await openAppTeam(client, view.org, app.team);
+    });
+
+  async function setApart(on: boolean) {
+    setBusy("apart");
+    setError(null);
+    try {
+      if (on) {
+        setConfirmApart({ stage: "running", on, done: 0, total: 1 });
+        await keepAppsApart(client, view.org, passkey());
+      } else {
+        setConfirmApart({ stage: "running", on, done: 0, total: closed.length });
+        const result = await runEach(
+          closed,
+          (a) => openAppTeam(client, view.org, a.team!),
+          (done) => setConfirmApart({ stage: "running", on, done, total: closed.length }),
+        );
+        if (result.done.length > 0) onChanged();
+        if (result.failed) {
+          const left = [result.failed.app, ...result.notTried].map((a) => a.name).join(", ");
+          throw new Error(`${describeError(result.failed.error)} Still listing their own people: ${left}.`);
+        }
+      }
+      setConfirmApart(null);
+      onChanged();
+    } catch (e) {
+      setConfirmApart(null);
+      setError(describeError(e));
+    } finally {
+      setBusy(null);
+      after();
+    }
+  }
+
   const remove = (app: OrgApp) =>
     run(`remove-${app.package}`, async () => {
       if (!app.team) return;
@@ -125,10 +191,93 @@ export function AdminApps({ client, view, passkey, after, onChanged }: AdminApps
       setRemoved(app.name);
     });
 
-  const openTeams = view.apps.filter((a) => a.team && a.team.join === "everyone");
+  const people = (a: OrgApp) => (a.team ? ` (${a.team.memberCount} ${a.team.memberCount === 1 ? "person" : "people"})` : "");
 
   return (
     <section className="home-card" aria-label="Admin">
+      <h2>Who gets which app</h2>
+      <div className="home-row home-org">
+        <p data-testid="apart-state">
+          <strong>{apart ? "Each app lists who is in it" : "Everyone in the organization has every app"}</strong>
+          {apart && open.length > 0 && (
+            <span className="home-muted"> · open to everyone: {open.map((a) => a.name).join(", ")}</span>
+          )}
+        </p>
+        <label className="home-check">
+          <input
+            type="checkbox"
+            role="switch"
+            checked={apart}
+            disabled={busy !== null || confirmApart !== null || (!apart && open.length === 0)}
+            onChange={(e) => setConfirmApart({ stage: "confirm", on: e.target.checked })}
+            data-testid="apart-switch"
+          />
+          Keep apps apart
+        </label>
+      </div>
+      {!apart && open.length === 0 && (
+        <p className="home-muted" data-testid="apart-nothing">
+          {legacy.length > 0
+            ? "Give an app its own access list below to choose who has it."
+            : "Add an app first."}
+        </p>
+      )}
+      {confirmApart?.stage === "confirm" && confirmApart.on && (
+        <div className="home-confirm glass-float" role="alertdialog" aria-labelledby="apart-title" data-testid="apart-confirm">
+          <h3 id="apart-title">Keep apps apart?</h3>
+          <p>
+            Each app will list who is in it. <strong>Someone who joins the organization from now on gets only the apps
+            their invitation names.</strong> &quot;Members may invite&quot; is turned off on every app.
+          </p>
+          <p data-testid="apart-keeps">
+            Nobody is locked out: every current member is written into the list of every app they have now, in the
+            same step: {open.map((a) => `${a.name}${people(a)}`).join(", ")}. Guests keep only the apps they were added
+            to, and anyone taken out of an app before stays out.
+          </p>
+          {legacy.length > 0 && (
+            <p className="home-muted">
+              {legacy.map((a) => a.name).join(", ")} keep{legacy.length === 1 ? "s" : ""} organization access until you
+              give {legacy.length === 1 ? "it" : "them"} an access list of {legacy.length === 1 ? "its" : "their"} own.
+            </p>
+          )}
+          <p className="home-muted">Your passkey is asked once.</p>
+          <div className="home-row">
+            <button className="glass-btn glass-btn--primary" onClick={() => void setApart(true)} data-testid="apart-confirm-yes">
+              Keep apps apart
+            </button>
+            <button className="glass-btn" onClick={() => setConfirmApart(null)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+      {confirmApart?.stage === "confirm" && !confirmApart.on && (
+        <div className="home-confirm glass-float" role="alertdialog" aria-labelledby="apart-title" data-testid="apart-confirm">
+          <h3 id="apart-title">Give everyone every app?</h3>
+          <p>
+            Everyone in the organization gets {closed.map((a) => a.name).join(", ")}, and everyone who joins later gets
+            every app. Nobody loses an app. Guests keep only the apps they were added to, and anyone taken out of an app
+            before stays out.
+          </p>
+          <p className="home-muted">No passkey is asked.</p>
+          <div className="home-row">
+            <button className="glass-btn glass-btn--primary" onClick={() => void setApart(false)} data-testid="apart-confirm-yes">
+              Give everyone every app
+            </button>
+            <button className="glass-btn" onClick={() => setConfirmApart(null)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+      {confirmApart?.stage === "running" && (
+        <p role="status" data-testid="apart-progress">
+          {confirmApart.on
+            ? "Keeping apps apart: confirm with your passkey…"
+            : `${confirmApart.done} of ${confirmApart.total} apps opened…`}
+        </p>
+      )}
+
       <h2>Apps in this organization</h2>
       {view.apps.length === 0 ? (
         <p className="home-muted">No apps yet.</p>
@@ -154,6 +303,9 @@ export function AdminApps({ client, view, passkey, after, onChanged }: AdminApps
                   <p className="home-muted">
                     Everyone in the organization reaches it. Give it its own access list to choose who has it;
                     everyone who has it now keeps it.
+                    {apart && open.length > 0
+                      ? ` This also makes ${open.map((x) => x.name).join(", ")} list ${open.length === 1 ? "its" : "their"} own people again (they keep everyone).`
+                      : ""}
                   </p>
                 )}
               </div>
@@ -165,6 +317,16 @@ export function AdminApps({ client, view, passkey, after, onChanged }: AdminApps
                   data-testid={`remove-app-${a.package}`}
                 >
                   Remove {a.name}…
+                </button>
+              )}
+              {a.team?.join === "invite" && (
+                <button
+                  className="glass-btn"
+                  disabled={busy !== null}
+                  onClick={() => void openOne(a)}
+                  data-testid={`open-${a.package}`}
+                >
+                  Open {a.name} to everyone
                 </button>
               )}
               {!a.team && (
@@ -269,21 +431,15 @@ export function AdminApps({ client, view, passkey, after, onChanged }: AdminApps
               ))}
             </select>
           </label>
-          <fieldset>
-            <legend>Who gets it</legend>
-            <label className="home-check">
-              <input type="radio" name="who" checked={shared} onChange={() => setShared(true)} data-testid="add-app-shared" />
-              Only the people you add (each app lists its own people)
-            </label>
-            <label className="home-check">
-              <input type="radio" name="who" checked={!shared} onChange={() => setShared(false)} data-testid="add-app-everyone" />
-              Everyone in the organization
-            </label>
-          </fieldset>
-          {shared && openTeams.length > 0 && (
+          <p className="home-muted" data-testid="add-app-who">
+            {apart
+              ? "Only you have it at first: add its people from the People screen, or invite them."
+              : "Everyone in the organization gets it."}
+          </p>
+          {apart && open.length > 0 && (
             <p className="home-notice" data-testid="add-app-closes">
-              {openTeams.map((a) => a.name).join(", ")} will become invite-only. Everyone who has{" "}
-              {openTeams.length === 1 ? "it" : "them"} now keeps access.
+              {open.map((a) => a.name).join(", ")} will list {open.length === 1 ? "its" : "their"} own people again.
+              Everyone who has {open.length === 1 ? "it" : "them"} now keeps access.
             </p>
           )}
           <button type="submit" className="glass-btn glass-btn--primary" disabled={!pkg || busy !== null} data-testid="add-app">
@@ -293,7 +449,7 @@ export function AdminApps({ client, view, passkey, after, onChanged }: AdminApps
       )}
       {added && (
         <p className="home-notice" role="status" data-testid="app-added">
-          {packageTitle(added.package)} is set up. You lead it.{" "}
+          {packageTitle(added.package)} is set up{apart ? ". You lead it." : " for everyone in the organization. You lead it."}{" "}
           <a href={openLink(added.package, view.org, added.teamId)}>Open {packageTitle(added.package)}</a> to start using
           it here.
         </p>

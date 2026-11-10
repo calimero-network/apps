@@ -24,6 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Someone an admin takes out of Chat in Calimero Home (No in the People
+  matrix) is out of the workspace in Chat too. Core shows a closed app team
+  only to its members and the org's admins, so to them Chat's team was missing
+  and the workspace read every org member as in Chat, themselves included; and
+  the membership check never looked at the list, so an open workspace was never
+  left. It now reads nobody in Chat there, and an open workspace leaves within
+  a minute, as one removed from the organization does.
 - Signing in no longer offers, preselects or enters an organization made for
   another app (a Mero Blocks world, say) as a chat workspace. The workspace
   list holds only the organizations that already hold chat; with none,

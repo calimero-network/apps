@@ -1,8 +1,10 @@
 /**
  * Calimero Home end to end on `merod local`: an admin turns a legacy app into
  * an app team, invites someone to that app only, sees and revokes pending
- * invites, sets the name Home shows, removes a person from the org and so
- * from every app, and removes the app with its instance.
+ * invites, keeps apps apart (everyone is written into the app's list), takes
+ * a person out of every app and gives them every app again, gives everyone
+ * every app again, sets the name Home shows, removes a person from the org and
+ * so from every app, and removes the app with its instance.
  *
  * Needs core#4890 and #4891, first released in 1.0.0-rc.14 (see
  * playwright.config.ts): global-setup refuses an older merod with that reason.
@@ -121,6 +123,53 @@ test("the invited member gets that app only, and sees it in Your apps", async ({
   await expect(page.getByTestId(`open-${kvPackage}`)).toBeVisible();
   await expect(page.getByRole("tab")).not.toContainText(["Admin"]);
   await context.close();
+});
+
+/** Eve's row in the People matrix, by her name in the row's header. */
+const eveRow = () =>
+  admin
+    .getByTestId("people-table")
+    .getByRole("row")
+    .filter({ has: admin.getByRole("rowheader", { name: "Eve", exact: true }) });
+
+test("Admin: keeping apps apart writes everyone who has an app into its list", async () => {
+  await admin.getByTestId("tab-admin").click();
+  await expect(admin.getByTestId("apart-state")).toHaveText("Everyone in the organization has every app");
+  await expect(admin.getByTestId("apart-switch")).not.toBeChecked();
+  await admin.getByTestId("apart-switch").click();
+  await expect(admin.getByTestId("apart-confirm")).toContainText("Nobody is locked out");
+  await admin.getByTestId("apart-confirm-yes").click();
+  await expect(admin.getByTestId("org-mode")).toContainText("Shared");
+  await expect(admin.getByTestId("apart-switch")).toBeChecked();
+  // Eve joined while the app was open: she is in its list now.
+  await admin.getByTestId("tab-people").click();
+  await expect(eveRow().getByRole("combobox")).toHaveValue("member");
+});
+
+test("People: take someone out of every app, then give them every app", async () => {
+  const eve = eveRow();
+  await eve.getByRole("button", { name: "Remove from all apps…" }).click();
+  await expect(admin.getByTestId("bulk-plan")).toContainText("Eve leaves: KV Store");
+  await admin.getByTestId("bulk-confirm-yes").click();
+  await expect(admin.getByTestId("bulk-done")).toHaveText("Taken out of KV Store.");
+  await expect(eve.getByRole("combobox")).toHaveValue("none");
+  await admin.getByTestId("bulk-panel").getByRole("button", { name: "Close" }).click();
+
+  await eve.getByRole("button", { name: "Give all apps…" }).click();
+  await expect(admin.getByTestId("bulk-plan")).toContainText("Eve joins, as a Member: KV Store");
+  await admin.getByTestId("bulk-confirm-yes").click();
+  await expect(admin.getByTestId("bulk-done")).toHaveText("Added to KV Store.");
+  await expect(eve.getByRole("combobox")).toHaveValue("member");
+  await admin.getByTestId("bulk-panel").getByRole("button", { name: "Close" }).click();
+});
+
+test("Admin: turning keep apps apart off gives everyone every app again", async () => {
+  await admin.getByTestId("tab-admin").click();
+  await admin.getByTestId("apart-switch").click();
+  await expect(admin.getByTestId("apart-confirm")).toContainText("Give everyone every app?");
+  await admin.getByTestId("apart-confirm-yes").click();
+  await expect(admin.getByTestId("org-mode")).toContainText("Standalone");
+  await expect(admin.getByTestId("apart-switch")).not.toBeChecked();
 });
 
 test("Organization: an admin sets the name Home shows", async () => {

@@ -392,4 +392,60 @@ export async function appTeamInstances(
   };
   await walk(teamId, 0);
   return out;
+
+}
+
+/**
+ * Open `team` (an app team) to everyone in the organization: `updateTeam`
+ * with `join: "everyone"`. It only widens: its rows stay, and whoever was
+ * taken out of it stays out (core keeps them in the team's `removed`). Core
+ * asks no passkey for it (rc.14), only `MANAGE_VISIBILITY` on the team, which
+ * its managers (owners, admins, its leads) hold.
+ */
+export async function openAppTeam(
+  client: Pick<CalimeroClient, "updateTeam">,
+  org: string,
+  team: Pick<AppTeam, "teamId">,
+): Promise<void> {
+  await client.updateTeam(org, team.teamId, { join: "everyone" });
+}
+
+/**
+ * Open every closed one of `teams`, one `updateTeam` each, in turn (no
+ * passkey). Answers the team ids opened; a refusal is thrown with those
+ * before it already open.
+ */
+export async function openAppTeams(
+  client: Pick<CalimeroClient, "updateTeam">,
+  org: string,
+  teams: ReadonlyArray<Pick<AppTeam, "teamId" | "join">>,
+): Promise<string[]> {
+  const opened: string[] = [];
+  for (const t of teams) {
+    if (t.join === "everyone") continue;
+    await openAppTeam(client, org, t);
+    opened.push(t.teamId);
+  }
+  return opened;
+}
+
+/**
+ * Turn "keep apps apart" on: close every app team in `org` (core `ScopeApps`
+ * with no package and `shared: true`; owner or admin; one passkey). Core
+ * writes everyone inside each open team now in as a row of their own in the
+ * same step (every member who joins open teams; not a guest, nor someone
+ * taken out of that app before), so nobody who has an app loses it, and
+ * turns "members may invite" off on those apps. From then on, someone who joins the org gets
+ * only the apps an invite names. A legacy app (organization access, no team)
+ * is left as it is. Core has no per-app close that keeps people: an
+ * `updateTeam` to `join: "invite"` drops everyone who was in only because the
+ * team was open, so nothing here offers it.
+ */
+export async function keepAppsApart(
+  client: Pick<CalimeroClient, "scopeApps">,
+  org: string,
+  passkey: PasskeyProvider,
+): Promise<OrgMode> {
+  const result = await client.scopeApps(org, passkey, { apps: [], shared: true });
+  return result.mode;
 }

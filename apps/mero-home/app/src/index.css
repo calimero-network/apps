@@ -95,6 +95,12 @@ body {
   align-items: center;
 }
 
+.home-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .home-org {
   justify-content: space-between;
 }

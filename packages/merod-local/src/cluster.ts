@@ -93,12 +93,22 @@ export interface Started {
 /**
  * Starts `merod local` (state in {@link STATE_DIR}, `--fresh` to start over) and
  * waits for its nodes. `log` names a file for its output; without one it shares
- * this terminal.
+ * this terminal. `origins` replaces the origins passkey ceremonies are trusted
+ * from (merod's default: `http://localhost:3000` and {@link PASSKEY_ORIGIN}),
+ * for a run that serves more than two frontends at once.
  */
-export async function startCluster(options: { fresh?: boolean; log?: string } = {}): Promise<Started> {
+export async function startCluster(
+  options: { fresh?: boolean; log?: string; origins?: string[] } = {},
+): Promise<Started> {
   assertMerod();
   mkdirSync(STATE_DIR, { recursive: true });
-  const args = ["local", "--dir", join(STATE_DIR, "cluster"), ...(options.fresh ? ["--fresh"] : [])];
+  const args = [
+    "local",
+    "--dir",
+    join(STATE_DIR, "cluster"),
+    ...(options.fresh ? ["--fresh"] : []),
+    ...(options.origins?.length ? ["--origins", options.origins.join(",")] : []),
+  ];
   const child = spawn(merodBinary(), args, {
     stdio: options.log ? ["ignore", "pipe", "pipe"] : "inherit",
     env: { RUST_LOG: "warn,openraft=off", ...process.env },

@@ -202,10 +202,17 @@ function moded(org: OrgRecord): boolean {
  * Who is in Chat in this workspace: chat's app team, else (no app team) every
  * org member, except a guest once the org has app teams (core gives them only
  * the apps they are invited to).
+ *
+ * In an org with app teams where the caller sees no team of chat's, nobody is
+ * (the caller included): core shows a closed team only to its members and the
+ * org's admins, so chat's team is closed to them (someone Calimero Home took
+ * out of Chat), or chat has none there yet. Reading every org member there
+ * kept that person in a workspace they had lost.
  */
 export function chatMembers(org: OrgRecord): string[] {
   const team = chatTeamId(org);
   if (team) return appTeamMembers(org as OrgAccessView, team, org.mode);
+  if (chatPackage() && moded(org)) return [];
   return Object.entries(org.members)
     .filter(([, role]) => !(role === "guest" && moded(org)))
     .map(([account]) => account);
