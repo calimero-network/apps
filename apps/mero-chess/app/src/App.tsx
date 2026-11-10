@@ -8,7 +8,7 @@ import {
   useNavigate,
 } from "react-router-dom";
 import { appSource, type InviteStore, type KeyValueStorage, type PendingInvite } from "@calimero-apps/connect";
-import { AppListing, JoinInvitation, PasskeySignIn, usePendingInvite } from "@calimero-apps/passkey";
+import { AppListing, JoinInvitation, PasskeySignIn, useInstanceRelease, usePendingInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
 import { PACKAGE } from "./chess";
@@ -163,6 +163,8 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
 
   const client = session.status === "signed-in" ? session.client : null;
   const key = session.status === "signed-in" ? selectionKey(session.target, session.accountId) : null;
+  // A table is an app instance, served the frontend of the release it runs.
+  useInstanceRelease(client, opened?.appId);
   const after = useCallback(() => {
     if (client) store?.sync(client);
   }, [client, store]);

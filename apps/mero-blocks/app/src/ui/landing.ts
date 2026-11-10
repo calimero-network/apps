@@ -47,6 +47,7 @@ import {
   SIGN_IN_HINT,
   type CeremonyFailure,
 } from "@calimero-apps/passkey/ceremony";
+import { watchUpgrades } from "@calimero-apps/passkey/upgrade";
 import "@calimero-apps/passkey/passkey.css";
 import { decideSelfName, rememberLastUsedName } from "@calimero-apps/names";
 
@@ -259,6 +260,8 @@ export class Landing {
    * it joined (`null` when it cannot be told) and the world its link named.
    */
   private joined: { org: string | null; world: string | null } | null = null;
+  /** Takes the "new version" prompt away (sign-out, entering a world). */
+  private stopUpgrades: (() => void) | null = null;
 
   constructor(
     parent: HTMLElement,
@@ -287,6 +290,7 @@ export class Landing {
     return new Promise((resolve) => {
       if (opts.chromeless) this.root.classList.add("is-chromeless");
       this.render(defaults, (choice) => {
+        this.offerUpgrades(null);
         this.panorama.destroy();
         this.root.remove();
         resolve(choice);
@@ -551,7 +555,28 @@ export class Landing {
 
   // state 3: signed in — the Minecraft world list. The world last played
   // renders first, with one-click Enter; the rest load as cards below it.
+  /**
+   * "A new version is available" (@calimero-apps/passkey/upgrade) while the
+   * world list shows: once per sign-in, to someone who may upgrade a world
+   * (its owner, or MANAGE_APPLICATION in its organization) only.
+   */
+  private offerUpgrades(phase: SignedIn | null): void {
+    if (!phase) {
+      this.stopUpgrades?.();
+      this.stopUpgrades = null;
+      return;
+    }
+    this.stopUpgrades ??= watchUpgrades({
+      client: phase.client,
+      package: PACKAGE,
+      appName: "Mero Blocks",
+      accountId: phase.accountId,
+      ...(this.deps.storage ? { storage: this.deps.storage } : {}),
+    });
+  }
+
   private renderWorldPicker(phase: SignedIn, defaults: { name: string; seed: number }, done: (c: LaunchChoice) => void): void {
+    this.offerUpgrades(phase);
     const el = this.playCardEl();
     const source = worldSource(this.deps.env);
     el.innerHTML = `
@@ -582,6 +607,7 @@ export class Landing {
     };
 
     el.querySelector("[data-testid=sign-out-btn]")!.addEventListener("click", () => {
+      this.offerUpgrades(null);
       // The next person on this browser is not asked to join.
       this.invites.signedOut();
       void signOut(phase).then((next) => {

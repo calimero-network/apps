@@ -542,3 +542,83 @@ describe("one sign-in everywhere (@calimero-apps/passkey)", () => {
     expect(client.signUp).toHaveBeenLastCalledWith(expect.anything(), "Ada");
   });
 });
+
+describe("a new version of a world", () => {
+  /** What the node reports: world w-1 of org-1 runs 1.0.0 with 1.1.0 waiting; the account is `role` there. */
+  function reports(client: Record<string, unknown>, role: string, upgradesHeldBy = "owner") {
+    Object.assign(client, {
+      me: vi.fn(async () => ({ accountId: "acct-ada", orgs: [{ orgId: "org-1", role }] })),
+      // The org already holds the player's name, so entering the world asks for none.
+      getOrg: vi.fn(async () => ({
+        members: { "acct-ada": role },
+        memberMetadata: { "acct-ada": { name: "Ada" } },
+        defaultCapabilities: 4,
+        capabilities: {},
+        teams: {},
+      })),
+      getApp: vi.fn(async () => ({ appId: "w-1", owner: "someone-else", org: "org-1" })),
+      appsReportAll: vi.fn(async (scope: string | null) => ({
+        scope: scope ? { kind: "org", org: scope } : { kind: "account" },
+        governance: { releases: "owner", appUpgrades: "owner", outbound: "owner" },
+        approvedReleases: null,
+        clusterReleases: [],
+        next: null,
+        apps: scope
+          ? [
+              {
+                app: "w-1",
+                name: "caves",
+                scope: { kind: "org", org: "org-1" },
+                package: { package: "com.calimero.merraria", version: "1.0.0" },
+                upgradesHeldBy,
+                availableVersions: ["1.1.0"],
+              },
+            ]
+          : [],
+      })),
+      requestConsent: vi.fn(async () => ({ requestId: "r-1", url: "https://node/consent/r-1", expiresAt: 9e9 })),
+    });
+  }
+  const upgradePrompt = () => document.querySelector("[data-testid=upgrade-prompt]");
+  const until = async (check: () => boolean) => {
+    for (let i = 0; i < 50 && !check(); i++) await settle();
+    expect(check()).toBe(true);
+  };
+
+  it("offers the world's organization owner the update, and it goes when the world is entered", async () => {
+    const { $, chosen } = launcher(true, (c) => reports(c, "owner"));
+    await until(() => upgradePrompt() !== null);
+    expect(upgradePrompt()!.textContent).toContain("Version 1.1.0 of Merraria is available (you run 1.0.0).");
+    $("join-world-0")!.click();
+    await chosen;
+    expect(upgradePrompt()).toBeNull();
+  });
+
+  it("Not now hides it, and it stays hidden for that version", async () => {
+    launcher(true, (c) => reports(c, "admin"));
+    await until(() => upgradePrompt() !== null);
+    (document.querySelector("[data-testid=upgrade-later]") as HTMLElement).click();
+    expect(upgradePrompt()).toBeNull();
+    document.body.innerHTML = "";
+    const again = launcher(true, (c) => reports(c, "admin"));
+    await until(() => again.client.listApps.mock.calls.length > 0);
+    await settle();
+    await settle();
+    expect(upgradePrompt()).toBeNull();
+  });
+
+  it("shows nothing to a member who may not upgrade, nor where the publisher or the operator upgrades", async () => {
+    for (const [role, holder] of [
+      ["member", "owner"],
+      ["owner", "publisher"],
+      ["owner", "operator"],
+    ] as const) {
+      const { client } = launcher(true, (c) => reports(c, role, holder));
+      await until(() => (client as unknown as { appsReportAll: { mock: { calls: unknown[] } } }).appsReportAll.mock.calls.length === 2);
+      await settle();
+      await settle();
+      expect(upgradePrompt()).toBeNull();
+      document.body.innerHTML = "";
+    }
+  });
+});

@@ -8,7 +8,7 @@ import { generateWorld, spawnPoint } from "./engine/terrain";
 import { AIR, HOTBAR, STARTING_INVENTORY, tileDef } from "./engine/tiles";
 import { TileStore } from "./engine/world";
 import { AppError } from "@calimero-network/mero-js";
-import { NotServedError, appSource, describeError } from "@calimero-apps/connect";
+import { NotServedError, appSource, describeError, followInstanceRelease } from "@calimero-apps/connect";
 import { renderListing } from "@calimero-apps/passkey/listing";
 import "@calimero-apps/passkey/passkey.css";
 import { GameClient, type WorldMeta } from "./net/client";
@@ -138,6 +138,10 @@ async function boot(): Promise<void> {
     worldId = launched.world.appId;
     worldOrg = launched.world.org;
   }
+
+  // A world is an app instance, served the frontend of the release it runs:
+  // another release's page moves there (`/app/{world}/`) before playing.
+  if (conn && (await followInstanceRelease({ client: conn.client, app: worldId }))) return;
 
   // ---- world + net bootstrap -----------------------------------------
   // There is no offline mode, so an unreachable world is a hard stop.

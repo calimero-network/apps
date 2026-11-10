@@ -15,6 +15,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { otherOrgs, targetKey, type OtherOrg } from '@calimero-apps/connect';
+import { useInstanceRelease } from '@calimero-apps/passkey';
 import { describeError } from '../utils/errors';
 import { APP_DISPLAY_NAME } from '../config';
 import { useSignedIn } from '../sessionContext';
@@ -108,6 +109,8 @@ export function useWorkspace(): UseWorkspaceReturn {
   const [listError, setListError] = useState<Error | null>(null);
   const [joinedNsId, setJoinedNsId] = useState<string | null>(null);
   const [contextId, setContextId] = useState<string | null>(null);
+  // A spreadsheet is an app instance, served the frontend of the release it runs.
+  useInstanceRelease(client, contextId);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<Error | null>(null);

@@ -8,7 +8,7 @@ import {
   type KeyValueStorage,
   type PendingInvite,
 } from "@calimero-apps/connect";
-import { AppListing, PasskeySignIn, InvitationSignIn, JoinInvitation, usePendingInvite } from "@calimero-apps/passkey";
+import { AppListing, PasskeySignIn, InvitationSignIn, JoinInvitation, usePendingInvite, useInstanceRelease } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 import { GroupPicker, type OpenedGroup } from "./GroupPicker";
 import { InviteCard } from "./InviteCard";
@@ -92,6 +92,8 @@ export function App({
   const [pickerKey, setPickerKey] = useState(0);
 
   const client = session.status === "signed-in" ? session.client : null;
+  // A group is an app instance, served the frontend of the release it runs.
+  useInstanceRelease(client, opened?.appId);
   const key = session.status === "signed-in" ? selectionKey(session.target, session.accountId) : null;
   const after = useCallback(() => {
     if (client) store?.sync(client);

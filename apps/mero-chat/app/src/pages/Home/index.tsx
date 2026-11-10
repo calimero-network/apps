@@ -14,7 +14,12 @@ import {
 import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
 import { ContextApiDataSource } from "../../api/dataSource/nodeApiDataSource";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
-import { setContextId, setContextIdentity as setExecutorPublicKey, useCalimero as useCalimero } from "../../api/calimero";
+import {
+  followChannelRelease,
+  setContextId,
+  setContextIdentity as setExecutorPublicKey,
+  useCalimero as useCalimero,
+} from "../../api/calimero";
 import type { CreateContextResult } from "../../components/popups/StartDMPopup";
 import type { DMContextInfo } from "../../hooks/useDMs";
 import { useAppNotifications } from "../../hooks/useAppNotifications";
@@ -309,6 +314,8 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     activeChatRef.current = resolvedChat;
     setIsSidebarOpen(false);
     updateSessionChat(resolvedChat);
+    // Stored first, so the release it moves to reopens this chat.
+    if (resolvedChat.contextId) followChannelRelease(resolvedChat.contextId);
 
     // Clear unread badge and persist read position to WASM
     if (resolvedChat.contextId && resolvedChat.contextIdentity) {

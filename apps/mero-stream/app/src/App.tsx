@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { NotFound } from "@calimero-network/mero-js";
 import { targetKey } from "@calimero-apps/connect";
+import { useInstanceRelease } from "@calimero-apps/passkey";
 import { useSessionApi } from "./session";
 import { bind, getContextId, clearActiveRoom } from "./lib/session";
 import { pendingInvite } from "./lib/streams";
@@ -61,6 +62,8 @@ function RequireStream({ children }: { children: ReactNode }) {
   const { session } = useSessionApi();
   const client = session.status === "signed-in" ? session.client : null;
   const room = getContextId();
+  // A room is an app instance, served the frontend of the release it runs.
+  useInstanceRelease(client, room);
   const [exists, setExists] = useState<boolean | null>(() =>
     room && verifiedRooms.has(room) ? true : null,
   );

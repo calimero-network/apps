@@ -16,7 +16,7 @@ import {
   type KeyValueStorage,
   type PendingInvite,
 } from "@calimero-apps/connect";
-import { AppListing, InvitationSignIn, JoinInvitation, PasskeySignIn, usePendingInvite } from "@calimero-apps/passkey";
+import { AppListing, InvitationSignIn, JoinInvitation, PasskeySignIn, usePendingInvite, useInstanceRelease } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
 import { arenaIn, basename, invitedArena, invites as appInvites, listArenas, selectionKey } from "./arenas";
@@ -122,6 +122,8 @@ function PlayPage({ storage, deps }: { storage: KeyValueStorage; deps: SessionDe
   const [lobbyKey, setLobbyKey] = useState(0);
 
   const client = session.status === "signed-in" ? session.client : null;
+  // An arena is an app instance, served the frontend of the release it runs.
+  useInstanceRelease(client, opened?.appId);
   const key = session.status === "signed-in" ? selectionKey(session.target, session.accountId) : null;
   const after = useCallback(() => {
     if (client) store?.sync(client);

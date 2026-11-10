@@ -105,6 +105,37 @@ inviteLink(token, { org, team, doc, route: "/forums/42", extra: { forum } });
   tell. `mayCreateIn(org, account, team?)` is the same on an org already read,
   and `askAnOwnerCopy("a calendar")` is what to show instead of the button.
 
+## Serving each instance its own release
+
+An app's frontend ships in its signed `.mpk` and works only with that
+release's backend, so each instance is served the frontend of the release it
+runs (`release.ts`). Call it where a person enters an instance:
+
+```ts
+import { followInstanceRelease } from "@calimero-apps/connect";
+
+// true: the page is moving to the instance's release; stop here.
+if (await followInstanceRelease({ client, app: appId })) return;
+```
+
+React apps use `useInstanceRelease(client, appId)` from `@calimero-apps/passkey`.
+
+- **When it moves**: on a page a node serves (`{label}.{apps domain}/{version}/`,
+  `servedRelease(href)`) whose release is not the one the instance runs, as its
+  scope's version report says (`instanceRelease(client, app)`:
+  `package.version`, exact once core records each instance's release). Never in
+  development or on a static host.
+- **Where to**: `/app/{app}/{route}?{query}#{fragment}` (`instanceReleaseUrl`),
+  which core redirects to `/{version}/{route}` of the instance's release, so
+  the person lands in the same place. Apps that keep the open instance in
+  storage rather than the route reopen it from there. `location.replace`, so
+  Back does not return to the old release.
+- **Never a loop**: the tab notes the release it went for
+  (`RELEASE_FOLLOW_KEY`, `sessionStorage`) and stays on a page that still
+  differs after the move (a core without the record redirecting to another
+  release of the same WASM); arriving clears the note. With no storage for
+  the note it never moves.
+
 ## Organizations
 
 An account is in organizations made for other apps (a Mero Blocks world, a

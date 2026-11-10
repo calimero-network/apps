@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useInstanceRelease } from "@calimero-apps/passkey";
 import { decideSelfName, type SelfNameDecision } from "@calimero-apps/names";
 
 import SessionMenu from "./SessionMenu";
@@ -44,6 +45,7 @@ import {
   useUpdatesClient,
 } from "../lib/updates";
 import { getActiveNamespaceId, getAudienceName, getUsername } from "../lib/active";
+import { useMaybeSignedIn } from "../lib/sessionContext";
 
 /** What every page inside an audience needs, loaded once by the shell. */
 interface AudienceData {
@@ -78,6 +80,8 @@ const BUMP_DEBOUNCE_MS = 250;
  */
 export default function AudienceShell() {
   const contextId = useAudienceContextId();
+  // An audience is an app instance, served the frontend of the release it runs.
+  useInstanceRelease(useMaybeSignedIn()?.client, contextId);
   const [revision, setRevision] = useState(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 

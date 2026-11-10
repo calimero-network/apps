@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AppInfo, CalimeroClient, PasskeyProvider } from '@calimero-network/mero-js';
 import type { AppSource } from '@calimero-apps/connect';
+import { useInstanceRelease } from '@calimero-apps/passkey';
 
 import { battleships, messageOf, type Battleships } from '../battleships';
 import {
@@ -164,6 +165,8 @@ export function useBattleshipsLobby({
   const selectedLobby = lobbies.find((l) => l.namespaceId === selectedId) ?? null;
   const namespaceId = selectedLobby?.namespaceId ?? null;
   const org = selectedLobby?.org ?? null;
+  // A lobby is an app instance, served the frontend of the release it runs.
+  useInstanceRelease(client, namespaceId);
 
   // Preselect the remembered lobby, else the first, unless the person cleared it.
   const userCleared = useRef(false);
