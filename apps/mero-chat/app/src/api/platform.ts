@@ -197,6 +197,12 @@ const CHAT_TITLE = "Mero Chat";
  * Who is in Chat in this workspace: chat's app team, else (no app team) every
  * org member, except a guest once the org has app teams (core gives them only
  * the apps they are invited to).
+ *
+ * In an org with app teams where the caller sees no team of chat's, nobody is
+ * (the caller included): core shows a closed team only to its members and the
+ * org's admins, so chat's team is closed to them (someone Calimero Home took
+ * out of Chat), or chat has none there yet. Reading every org member there
+ * kept that person in a workspace they had lost.
  */
 export function chatMembers(org: OrgRecord): string[] {
   return appPeople(org as AppOrgView, chatPackage());

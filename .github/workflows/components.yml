@@ -16,6 +16,9 @@
 #             binary at component-core-tag), as real accounts through mero-js
 #   browser   per app with an `app/playwright.config.ts`: its Playwright suite in
 #             Chromium on the same `merod local`
+#   cross-app e2e/cross-app: Chat, Calimero Home and KV Store over one org on the
+#             same `merod local`, each from its own dev server, when any of the
+#             three (or what they share) changes
 #
 # ci.yml's `browser` job runs only over v1 apps (scripts/app-packages.sh), and
 # none is left, so a component app's browser e2e runs here.
@@ -48,6 +51,8 @@ jobs:
       apps: ${{ steps.set.outputs.apps }}
       # `apps` narrowed to those that ship a Playwright suite.
       browser_apps: ${{ steps.set.outputs.browser_apps }}
+      # Whether e2e/cross-app runs: a change reaching Chat, Home or KV Store, or the suite.
+      cross_app: ${{ steps.set.outputs.cross_app }}
       tag: ${{ steps.set.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
@@ -108,6 +113,15 @@ jobs:
           done | jq -Rsc 'split("\n") | map(select(length > 0))')
           echo "browser_apps=$browser_apps" >> "$GITHUB_OUTPUT"
           echo "::notice::browser e2e: $browser_apps"
+
+          # `changed` is unset when every app is in (no usable base, a dispatch).
+          cross_app=false
+          if jq -e 'any(.[]; . == "mero-chat" or . == "mero-home" or . == "kv-store")' <<<"$apps" >/dev/null \
+             || grep -Eq '^(e2e/cross-app/|packages/(glass|members|names|node-served)/)' <<<"${changed:-}"; then
+            cross_app=true
+          fi
+          echo "cross_app=$cross_app" >> "$GITHUB_OUTPUT"
+          echo "::notice::cross-app e2e: $cross_app"
 
   checks:
     name: Pins, tooling and shared packages
@@ -370,6 +384,78 @@ jobs:
           path: |
             apps/${{ matrix.app }}/app/playwright-report
             apps/${{ matrix.app }}/app/test-results
+            .merod-local/*.log
+          # `.merod-local/` is a dot directory, which upload-artifact skips by default.
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: ignore
+
+  cross-app:
+    name: Cross-app E2E on merod local (Chat, Home, KV Store)
+    needs: changes
+    if: needs.changes.outputs.cross_app == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      TAG: ${{ needs.changes.outputs.tag }}
+      # The global setup bundles dev-signed Chat and KV Store packages, so the
+      # job carries the wasm toolchain and the same target dir layout as `rust`.
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target-components
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip2
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target-components
+          key: component-cross-app-${{ runner.os }}-${{ hashFiles('apps/mero-chat/logic/Cargo.lock', 'apps/kv-store/logic/Cargo.lock', 'tools/component-bundle/Cargo.lock') }}
+          restore-keys: component-cross-app-${{ runner.os }}-
+
+      # Same binary and checksum check as `e2e`.
+      - name: Install merod ${{ env.TAG }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/merod" && cd "$RUNNER_TEMP/merod"
+          base="https://github.com/calimero-network/core/releases/download/$TAG"
+          asset=merod_x86_64-unknown-linux-gnu.tar.gz
+          curl -fsSL --retry 3 -o "$asset" "$base/$asset"
+          curl -fsSL --retry 3 -o SHA256SUMS "$base/SHA256SUMS"
+          grep -E "  $asset\$" SHA256SUMS | sha256sum -c -
+          tar -xzf "$asset" merod
+          ./merod --version
+          echo "MEROD_BIN=$RUNNER_TEMP/merod/merod" >> "$GITHUB_ENV"
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # Capped because `playwright install --with-deps` has no timeout of its own.
+      - uses: ./.github/actions/setup-playwright
+        timeout-minutes: 15
+        with:
+          working-directory: e2e/cross-app
+
+      # The global setup starts `merod local --fresh --origins …` itself, and the
+      # config's three webServers run each app's vite against it.
+      - name: Run the cross-app e2e
+        working-directory: e2e/cross-app
+        run: pnpm exec playwright test
+
+      - name: Upload the report and cluster log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cross-app-e2e-${{ github.sha }}
+          path: |
+            e2e/cross-app/playwright-report
+            e2e/cross-app/test-results
             .merod-local/*.log
           # `.merod-local/` is a dot directory, which upload-artifact skips by default.
           include-hidden-files: true
