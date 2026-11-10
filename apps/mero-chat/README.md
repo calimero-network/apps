@@ -51,6 +51,12 @@ and the private channels that list them), not out of the org.
 - Private channels and DMs keep `accounts` access. The design moves private
   channels to a restricted child team, but core lets only the app team's leads
   and admins create one, so a member could no longer make a private channel.
+- **Leave workspace** in a shared org leaves Chat's team only; when Chat was
+  the person's last app there, they are asked whether to leave the org too.
+  In standalone and legacy orgs Leave is leaving the org, as before.
+- These paths go through `@calimero-apps/connect`'s org-app module
+  (`createAppOrg`, `orgWideAccess`, `appInvite`, `appPeople`, `removeFromApp`,
+  `leaveApp`, `leaveOrg`); `scripts/check-org-app-module.py` keeps it so.
 - Under `pnpm dev:local` chat runs from a raw bundle, which no package ships,
   so it has no app team and every workspace is legacy there.
 

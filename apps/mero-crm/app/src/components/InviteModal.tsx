@@ -1,15 +1,21 @@
 import { useEffect, useState } from "react";
 import styled, { keyframes } from "styled-components";
+import { appOnlyInviteNote } from "@calimero-apps/connect";
+import { PRODUCT_NAME } from "../config";
 import { tokens as t } from "../theme";
 
 interface InviteModalProps {
-  /** Mints an invitation (a passkey step-up) and returns the link to share. */
-  onInvite: () => Promise<string>;
+  /**
+   * Mints an invitation (a passkey step-up) and returns the link to share;
+   * `appOnly` when it gives this app only (an org that keeps its apps apart).
+   */
+  onInvite: () => Promise<{ link: string; appOnly: boolean }>;
   onClose: () => void;
 }
 
 export default function InviteModal({ onInvite, onClose }: InviteModalProps) {
   const [payload, setPayload] = useState<string | null>(null);
+  const [appOnly, setAppOnly] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -31,7 +37,9 @@ export default function InviteModal({ onInvite, onClose }: InviteModalProps) {
     setError(null);
     try {
       // Minting an invite is a passkey step-up: the browser asks for it.
-      setPayload(await onInvite());
+      const made = await onInvite();
+      setPayload(made.link);
+      setAppOnly(made.appOnly);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to create invitation.",
@@ -118,6 +126,11 @@ export default function InviteModal({ onInvite, onClose }: InviteModalProps) {
             <p className="hint">
               Single use: one person can join with this link. Generate another for each person you invite.
             </p>
+            {appOnly && (
+              <p className="hint" data-testid="invite-app-only">
+                {appOnlyInviteNote(PRODUCT_NAME)}
+              </p>
+            )}
           </>
         )}
 

@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Copy, Check, Link2 } from 'lucide-react';
+import { appOnlyInviteNote } from '@calimero-apps/connect';
 import type { InviteCreation } from '@/hooks/useNamespaceInvitation';
 
 interface Props {
@@ -38,6 +39,7 @@ export function InviteDialog({
   footnote,
 }: Props) {
   const [url, setUrl] = useState<string | null>(null);
+  const [appOnly, setAppOnly] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -52,6 +54,7 @@ export function InviteDialog({
     try {
       const result = await onCreate();
       setUrl(result.url);
+      setAppOnly(result.appOnly === true);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -132,6 +135,11 @@ export function InviteDialog({
             </p>
             {footnote && (
               <p className="text-xs text-muted-foreground">{footnote}</p>
+            )}
+            {appOnly && (
+              <p className="text-xs text-muted-foreground" data-testid="invite-app-only">
+                {appOnlyInviteNote('Mero Docs')}
+              </p>
             )}
             {copyFallback && (
               <p

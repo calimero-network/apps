@@ -8,6 +8,8 @@ const {
   mockClearWorkspaceSelection,
   mockNavigate,
   mockDeleteNamespace,
+  mockLeaveNamespace,
+  mockLeaveOrganization,
   perms,
   session,
 } = vi.hoisted(() => ({
@@ -16,6 +18,8 @@ const {
   mockClearWorkspaceSelection: vi.fn(),
   mockNavigate: vi.fn(),
   mockDeleteNamespace: vi.fn(),
+  mockLeaveNamespace: vi.fn(),
+  mockLeaveOrganization: vi.fn(),
   perms: {
     current: { isAdmin: false, loading: false, error: null as string | null, memberIdentity: "me" },
   },
@@ -56,7 +60,8 @@ vi.mock("../../hooks/useCurrentGroupPermissions", () => ({
 vi.mock("../../api/dataSource/groupApiDataSource", () => ({
   GroupApiDataSource: class {
     leaveGroup = vi.fn();
-    leaveNamespace = vi.fn().mockResolvedValue({ data: null, error: null });
+    leaveNamespace = mockLeaveNamespace;
+    leaveOrganization = mockLeaveOrganization;
     deleteNamespace = mockDeleteNamespace;
     // `useWorkspaceName` reads the workspace's replicated name and backfills a
     // local-only one. An undefined method throws synchronously rather than
@@ -91,6 +96,8 @@ describe("SettingsPopup", () => {
     mockClearWorkspaceSelection.mockReset();
     mockNavigate.mockReset();
     mockDeleteNamespace.mockReset().mockResolvedValue({ data: true, error: null });
+    mockLeaveNamespace.mockReset().mockResolvedValue({ data: null, error: null });
+    mockLeaveOrganization.mockReset().mockResolvedValue({ data: undefined, error: null });
     perms.current = { isAdmin: false, loading: false, error: null, memberIdentity: "me" };
     session.isDelegated = false;
     sessionStorage.clear();
@@ -113,6 +120,36 @@ describe("SettingsPopup", () => {
     fireEvent.click(screen.getByRole("button", { name: /confirm delete/i }));
     await waitFor(() => expect(mockDeleteNamespace).toHaveBeenCalledWith("group-1"));
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith("/login"));
+  });
+
+  it("leaving the workspace (the org) goes straight back to sign-in", async () => {
+    mockLeaveNamespace.mockResolvedValue({ data: { namespaceId: "group-1", memberPublicKey: "me", left: "org", lastApp: false }, error: null });
+    renderOpen();
+    fireEvent.click(screen.getByRole("button", { name: /^leave workspace$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /confirm leave/i }));
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith("/login"));
+    expect(screen.queryByTestId("offer-leave-org")).not.toBeInTheDocument();
+  });
+
+  it("left Chat only, the last app in a shared org: offers to leave the organization too", async () => {
+    mockLeaveNamespace.mockResolvedValue({ data: { namespaceId: "group-1", memberPublicKey: "me", left: "app", lastApp: true }, error: null });
+    renderOpen();
+    fireEvent.click(screen.getByRole("button", { name: /^leave workspace$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /confirm leave/i }));
+    expect(await screen.findByTestId("offer-leave-org")).toHaveTextContent(/last app in this organization/);
+    expect(mockNavigate).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /^leave organization$/i }));
+    await waitFor(() => expect(mockLeaveOrganization).toHaveBeenCalledWith("group-1"));
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith("/login"));
+  });
+
+  it("left Chat only, other apps remain: stays in the organization, nothing more asked", async () => {
+    mockLeaveNamespace.mockResolvedValue({ data: { namespaceId: "group-1", memberPublicKey: "me", left: "app", lastApp: false }, error: null });
+    renderOpen();
+    fireEvent.click(screen.getByRole("button", { name: /^leave workspace$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /confirm leave/i }));
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith("/login"));
+    expect(mockLeaveOrganization).not.toHaveBeenCalled();
   });
 
   it("offers neither while the role is unknown, so an admin is never shown Leave", () => {

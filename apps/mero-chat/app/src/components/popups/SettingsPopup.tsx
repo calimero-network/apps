@@ -475,6 +475,9 @@ export default function SettingsPopup({
   const roleKnown = !roleLoading && !roleError && !!memberIdentity;
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  // Left Chat in an org that keeps its apps apart, and it was the person's
+  // last app there: they are asked whether to leave the organization too.
+  const [offerLeaveOrg, setOfferLeaveOrg] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -683,17 +686,46 @@ export default function SettingsPopup({
       });
       return;
     }
+    const leftChatOnly = result.data?.left === "app";
     addToast({
       title: "Left workspace",
-      message: "You have left the workspace.",
+      message: leftChatOnly
+        ? "You have left Mero Chat here. You stay in the organization and its other apps."
+        : "You have left the workspace.",
       type: "channel",
       duration: 3000,
     });
+    setConfirmLeave(false);
+    if (leftChatOnly && result.data?.lastApp) {
+      setOfferLeaveOrg(true);
+      return;
+    }
+    leaveDone();
+  };
+
+  const leaveDone = () => {
     clearWorkspaceSelection();
     clearNamespaceReady();
-    setConfirmLeave(false);
+    setOfferLeaveOrg(false);
     setIsOpen(false);
     navigate("/login");
+  };
+
+  const handleLeaveOrganization = async () => {
+    if (!groupId || leaving) return;
+    setLeaving(true);
+    const result = await new GroupApiDataSource().leaveOrganization(groupId);
+    setLeaving(false);
+    if (result.error) {
+      addToast({
+        title: "Leave organization",
+        message: result.error.message || "Failed to leave the organization",
+        type: "channel",
+        duration: 5000,
+      });
+      return;
+    }
+    leaveDone();
   };
 
   const handleDeleteWorkspace = async () => {
@@ -881,7 +913,21 @@ export default function SettingsPopup({
       )}
       {roleKnown && !isAdmin && (
         <DangerZone>
-          {confirmLeave ? (
+          {offerLeaveOrg ? (
+            <>
+              <DangerLabel data-testid="offer-leave-org">
+                Mero Chat was your last app in this organization. Leave the organization too?
+              </DangerLabel>
+              <ConfirmActions>
+                <CancelLeaveButton onClick={leaveDone} disabled={leaving}>
+                  Stay in organization
+                </CancelLeaveButton>
+                <LeaveWorkspaceButton onClick={handleLeaveOrganization} disabled={leaving}>
+                  {leaving ? "Leaving…" : "Leave organization"}
+                </LeaveWorkspaceButton>
+              </ConfirmActions>
+            </>
+          ) : confirmLeave ? (
             <>
               <DangerLabel>Leave this workspace? You'll need a new invitation to return.</DangerLabel>
               <ConfirmActions>
