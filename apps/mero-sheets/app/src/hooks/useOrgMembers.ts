@@ -26,6 +26,8 @@ export interface UseOrgMembers {
   myName: string;
   /** Publish this account's workspace name. */
   setMyName: (name: string) => Promise<void>;
+  /** The org keeps its apps apart and Mero Sheets has its team: Remove and Leave are its only. */
+  appOnly: boolean;
   /** True once the roster has been read (or failed to be) at least once. */
   loaded: boolean;
   refetch: () => Promise<void>;
@@ -87,6 +89,7 @@ export function useOrgMembers(org: string | null): UseOrgMembers {
     displayName,
     myName: members.names.get(accountId) ?? '',
     setMyName,
+    appOnly: members.appOnly,
     loaded,
     refetch,
   };

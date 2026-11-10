@@ -9,11 +9,14 @@ import {
   isAdminRole,
   listAudiences,
   mintInvite,
+  PRODUCT_NAME,
   readCompany,
+  removeFromCompany,
   type AudienceRow,
 } from "../lib/companies";
 import { useSignedIn } from "../lib/sessionContext";
 import InviteModal from "../components/InviteModal";
+import CompanyPeople, { type CompanyPerson } from "../components/CompanyPeople";
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import AppHeader from "../components/AppHeader";
 import LogoutButton from "../components/LogoutButton";
@@ -68,6 +71,8 @@ export default function AudiencesPage() {
   const [listing, setListing] = useState(true);
   const [nsName, setNsName] = useState("");
   const [memberCount, setMemberCount] = useState(0);
+  /** Who has Mero Updates in the company, and whether Remove is this app's only (apps kept apart). */
+  const [people, setPeople] = useState<{ rows: CompanyPerson[]; appOnly: boolean }>({ rows: [], appOnly: false });
   const [name, setName] = useState("");
 
   const [pending, setPending] = useState<string | null>(null);
@@ -110,6 +115,18 @@ export default function AudiencesPage() {
         setNsName((info?.name ?? "").trim() || `Company ${namespaceId.slice(0, 6)}`);
         setSpaceAdmin(isAdminRole(info?.roles.get(accountId)));
         setMemberCount(info?.people.length ?? 0);
+        setPeople(
+          info
+            ? {
+                rows: info.people.map((account) => ({
+                  account,
+                  role: info.roles.get(account) ?? "member",
+                  name: info.names.get(account) ?? "",
+                })),
+                appOnly: info.appOnly,
+              }
+            : { rows: [], appOnly: false },
+        );
         setAudiences(await listAudiences(client, source, namespaceId));
       } catch (e) {
         setError(describeError(e));
@@ -217,6 +234,23 @@ export default function AudiencesPage() {
       });
     },
     [client, run, load, showToast],
+  );
+
+  const removePerson = useCallback(
+    (person: CompanyPerson) => {
+      void run(`remove:${person.account}`, async (onStatus) => {
+        onStatus("Approve the removal with your passkey…");
+        const left = await removeFromCompany(client, namespaceId, source, person.account, passkey);
+        await load(false);
+        const who = person.name || person.account.slice(0, 12);
+        showToast(
+          left === "app"
+            ? `Removed ${who} from ${PRODUCT_NAME}. They stay in the organization and its other apps.`
+            : `Removed ${who} from the company.`,
+        );
+      });
+    },
+    [client, namespaceId, source, passkey, run, load, showToast],
   );
 
   const copyId = (label: string, id: string) => {
@@ -442,6 +476,23 @@ export default function AudiencesPage() {
               </div>
             ))}
           </div>
+        )}
+
+        {people.rows.length > 0 && (
+          <>
+            <div className={styles.sectionHead}>
+              <h2 className={styles.sectionTitle}>People</h2>
+              <span className={styles.count}>{people.rows.length}</span>
+            </div>
+            <CompanyPeople
+              people={people.rows}
+              me={accountId}
+              canRemove={spaceAdmin}
+              appOnly={people.appOnly}
+              busy={pending?.startsWith("remove:") ? pending.slice("remove:".length) : null}
+              onRemove={removePerson}
+            />
+          </>
         )}
       </main>
 

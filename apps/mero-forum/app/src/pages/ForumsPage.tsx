@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { askAnOwnerCopy, canCreateIn, describeError } from "@calimero-apps/connect";
 
+import { PRODUCT_NAME } from "../config";
 import { useToast } from "../contexts/ToastContext";
 import { useSignedIn } from "../sessionContext";
 import { setActiveForum, setForumName } from "../lib/session";
@@ -13,10 +14,12 @@ import {
   isSpaceAdmin,
   listForums,
   readMembers,
+  removeFromSpace,
   roleIn,
   type ForumRow,
 } from "../lib/spaces";
 import InviteModal from "../components/InviteModal";
+import SpacePeople, { type SpacePerson } from "../components/SpacePeople";
 import SessionMenu from "../components/SessionMenu";
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import { Avatar, NavItem, Shell, SideCard, TechDetails } from "../components/chrome";
@@ -70,6 +73,8 @@ export default function ForumsPage() {
    */
   const [mayCreate, setMayCreate] = useState<boolean | null>(null);
   const [memberCount, setMemberCount] = useState<number | null>(null);
+  /** Who has Mero Forum in the space, and whether Remove is this app's only (apps kept apart). */
+  const [people, setPeople] = useState<{ rows: SpacePerson[]; appOnly: boolean }>({ rows: [], appOnly: false });
   /** The space whose forum list has come back at least once. */
   const [listedForNs, setListedForNs] = useState<string | null>(null);
   const [listing, setListing] = useState(true);
@@ -122,6 +127,18 @@ export default function ForumsPage() {
         const members = await readMembers(client, namespaceId, source).catch(() => null);
         setNsName((members?.name ?? "").trim() || `Space ${namespaceId.slice(0, 6)}`);
         setMemberCount(members ? members.people.length : null);
+        setPeople(
+          members
+            ? {
+                rows: members.people.map((account) => ({
+                  account,
+                  role: members.roles.get(account) ?? "member",
+                  name: members.names.get(account) ?? "",
+                })),
+                appOnly: members.appOnly,
+              }
+            : { rows: [], appOnly: false },
+        );
         void roleIn(client, namespaceId)
           .then((role) => setSpaceAdmin(isSpaceAdmin(role ?? undefined)))
           .catch(() => setSpaceAdmin(false));
@@ -239,6 +256,23 @@ export default function ForumsPage() {
     [client, run, load, showToast],
   );
 
+  const removePerson = useCallback(
+    (person: SpacePerson) => {
+      void run(`remove:${person.account}`, async (onStatus) => {
+        onStatus("Approve the removal with your passkey…");
+        const left = await removeFromSpace(client, namespaceId, source, person.account, passkey);
+        await load(false);
+        const who = person.name || person.account.slice(0, 12);
+        showToast(
+          left === "app"
+            ? `Removed ${who} from ${PRODUCT_NAME}. They stay in the organization and its other apps.`
+            : `Removed ${who} from the space.`,
+        );
+      });
+    },
+    [client, namespaceId, source, passkey, run, load, showToast],
+  );
+
   const spaceName = nsName || "Space";
 
   return (
@@ -316,6 +350,18 @@ export default function ForumsPage() {
               </div>
               <TechDetails rows={[{ label: "Space ID", value: namespaceId }]} />
             </SideCard>
+            {people.rows.length > 0 && (
+              <SideCard title="People">
+                <SpacePeople
+                  people={people.rows}
+                  me={accountId}
+                  canRemove={spaceAdmin}
+                  appOnly={people.appOnly}
+                  busy={pending?.startsWith("remove:") ? pending.slice("remove:".length) : null}
+                  onRemove={removePerson}
+                />
+              </SideCard>
+            )}
             <SideCard title="Invite people">
               <p className="x-sideText">
                 One link joins <strong>{spaceName}</strong> and every forum in

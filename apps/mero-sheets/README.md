@@ -52,8 +52,9 @@ through `@calimero-apps/connect`'s org-app module
 - Once an admin keeps the org's apps apart in Calimero Home (`shared`), an
   invite gives Mero Sheets only (the dialog says so) and only its people are shown.
   **Remove** takes someone out of Mero Sheets, never out of the organization;
-  in open and legacy orgs it is out of the org, as before. Sheets has no
-  organization-level Leave.
+  **Leave workspace** (People panel, anyone but the owner) leaves Mero Sheets
+  only, and offers to leave the organization too when it was your last app
+  there; in open and legacy orgs both are out of the org, as before.
 - Adding Mero Sheets to an organization whose apps have teams makes its team
   first: owners and admins only (anyone else is told so), open in an open org
   and closed in one that keeps its apps apart.

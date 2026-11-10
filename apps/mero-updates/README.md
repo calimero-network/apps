@@ -175,7 +175,9 @@ through `@calimero-apps/connect`'s org-app module
   invite gives Mero Updates only (the dialog says so) and only its people are shown.
   **Leave** then leaves Mero Updates only, and offers to leave the
   organization too when it was your last app there; in open and legacy orgs
-  Leave is leaving the org, as before. Updates has no member Remove.
+  Leave is leaving the org, as before. The company's owners and admins
+  **Remove** people from its People list: Mero Updates only in such an org,
+  out of the org in open and legacy ones.
 - Adding Mero Updates to an organization whose apps have teams makes its team
   first: owners and admins only (anyone else is told so), open in an open org
   and closed in one that keeps its apps apart.

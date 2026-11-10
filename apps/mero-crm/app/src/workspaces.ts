@@ -5,6 +5,8 @@ import {
   createAppOrg,
   createInviteStore,
   isAppOnly,
+  leaveApp,
+  leaveOrg,
   orgInstanceOptions,
   orgsWithApp,
   sourcePackage,
@@ -13,6 +15,7 @@ import {
   inviteLink as sharedInviteLink,
   type AppSource,
   type InviteStore,
+  type LeftApp,
   type KeyValueStorage,
   type PendingInvite,
 } from '@calimero-apps/connect';
@@ -196,6 +199,32 @@ export async function readMembers(
     people: appPeople(view, pkg),
     appOnly: isAppOnly(view, pkg),
   };
+}
+
+/**
+ * The signed-in account leaves the workspace (`leaveApp`, a passkey step-up).
+ * In an org that keeps its apps apart that is Mero CRM only, with `lastApp`
+ * set when it was their last app there (offer {@link leaveWorkspaceOrg});
+ * elsewhere it is the organization, as before.
+ */
+export function leaveWorkspace(
+  client: Pick<CalimeroClient, 'getOrg' | 'listAppTeams' | 'removeTeamMember' | 'removeMember' | 'session'>,
+  org: string,
+  source: AppSource | null,
+  passkey: () => PasskeyProvider,
+  self?: string,
+): Promise<LeftApp> {
+  return leaveApp(client, org, source, passkey, self ? { self } : {});
+}
+
+/** The signed-in account leaves the organization altogether, every app in it. A passkey step-up. */
+export function leaveWorkspaceOrg(
+  client: Pick<CalimeroClient, 'removeMember' | 'session'>,
+  org: string,
+  passkey: () => PasskeyProvider,
+  self?: string,
+): Promise<void> {
+  return leaveOrg(client, org, passkey, self);
 }
 
 // ── invitations ──────────────────────────────────────────────────────────────

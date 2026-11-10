@@ -1,16 +1,24 @@
 /**
  * Mero Forum's own app team (core#4890), against the shared in-memory cluster
  * (`@calimero-apps/connect/testing`), the way mero-chat's `chatAppTeam.test.ts`
- * pins Chat's. Forum has no member Remove (only Leave), so what is pinned: a
- * new space gets an open team and its forums go on it; invites name it; the
- * member count is its people; Leave in an org that keeps its apps apart is
- * Forum only; adding Forum to an org whose apps have teams; a legacy org.
+ * pins Chat's: a new space gets an open team and its forums go on it; invites
+ * name it; the member count is its people; Remove and Leave in an org that
+ * keeps its apps apart are Forum only; adding Forum to an org whose apps have
+ * teams; a legacy org.
  */
 import { describe, expect, it } from "vitest";
 import type { PasskeyProvider } from "@calimero-network/mero-js";
 import { orgCluster } from "@calimero-apps/connect/testing";
 
-import { createForum, createSpace, inviteToken, leaveSpace, leaveSpaceOrg, readMembers } from "./spaces";
+import {
+  createForum,
+  createSpace,
+  inviteToken,
+  leaveSpace,
+  leaveSpaceOrg,
+  readMembers,
+  removeFromSpace,
+} from "./spaces";
 
 const PKG = "com.calimero.mero-forum";
 const SOURCE = { package: PKG };
@@ -84,6 +92,31 @@ describe("Leave", () => {
     expect(cluster.org(org).members["acct-me"]).toBeUndefined();
     const legacy = cluster.addOrg({ mode: "legacy", role: "member" });
     expect((await leaveSpace(cluster.client, legacy, SOURCE, passkey)).left).toBe("org");
+  });
+});
+
+describe("Remove", () => {
+  it("apps kept apart: off Forum's team only, never out of the organization", async () => {
+    const { cluster, org } = await space({ "acct-bob": "member" });
+    cluster.keepAppsApart(org);
+    expect(await removeFromSpace(cluster.client, org, SOURCE, "acct-bob", passkey)).toBe("app");
+    expect(cluster.callsOf("removeTeamMember")[0]!.slice(0, 3)).toEqual([org, cluster.teamOf(org, PKG), "acct-bob"]);
+    expect(cluster.callsOf("removeMember")).toEqual([]);
+    expect(cluster.org(org).members["acct-bob"]).toBe("member");
+    expect((await readMembers(cluster.client, org, SOURCE)).people).not.toContain("acct-bob");
+  });
+
+  it("standalone: out of the organization, as before", async () => {
+    const { cluster, org } = await space({ "acct-bob": "member" });
+    expect(await removeFromSpace(cluster.client, org, SOURCE, "acct-bob", passkey)).toBe("org");
+    expect(cluster.org(org).members["acct-bob"]).toBeUndefined();
+  });
+
+  it("a legacy org: out of the organization", async () => {
+    const cluster = orgCluster();
+    const org = cluster.addOrg({ mode: "legacy", members: { "acct-bob": "member" } });
+    expect(await removeFromSpace(cluster.client, org, SOURCE, "acct-bob", passkey)).toBe("org");
+    expect(cluster.org(org).members["acct-bob"]).toBeUndefined();
   });
 });
 

@@ -9,6 +9,7 @@ import {
   leaveApp,
   leaveOrg,
   orgInstanceOptions,
+  removeFromApp,
   orgsWithApp,
   sourcePackage,
   type AppInviteToken,
@@ -175,6 +176,22 @@ export function leaveCompanyOrg(
   return leaveOrg(client, org, passkey, self);
 }
 
+/**
+ * Takes `account` out of the company (`removeFromApp`, a passkey step-up; its
+ * owners and admins). In an org that keeps its apps apart that is Mero
+ * Updates only (its team), never the organization; elsewhere the org, as
+ * before. Answers which it was.
+ */
+export function removeFromCompany(
+  client: Pick<CalimeroClient, "getOrg" | "removeTeamMember" | "removeMember">,
+  org: string,
+  source: AppSource | null,
+  account: string,
+  passkey: () => PasskeyProvider,
+): Promise<"app" | "org"> {
+  return removeFromApp(client, org, source, account, passkey);
+}
+
 /** The audience created in an org the account connects to Mero Updates ("Connect to an existing organization"). */
 export const CONNECTED_AUDIENCE_NAME = "Everyone";
 
@@ -203,7 +220,7 @@ export interface CompanyInfo {
   names: Map<string, string>;
   /** Who has Mero Updates in the company: its app team, else the org (no guest once it has app teams). */
   people: string[];
-  /** The org keeps its apps apart and Mero Updates has its team: invites and Leave are its only. */
+  /** The org keeps its apps apart and Mero Updates has its team: invites, Remove and Leave are its only. */
   appOnly: boolean;
 }
 

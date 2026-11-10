@@ -12,6 +12,7 @@
  */
 import React, { useEffect, useState } from 'react';
 import styled from 'styled-components';
+import { APP_DISPLAY_NAME } from '../config';
 import { C } from '../theme';
 import { closeButton, overlay, sheetHeader, sideSheet } from './glass';
 import type { Member } from '../hooks/useSpreadsheet';
@@ -43,6 +44,13 @@ interface PeoplePanelProps {
   onSetRole: (memberId: string, role: string) => Promise<void>;
   onSetGroupRole: (account: string, role: string) => Promise<void>;
   onRemove: (account: string) => Promise<void>;
+  /**
+   * The signed-in account leaves the workspace (anyone but its owner). Absent:
+   * no Leave is offered.
+   */
+  onLeave?: () => Promise<void>;
+  /** The org keeps its apps apart: Leave is this app only, the org and its other apps stay. */
+  appOnly?: boolean;
   onClose: () => void;
 }
 
@@ -79,6 +87,7 @@ export default function PeoplePanel(props: PeoplePanelProps) {
   const { members, group, selfId, onClose } = props;
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [confirmLeave, setConfirmLeave] = useState(false);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -175,6 +184,34 @@ export default function PeoplePanel(props: PeoplePanelProps) {
             );
           })}
         </List>
+        {props.onLeave && (
+          <LeaveRow>
+            {confirmLeave ? (
+              <Confirm role="alertdialog" aria-label={`Leave ${props.workspaceName}`}>
+                <p>
+                  {props.appOnly
+                    ? `Leave ${APP_DISPLAY_NAME} in ${props.workspaceName}? You stay in the organization and its other apps.`
+                    : `Leave ${props.workspaceName}? You lose every spreadsheet in it, and need a new invitation to come back.`}
+                </p>
+                <div>
+                  <button type="button" onClick={() => setConfirmLeave(false)}>Cancel</button>
+                  <button
+                    type="button"
+                    className="danger"
+                    data-testid="action-confirm-leave"
+                    onClick={() => void run(async () => { await props.onLeave!(); setConfirmLeave(false); })}
+                  >
+                    Leave
+                  </button>
+                </div>
+              </Confirm>
+            ) : (
+              <RemoveBtn type="button" onClick={() => setConfirmLeave(true)} data-testid="action-leave-workspace">
+                Leave workspace
+              </RemoveBtn>
+            )}
+          </LeaveRow>
+        )}
         <Help>
           <p><b>Workbook</b> roles are this spreadsheet&apos;s: owners set them, and the contract checks every write.</p>
           <p><b>Workspace</b> access is the organization&apos;s: admins invite and remove people, and approve each change with their passkey.</p>
@@ -225,6 +262,9 @@ const Confirm = styled.div`
   div { display: flex; gap: 8px; justify-content: flex-end; }
   button { font-size: 12px; padding: 5px 10px; border-radius: 8px; cursor: pointer; background: none; border: 1px solid ${C.line}; color: ${C.ink}; }
   .danger { color: #fff; background: ${C.danger}; border-color: ${C.danger}; }
+`;
+const LeaveRow = styled.div`
+  padding: 10px 18px; border-top: 1px solid ${C.line}; display: flex; flex-direction: column; align-items: stretch;
 `;
 const Help = styled.div`
   padding: 10px 18px 16px; border-top: 1px solid ${C.line};
