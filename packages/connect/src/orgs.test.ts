@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AppInfo } from "@calimero-network/mero-js";
 
-import { holdingsLabel, myOrgs, orgsWithApp, otherOrgs, packageTitle } from "./orgs";
+import { appTeamsLabel, holdingsLabel, myOrgs, orgsWithApp, otherOrgs, packageTitle } from "./orgs";
 
 const CHAT = { package: "com.calimero.chat" } as const;
 
@@ -80,6 +80,67 @@ describe("otherOrgs: the explicit connect choice", () => {
       ["empty", null],
       ["overworld", null],
     ]);
+  });
+});
+
+describe("otherOrgs: labels from app teams (core#4890)", () => {
+  function withTeams(listAppTeams: (org: string) => Promise<unknown>) {
+    return Object.assign(fakeClient(), { listAppTeams }) as never;
+  }
+
+  it("names an org's apps from its app teams, so closed apps are not 'No apps yet'", async () => {
+    const client = withTeams(async (org) => {
+      if (org === "empty") {
+        return {
+          mode: "shared",
+          appTeams: [
+            { package: "com.calimero.mero-crm", teamId: "t1", name: "CRM", join: "invite", memberCount: 4, defaultCapabilities: null, member: false, manages: false },
+            { package: "com.calimero.mero-blocks", teamId: "t2", name: "Blocks", join: "invite", memberCount: 2, defaultCapabilities: null, member: true, manages: false },
+          ],
+        };
+      }
+      return { mode: "legacy", appTeams: [] };
+    });
+    const others = await otherOrgs(client, CHAT);
+    expect(others.map((o) => [o.orgId, o.label, o.mode])).toEqual([
+      ["empty", "Blocks, CRM (not yours)", "shared"],
+      // A legacy org (no app teams) keeps the instance label.
+      ["overworld", "Mero Blocks: overworld", "legacy"],
+    ]);
+    expect(others[0]?.apps).toHaveLength(2);
+  });
+
+  it("only an owner or admin may add this app to an org that has app teams (core#4890)", async () => {
+    const shared = { mode: "shared", appTeams: [{ package: "com.calimero.mero-blocks", teamId: "t", name: "Blocks", join: "invite", memberCount: 1, defaultCapabilities: null, member: true, manages: false }] };
+    // A member granted CREATE_APP org-wide: enough in a legacy org, not once it has app teams.
+    const client = Object.assign(fakeClient({ role: "member" }), {
+      getOrg: async () => ({ members: { "acct-me": "member" }, capabilities: { "acct-me": 1 } }),
+      listAppTeams: async () => shared,
+    }) as never;
+    const all = await otherOrgs(client, CHAT, { includeNotAllowed: true });
+    expect(all.find((o) => o.orgId === "overworld")?.canCreate).toBe(false);
+    // The admin of `empty` still may.
+    expect(all.find((o) => o.orgId === "empty")?.canCreate).toBe(true);
+  });
+
+  it("falls back to today's label on a node without the route (404)", async () => {
+    const client = withTeams(async () => {
+      throw Object.assign(new Error("Not Found"), { status: 404 });
+    });
+    const others = await otherOrgs(client, CHAT);
+    expect(others.map((o) => [o.orgId, o.label, o.apps, o.mode])).toEqual([
+      ["empty", "No apps yet", null, null],
+      ["overworld", "Mero Blocks: overworld", null, null],
+    ]);
+  });
+
+  it("appTeamsLabel is null with no teams, and uses the package title for a nameless team", () => {
+    expect(appTeamsLabel([])).toBeNull();
+    expect(
+      appTeamsLabel([
+        { package: "com.calimero.mero-sheets", teamId: "t", name: "", join: "everyone", memberCount: 1, defaultCapabilities: 2, member: true, manages: true },
+      ]),
+    ).toBe("Mero Sheets");
   });
 });
 

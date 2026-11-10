@@ -63,6 +63,7 @@ export {
 } from "./invite";
 export {
   appFilter,
+  appTeamsLabel,
   holdingsLabel,
   myOrgs,
   orgsWithApp,
@@ -73,3 +74,20 @@ export {
   type OtherOrg,
   type OtherOrgsOptions,
 } from "./orgs";
+export {
+  NoAppTeamError,
+  appAccess,
+  appTeamOf,
+  appTeams,
+  createAppTeam,
+  ensureAppTeam,
+  inviteToApp,
+  isNotFound,
+  membersMayInvite,
+  setMembersMayInvite,
+  type AppAccess,
+  type AppInvite,
+  type AppTeamOf,
+  type CreateAppTeamOptions,
+  type InviteToAppOptions,
+} from "./appTeams";

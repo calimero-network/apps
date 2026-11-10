@@ -1,0 +1,56 @@
+[package]
+name = "mero-home"
+description = "Calimero Home: one organization, its apps and who is in each, on the component SDK"
+# NOT the release version: the release workflow takes the next appVersion from
+# the registry and passes it to `mero-component bundle --app-version`.
+version = "0.0.1"
+edition = "2021"
+authors = ["Calimero Limited <info@calimero.network>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/calimero-network/apps"
+publish = false
+
+[lib]
+# A `calimero:app` component. Home keeps no state of its own: everything it
+# shows is the organization's (core's org, team and invite routes, through
+# mero-js). A package has to hold a component, so this one is a stub that says
+# what it is; the frontend packed below is the product.
+crate-type = ["cdylib"]
+
+# Core at `component-core-tag` (root Cargo.toml); scripts/check-component-pins.py
+# asserts it. A standalone crate cannot inherit `[workspace.dependencies]`.
+[dependencies]
+calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.11" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+calimero-sdk       = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.11", features = ["testing"] }
+calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.11" }
+serde_json = "1"
+
+[package.metadata.calimero]
+package = "com.calimero.mero-home"
+name = "Calimero Home"
+description = "One place for an organization: the apps it holds, who is in each, invitations, and removing someone from every app at once."
+author = "Calimero"
+# The slug IS the package id: deep links resolve by `Application.package`.
+slug = "com.calimero.mero-home"
+icon = "../app/public/icon-512.png"
+category = "productivity"
+tags = ["organization", "people", "invitations", "admin"]
+github = "https://github.com/calimero-network/apps"
+# `component-min-runtime-version` in the root Cargo.toml. Home's screens need
+# core's app-team routes (core#4890, #4891); on an older node they fall back to
+# what the org routes alone tell (see apps/mero-home/README.md).
+min-runtime-version = "1.0.0-rc.11"
+# The listing's link: the copy Calimero Cloud serves, at the package's own
+# origin (`appUrl("com.calimero.mero-home")`, core's `app_host::label`). Home
+# has no static deployment: a Cloud node trusts passkey ceremonies only from
+# frontends it serves from a bundle (docs/COMPONENT-APPS.md).
+frontend = "https://5j2drii2wgdtplc5o6rw2lijqslzkexcyb25j5yjhrzq3xepbmkq.apps.calimero.network"
+# The built frontend the bundle carries; the cluster serves it from the
+# package's own origin. Build it first: `pnpm -F mero-home build`.
+frontend-dir = "../app/dist"
+
+# Standalone: excluded from the root workspace (root Cargo.toml), its own
+# Cargo.lock, as core's component apps are.
+[workspace]

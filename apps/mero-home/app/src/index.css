@@ -1,0 +1,231 @@
+/* Calimero Home on the fleet's glass look (@calimero-apps/glass, imported first
+   in main.tsx). Only `home-` classes here; tokens are glass's. */
+:root {
+  --glass-tint: #6d8cff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--glass-font);
+  color: var(--glass-ink);
+  background: var(--glass-ground);
+  line-height: 1.5;
+}
+
+.home {
+  min-height: 100vh;
+  padding: 16px 16px 64px;
+}
+
+.home-header {
+  max-width: 960px;
+  margin: 0 auto 16px;
+  padding: 16px 20px;
+  border-radius: var(--glass-radius-lg);
+}
+
+.home-header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  letter-spacing: -0.02em;
+}
+
+.home-main {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.home-card {
+  background: var(--glass-surface);
+  border: 1px solid var(--glass-line);
+  border-radius: var(--glass-radius);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  padding: 18px 20px;
+  margin-bottom: 16px;
+}
+
+.home-card h2 {
+  font-size: 1.05rem;
+  margin: 0 0 10px;
+}
+
+.home-card h2 + h2,
+.home-card * + h2 {
+  margin-top: 24px;
+}
+
+.home-card h3 {
+  font-size: 0.95rem;
+  margin: 18px 0 8px;
+}
+
+.home-muted {
+  color: var(--glass-muted);
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.home-error {
+  color: var(--glass-bad-ink);
+  background: var(--glass-bad-bg);
+  border-radius: var(--glass-radius-sm);
+  padding: 8px 10px;
+  margin: 10px 0 0;
+  white-space: pre-wrap;
+}
+
+.home-notice {
+  color: var(--glass-good-ink);
+  background: var(--glass-good-bg);
+  border-radius: var(--glass-radius-sm);
+  padding: 8px 10px;
+  margin: 10px 0;
+}
+
+.home-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.home-org {
+  justify-content: space-between;
+}
+
+.home-field {
+  display: grid;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: var(--glass-muted);
+}
+
+.home-field select,
+.home-field input {
+  font: inherit;
+  color: var(--glass-ink);
+  background: var(--glass-surface-solid);
+  border: 1px solid var(--glass-line-strong);
+  border-radius: var(--glass-radius-sm);
+  padding: 6px 10px;
+  min-width: 160px;
+}
+
+.home-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.home-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.home-app {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--glass-line);
+  border-radius: var(--glass-radius-sm);
+  background: var(--glass-surface-solid);
+}
+
+.home-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+  font-size: 0.92rem;
+}
+
+.home-form {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+}
+
+.home-form fieldset {
+  border: 1px solid var(--glass-line);
+  border-radius: var(--glass-radius-sm);
+  padding: 8px 12px;
+  margin: 0;
+}
+
+.home-link pre {
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: var(--glass-sunken);
+  border-radius: var(--glass-radius-sm);
+  padding: 10px;
+}
+
+.home-scroll {
+  overflow-x: auto;
+  margin-top: 12px;
+}
+
+.home-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.9rem;
+}
+
+.home-table th,
+.home-table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--glass-line);
+  white-space: nowrap;
+}
+
+.home-cell--none,
+.home-cell--unknown {
+  color: var(--glass-muted);
+}
+
+.home-cell--lead {
+  font-weight: 600;
+}
+
+.home-danger {
+  color: var(--glass-bad-ink);
+}
+
+.glass-btn--primary.home-danger {
+  background: var(--glass-bad-ink);
+  color: var(--glass-on-ink);
+}
+
+.home-confirm {
+  margin-top: 16px;
+  padding: 16px 18px;
+  border-radius: var(--glass-radius);
+}
+
+.home-confirm h3 {
+  margin-top: 0;
+}
+
+.home-footer {
+  max-width: 960px;
+  margin: 24px auto 0;
+  justify-content: space-between;
+}
+
+.home-footer code {
+  word-break: break-all;
+}

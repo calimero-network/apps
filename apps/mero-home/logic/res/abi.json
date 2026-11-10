@@ -1,0 +1,29 @@
+{
+  "abiVersion": 1,
+  "errors": {},
+  "events": {},
+  "methods": {
+    "about": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "string"
+    },
+    "init": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "init",
+      "params": [],
+      "public": false,
+      "returns": null
+    }
+  },
+  "state": {
+    "fields": {},
+    "search": {},
+    "version": 1
+  },
+  "world": "calimero:app@0.5.1"
+}

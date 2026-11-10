@@ -1,0 +1,14 @@
+{
+  "// note": "The Playwright suite (Node), checked with `tsc -p e2e` (Playwright transpiles it itself). Not a composite project: it imports packages/merod-local's TypeScript by path, as Node runs it.",
+  "extends": "../../../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "emitDeclarationOnly": false,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "types": ["node"]
+  },
+  "include": ["."]
+}
