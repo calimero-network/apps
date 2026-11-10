@@ -22,15 +22,15 @@ crate-type = ["cdylib"]
 # crate; scripts/check-component-pins.py asserts it. A standalone crate cannot
 # inherit `[workspace.dependencies]`.
 [dependencies]
-calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.13" }
+calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.14" }
 # The views' `#[derive(Serialize)]`.
 serde = { version = "1", features = ["derive"] }
 
 # The harness (`TestApp`, `run_scenario`) and the builder the tests build this
 # crate with, for `cargo test` on the host only.
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
-calimero-sdk       = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.13", features = ["testing"] }
-calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.13" }
+calimero-sdk       = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.14", features = ["testing"] }
+calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.14" }
 serde_json = "1"
 
 # Read by `mero-component bundle` (tools/component-bundle), with the keys
@@ -50,7 +50,7 @@ tags = ["standup", "decisions", "team", "productivity"]
 github = "https://github.com/calimero-network/apps"
 # `component-min-runtime-version` in the root Cargo.toml: a node compares it
 # with its own release.
-min-runtime-version = "1.0.0-rc.13"
+min-runtime-version = "1.0.0-rc.14"
 # The listing's link, and an origin the node may send a person back to from
 # its consent page. NOT where the production frontend runs: a Cloud node trusts
 # passkey ceremonies only from frontends it serves from a bundle, so the
