@@ -8,7 +8,7 @@ import {
   type KeyValueStorage,
   type PendingInvite,
 } from "@calimero-apps/connect";
-import { AppListing, InvitationSignIn, JoinInvitation, SignInPanel, usePendingInvite } from "@calimero-apps/passkey";
+import { AppListing, InvitationSignIn, JoinInvitation, SignInPanel, usePendingInvite, useInstanceRelease } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 
 import { setConnection } from "./lib/calimero";
@@ -260,6 +260,8 @@ export default function App({
   });
 
   const client = session.status === "signed-in" ? session.client : null;
+  // An instance is an app instance, served the frontend of the release it runs.
+  useInstanceRelease(client, opened?.appId);
   const accountId = session.status === "signed-in" ? session.accountId : null;
   const key = session.status === "signed-in" ? selectionKey(session.target, session.accountId) : null;
   const after = useCallback(() => {

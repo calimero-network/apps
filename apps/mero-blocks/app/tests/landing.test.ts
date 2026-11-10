@@ -13,6 +13,7 @@ vi.mock("../src/pages/landing/mount", () => ({ showLandingAgain: vi.fn(async () 
 
 import { connect, type Phase, type SessionDeps } from "../src/net/session";
 import { Landing, type LaunchChoice } from "../src/ui/landing";
+import { PACKAGE } from "../src/net/blocks";
 
 const SESSION: CalimeroSession = { accountId: "acc-1", sessionToken: "s", refreshToken: "r", expiresAt: 9e12 };
 const ENV = { DEV: true, VITE_CALIMERO_TARGET: "local", VITE_CALIMERO_BUNDLE: "bundle-1" };
@@ -609,5 +610,103 @@ describe("one sign-in everywhere (@calimero-apps/passkey)", () => {
     click(q("[data-testid=sign-up-btn]"));
     await until(() => q("[data-testid=create-world-open-btn]") !== null);
     expect(client.signUp).toHaveBeenLastCalledWith(expect.anything(), "Steve");
+  });
+});
+
+describe("a new version of a world", () => {
+  /** What the node reports: world app-a of org-a runs 1.0.0 with 1.1.0 waiting; the account is `role` there. */
+  function reports(client: Record<string, unknown>, role: string, upgradesHeldBy = "owner") {
+    Object.assign(client, {
+      me: vi.fn(async () => ({ accountId: "acc-1", orgs: [{ orgId: "org-a", role }] })),
+      // The org already holds the player's name, so entering the world asks for none.
+      getOrg: vi.fn(async () => ({
+        members: { "acc-1": role },
+        memberMetadata: { "acc-1": { name: "Alex" } },
+        defaultCapabilities: 4,
+        capabilities: {},
+        teams: {},
+      })),
+      getApp: vi.fn(async () => ({ appId: "app-a", owner: "someone-else", org: "org-a" })),
+      appsReportAll: vi.fn(async (scope: string | null) => ({
+        scope: scope ? { kind: "org", org: scope } : { kind: "account" },
+        governance: { releases: "owner", appUpgrades: "owner", outbound: "owner" },
+        approvedReleases: null,
+        clusterReleases: [],
+        next: null,
+        apps: scope
+          ? [
+              {
+                app: "app-a",
+                name: "alpha",
+                scope: { kind: "org", org: "org-a" },
+                package: { package: PACKAGE, version: "1.0.0" },
+                upgradesHeldBy,
+                availableVersions: ["1.1.0"],
+              },
+            ]
+          : [],
+      })),
+      requestConsent: vi.fn(async () => ({ requestId: "r-1", url: "https://node/consent/r-1", expiresAt: 9e9 })),
+    });
+  }
+  const upgradePrompt = () => q("[data-testid=upgrade-prompt]");
+  const until = async (check: () => boolean) => {
+    for (let i = 0; i < 50 && !check(); i++) await flush();
+    expect(check()).toBe(true);
+  };
+
+  it("offers the world's organization owner the update, and Update opens the consent page", async () => {
+    const assign = vi.fn();
+    vi.stubGlobal("location", { ...window.location, href: "https://blocks.example/1.0.0/", assign });
+    try {
+      const { client } = await launcher([world("app-a", "alpha", "org-a")], localStorage, undefined, (c) =>
+        reports(c, "owner"),
+      );
+      click(q("[data-testid=sign-in-btn]"));
+      await until(() => upgradePrompt() !== null);
+      expect(upgradePrompt()!.textContent).toContain("Version 1.1.0 of Mero Blocks is available (you run 1.0.0).");
+      click(q("[data-testid=upgrade-update]"));
+      await until(() => assign.mock.calls.length > 0);
+      expect((client as unknown as { requestConsent: ReturnType<typeof vi.fn> }).requestConsent).toHaveBeenCalledWith({
+        kind: "upgrade",
+        subject: { app: "app-a", toVersion: "1.1.0" },
+        returnTo: "https://blocks.example/1.0.0/",
+      });
+      expect(assign).toHaveBeenCalledWith("https://node/consent/r-1");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("goes when the world is entered, and at sign-out", async () => {
+    const { choice } = await launcher([world("app-a", "alpha", "org-a")], localStorage, undefined, (c) =>
+      reports(c, "admin"),
+    );
+    click(q("[data-testid=sign-in-btn]"));
+    await until(() => upgradePrompt() !== null);
+    click(q("[data-testid=join-world-0]"));
+    await choice;
+    expect(upgradePrompt()).toBeNull();
+  });
+
+  it("shows nothing to a member who may not upgrade, nor where the publisher or the operator upgrades", async () => {
+    for (const [role, holder] of [
+      ["member", "owner"],
+      ["owner", "publisher"],
+      ["owner", "operator"],
+    ] as const) {
+      let reported: ReturnType<typeof vi.fn> | undefined;
+      await launcher([world("app-a", "alpha", "org-a")], localStorage, undefined, (c) => {
+        reports(c, role, holder);
+        reported = (c as unknown as { appsReportAll: ReturnType<typeof vi.fn> }).appsReportAll;
+      });
+      click(q("[data-testid=sign-in-btn]"));
+      await until(() => reported!.mock.calls.length === 2);
+      await flush();
+      await flush();
+      expect(upgradePrompt()).toBeNull();
+      document.body.innerHTML = "";
+      localStorage.clear();
+    }
   });
 });

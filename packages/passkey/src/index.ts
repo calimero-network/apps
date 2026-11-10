@@ -68,4 +68,27 @@ export {
 } from "./signUpFlow";
 export { AppListing, type AppListingProps } from "./AppListing";
 export { listingCopy, renderListing, type ListingCopy, type ListingProps } from "./listing";
+export {
+  appNameFromTitle,
+  dismissUpgrade,
+  finishUpgrade,
+  managesApps,
+  renderUpgradePrompt,
+  startUpgrade,
+  UPGRADE_PENDING_KEY,
+  upgradeCopy,
+  upgradeDismissed,
+  upgradeOffer,
+  upgradeOffers,
+  upgradeReturnTo,
+  watchUpgrades,
+  type StartUpgradeOptions,
+  type UpgradeClient,
+  type UpgradeHolder,
+  type UpgradeOffer,
+  type UpgradePromptHandlers,
+  type UpgradeReturn,
+  type WatchUpgradesOptions,
+} from "./upgrade";
+export { useInstanceRelease } from "./release";
 export { ConnectExistingOrg, type ConnectExistingOrgProps } from "./ConnectExistingOrg";

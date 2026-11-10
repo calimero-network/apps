@@ -269,6 +269,75 @@
 }
 
 /*
+ * "A new version is available" (`watchUpgrades`, `renderUpgradePrompt`): a
+ * small card fixed to the bottom corner, never modal, shown only to someone
+ * who may upgrade the app. Mounted on `document.body`, so it reads the
+ * `--passkey-*` tokens from `:root` (or falls back to glass, then literals).
+ */
+.cp-upgrade {
+  --_ink: var(--passkey-ink, var(--glass-ink, #0e1222));
+  --_muted: var(--passkey-muted, var(--glass-muted, #6f7589));
+  --_line: var(--passkey-line, var(--glass-line-strong, rgba(14, 18, 34, 0.14)));
+  --_surface: var(--passkey-secondary-bg, var(--glass-surface-solid, #ffffff));
+  --_primary-bg: var(--passkey-primary-bg, var(--glass-ink, #0e1222));
+  --_primary-ink: var(--passkey-primary-ink, var(--glass-on-ink, #ffffff));
+  --_focus: var(--passkey-focus, var(--glass-accent-solid, #3e63f5));
+  --_radius: var(--passkey-radius, 999px);
+  --_bad-ink: var(--passkey-error-ink, var(--glass-bad-ink, #a2194b));
+
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 2147483000;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(360px, calc(100vw - 32px));
+  padding: 14px 16px;
+  border: 1px solid var(--_line);
+  border-radius: 14px;
+  background: var(--_surface);
+  color: var(--_ink);
+  box-shadow: 0 18px 40px -18px rgba(14, 18, 34, 0.45);
+  font-family: var(--passkey-font, system-ui, sans-serif);
+  font-size: 14px;
+  line-height: 1.45;
+  text-align: left;
+}
+.cp-upgrade__text { margin: 0; }
+.cp-upgrade__actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cp-upgrade__primary {
+  min-height: 36px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: var(--_radius);
+  background: var(--_primary-bg);
+  color: var(--_primary-ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.cp-upgrade__primary:disabled { cursor: default; opacity: 0.6; }
+.cp-upgrade__link {
+  padding: 4px 6px;
+  border: 0;
+  background: none;
+  color: var(--_muted);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.cp-upgrade__primary:focus-visible,
+.cp-upgrade__link:focus-visible { outline: 2px solid var(--_focus); outline-offset: 2px; }
+.cp-upgrade__error { margin: 0; font-size: 13px; color: var(--_bad-ink); }
+@media (max-width: 480px) {
+  .cp-upgrade { right: 16px; left: 16px; width: auto; }
+}
+
+/*
  * "Connect to an existing organization" (`<ConnectExistingOrg>`): the
  * secondary way to put an app into an organization the account already has.
  * Same tokens as the sign-in control.

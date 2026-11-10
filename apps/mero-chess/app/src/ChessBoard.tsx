@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Piece } from "./pieces";
 import {
   FILES,
@@ -63,10 +63,18 @@ export function ChessBoard({
   // A selection cannot survive the position changing underneath it: the piece
   // that was selected may have just been captured, and offering its old targets
   // would send a move for a square the player is no longer looking at.
-  useEffect(() => {
+  //
+  // Reset while rendering, when the position or interactivity CHANGES, not in
+  // an effect: an effect also runs after mount, after the board is already
+  // clickable, and undid a selection made in that gap (a quick player, a slow
+  // machine, CI), so the move never went out.
+  const shownFor = `${interactive}:${fen}`;
+  const [shown, setShown] = useState(shownFor);
+  if (shown !== shownFor) {
+    setShown(shownFor);
     setSelected(null);
     setPromoting(null);
-  }, [fen, interactive]);
+  }
 
   function choose(square: string) {
     if (!interactive) return;

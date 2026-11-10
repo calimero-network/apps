@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AppInfo, CalimeroClient } from "@calimero-network/mero-js";
 import { describeError } from "@calimero-apps/connect";
+import { useInstanceRelease } from "@calimero-apps/passkey";
 import { calimeroTransport, HyperfeedClient } from "./hyperfeed";
 import type { LensView } from "./hyperfeedTypes";
 import { clusterBackend, type FeedBackend } from "./backend";
@@ -120,6 +121,8 @@ export function useNodeFeed(appId: string): NodeFeed {
   const live = signedIn(session);
   const client = live?.client ?? null;
   const account = live?.accountId ?? "";
+  // A feed is an app instance, served the frontend of the release it runs.
+  useInstanceRelease(client, appId);
 
   const backend = useMemo(() => {
     if (!client) return null;

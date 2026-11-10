@@ -27,6 +27,7 @@ import {
   createClient,
   describeError,
   connectTarget,
+  followInstanceRelease,
   NotServedError,
   readSignUpPolicy,
   signUpAccess,
@@ -47,6 +48,7 @@ import {
   type SignUpFlow,
   type SignUpStage,
 } from "@calimero-apps/passkey";
+import { watchUpgrades } from "@calimero-apps/passkey/upgrade";
 import { dropInvite, pendingInvite } from "../utils/invitation";
 import { markJoinedAwaitingName } from "../utils/enterWorkspace";
 import { setMessengerDisplayName } from "../utils/messengerName";
@@ -111,7 +113,42 @@ const listeners = new Set<() => void>();
 
 function set(next: Partial<State>): void {
   state = { ...state, ...next };
+  offerUpgrades();
   for (const l of listeners) l();
+}
+
+/** Takes the "new version" prompt away; set while a session is signed in. */
+let stopUpgrades: { client: CalimeroClient; accountId: string; stop: () => void } | null = null;
+
+/**
+ * "A new version is available" (`@calimero-apps/passkey/upgrade`, which
+ * the shared session hook mounts for the other apps): once per signed-in
+ * session, to someone who may upgrade an instance (its owner, or
+ * `MANAGE_APPLICATION` in its organization) only; gone at sign-out.
+ */
+function offerUpgrades(): void {
+  const signedIn = state.status === "signed-in" && client && state.accountId ? { client, accountId: state.accountId } : null;
+  if (stopUpgrades && (stopUpgrades.client !== signedIn?.client || stopUpgrades.accountId !== signedIn?.accountId)) {
+    stopUpgrades.stop();
+    stopUpgrades = null;
+  }
+  if (signedIn && !stopUpgrades) {
+    stopUpgrades = {
+      ...signedIn,
+      stop: watchUpgrades({ client: signedIn.client, package: APP_PACKAGE, appName: "Mero Chat", accountId: signedIn.accountId }),
+    };
+  }
+}
+
+/**
+ * A channel or DM is an app instance, and is served the frontend of the
+ * release it runs: opening one that runs another release than this page
+ * moves to `/app/{app}/` (the stored active chat reopens it there). Nothing
+ * in development or while signed out, and never a loop.
+ */
+export function followChannelRelease(contextId: string): void {
+  if (!client || state.status !== "signed-in" || !contextId) return;
+  void followInstanceRelease({ client, app: contextId });
 }
 
 function subscribe(listener: () => void): () => void {

@@ -23,6 +23,7 @@ import {
   type Target,
 } from "@calimero-apps/connect";
 import { isPasskeyCancel, type SignUpFlow, type SignUpStage } from "./signUpFlow";
+import { watchUpgrades } from "./upgrade";
 import {
   describeCeremonyFailure,
   knownAccountHere,
@@ -180,6 +181,17 @@ export interface PasskeySessionOptions {
    * show turns it off.
    */
   approveWithClick?: boolean;
+  /**
+   * "A new version is available" ({@link watchUpgrades}): once a session is
+   * signed in, its newest release is offered for one instance of `package`
+   * this account may upgrade (its owner, or `MANAGE_APPLICATION` in its
+   * organization), as a small dismissible card. Never shown to anyone else,
+   * nor for publisher- or operator-held upgrades. On by default wherever
+   * `package` is given; `false` turns it off.
+   */
+  upgradePrompt?: boolean;
+  /** The app's name in that prompt; by default the page title's first part. */
+  appName?: string;
 }
 
 /**
@@ -189,7 +201,15 @@ export interface PasskeySessionOptions {
  * with a passkey.
  */
 export function usePasskeySession(app: string, deps: SessionDeps, options: PasskeySessionOptions = {}): SessionApi {
-  const { package: pkg, invites, onInviteRefused, onJoinedAtSignUp, approveWithClick = true } = options;
+  const {
+    package: pkg,
+    invites,
+    onInviteRefused,
+    onJoinedAtSignUp,
+    approveWithClick = true,
+    upgradePrompt = true,
+    appName,
+  } = options;
   const invite = options.invite ?? invites?.token;
   const [session, setSession] = useState<Session>({ status: "connecting" });
   const [store, setStore] = useState<SessionStore | null>(null);
@@ -280,6 +300,21 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
   useEffect(() => {
     if (signedInAccount) invites?.signedIn(signedInAccount);
   }, [invites, signedInAccount]);
+
+  // A newer release to offer someone who may upgrade: checked once per
+  // signed-in session, never polled, gone at sign-out.
+  const signedInClient = session.status === "signed-in" ? session.client : null;
+  useEffect(() => {
+    if (!signedInClient || !signedInAccount || !pkg || !upgradePrompt) return;
+    return watchUpgrades({
+      client: signedInClient,
+      package: pkg,
+      accountId: signedInAccount,
+      ...(appName ? { appName } : {}),
+      ...(hintStorage ? { storage: hintStorage } : {}),
+    });
+  }, [signedInClient, signedInAccount, pkg, upgradePrompt, appName, hintStorage]);
+
   const access = signUpAccess(policy, inviteToken !== null);
 
   const ceremony = useCallback(

@@ -111,6 +111,39 @@ account, nothing to install, no permissions to grant.
   `pnpm dev:local {dir}`. An app that is not React uses `renderListing(el,
   props)` from `@calimero-apps/passkey/listing`: the same markup and copy.
 
+- "A new version is available" (`@calimero-apps/passkey/upgrade`): once a
+  session is signed in, `usePasskeySession` (with `package`) checks once,
+  never polls, and shows a small dismissible card, "Version X of {App} is
+  available (you run Y). Update / Not now", for one instance of the package
+  this account may upgrade. Who may, as core's `may_upgrade` judges an
+  owner-held instance: its owner, or in an organization the owner, an admin,
+  a team's lead or a member holding `MANAGE_APPLICATION` there (read from
+  `GET /auth/me` and `GET /orgs/{org}`; unreadable means hidden). Nothing
+  for anyone else, nor when `upgradesHeldBy` is `publisher` (the publisher
+  upgrades from the developer console) or `operator` (the cluster's
+  governance gives upgrades to the operator). The facts come from the
+  version reports (`appsReportAll`: `availableVersions`, `upgradesHeldBy`);
+  Update asks for a consent request (`upgradeConsent`) and sends the person
+  to the node's consent page, which sends them back with the decision, read
+  with `consentResult`. An approval on a page a node serves loads the
+  instance's new release at once, through `/app/{app}/` with the route and
+  query, where the card says it is updated; in development it says so and
+  offers Reload. "Still runs Y" is said only when the report shows the
+  instance on an older release than the one approved. A frontend-only release
+  (the same WASM) is offered like any other: the report lists it in
+  `availableVersions`. "Not now" is remembered
+  per instance and version. `{ upgradePrompt: false }` turns it off;
+  `appName` names the app (default: the page title's first part). An app not
+  on the hook (the launchers, mero-chat's store) calls
+  `watchUpgrades({ client, package, appName, accountId })` and the function
+  it returns at sign-out; `upgradeOffer(client, appId)` and
+  `startUpgrade(client, appId, version, returnTo)` are the parts.
+
+- `useInstanceRelease(client, appId)`: where the app enters an instance,
+  moves a page of another release to the frontend of the release that
+  instance runs (`followInstanceRelease` in `@calimero-apps/connect`, which
+  says when and how). Returns `true` while leaving.
+
 ```tsx
 import { AppListing, PasskeySignIn, passkeyDeps, usePasskeySession } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
