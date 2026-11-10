@@ -1,4 +1,5 @@
 import React, { useState, useSyncExternalStore } from "react";
+import { pendingNativeSignIn } from "@calimero-apps/passkey/native";
 import { useCalimero } from "../../api/calimero";
 import { clearStoredSession, clearNamespaceReady } from "../../utils/session";
 import {
@@ -99,7 +100,8 @@ export default function Login({ isAuthenticated, isConfigSet }: LoginProps) {
  * ordinary landing page, keeping the token for a later sign-in.
  */
 export function UnauthenticatedLanding() {
-  const [loginOpen, setLoginOpen] = useState(false);
+  // Opened by the native app: straight to the passkey sign-in.
+  const [loginOpen, setLoginOpen] = useState(() => pendingNativeSignIn() !== null);
   const [deferred, setDeferred] = useState(() => inviteDeferred());
   // `/docs` and `/preview` render this signed in too: the prompt is theirs then.
   const { isAuthenticated } = useCalimero();

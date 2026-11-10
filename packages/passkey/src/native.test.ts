@@ -4,6 +4,7 @@ import {
   NATIVE_STORAGE_KEY,
   b64url,
   captureNativeSignIn,
+  dropNativeSignIn,
   finishNativeSignIn,
   fromB64url,
   pendingNativeSignIn,
@@ -64,6 +65,8 @@ const SESSION: NativeSession = {
 const STATE = "c3RhdGUtZm9yLXRoaXMtc2lnbi1pbg";
 
 describe("native sign-in", () => {
+  beforeEach(() => dropNativeSignIn(memory()));
+
   it("seals a session only the app's key opens, bound to the state", async () => {
     const { pair, key } = await appKeyPair();
     const request: NativeRequest = { state: STATE, key };
@@ -100,6 +103,17 @@ describe("native sign-in", () => {
     const plain = memory();
     expect(captureNativeSignIn({ hash: "#other", pathname: "/", search: "" }, plain, history)).toBeNull();
     expect(plain.getItem(NATIVE_STORAGE_KEY)).toBeNull();
+  });
+
+  it("keeps the request when the page clears its storage before signing in", async () => {
+    const { key } = await appKeyPair();
+    const storage = memory();
+    const history = { replaceState: () => {} };
+    captureNativeSignIn({ hash: `#native-sign-in&state=${STATE}&key=${key}`, pathname: "/", search: "" }, storage, history);
+    storage.removeItem(NATIVE_STORAGE_KEY); // e.g. sessionStorage.clear() before the ceremony
+    expect(pendingNativeSignIn(storage)).toEqual({ state: STATE, key });
+    dropNativeSignIn(storage);
+    expect(pendingNativeSignIn(storage)).toBeNull();
   });
 
   it("hands the session to the app's own callback and forgets it here", async () => {

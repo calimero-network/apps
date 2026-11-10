@@ -53,6 +53,13 @@ export interface NativeSession {
 
 type Store = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
+/**
+ * The request captured on this page load. Kept in memory too: an app's own
+ * code may clear `sessionStorage` before its sign-in (mero-chat's
+ * `clearStorageForConnect` does), and the request must survive that.
+ */
+let captured: NativeRequest | null = null;
+
 const B64URL = /^[A-Za-z0-9_-]+$/;
 
 export function b64url(bytes: Uint8Array): string {
@@ -101,6 +108,7 @@ export function captureNativeSignIn(
   const params = new URLSearchParams(parts.slice(1).join("&"));
   const request = validRequest({ state: params.get("state") ?? "", key: params.get("key") ?? "" });
   history.replaceState(null, "", location.pathname + location.search);
+  captured = request;
   if (!request) {
     storage.removeItem(NATIVE_STORAGE_KEY);
     return null;
@@ -111,6 +119,7 @@ export function captureNativeSignIn(
 
 /** The captured request waiting for a session, or `null`. */
 export function pendingNativeSignIn(storage: Store = sessionStorage): NativeRequest | null {
+  if (captured) return captured;
   try {
     const raw = storage.getItem(NATIVE_STORAGE_KEY);
     return raw ? validRequest(JSON.parse(raw) as Partial<NativeRequest>) : null;
@@ -120,6 +129,7 @@ export function pendingNativeSignIn(storage: Store = sessionStorage): NativeRequ
 }
 
 export function dropNativeSignIn(storage: Store = sessionStorage): void {
+  captured = null;
   storage.removeItem(NATIVE_STORAGE_KEY);
 }
 
