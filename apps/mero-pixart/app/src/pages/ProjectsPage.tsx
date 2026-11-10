@@ -4,7 +4,8 @@ import { useApi } from "../api/useApi";
 import { messageOf } from "../api/pixart";
 import { useSignedIn } from "../api/sessionContext";
 import { askAnOwnerCopy, canCreateIn } from "@calimero-apps/connect";
-import { createProject as createInstance, inviteLink, inviteToken, isAdmin, listProjects } from "../api/teams";
+import { appOnlyInviteNote } from "@calimero-apps/connect";
+import { PRODUCT_NAME, createProject as createInstance, inviteLink, inviteToken, isAdmin, listProjects } from "../api/teams";
 import { useTeam } from "../api/useTeam";
 import Logo from "../components/Logo";
 import SettingsModal from "../components/SettingsModal";
@@ -78,6 +79,7 @@ export default function ProjectsPage() {
 
   // Invitation state
   const [invitation, setInvitation] = useState("");
+  const [inviteAppOnly, setInviteAppOnly] = useState(false);
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteCopying, setInviteCopying] = useState(false);
   const [inviteError, setInviteError] = useState("");
@@ -197,12 +199,18 @@ export default function ProjectsPage() {
     try {
       // The document's `init` arguments travel with the create: name,
       // description, width, height.
-      const id = await createInstance(client, source, teamId, {
-        name: newName.trim(),
-        description: "",
-        width: dims.width,
-        height: dims.height,
-      });
+      const id = await createInstance(
+        client,
+        source,
+        teamId,
+        {
+          name: newName.trim(),
+          description: "",
+          width: dims.width,
+          height: dims.height,
+        },
+        passkey,
+      );
       setProjects((prev) => [
         ...prev,
         {
@@ -269,8 +277,9 @@ export default function ProjectsPage() {
     try {
       // An org invite, approved with this account's passkey. The link is all
       // there is to share: opening it (and signing in) joins the team.
-      const token = await inviteToken(client, teamId, passkey());
+      const { token, appOnly } = await inviteToken(client, teamId, passkey(), source);
       setInvitation(inviteLink(token, teamId));
+      setInviteAppOnly(appOnly);
     } catch (err) {
       const msg = `Failed to generate invitation: ${messageOf(err)}`;
       setInviteError(msg);
@@ -412,6 +421,11 @@ export default function ProjectsPage() {
               Generate an invitation link and share it with teammates. Opening it and
               signing in with a passkey joins the team. Single use: one person can join with this link; generate another for each person you invite.
             </p>
+            {invitation && inviteAppOnly && (
+              <p className={styles.inviteDesc} data-testid="invite-app-only">
+                {appOnlyInviteNote(PRODUCT_NAME)}
+              </p>
+            )}
             {invitation ? (
               inviteCopying ? (
                 <div className={styles.tokenBox} data-testid="invite-copying">

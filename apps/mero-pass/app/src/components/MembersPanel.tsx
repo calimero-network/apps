@@ -66,14 +66,14 @@ export default function MembersPanel({
     if (!client) return;
     setLoading(true);
     try {
-      setMembers(await listTeamMembers({ client }, namespaceId, myAccountId));
+      setMembers(await listTeamMembers({ client, source }, namespaceId, myAccountId));
       setError(null);
     } catch (e) {
       setError(describeError(e));
     } finally {
       setLoading(false);
     }
-  }, [client, namespaceId, myAccountId]);
+  }, [client, source, namespaceId, myAccountId]);
 
   useEffect(() => {
     void load();
@@ -113,12 +113,12 @@ export default function MembersPanel({
       const name = nameFor(member);
       setBusy(`Removing ${name}: confirm with your passkey…`);
       try {
-        await removeTeamMember(conn, {
+        const left = await removeTeamMember(conn, {
           namespaceId,
           accountId: member.accountId,
         });
         setNotice(
-          `${name} is out of ${teamName}. Each vault's key is rotated the next time one of its Admins opens it, and nothing written after that is readable to them. What they already saw cannot be taken back — change those passwords.`,
+          `${name} is out of ${left === 'app' ? `Mero Pass in ${teamName} (they stay in the organization and its other apps)` : teamName}. Each vault's key is rotated the next time one of its Admins opens it, and nothing written after that is readable to them. What they already saw cannot be taken back — change those passwords.`,
         );
         await load();
       } catch (e) {

@@ -12,6 +12,18 @@
 // | a vault invitation | an org invite naming the vault's team |
 // | Admin / Member + capability bits on the namespace | org roles `owner`/`admin`/`member`/`guest` + org capability bits |
 // | joining a context, waiting for sync | nothing: an instance is reachable as soon as the org lets you in |
+//
+// Mero Pass has its own **app team** in the org (core#4890), through
+// `@calimero-apps/connect`'s org-app module: a new team (org) gets it, open
+// (everyone in the org has Mero Pass); open vaults use team access on it, so
+// "open" now means "everyone in Mero Pass here"; invites name it; the member
+// list and an open vault's key audience are its people. Once an admin keeps
+// the org's apps apart in Calimero Home (`shared`), an invite gives Mero Pass
+// only and Remove takes someone out of Mero Pass (its team and the
+// invite-only vault teams the remover may change), not out of the org. An
+// invite-only vault keeps its own top-level team: core lets only an app team's
+// leads create teams below it. An org without an app team (made before app
+// teams, a node without them, a raw dev bundle) is legacy, as before.
 
 import {
   ORG_CAPABILITIES,
@@ -19,7 +31,20 @@ import {
   type CalimeroClient,
   type PasskeyProvider,
 } from '@calimero-network/mero-js';
-import { markOrgFor, orgsWithApp, type AppSource } from '@calimero-apps/connect';
+import {
+  appInvite,
+  appPeople,
+  appTeamIdIn,
+  createAppOrg,
+  isAppOnly,
+  orgInstanceOptions,
+  orgsWithApp,
+  removeFromApp,
+  sourcePackage,
+  type AppInviteToken,
+  type AppOrgView,
+  type AppSource,
+} from '@calimero-apps/connect';
 import {
   VaultSession,
   type DeviceKeyPair,
@@ -73,6 +98,8 @@ export interface OrgView {
   metadata: unknown;
   defaultCapabilities: number;
   capabilities: Record<string, number>;
+  /** How the org holds its apps (core#4890); absent on a node that does not say. */
+  mode?: unknown;
   teams: Record<
     string,
     {
@@ -98,7 +125,25 @@ export async function readOrg(
       typeof o.defaultCapabilities === 'number' ? o.defaultCapabilities : 0,
     capabilities: (o.capabilities ?? {}) as Record<string, number>,
     teams: (o.teams ?? {}) as OrgView['teams'],
+    mode: o.mode,
   };
+}
+
+/** The name Mero Pass is added to an organization under, in what an owner or admin is told. */
+export const PRODUCT_NAME = 'Mero Pass';
+
+/** Who has Mero Pass in `view`: its app team, else everyone in the org (no guest once it has app teams). */
+export function passPeople(view: OrgView, source: AppSource | null): string[] {
+  return appPeople(view as unknown as AppOrgView, sourcePackage(source));
+}
+
+/**
+ * An instance's team as a vault's own: `null` for an open vault, which is on
+ * Mero Pass's app team (or org access); the invite-only vault's team otherwise.
+ */
+function vaultTeam(view: OrgView | null, source: AppSource | null, team: string | null): string | null {
+  if (!team || !view) return team;
+  return appTeamIdIn(view as unknown as AppOrgView, sourcePackage(source)) === team ? null : team;
 }
 
 /** The marker in an org's metadata that makes it one person's private vault. */
@@ -151,7 +196,7 @@ export async function listTeams(
         namespaceId: o.orgId,
         name: o.name,
         role: o.role,
-        memberCount: view ? Object.keys(view.members).length : 0,
+        memberCount: view ? passPeople(view, conn.source).length : 0,
         vaultCount: apps.filter((a) => a.org === o.orgId).length,
         personal: isPersonal(view?.metadata),
       } satisfies TeamRow;
@@ -185,23 +230,19 @@ export async function createTeam(
   onStatus: StatusFn = noop,
 ): Promise<{ namespaceId: string; warning: string | null }> {
   onStatus('Creating the team…');
-  const namespaceId = await conn.client.createOrg(name);
-  // Listed as a team before it holds a vault.
-  await markOrgFor(conn.client, namespaceId, conn.source);
-  await publishOwnName(conn.client, namespaceId);
   try {
-    onStatus('Letting members add vaults and invite people…');
-    await conn.client.setCapabilities(
-      namespaceId,
-      MEMBER_DEFAULTS,
-      conn.passkey(),
-    );
-    return { namespaceId, warning: null };
-  } catch {
+    // The org, marked so it is listed as a team before it holds a vault, its
+    // member defaults, and Mero Pass's own team, open (declined, or an older
+    // node: a legacy org).
+    const made = await createAppOrg(conn.client, name, conn.source, conn.passkey, {
+      capabilities: MEMBER_DEFAULTS,
+    });
+    await publishOwnName(conn.client, made.orgId);
     return {
-      namespaceId,
-      warning:
-        'people you invite will not be able to add vaults or invite others until an Admin confirms it with a passkey on the People tab',
+      namespaceId: made.orgId,
+      warning: made.capabilitiesError
+        ? 'people you invite will not be able to add vaults or invite others until an Admin confirms it with a passkey on the People tab'
+        : null,
     };
   } finally {
     conn.after?.();
@@ -251,12 +292,12 @@ export async function listVaults(
     listInstances(conn),
     readOrg(conn.client, org).catch(() => null),
   ]);
-  const everyone = view ? Object.keys(view.members).length : 0;
+  const everyone = view ? passPeople(view, conn.source).length : 0;
   const rows = await Promise.all(
     apps
       .filter((a) => a.org === org)
       .map(async (a) => {
-        const team = await teamOf(conn.client, a.appId);
+        const team = vaultTeam(view, conn.source, await teamOf(conn.client, a.appId));
         const teamMembers = team
           ? Object.keys(view?.teams[team]?.members ?? {})
           : [];
@@ -301,10 +342,15 @@ export async function createVault(
       access = { kind: 'team', team };
     }
     onStatus('Creating the vault…');
-    const contextId = await conn.client.createApp(opts.name, conn.source, {
-      org: opts.namespaceId,
-      ...(access ? { access } : {}),
-    });
+    // An open vault is on Mero Pass's team (made first, by an owner or admin,
+    // in an org whose other apps have teams), or org access in a legacy org.
+    const contextId = await conn.client.createApp(
+      opts.name,
+      conn.source,
+      access
+        ? { org: opts.namespaceId, access }
+        : await orgInstanceOptions(conn.client, opts.namespaceId, conn.source, conn.passkey, PRODUCT_NAME),
+    );
     onStatus('Naming it…');
     await meroPass(conn.client, contextId, conn.after).renameVault(opts.name);
     return { contextId };
@@ -322,7 +368,9 @@ export async function createPersonalVault(
   onStatus: StatusFn = noop,
 ): Promise<{ contextId: string; namespaceId: string }> {
   onStatus('Creating your private vault…');
-  const namespaceId = await conn.client.createOrg('Private');
+  const { orgId: namespaceId } = await createAppOrg(conn.client, 'Private', conn.source, conn.passkey, {
+    mark: false,
+  });
   await conn.client.setOrgMetadata(namespaceId, PERSONAL);
   const { contextId } = await createVault(
     conn,
@@ -347,10 +395,11 @@ export async function findVaultByContext(
   const apps = await listInstances(conn);
   const app = apps.find((a) => a.appId === appId);
   if (!app || !app.org) return null;
-  const [team, view] = await Promise.all([
+  const [instanceTeam, view] = await Promise.all([
     teamOf(conn.client, appId),
     readOrg(conn.client, app.org).catch(() => null),
   ]);
+  const team = vaultTeam(view, conn.source, instanceTeam);
   return {
     namespaceId: app.org,
     vaultId: appId,
@@ -373,8 +422,9 @@ export async function vaultAudience(
 ): Promise<Set<string> | null> {
   try {
     const view = await readOrg(conn.client, opts.namespaceId);
-    const team = await teamOf(conn.client, opts.vaultId);
-    if (!team) return new Set(Object.keys(view.members));
+    const team = vaultTeam(view, conn.source, await teamOf(conn.client, opts.vaultId));
+    // An open vault: everyone in Mero Pass here (its app team, else the org).
+    if (!team) return new Set(passPeople(view, conn.source));
     const app = (await listInstances(conn)).find(
       (a) => a.appId === opts.vaultId,
     );
@@ -396,23 +446,21 @@ export const INVITE_VALIDITY = [
 ] as const;
 export const DEFAULT_INVITE_SECS = 24 * 60 * 60;
 
-/** An invite into the team as a member (a passkey step-up); answers the token. */
+/**
+ * An invite into the team as a member (a passkey step-up), naming Mero Pass's
+ * app team (`appInvite`); `appOnly` when it gives Mero Pass only (an org that
+ * keeps its apps apart).
+ */
 export async function mintTeamInvite(
   conn: Conn,
   opts: { namespaceId: string; validForSecs?: number },
   onStatus: StatusFn = noop,
-): Promise<string> {
+): Promise<AppInviteToken> {
   onStatus('Confirm with your passkey to create the invitation…');
   try {
-    return await conn.client.invite(
-      opts.namespaceId,
-      'member',
-      conn.passkey(),
-      undefined,
-      {
-        ttlSecs: opts.validForSecs ?? DEFAULT_INVITE_SECS,
-      },
-    );
+    return await appInvite(conn.client, opts.namespaceId, conn.source, conn.passkey, {
+      ttlSecs: opts.validForSecs ?? DEFAULT_INVITE_SECS,
+    });
   } finally {
     conn.after?.();
   }
@@ -427,16 +475,13 @@ export async function mintVaultInvite(
   conn: Conn,
   opts: { namespaceId: string; team: string | null; validForSecs?: number },
   onStatus: StatusFn = noop,
-): Promise<string> {
+): Promise<AppInviteToken> {
   onStatus('Confirm with your passkey to create the invitation…');
   try {
-    return await conn.client.invite(
-      opts.namespaceId,
-      'member',
-      conn.passkey(),
-      opts.team ? [opts.team] : undefined,
-      { ttlSecs: opts.validForSecs ?? DEFAULT_INVITE_SECS },
-    );
+    return await appInvite(conn.client, opts.namespaceId, conn.source, conn.passkey, {
+      ...(opts.team ? { teams: [opts.team] } : {}),
+      ttlSecs: opts.validForSecs ?? DEFAULT_INVITE_SECS,
+    });
   } finally {
     conn.after?.();
   }
@@ -490,13 +535,18 @@ export function memberName(view: OrgView, account: string): string {
   return typeof name === 'string' ? name.trim() : '';
 }
 
+/**
+ * The people of the team: who has Mero Pass in the org (its app team, else
+ * every member, no guest once the org has app teams).
+ */
 export async function listTeamMembers(
-  conn: Pick<Conn, 'client'>,
+  conn: Pick<Conn, 'client'> & { source?: AppSource },
   namespaceId: string,
   selfAccountId: string | null,
 ): Promise<TeamMember[]> {
   const view = await readOrg(conn.client, namespaceId);
-  return Object.entries(view.members)
+  return passPeople(view, conn.source ?? null)
+    .map((accountId) => [accountId, view.members[accountId] ?? 'member'] as const)
     .map(([accountId, rawRole]) => ({
       accountId,
       name: memberName(view, accountId),
@@ -549,20 +599,35 @@ export async function setMemberRole(
   }
 }
 
-/** Remove `account` from the org (a passkey step-up). */
+/**
+ * Remove `account` from the team (`removeFromApp`, a passkey step-up). In an
+ * org that keeps its apps apart that is Mero Pass only: off its app team and
+ * off the invite-only vaults' teams the remover may change, never out of the
+ * org. Elsewhere it is out of the org, as before.
+ */
 export async function removeTeamMember(
   conn: Conn,
   opts: { namespaceId: string; accountId: string },
-): Promise<void> {
+): Promise<'app' | 'org'> {
   try {
-    await conn.client.removeMember(
-      opts.namespaceId,
-      opts.accountId,
-      conn.passkey(),
-    );
+    const vaultTeams = new Set<string>();
+    if (isAppOnly((await conn.client.getOrg(opts.namespaceId)) as AppOrgView, sourcePackage(conn.source))) {
+      for (const app of (await listInstances(conn)).filter((a) => a.org === opts.namespaceId)) {
+        const team = await teamOf(conn.client, app.appId);
+        if (team) vaultTeams.add(team);
+      }
+    }
+    return await removeFromApp(conn.client, opts.namespaceId, conn.source, opts.accountId, conn.passkey, {
+      privateTeams: () => [...vaultTeams],
+    });
   } finally {
     conn.after?.();
   }
+}
+
+/** Whether the org keeps its apps apart and Mero Pass has its team there (invites and Remove are Mero Pass's only). */
+export async function passOnly(conn: Pick<Conn, 'client' | 'source'>, namespaceId: string): Promise<boolean> {
+  return isAppOnly((await conn.client.getOrg(namespaceId)) as AppOrgView, sourcePackage(conn.source));
 }
 
 /** Your display name in every org you are in, where none is set yet. */

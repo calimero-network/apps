@@ -16,6 +16,8 @@ packages:
   # The first shared frontend package landed with the post-join sync gate
   # (@calimero-apps/join-sync), so this is live now rather than housekeeping.
   - "packages/*"
+  # Suites that span several apps (e2e/cross-app: Chat, Home and KV Store on one org).
+  - "e2e/*"
 
 catalog:
   # ── Calimero ───────────────────────────────────────────────────────────────
@@ -238,7 +240,7 @@ catalog:
 # app-team helpers fall back to the org routes there.
 catalogs:
   component:
-    "@calimero-network/mero-js": 29.8.1
+    "@calimero-network/mero-js": 29.12.0
 
 # esbuild's postinstall needs approving explicitly under pnpm 10+; pnpm 11
 # renamed the key to `allowBuilds`, so this may need updating with the toolchain.

@@ -13,6 +13,8 @@ import {
   inviteToken,
   isSpaceAdmin,
   leaveSpace,
+  leaveSpaceOrg,
+  PRODUCT_NAME,
   listSpaces,
   type NamespaceRow,
 } from "../lib/spaces";
@@ -56,7 +58,7 @@ function focusCreate() {
 export default function SpacesPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { client, accountId, source, passkey, after } = useSignedIn();
+  const { client, source, passkey, after } = useSignedIn();
   const { showToast } = useToast();
 
   const [namespaces, setNamespaces] = useState<NamespaceRow[]>([]);
@@ -73,7 +75,7 @@ export default function SpacesPage() {
   const [pending, setPending] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [invite, setInvite] = useState<{ id: string; code: string } | null>(
+  const [invite, setInvite] = useState<{ id: string; code: string; appOnly?: boolean } | null>(
     null,
   );
   // The space pending deletion. A confirm step rather than `confirm()`, because
@@ -174,26 +176,26 @@ export default function SpacesPage() {
   const connectOrg = useCallback(
     async (org: OtherOrg) => {
       try {
-        await createForum(client, source, org.orgId, CONNECTED_FORUM_NAME);
+        await createForum(client, source, org.orgId, CONNECTED_FORUM_NAME, passkey);
       } finally {
         after();
       }
       await load(false);
       navigate(`/spaces/${org.orgId}`);
     },
-    [client, source, after, load, navigate],
+    [client, source, passkey, after, load, navigate],
   );
 
   const mintInvite = useCallback(
     (ns: NamespaceRow) => {
       void run(`invite:${ns.namespaceId}`, async (onStatus) => {
         onStatus("Approve the invitation with your passkey…");
-        const token = await inviteToken(client, ns.namespaceId, passkey());
-        setInvite({ id: ns.namespaceId, code: inviteLink(token, undefined, window.location, ns.namespaceId) });
+        const { token, appOnly } = await inviteToken(client, ns.namespaceId, passkey(), source);
+        setInvite({ id: ns.namespaceId, code: inviteLink(token, undefined, window.location, ns.namespaceId), appOnly });
         showToast(`Invite ready for “${ns.name}”.`);
       });
     },
-    [client, passkey, run, showToast],
+    [client, passkey, source, run, showToast],
   );
 
   const removeSpace = useCallback(
@@ -214,13 +216,23 @@ export default function SpacesPage() {
     (ns: NamespaceRow) => {
       void run(`leave:${ns.namespaceId}`, async (onStatus) => {
         onStatus("Approve leaving with your passkey…");
-        await leaveSpace(client, ns.namespaceId, accountId, passkey);
+        const left = await leaveSpace(client, ns.namespaceId, source, passkey);
+        // An org that keeps its apps apart: Mero Forum only. When it was the
+        // last app there, the organization itself is offered too.
+        if (
+          left.left === "app" &&
+          left.lastApp &&
+          window.confirm(`${PRODUCT_NAME} was your last app in this organization. Leave the organization too?`)
+        ) {
+          onStatus("Approve leaving the organization with your passkey…");
+          await leaveSpaceOrg(client, ns.namespaceId, passkey);
+        }
         onStatus("Refreshing your spaces…");
         await load(false);
         showToast(`Left \u201c${ns.name}\u201d.`);
       });
     },
-    [client, accountId, passkey, run, load, showToast],
+    [client, source, passkey, run, load, showToast],
   );
 
   useDialogOpen(deleteDialogRef, !!pendingDelete);
@@ -532,6 +544,7 @@ export default function SpacesPage() {
         open={!!invite}
         code={invite?.code ?? ""}
         scope={`Whole space · ${namespaces.find((n) => n.namespaceId === invite?.id)?.name ?? ""}`}
+        appOnly={invite?.appOnly === true}
         onClose={() => setInvite(null)}
       />
     </>

@@ -417,3 +417,18 @@
   color: var(--_bad-ink);
   font-size: 13px;
 }
+
+/* "Manage people in Calimero Home →" (`ManageInHomeLink`), in an account menu. */
+.cp-home-link {
+  display: inline-flex;
+  align-items: center;
+  font: inherit;
+  font-size: 0.9em;
+  color: var(--passkey-link, var(--glass-accent-solid, #3e63f5));
+  text-decoration: none;
+}
+.cp-home-link:hover { text-decoration: underline; }
+.cp-home-link:focus-visible {
+  outline: 2px solid var(--passkey-focus, var(--glass-accent-solid, #3e63f5));
+  outline-offset: 2px;
+}

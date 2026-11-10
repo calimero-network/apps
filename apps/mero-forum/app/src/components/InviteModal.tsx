@@ -1,4 +1,6 @@
 import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
+import { appOnlyInviteNote } from "@calimero-apps/connect";
+import { PRODUCT_NAME } from "../lib/spaces";
 import { useToast } from "../contexts/ToastContext";
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import styles from "./InviteModal.module.css";
@@ -27,6 +29,7 @@ export default function InviteModal({
   code,
   scope,
   hint,
+  appOnly = false,
   onClose,
 }: {
   open: boolean;
@@ -35,6 +38,8 @@ export default function InviteModal({
   /** What the invitation grants — "Whole space · Foo" or "Opens Bar". */
   scope: string;
   hint?: ReactNode;
+  /** The link gives Mero Forum only (an org that keeps its apps apart). */
+  appOnly?: boolean;
   onClose: () => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement | null>(null);
@@ -134,6 +139,11 @@ export default function InviteModal({
         </button>
 
         {hint && <p className={styles.hint}>{hint}</p>}
+        {appOnly && (
+          <p className={styles.hint} data-testid="invite-app-only">
+            {appOnlyInviteNote(PRODUCT_NAME)}
+          </p>
+        )}
       </div>
     </dialog>
   );

@@ -92,3 +92,4 @@ export {
 } from "./upgrade";
 export { useInstanceRelease } from "./release";
 export { ConnectExistingOrg, type ConnectExistingOrgProps } from "./ConnectExistingOrg";
+export { ManageInHomeLink, useHomeLink, type ManageInHomeLinkProps } from "./HomeLink";

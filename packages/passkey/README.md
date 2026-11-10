@@ -144,6 +144,14 @@ account, nothing to install, no permissions to grant.
   instance runs (`followInstanceRelease` in `@calimero-apps/connect`, which
   says when and how). Returns `true` while leaving.
 
+- `<ManageInHomeLink session={api.session} org={orgId} />`: one line in an
+  org app's account menu, "Manage people in Calimero Home →", opening Home on
+  that org in a new tab. It renders nothing unless the cluster has Calimero
+  Home and the viewer is the org's owner or an admin, or a member of a shared
+  org (`homeLinkFor` in `@calimero-apps/connect`, which says how); never on a
+  dev server or a static host. `useHomeLink(session, org)` is the URL alone.
+  Styled by `.cp-home-link` (`passkey.css`) unless given a `className`.
+
 ```tsx
 import { AppListing, PasskeySignIn, passkeyDeps, usePasskeySession } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";

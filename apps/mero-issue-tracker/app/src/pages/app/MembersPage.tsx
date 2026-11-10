@@ -7,6 +7,7 @@ import {
   countAdmins,
 } from '@calimero-apps/members';
 import '@calimero-apps/members/members.css';
+import { PRODUCT_NAME } from '../../config';
 import { tokens as t } from '../../theme';
 import { truncateKey } from '../../utils/display';
 import { describeError } from '../../utils/errors';
@@ -283,7 +284,11 @@ export default function MembersPage(): React.ReactElement {
                   <RemoveMemberButton
                     label={label}
                     disabled={busyAccount === account}
-                    prompt={`Remove ${label} from this workspace?`}
+                    prompt={
+                      roles.appOnly
+                        ? `Remove ${label} from ${PRODUCT_NAME}? They stay in the organization and its other apps.`
+                        : `Remove ${label} from this workspace?`
+                    }
                     onConfirm={() => run(account, () => roles.removeMember(account))}
                   />
                 )}

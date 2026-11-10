@@ -182,6 +182,7 @@ export function AccountChip({
   onLogout,
   logoutTestId,
   hostTestId,
+  children,
 }: {
   name?: string;
   host: string | null;
@@ -189,6 +190,8 @@ export function AccountChip({
   onLogout: () => void;
   logoutTestId?: string;
   hostTestId?: string;
+  /** More of the account menu under the host (the Calimero Home link). */
+  children?: ReactNode;
 }) {
   const display = name?.trim() || "You";
   return (
@@ -206,6 +209,7 @@ export function AccountChip({
             {host}
           </span>
         )}
+        {children}
       </span>
       <button
         type="button"

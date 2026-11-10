@@ -347,3 +347,105 @@ export async function setMembersMayInvite(
   await client.setTeamDefaultCapabilities(org, team.teamId, next, passkey);
   return next;
 }
+
+/** One instance that deleting an app team deletes ({@link appTeamInstances}). */
+export interface AppTeamInstance {
+  appId: string;
+  name: string;
+  /** The team it is on: the app team, or a team below it (a private channel's). */
+  team: string;
+}
+
+/**
+ * Every instance on app team `teamId` and the teams below it, as the node
+ * lists them to the caller (`getTeam`, walking `children`): what
+ * `deleteTeam` deletes, with their data. Core's own `412 CONFIRM_REQUIRED`
+ * on the delete lists the same set; this reads it without starting a delete
+ * (a team holding no instance is deleted without asking). A team below that
+ * the caller may not read is left out, so an owner or admin should read it.
+ */
+export async function appTeamInstances(
+  client: Pick<CalimeroClient, "getTeam">,
+  org: string,
+  teamId: string,
+): Promise<AppTeamInstance[]> {
+  const out: AppTeamInstance[] = [];
+  const seen = new Set<string>();
+  const walk = async (id: string, depth: number): Promise<void> => {
+    if (seen.has(id) || depth > 32) return;
+    seen.add(id);
+    let team;
+    try {
+      team = await client.getTeam(org, id);
+    } catch (e) {
+      // The app team itself must be readable; one below may not be.
+      if (id === teamId) throw e;
+      return;
+    }
+    for (const a of team.apps ?? []) {
+      const app = a as { appId?: unknown; name?: unknown };
+      if (typeof app.appId === "string") {
+        out.push({ appId: app.appId, name: typeof app.name === "string" ? app.name : app.appId, team: id });
+      }
+    }
+    for (const child of team.children ?? []) await walk(child, depth + 1);
+  };
+  await walk(teamId, 0);
+  return out;
+
+}
+
+/**
+ * Open `team` (an app team) to everyone in the organization: `updateTeam`
+ * with `join: "everyone"`. It only widens: its rows stay, and whoever was
+ * taken out of it stays out (core keeps them in the team's `removed`). Core
+ * asks no passkey for it (rc.14), only `MANAGE_VISIBILITY` on the team, which
+ * its managers (owners, admins, its leads) hold.
+ */
+export async function openAppTeam(
+  client: Pick<CalimeroClient, "updateTeam">,
+  org: string,
+  team: Pick<AppTeam, "teamId">,
+): Promise<void> {
+  await client.updateTeam(org, team.teamId, { join: "everyone" });
+}
+
+/**
+ * Open every closed one of `teams`, one `updateTeam` each, in turn (no
+ * passkey). Answers the team ids opened; a refusal is thrown with those
+ * before it already open.
+ */
+export async function openAppTeams(
+  client: Pick<CalimeroClient, "updateTeam">,
+  org: string,
+  teams: ReadonlyArray<Pick<AppTeam, "teamId" | "join">>,
+): Promise<string[]> {
+  const opened: string[] = [];
+  for (const t of teams) {
+    if (t.join === "everyone") continue;
+    await openAppTeam(client, org, t);
+    opened.push(t.teamId);
+  }
+  return opened;
+}
+
+/**
+ * Turn "keep apps apart" on: close every app team in `org` (core `ScopeApps`
+ * with no package and `shared: true`; owner or admin; one passkey). Core
+ * writes everyone inside each open team now in as a row of their own in the
+ * same step (every member who joins open teams; not a guest, nor someone
+ * taken out of that app before), so nobody who has an app loses it, and
+ * turns "members may invite" off on those apps. From then on, someone who joins the org gets
+ * only the apps an invite names. A legacy app (organization access, no team)
+ * is left as it is. Core has no per-app close that keeps people: an
+ * `updateTeam` to `join: "invite"` drops everyone who was in only because the
+ * team was open, so nothing here offers it.
+ */
+export async function keepAppsApart(
+  client: Pick<CalimeroClient, "scopeApps">,
+  org: string,
+  passkey: PasskeyProvider,
+): Promise<OrgMode> {
+  const result = await client.scopeApps(org, passkey, { apps: [], shared: true });
+  return result.mode;
+}

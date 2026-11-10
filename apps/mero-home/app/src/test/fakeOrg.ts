@@ -36,6 +36,10 @@ export interface FakeOrgOptions {
   noMove?: boolean;
   /** The caller's role in `beta` (default its owner). */
   betaRole?: "owner" | "admin";
+  /** The org's metadata (`getOrg`). */
+  metadata?: Record<string, unknown>;
+  /** Chat open to everyone in a shared org (an admin opened it on its own). */
+  chatOpen?: boolean;
 }
 
 /** `beta`, an organization the owner of `acme` also owns, holding two apps: what a merge moves. */
@@ -60,7 +64,7 @@ export function fakeOrg(opts: FakeOrgOptions = {}) {
     package: CHAT,
     teamId: "t-chat",
     name: "Chat",
-    join: mode === "standalone" ? "everyone" : "invite",
+    join: mode === "standalone" || opts.chatOpen ? "everyone" : "invite",
     memberCount: 3,
     defaultCapabilities: opts.chatInvite || mode === "standalone" ? 2 : null,
     member: as !== "admin",
@@ -70,7 +74,7 @@ export function fakeOrg(opts: FakeOrgOptions = {}) {
     package: BLOCKS,
     teamId: "t-blocks",
     name: "Blocks",
-    join: "invite",
+    join: mode === "standalone" ? "everyone" : "invite",
     memberCount: 1,
     defaultCapabilities: null,
     member: as === "owner",
@@ -79,7 +83,7 @@ export function fakeOrg(opts: FakeOrgOptions = {}) {
   const visibleTeams =
     mode === "legacy" ? [] : as === "guest" ? [chat] : [chat, blocks];
 
-  const everyone = { "acct-ana": "owner", "acct-bob": "member", "acct-cat": "member", "acct-gus": "guest" };
+  const everyone = { "acct-ana": as === "admin" ? "admin" : "owner", "acct-bob": "member", "acct-cat": "member", "acct-gus": "guest" };
   // Core's directory filtering (decisions 2/3).
   const members: Record<string, string> = admin
     ? everyone
@@ -109,6 +113,7 @@ export function fakeOrg(opts: FakeOrgOptions = {}) {
       members,
       memberMetadata: { "acct-ana": { name: "Ana" }, "acct-bob": { name: "Bob" } },
       teams: {},
+      metadata: opts.metadata ?? null,
       releaseApprovers: [],
       publishes: [],
       newWorkStopped: null,
@@ -128,7 +133,25 @@ export function fakeOrg(opts: FakeOrgOptions = {}) {
               { account: "acct-gus", role: "member" as const, capabilities: 0 },
             ]
           : [{ account: "acct-ana", role: "lead" as const, capabilities: 0 }];
-      return { teamId: team, name: team, parent: null, join: "invite" as const, metadata: null, members: rows, children: [], apps: [] };
+      const instances =
+        team === "t-chat"
+          ? [{ appId: "chat-1", name: "general", contextId: "c1" }]
+          : team === "t-chat-private"
+            ? [{ appId: "chat-2", name: "leads only", contextId: "c2" }]
+            : [];
+      const children = team === "t-chat" ? ["t-chat-private"] : [];
+      return {
+        teamId: team,
+        name: team,
+        parent: null,
+        join: "invite" as const,
+        metadata: null,
+        members: rows,
+        children,
+        apps: instances,
+        myRole: null,
+        member: true,
+      };
     }),
     listInvites: vi.fn(async () => invites),
     revokeInvite: vi.fn(async (_org: string, key: string) => {
@@ -148,7 +171,8 @@ export function fakeOrg(opts: FakeOrgOptions = {}) {
       teams: (o.apps ?? []).map((a) => ({ package: a.package, teamId: `t-${a.package}`, created: true, apps: [], added: 0 })),
     })),
     setTeamDefaultCapabilities: vi.fn(async () => undefined),
-    setTeamMember: vi.fn(async () => undefined),
+    setTeamMember: vi.fn(async (..._args: unknown[]): Promise<void> => undefined),
+    updateTeam: vi.fn(async (..._args: unknown[]): Promise<void> => undefined),
     // Core's move route: the probe (an app no node holds) is `404 NOT_FOUND`
     // where the route is, a bare 404 where it is not.
     post: vi.fn(async (path: string) => {
@@ -173,8 +197,11 @@ export function fakeOrg(opts: FakeOrgOptions = {}) {
     appsReportAll: vi.fn(async (org: string) => ({
       apps: org === BETA ? betaApps.map((app) => ({ app, name: app === "beta-big" ? "Archive" : "Notes", package: null })) : [],
     })),
-    deleteOrg: vi.fn(async () => undefined),
     removeTeamMember: vi.fn(async () => undefined),
+    deleteTeam: vi.fn(async (..._args: unknown[]): Promise<void> => undefined),
+    setOrgMetadata: vi.fn(async (..._args: unknown[]): Promise<void> => undefined),
+    setMember: vi.fn(async (..._args: unknown[]): Promise<void> => undefined),
+    deleteOrg: vi.fn(async (..._args: unknown[]): Promise<void> => undefined),
   };
   return { client, asClient: client as unknown as CalimeroClient, me };
 }

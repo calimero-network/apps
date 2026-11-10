@@ -159,6 +159,7 @@ function VaultBody() {
   const [minting, setMinting] = useState(false);
   const [invite, setInvite] = useState<{
     code: string;
+    appOnly?: boolean;
     scope: string;
     hint: string;
     org?: string;
@@ -307,12 +308,13 @@ function VaultBody() {
     setMinting(true);
     try {
       const restricted = found.restricted;
-      const code = await mintVaultInvite(
+      const { token: code, appOnly } = await mintVaultInvite(
         { client: calimero, source, passkey, after },
         { namespaceId: found.namespaceId, team: found.team },
       );
       setInvite({
         code,
+        appOnly,
         scope: `Opens ${found.vaultName}`,
         // See TeamPage: only an open vault's link names its org.
         org: found.team ? undefined : found.namespaceId,
@@ -703,6 +705,7 @@ function VaultBody() {
         code={invite?.code ?? ''}
         org={invite?.org}
         scope={invite?.scope ?? ''}
+        appOnly={invite?.appOnly === true}
         hint={invite?.hint}
         onClose={() => setInvite(null)}
       />

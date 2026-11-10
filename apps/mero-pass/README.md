@@ -18,7 +18,7 @@ development through mero-js's `CalimeroClient`
 | Concept | Calimero 1.0 |
 |---|---|
 | **Team** | an **organization**. Invitations are org invites. |
-| **Vault** | an **app instance** of this package in the org. *Open* vaults reach every org member; *invite-only* vaults reach the members of their own invite-only **team**. |
+| **Vault** | an **app instance** of this package in the org. *Open* vaults reach everyone in Mero Pass's app team (every org member in a legacy org); *invite-only* vaults reach the members of their own invite-only **team**. |
 | **Personal vault** | an org nobody else is invited to, marked `{ kind: "personal" }` in its metadata. |
 | **Secret** | a row whose name, fields and tags are **ciphertext**. Only its kind (login, TOTP, …) is cleartext. |
 | **Account** | a passkey: sign in, or sign up with a new one. |
@@ -134,6 +134,34 @@ vault's default role, Editor or Viewer, by the next admin who opens the vault.
   restored.
 - **Append-only audit trail.** Each line names the account that acted and the
   object (a secret id, an account, a fingerprint), never a name or a value.
+
+
+## Mero Pass's app team
+
+An organization can hold several apps, each with its own **app team**
+(core#4890; see Calimero Home's README). Mero Pass reaches its organization only
+through `@calimero-apps/connect`'s org-app module
+(`scripts/check-org-app-module.py` fails CI otherwise):
+
+- A new organization made here gets Mero Pass's team at once, **open**
+  (`standalone`: everyone in the org has the app). New open vaults use
+  `{ kind: "team" }` access on it, invites name it (`appInvite`), and the
+  people shown are its people (`appPeople`).
+- Once an admin keeps the org's apps apart in Calimero Home (`shared`), an
+  invite gives Mero Pass only (the dialog says so) and only its people are shown.
+  **Remove** takes someone out of Mero Pass (its team and the invite-only
+  vaults' teams the remover may change), never out of the organization; in
+  open and legacy orgs it is out of the org, as before. An open vault's key
+  goes to Mero Pass's people, not the whole org.
+- Open vaults sit on the app team, so "open" means everyone in Mero Pass
+  there. Invite-only vaults keep their own top-level teams: core rc.14 lets
+  only an app team's leads create teams below it.
+- Adding Mero Pass to an organization whose apps have teams makes its team
+  first: owners and admins only (anyone else is told so), open in an open org
+  and closed in one that keeps its apps apart.
+- An organization from before app teams stays **legacy** (organization
+  access, org-wide invites). Under `pnpm dev:local` the app runs from a raw
+  bundle, which has no package, so every organization is legacy there.
 
 ## Features
 

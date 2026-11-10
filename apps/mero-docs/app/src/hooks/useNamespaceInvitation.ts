@@ -31,6 +31,8 @@ export interface InviteCreation {
   /** The target's name, shown to the person invited. */
   name?: string;
   url: string;
+  /** The link gives Mero Docs only: it names Docs' team in an org that keeps its apps apart (core#4890). */
+  appOnly?: boolean;
 }
 
 /** A link opened with an invitation in it. */
@@ -213,8 +215,9 @@ export function useCreateNamespaceInvite() {
   const create = useCallback(
     async (namespaceId: string, name?: string): Promise<InviteCreation> => {
       if (!admin) throw new Error('Not signed in');
-      const token = await admin.createNamespaceInvitation(namespaceId);
+      const { token, appOnly } = await admin.createNamespaceInvitation(namespaceId);
       return {
+        ...(appOnly ? { appOnly } : {}),
         kind: 'namespace',
         targetId: namespaceId,
         token,
@@ -233,8 +236,9 @@ export function useCreateFolderInvite() {
   const create = useCallback(
     async (folderId: string, name?: string): Promise<InviteCreation> => {
       if (!admin) throw new Error('Not signed in');
-      const { token, namespaceId } = await admin.createGroupInvitation(folderId);
+      const { token, namespaceId, appOnly } = await admin.createGroupInvitation(folderId);
       return {
+        ...(appOnly ? { appOnly } : {}),
         kind: 'group',
         targetId: folderId,
         token,

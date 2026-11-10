@@ -41,11 +41,35 @@ apps are built, run and tested in this repo.
 
 | | what it is |
 |---|---|
-| **workspace** | an organization (`createOrg`); its members are the team |
+| **workspace** | an organization (`createAppOrg`), with this app's own **app team** in it (below); its people are the team |
 | **repository** | an instance of this app in the organization (`createApp(name, source, { org })`), named after the repo, holding its issues and its GitHub URL |
-| **invitation** | an org invite (`invite(org, 'member', passkey)`, a passkey step-up), shared as a link to this frontend; the invitee signs in and confirms |
+| **invitation** | an org invite naming the app team (`appInvite`, a passkey step-up), shared as a link to this frontend; the invitee signs in and confirms |
 | **member names** | org member metadata `{ name }` (Members -> Set my alias) |
 | **roles** | the org's: owner and admins hold every capability; members get the workspace default (add repos, invite), which admins change per member |
+
+### Mero Issue Tracker's app team
+
+An organization can hold several apps, each with its own **app team**
+(core#4890; see Calimero Home's README). This app reaches its organization
+only through `@calimero-apps/connect`'s org-app module
+(`scripts/check-org-app-module.py` fails CI otherwise):
+
+- A new workspace gets the app's team at once, **open** (`standalone`:
+  everyone in the org has the app). New repositorys use `{ kind: "team" }` access
+  on it, invites name it (`appInvite`), and the member list is its people
+  (`appPeople`).
+- Once an admin keeps the org's apps apart in Calimero Home (`shared`), an
+  invite gives Mero Issue Tracker only (the dialog says so), the member list shows its
+  people, and **Remove** takes someone out of Mero Issue Tracker (its team), never out of
+  the organization. In standalone and legacy orgs Remove is out of the org,
+  as before.
+- Adding Mero Issue Tracker to an organization whose apps have teams makes its team
+  first: owners and admins only (anyone else is told so), open in an open org
+  and closed in one that keeps its apps apart.
+- An organization from before app teams stays **legacy** (organization
+  access, org-wide invites) until an admin gives the app its own access list
+  in Calimero Home. Under `pnpm dev:local` the app runs from a raw bundle,
+  which has no package, so every workspace is legacy there.
 
 Every member of the workspace may read and triage every issue. Only a
 comment's author may edit or delete it, and only an issue's creator may delete

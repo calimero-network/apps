@@ -23,19 +23,20 @@ export function TeamNamespace({ org, children }: { org: string | null; children:
   const signedIn = useMaybeSignedIn();
   const client = signedIn?.client ?? null;
   const after = signedIn?.after;
+  const source = signedIn?.source ?? null;
   const [members, setMembers] = useState<OrgMembers | null>(null);
   const [tick, setTick] = useState(0);
   useEffect(() => {
     if (!client || !org) return;
     let live = true;
-    readMembers(client, org)
+    readMembers(client, org, source)
       .then((m) => live && setMembers(m))
       .catch(() => live && setMembers(null))
       .finally(() => after?.());
     return () => {
       live = false;
     };
-  }, [client, org, after, tick]);
+  }, [client, org, source, after, tick]);
   const reload = useCallback(() => setTick((t) => t + 1), []);
   const value = useMemo(() => ({ org, members, reload }), [org, members, reload]);
   return <OrgProvider value={value}>{children}</OrgProvider>;
