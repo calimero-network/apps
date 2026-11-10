@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { describeError } from "@calimero-apps/connect";
-import { inviteLink, inviteToken } from "./lib/orgs";
+import { appOnlyInviteNote, describeError } from "@calimero-apps/connect";
+import { PRODUCT_NAME, inviteLink, inviteToken } from "./lib/orgs";
 import { PersonName, useOrg } from "./names";
 import { useSignedIn } from "./sessionContext";
 import { Avatar } from "./ui";
@@ -33,7 +33,8 @@ export function TeamCard({
   const [error, setError] = useState<string | null>(null);
 
   const onTeam = new Set((team.data ?? []).map((m) => m.account));
-  const candidates = members ? [...members.roles.keys()].filter((a) => !onTeam.has(a)).sort() : null;
+  // Who has Mero Forms in the org (its app team, else the org): only they reach the workspace.
+  const candidates = members ? members.people.filter((a) => !onTeam.has(a)).sort() : null;
 
   function run(account: string, fn: () => Promise<unknown>) {
     setBusy(account);
@@ -119,8 +120,9 @@ export function TeamCard({
  * team above to give them the forms.
  */
 export function InviteCard({ org, appId }: { org: string; appId: string }) {
-  const { client, passkey, after } = useSignedIn();
+  const { client, passkey, after, source } = useSignedIn();
   const [link, setLink] = useState<string | null>(null);
+  const [appOnly, setAppOnly] = useState(false);
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
@@ -130,7 +132,9 @@ export function InviteCard({ org, appId }: { org: string; appId: string }) {
     setFailed(null);
     setCopied(false);
     try {
-      setLink(inviteLink(await inviteToken(client, org, passkey()), appId, window.location, org));
+      const made = await inviteToken(client, org, passkey(), source);
+      setLink(inviteLink(made.token, appId, window.location, org));
+      setAppOnly(made.appOnly);
     } catch (e) {
       setFailed(describeError(e));
     } finally {
@@ -172,6 +176,11 @@ export function InviteCard({ org, appId }: { org: string; appId: string }) {
         <code className="invite-link mono" title={link}>
           {link}
         </code>
+      )}
+      {link && appOnly && (
+        <p className="empty" data-testid="invite-app-only">
+          {appOnlyInviteNote(PRODUCT_NAME)}
+        </p>
       )}
       {failed && <pre className="err">{failed}</pre>}
     </div>

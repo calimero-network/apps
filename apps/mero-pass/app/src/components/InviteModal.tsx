@@ -1,3 +1,4 @@
+import { appOnlyInviteNote } from '@calimero-apps/connect';
 import { type ReactNode, useCallback, useMemo, useRef, useState } from 'react';
 import { shareableInvitation } from '../lib/inviteLink';
 import { useDialogOpen } from '../hooks/useDialogOpen';
@@ -24,6 +25,7 @@ export default function InviteModal({
   org,
   scope,
   hint,
+  appOnly = false,
   onClose,
 }: {
   open: boolean;
@@ -33,6 +35,8 @@ export default function InviteModal({
   /** What the invitation grants — "Whole team · Home" or "Opens Bank logins". */
   scope: string;
   hint?: ReactNode;
+  /** The link gives Mero Pass only (an org that keeps its apps apart). */
+  appOnly?: boolean;
   onClose: () => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement | null>(null);
@@ -130,6 +134,11 @@ export default function InviteModal({
         )}
 
         {hint && <p className={styles.hint}>{hint}</p>}
+        {appOnly && (
+          <p className={styles.hint} data-testid="invite-app-only">
+            {appOnlyInviteNote('Mero Pass')}
+          </p>
+        )}
         <p className={styles.hint} data-testid="invite-single-use">
           Single use: one person can join with this link. Create another for
           each person you invite.

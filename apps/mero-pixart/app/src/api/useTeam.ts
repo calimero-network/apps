@@ -13,18 +13,22 @@ export interface TeamInfo {
   name: string;
   /** The read has answered (or failed). */
   ready: boolean;
-  /** account -> role (`owner` | `admin` | `member` | `guest`). */
+  /** account -> role (`owner` | `admin` | `member` | `guest`), the whole org. */
   roles: Map<string, string>;
+  /** Who has Mero Pixart in the team: its app team, else the org (no guest once it has app teams). */
+  people: string[];
+  /** The org keeps its apps apart and Mero Pixart has its team: Remove and invites are its only. */
+  appOnly: boolean;
   /** The name a member set on the team, or "". */
   nameOf: (account: string) => string;
   /** Read again (after a change). */
   reload: () => void;
 }
 
-const EMPTY: OrgMembers = { name: "", roles: new Map(), names: new Map() };
+const EMPTY: OrgMembers = { name: "", roles: new Map(), names: new Map(), people: [], appOnly: false };
 
 export function useTeam(teamId: string | undefined): TeamInfo {
-  const { client, after } = useSignedIn();
+  const { client, source, after } = useSignedIn();
   const [org, setOrg] = useState<OrgMembers>(EMPTY);
   const [ready, setReady] = useState(false);
   const [tick, setTick] = useState(0);
@@ -35,7 +39,7 @@ export function useTeam(teamId: string | undefined): TeamInfo {
       return;
     }
     let live = true;
-    readOrg(client, teamId)
+    readOrg(client, teamId, source)
       .then((o) => {
         if (live) setOrg(o);
       })
@@ -49,7 +53,7 @@ export function useTeam(teamId: string | undefined): TeamInfo {
     return () => {
       live = false;
     };
-  }, [client, teamId, tick, after]);
+  }, [client, source, teamId, tick, after]);
 
   const reload = useCallback(() => setTick((n) => n + 1), []);
   return useMemo(
@@ -57,6 +61,8 @@ export function useTeam(teamId: string | undefined): TeamInfo {
       name: org.name,
       ready,
       roles: org.roles,
+      people: org.people,
+      appOnly: org.appOnly,
       nameOf: (account: string) => org.names.get(account) ?? "",
       reload,
     }),

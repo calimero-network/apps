@@ -251,6 +251,15 @@ describe("invites", () => {
     }
   });
 
+  it("carries the invite's validity and uses, in every mode", async () => {
+    const apart = cluster(shared());
+    await appInvite(apart, "org", SOURCE, passkey, { teams: ["vault"], ttlSecs: 60, uses: 2 });
+    expect(apart.invite).toHaveBeenCalledWith("org", "member", passkey, ["team-crm", "vault"], { ttlSecs: 60, uses: 2 });
+    const raw = cluster(legacy());
+    await appInvite(raw, "org", "bundle-hash", passkey, { ttlSecs: 60 });
+    expect(raw.invite).toHaveBeenCalledWith("org", "member", passkey, undefined, { ttlSecs: 60 });
+  });
+
   it("an org with app teams but none for this app: refused, never widened to the org", async () => {
     const c = cluster({ ...shared(), teams: { "team-chat": appTeam("com.calimero.chat", "invite") } });
     await expect(appInvite(c, "org", SOURCE, passkey)).rejects.toBeInstanceOf(NoAppTeamError);
@@ -319,6 +328,15 @@ describe("leave", () => {
       expect(await leaveApp(c, "org", SOURCE, passkey)).toEqual({ left: "org", lastApp: false });
       expect(c.removeMember).toHaveBeenCalledWith("org", "bob", passkey);
     }
+  });
+
+  it("the account can be named, for a client without a session", async () => {
+    const c = cluster(shared(), "bob");
+    (c as { session?: unknown }).session = undefined;
+    expect(await leaveApp(c, "org", SOURCE, passkey, { self: "bob" })).toEqual({ left: "app", lastApp: true });
+    await leaveOrg(c, "org", passkey, "bob");
+    expect(c.removeMember).toHaveBeenCalledWith("org", "bob", passkey);
+    await expect(leaveOrg(c, "org", passkey)).rejects.toThrow(/Sign in/);
   });
 
   it("leaveOrg takes the account out of the organization", async () => {

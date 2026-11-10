@@ -210,6 +210,30 @@ Events carry ids only, never answers. Errors are `Invalid`, `NotFound`,
 | Sign-in | node login, Calimero Cloud account, desktop SSO | a passkey (sign in or sign up) |
 | Tests | `TestHost` + merobox two-node workflow + Playwright journey | `TestApp` harness (`tests/harness.rs`) + `scenarios/*.json` in the harness and on `merod local` |
 
+
+## Mero Forms's app team
+
+An organization can hold several apps, each with its own **app team**
+(core#4890; see Calimero Home's README). Mero Forms reaches its organization only
+through `@calimero-apps/connect`'s org-app module
+(`scripts/check-org-app-module.py` fails CI otherwise):
+
+- A new organization made here gets Mero Forms's team at once, **open**
+  (`standalone`: everyone in the org has the app). New workspaces use
+  `{ kind: "team" }` access on it, invites name it (`appInvite`), and the
+  people shown are its people (`appPeople`).
+- Once an admin keeps the org's apps apart in Calimero Home (`shared`), an
+  invite gives Mero Forms only (the dialog says so) and only its people are shown.
+  Forms has no organization-level Remove or Leave: its team (who builds forms
+  and reads responses) is the contract's, and only people in Mero Forms are
+  offered for it.
+- Adding Mero Forms to an organization whose apps have teams makes its team
+  first: owners and admins only (anyone else is told so), open in an open org
+  and closed in one that keeps its apps apart.
+- An organization from before app teams stays **legacy** (organization
+  access, org-wide invites). Under `pnpm dev:local` the app runs from a raw
+  bundle, which has no package, so every organization is legacy there.
+
 ## Run it
 
 ```bash

@@ -70,6 +70,7 @@ export default function TeamsPage() {
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [invite, setInvite] = useState<{
     code: string;
+    appOnly?: boolean;
     scope: string;
     org?: string;
   } | null>(null);
@@ -220,13 +221,14 @@ export default function TeamsPage() {
       setMenuOpenId(null);
       setError(null);
       try {
-        const code = await mintTeamInvite(
+        const { token: code, appOnly } = await mintTeamInvite(
           conn,
           { namespaceId: team.namespaceId },
           setBusy,
         );
         setInvite({
           code,
+          appOnly,
           scope: `Whole team · ${team.name}`,
           org: team.namespaceId,
         });
@@ -487,6 +489,7 @@ export default function TeamsPage() {
         code={invite?.code ?? ''}
         org={invite?.org}
         scope={invite?.scope ?? ''}
+        appOnly={invite?.appOnly === true}
         hint="Whoever opens this link can join the team and read every vault in it."
         onClose={() => setInvite(null)}
       />

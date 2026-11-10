@@ -97,6 +97,7 @@ export default function TeamPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [invite, setInvite] = useState<{
     code: string;
+    appOnly?: boolean;
     scope: string;
     hint: string;
     org?: string;
@@ -217,13 +218,14 @@ export default function TeamPage() {
     if (!conn || !teamId) return;
     setError(null);
     try {
-      const code = await mintTeamInvite(
+      const { token: code, appOnly } = await mintTeamInvite(
         conn,
         { namespaceId: teamId, validForSecs: validFor },
         setBusy,
       );
       setInvite({
         code,
+        appOnly,
         scope: `Whole team · ${heading}`,
         org: teamId,
         hint: `Whoever opens this link within ${validLabel} can join the team and open every vault that is not invite-only. Their devices get each vault's key once a member who holds it opens the vault.`,
@@ -240,13 +242,14 @@ export default function TeamPage() {
       if (!conn || !teamId) return;
       setError(null);
       try {
-        const code = await mintVaultInvite(
+        const { token: code, appOnly } = await mintVaultInvite(
           conn,
           { namespaceId: teamId, team: vault.team, validForSecs: validFor },
           setBusy,
         );
         setInvite({
           code,
+          appOnly,
           scope: `Opens ${vault.name}`,
           // An invite-only vault's link also admits to that vault's own team,
           // which a team member still needs: name the org only for open ones.
@@ -519,6 +522,7 @@ export default function TeamPage() {
         code={invite?.code ?? ''}
         org={invite?.org}
         scope={invite?.scope ?? ''}
+        appOnly={invite?.appOnly === true}
         hint={invite?.hint}
         onClose={() => setInvite(null)}
       />

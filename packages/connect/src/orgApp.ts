@@ -263,20 +263,28 @@ export async function appInvite(
   org: string,
   source: AppSource | null | undefined,
   passkey: PasskeyLike,
-  options: { teams?: string[] } = {},
+  options: { teams?: string[]; ttlSecs?: number; uses?: number } = {},
 ): Promise<AppInviteToken> {
   const pkg = sourcePackage(source);
+  const extra: { ttlSecs?: number; uses?: number } = {};
+  if (options.ttlSecs !== undefined) extra.ttlSecs = options.ttlSecs;
+  if (options.uses !== undefined) extra.uses = options.uses;
+  const hasExtra = Object.keys(extra).length > 0;
   if (!pkg) {
-    const teams = options.teams ?? [];
-    const token =
-      teams.length > 0
-        ? await client.invite(org, "member", provider(passkey), teams)
-        : await client.invite(org, "member", provider(passkey));
+    // Only the arguments there are, as the org-wide invite was always sent.
+    const teams = options.teams?.length ? options.teams : undefined;
+    const p = provider(passkey);
+    const token = hasExtra
+      ? await client.invite(org, "member", p, teams, extra)
+      : teams
+        ? await client.invite(org, "member", p, teams)
+        : await client.invite(org, "member", p);
     return { token, appOnly: false };
   }
   const made = await inviteToApp(client, org, pkg, {
     passkey: provider(passkey),
     ...(options.teams?.length ? { teams: options.teams } : {}),
+    ...extra,
   });
   return { token: made.token, appOnly: made.mode === "shared" && made.teams.length > 0 };
 }
@@ -368,11 +376,13 @@ export async function leaveApp(
   org: string,
   source: AppSource | null | undefined,
   passkey: PasskeyLike,
-  options: RemoveFromAppOptions = {},
+  options: RemoveFromAppOptions & { self?: string } = {},
 ): Promise<LeftApp> {
-  const self = client.session?.accountId;
+  const self = options.self ?? client.session?.accountId;
   if (!self) throw new Error("Sign in to leave.");
-  const left = await removeFromApp(client, org, source, self, passkey, options);
+  const left = await removeFromApp(client, org, source, self, passkey, {
+    ...(options.privateTeams ? { privateTeams: options.privateTeams } : {}),
+  });
   if (left === "org") return { left, lastApp: false };
   const after = await appTeams(client, org).catch(() => null);
   return { left, lastApp: !!after && !after.appTeams.some((t) => t.member) };
@@ -383,8 +393,8 @@ export async function leaveOrg(
   client: Pick<CalimeroClient, "removeMember" | "session">,
   org: string,
   passkey: PasskeyLike,
+  self: string | undefined = client.session?.accountId,
 ): Promise<void> {
-  const self = client.session?.accountId;
   if (!self) throw new Error("Sign in to leave.");
   await client.removeMember(org, self, provider(passkey));
 }

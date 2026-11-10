@@ -20,7 +20,7 @@ function shortId(id: string) {
  * existing organization", on the person's explicit choice.
  */
 export function WorkspacePicker({ onOpen }: { onOpen: (w: ActiveWorkspace) => void }) {
-  const { client, source, after } = useSignedIn();
+  const { client, source, passkey, after } = useSignedIn();
   const [orgs, setOrgs] = useState<OrgRow[] | null>(null);
   /** The orgs holding a workspace of this app: the only ones the start form offers. */
   const [withApp, setWithApp] = useState<OrgRow[] | null>(null);
@@ -63,7 +63,7 @@ export function WorkspacePicker({ onOpen }: { onOpen: (w: ActiveWorkspace) => vo
     setBusy(true);
     setError(null);
     try {
-      const made = await createWorkspace(client, source, title, org || null);
+      const made = await createWorkspace(client, source, title, org || null, () => passkey());
       // Name it right away. Best effort: an unnamed workspace still works.
       await new FormsClient(client, made.appId, after).setWorkspaceName({ name: title }).catch(() => undefined);
       onOpen(made);
@@ -88,7 +88,7 @@ export function WorkspacePicker({ onOpen }: { onOpen: (w: ActiveWorkspace) => vo
   async function connect(target: OtherOrg) {
     const title = name.trim() || target.name || "Workspace";
     try {
-      const made = await createWorkspace(client, source, title, target.orgId);
+      const made = await createWorkspace(client, source, title, target.orgId, () => passkey());
       await new FormsClient(client, made.appId, after).setWorkspaceName({ name: title }).catch(() => undefined);
       onOpen(made);
     } finally {
