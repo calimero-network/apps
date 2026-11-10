@@ -138,7 +138,10 @@ describe("reading an org", () => {
     expect(appPeople(shared(), PKG)).toEqual(["me", "bob"]);
     expect(appPeople(standalone(), PKG)).toEqual(["me", "bob"]);
     expect(appPeople({ ...legacy(), members: { me: "owner", gus: "guest" } }, PKG)).toEqual(["me", "gus"]);
-    expect(appPeople({ ...standalone(), teams: {} }, PKG)).toEqual(["me", "bob"]);
+    // An org with app teams where the caller sees none of this app's: nobody (#819).
+    expect(appPeople({ ...standalone(), teams: {} }, PKG)).toEqual([]);
+    expect(appPeople({ ...shared(), teams: { "team-chat": shared().teams["team-chat"]! } }, PKG)).toEqual([]);
+    expect(appPeople({ ...standalone(), teams: {} }, null)).toEqual(["me", "bob"]);
     expect(appPeople(shared(), null)).toEqual(["me", "bob", "cy"]);
   });
 });
