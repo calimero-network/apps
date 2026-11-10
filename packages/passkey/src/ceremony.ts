@@ -185,7 +185,7 @@ export interface SignUpHereOptions extends CeremonySignal {
  * redeem (redeeming again would spend another use).
  */
 export async function signUpHere(
-  client: Pick<CalimeroClient, "signUp" | "me">,
+  client: Pick<CalimeroClient, "signUp" | "me"> & Partial<Pick<CalimeroClient, "setMemberMetadata">>,
   target: Target,
   passkey: PasskeyProvider,
   options: SignUpHereOptions = {},
@@ -206,7 +206,28 @@ export async function signUpHere(
     carried && join
       ? { invite: carried, org: typeof said === "string" && said ? said : await soleOrg(client) }
       : null;
+  if (joined?.org && trimmed) await nameInOrg(client, joined.org, accountId, trimmed);
   return { accountId, joined };
+}
+
+/**
+ * Shows a new account as `name` in the organization its invite joined: the
+ * org's member metadata `{ name }`, which its people lists read (the account's
+ * own name is seen by no one else). Best effort: the account and the join
+ * stand without it, and the person can name themselves later.
+ */
+async function nameInOrg(
+  client: Partial<Pick<CalimeroClient, "setMemberMetadata">>,
+  org: string,
+  account: string,
+  name: string,
+): Promise<void> {
+  if (typeof client.setMemberMetadata !== "function") return;
+  try {
+    await client.setMemberMetadata(org, account, { name });
+  } catch {
+    /* unnamed in the org until they name themselves */
+  }
 }
 
 /** A failed sign-in or sign-up, kept to be described when shown (the policy may be read after it). */

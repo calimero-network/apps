@@ -72,19 +72,24 @@ test("Admin: a legacy app gets its own access list, everyone keeps it", async ()
 test("Invitations: invite to the app, list it, revoke another", async () => {
   const { kvPackage } = seed();
   await admin.getByTestId("tab-invitations").click();
+  // Listed by app (the seed's spent admin invite may be listed too).
+  const pending = admin.getByTestId("pending-invites").locator("li", { hasText: "KV Store" });
   // One to revoke…
   await admin.getByTestId(`invite-app-${kvPackage}`).check();
   await admin.getByTestId("invite-create").click();
   await expect(admin.getByTestId("invite-link")).toBeVisible();
+  await expect(pending).toHaveCount(1);
+  // Told apart by key: the list is newest first, and two invites made in the
+  // same second (createdAt is in seconds) can come in either order.
+  const toRevoke = (await pending.getAttribute("data-testid"))!.replace(/^pending-/, "");
   // …and one to send.
   await admin.getByTestId("invite-create").click();
+  await expect(pending).toHaveCount(2);
   memberLink = (await admin.getByTestId("invite-link").locator("pre").textContent()) ?? "";
   expect(memberLink).toContain("invite=");
-  // Both are listed by app (the seed's spent admin invite may be listed too).
-  const pending = admin.getByTestId("pending-invites").locator("li", { hasText: "KV Store" });
-  await expect(pending).toHaveCount(2);
-  await pending.first().getByRole("button", { name: "Revoke" }).click();
+  await admin.getByTestId(`revoke-${toRevoke}`).click();
   await expect(pending).toHaveCount(1);
+  await expect(admin.getByTestId(`pending-${toRevoke}`)).toHaveCount(0);
 });
 
 test("the invited member gets that app only, and sees it in Your apps", async ({ browser }) => {
@@ -102,12 +107,16 @@ test("the invited member gets that app only, and sees it in Your apps", async ({
 
 test("People: removing someone from the org takes them out of every app", async () => {
   await admin.getByTestId("tab-people").click();
-  const eve = admin.locator("tr", { hasText: "Eve" });
+  // By her name in the row's header: a row's text also says "Yes (everyone)".
+  const eve = admin
+    .getByTestId("people-table")
+    .getByRole("row")
+    .filter({ has: admin.getByRole("rowheader", { name: "Eve", exact: true }) });
   await expect(eve).toBeVisible();
   await eve.getByRole("button", { name: "Remove from organization…" }).click();
   await expect(admin.getByTestId("remove-confirm")).toContainText("from every app in it");
   await admin.getByTestId("remove-confirm-yes").click();
   await expect(admin.getByTestId("people-notice")).toContainText("Eve was removed");
-  await expect(admin.locator("tr", { hasText: "Eve" })).toHaveCount(0);
+  await expect(eve).toHaveCount(0);
   await adminContext.close();
 });
