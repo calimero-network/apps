@@ -43,8 +43,12 @@ import type {
   UpgradeGroupResponse,
 } from "../groupApi";
 import {
+  addToChat,
+  adoptChatTeam,
   appMembers,
   changeAppAccounts,
+  chatMembers,
+  chatTeamId,
   createOrg,
   createPendingChannel,
   deleteOrg,
@@ -60,6 +64,7 @@ import {
   otherChatOrgs,
   pendingChannel,
   redeemInvite,
+  removeFromChat,
   removeOrgMember,
   run,
   setCapabilities,
@@ -118,13 +123,22 @@ export class GroupApiDataSource implements GroupApi {
       try {
         // v1 gave members these on a new namespace; on 1.0 it is a passkey step-up.
         await setCapabilities(groupId, DEFAULT_MEMBER_CAPABILITIES);
-        return ok({ groupId });
       } catch (e) {
         // Declined or refused: the workspace stays, and only its owner and
         // admins create channels and invite until an admin allows members to.
         console.warn("createGroup: member capabilities not set", e);
-        return ok({ groupId });
       }
+      try {
+        // Chat's own app team (core#4890), open: everyone in the workspace has
+        // Chat, its invites name the team, and should the org later hold other
+        // apps, Calimero Home can keep Chat's people apart from theirs.
+        await adoptChatTeam(groupId);
+      } catch (e) {
+        // Declined, or a node without app teams: the workspace is a legacy
+        // one (organization access), as every workspace was before.
+        console.warn("createGroup: chat's app team not made", e);
+      }
+      return ok({ groupId });
     } catch (error) {
       return catchError("createGroup", error);
     }
@@ -142,7 +156,7 @@ export class GroupApiDataSource implements GroupApi {
           appKey: "",
           targetApplicationId: "",
           upgradePolicy: "Automatic",
-          memberCount: Object.keys(org.members).length,
+          memberCount: chatMembers(org).length,
           contextCount: apps.length,
           activeUpgrade: null,
           defaultCapabilities: org.defaultCapabilities,
@@ -228,7 +242,11 @@ export class GroupApiDataSource implements GroupApi {
     }
   }
 
-  /** An invite token into the workspace (a passkey step-up for the inviter). */
+  /**
+   * An invite token into the workspace (a passkey step-up for the inviter),
+   * naming chat's app team where it has one: in a shared org it gives Chat
+   * and no other app (`chatOnly`).
+   */
   async createInvitation(
     groupId: string,
     _request?: CreateInvitationRequest,
@@ -236,7 +254,8 @@ export class GroupApiDataSource implements GroupApi {
     try {
       const invitation = await inviteToken(groupId);
       const org = await getOrgRecord(groupId).catch(() => null);
-      return ok({ invitation, groupAlias: org?.name });
+      const chatOnly = org?.mode === "shared" && chatTeamId(org) !== null;
+      return ok({ invitation, groupAlias: org?.name, ...(chatOnly ? { chatOnly } : {}) });
     } catch (error) {
       return catchError("createInvitation", error);
     }
@@ -262,10 +281,11 @@ export class GroupApiDataSource implements GroupApi {
     try {
       const self = getAccountId() || undefined;
       if (await isOrg(groupId)) {
+        // The workspace's people are Chat's: its app team where it has one.
         const org = await getOrgRecord(groupId);
-        const members = Object.entries(org.members).map(([identity, role]) => ({
+        const members = chatMembers(org).map((identity) => ({
           identity,
-          role: memberRole(role),
+          role: memberRole(org.members[identity]),
           alias: memberName(org, identity),
         }));
         return ok({ members, teeMembers: [], selfIdentity: self });
@@ -312,7 +332,13 @@ export class GroupApiDataSource implements GroupApi {
         return ok(undefined);
       }
       if (await isOrg(groupId)) {
-        await setMemberRole(groupId, identity, "member");
+        const org = await getOrgRecord(groupId);
+        if (chatTeamId(org) && org.members[identity]) {
+          // Someone in the org but not in Chat: a row on chat's app team.
+          await addToChat(groupId, identity);
+        } else {
+          await setMemberRole(groupId, identity, "member");
+        }
       } else {
         await changeAppAccounts(pending?.appId ?? groupId, [identity]);
       }
@@ -322,11 +348,21 @@ export class GroupApiDataSource implements GroupApi {
     }
   }
 
-  /** Removes a person from a workspace (a passkey step-up) or a private channel. */
+  /**
+   * Removes a person from a workspace (a passkey step-up) or a private
+   * channel. In a shared org that is Chat only (its app team, and the private
+   * channels this account may change); the organization and its other apps
+   * are Calimero Home's. Elsewhere it is the organization, as before.
+   */
   async removeMember(groupId: string, memberIdentity: string): ApiResponse<void> {
     try {
       if (await isOrg(groupId)) {
-        await removeOrgMember(groupId, memberIdentity);
+        const org = await getOrgRecord(groupId);
+        if (org.mode === "shared" && chatTeamId(org)) {
+          await removeFromChat(groupId, memberIdentity);
+        } else {
+          await removeOrgMember(groupId, memberIdentity);
+        }
       } else {
         await changeAppAccounts(pendingChannel(groupId)?.appId ?? groupId, [], [memberIdentity]);
       }

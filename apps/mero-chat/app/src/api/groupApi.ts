@@ -99,6 +99,12 @@ export interface CreateInvitationResponse {
   /** An org invite token (Calimero 1.0); v1 sent a signed namespace invitation. */
   invitation: string;
   groupAlias?: string;
+  /**
+   * The invite gives Mero Chat only: it names chat's app team in an org whose
+   * apps keep separate people (shared, core#4890), so the organization's
+   * other apps are not opened to the person.
+   */
+  chatOnly?: boolean;
 }
 
 export interface JoinGroupRequest {

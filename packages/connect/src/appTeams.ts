@@ -289,6 +289,42 @@ export async function appAccess(
   };
 }
 
+const JOIN_OPEN = ORG_CAPABILITIES.JOIN_OPEN_TEAMS;
+
+/**
+ * Who is in top-level team `teamId` (an app team), from `getOrg` as the
+ * caller reads it, as core decides it (`Org::in_team`): a direct row; and,
+ * for an open team, every org member not taken out of it who holds
+ * `JOIN_OPEN_TEAMS` (owners and admins hold every capability), except a guest
+ * once the org has app teams (any `mode` but `legacy`). In org order. `[]`
+ * for a team the caller does not see. Core leaves out of `getOrg` the people
+ * the caller may not see, so in a shared org a member gets the people of
+ * their own apps.
+ */
+export function appTeamMembers(
+  org: OrgAccessView,
+  teamId: string,
+  mode: OrgMode | null = null,
+): string[] {
+  const team = org.teams?.[teamId];
+  if (!team) return [];
+  const members = org.members ?? {};
+  // A row counts only while its account is in the org (core removes both together).
+  const out = new Set(Object.keys(team.members ?? {}).filter((a) => a in members));
+  if (team.join === "everyone") {
+    const removed = new Set(team.removed ?? []);
+    for (const [account, role] of Object.entries(members)) {
+      if (out.has(account) || removed.has(account)) continue;
+      if (role === "guest" && mode !== "legacy") continue;
+      const caps = ADMIN.has(role)
+        ? ~0
+        : (org.capabilities?.[account] ?? org.defaultCapabilities ?? DEFAULT_ORG_CAPABILITIES);
+      if ((caps & JOIN_OPEN) !== 0) out.add(account);
+    }
+  }
+  return Object.keys(members).filter((a) => out.has(a));
+}
+
 /** Whether `team`'s members may invite others to its app (the team default holds `INVITE_MEMBERS`). */
 export function membersMayInvite(team: Pick<AppTeam, "defaultCapabilities">): boolean {
   return ((team.defaultCapabilities ?? 0) & INVITE) !== 0;

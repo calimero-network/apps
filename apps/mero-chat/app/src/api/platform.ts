@@ -6,13 +6,13 @@
  * |---|---|
  * | a workspace: a namespace of the app | an **organization** (`createOrg`); its id is the "group id" |
  * | a channel: a subgroup (open or restricted) with one context in it | an **app instance** of chat in the org; its id is both the "subgroup" and the "context" id |
- * | an open subgroup | access `org`: every member of the workspace reaches it |
+ * | an open subgroup | access `team` on chat's **app team** (core#4890): everyone in Chat in this workspace reaches it; in an org without one (legacy, a dev bundle, an older node) access `org`, every member |
  * | a restricted subgroup and its members | access `accounts`: the instance's owner and the accounts listed |
  * | a DM: a restricted subgroup of two, alias `DM_CONTEXT_…` | an instance named `DM_CONTEXT_…`, access `accounts` [the other person] |
  * | namespace members and roles | org members: `owner`/`admin` → Admin, `member` → Member, `guest` → ReadOnly |
  * | member metadata `{ name }` | org member metadata `{ name }` |
  * | a per-context member key | the account: one id everywhere |
- * | namespace invitation (signed payload in a link) | an org **invite token** (a passkey step-up), redeemed after sign-in |
+ * | namespace invitation (signed payload in a link) | an org **invite token** naming chat's app team (a passkey step-up), redeemed after sign-in |
  * | capability bits | the org's capability bits (the same positions: create, invite, join open, create/delete subgroup ↔ team, visibility) |
  *
  * v1 made a channel in steps (create the subgroup, set its visibility, add
@@ -20,8 +20,17 @@
  * needs all of that, so the first steps are kept as a **pending channel**
  * here and the instance is created when the context is.
  */
-import type { AppInfo, CalimeroClient } from "@calimero-network/mero-js";
-import { orgsWithApp, otherOrgs, type OtherOrg } from "@calimero-apps/connect";
+import type { AppInfo, CalimeroClient, OrgMode } from "@calimero-network/mero-js";
+import {
+  appTeamMembers,
+  createAppTeam,
+  inviteToApp,
+  orgsWithApp,
+  otherOrgs,
+  type OrgAccessView,
+  type OrgTeamView,
+  type OtherOrg,
+} from "@calimero-apps/connect";
 
 import { after, chatSource, getAccountId, getClient, passkey } from "./calimero";
 
@@ -55,6 +64,15 @@ export interface OrgRecord {
   capabilities: Record<string, number>;
   metadata: Record<string, unknown> | null;
   memberMetadata: Record<string, Record<string, unknown> | null>;
+  /** The teams the caller sees: `members` maps an account to whether it leads. */
+  teams: Record<string, ChatOrgTeam>;
+  /** How the org holds its apps (core#4890); `null` on a node that does not say. */
+  mode: OrgMode | null;
+}
+
+/** A team in {@link OrgRecord}. */
+export interface ChatOrgTeam extends OrgTeamView {
+  metadata?: unknown;
 }
 
 function client(): CalimeroClient {
@@ -141,8 +159,94 @@ export function getOrgRecord(org: string): Promise<OrgRecord> {
       capabilities: obj(raw.capabilities) as Record<string, number>,
       metadata: raw.metadata && typeof raw.metadata === "object" ? (raw.metadata as Record<string, unknown>) : null,
       memberMetadata: obj(raw.memberMetadata) as Record<string, Record<string, unknown> | null>,
+      teams: obj(raw.teams) as Record<string, ChatOrgTeam>,
+      mode: raw.mode === "legacy" || raw.mode === "standalone" || raw.mode === "shared" ? raw.mode : null,
     };
   });
+}
+
+// ── chat's app team (core#4890) ─────────────────────────────────────────────
+
+/**
+ * The package chat's app team is marked with; `null` under a raw dev bundle
+ * (`pnpm dev:local`), which no package ships, so it has no app team and every
+ * workspace reads as legacy there.
+ */
+export function chatPackage(): string | null {
+  const source = chatSource();
+  return typeof source === "string" ? null : source.package;
+}
+
+/** Chat's app team in `org` (a top-level team marked with chat's package), as the caller sees the org. */
+export function chatTeamId(org: OrgRecord): string | null {
+  const pkg = chatPackage();
+  if (!pkg) return null;
+  for (const [id, team] of Object.entries(org.teams)) {
+    if (team.parent) continue;
+    const app = (team.metadata as { app?: { package?: unknown } } | null | undefined)?.app;
+    if (app?.package === pkg) return id;
+  }
+  return null;
+}
+
+/**
+ * Whether the workspace keeps its people per app: an org with app teams
+ * (`standalone` or `shared`). In a legacy org (or a node that does not say)
+ * chat is everyone's in the org, as before app teams.
+ */
+function moded(org: OrgRecord): boolean {
+  return org.mode === "standalone" || org.mode === "shared";
+}
+
+/**
+ * Who is in Chat in this workspace: chat's app team, else (no app team) every
+ * org member, except a guest once the org has app teams (core gives them only
+ * the apps they are invited to).
+ */
+export function chatMembers(org: OrgRecord): string[] {
+  const team = chatTeamId(org);
+  if (team) return appTeamMembers(org as OrgAccessView, team, org.mode);
+  return Object.entries(org.members)
+    .filter(([, role]) => !(role === "guest" && moded(org)))
+    .map(([account]) => account);
+}
+
+/**
+ * Gives chat its own app team in `org` (core `ScopeApps`, owner or admin, one
+ * passkey): its organization-access channels move onto it, and everyone who
+ * reaches them keeps them. The team is open (everyone in the org has Chat)
+ * unless the org is shared already, where it is closed like the others: who
+ * else gets Chat is then an admin's choice, here or in Calimero Home. Another
+ * app's team is never closed from here. `null` without a package (a dev bundle).
+ */
+export async function adoptChatTeam(org: string): Promise<string | null> {
+  const pkg = chatPackage();
+  if (!pkg) return null;
+  const record = await getOrgRecord(org);
+  const made = await run((c) => createAppTeam(c, org, pkg, passkey(), { shared: record.mode === "shared" }));
+  invalidate(org);
+  invalidate();
+  return made.teamId;
+}
+
+/**
+ * The access an open channel gets in `org`: chat's app team. An org with app
+ * teams but none for chat gets one first, which only an owner or admin may
+ * make (core: "only the organization's owner and admins install apps"). A
+ * legacy org keeps organization access: moving it onto an app team is an
+ * admin's choice (Calimero Home: "Give it its own access list"), never forced.
+ */
+async function openAccess(org: string): Promise<Access> {
+  const record = await getOrgRecord(org);
+  const team = chatTeamId(record);
+  if (team) return { kind: "team", team };
+  if (!chatPackage() || !moded(record)) return { kind: "org" };
+  const role = record.members[getAccountId()];
+  if (role !== "owner" && role !== "admin") {
+    throw new Error("Only this organization's owners and admins can add Mero Chat to it.");
+  }
+  const made = await adoptChatTeam(org);
+  return made ? { kind: "team", team: made } : { kind: "org" };
 }
 
 /** The orgs this account is in (`/me`). */
@@ -193,19 +297,30 @@ export function memberName(org: OrgRecord, account: string): string | undefined 
   return typeof name === "string" && name.trim() ? name.trim() : undefined;
 }
 
-/** Who reaches channel `app`: every org member, or its owner and the listed accounts. */
+/**
+ * Who reaches channel `app`: everyone in chat's app team (or every org member
+ * where there is none), or its owner and the listed accounts.
+ */
 export async function appMembers(app: AppRecord): Promise<string[]> {
   if (app.access.kind === "accounts") {
     return [...new Set([app.owner, ...app.access.accounts])];
   }
   if (app.access.kind === "org" && app.org) {
-    return Object.keys((await getOrgRecord(app.org)).members);
+    const org = await getOrgRecord(app.org);
+    return Object.entries(org.members)
+      .filter(([, role]) => !(role === "guest" && moded(org)))
+      .map(([account]) => account);
+  }
+  if (app.access.kind === "team" && app.org) {
+    const org = await getOrgRecord(app.org);
+    return appTeamMembers(org as OrgAccessView, app.access.team, org.mode);
   }
   return [app.owner];
 }
 
+/** Open: the workspace's (its org, or chat's app team on it); restricted: the listed accounts. */
 export function visibilityOf(access: Access): Visibility {
-  return access.kind === "org" || access.kind === "public" ? "open" : "restricted";
+  return access.kind === "org" || access.kind === "public" || access.kind === "team" ? "open" : "restricted";
 }
 
 // ── writes ───────────────────────────────────────────────────────────────────
@@ -230,7 +345,7 @@ export async function setVisibility(app: string, mode: Visibility): Promise<void
   const record = await getAppRecord(app);
   if (visibilityOf(record.access) === mode) return;
   if (mode === "open") {
-    await setAppAccess(app, { kind: "org" });
+    await setAppAccess(app, record.org ? await openAccess(record.org) : { kind: "org" });
   } else {
     // A channel made private keeps nobody but its owner until people are added.
     await setAppAccess(app, { kind: "accounts", accounts: [] });
@@ -288,7 +403,7 @@ export async function createChatApp(
   const title = (pending?.name || name || String(initializationParams.name ?? "") || "channel").trim();
   const access: Access =
     (pending?.visibility ?? "open") === "open"
-      ? { kind: "org" }
+      ? await openAccess(org)
       : { kind: "accounts", accounts: pending?.accounts ?? [] };
   const appId = await run((c) =>
     c.createApp(title, chatSource(), {
@@ -325,6 +440,36 @@ export async function removeOrgMember(org: string, account: string): Promise<voi
   invalidate();
 }
 
+/** Puts an org member into Chat: a row on chat's app team (its managers; a passkey step-up). */
+export async function addToChat(org: string, account: string): Promise<void> {
+  const team = chatTeamId(await getOrgRecord(org));
+  if (!team) return;
+  await run((c) => c.setTeamMember(org, team, account, passkey()));
+  invalidate(org);
+}
+
+/**
+ * Takes a person out of Chat in `org` and nothing else: off chat's app team
+ * (a passkey step-up), and off the private channels and DMs listed for them
+ * that this account reaches and may change (their access names accounts, so
+ * the team does not carry them). Without an app team, out of the org.
+ */
+export async function removeFromChat(org: string, account: string): Promise<void> {
+  const team = chatTeamId(await getOrgRecord(org));
+  if (!team) return removeOrgMember(org, account);
+  await run((c) => c.removeTeamMember(org, team, account, passkey()));
+  invalidate(org);
+  const apps = (await listChatApps().catch(() => [] as AppInfo[])).filter((a) => a.org === org);
+  for (const app of apps) {
+    const record = await getAppRecord(app.appId).catch(() => null);
+    if (record?.access.kind !== "accounts" || !record.access.accounts.includes(account)) continue;
+    await changeAppAccounts(app.appId, [], [account]).catch((e: unknown) => {
+      console.warn(`removeFromChat: ${app.appId} still lists ${account}`, e);
+    });
+  }
+  invalidate();
+}
+
 export async function deleteOrg(org: string): Promise<void> {
   await run((c) => c.deleteOrg(org, passkey()));
   invalidate();
@@ -341,9 +486,17 @@ export async function setOrgName(org: string, name: string): Promise<void> {
   invalidate(org);
 }
 
-/** An invite into `org` as a member: a passkey step-up for the inviter. */
-export function inviteToken(org: string): Promise<string> {
-  return run((c) => c.invite(org, "member", passkey()));
+/**
+ * An invite into `org` as a member, naming chat's app team, so it gives Chat
+ * and no other app of a shared org (`inviteToApp`): a passkey step-up for the
+ * inviter. An org-wide invite where the org has no app teams (legacy, an
+ * older node) or under a dev bundle.
+ */
+export async function inviteToken(org: string): Promise<string> {
+  const pkg = chatPackage();
+  if (!pkg) return run((c) => c.invite(org, "member", passkey()));
+  const made = await run((c) => inviteToApp(c, org, pkg, { passkey: passkey() }));
+  return made.token;
 }
 
 /** Redeems an invite token; answers the org it joined. */

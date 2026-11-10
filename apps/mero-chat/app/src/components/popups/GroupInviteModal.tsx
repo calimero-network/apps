@@ -201,6 +201,7 @@ export default function GroupInviteModal({
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [copiedTarget, setCopiedTarget] = useState<"web" | "desktop" | "">("");
+  const [chatOnly, setChatOnly] = useState(false);
 
   useEffect(() => {
     if (!isOpen) {
@@ -238,8 +239,10 @@ export default function GroupInviteModal({
         return;
       }
 
-      // An org invite token (minted with the inviter's passkey).
+      // An org invite token (minted with the inviter's passkey), naming
+      // chat's app team where the workspace has one.
       setInvitationPayload(response.data.invitation);
+      setChatOnly(response.data.chatOnly === true);
       setLoading(false);
     };
 
@@ -317,6 +320,11 @@ export default function GroupInviteModal({
               <SingleUse data-testid="invite-single-use">
                 Single use: one person can join with this link. Generate another for each person you invite.
               </SingleUse>
+              {chatOnly && (
+                <SingleUse data-testid="invite-chat-only">
+                  Invites to Mero Chat only: this organization&apos;s other apps are managed in Calimero Home.
+                </SingleUse>
+              )}
             </>
           )}
 

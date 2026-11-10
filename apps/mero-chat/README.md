@@ -21,11 +21,38 @@ in production through mero-js's `CalimeroClient` (`@calimero-apps/connect`). See
 | | Calimero 1.0 | v1 |
 |---|---|---|
 | a workspace | an organization | a namespace |
-| a channel | an instance of this app in the workspace's org: access `org` (public) or `accounts` (private: its creator and the people added) | a subgroup (open or restricted) with one context in it |
+| a channel | an instance of this app in the workspace's org: access `team` on chat's app team (public; `org` in a workspace without one) or `accounts` (private: its creator and the people added) | a subgroup (open or restricted) with one context in it |
 | a DM | an instance named `DM_CONTEXT_…`, access `accounts` [the other person] | a restricted subgroup of two |
-| joining | an org invite link (`?invite=<token>`), redeemed after a passkey sign-in | a namespace invitation link, then joining each channel's context and waiting for it to sync |
+| joining | an org invite link (`?invite=<token>`) naming chat's app team, redeemed after a passkey sign-in | a namespace invitation link, then joining each channel's context and waiting for it to sync |
+| who is in the workspace | chat's **app team** (below); without one, every org member | the namespace's members |
 | who you are | an account, signed in with a passkey; the same id in every channel | a node, and a member key per context |
 | a workspace name for a person | org member metadata `{ name }` | namespace member metadata |
+
+### Chat's app team
+
+An organization can hold several apps, each with its own **app team** (core#4890,
+`appTeams` in `@calimero-apps/connect`; see Calimero Home's README). A
+workspace created in Chat gets Chat's team at once, open (`standalone`:
+everyone in the org has Chat, and members may invite). Open channels use
+`{ kind: "team" }` on it, invites name it (`inviteToApp`), and the member lists
+read it (`appTeamMembers`). Once an admin keeps the org's apps apart in
+Calimero Home (`shared`: closed teams), a Chat invite gives Chat only, the
+member lists show Chat's people, and Remove takes someone out of Chat (its team
+and the private channels that list them), not out of the org.
+
+- A workspace from before app teams stays **legacy** (organization access)
+  until an admin chooses "Give it its own access list" in Calimero Home, which
+  moves its open channels onto the team with everyone kept. Chat never
+  converts one by itself.
+- Adding Chat to an organization whose apps have teams makes Chat's team
+  first: owners and admins only (core refuses anyone else), open in a
+  standalone org and closed in a shared one; another app's team is never
+  closed from Chat.
+- Private channels and DMs keep `accounts` access. The design moves private
+  channels to a restricted child team, but core lets only the app team's leads
+  and admins create one, so a member could no longer make a private channel.
+- Under `pnpm dev:local` chat runs from a raw bundle, which no package ships,
+  so it has no app team and every workspace is legacy there.
 
 A channel reaches who its access names; anyone else is refused before the
 contract runs (`404 NOT_FOUND` for an outsider, `401 UNAUTHENTICATED` anonymous).
