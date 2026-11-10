@@ -155,9 +155,17 @@ describe('App', () => {
   it('signs in with a passkey from the landing page', async () => {
     const client = fakeClient();
     render(<App deps={deps(client)} />);
-    const connect = await screen.findAllByRole('button', { name: /sign in|connect|get started|open/i }, SLOW);
-    fireEvent.click(connect[0]);
-    fireEvent.click(await screen.findByTestId('signin-passkey', {}, SLOW));
+    // The landing re-renders once the session settles (the sign-up policy read
+    // lands after `signed-out`), and its CTA is a component made in render, so
+    // a button found before that is detached and a click on it does nothing.
+    // Click the current one until the sign-in popup is open.
+    await waitFor(() => {
+      if (!screen.queryByTestId('signin-passkey')) {
+        fireEvent.click(screen.getAllByRole('button', { name: /sign in|connect|get started|open/i })[0]!);
+      }
+      expect(screen.getByTestId('signin-passkey')).toBeTruthy();
+    }, SLOW);
+    fireEvent.click(screen.getByTestId('signin-passkey'));
     await waitFor(() => expect(client.signIn).toHaveBeenCalledTimes(1), SLOW);
   });
 
