@@ -94,7 +94,7 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 [[package]]
 name = "calimero-app-build"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.13#bd77b35a602ec6894ae83e71ebc2caec32f1e8ad"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.14#292ac153e051d6445515d22f8f75adec35ebe1d4"
 dependencies = [
  "eyre",
  "serde_json",
@@ -105,7 +105,7 @@ dependencies = [
 [[package]]
 name = "calimero-app-engine-wasmtime"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.13#bd77b35a602ec6894ae83e71ebc2caec32f1e8ad"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.14#292ac153e051d6445515d22f8f75adec35ebe1d4"
 dependencies = [
  "async-trait",
  "bytes",
@@ -128,7 +128,7 @@ dependencies = [
 [[package]]
 name = "calimero-app-host"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.13#bd77b35a602ec6894ae83e71ebc2caec32f1e8ad"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.14#292ac153e051d6445515d22f8f75adec35ebe1d4"
 dependencies = [
  "calimero-app-wit",
  "ciborium",
@@ -143,12 +143,12 @@ dependencies = [
 [[package]]
 name = "calimero-app-wit"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.13#bd77b35a602ec6894ae83e71ebc2caec32f1e8ad"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.14#292ac153e051d6445515d22f8f75adec35ebe1d4"
 
 [[package]]
 name = "calimero-sdk"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.13#bd77b35a602ec6894ae83e71ebc2caec32f1e8ad"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.14#292ac153e051d6445515d22f8f75adec35ebe1d4"
 dependencies = [
  "base64",
  "calimero-app-engine-wasmtime",
@@ -170,7 +170,7 @@ dependencies = [
 [[package]]
 name = "calimero-sdk-macros"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.13#bd77b35a602ec6894ae83e71ebc2caec32f1e8ad"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.14#292ac153e051d6445515d22f8f75adec35ebe1d4"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
