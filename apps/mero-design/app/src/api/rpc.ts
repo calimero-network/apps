@@ -1,5 +1,5 @@
 import { AppError, ORG_CAPABILITIES, TrapError, type AppInfo, type CalimeroClient } from "@calimero-network/mero-js";
-import type { AppSource } from "@calimero-apps/connect";
+import { markOrgFor, myOrgs, orgsWithApp, otherOrgs, type AppSource, type OtherOrg } from "@calimero-apps/connect";
 import { getApi } from "./client";
 import { toWire } from "./meroDesign";
 import { getCachedBlob, setCachedBlob } from "../utils/blobCache";
@@ -152,11 +152,6 @@ export async function getNodeIdentity(): Promise<NodeIdentity> {
 
 // ── Teams: organizations ─────────────────────────────────────────────────────
 
-/** What `/me` answers about orgs. */
-interface MeOrgs {
-  orgs?: Array<{ orgId: string; name: string; role: string }>;
-}
-
 export interface TeamEntry {
   /** The org id. */
   namespaceId: string;
@@ -165,20 +160,43 @@ export interface TeamEntry {
   role: string;
 }
 
-/** Every team this account is in. */
+/**
+ * The teams: the orgs this account is in that hold a board or were made for
+ * Mero Design. An org made for another app (a Mero Blocks world) is not one,
+ * and is never entered on its own: it is offered under "Connect to an
+ * existing organization" ({@link listOtherTeams}).
+ */
 export async function listTeams(): Promise<TeamEntry[]> {
-  const { client, after } = getApi();
+  const { client, source, after } = getApi();
   try {
-    const me = (await client.me()) as MeOrgs;
-    return (me.orgs ?? []).map((o) => ({ namespaceId: o.orgId, name: o.name || undefined, role: o.role }));
+    const orgs = await orgsWithApp(client, source, { marked: true });
+    return orgs.map((o) => ({ namespaceId: o.orgId, name: o.name || undefined, role: o.role }));
   } finally {
     after();
   }
 }
 
-/** The caller's role in `org`, or null when not in it. */
+/** The account's other orgs, where boards may be added, with what each holds. */
+export async function listOtherTeams(): Promise<OtherOrg[]> {
+  const { client, source, after } = getApi();
+  try {
+    return await otherOrgs(client, source);
+  } finally {
+    after();
+  }
+}
+
+/** The board created in an org the account connects to Mero Design. */
+export const CONNECTED_BOARD_NAME = "Untitled board";
+
+/** The caller's role in `org` (any org it is in), or null when not in it. */
 export async function myTeamRole(org: string): Promise<string | null> {
-  return (await listTeams()).find((t) => t.namespaceId === org)?.role ?? null;
+  const { client, after } = getApi();
+  try {
+    return (await myOrgs(client)).find((o) => o.orgId === org)?.role ?? null;
+  } finally {
+    after();
+  }
 }
 
 /** An org owner or admin: may delete the team and manage its members. */
@@ -204,9 +222,11 @@ export interface CreatedTeam {
  * and admins can then create boards and invite).
  */
 export async function createTeam(name: string): Promise<CreatedTeam> {
-  const { client, passkey, after } = getApi();
+  const { client, source, passkey, after } = getApi();
   try {
     const namespaceId = await client.createOrg(name);
+    // Listed as a team before it holds a board.
+    await markOrgFor(client, namespaceId, source);
     try {
       await client.setCapabilities(namespaceId, MEMBER_DEFAULTS, passkey());
       return { namespaceId };

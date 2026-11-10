@@ -2,6 +2,8 @@ import { ORG_CAPABILITIES, type AppInfo, type CalimeroClient, type PasskeyProvid
 import {
   SPENT_INVITE_COPY,
   createInviteStore,
+  markOrgFor,
+  orgsWithApp,
   inviteLink as sharedInviteLink,
   isSpentInvite,
   type AppSource,
@@ -57,14 +59,19 @@ async function allAudiences(client: Pick<CalimeroClient, "listApps">, source: Ap
   return client.listApps(filterOf(source));
 }
 
+/**
+ * The companies: the orgs this account is in that hold an audience or were
+ * made for Mero Updates. An org made for another app is offered under
+ * "Connect to an existing organization" instead.
+ */
 export async function listCompanies(
   client: Pick<CalimeroClient, "me" | "listApps" | "getOrg">,
   source: AppSource,
 ): Promise<NamespaceRow[]> {
-  const me = (await client.me()) as MeOrgs;
+  const orgs = await orgsWithApp(client, source, { marked: true });
   const apps = await allAudiences(client, source);
   const rows = await Promise.all(
-    (me.orgs ?? []).map(async (o) => {
+    orgs.map(async (o) => {
       const org = await client.getOrg(o.orgId).catch(() => null);
       const members = (org?.members ?? {}) as Record<string, string>;
       return {
@@ -106,11 +113,14 @@ export interface CreatedCompany {
 
 /** A new company: an org whose members may start audiences and invite (a passkey step-up). */
 export async function createCompany(
-  client: Pick<CalimeroClient, "createOrg" | "setCapabilities">,
+  client: Pick<CalimeroClient, "createOrg" | "setCapabilities" | "getOrg" | "setOrgMetadata">,
   name: string,
   passkey: () => PasskeyProvider,
+  source?: AppSource,
 ): Promise<CreatedCompany> {
   const namespaceId = await client.createOrg(name);
+  // Listed as a company before it holds an audience.
+  if (source) await markOrgFor(client, namespaceId, source);
   try {
     await client.setCapabilities(namespaceId, MEMBER_DEFAULTS, passkey());
     return { namespaceId, warning: null };
@@ -122,6 +132,9 @@ export async function createCompany(
     };
   }
 }
+
+/** The audience created in an org the account connects to Mero Updates ("Connect to an existing organization"). */
+export const CONNECTED_AUDIENCE_NAME = "Everyone";
 
 /** A new audience in `org`; answers the instance id. Its creator is its first admin. */
 export function createAudience(
