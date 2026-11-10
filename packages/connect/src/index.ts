@@ -15,7 +15,7 @@ export {
   type ConnectOptions,
   type Target,
 } from "./target";
-export { APPS_DOMAIN, CLOUD_DEPLOY, appLabel, appUrl } from "./appHost";
+export { APPS_DOMAIN, CLOUD_DEPLOY, appClusterLabel, appLabel, appUrl } from "./appHost";
 export {
   SessionStore,
   createClient,
@@ -108,3 +108,17 @@ export {
   type CreateAppTeamOptions,
   type InviteToAppOptions,
 } from "./appTeams";
+export {
+  HOME_PACKAGE,
+  MANAGE_IN_HOME,
+  clusterName,
+  findHome,
+  homeLinkFor,
+  homeLinkViewer,
+  homeOrigin,
+  homeUrl,
+  showsHomeLink,
+  type FindHomeOptions,
+  type HomeLinkViewer,
+  type HomeLocation,
+} from "./home";
