@@ -208,6 +208,39 @@ export function chatMembers(org: OrgRecord): string[] {
   return appPeople(org as AppOrgView, chatPackage());
 }
 
+/** Whether the signed-in account has Chat in a workspace ({@link chatAccessIn}). */
+export type ChatAccess =
+  | { kind: "member" }
+  /** In the org, but not in Chat there: taken off its team, or no row once an admin closed it. */
+  | { kind: "closed"; orgName: string }
+  /** The workspace could not be read (out of the org, a failure): says nothing about Chat. */
+  | { kind: "unknown" };
+
+/**
+ * Chat's verdict for `self` in `org`, from what `getOrg` showed them and
+ * whether they still reach any chat instance there. Closed only in an org
+ * with app teams, where they are in the org, not among chat's people
+ * ({@link chatMembers}: off its open team, or a closed team core does not
+ * show them) and reach no channel there either (a private channel that still
+ * lists them keeps the workspace open). A legacy org is everyone's.
+ */
+export function chatAccessFrom(org: OrgRecord, self: string, reachesAChannel: boolean): ChatAccess {
+  if (!self || !(self in org.members)) return { kind: "unknown" };
+  if (org.mode !== "standalone" && org.mode !== "shared") return { kind: "member" };
+  if (chatMembers(org).includes(self) || reachesAChannel) return { kind: "member" };
+  return { kind: "closed", orgName: org.name.trim() || "this organization" };
+}
+
+/** {@link chatAccessFrom} for the signed-in account in workspace `org`, read from the cluster. */
+export async function chatAccessIn(org: string, self: string = getAccountId()): Promise<ChatAccess> {
+  try {
+    const [record, apps] = await Promise.all([getOrgRecord(org), listChatApps()]);
+    return chatAccessFrom(record, self, apps.some((a) => a.org === org));
+  } catch {
+    return { kind: "unknown" };
+  }
+}
+
 /**
  * Gives chat its own app team in `org` (`adoptAppTeam`, owner or admin, one
  * passkey): its organization-access channels move onto it, and everyone who

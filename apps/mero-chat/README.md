@@ -54,6 +54,10 @@ and the private channels that list them), not out of the org.
 - **Leave workspace** in a shared org leaves Chat's team only; when Chat was
   the person's last app there, they are asked whether to leave the org too.
   In standalone and legacy orgs Leave is leaving the org, as before.
+- Someone who no longer has Chat in the selected workspace (taken off its
+  team, or left without a row when an admin keeps the org's apps apart) is
+  told "You no longer have access to Chat in <org>" and offered the workspace
+  picker, instead of an empty workspace (`pages/Home/ChatAccessGate.tsx`).
 - These paths go through `@calimero-apps/connect`'s org-app module
   (`createAppOrg`, `orgWideAccess`, `appInvite`, `appPeople`, `removeFromApp`,
   `leaveApp`, `leaveOrg`); `scripts/check-org-app-module.py` keeps it so.
