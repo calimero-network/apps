@@ -180,6 +180,15 @@
   color: var(--sign-ink);
   transition: background 140ms ease-out, color 140ms ease-out, box-shadow 140ms ease-out;
 }
+/* "Manage people in Calimero Home →" (`ManageInHomeLink`), above Log out. */
+.homeLink {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sign-accent, var(--sign-ink));
+  text-decoration: none;
+}
+.homeLink:hover { text-decoration: underline; }
+
 .logout:hover {
   background: var(--sign-bad-bg);
   color: var(--sign-bad-ink);

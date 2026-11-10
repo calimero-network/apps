@@ -37,6 +37,30 @@ change cells and structure; commenters comment; viewers read. Anyone outside the
 org is refused before the contract runs (`404 NOT_FOUND`; `401 UNAUTHENTICATED`
 for an anonymous caller).
 
+
+## Mero Sheets's app team
+
+An organization can hold several apps, each with its own **app team**
+(core#4890; see Calimero Home's README). Mero Sheets reaches its organization only
+through `@calimero-apps/connect`'s org-app module
+(`scripts/check-org-app-module.py` fails CI otherwise):
+
+- A new organization made here gets Mero Sheets's team at once, **open**
+  (`standalone`: everyone in the org has the app). New spreadsheets use
+  `{ kind: "team" }` access on it, invites name it (`appInvite`), and the
+  people shown are its people (`appPeople`).
+- Once an admin keeps the org's apps apart in Calimero Home (`shared`), an
+  invite gives Mero Sheets only (the dialog says so) and only its people are shown.
+  **Remove** takes someone out of Mero Sheets, never out of the organization;
+  in open and legacy orgs it is out of the org, as before. Sheets has no
+  organization-level Leave.
+- Adding Mero Sheets to an organization whose apps have teams makes its team
+  first: owners and admins only (anyone else is told so), open in an open org
+  and closed in one that keeps its apps apart.
+- An organization from before app teams stays **legacy** (organization
+  access, org-wide invites). Under `pnpm dev:local` the app runs from a raw
+  bundle, which has no package, so every organization is legacy there.
+
 ## Run it
 
 ```bash

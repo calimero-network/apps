@@ -204,6 +204,8 @@
   cursor: pointer;
 }
 .menuItem:hover { background: var(--glass-sunken); }
+/* "Manage people in Calimero Home →" (`ManageInHomeLink`): a link styled as a menu item. */
+.menuLink { padding-left: 10px; color: var(--glass-accent-solid, var(--glass-ink)); text-decoration: none; }
 .menuItemActive { font-weight: 700; }
 .menuItemText { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .menuIcon {

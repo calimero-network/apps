@@ -10,6 +10,8 @@ import {
   IconAllIssues, IconMyIssues, IconBoard, IconMembers, IconLogout, IconPlus, IconRepo,
 } from './icons';
 import { useSignOut } from '../auth/signOut';
+import { useSessionApi } from '../sessionContext';
+import { ManageInHomeLink } from '@calimero-apps/passkey';
 import { nodeBasename } from '@calimero-apps/node-served';
 
 export interface SidebarProps {
@@ -63,6 +65,7 @@ export default function Sidebar({
 }: SidebarProps): React.ReactElement {
   const loc = useLocation();
   const signOut = useSignOut();
+  const { api } = useSessionApi();
   const mine = loc.search.includes('assignee=me');
   const onDetail = loc.pathname.startsWith(`${APP_ROUTE}/issues/`);
   const onIssues = (loc.pathname === APP_ROUTE && !mine) || onDetail;
@@ -166,6 +169,7 @@ export default function Sidebar({
             <IconLogout />
           </button>
         </div>
+        <ManageInHomeLink session={api.session} org={activeNs} className="home-link" />
       </Footer>
     </Aside>
   );
@@ -272,6 +276,8 @@ const Repos = styled.div`
   .repo-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 `;
 const Footer = styled.div`
+  .home-link { padding: 0 4px; font-size: 12px; font-weight: 600; color: ${t.color.accentText}; text-decoration: none; }
+  .home-link:hover { text-decoration: underline; }
   flex: 0 0 auto; margin: 0 12px; border-top: 1px solid ${t.color.border};
   padding: 12px 4px 14px; display: flex; flex-direction: column; gap: 12px;
   .peer-sync { display: flex; align-items: center; gap: 8px; padding: 0 4px; font-size: 12px; color: ${t.color.text2}; }

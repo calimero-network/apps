@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMemberNames, useMyName } from "../api/names";
-import { getNodeIdentity, listGroupMembers, removeTeamMember, rpcCall, updateMemberRole } from "../api/rpc";
+import { PRODUCT_NAME, getNodeIdentity, listGroupMembers, removeTeamMember, rpcCall, updateMemberRole } from "../api/rpc";
 import { APP_PACKAGE } from "../config";
 import { useToast } from "../contexts/ToastContext";
 import { extractErrorMessage } from "../utils/errorMessage";
@@ -205,9 +205,14 @@ export default function SettingsSection({ type, id, groupId, name, namespaceId }
     }
     setPendingRemove(member.identity);
     try {
-      await removeTeamMember(membersGroupId, member.identity);
+      const left = await removeTeamMember(membersGroupId, member.identity);
       setMembers((prev) => prev.filter((m) => m.identity !== member.identity));
-      showToast("Member removed from the team.", "success");
+      showToast(
+        left === "app"
+          ? `Member removed from ${PRODUCT_NAME}. They stay in the organization and its other apps.`
+          : "Member removed from the team.",
+        "success",
+      );
     } catch (err) {
       showToast(extractErrorMessage(err, "Could not remove member."));
     } finally {

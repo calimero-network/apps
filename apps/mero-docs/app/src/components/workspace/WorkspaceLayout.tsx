@@ -22,6 +22,7 @@ import React, {
 } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Settings, LogOut, Circle, PanelLeft } from 'lucide-react';
+import { ManageInHomeLink } from '@calimero-apps/passkey';
 import { useMero } from '@/calimero/react';
 import { LogoWithText } from '@/components/icons/Logo';
 import { Button } from '@/components/ui/button';
@@ -82,7 +83,7 @@ export function WorkspaceLayout() {
     stage,
     refetch,
   } = useDriveWorkspace();
-  const { nodeUrl, nodeLabel, logout } = useMero();
+  const { nodeUrl, nodeLabel, logout, session } = useMero();
   // Grace-wrapped so a transient SSE blip doesn't flap the node dot red.
   const isOnline = useOnlineStatus();
   usePublishWorkspacePresence(registryContextId, selfIdentity);
@@ -331,6 +332,11 @@ export function WorkspaceLayout() {
             </div>
           )}
           <ThemeToggle />
+          <ManageInHomeLink
+            session={session}
+            org={namespaceId}
+            className="hidden whitespace-nowrap px-2 text-xs font-medium text-primary no-underline hover:underline sm:inline"
+          />
           {namespaceId && (
             <Button
               variant={showSettings ? 'selected' : 'ghost'}

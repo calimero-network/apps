@@ -18,7 +18,24 @@ import {
   type CalimeroClient,
   type PasskeyProvider,
 } from '@calimero-network/mero-js';
-import { markOrgFor, orgsWithApp, type AppSource } from '@calimero-apps/connect';
+import {
+  appPeople,
+  createAppOrg,
+  isAppOnly,
+  orgInstanceOptions,
+  orgsWithApp,
+  sourcePackage,
+  type AppOrgView,
+  type AppSource,
+} from '@calimero-apps/connect';
+
+/** The app's name where an owner or admin is told who may add it, and in invite notes. */
+export const PRODUCT_NAME = 'Mero Sign';
+
+/** Where no passkey was handed over: asked for only to add Mero Sign's team to an org. */
+const noPasskey = (): PasskeyProvider => {
+  throw new Error(`A passkey is needed to add ${PRODUCT_NAME} to this organization.`);
+};
 
 import { MeroSignApp, type Transport } from './meroSign';
 
@@ -109,27 +126,23 @@ export const MEMBER_DEFAULTS =
  * its owner and admins can create agreements and invite.
  */
 export async function createWorkspace(
-  client: Pick<CalimeroClient, 'createOrg' | 'setCapabilities' | 'getOrg' | 'setOrgMetadata'>,
+  client: Pick<CalimeroClient, 'createOrg' | 'setCapabilities' | 'getOrg' | 'setOrgMetadata' | 'scopeApps'>,
   name: string,
   passkey: () => PasskeyProvider,
   onStatus: StatusFn = noop,
   source?: AppSource,
 ): Promise<{ namespaceId: string; warning: string | null }> {
   onStatus('Creating the workspace…');
-  const namespaceId = await client.createOrg(name);
-  // Listed as a workspace before it holds an agreement.
-  if (source) await markOrgFor(client, namespaceId, source);
-  onStatus('Letting members create agreements and invite…');
-  try {
-    await client.setCapabilities(namespaceId, MEMBER_DEFAULTS, passkey());
-    return { namespaceId, warning: null };
-  } catch {
-    return {
-      namespaceId,
-      warning:
-        'people you invite will not be able to create agreements or invite others',
-    };
-  }
+  // The org, marked so it is listed as a workspace before it holds an
+  // agreement, its member defaults, and Mero Sign's own team, open (declined,
+  // or an older node: a legacy org).
+  const made = await createAppOrg(client, name, source, passkey, { capabilities: MEMBER_DEFAULTS });
+  return {
+    namespaceId: made.orgId,
+    warning: made.capabilitiesError
+      ? 'people you invite will not be able to create agreements or invite others'
+      : null,
+  };
 }
 
 // ── members ──────────────────────────────────────────────────────────────────
@@ -140,13 +153,19 @@ export interface OrgMembers {
   roles: Map<string, string>;
   /** account -> the name they set for the workspace, where one is set. */
   names: Map<string, string>;
+  /** Who has Mero Sign in the workspace, in org order: its app team, else the org (no guest once it has app teams). */
+  people: string[];
+  /** The org keeps its apps apart and Mero Sign has its team: an invite gives Mero Sign only. */
+  appOnly: boolean;
 }
 
 export async function readMembers(
   client: Pick<CalimeroClient, 'getOrg'>,
   org: string,
+  source: AppSource | null = null,
 ): Promise<OrgMembers> {
   const o = (await client.getOrg(org)) as Record<string, unknown>;
+  const pkg = sourcePackage(source);
   const members = (o.members ?? {}) as Record<string, string>;
   const meta = (o.memberMetadata ?? {}) as Record<string, unknown>;
   const names = new Map<string, string>();
@@ -158,6 +177,8 @@ export async function readMembers(
     name: typeof o.name === 'string' ? o.name : '',
     roles: new Map(Object.entries(members)),
     names,
+    people: appPeople(o as AppOrgView, pkg),
+    appOnly: isAppOnly(o as AppOrgView, pkg),
   };
 }
 
@@ -256,13 +277,26 @@ export const CONNECTED_AGREEMENT_NAME = 'Untitled agreement';
  * Answers the instance id.
  */
 export async function createAgreement(
-  client: Pick<CalimeroClient, 'createApp' | 'listApps' | 'call' | 'view'>,
-  opts: { source: AppSource; org: string; name: string; accountId: string },
+  client: Pick<CalimeroClient, 'createApp' | 'listApps' | 'call' | 'view' | 'getOrg' | 'scopeApps' | 'session'>,
+  opts: {
+    source: AppSource;
+    org: string;
+    name: string;
+    accountId: string;
+    /** For adding Mero Sign to an org whose other apps have teams (an owner's or admin's step-up). */
+    passkey?: () => PasskeyProvider;
+  },
   onStatus: StatusFn = noop,
   after: () => void = () => {},
 ): Promise<string> {
   onStatus('Creating the agreement…');
-  const appId = await client.createApp(opts.name, opts.source, { org: opts.org });
+  // On Mero Sign's team (made first, by an owner or admin, in an org whose
+  // other apps have teams), or organization access in a legacy org.
+  const appId = await client.createApp(
+    opts.name,
+    opts.source,
+    await orgInstanceOptions(client, opts.org, opts.source, opts.passkey ?? noPasskey, PRODUCT_NAME),
+  );
   onStatus('Preparing its documents…');
   await new MeroSignApp(client, appId, after).setup({
     is_private: false,
