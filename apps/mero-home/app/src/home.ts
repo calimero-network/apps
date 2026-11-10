@@ -14,6 +14,11 @@
  * 3. A guest is app-only: no directory (no People screen).
  * 4. Only admins install apps (make app teams).
  * 6. Admins can remove someone from the org, and so from every app in it.
+ *
+ * Organization settings (the Organization screen): admins set the name and
+ * logo Home shows (org metadata); only the owner transfers ownership or
+ * deletes the organization. The recovery key and release approvals stay in
+ * the console.
  */
 import {
   appTeams,
@@ -94,10 +99,22 @@ export interface OrgApp {
   instances: AppInfo[];
 }
 
+/** The name and logo an organization shows in Home, from its metadata ({@link orgProfile}). */
+export interface OrgProfile {
+  /** `metadata.displayName`: shown instead of the name it was made with. */
+  name: string | null;
+  /** `metadata.logo`: an image `data:` URL (the served page's CSP takes no other origin). */
+  logo: string | null;
+}
+
 /** An organization as Home shows it. */
 export interface OrgView {
   org: string;
+  /** The name it was made with (core has no rename). */
   name: string;
+  /** Its metadata as `getOrg` answers it (an object, else `{}`), which a profile change merges into. */
+  metadata: Record<string, unknown>;
+  profile: OrgProfile;
   /** `null` on a node without app teams (before core#4890). */
   mode: OrgMode | null;
   /** The caller's role there. */
@@ -141,9 +158,12 @@ export async function loadOrg(
   apps.sort((a, b) => a.name.localeCompare(b.name) || a.package.localeCompare(b.package));
   const members = (info.members ?? {}) as Record<string, unknown>;
   const mode = teams?.mode ?? (typeof info.mode === "string" ? info.mode : null);
+  const metadata = asObject(info.metadata);
   return {
     org,
     name: typeof info.name === "string" ? info.name : org,
+    metadata,
+    profile: orgProfile(metadata),
     mode,
     role: account in members ? asRole(members[account]) : null,
     people: peopleOf(info),
@@ -197,7 +217,7 @@ export function mayInviteHere(view: OrgView): boolean {
 }
 
 /** The screens Home offers the caller in this org. */
-export type Screen = "apps" | "people" | "invitations" | "admin";
+export type Screen = "apps" | "people" | "invitations" | "admin" | "settings";
 
 export function screensFor(view: OrgView): Screen[] {
   const screens: Screen[] = ["apps"];
@@ -205,7 +225,7 @@ export function screensFor(view: OrgView): Screen[] {
   if (view.role !== "guest") screens.push("people");
   if (mayInviteHere(view)) screens.push("invitations");
   // Decision 4: only admins install apps and set up their teams.
-  if (isAdmin(view.role)) screens.push("admin");
+  if (isAdmin(view.role)) screens.push("admin", "settings");
   return screens;
 }
 
@@ -352,6 +372,68 @@ export function modeLabel(mode: OrgMode | null): string {
     default:
       return "This cluster does not list app teams yet";
   }
+}
+
+function asObject(v: unknown): Record<string, unknown> {
+  return v && typeof v === "object" && !Array.isArray(v) ? { ...(v as Record<string, unknown>) } : {};
+}
+
+/** The most a logo `data:` URL may be: org metadata is at most 16 KiB in all. */
+export const MAX_LOGO_CHARS = 12 * 1024;
+
+const LOGO = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
+
+/** Whether `logo` is one Home shows: a base64 image `data:` URL within {@link MAX_LOGO_CHARS}. */
+export function isLogo(logo: unknown): logo is string {
+  return typeof logo === "string" && logo.length <= MAX_LOGO_CHARS && LOGO.test(logo);
+}
+
+/** The name and logo in an organization's metadata. */
+export function orgProfile(metadata: unknown): OrgProfile {
+  const m = asObject(metadata);
+  const name = typeof m.displayName === "string" && m.displayName.trim() ? m.displayName.trim().slice(0, 64) : null;
+  return { name, logo: isLogo(m.logo) ? m.logo : null };
+}
+
+/** The organization's name as Home shows it: its display name, else the name it was made with. */
+export function orgName(view: Pick<OrgView, "name" | "profile">): string {
+  return view.profile.name ?? view.name;
+}
+
+/**
+ * Sets the organization's display name and logo (`setOrgMetadata`; an
+ * owner or admin, or a holder of `MANAGE_METADATA`; no passkey). Core
+ * replaces the whole metadata, so this writes the current metadata with
+ * these two keys changed and every other key (another app's mark) kept; a
+ * `null` clears one.
+ */
+export async function setOrgProfile(
+  client: Pick<CalimeroClient, "setOrgMetadata">,
+  org: string,
+  current: Record<string, unknown>,
+  profile: OrgProfile,
+): Promise<Record<string, unknown>> {
+  const name = profile.name?.trim() ?? "";
+  if (name.length > 64) throw new Error("A name is at most 64 characters.");
+  if (profile.logo !== null && !isLogo(profile.logo)) throw new Error("That logo is too large: choose a smaller image.");
+  const next: Record<string, unknown> = { ...current };
+  if (name) next.displayName = name;
+  else delete next.displayName;
+  if (profile.logo) next.logo = profile.logo;
+  else delete next.logo;
+  await client.setOrgMetadata(org, next);
+  return next;
+}
+
+/** Who the owner may hand the organization to: anyone else in it but a guest (admins first). */
+export function transferCandidates(view: Pick<OrgView, "people">, account: string): Person[] {
+  return view.people.filter((p) => p.account !== account && p.role !== "guest" && p.role !== "owner");
+}
+
+/** Whether a typed confirmation matches `name`: the same text, ignoring surrounding spaces. */
+export function typedMatches(typed: string, name: string): boolean {
+  return typed.trim() === name.trim() && name.trim() !== "";
+
 }
 
 /** Whether the caller manages at least one closed app team: an owner or admin, or a lead of one. */

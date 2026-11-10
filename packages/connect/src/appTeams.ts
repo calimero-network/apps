@@ -348,6 +348,53 @@ export async function setMembersMayInvite(
   return next;
 }
 
+/** One instance that deleting an app team deletes ({@link appTeamInstances}). */
+export interface AppTeamInstance {
+  appId: string;
+  name: string;
+  /** The team it is on: the app team, or a team below it (a private channel's). */
+  team: string;
+}
+
+/**
+ * Every instance on app team `teamId` and the teams below it, as the node
+ * lists them to the caller (`getTeam`, walking `children`): what
+ * `deleteTeam` deletes, with their data. Core's own `412 CONFIRM_REQUIRED`
+ * on the delete lists the same set; this reads it without starting a delete
+ * (a team holding no instance is deleted without asking). A team below that
+ * the caller may not read is left out, so an owner or admin should read it.
+ */
+export async function appTeamInstances(
+  client: Pick<CalimeroClient, "getTeam">,
+  org: string,
+  teamId: string,
+): Promise<AppTeamInstance[]> {
+  const out: AppTeamInstance[] = [];
+  const seen = new Set<string>();
+  const walk = async (id: string, depth: number): Promise<void> => {
+    if (seen.has(id) || depth > 32) return;
+    seen.add(id);
+    let team;
+    try {
+      team = await client.getTeam(org, id);
+    } catch (e) {
+      // The app team itself must be readable; one below may not be.
+      if (id === teamId) throw e;
+      return;
+    }
+    for (const a of team.apps ?? []) {
+      const app = a as { appId?: unknown; name?: unknown };
+      if (typeof app.appId === "string") {
+        out.push({ appId: app.appId, name: typeof app.name === "string" ? app.name : app.appId, team: id });
+      }
+    }
+    for (const child of team.children ?? []) await walk(child, depth + 1);
+  };
+  await walk(teamId, 0);
+  return out;
+
+}
+
 /**
  * Open `team` (an app team) to everyone in the organization: `updateTeam`
  * with `join: "everyone"`. It only widens: its rows stay, and whoever was

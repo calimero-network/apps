@@ -3,7 +3,8 @@
  * an app team, invites someone to that app only, sees and revokes pending
  * invites, keeps apps apart (everyone is written into the app's list), takes
  * a person out of every app and gives them every app again, gives everyone
- * every app again, and removes a person from the org and so from every app.
+ * every app again, sets the name Home shows, removes a person from the org and
+ * so from every app, and removes the app with its instance.
  *
  * Needs core#4890 and #4891, first released in 1.0.0-rc.14 (see
  * playwright.config.ts): global-setup refuses an older merod with that reason.
@@ -75,7 +76,7 @@ test("an admin joins from an invitation and lands in the org", async ({ browser 
   await admin.goto(`/?invite=${encodeURIComponent(adminInvite)}&org=${encodeURIComponent(org)}`);
   await signUpFromInvite(admin, "Dee");
   await expect(admin.getByTestId("org-mode")).toContainText("Admin");
-  await expect(admin.getByRole("tab")).toHaveText(["Your apps", "People", "Invitations", "Admin"]);
+  await expect(admin.getByRole("tab")).toHaveText(["Your apps", "People", "Invitations", "Admin", "Organization"]);
 });
 
 test("Admin: a legacy app gets its own access list, everyone keeps it", async () => {
@@ -171,6 +172,16 @@ test("Admin: turning keep apps apart off gives everyone every app again", async 
   await expect(admin.getByTestId("apart-switch")).not.toBeChecked();
 });
 
+test("Organization: an admin sets the name Home shows", async () => {
+  await admin.getByTestId("tab-settings").click();
+  await admin.getByTestId("org-name").fill("Acme Labs");
+  await admin.getByTestId("org-profile-save").click();
+  await expect(admin.getByTestId("settings-notice")).toHaveText("Saved.");
+  await expect(admin.getByTestId("org-profile")).toHaveText("Acme Labs");
+  // An admin, not the owner: no transfer, no delete.
+  await expect(admin.getByTestId("delete-org")).toHaveCount(0);
+});
+
 test("People: removing someone from the org takes them out of every app", async () => {
   await admin.getByTestId("tab-people").click();
   // By her name in the row's header: a row's text also says "Yes (everyone)".
@@ -184,5 +195,17 @@ test("People: removing someone from the org takes them out of every app", async 
   await admin.getByTestId("remove-confirm-yes").click();
   await expect(admin.getByTestId("people-notice")).toContainText("Eve was removed");
   await expect(eve).toHaveCount(0);
+});
+
+test("Admin: removing an app lists its instances and deletes them after the typed name", async () => {
+  const { kvPackage } = seed();
+  await admin.getByTestId("tab-admin").click();
+  await admin.getByTestId(`remove-app-${kvPackage}`).click();
+  await expect(admin.getByTestId("remove-app-instances")).toHaveText("pipeline");
+  await expect(admin.getByTestId("remove-app-yes")).toBeDisabled();
+  await admin.getByTestId("remove-app-typed").fill("KV Store");
+  await admin.getByTestId("remove-app-yes").click();
+  await expect(admin.getByTestId("app-removed")).toContainText("KV Store was removed");
+  await expect(admin.getByTestId(`admin-app-${kvPackage}`)).toHaveCount(0);
   await adminContext.close();
 });
