@@ -5,18 +5,24 @@
 // Every world gets an organization of its own, so its creator can invite
 // friends: an invite is an org membership (`client.invite(org, "member",
 // passkey)`, a passkey step-up for the inviter), carried in a link to this
-// frontend and redeemed after the invitee signs in.
+// frontend and redeemed after the invitee signs in and says Join.
 
-import { CalimeroError, type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
+import type { AppInfo, CalimeroClient, PasskeyProvider } from "@calimero-network/mero-js";
 import {
   appSource,
-  describeError,
+  createInviteStore,
+  inviteLink,
+  isSpentInvite,
+  joinedOrg,
   targetKey,
   type AppSource,
   type ConnectEnv,
+  type InviteStore,
   type KeyValueStorage,
+  type PendingInvite,
   type Target,
 } from "@calimero-apps/connect";
+import { nodeBasename } from "@calimero-apps/node-served";
 
 import { PACKAGE, initArgs } from "./blocks";
 import { APP } from "./session";
@@ -57,127 +63,142 @@ export function inviteToken(client: Pick<CalimeroClient, "invite">, org: string,
   return client.invite(org, "member", passkey);
 }
 
+/** The link parameter naming the world an invite opens. */
+const WORLD_PARAM = "world";
+/** The link parameter naming who sent it: "Join {from}'s game as ...?". */
+const FROM_PARAM = "from";
+
+/**
+ * This game's pending invite (`createInviteStore` in `@calimero-apps/connect`),
+ * with the world its link names (`&world=`) and who sent it (`&from=`).
+ * Captured in `main.ts` before anything renders; the launcher binds it to the
+ * cluster, holds it for the account that signs in (another account's sign-in
+ * drops it) and drops it on sign-out (`ui/landing.ts`).
+ */
+export const invites: InviteStore = createInviteStore(APP, { keep: [WORLD_PARAM, FROM_PARAM] });
+
+/** The world a pending invite's link names. */
+export function invitedWorld(invite: PendingInvite | null): string | null {
+  return invite?.extra[WORLD_PARAM] ?? null;
+}
+
+/** Who sent a pending invite, as their link names them; `null` for a link that does not. */
+export function inviter(invite: PendingInvite | null): string | null {
+  return invite?.extra[FROM_PARAM] ?? null;
+}
+
+/** Where this frontend is served: `/`, or the node's `/{version}/`. */
+export const basename = (): string => nodeBasename(new URL(window.location.href), "/");
+
 /**
  * The link that opens this frontend with `token` to redeem.
  *
  * `org` names the world's org. The token itself does not say, and without it
  * the launcher cannot tell an invitation into a world the player is already
- * in: redeeming that spends the link's single use on nobody.
+ * in: redeeming that spends the link's single use on nobody. `world` is the
+ * world to enter after joining, `from` the inviter's name for the question the
+ * invitee is asked. Pinned to the served `/{version}/` until every cluster
+ * keeps the query on its root redirect.
  */
-export function inviteLink(
+export function worldInviteLink(
   token: string,
-  location: Pick<Location, "origin" | "pathname"> = window.location,
-  org?: string | null,
+  org: string,
+  { world, from, root = basename() }: { world?: string | null; from?: string | null; root?: string } = {},
 ): string {
-  const url = new URL(location.pathname, location.origin);
-  url.searchParams.set("invite", token);
-  if (org) url.searchParams.set("org", org);
-  return url.toString();
+  return inviteLink(token, { org, root, extra: { [WORLD_PARAM]: world, [FROM_PARAM]: from } });
 }
 
-const PENDING = `${APP}:pending-invite`;
-const PENDING_ORG = `${APP}:pending-invite-org`;
+/** The keys this game kept its pending invite under before the shared store. */
+const LEGACY_INVITE = `${APP}:pending-invite`;
+const LEGACY_INVITE_ORG = `${APP}:pending-invite-org`;
 
 /**
- * Takes `?invite=` off the address bar into storage, before anything renders:
- * a person opening a link is usually not signed in yet, and the token must
- * survive the passkey sign-up. Redeemed (and dropped) once a session exists.
+ * Moves an invite stored by an older build of this game (a bare token, and
+ * its org under a second key) into `store`, unless the store holds one
+ * already (a link opened just now wins), and forgets the old keys.
  */
-export function captureInvite(storage: KeyValueStorage = localStorage, loc: Location = window.location): void {
-  const url = new URL(loc.href);
-  const token = url.searchParams.get("invite");
-  if (!token) return;
-  const org = url.searchParams.get("org");
+export function migrateStoredInvite(
+  store: InviteStore,
+  storage: KeyValueStorage | undefined = globalThis.localStorage,
+): void {
+  if (!storage) return;
+  let token: string | null;
+  let org: string | null;
   try {
-    storage.setItem(PENDING, token);
-    if (org) storage.setItem(PENDING_ORG, org);
-    else storage.removeItem(PENDING_ORG);
+    token = storage.getItem(LEGACY_INVITE);
+    org = storage.getItem(LEGACY_INVITE_ORG);
   } catch {
     return;
   }
-  url.searchParams.delete("invite");
-  url.searchParams.delete("org");
-  window.history.replaceState(null, "", url.toString());
-}
-
-export function pendingInvite(storage: KeyValueStorage = localStorage): string | null {
-  try {
-    return storage.getItem(PENDING);
-  } catch {
-    return null;
+  if (token && !store.pending()) {
+    store.put({ token, org: org || null, team: null, doc: null, route: null, extra: {} });
   }
-}
-
-/** The org a pending invitation's link named (`&org=`), when it named one. */
-export function pendingInviteOrg(storage: KeyValueStorage = localStorage): string | null {
   try {
-    return storage.getItem(PENDING_ORG) || null;
-  } catch {
-    return null;
-  }
-}
-
-export function dropInvite(storage: KeyValueStorage = localStorage): void {
-  try {
-    storage.removeItem(PENDING);
-    storage.removeItem(PENDING_ORG);
+    storage.removeItem(LEGACY_INVITE);
+    storage.removeItem(LEGACY_INVITE_ORG);
   } catch {
     /* nothing stored */
   }
 }
 
-/** What to say when a token is refused for good. */
-export const SPENT_INVITE = "This invite was already used or has expired. Ask the person who invited you for a new link.";
-
-/** The plain sentence for a failed redemption: refused for good (a 4xx), or not reached. */
-export function inviteFailure(e: unknown): string {
-  const refused =
-    e instanceof CalimeroError
-      ? e.status >= 400 && e.status < 500 && e.status !== 401 && e.status !== 429
-      : /unknown invite|already used|expired|revoked/i.test(describeError(e));
-  return refused ? SPENT_INVITE : `Could not accept the invitation: ${describeError(e)}`;
+/** The world to enter in `org`: the one the link named when listed, else the first there. */
+export function worldIn(worlds: AppInfo[], org: string | null, named?: string | null): AppInfo | null {
+  const asked = named ? worlds.find((w) => w.appId === named) : undefined;
+  if (asked) return asked;
+  return org ? (worlds.find((w) => w.org === org) ?? null) : null;
 }
 
 /**
  * The world a pending invitation names, when this account already plays in
  * it: the token is then dropped UNSPENT. Redeeming it would spend the link's
  * single use on nobody, and leave the player it was meant for with "unknown
- * invite". `null` when the link names no org or the account is not in it.
+ * invite". `null` when the link names no org (or world) the account reaches.
  */
 export async function alreadyInInvitedWorld(
   client: Pick<CalimeroClient, "listApps">,
   source: AppSource,
-  storage: KeyValueStorage = localStorage,
+  store: InviteStore = invites,
 ): Promise<AppInfo | null> {
-  const org = pendingInvite(storage) ? pendingInviteOrg(storage) : null;
-  if (!org) return null;
-  const world = (await listWorlds(client, source).catch(() => [])).find((w) => w.org === org) ?? null;
-  if (world) dropInvite(storage);
+  const invite = store.pending();
+  if (!invite || (!invite.org && !invitedWorld(invite))) return null;
+  const world = worldIn(await listWorlds(client, source).catch(() => []), invite.org, invitedWorld(invite));
+  if (world) store.drop();
   return world;
 }
 
 /**
- * Redeem the pending invitation, if any, and answer the world it opens: the
- * first world in the org the invite joined. `null` when there is no invite, or
- * the org holds no world this frontend plays. The token is dropped either way
- * once the node has answered (a used or expired token never works again).
+ * Redeem the pending invitation and answer the world it opens: the world the
+ * link named, else the first in the org the invite joined. `null` when there
+ * is no invite, or the org holds no world this frontend plays.
+ *
+ * The token is dropped once redeemed, or when the node refuses the invite for
+ * good (`isSpentInvite`: unknown, used up, expired, its org gone). Anything
+ * else (a lapsed session, a rate limit, the cluster or the network down)
+ * keeps it for another try, and the error is thrown for the caller to say so
+ * (`describeRedeemFailure`).
  */
 export async function redeemPendingInvite(
   client: Pick<CalimeroClient, "redeemInvite" | "listApps">,
   source: AppSource,
-  storage: KeyValueStorage = localStorage,
+  store: InviteStore = invites,
 ): Promise<AppInfo | null> {
-  const token = pendingInvite(storage);
-  if (!token) return null;
-  let org: string | undefined;
+  const invite = store.pending();
+  if (!invite) return null;
+  let answer: unknown;
   try {
-    const answer = await client.redeemInvite(token);
-    org = typeof answer.org === "string" ? answer.org : typeof answer.orgId === "string" ? answer.orgId : undefined;
-  } finally {
-    dropInvite(storage);
+    answer = await client.redeemInvite(invite.token);
+  } catch (e) {
+    if (isSpentInvite(e)) store.drop();
+    throw e;
   }
-  const worlds = await listWorlds(client, source);
-  return worlds.find((w) => org !== undefined && w.org === org) ?? null;
+  store.drop();
+  const org = joinedOrg(answer) ?? invite.org;
+  return worldIn(await listWorlds(client, source).catch(() => []), org, invitedWorld(invite));
+}
+
+/** `head…tail` of an account id, as the invitation question names the account that joins. */
+export function shortAccount(id: string): string {
+  return id.length > 14 ? `${id.slice(0, 6)}…${id.slice(-4)}` : id;
 }
 
 /** Storage key of the world last played on this target by this account. */

@@ -54,7 +54,8 @@ account, nothing to install, no permissions to grant.
   error say the new passkey has no account.
 - `<SignInPanel>`, `<InvitationSignIn>` and `<JoinInvitation>` are the screens
   around the control (title and copy, the cluster's state, "Not now", "Join
-  {joining}?", already a member, a spent invite). They take the app's class
+  {joining}?", or "Join {joining} as {account}?" with `account`, already a
+  member, a spent invite). They take the app's class
   names per slot (`OnboardingClassNames`), so each app keeps its look.
   `<JoinInvitation>` reports where to go: `onJoined({ org })` (the org the
   redemption joined, else the one the link named) and `onClose({ member })`

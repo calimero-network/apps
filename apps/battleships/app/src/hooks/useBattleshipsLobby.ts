@@ -5,13 +5,14 @@ import type { AppSource } from '@calimero-apps/connect';
 import { battleships, messageOf, type Battleships } from '../battleships';
 import {
   createLobby as createLobbyApp,
-  inviteLink,
   inviteToken,
   listLobbies,
+  lobbyInviteLink,
   orgMembers,
   saveMemberName,
   type LobbyMember,
 } from '../lobbies';
+import { formatKey } from '../utils/playerName';
 
 /**
  * A lobby as the screens list it. v1 named a lobby by its namespace and found
@@ -309,12 +310,13 @@ export function useBattleshipsLobby({
     if (!client || !org || !namespaceId) return null;
     setInviteLoading(true);
     try {
-      return inviteLink(await inviteToken(client, org, passkey()), namespaceId, window.location, org);
+      const token = await inviteToken(client, org, passkey());
+      return lobbyInviteLink(token, namespaceId, org, (accountId && nameOf(accountId)) || (accountId && formatKey(accountId)));
     } finally {
       setInviteLoading(false);
       after();
     }
-  }, [client, org, namespaceId, passkey, after]);
+  }, [client, org, namespaceId, passkey, after, accountId, nameOf]);
 
   return {
     lobbies,

@@ -14,7 +14,7 @@ import "@calimero-apps/passkey/passkey.css";
 import { GameClient, type WorldMeta } from "./net/client";
 import { PACKAGE } from "./net/merraria";
 import { connect, type Connection } from "./net/session";
-import { CURRENT_WORLD, captureInvite, inviteLink, inviteToken, writeCurrentWorld } from "./net/worlds";
+import { CURRENT_WORLD, basename, invites, inviteToken, migrateStoredInvite, worldInviteLink, writeCurrentWorld } from "./net/worlds";
 import { RemotePlayer, SyncEngine, Transform } from "./net/sync";
 import { GameRenderer, RemoteDraw } from "./renderer";
 import { loadWorld, playerInBounds, saveWorld } from "./state/persistence";
@@ -36,10 +36,14 @@ import {
 //
 // Taken off the address bar before anything else runs: a person opening an
 // invitation link (`?invite=<token>`, an org invite) is usually not signed in
-// yet, and the token has to survive the passkey sign-up. The launcher redeems
-// it once a session exists. (Not in the mobile apps' game-only mode: the app
-// takes invitations itself.)
-if (!isNativeHost()) captureInvite();
+// yet, and the token has to survive the passkey sign-up. Once signed in, the
+// launcher asks before redeeming it. An invite an older build stored under its
+// own keys moves over. (Not in the mobile apps' game-only mode: the app takes
+// invitations itself.)
+if (!isNativeHost()) {
+  invites.capture(window.location, { basename: basename() });
+  migrateStoredInvite(invites);
+}
 
 const SAVE_MS = 5000;
 /** How often a world the node has not synced yet is asked again (see `SyncEngine.connect`). */
@@ -264,7 +268,7 @@ async function boot(): Promise<void> {
     onInvite:
       conn && worldOrg
         ? ((c: Connection, org: string) => async () =>
-            inviteLink(await inviteToken(c.client, org, c.approver()), window.location, org))(
+            worldInviteLink(await inviteToken(c.client, org, c.approver()), org, { world: worldId, from: choice.name }))(
             conn,
             worldOrg,
           )

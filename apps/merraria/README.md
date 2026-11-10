@@ -93,7 +93,8 @@ pnpm dev:local merraria          # merod local + build + deploy + http://localho
 **create an account** (a passkey), **create a world** (name and seed), and
 play. **Invite friends** (on the world list, or Esc → *Copy world invite* in
 game) copies a link; a second browser profile with its own passkey that opens
-it is a second player.
+it is asked "Join {inviter}'s game as {account}?" and, on **Join**, enters the
+invited world as a second player.
 
 **Controls:** A/D move · Space/W jump · hold LMB to dig · RMB place ·
 1–9/wheel select · torches light caves · Esc/O menu.
@@ -154,7 +155,8 @@ from the build (`@calimero-apps/connect`: `merod local` under `vite`, a Cloud
 cluster under `vite build`), signs in with a **passkey**, lists the
 **worlds** the account reaches (app instances: v1's contexts) and creates them
 in an **organization** of their own (v1's namespace), invites with an **org
-invite link** (`?invite=`, redeemed once the person has signed in), and calls
+invite link** (`?invite=&org=&world=&from=`, kept in `@calimero-apps/connect`'s
+invite store and redeemed only when the signed-in person says Join), and calls
 the contract by name through a typed wrapper (`src/net/merraria.ts`) whose
 method list a test checks against `logic/res/abi.json`. The event stream
 resumes from the last log index it saw, so a dropped stream misses nothing.

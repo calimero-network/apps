@@ -387,4 +387,22 @@ describe("the invitation screens", () => {
     expect((await screen.findByTestId("invitation-outcome")).textContent).toContain("You're already in the team");
     expect(client.redeemInvite).toHaveBeenCalledTimes(1);
   });
+
+  it("JoinInvitation names the account that joins, when given one", async () => {
+    render(
+      <JoinInvitation
+        client={fakeClient() as unknown as CalimeroClient}
+        token="tok-1"
+        org={null}
+        appName="Test App"
+        joining="Alice's game"
+        account="acct-b…1234"
+        drop={() => {}}
+        after={() => {}}
+        onJoined={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    expect((await screen.findByRole("heading")).textContent).toBe("Join Alice's game as acct-b…1234?");
+  });
 });
