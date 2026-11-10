@@ -17,12 +17,16 @@ import styles from "./PeopleDialog.module.css";
  * a button that said "Rename", which is not somewhere anyone looks for their own
  * identity. It also defaulted to a placeholder, so a room full of people all
  * showed the same word.
+ *
+ * The name is your name in the whole stream: every room in it joins you with
+ * it, so it is set once, not per room.
  */
 export default function PeopleDialog({
   open,
   onClose,
   people,
   name,
+  suggestion = "",
   onRename,
   maxBroadcasters,
 }: {
@@ -31,11 +35,13 @@ export default function PeopleDialog({
   people: Person[];
   /** The stored nickname, or "" when the user has never set one. */
   name: string;
+  /** Offered in the field while `name` is "" (the last name used in another stream). */
+  suggestion?: string;
   onRename: (next: string) => void;
   maxBroadcasters: number;
 }) {
   const ref = useRef<HTMLDialogElement | null>(null);
-  const [draft, setDraft] = useState(name);
+  const [draft, setDraft] = useState(name || suggestion);
   const [saved, setSaved] = useState(false);
 
   useDialogOpen(ref, open);
@@ -47,8 +53,8 @@ export default function PeopleDialog({
   }, [open]);
 
   useEffect(() => {
-    if (open) setDraft(name);
-  }, [open, name]);
+    if (open) setDraft(name || suggestion);
+  }, [open, name, suggestion]);
 
   const trimmed = draft.trim();
   const dirty = trimmed.length > 0 && trimmed !== name;
@@ -89,11 +95,11 @@ export default function PeopleDialog({
       <div className={styles.body}>
         <div className={styles.field}>
           <label className={styles.label} htmlFor="nickname">
-            Your nickname
+            Your name in this stream
           </label>
           <p className={styles.help}>
-            This is the name on your tile, and what everyone else in the room
-            sees. It is stored on this device only.
+            This is the name on your tile, and what everyone sees in every room
+            of this stream.
           </p>
           <div className={styles.nameRow}>
             <input

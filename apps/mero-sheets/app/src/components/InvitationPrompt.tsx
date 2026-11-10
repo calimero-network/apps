@@ -17,9 +17,15 @@
  * workspace's list. A refused invite (unknown, used, expired, revoked) is said
  * plainly. There is no "Syncing…" stage any more: nothing has to replicate
  * before a new member can read.
+ *
+ * Joining is also where the workspace asks your name, once: when it has none
+ * for you yet, the name question (`NicknameModal`) comes up before the
+ * spreadsheet opens, and every spreadsheet in the workspace uses it after.
  */
 import { useCallback, useEffect, useState } from 'react';
 import { APP_DISPLAY_NAME } from '../config';
+import { lastUsedName } from '@calimero-apps/names';
+import { describeError } from '../utils/errors';
 import { describeRedeemFailure } from '@calimero-apps/connect';
 import { useMaybeSignedIn, useSessionApi } from '../sessionContext';
 import {
@@ -29,10 +35,14 @@ import {
   inviteRefused,
   joinedOrg,
   pendingInvite,
+  publishWorkspaceName,
+  readMembers,
   type AcceptedInvite,
   type PendingInvite,
 } from '../lib/workspaces';
 import { Dialog, Err, Hint, Overlay, Primary, Secondary } from './SignInModal';
+import NicknameModal from './NicknameModal';
+import { rememberedName, skipWorkspaceName } from '../lib/displayName';
 
 export default function InvitationPrompt({ onJoined }: { onJoined: (landed: AcceptedInvite) => void }) {
   const signedIn = useMaybeSignedIn();
@@ -45,6 +55,9 @@ export default function InvitationPrompt({ onJoined }: { onJoined: (landed: Acce
   const [error, setError] = useState<string | null>(null);
   const [refused, setRefused] = useState(false);
   const [joinedAtSignUp, setJoinedAtSignUp] = useState<PendingInvite | null>(null);
+  /** Joined a workspace that has no name for you: where to go once it has one. */
+  const [naming, setNaming] = useState<AcceptedInvite | null>(null);
+  const [namingError, setNamingError] = useState<string | null>(null);
   const client = signedIn?.client ?? null;
 
   // Signing in on the invitation page leaves the token where it was: re-read it.
@@ -103,7 +116,16 @@ export default function InvitationPrompt({ onJoined }: { onJoined: (landed: Acce
       const org = joinedOrg(await signedIn.client.redeemInvite(invite.token));
       dropInvite();
       setInvite(null);
-      onJoined({ namespaceId: org, contextId: invite.sheet });
+      const landed = { namespaceId: org, contextId: invite.sheet };
+      if (org) {
+        // A read that fails leaves the question to the first spreadsheet opened.
+        const members = await readMembers(signedIn.client, org).catch(() => null);
+        if (members && !members.names.get(signedIn.accountId)) {
+          setNaming(landed);
+          return;
+        }
+      }
+      onJoined(landed);
     } catch (e) {
       // A refusal (unknown, used, expired, revoked) can never succeed: drop it.
       // Anything else (a lapsed session, a rate limit, the cluster
@@ -120,6 +142,36 @@ export default function InvitationPrompt({ onJoined }: { onJoined: (landed: Acce
       signedIn.after();
     }
   }, [signedIn, invite, onJoined]);
+
+  if (signedIn && naming?.namespaceId) {
+    const org = naming.namespaceId;
+    const go = () => {
+      setNaming(null);
+      setNamingError(null);
+      onJoined(naming);
+    };
+    return (
+      <NicknameModal
+        initialName={lastUsedName() || rememberedName()}
+        saving={busy}
+        error={namingError}
+        onSubmit={(name) => {
+          setBusy(true);
+          setNamingError(null);
+          publishWorkspaceName(signedIn.client, org, signedIn.accountId, name)
+            .then(go, (e: unknown) => setNamingError(describeError(e)))
+            .finally(() => {
+              setBusy(false);
+              signedIn.after();
+            });
+        }}
+        onSkip={() => {
+          skipWorkspaceName(org);
+          go();
+        }}
+      />
+    );
+  }
 
   if (!signedIn || !invite || member === null) return null;
 

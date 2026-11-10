@@ -453,6 +453,9 @@ importers:
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
+      '@calimero-apps/names':
+        specifier: workspace:*
+        version: link:../../../packages/names
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
@@ -529,6 +532,9 @@ importers:
       '@calimero-apps/members':
         specifier: workspace:*
         version: link:../../../packages/members
+      '@calimero-apps/names':
+        specifier: workspace:*
+        version: link:../../../packages/names
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
@@ -632,6 +638,9 @@ importers:
       '@calimero-apps/members':
         specifier: workspace:*
         version: link:../../../packages/members
+      '@calimero-apps/names':
+        specifier: workspace:*
+        version: link:../../../packages/names
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
@@ -874,6 +883,9 @@ importers:
       '@calimero-apps/members':
         specifier: workspace:*
         version: link:../../../packages/members
+      '@calimero-apps/names':
+        specifier: workspace:*
+        version: link:../../../packages/names
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
@@ -959,6 +971,9 @@ importers:
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
+      '@calimero-apps/names':
+        specifier: workspace:*
+        version: link:../../../packages/names
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
@@ -1059,6 +1074,9 @@ importers:
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
+      '@calimero-apps/names':
+        specifier: workspace:*
+        version: link:../../../packages/names
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
@@ -1398,6 +1416,9 @@ importers:
       '@calimero-apps/members':
         specifier: workspace:*
         version: link:../../../packages/members
+      '@calimero-apps/names':
+        specifier: workspace:*
+        version: link:../../../packages/names
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
@@ -1738,6 +1759,9 @@ importers:
       '@calimero-apps/members':
         specifier: workspace:*
         version: link:../../../packages/members
+      '@calimero-apps/names':
+        specifier: workspace:*
+        version: link:../../../packages/names
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
@@ -1829,6 +1853,9 @@ importers:
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
+      '@calimero-apps/names':
+        specifier: workspace:*
+        version: link:../../../packages/names
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
@@ -2089,6 +2116,9 @@ importers:
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
+      '@calimero-apps/names':
+        specifier: workspace:*
+        version: link:../../../packages/names
       '@calimero-apps/passkey':
         specifier: workspace:*
         version: link:../../../packages/passkey
@@ -2156,6 +2186,9 @@ importers:
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
+      '@calimero-apps/names':
+        specifier: workspace:*
+        version: link:../../../packages/names
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
@@ -2244,6 +2277,9 @@ importers:
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
+      '@calimero-apps/names':
+        specifier: workspace:*
+        version: link:../../../packages/names
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served
@@ -2399,6 +2435,9 @@ importers:
       '@calimero-apps/glass':
         specifier: workspace:*
         version: link:../../../packages/glass
+      '@calimero-apps/names':
+        specifier: workspace:*
+        version: link:../../../packages/names
       '@calimero-apps/node-served':
         specifier: workspace:*
         version: link:../../../packages/node-served

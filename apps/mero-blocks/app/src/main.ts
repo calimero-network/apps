@@ -19,6 +19,7 @@ import { playerId, type WorldMeta } from "./net/blocks";
 import { GameClient } from "./net/client";
 import { connect, defaultDeps, deviceLabel, type SignedIn } from "./net/session";
 import { RemotePlayer, SyncEngine, Transform } from "./net/sync";
+import { knownName } from "./net/playerName";
 import { basename, forgetWorld, invites, inviteToken, migrateStoredInvite, worldInviteLink } from "./net/worlds";
 import { GameRenderer } from "./renderer";
 import { loadWorld, saveWorld } from "./state/persistence";
@@ -57,7 +58,9 @@ async function boot(): Promise<void> {
   app.appendChild(canvas);
   const hud = new Hud(app);
 
-  const defaults = { name: localStorage.getItem("mb-name") ?? "Player", seed: 1337 };
+  // The name a world asks for is its org's (net/playerName.ts); this one only
+  // prefills the create-world dialog and the new-account name.
+  const defaults = { name: knownName(), seed: 1337 };
 
   // Local `merod local` nodes under `vite`, a Calimero Cloud cluster in a
   // production build; a stored session is restored here.
@@ -69,7 +72,6 @@ async function boot(): Promise<void> {
   // card rather than making the visitor read a second landing page.
   const sawLanding = await showLandingOnce();
   const choice = await new Landing(app).show(phase, defaults, { chromeless: sawLanding });
-  localStorage.setItem("mb-name", choice.name);
 
   // ---- world + net bootstrap -----------------------------------------
   // The landing only resolves once signed in with a world chosen; there is no

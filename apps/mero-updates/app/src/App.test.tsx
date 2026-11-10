@@ -61,8 +61,15 @@ const h = vi.hoisted(() => {
     listApps: vi.fn(async () => [
       { appId: "app-1", name: "All investors", owner: "ana", org: "org-1", bundle: "b", package: null, version: null },
     ]),
-    getOrg: vi.fn(async () => ({ name: "Acme", members: { ana: "owner", ben: "member" }, memberMetadata: {} })),
+    getOrg: vi.fn(
+      async (): Promise<{ name: string; members: Record<string, string>; memberMetadata: Record<string, unknown> }> => ({
+        name: "Acme",
+        members: { ana: "owner", ben: "member" },
+        memberMetadata: {},
+      }),
+    ),
     createOrg: vi.fn(async () => "org-2"),
+    setMemberMetadata: vi.fn(async () => undefined),
     setCapabilities: vi.fn(async () => undefined),
     createApp: vi.fn(async () => "app-2"),
     invite: vi.fn(async () => "token-1"),
@@ -139,6 +146,68 @@ describe("inside an audience", () => {
   });
 });
 
+describe("your name in an audience", () => {
+  const ME = h.wire.getMe as Record<string, unknown>;
+  afterEach(() => {
+    h.wire.getMe = ME;
+  });
+
+  async function openAudience(org: string) {
+    const { setActiveAudience } = await import("./lib/active");
+    setActiveAudience("app-1", org);
+    const { default: AudienceShell } = await import("./components/AudienceShell");
+    const { ToastProvider } = await import("./contexts/ToastContext");
+    render(
+      <ToastProvider>
+        <MemoryRouter initialEntries={["/a"]}>
+          <Routes>
+            <Route path="/a" element={<AudienceShell />}>
+              <Route index element={<p>feed</p>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </ToastProvider>,
+    );
+    await screen.findByText("feed");
+  }
+
+  it("never asks when the company has your name: copies it into the audience's profile", async () => {
+    h.wire.getMe = { ...ME, name: "", firm: "" };
+    h.client.getOrg.mockResolvedValueOnce({
+      name: "Acme",
+      members: { ana: "owner" },
+      memberMetadata: { ana: { name: "Ana Lee" } },
+    });
+    await openAudience("org-named");
+    await waitFor(() =>
+      expect(h.client.call).toHaveBeenCalledWith("app-1", "setProfile", { name: "Ana Lee", firm: "" }),
+    );
+    expect(screen.queryByTestId("profile-prompt")).toBeNull();
+    expect(h.client.setMemberMetadata).not.toHaveBeenCalled();
+  });
+
+  it("publishes an audience profile name to a company that has none, without asking", async () => {
+    await openAudience("org-adopt");
+    await waitFor(() => expect(h.client.setMemberMetadata).toHaveBeenCalledWith("org-adopt", "ana", { name: "Ana" }));
+    expect(screen.queryByTestId("profile-prompt")).toBeNull();
+  });
+
+  it("asks once, for the company, when no name is known anywhere", async () => {
+    h.wire.getMe = { ...ME, name: "", firm: "" };
+    localStorage.setItem("calimero-names:last", "Ana from Globex");
+    await openAudience("org-unnamed");
+    const prompt = await screen.findByTestId("profile-prompt");
+    expect(prompt).toHaveTextContent("Your name in this company");
+    const input = screen.getByLabelText("Your name") as HTMLInputElement;
+    expect(input.value).toBe("Ana from Globex");
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(h.client.setMemberMetadata).toHaveBeenCalledWith("org-unnamed", "ana", { name: "Ana from Globex" }),
+    );
+    expect(h.client.call).toHaveBeenCalledWith("app-1", "setProfile", { name: "Ana from Globex", firm: "" });
+  });
+});
+
 describe("the company pages", () => {
   it("lists the account's companies with their audiences and members", async () => {
     const { default: CompaniesPage } = await import("./pages/CompaniesPage");
@@ -168,10 +237,14 @@ describe("the company pages", () => {
       </ToastProvider>,
     );
     fireEvent.change(await screen.findByTestId("space-name-input"), { target: { value: "Globex" } });
+    // Your name in the company is asked here, once, with the company.
+    expect(screen.getByTestId("create-space")).toBeDisabled();
+    fireEvent.change(screen.getByTestId("self-name-input"), { target: { value: "Ana Lee" } });
     fireEvent.click(screen.getByTestId("create-space"));
     expect(await screen.findByText("audiences of the new company")).toBeInTheDocument();
     expect(h.client.createOrg).toHaveBeenCalledWith("Globex");
     expect(h.client.setCapabilities).toHaveBeenCalledWith("org-2", expect.any(Number), expect.anything());
+    expect(h.client.setMemberMetadata).toHaveBeenCalledWith("org-2", "ana", { name: "Ana Lee" });
   });
 
   it("creates an audience as an app instance in the company and opens it", async () => {

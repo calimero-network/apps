@@ -4,6 +4,7 @@ import { Button, Input } from "@calimero-network/mero-ui";
 import type { OtherOrg } from "@calimero-apps/connect";
 import { ConnectExistingOrg } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
+import { lastUsedName } from "@calimero-apps/names";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
 import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
 import { isDelegatedSession } from "../../api/meroJsClient";
@@ -19,8 +20,8 @@ import {
 } from "../../constants/config";
 import {
   getMessengerDisplayName,
-  getIdentityDisplayName,
   setIdentityDisplayName,
+  setMessengerDisplayName,
 } from "../../utils/messengerName";
 import { DEFAULT_MEMBER_CAPABILITIES } from "../../utils/groupCapabilities";
 import { createChannel, GENERAL_CHANNEL } from "../../utils/createChannel";
@@ -294,8 +295,11 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
   const [step, setStep] = useState<Step>("loading");
   const [namespaces, setNamespaces] = useState<GroupSummary[]>([]);
   const [selectedId, setSelectedId] = useState("");
-  const [nameInput, setNameInput] = useState(getMessengerDisplayName());
+  const [nameInput, setNameInput] = useState(getMessengerDisplayName() || lastUsedName());
   const [nsNameInput, setNsNameInput] = useState("");
+  // Your name in the workspace being created: asked with its name, so a new
+  // workspace is never entered (or left half-made) without one.
+  const [selfNameInput, setSelfNameInput] = useState(() => lastUsedName());
   const [error, setError] = useState("");
 
   // Final step: commit the selection and go into the chat (see enterWorkspace).
@@ -330,7 +334,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
         }
 
         // 2. Per-identity cache — fast path within a session
-        const cachedName = getIdentityDisplayName(memberIdentity);
+        const cachedName = getMessengerDisplayName(namespaceId);
         if (cachedName) {
           // Back-fill server alias so future re-logins don't reach enter-name
           api.current.setMemberMetadata(namespaceId, memberIdentity, { name: cachedName }).catch(() => {});
@@ -465,7 +469,8 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
 
   const handleCreate = useCallback(async () => {
     const trimmedNs = nsNameInput.trim();
-    if (!trimmedNs) return;
+    const selfName = selfNameInput.trim();
+    if (!trimmedNs || !selfName) return;
 
     const isDuplicate = namespaces.some(
       (n) => (n.alias ?? "").toLowerCase() === trimmedNs.toLowerCase(),
@@ -503,6 +508,8 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
         });
       }
       setStoredGroupAlias(groupId, trimmedNs);
+      // Before #general, so the channel is made under your name in it.
+      setMessengerDisplayName(selfName, groupId);
       // The `name` passed to createNamespace above does not reach the group's
       // metadata record — a freshly created namespace reads back
       // `metadata: null` — so write it explicitly. The creator is admin, so
@@ -534,23 +541,23 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
         setGroupMemberIdentity(groupId, idRes.data.memberIdentity);
       }
 
-      setNamespaces([{
-        groupId,
-        alias: trimmedNs,
-        appKey: "",
-        targetApplicationId: "",
-        upgradePolicy: "Automatic",
-        createdAt: Math.floor(Date.now() / 1000),
-      }]);
+      // Added to the workspaces already listed, never in place of them.
+      setNamespaces((prev) => [
+        ...prev.filter((g) => g.groupId !== groupId),
+        {
+          groupId,
+          alias: trimmedNs,
+          appKey: "",
+          targetApplicationId: "",
+          upgradePolicy: "Automatic",
+          createdAt: Math.floor(Date.now() / 1000),
+        },
+      ]);
       setSelectedId(groupId);
 
-      const existingName = getMessengerDisplayName();
-      if (existingName) {
-        enterChat(groupId, existingName, idRes.data?.memberIdentity ?? "");
-        return;
-      }
-
-      setStep("enter-name");
+      // Named in the same step: straight in. `enterWorkspace` publishes the
+      // name to the org's member record.
+      enterChat(groupId, selfName, idRes.data?.memberIdentity ?? "");
     } catch (err) {
       if (err instanceof AppNotInstalledError) {
         setStep("not-installed");
@@ -559,7 +566,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
       setError(err instanceof Error ? err.message : "Failed to create namespace");
       setStep("create");
     }
-  }, [nsNameInput, namespaces, enterChat, addToast]);
+  }, [nsNameInput, selfNameInput, namespaces, enterChat, addToast]);
 
   // "Connect to an existing organization": an org the account is in that
   // holds no chat yet (one made for another app) becomes a workspace once
@@ -636,6 +643,12 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
     namespaces.some((n) => (n.alias ?? "").toLowerCase() === nsNameInput.trim().toLowerCase());
 
   const selectedNs = namespaces.find((g) => g.groupId === selectedId);
+  const canCreate =
+    step !== "creating" &&
+    nsNameInput.trim().length > 0 &&
+    nsNameInput.trim().length <= 64 &&
+    !isDuplicateNsName &&
+    selfNameInput.trim().length > 0;
 
   return (
     <Overlay>
@@ -773,14 +786,12 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
           <>
             <Header>
               <Title>Create workspace</Title>
-              <Sub>Give your server a name to get started.</Sub>
+              <Sub>Name your server, and choose how others in it will see you.</Sub>
             </Header>
             <Field>
               <Label>Server name</Label>
               <div onKeyDown={(e) => {
-                if (e.key === "Enter" && step !== "creating" && nsNameInput.trim() && nsNameInput.trim().length <= 64) {
-                  void handleCreate();
-                }
+                if (e.key === "Enter" && canCreate) void handleCreate();
               }}>
                 <Input
                   type="text"
@@ -801,12 +812,26 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
                 <FieldError>{error}</FieldError>
               )}
             </Field>
+            <Field>
+              <Label>Your name</Label>
+              <div onKeyDown={(e) => { if (e.key === "Enter" && canCreate) void handleCreate(); }}>
+                <Input
+                  type="text"
+                  placeholder="e.g. Alice"
+                  value={selfNameInput}
+                  onChange={(e) => setSelfNameInput(e.target.value)}
+                  disabled={step === "creating"}
+                  maxLength={64}
+                  data-testid="create-self-name"
+                />
+              </div>
+            </Field>
             <Button
               type="button"
               variant="primary"
               style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}
               onClick={() => void handleCreate()}
-              disabled={step === "creating" || !nsNameInput.trim() || nsNameInput.trim().length > 64 || isDuplicateNsName}
+              disabled={!canCreate}
             >
               {step === "creating" ? (
                 <>

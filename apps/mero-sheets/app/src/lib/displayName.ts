@@ -1,4 +1,8 @@
-// The name to SUGGEST when someone opens a spreadsheet for the first time.
+// Your name in a workspace, and the name to SUGGEST when one asks.
+//
+// The name lives in the workspace (org member metadata), asked once per
+// workspace: every spreadsheet in it copies it into its own roster (`join`)
+// without asking. `selfNameStep` decides that when a spreadsheet opens.
 //
 // ── Why this is in localStorage and the real nickname is not ─────────────────
 //
@@ -13,6 +17,8 @@
 // never be load-bearing. So every access is wrapped — `localStorage` throws
 // outright in Safari private mode and when site data is blocked — and the
 // callers treat "" as "ask".
+
+import { decideSelfName } from '@calimero-apps/names';
 
 const KEY = 'mero-sheets:display-name';
 
@@ -54,4 +60,54 @@ export function rememberName(name: string): void {
   } catch {
     /* private mode / blocked site data — the name just is not suggested next time */
   }
+}
+
+// ── Once per workspace ───────────────────────────────────────────────────────
+
+/** Workspaces whose name question was skipped this session (not per spreadsheet). */
+const skipped = new Set<string>();
+
+/** Leave `org` unnamed for this session: no spreadsheet in it asks again. */
+export function skipWorkspaceName(org: string): void {
+  skipped.add(org);
+}
+
+export function workspaceNameSkipped(org: string | null | undefined): boolean {
+  return !!org && skipped.has(org);
+}
+
+export type SelfNameStep =
+  /** The workspace's names or this spreadsheet's roster have not loaded. */
+  | { kind: 'wait' }
+  /** The workspace has your name: copy it into the roster, no prompt. */
+  | { kind: 'use'; name: string }
+  /** A name this spreadsheet's roster or this browser already had: publish it to the workspace, no prompt. */
+  | { kind: 'adopt'; name: string }
+  /** No name anywhere: ask once for the workspace, offering `suggestion`. */
+  | { kind: 'ask'; suggestion: string }
+  /** Asked and skipped in this workspace already. */
+  | { kind: 'skipped' };
+
+/**
+ * What to do about your name when a spreadsheet opens. Never asks when the
+ * workspace already has a name for you, and asks at most once per workspace.
+ */
+export function selfNameStep(input: {
+  org: string | null;
+  orgReady: boolean;
+  orgName: string;
+  /** Your nickname in this spreadsheet's roster, "" when it has none. */
+  rosterName: string;
+}): SelfNameStep {
+  const d = decideSelfName({
+    orgReady: input.orgReady,
+    orgName: normaliseName(input.orgName),
+    fallbacks: [normaliseName(input.rosterName), rememberedName()],
+  });
+  if (d.kind === 'ask') {
+    if (workspaceNameSkipped(input.org)) return { kind: 'skipped' };
+    return { kind: 'ask', suggestion: normaliseName(d.suggestion) || rememberedName() };
+  }
+  if (d.kind === 'wait') return d;
+  return { kind: d.kind, name: normaliseName(d.name) };
 }

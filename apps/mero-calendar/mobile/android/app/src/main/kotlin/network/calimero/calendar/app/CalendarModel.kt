@@ -33,7 +33,7 @@ data class CalendarState(
     val error: String? = null,
     val mode: CalendarMode = CalendarMode.MONTH,
     val selected: LocalDate = LocalDate.now(),
-    /** No name stored for this calendar yet: ask for one. */
+    /** No name on the team yet (or "Your name" was picked): ask for one, for the team. */
     val askName: Boolean = false,
 )
 
@@ -52,13 +52,33 @@ class CalendarModel(
     private val _state = MutableStateFlow(CalendarState())
     val state: StateFlow<CalendarState> = _state.asStateFlow()
 
-    /** First open: register the stored name (or ask for one), then load. */
+    /** Your name on the team, once read. */
+    private var teamName: String? = null
+
+    /**
+     * First open: your name is the team's, copied into this calendar's roster without asking. Only a
+     * team with no name for you (made before names were asked on create and join) asks, once.
+     */
     suspend fun start() {
+        val roster = runCatching { repository.members() }.getOrNull()?.firstOrNull { it.id == account }?.name
         val stored = names.username(calendar.contextId)
-        if (stored != null) {
-            runCatching { repository.setUsername(stored) }
-        } else {
-            _state.update { it.copy(askName = true) }
+        val onTeam = backend.myTeamName(team.id)
+        teamName = onTeam?.ifEmpty { null }
+
+        // Only when it differs: every rename is an event to everyone in the calendar.
+        suspend fun register(name: String) {
+            if (roster != name) runCatching { repository.setUsername(name) }
+        }
+        when (val decision = decideSelfName(onTeam, listOf(roster, stored), names.lastUsername().orEmpty())) {
+            is SelfName.Use -> register(decision.name)
+            is SelfName.Adopt -> {
+                runCatching { backend.setMemberName(team.id, decision.name) }.onSuccess { teamName = decision.name }
+                names.setLastUsername(decision.name)
+                register(decision.name)
+            }
+            is SelfName.Ask -> _state.update { it.copy(askName = true) }
+            // The team could not be read: keep what this device knew, ask nothing.
+            SelfName.Wait -> stored?.let { register(it) }
         }
         load()
     }
@@ -84,14 +104,17 @@ class CalendarModel(
         }
     }
 
-    /** The name the person goes by: [lastName] prefills the sheet. */
-    val lastName: String get() = names.username(calendar.contextId) ?: names.lastUsername().orEmpty()
+    /** The name the person goes by in the team: [lastName] prefills the sheet. */
+    val lastName: String get() = teamName ?: names.lastUsername().orEmpty()
 
+    /** Your name on the team (every calendar in it), and in this calendar's roster. */
     suspend fun saveName(name: String) {
         val trimmed = name.trim()
         if (trimmed.isNotEmpty()) {
+            // Best effort: the calendar still shows it, and the team asks again next time.
+            runCatching { backend.setMemberName(team.id, trimmed) }.onSuccess { teamName = trimmed }
             repository.setUsername(trimmed)
-            names.setUsername(calendar.contextId, trimmed)
+            names.setLastUsername(trimmed)
         }
         _state.update { it.copy(askName = false) }
         if (trimmed.isNotEmpty()) load()

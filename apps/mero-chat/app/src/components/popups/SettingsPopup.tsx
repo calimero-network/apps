@@ -651,7 +651,8 @@ export default function SettingsPopup({
   const handleChangeWorkspace = () => {
     clearWorkspaceSelection();
     clearNamespaceReady();
-    clearMessengerDisplayName();
+    // The name stays: it is the person's, not the workspace's, and the next
+    // workspace reuses it (or its own alias) without asking again.
     setIsOpen(false);
     navigate("/login");
   };

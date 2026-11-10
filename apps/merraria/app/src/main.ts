@@ -21,6 +21,7 @@ import { loadWorld, playerInBounds, saveWorld } from "./state/persistence";
 import { WheelSteps } from "./input/wheel";
 import { Hud } from "./ui/hud";
 import { Landing } from "./ui/landing";
+import { knownName } from "./net/playerName";
 import { showLandingOnce } from "./pages/landing/mount";
 import { PauseMenu } from "./ui/overlays";
 import {
@@ -95,7 +96,9 @@ async function boot(): Promise<void> {
   app.appendChild(canvas);
   const hud = new Hud(app);
 
-  const defaults = { name: localStorage.getItem("mt-name") ?? "Player", seed: 1337 };
+  // The name a world asks for is its org's (net/playerName.ts); this one only
+  // prefills the create-world dialog and the new-account name.
+  const defaults = { name: knownName() || "Player", seed: 1337 };
 
   // The cluster: merod local under `vite`, the Calimero Cloud cluster the
   // build names in production. A production build without one is a hard stop
@@ -134,7 +137,6 @@ async function boot(): Promise<void> {
     choice = launched;
     worldId = launched.world.appId;
     worldOrg = launched.world.org;
-    localStorage.setItem("mt-name", choice.name);
   }
 
   // ---- world + net bootstrap -----------------------------------------

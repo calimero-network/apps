@@ -5,39 +5,40 @@ import { dialogSurface, overlay, primaryPill } from './glass';
 import { MAX_NAME_LEN, isUsableName, normaliseName } from '../lib/displayName';
 
 /**
- * "What should people call you in here?"
+ * "What should people call you in this workspace?"
  *
- * Shown once per spreadsheet, the first time you open one under a device that
- * has not named itself in it. Before this, a collaborator was a 64-hex device
+ * Asked once per workspace: right after joining one, or the first time a
+ * spreadsheet opens in a workspace that has no name for you. Every spreadsheet
+ * in it then uses the name without asking. Before this, a collaborator was a 64-hex device
  * key: the avatar said "3A", the tooltip said the whole key, and the answer to
  * "who moved that cell" was a string nobody can hold in their head.
  *
- * The name goes to the CONTRACT (`join`), not to localStorage — otherwise the
- * only person who can see it is the one person who already knows it. What the
- * browser remembers is just the SUGGESTION, so the second spreadsheet does not
- * ask again.
+ * The name goes to the WORKSPACE (org member metadata) and from there into
+ * each spreadsheet's roster (`join`), not to localStorage — otherwise the only
+ * person who can see it is the one person who already knows it. What the
+ * browser remembers is just the SUGGESTION for the next workspace.
  *
  * There IS a way past it. Not because skipping is a good outcome — an unnamed
  * collaborator is the problem this exists to fix — but because `join` is a
  * network write that can fail, and a modal with no exit turns one failed write
- * into an unusable spreadsheet. The escape is deliberately the quiet option.
+ * into an unusable spreadsheet. Skipping holds for the whole workspace. The escape is deliberately the quiet option.
  */
 export default function NicknameModal({
-  projectName,
+  workspaceName,
   initialName,
   saving,
   error,
   onSubmit,
   onSkip,
 }: {
-  /** The spreadsheet being entered, so the question has a subject. */
-  projectName: string;
+  /** The workspace the name is for, so the question has a subject; unnamed, "this workspace". */
+  workspaceName?: string;
   /** The last name this browser used; "" when there is none. */
   initialName: string;
   saving: boolean;
   error: string | null;
   onSubmit: (name: string) => void;
-  /** Dismiss for this session, leaving this device unnamed in the roster. */
+  /** Dismiss for this workspace and session, leaving you unnamed in it. */
   onSkip: () => void;
 }) {
   const [name, setName] = useState(initialName);
@@ -61,14 +62,14 @@ export default function NicknameModal({
         aria-labelledby="nick-title"
         data-testid="nickname-modal"
       >
-        <h3 id="nick-title">What should people call you?</h3>
+        <h3 id="nick-title">Your name in this workspace</h3>
         <p className="sub">
-          Shown next to your cursor and edits in{' '}
-          <strong>{projectName}</strong>. Everyone in this spreadsheet sees it.
+          Shown next to your cursor and edits in every spreadsheet in{' '}
+          {workspaceName ? <strong>{workspaceName}</strong> : 'this workspace'}. Everyone in the workspace sees it.
         </p>
 
         <Field>
-          <label htmlFor="nickname">Your name here</label>
+          <label htmlFor="nickname">Your name</label>
           <input
             id="nickname"
             ref={inputRef}

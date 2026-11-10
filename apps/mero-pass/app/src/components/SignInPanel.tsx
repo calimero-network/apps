@@ -33,7 +33,7 @@ export default function SignInPanel() {
         {api.where ? `Connected to ${api.where}. ` : 'Connecting… '}
         Your account is a passkey: nothing to remember, nothing to leak.
       </p>
-      {api.status === 'signed-out' && <PasskeySignIn api={api} askName invited={invited} joining="the team" />}
+      {api.status === 'signed-out' && <PasskeySignIn api={api} invited={invited} joining="the team" />}
     </>
   );
 }

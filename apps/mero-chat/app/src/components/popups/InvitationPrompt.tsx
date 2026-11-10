@@ -144,7 +144,7 @@ export default function InvitationPrompt({ enabled }: Props) {
   };
 
   const enter = (groupId: string, memberIdentity: string) => {
-    const name = getMessengerDisplayName();
+    const name = getMessengerDisplayName(groupId);
     if (name) enterWorkspace(api.current, groupId, name, memberIdentity);
     else enterJoinedWorkspaceForName(groupId);
   };

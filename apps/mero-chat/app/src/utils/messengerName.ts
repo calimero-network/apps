@@ -1,6 +1,13 @@
+import { forgetLastUsedName, rememberLastUsedName } from "@calimero-apps/names";
+import { getGroupId } from "../constants/config";
 import { StorageHelper } from "./storage";
 
-const MESSENGER_NAME_KEY = "chat-username";
+// Your name is per workspace (namespace): asked once when you create or join
+// one, kept here under that workspace's id. The old single app-wide key
+// (`chat-username`) made every workspace show the first name you ever picked.
+const LEGACY_NAME_KEY = "chat-username";
+const NAME_KEY_PREFIX = "chat-username:";
+const nameKey = (namespaceId: string) => `${NAME_KEY_PREFIX}${namespaceId}`;
 const IDENTITY_NAME_PREFIX = "curb_username_";
 // calimero-client stores the executor's public key under this key
 const CONTEXT_IDENTITY_KEY = "context-identity";
@@ -15,40 +22,51 @@ export function getStoredExecutorIdentity(): string {
   }
 }
 
-export function getMessengerDisplayName(): string {
-  return (StorageHelper.getItem(MESSENGER_NAME_KEY) || "").trim();
+/** Your name in `namespaceId` (default: the current workspace), or "" when it has none. */
+export function getMessengerDisplayName(namespaceId: string = getGroupId()): string {
+  if (!namespaceId) return "";
+  return (StorageHelper.getItem(nameKey(namespaceId)) || "").trim();
 }
 
+/** Forget every workspace's name on this browser (signing out). */
 export function clearMessengerDisplayName(): void {
-  StorageHelper.removeItem(MESSENGER_NAME_KEY);
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key === LEGACY_NAME_KEY || key.startsWith(NAME_KEY_PREFIX))) keys.push(key);
+    }
+    keys.forEach((k) => StorageHelper.removeItem(k));
+  } catch {
+    StorageHelper.removeItem(LEGACY_NAME_KEY);
+  }
+  // Signing out: the next person on this browser is not offered this name.
+  forgetLastUsedName();
 }
 
-export function setMessengerDisplayName(name: string): void {
+/** Your name in `namespaceId` (default: the current workspace). */
+export function setMessengerDisplayName(name: string, namespaceId: string = getGroupId()): void {
   const trimmedName = name.trim();
   if (!trimmedName) return;
-  StorageHelper.setItem(MESSENGER_NAME_KEY, trimmedName);
+  if (namespaceId) StorageHelper.setItem(nameKey(namespaceId), trimmedName);
+  // The prefill every Calimero app offers when a new team asks for a name.
+  rememberLastUsedName(trimmedName);
 }
 
 /**
- * Single-global-name model: identity-keyed display name is aliased to the
- * global `chat-username`. The legacy per-identity rows
- * (`curb_username_<identity>`) are no longer written; existing rows from
- * older sessions are silently ignored. The `memberIdentity` argument is
- * kept on the signature so callsites don't have to change, but it doesn't
- * affect storage.
- *
- * Rationale: in this app each context the user joins gets its own
- * `executor_id`, so a single human user accumulates many per-identity
- * rows for the same name. Users wanted one handle they pick once that
- * applies everywhere.
+ * Your name in the current workspace. The identity argument is kept so call
+ * sites don't change; the name is keyed by workspace, not by identity (each
+ * channel gives a person a different executor id).
  */
 export function getIdentityDisplayName(_memberIdentity: string): string {
   return getMessengerDisplayName();
 }
 
-export function setIdentityDisplayName(_memberIdentity: string, name: string): void {
-  setMessengerDisplayName(name);
-}
+/**
+ * No-op: `enterWorkspace` stores the name under the workspace being entered.
+ * Writing here, before the workspace switches, stored it under the previous one.
+ */
+export function setIdentityDisplayName(_memberIdentity: string, _name: string): void {}
 
 export function clearIdentityDisplayName(_memberIdentity: string): void {
   // No-op under the global-name model. The global handle is cleared via

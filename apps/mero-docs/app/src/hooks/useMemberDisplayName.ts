@@ -10,10 +10,8 @@
 // member" is an explicit follow-up surface, not this hook.
 
 import { useCallback, useEffect, useState } from 'react';
-import {
-  useMemberMetadata,
-  useSetMemberMetadata,
-} from '@/calimero/react';
+import { setOrgName } from '@calimero-apps/names';
+import { useLive, useMemberMetadata } from '@/calimero/react';
 import { useContextEvents } from './useContextEvents';
 import { useDriveWorkspace } from './useDriveWorkspace';
 
@@ -62,7 +60,7 @@ export function useMemberDisplayName(
     namespaceId ?? null,
     memberId ?? null,
   );
-  const { setMemberMetadata } = useSetMemberMetadata();
+  const admin = useLive()?.admin ?? null;
   const loaded = useFirstReadAnswered(
     `${namespaceId ?? ''}:${memberId ?? ''}`,
     loading,
@@ -100,10 +98,10 @@ export function useMemberDisplayName(
           'setName is self-only: bind useMemberDisplayName to selfIdentity to write',
         );
       }
-      await setMemberMetadata(namespaceId, selfIdentity, {
-        name: trimmed,
-        data: {},
-      });
+      if (!admin) throw new Error('Not signed in');
+      // The workspace's one record of your name (merged into what the member
+      // record holds); every folder and doc in it reads this.
+      await setOrgName(admin, namespaceId, selfIdentity, trimmed);
       // The workspace member rows name us in carets and member lists; without
       // this they keep the old name until the next sync run.
       await Promise.all([refetch(), refetchWorkspace()]);
@@ -112,7 +110,7 @@ export function useMemberDisplayName(
       namespaceId,
       memberId,
       selfIdentity,
-      setMemberMetadata,
+      admin,
       refetch,
       refetchWorkspace,
     ],

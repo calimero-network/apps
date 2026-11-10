@@ -21,6 +21,7 @@ import {
   type KeyValueStorage,
   type PendingInvite as SharedPendingInvite,
 } from '@calimero-apps/connect';
+import { setOrgName } from '@calimero-apps/names';
 import { nodeBasename } from '@calimero-apps/node-served';
 
 import { APP_NAME } from '../config';
@@ -156,14 +157,18 @@ export async function readMembers(client: Pick<CalimeroClient, 'getOrg'>, org: s
   return { roles: new Map(Object.entries(members)), names };
 }
 
-/** Publishes the name `account` goes by across the workspace (org member metadata). */
+/**
+ * Publishes the name `account` goes by across the workspace (org member
+ * metadata, merged into what the member record holds): the one record every
+ * spreadsheet in it reads.
+ */
 export async function publishWorkspaceName(
-  client: Pick<CalimeroClient, 'setMemberMetadata'>,
+  client: Pick<CalimeroClient, 'setMemberMetadata' | 'getOrg'>,
   org: string,
   account: string,
   name: string,
 ): Promise<void> {
-  await client.setMemberMetadata(org, account, { name });
+  await setOrgName(client, org, account, name);
 }
 
 // ── invitations ──────────────────────────────────────────────────────────────

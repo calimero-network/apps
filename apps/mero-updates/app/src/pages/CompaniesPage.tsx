@@ -1,17 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { describeError, otherOrgs, type OtherOrg } from "@calimero-apps/connect";
+import { lastUsedName } from "@calimero-apps/names";
 import { ConnectExistingOrg } from "@calimero-apps/passkey";
 import { useToast } from "../contexts/ToastContext";
 import {
   CONNECTED_AUDIENCE_NAME,
   createAudience,
   createCompany,
+  setCompanyName,
   inviteLink,
   listCompanies,
   mintInvite,
   type NamespaceRow,
 } from "../lib/companies";
+import { getUsername } from "../lib/active";
 import { describeTarget } from "../lib/session";
 import { useSignedIn } from "../lib/sessionContext";
 import InviteModal from "../components/InviteModal";
@@ -47,6 +50,9 @@ export default function CompaniesPage() {
   const [namespaces, setNamespaces] = useState<NamespaceRow[]>([]);
   const [listing, setListing] = useState(true);
   const [name, setName] = useState("");
+  // Your name in the new company: asked here, once, and used by every
+  // audience in it. Offered from the last company you named yourself in.
+  const [selfName, setSelfName] = useState(() => lastUsedName() || getUsername());
 
   // One key names the action in flight ("create", `invite:<id>`), so clicking
   // Invite on one row does not read as the whole page locking up.
@@ -107,16 +113,20 @@ export default function CompaniesPage() {
 
   const create = useCallback(() => {
     const companyName = name.trim();
-    if (!companyName) return;
+    const yourName = selfName.trim();
+    if (!companyName || !yourName) return;
     void run("create", async (onStatus) => {
       onStatus("Creating the company — approve with your passkey…");
       const created = await createCompany(client, companyName, passkey, source);
+      // Best effort: the company exists either way, and its first audience
+      // asks for the name once if this did not land.
+      await setCompanyName(client, created.namespaceId, accountId, yourName).catch(() => {});
       setName("");
       if (created.warning) showToast(created.warning, "error");
       // Straight into it: it has no audiences yet, and making one is the next step.
       navigate(`/companies/${created.namespaceId}`);
     });
-  }, [name, client, passkey, source, run, navigate, showToast]);
+  }, [name, selfName, client, accountId, passkey, source, run, navigate, showToast]);
 
   // "Connect to an existing organization": an audience goes into an org the
   // account has for another app only on this explicit choice.
@@ -226,13 +236,25 @@ export default function CompaniesPage() {
               onChange={(e) => setName(e.target.value)}
               data-testid="space-name-input"
               onKeyDown={(e) => {
-                if (e.key === "Enter" && name.trim()) create();
+                if (e.key === "Enter" && name.trim() && selfName.trim()) create();
+              }}
+            />
+            <input
+              className={styles.input}
+              aria-label="Your name in this company"
+              placeholder="Your name in this company"
+              value={selfName}
+              maxLength={64}
+              onChange={(e) => setSelfName(e.target.value)}
+              data-testid="self-name-input"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && name.trim() && selfName.trim()) create();
               }}
             />
             <button
               className={styles.btn}
               onClick={create}
-              disabled={pending === "create" || !name.trim()}
+              disabled={pending === "create" || !name.trim() || !selfName.trim()}
               data-testid="create-space"
             >
               {pending !== "create" && <PlusIcon size={16} />}

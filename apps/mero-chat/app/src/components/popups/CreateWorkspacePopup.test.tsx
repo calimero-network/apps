@@ -97,6 +97,7 @@ vi.mock("../../api/dataSource/nodeApiDataSource", () => ({
 
 vi.mock("../../constants/config", () => ({
   getApplicationId: () => "app-1",
+  getGroupId: () => "",
   setGroupId: mockSetGroupId,
   setGroupMemberIdentity: mockSetGroupMemberIdentity,
 }));
@@ -139,7 +140,8 @@ describe("CreateWorkspacePopup", () => {
     mockSetMemberMetadata.mockReset();
     mockSetMemberMetadata.mockResolvedValue({ data: undefined, error: null });
     // The name chosen in another workspace prefills this one's name field.
-    localStorage.setItem("chat-username", "Sandi");
+    // The name used in the last workspace: the next one offers it.
+    localStorage.setItem("calimero-names:last", "Sandi");
     mockCreateInvitation.mockReset();
     mockCreateGroupContext.mockReset();
     mockSetGroupId.mockReset();
@@ -214,7 +216,7 @@ describe("CreateWorkspacePopup", () => {
   });
 
   it("starts with an empty display name when none was ever chosen", () => {
-    localStorage.removeItem("chat-username");
+    localStorage.removeItem("calimero-names:last");
     render(<CreateWorkspacePopup onSuccess={vi.fn()} onCancel={vi.fn()} />);
 
     fireEvent.change(screen.getByRole("textbox", { name: /namespace name/i }), {
@@ -247,7 +249,7 @@ describe("CreateWorkspacePopup", () => {
     expect(mockSetMemberMetadata.mock.invocationCallOrder[0]).toBeLessThan(
       onSuccess.mock.invocationCallOrder[0],
     );
-    expect(localStorage.getItem("chat-username")).toBe("Ana");
+    expect(localStorage.getItem("chat-username:group-1")).toBe("Ana");
   });
 
   it("creates a public #general, after the name, before entering", async () => {

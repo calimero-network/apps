@@ -44,6 +44,7 @@ function fakeClient(opts: { signedIn?: boolean } = {}) {
     call: vi.fn(async () => ({ index: 1, result: null, events: [] })),
     events: vi.fn(async function* () {}),
     redeemInvite: vi.fn(async () => ({ org: "org-2" })),
+    setMemberMetadata: vi.fn(async () => undefined),
   };
 }
 
@@ -121,8 +122,30 @@ describe("an invite link", () => {
     expect(client.redeemInvite).not.toHaveBeenCalled();
     fireEvent.click(await screen.findByTestId("invitation-join", {}, SLOW));
     await waitFor(() => expect(client.redeemInvite).toHaveBeenCalledWith("tok-xyz"), SLOW);
+    // The team has no name for you: asked once, here, then on to the team.
+    fireEvent.change(await screen.findByTestId("username-input", {}, SLOW), { target: { value: "Sandi" } });
+    fireEvent.click(screen.getByTestId("username-submit"));
+    await waitFor(() => expect(client.setMemberMetadata).toHaveBeenCalledWith("org-2", "acct-me", { name: "Sandi" }), SLOW);
     await waitFor(() => expect(window.location.pathname).toBe("/teams/org-2/projects"), SLOW);
     expect(invites.token()).toBeNull();
+  });
+
+  it("does not ask for a name on joining a team that already has yours", async () => {
+    const client = fakeClient({ signedIn: true });
+    client.getOrg.mockResolvedValue({
+      members: { "acct-me": "member" },
+      memberMetadata: { "acct-me": { name: "Sandi" } },
+      capabilities: {},
+      defaultCapabilities: 3,
+    });
+    storeSession();
+    hold("tok-xyz");
+    renderApp(client);
+
+    fireEvent.click(await screen.findByTestId("invitation-join", {}, SLOW));
+    await waitFor(() => expect(window.location.pathname).toBe("/teams/org-2/projects"), SLOW);
+    expect(screen.queryByTestId("username-input")).toBeNull();
+    expect(client.setMemberMetadata).not.toHaveBeenCalled();
   });
 
   it("tells a member of the invited team they are already in it, without spending the invite", async () => {

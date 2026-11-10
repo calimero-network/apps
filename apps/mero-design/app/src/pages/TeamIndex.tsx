@@ -9,6 +9,7 @@ import { useShell } from "../components/shell/shellContext";
 import { useToast } from "../contexts/ToastContext";
 import { extractErrorMessage } from "../utils/errorMessage";
 import { pickTeam, readLastVisit } from "../utils/lastVisit";
+import { suggestedName } from "../utils/boardName";
 import styles from "./TeamHome.module.css";
 
 /**
@@ -21,10 +22,12 @@ import styles from "./TeamHome.module.css";
  */
 export default function TeamIndex() {
   const { teams } = useShell();
-  const { nodeUrl } = useAuth();
+  const { nodeUrl, accountId } = useAuth();
   const navigate = useNavigate();
   const { showToast } = useToast();
   const [name, setName] = useState("");
+  // Your name in the new team: asked here, once, and used by every board in it.
+  const [myName, setMyName] = useState(() => suggestedName(accountId));
   const [busy, setBusy] = useState(false);
   // "Connect to an existing organization": boards go into an org the account
   // has for another app only on this explicit choice.
@@ -64,10 +67,10 @@ export default function TeamIndex() {
 
   async function create() {
     const trimmed = name.trim();
-    if (!trimmed || busy) return;
+    if (!trimmed || !myName.trim() || busy) return;
     setBusy(true);
     try {
-      const { id, warning } = await teams.createTeam(trimmed);
+      const { id, warning } = await teams.createTeam(trimmed, myName);
       if (warning) showToast(warning);
       if (id) navigate(`/teams/${id}/projects`);
     } catch (err) {
@@ -100,7 +103,19 @@ export default function TeamIndex() {
                 onKeyDown={(e) => e.key === "Enter" && void create()}
                 data-testid="first-team-input"
               />
-              <button className={styles.btn} onClick={() => void create()} disabled={busy || !name.trim()} data-testid="first-team-create">
+            </div>
+            <div className={styles.field}>
+              <input
+                className={styles.input}
+                placeholder="Your name in this team…"
+                aria-label="Your name in this team"
+                value={myName}
+                maxLength={32}
+                onChange={(e) => setMyName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && void create()}
+                data-testid="first-team-my-name"
+              />
+              <button className={styles.btn} onClick={() => void create()} disabled={busy || !name.trim() || !myName.trim()} data-testid="first-team-create">
                 {busy ? "Creating…" : "Create"}
               </button>
             </div>

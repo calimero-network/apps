@@ -3,10 +3,16 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { useSessionApi } from "../api/sessionContext";
 import { SPENT_INVITE_COPY, describeRedeemFailure, isSpentInvite, joinedOrg, memberOf } from "@calimero-apps/connect";
-import { inviteRoute, invites, takeJoinedAtSignUp } from "../api/teams";
+import { inviteRoute, invites, readOrg, setMyTeamName, takeJoinedAtSignUp } from "../api/teams";
+import { lastUsedName } from "@calimero-apps/names";
+import UsernameModal from "./UsernameModal";
+import { legacyUsername } from "../utils/projectName";
 import { SignInPanel, usePendingInvite } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";
 import { ONBOARDING } from "../api/session";
+
+/** Where joining was going, held while the new member names themselves in the team. */
+type Naming = { org: string; route: string };
 
 /** What the screen says once the invitation can no longer be accepted. */
 type Outcome = { kind: "member"; org: string; route: string } | { kind: "spent" };
@@ -22,7 +28,8 @@ type Outcome = { kind: "member"; org: string; route: string } | { kind: "spent" 
  *    the token, so signing in later still asks.
  *  - signed in: "Join the team?" straight away. The org invite is redeemed
  *    only on the click, and joining opens the team (or the route the link
- *    opened inside it).
+ *    opened inside it). A team that has no name for you asks for one first,
+ *    once: every project in the team uses it.
  *
  * Redeeming spends one of the invite's uses even for someone already in the
  * team, so a link that names its team is checked against the account's teams
@@ -40,6 +47,7 @@ export default function InvitationHost({ children }: { children: ReactNode }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
+  const [naming, setNaming] = useState<Naming | null>(null);
   /**
    * The route joining (or "Open the team") is going to. The invitation screen
    * stays until the router is there: dropping it first would show the route
@@ -86,6 +94,22 @@ export default function InvitationHost({ children }: { children: ReactNode }) {
       setChecking(false);
     };
   }, [client, pendingToken]);
+
+  if (naming && signedIn) {
+    const named = async (name: string) => {
+      // Best effort: the team's first project asks again if this did not land.
+      await setMyTeamName(signedIn.client, naming.org, signedIn.accountId, name).catch(() => {});
+      api.store?.sync(signedIn.client);
+      setNaming(null);
+      setLeavingFor({ to: naming.route, from: pathname, token: null });
+      navigate(naming.route);
+    };
+    return (
+      <main className="mp-invite-page">
+        <UsernameModal onSubmit={(n) => void named(n)} initialValue={lastUsedName() || legacyUsername()} />
+      </main>
+    );
+  }
 
   if (outcome) {
     const done = () => {
@@ -152,6 +176,15 @@ export default function InvitationHost({ children }: { children: ReactNode }) {
       const org = joinedOrg(await signedInClient.redeemInvite(token)) ?? pending?.org ?? null;
       const route = inviteRoute(pending, org);
       invites.drop();
+      // Your name in the team, asked once, here: never again on its projects.
+      // Unknown (the read failed): the team's first project asks instead.
+      const named = org
+        ? await readOrg(signedInClient, org).then((o) => o.names.has(signedIn.accountId), () => true)
+        : true;
+      if (org && !named) {
+        setNaming({ org, route });
+        return;
+      }
       setLeavingFor({ to: route, from: pathname, token });
       navigate(route);
     } catch (e) {

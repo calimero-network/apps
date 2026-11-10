@@ -19,3 +19,12 @@ export { useMemberNames, useGroupName } from "./hooks";
 export type { GroupNameOptions, MemberNames } from "./hooks";
 export { useMyName, getStoredMyName } from "./myName";
 export type { MyName } from "./myName";
+export {
+  decideSelfName,
+  forgetLastUsedName,
+  lastUsedName,
+  orgMemberName,
+  rememberLastUsedName,
+  setOrgName,
+} from "./selfName";
+export type { OrgNameClient, SelfNameDecision } from "./selfName";

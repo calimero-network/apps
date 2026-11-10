@@ -1,5 +1,6 @@
 package network.calimero.calendar.app
 
+import com.calimero.mero.app.AppMember
 import com.calimero.mero.testkit.InMemoryAppBackend
 import com.calimero.mero.testkit.RecordedContractCall
 import kotlinx.coroutines.test.runTest
@@ -208,7 +209,7 @@ class CalendarModelTest {
         }
 
     @Test
-    fun `a stored name is registered on open, otherwise it is asked for`() =
+    fun `a team with no name for you asks once, and every calendar in it then uses the team's name`() =
         runTest {
             val backend = backend()
             val model = model(backend)
@@ -224,11 +225,38 @@ class CalendarModelTest {
                     .jsonPrimitive.content,
             )
 
-            val again = model(backend)
-            again.start()
-            assertFalse(again.state.value.askName)
+            // Saved on the team (org member metadata), not per calendar.
+            assertEquals("Bob", backend.groupMembers[team.id]!!.single { it.identity == me }.name)
+
+            val other = CalendarModel(backend, team, CalendarRef("dd".repeat(32), "gg".repeat(32), "Other"), names, zone = zone)
+            other.start()
+            assertFalse(other.state.value.askName)
             assertEquals(2, backend.recording.calls("setUsername").size)
-            assertEquals("Bob", again.lastName)
+            assertEquals("Bob", other.lastName)
+        }
+
+    @Test
+    fun `a team that has your name never asks, and feeds it to the calendar's roster`() =
+        runTest {
+            val backend = backend()
+            backend.groupMembers = mapOf(team.id to listOf(AppMember(me, "Member", "Ada")))
+            val model = model(backend)
+            model.start()
+            assertFalse(model.state.value.askName)
+            assertEquals("Ada", arg(backend.recording.calls("setUsername").single(), "username"))
+            assertTrue(backend.log.none { it.startsWith("setMemberName") })
+        }
+
+    @Test
+    fun `a name this device set in a calendar before is adopted by the team, without asking`() =
+        runTest {
+            val backend = backend()
+            names.setUsername(calendar.contextId, "Ada")
+            val model = model(backend)
+            model.start()
+            assertFalse(model.state.value.askName)
+            assertEquals("Ada", backend.groupMembers[team.id]!!.single { it.identity == me }.name)
+            assertEquals("Ada", arg(backend.recording.calls("setUsername").single(), "username"))
         }
 
     @Test

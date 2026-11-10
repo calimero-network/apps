@@ -26,6 +26,7 @@
     "@calimero-apps/connect": "workspace:*",
     "@calimero-apps/glass": "workspace:*",
     "@calimero-apps/members": "workspace:*",
+    "@calimero-apps/names": "workspace:*",
     "@calimero-apps/node-served": "workspace:*",
     "@calimero-apps/passkey": "workspace:*",
     "@calimero-network/mero-icons": "catalog:",

@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { decideSelfName, type SelfNameDecision } from "@calimero-apps/names";
 
 import SessionMenu from "./SessionMenu";
 import ThemeToggle from "./ThemeToggle";
@@ -39,10 +40,10 @@ import {
   useAudienceContextId,
   useLive,
   usePublishSpaceName,
-  useSpaceName,
+  useSelfSpaceName,
   useUpdatesClient,
 } from "../lib/updates";
-import { getActiveNamespaceId, getAudienceName, setUsername } from "../lib/active";
+import { getActiveNamespaceId, getAudienceName, getUsername } from "../lib/active";
 
 /** What every page inside an audience needs, loaded once by the shell. */
 interface AudienceData {
@@ -127,6 +128,8 @@ function ShellBody() {
     }),
     [me.data, overview.data, categories.data, reload],
   );
+
+  const selfName = useSelfName(me.data, me.reload);
 
   const audienceName = contextId ? getAudienceName(contextId) : "";
   const company = overview.data?.company_name || "";
@@ -267,7 +270,9 @@ function ShellBody() {
 
           <div className="appBody">
             {me.error && <div className="error">{me.error}</div>}
-            {me.data && !me.data.name && <ProfilePrompt me={me.data} onSaved={reload} />}
+            {me.data && selfName.kind === "ask" && (
+              <ProfilePrompt me={me.data} suggestion={selfName.suggestion} onSaved={reload} />
+            )}
 
             <main className="appMain">
               <Outlet />
@@ -280,26 +285,70 @@ function ShellBody() {
 }
 
 /**
- * "Who are you?" — shown until you answer.
+ * Your name in this audience, from your name in the company.
  *
- * Asked inline, once, rather than behind a settings page: the founder's
- * follow-up list and every byline are useless as 64-hex account ids, and the
- * one moment someone is sure to see this is their first visit.
+ * The company holds it (org member metadata), asked when you created or joined
+ * it; this audience's profile is a copy, written silently whenever it differs.
+ * A profile name (or this app's older per-browser name) from before the
+ * company held one is published to the company instead. Only a company with
+ * no name for you anywhere asks — once, for the whole company.
  */
-function ProfilePrompt({ me, onSaved }: { me: MeView; onSaved: () => void }) {
+function useSelfName(me: MeView | null, reload: () => void): SelfNameDecision {
   const client = useUpdatesClient();
   const publishSpaceName = usePublishSpaceName();
-  const [name, setName] = useState("");
+  const space = useSelfSpaceName(me?.account);
+  const decision = useMemo<SelfNameDecision>(
+    () =>
+      me
+        ? decideSelfName({ orgReady: space.ready, orgName: space.name, fallbacks: [me.name, getUsername()] })
+        : { kind: "wait" },
+    [me, space.ready, space.name],
+  );
+
+  // One write per (audience, name): a refused write is not retried in a loop.
+  const done = useRef<string | null>(null);
+  useEffect(() => {
+    if (!me || !client || (decision.kind !== "use" && decision.kind !== "adopt")) return;
+    const name = decision.name;
+    const key = `${client.appId}:${decision.kind}:${name}`;
+    if (done.current === key) return;
+    done.current = key;
+    if (decision.kind === "adopt") void publishSpaceName(me.account, name);
+    if (me.name.trim() === name) return;
+    void client
+      .setProfile({ name, firm: me.firm })
+      .then(reload)
+      .catch(() => {
+        /* the shell still labels you by the company name */
+      });
+  }, [me, client, decision, publishSpaceName, reload]);
+
+  return decision;
+}
+
+/**
+ * "Who are you?" — for a company made before names were asked when it was
+ * created or joined, the first time you open any of its audiences.
+ *
+ * Asked inline rather than behind a settings page: the founder's follow-up
+ * list and every byline are useless as 64-hex account ids. The answer is your
+ * name in the whole company, so no other audience in it asks again.
+ */
+function ProfilePrompt({
+  me,
+  suggestion,
+  onSaved,
+}: {
+  me: MeView;
+  suggestion: string;
+  onSaved: () => void;
+}) {
+  const client = useUpdatesClient();
+  const publishSpaceName = usePublishSpaceName();
+  const [name, setName] = useState(suggestion);
   const [firm, setFirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Offer the name this person already set for the company, so someone who
-  // named themselves in another audience or app only has to confirm it.
-  const spaceName = useSpaceName(me.account);
-  useEffect(() => {
-    if (spaceName) setName((cur) => cur || spaceName);
-  }, [spaceName]);
 
   const save = async () => {
     if (!client || !name.trim()) return;
@@ -307,8 +356,7 @@ function ProfilePrompt({ me, onSaved }: { me: MeView; onSaved: () => void }) {
     setError(null);
     try {
       await client.setProfile({ name: name.trim(), firm: firm.trim() });
-      setUsername(name.trim());
-      publishSpaceName(me.account, name);
+      await publishSpaceName(me.account, name);
       onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -324,10 +372,10 @@ function ProfilePrompt({ me, onSaved }: { me: MeView; onSaved: () => void }) {
           <UserPlusIcon size={18} />
         </span>
         <div>
-        <strong>Tell {me.is_team ? "your investors" : "the team"} who you are.</strong>
+        <strong>Your name in this company</strong>
         <p className="muted">
           {me.is_team
-            ? "Your name goes on every update you publish."
+            ? "It goes on every update you publish, in every audience of the company."
             : "The team sees who read, reacted and offered to help — as a name, not an account id."}
         </p>
         </div>

@@ -11,7 +11,7 @@ import {
 import { describeError } from "@calimero-apps/connect";
 
 import { getActiveNamespaceId, getContextId } from "./active";
-import { readCompany } from "./companies";
+import { readCompany, setCompanyName } from "./companies";
 import { useMaybeSignedIn } from "./sessionContext";
 import { UpdatesClient } from "./updatesClient";
 
@@ -248,28 +248,35 @@ export function usePersonLabel(): (name: string, account: string) => string {
   );
 }
 
+/** Record `account`'s company-wide name in the shared cache, and re-render readers. */
+function rememberCompanyName(org: string, account: string, name: string): void {
+  const names = new Map(companyNames.get(org) ?? []);
+  names.set(account, name);
+  companyNames.set(org, names);
+  listeners.forEach((l) => l());
+}
+
 /**
- * Publish a profile name company-wide too (org member metadata), so every
- * audience shows it. Best-effort: the profile is what was asked for, and a
- * refusal here must not report it as failed.
+ * Publish a name company-wide (org member metadata), so every audience shows
+ * it. The company is where your name lives: it is asked when you create or
+ * join one, and every audience in it copies it into its own profile. Resolves
+ * false when the node refused; never throws.
  */
-export function usePublishSpaceName(): (account: string, name: string) => void {
+export function usePublishSpaceName(): (account: string, name: string) => Promise<boolean> {
   const signedIn = useMaybeSignedIn();
   const client = signedIn?.client ?? null;
   return useCallback(
-    (account: string, name: string) => {
+    async (account: string, name: string) => {
       const org = getActiveNamespaceId();
       const trimmed = name.trim();
-      if (!client || !org || !account || !trimmed) return;
-      void client
-        .setMemberMetadata(org, account, { name: trimmed })
-        .then(() => {
-          const names = new Map(companyNames.get(org) ?? []);
-          names.set(account, trimmed);
-          companyNames.set(org, names);
-          listeners.forEach((l) => l());
-        })
-        .catch(() => {});
+      if (!client || !org || !account || !trimmed) return false;
+      try {
+        await setCompanyName(client, org, account, trimmed);
+        rememberCompanyName(org, account, trimmed);
+        return true;
+      } catch {
+        return false;
+      }
     },
     [client],
   );
@@ -278,6 +285,16 @@ export function usePublishSpaceName(): (account: string, name: string) => void {
 /** The name `account` set for the whole company, or "" when none is known. */
 export function useSpaceName(account: string | null | undefined): string {
   return useCompanyNames()(account) ?? "";
+}
+
+/**
+ * Your own company-wide name, and whether the company's names have loaded
+ * (until they have, "no name" is not known to mean no name).
+ */
+export function useSelfSpaceName(account: string | null | undefined): { ready: boolean; name: string } {
+  const nameOf = useCompanyNames();
+  const org = getActiveNamespaceId();
+  return { ready: !!org && companyNames.has(org), name: nameOf(account) ?? "" };
 }
 
 // ── Metrics ──────────────────────────────────────────────────────────────────

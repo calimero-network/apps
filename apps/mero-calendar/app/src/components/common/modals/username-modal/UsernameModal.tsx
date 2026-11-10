@@ -7,15 +7,19 @@ interface Props {
   onSkip: () => void;
 }
 
-/** First-visit prompt to pick a display name shown to teammates on events. */
+/**
+ * Your name in a team, asked once for the team (when you join it, or the first
+ * time you open a calendar in a team made before names were asked on create).
+ * Every calendar in the team uses it.
+ */
 export default function UsernameModal({ defaultName = "", onSubmit, onSkip }: Props) {
   const [name, setName] = useState(defaultName);
   return (
     <div className="mc-overlay" data-testid="username-modal">
       <div className={styles.modal}>
-        <h2 className={styles.title}>Pick a display name</h2>
+        <h2 className={styles.title}>Your name in this team</h2>
         <p className={styles.sub}>
-          Teammates will see this name on the events you create and invite them to.
+          Teammates see this name on the events you create and invite them to, in every calendar of the team.
         </p>
         <input
           autoFocus

@@ -23,26 +23,26 @@ export default function LoginPopup({ isOpen, onClose }: LoginPopupProps) {
   return (
     <div className="hl-modal-backdrop" role="presentation" onClick={onClose}>
       <div
-        className="hl-modal card"
+        className="hl-modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby="hl-signin-title"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 id="hl-signin-title">Open your feed</h2>
-        {session.status === "connecting" && <p className="muted">Connecting…</p>}
+        {session.status === "connecting" && <p className="hl-muted hl-modal-desc">Connecting…</p>}
         {session.status === "listing" && <AppListing {...LISTING} />}
         {session.status === "unconfigured" && <pre className="err">{session.message}</pre>}
         {session.status === "signed-out" && (
           <>
-            <p className="muted">
+            <p className="hl-muted hl-modal-desc">
               Connected to {describeTarget(session.target)}. Accounts are passkeys: nothing to remember, nothing to leak.
             </p>
             <PasskeySignIn api={api} />
           </>
         )}
-        <div className="row">
-          <button type="button" className="ghost small" onClick={onClose}>
+        <div className="hl-modal-row">
+          <button type="button" className="hl-btn hl-btn-ghost hl-btn-sm" onClick={onClose}>
             Close
           </button>
         </div>

@@ -104,8 +104,9 @@ export function getRoomName(room: string): string {
 }
 
 // ── Display name ─────────────────────────────────────────────────────────────
-// The name the person joins a room with. The contract stores it (`join`); this
-// copy makes a reload show it before the first round trip.
+// The name this browser joined rooms with before the stream held one. Your
+// name now lives on the stream (org member metadata); this is read only to
+// adopt an older name into a stream that has none, never as the source of it.
 
 export function getUsername(): string {
   try {
@@ -113,6 +114,15 @@ export function getUsername(): string {
   } catch {
     return "";
   }
+}
+
+/**
+ * {@link getUsername} as a name worth adopting: not the placeholders a room
+ * was joined with before anyone picked a name ("guest", the probe's "prober").
+ */
+export function storedName(): string {
+  const name = getUsername().trim();
+  return name === "guest" || name === "prober" ? "" : name;
 }
 
 export function setUsername(name: string): void {

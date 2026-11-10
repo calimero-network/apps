@@ -11,6 +11,7 @@ import {
   type KeyValueStorage,
   type PendingInvite as SharedPendingInvite,
 } from "@calimero-apps/connect";
+import { setOrgName } from "@calimero-apps/names";
 import { nodeBasename } from "@calimero-apps/node-served";
 
 import { APP_NAME } from "./config";
@@ -169,6 +170,19 @@ export async function readCompany(client: Pick<CalimeroClient, "getOrg">, org: s
     roles: new Map(Object.entries(members)),
     names,
   };
+}
+
+/**
+ * Show `account` as `name` across the company (org member metadata, merged
+ * with what the record holds). Throws when the node refuses.
+ */
+export function setCompanyName(
+  client: Pick<CalimeroClient, "getOrg" | "setMemberMetadata">,
+  org: string,
+  account: string,
+  name: string,
+): Promise<void> {
+  return setOrgName(client, org, account, name);
 }
 
 /** Owners and admins govern a company (delete it, delete any audience in it). */

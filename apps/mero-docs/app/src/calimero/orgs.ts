@@ -419,6 +419,11 @@ export class OrgAdmin {
     this.changed(orgId);
   }
 
+  /** The org as read fresh: what `setOrgName` merges a name into. */
+  getOrg(orgId: string): Promise<OrgView> {
+    return this.org(orgId, true);
+  }
+
   async setMemberMetadata(orgId: string, account: string, metadata: unknown): Promise<void> {
     await this.client.setMemberMetadata(orgId, account, metadata);
     this.changed(orgId);

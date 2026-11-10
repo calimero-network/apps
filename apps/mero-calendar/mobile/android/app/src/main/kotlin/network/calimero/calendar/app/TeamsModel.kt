@@ -52,12 +52,23 @@ class TeamsModel(
         val warning: String?,
     )
 
-    /** Found a team (names are capped at 64 characters, as core caps them). */
-    suspend fun create(name: String): Created {
+    /** The name to offer when a team asks for yours. */
+    val lastName: String get() = names.lastUsername().orEmpty()
+
+    /**
+     * Found a team (names are capped at 64 characters, as core caps them), with [myName] as your
+     * name in it: asked here once, used by every calendar in the team.
+     */
+    suspend fun create(
+        name: String,
+        myName: String = "",
+    ): Created {
         val trimmed = name.trim().take(MAX_NAME)
         require(trimmed.isNotEmpty()) { "Name the team." }
         val founded = backend.foundNamespace(trimmed)
         names.setTeam(founded.namespaceId, trimmed)
+        // Best effort: the team exists either way, and a calendar in it asks once when it is missing.
+        if (myName.isNotBlank()) runCatching { setMyName(founded.namespaceId, myName) }
         load()
         val team = _state.value.teams.firstOrNull { it.id == founded.namespaceId } ?: Team(founded.namespaceId, trimmed, "")
         return Created(team, founded.haError?.let { "Team created, but invitations will not work yet: $it." })
@@ -65,6 +76,20 @@ class TeamsModel(
 
     /** A shareable invitation link to [team]. */
     suspend fun inviteLink(team: Team): String = TeamInvites.link(backend.createInvitation(team.id), team.name)
+
+    /** Whether [teamId] has no name for you (and could be read): joining asks once. */
+    suspend fun needsName(teamId: String): Boolean = backend.myTeamName(teamId) == ""
+
+    /** Your name in [teamId], for every calendar in it. */
+    suspend fun setMyName(
+        teamId: String,
+        name: String,
+    ) {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return
+        backend.setMemberName(teamId, trimmed)
+        names.setLastUsername(trimmed)
+    }
 
     /** The org ids of the listed teams (where approvals are read). */
     val orgs: List<String> get() = _state.value.teams.map { it.id }

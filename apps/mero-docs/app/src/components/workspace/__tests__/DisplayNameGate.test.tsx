@@ -126,8 +126,18 @@ describe('DisplayNameGate', () => {
     render(<DisplayNameGate />);
     const body = screen.getByText(/Members of this workspace see this name/);
     expect(body.textContent).toBe(
-      'Members of this workspace see this name. You can change it later in settings.',
+      'Members of this workspace see this name in every folder and doc. You can change it later in settings.',
     );
+  });
+
+  it('offers the name last used in another workspace', () => {
+    localStorage.setItem('calimero-names:last', 'Ada');
+    dnMock.mockReturnValue(hookState());
+    render(<DisplayNameGate />);
+    expect(
+      (screen.getByPlaceholderText('Your display name') as HTMLInputElement)
+        .value,
+    ).toBe('Ada');
   });
 
   it('stacks at the same layer as other modals, not below them', () => {

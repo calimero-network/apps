@@ -38,6 +38,7 @@ import {
 } from 'react';
 import { useLive, type GroupMember, type Namespace } from '@/calimero/react';
 import { targetKey } from '@calimero-apps/connect';
+import { setOrgName } from '@calimero-apps/names';
 import { useSession } from '@/calimero/session';
 import { REGISTRY_APP_KEY, type OrgView } from '@/calimero/orgs';
 import { RegistryClient } from '@/lib/docsApi';
@@ -105,7 +106,8 @@ export interface DriveWorkspaceState {
   selectNamespace: (nsId: string | null) => void;
   clearNamespace: () => void;
 
-  createWorkspace: (alias: string) => Promise<string | null>;
+  /** `selfName`: your name in the new workspace, written right after it is made. */
+  createWorkspace: (alias: string, selfName?: string) => Promise<string | null>;
   createWorkspaceLoading: boolean;
   createWorkspaceError: Error | null;
 
@@ -393,7 +395,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState<Error | null>(null);
   const createWorkspace = useCallback(
-    async (alias: string): Promise<string | null> => {
+    async (alias: string, selfName?: string): Promise<string | null> => {
       if (!admin) return null;
       const trimmed = alias.trim();
       if (!trimmed) {
@@ -416,6 +418,13 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
           await admin.setDefaultCapabilities(namespaceId, { defaultCapabilities: DEFAULT_NEW_MEMBER_CAPS });
         } catch (e) {
           console.warn('[useDriveWorkspace] member defaults not set; set them in Member defaults.', e);
+        }
+        if (selfName?.trim()) {
+          // Your name in the workspace, asked in the same dialog. Refused, the
+          // workspace stays and the name gate asks for it once on entry.
+          await setOrgName(admin, namespaceId, admin.self, selfName).catch((e: unknown) =>
+            console.warn('[useDriveWorkspace] workspace name for self not set; the gate will ask.', e),
+          );
         }
         createdNsId.current = namespaceId;
         await refetchNamespaces();

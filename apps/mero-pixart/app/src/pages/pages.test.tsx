@@ -16,6 +16,7 @@ const client = {
   invite: vi.fn(),
   listApps: vi.fn(),
   getOrg: vi.fn(),
+  setMemberMetadata: vi.fn(),
   createApp: vi.fn(),
   deleteApp: vi.fn(),
   view: vi.fn(),
@@ -120,10 +121,46 @@ describe("TeamsPage", () => {
     renderAt("/teams");
     expect(await screen.findByTestId("empty-teams")).toBeTruthy();
     fireEvent.change(screen.getByTestId("new-team-input"), { target: { value: "Design" } });
+    fireEvent.change(screen.getByTestId("new-team-my-name"), { target: { value: "Sandi" } });
     fireEvent.click(screen.getByTestId("create-team-btn"));
     expect(await screen.findByText("Design")).toBeTruthy();
     expect(client.createOrg).toHaveBeenCalledWith("Design");
     expect(client.setCapabilities).toHaveBeenCalledWith("org-new", expect.any(Number), expect.anything());
+  });
+
+  it("asks your name in the new team in the same step, and writes it to the org", async () => {
+    client.me.mockResolvedValue({ orgs: [] });
+    client.createOrg.mockResolvedValue("org-new");
+    client.setCapabilities.mockResolvedValue(undefined);
+    client.getOrg.mockResolvedValue({ name: "Design", members: { [ME]: "owner" }, memberMetadata: {} });
+    client.setMemberMetadata.mockResolvedValue(undefined);
+    localStorage.setItem("calimero-names:last", "Sandi");
+    renderAt("/teams");
+    expect(await screen.findByTestId("empty-teams")).toBeTruthy();
+    // Offered the name used last, and required.
+    const mine = screen.getByTestId("new-team-my-name") as HTMLInputElement;
+    expect(mine.value).toBe("Sandi");
+    fireEvent.change(screen.getByTestId("new-team-input"), { target: { value: "Design" } });
+    fireEvent.change(mine, { target: { value: " " } });
+    expect((screen.getByTestId("create-team-btn") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(mine, { target: { value: "Ana" } });
+    fireEvent.click(screen.getByTestId("create-team-btn"));
+    await waitFor(() => expect(client.setMemberMetadata).toHaveBeenCalledWith("org-new", ME, { name: "Ana" }));
+    expect(localStorage.getItem("calimero-names:last")).toBe("Ana");
+  });
+
+  it("still creates the team when writing the name fails", async () => {
+    client.me.mockResolvedValue({ orgs: [] });
+    client.createOrg.mockResolvedValue("org-new");
+    client.setCapabilities.mockResolvedValue(undefined);
+    client.getOrg.mockResolvedValue({ members: {}, memberMetadata: {} });
+    client.setMemberMetadata.mockRejectedValue(new Error("offline"));
+    renderAt("/teams");
+    expect(await screen.findByTestId("empty-teams")).toBeTruthy();
+    fireEvent.change(screen.getByTestId("new-team-input"), { target: { value: "Design" } });
+    fireEvent.change(screen.getByTestId("new-team-my-name"), { target: { value: "Ana" } });
+    fireEvent.click(screen.getByTestId("create-team-btn"));
+    expect(await screen.findByText("Design")).toBeTruthy();
   });
 });
 

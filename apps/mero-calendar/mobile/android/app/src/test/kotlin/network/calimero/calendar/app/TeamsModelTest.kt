@@ -7,6 +7,7 @@ import network.calimero.calendar.data.LocalNames
 import network.calimero.calendar.data.MemoryKeyValueStore
 import network.calimero.calendar.data.TeamInvites
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -47,6 +48,33 @@ class TeamsModelTest {
                     .single()
                     .name,
             )
+        }
+
+    @Test
+    fun `creating a team sets your name in it, for every calendar`() =
+        runTest {
+            val backend = InMemoryAppBackend()
+            val model = TeamsModel(backend, names)
+            val created = model.create("Design", " Ada ")
+            assertEquals("Ada", backend.groupMembers[created.team.id]!!.single { it.identity == backend.account }.name)
+            assertFalse(model.needsName(created.team.id))
+            // Offered for the next team.
+            assertEquals("Ada", model.lastName)
+        }
+
+    @Test
+    fun `joining a team with no name for you asks once`() =
+        runTest {
+            val inviter = InMemoryAppBackend()
+            val team = Team("c3".repeat(32), "Design", inviter.applicationId)
+            val link = TeamsModel(inviter, names).inviteLink(team)
+            val joiner = InMemoryAppBackend(account = "acc_joiner")
+            val model = TeamsModel(joiner, LocalNames(MemoryKeyValueStore()))
+            val id = model.join(link)
+            assertTrue(model.needsName(id))
+            model.setMyName(id, "Bea")
+            assertFalse(model.needsName(id))
+            assertEquals("Bea", joiner.groupMembers[id]!!.single { it.identity == "acc_joiner" }.name)
         }
 
     @Test
